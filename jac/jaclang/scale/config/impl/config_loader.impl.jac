@@ -47,7 +47,9 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'replay_tolerance_seconds': 300,
             'max_body_bytes': 1048576,
             'rate_limit_per_minute': 0,
-            'api_key_expiry_days': 365
+            'api_key_expiry_days': 365,
+            'github_secret': '',
+            'github_signature_header': 'X-Hub-Signature-256'
         },
         'monitoring': {
             'enabled': False,
@@ -215,7 +217,12 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
         ),
         'max_body_bytes': int(webhook_config.get('max_body_bytes', 1048576)),
         'rate_limit_per_minute': int(webhook_config.get('rate_limit_per_minute', 0)),
-        'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
+        'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365)),
+        'github_secret': str(webhook_config.get('github_secret', '') or ''),
+        'github_signature_header': str(
+            webhook_config.get('github_signature_header', 'X-Hub-Signature-256')
+                or 'X-Hub-Signature-256'
+        )
     };
 }
 
@@ -320,7 +327,9 @@ impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-impl _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float {
+impl _ws_positive(
+    ws_config: dict[str, any], key: str, fallback: (int | float)
+) -> float {
     raw = ws_config.get(key, fallback);
     if isinstance(raw, bool) or not isinstance(raw, (int, float, str)) {
         raise ValueError(f"[scale.websocket].{key} must be a number, got {raw!r}.");
@@ -341,7 +350,7 @@ impl _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float {
 
 impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    ws_config: dict = config.get('websocket', {});
+    ws_config: dict[str, any] = config.get('websocket', {});
     backplane = ws_config.get('backplane');
     if backplane is not None {
         backplane = str(backplane).lower();
@@ -420,7 +429,7 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
 
 impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    emailer_config = config.get('emailer', {}) or {};
+    emailer_config: any = config.get('emailer', {}) or {};
     smtp_config = dict(emailer_config.get('smtp', {}) or {});
     smtp_password_env = os.environ.get('EMAILER_SMTP_PASSWORD');
     if smtp_password_env {
@@ -443,7 +452,7 @@ impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, any] {
 
 impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    auth_config = config.get('auth', {}) or {};
+    auth_config: any = config.get('auth', {}) or {};
     return {
         'reset_token_ttl_seconds': int(
             auth_config.get('reset_token_ttl_seconds', 1800)

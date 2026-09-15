@@ -146,24 +146,24 @@ def _module_scoped_alerts(program: object, file_path: str) -> list:
 # frozen from the manifest; a missing/corrupt JIR falls back to the retained
 # source, which jac0 transpiles live.
 _modresolver_jac = os.path.join(
-    os.path.dirname(__file__), "compiler", "driver", "modresolver.jac"
+    os.path.dirname(__file__), "project", "modresolver.jac"
 )
 _modresolver_code = None
 _modresolver_origin = _modresolver_jac
-_frozen_modresolver = _sealed.find_module("jaclang.compiler.driver.modresolver")
+_frozen_modresolver = _sealed.find_module("jaclang.project.modresolver")
 if _frozen_modresolver is not None and _frozen_modresolver[1].get("bootstrap"):
     _mr_image = _frozen_modresolver[0]
-    _modresolver_code = _mr_image.bootstrap_code("jaclang.compiler.driver.modresolver")
+    _modresolver_code = _mr_image.bootstrap_code("jaclang.project.modresolver")
     if _modresolver_code is not None:
         _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[2])
 if _modresolver_code is None:
     with open(_modresolver_jac, encoding="utf-8") as _f:
         _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
-_modresolver = types.ModuleType("jaclang.compiler.driver.modresolver")
+_modresolver = types.ModuleType("jaclang.project.modresolver")
 _modresolver.__file__ = _modresolver_origin
-_modresolver.__package__ = "jaclang.compiler.driver"
+_modresolver.__package__ = "jaclang.project"
 exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
-sys.modules["jaclang.compiler.driver.modresolver"] = _modresolver
+sys.modules["jaclang.project.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
 
 
@@ -358,12 +358,30 @@ class JacMetaImporter(MetaPathFinder, Loader):
         if not module.__name__.startswith("jaclang."):
             Jac.load_module(module.__name__, module)
 
-        # Get and execute bytecode using the compiler singleton
+        # The registry is itself Jac. Read it only after its import completes;
+        # importing it here would recurse while bootstrapping the compiler.
+        registry = sys.modules.get("jaclang.runtime.prepared")
+        lookup = getattr(registry, "application_for", None)
+        prepared = lookup(file_path, module.__name__) if lookup is not None else None
+        prepared_path = os.path.realpath(file_path)
+        if prepared is not None and prepared_path in prepared.code:
+            registry.execute_module(module, prepared)
+            return
         compiler = Jac.get_compiler()
         program = Jac.get_program()
-        codeobj = compiler.get_bytecode(
-            full_target=file_path,
-            target_program=program,
+        if prepared is None:
+            containing_lookup = getattr(registry, "containing_application", None)
+            containing = (
+                containing_lookup(file_path, module.__name__) if containing_lookup is not None else None
+            )
+            if containing is not None:
+                from jaclang.compiler.driver.application import prepare_dynamic_module
+
+                prepared = prepare_dynamic_module(file_path, program, containing)
+        codeobj = (
+            prepared.code.get(prepared_path)
+            if prepared is not None
+            else compiler.get_bytecode(full_target=file_path, target_program=program)
         )
         if not codeobj:
             if is_pkg:
@@ -407,8 +425,10 @@ class JacMetaImporter(MetaPathFinder, Loader):
             program.mtir_map.update(renamed)
 
         # Inject native interop infrastructure if needed (sv↔na interop)
-        native_engine, interop_py_funcs = compiler.get_native_interop_setup(
-            file_path, program
+        native_engine, interop_py_funcs = (
+            prepared.native.get(prepared_path, (None, None))
+            if prepared is not None
+            else compiler.get_native_interop_setup(file_path, program)
         )
         if native_engine is not None:
             module.__dict__["__jac_native_engine__"] = native_engine
@@ -418,6 +438,12 @@ class JacMetaImporter(MetaPathFinder, Loader):
         if interop_py_funcs is not None:
             module.__dict__["__jac_interop_py_funcs__"] = interop_py_funcs
 
+        # Bind local imports to this app's compiled closure.
+        if prepared is not None and (
+            module.__name__ == registry.application_namespace(prepared)
+            or module.__name__.startswith(registry.application_namespace(prepared) + ".")
+        ):
+            module.__dict__["__builtins__"] = registry.module_builtins(prepared, file_path)
         # Execute the bytecode directly in the module's namespace
         exec(codeobj, module.__dict__)
 

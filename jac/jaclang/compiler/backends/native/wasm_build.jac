@@ -1,5 +1,9 @@
 import os;
-import type from jaclang.compiler.backends.native.llvm.binding { ModuleRef, ValueRef }
+import type from jaclang.compiler.backends.native.llvm.binding {
+    ModuleRef,
+    ValueRef,
+    TargetMachine
+}
 import type from jaclang.compiler.frontend.unitree { Module as UniModule }
 
 def _wasm_rt_src_dir -> str {
@@ -321,15 +325,8 @@ def _internalize_late_bound(mod: ModuleRef) {
     }
 }
 
-def emit_wasm_from_ir(
-    llvm_ir_str: str, export_funcs: list = [], app_imports: (set | None) = None
-) -> bytes {
+def prepare_wasm_module(llvm_ir_str: str) -> tuple[ModuleRef, TargetMachine, bool] {
     import jaclang.compiler.backends.native.llvm.binding as llvm;
-    import from jaclang.compiler.backends.native.wasm_linker { WasmLinker }
-    import from jaclang.compiler.backends.native.wasm_host_abi {
-        WASM_HOST_ABI,
-        WASM_HOST_MODULE
-    }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     mod = llvm.parse_assembly(llvm_ir_str);
@@ -353,6 +350,18 @@ def emit_wasm_from_ir(
         assert isinstance(mpm2, llvm.ModulePassManager);
         mpm2.run(mod, pb2);
     }
+    return (mod, tm, libc_linked);
+}
+
+def emit_wasm_from_ir(
+    llvm_ir_str: str, export_funcs: list[str] = [], app_imports: (set | None) = None
+) -> bytes {
+    import from jaclang.compiler.backends.native.wasm_linker { WasmLinker }
+    import from jaclang.compiler.backends.native.wasm_host_abi {
+        WASM_HOST_ABI,
+        WASM_HOST_MODULE
+    }
+    (mod, tm, libc_linked) = prepare_wasm_module(llvm_ir_str);
     obj_bytes = tm.emit_object(mod);
     assert isinstance(obj_bytes, bytes);
     if not libc_linked {
@@ -368,7 +377,7 @@ def emit_wasm_from_ir(
     );
 }
 
-def wasm_import_map(wasm_bytes: bytes) -> dict {
+def wasm_import_map(wasm_bytes: bytes) -> dict[str, any] {
     import from jaclang.compiler.backends.native.linker_common {
         read_leb_name,
         read_uleb128
@@ -468,75 +477,8 @@ def _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
     }
 }
 
-def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
+def compile_to_wasm(file_path: str, export_funcs: list[str] = []) -> bytes {
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options {
-        CompileOptions,
-        push_native_target,
-        pop_native_target
-    }
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
-    (gc_mode, enf_mods, enf_grand) = _project_gc_settings();
-    prev = push_native_target("wasm32-unknown-unknown");
-    auto_promote = True;
-    try {
-        prog = JacProgram();
-        na_coverage_begin();
-        try {
-            ir = prog.compile(
-                file_path=os.path.abspath(file_path),
-                options=CompileOptions(
-                    aot_mode=True,
-                    default_codespace=('native' if auto_promote else ''),
-                    na_gc_mode=gc_mode,
-                    memory_enforce=enf_mods,
-                    memory_exempt=enf_grand,
-                    native_target="wasm32-unknown-unknown"
-                )
-            );
-        } finally {
-            coverage = na_coverage_end();
-        }
-        if prog.errors_had {
-            first = prog.errors_had[0].pretty_print();
-            more = len(prog.errors_had) - 1;
-            suffix = f" (+{more} more)" if more > 0 else "";
-            raise RuntimeError(f"{first}{suffix}");
-        }
-        if (ir is None) or (ir.gen.llvm_ir is None) {
-            rec = coverage.get(os.path.realpath(os.path.abspath(file_path)));
-            reason = "the module did not lower to native IR"
-                + " (no demotion recorded; it likely compiled as a"
-                + " non-native codespace)";
-            if rec {
-                code = f" [{rec['code']}]" if rec['code'] else '';
-                detail = f": {rec['detail']}" if rec['detail'] else '';
-                reason = f"{rec['outcome']}{code}{detail}";
-            }
-            raise RuntimeError(
-                f"native lowering produced no IR for '{file_path}': {reason}"
-            );
-        }
-        import from jaclang.compiler.backends.native.link_plan {
-            build_link_plan,
-            wasm_program_ir
-        }
-        plan = build_link_plan(prog, [ir.loc.mod_path], prog.options);
-        llvm_ir_str = wasm_program_ir(plan);
-        app_ir_str = str(ir.gen.llvm_ir);
-        app_imports = app_declared_imports(ir, plan);
-    } finally {
-        pop_native_target(prev);
-    }
-    if gc_mode == "none" {
-        """The rule is about the application's own unit: the runtime units
-        linked beside it define the reference-counting helpers whatever the
-        application's gc setting, and they are inert unless something in
-        the application calls them.""";
-        _assert_ir_rc_free(app_ir_str, file_path);
-    }
-    return emit_wasm_from_ir(llvm_ir_str, export_funcs, app_imports=app_imports);
+    import from jaclang.compiler.driver.pipeline { build_wasm }
+    return build_wasm(JacProgram(), file_path, export_funcs);
 }

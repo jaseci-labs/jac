@@ -246,7 +246,6 @@ impl NaIRGenPass._codegen_virtual_call(
     if not isinstance(obj_val.type, ir.PointerType) {
         return None;
     }
-    _vc_force_variants = False;
     indices = self.vtable_method_indices.get(obj_type_name);
     if indices is None or method_name not in indices {
         import from jaclang.compiler.passes.layout_pass {
@@ -261,7 +260,6 @@ impl NaIRGenPass._codegen_virtual_call(
             return None;
         }
         indices = _vc_lay.method_index;
-        _vc_force_variants = _vc_lay.vtable_by_dispatch;
     }
 
     func = self._resolve_method(obj_type_name, method_name);
@@ -314,10 +312,7 @@ impl NaIRGenPass._codegen_virtual_call(
             _vd_uniform = False;
         }
     }
-    if _vc_force_variants and not _vd_variants {
-        return None;
-    }
-    if (_vc_force_variants or not _vd_uniform) and _vd_variants {
+    if not _vd_uniform and _vd_variants {
         vtable_ptr_ptr = self.builder.gep(
             obj_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="vt.id.pp"
         );
@@ -620,7 +615,7 @@ impl NaIRGenPass._is_enum_arch(name: str) -> bool {
     if name in self.enum_types {
         return True;
     }
-    _cands: list = [self.ir_in];
+    _cands: list[uni.Module] = [self.ir_in];
     for _fm in (self?._foreign_modules or []) {
         _cands.append(_fm);
     }
@@ -645,7 +640,7 @@ impl NaIRGenPass._emit_isa_fn -> ir.Function {
     row_ty = ir.LiteralStructType([i8p, i8p]);
 
     reg = get_layout_registry(self.ir_in, self.prog);
-    rows: list = [];
+    rows: list[ir.Constant] = [];
     for cls in sorted(reg.mro_order) {
         for anc in self._mro_of(cls) {
             if anc == cls {
@@ -794,7 +789,9 @@ impl NaIRGenPass._is_runtime_class_tuple(t: any) -> bool {
     return saw_class;
 }
 
-impl NaIRGenPass._runtime_class_arms(expr: (uni.UniNode | None)) -> tuple {
+impl NaIRGenPass._runtime_class_arms(
+    expr: (uni.UniNode | None)
+) -> tuple[list[ir.Value] | None, ir.Value | None] {
     """The class handles an `isinstance` type argument carries as a value.
 
     `isinstance(x, types)` where `types` is a value is the same check as a

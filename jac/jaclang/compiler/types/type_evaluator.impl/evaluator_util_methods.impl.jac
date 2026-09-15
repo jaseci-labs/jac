@@ -281,7 +281,7 @@ impl TypeEvaluator._get_typeddict_indexed_type(
     if not (isinstance(key_type, ClassType) and key_type.is_builtin("str")) {
         return None;
     }
-    fields = base_type.shared.typeddict_fields or {};
+    fields: dict[str, TypeBase] = base_type.shared.typeddict_fields or {};
     lit = key_type.get_literal_value();
     if not isinstance(lit, str) {
         return self._typeddict_value_union(base_type);
@@ -433,6 +433,9 @@ impl TypeEvaluator._lookup_object_member(
 impl TypeEvaluator._lookup_class_member(
     base_type: ClassType, member: str
 ) -> ClassMember | None {
+    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
+    self._heal_ancestry(base_type);
+    ensure_mro_fresh(base_type);
     for cls in base_type.shared.mro {
         overloaded_syms: list[Symbol] = [];
         if sym := cls.lookup_member_symbol(member, overloaded_syms) {
@@ -480,7 +483,7 @@ impl TypeEvaluator.get_type_of_member(
 ) -> TypeBase {
     raw_type = self.get_type_of_symbol(member.symbol);
     if isinstance(raw_type, FunctionType) {
-        params = raw_type.parameters or [];
+        params: list[Parameter] = raw_type.parameters or [];
         is_static_cls = (
             len(params) >= 1
             and params[0].is_cls
@@ -1766,7 +1769,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
     if not mod_path {
         return None;
     }
-    import from jaclang.compiler.driver.modresolver { resolve_client_npm_package }
+    import from jaclang.project.modresolver { resolve_client_npm_package }
     base = self._client_npm_base(spec, mod_path);
     if base is None {
         return None;
@@ -1775,7 +1778,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
 }
 
 impl TypeEvaluator._client_npm_base(spec: str, mod_path: str) -> (str | None) {
-    import from jaclang.compiler.driver.modresolver { has_client_npm_package }
+    import from jaclang.project.modresolver { has_client_npm_package }
     if has_client_npm_package(spec, mod_path) {
         return mod_path;
     }
@@ -2190,6 +2193,11 @@ impl TypeEvaluator._collect_return_types(
         }
 
         if isinstance(stmt, RaiseStmt) {
+            return True;
+        }
+
+        if isinstance(stmt, ExprStmt)
+            and isinstance(self.get_type_of_expression(stmt.expr), NeverType) {
             return True;
         }
 

@@ -12,7 +12,7 @@ glob REGISTRY = os.path.join(
          JAC_ROOT, "jaclang", "cli", "shadcn", "registry", "registry.json"
      );
 
-def load_registry -> dict {
+def load_registry -> dict[str, any] {
     with open(REGISTRY) as f {
         return json.load(f);
     }
@@ -20,8 +20,8 @@ def load_registry -> dict {
 
 test "every component npm dep has a pinned version range" {
     reg = load_registry();
-    dep_versions: dict = reg.get("depVersions", {});
-    missing: list = [];
+    dep_versions: dict[str, any] = reg.get("depVersions", {});
+    missing: list[str] = [];
     for (name, comp) in reg["components"].items() {
         for dep in comp.get("npmDeps", []) {
             rng = dep_versions.get(dep, "*");

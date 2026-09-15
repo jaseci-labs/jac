@@ -1,7 +1,5 @@
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    ManifestBuilder,
-    GATEWAY_NAME
-}
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
 import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -11,7 +9,7 @@ import from jaclang.scale.runtime.fleet { fleet_of }
 
 
 def _builder(
-    services: dict, k8s_config: KubernetesConfig | None = None
+    services: dict[str, any], k8s_config: KubernetesConfig | None = None
 ) -> ManifestBuilder {
     return ManifestBuilder(
         k8s_config=k8s_config or KubernetesConfig(app_name="t", namespace="t-ns"),
@@ -21,7 +19,9 @@ def _builder(
 }
 
 
-def _triggers(cfg: dict, k8s_config: KubernetesConfig | None = None) -> list[str] {
+def _triggers(
+    cfg: dict[str, any], k8s_config: KubernetesConfig | None = None
+) -> list[str] {
     target = KubernetesTarget(
         config=k8s_config or KubernetesConfig(app_name="t", namespace="t-ns")
     );

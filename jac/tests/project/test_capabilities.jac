@@ -363,7 +363,7 @@ test "python provider installs a capability closure into .jac/venv" {
                 if c.args[1] and c.args[1][0] == "install"
             ];
             assert install_calls , "expected a pip install call";
-            installed_args: list = list(install_calls[0].args[1]);
+            installed_args: list[any] = list(install_calls[0].args[1]);
             assert "python-dotenv>=1.2.1,<2.0.0" in installed_args;
             # runtime closure must not push deploy clients to pip
             assert "kubernetes>=34.1.0,<35.0.0" not in installed_args;
@@ -426,7 +426,7 @@ test "ensure_global_capability pip-installs only the missing deploy tooling" {
         mock_run.return_value.returncode = 0;
         assert ensure_global_capability("deploy.k8s");
         mock_run.assert_called_once();
-        cmd: list = list(mock_run.call_args[0][0]);
+        cmd: list[any] = list(mock_run.call_args[0][0]);
         assert cmd
             == [
                 sys.executable,
@@ -470,7 +470,7 @@ def make_service_project(scale_toml: str) -> tuple[str, Path] {
     project_dir.mkdir();
     (project_dir / "jac.toml").write_text(
         '[project]\nname = "svc"\nversion = "0.1.0"\nkind = "service"\n'
-        'entry-point = "main.jac"\n\n'
+        'entry-point = "main"\n\n'
             + scale_toml
     );
     (project_dir / "main.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
@@ -532,7 +532,7 @@ test "scale app inferred as kind=cli still installs the serve closure (#7206)" {
     # No [project] kind + plain main.jac -> resolve_app_kind infers "cli"
     # (action="execute"), yet [scale] means the app is served.
     (project_dir / "jac.toml").write_text(
-        '[project]\nname = "svc"\nversion = "0.1.0"\nentry-point = "main.jac"\n\n'
+        '[project]\nname = "svc"\nversion = "0.1.0"\nentry-point = "main"\n\n'
         '[scale.monitoring]\nenabled = true\n'
     );
     (project_dir / "main.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
@@ -559,7 +559,7 @@ test "capability_dependencies is empty for a plain cli project" {
     project_dir = Path(tmp) / "cli";
     project_dir.mkdir();
     (project_dir / "jac.toml").write_text(
-        '[project]\nname = "cli"\nversion = "0.1.0"\nkind = "cli"\nentry-point = "main.jac"\n'
+        '[project]\nname = "cli"\nversion = "0.1.0"\nkind = "cli"\nentry-point = "main"\n'
     );
     (project_dir / "main.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
     try {
@@ -577,7 +577,7 @@ test "capability_dependencies honors detected intents" {
     project_dir = Path(tmp) / "cli";
     project_dir.mkdir();
     (project_dir / "jac.toml").write_text(
-        '[project]\nname = "cli"\nversion = "0.1.0"\nkind = "cli"\nentry-point = "main.jac"\n'
+        '[project]\nname = "cli"\nversion = "0.1.0"\nkind = "cli"\nentry-point = "main"\n'
     );
     (project_dir / "main.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
     try {

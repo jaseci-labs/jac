@@ -92,7 +92,7 @@ test "the record round-trips through its bytes with a stable digest" {
 }
 
 test "cached interfaces preserve nested container schemas for materialization" {
-    schema: dict = {
+    schema: dict[str, any] = {
         "code": "dict",
         "key_offset": 16,
         "data_offset": 24,
@@ -147,16 +147,14 @@ test "a body edit keeps the digest; an export change moves it" {
 }
 
 test "the section in the module JIR carries the stamp of its compile" {
-    import from jaclang.compiler.driver.jir {
-        get_module_cache_path,
-        read_section_bytes
-    }
+    import from jaclang.compiler.driver.jir { read_section_bytes }
     path = os.path.join(FIXTURES, "base.jac");
     prog = JacProgram();
     opts = _native_opts();
     mod = prog.compile(file_path=path, options=opts);
     assert mod.gen.native_iface is not None;
-    data = get_module_cache_path(path).read_bytes();
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    data = artifact_cache_path(path, prog).read_bytes();
     raw = read_section_bytes(data, SEC_NIFACE);
     assert raw is not None , "the native interface must be in the module JIR";
     stamp = prog.native_units().stamp_for(opts);
@@ -220,4 +218,48 @@ test "native source revisions include deletion, preserved timestamps and annex m
     ent = registry.record(str(path), NativeIface());
     path.unlink();
     assert not registry._entry_fresh(ent);
+}
+
+test "native products and relocatable paths coexist in one JIR" {
+    import from jaclang.compiler.driver.jir {
+        JirPaths,
+        SEC_PATH_ROOT,
+        SEC_NBITCODE,
+        SEC_NOBJ,
+        SEC_NDEPS,
+        SEC_NCTDEPS,
+        read_jir_paths,
+        read_section_bytes,
+        write_precompiled_jir
+    }
+    import from jaclang.jac0core.sealed { JIR_FORMAT_VERSION }
+    import from jaclang.compiler.driver.jir { FORMAT_VERSION }
+    assert JIR_FORMAT_VERSION == FORMAT_VERSION;
+    sections = [
+        SEC_NIFACE,
+        SEC_NBITCODE,
+        SEC_NOBJ,
+        SEC_NDEPS,
+        SEC_NCTDEPS,
+        SEC_PATH_ROOT
+    ];
+    assert len(set(sections)) == len(sections);
+    stamp = NativeStamp(
+        compiler_digest="compiler", codegen_identity="options", triple="target"
+    );
+    iface = NativeIface(module="example", prefix="example");
+    data = write_precompiled_jir(
+        None,
+        extra_sections={
+            SEC_NIFACE: stamp.pack(iface.to_bytes()),
+            SEC_PATH_ROOT: JirPaths(base_dir="/build/package").to_bytes()
+        }
+    );
+    payload = native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp);
+    assert payload is not None;
+    decoded = NativeIface.from_bytes(payload);
+    assert decoded is not None and decoded.digest() == iface.digest();
+    paths = read_jir_paths(data, "/installed/package");
+    assert paths.resolve("/build/package/dependency.jac")
+        == "/installed/package/dependency.jac";
 }

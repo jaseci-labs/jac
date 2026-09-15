@@ -52,11 +52,11 @@ default-app = "calculator"
 
 [apps.calculator]
 kind = "service"
-entry-point = "calculator_service.jac"
+entry-point = "calculator_service"
 
 [apps.math]
 kind = "service"
-entry-point = "math_service.jac"
+entry-point = "math_service"
 ```
 
 ```jac

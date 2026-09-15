@@ -6,9 +6,10 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import type from jaclang.project.apps { AppConfig }
 
 
-def seal_copy_ignore(_dir: str, items: list) -> list {
+def seal_copy_ignore(_dir: str, items: list[str]) -> list[str] {
     drop = [
         "__pycache__",
         "node_modules",
@@ -68,164 +69,50 @@ def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
     return None;
 }
 
-def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
+def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] | None) {
     program = JacProgram();
     program.options = CompileOptions(skip_native_engine=True);
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.project.config { get_config_for_path }
+    import from jaclang.project.app_kinds { kind_has_server }
+    import from jaclang.server.assembly { service_apps }
     try {
-        return _build_serve_manifest(entry_file, proj_root, program);
+        config = get_config_for_path(proj_root);
+        services: list[AppConfig] = [];
+        if config is not None {
+            selected = config.app_for_path(str(entry_file.resolve()));
+            if selected is not None
+                and kind_has_server(config.resolved_kind(selected)) {
+                services = service_apps(config, selected);
+            }
+        }
+        prepared = prepare_application(
+            str(entry_file.resolve()),
+            program,
+            str(proj_root.resolve()),
+            services=[svc.entry_path(str(proj_root.resolve())) for svc in services]
+        );
+        result = dict(prepared.manifests[str(entry_file.resolve())]);
+        result['module_manifests'] = {
+            os.path.relpath(path, prepared.root).replace(os.sep, '/'): manifest
+            for application in [prepared, *prepared.applications]
+            for (path, manifest) in application.manifests.items()
+        };
+        return result;
+    } except Exception as e {
+        console.error(f"Seal aborted: application preparation failed: {e}");
+        return None;
     } finally {
         program.release_compile_closure();
     }
 }
 
-def _build_serve_manifest(
-    entry_file: Path, proj_root: Path, program: JacProgram
-) -> (dict | None) {
-    import os;
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
-    import from jaclang.compiler.driver.schedules { get_boundary_analysis_sched }
-    import from jaclang.client.client_bundle { _ensure_js_generated }
-    import from jaclang.dist.precompile_bytecode {
-        find_jac_files,
-        _nested_project_dirs
-    }
-
-    nested = _nested_project_dirs(str(proj_root));
-    targets = [
-        p
-        for p in find_jac_files(str(proj_root))
-        if not any(p.startswith(n) for n in nested)
-    ];
-    entry_key = str(entry_file.resolve());
-    if entry_key not in targets {
-        targets.insert(0, entry_key);
-    }
-
-    for jac_path in targets {
-        prev_errors = len(program.errors_had);
-        try {
-            program.compile(jac_path, options=program.options);
-        } except Exception as e {
-            console.error(f"Seal aborted: '{jac_path}' failed to compile: {e}");
-            return None;
-        }
-        if len(program.errors_had) > prev_errors {
-            errs = "\n".join(str(e) for e in program.errors_had[prev_errors:]);
-            console.error(f"Seal aborted: '{jac_path}' failed to compile:\n{errs}");
-            return None;
-        }
-    }
-
-    client: dict = {};
-    mod = program.find_module(entry_key);
-    if mod and mod.gen.client_manifest {
-        if not mod.gen.client_manifest.exports {
-            _ensure_js_generated(mod, program);
-        }
-        m = mod.gen.client_manifest;
-        client = {
-            'exports': list(m.exports),
-            'globals': list(m.globals),
-            'params': m.params,
-            'globals_values': m.globals_values,
-            'has_client': m.has_client
-        };
-    }
-
-    proj_prefix = str(proj_root.resolve()) + os.sep;
-
-    def in_project(hmod: any) -> bool {
-        mp = hmod?.loc?.mod_path;
-        return bool(mp) and os.path.realpath(str(mp)).startswith(proj_prefix);
-    }
-
-    for hmod in program.mod.hub.values() {
-        if not in_project(hmod) {
-            continue;
-        }
-        man0 = hmod.gen.interop_manifest if (hmod and hmod.gen) else None;
-        if man0 and not (man0.walker_access or man0.func_access) {
-            try {
-                program.run_schedule(hmod, get_boundary_analysis_sched());
-            } except Exception {}
-        }
-    }
-
-    func_access: dict[str, bool] = {};
-    walker_access: dict[str, bool] = {};
-    endpoint_effects: dict[str, any] = {};
-    cross: list[dict] = [];
-    seen: set = set();
-    for hmod in program.mod.hub.values() {
-        if not in_project(hmod) {
-            continue;
-        }
-        man = hmod.gen.interop_manifest if (hmod and hmod.gen) else None;
-        if not man {
-            continue;
-        }
-        for (n, a) in man.func_access.items() {
-            if n not in func_access {
-                func_access[n] = a;
-            }
-        }
-        for (n, a) in man.walker_access.items() {
-            if n not in walker_access {
-                walker_access[n] = a;
-            }
-        }
-        for (ekey, eeff) in man.endpoint_effects.items() {
-            endpoint_effects[ekey] = eeff;
-        }
-        for binding in man.server_exports_to_client {
-            ast_node = binding?.ast_node;
-            src_path = ast_node.loc.mod_path if (ast_node and ast_node?.loc) else None;
-            if not src_path or (binding.name, binding.kind) in seen {
-                continue;
-            }
-            try {
-                rel = os.path.relpath(src_path, str(proj_root));
-            } except ValueError {
-                continue;
-            }
-            if rel.startswith('..') {
-                continue;
-            }
-            table = walker_access if binding.kind == 'walker' else func_access;
-            auth = table.get(binding.name, None);
-            if auth is None {
-                is_pub = (
-                    ast_node is not None
-                    and ast_node?.access is not None
-                    and ast_node.access.tag.name == Tok.KW_PUB
-                );
-                auth = not is_pub;
-            }
-            seen.add((binding.name, binding.kind));
-            cross.append(
-                {
-                    'name': binding.name,
-                    'kind': binding.kind,
-                    'src': rel.replace(os.sep, '/'),
-                    'auth': bool(auth)
-                }
-            );
-        }
-    }
-    return {
-        'client': client,
-        'func_access': func_access,
-        'walker_access': walker_access,
-        'endpoint_effects': endpoint_effects,
-        'cross_bindings': cross
-    };
-}
 
 def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
     import from jaclang.client { get_bun }
     import from jaclang.client.targets.web_target { WebTarget }
 
-    import from jaclang.client.targets.registry { client_app_dir_for }
+    import from jaclang.project.client_paths { client_app_dir_for }
     dist = client_app_dir_for(config, str(entry_file)) / 'dist';
     bun = None;
     try {
@@ -311,7 +198,7 @@ def bake_serve_payloads(
         json.dumps(sm, sort_keys=True, indent=1) + "\n", encoding="utf-8"
     );
 
-    client_meta = sm.get('client', {}) or {};
+    client_meta: any = sm.get('client', {}) or {};
     if not bake_client
         or not (client_meta.get('has_client') or client_meta.get('exports')) {
         return True;
@@ -360,7 +247,7 @@ def make_sealed_image(
         } except ValueError {}
     }
 
-    def copy_ignore(d: str, items: list) -> list {
+    def copy_ignore(d: str, items: list[str]) -> list[str] {
         skipped = seal_copy_ignore(d, items);
         if out_names and Path(d).resolve() == Path(proj_root).resolve() {
             skipped = list(

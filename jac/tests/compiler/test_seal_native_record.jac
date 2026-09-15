@@ -15,7 +15,7 @@ import sys;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.jac0core.sealed { MANIFEST_FORMAT, SealedImage, load_image }
-import from jaclang.compiler.driver.schedules { native_pipeline_available }
+import from jaclang.compiler.driver.pipeline { native_pipeline_available }
 
 
 """Seal `src_root` the way the build's seal stage does, in a child process:

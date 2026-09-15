@@ -3,27 +3,27 @@ name = "svc-kwargs-fixture"
 
 [apps.sv_import_kwargs]
 kind = "service"
-entry-point = "sv_import_kwargs.jac"
+entry-point = "sv_import_kwargs"
 route = "/kwargs"
 
 [apps.sv_import_kwargs_dup_server]
 kind = "service"
-entry-point = "sv_import_kwargs_dup_server.jac"
+entry-point = "sv_import_kwargs_dup_server"
 route = "/kwargs-dup"
 
 [apps.sv_import_posonly_kwonly_server]
 kind = "service"
-entry-point = "sv_import_posonly_kwonly_server.jac"
+entry-point = "sv_import_posonly_kwonly_server"
 route = "/posonly"
 
 [apps.sv_import_cl_block_server]
 kind = "service"
-entry-point = "sv_import_cl_block_server.jac"
+entry-point = "sv_import_cl_block_server"
 route = "/clblock"
 
 [apps.sv_import_type_provider]
 kind = "service"
-entry-point = "sv_import_type_provider.jac"
+entry-point = "sv_import_type_provider"
 route = "/typeprov"
 
 [placement.pins]

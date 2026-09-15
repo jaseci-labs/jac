@@ -93,7 +93,7 @@ def _seq_guard_ref(a: int, b: int) -> int {
     }
 }
 
-def match_seq_py -> dict {
+def match_seq_py -> dict[any, any] {
     return {
         "fixed12": _seq_fixed_ref(1, 2),
         "fixed34": _seq_fixed_ref(3, 4),
@@ -153,7 +153,7 @@ def _star_mid_ref(n: int) -> int {
     }
 }
 
-def match_star_py -> dict {
+def match_star_py -> dict[any, any] {
     return {
         "head0": _star_head_ref(0),
         "head1": _star_head_ref(1),
@@ -205,7 +205,7 @@ def _map_rest_ref -> int {
     }
 }
 
-def match_map_py -> dict {
+def match_map_py -> dict[any, any] {
     return {
         "probe_guard": _map_probe_ref(0),
         "probe_both": _map_probe_ref(1),
@@ -256,7 +256,7 @@ def _arch_sub_ref(sel: int) -> int {
     }
 }
 
-def match_arch_py -> dict {
+def match_arch_py -> dict[any, any] {
     return {
         "kw": _arch_kw_ref(3, 4),
         "pos": _arch_pos_ref(5, 6),
@@ -571,7 +571,7 @@ def _seq_guard_cl_i(a: int, b: int) -> int {
     }
 }
 
-def match_seq_cl -> dict {
+def match_seq_cl -> dict[any, any] {
     return {
         "fixed12": _seq_fixed_cl_i(1, 2),
         "fixed34": _seq_fixed_cl_i(3, 4),
@@ -631,7 +631,7 @@ def _star_mid_cl_i(n: int) -> int {
     }
 }
 
-def match_star_cl -> dict {
+def match_star_cl -> dict[any, any] {
     return {
         "head0": _star_head_cl_i(0),
         "head1": _star_head_cl_i(1),
@@ -683,7 +683,7 @@ def _map_rest_cl_i -> int {
     }
 }
 
-def match_map_cl -> dict {
+def match_map_cl -> dict[any, any] {
     return {
         "probe_guard": _map_probe_cl_i(0),
         "probe_both": _map_probe_cl_i(1),
@@ -734,7 +734,7 @@ def _arch_sub_cl_i(sel: int) -> int {
     }
 }
 
-def match_arch_cl -> dict {
+def match_arch_cl -> dict[any, any] {
     return {
         "kw": _arch_kw_cl_i(3, 4),
         "pos": _arch_pos_cl_i(5, 6),

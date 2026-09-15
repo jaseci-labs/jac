@@ -1,7 +1,6 @@
 import from jaclang.dist.payload.assemble { MkPayloadOpts }
 
 glob SUBCOMMANDS: tuple[str, ...] = (
-         "fetch-pbs",
          "fetch-typeshed",
          "fetch-llvm",
          "fetch-bun",
@@ -13,7 +12,7 @@ glob SUBCOMMANDS: tuple[str, ...] = (
          "pack"
      ),
      MKPAYLOAD_USAGE: str = (
-         "usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.zst> [--shim=PATH]"
+         "usage: payload mkpayload <python-dir> <repo-root> <out.tar.zst> [--shim=PATH]"
          " [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR] [--layer-cache=DIR]"
          " [--bun=PATH] [--musl=DIR] [--wasm-libc=DIR] [--seal] [--debug-src]"
          " [--stubcat-out=PATH] [--skip-stubcat]\n"

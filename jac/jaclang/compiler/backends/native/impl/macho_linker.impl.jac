@@ -478,7 +478,7 @@ impl MachOLinker.parse_object -> bool {
     self.cpu_subtype = cpusubtype;
 
     cmd_offset = 32;
-    symtab_info: tuple | None = None;
+    symtab_info: tuple[int, int, int, int] | None = None;
     self.sections = [];
     self.symbols = [];
     self.relocations = [];
@@ -1182,7 +1182,11 @@ impl MachOLinker.build_executable -> bytes {
                 sym = self.symbols[rel.symbolnum]
                     if rel.symbolnum < len(self.symbols)
                     else None;
-                if sym is not None and (sym.n_type & N_TYPE_MASK) == N_SECT {
+                if sym is not None
+                    and (
+                        (sym.n_type & N_TYPE_MASK) == N_SECT
+                        or sym.name in extern_func_syms
+                    ) {
                     sec_info = data_sections.get(rel.target_sec);
                     if sec_info is not None {
                         rebase_offsets.append(
@@ -2148,7 +2152,11 @@ impl MachOLinker.build_shared_object -> bytes {
                 sym = self.symbols[rel.symbolnum]
                     if rel.symbolnum < len(self.symbols)
                     else None;
-                if sym is not None and (sym.n_type & N_TYPE_MASK) == N_SECT {
+                if sym is not None
+                    and (
+                        (sym.n_type & N_TYPE_MASK) == N_SECT
+                        or sym.name in extern_func_syms
+                    ) {
                     sec_info = data_sections.get(rel.target_sec);
                     if sec_info is not None {
                         rebase_offsets.append(

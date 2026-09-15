@@ -85,7 +85,6 @@ impl JacTestClient._ensure_initialized -> None {
     Jac.set_context(mach);
 
     import from jaclang.project.config { set_config, get_config }
-    import from jaclang.compiler.frontend.codeinfo { set_effective_default_codespace }
     pinned = self._config;
     if pinned is not None {
         set_config(pinned);
@@ -93,9 +92,12 @@ impl JacTestClient._ensure_initialized -> None {
         get_config(start_path=Path(self._base_path), force_discover=True);
     }
 
-    set_effective_default_codespace('server');
-
-    Jac.jac_import(target=mod, base_path=base, lng="jac");
+    import from jaclang.runtime.prepared { initialize_application }
+    import from jaclang.runtime.build_services { build_services }
+    prepared = build_services().prepare_application(
+        self._jac_file, Jac.get_program(), base, default_codespace='server'
+    );
+    initialize_application(prepared);
 
     self._server = JacAPIServer(
         module_name=mod, port=0, base_path=self._base_path, module_file=self._jac_file
@@ -274,28 +276,17 @@ impl JacTestClient.reload -> None {
     }
 
     if self._hot_reloader is None {
-        import from jaclang.server.hmr { HotReloader }
-
-        class MockWatcher {
-            has additional_patterns: list[str] = [];
-
-            def add_callback(cb: any) {}
-            def start {}
-            def stop {}
-        }
-        mock_watcher = MockWatcher();
-        self._hot_reloader = HotReloader(
-            base_path=base, module_name=mod, watcher=mock_watcher
-        );
+        import from jaclang.runtime.build_services { build_services }
+        self._hot_reloader = build_services().hot_reloader(base, mod);
     }
-    self._hot_reloader._process_change(self._jac_file);
+    reloader = self._hot_reloader;
+    assert reloader is not None;
+    reloader._process_change(self._jac_file);
 
     new_module = Jac.loaded_modules.get(mod);
     if new_module {
         introspector = self.server.introspector;
-        introspector._module = new_module;
-        introspector._functions = introspector._collect_functions();
-        introspector._walkers = introspector._collect_walkers();
+        introspector._check_module_freshness();
     }
 
     server_ref: any = self._server;
@@ -303,6 +294,8 @@ impl JacTestClient.reload -> None {
 }
 
 impl JacTestClient.close -> None {
+    import from jaclang.runtime.prepared { forget }
+    forget(self._jac_file);
     import from contextlib { suppress }
     if self._server {
         with suppress(Exception) {

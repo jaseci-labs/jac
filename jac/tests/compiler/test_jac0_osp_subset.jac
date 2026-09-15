@@ -51,7 +51,7 @@ test "jac0 lowers the object-spatial seed subset to the full compiler's semantic
 test "jac0 refuses object-spatial forms outside the seed subset" {
     for src in [
         "def f(a: any, b: any, c: any) { a ++> b ++> c; }",
-        "def f(a: any) -> list { return [a ->:T:-> (?x == 1)]; }",
+        "def f(a: any) -> list[any] { return [a ->:T:-> (?x == 1)]; }",
 
     ] {
         failed = False;

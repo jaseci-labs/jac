@@ -33,7 +33,7 @@ def _project_root -> str;
 
 def _language_of(name: str) -> str;
 
-def _tree_order(f: SourceFile) -> tuple;
+def _tree_order(f: SourceFile) -> tuple[int, str, int, str];
 
 def _walk_sources -> list[SourceFile];
 

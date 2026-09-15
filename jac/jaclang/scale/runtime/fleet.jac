@@ -1,4 +1,5 @@
 import os;
+import type from jaclang.project.apps { AppConfig }
 import json;
 import logging;
 import from pathlib { Path }
@@ -8,7 +9,7 @@ import from jaclang.scale.runtime.routing { guard_route_prefix }
 glob logger = logging.getLogger(__name__),
      FLEET_ENV: str = "JAC_SV_FLEET",
      ROOT_PREFIX: str = "/",
-     SERVICE_KINDS: tuple = ("service", "service-mesh");
+     SERVICE_KINDS: tuple[str, ...] = ("service", "service-mesh");
 
 
 obj FleetMember {
@@ -288,70 +289,18 @@ def _dedup_edges(edges: list[tuple[str, str]]) -> list[tuple[str, str]] {
 def _compiled_app_edges(
     entry_path: str, app_name: str, app_kind: str, project_root: str
 ) -> list[tuple[str, str]] {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.schedules { get_boundary_analysis_sched }
-    prog = JacProgram();
-    prog.compile(
-        entry_path,
-        options=CompileOptions(
-            no_cgen=True,
-            target_app=app_name,
-            app_kind=app_kind,
-            project_root=project_root
-        )
+    import from jaclang.runtime.build_services { build_services }
+    return build_services().application_edges(
+        entry_path, app_name, app_kind, project_root
     );
-    if prog.errors_had {
-        first = prog.errors_had[0];
-        raise ValueError(
-            f"app '{app_name}' entry '{entry_path}' does not compile: {first}"
-        );
-    }
-    edges: list[tuple[str, str]] = [];
-    seen: set[int] = set();
-    while True {
-        fresh: list[any] = [];
-        for hub in list(prog.execution_hubs()) {
-            for mod in list(hub.values()) {
-                if id(mod) not in seen {
-                    seen.add(id(mod));
-                    fresh.append(mod);
-                }
-            }
-        }
-        if not fresh {
-            break;
-        }
-        for mod in fresh {
-            if not (mod and mod.gen) {
-                continue;
-            }
-            man = mod.gen.interop_manifest;
-            if man is None {
-                continue;
-            }
-            if not man.app_edges and not (man.walker_access or man.func_access) {
-                try {
-                    prog.run_schedule(mod, get_boundary_analysis_sched());
-                    man = mod.gen.interop_manifest;
-                } except Exception {
-                    continue;
-                }
-                if man is None {
-                    continue;
-                }
-            }
-            for (consumer, provider) in list(man.app_edges) {
-                edges.append((str(consumer), str(provider)));
-            }
-        }
-    }
-    return edges;
 }
 
 
 def consumer_provider_edges(
-    config: any, project_root: str, apps: list, entries: dict[str, str] | None = None
+    config: any,
+    project_root: str,
+    apps: list[AppConfig],
+    entries: dict[str, str] | None = None
 ) -> list[tuple[str, str]] {
     names: set[str] = {a.name for a in apps};
     edges: list[tuple[str, str]] = [];
@@ -420,7 +369,7 @@ def _build_fleet(
     config: any,
     project_root: str,
     served: any,
-    services: list,
+    services: list[AppConfig],
     entries: dict[str, str],
     relative_to: str
 ) -> FleetSpec {
@@ -460,7 +409,7 @@ def _build_fleet(
 }
 
 
-def service_apps_of(config: any, served: any) -> list {
+def service_apps_of(config: any, served: any) -> list[AppConfig] {
     return [
         a
         for a in config.serving_apps()
@@ -482,14 +431,14 @@ def fleet_from_config(
 
 
 def fleet_from_plans(
-    config: any, project_root: str, served: any, members: list
+    config: any, project_root: str, served: any, members: list[any]
 ) -> FleetSpec {
     served_app = config.resolve_app(served.app);
     entries: dict[str, str] = {};
     if served.entry_path {
         entries[served_app.name] = served.entry_path;
     }
-    services: list = [];
+    services: list[AppConfig] = [];
     for plan in members {
         app = config.app(plan.app);
         if app is None {

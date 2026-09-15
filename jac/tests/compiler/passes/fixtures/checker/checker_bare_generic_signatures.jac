@@ -1,6 +1,6 @@
 """Bare generics in function signatures (return types and parameters) and
-union branches should produce W1036 warnings, just like bare-generic field
-and assignment annotations do."""
+union branches are an E1036 error, just like bare-generic field and
+assignment annotations. Only dict/list/tuple require type arguments."""
 
 # Bare return type
 def returns_bare_list -> list {

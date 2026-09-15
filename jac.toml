@@ -5,7 +5,7 @@
 # here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.37.10"
+version = "0.37.17"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "jac/README.md"
@@ -55,6 +55,14 @@ serial = [
     "jac/jaclang/scale/tests/data/test_firebase_env.jac",
 ]
 
+# JacPython is a native-only library in checks, builds and cached imports.
+[native]
+require = [
+    "jaclang.compiler.frontend.python.*",
+    "jaclang.compiler.backends.py.jacpython.*",
+    "jaclang.runtime.python.*",
+]
+
 [check.lint]
 # "all" enables every autolint rule; the two strip-* entries are the opt-in
 # "deslop" rules (W3050/W3051) that remove all comments and docstrings. They
@@ -66,6 +74,9 @@ exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
+    "jac/jaclang/compiler/frontend/python/*",
+    "jac/jaclang/compiler/backends/py/jacpython/*",
+    "jac/jaclang/runtime/python/*",
     # Ops scripts keep their usage docstrings; CI's fmt sweep skips ^scripts/
     # for the same reason -- this entry keeps the precommit hook consistent
     # with that (without it, any commit touching a script is blocked on deslop).

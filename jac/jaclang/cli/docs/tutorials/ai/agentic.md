@@ -108,7 +108,7 @@ def search_database(query: str, limit: int = 10) -> list[str] {
 }
 
 """Get information about a specific user."""
-def get_user_info(user_id: str) -> dict {
+def get_user_info(user_id: str) -> dict[str, any] {
     # Simulated user lookup
     return {
         "id": user_id,

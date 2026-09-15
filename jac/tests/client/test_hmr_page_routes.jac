@@ -32,7 +32,7 @@ def _booted_project -> tuple[(str, any, str)] {
     proj = mkdtemp(prefix="jacroutes-");
     _write(
         os.path.join(proj, "jac.toml"),
-        '[project]\nname = "site"\nkind = "web-app"\nentry-point = "main.jac"\n'
+        '[project]\nname = "site"\nkind = "web-app"\nentry-point = "main"\n'
     );
     _write(
         os.path.join(proj, "main.jac"),

@@ -14,7 +14,6 @@ gives up and emits the Python method name verbatim, producing JavaScript
 that crashes at runtime.
 """
 
-
 def:pub case1_in_chain() -> JsxElement {
     has found: bool = False;
     can with entry {
@@ -24,19 +23,19 @@ def:pub case1_in_chain() -> JsxElement {
     return <div>{str(found)}</div>;
 }
 
-def:pub case2_props_upper(props: dict) -> JsxElement {
+def:pub case2_props_upper(props: dict[any, any]) -> JsxElement {
     name = props["name"] or "";
     initial = name[:1].upper();
     return <div>{initial}</div>;
 }
 
-def:pub case2_props_strip(props: dict) -> JsxElement {
+def:pub case2_props_strip(props: dict[any, any]) -> JsxElement {
     raw = props["title"] or "";
     clean = raw.strip();
     return <div>{clean}</div>;
 }
 
-def:pub case2_props_lower(props: dict) -> JsxElement {
+def:pub case2_props_lower(props: dict[any, any]) -> JsxElement {
     raw = props["label"] or "";
     lower = raw.lower();
     return <div>{lower}</div>;

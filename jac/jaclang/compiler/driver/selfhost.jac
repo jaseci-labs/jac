@@ -45,6 +45,17 @@ obj SelfHostCache {
             if self.is_selfhost(target_program) {
                 return self.program;
             }
+            if target_program.options.native_required_for(file_path) {
+                return target_program;
+            }
+            directory = os.path.dirname(os.path.realpath(file_path));
+            package_root = self.jaclang_root();
+            while directory.startswith(package_root + os.sep) {
+                if os.path.isfile(os.path.join(directory, 'jac.toml')) {
+                    return target_program;
+                }
+                directory = os.path.dirname(directory);
+            }
             import from jaclang.compiler.frontend.codeinfo {
                 is_native_by_location,
                 native_unit_compile_active,
@@ -71,6 +82,7 @@ obj SelfHostCache {
         if os.environ.get("JAC_NO_UNIT_EVICT") {
             return;
         }
+
         if result is not None and result.gen.native_engine is not None {
             import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
             slim = CodeGenTarget();

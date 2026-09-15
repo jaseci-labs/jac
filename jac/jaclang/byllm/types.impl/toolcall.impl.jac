@@ -26,7 +26,12 @@ impl ToolCall.get_output -> object {
 }
 
 impl MockToolCall.to_tool_call -> ToolCall {
+    if isinstance(self.tool, str) {
+        raise ValueError(
+            f"MockToolCall(tool='{self.tool}') names a tool; to_tool_call needs the function"
+        );
+    }
     tool_obj = Tool(self.tool);
     args_parsed = tool_obj.parse_arguments(self.args);
-    return ToolCall(call_id="", tool=tool_obj, args=args_parsed,);
+    return ToolCall(call_id=self.call_id, tool=tool_obj, args=args_parsed,);
 }

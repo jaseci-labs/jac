@@ -114,7 +114,7 @@ the scaffold builds with the compiler under test.
 Returns ``(project_dir, jac_cmd, env)``. Fails the test if ``jac install --npm``
 fails (bun/npm unavailable or a dependency cannot be resolved).
 """
-def _setup_site_project(temp_dir: any) -> tuple {
+def _setup_site_project(temp_dir: any) -> tuple[any, ...] {
     project_dir = os.path.join(temp_dir, "jaclang-org-e2e");
     os.makedirs(project_dir, exist_ok=True);
     _copy_site_into(project_dir);

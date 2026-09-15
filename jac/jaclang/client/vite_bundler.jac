@@ -45,7 +45,8 @@ def _forward_vite_output(
 
 class ViteBundler {
     has dev_server_port: int = 0,
-        on_client_event: any = None;
+        on_client_event: any = None,
+        build_dir: Path | None = None;
 
     def _dispatch_client_event(self: ViteBundler, line: str) -> None;
     def init(
@@ -53,7 +54,8 @@ class ViteBundler {
         project_dir: Path,
         output_dir: Optional[Path] = None,
         minify: bool = False,
-        config_path: Optional[Path] = None
+        config_path: Optional[Path] = None,
+        entry_path: str = ""
     );
 
     def _get_client_dir(self: ViteBundler) -> Path;
@@ -78,9 +80,12 @@ class ViteBundler {
         client_paths: (list[str] | None) = None
     ) -> Path;
 
-    def _format_config_object(self: ViteBundler, config: dict, indent: int = 0) -> str;
+    def _format_config_object(
+        self: ViteBundler, config: dict[str, any], indent: int = 0
+    ) -> str;
+
     def _format_define_entries(
-        self: ViteBundler, api_base_url: str, custom_defines: dict
+        self: ViteBundler, api_base_url: str, custom_defines: dict[str, any]
     ) -> str;
 
     def install_packages(

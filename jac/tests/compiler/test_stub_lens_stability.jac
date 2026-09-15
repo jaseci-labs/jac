@@ -49,7 +49,7 @@ def _write(dirname: str, stem: str, src: str) -> str {
     return path;
 }
 
-def _stub_keys(hub: dict) -> set[str] {
+def _stub_keys(hub: dict[str, any]) -> set[str] {
     return {
         k
         for k in hub.keys()
@@ -68,7 +68,7 @@ def _errors_in(prog: JacProgram, mod_path: str) -> list[str] {
 obj LensState {
     has compiler: any,
         internal: any,
-        saved: tuple postinit,
+        saved: tuple[any, ...] postinit,
         stubs_before: set[str] postinit;
 
     def postinit {
@@ -219,7 +219,7 @@ test "a serial jac check over compiler-tree then client files stays clean" {
             cached.unlink();
         }
     }
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["JAC_CHECK_JOBS"] = "0";
     proc = subprocess.run(
         [sys.executable, "-c", CHECK_PROBE, *files],

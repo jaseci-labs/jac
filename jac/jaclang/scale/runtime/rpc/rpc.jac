@@ -96,7 +96,10 @@ def _provider_url(app_name: str) -> str {
 
 
 def service_call(
-    module_name: str, func_name: str, args: dict, headers: dict[str, str] | None = None
+    module_name: str,
+    func_name: str,
+    args: dict[str, any],
+    headers: dict[str, str] | None = None
 ) -> any {
     import from jaclang.server { sv_client }
 
@@ -150,7 +153,7 @@ def service_call(
 def walker_call(
     module_name: str,
     walker_name: str,
-    args: dict,
+    args: dict[str, any],
     stub_cls: any = None,
     headers: dict[str, str] | None = None
 ) -> any {
@@ -227,7 +230,7 @@ def _unwrap_sv_envelope(data: any, module_name: str, func_name: str) -> any {
         }
         return result_envelope;
     }
-    err = (data.get("error") if isinstance(data, dict) else None) or {};
+    err: any = (data.get("error") if isinstance(data, dict) else None) or {};
     msg = err.get("message") if isinstance(err, dict) else str(err);
     raise RuntimeError(
         f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
@@ -237,24 +240,10 @@ def _unwrap_sv_envelope(data: any, module_name: str, func_name: str) -> any {
 def _hydrate_walker_envelope(
     data: any, module_name: str, walker_name: str, stub_cls: any
 ) -> any {
-    if isinstance(data, dict) and data.get("ok") {
-        envelope = data.get("data") or {};
-        result_dict = envelope.get("result") if isinstance(envelope, dict) else None;
-        reports = envelope.get("reports") if isinstance(envelope, dict) else None;
-        instance = stub_cls._from_wire(result_dict)
-            if (stub_cls is not None and result_dict is not None)
-            else result_dict;
-        if instance is not None and reports is not None {
-            try {
-                instance.reports = reports;
-            } except Exception {}
-        }
-        return instance;
+    import from jaclang.server.sv_client { _rehydrate_walker, _unwrap_envelope }
+    envelope = _unwrap_envelope(data, module_name, walker_name);
+    if stub_cls is None {
+        return envelope.get("result") if isinstance(envelope, dict) else None;
     }
-    err = (data.get("error") if isinstance(data, dict) else None) or {};
-    msg = err.get("message") if isinstance(err, dict) else str(err);
-    raise RuntimeError(
-        f"sv-to-sv walker spawn '{module_name}.{walker_name}' failed: {msg
-            or 'unknown error'}"
-    );
+    return _rehydrate_walker(envelope, stub_cls);
 }

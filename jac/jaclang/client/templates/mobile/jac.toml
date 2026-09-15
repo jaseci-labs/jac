@@ -2,7 +2,7 @@
 name = "{{name}}"
 version = "0.1.0"
 description = "A cross-platform mobUI app: {{name}}"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "mobile"
 
 [dependencies]

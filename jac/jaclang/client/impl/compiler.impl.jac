@@ -14,109 +14,95 @@ impl ViteCompiler.compile(
     return (client_exports, client_globals);
 }
 
-impl ViteCompiler.compile_and_bundle(
+impl ViteCompiler.prepare_bundle(
     self: ViteCompiler, module: ModuleType, module_path: Path
-) -> tuple[str, str, list[str], list[str]] {
+) -> ClientBuildInputs {
+    import json;
+    import from jaclang.client.client_bundle { client_program }
+    import from jaclang.compiler.boundary_audit { boundary_audit }
     (client_exports, client_globals) = self.compile(module, module_path);
-
-    entry_file = self.compiled_dir / '_entry.js';
-    self.vite_bundler.build(entry_file=entry_file);
-    (bundle_code, bundle_hash) = self.vite_bundler.read_bundle();
-
-    self._emit_na_wasm(module_path);
-    return (bundle_code, bundle_hash, client_exports, client_globals);
+    assets: dict[str, bytes] = {};
+    for target in self._wasm_targets(module_path) {
+        assets.update(self._compile_wasm_module(target));
+    }
+    assets["boundaries.json"] = json.dumps(
+        boundary_audit(
+            client_program(self.program),
+            list(self.jac_client_compiler.jac_compiler.boundary_contracts.values())
+        ),
+        indent=2
+    ).encode(
+        "utf-8"
+    );
+    return ClientBuildInputs(
+        module_name=module.__name__,
+        client_functions=client_exports,
+        client_globals=client_globals,
+        assets=assets
+    );
 }
 
-impl ViteCompiler._owes_wasm(self: ViteCompiler, module_path: Path) -> bool {
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang { JacRuntime as Jac }
-    target = str(module_path.resolve());
-    compiled = Jac.get_program().mod.hub.get(target);
-    if compiled is not None {
-        return bool(compiled.declares_codespace(CodeContext.NATIVE));
+impl ViteCompiler.bundle(
+    self: ViteCompiler, inputs: ClientBuildInputs
+) -> ClientBundle {
+    self.vite_bundler.build(entry_file=self.compiled_dir / '_entry.js');
+    (code, digest) = self.vite_bundler.read_bundle();
+    for (name, content) in inputs.assets.items() {
+        (self.vite_bundler.output_dir / name).write_bytes(content);
     }
-    declared = self.jac_client_compiler?.na_wasm_modules or set();
-    for known in declared {
-        try {
-            if str(Path(known).resolve()) == target {
-                return True;
-            }
-        } except OSError {
-            continue;
+    return ClientBundle(
+        module_name=inputs.module_name,
+        code=code,
+        hash=digest,
+        client_functions=inputs.client_functions,
+        client_globals=inputs.client_globals
+    );
+}
+
+impl ViteCompiler._wasm_targets(self: ViteCompiler, module_path: Path) -> list[Path] {
+    targets = sorted(
+        {Path(source).resolve() for source in self.jac_client_compiler.na_wasm_modules}
+    );
+    for target in targets {
+        if not target.is_file() {
+            raise ClientBundleError(f"Native client dependency is missing: {target}");
         }
     }
-    console.warning(
-        f"'{module_path.name}' not found in the compile hub and not recorded "
-            + "as a client native import, so no wasm will be emitted for it."
-    );
-    return False;
+    return targets;
 }
 
 impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
-    if self._owes_wasm(module_path) {
-        self._emit_wasm_module(module_path);
-    }
-
-    declared = sorted(
-        getattr(self.jac_client_compiler, 'na_wasm_modules', set()) or set()
-    );
-    for path_str in declared {
-        target = Path(path_str).resolve();
-        if target == module_path.resolve() {
-            continue;
-        }
-        if not target.exists() {
-            console.warning(
-                f"na import target '{path_str}' not found; no wasm emitted for it"
-            );
-            continue;
-        }
+    for target in self._wasm_targets(module_path) {
         self._emit_wasm_module(target);
     }
 }
 
 impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bool {
-    import from jaclang.compiler.backends.native.wasm_build { compile_to_wasm }
-    import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
-    try {
-        wasm = compile_to_wasm(str(module_path));
-    } except Exception as e {
-        console.error(f"na->wasm failed for '{module_path.name}': {e}");
-        return False;
-    }
-    stem = native_wasm_stem(str(module_path));
+    assets = self._compile_wasm_module(module_path);
     dist = self.vite_bundler.output_dir;
     dist.mkdir(parents=True, exist_ok=True);
-    out_path = dist / f"{stem}.wasm";
-    out_path.write_bytes(wasm);
-    console.print(f"  Native wasm module: /static/{stem}.wasm ({len(wasm)} bytes)");
-
-    try {
-        import json;
-        import from jaclang.compiler.backends.native.wasm_build { wasm_import_map }
-        import from jaclang.compiler.backends.native.wasm_host_abi { WASM_HOST_MODULE }
-        imports = wasm_import_map(wasm);
-        manifest_path = dist / f"{stem}.wasm.imports.json";
-        manifest_path.write_text(
-            json.dumps({"abi": WASM_HOST_MODULE, "imports": imports}, indent=2),
-            encoding='utf-8',
-        );
-        app_ffi = [];
-        for mod_nm in imports {
-            if mod_nm != WASM_HOST_MODULE {
-                app_ffi.extend(imports[mod_nm]);
-            }
-        }
-        if app_ffi {
-            console.print(
-                f"    app FFI imports ({len(app_ffi)}): provide via the shim's"
-                    + " env at instantiation (see .wasm.imports.json)"
-            );
-        }
-    } except Exception as e {
-        console.warning(f"Could not write wasm import manifest: {e}");
+    for (name, content) in assets.items() {
+        (dist / name).write_bytes(content);
     }
-    return True;
+    return bool(assets);
+}
+
+impl ViteCompiler._compile_wasm_module(
+    self: ViteCompiler, module_path: Path
+) -> dict[str, bytes] {
+    import from jaclang.compiler.driver.pipeline { build_wasm }
+    import from jaclang.client.client_bundle { client_program }
+    import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
+    try {
+        wasm = build_wasm(client_program(self.program), str(module_path), []);
+    } except Exception as e {
+        console.error(f"na->wasm failed for '{module_path.name}': {e}");
+        return {};
+    }
+    stem = native_wasm_stem(str(module_path));
+    import from jaclang.compiler.backends.native.wasm_artifact { wasm_assets }
+    console.print(f"  Native wasm module: /static/{stem}.wasm ({len(wasm)} bytes)");
+    return wasm_assets(stem, wasm);
 }
 
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
@@ -209,7 +195,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         }
         dependency_path = Path(str(dependency)).resolve();
         if dependency_path.suffix == '.jac' {
-            self.jac_client_compiler.compile_dependencies_recursively(
+            self.jac_client_compiler.emit_dependencies(
                 dependency_path, visited=visited, source_root=runtime_utils_path.parent
             );
         }
@@ -225,7 +211,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
 }
 
 impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
-    import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
+    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
     desktop_src = resolve_jac_virtual_module_path('@jac/desktop');
     if not desktop_src {
         return;
@@ -245,9 +231,7 @@ impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
     all_names = sorted(set(desktop_exports + list(desktop_globals.keys())));
 
     if not all_names {
-        import from jaclang.compiler.driver.modresolver {
-            resolve_jac_virtual_module_exports
-        }
+        import from jaclang.project.modresolver { resolve_jac_virtual_module_exports }
         all_names = sorted(resolve_jac_virtual_module_exports('@jac/desktop'));
     }
     if all_names {
@@ -270,7 +254,9 @@ impl ViteCompiler.init(
     compile_to_js_func: Callable[[Path], ClientArtifact],
     extract_exports_func: Callable[[ClientManifest | None], list[str]],
     extract_globals_func:
-        Callable[[ClientManifest | None, ModuleType | None], dict[str, any]]
+        Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
+    entry_path: str = "",
+    program: JacProgram | None = None
 ) {
     if (not vite_package_json or not vite_package_json.exists()) {
         raise ClientBundleError(
@@ -278,6 +264,7 @@ impl ViteCompiler.init(
         );
     }
     self.vite_package_json = vite_package_json;
+    self.program = program;
 
     if (
         vite_package_json.parent.name == 'configs'
@@ -296,7 +283,8 @@ impl ViteCompiler.init(
         runtime_path=runtime_path,
         compile_to_js_func=compile_to_js_func,
         extract_exports_func=extract_exports_func,
-        extract_globals_func=extract_globals_func
+        extract_globals_func=extract_globals_func,
+        entry_path=entry_path
     );
     compiled_dir = self.jac_client_compiler.compiled_dir;
     if compiled_dir is None {
@@ -304,6 +292,8 @@ impl ViteCompiler.init(
     }
     self.compiled_dir = compiled_dir;
     self.jac_compiler = self.jac_client_compiler.jac_compiler;
-    self.vite_bundler = ViteBundler(self.project_dir, vite_output_dir, vite_minify);
+    self.vite_bundler = ViteBundler(
+        self.project_dir, vite_output_dir, vite_minify, entry_path=entry_path
+    );
     self._has_pages = False;
 }

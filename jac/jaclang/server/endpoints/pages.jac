@@ -1,6 +1,6 @@
 import logging;
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.serving.datatypes {
     HTMLResponse,
@@ -27,7 +27,13 @@ import from jaclang.server.static_files {
 
 glob logger: logging.Logger = logging.getLogger('jaclang.serve'),
      CL_PREFIX: str = 'cl/',
-     API_PREFIXES: tuple = ('walker/', 'function/', 'user/', 'static/', 'healthz'),
+     API_PREFIXES: tuple[str, ...] = (
+         'walker/',
+         'function/',
+         'user/',
+         'static/',
+         'healthz'
+     ),
      ASSET_CACHE_CONTROL: str = 'public, max-age=31536000, immutable';
 
 
@@ -43,6 +49,12 @@ def _dev_client_elsewhere -> JSONResponse {
 
 
 def _static_base(server: JacAPIServer) -> str {
+    import from jaclang.server.sealed_serve { sealed_root_for }
+    source_path = getattr(server.module, '__file__', '') or '';
+    image_root = sealed_root_for(source_path) if source_path else None;
+    if image_root is not None {
+        return image_root;
+    }
     ctx = Jac.get_context();
     bp = (ctx.base_path_dir if ctx else '') or Jac.get_base_path_dir();
     return bp or server.base_path;
@@ -348,8 +360,8 @@ def register_graph_endpoints(server: JacAPIServer) {
         visited_nodes: set = set();
         connections: set = set();
         edge_ids: set = set();
-        nodes: list[dict] = [];
-        edges: list[dict] = [];
+        nodes: list[dict[str, any]] = [];
+        edges: list[dict[str, any]] = [];
         collect_node_connections(user_root, visited_nodes, connections, edge_ids);
         nodes.append({'id': Jac.object_ref(user_root), 'label': 'root'});
         for node_arch in visited_nodes {
@@ -360,7 +372,7 @@ def register_graph_endpoints(server: JacAPIServer) {
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict = {
+            edge_data: dict[str, any] = {
                 'from': Jac.object_ref(source_node),
                 'to': Jac.object_ref(target_node)
             };
@@ -388,7 +400,7 @@ def register_graph_endpoints(server: JacAPIServer) {
 
 def register_diagnostics_endpoints(server: JacAPIServer) {
     async def build_status(request: Request) -> JSONResponse {
-        import from jaclang.server.hmr { get_build_status }
+        import from jaclang.server.build_status { get_build_status }
         return JSONResponse(content=get_build_status());
     }
     server.add_endpoint(

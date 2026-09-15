@@ -536,7 +536,7 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
     guard_form = self._type_guard_form_of(return_type);
     if guard_form is not None {
         assert isinstance(return_type, ClassType);
-        guard_args = return_type.private.type_args or [];
+        guard_args: list[TypeBase] = return_type.private.type_args or [];
         if guard_args {
             guarded_type = guard_args[0];
             guard_is_strict = guard_form == "TypeIs";
@@ -570,7 +570,7 @@ impl TypeEvaluator._apply_function_decorators(
         if not isinstance(decorator_type, FunctionType) {
             continue;
         }
-        params = decorator_type.parameters or [];
+        params: list[Parameter] = decorator_type.parameters or [];
 
         if len(params) != 1
             or not isinstance(params[0].param_type, FunctionType)
@@ -691,6 +691,11 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
         flags=TypeFlags.Instantiable,
     );
 
+    if any(
+        isinstance(base, UnknownType) and not base.is_diagnosed for base in base_classes
+    ) {
+        cls_type.shared._provisional = True;
+    }
     compute_mro_linearization(cls_type);
 
     if is_typeddict {
@@ -811,6 +816,15 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
         }
         if JAC_TYPE_REGISTRY.is_numeric(name) {
             return AnyType(is_foreign=True, foreign_scalar=name);
+        }
+    }
+    if type_expr is not None {
+        declared = self.get_type_of_expression(type_expr);
+        if isinstance(declared, ClassType) and not declared.is_builtin() {
+            scope = declared.shared.symbol_table;
+            if isinstance(scope, Archetype) {
+                return self._convert_to_instance(declared);
+            }
         }
     }
     return AnyType(is_foreign=True);

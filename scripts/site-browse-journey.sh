@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Drive the served jaclang.org site (jac/examples/jaclang_org) through a full
 # user journey with `jac browse`, asserting rendered content and fullstack
-# behavior at every stop. Used by CI (ci.yml pack-smoke) and
+# behavior at every stop. Shared by the pack-smoke and pack-eject CI jobs and
 # runnable locally against any server:
 #
 #   scripts/site-browse-journey.sh [BASE_URL]
@@ -9,9 +9,6 @@
 # Env knobs:
 #   SITE_JOURNEY_SKIP_DOCS=1   skip the docs stop (docs sync needs either
 #                              network or JAC_DOCS_LOCAL on the server side)
-#   SITE_JOURNEY_SKIP_WASM=1   skip the arena.wasm asset check (dev-mode wasm
-#                              emission needs a jac newer than the fix; drop
-#                              this knob once that release ships)
 #   SITE_JOURNEY_ARTIFACTS     directory for failure screenshots (default /tmp)
 set -euo pipefail
 
@@ -39,6 +36,12 @@ fail() {
     jac browse snapshot | head -n 60 || true
     echo "--- console at failure ---"
     jac browse console || true
+    echo "--- module requests at failure ---"
+    jac browse eval 'JSON.stringify(performance.getEntriesByType("resource")
+      .filter(e => ["script", "link"].includes(e.initiatorType))
+      .map(e => ({url: e.name, status: e.responseStatus,
+        duration: Math.round(e.duration), transferred: e.transferSize,
+        decoded: e.decodedBodySize})), null, 2)' || true
     exit 1
 }
 
@@ -143,14 +146,26 @@ check '(async () => {
   throw new Error("book cover image never became visible");
 })()'
 
-if [ "${SITE_JOURNEY_SKIP_WASM:-0}" = "1" ]; then
-    step "landing: wasm check skipped (SITE_JOURNEY_SKIP_WASM=1)"
-else
-    step "landing: native wasm module is built and served"
-    wasm_bytes="$(curl -sf --max-time 30 "$BASE_URL/static/arena.wasm" | wc -c | tr -d ' ')"
-    echo "arena.wasm: ${wasm_bytes} bytes"
-    [ "$wasm_bytes" -gt 10000 ] || fail "arena.wasm missing or implausibly small (${wasm_bytes} bytes)"
-fi
+step "landing: native arena initializes and advances frames"
+check '(async () => {
+  const section = document.querySelector("#game");
+  if (!section) throw new Error("Arena section missing");
+  section.scrollIntoView({block: "center"});
+  const launch = Array.from(section.querySelectorAll("button"))
+    .find(button => button.textContent.includes("Launch"));
+  if (!launch) throw new Error("Arena launch button missing");
+  launch.click();
+  for (let attempt = 0; attempt < 150; attempt++) {
+    const hud = section.querySelector("canvas")?.nextElementSibling;
+    const values = hud ? Array.from(hud.querySelectorAll("b"), item => Number(item.textContent)) : [];
+    if (values.length === 4 && values.every(Number.isFinite) && values[3] > 0) {
+      if (values[0] < 0 || values[0] > 100) throw new Error("Arena returned invalid health");
+      return "Native frames running at " + values[3] + " fps, hp=" + values[0];
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  throw new Error("Arena never advanced a native frame");
+})()'
 
 # ------------------------------------------------------------- wait-wuuut ---
 step "wait-wuuut: live source windows stream real files"

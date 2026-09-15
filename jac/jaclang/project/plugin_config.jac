@@ -5,6 +5,7 @@ def deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str,
 
 obj PluginConfigBase {
     has project_dir: Path | None = None,
+        entry_path: str = "",
         config_file: Path postinit,
         _config: dict[str, any] | None postinit,
         _config_app: str postinit,

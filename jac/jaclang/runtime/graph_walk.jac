@@ -287,7 +287,7 @@ def walk_edges(origins: list[Anchor], q: GraphQuery, gated: bool) -> list[Anchor
         return [];
     }
     edges: list[Anchor] = [];
-    node_of: dict = {};
+    node_of: dict[object, any] = {};
     seen: set = set();
     for (a, e) in walk(origins, q, len(q.hops), gated) {
         if e is None {

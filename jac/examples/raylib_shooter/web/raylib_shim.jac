@@ -19,21 +19,21 @@ obj Shim {
         exports: any = None,
         mem: any = None,
         heap: any = 0,
-        proj: list = [],
-        mv: list = [],
-        pstack: list = [],
-        mvstack: list = [],
+        proj: list[float] = [],
+        mv: list[float] = [],
+        pstack: list[list[float]] = [],
+        mvstack: list[list[float]] = [],
         mode: int = 0x1700,
-        verts: list = [],
-        color: list = [1.0, 1.0, 1.0, 1.0],
+        verts: list[float] = [],
+        color: list[float] = [1.0, 1.0, 1.0, 1.0],
         bmode: int = 4,
         vbo: any = None,
         aPos: int = 0,
         aCol: int = 0,
         uMVP: any = None,
-        keys: dict = {},
-        pressed: dict = {},
-        mpressed: dict = {},
+        keys: dict[int, int] = {},
+        pressed: dict[int, int] = {},
+        mpressed: dict[int, int] = {},
         mouseX: float = 0.0,
         mouseY: float = 0.0,
         locked: bool = False,
@@ -44,7 +44,7 @@ obj Shim {
         on_tick: any = None;
 }
 
-def _m_ident -> list {
+def _m_ident -> list[float] {
     return [
         1.0,
         0.0,
@@ -102,7 +102,7 @@ def _m_mul(a: list[float], b: list[float]) -> list[float] {
     return c;
 }
 
-def _m_translate(x: float, y: float, z: float) -> list {
+def _m_translate(x: float, y: float, z: float) -> list[float] {
     m = _m_ident();
     m[12] = x;
     m[13] = y;
@@ -110,7 +110,7 @@ def _m_translate(x: float, y: float, z: float) -> list {
     return m;
 }
 
-def _m_rotate(ang: float, x: float, y: float, z: float) -> list {
+def _m_rotate(ang: float, x: float, y: float, z: float) -> list[float] {
     a = ang * 3.141592653589793 / 180.0;
     c = Math.cos(a);
     s = Math.sin(a);
@@ -142,7 +142,9 @@ def _m_rotate(ang: float, x: float, y: float, z: float) -> list {
     ];
 }
 
-def _m_frustum(l: float, r: float, b: float, t: float, n: float, f: float) -> list {
+def _m_frustum(
+    l: float, r: float, b: float, t: float, n: float, f: float
+) -> list[float] {
     return [
         2.0 * n / (r - l),
         0.0,
@@ -163,7 +165,9 @@ def _m_frustum(l: float, r: float, b: float, t: float, n: float, f: float) -> li
     ];
 }
 
-def _m_ortho(l: float, r: float, b: float, t: float, n: float, f: float) -> list {
+def _m_ortho(
+    l: float, r: float, b: float, t: float, n: float, f: float
+) -> list[float] {
     return [
         2.0 / (r - l),
         0.0,
@@ -184,11 +188,11 @@ def _m_ortho(l: float, r: float, b: float, t: float, n: float, f: float) -> list
     ];
 }
 
-def _cur(sh: any) -> list {
+def _cur(sh: any) -> list[float] {
     return sh.proj if sh.mode == 0x1701 else sh.mv;
 }
 
-def _setcur(sh: any, m: list) {
+def _setcur(sh: any, m: list[float]) {
     if sh.mode == 0x1701 {
         sh.proj = m;
     } else {
@@ -227,7 +231,7 @@ def _flush(sh: any) -> None {
     sh.verts = [];
 }
 
-def _build_env(sh: any) -> dict {
+def _build_env(sh: any) -> dict[str, any] {
     return {
         "InitWindow": lambda (w: int, h: int, t: int) { document.title = _read_cstr(
             sh, t

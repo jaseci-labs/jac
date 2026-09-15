@@ -3,7 +3,10 @@ name: jac-sv-microservices
 description: Connect service apps through awaited bridges and typed errors. Use for cross-app calls, fleet execution, outbox behavior, or service discovery.
 ---
 
-Services are declared in ONE place: an `[apps.<name>]` table in `jac.toml` with `kind = "service"`. A **file-rooted** service app (`entry-point = "<file>"`, no `path`) owns exactly that file; a dir-rooted one (`path = "<dir>"`) owns everything under it. `jac create --app <name> --kind service` writes the table. There is NO discovery from source and no import form - what makes an import a bridge is that the imported element is **owned by a different app** than the importer.
+Services are declared with `[apps.<name>]`, `kind = "service"`, and a required
+`entry-point` relative to the project root. An import through another app's
+entry forms a bridge. Ordinary helper imports inherit the current app context;
+directory layout does not create an app boundary.
 
 Once a module belongs to another app, **plain imports of its walkers and `def:pub` functions lower to typed-async bridge stubs**: the provider is never loaded as the consumer's own code; `await add(1, 2)` calls the `math` app (in-process when colocated, `POST /function/add` when it runs apart), and the source still reads like a normal import. Same code, three topologies: colocated (`jac run <app>`), local fleet (`--fleet`), deployed fleet (`jac scale deploy`). **The boundary is structural, the topology is profile.**
 
@@ -15,11 +18,11 @@ default-app = "calculator"
 
 [apps.calculator]
 kind = "service"
-entry-point = "calculator_service.jac"
+entry-point = "calculator_service"
 
-[apps.math]                     # file-rooted service app: owns exactly math_service.jac
+[apps.math]                     # service entry: math_service.jac
 kind = "service"
-entry-point = "math_service.jac"
+entry-point = "math_service"
 
 # math_service.jac (provider - owned by the math app)
 obj DivResult {
@@ -55,7 +58,10 @@ curl -X POST http://localhost:8002/function/sum_list \
 
 **The bridge surface is walkers + `def:pub`.** A plain `def` is private to its app; importing it from another app is `E5106` at compile time (and a 404 `BridgeRejected` if you get past the checker some other way). `:priv` endpoints are JWT-gated; the hop forwards the inbound `Authorization` header but an anonymous chain has none.
 
-**Ownership of shared code.** A module under no app root is shared. If it carries walkers or node/edge archetypes, it needs exactly ONE owner: a file-rooted service app that names it, the sole serving app, or `[project] default-app` when several apps serve. Two serving apps, no default app, and no explicit owner = `E5107` - give it an `[apps.<name>]` table or pin `[apps.<owner>.placement.pins] "<module>" = "server"`. Client apps (`mobile`, `web-static`, `cli`) are always consumers; a CLI never touches another app's store.
+**Shared source and state.** Ordinary shared modules compile in each importing
+app's context. To give several consumers access to one server's state, declare a
+service entry and expose public functions or walkers. `default-app` selects the
+CLI default, and placement pins select codespaces; neither assigns an owner.
 
 **The app graph is a DAG.** Consumer → provider edges are recorded per import; a cycle is `E5104` on the import that closes it. Providers boot first.
 
@@ -135,8 +141,7 @@ Gateway knobs: `[scale.gateway]` (`gateway_port`, `boot_health_timeout`, `boot_m
 - **`E1042` on a call you thought was local** = the target is owned by another app. `await` it; make the caller `async`.
 - **`E5106` / 404 `BridgeRejected`** = the element isn't on the bridge surface. `def:pub` it, or move it to shared code if both apps need it in-process.
 - **Calls run in-process when you expected RPC** = they are colocated (the default) - that IS the bridge, just without sockets. `--fleet` to split; the code does not change.
-- **`E5107`** = a shared server module with two possible owners. Name the owner (`[apps.<name>]` service table or a pin).
-- **`E2039`** = an app reaching into another app's non-bridge declarations. Shared code goes under no app root; app code stays behind the bridge.
+- **`E2039`** = an app reaching into another app's non-bridge declarations. Use the declared entry for the public API; helper imports are local to the consumer.
 - **`BridgeUnavailable: app 'x' is not registered`** = not colocated (no `[apps.x]` in this workspace) and no `JAC_APP_X_URL`.
 - **`Error: No jac.toml found`** - `jac run <app>` needs the workspace's `jac.toml` in the cwd or an ancestor.
 - **Invalid anchors after a change:** check the reference, selected app/store, and schema migration state. Follow `jac-debugging` and `jac-sv-persistence`; do not infer that an anchor error requires deleting project data.

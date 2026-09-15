@@ -1,10 +1,10 @@
 import json;
 import type from jaclang.compiler.driver.program { JacProgram }
 
-def boundary_audit(program: JacProgram, artifacts: list[dict]) -> dict {
-    boundaries: dict = {};
-    effects: dict = {};
-    host_imports: dict = {};
+def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, any] {
+    boundaries: dict[str, dict[str, any]] = {};
+    effects: dict[str, dict[str, any]] = {};
+    host_imports: dict[str, dict[str, any]] = {};
     manifests = list(artifacts);
     compiler = program._get_compiler();
     for module in program.mod.hub.values() {

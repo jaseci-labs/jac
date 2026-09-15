@@ -2,7 +2,7 @@
 name = "day-planner-basic"
 version = "1.0.0"
 description = "AI Day Planner - single-file def:pub variant (no auth)"
-entry-point = "main.jac"
+entry-point = "main"
 
 [dependencies.npm]
 react = "^19.2.0"

@@ -58,7 +58,9 @@ def _native_dir -> Path {
 
 Returns (returncode, stderr, binary_bytes). binary_bytes is empty on failure.
 """
-def _compile_host(host_src: str, extra_files: dict[str, str] = None) -> tuple {
+def _compile_host(
+    host_src: str, extra_files: dict[str, str] = None
+) -> tuple[any, ...] {
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {
@@ -100,13 +102,13 @@ def _compile_host(host_src: str, extra_files: dict[str, str] = None) -> tuple {
 """A host that uses the obj:pub Webview API links libwebview.so via $ORIGIN."""
 test "webview binding host compiles and links libwebview.so" {
     src = (
-        "import from webview { Webview, new_webview, respond, HINT_NONE, run_main_loop }\n"
+        "import from webview { BindingCallback, Webview, new_webview, respond, HINT_NONE, run_main_loop }\n"
         "def on_call(id: int, req: int, arg: int) -> None { respond(arg, id, \"1\"); }\n"
         "with entry {\n"
         "    wv = new_webview(False);\n"
         "    wv.title(\"t\");\n"
         "    wv.size(640, 480, HINT_NONE);\n"
-        "    wv.bind(\"ping\", on_call);\n"
+        "    wv.bind(\"ping\", BindingCallback(invoke=on_call));\n"
         "    wv.html(\"<h1>hi</h1>\");\n"
         "    run_main_loop();\n"
         "}\n"
@@ -210,13 +212,13 @@ test "plugin bridge host compiles with webview + libpython" {
         "    PyGILState_Release(gstate);\n"
         "    respond(wv_handle, id, result_str);\n"
         "}\n"
-        "import from webview { Webview, new_webview, respond, HINT_NONE, run_main_loop }\n"
+        "import from webview { BindingCallback, Webview, new_webview, respond, HINT_NONE, run_main_loop }\n"
         "with entry {\n"
         "    Py_Initialize();\n"
         "    wv = new_webview(False);\n"
         '    wv.title("test");\n'
         "    wv.size(640, 480, HINT_NONE);\n"
-        '    wv.bind("__jac_invoke", _jac_invoke_handler);\n'
+        '    wv.bind("__jac_invoke", BindingCallback(invoke=_jac_invoke_handler));\n'
         '    wv.html("<h1>test</h1>");\n'
         "    ts = PyEval_SaveThread();\n"
         "    run_main_loop();\n"

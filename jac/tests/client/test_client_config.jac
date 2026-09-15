@@ -38,12 +38,12 @@ def _append_toml(project_path: str, block: str) {
 }
 
 """Parse the endpointEffects map embedded in a served page's __jac_init__."""
-def _endpoint_effects(page_html: str) -> dict {
+def _endpoint_effects(page_html: str) -> dict[str, any] {
     init_hit = re.search(
         r'<script\s+id="__jac_init__"[^>]*>(.*?)</script>', page_html, re.DOTALL,
     );
     assert init_hit , "served page should embed a __jac_init__ script";
-    data: dict = json.loads(init_hit.group(1));
+    data: dict[str, any] = json.loads(init_hit.group(1));
     return data.get("endpointEffects", {});
 }
 
@@ -162,13 +162,13 @@ test "multi-segment route resolves assets" {
                 "utf-8", errors="ignore"
             );
             asset_hit = re.search(
-                r'src="(/static/client\.js\?hash=[a-f0-9]+)"', nested
+                r'src="(/static/client\.js\?hash=[A-Za-z0-9_-]+)"', nested
             );
             if not asset_hit {
                 asset_hit = re.search(r'src="(/client\.[A-Za-z0-9_-]+\.js)"', nested);
             }
             assert asset_hit , (
-                f"nested route should reference a root-absolute asset; got:\n{nested[:500]}"
+                f"nested route should reference a root-absolute asset; got:\n{nested[-1000:]}"
             );
             asset = request_endpoint(f"{base}{asset_hit.group(1)}");
             assert len(asset) > 0 , "referenced asset should be reachable + non-empty";

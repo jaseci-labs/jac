@@ -20,9 +20,10 @@ import from jaclang.compiler.frontend.unitree { Expr, UniNode }
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
         type_key: str = "",
-        call_kwargs: dict = {},
+        call_kwargs: dict[str, UniNode] = {},
         arg_nodes: list[UniNode] = [],
-        call_node: UniNode | None = None;
+        call_node: UniNode | None = None,
+        receiver_node: UniNode | None = None;
 }
 
 
@@ -137,7 +138,7 @@ class NativeBoolEmitter(NativeIntEmitter) {
 class NativeComplexEmitter(ComplexEmitter[(ir.Value, NativeEmitCtx)]) {
     def _load_parts(
         self: NativeComplexEmitter, ctx: NativeEmitCtx, val: ir.Value
-    ) -> (tuple | None);
+    ) -> (tuple[ir.Value, ir.Value] | None);
 
     def _make_complex(
         self: NativeComplexEmitter, ctx: NativeEmitCtx, real: ir.Value, imag: ir.Value
@@ -1027,6 +1028,13 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_value_sort(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        reverse: (ir.Value | None)
+    ) -> ir.Value;
+
     def emit_reverse(
         self: NativeListEmitter,
         ctx: NativeEmitCtx,
@@ -1417,7 +1425,7 @@ class NativeTupleEmitter(TupleEmitter[(ir.Value, NativeEmitCtx)]) {
 class NativeRangeEmitter(RangeEmitter[(ir.Value, NativeEmitCtx)]) {
     def _load_range(
         self: NativeRangeEmitter, ctx: NativeEmitCtx, target: ir.Value
-    ) -> (tuple | None);
+    ) -> (tuple[ir.Value, ir.Value, ir.Value] | None);
 
     def _in_range(
         self: NativeRangeEmitter,
@@ -1635,17 +1643,19 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b = get_builder(p);
         i8p = ir.IntType(8).as_pointer();
         i64 = ir.IntType(64);
-        rc_alloc_fn = p.rc_alloc_fn;
-        buf_ptr = b.call(rc_alloc_fn, [ir.Constant(i64, 64)], name="repr.buf");
-        snprintf = p._get_or_declare_extern(
-            "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
-        );
+        if p._is_bytes_value(arg_val) {
+            return p._mark_owned(p._emit_bytes_repr(arg_val));
+        }
         if isinstance(arg_val.type, ir.IntType) {
+            buf_ptr = b.call(p.rc_alloc_fn, [ir.Constant(i64, 64)], name="repr.buf");
+            snprintf = p._get_or_declare_extern(
+                "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
+            );
             fmt = p._get_snprintf_fmt("%ld");
             fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
             coerced = p._coerce_type(arg_val, i64);
             b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, coerced]);
-            return buf_ptr;
+            return p._mark_owned(buf_ptr);
         }
         if isinstance(arg_val.type, ir.DoubleType) {
             return p._emit_float_repr(arg_val);
@@ -1674,15 +1684,13 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b = get_builder(p);
         i8 = ir.IntType(8);
         i64 = ir.IntType(64);
-        rc_alloc_fn = p.rc_alloc_fn;
         p._set_rc_ctx("chr", "");
-        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 2)], name="chr.buf");
+        buf = p._str_alloc(b, ir.Constant(i64, 2), name="chr.buf");
         p._clear_rc_ctx();
         byte_val = b.trunc(arg_val, i8, name="chr.byte");
         b.store(byte_val, buf);
-        null_ptr = b.gep(buf, [ir.Constant(i64, 1)], name="chr.null_ptr");
-        b.store(ir.Constant(i8, 0), null_ptr);
-        return buf;
+        p._str_finish(b, buf, ir.Constant(i64, 1));
+        return p._mark_owned(buf);
     }
 
     def emit_ord(

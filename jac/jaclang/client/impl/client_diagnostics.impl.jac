@@ -63,7 +63,7 @@ impl ClientDiagnostic.abs_file -> str {
 }
 
 impl ClientDiagnostic.render(colors: bool = False) -> str {
-    import from jaclang.compiler.frontend.helpers {
+    import from jaclang.project.source {
         render_diagnostic,
         span_for_file,
         read_file_with_encoding
@@ -185,7 +185,7 @@ def _relative(base_path: str, path: str) -> str {
     return path if posix in ("", ".") else posix;
 }
 
-impl diagnostic_from_alert(alert: any, base_path: str = "") -> ClientDiagnostic {
+impl diagnostic_from_alert(alert: Alert, base_path: str = "") -> ClientDiagnostic {
     info = alert.code;
     code = info.code if info is not None else "E7005";
     severity = info.severity.value if info is not None else "error";
@@ -206,7 +206,7 @@ impl diagnostic_from_alert(alert: any, base_path: str = "") -> ClientDiagnostic 
 }
 
 impl diagnostics_from_alerts(
-    alerts: list[any], base_path: str = ""
+    alerts: list[Alert], base_path: str = ""
 ) -> list[ClientDiagnostic] {
     out: list[ClientDiagnostic] = [];
     for alert in alerts {

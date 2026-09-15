@@ -454,7 +454,12 @@ jac check [-h] [-e] [-i [IGNORE ...]] [-p] [--nowarn] [--lint] [--fix] [--app AP
 | `--lint` | Also run the linter and report style/lint violations | `False` |
 | `--fix` | With `--lint`, auto-fix lint violations (code corrections) | `False` |
 
-**The workspace gate.** With no paths, `jac check` compiles **one rooted program per app** -- each app's entry with that app's facts (kind, ui, platform, owning app) stamped -- and then sweeps every `.jac` file no app reached as its own root, so nothing under the project goes unchecked. When more than one app is checked, each diagnostic is prefixed `[<app>]`. Explicit paths keep the file-per-root behavior, using the owning app's facts for each file. `--app <name>` restricts both the app compile and the sweep to one app. This is the check that sees the cross-app laws (`E2039`, `E2040`, `E5107`, `E5104`, `E5106`); see [Workspaces & Apps](../apps.md#working-with-a-workspace).
+**The workspace gate.** With no paths, `jac check` traverses imports from every
+declared app entry in its compilation context, including page roots for client
+apps. Shared helpers are checked in each context that reaches them. Diagnostics
+carry an app prefix when several apps are checked. `--app <name>` selects one
+context; explicit files remain explicit roots. Unreachable source is checked by
+naming it explicitly. See [Workspaces & Apps](../apps.md#working-with-a-workspace).
 
 **Examples:**
 
@@ -592,6 +597,8 @@ jac fmt . --check
 # Skip already-formatted files (biggest win in pre-commit / CI)
 jac fmt . --cache
 ```
+
+**Exit status:** 0 on success, including when files were reformatted (`jac fmt . && next` proceeds); 1 on syntax/format failures, invalid paths, or unfixable lint errors. With `--check`, exits 1 if any file *would* be reformatted (no files are written) - this is the CI gate. With `--lintfix`, auto-fixable findings are fixed and reported as warnings; unfixable errors still exit 1.
 
 > **Note**: For auto-linting (code corrections), use `jac check --lint --fix` instead. See [`jac check`](#jac-check) above.
 >
@@ -1564,7 +1571,7 @@ jac build [-h] [--all] [--as {jab,sealed,binary,wheel,npm,source,native,client}]
 | `binary` | A self-contained app executable: a copy of the `jac` launcher with your sealed `.jab` appended as an overlay | -- |
 | `wheel` | A `pip install`-ready Python wheel in `dist/` | `jac bundle` |
 | `npm` | An npm tarball | `jac bundle --target npm` |
-| `source` | An editable FastAPI + JavaScript source tree (zero `.jac` files) | `jac eject` |
+| `source` | Editable Python, JavaScript, and C with the required Jac runtime source | `jac eject` |
 | `client` | Only the app's client bundle (the browser bundle of a `web-app` / `web-static`, the desktop binary of a `desktop` app, the platform build of a `mobile` app) | -- |
 
 **The type-check gate.** `jac build` refuses to emit an artifact if the program fails type checking, and there is no flag that skips it. Because every compilation type-checks, the artifact compile *is* the gate rather than a separate pass over the project. Use `--check_only` to run the whole-project check and emit nothing (useful in CI).
@@ -1622,9 +1629,28 @@ jac build --as npm
 # Standalone native binary from one module
 jac build main.jac --native
 
-# Editable FastAPI + JavaScript source tree (formerly `jac eject`)
+# Editable Python, JavaScript, and C source tree
 jac build --as source -o /tmp/myapp-out
 ```
+
+Source export follows the selected app and its colocated services. The output
+contains application code, serving and import metadata, declared resources, and
+the shared runtime modules those applications require. Rebuild and run it without
+Jac:
+
+```bash
+cd /tmp/myapp-out
+python -m pip install -r requirements.txt
+python build.py
+python main.py
+```
+
+JavaScript builds use Node/npm or Bun. Native code is emitted as C from the
+existing native lowering and built with Clang; browser native modules also need
+a WASI sysroot. Exporting native source requires LLVM 22 development files and
+CMake, or a configured `JAC_LLVM_CBE`. Generated C retains the selected target's
+ABI. Original `.jac` files can remain as application resources, such as the site's
+source browser; executable modules use the exported Python, JavaScript, and C.
 
 **Building apps of a workspace:**
 

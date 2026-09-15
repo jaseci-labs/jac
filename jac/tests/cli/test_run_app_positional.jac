@@ -26,8 +26,7 @@ def _mk_workspace(with_default: bool) -> str {
     }
     toml = (
         header
-        + "\n[apps.web]\nkind = \"cli\"\npath = \"web\"\n"
-        + "\n[apps.tool]\nkind = \"cli\"\nentry-point = \"tools/tool.jac\"\n"
+        + '\n[apps.web]\nkind = "cli"\nentry-point = "web.main"\n\n[apps.tool]\nkind = "cli"\nentry-point = "tools.tool"\n'
     );
     Path(d, "jac.toml").write_text(toml, encoding="utf-8");
     os.makedirs(os.path.join(d, "web"));

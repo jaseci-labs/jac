@@ -364,6 +364,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 pname = val_at();
                 advance();
             } elif is_p('{') {
+                pname = 'props';
                 skip_balanced('{', '}');
             } elif is_p('[') {
                 skip_balanced('[', ']');

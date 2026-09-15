@@ -17,11 +17,11 @@ def _maybe_malloc_trim {
 
 glob _CHECK_STATE: dict[(str, any)] = {"prog": None, "coverage_on": False};
 
-def _wire_list(value: any) -> list {
+def _wire_list(value: any) -> list[any] {
     return value if isinstance(value, list) else [];
 }
 
-def _wire_dict(value: any) -> dict {
+def _wire_dict(value: any) -> dict[str, any] {
     return value if isinstance(value, dict) else {};
 }
 
@@ -58,48 +58,13 @@ def _check_retire(served: int, rss_mb: int) -> bool {
     );
 }
 
-def _reached_by_imports(prog: any, root_mod: any) -> list[str] {
-    import os;
-    import from jaclang.compiler.frontend.unitree { Import as _Imp }
-    seen: set[str] = set();
-    for m in prog.mod.hub.values() {
-        if m.loc and m.loc.mod_path {
-            seen.add(os.path.realpath(str(m.loc.mod_path)));
-        }
-    }
-    stack: list = [root_mod] if root_mod is not None else [];
-    visited: set[int] = set();
-    while stack {
-        mod = stack.pop();
-        if id(mod) in visited {
-            continue;
-        }
-        visited.add(id(mod));
-        for imp in mod.get_all_sub_nodes(_Imp) {
-            if imp.from_loc is None {
-                continue;
-            }
-            try {
-                target = imp.from_loc.resolve_relative_path();
-            } except Exception {
-                continue;
-            }
-            if not isinstance(target, str) or not target.endswith('.jac') {
-                continue;
-            }
-            rp = os.path.realpath(target);
-            seen.add(rp);
-            nxt = prog.find_module(target) or prog.mod.hub.get(target);
-            if nxt is not None and id(nxt) not in visited {
-                stack.append(nxt);
-            }
-        }
-    }
-    return sorted(seen);
-}
-
 def _check_unit(
-    path: str, app_name: str, kind: str, target: str, root_dir: str
+    path: str,
+    app_name: str,
+    kind: str,
+    target: str,
+    root_dir: str,
+    closure: bool = False
 ) -> dict[(str, any)] {
     return {
         'path': path,
@@ -107,7 +72,8 @@ def _check_unit(
         'kind': kind,
         'target': target,
         'root_dir': root_dir,
-        'label': app_name or 'shared'
+        'label': app_name or 'shared',
+        'closure': closure
     };
 }
 
@@ -169,9 +135,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 Parser as _SyntaxParser
             }
             import from jaclang.compiler.frontend.unitree { Source as _Src }
-            import from jaclang.compiler.frontend.helpers {
-                read_file_with_encoding as _read_src
-            }
+            import from jaclang.project.source { read_file_with_encoding as _read_src }
             _src_txt = _read_src(file_path);
             (_had, _pd, _ld) = parse_diags(_src_txt, file_path);
             if _pd or _ld {
@@ -180,27 +144,25 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 _replay_diags(_pd, _SyntaxParser, prog, _dsrc);
             }
         } else {
-            prog.compile(
-                file_path=file_path,
-                options=CompileOptions(
-                    no_cgen=not bool(opts.get("native_coverage")),
-                    native_parity=True,
-                    iface_ok=True,
-                    suppress_codes=list(opts.get("suppress_codes") or []),
-                    target_app=str(opts.get("target_app") or ""),
-                    app_kind=str(opts.get("app_kind") or ""),
-                    project_root=(
-                        str(opts["project_root"]) if opts.get("project_root") else None
-                    )
+            compile_options = CompileOptions(
+                no_cgen=not bool(opts.get("native_coverage")),
+                native_parity=True,
+                iface_ok=True,
+                suppress_codes=list(opts.get("suppress_codes") or []),
+                target_app=str(opts.get("target_app") or ""),
+                app_kind=str(opts.get("app_kind") or ""),
+                project_root=(
+                    str(opts["project_root"]) if opts.get("project_root") else None
                 )
             );
+            compile_options.entry_point = file_path;
+            if opts.get('closure') {
+                import from jaclang.compiler.driver.pipeline { compile_application }
+                compile_application(prog, file_path, compile_options);
+            } else {
+                prog.compile(file_path, options=compile_options);
+            }
         }
-        import from jaclang.compiler.driver.compiler { JacCompiler as _JC }
-        root_mod = prog.find_module(file_path) or prog.mod.hub.get(file_path);
-        result['reached'] = _reached_by_imports(prog, root_mod);
-        result['owned_elements'] = bool(
-            root_mod is not None and _JC._module_defines_owned_elements(root_mod)
-        );
         if opts.get("placements") {
             import from jaclang.compiler.placement.placement { collect_placement_rows }
             result['placements'] = collect_placement_rows(prog);
@@ -253,10 +215,10 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
 }
 
 impl check(
-    paths: list,
+    paths: list[str],
     print_errs: bool = True,
-    ignore: (list | None) = None,
-    disable_error_code: (list | None) = None,
+    ignore: (list[str] | None) = None,
+    disable_error_code: (list[str] | None) = None,
     parse_only: bool = False,
     nowarn: bool = False,
     lint_only: bool = False,
@@ -303,7 +265,7 @@ impl check(
         );
     }
 
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.workspace { workspace_for_path }
     ws = workspace_for_path(os.getcwd()) if not paths else None;
     units: list[dict[(str, any)]] = [];
     had_path_errors = False;
@@ -329,25 +291,67 @@ impl check(
                 continue;
             }
             units.append(
-                _check_unit(a.`entry, a.name, a.kind, a.name, ws.project_root)
+                _check_unit(a.`entry, a.name, a.kind, a.name, ws.project_root, True)
             );
         }
     } else {
         (explicit_files, had_path_errors) = _iter_jac_files(
             paths, ignore_list, include_annex=False
         );
+        named_files = {
+            os.path.realpath(str(p))
+            for p in paths
+            if os.path.isfile(str(p))
+        };
+        planned_workspaces: set[str] = set();
+        directory_roots = [
+            os.path.realpath(str(p))
+            for p in paths
+            if os.path.isdir(str(p))
+        ];
         for f in explicit_files {
             f_ws = workspace_for_path(f);
-            owner: any = None;
+            selected_app: any = None;
+            if f_ws is not None
+                and f_ws.explicit
+                and os.path.realpath(f) not in named_files
+                and any(
+                    f_ws.project_root == directory
+                        or f_ws.project_root.startswith(directory + os.sep)
+                    for directory in directory_roots
+                ) {
+                if f_ws.project_root not in planned_workspaces {
+                    planned_workspaces.add(f_ws.project_root);
+                    for declared in f_ws.apps.values() {
+                        if (not app or declared.name == app)
+                            and not _should_ignore(declared.entry, ignore_list) {
+                            units.append(
+                                _check_unit(
+                                    declared.entry,
+                                    declared.name,
+                                    declared.kind,
+                                    declared.name,
+                                    f_ws.project_root,
+                                    True
+                                )
+                            );
+                        }
+                    }
+                }
+                continue;
+            }
             if f_ws is not None {
-                owner = f_ws.app(app) if app else f_ws.app_for_path(f);
+                selected_app = f_ws.app(app) if app else f_ws.app_for_path(f);
+                if selected_app is None and not f_ws.explicit {
+                    selected_app = next(iter(f_ws.apps.values()), None);
+                }
             }
             units.append(
                 _check_unit(
                     f,
-                    owner.name if owner is not None else '',
-                    owner.kind if owner is not None else '',
-                    owner.name if owner is not None else '',
+                    selected_app.name if selected_app is not None else '',
+                    selected_app.kind if selected_app is not None else '',
+                    selected_app.name if selected_app is not None else '',
                     f_ws.project_root if f_ws is not None else ''
                 )
             );
@@ -370,10 +374,9 @@ impl check(
     };
 
     results: list[dict[(str, any)]] = [];
-    reached: set[str] = set();
     plan: dict[(str, int)] = {'total': len(units)};
-    placement_report: dict = {};
-    coverage_report: dict = {};
+    placement_report: dict[str, any] = {};
+    coverage_report: dict[str, any] = {};
 
     def run_units(batch: list[dict[(str, any)]]) -> None {
         if not batch {
@@ -393,6 +396,7 @@ impl check(
             job_opts['target_app'] = unit['target'];
             job_opts['app_kind'] = unit['kind'];
             job_opts['project_root'] = unit['root_dir'];
+            job_opts['closure'] = unit['closure'];
             return {'opts': job_opts, 'collect': (not use_pool) and (idx < total - 1)};
         }
 
@@ -420,9 +424,6 @@ impl check(
             }
             res['label'] = unit['label'];
             res['_unit'] = unit;
-            for m in _wire_list(res.get('reached')) {
-                reached.add(os.path.realpath(str(m)));
-            }
             results.append(res);
             print_file_progress(
                 path, bool(res.get('success')), len(results), plan['total']
@@ -458,134 +459,6 @@ impl check(
     }
 
     run_units(units);
-    if ws is not None {
-        ws_root = os.path.realpath(ws.project_root);
-        shared_units: list[dict[(str, any)]] = [];
-        shared_seen: set[tuple[(str, str)]] = set();
-        for res in list(results) {
-            unit = res.get('_unit');
-            if not unit or not unit.get('target') {
-                continue;
-            }
-            for m in _wire_list(res.get('reached')) {
-                rp = os.path.realpath(str(m));
-                if (
-                    not rp.endswith('.jac')
-                    or not rp.startswith(ws_root + os.sep)
-                    or _should_ignore(rp, ignore_list)
-                    or ws.app_for_path(rp) is not None
-                ) {
-                    continue;
-                }
-                key = (rp, str(unit['target']));
-                if key in shared_seen {
-                    continue;
-                }
-                shared_seen.add(key);
-                shared_units.append(
-                    _check_unit(
-                        rp,
-                        unit['target'],
-                        unit['kind'],
-                        unit['target'],
-                        unit['root_dir']
-                    )
-                );
-            }
-        }
-        if shared_units {
-            plan['total'] += len(shared_units);
-            run_units(shared_units);
-        }
-        serving_names = {a.name for a in ws.serving_apps()};
-        reach_map: dict[(str, set[str])] = {};
-        owned_paths: set[str] = set();
-        for res in list(results) {
-            unit = res.get('_unit');
-            if not unit {
-                continue;
-            }
-            tgt = str(unit.get('target') or '');
-            if not tgt {
-                continue;
-            }
-            unit_path = os.path.realpath(str(unit['path']));
-            reach_map.setdefault(unit_path, set()).add(tgt);
-            for m in _wire_list(res.get('reached')) {
-                reach_map.setdefault(os.path.realpath(str(m)), set()).add(tgt);
-            }
-            if res.get('owned_elements') and ws.app_for_path(unit_path) is None {
-                owned_paths.add(unit_path);
-            }
-        }
-        for rp in sorted(owned_paths) {
-            reaching = sorted(
-                [
-                    a
-                    for a in reach_map.get(rp, set())
-                    if a in serving_names
-                ]
-            );
-            if len(reaching) < 2 {
-                continue;
-            }
-            (owner, ambiguous) = ws.owner_app_for_path(rp);
-            if owner is not None or not ambiguous {
-                continue;
-            }
-            import from jaclang.compiler.frontend.diagnostics { E5107 }
-            msg = E5107.format_message(
-                module=os.path.basename(rp), apps=', '.join(reaching)
-            );
-            results.append(
-                {
-                    'path': rp,
-                    'success': False,
-                    'errors': [_message_diag(f"error[E5107]: {msg}", rp)],
-                    'warnings': [],
-                    'placements': {},
-                    'coverage': {},
-                    'reached': [],
-                    'label': 'shared'
-                }
-            );
-            plan['total'] += 1;
-        }
-        sweep_roots = [ws.project_root];
-        sel = ws.app(app) if app else None;
-        if sel is not None and sel.root_dir {
-            sweep_roots = [sel.root_dir];
-        }
-        (candidates, _sweep_errs) = _iter_jac_files(
-            sweep_roots, ignore_list, include_annex=False
-        );
-        rooted = {os.path.realpath(u['path']) for u in units};
-        orphans: list[dict[(str, any)]] = [];
-        for f in candidates {
-            real = os.path.realpath(f);
-            if real in rooted {
-                continue;
-            }
-            owner = ws.app_for_path(f);
-            if owner is None and real in reached {
-                continue;
-            }
-            if app and (owner is None or owner.name != app) {
-                continue;
-            }
-            orphans.append(
-                _check_unit(
-                    f,
-                    owner.name if owner is not None else '',
-                    owner.kind if owner is not None else '',
-                    owner.name if owner is not None else '',
-                    ws.project_root
-                )
-            );
-        }
-        plan['total'] += len(orphans);
-        run_units(orphans);
-    }
     if native_coverage {
         import from jaclang.compiler.driver.na_coverage { na_coverage_end }
         coverage_report.update(na_coverage_end());
@@ -593,7 +466,7 @@ impl check(
     }
 
     multi = len({r['label'] for r in results}) > 1;
-    failed_results: list[dict] = [];
+    failed_results: list[dict[str, any]] = [];
     total_errors = failed_files=0;
     for res in results {
         errs = _wire_list(res.get('errors'));
@@ -640,7 +513,9 @@ impl check(
     return 1 if (total_errors > 0 or had_path_errors) else 0;
 }
 
-impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
+impl lint(
+    paths: list[str], fix: bool = False, ignore: (list[str] | None) = None
+) -> int {
     import from jaclang.compiler.driver.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
@@ -812,14 +687,14 @@ def _format_single_file_worker(
     cache_stamp: str = "",
     cache_anchor: str = "",
     logical_path: str = ""
-) -> dict {
+) -> dict[str, any] {
     import os;
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.project.source { read_file_with_encoding }
     path_obj = Path(file_path);
 
     effective_logical = logical_path or file_path;
-    result: dict = {
+    result: dict[str, any] = {
         'path': file_path,
         'success': False,
         'changed': False,
@@ -1079,14 +954,14 @@ def _format_single_file_worker(
 }
 
 impl format(
-    paths: list,
+    paths: list[str],
     to_screen: bool = False,
     lintfix: bool = False,
     check: bool = False,
     cache: bool = False,
     cache_anchor: str = "",
-    path_map: dict | None = None,
-    cache_stats: dict | None = None,
+    path_map: dict[str, str] | None = None,
+    cache_stats: dict[str, int] | None = None,
     jobs: str = ""
 ) -> int {
     import os;
@@ -1119,12 +994,15 @@ impl format(
     }
 
     unformatted_files: list[str] = [];
-    failed_results: list = [];
+    failed_results: list[dict[str, any]] = [];
 
     (all_files, had_path_errors) = _iter_jac_files(paths);
     total_files = len(all_files);
 
     if total_files == 0 {
+        if cache_stats is not None {
+            cache_stats["changed"] = 0;
+        }
         return 1 if had_path_errors else 0;
     }
 
@@ -1142,11 +1020,11 @@ impl format(
         and total_files > 1
     );
 
-    results_by_idx: dict[(int, dict)] = {};
+    results_by_idx: dict[int, dict[str, any]] = {};
 
     progress: dict[(str, any)] = {"pooled": use_pool, "done": 0};
 
-    def fmt_job(request: dict[(str, any)]) -> dict {
+    def fmt_job(request: dict[(str, any)]) -> dict[str, any] {
         fp = str(request["path"]);
         return _format_single_file_worker(
             fp, lintfix, check, covered, cache_stamp, cache_anchor, remap.get(fp, "")
@@ -1210,7 +1088,7 @@ impl format(
     } else {
         pool.run_inline();
     }
-    results: list[dict] = [];
+    results: list[dict[str, any]] = [];
     for idx in range(total_files) {
         if idx not in results_by_idx {
             on_record(idx, {'error': 'no result'});
@@ -1293,6 +1171,10 @@ impl format(
         }
     }
 
+    if cache_stats is not None {
+        cache_stats["changed"] = changed_files;
+    }
+
     if failed_results {
         import from jaclang.cli.check_report { separator }
         console.print("");
@@ -1344,25 +1226,23 @@ impl format(
             console.success(summary_msg);
         }
     }
+
     if failed_files > 0 or had_path_errors {
         return 1;
     }
     if total_errors > 0 {
         return 1;
     }
-    if changed_files > 0 {
-        return 1;
-    }
     return 0;
 }
 
 impl precommit(
-    paths: (list | None) = None,
+    paths: (list[str] | None) = None,
     staged: bool = False,
     verify: bool = False,
     install: bool = False,
     force: bool = False,
-    cache_stats: dict | None = None
+    cache_stats: dict[str, int] | None = None
 ) -> int {
     import os;
     import shutil;
@@ -1421,7 +1301,7 @@ impl precommit(
 
     fmt_targets = targets;
     tmp_root: (str | None) = None;
-    path_map: dict = {};
+    path_map: dict[str, str] = {};
     if staged and verify {
         dirty = _staged_dirty_files(git_root, rel_targets);
         if dirty {
@@ -1497,6 +1377,8 @@ impl precommit(
         }
     }
     console.print("precommit: formatting (--lintfix)", style="muted");
+
+    stats: dict[str, int] = cache_stats if cache_stats is not None else {};
     fmt_ret = format(
         fmt_targets,
         to_screen=False,
@@ -1505,21 +1387,20 @@ impl precommit(
         cache=True,
         cache_anchor=git_root,
         path_map=path_map,
-        cache_stats=cache_stats
+        cache_stats=stats
     );
     if tmp_root {
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
     console.print("[precommit] Running check...");
     check_ret = check(targets);
-    if not verify
-        and check_ret == 0
-        and fmt_ret == 0
-        and staged
-        and _staged_dirty_files(git_root, rel_targets) {
-        fmt_ret = 1;
-    }
-    if not verify and check_ret == 0 and fmt_ret != 0 {
+
+    fixes_applied = (
+        int(stats.get("changed", 0)) > 0
+        or (staged and _staged_dirty_files(git_root, rel_targets))
+        or fmt_ret != 0
+    );
+    if not verify and check_ret == 0 and fixes_applied {
         console.warning(
             "Pre-commit applied formatting/lint fixes — review the changes, "
             "re-stage them, and commit again."
@@ -1654,7 +1535,7 @@ def _write_git_hook(hook_path: str, body: str, force: bool) -> int {
 
 impl `test(
     target: str = "",
-    paths: list = [],
+    paths: list[str] = [],
     test_name: str = "",
     filter: str = "",
     xit: bool = False,
@@ -1664,7 +1545,7 @@ impl `test(
     pct_range: str = "",
     resume: bool = False,
     verbose: bool = False,
-    ignore: (list | None) = None,
+    ignore: (list[str] | None) = None,
     jobs: str = ""
 ) -> int {
     import os;
@@ -1702,8 +1583,11 @@ impl `test(
         or (app_cfg is not None and cfg is not None and cfg.is_workspace);
     if app_cfg is not None and cfg is not None and app_cfg.name in cfg.apps {
         cfg = cfg.effective_for_app(app_cfg.name);
-        app_root = app_cfg.root_dir(cfg_root) or cfg_root;
-        if app_cfg.is_file_rooted() and not paths {
+        app_root = os.path.dirname(app_cfg.entry_path(cfg_root));
+        if not paths
+            and not directory
+            and not app_cfg.implicit
+            and not (cfg.`test.directory or cfg.`test.directories) {
             paths = [app_cfg.entry_path(cfg_root)];
         }
     }
@@ -1838,8 +1722,9 @@ impl grammar(output: str = "", strict: bool = False) -> int {
         }
         return 1;
     }
-    import from jaclang.compiler.driver.pass_driver { run_pass }
-    pass_ = run_pass(GrammarExtractPass, mod, prog);
+    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+    import from typing { cast }
+    pass_ = cast(GrammarExtractPass, run_utility(UtilityProduct.GRAMMAR, mod, prog));
     if len(pass_.rules) == 0 {
         console.error("No grammar rules extracted.");
         return 1;
@@ -1867,10 +1752,10 @@ impl grammar(output: str = "", strict: bool = False) -> int {
 }
 
 def _iter_jac_files(
-    paths: list, ignore_list: (list | None) = None, include_annex: bool = True
+    paths: list[str], ignore_list: (list[str] | None) = None, include_annex: bool = True
 ) -> tuple[list[str], bool] {
     import os;
-    ignore_list = ignore_list or [];
+    ignore_list: list[str] = ignore_list or [];
     result: list[str] = [];
     explicit: set[str] = set();
     had_errors = False;
@@ -1929,8 +1814,8 @@ def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
     return kept;
 }
 
-def _normalize_ignore_patterns(ignore: list) -> list {
-    import from jaclang.compiler.frontend.helpers { normalize_exclude_patterns }
+def _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
+    import from jaclang.project.source { normalize_exclude_patterns }
     return normalize_exclude_patterns(ignore);
 }
 
@@ -1970,8 +1855,8 @@ def _drop_git_ignored(paths: list[str]) -> list[str] {
 }
 
 
-def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
-    import from jaclang.compiler.frontend.helpers { path_matches_exclude }
+def _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool {
+    import from jaclang.project.source { path_matches_exclude }
     return path_matches_exclude(file_path, ignore_patterns);
 }
 

@@ -18,7 +18,7 @@ import from jaclang.data.store { PgStore }
 import from jaclang.scale.scheduler.scheduler { PgJobStore }
 import from jaclang.scale.webhook.webhook { ApiKeyManager }
 
-glob _holder: dict = {},
+glob _holder: dict[str, any] = {},
      _DOCS_DDL = (
          'CREATE TABLE IF NOT EXISTS jac_docs ('
          'collection text NOT NULL, id text NOT NULL, doc jsonb NOT NULL, '
@@ -41,7 +41,7 @@ def _store -> (PgStore | None) {
 }
 
 
-def _job(job_id: str, **over: any) -> dict {
+def _job(job_id: str, **over: any) -> dict[str, any] {
     base = {
         'job_id': job_id,
         'name': 'tick',

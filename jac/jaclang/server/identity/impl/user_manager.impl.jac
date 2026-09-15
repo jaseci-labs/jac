@@ -226,7 +226,7 @@ impl UserManager.create_jwt_token(user_id: str, include_role: bool = True) -> st
     return jwt_encode(payload, signing_secret(), algorithm=signing_algorithm());
 }
 
-impl UserManager.get_jwt_claims(token: str) -> dict | None {
+impl UserManager.get_jwt_claims(token: str) -> dict[str, any] | None {
     try {
         return jwt_decode(token, signing_secret(), algorithms=[signing_algorithm()]);
     } except Exception as e {

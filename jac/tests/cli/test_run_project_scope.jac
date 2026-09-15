@@ -50,7 +50,7 @@ def make_world -> tuple[str, str] {
     proj = os.path.join(world, "site");
     write(
         os.path.join(proj, "jac.toml"),
-        '[project]\nname = "site"\nkind = "web-app"\nentry-point = "main.jac"\n'
+        '[project]\nname = "site"\nkind = "web-app"\nentry-point = "main"\n'
     );
     write(
         os.path.join(proj, "main.jac"),

@@ -14,6 +14,55 @@ obj Item {
         score: int = 0;
 }
 
+obj Memo {
+    has result: object | None = None;
+}
+
+def make_memo(score: int) -> Memo {
+    return Memo(result=Item(score=score));
+}
+
+def memo_keeps_returned_object -> int {
+    saved = make_memo(7);
+    for index in range(100) {
+        temporary = make_memo(index);
+        if (temporary.result as Item).score != index {
+            return -1;
+        }
+    }
+    return (saved.result as Item).score;
+}
+
+def memo_cast(flag: int) -> int {
+    memo = Memo();
+    if flag {
+        memo.result = Item(score=7);
+    }
+    value = memo.result as Item | None;
+    return value.score if value is not None else -1;
+}
+
+def maybe_integer(flag: int) -> int | None {
+    return 0 if flag else None;
+}
+
+def numeric_optional_cast(flag: int) -> int {
+    value = maybe_integer(flag) as float | None;
+    return int(value) if value is not None else -1;
+}
+
+def required_memo_cast(memo: Memo) -> int {
+    return (memo.result as Item).score;
+}
+
+def required_cast_still_raises -> int {
+    try {
+        return required_memo_cast(Memo());
+    } except AttributeError {
+        return 1;
+    }
+}
+
 def pick_name(flag: int) -> str | None {
     if flag > 0 {
         return "alpha";

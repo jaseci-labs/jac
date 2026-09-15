@@ -14,7 +14,11 @@ import from jaclang.compiler.placement.placement {
     summarize_module
 }
 
-glob _na_scan_memo: dict[tuple, tuple] = {},
+glob _na_scan_memo:
+         dict[
+             tuple[str, bool],
+             tuple[tuple[tuple[str, int, int], ...], str, list[str]]
+         ] = {},
      _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
@@ -43,7 +47,7 @@ def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
     import from jaclang.compiler.placement.placement_pins { module_native_demoted }
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.project.source { read_file_with_encoding }
     import from jaclang.compiler.driver.program { JacProgram }
     if module_native_demoted(os.path.realpath(path)) {
         return ("previously-demoted", []);
@@ -53,7 +57,7 @@ def _native_dep_scan(
     files = [path]
         + discover_annex_files(path, '.impl.jac')
         + discover_annex_files(path, '.test.jac');
-    fresh_parts: list[tuple] = [];
+    fresh_parts: list[tuple[str, int, int]] = [];
     for f in files {
         try {
             st = os.stat(f);
@@ -110,7 +114,7 @@ def _native_deps_ok(
     import from jaclang.compiler.driver.na_coverage { _note_native_closure_cap }
     import from jaclang.compiler.native_scope { in_native_scope_path }
     cap = effective_native_closure_cap();
-    edges: dict[str, list[str]] = {root_path: list(root_deps)};
+    edges: dict[str, list[str]] = {root_path: list[str](root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
         if len(edges) > cap {
@@ -161,7 +165,7 @@ def native_default_path_ok(path: str) -> bool {
 def native_default_verdict(
     module: uni.Module, prog: any = None, native_unit_compile: bool = False
 ) -> tuple[bool, str] {
-    import from jaclang.compiler.driver.schedules { native_pipeline_available }
+    import from jaclang.compiler.driver.pipeline { native_pipeline_available }
     import from jaclang.compiler.placement.placement_pins { module_native_demoted }
 
     if module.app_kind == 'web-app' {
@@ -333,14 +337,10 @@ def _materialize_module(path: str, prog: any) -> (uni.Module | None) {
         return None;
     }
     try {
-        import from jaclang.compiler.driver.compile_options { CompileOptions }
-        prog.compile(
-            file_path=path, options=CompileOptions(symtab_ir_only=True, no_cgen=True)
-        );
+        return prog.load_dependency_module(path, need_tree=True);
     } except Exception {
         return None;
     }
-    return hub_module_for_path(path, prog);
 }
 
 def _import_source_module(elem: uni.Import, prog: any) -> (uni.Module | None) {
@@ -538,8 +538,8 @@ def solve_module_placement(
 
     def _invalidate_stale_codegen {
         if stamp_count[0] and (module.gen.js or module.gen.es_ast is not None) {
-            module.gen.js = '';
-            module.gen.es_ast = None;
+            import from jaclang.compiler.driver.pipeline { invalidate_client_product }
+            invalidate_client_product(prog, module);
         }
     }
 
@@ -885,8 +885,10 @@ def invalidate_importers_es(prog: any, mod_path: str) -> list[uni.Module] {
                 continue;
             }
             if isinstance(target, str) and os.path.realpath(target) == key {
-                m.gen.js = '';
-                m.gen.es_ast = None;
+                import from jaclang.compiler.driver.pipeline {
+                    invalidate_client_product
+                }
+                invalidate_client_product(prog, m);
                 cleared.append(m);
                 break;
             }
@@ -939,8 +941,8 @@ def demote_client_pulled_elements(
     }
     del prog.errors_had[err_mark:];
     del prog.warnings_had[warn_mark:];
-    module.gen.js = '';
-    module.gen.es_ast = None;
+    import from jaclang.compiler.driver.pipeline { invalidate_client_product }
+    invalidate_client_product(prog, module);
     placement_work(prog).changed(module);
     invalidate_importers_es(prog, mod_path);
     try {
@@ -957,15 +959,11 @@ def demote_client_pulled_elements(
 }
 
 walker PlacementApplyPass(Transform) {
-    static has PROVIDES: tuple = ('PlacedIn', 'DecidedCodespace'),
-        REQUIRES: tuple = ('SymOf', );
-
     has prog: JacProgram,
         ir_in: uni.Module,
         cancel_token: any = None;
 
-    static has PROVIDES: tuple = ('codespace-pull', ),
-        HOST_PASS: bool = True;
+    static has HOST_PASS: bool = True;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

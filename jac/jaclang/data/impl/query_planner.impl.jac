@@ -77,7 +77,9 @@ impl _sql_pairs(
         );
         eff.from_visit = q.from_visit;
     }
-    cq = compile_query(eff, upto, promotions=store?.promotions, acl_root=acl_root);
+    cq = compile_query(
+        eff, upto, store, promotions=store?.promotions, acl_root=acl_root
+    );
     tail: list[QPred] = [];
     if cq.residual {
         last = upto - 1;
@@ -156,7 +158,7 @@ def _resolve_pairs(
 
 
 def _materialize_ids(
-    mem: Session, ids: list, local: dict[any, Anchor]
+    mem: Session, ids: list[any], local: dict[any, Anchor]
 ) -> list[Anchor] {
     missing = [
         i
@@ -175,9 +177,9 @@ def _materialize_ids(
 }
 
 
-def _unique_nodes(pairs: list[tuple[any, any]]) -> list {
+def _unique_nodes(pairs: list[tuple[any, any]]) -> list[any] {
     seen: set = set();
-    out: list = [];
+    out: list[any] = [];
     for (nid, _) in pairs {
         if nid is not None and nid not in seen {
             seen.add(nid);
@@ -278,8 +280,8 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
         return walk_edges(origins, q, gated);
     }
     (pairs, local, tail) = _resolve_pairs(mem, q, len(q.hops));
-    edge_ids: list = [];
-    node_of: dict = {};
+    edge_ids: list[any] = [];
+    node_of: dict[object, any] = {};
     seen: set = set();
     for (nid, eid) in pairs {
         if eid is None or eid in seen {
@@ -354,7 +356,9 @@ impl resolve_query_count(mem: Session, q: GraphQuery) -> int {
         ids.append(oanch.ensure_id());
     }
     mem.read_barrier();
-    cq = compile_query(q, len(q.hops), promotions=store?.promotions, count_only=True);
+    cq = compile_query(
+        q, len(q.hops), store, promotions=store?.promotions, count_only=True
+    );
     if cq.residual {
         return len(_resolve_for(mem, q));
     }
@@ -401,7 +405,7 @@ impl LazyRefs._realize(self: LazyRefs) -> None {
 }
 
 
-impl LazyRefs._bounded(self: LazyRefs, limit: (int | None), offset: int) -> list {
+impl LazyRefs._bounded(self: LazyRefs, limit: (int | None), offset: int) -> list[any] {
     q = self._query;
     bounded = GraphQuery(
         q.origin,
@@ -589,7 +593,7 @@ impl LazyRefs.count(self: LazyRefs, item: any) -> int {
 }
 
 
-impl LazyRefs.copy(self: LazyRefs) -> list {
+impl LazyRefs.copy(self: LazyRefs) -> list[any] {
     self._realize();
     return list(self);
 }

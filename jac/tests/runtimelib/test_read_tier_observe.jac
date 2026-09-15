@@ -26,7 +26,7 @@ obj FakeMetrics {
 class _Capture(logging.Handler) {
     def init(self: _Capture) {
         super.__init__();
-        self.records: list = [];
+        self.records: list[any] = [];
     }
 
     def emit(self: _Capture, record: logging.LogRecord) {

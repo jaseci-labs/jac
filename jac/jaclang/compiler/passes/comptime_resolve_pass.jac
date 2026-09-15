@@ -74,8 +74,7 @@ walker ComptimeResolvePass(TypeCheckPass) {
     has _armed: bool = False,
         _keep: set[int] = set();
 
-    static has PROVIDES: tuple = ('comptime', ),
-        HOST_PASS: bool = True;
+    static has HOST_PASS: bool = True;
 
     override def before_pass {
         self._keep = comptime_reach(self.ir_in);

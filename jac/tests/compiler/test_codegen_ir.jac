@@ -8,7 +8,7 @@ producer side, which is the seat the sealed native emitter sits in.
 """
 
 import ast as pyast;
-import from builtins { exec as pyexec }
+import from builtins { exec as pyexec, compile as pycompile }
 import from jaclang.compiler.backends.py.codegen_ir {
     CIR_FORMAT_VERSION,
     CirDiag,
@@ -65,7 +65,7 @@ def encode_value(w: CodegenIrWriter, val: object) {
         }
         w.emit_list(len(val));
     } elif isinstance(val, pyast.AST) {
-        names: list = [];
+        names: list[any] = [];
         for (fname, fval) in pyast.iter_fields(val) {
             encode_value(w, fval);
             names.append(fname);
@@ -107,7 +107,7 @@ test "codegen ir round trips a real program" {
     assert len(result.modules) == 1;
     assert result.modules[0].mod_path == "rt_fixture.py";
     assert len(result.modules[0].bytecode) > 0;
-    ns: dict = {};
+    ns: dict[str, any] = {};
     pyexec(result.modules[0].code_obj, ns);
     assert ns["result"] == "hello world!";
     assert ns["count"] == 3;
@@ -155,7 +155,7 @@ test "hand emitted ir proves the writer contract" {
     w.end_module();
     result = compile_ir(w.to_bytes());
     assert len(result.diags) == 0;
-    ns: dict = {};
+    ns: dict[str, any] = {};
     pyexec(result.modules[0].code_obj, ns);
     assert ns["value"] == 42;
     assert ns["big"] == 2 ** 70 + 5;
@@ -178,10 +178,29 @@ test "python inline splice lands with offset line numbers" {
     assert body[0].lineno == 11;
     assert body[1].lineno == 12;
     result = compile_ir(blob);
-    ns: dict = {};
+    ns: dict[str, any] = {};
     pyexec(result.modules[0].code_obj, ns);
     assert ns["X"] == 40;
     assert ns["Y"] == 42;
+    inputs: list[bool] = [];
+    def tracked_compile(
+        source: any,
+        filename: str,
+        mode: str,
+        flags: int = 0,
+        dont_inherit: bool = False
+    ) -> any {
+        inputs.append(isinstance(source, str));
+        return pycompile(
+            source, filename, mode, flags=flags, dont_inherit=dont_inherit
+        );
+    }
+    result = compile_ir(blob, python_compiler=tracked_compile);
+    assert inputs == [True, False] , "the selected compiler must handle both source splices and ASTs";
+    assert not result.diags;
+    replacement_ns: dict[str, object] = {};
+    pyexec(result.modules[0].code_obj, replacement_ns);
+    assert replacement_ns["Y"] == 42;
 }
 
 test "version mismatch is refused" {

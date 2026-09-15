@@ -392,6 +392,10 @@ Resources are read-only reference materials that AI models can load for context.
 | `jac://docs/nav`       | The docs navigation manifest as JSON: sections, titles, and reading order (the same tree as `jac guide --nav`) |
 | `jac://examples/*`     | Example Jac projects (auto-discovered)                                       |
 
+From a Jac repository checkout, examples are read from `jac/examples` without
+network access. Outside a checkout, example resources are fetched from GitHub on
+demand.
+
 ## Tools (19)
 
 Tools are executable operations that AI models can invoke to validate, format, and analyze Jac code.

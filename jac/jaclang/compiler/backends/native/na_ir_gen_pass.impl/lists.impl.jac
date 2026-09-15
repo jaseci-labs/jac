@@ -11,6 +11,10 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         elem_type = ir.IntType(64);
     }
 
+    if elem_type_name == "f64" {
+        elem_type = ir.DoubleType();
+    }
+
     _list_layout = self._container_layout_dense([elem_type]);
     list_struct = self.llvm_module.context.get_identified_type(
         f"List.{elem_type_name}"
@@ -364,7 +368,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
 
     _first_spread = self._spread_operand(nd.values[0]);
     first_val: (ir.Value | None) = None;
-    _first_src_info: (dict | None) = None;
+    _first_src_info: (dict[str, any] | None) = None;
     if _first_spread is not None {
         _first_src_info = self._container_src_info(
             self._str_norm_optional(self._codegen_expr(_first_spread))
@@ -405,9 +409,12 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     } elif _lit_spec == "jacval" and self?.jacval_type {
         elem_type = self.jacval_type;
         elem_type_name = "jacval";
+    } elif _lit_spec == "ptr" and isinstance(_decl_elem, ir.PointerType) {
+        elem_type = _decl_elem;
+        elem_type_name = "ptr";
     } elif _lit_spec in ("i64", "f64")
         and _decl_elem is not None
-        and isinstance(_decl_elem, (ir.IntType, ir.DoubleType)) {
+        and isinstance(_decl_elem, (ir.IntType, ir.DoubleType, ir.FloatType)) {
         elem_type = _decl_elem;
         elem_type_name = _lit_spec or "i64";
     } else {
@@ -415,7 +422,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             if first_val is not None
             else _first_src_info["helpers"]["elem_type"];
         elem_type_name = "i64";
-        if isinstance(elem_type, ir.DoubleType) {
+        if isinstance(elem_type, (ir.DoubleType, ir.FloatType)) {
             elem_type_name = "f64";
         } elif isinstance(elem_type, ir.PointerType) {
             elem_type_name = "ptr";
@@ -475,9 +482,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         ) {
             return list_val;
         }
-        append_val = first_val;
+        append_val = self._coerce_container_element(first_val, helpers["elem_type"]);
         if elem_type_name == "ptr" and isinstance(first_val.type, ir.PointerType) {
-            append_val = self.builder.bitcast(first_val, i8p, name="elem.cast");
+            append_val = self.builder.bitcast(append_val, i8p, name="elem.cast");
         } else {
             append_val = self._coerce_type(append_val, helpers["elem_type"]);
         }
@@ -565,7 +572,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
             val = self.builder.bitcast(val, i8p, name="elem.cast");
         } else {
-            val = self._coerce_type(val, helpers["elem_type"]);
+            val = self._coerce_container_element(val, helpers["elem_type"]);
         }
         self._rc_call_with_ctx(
             helpers["append"], [list_val, val], op="list_init", loc=_linit_loc
@@ -602,7 +609,9 @@ impl NaIRGenPass._codegen_index(
     );
     above = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
     is_oob = self.builder.or_(below, above, name="idx.range.chk");
-    self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
+    self._emit_runtime_raise(
+        is_oob, "IndexError", "list index out of range", [target_val]
+    );
     _got = self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
     if elem_type_name == "u8" {
         return self.builder.zext(_got, i64, name="ba.get.zext");
@@ -901,7 +910,9 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     _d_selfp = b.bitcast(drop_fn.args[0], _stp, name="d.self");
     _d_fields = self._emit_struct_drop_fields_fn(tname);
 
-    def _aos_drop_elem(bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list) -> ir.IRBuilder {
+    def _aos_drop_elem(
+        bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list[ir.Value]
+    ) -> ir.IRBuilder {
         if _d_fields is not None {
             bl.call(_d_fields, [bl.bitcast(elem_ptrs[0], i8p, name="d.elem8")]);
         }

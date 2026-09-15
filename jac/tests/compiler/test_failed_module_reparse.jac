@@ -29,7 +29,7 @@ def _write_project(base: str) -> Path {
     proj = Path(base);
     proj.mkdir(parents=True, exist_ok=True);
     (proj / "jac.toml").write_text(
-        '[project]\nname = "reparse"\nversion = "0.1.0"\n' 'entry-point = "card.jac"\n'
+        '[project]\nname = "reparse"\nversion = "0.1.0"\n' 'entry-point = "card"\n'
     );
     (proj / "broken.jac").write_text(BROKEN_SRC);
     (proj / "card.jac").write_text(CARD_SRC);
@@ -115,8 +115,7 @@ test "dropping a module's alerts spares dotted-name neighbors" {
     with tempfile.TemporaryDirectory() as tmp {
         proj = Path(tmp);
         (proj / "jac.toml").write_text(
-            '[project]\nname = "reparse"\nversion = "0.1.0"\n'
-            'entry-point = "foo.jac"\n'
+            '[project]\nname = "reparse"\nversion = "0.1.0"\n' 'entry-point = "foo"\n'
         );
         (proj / "foo.jac").write_text(BROKEN_SRC);
         (proj / "foo.bar.jac").write_text(BROKEN_SRC);

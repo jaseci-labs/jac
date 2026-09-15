@@ -1,6 +1,6 @@
 """Reusable data table component."""
 
-def:pub DataTable(columns: list, children: any) -> JsxElement {
+def:pub DataTable(columns: list[dict[str, str]], children: any) -> JsxElement {
     <table className="w-full">
         <thead>
             <tr className="border-b border-line">

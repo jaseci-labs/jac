@@ -13,12 +13,12 @@ def _fused_runtime_import_block -> str {
 def _host_boot_py(
     app_name: str,
     mode: str,
-    program: (dict | None) = None,
+    program: (dict[str, any] | None) = None,
     backend: str = "embedded",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: (dict | None) = None
+    plugin_configs: (dict[str, any] | None) = None
 ) -> str {
     config = {
         "app_name": app_name,
@@ -47,12 +47,12 @@ def _generate_host_source(
     width: int,
     height: int,
     app_name: str,
-    program: (dict | None) = None,
+    program: (dict[str, any] | None) = None,
     backend: str = "embedded",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: (dict | None) = None
+    plugin_configs: (dict[str, any] | None) = None
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -137,9 +137,9 @@ def _generate_host_source(
         "    if boot_rc == 0 {\n"
         "        main_mod = api.PyImport_AddModule(\"__main__\");\n"
         "        d = api.PyModule_GetDict(main_mod);\n"
-        "        port = api.PyLong_AsLong(api.PyRun_String(\"_ctx.port\", PY_EVAL, d, d));\n"
-        "        dev_port = api.PyLong_AsLong(api.PyRun_String(\"_ctx.dev_port\", PY_EVAL, d, d));\n"
-        "        target_port = dev_port if dev_port > 0 else port;\n"
+        "        port: int = api.PyLong_AsLong(api.PyRun_String(\"_ctx.port\", PY_EVAL, d, d));\n"
+        "        dev_port: int = api.PyLong_AsLong(api.PyRun_String(\"_ctx.dev_port\", PY_EVAL, d, d));\n"
+        "        target_port: int = dev_port if dev_port > 0 else port;\n"
         "        url = f\"http://127.0.0.1:{target_port}/\";\n"
         "    }\n"
         "    _wv_raw = webview_create(0, 0);\n"

@@ -50,7 +50,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     }
 
     inputs_detail: list[str] = [];
-    media_inputs: list = [];
+    media_inputs: list[any] = [];
     if fn_info is not None and fn_info.params is not None {
         params = [param for param in fn_info.params];
         for (key, value) in args.items() {
@@ -234,7 +234,7 @@ impl MTRuntime.write_back_conversation -> None {
     if self._conversation_list is None {
         return;
     }
-    out: list = [];
+    out: list[dict[str, any]] = [];
     for msg in self.get_history_for_persist() {
         m: any = msg;
         if hasattr(m, "to_dict") {
@@ -269,7 +269,7 @@ def _is_finish_tool_call(tc: any) -> bool {
 
 impl MTRuntime.get_history_for_persist -> list[MessageType] {
     scaff_ids = set(self._scaffolding_ids);
-    out: list = [];
+    out: list[any] = [];
     for msg in self.messages {
         if id(msg) in scaff_ids {
             continue;
@@ -328,11 +328,11 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | McpTool | None {
     return None;
 }
 
-impl MTRuntime.get_tool_list -> list[dict] {
+impl MTRuntime.get_tool_list -> list[dict[str, any]] {
     return [tool.get_json_schema() for tool in self.tools];
 }
 
-impl MTRuntime.get_output_schema -> dict | None {
+impl MTRuntime.get_output_schema -> dict[str, any] | None {
     assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);
     if len(self.tools) == 0 {
         return self.get_typed_output_schema();
@@ -341,7 +341,7 @@ impl MTRuntime.get_output_schema -> dict | None {
     return None;
 }
 
-impl MTRuntime.get_typed_output_schema -> dict | None {
+impl MTRuntime.get_typed_output_schema -> dict[str, any] | None {
     if self.resp_type is None or self.resp_type is str {
         return None;
     }

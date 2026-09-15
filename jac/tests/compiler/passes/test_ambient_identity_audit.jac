@@ -603,7 +603,7 @@ test "audit_optional_pep604" {
 
 test "typing_import_flips_native_placement" {
     import from jaclang.compiler.placement.placement_solver { native_default_verdict }
-    import from jaclang.compiler.driver.schedules { native_pipeline_available }
+    import from jaclang.compiler.driver.pipeline { native_pipeline_available }
     (env_ok, env_reason) = native_pipeline_available();
     if not env_ok {
         print("skipping placement audit: " + env_reason);
@@ -664,7 +664,7 @@ test "optional_layout_signal" {
         + "    has inner: Optional[Point] = None;\n"
         + "}\n"
     );
-    results: dict[str, tuple] = {};
+    results: dict[str, tuple[any, ...]] = {};
     for (tag, header, body) in [
         ("native", "# native spelling probe", native_body),
         ("typing", "import from typing { Optional }", typed_body)
@@ -732,6 +732,7 @@ test "optional_layout_signal" {
         + " typing="
         + str(typed_codes)
     );
+    assert not native_codes , "Optional Jac objects have a supported native layout";
 }
 
 test "audit_union_pep604" {

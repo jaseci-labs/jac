@@ -299,7 +299,7 @@ test "a leftover [scale.microservices] table is a hard config error" {
     }
     d = tempfile.mkdtemp();
     (Path(d) / "jac.toml").write_text(
-        "[project]\nname = \"demo\"\nentry-point = \"main.jac\"\n\n"
+        "[project]\nname = \"demo\"\nentry-point = \"main\"\n\n"
         "[scale.microservices.routes]\nadmin = \"\"\n"
     );
     (Path(d) / "main.jac").write_text("with entry {}\n");
@@ -398,7 +398,7 @@ test "a registered plugin target owns its section" {
     before = validate_scale_config({"fly": {"app_name": "demo"}});
     assert len(before) == 1 , f"expected 1 finding, got {before}";
 
-    def _factory(config: dict, logger: any = None) -> any {
+    def _factory(config: dict[str, any], logger: any = None) -> any {
         return None;
     }
     DeploymentTargetFactory.register("fly", _factory);
@@ -419,7 +419,7 @@ test "a misspelled deploy target is reported instead of silencing its section" {
 }
 
 test "known targets are exactly the ones the factory can build" {
-    import from jaclang.scale.deploy.target.factory { BUILTIN_TARGET_TYPES }
+    import from jaclang.scale.deploy.target.registry { BUILTIN_TARGET_TYPES }
     for name in BUILTIN_TARGET_TYPES {
         assert name in known_deploy_targets() , name;
     }

@@ -1,3 +1,5 @@
+import type from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
+import type from jaclang.compiler.frontend.codeinfo { InteropBinding }
 import from jaclang.jac0core.cache_paths { atomic_write }
 import ctypes;
 import hashlib;
@@ -131,7 +133,7 @@ obj LinkResult {
         plan_digest: str,
         layout_digest: str,
         sha256: str,
-        classes: dict = {},
+        classes: dict[str, any] = {},
         units: list[str] = [],
         reused: bool = False;
 }
@@ -142,7 +144,8 @@ obj LinkPlan {
         roots: list[str],
         units: list[LinkUnit],
         mode: str,
-        triple: str;
+        triple: str,
+        callback_bindings: list[InteropBinding] = [];
 
     def unit(path: str) -> (LinkUnit | None) {
         real = os.path.realpath(path);
@@ -196,7 +199,7 @@ obj LinkPlan {
         return h.hexdigest();
     }
 
-    def merged_layout -> dict {
+    def merged_layout -> dict[str, any] {
         return merge_class_layouts([u.iface for u in self.units]);
     }
 
@@ -573,6 +576,84 @@ def _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine {
     return tm;
 }
 
+def callback_glue_ir(plan: LinkPlan) -> str {
+    if not plan.callback_bindings {
+        return "";
+    }
+    import from jaclang.compiler.backends.native.link_glue { bind_shared_callbacks }
+    wanted = {binding.name for binding in plan.callback_bindings};
+    declarations: dict[str, str] = {};
+    defined: set[str] = set();
+    registry = plan.prog.native_units();
+    for unit in plan.units {
+        bitcode = registry.bitcode_for(unit.path, plan.options);
+        if bitcode is None {
+            raise LinkPlanError(f"No bitcode for {unit.path}");
+        }
+        module = llvm.parse_bitcode(bitcode);
+        for function in module.functions {
+            if function.name in wanted {
+                if function.is_declaration {
+                    declarations[function.name] = str(function);
+                } else {
+                    defined.add(function.name);
+                }
+            }
+        }
+    }
+    bindings = [
+        b
+        for b in plan.callback_bindings
+        if b.name not in defined
+    ];
+    missing = {b.name for b in bindings} - set(declarations);
+    if missing {
+        raise LinkPlanError(
+            "Missing callback declarations: " + ", ".join(sorted(missing))
+        );
+    }
+    (text, _) = bind_shared_callbacks(
+        "\n".join(declarations[b.name] for b in bindings), bindings
+    );
+    return text;
+}
+
+def heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
+    import from jaclang.compiler.backends.native.link_glue { inject_heap_accounting }
+    declarations: dict[str, str] = {};
+    defined: set[str] = set();
+    # Optimized units can inline the allocator; the plan owns the GC policy.
+    managed = plan.options.na_gc_mode != "none";
+    registry = plan.prog.native_units();
+    for unit in plan.units {
+        bitcode = registry.bitcode_for(unit.path, plan.options);
+        if bitcode is None {
+            raise LinkPlanError(f"No bitcode for {unit.path}");
+        }
+        module = llvm.parse_bitcode(bitcode);
+        for function in module.functions {
+            name = function.name;
+            if name in ("jac_heap_size", "jac_list_heap_size") {
+                if function.is_declaration {
+                    declarations[name] = str(function);
+                } else {
+                    defined.add(name);
+                }
+            }
+        }
+    }
+    text = '\n'.join(
+        value
+        for (name, value) in declarations.items()
+        if name not in defined
+    );
+    if not text {
+        return ("", []);
+    }
+    text = 'target triple = "' + plan.triple + '"\n' + text;
+    return inject_heap_accounting(text, managed);
+}
+
 def _glue_module(
     plan: LinkPlan, spec: GlueSpec, tm: (TargetMachine | None) = None
 ) -> tuple[ModuleRef, list[str]] {
@@ -581,6 +662,16 @@ def _glue_module(
     }
     (ir_text, exports) = link_glue_ir(spec);
     mod = llvm.parse_assembly(ir_text);
+    (heap_ir, heap_exports) = heap_glue_ir(plan);
+    if heap_ir {
+        mod.link_in(llvm.parse_assembly(heap_ir));
+        exports.extend(heap_exports);
+    }
+    callback_ir = callback_glue_ir(plan);
+    if callback_ir {
+        mod.link_in(llvm.parse_assembly(callback_ir));
+        exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+    }
     mod.verify();
     return (mod, exports);
 }
@@ -660,6 +751,19 @@ def optimize_whole_program(
     assert isinstance(pb, llvm.PassBuilder);
     mpm = pb.getModulePassManager();
     assert isinstance(mpm, llvm.ModulePassManager);
+    if kind == ArtifactKind.SHARED {
+        exports = plan.pub_exports()
+            + [
+                SHARED_INIT_SYMBOL,
+                "jac_retain",
+                "jac_release",
+                "jac_str_new",
+                "jac_heap_size",
+                "jac_list_heap_size"
+            ];
+        exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+        internalize_native_implementation(merged, exports);
+    }
     if kind == ArtifactKind.EXECUTABLE {
         mpm.add_internalize_pass();
     }
@@ -706,7 +810,7 @@ def units_source_key(paths: list[str], options: CompileOptions) -> str {
     return h.hexdigest();
 }
 
-def sidecar_unit_paths(sidecar: dict) -> list[str] {
+def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
     """The units a sidecar names, found where this process's jaclang lives:
     a kernel built by the kit records its units by package identity, so the
     checkout that matches the kit's sources can accept it without the
@@ -738,7 +842,7 @@ def _write_sidecar(
     plan_digest: str,
     action_digest: str = "",
     artifact_sha256: str = ""
-) -> tuple[dict, str] {
+) -> tuple[dict[str, any], str] {
     classes = plan.merged_layout();
     ldigest = layout_digest_of(classes);
     import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
@@ -818,7 +922,8 @@ def link_artifact(
 ) -> LinkResult {
     if kind == ArtifactKind.SHARED {
         for unit in plan.units {
-            if unit.iface.python_imports {
+            if set(unit.iface.python_imports)
+                - {b.name for b in plan.callback_bindings} {
                 raise LinkPlanError(
                     f"Cannot link shared native unit {unit.path}: Python imports "
                     f"require the JIT bridge ({', '.join(unit.iface.python_imports)})"
@@ -868,6 +973,11 @@ def link_artifact(
     spec = plan.glue_spec(kind, platform, static_musl);
     spec.data_layout = str(tm.target_data);
     (glue_ir, glue_exports) = link_glue_ir(spec);
+    callback_ir = callback_glue_ir(plan);
+    glue_ir += callback_ir;
+    if callback_ir {
+        glue_exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+    }
     registry = plan.prog.native_units();
     code_inputs: list[bytes] = [];
     for unit in plan.units {
@@ -881,6 +991,9 @@ def link_artifact(
         }
         code_inputs.append(product);
     }
+    (heap_ir, heap_exports) = heap_glue_ir(plan);
+    glue_ir += heap_ir;
+    glue_exports.extend(heap_exports);
     code_inputs.append(glue_ir.encode("utf-8"));
     inputs = LinkInputs(objects=code_inputs, archive_members=archive_members);
     if shared {
@@ -1238,4 +1351,22 @@ def jit_engine_for_cached(
 ) -> (ExecutionEngine | None) {
     plan = build_link_plan(prog, [path], options, mode=NATIVE_LINK_MODE_BITCODE);
     return jit_engine(plan);
+}
+
+def internalize_native_implementation(module: ModuleRef, exports: list[str]) {
+    import from jaclang.compiler.backends.native.llvm.binding.value { Visibility }
+    public = set(exports);
+    values: list[ValueRef] = list(module.functions);
+    values.extend(module.global_variables);
+    for value in values {
+        if value.is_declaration
+            or value.name in public
+            or value.name.startswith("llvm.") {
+            continue;
+        }
+        if value.visibility == Visibility.hidden {
+            continue;
+        }
+        value.linkage = "internal";
+    }
 }

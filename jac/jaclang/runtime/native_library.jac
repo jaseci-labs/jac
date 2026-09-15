@@ -6,7 +6,7 @@ glob SHARED_INIT_SYMBOL: str = "__jac_shared_init",
      _LOADED: dict[str, SharedNativeEngine] = {};
 
 class SharedNativeEngine {
-    def init(self: SharedNativeEngine, lib_path: str, record: dict) {
+    def init(self: SharedNativeEngine, lib_path: str, record: dict[str, any]) {
         mode = ctypes?.RTLD_LOCAL or 0;
         self.lib_path = lib_path;
         self.record = dict(record);
@@ -53,7 +53,7 @@ class SharedNativeEngine {
     def enable_jit_events(self: SharedNativeEngine) {}
 }
 
-def shared_engine_for(lib_path: str, record: dict) -> SharedNativeEngine {
+def shared_engine_for(lib_path: str, record: dict[str, any]) -> SharedNativeEngine {
     key = os.path.realpath(lib_path);
     found = _LOADED.get(key);
     if found is None {

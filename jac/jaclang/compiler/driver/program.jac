@@ -1,3 +1,4 @@
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import types;
 import from threading { Event }
@@ -19,8 +20,9 @@ import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.compiler.driver.mtp { Info }
+import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.passes.transform { Transform }
+import type from jaclang.compiler.driver.compilation_context { SourceStore }
 
 class JacProgram {
     has hub: ModuleHub,
@@ -38,7 +40,11 @@ class JacProgram {
         _stub_catalog: StubCatalog | None,
         _stub_trees_served: bool,
         _iface: IfaceRegistry | None,
-        _natives: NativeUnitRegistry | None;
+        _natives: NativeUnitRegistry | None,
+        source_store: SourceStore,
+        context_root: JacProgram | None,
+        context_key: str,
+        contexts: dict[str, JacProgram];
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
@@ -47,8 +53,11 @@ class JacProgram {
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def stub_catalog(self: JacProgram) -> StubCatalog | None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
+    def release_compile_closure(
+        self: JacProgram, collect: bool = True, retain_stubs: bool = True
+    ) -> None;
+
     def scrub_hub_types(self: JacProgram) -> None;
-    def release_compile_closure(self: JacProgram, collect: bool = True) -> None;
     def release_check_caches(self: JacProgram) -> None;
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def install_module(self: JacProgram, resolved_path: str, mod: uni.Module) -> None;

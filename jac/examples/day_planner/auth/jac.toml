@@ -2,7 +2,7 @@
 name = "day-planner-auth"
 version = "1.0.0"
 description = "AI Day Planner - authenticated def:priv variant with multi-file frontend"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-app"
 
 [dependencies.npm]

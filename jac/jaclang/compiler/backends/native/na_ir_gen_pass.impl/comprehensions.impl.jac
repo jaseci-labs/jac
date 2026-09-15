@@ -395,7 +395,7 @@ impl NaIRGenPass._emit_compr_element(
 }
 
 impl NaIRGenPass._codegen_compr_walk(
-    comprs: list,
+    comprs: list[uni.InnerCompr],
     idx: int,
     kind: str,
     acc: ir.Value,
@@ -416,7 +416,7 @@ impl NaIRGenPass._codegen_compr_walk(
 }
 
 impl NaIRGenPass._codegen_compr_walk_body(
-    comprs: list,
+    comprs: list[uni.InnerCompr],
     idx: int,
     kind: str,
     acc: ir.Value,
@@ -427,7 +427,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
     inner = comprs[idx];
     loop_target = inner.target;
     collection = inner.collection;
-    conditionals = inner.conditional or [];
+    conditionals: list[uni.Expr] = inner.conditional or [];
 
     if isinstance(collection, uni.FuncCall) {
         call_name = self._get_name(collection.target);
@@ -583,11 +583,11 @@ impl NaIRGenPass._codegen_compr_walk_body(
         skip_bb = func.append_basic_block(name="compr.skip");
         all_cond = self._codegen_expr(conditionals[0]);
         if all_cond is not None {
-            all_cond = self._to_bool(all_cond);
+            all_cond = self._consume_bool(all_cond);
             for i in range(1, len(conditionals)) {
                 next_cond = self._codegen_expr(conditionals[i]);
                 if next_cond is not None {
-                    next_cond = self._to_bool(next_cond);
+                    next_cond = self._consume_bool(next_cond);
                     all_cond = self.builder.and_(all_cond, next_cond, name="compr.and");
                 }
             }
@@ -623,14 +623,14 @@ impl NaIRGenPass._codegen_compr_walk_body(
 
 impl NaIRGenPass._codegen_compr_range_walk(
     inner: uni.InnerCompr,
-    comprs: list,
+    comprs: list[uni.InnerCompr],
     idx: int,
     kind: str,
     acc: ir.Value,
     key_expr: uni.UniNode,
     val_expr: (uni.UniNode | None),
     spec: str,
-    conditionals: list
+    conditionals: list[uni.Expr]
 ) -> None {
     collection = inner.collection;
     loop_target = inner.target;
@@ -641,7 +641,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     if not isinstance(collection, uni.FuncCall) {
         return;
     }
-    params = collection.params or [];
+    params: Sequence[any] = collection.params or [];
     start_val: (ir.Value | None) = None;
     stop_val: (ir.Value | None) = None;
     if len(params) == 1 {
@@ -677,11 +677,11 @@ impl NaIRGenPass._codegen_compr_range_walk(
         skip_bb = func.append_basic_block(name="compr.range.skip");
         all_cond = self._codegen_expr(conditionals[0]);
         if all_cond is not None {
-            all_cond = self._to_bool(all_cond);
+            all_cond = self._consume_bool(all_cond);
             for i in range(1, len(conditionals)) {
                 next_cond = self._codegen_expr(conditionals[i]);
                 if next_cond is not None {
-                    next_cond = self._to_bool(next_cond);
+                    next_cond = self._consume_bool(next_cond);
                     all_cond = self.builder.and_(all_cond, next_cond, name="compr.and");
                 }
             }

@@ -1,12 +1,9 @@
 # Workspaces & Apps
 
-A Jac project is a set of **apps** over one body of **shared code**. Each app
-is a table in `jac.toml` -- `[apps.web]`, `[apps.mobile]`, `[apps.social_graph]`
--- with a *kind* that says what it builds and where its files live. Everything
-under no app's root is shared: plain modules that any app may import and that
-belong to none of them. A project with no `[apps]` table at all is the simplest
-case, a **single implicit app**, and the hello-world `jac.toml` you already
-have is one.
+A Jac project declares apps by entry module. Each `[apps.<name>]` table names
+an `entry-point` and a `kind`. A compilation starts in the app selected by the
+CLI. Ordinary imports inherit that app's context; another declared entry is a
+boundary. A project without `[apps]` has one implicit app.
 
 Four principles hold the model together:
 
@@ -18,7 +15,7 @@ Four principles hold the model together:
   against one app is one transaction. Anything that crosses an app boundary
   is a message.
 - **No pass reads `jac.toml`.** The driver stamps *app facts* onto every
-  module (which app, which root, which kind, which owner); the compiler's laws
+  module (selected app, project root, kind); the compiler's laws
   consume the stamps.
 - **The platform is a stamped decision, never a filename property.** A
   `.native.jac` variant is selected for a mobile app's native platforms, not
@@ -33,23 +30,35 @@ default-app = "web"          # optional; a bare `jac run` uses it
 
 [apps.web]                   # one table per app
 kind = "web-app"             # required: a project kind
-path = "web"                 # optional dir root, relative to the project root
-entry-point = "main.jac"     # optional; relative to path; default = the kind's entry
+entry-point = "web.main"
 platform = "android"         # optional default platform (mobile: android | ios | web; desktop: windows | macos | linux)
 route = "/api/web"           # optional; default "/api/<name>" (apps with a server only)
 
-[apps.social_graph]          # file-rooted app: no path, the entry file IS the app
+[apps.social_graph]          # a declared service entry
 kind = "service"
-entry-point = "core/social_graph.jac"
+entry-point = "core.social_graph"
 ```
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `kind` | string | **Required.** One of the [project kinds](../quick-guide/project-kinds.md): `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile`. The kind decides the default entry, the action a bare `jac run <app>` takes, what the client renders (`web-app`, `web-static`, `desktop` and `js-package` render React DOM; `mobile` renders native views through [`@jac/mobui`](plugins/jac-client.md#the-jacmobui-vocabulary), with the `E1105` host-tag guard on every module the app claims), and whether the app has a server. |
-| `path` | string | Directory root of the app, relative to the project root. Absolute paths are rejected. Omit it (and set `entry-point`) for a file-rooted app. |
-| `entry-point` | string | Entry file, relative to `path` (or to the project root when there is no `path`). Defaults to the kind's entry (`main.jac`; `lib.jac` for the package kinds). |
+| `kind` | string | **Required.** One of the [project kinds](../quick-guide/project-kinds.md): `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile`. The kind decides the default entry, the action a bare `jac run <app>` takes, what the client renders (`web-app`, `web-static`, `desktop` and `js-package` render React DOM; `mobile` renders native views through [`@jac/mobui`](plugins/jac-client.md#the-jacmobui-vocabulary), with the `E1105` host-tag guard on every module compiled in the app context), and whether the app has a server. |
+| `entry-point` | string | **Required.** Dotted module name relative to the project root, such as `core.api`. File paths and extensions are rejected. |
 | `platform` | string | Default platform: `android`, `ios` or `web` for a `mobile` app; `windows`, `macos` or `linux` for a `desktop` app. `--platform` on `jac run` / `jac build` overrides it for one invocation. |
 | `route` | string | The app's public route prefix, for apps whose kind has a server. Must start with `/`. Defaults to `/api/<name>`. |
+
+Entry points use the compiler's local module resolution without executing code.
+`core.api` resolves `core/api.jac` (or its Python implementation); `core` can
+resolve a package initializer. A missing module produces an entry-point diagnostic.
+Placement pins use the same dotted naming style but also allow patterns:
+
+```toml
+[placement.pins]
+"core.api" = "server"
+"desktop.*" = "client"
+```
+
+Quote pin keys so TOML preserves each dotted name as one literal key. An entry
+point must name one module and cannot contain a wildcard.
 
 Any key other than these is a hard config error naming the accepted keys. App
 names cannot contain `/` or `\` and cannot end in `.jac`, so that `jac run
@@ -59,57 +68,37 @@ A nested table under an app -- `[apps.web.serve]`, `[apps.mobile.dependencies.np
 `[apps.social_graph.scale]` -- is an **overlay**, covered under
 [Effective configuration](#effective-configuration) below.
 
-## Dir-rooted, file-rooted, and shared
+## Entry modules and shared source
 
-An app with a `path` is **dir-rooted**: every module under that directory
-belongs to it. An app with no `path` but an `entry-point` is **file-rooted**:
-it claims exactly that one file and nothing else -- not the file's siblings,
-not its directory.
+App declarations identify entry modules. They do not claim directories. A helper
+imported by two apps is compiled in each app's context, with shared parsed syntax
+and distinct semantic facts and runtime module state. File location and
+`default-app` do not select a global app context.
 
-**Membership** is decided by the nearest root. A module belongs to the app
-whose root contains it; when roots nest, the innermost wins; a file-rooted app
-matches only its own entry file. A module under no app root is **shared**.
+Imports through a declared service entry use its bridge surface: public functions
+and walkers retain the provider's identity. A direct import of an ordinary
+implementation module participates locally in the importing app; an entry-only
+model cannot infer an undeclared private boundary. Keep cross-app APIs at their
+declared entries.
 
-```
-acme/
-  jac.toml
-  core/                      shared: no app claims this directory
-    social_graph.jac         ...except this one file, which [apps.social_graph] claims
-    scoring.jac
-    utils.jac
-  web/                       [apps.web]  (dir-rooted)
-    main.jac
-    pages/
-  mobile/                    [apps.mobile]
-    main.jac
-  cli/                       [apps.cli]
-    main.jac
-```
+`E2039`/`W2039` diagnose uses across declared app boundaries outside the bridge
+surface. `[check] enforce_access` selects errors instead of warnings.
 
-Shared code is the only thing two apps may both load in-process. The compiler
-enforces the layering with two laws, checked wherever a symbol is used:
-
-- **App isolation** (`E2039` / `W2039`): a module of app *A* may not use a
-  symbol declared in a module of app *B*, except through app *B*'s **bridge
-  surface** -- its walkers and `def:pub` functions, which compile to a call
-  across the boundary rather than an in-process reference.
-- **Shared layering** (`E2040` / `W2040`): a shared module may not import from
-  any app. Dependencies point from apps toward shared code, never back.
-
-Both follow `[check] enforce_access`: they are errors when access is enforced
-and warnings otherwise, exactly like `E2038`.
+The removed `path` key is a configuration error. Migrate
+`path = "web"` plus `entry-point = "main"` to
+`entry-point = "web.main"`.
 
 ## The implicit single app
 
 With no `[apps]` table the project is one app. Its name is `[project] name`
 (or `"main"`), its kind is `[project] kind` (or inferred from the entry-point,
 exactly as before), its entry is `[project] entry-point`, and its root is the
-project root. Nothing about a single-app `jac.toml` changed:
+project root. Single-app entry points use the same dotted module syntax:
 
 ```toml
 [project]
 name = "hello"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-app"
 ```
 
@@ -153,7 +142,7 @@ backend = "https://example.org"
 
 `jac run web` reads `serve.port` from the `web` effective config; `jac test
 mobile` reads `[test]` from the `mobile` effective config and resolves its
-`directories` against the app root; `jac config` shows the base file, and the
+`directories` against the entry module’s directory; `jac config` shows the base file, and the
 `apps` group lists the app tables.
 
 `${VAR}`, `${VAR:-default}` and `${VAR:?message}` interpolation applies to
@@ -164,37 +153,17 @@ capability tables alike. There are no sections where it is skipped.
 setup` targets. Without it, a workspace with exactly one app uses that app; a
 workspace with several and no default errors, listing the apps.
 
-## Ownership: one owner per server-placed shared module
+## Ownership follows compilation context
 
-Shared code that carries walkers or persisted node/edge archetypes has to run
-on exactly one app's server, so that every other app bridges to the same place.
-That app is the module's **owner**:
+Ordinary imported modules carry the selected app's identity, including their
+walkers and persisted node/edge declarations. A service entry establishes a
+separate provider context. Import that entry when multiple apps need the same
+service or store. Colocated apps load distinct copies of ordinary shared-source
+modules, so module globals are app-local.
 
-- A **file-rooted service app** owns its entry file explicitly. This is what
-  `[apps.social_graph] entry-point = "core/social_graph.jac"` means: the
-  walkers in that file run in the `social_graph` app, and every other app that
-  imports them bridges there.
-- Otherwise, when the workspace has exactly one serving app, it owns every
-  server-placed shared module implicitly. A `web` app plus a `mobile` app plus
-  a `cli` app needs no service tables at all: `web` owns the server side.
-- When several apps serve, a shared module reached by only one serving app
-  belongs to that app. Reachability follows Jac imports and annexes, stopping
-  at another app's boundary. Importing a service does not make its private
-  dependencies belong to the caller. In the flagship, the leaderboard graph
-  model belongs to `social_graph`, its only consuming service.
-- Otherwise, `[project] default-app` breaks the tie for shared modules with
-  multiple possible owners or no consumers. Explicit app ownership pins take
-  precedence over inferred ownership.
-- Two or more serving apps, no `default-app`, and a shared module that defines
-  walkers or node/edge archetypes with neither an explicit owner nor a single
-  inferred consumer is **`E5107`**. Give the module its own `[apps.<name>]`
-  table (`kind = "service"`, `entry-point = "<path>"`), or pin it to an owner
-  with `[apps.<owner>.placement.pins] "<module>" = "server"`.
-
-Client apps are consumers. A `mobile` or `web-static` app that imports a
-server-placed walker bridges to the owner; a `cli` app does the same -- a
-command-line app never touches another app's store directly. Store-touching
-admin commands are entry actions of the owning app.
+No workspace consumer scan or app context cache is needed. `default-app` chooses a
+CLI default; placement pins choose codespaces. Neither assigns shared code to a
+global app context, and the former E5107 ambiguity gate has been removed.
 
 ## The app dependency graph
 
@@ -255,15 +224,13 @@ jac create mysite --awesome              # the flagship workspace, below
 `<path>/` (default: the app name) and appends an `[apps.<name>]` table to the
 project's `jac.toml`, leaving the rest of the file intact.
 
-**`jac check` is the workspace gate.** With no paths in a workspace it compiles
-**one rooted program per app entry**, each with that app's facts stamped, then
-sweeps every `.jac` file no app reached as its own root. When more than one
-app was checked, each diagnostic is prefixed `[<app>]`. Explicit paths keep the
-file-per-root behavior you know, with the owning app's facts. `--app <name>`
-restricts the run to one app. Because the same app facts drive placement, the
-`.jir` placement cache is keyed by an **app-fact digest** (name, kind,
-platform, pins, npm names), so changing an app table invalidates
-exactly the modules it affects.
+**`jac check` is the workspace gate.** With no paths in a workspace it traverses
+imports from each declared entry, plus conventional page roots for client apps.
+Shared helpers are checked in each app context that reaches them. When several
+apps are checked, diagnostics carry an app prefix. `--app <name>` selects one
+context; explicit paths remain explicit roots. Unreachable files must be named
+explicitly to check them. Cache slots include the entry and compilation context,
+so one app's analyzed artifacts cannot overwrite another's.
 
 ## Worked example: the flagship workspace
 
@@ -277,23 +244,23 @@ default-app = "web"
 
 [apps.web]                     # the site: landing, docs, leaderboard, socialize, wasm game
 kind = "web-app"
-path = "web"
+entry-point = "web.main"
 
 [apps.mobile]                  # a mobUI (React Native) client for the same social graph
 kind = "mobile"
-path = "mobile"
+entry-point = "mobile.main"
 
 [apps.cli]                     # a command-line client: offline scorer + docs/feed over the wire
 kind = "cli"
-path = "cli"
+entry-point = "cli.main"
 
 [apps.social_graph]            # file-rooted service app: owns the socialize walkers
 kind = "service"
-entry-point = "core/social_graph.jac"
+entry-point = "core.social_graph"
 
 [apps.scoring]                 # file-rooted service app: owns the leaderboard scorer
 kind = "service"
-entry-point = "core/scoring_service.jac"
+entry-point = "core.scoring_service"
 
 [test]
 directories = ["core", "web", "cli"]
@@ -318,9 +285,9 @@ walkers of the social app -- one file, no routes, no serializers. The `web`
 app's `socialize/` pages, the `mobile` app's screens, and the `cli` app's
 `feed`/`post` commands all `import from core.social_graph { load_feed,
 create_tweet, ... }` with a plain import. The compiler classifies each import
-by the owner of what is imported: the `web` app's client code bridges over
+by the provider of what is imported: the `web` app's client code bridges over
 HTTP as it always did; the `mobile` app's screens do the same from React
-Native; the `cli` app -- server-side Python, but not the owner -- gets a
+Native; the `cli` app -- server-side Python, but not the provider -- gets a
 **typed-async stub** and `await`s the call. Nothing in the source says which
 is which.
 
@@ -335,8 +302,8 @@ because nothing server-placed is involved.
 single-app server does today.
 
 **Across apps, consistency is eventual, and the write path is single-writer.**
-A consumer never writes another app's store; it *ships a walker* to the owner
-and the owner writes. Two shapes of shipping exist, chosen by whether you wait:
+A consumer never writes another app's store; it *ships a walker* to the provider
+and the provider writes. Two shapes of shipping exist, chosen by whether you wait:
 
 ```jac
 import from core.social_graph { create_tweet, load_feed }
@@ -370,14 +337,14 @@ walker:pub fire_and_forget {
   contract: catch at the boundary where you want graceful degradation.
 - **Un-awaited** cross-app walker spawns in statement position never raise at
   the call site. The spawn is written to an **outbox** inside the caller's
-  request, then delivered to the owner by a background worker with
+  request, then delivered to the provider by a background worker with
   exponential backoff (up to 8 attempts, then dead-lettered). Every entry
   carries an idempotency key (default: a hash of app, walker and arguments;
   pass your own when the arguments alone are not identity), sent as
   `X-Jac-Idempotency-Key`; the receiving app dedupes by key, so delivery is
   **at-least-once with idempotent receipt**. The outbox lives in the project's
   Postgres store when one is configured, else in `.jac/data/outbox.sqlite`.
-- **Reads go to the owner** by default (owner-read). An app may opt into an
+- **Reads go to the provider** by default (provider-read). An app may opt into an
   in-process read cache for effect-free provider endpoints with
   `[apps.<consumer>.scale] read_cache = true`; the cache is invalidated when an
   effectful call to the same provider app goes through.
@@ -404,8 +371,6 @@ and [Kubernetes & Operations](plugins/jac-scale-kubernetes.md#service-apps-in-ku
 
 - `E2039` / `W2039` -- app isolation: a symbol of one app used from another
   outside the bridge surface.
-- `E2040` / `W2040` -- shared layering: a shared module importing from an app.
-- `E5107` -- a server-placed shared module with no single owner.
 - `E5108` -- an app importing another app's node or edge; only walkers and
   `def:pub` functions bridge, and an imported `obj` or `enum` mirrors as a
   boundary type.

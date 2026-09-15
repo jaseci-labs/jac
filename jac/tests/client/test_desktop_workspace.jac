@@ -17,34 +17,7 @@ import from jaclang.client.desktop_config { get_desktop_config, reset_desktop_co
 
 
 glob _TOML: str = (
-         "[project]\n"
-         "name = \"kiosk_ws\"\n"
-         "default-app = \"web\"\n"
-         "\n"
-         "[apps.web]\n"
-         "kind = \"web-app\"\n"
-         "path = \"web\"\n"
-         "\n"
-         "[apps.shell]\n"
-         "kind = \"desktop\"\n"
-         "path = \"shell\"\n"
-         "\n"
-         "[apps.kiosk]\n"
-         "kind = \"desktop\"\n"
-         "path = \"kiosk\"\n"
-         "\n"
-         "[desktop]\n"
-         "name = \"root-app\"\n"
-         "\n"
-         "[desktop.window]\n"
-         "title = \"Root\"\n"
-         "width = 1000\n"
-         "\n"
-         "[apps.shell.desktop]\n"
-         "name = \"shell-app\"\n"
-         "\n"
-         "[apps.shell.desktop.window]\n"
-         "title = \"Shell\"\n"
+         '[project]\nname = "kiosk_ws"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.shell]\nkind = "desktop"\nentry-point = "shell.main"\n\n[apps.kiosk]\nkind = "desktop"\nentry-point = "kiosk.main"\n\n[desktop]\nname = "root-app"\n\n[desktop.window]\ntitle = "Root"\nwidth = 1000\n\n[apps.shell.desktop]\nname = "shell-app"\n\n[apps.shell.desktop.window]\ntitle = "Shell"\n'
      );
 
 

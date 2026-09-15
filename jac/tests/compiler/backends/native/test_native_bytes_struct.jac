@@ -45,8 +45,8 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
     addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
-    str_slots: list = [];
-    real_args: list = [];
+    str_slots: list[bool] = [];
+    real_args: list[any] = [];
     for a in argtypes {
         if a == ctypes.c_char_p {
             str_slots.append(True);
@@ -76,7 +76,7 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
             else None
     );
     def _call(*args: any) -> any {
-        c_args: list = [];
+        c_args: list[any] = [];
         for (a, is_str) in zip(args, str_slots) {
             if is_str {
                 assert mkstr is not None , "jac_str_new not found in JIT engine";
@@ -519,4 +519,19 @@ test "bytes vs None comparison is null-safe (#6751)" {
     assert get_func(eng, "some_eq_diff", ctypes.c_int64)() == 0;
     # ordering (< > <= >=) against an un-narrowed None operand is rejected
     # at check time (E1121, pinned in test_native_optional_ptr.jac)
+}
+
+test "builtin repr supports native bytes without demotion" {
+    (eng, _) = compile_native("bytes_ops.jac");
+    assert get_func(eng, "builtin_repr_ok", ctypes.c_int64)() == 1;
+}
+
+test "string containment preserves embedded NUL boundaries" {
+    (eng, _) = compile_native("bytes_ops.jac");
+    assert get_func(eng, "string_contains_nul", ctypes.c_int64)() == 1;
+}
+
+test "reused object locals preserve narrowed string operations" {
+    (eng, _) = compile_native("rebound_string.jac");
+    assert get_func(eng, "rebound_string", ctypes.c_int64)() == 0;
 }

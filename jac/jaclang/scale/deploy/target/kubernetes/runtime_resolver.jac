@@ -6,7 +6,7 @@ import from jaclang.scale.runtime.gateway.service_registry {
     ServiceEntry
 }
 import from jaclang.server { sv_client }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { k8s_safe_name }
+import from jaclang.scale.runtime.context.util { k8s_safe_name }
 import from jaclang.scale.runtime.context.util {
     k8s_service_dns_url,
     in_cluster_namespace,
@@ -71,7 +71,7 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
         return False;
     }
 
-    def status -> dict[str, dict] {
+    def status -> dict[str, dict[str, any]] {
         return {};
     }
 

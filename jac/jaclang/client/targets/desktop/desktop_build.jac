@@ -273,9 +273,9 @@ def serving_app_for(config: any, entry_file: Path, backend: str) -> str {
     if config is None or not config.is_workspace or not config.apps {
         return "";
     }
-    owner = config.app_for_path(str(entry_file.resolve()));
+    selected_app = config.app_for_path(str(entry_file.resolve()));
     if backend != "embedded" {
-        return owner.name if owner is not None else "";
+        return selected_app.name if selected_app is not None else "";
     }
     try {
         chosen = config.resolve_app("");
@@ -290,7 +290,7 @@ def serving_app_for(config: any, entry_file: Path, backend: str) -> str {
             return app.name;
         }
     }
-    return owner.name if owner is not None else "";
+    return selected_app.name if selected_app is not None else "";
 }
 
 

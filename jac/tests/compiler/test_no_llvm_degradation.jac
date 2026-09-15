@@ -35,7 +35,7 @@ try:
 except SystemExit as exc:
     raise SystemExit(int(exc.code) if isinstance(exc.code, int) else 1)
 """;
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["JAC_LLVM_SHIM"] = "none";
     env["HOME"] = work;
     env["XDG_CACHE_HOME"] = os.path.join(work, "cache");
@@ -63,4 +63,30 @@ test "no-llvm run degrades to the server codespace and still executes" {
         assert "scheduling error" not in out , out;
         assert "preferred native but did not lower" not in out , out;
     }
+}
+
+
+test "native availability probes do not load code generators or LLVM bindings" {
+    script = """
+import os, sys, tempfile
+from pathlib import Path
+from jaclang.compiler.driver.pipeline import native_pipeline_available, _native_env_memo
+heavy = ('jaclang.compiler.backends.native.na_ir_gen_pass',
+         'jaclang.compiler.backends.native.na_compile_pass',
+         'jaclang.compiler.backends.native.llvm.binding')
+with tempfile.TemporaryDirectory() as directory:
+    shim = Path(directory) / 'probe-shim'
+    shim.touch()
+    for setting, expected in [('none', False), (str(shim), True)]:
+        os.environ['JAC_LLVM_SHIM'] = setting
+        _native_env_memo.clear()
+        available, reason = native_pipeline_available()
+        assert available is expected, (available, reason)
+        loaded = [name for name in sys.modules if name.startswith(heavy)]
+        assert not loaded, f'availability probe imported compiler backends: {loaded}'
+""";
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
+    );
+    assert proc.returncode == 0 , proc.stdout + proc.stderr;
 }

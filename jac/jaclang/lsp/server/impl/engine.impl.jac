@@ -7,9 +7,9 @@ impl _path_of(uri: str) -> str {
 }
 
 impl _merge_app_alerts(
-    collected: list[tuple[str, list, list]], app_count: int
-) -> tuple[list, list] {
-    def key_of(alert: any) -> tuple {
+    collected: list[tuple[str, list[Alert], list[Alert]]], app_count: int
+) -> tuple[list[Alert], list[Alert]] {
+    def key_of(alert: any) -> tuple[str, int, int, str, str] {
         code = alert.code.code if alert.code else '';
         return (
             alert.loc.mod_path,
@@ -20,10 +20,10 @@ impl _merge_app_alerts(
         );
     }
 
-    def merge(index: int) -> list {
-        seen_apps: dict[tuple, set[str]] = {};
-        first: dict[tuple, any] = {};
-        order: list[tuple] = [];
+    def merge(index: int) -> list[Alert] {
+        seen_apps: dict[tuple[str, int, int, str, str], set[str]] = {};
+        first: dict[tuple[str, int, int, str, str], any] = {};
+        order: list[tuple[str, int, int, str, str]] = [];
         tagged: list[tuple[str, any]] = [];
         for entry_item in collected {
             app_name = entry_item[0];
@@ -43,8 +43,8 @@ impl _merge_app_alerts(
             for key in order
             if len(seen_apps[key]) >= app_count
         };
-        out: list = [];
-        emitted: set[tuple] = set();
+        out: list[Alert] = [];
+        emitted: set[tuple[str, int, int, str, str]] = set();
         for (app_name, alert) in tagged {
             key = key_of(alert);
             if key in shared {
@@ -235,7 +235,7 @@ impl JacLangServer.type_check_file(
         if cancel_token and cancel_token.is_set() {
             return False;
         }
-        import from jaclang.compiler.placement.workspace { workspace_for_path }
+        import from jaclang.project.workspace { workspace_for_path }
         ws = workspace_for_path(main_path);
         app = ws.app_for_path(main_path) if ws is not None else None;
         proj_root = ws.project_root if ws is not None else None;
@@ -248,7 +248,7 @@ impl JacLangServer.type_check_file(
             ];
         }
         multi = len(targets) > 1;
-        collected: list[tuple[str, list, list]] = [];
+        collected: list[tuple[str, list[Alert], list[Alert]]] = [];
         build: (uni.Module | None) = None;
         for (app_name, app_kind) in targets {
             build = self.program.compile(
@@ -259,6 +259,9 @@ impl JacLangServer.type_check_file(
                     cancel_token=cancel_token,
                     target_app=app_name,
                     app_kind=app_kind,
+                    entry_point=ws.apps[app_name].`entry
+                        if ws is not None and app_name in ws.apps
+                        else main_path,
                     project_root=proj_root
                 )
             );
@@ -441,6 +444,10 @@ impl JacLangServer.get_references(
 ) -> list[lspt.Location] {
     node_selected = self.get_token_at_position(file_path, position);
     if node_selected and node_selected.sym {
+        occurrences: list[uni.NameAtom] = [
+            *node_selected.sym.defn,
+            *node_selected.sym.uses
+        ];
         list_of_references: list[lspt.Location] = [
             lspt.Location(
                 uri=_uri_of(cur_node.loc.mod_path),
@@ -656,11 +663,11 @@ impl JacLangServer._string_import_definition(
 
 impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
     import os;
-    import from jaclang.compiler.driver.modresolver {
-        is_client_npm_import,
+    import from jaclang.project.modresolver {
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
+    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
     try {
         resolved = mp.resolve_relative_path();
         if os.path.isfile(resolved) {
@@ -690,11 +697,11 @@ impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
 impl JacLangServer._npm_item_location(
     from_loc: uni.ModulePath, item_name: str
 ) -> Optional[lspt.Location] {
-    import from jaclang.compiler.driver.modresolver {
-        is_client_npm_import,
+    import from jaclang.project.modresolver {
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
+    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
     def at_file(path_: str, rng: Optional[lspt.Range]) -> Optional[lspt.Location] {
         path_uri = uris.from_fs_path(path_);
         if path_uri is None {
@@ -1208,7 +1215,7 @@ impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
     }
 }
 
-impl JacLangServer.diagnostics.getter -> dict[str, list] {
+impl JacLangServer.diagnostics.getter -> dict[str, list[lspt.Diagnostic]] {
     with self._state_lock.read_lock() {
         all_errors = list(self.program.errors_had);
         all_warnings = list(self.program.warnings_had);

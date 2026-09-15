@@ -2,7 +2,7 @@
 name = "{{name}}"
 version = "0.1.0"
 description = "Command-line Jac project"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "cli"
 
 [dependencies]

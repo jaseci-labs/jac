@@ -25,7 +25,9 @@ import from jaclang.scale.admin.workload_helpers {
 
 glob logger = logging.getLogger(__name__);
 
-def _index_by(rows: list, label: str, as_int: bool = False) -> dict[str, float] {
+def _index_by(
+    rows: list[dict[str, any]], label: str, as_int: bool = False
+) -> dict[str, float] {
     out: dict[str, float] = {};
     for `entry in rows {
         key = `entry.get("metric", {}).get(label, "");
@@ -41,7 +43,7 @@ def _index_by(rows: list, label: str, as_int: bool = False) -> dict[str, float] 
     return out;
 }
 
-def _finite(v: list) -> float {
+def _finite(v: list[float | str]) -> float {
     try {
         val = float(v[1]) if len(v) > 1 else 0.0;
     } except Exception {
@@ -71,7 +73,7 @@ def _metrics_namespace -> str {
     return 'jaclang_scale';
 }
 
-def _traffic_queries -> dict {
+def _traffic_queries -> dict[str, any] {
     if prom_query('count({__name__=~".+_gateway_requests_total"})') {
         return {
             'rate': 'sum(rate({__name__=~".+_gateway_requests_total"}[1m]))',
@@ -300,10 +302,16 @@ impl JacAPIServerWorkloads.admin_workloads_list(
             meta=Meta(extra={'http_status': 200})
         );
     }
-    dep_desired = prom_query(_scoped('kube_deployment_spec_replicas', ns_filter)) or [];
+    dep_desired: list[dict[str, any]] = prom_query(
+        _scoped('kube_deployment_spec_replicas', ns_filter)
+    )
+        or [];
     sts_ready = prom_query(_scoped('kube_statefulset_status_replicas_ready', ns_filter))
         or [];
-    sts_desired = prom_query(_scoped('kube_statefulset_replicas', ns_filter)) or [];
+    sts_desired: list[dict[str, any]] = prom_query(
+        _scoped('kube_statefulset_replicas', ns_filter)
+    )
+        or [];
     ds_ready = prom_query(_scoped('kube_daemonset_status_number_available', ns_filter))
         or [];
     ds_desired = prom_query(
@@ -324,9 +332,18 @@ impl JacAPIServerWorkloads.admin_workloads_list(
             else 'sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod)'
     )
         or [];
-    dep_created = prom_query(_scoped('kube_deployment_created', ns_filter)) or [];
-    sts_created = prom_query(_scoped('kube_statefulset_created', ns_filter)) or [];
-    ds_created = prom_query(_scoped('kube_daemonset_created', ns_filter)) or [];
+    dep_created: list[dict[str, any]] = prom_query(
+        _scoped('kube_deployment_created', ns_filter)
+    )
+        or [];
+    sts_created: list[dict[str, any]] = prom_query(
+        _scoped('kube_statefulset_created', ns_filter)
+    )
+        or [];
+    ds_created: list[dict[str, any]] = prom_query(
+        _scoped('kube_daemonset_created', ns_filter)
+    )
+        or [];
 
     dep_desired_by = _index_by(dep_desired, "deployment", True);
     sts_desired_by = _index_by(sts_desired, "statefulset", True);
@@ -335,8 +352,8 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     sts_created_by = _index_by(sts_created, "statefulset", True);
     ds_created_by = _index_by(ds_created, "daemonset", True);
 
-    entries: list = [];
-    wl_names: list = [];
+    entries: list[dict[str, any]] = [];
+    wl_names: list[str] = [];
     for `entry in dep_available_raw {
         m = `entry.get("metric", {});
         v = `entry.get("value", [0, "0"]);
@@ -395,9 +412,9 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         wl_names.append(name);
     }
 
-    cpu_by_owner: dict = {};
-    mem_by_owner: dict = {};
-    restarts_by_owner: dict = {};
+    cpu_by_owner: dict[str, float] = {};
+    mem_by_owner: dict[str, float] = {};
+    restarts_by_owner: dict[str, int] = {};
     for `entry in cpu_by_pod {
         pod = `entry.get("metric", {}).get("pod", "");
         v = `entry.get("value", [0, "0"]);
@@ -452,7 +469,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         }
     }
 
-    workloads: list = [];
+    workloads: list[dict[str, any]] = [];
     for e in entries {
         name = e["name"];
         restarts = restarts_by_owner.get(name, 0);
@@ -483,7 +500,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         );
     }
 
-    def _wl_name(d: dict) -> str {
+    def _wl_name(d: dict[str, any]) -> str {
         return d["name"];
     }
     workloads = sorted(workloads, key=_wl_name);
@@ -543,14 +560,18 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
             else 'sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod)'
     )
         or [];
-    node_by_pod = prom_query(_scoped('kube_pod_info', ns_filter)) or [];
-    started_by_pod = prom_query(_scoped('kube_pod_start_time', ns_filter)) or [];
+    node_by_pod: list[dict[str, any]] = prom_query(_scoped('kube_pod_info', ns_filter))
+        or [];
+    started_by_pod: list[dict[str, any]] = prom_query(
+        _scoped('kube_pod_start_time', ns_filter)
+    )
+        or [];
 
     cpu = _index_by(cpu_by_pod, "pod");
     mem = _index_by(mem_by_pod, "pod");
     restarts = _index_by(restarts_by_pod, "pod");
     started = _index_by(started_by_pod, "pod");
-    node_for: dict = {};
+    node_for: dict[str, str] = {};
     for `entry in node_by_pod {
         m = `entry.get("metric", {});
         pod = m.get("pod", "");
@@ -559,7 +580,7 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
             node_for[pod] = node_name;
         }
     }
-    pods: list = [];
+    pods: list[dict[str, any]] = [];
     for `entry in phase_by_pod {
         m = `entry.get("metric", {});
         pod = m.get("pod", "");
@@ -580,7 +601,7 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
             }
         );
     }
-    def _pod_name(d: dict) -> str {
+    def _pod_name(d: dict[str, any]) -> str {
         return d["name"];
     }
     pods = sorted(pods, key=_pod_name);
@@ -590,8 +611,10 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
     );
 }
 
-def _rollup_range(rows: list, names: list) -> dict {
-    out: dict = {};
+def _rollup_range(
+    rows: list[dict[str, any]], names: list[str]
+) -> dict[str, dict[float, float]] {
+    out: dict[str, any] = {};
     for `entry in rows {
         pod = `entry.get("metric", {}).get("pod", "");
         owner = match_owner(pod, names);
@@ -611,8 +634,8 @@ def _rollup_range(rows: list, names: list) -> dict {
     return out;
 }
 
-def _series_points(tsmap: dict) -> list {
-    pts: list = [];
+def _series_points(tsmap: dict[float, float]) -> list[dict[str, float]] {
+    pts: list[dict[str, float]] = [];
     for ts in sorted(tsmap.keys()) {
         pts.append({'t': ts, 'v': round(tsmap[ts], 4)});
     }
@@ -644,13 +667,13 @@ impl JacAPIServerWorkloads.admin_workloads_timeseries(
     ns_filter = f'namespace="{namespace}"' if namespace else '';
     ns_and = f',{ns_filter}' if ns_filter else '';
 
-    names: list = [];
+    names: list[str] = [];
     for spec in [
         ('kube_deployment_created', 'deployment'),
         ('kube_statefulset_created', 'statefulset'),
         ('kube_daemonset_created', 'daemonset')
     ] {
-        rows = prom_query(_scoped(spec[0], ns_filter)) or [];
+        rows: list[dict[str, any]] = prom_query(_scoped(spec[0], ns_filter)) or [];
         for r in rows {
             nm = r.get("metric", {}).get(spec[1], "");
             if nm {
@@ -709,7 +732,7 @@ impl JacAPIServerWorkloads.admin_workloads_timeseries(
     for nm in mem_by_wl {
         all_names.add(nm);
     }
-    workloads: list = [];
+    workloads: list[dict[str, any]] = [];
     for nm in sorted(all_names) {
         workloads.append(
             {

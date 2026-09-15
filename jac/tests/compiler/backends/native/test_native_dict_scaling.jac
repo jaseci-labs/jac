@@ -13,9 +13,10 @@ inside the fixture, so a regression makes the host binary exit non-zero.
 
 import os;
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
+import ctypes;
+import from tests.support { jac_command, compile_native, get_func }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      PROG = "dict_hash_scaling.jac";
@@ -25,7 +26,7 @@ test "native dict inserts stay O(1) when N doubles (hash-table scaling guard)" {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), "dict_hash_scaling.bin");
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "build", "--native", src, "-o", out_bin],
+        jac_command("build", "--native", src, "-o", out_bin),
         capture_output=True,
         text=True,
         timeout=300
@@ -40,4 +41,24 @@ test "native dict inserts stay O(1) when N doubles (hash-table scaling guard)" {
         proc.stderr or proc.stdout or '(empty)'
     )[-500:]}";
     assert proc.stdout.strip() == "OK dict_hash_scaling" , f"unexpected output: {proc.stdout.strip()!r}";
+}
+
+test "native dict deletion scales linearly in both insertion orders" {
+    (eng, _) = compile_native("dict_delete_scaling.jac");
+    erase = get_func(eng, "erase_keys", ctypes.c_double, ctypes.c_int64, ctypes.c_bool);
+    for reverse in [False, True] {
+        erase(1000, reverse);
+        timings: list[float] = [];
+        for n in [32000, 128000] {
+            samples: list[float] = [];
+            for trial in range(3) {
+                samples.append(erase(n, reverse));
+            }
+            timings.append(sorted(samples)[1]);
+        }
+        assert timings[1] < timings[0] * 8.0 + 0.02 , (
+            f"native dict deletion is quadratic (reverse={reverse}): "
+            f"32k={timings[0]:.3f}s, 128k={timings[1]:.3f}s"
+        );
+    }
 }

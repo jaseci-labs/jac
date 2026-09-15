@@ -11,7 +11,7 @@ import from jaclang.server.serving.datatypes { Response }
 import logging;
 
 glob logger = logging.getLogger(__name__),
-     DEFAULT_BUCKETS: tuple = (
+     DEFAULT_BUCKETS: tuple[float, ...] = (
          0.005,
          0.01,
          0.025,

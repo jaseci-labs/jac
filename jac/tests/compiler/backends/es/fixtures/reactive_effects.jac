@@ -4,7 +4,7 @@ Note: useEffect import is auto-injected from @jac/runtime when `can with entry/e
 """
 
 def:pub app() -> JsxElement {
-    has items: list = [];
+    has items: list[any] = [];
     has loading: bool = True;
 
     # Mount effect - runs once on component mount

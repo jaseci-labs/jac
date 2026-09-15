@@ -2,7 +2,7 @@
 name = "webhook-receiver-example"
 version = "1.0.0"
 description = "Signed webhook receiver example for jac-scale"
-entry-point = "app.jac"
+entry-point = "app"
 
 [scale.webhook]
 # Reject signed requests whose timestamp is older than this window.

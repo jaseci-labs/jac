@@ -54,7 +54,7 @@ walker transfer_employee {
 
 
 def:pub app -> JsxElement {
-    has departments: list = [],
+    has departments: list[any] = [],
         selectedDept: any = None;
 
     async can with entry {

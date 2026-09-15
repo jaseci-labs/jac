@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.native.entry_points { inject_main }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,

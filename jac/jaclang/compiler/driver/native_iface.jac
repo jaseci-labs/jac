@@ -26,7 +26,7 @@ obj NativeExport {
         ret_type: str = "",
         ownership: list[str] = field(default_factory=`list);
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "name": self.name,
             "symbol": self.symbol,
@@ -40,7 +40,7 @@ obj NativeExport {
         };
     }
 
-    static def from_dict(d: dict) -> NativeExport {
+    static def from_dict(d: dict[str, any]) -> NativeExport {
         return NativeExport(
             name=str(d.get("name", "")),
             symbol=str(d.get("symbol", "")),
@@ -63,8 +63,8 @@ obj NativeValueSchema {
         key_offset: int = 0,
         order_offset: int = 0;
 
-    def to_dict -> dict {
-        out: dict = {"code": self.code};
+    def to_dict -> dict[str, any] {
+        out: dict[str, any] = {"code": self.code};
         if self.code == "obj" {
             out["class"] = self.class_name;
         } elif self.code in ("list", "dict") {
@@ -80,7 +80,7 @@ obj NativeValueSchema {
         return out;
     }
 
-    static def from_dict(d: dict) -> NativeValueSchema {
+    static def from_dict(d: dict[str, any]) -> NativeValueSchema {
         child = d.get("element");
         return NativeValueSchema(
             code=str(d["code"]),
@@ -102,8 +102,8 @@ obj NativeFieldSlot {
         aux: str = "",
         schema: (NativeValueSchema | None) = None;
 
-    def to_dict -> dict {
-        out: dict = {
+    def to_dict -> dict[str, any] {
+        out: dict[str, any] = {
             "index": self.index,
             "offset": self.offset,
             "code": self.code,
@@ -115,7 +115,7 @@ obj NativeFieldSlot {
         return out;
     }
 
-    static def from_dict(d: dict) -> NativeFieldSlot {
+    static def from_dict(d: dict[str, any]) -> NativeFieldSlot {
         schema = d.get("schema");
         return NativeFieldSlot(
             index=int(d.get("index", -1)),
@@ -141,7 +141,7 @@ obj NativeClassLayout {
         vtable: list[str] = field(default_factory=`list),
         is_node: bool = False;
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "name": self.name,
             "size": self.size,
@@ -154,7 +154,7 @@ obj NativeClassLayout {
         };
     }
 
-    static def from_dict(d: dict) -> NativeClassLayout {
+    static def from_dict(d: dict[str, any]) -> NativeClassLayout {
         return NativeClassLayout(
             name=str(d.get("name", "")),
             size=int(d.get("size", 0)),
@@ -186,9 +186,9 @@ obj NativeIface {
         clib_symbol_lib: dict[str, str] = field(default_factory=`dict),
         layout: (NativeModuleLayout | None) = None,
         deps: list[str] = field(default_factory=`list),
-        coverage: dict = field(default_factory=`dict);
+        coverage: dict[str, any] = field(default_factory=`dict);
 
-    def digest_fields -> dict {
+    def digest_fields -> dict[str, any] {
         return {
             "format": self.format,
             "module": self.module,
@@ -219,7 +219,7 @@ obj NativeIface {
         return hashlib.sha256(body.encode("utf-8")).hexdigest();
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         import from jaclang.compiler.frontend.codeinfo { native_unit_ref }
         d = self.digest_fields();
         d["deps"] = [native_unit_ref(x) for x in self.deps];
@@ -239,7 +239,7 @@ obj NativeIface {
         return self.digest().encode("ascii") + body.encode("utf-8");
     }
 
-    static def from_dict(d: dict) -> (NativeIface | None) {
+    static def from_dict(d: dict[str, any]) -> (NativeIface | None) {
         if not isinstance(d, dict) or d.get("format") != NIFACE_FORMAT {
             return None;
         }
@@ -321,7 +321,7 @@ obj NativeIface {
         return name in self.demoted;
     }
 
-    def classes_json -> dict {
+    def classes_json -> dict[str, any] {
         return {
             name: {
                 "size": lay.size,
@@ -336,8 +336,8 @@ obj NativeIface {
     }
 }
 
-def merge_class_layouts(ifaces: list[NativeIface]) -> dict {
-    merged: dict = {};
+def merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any] {
+    merged: dict[str, any] = {};
     owner: dict[str, str] = {};
     for iface in ifaces {
         for (name, body) in iface.classes_json().items() {
@@ -358,7 +358,7 @@ def merge_class_layouts(ifaces: list[NativeIface]) -> dict {
     return merged;
 }
 
-def layout_digest(classes: dict) -> str {
+def layout_digest(classes: dict[str, any]) -> str {
     body = json.dumps(classes, sort_keys=True, separators=(",", ":"));
     return hashlib.sha256(body.encode("utf-8")).hexdigest();
 }

@@ -19,18 +19,13 @@ import os;
 import shutil;
 import tempfile;
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
+import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
 import from jaclang.compiler.types.type_evaluator { FunctionType, UnknownType }
-import from jaclang.compiler.frontend.unitree { Import, ModuleItem }
+import from jaclang.compiler.frontend.unitree { Import, ModuleItem, Name }
 
 
 glob _TOML: str = (
-         "[project]\n"
-         "name = \"phone_ws\"\n"
-         "\n"
-         "[apps.mobile]\n"
-         "kind = \"mobile\"\n"
-         "path = \"mobile\"\n"
+         '[project]\nname = "phone_ws"\n\n[apps.mobile]\nkind = "mobile"\nentry-point = "mobile.main"\n'
      ),
      _SHARED_SRC: str = (
          "import from \"@jac/mobui\" { View, Text, StyleSheet }\n"
@@ -88,7 +83,9 @@ def _import_binding_type(prog: JacProgram, mod_path: str, name: str) -> object {
     assert mod is not None , mod_path;
     for imp in mod.get_all_sub_nodes(Import) {
         for item in imp.items {
-            if isinstance(item, ModuleItem) and item.name.value == name {
+            if isinstance(item, ModuleItem)
+                and isinstance(item.name, Name)
+                and item.name.value == name {
                 return item.name.type;
             }
         }

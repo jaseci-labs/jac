@@ -39,7 +39,7 @@ def _digest(data: bytes) -> int {
 }
 
 
-def gzip_py() -> dict {
+def gzip_py() -> dict[any, any] {
     data = b"the quick brown fox jumps over the lazy dog. " * 40;
     comp = compress(data, mtime=0);
     comp0 = compress(data, 0, mtime=0);
@@ -101,11 +101,33 @@ def gzip_py() -> dict {
     # Hand-spliced header flags over compress output (same splice, both backends).
     hdr = small[0:10];
     rest = small[10:];
-    fname = hdr[0:3] + (hdr[3] | 8).to_bytes(1, "little") + hdr[4:10] + b"name.txt\x00" + rest;
-    fextra = hdr[0:3] + (hdr[3] | 4).to_bytes(1, "little") + hdr[4:10] + b"\x04\x00abcd" + rest;
-    fcomment = hdr[0:3] + (hdr[3] | 16).to_bytes(1, "little") + hdr[4:10] + b"a comment\x00" + rest;
-    fhcrc = hdr[0:3] + (hdr[3] | 2).to_bytes(1, "little") + hdr[4:10] + b"\x12\xab" + rest;
-    allflags = hdr[0:3] + (hdr[3] | 28).to_bytes(1, "little") + hdr[4:10] + b"\x04\x00abcd" + b"n\x00" + b"c\x00" + rest;
+    fname = hdr[0:3]
+        + (hdr[3] | 8).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"name.txt\x00"
+        + rest;
+    fextra = hdr[0:3]
+        + (hdr[3] | 4).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"\x04\x00abcd"
+        + rest;
+    fcomment = hdr[0:3]
+        + (hdr[3] | 16).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"a comment\x00"
+        + rest;
+    fhcrc = hdr[0:3]
+        + (hdr[3] | 2).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"\x12\xab"
+        + rest;
+    allflags = hdr[0:3]
+        + (hdr[3] | 28).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"\x04\x00abcd"
+        + b"n\x00"
+        + b"c\x00"
+        + rest;
 
     return {
         "comp_digest": _digest(comp),
@@ -148,7 +170,7 @@ def gzip_py() -> dict {
 }
 
 
-def gzip_cl() -> dict {
+def gzip_cl() -> dict[any, any] {
     return {};
 }
 
@@ -225,11 +247,33 @@ def gzip_na() -> dict[str, any] {
 
     hdr = small[0:10];
     rest = small[10:];
-    fname = hdr[0:3] + (hdr[3] | 8).to_bytes(1, "little") + hdr[4:10] + b"name.txt\x00" + rest;
-    fextra = hdr[0:3] + (hdr[3] | 4).to_bytes(1, "little") + hdr[4:10] + b"\x04\x00abcd" + rest;
-    fcomment = hdr[0:3] + (hdr[3] | 16).to_bytes(1, "little") + hdr[4:10] + b"a comment\x00" + rest;
-    fhcrc = hdr[0:3] + (hdr[3] | 2).to_bytes(1, "little") + hdr[4:10] + b"\x12\xab" + rest;
-    allflags = hdr[0:3] + (hdr[3] | 28).to_bytes(1, "little") + hdr[4:10] + b"\x04\x00abcd" + b"n\x00" + b"c\x00" + rest;
+    fname = hdr[0:3]
+        + (hdr[3] | 8).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"name.txt\x00"
+        + rest;
+    fextra = hdr[0:3]
+        + (hdr[3] | 4).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"\x04\x00abcd"
+        + rest;
+    fcomment = hdr[0:3]
+        + (hdr[3] | 16).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"a comment\x00"
+        + rest;
+    fhcrc = hdr[0:3]
+        + (hdr[3] | 2).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"\x12\xab"
+        + rest;
+    allflags = hdr[0:3]
+        + (hdr[3] | 28).to_bytes(1, "little")
+        + hdr[4:10]
+        + b"\x04\x00abcd"
+        + b"n\x00"
+        + b"c\x00"
+        + rest;
 
     return {
         "comp_digest": _digest_na(comp),

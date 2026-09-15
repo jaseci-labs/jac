@@ -7,7 +7,7 @@ test "Jac release updates the site pin and reports the manifest" {
         (base / "scripts").mkdir();
         site = base / "jac/examples/jaclang_org/jac.toml";
         site.parent.mkdir(parents=True);
-        original = "# Keep workspace settings\n[project]\nname = 'jaclang_org'\njac-version = '==0.37.3'\n\n[apps.mobile]\nkind = 'mobile'\n";
+        original = '# Keep workspace settings\n[project]\nname = \'jaclang_org\'\njac-version = \'==0.37.3\'\n\n[apps.mobile]\nkind = \'mobile\'\nentry-point = "main"\n';
         site.write_text(original);
         (base / "jac.toml").write_text("[project]\nversion = '0.37.5'\n");
         args = argparse.Namespace(jaclang="patch", dry_run=True);

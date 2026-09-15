@@ -1,3 +1,18 @@
+def _configure_litellm {
+    import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
+    logging.getLogger("httpx").setLevel(logging.WARNING);
+    if HAS_LITELLM {
+        if not _litellm_config.get("debug", False) {
+            _disable_debugging();
+        }
+        litellm.drop_params = _litellm_config.get("drop_params", True);
+        litellm.include_cost_in_streaming_usage = _litellm_config.get(
+            "include_cost_in_streaming_usage", True
+        );
+    }
+}
+
+
 impl Model.postinit -> None {
     self.proxy = bool(self.config.get("proxy", _model_config.get("proxy", False)));
     self.http_client = bool(
@@ -22,17 +37,7 @@ impl Model.postinit -> None {
         );
     }
     if not self._mock_delegate and not self._local_delegate {
-        import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
-        logging.getLogger("httpx").setLevel(logging.WARNING);
-        if HAS_LITELLM {
-            if not _litellm_config.get("debug", False) {
-                _disable_debugging();
-            }
-            litellm.drop_params = _litellm_config.get("drop_params", True);
-            litellm.include_cost_in_streaming_usage = _litellm_config.get(
-                "include_cost_in_streaming_usage", True
-            );
-        }
+        _configure_litellm();
 
         native_override = self.config.get(
             "native_tools", _model_config.get("native_tools")
@@ -115,6 +120,8 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
         return await super.ainvoke(mt_run);
     }
 
+    delegate: BaseLLM | None = self._mock_delegate or self._local_delegate;
+
     _parent = _current_invocation_id.get(None);
     mt_run._parent_invocation_id = _parent;
     mt_run._invocation_id = str(uuid.uuid4());
@@ -122,7 +129,9 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
     _start = time.time();
 
     try {
-        result = await super.ainvoke(mt_run);
+        result = await delegate.ainvoke(mt_run)
+            if delegate
+            else await super.ainvoke(mt_run);
 
         if isinstance(result, _types_mod.AsyncGeneratorType) {
             _current_invocation_id.reset(_ctx_token);
@@ -149,13 +158,13 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
 }
 
 async def _astream_with_telemetry(
-    agen: AsyncGenerator[object, None], mt: object, model_name: str, start: float
+    agen: AsyncGenerator[object, None], mt: MTRuntime, model_name: str, start: float
 ) -> AsyncGenerator[object, None] {
     import asyncio;
     import contextvars;
     import time;
 
-    invocation_id = mt?._invocation_id;
+    invocation_id = mt._invocation_id;
     ctx = contextvars.copy_context();
     if invocation_id is not None {
         ctx.run(_current_invocation_id.set, invocation_id);
@@ -192,12 +201,12 @@ async def _astream_with_telemetry(
 }
 
 def _stream_with_telemetry(
-    gen: object, mt: object, model_name: str, start: float
-) -> object {
+    gen: Iterator[object], mt: MTRuntime, model_name: str, start: float
+) -> Generator[object, None, None] {
     import contextvars;
     import time;
 
-    invocation_id = mt?._invocation_id;
+    invocation_id = mt._invocation_id;
     ctx = contextvars.copy_context();
     if invocation_id is not None {
         ctx.run(_current_invocation_id.set, invocation_id);
@@ -252,7 +261,8 @@ impl Model._raise_mapped_provider_error(e: Exception) -> None {
     raise;
 }
 
-impl Model.model_call_no_stream(params: dict) -> dict {
+impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
+    response: object;
     try {
         if self.http_client {
             response = self.model_call_http(
@@ -274,10 +284,10 @@ impl Model.model_call_no_stream(params: dict) -> dict {
     } except Exception as e {
         self._raise_mapped_provider_error(e);
     }
-    return response;
+    return response_dict(response);
 }
 
-impl Model.model_call_with_stream(params: dict) {
+impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
     try {
@@ -311,8 +321,8 @@ impl Model.model_call_with_stream(params: dict) {
 }
 
 impl Model.model_call_http(
-    url: str, token: str, payload: dict, ca_bundle: (str | bool | None)
-) -> object {
+    url: str, token: str, payload: dict[str, any], ca_bundle: (str | bool | None)
+) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     client = httpx.Client(verify=ca_bundle or True, timeout=60.0);
@@ -322,7 +332,8 @@ impl Model.model_call_http(
     return response.json();
 }
 
-impl Model.model_call_no_stream_async(params: dict) -> dict {
+impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] {
+    response: object;
     try {
         if self.http_client {
             response = await self.model_call_http_async(
@@ -350,10 +361,13 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
     } except Exception as e {
         self._raise_mapped_provider_error(e);
     }
-    return response;
+    return response_dict(response);
 }
 
-impl Model.model_call_with_stream_async(params: dict) {
+impl Model.model_call_with_stream_async(
+    params: dict[str, any]
+) -> AsyncIterator[object] {
+    response: object;
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
     try {
@@ -388,12 +402,18 @@ impl Model.model_call_with_stream_async(params: dict) {
     } except Exception as e {
         self._raise_mapped_provider_error(e);
     }
+    import from collections.abc { AsyncIterator as AsyncStreamIterator }
+    if not isinstance(response, AsyncStreamIterator) {
+        raise TypeError(
+            'The model transport returned a non-streaming response for a streaming request'
+        );
+    }
     return response;
 }
 
 impl Model.model_call_http_async(
-    url: str, token: str, payload: dict, ca_bundle: (str | bool | None)
-) -> object {
+    url: str, token: str, payload: dict[str, any], ca_bundle: (str | bool | None)
+) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     client = httpx.AsyncClient(verify=ca_bundle or True, timeout=60.0);

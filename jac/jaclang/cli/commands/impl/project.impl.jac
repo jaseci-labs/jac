@@ -479,7 +479,7 @@ def _toml_apps(toml_path: Path) -> set[str] {
     return _toml_apps_and_default(toml_path)[0];
 }
 
-def _stamp_kind(config: dict, kind: str) -> None {
+def _stamp_kind(config: dict[str, any], kind: str) -> None {
     if not kind or kind == "workspace" or "apps" in config {
         return;
     }
@@ -493,7 +493,7 @@ def _stamp_kind(config: dict, kind: str) -> None {
     }
 }
 
-def _stamp_jac_version(config: dict) {
+def _stamp_jac_version(config: dict[str, any]) {
     proj = config.get("project");
     if not isinstance(proj, dict) {
         proj = {};
@@ -653,7 +653,7 @@ def _quote_toml_key(k: str) -> str {
     return f'"{k}"';
 }
 
-def _render_config_to_toml(config: dict, project_name: str) -> str {
+def _render_config_to_toml(config: dict[str, any], project_name: str) -> str {
     lines: list[str] = [];
 
     def render_value(v: any) -> str {
@@ -672,9 +672,11 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
         }
     }
 
-    def render_section(section_name: str, section_data: dict, indent: str = "") {
-        simple_values: dict = {};
-        nested_sections: dict = {};
+    def render_section(
+        section_name: str, section_data: dict[str, any], indent: str = ""
+    ) {
+        simple_values: dict[str, any] = {};
+        nested_sections: dict[str, dict[str, any]] = {};
 
         for (k, v) in section_data.items() {
             if isinstance(v, dict) {
@@ -729,10 +731,10 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 }
 
 impl install(
-    packages: list = [],
-    editable: list = [],
+    packages: list[str] = [],
+    editable: list[any] = [],
     dev: bool = False,
-    extras: list = [],
+    extras: list[str] = [],
     no_save: bool = False,
     git: str = "",
     npm: bool | None = None,
@@ -756,7 +758,10 @@ impl install(
     if shadcn or npm {
         channel = "--shadcn" if shadcn else "--npm";
 
-        flag_checks: list = [(no_save, "--no-save"), (dry_run, "--dry-run")];
+        flag_checks: list[tuple[bool, str]] = [
+            (no_save, "--no-save"),
+            (dry_run, "--dry-run")
+        ];
         if shadcn {
             flag_checks.append((install_global, "--global"));
         }
@@ -794,7 +799,7 @@ impl install(
         resolve_plan
     }
 
-    flag_defs: list = [
+    flag_defs: list[tuple[bool, str]] = [
         (force_reinstall, "--force-reinstall"),
         (no_cache_dir, "--no-cache-dir"),
         (pre, "--pre"),
@@ -837,7 +842,7 @@ impl install(
             );
         }
         if install_global {
-            specs: list = list(packages);
+            specs: list[str] = list(packages);
             if git {
                 specs.append(make_git_spec(git));
             }
@@ -941,7 +946,7 @@ impl install(
     if editable {
         import from jaclang.dist.publish.builder { WheelBuilder }
 
-        editable_targets: list = [];
+        editable_targets: list[tuple[JacConfig, Path]] = [];
         all_dep_specs: list[str] = [];
         for editable_path in editable {
             src_dir: Path = Path(editable_path).resolve();
@@ -1132,7 +1137,7 @@ def _bootstrap_project_deps(project_path: Path) -> bool {
 }
 
 impl remove(
-    packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+    packages: list[str] = [], dev: bool = False, npm: bool = False, shadcn: bool = False
 ) -> int {
     if shadcn {
         import from jaclang.cli.shadcn.cli { run_shadcn_remove }
@@ -1182,7 +1187,7 @@ def _major_minor(version: str) -> str {
     return version;
 }
 
-impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> int {
+impl update(packages: list[str] = [], dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv { make_git_spec }
     import from jaclang.project.providers { InstallContext, get_python_provider }

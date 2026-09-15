@@ -33,7 +33,7 @@ import from jaclang.compiler.backends.native.na_compile_pass {
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
 import from jaclang.compiler.backends.native.pe_linker { PeLinker }
-import from jaclang.compiler.backends.native.linker_common {
+import from jaclang.compiler.backends.native.floor {
     clib_needed_libs,
     clib_symbol_lib_map
 }
@@ -45,7 +45,8 @@ import from jaclang.compiler.backends.native.link_plan {
     ArtifactKind,
     build_link_plan,
     link_artifact,
-    whole_program_module
+    whole_program_module,
+    internalize_native_implementation
 }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
@@ -81,7 +82,7 @@ def _platform_of(triple: str) -> str {
 
 """Compile the fixture for `triple` as a native unit and build its link plan
 rooted at the fixture. Returns (prog, plan, options)."""
-def plan_shared(fixture: str, triple: str) -> tuple {
+def plan_shared(fixture: str, triple: str) -> tuple[any, ...] {
     path = os.path.join(FIXTURES, fixture);
     opts = shared_opts(triple);
     prog = JacProgram();
@@ -99,7 +100,7 @@ mode of `jac build --native --lib`.
 
 Returns (object_bytes, export_symbols): the `:pub` symbols, bare, plus the
 glue's `jac_retain` / `jac_release` / `jac_str_new` / `__jac_shared_init`."""
-def emit_shared_object(fixture: str, triple: str) -> tuple {
+def emit_shared_object(fixture: str, triple: str) -> tuple[any, ...] {
     prev = push_native_target(triple);
     try {
         (_prog, plan, opts) = plan_shared(fixture, triple);
@@ -159,7 +160,7 @@ def _exec_seg_flags(raw: bytes, sig_off: int) -> (int | None) {
 
 
 """Scan Mach-O load commands for the fields the dylib test asserts on."""
-def _macho_info(raw: bytes) -> dict {
+def _macho_info(raw: bytes) -> dict[str, any] {
     filetype = struct.unpack_from("<I", raw, 12)[0];
     ncmds = struct.unpack_from("<I", raw, 16)[0];
     off = 32;
@@ -429,7 +430,7 @@ test "Mach-O dylib has MH_DYLIB filetype, export trie, and init section" {
 """Build a dylib from the scalar-only fixture for `triple` and return its
 parsed Mach-O info. Kept separate from the object-handle FIXTURE so these
 load-command assertions don't depend on object attribute-access support."""
-def _build_scalar_dylib(triple: str, name: str) -> dict {
+def _build_scalar_dylib(triple: str, name: str) -> dict[str, any] {
     (relobj, exports) = emit_shared_object("shared_export_scalar.jac", triple);
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, name);
@@ -826,5 +827,109 @@ test "jac build --native --lib resolves a CPython C-API import from the host pro
         );
     } finally {
         shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "private native helpers cannot satisfy another library's C symbols" {
+    import ctypes;
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    native = llvm.parse_assembly(
+        """
+        @state = global i64 41
+        @public_state = global i64 9
+        declare i64 @foreign_operation(i64)
+        define hidden i32 @linker_support() { ret i32 0 }
+        define i64 @crc32() {
+            %value = load i64, ptr @state
+            %result = add i64 %value, 1
+            ret i64 %result
+        }
+        define i64 @native_probe() {
+            %result = call i64 @crc32()
+            ret i64 %result
+        }
+    """
+    );
+    internalize_native_implementation(native, ["native_probe", "public_state"]);
+    # Linking this second module used to collide with the implementation's
+    # global state and crc32. Dynamic linking could silently bind the wrong ABI.
+    library = llvm.parse_assembly(
+        """
+        @state = global i64 777
+        define i64 @crc32() {
+            %result = load i64, ptr @state
+            ret i64 %result
+        }
+        define i64 @library_probe() {
+            %result = call i64 @crc32()
+            ret i64 %result
+        }
+    """
+    );
+    native.link_in(library);
+    native.verify();
+    assert any(
+        value.name == "foreign_operation" and value.is_declaration
+        for value in native.functions
+    );
+    target = llvm.Target.from_default_triple().create_target_machine();
+    engine = llvm.create_mcjit_compiler(native, target);
+    engine.finalize_object();
+    call = ctypes.CFUNCTYPE(ctypes.c_int64);
+    assert call(engine.get_function_address("native_probe"))() == 42;
+    assert call(engine.get_function_address("library_probe"))() == 777;
+    assert engine.get_global_value_address("public_state") != 0;
+    assert engine.get_function_address("linker_support") != 0;
+    engine.close();
+}
+
+test "opaque native owners account for object and growing list allocations" {
+    import ctypes;
+    import from jaclang.compiler.backends.native.link_glue { init_object_codegen }
+    program = JacProgram();
+    module = program.compile(
+        file_path=os.path.join(FIXTURES, "shared_heap_accounting.jac"),
+        options=CompileOptions(
+            aot_mode=True, default_codespace="native", memory_profile="managed"
+        )
+    );
+    assert not program.errors_had;
+    assert module is not None;
+    plan = build_link_plan(program, [module.loc.mod_path], program.options);
+    spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False);
+    (whole, exports) = whole_program_module(plan, spec);
+    source = str(whole);
+    assert "jac_heap_size" in exports and "jac_list_heap_size" in exports;
+    init_object_codegen();
+    compiled = llvm.parse_assembly(source);
+    compiled.verify();
+    target = llvm.Target.from_default_triple().create_target_machine();
+    engine = llvm.create_mcjit_compiler(compiled, target);
+    engine.finalize_object();
+    ctypes.CFUNCTYPE(None)(engine.get_function_address("__jac_shared_init"))();
+    make = ctypes.CFUNCTYPE(ctypes.c_void_p)(engine.get_function_address("make_owned"));
+    grow = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
+        engine.get_function_address("grow_owned")
+    );
+    size = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_void_p)(
+        engine.get_function_address("owned_size")
+    );
+    release = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
+        engine.get_function_address("jac_release")
+    );
+    heap_size = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_uint64)(
+        engine.get_function_address("jac_heap_size")
+    );
+    assert heap_size(0) == 0;
+    owner = make();
+    try {
+        before = size(owner);
+        assert before > 0;
+        grow(owner);
+        assert size(owner) >= before + 1000 * 8;
+    } finally {
+        release(owner);
     }
 }

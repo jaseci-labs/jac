@@ -11,9 +11,8 @@ byte-identical across thread counts and across gc modes.
 
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -66,7 +65,7 @@ def _run_matrix(fixture: str, expected: str) {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffr_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", fixture]
+                jac_command("build", "--native", fixture)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -79,7 +78,7 @@ def _run_matrix(fixture: str, expected: str) {
             bins[mode] = out_bin;
         }
         for nthreads in ("1", "3", "16") {
-            env = dict(os.environ);
+            env: dict[str, str] = dict(os.environ);
             env["JAC_FLOW_THREADS"] = nthreads;
             ran = subprocess.run(
                 [bins["none"]], capture_output=True, text=True, env=env
@@ -109,7 +108,7 @@ test "rc parallel output is byte-identical across thread counts" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "ffp_rc_par");
         res = subprocess.run(
-            [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+            jac_command("build", "--native", FIXTURE)
                 + MODE_FLAGS["rc"]
                 + ["-o", out_bin],
             capture_output=True,
@@ -117,7 +116,7 @@ test "rc parallel output is byte-identical across thread counts" {
         );
         assert res.returncode == 0 , res.stderr;
         for nthreads in ("1", "3", "16") {
-            env = dict(os.environ);
+            env: dict[str, str] = dict(os.environ);
             env["JAC_FLOW_THREADS"] = nthreads;
             ran = subprocess.run([out_bin], capture_output=True, text=True, env=env);
             assert ran.returncode == 0 , f"threads={nthreads}: {ran.stderr}";
@@ -133,7 +132,7 @@ test "shared-capture rc stress is identical across widths and modes" {
         for mode in ("rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffs_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", SHARED_FIXTURE]
+                jac_command("build", "--native", SHARED_FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -148,7 +147,7 @@ test "shared-capture rc stress is identical across widths and modes" {
         assert outs["rc"] == outs["cycles"] , f"{outs['rc']} vs {outs['cycles']}";
         assert outs["rc"].endswith("end\n") , outs["rc"];
         for nthreads in ("1", "8", "16") {
-            env = dict(os.environ);
+            env: dict[str, str] = dict(os.environ);
             env["JAC_FLOW_THREADS"] = nthreads;
             ran = subprocess.run([bins["rc"]], capture_output=True, text=True, env=env);
             assert ran.returncode == 0 , f"threads={nthreads}: {ran.stderr}";
@@ -176,7 +175,7 @@ test "output is byte-identical across gc modes and thread counts" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffp_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command("build", "--native", FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -192,7 +191,7 @@ test "output is byte-identical across gc modes and thread counts" {
         assert outs["rc"] == EXPECTED , outs["rc"];
         assert outs["cycles"] == EXPECTED , outs["cycles"];
         for nthreads in ("1", "3", "16") {
-            env = dict(os.environ);
+            env: dict[str, str] = dict(os.environ);
             env["JAC_FLOW_THREADS"] = nthreads;
             ran = subprocess.run(
                 [bins["none"]], capture_output=True, text=True, env=env

@@ -14,7 +14,7 @@ on so the gate cannot silently drift from `NaIRGenPass.transform`'s own trigger:
 import os;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.schedules {
+import from jaclang.compiler.driver.pipeline {
     get_analysis_sched,
     get_boundary_analysis_sched,
     get_ir_gen_sched,

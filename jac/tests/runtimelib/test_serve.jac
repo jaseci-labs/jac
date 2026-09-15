@@ -312,10 +312,16 @@ lazily at start() so test-mode servers (port=0) stay socket-free and the app
 can be built and dispatched fully in-process."""
 test "api server construction is socket-free and builds a serving app" {
     import from jaclang.server.serving.app { ServingApp }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application }
+    prepared = prepare_application(
+        fixture_abs_path('serve_api.jac'), Jac.get_program(), FIXTURES
+    );
+    module = initialize_application(prepared);
     with TemporaryDirectory() as tmpdir {
         port = get_free_port();
         Jac.set_base_path(tmpdir);
-        srv = JacAPIServer(module_name="serve_api", port=port, base_path=tmpdir);
+        srv = JacAPIServer(module_name=module.__name__, port=port, base_path=tmpdir);
         assert srv.server is None , f"expected no bound server at construction, got {type(
             srv.server
         ).__name__}";

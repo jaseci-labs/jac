@@ -99,7 +99,7 @@ test "sv walk-scope stack is isolated across concurrent asyncio tasks" {
     _as_any(stack).append("root");
     stack.pop();
 
-    async def probe(name: str) -> tuple {
+    async def probe(name: str) -> tuple[any, ...] {
         _as_any(stack).append(name);
         await asyncio.sleep(0.01);
         seen = stack[-1];
@@ -107,7 +107,7 @@ test "sv walk-scope stack is isolated across concurrent asyncio tasks" {
         stack.pop();
         return (name, seen, depth);
     }
-    async def run -> list {
+    async def run -> list[any] {
         gathered = await asyncio.gather(probe("a"), probe("b"), probe("c"));
         return _as_any(gathered);
     }

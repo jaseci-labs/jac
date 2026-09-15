@@ -20,7 +20,7 @@ glob y = 2;  # Inline comment on second glob
 glob z = 3;  # Inline comment on third glob
 
 # Different access modifier - should not combine
-glob : priv private_var = 100;  # Inline on private glob
+glob:priv private_var = 100;  # Inline on private glob
 
 # Comment before obj definition
 obj Calculator {
@@ -31,7 +31,7 @@ obj Calculator {
     # Comment before third has
     has count: int = 0;  # Inline comment on count
     # Different modifier - should stay separate
-    has : priv secret: str;  # Inline on private has
+    has:priv secret: str;  # Inline on private has
     # Static has fields with comments
     static has instance_count: int = 0;  # Inline on static has
     # Between static has
@@ -39,15 +39,12 @@ obj Calculator {
 
     # Comment before method declaration
     def add(a: int, b: int) -> int;  # Inline on method decl
-
     # Comment before staticmethod
     @staticmethod  # Comment on decorator
     def helper -> None;  # Inline on helper decl
 
-
     # Comment before init
     def __init__(self: Calculator, val: int) -> None;  # Inline on init decl
-
 
     # Nested obj with comments
     obj InnerClass {
@@ -62,11 +59,10 @@ obj Calculator {
 impl Calculator.add(a: int, b: int) -> int {
     # Comment inside impl body
     return a + b;  # Inline return comment
-
 }
 
 # Comment on staticmethod impl
-@ staticmethod  # Decorator comment on impl
+@staticmethod  # Decorator comment on impl
 impl Calculator.helper -> None {
     # Comment inside helper
     print("helper");  # Inline print comment
@@ -90,20 +86,17 @@ enum Color {
 
 # Test hasattr conversion with comments
 obj NullSafeTest {
-    has data: dict | None;
+    has data: dict[any, any] | None;
     has `obj: any | None;
 
     def check_attr -> any {
         # Comment before hasattr usage
         if hasattr(self.`obj, "value") {  # Inline on if hasattr
-
             # Comment inside if block
             return self.`obj.value;  # Return comment
-
         }
         # Comment after if
         return None;  # Inline on return None
-
     }
 
     def check_with_default -> any {
@@ -111,7 +104,6 @@ obj NullSafeTest {
         result = self.`obj.attr if hasattr(self.`obj, "attr") else "default";  # Inline on ternary
         # Comment after assignment
         return result;  # Return result comment
-
     }
 }
 
@@ -124,7 +116,6 @@ obj TernaryTest {
         x: int = self.val if self.val else 0;  # Inline on ternary
         # Comment after ternary
         return x;  # Return comment
-
     }
 
     def nested_ternary -> int {
@@ -134,7 +125,6 @@ obj TernaryTest {
         b = a if a else (self.val if self.val else 0);  # Nested ternary inline
         # After nested
         return b;  # Return b
-
     }
 }
 
@@ -152,7 +142,6 @@ with entry {
     def helper_fn {
         # Inside helper
         return 42;  # Return 42 comment
-
     }
 
     # Comment after function
@@ -173,7 +162,6 @@ obj KeywordEscapeTest {
     def process(input: str) -> str {  # Inline on method with escaped param
         # Comment inside
         return input;  # Return escaped
-
     }
 }
 
@@ -189,9 +177,9 @@ obj ComplexHasTest {
     # Multi-line again
     has field3: list[int] = [];  # Third field inline
     # Comment before different access
-    has : priv private1: int = 0;  # Private field inline
+    has:priv private1: int = 0;  # Private field inline
     # Between private fields
-    has : priv private2: str = "";  # Second private inline
+    has:priv private2: str = "";  # Second private inline
 }
 
 # Test static vs non-static has - should not combine
@@ -207,43 +195,35 @@ obj StaticVsNonStaticTest {
 # Test impl signature mismatch with comments
 obj SignatureTest {
     def method1(a: int, b: str, c: float) -> bool;  # Declaration comment
-
     def method2(x: int) -> int;  # Second decl comment
-
 }
 
 # Impl with same signature
 impl SignatureTest.method1(a: int, b: str, c: float) -> bool {
     # Comment inside method1
     return True;  # Return comment
-
 }
 
 impl SignatureTest.method2(x: int) -> int {
     # Comment inside method2
     return x * 2;  # Return double
-
 }
 
 # Test empty parens removal with comments
 obj EmptyParensTest {
-    def no_params()  -> None;  # Declaration with empty parens
-
-    def also_no_params()  -> int;  # Another empty parens
-
+    def no_params() -> None;  # Declaration with empty parens
+    def also_no_params() -> int;  # Another empty parens
     def really_no_params_no_return();  # No params no return
-
 }
 
-impl EmptyParensTest.no_params()  -> None {
+impl EmptyParensTest.no_params() -> None {
     # Inside no_params
     print("no params");  # Print comment
 }
 
-impl EmptyParensTest.also_no_params()  -> int {
+impl EmptyParensTest.also_no_params() -> int {
     # Inside also_no_params
     return 42;  # Return answer
-
 }
 
 impl EmptyParensTest.really_no_params_no_return() {

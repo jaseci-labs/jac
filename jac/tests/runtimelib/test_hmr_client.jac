@@ -815,7 +815,7 @@ test "dependency compiled when imported file recompiled" {
 # --- TestUnifiedClientCompilerHMR ---
 # The unified path routes HMR through the boot ViteCompiler so file-based
 # routing artifacts (_routes.js, router _entry.js) stay live across changes.
-def _make_unified_reloader(unique_dir: Path) -> tuple {
+def _make_unified_reloader(unique_dir: Path) -> tuple[any, ...] {
     import from jaclang.client.vite_client_bundle { ViteClientBundleBuilder }
     configs_dir = unique_dir / ".jac" / "client" / "configs";
     configs_dir.mkdir(parents=True, exist_ok=True);
@@ -1013,7 +1013,7 @@ test "deleted client module drops its stale compiled output" {
     }
 }
 
-def _routed_project(tmpdir: str, extra_pages: dict[str, str] = {}) -> tuple {
+def _routed_project(tmpdir: str, extra_pages: dict[str, str] = {}) -> tuple[any, ...] {
     unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
     unique_dir.mkdir(parents=True, exist_ok=True);
     (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
@@ -1103,6 +1103,33 @@ test "hyphenated page filenames sanitize to valid JS identifiers in _routes.js" 
                 imported_name = line.split(" as ")[1].split(" ")[0];
                 assert "-" not in imported_name , f"invalid JS identifier: {imported_name}";
             }
+        }
+    }
+}
+
+
+test "failed preparation keeps the live module and recovers on the next edit" {
+    import sys;
+    with TemporaryDirectory() as tmpdir {
+        app_file = Path(tmpdir) / "prepared_recovery.jac";
+        app_file.write_text("def:pub message -> str { return 'working'; }\n");
+        client = JacTestClient.from_file(str(app_file), base_path=tmpdir);
+        try {
+            assert client.post('/function/message', json={}).ok;
+            previous = sys.modules['prepared_recovery'];
+            app_file.write_text("def:pub message -> str { return missing_symbol; }\n");
+            client.reload();
+            assert sys.modules['prepared_recovery'] is previous;
+            response = client.post('/function/message', json={});
+            assert response.ok;
+            assert _as_any(response.data).get('result') == 'working';
+            app_file.write_text("def:pub message -> str { return 'recovered'; }\n");
+            client.reload();
+            response = client.post('/function/message', json={});
+            assert response.ok;
+            assert _as_any(response.data).get('result') == 'recovered';
+        } finally {
+            client.close();
         }
     }
 }

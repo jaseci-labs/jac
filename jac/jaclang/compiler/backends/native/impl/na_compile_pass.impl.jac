@@ -1,4 +1,4 @@
-impl module_functions(mod: ModuleRef) -> list {
+impl module_functions(mod: ModuleRef) -> list[any] {
     fns = mod.functions;
     assert isinstance(fns, Iterator);
     return list(fns);
@@ -67,6 +67,9 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     options = self.prog.options;
     try {
+        if options.native_required_for(module.loc.mod_path) {
+            require_native_ir(str(module.gen.llvm_ir));
+        }
         registry = self.prog.native_units();
         cached = None
             if options.no_ir_cache
@@ -112,9 +115,11 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         manifest = module.gen.interop_manifest;
         if manifest.native_imports {
             import from jaclang.runtime.interop_bridge { register_py_callbacks }
-            py_func_table: dict = {};
-            callbacks_list: list = [];
-            register_py_callbacks(manifest, py_func_table, callbacks_list);
+            py_func_table: dict[str, any] = {};
+            callbacks_list: list[any] = [];
+            register_py_callbacks(
+                manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol
+            );
             module.gen.interop_py_funcs = py_func_table;
             module.gen._interop_callbacks = callbacks_list;
         }
@@ -205,7 +210,7 @@ impl NativeCompilePass._write_symbol_map(
     }
     try {
         text_addr = 0;
-        fn_addrs: list = [];
+        fn_addrs: list[any] = [];
         for fn_name in fn_names {
             addr = engine.get_function_address(fn_name);
             if addr != 0 {
@@ -249,6 +254,21 @@ impl native_linked_ir_text(module: uni.Module) -> str {
     return str(module.gen.llvm_ir);
 }
 
+
+impl require_native_ir(llvm_ir_text: str) -> None {
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+    issues = native_lowering_issues(llvm_ir_text);
+    symbols = set(native_demoted_ir_symbols(llvm_ir_text));
+    symbols.update(issue.symbol for issue in issues);
+    if symbols {
+        details = "\n".join(issue.detail for issue in issues);
+        raise ValueError(
+            "Native-only compilation cannot use Python fallback or erased fields: "
+                + ", ".join(sorted(symbols))
+                + ("\n" + details if details else "")
+        );
+    }
+}
 
 impl native_demoted_ir_symbols(llvm_ir_text: str) -> list[str] {
     import re as _ds_re;

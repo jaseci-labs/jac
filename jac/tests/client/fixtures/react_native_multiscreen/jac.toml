@@ -2,7 +2,7 @@
 name = "react_native_multiscreen"
 version = "1.0.0"
 description = "Mobile (React Native) multi-screen fixture: login, list, detail"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "mobile"
 
 [dependencies.npm]

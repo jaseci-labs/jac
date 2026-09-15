@@ -15,11 +15,10 @@ lane again.
 
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { JAC_ROOT, TESTS_DIR }
+import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.schedules {
+import from jaclang.compiler.driver.pipeline {
     get_analysis_sched,
     get_boundary_analysis_sched,
     get_ir_gen_sched,
@@ -82,16 +81,7 @@ test "the chess example compiles to a binary that plays a game" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "chess");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                CHESS,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", CHESS, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=1800

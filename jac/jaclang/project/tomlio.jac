@@ -1,5 +1,5 @@
 import tomllib;
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.project.source { read_file_with_encoding }
 
 class MalformedJacTomlError(tomllib.TOMLDecodeError) {
     has file_path: str,
@@ -22,7 +22,7 @@ class MalformedJacTomlError(tomllib.TOMLDecodeError) {
 }
 
 
-def read_toml_with_encoding(file_path: str) -> dict {
+def read_toml_with_encoding(file_path: str) -> dict[str, any] {
     try {
         return tomllib.loads(read_file_with_encoding(file_path));
     } except tomllib.TOMLDecodeError as exc {

@@ -14,24 +14,85 @@ import from jaclang.runtime.osp_kernel {
     osp_visit,
     osp_disengage,
     osp_report,
+    scope_of,
     UNTYPED
 }
 
 obj TNode {
     has tag: int,
         name: str,
-        neighbors: list = [];
+        neighbors: list[any] = [];
 }
 
 obj TWalker {
-    has log: list = [],
+    has log: list[str] = [],
+        max_frames: int = 0,
         tag: int = 10;
+}
+
+def ab_bounded_entry(w: TWalker, here: TNode) {
+    scope = scope_of(w);
+    assert scope is not None;
+    w.max_frames = max(w.max_frames, len(scope.frames or []));
+    w.log.append(here.name);
+}
+
+def ab_mixed_entry(w: TWalker, here: TNode) {
+    w.log.append("E:" + here.name);
+    osp_visit(_as_any(here.neighbors), 0 if here.name == "C" else -1);
+}
+
+def ab_mixed_exit(here: TNode, w: TWalker) {
+    w.log.append("X:" + here.name);
+    if here.name == "C" {
+        osp_visit(_as_any([TNode(tag=1, name="E")]), 0);
+    }
+}
+
+test "entry-only walks keep bounded traversal frames" {
+    starts = [TNode(tag=1, name=str(i)) for i in range(2000)];
+    wd = WalkerDesc(
+        type_tag=10, `entry=[Slot(trig_tag=1, fn=ab_bounded_entry)], `exit=[]
+    );
+    w = TWalker();
+    osp_spawn(_runtime(), w, wd, _as_any(starts));
+    assert w.log == [str(i) for i in range(2000)];
+    assert w.max_frames == 1;
+}
+
+test "entry-only frames preserve outer exits and visits inserted from exits" {
+    a = TNode(tag=2, name="A");
+    b = TNode(tag=1, name="B");
+    c = TNode(tag=3, name="C");
+    a.neighbors = [b];
+    b.neighbors = [c];
+    c.neighbors = [TNode(tag=1, name="D")];
+    for tag in (2, 3) {
+        _ndescs[tag] = NodeDesc(
+            type_tag=tag, `entry=[], `exit=[Slot(trig_tag=UNTYPED, fn=ab_mixed_exit)]
+        );
+    }
+    try {
+        wd = WalkerDesc(
+            type_tag=10,
+            `entry=[
+                Slot(trig_tag=1, fn=ab_mixed_entry),
+                Slot(trig_tag=3, fn=ab_mixed_entry)
+            ],
+            `exit=[]
+        );
+        w = TWalker();
+        osp_spawn(_runtime(), w, wd, _as_any([a]));
+        assert w.log == ["E:A", "E:B", "E:C", "E:D", "X:C", "E:E", "X:A"];
+    } finally {
+        _ndescs.clear();
+    }
 }
 
 # Toy type system: Cafe (2) is-a Place (1); Spot (3) standalone; Walker (10).
 glob _ancestors = {1: [1], 2: [2, 1], 3: [3], 10: [10]},
-     _ndescs: dict = {},
-     _last_reports: list = [];
+     _ndescs: dict[any, any] = {},
+     _last_reports: list[any] = [];
 
 def _as_any(v: any) -> any {
     return v;

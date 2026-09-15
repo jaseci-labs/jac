@@ -46,7 +46,7 @@ class SessionConflictError(Exception) {
     def init(
         self: SessionConflictError,
         database: str = '',
-        blockers: (list[dict] | None) = None
+        blockers: (list[dict[str, any]] | None) = None
     ) -> None;
 }
 
@@ -70,13 +70,12 @@ obj AnchorRow {
         arch_module: str = '',
         fingerprint: str = '',
         root_id: (UUID | None) = None,
-        `props: dict = {},
+        `props: dict[str, any] = {},
         src: (UUID | None) = None,
         dst: (UUID | None) = None,
         undirected: bool = False,
         ancestry: list[str] = [],
-        version: int = 0,
-        adjacency: (list[UUID] | None) = None;
+        version: int = 0;
 }
 
 
@@ -104,12 +103,16 @@ obj Store {
     def in_txn -> bool abst;
     def txn_isolation -> (TxnIsolation | None) abst;
     def load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] abst;
+    def adjacency(
+        node_id: UUID, after: (tuple[int, UUID] | None), limit: int
+    ) -> list[tuple[int, UUID]] abst;
+
     def upsert(rows_in: list[AnchorRow]) -> None abst;
     def delete(ids: list[UUID]) -> None abst;
     def existing(ids: list[UUID]) -> set[UUID] abst;
     def root_ids -> list[UUID] abst;
     def subtype_names(type_name: str) -> list[str] abst;
-    def rows(sql: str, params: dict) -> list[tuple] abst;
+    def rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] abst;
     def kv_get(key: str) -> (str | None) abst;
     def kv_put(key: str, value: str) -> None abst;
     def kv_put_ttl(key: str, value: str, ttl_seconds: int) -> None abst;
@@ -159,12 +162,16 @@ obj PgStore(Store) {
     def in_txn -> bool;
     def txn_isolation -> (TxnIsolation | None);
     def load_full(ids: list[UUID]) -> dict[UUID, AnchorRow];
+    def adjacency(
+        node_id: UUID, after: (tuple[int, UUID] | None), limit: int
+    ) -> list[tuple[int, UUID]];
+
     def upsert(rows_in: list[AnchorRow]) -> None;
     def delete(ids: list[UUID]) -> None;
     def existing(ids: list[UUID]) -> set[UUID];
     def root_ids -> list[UUID];
     def subtype_names(type_name: str) -> list[str];
-    def rows(sql: str, params: dict) -> list[tuple];
+    def rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]];
     def kv_get(key: str) -> (str | None);
     def kv_put(key: str, value: str) -> None;
     def kv_put_ttl(key: str, value: str, ttl_seconds: int) -> None;
@@ -180,7 +187,7 @@ obj PgStore(Store) {
     def _connect -> any;
     def _main -> any;
     def _side -> any;
-    def _run(sql: str, params: dict) -> list;
+    def _run(sql: str, params: dict[str, any]) -> list[any];
     def _promotion_columns -> list[tuple[str, str, str]];
     def _promoted_column_type(col: str) -> (str | None);
     def _apply_promotions -> None;
@@ -196,7 +203,7 @@ obj PgStore(Store) {
     def _apply_schema_ddl -> None;
     def _apply_schema_ddl_resilient -> None;
     def _load_known_types -> None;
-    def _peer_sessions -> list[dict];
+    def _peer_sessions -> list[dict[str, any]];
     def _reap_dead_sessions -> int;
-    def _live_blockers -> list[dict];
+    def _live_blockers -> list[dict[str, any]];
 }

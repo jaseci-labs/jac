@@ -17,6 +17,11 @@ impl JacProgram.init(
     self._stub_trees_served = False;
     self._iface = None;
     self._natives = None;
+    import from jaclang.compiler.driver.compilation_context { SourceStore }
+    self.source_store = SourceStore();
+    self.context_root = None;
+    self.context_key = "";
+    self.contexts = {};
 }
 
 impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {
@@ -75,6 +80,17 @@ impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set
 }
 
 impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.invalidate_module(resolved_path);
+            }
+        }
+    }
+    old_module = self.mod.hub.get(resolved_path);
+    if old_module is not None {
+        self.analysis.drop_tasks(id(old_module));
+    }
     work = self.analysis.placement_state.get('work');
     if work is not None {
         work.forget_path(resolved_path);
@@ -158,58 +174,58 @@ impl JacProgram.load_dependency_module(
         }
     }
     compiler = self._get_compiler();
-    if resolved_path in self.mod.hub and not self.is_hub_entry_fresh(resolved_path) {
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    target_program = program_for(resolved_path, self);
+    target_hub = target_program.mod.hub;
+
+    if (resolved_path in self.mod.hub and not self.is_hub_entry_fresh(resolved_path)) {
         self.invalidate_module(resolved_path);
     }
     mod: uni.Module;
-    found = self.mod.hub.get(resolved_path);
-    if found is not None and not (need_tree and hasattr(found, "cat_kids")) {
-        mod = found;
+    if resolved_path in self.mod.hub
+        and not (need_tree and hasattr(self.mod.hub[resolved_path], "cat_kids")) {
+        mod = self.mod.hub[resolved_path];
+    } elif resolved_path in target_hub
+        and not (need_tree and hasattr(target_hub[resolved_path], "cat_kids")) {
+        mod = target_hub[resolved_path];
     } else {
         if resolved_path.endswith('.pyi') {
             import ast as py_ast;
             import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-            import from jaclang.compiler.driver.pass_driver { run_pass }
+            import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-            import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+            import from jaclang.project.source { read_file_with_encoding }
             src = use_str or read_file_with_encoding(source_path);
             uni_source = uni.Source(src, source_path);
-            mod = run_pass(
-                PyastBuildPass,
+            converted = run_utility(
+                UtilityProduct.PYTHON_AST,
                 uni.PythonModuleAst(py_ast.parse(src), orig_src=uni_source,),
                 self
             ).ir_out;
+            assert isinstance(converted, uni.Module);
+            mod = converted;
             mod.stub_only = True;
 
             self.install_module(resolved_path, mod);
             compiler.note_stub_tree_served(resolved_path, self);
             compiler.resolve_absorb_imports(mod, self);
-            run_pass(SymTabBuildPass, mod, self);
+            run_utility(UtilityProduct.PYTHON_SYMBOLS, mod, self);
             events = self.analysis.cache_events;
             events["stub_ingest"] = events.get("stub_ingest", 0) + 1;
         } else {
-            import from jaclang.compiler.driver.compile_options {
-                CompileOptions as _DepOpts
-            }
             saved_options = self.options;
             try {
                 mod = self.compile(
                     source_path,
                     use_str=use_str,
-                    options=(
-                        _DepOpts(no_cgen=True, symtab_ir_only=True, need_full_ast=True)
-                            if need_tree
-                            else _DepOpts(
-                                no_cgen=True, symtab_ir_only=True, iface_ok=True
-                            )
-                    )
+                    options=self.options.for_symbols(need_tree)
                 );
             } finally {
                 self.options = saved_options;
             }
         }
         if not hasattr(mod, "cat_kids") {
-            self.install_module(resolved_path, mod);
+            target_program.install_module(resolved_path, mod);
         }
     }
 
@@ -319,7 +335,7 @@ impl JacProgram.release_check_caches(self: JacProgram) -> None {
 }
 
 impl JacProgram.release_compile_closure(
-    self: JacProgram, collect: bool = True
+    self: JacProgram, collect: bool = True, retain_stubs: bool = True
 ) -> None {
     import os;
     if os.environ.get("JAC_NO_UNIT_EVICT") {
@@ -333,7 +349,20 @@ impl JacProgram.release_compile_closure(
             if not mod.is_raised_from_py
         }
     );
-    self.hub.reset();
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.release_compile_closure(
+                    collect=False, retain_stubs=retain_stubs
+                );
+            }
+        }
+        self.contexts.clear();
+        self.context_key = '';
+        self.source_store.units.clear();
+        self.source_store.revisions.clear();
+    }
+    self.hub.reset(retain_stubs=retain_stubs);
     self.mod = self.hub.mod;
     self.deps.clear();
     if self._natives is not None and self._natives.session is None {
@@ -356,6 +385,9 @@ impl JacProgram.release_compile_closure(
     self.analysis.analyses_run.clear();
     self.analysis.placement_state.pop('work', None);
     self.analysis.early_passes.clear();
+    self.analysis.product_tasks.clear();
+    self.analysis.completed_passes.clear();
+    self.analysis.task_owners.clear();
     if self._iface is not None {
         self._iface.on_closure_release();
     }
@@ -373,7 +405,19 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
     if found is not None {
         return found;
     }
-    return self.mod.hub.get(JacProgram.hub_key(path));
+    keyed = JacProgram.hub_key(path);
+    found = self.mod.hub.get(keyed);
+    if found is not None {
+        return found;
+    }
+    if self.context_root is None {
+        for context in self.contexts.values() {
+            if context is not self and context.options.entry_point == keyed {
+                return context.find_module(keyed);
+            }
+        }
+    }
+    return None;
 }
 
 impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {

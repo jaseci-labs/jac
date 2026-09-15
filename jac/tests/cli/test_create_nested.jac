@@ -17,7 +17,7 @@ def _fresh_tree -> Path {
     initialize_template_registry();
     d = Path(tempfile.mkdtemp(prefix="jacnested_"));
     with open(d / "jac.toml", "w") as f {
-        f.write('[project]\nname = "parent"\nentry-point = "main.jac"\n');
+        f.write('[project]\nname = "parent"\nentry-point = "main"\n');
     }
     return d;
 }

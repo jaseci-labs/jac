@@ -2,7 +2,7 @@
 name = "day-planner-walkers"
 version = "1.0.0"
 description = "AI Day Planner - walker:priv variant with object-spatial programming"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-app"
 
 [dependencies.npm]

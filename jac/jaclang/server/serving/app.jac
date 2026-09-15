@@ -149,12 +149,12 @@ obj ServingApp {
     has title: str = 'Jac API',
         version: str = '0.1.0',
         router: Router = Router(),
-        middlewares: list[any] = [],
-        on_shutdown: list[any] = [],
+        middlewares: list[Callable[..., any]] = [],
+        on_shutdown: list[Callable[..., any]] = [],
         docs_url: (str | None) = '/docs',
         openapi_url: (str | None) = '/openapi.json',
         openapi_security: dict[str, any] = {},
-        openapi_cache: (dict | None) = None,
+        openapi_cache: (dict[str, any] | None) = None,
         state: dict[str, any] = {},
         multipart_spool_bytes: int = 1048576;
 

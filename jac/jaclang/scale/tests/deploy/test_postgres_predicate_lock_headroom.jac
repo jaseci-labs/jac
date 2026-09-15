@@ -26,7 +26,7 @@ glob OBSERVED_PEAK_SIREAD_LOCKS = 17406,
      OBSERVED_SIREAD_LOCKS_PER_CONN = 870;
 
 
-def _pg_container -> dict {
+def _pg_container -> dict[str, any] {
     provider = KubernetesPostgresProvider(config={'app_name': 'headroom-test'});
     deployed = provider.deploy({});
     spec = deployed['statefulset']['spec']['template']['spec'];

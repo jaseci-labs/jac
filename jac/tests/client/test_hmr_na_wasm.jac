@@ -29,7 +29,7 @@ obj _FakeJacClientCompiler {
         return self.compiled_dir / (module_path.stem + ".js");
     }
 
-    def compile_dependencies_recursively(module_path: Path, **kwargs: any) {
+    def emit_dependencies(module_path: Path, **kwargs: any) {
         self.recompiled.append(str(module_path));
     }
 
@@ -61,7 +61,7 @@ def _reload_signal(project_dir: str) -> Path {
 
 """Build a project holding a client entry and one native module, and return
 (base_path, native_module_path, hot_reloader, fake_compiler)."""
-def _make_reloader(tmp: str, succeeds: bool = True) -> tuple {
+def _make_reloader(tmp: str, succeeds: bool = True) -> tuple[any, ...] {
     Path(os.path.join(tmp, "jac.toml")).write_text(
         '[project]\nname = "wasmproj"\n', encoding="utf-8"
     );
@@ -163,10 +163,10 @@ test "a tracked native module owes a wasm even when the hub has forgotten it" {
         );
         compiler = make_client_bundle_builder(base_path=Path(tmp))._get_compiler();
         compiler.jac_client_compiler.na_wasm_modules = {str(na_file.resolve())};
-        owed = compiler._owes_wasm(na_file);
+        owed = na_file.resolve() in compiler._wasm_targets(na_file);
         stranger = Path(tmp) / "game" / "unrelated.jac";
         stranger.write_text("glob READY: bool = True;\n", encoding="utf-8");
-        not_owed = compiler._owes_wasm(stranger);
+        not_owed = stranger.resolve() in compiler._wasm_targets(stranger);
     }
     assert owed , (
         "a module the client compile recorded as a native import owes a wasm "
@@ -246,8 +246,7 @@ test "wasm and its import manifest follow the client bundle output directory" {
             );
             compiler = builder._get_compiler();
             with patch(
-                "jaclang.compiler.backends.native.wasm_build.compile_to_wasm",
-                return_value=wasm
+                "jaclang.compiler.driver.pipeline.build_wasm", return_value=wasm
             ) {
                 assert compiler._emit_wasm_module(project / "arena.jac");
             }

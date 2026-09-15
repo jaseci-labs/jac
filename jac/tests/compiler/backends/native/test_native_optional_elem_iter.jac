@@ -50,7 +50,7 @@ glob CASES: list[str] = [
      ];
 
 """Compile the fixture natively and return (program, ir)."""
-def native_build -> tuple {
+def native_build -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, FIXTURE)), options=native_force_opts()
@@ -66,7 +66,7 @@ def native_call(eng: any, name: str) -> int {
 }
 
 """Run the fixture through the sv pathway and return its module globals."""
-def sv_funcs -> dict {
+def sv_funcs -> dict[str, any] {
     path = str(os.path.join(FIXTURES, FIXTURE));
     prog = JacProgram();
     ir = prog.compile(
@@ -74,7 +74,7 @@ def sv_funcs -> dict {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"sv compilation errors: {errors}";
-    ns: dict = {};
+    ns: dict[str, any] = {};
     exec(compile(ir.gen.py, path, "exec"), ns);
     return ns;
 }

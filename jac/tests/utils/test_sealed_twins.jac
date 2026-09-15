@@ -149,8 +149,8 @@ test "register_image hash-verifies its JIRs (fail-closed)" {
 
 
 """A manifest for a throwaway sealed package, with or without a native record."""
-def _twin_manifest(native: (dict | None)) -> dict {
-    manifest: dict = {
+def _twin_manifest(native: (dict[str, any] | None)) -> dict[str, any] {
+    manifest: dict[str, any] = {
         "format": sealed.MANIFEST_FORMAT,
         "package": "sealed_twin_native_pkg",
         "python_tag": sealed.python_tag(),

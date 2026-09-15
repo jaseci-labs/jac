@@ -32,7 +32,7 @@ def alias_dir(alias: str) -> Path {
     return get_cache_dir() / alias;
 }
 
-def gguf_path(alias: str, spec: dict) -> Path {
+def gguf_path(alias: str, spec: dict[str, any]) -> Path {
     fname: str = str(spec["file"]);
     return alias_dir(alias) / fname;
 }
@@ -41,7 +41,7 @@ def _consent_marker(alias: str) -> Path {
     return alias_dir(alias) / ".jac_download_consent";
 }
 
-def is_downloaded(alias: str, spec: dict) -> bool {
+def is_downloaded(alias: str, spec: dict[str, any]) -> bool {
     p = gguf_path(alias, spec);
     return p.exists() and p.stat().st_size > 0;
 }
@@ -53,7 +53,7 @@ def _fmt_size(mb: int) -> str {
     return f"{mb} MB";
 }
 
-def _resolve_consent(alias: str, spec: dict, auto_download: bool) -> bool {
+def _resolve_consent(alias: str, spec: dict[str, any], auto_download: bool) -> bool {
     env = os.environ.get("BYLLM_AUTO_DOWNLOAD");
     if env is not None {
         if env.strip().lower() in ("1", "true", "yes", "y") {
@@ -97,7 +97,7 @@ def _resolve_consent(alias: str, spec: dict, auto_download: bool) -> bool {
     return False;
 }
 
-def _download(alias: str, spec: dict) -> Path {
+def _download(alias: str, spec: dict[str, any]) -> Path {
     try {
         import from huggingface_hub { hf_hub_download }
     } except ImportError {
@@ -120,7 +120,7 @@ def _download(alias: str, spec: dict) -> Path {
     return Path(path);
 }
 
-def ensure_model(alias: str, spec: dict, auto_download: bool = False) -> str {
+def ensure_model(alias: str, spec: dict[str, any], auto_download: bool = False) -> str {
     if is_downloaded(alias, spec) {
         return str(gguf_path(alias, spec));
     }
@@ -140,7 +140,7 @@ def ensure_model(alias: str, spec: dict, auto_download: bool = False) -> str {
     return str(gguf_path(alias, spec));
 }
 
-def force_pull(alias: str, spec: dict) -> str {
+def force_pull(alias: str, spec: dict[str, any]) -> str {
     return ensure_model(alias, spec, auto_download=True);
 }
 
@@ -154,12 +154,12 @@ def remove_alias(alias: str) -> bool {
     return True;
 }
 
-def list_downloaded -> list[dict] {
+def list_downloaded -> list[dict[str, any]] {
     cache_root = get_cache_dir();
     if not cache_root.exists() {
         return [];
     }
-    out: list[dict] = [];
+    out: list[dict[str, any]] = [];
     for child in cache_root.iterdir() {
         if not child.is_dir() {
             continue;

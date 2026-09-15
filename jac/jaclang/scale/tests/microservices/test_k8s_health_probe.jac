@@ -27,7 +27,7 @@ import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGat
 import from jaclang.scale.runtime.orchestrator.process_manager { ServiceProcessManager }
 
 """Serve a real /healthz over HTTP: http.server answering GET /healthz -> 200."""
-def _real_healthz_server(port: int) -> tuple {
+def _real_healthz_server(port: int) -> tuple[any, ...] {
     d = mkdtemp();
     (Path(d) / "healthz").write_text("ok");
     proc = subprocess.Popen(
@@ -119,10 +119,10 @@ test "gateway-only mode does not report an unserved route healthy" {
         + 'default-app = "web"\n\n'
         + '[apps.web]\n'
         + 'kind = "web-app"\n'
-        + 'entry-point = "main.jac"\n\n'
+        + 'entry-point = "main"\n\n'
         + '[apps.ghost_app]\n'
         + 'kind = "service"\n'
-        + 'entry-point = "ghost_app.jac"\n'
+        + 'entry-point = "ghost_app"\n'
         + 'route = "/ghost"\n\n'
         + '[scale.gateway]\n'
         + f"gateway_port = {port}\n"
@@ -146,7 +146,7 @@ test "gateway-only mode does not report an unserved route healthy" {
         stderr=subprocess.DEVNULL
     );
     try {
-        body: dict = {};
+        body: dict[str, any] = {};
         for _ in range(120) {
             if proc.poll() is not None {
                 raise RuntimeError(f"gateway exited early: {proc.returncode}");

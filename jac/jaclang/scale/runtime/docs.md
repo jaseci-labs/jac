@@ -20,11 +20,11 @@ path = "web"
 
 [apps.cart]                   # a file-rooted service app
 kind = "service"
-entry-point = "core/cart.jac"
+entry-point = "core.cart"
 
 [apps.orders]
 kind = "service"
-entry-point = "core/orders.jac"
+entry-point = "core.orders"
 route = "/api/orders"         # optional; default is /api/<name>
 ```
 

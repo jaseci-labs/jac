@@ -5,7 +5,7 @@ produces no JIT engine (pre-existing), so keys added there can never be a
 require=["na"] signal.
 """
 
-def fmt_long_py -> dict {
+def fmt_long_py -> dict[any, any] {
     return {"fmt_long": format(10.0 / 3.0, ".70f")};
 }
 

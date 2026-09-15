@@ -18,7 +18,7 @@ import from jaclang.server.serving.app { ServingApp }
 import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
 import from jaclang.server.serving.server { ServingServer }
 
-def _ping -> dict {
+def _ping -> dict[str, any] {
     return {"ok": True};
 }
 

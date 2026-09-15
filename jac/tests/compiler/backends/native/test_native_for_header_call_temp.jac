@@ -53,11 +53,11 @@ glob FIXTURES = os.path.join(
          "str_header",
          "dict_header"
      ],
-     _MEMO: list = [];
+     _MEMO: list[any] = [];
 
 
 """Compile the fixture once natively; return (engine, module ir)."""
-def _compiled -> tuple {
+def _compiled -> tuple[any, ...] {
     if _MEMO {
         return _MEMO[0];
     }
@@ -84,7 +84,7 @@ def _get(name: str) -> any {
 
 
 """Run one accounting function and split it into (destructions, value)."""
-def _account(name: str, n: int) -> tuple {
+def _account(name: str, n: int) -> tuple[any, ...] {
     encoded = _get(name)(n);
     return (encoded // 1000, encoded % 1000);
 }

@@ -2,7 +2,7 @@ obj Buffer {
     has n: int = 0;
 }
 
-glob hot: list = [];
+glob hot: list[any] = [];
 
 def sink(b: Buffer) {
     hot.append(b);

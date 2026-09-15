@@ -19,7 +19,7 @@ import from jaclang.compiler.driver.jir { compute_module_key }
 
 
 def _pinned_opts(**overrides: any) -> CompileOptions {
-    base: dict = {
+    base: dict[str, any] = {
         "memory_profile": "managed",
         "nogc_enforce_all": False,
         "memory_enforce": [],
@@ -57,7 +57,7 @@ test "forced server compilation retains Python standard-library imports" {
 
 test "every codegen option flip changes the fingerprint" {
     base_fp = _pinned_opts().codegen_fingerprint();
-    flips: list = [
+    flips: list[any] = [
         _pinned_opts(memory_profile="nogc"),
         _pinned_opts(memory_profile="rc"),
         _pinned_opts(nogc_enforce_all=True),
@@ -737,5 +737,78 @@ test "native link mode uses project configuration without changing unit codegen"
         assert configured.native_link_mode == "bitcode";
         assert explicit.native_link_mode == "objects";
         assert configured.codegen_identity() == explicit.codegen_identity();
+    }
+}
+
+test "symbol requests preserve their app and native target context" {
+    parent = CompileOptions(
+        aot_mode=True,
+        default_codespace='native',
+        target_app='cli',
+        entry_point='/project/main.jac',
+        project_root='/project',
+        native_target='wasm32-unknown-unknown'
+    );
+    child = parent.for_symbols(need_tree=True);
+    assert child is not parent;
+    assert child.no_cgen and child.symtab_ir_only and child.need_full_ast;
+    assert child.aot_mode and child.default_codespace == 'native';
+    assert child.entry_point == parent.entry_point;
+    assert child.project_root == parent.project_root;
+    assert child.codegen_identity() == parent.codegen_identity();
+    assert not parent.no_cgen and not parent.symtab_ir_only;
+}
+
+test "native-only policy is retained in dependency and cache identities" {
+    ordinary = _pinned_opts(native_require=[]);
+    strict = _pinned_opts(native_required=True, native_require=[]);
+    scoped = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    import from jaclang.compiler.driver.program { JacProgram }
+    registry = JacProgram().iface_registry();
+    for options in (strict, scoped) {
+        assert registry.analysis_profile(options)
+            != registry.analysis_profile(ordinary);
+        assert options.codegen_fingerprint() != ordinary.codegen_fingerprint();
+        assert options.analysis_fingerprint() != ordinary.analysis_fingerprint();
+        for inherited in (options.for_symbols(), options.clone_for_native_import()) {
+            assert inherited.native_required == options.native_required;
+            assert inherited.native_require == options.native_require;
+        }
+    }
+    assert scoped.native_required_for(
+        "/checkout/jaclang/runtime/python/bindings/module.jac"
+    );
+    assert not scoped.native_required_for("/checkout/jaclang/runtime/runtime.jac");
+}
+
+test "native-only dependencies stay in the target rather than the compiler host" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    program = JacProgram();
+    program.options = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    host = SelfHostCache(_jaclang_root="/checkout/jaclang");
+    assert host.resolve("/checkout/jaclang/runtime/python/capi.jac", program)
+        is program;
+    assert host.peek_program() is None;
+}
+
+test "native dependency caches use the running compiler identity" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.jir { current_native_stamp }
+    options = _pinned_opts();
+    with patch(
+        "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-a"
+    ) {
+        first = current_native_stamp(options.codegen_identity(), "").key();
+        assert first == current_native_stamp(options.codegen_identity(), "").key();
+        assert first
+            != current_native_stamp(
+                _pinned_opts(native_required=True).codegen_identity(), ""
+            ).key();
+    }
+    with patch(
+        "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-b"
+    ) {
+        assert first != current_native_stamp(options.codegen_identity(), "").key();
     }
 }

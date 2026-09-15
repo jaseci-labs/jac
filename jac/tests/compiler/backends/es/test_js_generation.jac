@@ -25,7 +25,7 @@ import from jaclang.compiler.backends.es.es_unparse {
     template_element_raw
 }
 import from jaclang.compiler.backends.es.primitives_es { ESDictEmitter, ESEmitCtx }
-import from jaclang.compiler.driver.modresolver { convert_to_js_import_path }
+import from jaclang.project.modresolver { convert_to_js_import_path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 
@@ -724,7 +724,7 @@ test "fstring advanced fixture template literals" {
 }
 
 test "fstring edge cases" {
-    jac_code = "\"\"\"Test f-string edge cases.\"\"\"\n\ndef test_edge_cases() -> dict {\n    name = \"Alice\";\n    value = 42;\n\n    # Text only (no interpolation)\n    text_only = f\"This is just plain text\";\n\n    # Expression only (no static text)\n    expr_only = f\"{value}\";\n\n    # Multiple consecutive expressions\n    consecutive = f\"{name}{value}\";\n\n    # Mixed with spaces\n    mixed = f\"Name: {name}, Value: {value}\";\n\n    return {\"text\": text_only, \"expr\": expr_only, \"cons\": consecutive, \"mixed\": mixed};\n}\n";
+    jac_code = "\"\"\"Test f-string edge cases.\"\"\"\n\ndef test_edge_cases() -> dict[any, any] {\n    name = \"Alice\";\n    value = 42;\n\n    # Text only (no interpolation)\n    text_only = f\"This is just plain text\";\n\n    # Expression only (no static text)\n    expr_only = f\"{value}\";\n\n    # Multiple consecutive expressions\n    consecutive = f\"{name}{value}\";\n\n    # Mixed with spaces\n    mixed = f\"Name: {name}, Value: {value}\";\n\n    return {\"text\": text_only, \"expr\": expr_only, \"cons\": consecutive, \"mixed\": mixed};\n}\n";
 
     temp_path = write_temp_jac(jac_code);
 
@@ -857,11 +857,11 @@ test "separated files" {
     # `input` is destructured from useState (external React typings) so its
     # static type is unknown — `.strip()` routes through the polymorphic
     # runtime dispatcher instead of leaking the Python method name.
-    # This module is consumed only by `separated`, so shared ownership
-    # keeps the spawn within that app while retaining its boundary contract.
+    # Compiling the client as an entry crosses the declared service entry,
+    # so the call carries its app, route, and endpoint contract.
     assert (
         "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")}, "
-            + "{\"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
+            + "{\"app\": \"separated\", \"route\": \"/separated\", \"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
         in js_code
     );
 }
@@ -992,11 +992,12 @@ test "bridge wrapper covers posonly and kwonly params" {
         + "signature, not silently drop them;\ngot:\n"
         + js_code
     );
-    # All three params must appear in the RPC args object the wrapper posts.
+    # All three params must appear in the RPC args object the wrapper posts,
+    # including serialization of both boundary-typed params.
     # The server is a service app of the fixture workspace, so the call also
     # carries the provider's app and route after the args object.
     assert (
-        '__jacCallFunction("query",{"filter":filter,"query":query,"scope":scope},'
+        '__jacCallFunction("query",{"filter":filter.__to_wire(),"query":query,"scope":scope.__to_wire()},'
         in compact_js
     ) , (
         "sv-import wrapper must forward posonly + kwonly params in the RPC "
@@ -1297,7 +1298,7 @@ test "for-of tuple targets destructure into binding patterns" {
 
 test "tuple assignment targets destructure with a rest pattern" {
     jac_code = (
-        "def f(rows: list) {\n"
+        "def f(rows: list[any]) {\n"
         "    (first, *rest) = rows;\n"
         "    return rest;\n"
         "}\n"
@@ -2369,7 +2370,7 @@ test "cl negative indexing counts from the end like Python (#6320)" {
     # Python/Jac negative indices count from the end. A raw JS subscript
     # `xs[-1]` is `undefined`, silently producing the wrong value.
     jac_code = """
-def neg_index() -> dict {
+def neg_index() -> dict[any, any] {
     xs: list[int] = [10, 20, 30];
     s: str = "abc";
     return {
@@ -2422,7 +2423,7 @@ test "cl collection truthiness matches Python emptiness (#6320)" {
     # never short-circuit. Boolean contexts on a collection must test
     # emptiness like Python (empty list/dict/set is falsy; str already agrees).
     jac_code = """
-def truthy_probe() -> dict {
+def truthy_probe() -> dict[any, any] {
     el: list[int] = [];
     fl: list[int] = [1];
     ed: dict[str, int] = {};
@@ -2510,7 +2511,7 @@ test "cl negative-index assignment and while-truthiness match Python (#6320)" {
     # (raw `xs[-1] = v` would create a bogus "-1" property), and a `while`
     # guard on a collection must drain like Python rather than loop forever.
     jac_code = """
-def probe() -> dict {
+def probe() -> dict[any, any] {
     xs: list[int] = [1, 2, 3];
     xs[-1] = 99;
     xs[0] = 5;
@@ -2576,7 +2577,7 @@ test "cl subscript on unknown-typed values keeps JS undefined-on-miss (#6320)" {
     # index is rewritten to count from the end. This guards the jac-client
     # `data["data"]["user_id"]` pattern from regressing to a KeyError throw.
     jac_code = """
-def probe(resp: any, xs: any) -> dict {
+def probe(resp: any, xs: any) -> dict[any, any] {
     present: any = resp["user_id"];
     guard: int = 1 if (resp["data"] and resp["data"]["k"]) else 0;
     return {
@@ -2827,7 +2828,7 @@ test "imported JS/TS class constructs with new (#8017)" {
     assert_balanced_syntax(js_code, "ts_class_new.jac");
 }
 
-test "builtin functions lower to runtime helpers without type-check (#7480)" {
+test "builtin functions lower to runtime helpers without type-check (#7480, #8589)" {
     # An imported client module reaches the bundler uninferred (call_kind
     # unstamped, as when compiled as a dependency). The bundler chokepoint must
     # run the inference schedule before the backend so builtins lower to their
@@ -2876,10 +2877,16 @@ test "builtin functions lower to runtime helpers without type-check (#7480)" {
     }
     wrapper = (
         js_code
+        + "\nlet _emptyErr = null;"
+        + "\ntry { min_of_empty(); } catch (e) { _emptyErr = e.message; }"
         + "\nconsole.log(JSON.stringify({"
         + "  summarize: summarize([3, 1, 2]),"
         + "  numeric: numeric(5),"
-        + "  zipped: combined([1, 2], [3, 4])[2]"
+        + "  combined: combined([1, 2], [3, 4]),"
+        + "  min_max_key: min_max_by_key([\"ccc\", \"a\", \"bb\"]),"
+        + "  min_spread: min_of_spread([5, 1, 3]),"
+        + "  min_max_varargs: min_max_varargs(3, 1, 2),"
+        + "  empty_error: _emptyErr"
         + "}));\n"
     );
     result = subprocess.run(
@@ -2902,7 +2909,36 @@ test "builtin functions lower to runtime helpers without type-check (#7480)" {
     assert got["summarize"]["ranged"] == [0, 1, 2] , got["summarize"];
     assert got["numeric"]["abs"] == 5 , got["numeric"];
     assert got["numeric"]["round"] == 3.14 , got["numeric"];
-    assert got["zipped"] == [[1, 3], [2, 4]] , got["zipped"];
+    assert got["combined"][2] == [[1, 3], [2, 4]] , got["combined"];
+
+    # `combined([1, 2], [3, 4])` calls `min(a)`/`max(a)` in the single-
+    # iterable form (#8589): `Math.min([1, 2])` used to silently return NaN
+    # here, but only index 2 (zip) was ever checked. `min_max_varargs`
+    # covers the other branch of the same fix -- `min(a, b, c)` with several
+    # separate values, which must keep working as a direct comparison, not
+    # collapse into the iterable path. `min_max_by_key` covers the `key=`
+    # form, `min_of_empty` covers the empty-sequence error, and
+    # `min_of_spread` covers `min(*xs)`: a single spread argument lowers to
+    # one `...xs` entry, which the fix must wrap in `[...]` rather than pass
+    # straight through -- otherwise xs's elements splice into the runtime
+    # helper's own argument list instead of forming the array it expects.
+    expected_scalars = {
+        "combined min(a)": (got["combined"][0], 1),
+        "combined max(a)": (got["combined"][1], 2),
+        "min(items, key=)": (got["min_max_key"][0], "a"),
+        "max(items, key=)": (got["min_max_key"][1], "ccc"),
+        "min(*xs)": (got["min_spread"], 1),
+        "min(a, b, c)": (got["min_max_varargs"][0], 1),
+        "max(a, b, c)": (got["min_max_varargs"][1], 3)
+    };
+    for (label, (actual, expected)) in expected_scalars.items() {
+        assert actual == expected , (
+            f"{label}: expected {expected!r}, got {actual!r}\njs:\n{js_code}"
+        );
+    }
+    assert got["empty_error"] and "empty" in got["empty_error"].lower() , (
+        f"min([]) without a default must raise, got: {got['empty_error']}\njs:\n{js_code}"
+    );
 
     assert_balanced_syntax(js_code, "builtin_func_untyped.jac");
 }
@@ -2991,7 +3027,7 @@ test "builtin name used as a dict key lowers to that key, not the 'key' fallback
     # renderer read that accidental `config.key`, so once the builtin-type
     # handler started lowering `type` correctly the form input types broke
     # (native `type="email"` validation stopped working). Lock the key down.
-    jac_code = "def make_cfg() -> dict {\n    return {type: \"email\", label: \"Email\"};\n}\n";
+    jac_code = "def make_cfg() -> dict[any, any] {\n    return {type: \"email\", label: \"Email\"};\n}\n";
 
     temp_path = write_temp_jac(jac_code);
     try {

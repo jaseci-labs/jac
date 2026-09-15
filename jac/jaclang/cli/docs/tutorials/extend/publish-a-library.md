@@ -37,7 +37,7 @@ The generated `jac.toml` already carries the metadata that will become your whee
 name = "greetlib"
 version = "0.1.0"
 description = "Distributable Python package (built into a wheel)"
-entry-point = "lib.jac"
+entry-point = "lib"
 kind = "py-package"
 ```
 

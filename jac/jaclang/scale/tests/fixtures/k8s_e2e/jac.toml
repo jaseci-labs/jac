@@ -6,21 +6,21 @@ default-app = "web"
 
 [apps.web]
 kind = "web-app"
-entry-point = "main.jac"
+entry-point = "main"
 
 [apps.products_app]
 kind = "service"
-entry-point = "products_app.jac"
+entry-point = "products_app"
 route = "/products"
 
 [apps.orders_app]
 kind = "service"
-entry-point = "orders_app.jac"
+entry-point = "orders_app"
 route = "/orders"
 
 [apps.cart_app]
 kind = "service"
-entry-point = "cart_app.jac"
+entry-point = "cart_app"
 route = "/cart"
 
 [dependencies.npm]

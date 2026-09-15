@@ -92,7 +92,7 @@ def _bootstrap_js_snippet -> str {
 }
 
 """Run jac2py on a file, return (ok, stdout_or_None, stderr_or_None)."""
-def _jac2py(jac_file: Path) -> tuple {
+def _jac2py(jac_file: Path) -> tuple[any, ...] {
     jac = shutil.which("jac") or "jac";
     result = subprocess.run(
         [jac, "jac2py", str(jac_file)], capture_output=True, text=True, timeout=60
@@ -108,10 +108,10 @@ def _jac2py(jac_file: Path) -> tuple {
 
 results is a dict mapping relative path -> {ok, used_jac0, error}.
 """
-def _transpile_all_plugins -> tuple {
+def _transpile_all_plugins -> tuple[any, ...] {
     tmp = tempfile.mkdtemp();
     src_dir = _plugin_src_dir();
-    results: dict = {};
+    results: dict[str, any] = {};
     for jac_file in sorted(src_dir.rglob("*.jac")) {
         # rglob("*.jac") also matches directories named ".jac" (build cache).
         if not jac_file.is_file() {
@@ -159,7 +159,7 @@ def _transpile_all_plugins -> tuple {
 }
 
 """Common module names to clean up after plugin tests."""
-def _plugin_mod_names -> list {
+def _plugin_mod_names -> list[any] {
     return [
         "desktop_plugin",
         "plugin_host",
@@ -1172,7 +1172,7 @@ test "plugin configs from toml control registration" {
         reset_desktop_config();
         toml_path = Path(d) / "jac.toml";
         toml_path.write_text(
-            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main"\n'
             '[desktop]\nname = "Test"\n'
             '[desktop.plugins]\n'
             'path = true\n'
@@ -1208,7 +1208,7 @@ test "plugin configs empty when no plugins section" {
         reset_desktop_config();
         toml_path = Path(d) / "jac.toml";
         toml_path.write_text(
-            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main"\n'
             '[desktop]\nname = "Test"\n'
         );
         cfg = get_desktop_config(project_dir=Path(d));
@@ -1282,7 +1282,7 @@ test "plugin bridge links with full native stack" {
         "    respond(wv_handle, id, result_str);\n"
         "}\n"
         "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
-        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
+        "import from webview { BindingCallback, Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
         "with entry {\n"
         "    Py_Initialize();\n"
         "    _wv_raw = webview_create(0, 0);\n"
@@ -1290,7 +1290,7 @@ test "plugin bridge links with full native stack" {
         "    wv = Webview(handle=_wv_raw);\n"
         '    wv.title("integration-test");\n'
         "    wv.size(640, 480, HINT_NONE);\n"
-        '    wv.bind("__jac_invoke", _jac_invoke_handler);\n'
+        '    wv.bind("__jac_invoke", BindingCallback(invoke=_jac_invoke_handler));\n'
         '    wv.html("<h1>integration</h1>");\n'
         "    ts = PyEval_SaveThread();\n"
         "    run_main_loop();\n"

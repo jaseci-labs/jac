@@ -49,8 +49,8 @@ kind/capabilities/entry/payloads)::
           "package": false,
           "sha256": "..."                  # checked by register_image
         },
-        "compiler/driver/modresolver.jac": {
-          "module": "jaclang.compiler.driver.modresolver",
+        "project/modresolver.jac": {
+          "module": "jaclang.project.modresolver",
           "jir": "jac0core/modresolver.jir",
           "package": false,
           "sha256": "...",
@@ -91,6 +91,7 @@ import sys
 import types
 import zlib
 from pathlib import Path
+from typing import Any
 
 from jaclang.jac0core import ext_registry
 
@@ -114,7 +115,7 @@ MANIFEST_FORMATS_ACCEPTED = (2, 3, 4, 5, 6, 7, 8, MANIFEST_FORMAT)
 # pure-Python section reader below, so they need none of the .jac machinery
 # (jir.jac's reader is itself a jac0core module).
 PRECOMPILE_SENTINEL = "__PKG_ROOT__"
-JIR_FORMAT_VERSION = 28
+JIR_FORMAT_VERSION = 29
 HEADER_SIZE = 32
 SECTIONS_MAGIC = b"JIRX"
 SEC_BYTECODE = 0x02
@@ -180,10 +181,10 @@ def _patch_code_filenames(
 class SealedImage:
     """One sealed ``_precompiled`` bundle: manifest + name-keyed module index."""
 
-    def __init__(self, precompiled_dir: Path, manifest: dict) -> None:
+    def __init__(self, precompiled_dir: Path, manifest: dict[str, Any]) -> None:
         self.precompiled_dir = precompiled_dir
         self.pkg_dir = precompiled_dir.parent
-        self.manifest = manifest
+        self.manifest: dict[str, Any] = manifest
         self.package: str = manifest.get("package", "")
         self.jir_dir = precompiled_dir / manifest.get("python_tag", python_tag())
         # Optional non-module payloads baked into the image (prebuilt client

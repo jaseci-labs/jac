@@ -13,10 +13,9 @@ import from jaclang.compiler.driver.compile_options {
 }
 import shutil;
 import subprocess;
-import sys;
 import tempfile;
 import jaclang;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { jac_command, TESTS_DIR, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -25,7 +24,7 @@ glob FIXTURES = os.path.join(
      ),
      ENFORCE = ["xmod_gc_entry*", "xmod_gc_lib*"];
 
-def _compile_ir(entry_path: str, gc_mode: str, enforce: list) -> str {
+def _compile_ir(entry_path: str, gc_mode: str, enforce: list[any]) -> str {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
@@ -67,18 +66,7 @@ test "host-path multi-module gc none build passes assert-no-rc" {
         }
         out_bin = os.path.join(tmp, "xmod.bin");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                `entry,
-                "--memory",
-                "nogc",
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", `entry, "--memory", "nogc", "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=300,

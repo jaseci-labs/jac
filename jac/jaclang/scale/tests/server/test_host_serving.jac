@@ -22,6 +22,7 @@ import tempfile;
 import urllib.request;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
+import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.project.config { set_config }
 import from jaclang.server { sv_client }
 import from jaclang.server.server { JacAPIServer }
@@ -29,17 +30,7 @@ import from jaclang.server.settings { ServeSettings }
 
 
 glob _TOML: str = (
-         "[project]\n"
-         "name = \"hosted\"\n"
-         "default-app = \"web\"\n"
-         "\n"
-         "[apps.web]\n"
-         "kind = \"web-app\"\n"
-         "path = \"web\"\n"
-         "\n"
-         "[apps.feed]\n"
-         "kind = \"service\"\n"
-         "entry-point = \"core/feed.jac\"\n"
+         '[project]\nname = "hosted"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.feed]\nkind = "service"\nentry-point = "core.feed"\n'
      ),
      _WEB_SRC: str = (
          "walker:pub Hello {\n"
@@ -90,7 +81,7 @@ def _get(url: str) -> tuple[int, str] {
 }
 
 
-def _post(url: str, body: dict) -> tuple[int, str] {
+def _post(url: str, body: dict[str, any]) -> tuple[int, str] {
     data = json.dumps(body).encode("utf-8");
     req = urllib.request.Request(
         url, data=data, method="POST", headers={"Content-Type": "application/json"}
@@ -112,6 +103,7 @@ def _load(tmp: str, mod: str, base: str) {
     if mod in sys.modules {
         del sys.modules[mod];
     }
+    prepare_application(str(Path(base) / (mod + '.jac')), Jac.get_program(), base);
     Jac.jac_import(target=mod, base_path=base, lng="jac");
 }
 

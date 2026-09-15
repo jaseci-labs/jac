@@ -12,7 +12,7 @@ glob _DEFAULT_RUNTIME_PKG: str = "@jaseci/runtime";
 impl runtime_pkg_name(config: JacConfig) -> str {
     npm = config._raw_data.get("npm", {});
     if isinstance(npm, dict) and npm.get("runtime") {
-        return npm["runtime"];
+        return str(npm["runtime"]);
     }
     return _DEFAULT_RUNTIME_PKG;
 }
@@ -132,9 +132,9 @@ def _compile_module(program: any, path: Path) -> any {
         raise ValueError(f"Failed to compile '{path}' for npm bundle:\n{formatted}");
     }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
     if mod and mod.gen and not mod.gen.js {
-        run_pass(EsastGenPass, mod, program);
+        require_product(program, mod, CompilationProduct.CLIENT);
     }
     return mod;
 }

@@ -4,7 +4,7 @@ import os;
 import urllib.request;
 
 
-def urllib_py -> dict {
+def urllib_py -> dict[str, any] {
     base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
     resp = urllib.request.urlopen(base + "/hello");
     body = resp.read();
@@ -18,7 +18,7 @@ def urllib_py -> dict {
 }
 
 
-def urllib_redirect_py -> dict {
+def urllib_redirect_py -> dict[str, any] {
     base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
     resp = urllib.request.urlopen(base + "/redirect");
     body = resp.read();

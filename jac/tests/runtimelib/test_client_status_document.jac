@@ -8,13 +8,16 @@ returns on the core and the scale server, and the same diagnostic value the
 `/cl/__error__` endpoint logs.
 """
 
+import from jaclang.server.build_status { BuildMonitor }
+
 import io;
 import json;
 import logging;
 import uuid;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.server.hmr { HotReloader, get_build_status }
+import from jaclang.server.hmr { HotReloader }
+import from jaclang.server.build_status { get_build_status }
 import from jaclang.server.watcher { JacFileWatcher }
 import from jaclang.testing.testing { JacTestClient }
 
@@ -56,11 +59,11 @@ def _reset_client_globals {
     _error_rate_limiter._seen = {};
     _error_rate_limiter._count = 0;
     _error_rate_limiter._window_start = 0.0;
-    active = HotReloader._active;
+    active = BuildMonitor.active;
     if active is not None {
         active.stop();
     }
-    HotReloader._active = None;
+    BuildMonitor.active = None;
 }
 
 """Forget a module this file compiled into the long-lived global program."""
@@ -394,7 +397,7 @@ test "a tagged stdout line reaches the callback and is never echoed" {
         CLIENT_EVENT_PREFIX
     }
     with TemporaryDirectory() as tmp {
-        seen: list = [];
+        seen: list[any] = [];
         bundler = ViteBundler(Path(tmp));
         bundler.on_client_event = lambda (slot: str, payload: any) { seen.append(
             (slot, payload)
@@ -485,7 +488,7 @@ test "the suite leaves no dev-loop global behind" {
     }
     _reset_client_globals();
     # A pooled worker runs later suites in this same process.
-    assert HotReloader._active is None;
+    assert BuildMonitor.active is None;
     assert _locator_cache == {};
     assert _mapper_cache == {};
     assert _error_rate_limiter._seen == {};

@@ -21,7 +21,7 @@ impl NaIRGenPass._emit_os_environ_call(
 ) -> (ir.Value | None) {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    params = nd.params or [];
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
 
     if name == "get" {
         return self._emit_os_call("getenv", nd);
@@ -82,7 +82,7 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    params = nd.params or [];
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
 
     if name == "getpid" {
         fn = self._get_or_declare_extern("getpid", i32, []);
@@ -268,7 +268,7 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    params = nd.params or [];
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
 
     if name == "join" and params {
         _acc0 = self._str_arg(self._codegen_expr(params[0]));

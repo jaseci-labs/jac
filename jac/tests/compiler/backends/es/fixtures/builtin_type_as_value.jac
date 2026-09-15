@@ -9,8 +9,7 @@ Every form below must resolve to the same callable the direct call emits, and
 the type must keep working as isinstance/issubclass classinfo.
 """
 
-
-def parse_all(parts: list) -> list {
+def parse_all(parts: list[any]) -> list[any] {
     # `int` as a map callback.  JS `.map` hands its callback
     # (value, index, array), so a two-arity coercion like `int(x, base)` would
     # read the index as a radix and yield NaN unless map keeps Python's
@@ -18,11 +17,11 @@ def parse_all(parts: list) -> list {
     return list(map(int, parts));
 }
 
-def keep_truthy(items: list) -> list {
+def keep_truthy(items: list[any]) -> list[any] {
     return list(filter(bool, items));
 }
 
-def sort_numerically(items: list) -> list {
+def sort_numerically(items: list[any]) -> list[any] {
     # A builtin type as a `key=` function.
     return sorted(items, key=int);
 }
@@ -33,7 +32,7 @@ def alias_call(x: str) -> int {
     return f(x);
 }
 
-def coerce_all(x: any) -> list {
+def coerce_all(x: any) -> list[any] {
     # Builtin types stored in a collection, then called out of it.
     coercions = [str, int, bool];
     return [c(x) for c in coercions];

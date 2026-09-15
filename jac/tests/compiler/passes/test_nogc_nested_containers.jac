@@ -13,9 +13,8 @@ import from jaclang.compiler.driver.compile_options {
     pop_native_target
 }
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -28,7 +27,7 @@ glob OWNFIELD_DIR = os.path.join(
          "cycles": ["--memory", "managed"]
      };
 
-def _compile(path: str) -> tuple {
+def _compile(path: str) -> tuple[any, ...] {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
@@ -62,7 +61,7 @@ test "nested list output stays byte-identical across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"nl_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", fixture]
+                jac_command("build", "--native", fixture)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

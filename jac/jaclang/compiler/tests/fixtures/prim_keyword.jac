@@ -9,7 +9,7 @@ import keyword;
 import from keyword { iskeyword, issoftkeyword, kwlist, softkwlist }
 
 
-def keyword_py -> dict {
+def keyword_py -> dict[any, any] {
     return {
         "n_kw": len(kwlist),
         "n_soft": len(softkwlist),
@@ -24,7 +24,7 @@ def keyword_py -> dict {
     };
 }
 
-def keyword_cl -> dict {
+def keyword_cl -> dict[any, any] {
     return {};
 }
 

@@ -1,7 +1,7 @@
 import logging;
 import from contextvars { ContextVar }
 import from datetime { UTC, datetime, timedelta }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.server.identity.identity_storage {
     IdentityStorage,
     PgIdentityStorage
@@ -78,7 +78,7 @@ obj UserManager {
     ) -> dict[str, any];
 
     def refresh_jwt_token(token: str) -> str | None;
-    def get_jwt_claims(token: str) -> dict | None;
+    def get_jwt_claims(token: str) -> dict[str, any] | None;
     def link_sso_account(
         user_id: str, platform: str, external_id: str
     ) -> dict[str, str];

@@ -67,14 +67,17 @@ def _lower(cl_copy: str) -> str {
     import from jaclang.compiler.backends.es.es_unparse { es_to_js }
     import from jaclang.compiler.backends.es { estree as es }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
     prog = JacProgram();
     ir = prog.compile(
         file_path=cl_copy,
         options=CompileOptions(force_codespace='client', no_cgen=True)
     );
-    program = run_pass(EsastGenPass, ir, prog).ir_out.gen.es_ast;
-    kept: list = [];
+    if not require_product(prog, ir, CompilationProduct.CLIENT) {
+        raise RuntimeError("Could not compile OSP client runtime");
+    }
+    program = ir.gen.es_ast;
+    kept: list[es.Statement | es.ModuleDeclaration] = [];
     if isinstance(program, es.Program) {
         for stmt in program.body {
             is_jac_rt = (

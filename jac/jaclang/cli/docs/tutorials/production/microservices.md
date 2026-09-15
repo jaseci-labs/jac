@@ -42,11 +42,11 @@ default-app = "calculator"
 
 [apps.calculator]
 kind = "service"
-entry-point = "calculator_service.jac"
+entry-point = "calculator_service"
 
 [apps.math]
 kind = "service"
-entry-point = "math_service.jac"
+entry-point = "math_service"
 EOT
 ```
 
@@ -463,7 +463,6 @@ If an endpoint reports an invalid anchor, check its ID, the selected app and sto
 
 - **`E1042` on a call that looks local.** The imported element is owned by another app, so the stub is a coroutine: `await` it and make the enclosing function or ability `async`.
 - **`E5106` on an import.** The consumer names something that is not on the provider's bridge surface. Mark the function `def:pub`, or move it into shared code (a module under no app root) if both apps need it in-process.
-- **`E5107` on a shared module.** Two serving apps reach the same server-placed shared module and neither owns it. Give it its own `[apps.<name>]` table (`kind = "service"`, `entry-point = ...`) or pin an owner with `[apps.<owner>.placement.pins]`.
 - **`E5104`.** Your apps bridge in a circle. Move the shared piece into shared code, or merge the apps.
 - **`BridgeUnavailable: app 'math' is not registered`.** The provider is neither colocated (no `[apps.math]` in this workspace) nor reachable (no `JAC_APP_MATH_URL`) at the first awaited call.
 - **`BridgeRejected` with status 401.** `:priv` endpoints are JWT-gated; the hop forwards the inbound `Authorization` header, but an anonymous chain has none. Keep the cross-app surface on `def:pub` / walkers.

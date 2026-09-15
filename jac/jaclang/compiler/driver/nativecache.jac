@@ -614,6 +614,16 @@ obj NativeBuildSession {
             set_effective_default_codespace("native");
             import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
             import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+            completed = self.prog.analysis.completed_passes.get(id(mod));
+            if completed is not None {
+                completed.discard("NaIRGenPass");
+                completed.discard("NativeCompilePass");
+            }
+            import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+            tasks = self.prog.analysis.product_tasks.get(id(mod));
+            if tasks is not None {
+                tasks.pop(CompilationProduct.NATIVE_IR, None);
+            }
             mod.gen.llvm_ir = None;
             mod.gen.native_iface = None;
             mod.gen.native_bitcode = None;

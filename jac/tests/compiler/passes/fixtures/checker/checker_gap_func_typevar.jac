@@ -20,7 +20,7 @@ def make_or_none[T](typ: type[T]) -> T | None {
     return None;
 }
 
-def first_of_type[T](items: list, typ: type[T]) -> T | None {
+def first_of_type[T](items: list[any], typ: type[T]) -> T | None {
     for item in items {
         if isinstance(item, typ) {
             return item;

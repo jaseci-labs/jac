@@ -1,7 +1,7 @@
 [project]
 name = "shooter-onefile"
 version = "0.1.0"
-entry-point = "main.jac"
+entry-point = "main"
 
 [dependencies.npm]
 react = "^19.2.0"

@@ -550,7 +550,7 @@ Create reusable state logic by defining functions that use `has`:
 ```jac
 import from react { useEffect }
 
-def use_local_storage(key: str, initial_value: any) -> tuple {
+def use_local_storage(key: str, initial_value: any) -> tuple[any, any] {
     has value: any = initial_value;
 
     useEffect(lambda -> None {
@@ -1748,7 +1748,7 @@ to in-browser WebAssembly). Declare it once in `jac.toml`:
 ```toml
 [project]
 name = "browser-app"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-static"
 
 [client]
@@ -1898,7 +1898,7 @@ A mobile app is a **mobUI** app: one source tree that compiles to both native (A
 ```toml
 [apps.mobile]
 kind = "mobile"
-path = "mobile"
+entry-point = "mobile.main"
 platform = "android"      # optional default for `jac run mobile` / `jac build mobile`
 ```
 
@@ -2611,6 +2611,18 @@ Anchors provide persistent object references across sessions, allowing nodes and
 ---
 
 ## JavaScript Interop
+
+### Primitive Conversions
+
+In client code, `Boolean(value)`, `Number(value)`, and `String(value)` call the
+JavaScript conversion functions and return primitive values. For example,
+`Boolean(False)` is `false`, `Number("0")` is `0`, and `String("")` is an empty
+string. `Boolean` follows JavaScript truthiness, so empty arrays and objects are
+true. Aliases such as `convert = Boolean; convert(value);` keep the same behavior,
+and static helpers such as `Number.isFinite(value)` remain available.
+
+An `as bool` annotation does not perform a runtime conversion in client code;
+use `Boolean(value)` when conversion is needed.
 
 ### Constructing Browser Objects
 

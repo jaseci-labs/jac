@@ -1,8 +1,8 @@
-impl Media.to_dict -> list[dict] {
+impl Media.to_dict -> list[dict[str, any]] {
     raise NotImplementedError("Subclasses must implement this method.");
 }
 
-impl Text.to_dict -> list[dict] {
+impl Text.to_dict -> list[dict[str, any]] {
     return [{"type": "text", "text": self.text}];
 }
 
@@ -23,11 +23,13 @@ impl Image.postinit -> None {
         if not os.path.exists(s) {
             raise ValueError(f"Image file does not exist: {s}");
         }
-        image = open_image(s);
-        fmt = image.format or "PNG";
+
+        image: any = open_image(s);
+        fmt: str = image.format or "PNG";
 
         self.mime_type = self._format_to_mime(fmt);
-        with BytesIO() as buffer {
+        buffer = BytesIO();
+        with buffer {
             image.save(buffer, format=fmt);
             data = buffer.getvalue();
             self.url = self._data_url_from_bytes(data, fmt);
@@ -36,9 +38,11 @@ impl Image.postinit -> None {
     }
 
     if isinstance(value, PILImageCls) {
-        fmt = value.format or "PNG";
-        with BytesIO() as buffer {
-            value.save(buffer, format=fmt);
+        pil: any = value;
+        fmt: str = pil.format or "PNG";
+        buffer = BytesIO();
+        with buffer {
+            pil.save(buffer, format=fmt);
             data = buffer.getvalue();
             self.url = self._data_url_from_bytes(data, fmt);
             return;
@@ -48,13 +52,14 @@ impl Image.postinit -> None {
     if isinstance(value, (bytes, bytearray, memoryview)) {
         raw = bytes(value);
 
-        img = open_image(BytesIO(raw));
-        fmt = img.format or "PNG";
+        img: any = open_image(BytesIO(raw));
+        fmt: str = img.format or "PNG";
 
         try {
             self.url = self._data_url_from_bytes(raw, fmt);
         } except Exception {
-            with BytesIO() as buffer {
+            buffer = BytesIO();
+            with buffer {
                 img.save(buffer, format=fmt);
                 self.url = self._data_url_from_bytes(buffer.getvalue(), fmt);
             }
@@ -80,8 +85,8 @@ impl Image.postinit -> None {
                 }
                 stream_bytes = bytes(value?.read());
             }
-            img = open_image(BytesIO(stream_bytes));
-            fmt = img.format or "PNG";
+            img: any = open_image(BytesIO(stream_bytes));
+            fmt: str = img.format or "PNG";
             self.url = self._data_url_from_bytes(stream_bytes, fmt);
         } finally {
             if pos is not None and value?.seek {
@@ -123,7 +128,7 @@ impl Image._data_url_from_bytes(data: bytes, fmt: str | None) -> str {
     return f"data:{mime};base64,{b64}";
 }
 
-impl Image.to_dict -> list[dict] {
+impl Image.to_dict -> list[dict[str, any]] {
     image_url = {"url": self.url};
     if self.mime_type {
         image_url["format"] = self.mime_type;
@@ -165,7 +170,7 @@ impl Video.load_frames -> None {
     }
 }
 
-impl Video.to_dict -> list[dict] {
+impl Video.to_dict -> list[dict[str, any]] {
     if self._base64frames is None {
         self.load_frames();
     }

@@ -30,6 +30,7 @@ import from tests.support {
     native_force_opts,
     native_str_func
 }
+import from tests.support { jac_command }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -49,7 +50,7 @@ def _opts(gc_mode: str | None = None, enforce: bool = False) -> any {
 }
 
 
-def _compile(fixture: str, options: any | None = None) -> tuple {
+def _compile(fixture: str, options: any | None = None) -> tuple[object, any] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)),
@@ -243,7 +244,7 @@ test "hetero death reclaims elements under headerless gc none (stamped drops)" {
 def _run_fixture_with_gc(extra_flags: list[str], tag: str) {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), f"hetero_matrix_{tag}.bin");
-    cmd = [sys.executable, "-m", "jaclang", "build", "--native", src];
+    cmd = jac_command("build", "--native", src);
     cmd += extra_flags;
     cmd += ["-o", out_bin];
     comp = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
@@ -272,18 +273,7 @@ test "hetero nogc fixture passes under headerless --memory nogc (AOT)" {
     src = os.path.join(FIXTURES, "nogc", "hetero_nogc.jac");
     out_bin = os.path.join(tempfile.mkdtemp(), "hetero_nogc.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            src,
-            "--memory",
-            "nogc",
-            "-o",
-            out_bin
-        ],
+        jac_command("build", "--native", src, "--memory", "nogc", "-o", out_bin),
         capture_output=True,
         text=True,
         timeout=300
@@ -295,14 +285,14 @@ test "hetero nogc fixture passes under headerless --memory nogc (AOT)" {
         proc.stderr or proc.stdout or '(empty)'
     )[-600:]}";
     out = proc.stdout.strip().split("\n");
-    assert out == ["1200", "1200", "done"] , f"hetero nogc output mismatch: {out}";
+    assert out == ["600", "400", "done"] , f"hetero nogc output mismatch: {out}";
 }
 
 test "mixed dict keys and mixed set elements are stable diagnostics" {
     import tempfile as _tf;
     for (src_text, fn_name, label) in [
         (
-            "def bad_keys -> int { d: dict = {1: \"a\", \"b\": 2}; return len(d); }",
+            "def bad_keys -> int { d: dict[any, any] = {1: \"a\", \"b\": 2}; return len(d); }",
             "bad_keys",
             "dict-mixed-keys"
         ),

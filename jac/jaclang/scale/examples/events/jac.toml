@@ -2,7 +2,7 @@
 name = "events-example"
 version = "1.0.0"
 description = "Minimal event-streaming example for jac-scale"
-entry-point = "app.jac"
+entry-point = "app"
 
 [scale.events]
 enabled = true

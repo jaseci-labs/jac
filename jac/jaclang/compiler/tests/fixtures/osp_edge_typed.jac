@@ -15,11 +15,12 @@ cross-backend assert is na vs py.
 node City {
     has val: int;
 }
+
 edge Road {}
 edge Rail {}
 
 walker Router {
-    has seen: list = [];
+    has seen: list[any] = [];
 
     can step with City entry {
         self.seen.append(here.val);

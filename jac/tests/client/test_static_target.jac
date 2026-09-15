@@ -117,7 +117,7 @@ test "web-static kind is detected from jac toml" {
         toml_content = '''[project]
 name = "browser-app"
 version = "1.0.0"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-static"
 
 [client]
@@ -201,7 +201,7 @@ test "client build renders from file protocol" {
             toml_text = f.read();
         }
         toml_text = toml_text.replace(
-            'entry-point = "main.jac"', 'entry-point = "main.jac"\nkind = "web-static"'
+            'entry-point = "main"', 'entry-point = "main"\nkind = "web-static"'
         );
         with open(toml_path, "w") as f {
             f.write(toml_text);

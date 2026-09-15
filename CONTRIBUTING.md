@@ -26,7 +26,7 @@ git remote -v
 
 **1. Install Zig**
 
-The binary is built with [Zig](https://ziglang.org/) **0.16.0** (the version is pinned -- newer/older majors will fail to build). Zig plus a network connection are the only build-time deps: `launcher/payload.zig` does all the HTTP fetching, integrity checks, and (de)compression in Zig's std, so there's nothing else to install (the old `curl`/`git`/`zstd`/`tar` shellouts are gone).
+The binary is built with [Zig](https://ziglang.org/) **0.16.0** (the version is pinned -- newer/older majors will fail to build). Building the bundled Python from source also requires **make, Perl, a POSIX shell, and network access**; macOS needs the SDK from Xcode command line tools. No installed Python or Jac is required. The Zig bootstrap downloads and verifies pinned source archives, then uses Zig's C compiler with the retained upstream configure/make recipes. See [the launcher build guide](jac/launcher/README.md#build) for runtime caching and supported targets.
 
 ```bash
 # Zig: download the 0.16.0 tarball for your platform and put it on PATH
@@ -35,7 +35,7 @@ The binary is built with [Zig](https://ziglang.org/) **0.16.0** (the version is 
 zig version          # must print 0.16.0
 ```
 
-(One optional host tool: if `strip` is on PATH the build shrinks the bundled libpython from ~245 MiB to ~20 MiB; without it the build still succeeds, the binary is just larger.)
+(One optional host tool: if `strip` is on PATH the build removes debug symbols from the bundled libpython; without it the build still succeeds, the binary is larger.)
 
 (The vendored typeshed stdlib stubs are not committed -- `zig build` fetches them at the pinned commit on first build, so there is nothing to check out manually.)
 
@@ -166,6 +166,86 @@ To skip this check, add the `skip-release-notes-check` label to your PR.
 
 **Example PR with a release note fragment**: [#5573](https://github.com/jaseci-labs/jaseci/pull/5573)
 
+## Trying the JacPython release binary
+
+Releases provide stock CPython by default and an experimental JacPython variant.
+Pass `--jacpython` to `scripts/install.sh`, or download the platform asset ending
+in `-jacpython` from the [releases page](https://github.com/jaseci-labs/jac/releases).
+The Python compiler replacement runs as native Jac machine code. CPython still
+provides the bytecode VM, object runtime, and standard library. Compiler
+compatibility continues to be expanded; include a reproducer when reporting an issue.
+
+Choose the platform token for your machine:
+
+| Machine | `PLATFORM` |
+| --- | --- |
+| Linux x86-64 | `linux-x86_64` |
+| Linux ARM64 | `linux-aarch64` |
+| Apple Silicon Mac | `macos-aarch64` |
+| Intel Mac | `macos-x86_64` (only when the manual release lane has published it) |
+
+In Bash, replace `vX.Y.Z` with a released tag containing both runtime variants and
+set `PLATFORM` from the table. Use `TAG=dev` for the rolling development release
+once it includes both variants. The commands download into a temporary directory,
+verify the checksum, and keep your installed `jac` unchanged:
+
+```bash
+TAG=vX.Y.Z
+PLATFORM=linux-x86_64
+TRIAL=$(mktemp -d)
+ASSET="jac-${TAG#v}-${PLATFORM}-jacpython"
+BASE="https://github.com/jaseci-labs/jac/releases/download/$TAG"
+
+curl -fL --retry 3 "$BASE/$ASSET" -o "$TRIAL/$ASSET" &&
+curl -fL --retry 3 "$BASE/$ASSET.sha256" -o "$TRIAL/$ASSET.sha256" &&
+(cd "$TRIAL" && shasum -a 256 -c "$ASSET.sha256") &&
+chmod +x "$TRIAL/$ASSET" &&
+JACPYTHON_BIN="$TRIAL/$ASSET" &&
+JAC_NO_DEV_SOURCE=1 "$JACPYTHON_BIN" --version
+```
+
+Continue only if the download and checksum check succeed. A 404 means the
+selected tag/platform does not have that asset; check the release's asset list.
+`shasum` is available on macOS; on Linux, `sha256sum -c` can replace
+`shasum -a 256 -c`. First use extracts the bundled runtime into Jac's cache.
+
+Verify the active compiler and exercise Python source and AST compilation:
+
+```bash
+JAC_NO_DEV_SOURCE=1 "$JACPYTHON_BIN" -c '
+import ast, ctypes, sys
+assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+assert not hasattr(sys, "_jacpython_compile")
+assert not hasattr(sys, "_jacpython_image")
+print("Python compiler: native JacPython")
+assert eval("6 * 7") == 42
+exec(compile(ast.parse("print(6 * 7)"), "<jacpython-trial>", "exec"))
+'
+
+printf 'with entry { print(6 * 7); }\n' > "$TRIAL/hello.jac"
+JAC_NO_DEV_SOURCE=1 "$JACPYTHON_BIN" run "$TRIAL/hello.jac"
+```
+
+Both examples should print `42`; the compiler probe should report native
+JacPython. The replacement executes as native machine code, while CPython
+provides the object runtime and executes the resulting Python bytecode.
+The `-c` probe exercises the Python replacement directly;
+`run` retains Jac's normal backend selection. Keep `JAC_NO_DEV_SOURCE=1` when
+testing a downloaded release inside this repository so its `[dev]` setting
+does not substitute the checkout's Jac compiler.
+
+Use the explicit `$JACPYTHON_BIN` path for further experiments. Include the tag,
+platform, compiler-probe output, and a minimal reproducer when reporting an issue.
+Older releases may use CPython's C compiler; the probe above distinguishes them.
+
+For changes to the JacPython implementation, rebuild with
+`cd jac && JACPYTHON=1 zig build` and use the resulting `zig-out/bin/jac`.
+Its native compiler object is linked at build time: editing source through the
+dev loop does not replace that object in an existing binary. Plain `zig build`
+produces the stock CPython variant. A separate build-only CPython host
+produces the initial native object and is not shipped. See
+[the build guide](jac/launcher/README.md#build) for cache details and prerequisites.
+
 ## Code Rules and Guidelines
 
 **Jac Style**
@@ -251,6 +331,10 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 3. The workflow bumps the version in the root `jac.toml` (the single source of truth), updates `jac/examples/jaclang_org/jac.toml` to pin that exact Jac version, and opens a PR from a `release/*` branch
 4. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
 5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
+
+PR preparation downloads the latest released Jac binary to run the version and
+release-note scripts. It sets `JAC_NO_DEV_SOURCE=1` to use the bundled compiler,
+so this job does not build Jac from source.
 
 ### Step 2: Approve the Release
 

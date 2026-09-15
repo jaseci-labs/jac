@@ -1,6 +1,6 @@
 [project]
 name = "{{name}}"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-app"
 
 [jac-shadcn]

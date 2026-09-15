@@ -1214,7 +1214,7 @@ impl UniNode.detached_copy -> UniNode {
     return copy.deepcopy(self);
 }
 
-impl UniNode.__deepcopy__(memo: dict) -> UniNode {
+impl UniNode.__deepcopy__(memo: dict[int, object]) -> UniNode {
     import copy;
 
     dup = object.__new__(type(self));
@@ -2488,7 +2488,7 @@ impl ModulePath.base_module_name.getter -> str {
 }
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
-    import from jaclang.compiler.driver.modresolver { resolve_relative_path }
+    import from jaclang.project.modresolver { resolve_relative_path }
     bundled = self.native_bundled_path();
     if bundled is not None {
         return bundled;

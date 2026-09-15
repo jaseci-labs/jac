@@ -17,11 +17,10 @@ import from jaclang.compiler.driver.compile_options {
     pop_native_target
 }
 import subprocess;
-import sys;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -77,7 +76,7 @@ def emit_wasm_object(fixture: str) -> bytes {
 }
 
 """Top-level section spans -> list of (id, payload_start, payload_end)."""
-def sections(b: bytes) -> list {
+def sections(b: bytes) -> list[any] {
     o = 8;
     out = [];
     while o < len(b) {
@@ -100,7 +99,7 @@ def has_section(b: bytes, want: int) -> bool {
 }
 
 """Names of imported functions (kind 0) in the module's import section."""
-def func_imports(b: bytes) -> list {
+def func_imports(b: bytes) -> list[any] {
     out = [];
     for (sid, s, e) in sections(b) {
         if sid != 2 {
@@ -139,8 +138,8 @@ def func_imports(b: bytes) -> list {
 }
 
 """Names exported by the module."""
-def export_names(b: bytes) -> list {
-    out = [];
+def export_names(b: bytes) -> list[str] {
+    out: list[str] = [];
     for (sid, s, e) in sections(b) {
         if sid != 7 {
             continue;
@@ -219,10 +218,7 @@ test "linking is deterministic" {
 test "nacompile --target wasm32 writes a valid module via the CLI" {
     out = os.path.join(tempfile.mkdtemp(), "game.wasm");
     proc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
+        jac_command(
             "build",
             "--native",
             "--target-triple",
@@ -230,7 +226,7 @@ test "nacompile --target wasm32 writes a valid module via the CLI" {
             os.path.join(FIXTURES, FIXTURE),
             "-o",
             out
-        ],
+        ),
         capture_output=True,
         text=True,
         timeout=300

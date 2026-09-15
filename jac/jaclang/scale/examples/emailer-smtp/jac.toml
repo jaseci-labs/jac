@@ -2,7 +2,7 @@
 name = "emailer-smtp-example"
 version = "1.0.0"
 description = "Built-in SMTP emailer example for jac-scale"
-entry-point = "app.jac"
+entry-point = "app"
 
 # Built-in SMTP provider. No custom emailer code required.
 [scale.emailer]

@@ -29,7 +29,7 @@ targets coexist without evicting one another. A compiler upgrade discards
 obsolete compiler variants. Only a native compile writes these five sections;
 a bytecode compile of the same file merges around them. The shared bootstrap-safe
 file lock covers the complete JIR read/merge/replace transaction, so concurrent
-writers preserve one another’s products. JIR format 28 makes this a clean
+writers preserve one another’s products. JIR format 29 makes this a clean
 cache-format break. That is why the native
 digests have their own section: when they lived in `SEC_DEPS`, every
 bytecode compile of a unit rewrote the rows without them and the next link

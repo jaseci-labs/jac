@@ -1,7 +1,7 @@
 import re;
 import from pathlib { Path }
 
-glob _ROUTE_ROLE_SUFFIXES: list = ['.impl.', '.test.'],
+glob _ROUTE_ROLE_SUFFIXES: list[str] = ['.impl.', '.test.'],
      _JSX_ELEMENT_EXPORT_RE: str = (
          r'def(?::\w+)?\s+(\w+)\s*(?:\([^)]*\))?\s*->\s*JsxElement\b'
      ),
@@ -91,5 +91,3 @@ obj RouteScanner {
 
 def resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))];
 def entry_drops_route_children(manifest: any) -> bool;
-
-def _route_exports_from_ast(mod: any) -> tuple[((str | None), (str | None))];

@@ -103,7 +103,9 @@ impl JacTestResult.postinit -> None {
     super.init(self.stream, self.descriptions, self.verbosity);
 }
 
-impl invoke_native_test(engine: any, symbol: str, test_name: str) -> None {
+impl invoke_native_test(
+    engine: any, symbol: str, test_name: str, init_symbols: (list[str] | None) = None
+) -> None {
     import ctypes;
     import os;
     import sys;
@@ -116,7 +118,7 @@ impl invoke_native_test(engine: any, symbol: str, test_name: str) -> None {
         raise RuntimeError(f"native test symbol missing: {symbol}");
     }
     native_fn = ctypes.CFUNCTYPE(ctypes.c_char_p)(addr);
-    mirrors: list = [];
+    mirrors: list[tuple[int, str]] = [];
     for (fd, name) in ((1, "stdout"), (2, "stderr")) {
         stream = getattr(sys, name, None);
         stream_fd: (int | None) = None;
@@ -138,8 +140,8 @@ impl invoke_native_test(engine: any, symbol: str, test_name: str) -> None {
         }
         return;
     }
-    saved: dict = {};
-    sinks: dict = {};
+    saved: dict[int, int] = {};
+    sinks: dict[int, tuple[any, str]] = {};
     for (fd, name) in mirrors {
         saved[fd] = os.dup(fd);
         sink = tempfile.TemporaryFile();

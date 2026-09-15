@@ -9,7 +9,7 @@ import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_c
 def _seed_k8s_config(k8s_toml: str) -> str {
     project_dir = tempfile.mkdtemp(prefix="jac-svcurl-test-");
     (Path(project_dir) / "jac.toml").write_text(
-        "[project]\nname = \"svcurl-test\"\nentry-point = \"main.jac\"\n" + k8s_toml
+        "[project]\nname = \"svcurl-test\"\nentry-point = \"main\"\n" + k8s_toml
     );
     reset_scale_config();
     get_scale_config(project_dir=Path(project_dir));

@@ -164,7 +164,7 @@ def kitchen_sink(
 }
 
 # Public function (becomes API endpoint with `jac run`)
-def:pub get_items() -> list {
+def:pub get_items() -> list[any] {
     return [];
 }
 
@@ -1125,7 +1125,7 @@ walker:pub add_todo {
 # Body: {"title": "Learn Jac"}
 
 # Public functions also become endpoints
-def:pub health_check() -> dict {
+def:pub health_check() -> dict[str, any] {
     return {"status": "ok"};
 }
 
@@ -1385,7 +1385,7 @@ node Todo {
     has title: str, done: bool = False;
 }
 
-def:pub get_todos() -> list {
+def:pub get_todos() -> list[any] {
     return [{"title": t.title} for t in [root -->][?:Todo]];
 }
 
@@ -1421,7 +1421,7 @@ node Secret { has value: str; }
 #   path = "web"
 #   [apps.orders]                 # a file-rooted service app: owns
 #   kind = "service"              #   exactly its entry file; imports of
-#   entry-point = "core/orders.jac"   # its walkers from other apps lower
+#   entry-point = "core.orders"   # its walkers from other apps lower
 #                                 #   to typed-async bridge stubs (await)
 #   (scaffold with `jac create --app orders --kind service`)
 
@@ -1578,7 +1578,7 @@ def:pub TodoApp() -> JsxElement {
 
 # import from "@jac/runtime" {
 #     jacLogin,       # (email, pass) -> bool
-#     jacSignup,      # (email, pass) -> dict
+#     jacSignup,      # (email, pass) -> dict[str, any]
 #     jacLogout,      # () -> void
 #     jacIsLoggedIn   # () -> bool
 # }

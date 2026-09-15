@@ -51,7 +51,7 @@ def _app(jacignore: (str | None) = None) -> str {
     d = tempfile.mkdtemp(prefix="client-stage-");
     files = {
         "jac.toml": (
-            '[project]\nname = "shop"\nentry-point = "main.jac"\n\n'
+            '[project]\nname = "shop"\nentry-point = "main"\n\n'
             '[scale.secrets]\nAPI_KEY = "sk-live-8104"\n'
         ),
         "main.jac": (
@@ -668,8 +668,8 @@ test "workspace served web app declares its client even without root client hint
     try {
         Path(project_dir, "jac.toml").write_text(
             '[project]\nname = "shop"\ndefault-app = "svc"\n'
-            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\n'
-            '[apps.svc]\nkind = "service"\nentry-point = "svc.jac"\n'
+            '[apps.web]\nkind = "web-app"\nentry-point = "main"\n'
+            '[apps.svc]\nkind = "service"\nentry-point = "svc"\n'
         );
         mb = _builder(project_dir, client_entry=None);
         mb.fleet = FleetSpec();
@@ -709,5 +709,18 @@ test "workspace served web app declares its client even without root client hint
         assert mb._client_entry() == "";
     } finally {
         shutil.rmtree(project_dir, ignore_errors=True);
+    }
+}
+
+test "implicit deployment resolves a dotted client entry to a source path" {
+    with tempfile.TemporaryDirectory() as directory {
+        base = Path(directory);
+        (base / 'web').mkdir();
+        (base / 'web' / 'main.jac').write_text('with entry {}\n');
+        (base / 'jac.toml').write_text(
+            '[project]\nname="nested"\nkind="web-app"\nentry-point="web.main"\n'
+        );
+        builder = _builder(directory, client_entry=None);
+        assert builder._client_entry() == os.path.join('web', 'main.jac');
     }
 }

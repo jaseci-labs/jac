@@ -1,6 +1,6 @@
 import inspect;
 import json;
-import from jaclang.compiler.driver.mtp { Info, MethodInfo, FunctionInfo }
+import from jaclang.runtime.semantic { Info, MethodInfo, FunctionInfo }
 import from types { MethodType }
 import from typing { get_type_hints }
 import from jaclang.byllm.schema { json_to_instance, type_to_schema }
@@ -35,13 +35,15 @@ obj MTRuntime {
         call_params: dict[(str, object)],
         mtir: MTIR | None = None,
         _scaffolding_ids: list[int] = [],
-        _conversation_list: (list | None) = None,
+        _conversation_list: (list[any] | None) = None,
         _final_output: object = None,
         _has_final_output: bool = False,
         _stream_reset_count: int = 0,
-        _tool_arg_deltas: list[dict] = [],
-        _usage_history: list[dict] = [],
-        _call_kind: str = "react_iteration";
+        _tool_arg_deltas: list[dict[str, any]] = [],
+        _usage_history: list[dict[str, any]] = [],
+        _call_kind: str = "react_iteration",
+        _invocation_id: str = "",
+        _parent_invocation_id: str | None = None;
 
     static def factory(mtir: MTIR) -> MTRuntime;
     def add_message(message: MessageType) -> None;
@@ -51,7 +53,7 @@ obj MTRuntime {
     def write_back_conversation -> None;
     def parse_response(response: str) -> any;
     def get_tool(tool_name: str) -> Tool | McpTool | None;
-    def get_tool_list -> list[dict];
-    def get_output_schema -> dict | None;
-    def get_typed_output_schema -> dict | None;
+    def get_tool_list -> list[dict[str, any]];
+    def get_output_schema -> dict[str, any] | None;
+    def get_typed_output_schema -> dict[str, any] | None;
 }

@@ -30,26 +30,7 @@ import from jaclang.scale.runtime.gateway.service_registry {
 }
 import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 
-glob _WORKSPACE_TOML: str = '[project]\n'
-     'name = "shop"\n'
-     'default-app = "web"\n'
-     '\n'
-     '[apps.web]\n'
-     'kind = "web-app"\n'
-     'path = "web"\n'
-     '\n'
-     '[apps.orders]\n'
-     'kind = "service"\n'
-     'entry-point = "core/orders.jac"\n'
-     '\n'
-     '[apps.cart]\n'
-     'kind = "service"\n'
-     'entry-point = "core/cart.jac"\n'
-     'route = "/api/basket"\n'
-     '\n'
-     '[apps.tool]\n'
-     'kind = "cli"\n'
-     'path = "tool"\n';
+glob _WORKSPACE_TOML: str = '[project]\nname = "shop"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.orders]\nkind = "service"\nentry-point = "core.orders"\n\n[apps.cart]\nkind = "service"\nentry-point = "core.cart"\nroute = "/api/basket"\n\n[apps.tool]\nkind = "cli"\nentry-point = "tool.main"\n';
 
 
 def _workspace -> str {
@@ -340,21 +321,7 @@ test "an app that does not compile stops the fleet loudly" {
 }
 
 
-glob _BRIDGE_TOML: str = '[project]\n'
-     'name = "bridged"\n'
-     'default-app = "web"\n'
-     '\n'
-     '[apps.web]\n'
-     'kind = "web-app"\n'
-     'path = "web"\n'
-     '\n'
-     '[apps.orders]\n'
-     'kind = "service"\n'
-     'entry-point = "core/orders.jac"\n'
-     '\n'
-     '[apps.cart]\n'
-     'kind = "service"\n'
-     'entry-point = "core/cart.jac"\n';
+glob _BRIDGE_TOML: str = '[project]\nname = "bridged"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.orders]\nkind = "service"\nentry-point = "core.orders"\n\n[apps.cart]\nkind = "service"\nentry-point = "core.cart"\n';
 
 
 def _bridge_workspace -> str {
@@ -364,12 +331,13 @@ def _bridge_workspace -> str {
     (Path(d) / "web" / "main.jac").write_text("with entry {}\n", encoding="utf-8");
     (Path(d) / "core").mkdir();
     (Path(d) / "core" / "cart.jac").write_text(
-        'def:pub view_cart -> dict {\n    return {"items": []};\n}\n', encoding="utf-8"
+        'def:pub view_cart -> dict[str, any] {\n    return {"items": []};\n}\n',
+        encoding="utf-8"
     );
     (Path(d) / "core" / "orders.jac").write_text(
         'import from cart { view_cart }\n'
         '\n'
-        'async def:pub place_order -> dict {\n'
+        'async def:pub place_order -> dict[str, any] {\n'
         '    return await view_cart();\n'
         '}\n',
         encoding="utf-8"
@@ -398,7 +366,7 @@ test "edge analysis visits modules registered while analyzing either hub" {
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.scale.runtime.fleet { _compiled_app_edges }
-    def module(edges: list) -> any {
+    def module(edges: list[any]) -> any {
         return SimpleNamespace(
             gen=SimpleNamespace(
                 interop_manifest=SimpleNamespace(

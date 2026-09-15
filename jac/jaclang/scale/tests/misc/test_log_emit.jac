@@ -45,7 +45,7 @@ test "structured_logs=false leaves the host's handlers and level untouched" {
     project_dir = _project_with_toml(
         "[project]\n"
         'name = "host"\n'
-        'entry-point = "main.jac"\n'
+        'entry-point = "main"\n'
         "\n"
         "[scale.server]\n"
         "structured_logs = false\n"
@@ -74,7 +74,7 @@ test "structured_logs=false leaves the host's handlers and level untouched" {
 
 test "an explicitly-set root level survives the default install" {
     project_dir = _project_with_toml(
-        "[project]\n" 'name = "host"\n' 'entry-point = "main.jac"\n'
+        "[project]\n" 'name = "host"\n' 'entry-point = "main"\n'
     );
     _reset_install_state();
     log_root = logging.getLogger();
@@ -99,7 +99,7 @@ test "an explicitly-set root level survives the default install" {
 
 test "default install on an untouched root: one JSON handler at INFO" {
     project_dir = _project_with_toml(
-        "[project]\n" 'name = "host"\n' 'entry-point = "main.jac"\n'
+        "[project]\n" 'name = "host"\n' 'entry-point = "main"\n'
     );
     _reset_install_state();
     log_root = logging.getLogger();
@@ -275,7 +275,7 @@ test "trace_id populates on records emitted from child loggers" {
             child: logging.Logger = logging.getLogger("jaclang.scale.test.child");
             child.info("propagated line");
             line: str = buf.getvalue().strip().split("\n")[-1];
-            parsed: dict = json.loads(line);
+            parsed: dict[str, any] = json.loads(line);
             assert parsed["trace_id"] == "trace-from-child-test";
         } finally {
             reset_current_trace(tok);

@@ -52,7 +52,7 @@ impl LocalDeployer.scale_service(name: str, replicas: int) -> bool {
     return True;
 }
 
-impl LocalDeployer.status -> dict[str, dict] {
+impl LocalDeployer.status -> dict[str, dict[str, any]] {
     import from jaclang.scale.runtime.orchestrator.process_manager {
         _read_pidfile,
         _read_portfile,
@@ -75,7 +75,7 @@ impl LocalDeployer.status -> dict[str, dict] {
     }
 
     pm.check_all_health();
-    result: dict[str, dict] = {};
+    result: dict[str, dict[str, any]] = {};
     for (name, svc_entry) in self.registry.entries.items() {
         is_running = name in pm.processes;
         if not is_running {

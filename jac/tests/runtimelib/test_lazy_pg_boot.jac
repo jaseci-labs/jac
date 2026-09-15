@@ -22,7 +22,7 @@ import from tempfile { TemporaryDirectory }
 import from uuid { UUID }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.server.session { Session }
 import from jaclang.data.store { PgStore }
@@ -243,7 +243,7 @@ test "first-use schema DDL runs once per database, even from many threads" {
 obj _FirstUseStore(PgStore) {
     has ddl_runs: int = 0;
 
-    def _run(sql: str, params: dict) -> list {
+    def _run(sql: str, params: dict[str, any]) -> list[any] {
         self._ensure_ready();
         return [("170000", )];
     }
@@ -266,7 +266,7 @@ test "the schema gate readies the store instead of deadlocking on first use" {
         ),
         auto_schema=True
     );
-    outcome: list = [];
+    outcome: list[any] = [];
 
     def first_use {
         store.ensure_schema_once({});

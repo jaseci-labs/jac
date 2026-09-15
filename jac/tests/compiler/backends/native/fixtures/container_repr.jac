@@ -82,7 +82,16 @@ def obj_elem_default -> str {
 }
 
 glob x: list[int] = [1, 2, 3];
+
 with entry {
     print(x);
     print((1, 2));
+}
+
+def sized_integer_str -> bool {
+    maximum: u64 = u64(18446744073709551615);
+    byte: u8 = u8(255);
+    negative: i8 = i8(-128);
+    return str(maximum) + ":" + str(byte) + ":" + str(negative)
+        == "18446744073709551615:255:-128";
 }

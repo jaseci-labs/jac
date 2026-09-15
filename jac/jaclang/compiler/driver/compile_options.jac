@@ -1,6 +1,6 @@
 import from jaclang.runtime.object_model { field }
 
-glob _config_probe: dict = {"active": False};
+glob _config_probe: dict[str, bool] = {"active": False};
 
 def _project_config -> any {
     if _config_probe["active"] {
@@ -21,6 +21,8 @@ obj CompileOptions {
     has symtab_ir_only: bool = False,
         no_cgen: bool = False,
         native_parity: bool = False,
+        native_required: bool = False,
+        native_require: (list[str] | None) = None,
         iface_ok: bool = False,
         need_full_ast: bool = False,
         skip_native_engine: bool = False,
@@ -49,6 +51,7 @@ obj CompileOptions {
         default_codespace: str = "",
         app_kind: str = "",
         target_app: str = "",
+        entry_point: str = "",
         ui: str = "",
         project_root: (str | None) = None,
         native_module_walk_order: (str | None) = None,
@@ -58,6 +61,9 @@ obj CompileOptions {
         cfg = _project_config();
         mem_cfg = cfg.memory if cfg is not None else None;
         native_cfg = cfg.native if cfg is not None else None;
+        if self.native_require is None {
+            self.native_require = list(native_cfg.require) if native_cfg else [];
+        }
         if self.memory_profile is None {
             self.memory_profile = mem_cfg.profile if mem_cfg else "managed";
         }
@@ -139,6 +145,8 @@ obj CompileOptions {
     def codegen_identity -> str {
         return ";".join(
             [
+                f"native_required={int(self.native_required)}",
+                "native_require=" + ",".join(sorted(self.native_require or [])),
                 f"gc={self.na_gc_mode}",
                 f"nogc_all={int(bool(self.nogc_enforce_all))}",
                 "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
@@ -162,6 +170,8 @@ obj CompileOptions {
     def analysis_identity -> str {
         return ";".join(
             [
+                f"native_required={int(self.native_required)}",
+                "native_require=" + ",".join(sorted(self.native_require or [])),
                 f"gc={self.na_gc_mode}",
                 f"nogc_all={int(bool(self.nogc_enforce_all))}",
                 "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
@@ -178,11 +188,25 @@ obj CompileOptions {
         return hashlib.sha256(self.analysis_identity().encode()).hexdigest()[:12];
     }
 
+    def for_symbols(need_tree: bool = False) -> CompileOptions {
+        import copy;
+        result = copy.copy(self);
+        result.no_cgen = True;
+        result.symtab_ir_only = True;
+        result.iface_ok = not need_tree;
+        result.need_full_ast = need_tree;
+        result.native_parity = False;
+
+        return result;
+    }
+
     def clone_for_native_import -> CompileOptions {
         return CompileOptions(
             need_full_ast=True,
             skip_native_engine=True,
             no_ir_cache=self.no_ir_cache,
+            native_required=self.native_required,
+            native_require=list(self.native_require or []),
             aot_mode=True,
             default_codespace='native',
             native_unit=self.native_unit,
@@ -206,6 +230,21 @@ obj CompileOptions {
             target_app=self.target_app,
             ui=self.ui,
             project_root=self.project_root
+        );
+    }
+
+    def native_required_for(mod_path: str) -> bool {
+        if self.native_required {
+            return True;
+        }
+        if not self.native_require {
+            return False;
+        }
+        import fnmatch;
+        import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
+        name = module_dotted_name(mod_path);
+        return any(
+            fnmatch.fnmatchcase(name, pattern) for pattern in self.native_require
         );
     }
 

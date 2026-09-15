@@ -1,44 +1,40 @@
 import threading;
-import from enum { StrEnum }
+import type from jaclang.compiler.passes.transform { Alert }
+import type from jaclang.client.client_diagnostics { ClientDiagnostic }
 import from pathlib { Path }
 import type from jaclang.server.watcher { JacFileWatcher, FileChangeEvent, ChangeType }
 
-enum BuildStatus(StrEnum) {
-    OK = "ok",
-    COMPILING = "compiling",
-    ERROR = "error",
-    UNAVAILABLE = "unavailable"
-}
+import from jaclang.server.build_status { BuildStatus, BuildMonitor }
 
 obj HotReloader {
     has base_path: str,
         module_name: str,
         watcher: any,
+        entry_path: str = "",
         client_compiler: any = None,
         _client_output_dir: str = ".jac/client/compiled",
         _running: bool = False,
         _build_status: BuildStatus = BuildStatus.OK,
-        _diagnostics: list = [],
-        _vite_diagnostics: list = [],
-        _client_diagnostics: list = [],
-        _runtime_diagnostics: list = [],
+        _diagnostics: list[ClientDiagnostic] = [],
+        _vite_diagnostics: list[ClientDiagnostic] = [],
+        _client_diagnostics: list[ClientDiagnostic] = [],
+        _runtime_diagnostics: list[ClientDiagnostic] = [],
         _reload_nonce: int = 0;
 
-    static has _active: (HotReloader | None) = None,
-        _build_lock: threading.Lock = threading.Lock();
+    static has _build_lock: threading.Lock = threading.Lock();
 
     def start -> None;
     def stop -> None;
     def on_file_change(event: any) -> None;
-    def build_status -> dict;
-    def diagnostics -> list;
+    def build_status -> dict[str, any];
+    def diagnostics -> list[ClientDiagnostic];
     def attach_client_bundler(bundler: any) -> None;
-    def record_client_event(slot: str, payload: (dict | None)) -> None;
+    def record_client_event(slot: str, payload: (dict[str, any] | None)) -> None;
     def record_ok -> None;
     def record_error(
         file_path: str,
         message: str,
-        alerts: (list | None) = None,
+        alerts: (list[Alert] | None) = None,
         line: int = 0,
         column: int = 0
     ) -> None;
@@ -67,5 +63,3 @@ obj HotReloader {
     def _get_js_filename(file_path: str) -> str;
     def _copy_frontend_files(file_path: str) -> None;
 }
-
-def get_build_status -> dict;

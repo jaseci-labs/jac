@@ -258,7 +258,7 @@ impl JcirGenPass.exit_binary_expr with BinaryExpr exit {
     }
 }
 
-impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list {
+impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
     if not isinstance(nd.op, Token) {
         raise RuntimeError(
             self.ice('translate_jac_bin_op reached a non-token operator')
@@ -529,8 +529,10 @@ impl JcirGenPass.exit_if_else_expr with IfElseExpr exit {
     );
 }
 
-impl JcirGenPass._multi_string_pieces(str_seq: Sequence[UniNode]) -> list {
-    pieces: list[any] = [];
+impl JcirGenPass._multi_string_pieces(
+    str_seq: Sequence[UniNode]
+) -> list[str | bytes | CgNode] {
+    pieces: list[str | bytes | CgNode] = [];
     for i in str_seq {
         if isinstance(i, String) {
             pieces.append(i.lit_value);
@@ -558,7 +560,7 @@ impl JcirGenPass.exit_multi_string with MultiString exit {
         self.set_out(here, self.outs(lone));
         return;
     }
-    combined_multi: list = [];
+    combined_multi: list[str | bytes | CgNode] = [];
     for item in self._multi_string_pieces(here.strings) {
         if (
             combined_multi
@@ -594,7 +596,7 @@ impl JcirGenPass.exit_multi_string with MultiString exit {
             }
         }
         if not folded {
-            merged.append(v);
+            merged.append(v if isinstance(v, CgNode) else self.const_of(v));
         }
     }
     if not merged {

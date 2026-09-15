@@ -2,19 +2,19 @@ import os;
 import type from collections.abc { Sequence }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
 import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
+import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant {
     BUILTIN_CALLABLE_NAMES,
     DELIM_MAP,
     BindingKind,
     CodeContext,
-    EdgeDir,
     ExprCtx,
     OwnershipKind,
     SymbolAccess,
     SymbolStorage,
     SymbolType
 }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.compiler.frontend.constant { JacSemTokenModifier as SemTokMod }
 import from jaclang.compiler.frontend.constant { JacSemTokenType as SemTokType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
@@ -173,7 +173,7 @@ node UniNode {
 
     def _link(kid: Sequence[UniNode], roles: dict[type, any]) -> None;
     def detached_copy -> UniNode;
-    def __deepcopy__(memo: dict) -> UniNode;
+    def __deepcopy__(memo: dict[int, object]) -> UniNode;
     def _assert_thawed -> None;
     def freeze_structure -> None;
     def thaw_structure -> None;
@@ -658,7 +658,6 @@ node Module(AstDocNode, UniScopeNode) {
         app: (str | None) = None,
         app_root: (str | None) = None,
         app_kind: str = "",
-        owner_app: (str | None) = None,
         ct_resolved: bool = False,
         ct_file_deps: list[str] postinit,
         ct_body_deps: list[str] postinit,

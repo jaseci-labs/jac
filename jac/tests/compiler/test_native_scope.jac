@@ -28,9 +28,18 @@ def _pkg_rel(path: str) -> str {
     );
 }
 
+def _served_by_image -> set[str] {
+    image = _jaclang_image();
+    if image is None {
+        return set();
+    }
+    native: any = image.manifest.get("native") or {};
+    return set(native.get("modules") or []);
+}
+
 """The native record of the running image, or None when the package was
 not sealed with native units (the source tree, or a kernel-less image)."""
-def _native_record -> (dict | None) {
+def _native_record -> (dict[str, any] | None) {
     image = _jaclang_image();
     if image is None {
         return None;

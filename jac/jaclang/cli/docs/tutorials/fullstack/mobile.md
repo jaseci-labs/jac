@@ -58,7 +58,7 @@ Declare the app in `jac.toml` -- `jac create --app mobile --kind mobile` writes 
 ```toml
 [apps.mobile]
 kind = "mobile"
-path = "mobile"
+entry-point = "mobile.main"
 platform = "android"      # optional default for `jac run mobile` / `jac build mobile`
 ```
 

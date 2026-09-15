@@ -240,7 +240,7 @@ test "vite builds run under bun with no node on PATH" {
         # work on a machine that has no node at all.
         empty_dir = Path(tmp) / "empty-path";
         empty_dir.mkdir();
-        env = dict(os.environ);
+        env: dict[str, str] = dict(os.environ);
         env["PATH"] = str(empty_dir);
         result = subprocess.run(
             _build_vite_command(build_dir, ["build"]),

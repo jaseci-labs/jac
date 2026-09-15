@@ -19,7 +19,7 @@ import from pathlib { Path }
 
 import from jaclang { JacRuntime }
 import from jaclang { JacRuntimeInterface as Jac }
-import from jaclang.compiler.driver.mtp {
+import from jaclang.runtime.semantic {
     ClassInfo,
     EnumInfo,
     FieldInfo,
@@ -212,7 +212,7 @@ test "method tool in class" {
 # Python Library Fallback Tests
 # =============================================================================
 test "mtruntime without mtir info" {
-    import from jaclang.compiler.driver.mtp { MTIR }
+    import from jaclang.runtime.semantic { MTIR }
 
     def sample_func(x: int, y: str) -> str {
         return f"{y}: {x}";
@@ -274,7 +274,7 @@ test "mtir roundtrip via jir cache" {
     test_file = tmp_path / "test.jac";
     test_file.write_text("glob x = 1;\n");
 
-    test_mtir_map: dict = {
+    test_mtir_map: dict[str, any] = {
         "test.func1": FunctionInfo(
             name="func1",
             semstr="Test function one.",

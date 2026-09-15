@@ -8,9 +8,8 @@ user-defined-object method forwarding, the Python `dict.get` null-vs-default
 semantics, and the AttributeError fallback for an unsupported operation.
 """
 
-
 obj Box {
-    has data: list = [10, 20, 30];
+    has data: list[any] = [10, 20, 30];
 
     # A method whose name collides with a primitive method (`count`). On an
     # any-typed receiver this routes through `_jac.poly.call`, which must
@@ -24,7 +23,7 @@ def opaque(x: any) -> any {
     return x;
 }
 
-def test_poly_complete() -> dict {
+def test_poly_complete() -> dict[any, any] {
     # --- dict methods (receiver statically `any`) ---
     d = opaque({"a": 1, "b": 2});
     keys = d.keys();

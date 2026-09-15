@@ -16,7 +16,7 @@ test "direct compiler source compilation retains analysis across nested import e
     import tempfile;
     import from pathlib { Path }
     import from unittest.mock { patch }
-    import jaclang.compiler.driver.compiler as compiler_mod;
+    import jaclang.compiler.driver.pass_driver as compiler_mod;
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     compiler = JacProgram()._get_compiler();
     program = compiler.selfhost.program;
@@ -44,7 +44,7 @@ test "direct compiler source compilation retains analysis across nested import e
         }
         assert evictions;
         assert mod.gen.py_bytecode is not None;
-        namespace: dict = {"__name__": "direct_compile", "__file__": source};
+        namespace: dict[str, any] = {"__name__": "direct_compile", "__file__": source};
         exec(marshal.loads(mod.gen.py_bytecode), namespace);
         assert namespace["answer"] == 42;
         assert not program.mod.hub;
@@ -68,7 +68,7 @@ test "programs hydrate independent semantic objects from shared catalog bytes" {
     assert first.stub_catalog() is left;
 }
 
-def _probe(prog: JacProgram) -> tuple {
+def _probe(prog: JacProgram) -> tuple[any, ...] {
     mod = prog.parse_str(SRC, "release_probe.jac");
     assert mod is not None;
     return (
@@ -89,7 +89,7 @@ test "released module trees are garbage collectable" {
     assert all(dead) , f"leaked (module, kid, anchor): {dead}";
 }
 
-def _compile_probe(prog: JacProgram) -> tuple {
+def _compile_probe(prog: JacProgram) -> tuple[any, ...] {
     mod = prog.compile(file_path="release_closure_probe.jac", use_str=SRC);
     assert mod is not None;
     return (weakref.ref(mod), weakref.ref(mod.kid[0]));
@@ -108,6 +108,74 @@ test "a fully compiled module is collectable after release_compile_closure" {
     );
 }
 
+test "a compiler phase boundary collects both application and selfhost trees" {
+    prog = JacProgram();
+    compiler = prog._get_compiler();
+    internal = compiler.selfhost.program;
+    (_, app_ref, _, _) = _probe(prog);
+    (_, internal_ref, _, _) = _probe(internal);
+    compiler.release_compile_state(prog);
+    assert app_ref() is None;
+    assert internal_ref() is None;
+    assert not prog.source_store.units;
+    assert not internal.source_store.units;
+    # Releasing working state must leave the compiler reusable.
+    (_, next_ref, _, _) = _probe(prog);
+    assert next_ref() is not None;
+    compiler.release_compile_state(prog);
+    assert next_ref() is None;
+}
+
+test "a compiler phase boundary rejects release during an active compile" {
+    prog = JacProgram();
+    (_, mod_ref, _, _) = _probe(prog);
+    prog.scratch.compile_depth += 1;
+    try {
+        try {
+            prog._get_compiler().release_compile_state(prog);
+        } except RuntimeError {
+            assert mod_ref() is not None;
+            return;
+        }
+        assert False , "compiler state was released while compilation was active";
+    } finally {
+        prog.scratch.compile_depth -= 1;
+        prog._get_compiler().release_compile_state(prog);
+    }
+}
+
+def _stub_probe(prog: JacProgram) -> any {
+    stub = prog.parse_str("value: int\n", "release_bootstrap.pyi");
+    return weakref.ref(stub);
+}
+
+test "a compiler phase boundary releases stub roots as well as source trees" {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    internal = JacProgram();
+    compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
+    internal._compiler = compiler;
+    program = JacProgram();
+    program._compiler = compiler;
+    app_stub = _stub_probe(program);
+    bootstrap_stub = _stub_probe(internal);
+    compiler.release_compile_state(program);
+    assert app_stub() is None , "completed application still owns its stub trees";
+    assert bootstrap_stub() is None , "completed compiler still owns bootstrap stubs";
+}
+
+test "activating the catalog releases the compiler's bootstrap stub trees" {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    internal = JacProgram();
+    compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
+    internal._compiler = compiler;
+    bootstrap_stub = _stub_probe(internal);
+    assert compiler.ensure_stub_catalog() is not None;
+    gc.collect();
+    assert bootstrap_stub() is None , "the active catalog still retains bootstrap stubs";
+}
+
 glob STUB_SRC: str = (
          "import sys;\n"
          "with entry {\n"
@@ -117,9 +185,9 @@ glob STUB_SRC: str = (
          "}\n"
      );
 
-def _stub_modules(prog: JacProgram) -> dict {
+def _stub_modules(prog: JacProgram) -> dict[str, any] {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    out: dict = {};
+    out: dict[str, any] = {};
     for p in [prog, Jac.get_compiler().selfhost.program] {
         for (path, mod) in p.mod.hub.items() {
             if path.endswith(".pyi") {
@@ -158,7 +226,7 @@ test "releasing a closure releases the catalog and evaluator together" {
     import os;
     import from unittest.mock { patch }
     prog = JacProgram();
-    def analyze -> tuple {
+    def analyze -> tuple[any, ...] {
         mod = prog.compile(file_path="catalog_session_probe.jac", use_str=STUB_SRC);
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
         return (

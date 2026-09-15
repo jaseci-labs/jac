@@ -78,7 +78,7 @@ def:pub app() -> JsxElement {
 name = "myapp"
 version = "1.0.0"
 description = "Jac client application: myapp"
-entry-point = "main.jac"
+entry-point = "main"
 
 [dependencies.npm]
 react = "^19.2.0"
@@ -264,7 +264,7 @@ import lodash;
 [project]
 name = "myapp"
 version = "0.1.0"
-entry-point = "main.jac"
+entry-point = "main"
 
 [client]
 # Client-specific config

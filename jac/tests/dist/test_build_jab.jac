@@ -49,17 +49,7 @@ test "serve manifests analyze native imports without loading their libraries or 
 
 
 glob _TOML: str = (
-         "[project]\n"
-         "name = \"sealed_ws\"\n"
-         "default-app = \"web\"\n"
-         "\n"
-         "[apps.web]\n"
-         "kind = \"web-app\"\n"
-         "path = \"web\"\n"
-         "\n"
-         "[apps.cli]\n"
-         "kind = \"cli\"\n"
-         "entry-point = \"cli_app.jac\"\n"
+         '[project]\nname = "sealed_ws"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.cli]\nkind = "cli"\nentry-point = "cli_app"\n'
      ),
      _WEB_SRC: str = (
          "import from core.helper { label }\n"

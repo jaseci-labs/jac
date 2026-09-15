@@ -39,7 +39,7 @@ def _seed(ctx: ExecutionContext) -> UUID {
     ranch = Root().__jac__;
     ranch.persistent = True;
     ctx.mem.put(ranch);
-    das: list = [];
+    das: list[any] = [];
     payloads = [(DA(val=1), 1), (DA(val=2), 5), (DA(val=3), 7), (DB(tag="x"), 9)];
     for (arch, w) in payloads {
         nanch = arch.__jac__;
@@ -68,7 +68,7 @@ def _seed(ctx: ExecutionContext) -> UUID {
 }
 
 
-def _vals(nodes: list) -> list {
+def _vals(nodes: list[any]) -> list[any] {
     return [n.val for n in nodes];
 }
 

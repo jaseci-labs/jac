@@ -43,7 +43,7 @@ There is **no setup step** - the native host is generated at build time.
 ```toml
 [apps.studio]          # or [project] kind = "desktop" in a single-app project
 kind = "desktop"
-path = "studio"
+entry-point = "studio.main"
 ```
 
 ```bash

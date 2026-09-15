@@ -1,7 +1,6 @@
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 import from jaclang.project.providers {
-    EMIT_EJECT,
     EcosystemProvider,
     InstallContext,
     ResolvedDependency,
@@ -30,7 +29,7 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
 
 
 def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str] {
-    npm_plugin_deps: dict = dict(config.plugin_dependencies.get("npm", {}));
+    npm_plugin_deps: dict[str, str] = dict(config.plugin_dependencies.get("npm", {}));
     deps: dict[str, str] = {};
     key1 = str(target_name or "").strip();
     keys = [key1, key1.replace("_", "-"), key1.replace("-", "_")];
@@ -298,44 +297,5 @@ obj NpmProvider(EcosystemProvider) {
             raise;
         }
         return True;
-    }
-
-    override def emit_standalone(
-        config: JacConfig, deps: list[ResolvedDependency], out_dir: Path, mode: str
-    ) -> list[Path] {
-        import json;
-        if mode != EMIT_EJECT {
-            return [];
-        }
-        pkg_deps: dict[str, str] = {};
-        dev_deps: dict[str, str] = {};
-        for dep in deps {
-            if dep.dev {
-                dev_deps[dep.name] = dep.version;
-            } else {
-                pkg_deps[dep.name] = dep.version;
-            }
-        }
-        if "vite" not in dev_deps and "vite" not in pkg_deps {
-            dev_deps["vite"] = CORE_DEV_DEPS["vite"];
-        }
-        raw_name = config.project.name or out_dir.name;
-        pkg = {
-            "name": raw_name.lower().replace("_", "-").replace(" ", "-"),
-            "version": config.project.version or "0.1.0",
-            "private": True,
-            "type": "module",
-            "scripts": {
-                "dev": "vite",
-                "build": "vite build",
-                "preview": "vite preview"
-            },
-            "dependencies": pkg_deps,
-            "devDependencies": dev_deps
-        };
-        out_dir.mkdir(parents=True, exist_ok=True);
-        pkg_path = out_dir / "package.json";
-        pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8");
-        return [pkg_path];
     }
 }

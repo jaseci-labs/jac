@@ -7,13 +7,9 @@ import os;
 import from inspect { iscoroutine }
 import from typing { get_type_hints }
 import from jaclang.data.serializer { Serializer }
-import from jaclang.client.client_bundle {
-    ClientBundleError,
-    MissingBunError,
-    _ensure_js_generated
-}
+import from jaclang.client.artifact { ClientBundleError, MissingBunError }
 import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.server.net { PORT_RETRY_LIMIT }
 import from jaclang.server.serving.server { ServingServer }
 import type from jaclang.runtime.constructs { Archetype }
@@ -188,7 +184,6 @@ async def _run_function_with_occ(
     username: str,
     run_attempt: Callable,
     deserialize_args: bool = True,
-    include_traceback: bool = False,
     unit_key: (str | None) = None
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     resolved = await _abegin_user_request_context(mgr.user_manager, username);
@@ -253,12 +248,11 @@ async def _run_function_with_occ(
                 await ctx.aset_user_root(root_id);
             } except Exception as e {
                 ctx.mem.abort();
-                if include_traceback {
-                    import traceback;
-
-                    return {'error': str(e), 'traceback': traceback.format_exc()};
-                }
-                return {'error': str(e)};
+                import logging;
+                logging.getLogger('jaclang.serve').exception(
+                    f"{unit_key or 'request'} raised {type(e).__name__}: {e}"
+                );
+                return {'error': str(e), 'error_code': 'execution_error'};
             } finally {
                 ctx.call_state.reset(call_token);
             }
@@ -367,7 +361,6 @@ impl ExecutionManager.spawn_walker_sync(
         username,
         run_attempt,
         deserialize_args=False,
-        include_traceback=True,
         unit_key=_unit_key_for(walker_cls)
     );
 }
@@ -405,14 +398,12 @@ impl ExecutionManager.spawn_walker_async(
         username,
         run_attempt,
         deserialize_args=False,
-        include_traceback=True,
         unit_key=_unit_key_for(walker_cls)
     );
 }
 
 impl ModuleIntrospector.postinit -> None {
     import threading;
-    self._bundle_builder = Jac.get_client_bundle_builder();
     self._bundle_lock = threading.Lock();
 }
 
@@ -465,185 +456,37 @@ impl ModuleIntrospector._load_manifest -> None {
     if not self._module {
         return;
     }
-    base: dict = {};
-    mod_path: str = getattr(self._module, '__file__', '');
-    if mod_path {
-        import from jaclang.server.sealed_serve { serve_manifest_for }
-        sm = serve_manifest_for(mod_path);
-        if sm is not None {
-            base = dict(sm.get('client', {}) or {});
-            base['endpoint_effects'] = sm.get('endpoint_effects', {}) or {};
-            self._client_manifest = base;
-            return;
-        }
+    import from jaclang.server.sealed_serve { serve_manifest_for }
+    path: str = getattr(self._module, '__file__', '');
+    manifest = serve_manifest_for(path) if path else None;
+    if manifest is None {
+        raise RuntimeError(
+            f"No prepared serving metadata for '{path}'. "
+                + "Prepare the application before initializing its server."
+        );
     }
-    if mod_path {
-        mod = Jac.get_program().find_module(os.path.abspath(mod_path));
-        if not mod {
-            mod = Jac.get_program().compile(mod_path);
-        }
-        if mod and mod.gen.client_manifest and not mod.gen.client_manifest.exports {
-            _ensure_js_generated(mod, Jac.get_program());
-        }
-        if (mod and mod.gen.client_manifest) {
-            manifest = mod.gen.client_manifest;
-            base = {
-                'exports': manifest.exports,
-                'globals': manifest.globals,
-                'params': manifest.params,
-                'globals_values': manifest.globals_values,
-                'has_client': manifest.has_client
-            };
-        }
-    }
-
-    aggregated: dict = {};
-
-    for hub in Jac.get_program().execution_hubs() {
-        for hub_mod in hub.values() {
-            if hub_mod and hub_mod.gen.interop_manifest {
-                for (ekey, eeff) in hub_mod.gen.interop_manifest.endpoint_effects.items() {
-                    aggregated[ekey] = eeff;
-                }
-            }
-        }
-    }
-    base['endpoint_effects'] = aggregated;
-    self._client_manifest = base;
+    self._client_manifest = dict(manifest.get('client', {}) or {});
+    self._client_manifest['endpoint_effects'] = manifest.get('endpoint_effects', {});
 }
 
 impl ModuleIntrospector._extract_access_levels -> None {
-    if not self._module {
-        return;
+    import from jaclang.server.sealed_serve { serve_manifest_for }
+    path: str = getattr(self._module, '__file__', '') if self._module else '';
+    manifest = serve_manifest_for(path) if path else None;
+    if manifest is None {
+        raise RuntimeError(f"No prepared access metadata for '{path}'.");
     }
-    import jaclang.compiler.frontend.unitree as uni;
-    self._function_access = {};
-    self._walker_access = {};
-    mod_path: str = getattr(self._module, '__file__', '');
-    if mod_path {
-        import from jaclang.server.sealed_serve { serve_manifest_for }
-        sm = serve_manifest_for(mod_path);
-        if sm is not None {
-            self._function_access = dict(sm.get('func_access', {}) or {});
-            self._walker_access = dict(sm.get('walker_access', {}) or {});
-            return;
-        }
-    }
-    main_mod = Jac.get_program().find_module(os.path.abspath(mod_path))
-        if mod_path
-        else None;
-    if not main_mod and mod_path {
-        try {
-            main_mod = Jac.get_program().compile(os.path.abspath(mod_path));
-        } except Exception as e {
-            import logging;
-            logging.getLogger(__name__).warning(
-                "serve: fallback compile of %s failed; access table will be "
-                "empty and endpoints default to auth-required: %s",
-                mod_path,
-                e
-            );
-            main_mod = None;
-        }
-    }
-    if not main_mod {
-        return;
-    }
-
-    sources: list = [main_mod];
-    for item in main_mod.body {
-        if isinstance(item, uni.Import) and item.is_jac and item.from_loc {
-            try {
-                src = item.from_loc.resolve_relative_path();
-            } except Exception {
-                continue;
-            }
-            if not (src and src.endswith(('.jac', '.jac'))) {
-                continue;
-            }
-            prov = Jac.get_program().find_module(src);
-            if not prov {
-                try {
-                    prov = Jac.get_program().compile(src);
-                } except Exception {
-                    prov = None;
-                }
-            }
-            if prov {
-                sources.append(prov);
-            }
-        }
-    }
-    import from jaclang.compiler.driver.schedules { get_boundary_analysis_sched }
-    for src_mod in sources {
-        if not (src_mod and src_mod.gen and src_mod.gen.interop_manifest) {
-            continue;
-        }
-        man = src_mod.gen.interop_manifest;
-
-        if not (man.walker_access or man.func_access) {
-            try {
-                Jac.get_program().run_schedule(src_mod, get_boundary_analysis_sched());
-            } except Exception as e {
-                import logging;
-                logging.getLogger(__name__).warning(
-                    "serve: boundary analysis of %s failed; its imported "
-                    "endpoints will default to auth-required: %s",
-                    src_mod?.loc?.mod_path,
-                    e
-                );
-            }
-            man = src_mod.gen.interop_manifest;
-        }
-        for (name, auth) in man.func_access.items() {
-            if name not in self._function_access {
-                self._function_access[name] = auth;
-            }
-        }
-        for (name, auth) in man.walker_access.items() {
-            if name not in self._walker_access {
-                self._walker_access[name] = auth;
-            }
-        }
-    }
-
-    import from jaclang.runtime.archetype { WalkerArchetype as _WalkerArch }
-    _live_missing = False;
-    for _wname in dir(self._module) {
-        _wcls = getattr(self._module, _wname, None);
-        if (
-            isinstance(_wcls, type)
-            and issubclass(_wcls, _WalkerArch)
-            and getattr(_wcls, '__module__', '') == self._module?.__name__
-            and _wname not in self._walker_access
-        ) {
-            _live_missing = True;
-            break;
-        }
-    }
-    if _live_missing and mod_path {
-        try {
-            _fresh_mod = Jac.get_program().compile(os.path.abspath(mod_path));
-            _fman = _fresh_mod.gen.interop_manifest;
-            if _fman is not None {
-                for (name, auth) in _fman.func_access.items() {
-                    self._function_access[name] = auth;
-                }
-                for (name, auth) in _fman.walker_access.items() {
-                    self._walker_access[name] = auth;
-                }
-            }
-        } except Exception {}
-    }
+    self._function_access = dict(manifest.get('func_access', {}) or {});
+    self._walker_access = dict(manifest.get('walker_access', {}) or {});
 }
 
 
-impl ModuleIntrospector._register_sealed_bindings(
+impl ModuleIntrospector._register_prepared_bindings(
     sm: dict[str, any], img_root: str
 ) -> None {
     import from jaclang.runtime.constructs { WalkerArchetype }
 
-    def resolve_sealed(src_path: str, name: str) -> any {
+    def resolve_prepared(src_path: str, name: str) -> any {
         for loaded in list(Jac.loaded_modules.values()) {
             f = loaded?.__file__;
             if f and os.path.abspath(f) == os.path.abspath(src_path) {
@@ -653,30 +496,9 @@ impl ModuleIntrospector._register_sealed_bindings(
                 }
             }
         }
-        rel = os.path.relpath(src_path, img_root).replace(os.sep, '/');
-        if rel.endswith('.jac') {
-            rel = rel.removesuffix('.jac');
-        }
-        try {
-            imported = Jac.jac_import(
-                target=rel.replace('/', '.'), base_path=img_root, lng='jac'
-            );
-            if imported {
-                return getattr(imported[0], name, None);
-            }
-        } except Exception as e {
-            import logging;
-            logging.getLogger("jaclang.serve").warning(
-                "sealed cross-boundary endpoint '%s' unavailable: server module "
-                "%r failed to import (%s: %s)",
-                name,
-                src_path,
-                type(e).__name__,
-                e
-            );
-            return None;
-        }
-        return None;
+        import from jaclang.runtime.prepared { load_prepared_module }
+        module = load_prepared_module(src_path);
+        return getattr(module, name);
     }
 
     for b in sm.get('cross_bindings', []) or [] {
@@ -687,172 +509,47 @@ impl ModuleIntrospector._register_sealed_bindings(
         }
         auth = bool(b.get('auth', True));
         src_path = os.path.join(img_root, rel);
+        import from jaclang.runtime.prepared { application_for, source_for_origin }
+        application = application_for(self._module.__file__, self._module.__name__)
+            if self._module is not None
+            else None;
+        if application is not None {
+            src_path = source_for_origin(application, rel);
+        }
+        if name in self._walkers or name in self._functions {
+            continue;
+        }
+        try {
+            target = resolve_prepared(src_path, name);
+        } except Exception {
+            logger.exception('Could not load endpoint %s from %s', name, src_path);
+            continue;
+        }
         if b.get('kind') == 'walker' {
-            if name in self._walkers {
-                continue;
-            }
-            wcls = resolve_sealed(src_path, name);
-            if isinstance(wcls, type) and issubclass(wcls, WalkerArchetype) {
-                self._walkers[name] = wcls;
+            if isinstance(target, type) and issubclass(target, WalkerArchetype) {
+                self._walkers[name] = target;
                 self._walker_access[name] = auth;
             }
-        } else {
-            if name in self._functions {
-                continue;
-            }
-            fn = resolve_sealed(src_path, name);
-            if fn is not None and callable(fn) {
-                self._functions[name] = fn;
-                self._function_access[name] = auth;
-            }
+        } elif callable(target) {
+            self._functions[name] = target;
+            self._function_access[name] = auth;
         }
     }
 }
 
 impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
-    if not (self.discover_endpoints and self._module and Jac.get_program().mod) {
+    if not (self.discover_endpoints and self._module) {
         return;
     }
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
-    import from jaclang.runtime.constructs { WalkerArchetype }
-
-    sealed_mod_path: str = getattr(self._module, '__file__', '');
-    if sealed_mod_path {
-        import from jaclang.server.sealed_serve { serve_manifest_for, sealed_root_for }
-        sm_sealed = serve_manifest_for(sealed_mod_path);
-        if sm_sealed is not None {
-            self._register_sealed_bindings(
-                sm_sealed, sealed_root_for(sealed_mod_path) or ""
-            );
-            return;
-        }
+    import from jaclang.server.sealed_serve { serve_manifest_for, sealed_root_for }
+    path: str = getattr(self._module, '__file__', '');
+    manifest = serve_manifest_for(path) if path else None;
+    if manifest is None {
+        raise RuntimeError(f"No prepared boundary metadata for '{path}'.");
     }
-
-    fn_bindings: dict[str, any] = {};
-    walker_bindings: dict[str, any] = {};
-    func_access: dict[str, bool] = {};
-    walker_access: dict[str, bool] = {};
-
-    for hub in Jac.get_program().execution_hubs() {
-        for mod in hub.values() {
-            man = mod.gen.interop_manifest if (mod and mod.gen) else None;
-            if not man {
-                continue;
-            }
-            for binding in man.server_exports_to_client {
-                table = walker_bindings if binding.kind == 'walker' else fn_bindings;
-                prior = table.get(binding.name);
-                if prior is None {
-                    table[binding.name] = binding;
-                } elif prior.ast_node is not binding.ast_node {
-                    import logging;
-                    logging.getLogger("jaclang.serve").warning(
-                        "conflicting cross-boundary %s binding '%s'; keeping the "
-                        "first registration",
-                        binding.kind,
-                        binding.name
-                    );
-                }
-            }
-            for (acc_name, auth) in man.func_access.items() {
-                if acc_name not in func_access {
-                    func_access[acc_name] = auth;
-                }
-            }
-            for (acc_name, auth) in man.walker_access.items() {
-                if acc_name not in walker_access {
-                    walker_access[acc_name] = auth;
-                }
-            }
-        }
-    }
-
-    def resolve_symbol(src_path: str, name: str) -> any {
-        for loaded in list(Jac.loaded_modules.values()) {
-            f = loaded?.__file__;
-            if f and os.path.abspath(f) == os.path.abspath(src_path) {
-                sym = getattr(loaded, name, None);
-                if sym is not None {
-                    return sym;
-                }
-            }
-        }
-        target = os.path.basename(src_path);
-        if target.endswith('.jac') {
-            target = target.removesuffix('.jac');
-        }
-        try {
-            imported = Jac.jac_import(
-                target=target, base_path=os.path.dirname(src_path), lng='jac'
-            );
-            if imported {
-                return getattr(imported[0], name, None);
-            }
-        } except Exception as e {
-            import logging;
-            logging.getLogger("jaclang.serve").warning(
-                "cross-boundary endpoint '%s' unavailable: server module %r "
-                "failed to import (%s: %s)",
-                name,
-                src_path,
-                type(e).__name__,
-                e
-            );
-            return None;
-        }
-        return None;
-    }
-
-    def auth_for(name: str, table: dict, ast_node: any) -> bool {
-        auth = table.get(name, None);
-        if auth is None {
-            is_pub = ast_node is not None
-                and ast_node?.access is not None
-                and ast_node.access.tag.name == Tok.KW_PUB;
-            auth = not is_pub;
-        }
-        return auth;
-    }
-
-    for (name, binding) in fn_bindings.items() {
-        if name in self._functions {
-            continue;
-        }
-        ast_node = binding?.ast_node;
-        if ast_node is None {
-            continue;
-        }
-        src_path: str = getattr(getattr(ast_node, 'loc', ''), 'mod_path', '');
-        if not src_path {
-            continue;
-        }
-        fn = resolve_symbol(src_path, name);
-        if fn is None or not callable(fn) {
-            continue;
-        }
-        self._functions[name] = fn;
-        self._function_access[name] = auth_for(name, func_access, ast_node);
-    }
-
-    for (name, binding) in walker_bindings.items() {
-        if name in self._walkers {
-            continue;
-        }
-        ast_node = binding?.ast_node;
-        if ast_node is None {
-            continue;
-        }
-        src_path: str = getattr(getattr(ast_node, 'loc', ''), 'mod_path', '');
-        if not src_path {
-            continue;
-        }
-        wcls = resolve_symbol(src_path, name);
-        if not (isinstance(wcls, type) and issubclass(wcls, WalkerArchetype)) {
-            continue;
-        }
-        self._walkers[name] = wcls;
-        self._walker_access[name] = auth_for(name, walker_access, ast_node);
-    }
+    self._register_prepared_bindings(
+        manifest, manifest.get('root') or sealed_root_for(path) or ""
+    );
 }
 
 
@@ -1123,7 +820,15 @@ impl ModuleIntrospector.ensure_bundle -> str {
             raise ClientBundleError(self._bundle_error);
         }
         try {
-            self._bundle = self._bundle_builder.build(self._module);
+            import from jaclang.client.artifact { prebuilt_bundle }
+            import from pathlib { Path }
+            self._bundle = prebuilt_bundle(self._module, Path(self._module.__file__));
+            if self._bundle is None {
+                if self._bundle_builder is None {
+                    self._bundle_builder = Jac.get_client_bundle_builder();
+                }
+                self._bundle = self._bundle_builder.build(self._module);
+            }
             self._bundle_error = None;
             self._bundle_epoch += 1;
             return self._bundle.hash;
@@ -1191,26 +896,12 @@ impl ModuleIntrospector.spa_fallback_status(url_path: str) -> int {
 }
 
 impl ModuleIntrospector._load_spa_routes -> (list[str] | None) {
-    import from pathlib { Path }
-    import from jaclang.client.route_scanner { RouteScanner, resolve_route_exports }
-    if not self.base_path {
-        return None;
-    }
-    try {
-        scanner = RouteScanner(
-            project_root=Path(self.base_path), route_exports_of=resolve_route_exports
-        );
-        if not scanner.has_pages_dir() {
-            return None;
-        }
-        return [
-            `entry.path
-            for `entry in scanner.scan()
-            if `entry.path not in ('*', '/*')
-        ];
-    } except Exception {
-        return None;
-    }
+    import from jaclang.server.sealed_serve { serve_manifest_for }
+    path: str = getattr(self._module, '__file__', '')
+        if self._module
+        else str(Path(self.base_path or '.') / (self.module_name + '.jac'));
+    manifest = serve_manifest_for(path) if path else None;
+    return manifest.get('spa_routes') if manifest is not None else None;
 }
 
 impl ModuleIntrospector._spa_route_matches(pattern: str, segments: list[str]) -> bool {
@@ -1626,6 +1317,12 @@ impl JacAPIServer._ensure_sv_siblings -> None {
 }
 
 impl JacAPIServer._ensure_client_bundle -> None {
+    import from jaclang.runtime.prepared { application_for }
+    module_path: str = getattr(self.introspector._module, '__file__', '');
+    if module_path and application_for(module_path) is not None {
+        return;
+    }
+
     import sys;
     import time;
     import from jaclang.cli.banners { JAC_DISCORD_URL }
@@ -1640,7 +1337,7 @@ impl JacAPIServer._ensure_client_bundle -> None {
     if not client_exports {
         return;
     }
-    import from jaclang.client.targets.registry { client_app_dir_for }
+    import from jaclang.project.client_paths { client_app_dir_for }
     config = get_config();
     dist_dir = client_app_dir_for(config) / 'dist'
         if config
@@ -1716,17 +1413,22 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         }
         def target {
             outcome = asyncio.run(_run());
-            if isinstance(outcome, dict) and 'error' in outcome {
+            if (
+                isinstance(outcome, dict)
+                and 'error' in outcome
+                and outcome.get('error_code') != 'execution_error'
+            ) {
                 logger.error(f"scheduled {name} failed: {outcome.get('error')}");
             }
         }
         return target;
     }
     self.introspector.load();
-    for (registry, is_walker) in [
+    registries: list[tuple[dict[str, any], bool]] = [
         (dict(self.introspector._walkers), True),
         (dict(self.introspector._functions), False)
-    ] {
+    ];
+    for (registry, is_walker) in registries {
         for (name, item) in registry.items() {
             spec = item?.schedule_spec;
             if not isinstance(spec, ScheduleSpec) {

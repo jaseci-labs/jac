@@ -35,15 +35,12 @@ glob _CODE_GUIDE_MAP: dict[str, str] = {
          "E2004": "jac-has-fields",
          "E2025": "jac-npm-packages",
          "E2039": "jac-apps",
-         "E2040": "jac-apps",
          "W2039": "jac-apps",
-         "W2040": "jac-apps",
          "W2075": "jac-sv-persistence",
          "W3037": "jac-types",
          "E5104": "jac-apps",
          "E5105": "jac-apps",
          "E5106": "jac-apps",
-         "E5107": "jac-apps",
          "E5108": "jac-apps",
 
      },
@@ -335,7 +332,7 @@ impl corpus_blurb(ns: str) -> str {
     return _DOC_CORPUS_BLURBS.get(ns, "");
 }
 
-impl nav_manifest -> dict {
+impl nav_manifest -> dict[str, any] {
     path = docs_dir() / "nav.json";
     if not path.is_file() {
         return {};
@@ -351,7 +348,7 @@ impl nav_manifest -> dict {
 impl nav_pages -> list[NavPage] {
     pages: list[NavPage] = [];
 
-    def walk(items: list, trail: list[str]) {
+    def walk(items: list[object], trail: list[str]) {
         for item in items {
             if not isinstance(item, dict) {
                 continue;
@@ -367,11 +364,11 @@ impl nav_pages -> list[NavPage] {
                     )
                 );
             } elif "items" in item {
-                walk(item["items"] as list, trail + [title]);
+                walk(item["items"] as list[object], trail + [title]);
             }
         }
     }
-    walk(nav_manifest().get("nav", []) as list, []);
+    walk(nav_manifest().get("nav", []) as list[object], []);
     return pages;
 }
 

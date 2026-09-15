@@ -393,7 +393,7 @@ impl EsastGenPass._lower_match_pattern(
                 rest_star = `entry;
                 continue;
             }
-            key_node = `entry.key;
+            key_node: uni.UniNode = `entry.key;
             if isinstance(key_node, uni.MatchValue) {
                 key_node = key_node.value;
             }
@@ -536,7 +536,7 @@ impl EsastGenPass._lower_match_pattern(
             )
         ];
         arch_binds: list[es.Statement] = [];
-        pairs: list = [];
+        pairs: list[tuple[str, uni.MatchPattern]] = [];
         arg_pats = list(pat.arg_patterns) if pat.arg_patterns else [];
         if arg_pats {
             order = self._match_arch_field_order(pat);

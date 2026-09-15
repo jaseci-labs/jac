@@ -12,11 +12,7 @@ serves bytecode, and rejected once the module or any file it imports changes.
 import os;
 import tempfile;
 import time;
-import from jaclang.compiler.driver.jir {
-    SEC_CLIENT,
-    get_module_cache_path,
-    read_section_bytes
-}
+import from jaclang.compiler.driver.jir { SEC_CLIENT, read_section_bytes }
 import from jaclang.compiler.driver.pass_driver { compile_progress }
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -77,12 +73,16 @@ def _compiled_for(prog: JacProgram, target: str) -> tuple[any, list[str]] {
 
 test "the first client build persists the artifact beside the bytecode" {
     (_, widget) = _project();
-    (artifact, compiled) = _compiled_for(JacProgram(), widget);
+    program = JacProgram();
+    (artifact, compiled) = _compiled_for(program, widget);
     assert artifact is not None and "label_of" in artifact.js , (
         "the cold build must produce the module's JS"
     );
     assert "widget.jac" in compiled , f"the cold build compiles the module, saw {compiled}";
-    cached = read_section_bytes(get_module_cache_path(widget).read_bytes(), SEC_CLIENT);
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    cached = read_section_bytes(
+        artifact_cache_path(widget, program).read_bytes(), SEC_CLIENT
+    );
     assert cached is not None , "the client artifact must land in the module cache";
 }
 
@@ -144,7 +144,10 @@ test "an artifact built for another framework is not served" {
     held = other.get_client_artifact(widget);
     assert held is not None;
     held.framework = "solid";
-    other._get_compiler()._persist_client_artifact(widget, held);
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    with cache_scope(other.context_key, other.options) {
+        other._get_compiler()._persist_client_artifact(widget, held);
+    }
     (again, compiled) = _compiled_for(JacProgram(), widget);
     assert "widget.jac" in compiled , (
         f"an artifact lowered for another framework must recompile, saw {compiled}"

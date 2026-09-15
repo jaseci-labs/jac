@@ -289,9 +289,9 @@ test "the earliest position is recognized as a string or an enum member" {
 # TypeError on Postgres only. These tests compare call contracts directly, and
 # check that the interface rejects a divergent implementation at definition.
 """Name, kind, and default of every parameter of a method, minus self."""
-def _param_view(fn: any) -> list[tuple] {
+def _param_view(fn: any) -> list[tuple[any, ...]] {
     import inspect;
-    view: list[tuple] = [];
+    view: list[tuple[any, ...]] = [];
     for p in inspect.signature(fn).parameters.values() {
         if p.name == "self" {
             continue;
@@ -317,7 +317,7 @@ def _interface_methods -> list[str] {
 """Every broker implementation that ships in jaclang.scale.events.streams."""
 def _shipped_brokers -> list[type] {
     found: list[type] = [];
-    pending: list = list(getattr(EventStreamBroker, "__subclasses__")());
+    pending: list[type] = list(getattr(EventStreamBroker, "__subclasses__")());
     while pending {
         candidate = pending.pop();
         pending.extend(candidate.__subclasses__());

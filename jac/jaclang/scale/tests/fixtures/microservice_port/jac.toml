@@ -7,11 +7,11 @@ default-app = "main"
 
 [apps.main]
 kind = "web-app"
-entry-point = "main.jac"
+entry-point = "main"
 
 [apps.echo_service]
 kind = "service"
-entry-point = "echo_service.jac"
+entry-point = "echo_service"
 route = "/echo"
 
 [scale.gateway]

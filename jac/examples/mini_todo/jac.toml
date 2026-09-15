@@ -2,7 +2,7 @@
 name = "mini-todo"
 version = "1.0.0"
 description = "Minimal full-stack AI todo app"
-entry-point = "main.jac"
+entry-point = "main"
 
 [dependencies]
 python-dateutil = ">=2.9.0"

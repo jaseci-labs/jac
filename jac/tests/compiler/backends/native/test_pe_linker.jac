@@ -20,10 +20,10 @@ import from jaclang.compiler.driver.compile_options {
 }
 import struct;
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { TESTS_DIR, program_ir }
+import from tests.support { jac_command }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -82,7 +82,7 @@ def link_pe(relobj: bytes) -> bytes {
 
 
 """Map an image RVA to a file offset using the section table."""
-def _rva_to_off(b: bytes, secs: list, rva: int) -> int {
+def _rva_to_off(b: bytes, secs: list[any], rva: int) -> int {
     for (va, vsz, foff, rsz) in secs {
         if rva >= va and rva < va + max(vsz, rsz) {
             return foff + (rva - va);
@@ -100,7 +100,7 @@ def _cstr(b: bytes, off: int) -> str {
 
 
 """Parse a PE32+ image into a dict of the fields the tests assert on."""
-def parse_pe(b: bytes) -> dict {
+def parse_pe(b: bytes) -> dict[str, any] {
     assert b[0:2] == b"MZ" , "missing MZ signature";
     e_lfanew = struct.unpack_from("<I", b, 0x3C)[0];
     assert b[e_lfanew:e_lfanew + 4] == b"PE\x00\x00" , "missing PE signature";
@@ -114,8 +114,8 @@ def parse_pe(b: bytes) -> dict {
     (imp_rva, imp_sz) = struct.unpack_from("<II", b, dd + 1 * 8);
     # section table
     st = opt + opt_sz;
-    secs: list = [];
-    sec_names: list = [];
+    secs: list[any] = [];
+    sec_names: list[any] = [];
     for i in range(nsec) {
         o = st + i * 40;
         nm = b[o:o + 8].rstrip(b"\x00").decode("latin1");
@@ -124,7 +124,7 @@ def parse_pe(b: bytes) -> dict {
         sec_names.append(nm);
     }
     # import descriptors -> dll -> [imported names]
-    imports: dict = {};
+    imports: dict[str, any] = {};
     base = _rva_to_off(b, secs, imp_rva);
     di = 0;
     while base >= 0 {
@@ -134,7 +134,7 @@ def parse_pe(b: bytes) -> dict {
             break;
         }
         dll = _cstr(b, _rva_to_off(b, secs, name_rva));
-        names: list = [];
+        names: list[any] = [];
         toff = _rva_to_off(b, secs, ilt);
         j = 0;
         while True {
@@ -223,7 +223,7 @@ test "data import: dllimport global resolves through an IAT slot (#7626 C4)" {
     relobj = tm.emit_object(mod);
     img = link_pe(relobj);
     pe = parse_pe(img);
-    _all_names: list = [];
+    _all_names: list[any] = [];
     for (_d, _ns) in pe["imports"].items() {
         _all_names.extend(_ns);
     }
@@ -287,10 +287,7 @@ test "linking is deterministic" {
 test "nacompile --target windows writes a valid PE via the CLI" {
     out = os.path.join(tempfile.mkdtemp(), "smoke.exe");
     proc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
+        jac_command(
             "build",
             "--native",
             "--target-triple",
@@ -298,7 +295,7 @@ test "nacompile --target windows writes a valid PE via the CLI" {
             os.path.join(FIXTURES, FIXTURE),
             "-o",
             out
-        ],
+        ),
         capture_output=True,
         text=True,
         timeout=300

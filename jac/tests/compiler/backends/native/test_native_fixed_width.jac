@@ -114,3 +114,17 @@ test "f32 rounds to binary32 after every operation" {
 test "plain int keeps its pre-existing lowering: shifts, negation, abs and pow do not trap" {
     assert probe("plain_int_is_not_sized") == 4;
 }
+
+test "sized casts unwrap narrowed optional fields" {
+    import from tests.support { compile_native, get_func }
+    (eng, _) = compile_native("fixed_width_optional_fields.jac");
+    assert get_func(eng, "present_end", ctypes.c_int64)() == 42;
+    assert get_func(eng, "absent_end", ctypes.c_int64)() == -1;
+}
+
+
+test "sized list reads restore declared width and signedness" {
+    assert probe("u32_list_read_preserves_width") == 5;
+    assert probe("u32_field_list_read_preserves_width") == 22;
+    assert probe("i8_list_read_preserves_sign") == -63;
+}

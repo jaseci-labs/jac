@@ -3,7 +3,7 @@ import json;
 import logging;
 import from inspect { isgenerator }
 import from typing { AsyncGenerator, get_type_hints }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.runtime.builtin { APIProtocol }
 import from jaclang.server.serving.datatypes { Request, Response, StreamingResponse }
 import from jaclang.server.serving.endpoint {
@@ -76,7 +76,7 @@ def _stream(result: any) -> StreamingResponse {
 }
 
 
-def _failure(result: dict, fallback: str) -> TransportResponse {
+def _failure(result: dict[str, any], fallback: str) -> TransportResponse {
     if result.get('error') == 'User not found' {
         return TransportResponse.fail(
             code='UNAUTHORIZED',
@@ -87,7 +87,6 @@ def _failure(result: dict, fallback: str) -> TransportResponse {
     return TransportResponse.fail(
         code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
         message=result.get('error', fallback),
-        details=result.get('traceback') if 'traceback' in result else None,
         meta=Meta(extra={'http_status': int(result.get('http_status') or 500)})
     );
 }

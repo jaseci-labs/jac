@@ -34,7 +34,7 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
-import from jaclang.compiler.driver.schedules {
+import from jaclang.compiler.driver.pipeline {
     ANALYSIS_SCHED_DEPS,
     CODEGEN_SCHED_DEPS,
     IR_SCHED_DEPS,
@@ -112,6 +112,56 @@ test "a compiler-source module keys the same under every ambient codespace" {
         );
     } finally {
         set_effective_default_codespace(saved);
+    }
+}
+
+test "source cache keys use their own native policy instead of ambient config" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.project.config {
+        get_config,
+        get_config_for_path,
+        pin_project_scope,
+        project_scope_is_pinned,
+        set_config
+    }
+    saved = get_config();
+    pinned = project_scope_is_pinned();
+    with tempfile.TemporaryDirectory() as directory {
+        directory_path = Path(directory);
+        owner = directory_path / "owner";
+        other = directory_path / "other";
+        owner.mkdir();
+        other.mkdir();
+        owner_config = owner / "jac.toml";
+        owner_config.write_text(
+            '[project]\nname = "owner"\n[native]\nrequire = ["owned.*"]\n'
+        );
+        (other / "jac.toml").write_text(
+            '[project]\nname = "other"\n[native]\nrequire = ["other.*"]\n'
+        );
+        source = owner / "main.jac";
+        source.write_text("def value -> int { return 1; }\n");
+        try {
+            set_config(None);
+            get_config(start_path=other, force_discover=True);
+            ambient = module_cache_key(str(source));
+            pin_project_scope(None);
+            isolated = module_cache_key(str(source));
+            assert ambient == isolated , "Unrelated ambient policy changed the source cache key";
+            owner_config.write_text(
+                '[project]\nname = "owner"\n[native]\nrequire = ["changed.*"]\n'
+            );
+            get_config_for_path(owner, force_discover=True);
+            assert module_cache_key(str(source)) != isolated , "The owning native policy must invalidate its cache";
+        } finally {
+            if pinned {
+                pin_project_scope(saved);
+            } else {
+                set_config(None);
+                get_config(force_discover=True);
+            }
+        }
     }
 }
 
@@ -194,7 +244,8 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "mid-import; a pass reaching that module at run time re-enters it"
         );
         tail = [p.__name__ for p in get_py_code_gen()];
-        assert tail == ["JcirGenPass", "JcirBytecodeGenPass"] , tail;
+        assert tail
+            == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"] , tail;
     } finally {
         sys.modules[name] = saved;
     }
@@ -332,7 +383,7 @@ test "a bootstrap frontend retains its codegen tier after imports finish" {
     import from pathlib { Path }
     import from unittest.mock { patch }
     import jaclang.compiler.driver.compiler as compiler_mod;
-    import from jaclang.compiler.driver.schedules { get_bootstrap_ir_sched }
+    import from jaclang.compiler.driver.pipeline { get_bootstrap_ir_sched }
     with tempfile.TemporaryDirectory() as directory {
         source = str(Path(directory) / "bootstrap_tier.jac");
         prog = JacProgram();
@@ -348,7 +399,7 @@ test "a bootstrap frontend retains its codegen tier after imports finish" {
         }
         assert not prog.errors_had , [str(error) for error in prog.errors_had];
         assert mod.gen.py_bytecode is not None;
-        namespace: dict = {"__name__": "bootstrap_tier", "__file__": source};
+        namespace: dict[str, any] = {"__name__": "bootstrap_tier", "__file__": source};
         exec(marshal.loads(mod.gen.py_bytecode), namespace);
         assert namespace["answer"] == 42;
         assert "RcFactsPass" not in prog.analysis.pass_runs;

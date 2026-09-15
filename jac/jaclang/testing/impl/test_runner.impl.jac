@@ -241,7 +241,7 @@ impl _suite_source(filepath: str) -> str {
 
 impl _iter_candidate_files(start: str, ignore: (list[str] | None) = None) -> list[str] {
     import from jaclang.jac0core.ext_registry { is_impl, is_jac }
-    ignored = ignore or [];
+    ignored: list[str] = ignore or [];
     found: list[str] = [];
     for (dirpath, dirnames, filenames) in os.walk(start, topdown=True) {
         dirnames[:] = [
@@ -270,8 +270,8 @@ impl discover(
     ignore: (list[str] | None) = None
 ) -> TestPlan {
     import from jaclang.jac0core.ext_registry { is_jac }
-    targets = paths or [];
-    ignored = ignore or [];
+    targets: list[str] = paths or [];
+    ignored: list[str] = ignore or [];
     explicit: set[str] = set();
     ordered: list[str] = [];
     seen: set[str] = set();
@@ -409,6 +409,27 @@ impl _capture_begin -> dict[(str, any)] {
 
 impl _capture_end(state: dict[(str, any)]) -> str {
     import sys;
+    import logging;
+
+    loggers = [logging.getLogger(), *logging.Logger.manager.loggerDict.values()];
+    for logger in loggers {
+        if not isinstance(logger, logging.Logger) {
+            continue;
+        }
+        for handler in logger.handlers {
+            if not isinstance(handler, logging.StreamHandler) {
+                continue;
+            }
+            for (captured, original) in [
+                (state["made_out"], state["sys_out"]),
+                (state["made_err"], state["sys_err"])
+            ] {
+                if handler.stream is captured {
+                    handler.setStream(original);
+                }
+            }
+        }
+    }
     for stream in (state["made_out"], state["made_err"]) {
         try {
             stream.flush();
@@ -699,7 +720,7 @@ impl run_file(
                 )
             ];
         }
-        pending: list = [];
+        pending: list[any] = [];
         for (_key, registered) in list(JacTestCheck.test_suite_path.items()) {
             for info in list(registered) {
                 pending.append(info);

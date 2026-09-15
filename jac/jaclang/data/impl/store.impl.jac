@@ -203,7 +203,9 @@ impl PgStore._ensure_ready -> None {
 
 
 impl SessionConflictError.init(
-    self: SessionConflictError, database: str = '', blockers: (list[dict] | None) = None
+    self: SessionConflictError,
+    database: str = '',
+    blockers: (list[dict[str, any]] | None) = None
 ) -> None {
     self.database = database;
     self.blockers = list(blockers or []);
@@ -382,7 +384,7 @@ def _conn_dead(e: Exception) -> bool {
 }
 
 
-impl PgStore._run(sql: str, params: dict) -> list {
+impl PgStore._run(sql: str, params: dict[str, any]) -> list[any] {
     self._ensure_ready();
     with self._lock {
         conn: any = None;
@@ -681,7 +683,7 @@ impl PgStore._schema_stamp -> (str | None) {
 }
 
 
-impl PgStore._peer_sessions -> list[dict] {
+impl PgStore._peer_sessions -> list[dict[str, any]] {
     rows = self._run(
         """
         SELECT pid, application_name, state, backend_start::text
@@ -690,7 +692,7 @@ impl PgStore._peer_sessions -> list[dict] {
         """,
         {}
     );
-    out: list[dict] = [];
+    out: list[dict[str, any]] = [];
     for (pid, app, state, started) in rows {
         app_s = str(app or '');
         owner: (int | None) = None;
@@ -738,7 +740,7 @@ impl PgStore._reap_dead_sessions -> int {
 }
 
 
-impl PgStore._live_blockers -> list[dict] {
+impl PgStore._live_blockers -> list[dict[str, any]] {
     peers = [
         p
         for p in self._peer_sessions()
@@ -747,7 +749,7 @@ impl PgStore._live_blockers -> list[dict] {
     held = [
         p
         for p in peers
-        if 'idle in transaction' in p['state']
+        if 'idle in transaction' in str(p['state'])
     ];
     return held or peers;
 }
@@ -830,33 +832,16 @@ impl PgStore.load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] {
     rows = self._run(
         """
         SELECT a.id, a.kind, a.arch_type, a.arch_module, a.fingerprint,
-               a.root_id, a.src, a.dst, a.undirected, a.props, a.version,
-               CASE WHEN a.kind = 'NodeAnchor' THEN
-                   (SELECT string_agg(e.id::text, ',' ORDER BY e.seq, e.id)
-                      FROM anchors e WHERE e.src = a.id OR e.dst = a.id)
-               END
+               a.root_id, a.src, a.dst, a.undirected, a.props, a.version
         FROM anchors a WHERE a.id = ANY(CAST(:ids AS uuid[]))
         """,
         {'ids': [str(i) for i in ids]}
     );
     for r in rows {
         raw_props = r[9];
-        props: dict = (
+        props: dict[str, any] = (
             raw_props if isinstance(raw_props, dict) else json.loads(str(raw_props))
         );
-        adjacency: (list[UUID] | None) = None;
-        if str(r[1]) == 'NodeAnchor' {
-            adjacency = [];
-            if r[11] {
-                seen_e: set[str] = set();
-                for tok in str(r[11]).split(',') {
-                    if tok and tok not in seen_e {
-                        seen_e.add(tok);
-                        adjacency.append(UUID(tok));
-                    }
-                }
-            }
-        }
         row = AnchorRow(
             id=UUID(str(r[0])),
             kind=str(r[1]),
@@ -868,12 +853,38 @@ impl PgStore.load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] {
             src=UUID(str(r[6])) if r[6] else None,
             dst=UUID(str(r[7])) if r[7] else None,
             undirected=bool(r[8]),
-            version=int(str(r[10])),
-            adjacency=adjacency
+            version=int(str(r[10]))
         );
         out[row.id] = row;
     }
     return out;
+}
+
+
+impl PgStore.adjacency(
+    node_id: UUID, after: (tuple[int, UUID] | None), limit: int
+) -> list[tuple[int, UUID]] {
+    rows = self._run(
+        """
+        SELECT u.seq, u.id FROM (
+            SELECT e.seq, e.id FROM anchors e
+             WHERE e.kind = 'EdgeAnchor' AND e.src = CAST(:i AS uuid)
+            UNION ALL
+            SELECT e.seq, e.id FROM anchors e
+             WHERE e.kind = 'EdgeAnchor' AND e.dst = CAST(:i AS uuid)
+               AND e.src <> CAST(:i AS uuid)
+        ) u
+        WHERE (u.seq, u.id) > (CAST(:s AS bigint), CAST(:a AS uuid))
+        ORDER BY u.seq, u.id LIMIT CAST(:n AS bigint)
+        """,
+        {
+            'i': str(node_id),
+            's': int(after[0]) if after is not None else -1,
+            'a': str(after[1]) if after is not None else str(UUID(int=0)),
+            'n': int(limit)
+        }
+    );
+    return [(int(str(r[0])), UUID(str(r[1]))) for r in rows];
 }
 
 
@@ -888,7 +899,7 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
     for start in range(0, len(rows), chunk) {
         batch = rows[start:start + chunk];
         values: list[str] = [];
-        params: dict = {};
+        params: dict[str, any] = {};
         for (i, row) in enumerate(batch) {
             values.append(
                 f"(CAST(:id{i} AS uuid), :kind{i}, :arch_type{i}, "
@@ -972,7 +983,7 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
     }
     if pairs {
         tvals: list[str] = [];
-        tparams: dict = {};
+        tparams: dict[str, any] = {};
         for (i, pair) in enumerate(pairs) {
             tvals.append(f"(:t{i}, :a{i})");
             tparams[f"t{i}"] = pair[0];
@@ -1038,7 +1049,7 @@ impl PgStore.subtype_names(type_name: str) -> list[str] {
 }
 
 
-impl PgStore.rows(sql: str, params: dict) -> list[tuple] {
+impl PgStore.rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] {
     return [tuple(r) for r in self._run(sql, params)];
 }
 
@@ -1246,7 +1257,7 @@ impl PgStore._listen_loop -> None {
         return;
     }
     while not stop.is_set() {
-        pending: list = [];
+        pending: list[tuple[int, str, str]] = [];
         sock: any = None;
         try {
             with self._lock {

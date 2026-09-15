@@ -102,7 +102,7 @@ def erased_identity_call_arg(nd: FuncCall) -> (Expr | None) {
     if not isinstance(tgt, Name) or tgt.sym_name not in NATIVE_ERASED_IDENTITY_CALLS {
         return None;
     }
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if len(params) != 2
         or not isinstance(params[0], Expr)
         or not isinstance(params[1], Expr) {
@@ -438,8 +438,8 @@ def _in_annotation_position(nm: Name, stop: UniNode) -> bool {
     return False;
 }
 
-def _bare_py_import_bindings(mod: Module) -> dict[str, tuple] {
-    out: dict[str, tuple] = {};
+def _bare_py_import_bindings(mod: Module) -> dict[str, tuple[ModuleItem, Import]] {
+    out: dict[str, tuple[ModuleItem, Import]] = {};
     for imp in mod.get_all_sub_nodes(Import) {
         if imp.is_service_import or imp.is_typed {
             continue;
@@ -636,7 +636,7 @@ def client_value_ref_targets(
 ) -> list[tuple[Name, UniNode]] {
     bound = extra_bound if extra_bound is not None else set();
     out: list[tuple[Name, UniNode]] = [];
-    seen: set[tuple] = set();
+    seen: set[tuple[int, int, int]] = set();
     for stmt in mod.body {
         if not _client_emitted_top(stmt, bound) {
             continue;

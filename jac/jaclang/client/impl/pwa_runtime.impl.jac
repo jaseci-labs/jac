@@ -4,11 +4,13 @@ glob PWA_STORAGE_KEY = "__jac_pwa_prefs__",
      PWA_BACKOFF_MULTIPLIER = 2;
 
 impl _useBool(initial: bool) -> tuple[bool, Callable[[bool], None]] {
-    return reactUseState(initial);
+    state = reactUseState(initial);
+    return (state[0], state[1]);
 }
 
 impl _useStr(initial: str) -> tuple[str, Callable[[str], None]] {
-    return reactUseState(initial);
+    state = reactUseState(initial);
+    return (state[0], state[1]);
 }
 
 impl getPlatform -> str {
@@ -678,7 +680,7 @@ impl PwaInstallBanner(
     [dismissing, setDismissing] = _useBool(False);
 
     bannerTitle = title or pwa.appName or "Install App";
-    bannerStyle = style or {};
+    bannerStyle: dict[str, any] = style or {};
 
     reactUseEffect(
         lambda -> (Callable[[], None] | None) {
@@ -775,7 +777,7 @@ impl PwaInstallButton(
     onInstalled: (Callable[[], None] | None) = None
 ) -> JsxElement {
     pwa = usePwaInstall();
-    buttonStyle = style or {};
+    buttonStyle: dict[str, any] = style or {};
 
     async def handleClick {
         result = await pwa.install();

@@ -22,6 +22,7 @@ reading, and merged they read a list three pushes deep.
 So: if a new fixture declares a glob anything writes, or imports one that
 does, give each of its cases its own test.
 """
+import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
 
 import ctypes;
 import from jaclang.compiler.driver.compile_options {
@@ -35,6 +36,7 @@ import subprocess;
 import sys;
 import tempfile;
 import from tests.support {
+    jac_command,
     JAC_ROOT,
     TESTS_DIR,
     compile_native,
@@ -105,8 +107,8 @@ def get_sfunc(
     addr = ctypes.cast(get_func(eng, name, None), ctypes.c_void_p).value;
     assert addr , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
-    str_slots: list = [];
-    real_args: list = [];
+    str_slots: list[bool] = [];
+    real_args: list[any] = [];
     for a in argtypes {
         if a == ctypes.c_char_p {
             str_slots.append(True);
@@ -135,9 +137,9 @@ def get_sfunc(
             if sn_addr
             else None
     );
-    _str_buf_cache: dict = {};
+    _str_buf_cache: dict[bytes, any] = {};
     def _call(*args: any) -> any {
-        c_args: list = [];
+        c_args: list[any] = [];
         for (a, is_str) in zip(args, str_slots) {
             if is_str {
                 assert mkstr is not None , "jac_str_new not found in JIT engine";
@@ -995,6 +997,8 @@ test "bytes_utf8" {
     _bytes_utf8__bytes_utf8_byte_len(_eng, _ir);
     _bytes_utf8__bytes_utf8_byte_at_portable(_eng, _ir);
     _bytes_utf8__bytes_utf8_decode_roundtrip_and_slice(_eng, _ir);
+    decoded_nul = get_func(_eng, "decode_embedded_nul", ctypes.c_int64);
+    assert decoded_nul() == 3098;
 }
 
 # --- TestNativeForTupleUnpack ---
@@ -1862,7 +1866,7 @@ test "chess play random moves stress" {
     # 20 blank lines (random moves) followed by "quit"
     stdin_data = "\n" * 20 + "quit\n";
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", chess_path],
+        jac_command("run", chess_path),
         input=stdin_data,
         capture_output=True,
         text=True,
@@ -3036,7 +3040,6 @@ test "cache marker: a module that stays in Python has no native section in jir" 
     import time;
     import shutil;
     import from jaclang.compiler.driver.jir {
-        get_module_cache_path,
         read_sections,
         SECTIONS_MAGIC,
         HEADER_SIZE,
@@ -3058,7 +3061,7 @@ test "cache marker: a module that stays in Python has no native section in jir" 
         prog = JacProgram();
         JacCompiler().get_bytecode(jac_file, prog);
 
-        cache_path = get_module_cache_path(jac_file);
+        cache_path = artifact_cache_path(jac_file, prog);
         assert cache_path.exists() , f"JIR cache file not created at {cache_path}";
 
         data = cache_path.read_bytes();
@@ -3402,7 +3405,7 @@ test "jac run loads a transitive imported-module clib (issue #6687)" {
             shutil.copy(os.path.join(FIXTURES, _f), os.path.join(tmpdir, _f));
         }
         result = subprocess.run(
-            [sys.executable, "-m", "jaclang", "run", "clib_jit_xmod_main.jac"],
+            jac_command("run", "clib_jit_xmod_main.jac"),
             capture_output=True,
             text=True,
             timeout=120,
@@ -3714,7 +3717,7 @@ test "native-default chess.jac runs via cli" {
             );
         }
         result = subprocess.run(
-            [sys.executable, "-m", "jaclang", "run", "chess.jac"],
+            jac_command("run", "chess.jac"),
             input=stdin_data,
             capture_output=True,
             text=True,
@@ -3770,7 +3773,7 @@ test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Findi
     with tempfile.TemporaryDirectory() as tmpdir {
         out = os.path.join(tmpdir, "autopromote_bundled_zlib");
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "build", "--native", fixture, "-o", out],
+            jac_command("build", "--native", fixture, "-o", out),
             capture_output=True,
             text=True,
             timeout=180
@@ -3815,16 +3818,7 @@ test "sys argv via jac run native default" {
             );
         }
         result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "run",
-                "sys_argv.jac",
-                "hello",
-                "--test-flag",
-                "world"
-            ],
+            jac_command("run", "sys_argv.jac", "hello", "--test-flag", "world"),
             capture_output=True,
             text=True,
             timeout=30,
@@ -3854,16 +3848,7 @@ test "sys argv via nacompile" {
         out_bin = os.path.join(tmpdir, "sys_argv_bin");
         # Step 1: Compile to native binary
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                fixture,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", fixture, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=120
@@ -3953,16 +3938,7 @@ test "sys stdout/stderr streams via nacompile" {
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "sys_streams_bin");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                fixture,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", fixture, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=120
@@ -3999,16 +3975,7 @@ test "native osp kernel links transitively through an imported module (issue #66
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "osp_kernel_transitive");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                fixture,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", fixture, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=120
@@ -4043,16 +4010,7 @@ test "native osp graph survives a cross-module spawn (kernel glob-init runs once
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "osp_xmod_buildsplit");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                fixture,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", fixture, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=120
@@ -4090,16 +4048,7 @@ test "native osp node constructed in a non-OSP module carries its dispatch tag (
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "osp_ctor_only");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                fixture,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", fixture, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=120
@@ -4139,16 +4088,7 @@ test "native osp construct living only in an impl annex materializes imported ar
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "osp_xmod_annexbuild");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                fixture,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", fixture, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=120
@@ -4191,12 +4131,9 @@ test "aarch64 standalone binary runs (issue #6366)" {
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "a64_roundtrip");
         # Step 1: cross-compile for aarch64.
-        comp_env = dict(os.environ);
+        comp_env: dict[str, str] = dict(os.environ);
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
+            jac_command(
                 "build",
                 "--native",
                 "--target-triple",
@@ -4204,7 +4141,7 @@ test "aarch64 standalone binary runs (issue #6366)" {
                 fixture,
                 "-o",
                 out_bin
-            ],
+            ),
             capture_output=True,
             text=True,
             timeout=120,
@@ -4218,7 +4155,7 @@ test "aarch64 standalone binary runs (issue #6366)" {
         # Step 2: run under qemu-user. total = add(40, 2) = 42, surfaced via
         # sys.exit. A dropped MOVW_UABS reloc stores to NULL -> SIGSEGV
         # (returncode -11 / 139) instead of the expected 42.
-        run_env = dict(os.environ);
+        run_env: dict[str, str] = dict(os.environ);
         run_env["QEMU_LD_PREFIX"] = ld_prefix;
         result = subprocess.run(
             [qemu, out_bin], capture_output=True, text=True, timeout=30, env=run_env
@@ -4263,12 +4200,9 @@ test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
     fixture = str(os.path.join(FIXTURES, "aarch64_global_roundtrip.jac"));
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "a64_static");
-        comp_env = dict(os.environ);
+        comp_env: dict[str, str] = dict(os.environ);
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
+            jac_command(
                 "build",
                 "--native",
                 "--target-triple",
@@ -4276,7 +4210,7 @@ test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
                 fixture,
                 "-o",
                 out_bin
-            ],
+            ),
             capture_output=True,
             text=True,
             timeout=180,
@@ -4632,7 +4566,7 @@ test "jir bitcode cache round-trip" {
     assert code1 is not None , "get_bytecode should return code object";
 
     # Step 2: Verify SEC_NBITCODE section exists in the cached JIR file
-    cache_path = get_module_cache_path(fixture);
+    cache_path = artifact_cache_path(fixture, prog1);
     assert cache_path.exists() , f"JIR cache file should exist at {cache_path}";
     jir_data = cache_path.read_bytes();
     magic: bytes = SECTIONS_MAGIC;
@@ -4921,19 +4855,6 @@ def _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair
     assert f"{on_event}.__clibcb.1" not in llvm_ir_str;
 }
 
-# --- Flat (no-RC) allocation for clib vtable structs (issue #6571) ---
-"""clib vtable structs allocate flat without RC header (issue #6571)"""
-def _clib_vtable_trampoline__clib_vtable_structs_allocate_flat_without_rc_header_issue_6571(
-    _eng: any, ir: any
-) {
-    llvm_ir_str = str(ir.gen.llvm_ir);
-    # C reads the vtable starting at field 0 (CEF validates struct->size
-    # there) and owns its lifetime, so the instance must be plain zeroed C
-    # memory — no RC header, no destructor, no type tag.
-    assert "clib.vt.raw" in llvm_ir_str , "vtable must allocate through the flat calloc path";
-    assert "__rc_release_event_handler_vt" not in llvm_ir_str , "C-owned vtable struct must not get an RC destructor";
-}
-
 test "clib_vtable_trampoline" {
     (_eng, _ir) = compile_native("clib_vtable_trampoline.jac");
     _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue_6570(
@@ -4942,9 +4863,8 @@ test "clib_vtable_trampoline" {
     _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair_issue_6570(
         _eng, _ir
     );
-    _clib_vtable_trampoline__clib_vtable_structs_allocate_flat_without_rc_header_issue_6571(
-        _eng, _ir
-    );
+    handler_size = get_func(_eng, "make_handler", ctypes.c_int64);
+    assert handler_size() == 24;
 }
 
 test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
@@ -6440,10 +6360,10 @@ test "jac test runs .jac test blocks end to end" {
     fixture = os.path.join(FIXTURES, "test_blocks.jac");
     # The fixture holds 3 native `test` blocks, exactly 1 of them a deliberate
     # failure. Serial so the summary is not interleaved by worker output.
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["JAC_TEST_JOBS"] = "0";
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "test", fixture],
+        jac_command("test", fixture),
         capture_output=True,
         text=True,
         timeout=300,
@@ -6463,10 +6383,7 @@ test "jac test runs .jac test blocks end to end" {
 test "jac test runs test blocks inside inline na blocks (no false green)" {
     fixture = os.path.join(FIXTURES, "test_blocks_inline.jac");
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "test", fixture],
-        capture_output=True,
-        text=True,
-        timeout=300
+        jac_command("test", fixture), capture_output=True, text=True, timeout=300
     );
     output = result.stdout + result.stderr;
     assert "no tests ran" not in output , "inline na-block tests were silently dropped";
@@ -6481,10 +6398,7 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
 test "jac test runs inferred-native test blocks natively (item #19)" {
     fixture = os.path.join(FIXTURES, "test_blocks_inferred.jac");
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "test", fixture],
-        capture_output=True,
-        text=True,
-        timeout=300
+        jac_command("test", fixture), capture_output=True, text=True, timeout=300
     );
     output = result.stdout + result.stderr;
     assert "1 passed" in output and "1 failed" in output , (

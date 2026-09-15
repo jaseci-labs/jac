@@ -15,7 +15,7 @@ glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
 
 obj ResolvedKernel {
     has lib_path: str,
-        layout: dict,
+        layout: dict[str, any],
         source: str,
         plan_digest: str = "";
 }
@@ -37,7 +37,7 @@ def source_tree_kernel_path -> str {
     return os.path.join(jaclang_pkg_root(), "compiler", kernel_lib_name());
 }
 
-def read_sidecar(lib_path: str) -> (dict | None) {
+def read_sidecar(lib_path: str) -> (dict[str, any] | None) {
     data: any = None;
     try {
         with open(lib_path + LAYOUT_SIDECAR_SUFFIX, "r", encoding="utf-8") as f {
@@ -113,7 +113,7 @@ def _from_sealed_image -> (ResolvedKernel | None) {
 
 def _toolchain_available -> bool {
     try {
-        import from jaclang.compiler.driver.schedules { native_pipeline_available }
+        import from jaclang.compiler.driver.pipeline { native_pipeline_available }
         (ok, _why) = native_pipeline_available();
         return bool(ok);
     } except Exception {
@@ -214,7 +214,7 @@ def _from_source_tree -> (ResolvedKernel | None) {
     }
 }
 
-def _sidecar_matches_sources(sidecar: dict) -> bool {
+def _sidecar_matches_sources(sidecar: dict[str, any]) -> bool {
     import from jaclang.compiler.backends.native.link_plan {
         sidecar_unit_paths,
         units_source_key
