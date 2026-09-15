@@ -206,3 +206,11 @@ stamps are always freshly computed in-process for the module being lowered.
 The checker's cost is proportional to the number of *annotated* symbols;
 unannotated modules exit the E13xx analyses early (the move-elision liveness
 proof runs regardless, as it serves unannotated code too).
+
+Borrowed aliases preserve their source dependencies. A declared source may name
+the original owner through such an alias, but an owned intermediate resource
+cannot be replaced by its parent: a cursor still needs the cursor itself alive.
+A call may consume an owner alongside a view declared `from owner` when that
+view has no subsequent use. Both the declared source and last-use condition are
+checked. Return contracts follow transitive parameter dependencies; naming a
+borrowed intermediary cannot hide a consumed parameter.

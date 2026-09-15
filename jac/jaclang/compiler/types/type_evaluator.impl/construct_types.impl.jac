@@ -1043,6 +1043,25 @@ impl TypeEvaluator._set_lifetime_contract(
             }
         }
     }
+    # A borrowed parameter can itself depend on an owned parameter. Follow
+    # that chain when checking a return; naming the borrowed intermediary does
+    # not allow a view to survive destruction of the consumed owner.
+    pending_returns = list(fn.return_sources);
+    visited_returns: set[int] = set();
+    while pending_returns {
+        source = pending_returns.pop();
+        if source in visited_returns { continue; }
+        visited_returns.add(source);
+        if fn.parameters[source].ownership == OwnershipKind.OWN {
+            if result is not None {
+                self.emit_diag(E1320, result,
+                    reason="returned value depends on a consumed parameter");
+            }
+            break;
+        }
+        pending_returns.extend(fn.parameters[source].lifetime_sources);
+    }
+
 }
 
 

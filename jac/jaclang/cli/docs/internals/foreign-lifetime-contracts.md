@@ -70,6 +70,13 @@ when the callee accepts that dependency. Moving only the frame while the stack
 value remains live is rejected. The caller relinquishes both release obligations
 and the callee must discharge them in dependency order.
 
+Borrowed aliases are normalized to their source owners during contract checks;
+owned intermediate resources remain dependencies in their own right. A view may
+accompany a consumed owner when its parameter declares `from owner` and the
+view is dead after the call. Borrowed arguments must satisfy their declared
+sources too. A returned view cannot conceal a consumed parameter through a
+chain of borrowed parameter dependencies. These source additions await execution.
+
 ## Foreign resources
 
 ```jac
@@ -222,8 +229,10 @@ evaluator and tier-two executor remain in the candidate build.
 
 The full source migration is still unfinished. Remaining C algorithms include
 opcode dispatch and all enabled instruction families, tier-two execution,
-and the main evaluator entry/dispatch machinery. Their source/object
-prerequisites remain active. Read-only Python ABI tables and the interpreter
+and the remaining dispatcher machinery. Native `evaluator_entry` now performs
+entry linking, executor saving, recursion setup, and throw setup. Temporary C
+ABI adapters still enter the pinned tail handlers. The non-tail C entry remains
+conditional in the source. Their source/object prerequisites remain active. Read-only Python ABI tables and the interpreter
 trampoline are separate C data; moving them does not constitute a native opcode
 implementation.
 Removing these entries from the build before replacing their implementations

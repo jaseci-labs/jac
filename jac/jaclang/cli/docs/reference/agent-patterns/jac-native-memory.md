@@ -211,3 +211,11 @@ reentry. The starred-unpack tail in `evaluator_unpack` uses a native
 transfers and the final size update together. Borrowed results from locals or
 builtins APIs must name their frame/interpreter source, not a temporary new
 reference that is closed before return.
+
+Borrowed aliases preserve their source dependencies. A declared source may name
+the original owner through such an alias, but an owned intermediate resource
+cannot be replaced by its parent: a cursor still needs the cursor itself alive.
+A call may consume an owner alongside a view declared `from owner` when that
+view has no subsequent use. Both the declared source and last-use condition are
+checked. Return contracts follow transitive parameter dependencies; naming a
+borrowed intermediary cannot hide a consumed parameter.

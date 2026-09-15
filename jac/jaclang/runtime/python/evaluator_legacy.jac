@@ -53,7 +53,7 @@ import from c {
 @foreign_call(requires=["gil"], errors="python", reentrant=True)
 def PyEval_EvalCode(code: &PyObjectRef, globals: &PyObjectRef, locals: &PyObjectRef) -> own PyObjectRef {
     tstate: &JacPyThreadState = PyThreadState_Get();
-    local_values: &PyObjectRef from (locals, globals) = locals;
+    local_values: &PyObjectRef = locals;
     if jacpy_ref_is_null(local_values) != 0 { local_values = globals; }
     builtins: own PyObjectRef = _PyDict_LoadBuiltinsFromGlobals(globals);
     if jacpy_ref_is_null(&builtins) != 0 { return builtins; }
@@ -82,7 +82,7 @@ def jacpy_eval_code_ex_impl(storage: &JacPyLegacyStorage, code: &PyObjectRef,
         jacpy_ref_close(defaults);
         return builtins;
     }
-    local_values: &PyObjectRef from (locals, globals) = locals;
+    local_values: &PyObjectRef = locals;
     if jacpy_ref_is_null(local_values) != 0 { local_values = globals; }
     arguments: lin PyLegacyArgsRef from (storage, input, keywords) = jacpy_legacy_arguments_begin(storage, input, keywords);
     names: own PyObjectRef = jacpy_ref_null();

@@ -86,6 +86,29 @@ impl OwnershipCheckPass._lifetime_expr_owners(expr: Expr | None) -> list[SymId] 
     return [];
 }
 
+# A borrowed alias adds no release obligation of its own. Keep every owned
+# intermediate source, however: an owned cursor cannot be replaced by the
+# connection it depends on when checking a consuming call.
+impl OwnershipCheckPass._lifetime_source_roots(sources: list[SymId]) -> list[SymId] {
+    roots: list[SymId] = [];
+    pending = list(reversed(sources));
+    seen: set[SymId] = set();
+    while pending {
+        source = pending.pop();
+        if source in seen { continue; }
+        seen.add(source);
+        meta = self.borrow_meta.get(source);
+        parents: list[SymId] = [];
+        if meta is not None {
+            if meta.owner is not None { parents.append(meta.owner); }
+            parents.extend(meta.extra_owners);
+        }
+        if source in self.owned_decl or not parents { roots.append(source); }
+        pending.extend(reversed(parents));
+    }
+    return roots;
+}
+
 impl OwnershipCheckPass._stamp_lifetime_dependencies -> None {
     scopes: list[Ability | LambdaExpr] = [scope for scope in self.ir_in.get_all_sub_nodes(Ability)];
     scopes.extend(self.ir_in.get_all_sub_nodes(LambdaExpr));
@@ -143,7 +166,9 @@ impl OwnershipCheckPass._stamp_lifetime_dependencies -> None {
                         node_override=annotation,
                         reason="unknown owner '" + source + "'"
                     );
-                } elif id(found) not in owners {
+                } elif not set(self._lifetime_source_roots([id(found)])).issubset(
+                    set(self._lifetime_source_roots(owners))
+                ) {
                     self.emit(
                         E1320,
                         node_override=annotation,
@@ -180,11 +205,21 @@ impl OwnershipCheckPass._lifetime_cotransfer(
         }
         arguments = self._lifetime_call_args(call);
         for (index, parameter) in enumerate(fn.parameters) {
-            if parameter.ownership != OwnershipKind.OWN
-                or index >= len(arguments)
-                or self._owned_sym_of(arguments[index]) != dependent {
-                continue;
-            }
+            if index >= len(arguments) { continue; }
+            if parameter.ownership == OwnershipKind.OWN {
+                if self._owned_sym_of(arguments[index]) != dependent { continue; }
+            } elif is_borrow_kind(parameter.ownership) {
+                place = self._place_of(arguments[index]);
+                if place is None or place.sym is None
+                    or self._name_sym_id(place) != dependent { continue; }
+                # A call may consume an owner while using its declared view,
+                # but that view cannot remain live after this call. Check both
+                # successor nodes and later expressions in this CFG node.
+                if any(dependent in self.in_live_borrows.get(id(succ), set())
+                    for succ in cfg.bb_out) { continue; }
+                if any(self._cfg_owner(use) is cfg and use.loc.pos_start >= call.loc.pos_end
+                    for use in self.name_uses_by_sym.get(dependent, [])) { continue; }
+            } else { continue; }
             for source in parameter.lifetime_sources {
                 if source < len(arguments)
                     and fn.parameters[source].ownership == OwnershipKind.OWN
@@ -233,15 +268,9 @@ impl OwnershipCheckPass._emit_lifetime_diagnostics -> None {
                 allowed.add(self._name_sym_id(candidates[0].name));
             }
         }
-        for owner in owners {
-            roots = self._borrow_owners_of(owner) or [owner];
-            # A dependency does not replace the lifetime of the release
-            # obligation itself. Borrowing an owned cursor still needs that
-            # cursor, even when the cursor also depends on a connection.
-            if owner in self.owned_decl and owner not in roots {
-                roots.insert(0, owner);
-            }
-            if not all(source in allowed for source in roots) {
+        allowed = set(self._lifetime_source_roots(list(allowed)));
+        for owner in self._lifetime_source_roots(owners) {
+            if owner not in allowed {
                 self.emit(
                     E1320,
                     node_override=ret,
@@ -270,13 +299,17 @@ impl OwnershipCheckPass._emit_lifetime_diagnostics -> None {
             if index >= len(arguments) {
                 continue;
             }
-            actual = self._lifetime_expr_owners(arguments[index]);
+            actual = self._lifetime_source_roots(self._lifetime_expr_owners(arguments[index]));
             expected: set[SymId] = set();
             for source in parameter.lifetime_sources {
                 if source < len(arguments) {
                     place = self._place_of(arguments[source]);
                     if place is not None and place.sym is not None {
-                        expected.add(self._name_sym_id(place));
+                        expected.update(self._lifetime_source_roots([self._name_sym_id(place)]));
+                    else {
+                        expected.update(self._lifetime_source_roots(
+                            self._lifetime_expr_owners(arguments[source])
+                        ));
                     }
                 }
             }
@@ -304,6 +337,16 @@ impl OwnershipCheckPass._emit_lifetime_diagnostics -> None {
                     reason="consuming parameter '"
                         + parameter.name
                         + "' would erase a lifetime dependency"
+                );
+            }
+            elif is_borrow_kind(parameter.ownership)
+                and parameter.lifetime_sources
+                and not all(owner in expected for owner in actual) {
+                self.emit(
+                    E1320,
+                    node_override=call,
+                    reason="borrowed parameter '" + parameter.name
+                        + "' does not satisfy its declared lifetime sources"
                 );
             }
         }

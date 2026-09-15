@@ -190,6 +190,7 @@ walker OwnershipCheckPass(Transform) {
     def _stamp_ownership -> None;
     def _lifetime_call_args(call: FuncCall) -> list[Expr | None];
     def _lifetime_expr_owners(expr: Expr | None) -> list[SymId];
+    def _lifetime_source_roots(sources: list[SymId]) -> list[SymId];
     def _stamp_lifetime_dependencies -> None;
     def _stamp_dependency_cleanup_order -> None;
     def _stamp_foreign_effects -> None;

@@ -893,3 +893,11 @@ The native backend does hand the checked facts to the optimizer: heap-typed para
 - [Ownership Checker Specification](../../internals/ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the facts contract backends consume.
 - [Errors and Warnings](../diagnostics.md#ownership-borrow-errors) -- ownership, view, place, and zero-RC enforcement diagnostics.
 - [Native Compilation Reference](native-pathway.md#memory-management) -- the `--memory` profiles, zero-RC ownership compilation, and how the native backend proves [reference-count elision](native-pathway.md#reference-count-elision) independently of this checker.
+
+Borrowed aliases preserve their source dependencies. A declared source may name
+the original owner through such an alias, but an owned intermediate resource
+cannot be replaced by its parent: a cursor still needs the cursor itself alive.
+A call may consume an owner alongside a view declared `from owner` when that
+view has no subsequent use. Both the declared source and last-use condition are
+checked. Return contracts follow transitive parameter dependencies; naming a
+borrowed intermediary cannot hide a consumed parameter.

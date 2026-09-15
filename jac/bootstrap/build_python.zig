@@ -17,6 +17,7 @@ const inputs = [_][]const u8{
     "bootstrap/python/evaluator_binding.c", "bootstrap/python/evaluator_binding.h",
     "bootstrap/python/evaluator_recursion.c", "bootstrap/python/evaluator_recursion.h",
     "bootstrap/python/evaluator_metadata.c", "bootstrap/python/evaluator_metadata.h",
+    "bootstrap/python/evaluator_entry.c", "bootstrap/python/evaluator_entry.h",
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
@@ -172,7 +173,8 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
             std.mem.endsWith(u8, path, "/evaluator_objects.c") or std.mem.endsWith(u8, path, "/evaluator_objects.h") or
             std.mem.endsWith(u8, path, "/evaluator_binding.c") or std.mem.endsWith(u8, path, "/evaluator_binding.h") or
             std.mem.endsWith(u8, path, "/evaluator_recursion.c") or std.mem.endsWith(u8, path, "/evaluator_recursion.h") or
-            std.mem.endsWith(u8, path, "/evaluator_metadata.c") or std.mem.endsWith(u8, path, "/evaluator_metadata.h"))) continue;
+            std.mem.endsWith(u8, path, "/evaluator_metadata.c") or std.mem.endsWith(u8, path, "/evaluator_metadata.h") or
+            std.mem.endsWith(u8, path, "/evaluator_entry.c") or std.mem.endsWith(u8, path, "/evaluator_entry.h"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
@@ -415,6 +417,7 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
         "bootstrap/python/evaluator_binding.c", "bootstrap/python/evaluator_binding.h",
         "bootstrap/python/evaluator_recursion.c", "bootstrap/python/evaluator_recursion.h",
         "bootstrap/python/evaluator_metadata.c", "bootstrap/python/evaluator_metadata.h",
+        "bootstrap/python/evaluator_entry.c", "bootstrap/python/evaluator_entry.h",
         "jaclang/native.pyi",
     }) |path| {
         const before_refs = try buildKey(io, a, hostPlatform(), root, host, .jacpython);

@@ -1046,7 +1046,9 @@ exception-group matching, recursion policy, global loading, compiler flags,
 code-extra registration, and borrowed argument-array conversion. A linear argument resource tracks exactly
 which references still need cleanup; temporary call buffers are freed before
 evaluation. The latest source changes await validation.
-Opcode dispatch and the tier-two executor remain CPython C. The build emits
+The evaluator entry and throw setup are native Jac; temporary C adapters still
+enter the pinned tail handlers. Opcode dispatch and the tier-two executor remain
+CPython C, with the non-tail C entry retained conditionally. The build emits
 `python/build/jacpython-evaluator-provenance.json` to identify native support
 objects and their inputs; that manifest alone does not prove linked-runtime
 compatibility, complete C retirement, or performance parity.

@@ -191,6 +191,9 @@ emit_evaluator_unit("evaluator_utilities", "evaluator_utilities", [
     "jacpy_running_main_module", "_PyEval_LoadGlobalStackRef",
     "jacpy_object_array_from_stack_impl",
 ])
+emit_evaluator_unit("evaluator_entry", "evaluator_entry", [
+    "jacpy_eval_frame_entry",
+])
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
     "jaclang/runtime/python/evaluator_lookup.jac",
@@ -207,13 +210,16 @@ provenance_inputs = [
     "bootstrap/python/evaluator_recursion.h",
     "bootstrap/python/evaluator_metadata.c",
     "bootstrap/python/evaluator_metadata.h",
+    "bootstrap/python/evaluator_entry.c",
+    "bootstrap/python/evaluator_entry.h",
 ]
 (output / "evaluator-provenance.json").write_text(json.dumps({
     "schema": 1,
     "cpython_version": pin["version"],
     "cpython_archive_sha256": pin["sha256"],
     "target": triple,
-    "main_evaluator": "cpython-c",
+    "main_evaluator": "jac-native-entry/cpython-dispatch",
+    "non_tail_evaluator_source": "cpython-c",
     "opcode_handlers": "cpython-c",
     "tier_two_executor": "cpython-c",
     "units": evaluator_units,

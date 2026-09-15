@@ -138,3 +138,96 @@ test "transferring the dependent owner preserves its parent contract" {
         'cursor: own Cursor from connection = open_cursor(connection); return cursor; }'
     );
 }
+
+test "consuming a dependent through a borrowed source alias preserves its root" {
+    compile_protocol(
+        '@foreign_resource(abi="pointer", empty=0, drop=close_cursor, '
+        'aliasing="shared", reentrant_drop=False) obj Cursor; '
+        'import from c { obj Connection; '
+        '@foreign_call(errors="none", reentrant=False) def close_cursor(cursor: own Cursor); '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def alias(connection: &Connection) -> &Connection from connection; '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def open_cursor(connection: &Connection) -> lin Cursor from connection; '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def finish(connection: &Connection, cursor: lin Cursor from connection); } '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def probe(connection: &Connection) { '
+        'view: &Connection from connection = alias(connection); '
+        'cursor: lin Cursor from connection = open_cursor(view); finish(connection, cursor); }'
+    );
+}
+
+test "consuming a dependent cannot replace an owned source with its parent" {
+    compile_protocol(
+        '@foreign_resource(abi="pointer", empty=0, drop=close_cursor, '
+        'aliasing="shared", reentrant_drop=False) obj Cursor; '
+        'import from c { obj Connection; '
+        '@foreign_call(errors="none", reentrant=False) def close_cursor(cursor: own Cursor); '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def open_cursor(connection: &Connection) -> own Cursor from connection; '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def child(parent: &Cursor) -> own Cursor from parent; '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def finish(connection: &Connection, cursor: own Cursor from connection); } '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def probe(connection: &Connection) { '
+        'parent: own Cursor from connection = open_cursor(connection); '
+        'cursor: own Cursor from parent = child(&parent); finish(connection, cursor); }',
+        "would erase a lifetime dependency"
+    );
+}
+
+test "a declared view can accompany its consumed owner for its last use" {
+    compile_protocol(
+        '@foreign_resource(abi="pointer", empty=0, drop=close_handle, '
+        'aliasing="shared", reentrant_drop=False) obj Handle; '
+        'import from c { '
+        '@foreign_call(errors="none", reentrant=False) def close_handle(value: own Handle); '
+        '@foreign_call(errors="none", reentrant=False) def make_handle() -> own Handle; '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def finish(owner: lin Handle, view: &Handle from owner); } '
+        '@foreign_call(errors="none", reentrant=False) def probe() { '
+        'owner: own Handle = make_handle(); view: &Handle from owner = &owner; '
+        'finish(owner, view); }'
+    );
+}
+
+test "a view passed with its consumed owner cannot be used afterward" {
+    compile_protocol(
+        '@foreign_resource(abi="pointer", empty=0, drop=close_handle, '
+        'aliasing="shared", reentrant_drop=False) obj Handle; '
+        'import from c { '
+        '@foreign_call(errors="none", reentrant=False) def close_handle(value: own Handle); '
+        '@foreign_call(errors="none", reentrant=False) def make_handle() -> own Handle; '
+        '@foreign_call(errors="none", reentrant=False) def read(value: &Handle); '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def finish(owner: lin Handle, view: &Handle from owner); } '
+        '@foreign_call(errors="none", reentrant=False) def probe() { '
+        'owner: own Handle = make_handle(); view: &Handle from owner = &owner; '
+        'finish(owner, view); read(view); }',
+        "E1304"
+    );
+}
+
+test "a returned view cannot hide a consumed parameter behind a borrowed one" {
+    compile_protocol(
+        '@foreign_resource(abi="pointer", empty=0, drop=close_handle, '
+        'aliasing="shared", reentrant_drop=False) obj Handle; '
+        'import from c { '
+        '@foreign_call(errors="none", reentrant=False) def close_handle(value: own Handle); } '
+        'def invalid(owner: own Handle, view: &Handle from owner) -> &Handle from view { return view; }',
+        "returned value depends on a consumed parameter"
+    );
+}
+
+test "a borrowed parameter cannot substitute an unrelated source" {
+    compile_protocol(
+        'import from c { obj Handle; '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def pass_view(owner: &Handle, view: &Handle from owner) -> &Handle from owner; } '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def probe(a: &Handle, b: &Handle) -> &Handle from a { return pass_view(a, b); }',
+        "does not satisfy its declared lifetime sources"
+    );
+}
