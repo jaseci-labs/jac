@@ -45,6 +45,8 @@ jobs:
 
       - name: Materialize typeshed + wasm libc floor
         working-directory: jac
+        env:
+          JACPYTHON: "1"
         run: |
           zig build fetch-typeshed --summary all
           zig build vendor-wasm-libc --summary all

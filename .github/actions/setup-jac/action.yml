@@ -24,6 +24,19 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Resolve Python SDK cache input
+      id: python-sdk
+      shell: bash
+      run: |
+        sdk=zig-libc
+        if [ "$RUNNER_OS" = macOS ]; then sdk=$(xcrun --sdk macosx --show-sdk-version); fi
+        echo "version=$sdk" >> "$GITHUB_OUTPUT"
+
+    - name: Fingerprint immutable build inputs
+      id: inputs
+      shell: bash
+      run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
     # typeshed stdlib stubs are vendored as plain files now (no submodule);
     # third-party stubs are installed per-project by `jac install` (PEP 561 types-*).
     #
@@ -49,7 +62,7 @@ runs:
         path: |
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
-        key: jac-bin-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**', 'jac/bootstrap/**') }}
+        key: jac-bin-v2-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
 
     - name: Restore cached typeshed stdlib stubs
       id: typeshed-cache
@@ -68,23 +81,15 @@ runs:
 
     # The runtime key covers native JacPython, its producing Jac compiler, and
     # all source/build inputs. The build-only host has its own fingerprint.
-    - name: Resolve Python SDK cache input
-      id: python-sdk
-      shell: bash
-      run: |
-        sdk=zig-libc
-        if [ "$RUNNER_OS" = macOS ]; then sdk=$(xcrun --sdk macosx --show-sdk-version); fi
-        echo "version=$sdk" >> "$GITHUB_OUTPUT"
-
     - name: Restore cached source-built Python
       id: python-cache
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
         path: jac/.python-build/jacpython
-        key: python-build-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/**', 'jac/jaclang/**/*.jac', 'jac/jaclang/**/*.py', 'jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256') }}
+        key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_jacpython }}
         restore-keys: |
-          python-build-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
+          python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
 
     # The LLVMPY_* shim is the single most expensive build artifact (statically
     # links ~0.5 GB of LLVM archives; several minutes) and depends only on
@@ -129,43 +134,6 @@ runs:
         path: jac/.bun-build
         key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
 
-    # Identity of the compiler this build runs, as git blob ids over the same
-    # file set jir.jac hashes for its module keys (jaclang.compiler.driver.jir:
-    # COMPILER_DIGEST_ROOTS, .jac/.py only, test material excluded). Keep the
-    # two rules in lockstep. Git ids rather than hashFiles: git enumerates the
-    # roots exhaustively, and the listing is immune to step ordering and to
-    # untracked artifacts restored into the tree (the shim cache above lands in
-    # jaclang/compiler/**, which a hashFiles glob folds in only on a shim hit).
-    - name: Fingerprint the compiler tree
-      id: compiler-fp
-      if: steps.cache.outputs.cache-hit != 'true'
-      shell: bash
-      run: |
-        list="$(git ls-tree -r HEAD -- \
-          jac/jaclang/jac0.py \
-          jac/jaclang/bootstrap_manifest.py \
-          jac/jaclang/meta_importer.py \
-          jac/jaclang/jac0core \
-          jac/jaclang/compiler \
-          jac/jaclang/runtime \
-          jac/jaclang/lib \
-          jac/jaclang/cli/cli_boot.jac \
-          jac/jaclang/project \
-          jac/jaclang/dist/precompile_bytecode.jac \
-          | grep -E '\.(jac|py)$' \
-          | grep -vE '(^|/)(tests|test)/|\.test\.jac$' || true)"
-        # Include the JacPython modules compiled into the native replacement.
-        n="$(printf '%s\n' "$list" | grep -c . || true)"
-        # A moved root would silently fingerprint nothing, which is the
-        # unsoundness this scoping exists to remove. ~289 files today.
-        if [ "$n" -lt 100 ]; then
-          echo "::error::compiler fingerprint listed only $n file(s): the roots moved. Update this step and COMPILER_DIGEST_ROOTS in jaclang/compiler/driver/jir.jac together."
-          exit 1
-        fi
-        fp="$(printf '%s\n' "$list" | git hash-object --stdin)"
-        echo "fp=${fp:0:16} ($n compiler sources)"
-        echo "fp=${fp:0:16}" >> "$GITHUB_OUTPUT"
-
     # The JIR precompile is mkpayload's single most expensive stage (~24 min:
     # it compiles every bundled jaclang module). Each .jir embeds a
     # content-addressed module key (jaclang version + python version + source +
@@ -184,9 +152,9 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/.precompiled-build/jacpython
-        key: jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-${{ hashFiles('jac/jaclang/**') }}
+        key: jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
         restore-keys: |
-          jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-
+          jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-
 
     # The payload's compressed deps-layer frame (mkpayload --layer-cache): the
     # level-19 zstd of the ~600 MB dependency layer, the pack's single most
@@ -204,7 +172,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/.payload-layers/jacpython
-        key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
+        key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
         restore-keys: |
           payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
 
@@ -315,7 +283,7 @@ runs:
         path: |
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
-        key: jac-bin-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**', 'jac/bootstrap/**') }}
+        key: jac-bin-v2-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
 
     # Seed the shared read-mostly caches from trusted refs only (see the note
     # above the restore steps). Main runs seed
@@ -328,7 +296,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.python-build/jacpython
-        key: python-build-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/**', 'jac/jaclang/**/*.jac', 'jac/jaclang/**/*.py', 'jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256') }}
+        key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_jacpython }}
 
     - name: Save LLVMPY shim cache (trusted refs only)
       if: >-
@@ -372,7 +340,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.precompiled-build/jacpython
-        key: jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-${{ hashFiles('jac/jaclang/**') }}
+        key: jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
 
     # Same prefix-hit re-save logic as the precompile cache above.
     - name: Save payload deps-layer cache (trusted refs only)
@@ -383,7 +351,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.payload-layers/jacpython
-        key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
+        key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
 
     # Seed the Zig package store from trusted refs only (see the restore note).
     # Like the precompile cache, a restore-keys prefix hit still leaves cache-hit

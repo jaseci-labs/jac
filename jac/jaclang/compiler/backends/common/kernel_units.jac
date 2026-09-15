@@ -212,12 +212,19 @@ def load_unit_artifact(unit_path: str, kind: str, fingerprint: str) -> (str | No
 
 def store_unit_artifact(unit_path: str, kind: str, fingerprint: str, text: str) {
     import glob as _g;
+    import time;
+    import from jaclang.compiler.driver.jir { generation_ttl_seconds }
     path = unit_artifact_path(unit_path, kind, fingerprint);
     stem = os.path.splitext(os.path.basename(unit_path))[0];
+
+    ttl = generation_ttl_seconds();
+    cutoff = time.time() - ttl;
     for stale in _g.`glob(os.path.join(_units_dir(), f"{stem}.*.{kind}")) {
-        if stale != path {
+        if stale != path and ttl > 0.0 {
             try {
-                os.remove(stale);
+                if os.path.getmtime(stale) < cutoff {
+                    os.remove(stale);
+                }
             } except Exception {}
         }
     }
