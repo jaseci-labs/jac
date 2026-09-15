@@ -293,6 +293,12 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
   // helpers, so each operation has a single implementation and no Python
   // method name can leak verbatim into the emitted JavaScript.
   poly: {
+    // Shared by `call` and `_typename` so both agree on what counts as a dict.
+    _isPlainObject(o) {
+      if (o === null || o === undefined || typeof o !== "object") return false;
+      const proto = Object.getPrototypeOf(o);
+      return proto === Object.prototype || proto === null;
+    },
     _typename(o) {
       if (o === null || o === undefined) return "NoneType";
       if (Array.isArray(o)) return "list";
@@ -304,6 +310,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       if (t === "boolean") return "bool";
       if (t === "number") return Number.isInteger(o) ? "int" : "float";
       if (t === "bigint") return "int";
+      if (_jac.poly._isPlainObject(o)) return "dict";
       if (t === "object") return (o.constructor && o.constructor.name) || "object";
       return t;
     },
@@ -448,11 +455,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         if (_jac.poly._map[m]) return _jac.poly._map[m](o, ...args);
       } else if (o instanceof Uint8Array) {
         if (_jac.bytes[m]) return _jac.bytes[m](o, ...args);
-      } else if (
-        o !== null && o !== undefined && typeof o === "object"
-        && (Object.getPrototypeOf(o) === Object.prototype
-            || Object.getPrototypeOf(o) === null)
-      ) {
+      } else if (_jac.poly._isPlainObject(o)) {
         // A plain object is a Python dict literal.
         if (_jac.poly._dict[m]) return _jac.poly._dict[m](o, ...args);
       }
@@ -1175,7 +1178,8 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
   // roles, so it lowers to a single object here too: a callable whose body is
   // generated from the same emitters the direct-call path uses (so
   // `f = int; f(x)` can never drift from `int(x)`), carrying the
-  // `__jac_type__` tag that isinstance/issubclass compare against.
+  // `__jac_type__` tag that isinstance/issubclass -- and `type(x) is str` --
+  // compare against.
   types: __JAC_TYPES_RUNTIME__,
 
   builtin: {
@@ -1286,6 +1290,22 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       if (sub === sup) return true;
       if (sup === "int" && sub === "bool") return true;
       return false;
+    },
+    // `x`'s actual type object -- the same singleton a bare type name lowers
+    // to, so `type(x) is str` is a plain identity check.
+    type(o) {
+      const tag = _jac.poly._typename(o); // own-property: skip inherited "constructor"
+      if (Object.prototype.hasOwnProperty.call(_jac.types, tag)) {
+        return _jac.types[tag];
+      }
+      if (o !== null && o !== undefined && o.constructor) {
+        const ctor = o.constructor;
+        if (!Object.prototype.hasOwnProperty.call(ctor, "__name__")) {
+          ctor.__name__ = ctor.name; // archetypes get a __name__ too
+        }
+        return ctor;
+      }
+      return _jac.types.object;
     },
     isinstance(o, classinfo) {
       // isinstance(x, (A, B, ...)) -- the tuple of types lowers to a JS array;
@@ -1660,6 +1680,8 @@ def _build_types_runtime_js -> str {
         }
         entries.append("    " + name + ': _t("' + name + '", (...a) => ' + body + ")");
     }
+    entries.append('    object: _t("object", (...a) => ({}))');
+    entries.append('    NoneType: _t("NoneType", (...a) => null)');
     import from jaclang.runtime.scalars { numeric_shapes }
     sized_lines: list[str] = [];
     for shape in numeric_shapes() {
@@ -1690,6 +1712,7 @@ def _build_types_runtime_js -> str {
             "(() => {",
             "    const _t = (tag, fn) => Object.assign(fn, {",
             "      __jac_type__: tag,",
+            "      __name__: tag,",
             "      toString: () => \"<class '\" + tag + \"'>\"",
             "    });",
             "    const T = {",

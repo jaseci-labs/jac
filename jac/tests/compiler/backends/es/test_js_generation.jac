@@ -70,11 +70,26 @@ do not trigger false positives.
 def assert_no_jac_keywords(js_code: str, fixture_name: str) {
     import re;
 
-    # Strip string literals so English words inside error messages
-    # and other quoted text don't trigger false positives.
-    code_without_strings = re.sub(r'"(?:[^"\\]|\\.)*"', '""', js_code);
-    code_without_strings = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code_without_strings);
-    code_without_strings = re.sub(r"`(?:[^`\\]|\\.)*`", "``", code_without_strings);
+    # One left-to-right pass strips strings, template literals, and comments
+    # together, so their boundaries can't drift the way three independent
+    # global regex passes can (a false "leaked keyword" hit in prior CI).
+    def _blank(m: any) -> str {
+        text = m.group(0);
+        if text.startswith("//") or text.startswith("/*") {
+            return "";
+        }
+        return text[0] * 2;
+    }
+
+    token_re = re.compile(
+        r'"(?:[^"\\]|\\.)*"'
+            + r"|'(?:[^'\\]|\\.)*'"
+            + r"|`(?:[^`\\]|\\.)*`"
+            + r"|//[^\n]*"
+            + r"|/\*.*?\*/",
+        re.DOTALL
+    );
+    code_without_strings = token_re.sub(_blank, js_code);
 
     # Each entry: (keyword, pattern that matches Jac *statement* usage)
     # e.g. ``has varname`` at the start of a statement, not ``let has = ...``
@@ -339,19 +354,28 @@ test "empty file generates minimal js" {
     }
 }
 
-test "type to typeof transformation" {
-    jac_code = "\"\"\"Test type() to typeof conversion.\"\"\"\n\ndef check_types() {\n    x = 42;\n    y = \"hello\";\n    my_obj = {\"key\": \"value\"};\n    arr = [1, 2, 3];\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(my_obj);\n    t4 = type(arr[0]);\n\n    return t1;\n}\n";
+test "type() resolves to the runtime type object" {
+    # type(x) used to lower to bare `typeof x`, so `type(x) is str` was
+    # always false (#6149). It now lowers to `_jac.builtin.type(x)`.
+    jac_code = "\"\"\"Test type() resolves to a type object.\"\"\"\n\ndef check_types() {\n    x = 42;\n    y = \"hello\";\n    my_obj = {\"key\": \"value\"};\n    arr = [1, 2, 3];\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(my_obj);\n    t4 = type(arr[0]);\n\n    return t1;\n}\n";
 
     temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
 
-        for pattern in ["typeof x", "typeof y", "typeof my_obj", "typeof arr[0]"] {
+        for pattern in [
+            "_jac.builtin.type(x)",
+            "_jac.builtin.type(y)",
+            "_jac.builtin.type(my_obj)",
+            "_jac.builtin.type(arr[0])",
+
+        ] {
             assert pattern in js_code;
         }
-        assert "type(" not in js_code;
-        assert js_code.count("typeof") == 4;
+        assert "let t1 = typeof x;" not in js_code , (
+            "type(x) must not lower to the bare `typeof` operator"
+        );
         assert_balanced_syntax(js_code, temp_path);
     } finally {
         os.unlink(temp_path);
