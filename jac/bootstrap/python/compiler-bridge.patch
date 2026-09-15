@@ -272,7 +272,7 @@
      {"builtins", NULL},
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -377,75 +377,56 @@
+@@ -377,75 +377,58 @@
 
  ##########################################################################
  # Parser
@@ -350,6 +350,8 @@
 +		Python/jac_evaluator_groups.o \
 +		Python/jac_evaluator_recursion.o \
 +		Python/jac_evaluator_recursion_policy.o \
++		Python/jac_evaluator_utilities.o \
++		Python/jac_evaluator_metadata.o \
 +		Python/jacpython.o \
  		Python/asdl.o \
 -		Python/assemble.o \
@@ -375,7 +377,7 @@
  		Python/gc_free_threading.o \
  		Python/gc_gil.o \
  		Python/getargs.o \
-@@ -461,9 +442,8 @@
+@@ -461,9 +444,8 @@
  		Python/index_pool.o \
  		Python/initconfig.o \
  		Python/interpconfig.o \
@@ -385,7 +387,7 @@
  		Python/jit.o \
  		Python/legacy_tracing.o \
  		Python/lock.o \
-@@ -491,9 +471,8 @@
+@@ -491,9 +473,8 @@
  		Python/bootstrap_hash.o \
  		Python/specialize.o \
  		Python/stackrefs.o \
@@ -395,7 +397,7 @@
  		Python/thread.o \
  		Python/traceback.o \
  		Python/tracemalloc.o \
-@@ -1360,11 +1339,11 @@
+@@ -1360,11 +1341,11 @@
  		$(srcdir)/Include/internal/pycore_import.h \
  		$(srcdir)/Include/internal/pycore_importdl.h \
  		$(srcdir)/Include/internal/pycore_index_pool.h \
@@ -409,7 +411,7 @@
  		$(srcdir)/Include/internal/pycore_interpframe.h \
  		$(srcdir)/Include/internal/pycore_interpframe_structs.h \
  		$(srcdir)/Include/internal/pycore_interpolation.h \
-@@ -1429,9 +1408,9 @@
+@@ -1429,9 +1410,9 @@
  		$(srcdir)/Include/internal/pycore_tracemalloc.h \
  		$(srcdir)/Include/internal/pycore_tstate.h \
  		$(srcdir)/Include/internal/pycore_tuple.h \
@@ -420,7 +422,7 @@
  		$(srcdir)/Include/internal/pycore_ucnhash.h \
  		$(srcdir)/Include/internal/pycore_unicodeobject.h \
  		$(srcdir)/Include/internal/pycore_unicodeobject_generated.h \
-@@ -1982,16 +1961,10 @@
+@@ -1982,16 +1963,10 @@
  	$(srcdir)/Tools/peg_generator/pegen/grammar_parser.py.new
 
  .PHONY: regen-pegen
@@ -439,7 +441,7 @@
  .PHONY: regen-ast
  regen-ast:
  	# Regenerate 3 files using Parser/asdl_c.py:
-@@ -2011,29 +1984,10 @@
+@@ -2011,29 +1986,10 @@
  	$(UPDATE_FILE) $(srcdir)/Python/Python-ast.c $(srcdir)/Python/Python-ast.c.new
 
  .PHONY: regen-token
@@ -471,7 +473,7 @@
  .PHONY: regen-keyword
  regen-keyword:
  	# Regenerate Lib/keyword.py from Grammar/python.gram and Grammar/Tokens
-@@ -2061,9 +2015,9 @@
+@@ -2061,9 +2017,9 @@
  		$(srcdir)/Lib/re/_constants.py \
  		$(srcdir)/Modules/_sre/sre_constants.h \
  		$(srcdir)/Modules/_sre/sre_targets.h
@@ -482,7 +484,7 @@
  Python/getplatform.o: $(srcdir)/Python/getplatform.c
  		$(CC) -c $(PY_CORE_CFLAGS) -DPLATFORM='"$(MACHDEP)"' -o $@ $(srcdir)/Python/getplatform.c
 
-@@ -2197,24 +2151,14 @@
+@@ -2197,24 +2153,14 @@
  	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/uop_metadata_generator.py -o \
  	    $(srcdir)/Include/internal/pycore_uop_metadata.h.new $(srcdir)/Python/bytecodes.c
  	$(UPDATE_FILE) $(srcdir)/Include/internal/pycore_uop_metadata.h $(srcdir)/Include/internal/pycore_uop_metadata.h.new
@@ -507,7 +509,7 @@
  Python/optimizer.o: \
  		$(srcdir)/Python/executor_cases.c.h \
  		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
-@@ -2813,14 +2757,14 @@
+@@ -2813,14 +2759,14 @@
  		echo "Applying app store compliance patch"; \
  		patch --force --reject-file "$(abs_builddir)/app-store-compliance.rej" --strip 2 --directory "$(DESTDIR)$(LIBDEST)" --input "$(abs_srcdir)/$(APP_STORE_COMPLIANCE_PATCH)" || true ; \
  	fi
@@ -524,7 +526,7 @@
  		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST)/site-packages -f \
  		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
 
-@@ -3419,4 +3363,16 @@
+@@ -3419,4 +3365,17 @@
  # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
  # Local Variables:
  # mode: makefile
@@ -536,14 +538,15 @@
 +Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
 +Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
 +Python/jac_evaluator_refs.o: $(srcdir)/Python/jac_evaluator_refs.c $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_genobject.h $(srcdir)/Include/internal/pycore_pyerrors.h
-+Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_audit.h $(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/frameobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h
++Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_audit.h $(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/frameobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h $(srcdir)/Include/internal/pycore_pyatomic_ft_wrappers.h
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
 +Python/jac_evaluator_objects.o: $(srcdir)/Python/jac_evaluator_objects.c $(srcdir)/Python/evaluator_objects.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h $(srcdir)/Include/internal/pycore_call.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_traceback.h
 +Python/jac_evaluator_binding.o: $(srcdir)/Python/jac_evaluator_binding.c $(srcdir)/Python/evaluator_binding.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_tuple.h $(srcdir)/Python/evaluator_frames.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_stats.h $(srcdir)/Include/internal/pycore_call.h $(srcdir)/Include/internal/pycore_function.h
 +Python/jac_evaluator_recursion.o: $(srcdir)/Python/jac_evaluator_recursion.c $(srcdir)/Python/evaluator_recursion.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_obmalloc.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_pythonrun.h $(srcdir)/Include/internal/pycore_runtime.h
++Python/jac_evaluator_metadata.o: $(srcdir)/Python/jac_evaluator_metadata.c $(srcdir)/Python/evaluator_metadata.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_function.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_opcode_utils.h $(srcdir)/Include/internal/pycore_unicodeobject.h $(srcdir)/Include/opcode.h $(srcdir)/Include/internal/pycore_abstract.h
 --- a/Python/ceval.c
 +++ b/Python/ceval.c
-@@ -279,351 +279,39 @@
+@@ -279,782 +279,70 @@
  }
 
  #endif
@@ -588,7 +591,7 @@
  #ifdef HAVE_ERRNO_H
  #include <errno.h>
  #endif
--
+
 -int
 -Py_GetRecursionLimit(void)
 -{
@@ -906,11 +909,103 @@
 -    }
 -}
 -
-
- const binaryfunc _PyEval_BinaryOps[] = {
-     [NB_ADD] = PyNumber_Add,
-     [NB_AND] = PyNumber_And,
-@@ -723,285 +411,25 @@
+-
+-const binaryfunc _PyEval_BinaryOps[] = {
+-    [NB_ADD] = PyNumber_Add,
+-    [NB_AND] = PyNumber_And,
+-    [NB_FLOOR_DIVIDE] = PyNumber_FloorDivide,
+-    [NB_LSHIFT] = PyNumber_Lshift,
+-    [NB_MATRIX_MULTIPLY] = PyNumber_MatrixMultiply,
+-    [NB_MULTIPLY] = PyNumber_Multiply,
+-    [NB_REMAINDER] = PyNumber_Remainder,
+-    [NB_OR] = PyNumber_Or,
+-    [NB_POWER] = _PyNumber_PowerNoMod,
+-    [NB_RSHIFT] = PyNumber_Rshift,
+-    [NB_SUBTRACT] = PyNumber_Subtract,
+-    [NB_TRUE_DIVIDE] = PyNumber_TrueDivide,
+-    [NB_XOR] = PyNumber_Xor,
+-    [NB_INPLACE_ADD] = PyNumber_InPlaceAdd,
+-    [NB_INPLACE_AND] = PyNumber_InPlaceAnd,
+-    [NB_INPLACE_FLOOR_DIVIDE] = PyNumber_InPlaceFloorDivide,
+-    [NB_INPLACE_LSHIFT] = PyNumber_InPlaceLshift,
+-    [NB_INPLACE_MATRIX_MULTIPLY] = PyNumber_InPlaceMatrixMultiply,
+-    [NB_INPLACE_MULTIPLY] = PyNumber_InPlaceMultiply,
+-    [NB_INPLACE_REMAINDER] = PyNumber_InPlaceRemainder,
+-    [NB_INPLACE_OR] = PyNumber_InPlaceOr,
+-    [NB_INPLACE_POWER] = _PyNumber_InPlacePowerNoMod,
+-    [NB_INPLACE_RSHIFT] = PyNumber_InPlaceRshift,
+-    [NB_INPLACE_SUBTRACT] = PyNumber_InPlaceSubtract,
+-    [NB_INPLACE_TRUE_DIVIDE] = PyNumber_InPlaceTrueDivide,
+-    [NB_INPLACE_XOR] = PyNumber_InPlaceXor,
+-    [NB_SUBSCR] = PyObject_GetItem,
+-};
+-
+-const conversion_func _PyEval_ConversionFuncs[4] = {
+-    [FVC_STR] = PyObject_Str,
+-    [FVC_REPR] = PyObject_Repr,
+-    [FVC_ASCII] = PyObject_ASCII
+-};
+-
+-const _Py_SpecialMethod _Py_SpecialMethods[] = {
+-    [SPECIAL___ENTER__] = {
+-        .name = &_Py_ID(__enter__),
+-        .error = (
+-            "'%T' object does not support the context manager protocol "
+-            "(missed __enter__ method)"
+-        ),
+-        .error_suggestion = (
+-            "'%T' object does not support the context manager protocol "
+-            "(missed __enter__ method) but it supports the asynchronous "
+-            "context manager protocol. Did you mean to use 'async with'?"
+-        )
+-    },
+-    [SPECIAL___EXIT__] = {
+-        .name = &_Py_ID(__exit__),
+-        .error = (
+-            "'%T' object does not support the context manager protocol "
+-            "(missed __exit__ method)"
+-        ),
+-        .error_suggestion = (
+-            "'%T' object does not support the context manager protocol "
+-            "(missed __exit__ method) but it supports the asynchronous "
+-            "context manager protocol. Did you mean to use 'async with'?"
+-        )
+-    },
+-    [SPECIAL___AENTER__] = {
+-        .name = &_Py_ID(__aenter__),
+-        .error = (
+-            "'%T' object does not support the asynchronous "
+-            "context manager protocol (missed __aenter__ method)"
+-        ),
+-        .error_suggestion = (
+-            "'%T' object does not support the asynchronous context manager "
+-            "protocol (missed __aenter__ method) but it supports the context "
+-            "manager protocol. Did you mean to use 'with'?"
+-        )
+-    },
+-    [SPECIAL___AEXIT__] = {
+-        .name = &_Py_ID(__aexit__),
+-        .error = (
+-            "'%T' object does not support the asynchronous "
+-            "context manager protocol (missed __aexit__ method)"
+-        ),
+-        .error_suggestion = (
+-            "'%T' object does not support the asynchronous context manager "
+-            "protocol (missed __aexit__ method) but it supports the context "
+-            "manager protocol. Did you mean to use 'with'?"
+-        )
+-    }
+-};
+-
+-const size_t _Py_FunctionAttributeOffsets[] = {
+-    [MAKE_FUNCTION_CLOSURE] = offsetof(PyFunctionObject, func_closure),
+-    [MAKE_FUNCTION_ANNOTATIONS] = offsetof(PyFunctionObject, func_annotations),
+-    [MAKE_FUNCTION_KWDEFAULTS] = offsetof(PyFunctionObject, func_kwdefaults),
+-    [MAKE_FUNCTION_DEFAULTS] = offsetof(PyFunctionObject, func_defaults),
+-    [MAKE_FUNCTION_ANNOTATE] = offsetof(PyFunctionObject, func_annotate),
+-};
+-
+ // PEP 634: Structural Pattern Matching
 
 
  // Return a tuple of values corresponding to keys, with error checks for
@@ -1202,11 +1297,25 @@
  #include "ceval_macros.h"
 
 
-@@ -1023,28 +451,8 @@
-     *self_or_null = _PyThreadState_PopCStackRefSteal(tstate, &self);
-     return _PyThreadState_PopCStackRefSteal(tstate, &method);
- }
-
+-_PyStackRef
+-_Py_LoadAttr_StackRefSteal(
+-    PyThreadState *tstate, _PyStackRef owner,
+-    PyObject *name, _PyStackRef *self_or_null)
+-{
+-    // Use _PyCStackRefs to ensure that both method and self are visible to
+-    // the GC. Even though self_or_null is on the evaluation stack, it may be
+-    // after the stackpointer and therefore not visible to the GC.
+-    _PyCStackRef method, self;
+-    _PyThreadState_PushCStackRef(tstate, &method);
+-    _PyThreadState_PushCStackRef(tstate, &self);
+-    self.ref = owner;  // steal reference to owner
+-    // NOTE: method.ref is initialized to PyStackRef_NULL and remains null on
+-    // error, so we don't need to explicitly use the return code from the call.
+-    _PyObject_GetMethodStackRef(tstate, &self.ref, name, &method.ref);
+-    *self_or_null = _PyThreadState_PopCStackRefSteal(tstate, &self);
+-    return _PyThreadState_PopCStackRefSteal(tstate, &method);
+-}
+-
 -int _Py_CheckRecursiveCallPy(
 -    PyThreadState *tstate)
 -{
@@ -1227,11 +1336,63 @@
 -    }
 -    return 0;
 -}
+-
+-static const _Py_CODEUNIT _Py_INTERPRETER_TRAMPOLINE_INSTRUCTIONS[] = {
+-    /* Put a NOP at the start, so that the IP points into
+-    * the code, rather than before it */
+-    { .op.code = NOP, .op.arg = 0 },
+-    { .op.code = INTERPRETER_EXIT, .op.arg = 0 },  /* reached on return */
+-    { .op.code = NOP, .op.arg = 0 },
+-    { .op.code = INTERPRETER_EXIT, .op.arg = 0 },  /* reached on yield */
+-    { .op.code = RESUME, .op.arg = RESUME_OPARG_DEPTH1_MASK | RESUME_AT_FUNC_START }
+-};
++
++
++#include "evaluator_metadata.h"
++#define _Py_INTERPRETER_TRAMPOLINE_INSTRUCTIONS jacpy_interpreter_trampoline
 
- static const _Py_CODEUNIT _Py_INTERPRETER_TRAMPOLINE_INSTRUCTIONS[] = {
-     /* Put a NOP at the start, so that the IP points into
-     * the code, rather than before it */
-@@ -1381,1514 +789,46 @@
+ #ifdef Py_DEBUG
+ extern void _PyUOpPrint(const _PyUOpInstruction *uop);
+ #endif
+@@ -1072,36 +360,9 @@
+ #  pragma warning(disable:4102)
+ #endif
+
+
+-PyObject **
+-_PyObjectArray_FromStackRefArray(_PyStackRef *input, Py_ssize_t nargs, PyObject **scratch)
+-{
+-    PyObject **result;
+-    if (nargs > MAX_STACKREF_SCRATCH) {
+-        // +1 in case PY_VECTORCALL_ARGUMENTS_OFFSET is set.
+-        result = PyMem_Malloc((nargs + 1) * sizeof(PyObject *));
+-        if (result == NULL) {
+-            return NULL;
+-        }
+-        result++;
+-    }
+-    else {
+-        result = scratch;
+-    }
+-    for (int i = 0; i < nargs; i++) {
+-        result[i] = PyStackRef_AsPyObjectBorrow(input[i]);
+-    }
+-    return result;
+-}
+-
+-void
+-_PyObjectArray_Free(PyObject **array, PyObject **scratch)
+-{
+-    if (array != scratch) {
+-        PyMem_Free(array);
+-    }
+-}
++
+
+
+ /* _PyEval_EvalFrameDefault is too large to optimize for speed with PGO on MSVC.
+  */
+@@ -1381,2345 +642,61 @@
  #elif defined(_MSC_VER) /* MS_WINDOWS */
  #  pragma warning(pop)
  #endif
@@ -2752,20 +2913,23 @@
 -    PyThreadState *tstate = _PyThreadState_GET();
 -    return _PyEval_GetGlobals(tstate);
 -}
-+
-+
-+
-+
-+
-
- PyObject *
- _PyEval_GetGlobalsFromRunningMain(PyThreadState *tstate)
- {
-@@ -2904,120 +844,14 @@
-     Py_DECREF(mod);
-     return globals;
- }
-
+-
+-PyObject *
+-_PyEval_GetGlobalsFromRunningMain(PyThreadState *tstate)
+-{
+-    if (!_PyInterpreterState_IsRunningMain(tstate->interp)) {
+-        return NULL;
+-    }
+-    PyObject *mod = _Py_GetMainModule(tstate);
+-    if (_Py_CheckMainModule(mod) < 0) {
+-        Py_XDECREF(mod);
+-        return NULL;
+-    }
+-    PyObject *globals = PyModule_GetDict(mod);  // borrowed
+-    Py_DECREF(mod);
+-    return globals;
+-}
+-
 -static PyObject *
 -get_globals_builtins(PyObject *globals)
 -{
@@ -2878,21 +3042,26 @@
 -    PyThreadState *tstate = _PyThreadState_GET();
 -    return Py_XNewRef(_PyEval_GetBuiltins(tstate));
 -}
-+
-+
-+
-+
-+
-+
-
- int
- PyEval_MergeCompilerFlags(PyCompilerFlags *cf)
- {
-@@ -3036,486 +870,8 @@
-     return result;
- }
-
-
+-
+-int
+-PyEval_MergeCompilerFlags(PyCompilerFlags *cf)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    _PyInterpreterFrame *current_frame = tstate->current_frame;
+-    int result = cf->cf_flags != 0;
+-
+-    if (current_frame != NULL) {
+-        const int codeflags = _PyFrame_GetCode(current_frame)->co_flags;
+-        const int compilerflags = codeflags & PyCF_MASK;
+-        if (compilerflags) {
+-            result = 1;
+-            cf->cf_flags |= compilerflags;
+-        }
+-    }
+-    return result;
+-}
+-
+-
 -const char *
 -PyEval_GetFuncName(PyObject *func)
 -{
@@ -3371,11 +3540,51 @@
 -}
 -
 -
- Py_ssize_t
- PyUnstable_Eval_RequestCodeExtraIndex(freefunc free)
- {
-     PyInterpreterState *interp = _PyInterpreterState_GET();
-@@ -3547,56 +903,9 @@
+-Py_ssize_t
+-PyUnstable_Eval_RequestCodeExtraIndex(freefunc free)
+-{
+-    PyInterpreterState *interp = _PyInterpreterState_GET();
+-    Py_ssize_t new_index;
+-
+-#ifdef Py_GIL_DISABLED
+-    struct _py_code_state *state = &interp->code_state;
+-    FT_MUTEX_LOCK(&state->mutex);
+-#endif
+-
+-    if (interp->co_extra_user_count >= MAX_CO_EXTRA_USERS - 1) {
+-#ifdef Py_GIL_DISABLED
+-        FT_MUTEX_UNLOCK(&state->mutex);
+-#endif
+-        return -1;
+-    }
+-
+-    new_index = interp->co_extra_user_count;
+-    interp->co_extra_freefuncs[new_index] = free;
+-
+-    // Publish freefuncs[new_index] before making the index visible.
+-    FT_ATOMIC_STORE_SSIZE_RELEASE(interp->co_extra_user_count, new_index + 1);
+-
+-#ifdef Py_GIL_DISABLED
+-    FT_MUTEX_UNLOCK(&state->mutex);
+-#endif
+-    return new_index;
+-}
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
 
  /* Implement Py_EnterRecursiveCall() and Py_LeaveRecursiveCall() as functions
     for the limited API. */
@@ -3428,16 +3637,47 @@
 -    Py_DECREF(next_iter);
 -    return awaitable;
 -}
-+
-
- void
- _PyEval_LoadGlobalStackRef(PyObject *globals, PyObject *builtins, PyObject *name, _PyStackRef *writeto)
- {
-@@ -3636,90 +945,5 @@
-         *writeto = PyStackRef_FromPyObjectSteal(res);
-     }
- }
-
+-
+-void
+-_PyEval_LoadGlobalStackRef(PyObject *globals, PyObject *builtins, PyObject *name, _PyStackRef *writeto)
+-{
+-    if (PyDict_CheckExact(globals) && PyDict_CheckExact(builtins)) {
+-        _PyDict_LoadGlobalStackRef((PyDictObject *)globals,
+-                                    (PyDictObject *)builtins,
+-                                    name, writeto);
+-        if (PyStackRef_IsNull(*writeto) && !PyErr_Occurred()) {
+-            /* _PyDict_LoadGlobal() returns NULL without raising
+-                * an exception if the key doesn't exist */
+-            _PyEval_FormatExcCheckArg(PyThreadState_GET(), PyExc_NameError,
+-                                        NAME_ERROR_MSG, name);
+-        }
+-    }
+-    else {
+-        /* Slow-path if globals or builtins is not a dict */
+-        /* namespace 1: globals */
+-        PyObject *res;
+-        if (PyMapping_GetOptionalItem(globals, name, &res) < 0) {
+-            *writeto = PyStackRef_NULL;
+-            return;
+-        }
+-        if (res == NULL) {
+-            /* namespace 2: builtins */
+-            if (PyMapping_GetOptionalItem(builtins, name, &res) < 0) {
+-                *writeto = PyStackRef_NULL;
+-                return;
+-            }
+-            if (res == NULL) {
+-                _PyEval_FormatExcCheckArg(
+-                            PyThreadState_GET(), PyExc_NameError,
+-                            NAME_ERROR_MSG, name);
+-                *writeto = PyStackRef_NULL;
+-                return;
+-            }
+-        }
+-        *writeto = PyStackRef_FromPyObjectSteal(res);
+-    }
+-}
+-
 -PyObject *
 -_PyEval_GetAwaitable(PyObject *iterable, int oparg)
 -{
@@ -3524,4 +3764,7 @@
 -            Py_FatalError("unsupported special method");
 -    }
 -}
++
++
++
 +

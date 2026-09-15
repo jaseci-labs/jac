@@ -5,6 +5,7 @@
 #ifndef JAC_EVALUATOR_FRAMES_H
 #define JAC_EVALUATOR_FRAMES_H
 #include "evaluator_refs.h"
+#include "internal/pycore_stackref.h"
 
 typedef struct _PyInterpreterFrame *JacPyFrameRef;
 
@@ -62,4 +63,13 @@ void jacpy_unpack_list_item(JacPyUnpackRef stack, JacPyObjectRef values, int64_t
 void jacpy_unpack_shrink_list(JacPyObjectRef values, int64_t count);
 int64_t jacpy_unpack_exact_size(JacPyObjectRef value);
 void jacpy_unpack_error(PyThreadState *tstate, const char *format, int32_t expected, int64_t actual);
+int32_t jacpy_compiler_flags(PyCompilerFlags *flags);
+void jacpy_compiler_flags_store(PyCompilerFlags *flags, int32_t value);
+int32_t jacpy_frame_code_flags(JacPyFrameRef frame);
+int64_t jacpy_code_extra_count(PyInterpreterState *interpreter);
+void jacpy_code_extra_callback(PyInterpreterState *interpreter, int64_t index, freefunc callback);
+void jacpy_code_extra_publish(PyInterpreterState *interpreter, int64_t count);
+int32_t jacpy_dict_exact(JacPyObjectRef value);
+int32_t jacpy_stack_output_is_null(_PyStackRef *output);
+void jacpy_stack_output_store(_PyStackRef *output, JacPyStackRef value);
 #endif

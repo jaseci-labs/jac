@@ -163,6 +163,8 @@ cpython() {
         cp "$recipe/evaluator_binding.h" Python/evaluator_binding.h
         cp "$recipe/evaluator_recursion.c" Python/jac_evaluator_recursion.c
         cp "$recipe/evaluator_recursion.h" Python/evaluator_recursion.h
+        cp "$recipe/evaluator_metadata.c" Python/jac_evaluator_metadata.c
+        cp "$recipe/evaluator_metadata.h" Python/evaluator_metadata.h
         cp "$work/native/jacpython.o" Python/jacpython.o
         cp "$work/native/evaluator_support.o" Python/jac_evaluator_support.o
         cp "$work/native/evaluator_frames.o" Python/jac_evaluator_frame_clear.o
@@ -179,6 +181,7 @@ cpython() {
         cp "$work/native/evaluator_matching.o" Python/jac_evaluator_matching.o
         cp "$work/native/evaluator_groups.o" Python/jac_evaluator_groups.o
         cp "$work/native/evaluator_recursion.o" Python/jac_evaluator_recursion_policy.o
+        cp "$work/native/evaluator_utilities.o" Python/jac_evaluator_utilities.o
     fi
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
@@ -345,6 +348,7 @@ if [ -n "$host" ]; then
     cp "$work/native/evaluator_matching.sha256" "$work/python/build/jacpython-evaluator-matching-sha256"
     cp "$work/native/evaluator_groups.sha256" "$work/python/build/jacpython-evaluator-groups-sha256"
     cp "$work/native/evaluator_recursion.sha256" "$work/python/build/jacpython-evaluator-recursion-sha256"
+    cp "$work/native/evaluator_utilities.sha256" "$work/python/build/jacpython-evaluator-utilities-sha256"
     cp "$work/native/evaluator-provenance.json" "$work/python/build/jacpython-evaluator-provenance.json"
     rm -rf "$work/native"
 else

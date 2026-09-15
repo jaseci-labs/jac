@@ -90,4 +90,11 @@ JacPyObjectRef jacpy_function_from_code(JacPyObjectRef code, JacPyObjectRef glob
     JacPyObjectRef builtins, JacPyObjectRef defaults, JacPyObjectRef keyword_defaults,
     JacPyObjectRef closure);
 void jacpy_eval_legacy_stat(void);
+typedef struct JacPyScratchStorage JacPyScratchStorage;
+typedef JacPyScratchStorage *JacPyScratchArrayRef;
+void jacpy_scratch_close(JacPyScratchArrayRef array);
+int32_t jacpy_scratch_allocate(JacPyScratchArrayRef array, int64_t count);
+void jacpy_scratch_use_caller(JacPyScratchArrayRef array);
+void jacpy_scratch_copy(JacPyScratchArrayRef array, int64_t index);
+void jacpy_scratch_publish(JacPyScratchStorage *storage, JacPyScratchArrayRef array);
 #endif

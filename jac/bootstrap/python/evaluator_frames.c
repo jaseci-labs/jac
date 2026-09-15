@@ -17,6 +17,7 @@
 #include "internal/pycore_instruments.h"
 #include "internal/pycore_pyerrors.h"
 #include "internal/pycore_pystate.h"
+#include "internal/pycore_pyatomic_ft_wrappers.h"
 #include "internal/pycore_stackref.h"
 #include "internal/pycore_sysmodule.h"
 #include "internal/pycore_unicodeobject.h"
@@ -252,3 +253,38 @@ int64_t jacpy_unpack_exact_size(JacPyObjectRef value) {
 void jacpy_unpack_error(PyThreadState *tstate, const char *format, int32_t expected, int64_t actual) {
     _PyErr_Format(tstate, PyExc_ValueError, format, (int)expected, (Py_ssize_t)actual);
 }
+
+_Static_assert(PyCF_MASK == 0x1fe0000 && MAX_CO_EXTRA_USERS == 255, "pinned evaluator utility constants");
+extern int32_t jacpy_merge_compiler_flags(JacPyFrameRef, PyCompilerFlags *);
+extern int64_t jacpy_request_code_extra(PyInterpreterState *, freefunc);
+extern JacPyObjectRef jacpy_running_main_module(PyThreadState *);
+int PyEval_MergeCompilerFlags(PyCompilerFlags *flags) {
+    return jacpy_merge_compiler_flags(_PyThreadState_GET()->current_frame, flags);
+}
+Py_ssize_t PyUnstable_Eval_RequestCodeExtraIndex(freefunc callback) {
+    return jacpy_request_code_extra(_PyInterpreterState_GET(), callback);
+}
+PyObject *_PyEval_GetGlobalsFromRunningMain(PyThreadState *tstate) {
+    PyObject *module = jacpy_running_main_module(tstate);
+    if (module == NULL) { return NULL; }
+    /* Preserve the legacy API's borrowed-return boundary. Native Jac returns
+     * the module owner; it does not assert that this dictionary is owned by
+     * the thread (sys.modules can be a user-supplied mapping).
+     */
+    PyObject *globals = PyModule_GetDict(module);
+    Py_DECREF(module);
+    return globals;
+}
+int32_t jacpy_compiler_flags(PyCompilerFlags *flags) { return flags->cf_flags; }
+void jacpy_compiler_flags_store(PyCompilerFlags *flags, int32_t value) { flags->cf_flags = value; }
+int32_t jacpy_frame_code_flags(JacPyFrameRef frame) { return _PyFrame_GetCode(frame)->co_flags; }
+int64_t jacpy_code_extra_count(PyInterpreterState *interpreter) { return interpreter->co_extra_user_count; }
+void jacpy_code_extra_callback(PyInterpreterState *interpreter, int64_t index, freefunc callback) {
+    interpreter->co_extra_freefuncs[index] = callback;
+}
+void jacpy_code_extra_publish(PyInterpreterState *interpreter, int64_t count) {
+    FT_ATOMIC_STORE_SSIZE_RELEASE(interpreter->co_extra_user_count, count);
+}
+int32_t jacpy_dict_exact(JacPyObjectRef value) { return PyDict_CheckExact(value); }
+int32_t jacpy_stack_output_is_null(_PyStackRef *output) { return PyStackRef_IsNull(*output); }
+void jacpy_stack_output_store(_PyStackRef *output, JacPyStackRef value) { output->bits = value; }

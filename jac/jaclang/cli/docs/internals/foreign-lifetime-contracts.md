@@ -161,7 +161,9 @@ tracing control, coroutine-origin and async-generator setters, error formatting,
 name lookup, import handling, exception-table search, argument binding and its
 diagnostics, frame push, vector/tuple/dict call preparation, legacy code evaluation,
 frame locals/globals/builtins APIs, iterable unpacking, structural pattern
-matching, exception-group matching, and recursion policy using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
+matching, exception-group matching, recursion policy, global loading, compiler
+flags, code-extra callback registration, and borrowed argument-array conversion
+using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
 a dependent executable reference is closed before its thread frame is popped.
 The source changes in this review batch have not been built or tested.
 
@@ -220,8 +222,10 @@ evaluator and tier-two executor remain in the candidate build.
 
 The full source migration is still unfinished. Remaining C algorithms include
 opcode dispatch and all enabled instruction families, tier-two execution,
-main-module globals lookup, compiler flag merging, and the remaining evaluator
-utilities. Their source/object prerequisites remain active.
+and the main evaluator entry/dispatch machinery. Their source/object
+prerequisites remain active. Read-only Python ABI tables and the interpreter
+trampoline are separate C data; moving them does not constitute a native opcode
+implementation.
 Removing these entries from the build before replacing their implementations
 would not complete the migration.
 

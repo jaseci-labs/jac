@@ -186,6 +186,11 @@ emit_evaluator_unit("evaluator_recursion", "evaluator_recursion", [
     "jacpy_set_stack_protection", "jacpy_reached_recursion_margin",
     "jacpy_enter_recursion_unchecked", "jacpy_check_recursion",
 ])
+emit_evaluator_unit("evaluator_utilities", "evaluator_utilities", [
+    "jacpy_merge_compiler_flags", "jacpy_request_code_extra",
+    "jacpy_running_main_module", "_PyEval_LoadGlobalStackRef",
+    "jacpy_object_array_from_stack_impl",
+])
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
     "jaclang/runtime/python/evaluator_lookup.jac",
@@ -200,6 +205,8 @@ provenance_inputs = [
     "bootstrap/python/evaluator_binding.h",
     "bootstrap/python/evaluator_recursion.c",
     "bootstrap/python/evaluator_recursion.h",
+    "bootstrap/python/evaluator_metadata.c",
+    "bootstrap/python/evaluator_metadata.h",
 ]
 (output / "evaluator-provenance.json").write_text(json.dumps({
     "schema": 1,

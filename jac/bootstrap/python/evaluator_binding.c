@@ -348,3 +348,46 @@ JacPyObjectRef jacpy_function_from_code(JacPyObjectRef code, JacPyObjectRef glob
     return (PyObject *)_PyFunction_FromConstructor(&constructor);
 }
 void jacpy_eval_legacy_stat(void) { EVAL_CALL_STAT_INC(EVAL_CALL_LEGACY); }
+
+struct JacPyScratchStorage {
+    const _PyStackRef *input;
+    PyObject **scratch;
+    PyObject **result;
+    PyObject **allocation;
+    int closed;
+};
+extern void jacpy_object_array_from_stack_impl(JacPyScratchStorage *, JacPyScratchArrayRef, int64_t);
+PyObject **_PyObjectArray_FromStackRefArray(_PyStackRef *input, Py_ssize_t count, PyObject **scratch) {
+    JacPyScratchStorage storage = { input, scratch, NULL, NULL, 0 };
+    jacpy_object_array_from_stack_impl(&storage, &storage, count);
+    return storage.result;
+}
+void jacpy_scratch_close(JacPyScratchArrayRef array) {
+    if (array != NULL) {
+        assert(!array->closed);
+        array->closed = 1;
+        PyMem_Free(array->allocation);
+    }
+}
+int32_t jacpy_scratch_allocate(JacPyScratchArrayRef array, int64_t count) {
+    assert(array->result == NULL);
+    /* One preceding slot is reserved for PY_VECTORCALL_ARGUMENTS_OFFSET. */
+    array->allocation = PyMem_Malloc((count + 1) * sizeof(PyObject *));
+    if (array->allocation == NULL) { return 0; }
+    array->result = array->allocation + 1;
+    return 1;
+}
+void jacpy_scratch_use_caller(JacPyScratchArrayRef array) { array->result = array->scratch; }
+void jacpy_scratch_copy(JacPyScratchArrayRef array, int64_t index) {
+    array->result[index] = PyStackRef_AsPyObjectBorrow(array->input[index]);
+}
+void jacpy_scratch_publish(JacPyScratchStorage *storage, JacPyScratchArrayRef array) {
+    assert(storage == array && !array->closed);
+    array->closed = 1;
+    /* The C caller receives result and later passes result - 1 to the
+     * established cleanup API. Borrowed entries are never decrefed here.
+     */
+}
+void _PyObjectArray_Free(PyObject **array, PyObject **scratch) {
+    if (array != scratch) { PyMem_Free(array); }
+}
