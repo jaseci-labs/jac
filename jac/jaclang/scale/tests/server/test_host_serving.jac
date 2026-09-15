@@ -81,6 +81,20 @@ def _get(url: str) -> tuple[int, str] {
 }
 
 
+"""Like _get(), but also returns the response headers (a case-insensitive
+email.message.Message) -- for the one row (the cache-control policy) that
+needs more than the status/body pair."""
+def _get_with_headers(url: str) -> tuple {
+    try {
+        with urllib.request.urlopen(url, timeout=10) as r {
+            return (int(r.status), r.read().decode("utf-8"), r.headers);
+        }
+    } except urllib.error.HTTPError as e {
+        return (int(e.code), e.read().decode("utf-8"), e.headers);
+    }
+}
+
+
 def _post(url: str, body: dict) -> tuple[int, str] {
     data = json.dumps(body).encode("utf-8");
     req = urllib.request.Request(
@@ -147,8 +161,14 @@ test "serve_background binds loopback on an ephemeral port and serves a client_d
 
         (code, body) = _get(f"{origin}/");
         assert code == 200 and "hosted" in body , (code, body);
-        (code, body) = _get(f"{origin}/assets/app.js");
+        (code, body, headers) = _get_with_headers(f"{origin}/assets/app.js");
         assert code == 200 and "hosted" in body , (code, body);
+        cache = headers.get("Cache-Control") or "";
+        assert "must-revalidate" in cache , (
+            "a served client-dist asset must carry the shared asset_cache_policy "
+            "(pages.jac's root_asset), not file_response's bare 'public, "
+            f"max-age=3600' default; got {cache!r}"
+        );
         (code, body) = _get(f"{origin}/some/client/route");
         assert code == 200 and "hosted" in body , (
             f"the SPA fallback must serve the client_dist index: {code} {body}"

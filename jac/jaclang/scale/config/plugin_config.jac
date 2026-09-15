@@ -916,6 +916,16 @@ class JacScalePluginConfig {
                             "default": [],
                             "description": "Volume declarations mounted into fleet pods; each entry names the apps that mount it under `apps`."
                         },
+                        "static_mounts": {
+                            "type": "list",
+                            "default": [],
+                            "description": "Extra static-asset roots served at `/<url_prefix>` (the prefix is used verbatim -- include `static/` in it yourself if you want the mount under that tier), each `{url_prefix, local_path}`. A request matching a mount's prefix is served exclusively from it (no fallback to public/assets/the SPA shell on a miss)."
+                        },
+                        "client_dist_dir": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Where the built client bundle lives, served at the web root alongside the root app's public/ and assets/. Defaults to the `jac build --as client` output path (.jac/client/dist)."
+                        },
                         "replicas": {
                             "type": "int",
                             "default": 1,

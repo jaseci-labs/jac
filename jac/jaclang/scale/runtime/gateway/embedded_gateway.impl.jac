@@ -58,22 +58,47 @@ impl EmbeddedGateway._call_member(
 }
 
 
-impl EmbeddedGateway._serve_static(path: str, accept: str) -> Response {
-    dist = Path(self.client_dist_dir);
-    rel: str = path.lstrip("/");
-    if rel {
-        candidate = dist / rel;
-        try {
-            resolved = candidate.resolve();
+impl EmbeddedGateway._get_asset_table -> list[AssetRoot] {
+    if self._asset_table is None {
+        import from jaclang.server.serving.static_assets { asset_root_table }
+        self._asset_table = asset_root_table(
+            Path(self.base_path), Path(self.client_dist_dir), self.static_mounts
+        );
+    }
+    return self._asset_table;
+}
 
-            if resolved.is_relative_to(dist.resolve()) and resolved.is_file() {
-                ctype: str = mimetypes.guess_type(str(resolved))[0]
-                    or "application/octet-stream";
-                return Response(content=resolved.read_bytes(), media_type=ctype);
+impl EmbeddedGateway._serve_static(
+    request: Request, path: str, accept: str
+) -> Response {
+    import from jaclang.server.serving.static_assets {
+        resolve_asset,
+        mount_claims,
+        asset_cache_policy
+    }
+    import from jaclang.server.serving.files { file_response }
+    table = self._get_asset_table();
+    hit = resolve_asset(table, path);
+    if hit is not None {
+        (target, _) = hit;
+        return file_response(
+            request, str(target), cache_control=asset_cache_policy(target)
+        );
+    }
+    if mount_claims(table, path) {
+        return JSONResponse(
+            status_code=404,
+            content={
+                "ok": False,
+                "type": "error",
+                "data": None,
+                "error": {"code": "NOT_FOUND", "message": f"Not found: {path}"}
             }
-        } except OSError {}
+        );
     }
 
+    dist = Path(self.client_dist_dir);
+    rel: str = path.lstrip("/");
     index_file = dist / "index.html";
     if (rel == "" or "text/html" in accept) and index_file.is_file() {
         return Response(
@@ -114,7 +139,7 @@ impl EmbeddedGateway.dispatch(request: Request) -> Response {
         }
     }
     accept: str = str(request.headers.get("accept") or "");
-    return self._serve_static(path, accept);
+    return self._serve_static(request, path, accept);
 }
 
 
@@ -129,6 +154,7 @@ impl EmbeddedGateway.setup -> None {
     app.add_middleware(dispatcher);
     self.middleware.install(app);
 
+    self._get_asset_table();
     self.app = app;
 }
 
