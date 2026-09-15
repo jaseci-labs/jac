@@ -111,12 +111,12 @@ impl JcirGenPass.exit_module with Module exit {
                             'alias',
                             ['name', 'asname'],
                             ['ObjectField', descriptor_alias],
-                            jac_node=self.ir_out
+                            jac_node=self.module
                         )
                     ],
                     0
                 ],
-                jac_node=self.ir_out
+                jac_node=self.module
             )
         );
     }

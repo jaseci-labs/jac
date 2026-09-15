@@ -21,7 +21,6 @@ import from jaclang.compiler.frontend.unitree {
     is_identifier_slot
 }
 import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.runtime.object_model { field }
 
 import from jaclang.compiler.frontend.diagnostics {
     E2009,
@@ -37,7 +36,7 @@ import from jaclang.compiler.frontend.diagnostics {
 walker DeclImplMatchPass {
     has ctx: CompileContext,
         module: Module,
-        _e2026_reported: set[int] = field(default_factory=`set);
+        _e2026_reported: set[int] = set();
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;

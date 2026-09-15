@@ -40,7 +40,6 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.context { CompileContext }
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
     SymbolType,
