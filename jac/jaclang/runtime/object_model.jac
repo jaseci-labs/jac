@@ -53,6 +53,25 @@ class ObjectField {
     }
 }
 
+def field(
+    *,
+    `default: object = MISSING,
+    default_factory: PyCallable[[], object] | None = None,
+    `init: bool = True,
+    repr: bool = True,
+    kw_only: bool = False
+) -> ObjectField {
+    """Configure a Jac-owned field, including on a class decorated with make_object.""";
+    return ObjectField(
+        `default=`default,
+        default_factory=default_factory,
+        `init=`init,
+        repr=repr,
+        kw_only=kw_only
+    );
+}
+
+
 def is_jac_object(value: object) -> bool {
     cls = value if isinstance(value, `type) else type(value);
     return hasattr(cls, "__jac_fields__");

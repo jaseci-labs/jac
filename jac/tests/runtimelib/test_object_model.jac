@@ -3,6 +3,7 @@ import from inspect { signature, Parameter }
 import from jaclang.runtime.archetype { WalkerArchetype }
 import from jaclang.runtime.object_model {
     ObjectField,
+    field,
     MISSING,
     fields,
     is_jac_object,
@@ -15,17 +16,11 @@ class BaseFields {
     has value: int = 3;
 }
 
-def derived_model(cls: type) -> type {
-    setattr(cls, "items", ObjectField(default_factory=`list));
-    setattr(cls, "hidden", ObjectField(`default=7, repr=False, `init=False));
-    return make_object(cls);
-}
-
-@derived_model
+@make_object
 class DerivedFields(BaseFields) {
     has required: str,
-        items: list[int],
-        hidden: int;
+        items: list[int] = field(default_factory=`list),
+        hidden: int = field(`default=7, repr=False, `init=False);
 
     with entry {
         category: ClassVar[str] = "example";
@@ -41,15 +36,10 @@ class CustomInit {
     }
 }
 
-def postinit_model(cls: type) -> type {
-    setattr(cls, "ready", ObjectField(`init=False));
-    return make_object(cls);
-}
-
-@postinit_model
+@make_object
 class PostInit {
     has value: int = 1,
-        ready: bool;
+        ready: bool = field(`init=False);
 
     def postinit(self: PostInit) {
         self.ready = True;
@@ -90,12 +80,12 @@ test "reflection copies values and does not mutate class field metadata" {
 test "a default and a factory cannot describe the same field" {
     rejected = False;
     try {
-        ObjectField(`default=[], default_factory=`list);
+        field(`default=[], default_factory=`list);
     } except ValueError {
         rejected = True;
     }
     assert rejected;
-    assert ObjectField().`default is MISSING;
+    assert field().`default is MISSING;
 }
 
 glob _jac_runtime_ObjectField: int = 99;
@@ -176,9 +166,9 @@ test "constructor implementation names do not collide with fields" {
 }
 
 obj ExplicitFields {
-    has values: list[int] = ObjectField(default_factory=`list),
-        count: int = ObjectField(`default=4),
-        ready: bool = ObjectField(`init=False);
+    has values: list[int] = field(default_factory=`list),
+        count: int = field(`default=4),
+        ready: bool = field(`init=False);
 
     def postinit {
         self.ready = True;

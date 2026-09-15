@@ -1,7 +1,7 @@
 import from collections.abc { Callable }
 import from jaclang.runtime.object_model {
     asdict,
-    ObjectField,
+    field,
     fields,
     is_jac_object,
     make_object
@@ -104,12 +104,12 @@ obj AnchorReport {
 
 obj Anchor {
     has archetype: Archetype,
-        id: (UUID | None) = ObjectField(`init=False, `default=None),
-        `root: (UUID | None) = ObjectField(`init=False, `default=None),
-        access: (Permission | None) = ObjectField(`init=False, `default=None),
-        _persistent: bool = ObjectField(`init=False, `default=False),
-        destroyed: bool = ObjectField(`init=False, `default=False),
-        hash: int = ObjectField(`init=False, `default=0);
+        id: (UUID | None) = field(`init=False, `default=None),
+        `root: (UUID | None) = field(`init=False, `default=None),
+        access: (Permission | None) = field(`init=False, `default=None),
+        _persistent: bool = field(`init=False, `default=False),
+        destroyed: bool = field(`init=False, `default=False),
+        hash: int = field(`init=False, `default=0);
 
     has persistent: bool { getter; setter(persistent: bool); }
 
@@ -130,10 +130,10 @@ obj Anchor {
 obj NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
-        version: int = ObjectField(`init=False, `default=0),
-        out_light: (dict[type, list] | None) = ObjectField(`init=False, `default=None),
-        in_light: (dict[type, list] | None) = ObjectField(`init=False, `default=None),
-        mixed: bool = ObjectField(`init=False, `default=False);
+        version: int = field(`init=False, `default=0),
+        out_light: (dict[type, list] | None) = field(`init=False, `default=None),
+        in_light: (dict[type, list] | None) = field(`init=False, `default=None),
+        mixed: bool = field(`init=False, `default=False);
 
     def __getstate__ -> dict[(str, object)];
     def __getattr__(name: str) -> object;
@@ -151,7 +151,7 @@ obj EdgeAnchor(Anchor) {
         source: NodeAnchor,
         target: NodeAnchor,
         is_undirected: bool,
-        light: bool = ObjectField(`init=False, `default=False);
+        light: bool = field(`init=False, `default=False);
 
     def is_populated -> bool;
     def __getstate__ -> dict[(str, object)];
@@ -251,7 +251,7 @@ class EdgeArchetype(Archetype) {
 
 @make_object
 class WalkerArchetype(Archetype) {
-    has reports: list[any] = ObjectField(
+    has reports: list[any] = field(
         default_factory=`list, `init=False, repr=False
     );
 
