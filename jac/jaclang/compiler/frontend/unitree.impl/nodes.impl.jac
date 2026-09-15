@@ -1334,6 +1334,23 @@ impl Module.absorb_annex_body(stmts: Sequence[UniNode]) -> None {
     self.add_kids_right(stmts, pos_update=False, parent_update=True, role=BodyRole);
 }
 
+impl Module.record_comptime_dependency(path: str, body: bool = False) -> None {
+    import os;
+    if not path {
+        return;
+    }
+    resolved = os.path.realpath(path);
+    if self.loc and os.path.realpath(self.loc.mod_path) == resolved {
+        return;
+    }
+    if resolved not in self.ct_file_deps {
+        self.ct_file_deps.append(resolved);
+    }
+    if body and resolved not in self.ct_body_deps {
+        self.ct_body_deps.append(resolved);
+    }
+}
+
 impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
     if ctx != CodeContext.SERVER and self.decided_codespace == ctx.value {
         return True;
@@ -1431,6 +1448,9 @@ impl Symbol.binding_kind.getter -> BindingKind {
         }
         if cur._binding_kind is not None {
             return cur._binding_kind;
+        }
+        if cur.imported_from is not None {
+            continue;
         }
         if item is None {
             return binding_kind_of_decl(decl);
@@ -1638,6 +1658,7 @@ impl UniScopeNode.insert(
     collision = self.names_in_scope[nd.sym_name].defn[-1]
         if (single and (nd.sym_name in self.names_in_scope))
         else None;
+    origin = nd.sym if imported else None;
     symbol = nd.name_spec.create_symbol(
         access=access_spec
             if isinstance(access_spec, SymbolAccess)
@@ -1645,6 +1666,10 @@ impl UniScopeNode.insert(
         parent_tab=self,
         imported=imported
     );
+    if origin is not None {
+        symbol.provider = origin.provider;
+        symbol.imported_from = origin;
+    }
     current = self.names_in_scope;
     if (nd.sym_name in current) {
         self +>:ScopeOverload:+> symbol;
@@ -4267,6 +4292,11 @@ impl import_chain_of(sym: Symbol) -> list[Symbol] {
         }
         seen.add(id(cur));
         chain.append(cur);
+        origin = cur.imported_from;
+        if origin is not None {
+            cur = origin;
+            continue;
+        }
         decl = cur.decl;
         if not isinstance(decl.parent, ModuleItem) {
             return chain;

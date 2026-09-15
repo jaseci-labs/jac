@@ -217,9 +217,7 @@ obj ModuleCompilation {
             cb_paths: list[str] = [];
 
             cb_opts = CompileOptions(
-                no_cgen=True,
-                force_target_program=True,
-                cancel_token=self.options.cancel_token
+                no_cgen=True, cancel_token=self.options.cancel_token
             );
             cb_reg = self.program.iface_registry();
             while cb_worklist or cb_paths {
@@ -317,7 +315,8 @@ obj ModuleCompilation {
     def codegen {
         import from jaclang.compiler.driver.pipeline {
             get_analysis_sched,
-            get_py_code_gen
+            get_py_code_gen,
+            _py_codegen_tail
         }
         if (
             not self.parse_failed
@@ -331,7 +330,8 @@ obj ModuleCompilation {
             needs_native = self.native
                 or ModuleFacts.has_native_context_stmts(self.module);
 
-            if needs_native
+            if self.full_head
+                and needs_native
                 and not self.program.analysis.analyses_run.provides(
                     self.module, AnalysisFact.TYPE_OF
                 ) {
@@ -348,7 +348,9 @@ obj ModuleCompilation {
                 passes=get_py_code_gen(
                     native=needs_native,
                     provided=self.program.analysis.analyses_run.provided(self.module)
-                ),
+                )
+                    if self.full_head
+                    else _py_codegen_tail(),
                 cancel_token=self.options.cancel_token
             );
             if self.module.decided_codespace == 'native' {
@@ -418,16 +420,19 @@ def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
                 f"native lowering produced no IR for '{file_path}': {reason}"
             );
         }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            native_linked_ir_text
+        import from jaclang.compiler.backends.native.link_plan {
+            build_link_plan,
+            wasm_program_ir
         }
-        llvm_ir_str = native_linked_ir_text(ir);
-        app_imports = app_declared_imports(ir);
+        plan = build_link_plan(program, [ir.loc.mod_path], program.options);
+        llvm_ir_str = wasm_program_ir(plan);
+        app_ir_str = str(ir.gen.llvm_ir);
+        app_imports = app_declared_imports(ir, plan);
     } finally {
         pop_native_target(prev);
     }
     if gc_mode == "none" {
-        _assert_ir_rc_free(llvm_ir_str, file_path);
+        _assert_ir_rc_free(app_ir_str, file_path);
     }
     return (llvm_ir_str, app_imports);
 }
@@ -457,7 +462,6 @@ def native_application(
         options = CompileOptions(
             aot_mode=True,
             default_codespace='native',
-            force_target_program=True,
             memory_profile=memory or None,
             native_target=target or None,
             native_debug=True if debug else None,

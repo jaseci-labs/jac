@@ -3,6 +3,7 @@ glob WASM_FLOOR_MANIFEST: str = "SOURCES.sha256",
          "libc.a",
          "libzigc.a",
          "libcompiler_rt.a",
+         "libclang_rt.atomics.a",
          "crt1.o",
          "crti.o",
          "crtn.o"
@@ -23,10 +24,11 @@ obj WasmSources {
 }
 
 def build_musl(osarch: str, dest: str, zig_exe: str);
+def build_outline_atomics(dest: str, zig_exe: str);
 def build_wasm_libc(src_root: str, dest: str, zig_exe: str);
 def collect_wasm_sources(src_root: str) -> WasmSources;
-def read_wasm_floor_manifest(manifest_path: str) -> dict[str, str];
-def write_wasm_floor_manifest(
+def read_source_manifest(manifest_path: str) -> dict[str, str];
+def write_source_manifest(
     manifest_path: str, rels: list[str], digest_of: dict[str, str]
 );
 

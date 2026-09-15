@@ -102,9 +102,7 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         or isinstance(nd, uni.InnerCompr)
         or isinstance(nd, uni.FormattedValue)
     ) {} else {
-        self.ctx.emit(
-            E5092, node_override=nd, kind="expression", name=type(nd).__name__
-        );
+        self.emit(E5092, node_override=nd, kind="expression", name=type(nd).__name__);
     }
 
     if _result is not None and isinstance(nd, uni.Expr) and nd.coerce_to is not None {
@@ -164,9 +162,7 @@ impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None
     if val is None
         and len(self.ctx.errors_had) == _errs_before
         and not self._reads_unlowered_local(nd) {
-        self.ctx.emit(
-            E5092, node_override=nd, kind="expression", name=type(nd).__name__
-        );
+        self.emit(E5092, node_override=nd, kind="expression", name=type(nd).__name__);
     }
     return val;
 }
@@ -215,7 +211,7 @@ impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
     gc = self._gen_ctx;
     i64 = ir.IntType(64);
     if gc is None or self.builder.function is not gc.resume_fn {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="expression",
@@ -235,7 +231,7 @@ impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
         } elif isinstance(elem_t, (ir.IntType, ir.DoubleType, ir.FloatType)) {
             v = ir.Constant(elem_t, 0);
         } else {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="expression",
@@ -307,7 +303,7 @@ impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {
     built = self._build_iter_from_expr(nd.expr) if nd.expr is not None else None;
     if built is None {
         if len(self.ctx.errors_had) == _errs0 {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="expression",
@@ -429,7 +425,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
                     self.builder.ret(self._coerce_type(body_value, ret_type));
                 } else {
                     if len(self.ctx.errors_had) == _lam_errs0 {
-                        self.ctx.emit(
+                        self.emit(
                             E5092,
                             node_override=nd,
                             kind="expression",
@@ -448,7 +444,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
                 self.builder.ret(self._coerce_type(body_value, ret_type));
             } else {
                 if len(self.ctx.errors_had) == _lam_errs0 {
-                    self.ctx.emit(
+                    self.emit(
                         E5092,
                         node_override=nd,
                         kind="expression",
@@ -578,9 +574,7 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     var_name = self._get_name(nd.left);
     if var_name is None {
-        self.ctx.emit(
-            E5092, node_override=nd, kind="binary operator", name="WALRUS_EQ"
-        );
+        self.emit(E5092, node_override=nd, kind="binary operator", name="WALRUS_EQ");
         return None;
     }
     value = self._codegen_expr(nd.right);
@@ -702,7 +696,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     } elif right_name is not None and right_is_walker {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
     } else {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="binary operator",
@@ -715,7 +709,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     _loc_name = right_name if left_is_walker else left_name;
     _xhelp = self._xmod_osp_help([_loc_name]);
     if _xhelp is not None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="binary operator",
@@ -733,7 +727,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return self._codegen_kernel_spawn(walker_name, walker_val, loc_val);
     }
 
-    self.ctx.emit(E5092, node_override=nd, kind="binary operator", name="KW_SPAWN");
+    self.emit(E5092, node_override=nd, kind="binary operator", name="KW_SPAWN");
     return walker_val;
 }
 
@@ -1300,7 +1294,7 @@ impl NaIRGenPass._codegen_compare_link(
                 }
                 return result;
             }
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=_in_hay_nd,
                 kind="expression",
@@ -1476,7 +1470,7 @@ impl NaIRGenPass._codegen_compare_chain(
         );
         if link is None {
             if len(self.ctx.errors_had) == _errs_before {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="chained comparison operator",
@@ -2345,7 +2339,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                             }
                             if idx_val is not None {
                                 _sub_tk = self._type_key_of(nd.target) or "unknown";
-                                self.ctx.emit(
+                                self.emit(
                                     E5092,
                                     node_override=nd.target,
                                     kind="expression",
@@ -2483,7 +2477,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         }
     }
 
-    self.ctx.emit(
+    self.emit(
         E5092,
         node_override=nd,
         kind="attribute access" if nd.is_attr else "subscript/index access",

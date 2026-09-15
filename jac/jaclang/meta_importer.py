@@ -341,6 +341,17 @@ class JacMetaImporter(MetaPathFinder, Loader):
 
         from jaclang.runtime.runtime import JacRuntime as Jac
 
+        cache = Jac.get_compiler().selfhost
+        cache.enter_execution()
+        try:
+            self._exec_compiled_module(module, file_path)
+        finally:
+            cache.exit_execution()
+
+    def _exec_compiled_module(self, module: ModuleType, file_path: str) -> None:
+        from jaclang.runtime.runtime import JacRuntime as Jac
+
+        assert module.__spec__ is not None
         is_pkg = module.__spec__.submodule_search_locations is not None
 
         # Register module in JacRuntime's tracking (skip internal jaclang modules)

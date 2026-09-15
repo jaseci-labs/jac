@@ -537,6 +537,11 @@ impl TypeEvaluator.resolve_to_definition_symbol(symbol: Symbol) -> Symbol {
     cur = symbol;
     while id(cur) not in visited {
         visited.add(id(cur));
+        origin = cur.imported_from;
+        if origin is not None {
+            cur = origin;
+            continue;
+        }
         provider = cur.provider;
         if provider is not None {
             target = provider.definition();

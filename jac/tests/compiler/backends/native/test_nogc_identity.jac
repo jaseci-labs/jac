@@ -208,3 +208,13 @@ test "inferred local states never change behavior" {
             "drop item 1"
         ];
 }
+
+test "optional owned local moves drop overwritten values and clear the source" {
+    out = assert_native_identity(_fixture("optional_local_move.jac"));
+    assert out.splitlines() == ["drop 1", "2", "drop 2", "done"] , out;
+}
+
+test "a string returned from a local container preserves its bytes after cleanup" {
+    out = assert_native_identity(_fixture("borrowed_string_return.jac"));
+    assert out.splitlines() == ["3", "98", "c"] , out;
+}

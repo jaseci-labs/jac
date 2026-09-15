@@ -49,7 +49,8 @@ obj RunConfig {
 }
 
 obj NativeConfig {
-    has require: list[str] = [],
+    has link_mode: str = "objects",
+        require: list[str] = [],
         target: str = "",
         opt: int = 2,
         debug: bool = False,

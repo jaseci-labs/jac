@@ -14,8 +14,38 @@ import shutil;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.dist.jab { jab_app_meta, materialize_jab }
-import from jaclang.dist.seal { build_jab }
+import from jaclang.dist.seal { build_jab, build_serve_manifest }
 import from jaclang.project.config { JacConfig, set_config }
+
+test "serve manifests analyze native imports without loading their libraries or retaining trees" {
+    import from jaclang.runtime.runtime { JacRuntime }
+    with tempfile.TemporaryDirectory() as directory {
+        project_dir = Path(directory);
+        (project_dir / "jac.toml").write_text(
+            "[project]\nname = \"manifest_native\"\n"
+            "[placement.pins]\nforeign = \"native\"\n"
+        );
+        (project_dir / "foreign.jac").write_text(
+            "import from jac_manifest_absent_library { def foreign_value -> int; }\n"
+            "def value() -> int { return foreign_value(); }\n"
+        );
+        entry_file = project_dir / "main.jac";
+        entry_file.write_text(
+            "walker:pub Greeting { can start with Root entry { report 42; } }\n"
+        );
+        runtime_program = JacRuntime.get_program();
+        runtime_modules = dict(runtime_program.mod.hub);
+        try {
+            set_config(JacConfig.load(project_dir / "jac.toml"));
+            manifest = build_serve_manifest(entry_file, project_dir);
+            assert manifest is not None;
+            assert manifest["walker_access"]["Greeting"] == False;
+            assert runtime_program.mod.hub == runtime_modules;
+        } finally {
+            set_config(None);
+        }
+    }
+}
 
 
 glob _TOML: str = (

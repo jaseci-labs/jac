@@ -233,7 +233,7 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         b.store(ir.Constant(i8, 8), tag_ptr);
         b.store(ir.Constant(i64, 0), payload_ptr);
     } else {
-        self.ctx.emit(E5092, kind="expression", name=f"`any` box of {value.type}");
+        self.emit(E5092, kind="expression", name=f"`any` box of {value.type}");
         b.store(ir.Constant(i8, 0), tag_ptr);
         b.store(ir.Constant(i64, 0), payload_ptr);
     }
@@ -266,7 +266,7 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
 
-    self.ctx.emit(E5092, kind="expression", name=f"`any` unbox to {target_type}");
+    self.emit(E5092, kind="expression", name=f"`any` unbox to {target_type}");
     return ir.Constant(target_type, None);
 }
 
@@ -315,7 +315,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         if (_dk_args is not None and len(_dk_args) >= 2)
         else None;
     if _k_store is not None and self?.jacval_type and _k_store == self.jacval_type {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="expression",
@@ -459,7 +459,7 @@ impl NaIRGenPass._codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None) {
                 return None;
             }
             if other.type != result.type {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=pair.value,
                     kind="expression",

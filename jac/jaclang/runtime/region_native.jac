@@ -86,7 +86,7 @@ def _stack_push(blk: int, hdl: int) {
     __mem_store_i64(blk + TLS_DEPTH, depth + 1);
 }
 
-def __jac_region_current -> int {
+def:pub __jac_region_current -> int {
     blk = __jac_region_tls_get();
     if blk == 0 {
         return 0;
@@ -94,7 +94,7 @@ def __jac_region_current -> int {
     return __mem_load_i64(blk + TLS_CUR);
 }
 
-def __jac_region_depth -> int {
+def:pub __jac_region_depth -> int {
     blk = __jac_region_tls_get();
     if blk == 0 {
         return 0;
@@ -102,13 +102,13 @@ def __jac_region_depth -> int {
     return __mem_load_i64(blk + TLS_DEPTH);
 }
 
-def __jac_region_enter(hdl: int) {
+def:pub __jac_region_enter(hdl: int) {
     blk = _tls_block();
     _stack_push(blk, hdl);
     __mem_store_i64(blk + TLS_CUR, hdl);
 }
 
-def __jac_region_unwind(depth: int) {
+def:pub __jac_region_unwind(depth: int) {
     blk = _tls_block();
     if depth < 0 {
         depth = 0;
@@ -125,7 +125,7 @@ def __jac_region_unwind(depth: int) {
     __mem_store_i64(blk + TLS_CUR, __mem_load_i64(stk + (depth - 1) * 8));
 }
 
-def __jac_region_leave {
+def:pub __jac_region_leave {
     blk = _tls_block();
     __jac_region_unwind(__mem_load_i64(blk + TLS_DEPTH) - 1);
 }
@@ -195,7 +195,7 @@ def _registry_holds(ptr: int) -> int {
     return found;
 }
 
-def __jac_region_new -> int {
+def:pub __jac_region_new -> int {
     raw = malloc(HDR_TOTAL + RGN_CTRL_SIZE);
     hdl = raw + HDR_TOTAL;
     __mem_store_i64(hdl + HDR_ALLOC_ID_OFF, HDR_MAGIC_SHIFT_BASE);
@@ -273,7 +273,7 @@ def _region_raw(hdl: int, size: int) -> int {
     return chunk + off;
 }
 
-def __jac_region_alloc(hdl: int, size: int) -> int {
+def:pub __jac_region_alloc(hdl: int, size: int) -> int {
     o = _region_raw(hdl, size + HDR_TOTAL) + HDR_TOTAL;
     __mem_store_i64(o + HDR_ALLOC_ID_OFF, ARENA_MAGIC_SHIFT_BASE);
     __mem_store_i64(o + HDR_TAG_OFF, 0);
@@ -282,7 +282,7 @@ def __jac_region_alloc(hdl: int, size: int) -> int {
     return o;
 }
 
-def __jac_region_log_dtor(hdl: int, o: int, fn: int) {
+def:pub __jac_region_log_dtor(hdl: int, o: int, fn: int) {
     ent = _region_raw(hdl, DTOR_ENTRY);
     __mem_store_i64(ent + DTOR_NEXT, __mem_load_i64(hdl + RGN_DTL));
     __mem_store_i64(ent + DTOR_OBJ, o);
@@ -290,7 +290,7 @@ def __jac_region_log_dtor(hdl: int, o: int, fn: int) {
     __mem_store_i64(hdl + RGN_DTL, ent);
 }
 
-def __jac_region_of(o: int) -> int {
+def:pub __jac_region_of(o: int) -> int {
     if o == 0 {
         return 0;
     }
@@ -301,7 +301,7 @@ def __jac_region_of(o: int) -> int {
     return __mem_load_i64(o + HDR_DTOR_OFF);
 }
 
-def __jac_region_partition(parent: int) -> int {
+def:pub __jac_region_partition(parent: int) -> int {
     child = __jac_region_new();
     __mem_store_i64(child + RGN_PARENT, parent);
     __mem_store_i64(parent + RGN_KIDS, __mem_load_i64(parent + RGN_KIDS) + 1);
@@ -319,7 +319,7 @@ def _region_holds(hdl: int, ptr: int) -> int {
     return 0;
 }
 
-def __jac_region_owns(ptr: int) -> int {
+def:pub __jac_region_owns(ptr: int) -> int {
     if ptr == 0 {
         return 0;
     }
@@ -435,7 +435,7 @@ def _teardown(hdl: int) {
     free(hdl - HDR_TOTAL);
 }
 
-def __jac_region_drop(hdl: int) {
+def:pub __jac_region_drop(hdl: int) {
     if hdl == 0 {
         return;
     }

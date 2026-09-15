@@ -5,13 +5,8 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.toolchains.store {
-    Artifact,
-    cache_root,
-    fetch,
-    file_digest,
-    InstallLock
-}
+import from jaclang.jac0core.cache_paths { FileLock }
+import from jaclang.toolchains.store { Artifact, cache_root, fetch, file_digest }
 import from jaclang.toolchains.host { host_platform, run_step }
 import from jaclang.toolchains.system {
     ensure_linux_desktop,
@@ -38,7 +33,7 @@ def source_workspace(source: Path, name: str) -> Path {
         / name
         / host_platform()
         / digest.hexdigest()[:20];
-    with InstallLock(destination.with_suffix(".lock")) {
+    with FileLock(destination.with_suffix(".lock")) {
         if not (destination / ".ready").exists() {
             destination.parent.mkdir(parents=True, exist_ok=True);
             with tempfile.TemporaryDirectory(dir=destination.parent) as tmp {
@@ -75,7 +70,7 @@ def ensure_webview(directory: Path) -> Path {
     identity = artifact.digest + "-" + module + "-" + version;
     output = directory / "libwebview.so";
     stamp = directory / ".webview-build";
-    with InstallLock(directory / ".build.lock") {
+    with FileLock(directory / ".build.lock") {
         if output.is_file() and stamp.is_file() and stamp.read_text() == identity {
             return output;
         }

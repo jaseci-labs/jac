@@ -19,14 +19,12 @@ test "arena host scalar boundary input and asynchronous lifecycle" {
     try {
         set_config(JacConfig.discover(start_path=source.parent));
         program = JacProgram();
-        module = program.compile(
-            str(source), options=CompileOptions(force_target_program=True)
-        );
+        module = program.compile(str(source), options=CompileOptions());
         assert not program.errors_had , str(program.errors_had);
         js = module.gen.js;
         webgl = program.compile(
             str(Path(TESTS_DIR).parent / "jaclang" / "client" / "webgl.jac"),
-            options=CompileOptions(force_target_program=True)
+            options=CompileOptions()
         );
         assert not program.errors_had , str(program.errors_had);
         webgl_js = webgl.gen.js;

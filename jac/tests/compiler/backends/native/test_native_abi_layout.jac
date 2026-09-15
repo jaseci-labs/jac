@@ -20,9 +20,7 @@ def layout(value: ValueRef) -> tuple[list[int], int] {
     prog.compile(
         use_str=source,
         file_path="abi_type_contract.jac",
-        options=CompileOptions(
-            no_cgen=True, no_ir_cache=True, force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True)
     );
     assert not prog.errors_had , str(prog.errors_had);
 }

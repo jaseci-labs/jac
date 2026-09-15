@@ -50,10 +50,7 @@ def emit_both(src: str, path: str) -> tuple[any, ...] {
         use_str=src,
         file_path=path,
         options=CompileOptions(
-            force_codespace="server",
-            skip_native_engine=True,
-            no_ir_cache=True,
-            suppress_codes=["E5092"]
+            force_codespace="server", skip_native_engine=True, suppress_codes=["E5092"]
         )
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);

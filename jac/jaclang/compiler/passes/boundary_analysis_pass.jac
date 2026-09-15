@@ -51,6 +51,7 @@ import from jaclang.compiler.frontend.codeinfo {
     InteropBinding,
     InteropContext
 }
+import type from jaclang.compiler.driver.program { JacProgram }
 
 walker BoundaryAnalysisPass(TreeWalker) {
     can enter_walk with UniNode entry {

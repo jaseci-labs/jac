@@ -143,7 +143,8 @@ def _compile_runtime_module(
                 ir,
                 directory,
                 Path('native') / path.relative_to(pkg_root).with_suffix('.py'),
-                emit_source=native_sources
+                emit_source=native_sources,
+                program=prog
             );
             native['record'] = record;
             native['path'] = record['source'] if native_sources else record['output'];

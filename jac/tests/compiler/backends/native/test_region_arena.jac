@@ -9,7 +9,7 @@ and the drop-hook/teardown behavior through the JIT.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, get_func }
+import from tests.support { TESTS_DIR, get_func, names_function }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
@@ -39,7 +39,11 @@ def compile_native(
 
 """Count call sites of `name` in either printer's spelling (quoted or bare)."""
 def calls_to(body: str, name: str) -> int {
-    return body.count('@"' + name + '"(') + body.count("@" + name + "(");
+    return (
+        body.count('@"' + name + '"(')
+        + body.count("@" + name + "(")
+        + body.count("." + name + '"(')
+    );
 }
 
 """Slice one function's textual IR out of the module dump."""
@@ -47,9 +51,7 @@ def fn_ir(ir: uni.Module, name: str) -> str {
     out: list[str] = [];
     inside = False;
     for ln in str(ir.gen.llvm_ir).split("\n") {
-        if not inside
-            and ln.startswith("define")
-            and ((('@"' + name + '"') in ln) or (("@" + name + "(") in ln)) {
+        if not inside and ln.startswith("define") and names_function(ln, name) {
             inside = True;
         }
         if inside {

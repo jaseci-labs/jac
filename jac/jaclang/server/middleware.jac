@@ -52,14 +52,20 @@ def _service_unavailable(detail: str) -> JSONResponse {
 }
 
 
-def request_context_middleware -> Callable[..., any] {
+def request_context_middleware(
+    base_path_dir: (str | None) = None, full_target_path: (str | None) = None
+) -> Callable[..., any] {
     async def _middleware(request: Request, call_next: any) -> Response {
         next_fn: any = call_next;
         if request.url.path in LIVENESS_PATHS {
             return await next_fn(request);
         }
         try {
-            ctx = JacRuntime.create_j_context(user_root=None);
+            ctx = JacRuntime.create_j_context(
+                user_root=None,
+                base_path_dir=base_path_dir,
+                full_target_path=full_target_path
+            );
         } except Exception as ctx_err {
             logger.error(
                 f"request context unavailable for {request.url.path}: "

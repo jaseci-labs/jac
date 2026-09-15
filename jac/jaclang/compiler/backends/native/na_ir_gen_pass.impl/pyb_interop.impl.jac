@@ -885,7 +885,7 @@ impl NaIRGenPass._codegen_pyb_field_load(
     self.builder.call(self._pyb_helper("drop"), [shadow]);
     val = self._pyb_from_py(o, tk);
     if val is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="inherited field read",
@@ -912,7 +912,7 @@ impl NaIRGenPass._codegen_pyb_field_assign(
     o = self._pyb_to_py(target, value);
     if o is None {
         tk = self._type_key_of(target);
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=target,
             kind="inherited field assignment",
@@ -950,7 +950,7 @@ impl NaIRGenPass._codegen_pyb_method_call(
     _shadowed = self._pyb_shadowed_dispatch(type_name, method_name);
     if _shadowed is not None {
         (_sh_base, _sh_disp, _sh_owner) = _shadowed;
-        self.ctx.emit(
+        self.emit(
             E5089,
             node_override=nd,
             cls=_sh_owner,
@@ -972,7 +972,7 @@ impl NaIRGenPass._codegen_pyb_method_call(
     obj_val = self._opt_unwrap_attr(obj_val);
     built = self._pyb_build_args(nd.params or []);
     if built is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="inherited method call",
@@ -995,7 +995,7 @@ impl NaIRGenPass._codegen_pyb_method_call(
     self.builder.call(self._pyb_helper("drop"), [shadow]);
     ret = self._pyb_from_py(r, self._pyb_ret_key(nd));
     if ret is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="inherited method call",
@@ -1030,7 +1030,7 @@ impl NaIRGenPass._codegen_pyb_super_call(
     }
     built = self._pyb_build_args(nd.params or []);
     if built is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="call",
@@ -1065,7 +1065,7 @@ impl NaIRGenPass._codegen_pyb_super_call(
     r = self._pyb_bridge_call("_pyb_super_call", [shadow, anchor, mt, t, kw]);
     ret = self._pyb_from_py(r, self._pyb_ret_key(nd));
     if ret is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="call",
@@ -1108,7 +1108,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
     if not suppress {
         shadow_owner = self._pyb_shadow_postinit_owner(type_name);
         if shadow_owner is not None {
-            self.ctx.emit(E5088, node_override=nd, cls=type_name, owner=shadow_owner);
+            self.emit(E5088, node_override=nd, cls=type_name, owner=shadow_owner);
             return False;
         }
     }
@@ -1124,7 +1124,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
         v = self._codegen_expr(param.value);
         o = self._pyb_to_py(param.value, v) if v is not None else None;
         if o is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="constructor argument",

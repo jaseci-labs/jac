@@ -189,6 +189,9 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
         selected._compiler = context_root._get_compiler();
         selected.source_store = context_root.source_store;
         selected.options = options;
+        if context_root._iface is not None and context_root._iface.verifying {
+            selected.iface_registry().verifying = True;
+        }
     }
     selected.options = options;
     selected.context_key = identity;
@@ -198,7 +201,7 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
 
 def program_for(path: str, program: JacProgram) -> JacProgram {
     compiler = program._get_compiler();
-    actual = compiler.selfhost.resolve(path, program);
+    actual = program;
     if compiler.selfhost.is_selfhost(actual) {
         return actual;
     }

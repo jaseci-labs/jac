@@ -15,7 +15,7 @@ key from fresh concatenations.
 import os;
 import ctypes;
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -33,7 +33,7 @@ test "tuple-of-str keys compare by content when the strings are fresh allocation
     assert eng is not None , "no native engine";
     got = [];
     for name in ("paren_fresh", "plain_fresh", "mixed_fresh", "dedup_fresh") {
-        addr = eng.get_function_address(name);
+        addr = native_address(eng, name);
         assert addr != 0 , f"{name} not in JIT engine";
         got.append(ctypes.CFUNCTYPE(ctypes.c_int64)(addr)());
     }

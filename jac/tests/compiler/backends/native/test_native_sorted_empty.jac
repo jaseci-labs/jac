@@ -16,7 +16,7 @@ pattern.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
@@ -45,7 +45,7 @@ def sorted_engine -> ExecutionEngine {
 }
 
 def native_fn(name: str) -> object {
-    addr = sorted_engine().get_function_address(name);
+    addr = native_address(sorted_engine(), name);
     assert addr != 0 , f"'{name}' is not in the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
 }

@@ -474,7 +474,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
         _coll_want = coll_helpers["len"].function_type.args[0];
         if coll_val.type != _coll_want {
             if self._spec_from_container_ptr(coll_val.type) is None {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=collection,
                     kind="expression",
@@ -561,7 +561,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
 
     if unpack_target is not None {
         if not self._codegen_tuple_unpack(unpack_target.values, elem_val, None) {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=unpack_target,
                 kind="comprehension target",

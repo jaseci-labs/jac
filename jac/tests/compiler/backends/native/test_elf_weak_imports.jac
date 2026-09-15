@@ -57,7 +57,7 @@ def _weak_probe(shared: bool, provided: bool = False) {
             main_object = entry_obj.read_bytes();
         }
         assert ElfLinker.link(
-            obj_bytes=main_object,
+            objects=[main_object],
             output_path=str(output),
             needed_libs=needed_libs,
             shared=shared,
@@ -118,7 +118,7 @@ test "a strong reference remains required when merged with a weak reference" {
             }
             output = temp_dir / f"required_{reverse}.so";
             assert ElfLinker.link(
-                obj_bytes=sources[0].with_suffix(".o").read_bytes(),
+                objects=[sources[0].with_suffix(".o").read_bytes()],
                 output_path=str(output),
                 shared=True,
                 export_symbols=["weak_use", "strong_use"],

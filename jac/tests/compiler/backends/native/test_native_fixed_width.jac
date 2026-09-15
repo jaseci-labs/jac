@@ -8,7 +8,7 @@ fixtures/fixed_width_unsigned.jac and is JIT-compiled once.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
@@ -38,14 +38,14 @@ def engine -> ExecutionEngine {
 
 def probe(name: str) -> int {
     eng = engine();
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
 
 def probe_f(name: str) -> float {
     eng = engine();
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_double)(addr)();
 }

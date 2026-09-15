@@ -304,7 +304,7 @@ impl NaIRGenPass._codegen_bound_args(
         }
     }
     if _unpack_names {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="call argument unpacking",
@@ -315,7 +315,7 @@ impl NaIRGenPass._codegen_bound_args(
 
     callee_sig = self._callee_sig_of(nd, func);
     if kw_spreads and (callee_sig is None or callee_sig.kwargs is None) {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="call argument unpacking",
@@ -334,7 +334,7 @@ impl NaIRGenPass._codegen_bound_args(
                 continue;
             }
             if isinstance(p, tuple) and p and p[0] == "spread.list.val" {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="call argument unpacking",
@@ -447,7 +447,7 @@ impl NaIRGenPass._codegen_bound_args(
             } elif isinstance(chosen, tuple)
                 and chosen
                 and chosen[0] == "spread.list.val" {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="call argument unpacking",
@@ -519,7 +519,7 @@ impl NaIRGenPass._codegen_bound_args(
             } elif isinstance(chosen, tuple)
                 and chosen
                 and chosen[0] == "spread.list.val" {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="call argument unpacking",
@@ -582,7 +582,7 @@ impl NaIRGenPass._codegen_bound_args(
             } elif isinstance(chosen, tuple)
                 and chosen
                 and chosen[0] == "spread.list.val" {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="call argument unpacking",
@@ -649,7 +649,7 @@ impl NaIRGenPass._codegen_bound_args(
         for (_cname, _cmode) in _nc_entry[1] {
             _c_slot = self.local_vars.get(_cname);
             if _c_slot is None {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="function",
@@ -676,7 +676,7 @@ impl NaIRGenPass._codegen_bound_args(
     expected_argc = len(func.args) - self_offset;
     if len(args) > expected_argc {
         if len(args) > len(sig_params) {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="expression",
@@ -710,7 +710,7 @@ impl NaIRGenPass._emit_pack_slot_refusal(nd: uni.FuncCall, star: str) -> None {
     implementation, and positional binding against the real one is correct.
     """;
     _sink = "*args" if star == "*" else "**kwargs";
-    self.ctx.emit(
+    self.emit(
         E5092,
         node_override=nd,
         kind="variadic call",
@@ -741,7 +741,7 @@ impl NaIRGenPass._codegen_varargs_list(
     }
     helpers = self.list_helpers.get(spec) if spec is not None else None;
     if helpers is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="variadic parameter",
@@ -767,7 +767,7 @@ impl NaIRGenPass._codegen_varargs_list(
                 }
             }
             if _src_h is None {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="call argument unpacking",
@@ -812,7 +812,7 @@ impl NaIRGenPass._codegen_varargs_list(
         } else {
             v = self._codegen_expr(e);
             if v is None {
-                self.ctx.emit(
+                self.emit(
                     E5092, node_override=e, kind="expression", name="variadic argument"
                 );
                 continue;
@@ -852,7 +852,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
     }
     helpers = self.dict_helpers.get(dict_key) if dict_key is not None else None;
     if helpers is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="variadic parameter",
@@ -903,7 +903,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
             }
             v = self._codegen_expr(leftover[kname]);
             if v is None {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="expression",
@@ -936,7 +936,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
         sp_expr = _payload;
         sv = self._codegen_expr(sp_expr);
         if sv is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="call argument unpacking",
@@ -988,7 +988,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
         if not self._merge_dict_into(
             dv, sv, helpers, dict_key, _loc, skip_keys=_skip_dv
         ) {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="call argument unpacking",
@@ -1151,7 +1151,7 @@ impl NaIRGenPass._codegen_decorated_call(
 impl NaIRGenPass._emit_unsupported_builtin_call(
     nd: uni.FuncCall, func_name: str
 ) -> None {
-    self.ctx.emit(
+    self.emit(
         E5092,
         node_override=nd,
         kind="builtin call",
@@ -1163,7 +1163,7 @@ impl NaIRGenPass._emit_unsupported_builtin_call(
 impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
     params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if not params_l or any([isinstance(p, uni.KWPair) for p in params_l]) {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="builtin call",
@@ -1177,7 +1177,7 @@ impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
         cls_name = self._struct_name_of(nd);
     }
     if cls_name is None or cls_name not in self.struct_types {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="builtin call",
@@ -1251,7 +1251,7 @@ impl NaIRGenPass._codegen_intrinsic(
     };
     handler = _emitters.get(intr.dispatch);
     if handler is None {
-        self.ctx.emit(
+        self.emit(
             E9001,
             node_override=nd,
             pass_name="NaIRGenPass",
@@ -1275,7 +1275,7 @@ impl NaIRGenPass._emit_intrinsic_misuse(
             return;
         }
     }
-    self.ctx.emit(E5095, node_override=nd, name=intr.name, reason=reason);
+    self.emit(E5095, node_override=nd, name=intr.name, reason=reason);
 }
 
 impl NaIRGenPass._intrinsic_operand(
@@ -1525,7 +1525,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 }
             }
         }
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="distinct cast",
@@ -2170,7 +2170,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if _open_result is not None {
                 return _open_result;
             }
-            self.ctx.emit(E5092, node_override=nd, kind="function", name=func_name);
+            self.emit(E5092, node_override=nd, kind="function", name=func_name);
             return None;
         }
     }
@@ -2182,10 +2182,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if _alias_arch is not None and _alias_arch in self.struct_types {
         return self._codegen_instantiation(nd, type_name_override=_alias_arch);
     }
+    _skipped_key = f"{_mod_qual}.{func_name}" if _mod_qual is not None else func_name;
     if (
-        func_name in self._native_skipped_methods and func_name not in self.generic_fns
+        _skipped_key in self._native_skipped_methods
+        and func_name not in self.generic_fns
     ) {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="function",
@@ -2259,13 +2261,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 sig = binding.ast_node.signature;
             }
             if sig is None {
-                self.ctx.emit(
+                self.emit(
                     E5092, node_override=nd, kind="function signature", name=func_name
                 );
                 return None;
             }
             if sig.varargs is not None or sig.kwargs is not None {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="function",
@@ -2311,7 +2313,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if _call_kind != "builtin" {
-            self.ctx.emit(E5092, node_override=nd, kind="function", name=func_name);
+            self.emit(E5092, node_override=nd, kind="function", name=func_name);
         }
         return None;
     }
@@ -2573,7 +2575,7 @@ impl NaIRGenPass._isinstance_target_names(
             continue;
         }
         if not reduced or pyb_operand {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="builtin call",
@@ -2832,7 +2834,7 @@ impl NaIRGenPass._emit_isinstance_core(
         names, self._isinstance_operand_arch(nd, operand)
     );
     if _short is not None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="builtin call",
@@ -3485,7 +3487,7 @@ impl NaIRGenPass._call_args_lowered(
         if coerced[_i].type == func.args[_i].type {
             continue;
         }
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="call argument",
@@ -3601,13 +3603,13 @@ impl NaIRGenPass._codegen_sized_builtin_call(
 impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {
     params_l = list(nd.params or []);
     if len(params_l) != 1 or isinstance(params_l[0], uni.KWPair) {
-        self.ctx.emit(E5092, node_override=nd, kind="take() call", name="take");
+        self.emit(E5092, node_override=nd, kind="take() call", name="take");
         return None;
     }
     _place = params_l[0];
     _slot = self._codegen_place_ptr(_place);
     if _slot is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=_place,
             kind="take() place",
@@ -3624,7 +3626,7 @@ impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {
 impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
     params_l = list(nd.params or []);
     if len(params_l) != 2 or any([isinstance(_p, uni.KWPair) for _p in params_l]) {
-        self.ctx.emit(E5092, node_override=nd, kind="swap() call", name="swap");
+        self.emit(E5092, node_override=nd, kind="swap() call", name="swap");
         return None;
     }
     _slots: list[ir.Value] = [];
@@ -3632,7 +3634,7 @@ impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
         _place = _p.operand if isinstance(_p, uni.UnaryExpr) else _p;
         _slot = self._codegen_place_ptr(_place, allow_inline=True);
         if _slot is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=_place,
                 kind="swap() place",
@@ -3644,7 +3646,7 @@ impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
         _slots.append(_slot);
     }
     if _slots[0].type != _slots[1].type {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="swap() operands",

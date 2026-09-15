@@ -8,7 +8,7 @@ impl NaIRGenPass._require_trace_fn(
         return;
     }
     if participates and not has_trace {
-        self.ctx.emit(
+        self.emit(
             E9002,
             node_override=self.module,
             details=(

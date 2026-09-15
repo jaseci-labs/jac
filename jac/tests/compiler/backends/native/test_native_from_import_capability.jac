@@ -41,18 +41,16 @@ import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_address }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
 
-"""Forced-native options that skip the IR cache."""
+"""Forced-native compile options."""
 def _opts -> CompileOptions {
-    return CompileOptions(
-        force_codespace='native', force_target_program=True, no_ir_cache=True
-    );
+    return CompileOptions(force_codespace='native');
 }
 
 
@@ -120,7 +118,7 @@ def _codes(prog: any) -> list[str] {
 def _native_int_fn(ir: any, name: str) -> any {
     eng = ir.gen.native_engine;
     assert eng is not None , f"no native engine for '{name}'";
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
 }
@@ -238,20 +236,22 @@ test "a mixed typing import is still judged per name" {
 
 
 test "a consumer links a ClassVar-importing dependency" {
-    (prog, ir, coverage) = _compile_with_coverage("classvar_marker_consumer.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , (
-        "no native IR for a module whose dependency's only compile-time "
-        "import is `ClassVar`"
-    );
-    members = sorted({os.path.basename(p) for p in coverage});
-    assert "classvar_marker_dep.jac" in members , (
-        f"the dependency has to be in the consumer's native closure, not "
-        f"refused at placement and left to Python: {members}"
-    );
-    assert _native_int_fn(ir, "run")() == 42 , (
-        "the linked dependency has to answer across the native edge"
-    );
+    for _ in range(2) {
+        (prog, ir, coverage) = _compile_with_coverage("classvar_marker_consumer.jac");
+        assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+        assert ir is not None and ir.gen.llvm_ir , (
+            "no native IR for a module whose dependency's only compile-time "
+            "import is `ClassVar`"
+        );
+        members = sorted({os.path.basename(p) for p in coverage});
+        assert "classvar_marker_dep.jac" in members , (
+            f"the dependency has to be in the consumer's native closure, not "
+            f"refused at placement and left to Python: {members}"
+        );
+        assert _native_int_fn(ir, "run")() == 42 , (
+            "the linked dependency has to answer across the native edge"
+        );
+    }
 }
 
 

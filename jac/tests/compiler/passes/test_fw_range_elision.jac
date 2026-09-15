@@ -65,9 +65,7 @@ test "an operation at the operand width is never marked, whatever it flows into"
             TESTS_DIR, "compiler", "passes", "fixtures", "checker", "_elide_probe.jac"
         ),
         use_str=src,
-        options=CompileOptions(
-            no_cgen=True, force_codespace="server", force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, force_codespace="server")
     );
     marks = [nd.fw_safe for nd in ir.get_all_sub_nodes(BinaryExpr)];
     assert marks == [False, False] , (

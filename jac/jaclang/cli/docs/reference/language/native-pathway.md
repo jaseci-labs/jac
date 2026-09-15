@@ -830,6 +830,8 @@ Under the managed profiles (`managed`, `rc`) a heap value carries a reference co
 
 There is a third allocation lane alongside reference counting and headerless owned codegen: objects, nodes, and edges constructed while an [`in <handle> { }` region](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) is open are bump-allocated into that region and freed together when it closes.
 
+The arena runtime, `runtime/region_native.jac`, is a native unit carried into the link plan by dependency edges. Its `:pub` `__jac_region_*` functions provide the C ABI used by generated code.
+
 ### Zero-RC ownership compilation
 
 For a module written against the [ownership and borrow-checking surface](ownership-borrowing.md), memory management compiles to what Rust would emit: an allocation at construction, a free at a statically determined drop point, and **no reference counting or collector in the binary at all** -- and the absence of that machinery is checkable in the artifact. Three pieces turn this into a compile-time contract rather than a best-effort optimization:
@@ -917,9 +919,9 @@ Assert messages in native tests are limited to string literals: `assert cond, "m
 
 ## Build Options and Artifact Identity
 
-The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/compiler/driver/compile_options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then environment override, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
+The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/compiler/driver/compile_options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
 
-The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The fingerprint participates in artifact identity: it is folded into the JIR module cache key and into the native import IR cache key, so flipping any codegen option re-keys the artifact and a stale build is never served. Each native import artifact is stamped with the fingerprint of the options that built it; a cached module whose stamp disagrees with the current build is rejected with `E5027` instead of being linked into a mixed-options binary.
+The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The identity participates in artifact identity: every native section of a module's JIR (`SEC_NIFACE`, `SEC_NOBJ`, `SEC_NBITCODE`) is stamped with the compiler digest, the codegen identity and the target triple of the compile that produced it, and the native reader treats a section under any other stamp as absent, so flipping any codegen option rebuilds the unit and a stale product is never linked. The link plan's digest folds every unit's stamp, so an artifact records exactly which identity built it.
 
 ### Codegen options (part of the fingerprint)
 
@@ -933,6 +935,83 @@ The codegen options carry a canonical identity string and a short hash of it, th
 | `[native] threads` | run time: `JAC_THREADS` | The `flow for` width compiled into the binary (default 4). |
 
 No compile-time environment variable sets behavior. The diagnostic surfaces that used to hide behind environment variables are verbs: `jac explain ir <file>` writes the final optimized IR beside the source and prints the symbol map, `jac explain memory <file>` prints the inferred ownership facts, move sites, and release points, and `jac explain placement <file>` prints every element's codespace with the evidence that decided it.
+
+### The native unit model
+
+The module is the native unit. Every native-locked module's JIR carries
+native sections beside its bytecode and type interface: `SEC_NIFACE`, the
+unit's native interface (exports with their link symbols, class layouts,
+initializer, demoted symbols, C library needs, direct native dependencies;
+digest-prefixed exactly as the type interface is), and `SEC_NOBJ`, its
+relocatable object, plus `SEC_NBITCODE`, its bitcode. The native sections
+are keyed by the module's content key plus a stamp of the compiler digest,
+codegen identity and target triple in their own header, so a module the
+compiler runs as bytecode and the kernel links as a native unit keeps both
+products in one entry. Dependents record each native dependency's interface
+digest in `SEC_NDEPS`; a body edit rebuilds one object, an interface edit
+rebuilds the dependents.
+
+Symbols are module-qualified: every external symbol that is not `:pub` is
+emitted as `<unit prefix>.<name>` (methods `<prefix>.Class.method`), where
+the prefix is the safe form of the unit's module key. `:pub` symbols keep
+bare names, the C ABI a library promises. Two modules defining the same Jac
+name therefore never collide at link time; `E5026` remains for two `:pub`
+exports of one name in one link.
+
+Bundled `na_stdlib` shims retain qualified symbols even for their public
+Jac APIs. Their public names (for example `hashlib.new` and `hmac.new`)
+belong to separate library modules and are not bare C ABI exports.
+
+Every native artifact is produced by one link plan
+(`compiler/backends/native/link_plan.jac`; the design and its reasons are
+recorded in the [Native Units](../../internals/native-units.md) internals
+page). It resolves roots (an entry
+module, the kernel root `jc_unit`, or every native unit of a sealed
+package), walks the native edges recorded in `SEC_NDEPS` dependencies
+first, analyzes stale units in an owned compiler session and reuses those
+analyzed trees while settling cycles, checks that every unit's recorded
+dependency digests agree with the plan and recompiles affected strongly connected
+components until their interfaces settle, rejecting repeated inconsistent states, orders initializers topologically, synthesizes one
+glue object holding `jac_entry` / `__jac_shared_init`, the platform entry
+point and the `jac_retain` / `jac_release` / `jac_str_new` wrappers (each
+wrapper only when a unit defines its target), and links. Two modes read different
+sections of the same entries: `objects`, the incremental default, links the
+units' relocatable objects; `bitcode` links every unit's bitcode into one
+LLVM module and optimizes it whole-program before a single codegen (the
+release lane; also what the in-process JIT, PE and wasm targets use).
+Select it per build with `jac build --native --link-mode bitcode` or
+`[native] link_mode = "bitcode"` in `jac.toml`. The plan writes a digest over every unit's
+keys and stamps beside the artifact and into the `<lib>.layout.json`
+sidecar, which is the merge of the units' class layouts.
+
+### The native scope and the kernel
+
+The compiler modules the kernel links are listed in
+`jaclang/compiler/native_scope.jac` (`NATIVE_SCOPE`); they are native units
+and bytecode units at once, and the kernel root (`jc_unit`) is native only.
+Whether a compile treats the scope as native is `CompileOptions.native_unit`,
+set by the link plan for the compiles it requests; there is no process-global
+mode flag. The kernel comes from one lookup, `resolve_kernel()`
+(`compiler/backends/native/kernel_resolve.jac`), with a fixed precedence:
+`JAC_COMPILER_LIB` as a path (must carry its sidecar) or `off` (the store
+parser), then a sealed image's `native` record (artifact, sha256, layout
+and plan digests; missing or mismatched is a startup error), then the
+kernel beside `native_compiler.jac` when the source key its sidecar records
+(the compiler digest plus the module key of every unit it was linked from)
+equals the one the sources have now, otherwise a rebuild through the plan in
+a child `jac` process under a lock with the store parser serving meanwhile,
+and finally the store parser when there is no native toolchain. `zig build
+-Ddev` needs no kernel step: the first parse derives it, and accepting an
+existing kernel costs one content hash per unit and no plan. A demotion inside a scoped module is routing,
+recorded in the module's own JIR, never a refusal. The historical
+`JAC_NO_SEAL` override is gone; setting it against a sealed image is itself a
+startup error.
+
+Toolchain location variables are read through the same boundary module, never inside passes: `JAC_LLVM_SHIM`, `JAC_LLVM_TYPED_POINTERS` (with `LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS` honored as a fallback), `JAC_NATIVE_WASM_LIBC_DIR`, `JAC_NATIVE_MUSL_DIR`, `JAC_NATIVE_FLOOR_DIR`, `JAC_NATIVE_CA_BUNDLE`.
+
+The compiled binary uses `JAC_GC` for runtime collector diagnostics.
+
+---
 
 ## Debugging
 

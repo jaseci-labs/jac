@@ -1,4 +1,5 @@
 import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.driver.native_iface { NativeIface, NativeExport }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;
@@ -37,6 +38,7 @@ import from jaclang.compiler.frontend.constant {
     Tokens as Tok
 }
 import from jaclang.compiler.frontend.diagnostics {
+    DiagnosticInfo,
     E5026,
     E5060,
     E5088,
@@ -61,6 +63,7 @@ import from jaclang.compiler.type_registry { JacTypeEntry }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.types.types {
     ClassType,
+    ModuleType,
     Parameter,
     TypeBase,
     UnionType,
@@ -263,12 +266,20 @@ walker NaIRGenPass {
         _osp_thunk_uid: int = 0,
         imported_osp_archs: dict[str, tuple[str, str]] = {},
         _osp_kernel_mod: (object | None) = None,
+        _osp_graph_mod: (object | None) = None,
         _fmt_kernel_mod: (object | None) = None,
         _osp_rt_global: (ir.GlobalVariable | None) = None,
         _osp_setup_fn: (ir.Function | None) = None,
         _osp_ensure_fn: (ir.Function | None) = None,
-        _osp_kernel_inited_gv: (ir.GlobalVariable | None) = None,
-        _osp_kernel_glob_init_fn: (ir.Function | None) = None,
+        _unit_prefix: str = "",
+        _unit_prefixes: dict[str, str] = {},
+        _native_dep_paths: list[str] = [],
+        _typed_only_imports: set[str] = set(),
+        _full_ast_cache: dict[str, uni.Module] = {},
+        _pub_symbols: set[str] = set(),
+        _unit_exports: dict[str, NativeExport] = {},
+        _demoted_names: set[str] = set(),
+        _lowering_issues: list[NativeLoweringIssue] = [],
         tuple_types: dict[str, ir.LiteralStructType] = {},
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
@@ -378,6 +389,7 @@ walker NaIRGenPass {
         di_cu: object = None,
         _di_current_sp: object = None,
         _func_loc: dict[str, int] = {},
+        _func_def_mod: dict[str, str] = {},
         _module_functions: dict[tuple[str, str], ir.Function] = {},
         _linked_fn_decls: dict[int, tuple[ir.Function | None, uni.Ability]] = {},
         _pyb_base_memo: dict[str, tuple[str, str] | None] = {},
@@ -948,6 +960,36 @@ walker NaIRGenPass {
     ) -> None;
 
     def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
+    def _own_prefix -> str;
+    def _prefix_of_module(mod: (uni.Module | None)) -> str;
+    def _prefix_of_path(path: str) -> str;
+    def _symbol_for(
+        name: str, owner: (uni.Module | None) = None, is_pub: bool = False
+    ) -> str;
+
+    def _record_export(
+        name: str, symbol: str, kind: str, is_pub: bool = False
+    ) -> None;
+
+    def _note_native_dep(path: str) -> None;
+    def _is_catalog_module(mod: uni.Module) -> bool;
+    def _full_ast_of(full_path: str) -> (uni.Module | None);
+    def _dep_iface(imported_mod: uni.Module) -> (NativeIface | None);
+    def _load_native_unit_module(path: str) -> (uni.Module | None);
+    def _is_kernel_unit -> bool;
+    def _record_lowering_issue(issue: NativeLoweringIssue) -> None;
+    def _export_native_iface -> None;
+    def _build_class_layouts -> dict[str, any];
+    def _osp_kernel_init_fns -> list[ir.Function];
+    def _vtable_symbol(arch_name: str) -> str;
+    def emit(
+        diag: DiagnosticInfo,
+        node_override: (uni.UniNode | None) = None,
+        related: (list[tuple[str, uni.UniNode]] | None) = None,
+        help_text: (str | None) = None,
+        **kwargs: any
+    ) -> bool;
+
     def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
@@ -1526,13 +1568,19 @@ walker NaIRGenPass {
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_archetypes(module: uni.Module) -> None;
-    def _codegen_archetype(nd: uni.Archetype) -> None;
-    def _register_static_fields(arch_name: str, archhas: uni.ArchHas) -> None;
+    def _codegen_archetype(nd: uni.Archetype, imported: bool = False) -> None;
+    def _register_static_fields(
+        arch_name: str,
+        archhas: uni.ArchHas,
+        owner: (uni.Module | None) = None,
+        imported: bool = False
+    ) -> None;
+
     def _register_class_consts(
         nd: uni.Archetype, arch_name: str, block: uni.ModuleCode
     ) -> None;
 
-    def _build_jc_layout -> str;
+    def _build_jc_layout -> dict[str, any];
     def _register_one_class_const(
         arch_name: str,
         fname: str,

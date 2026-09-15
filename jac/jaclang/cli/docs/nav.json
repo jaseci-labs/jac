@@ -215,7 +215,8 @@
         {"title": "The Analysis Cache", "page": "internals/analysis-cache.md"},
         {"title": "Cross-Codespace Interop", "page": "internals/interop.md"},
         {"title": "Region-Granular Persistence Design", "page": "internals/region-persistence-design.md"},
-        {"title": "Compact Codegen IR", "page": "internals/codegen-ir.md"}
+        {"title": "Compact Codegen IR", "page": "internals/codegen-ir.md"},
+        {"title": "Native Units", "page": "internals/native-units.md"}
       ]
     },
     {"title": "Ask Jac GPT ✨", "url": "https://jac-gpt.jaseci.org"}

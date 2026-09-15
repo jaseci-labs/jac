@@ -1,3 +1,4 @@
+import type from jaclang.runtime.native_library { SharedNativeEngine }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import ast as py_ast;
@@ -12,9 +13,10 @@ import from jaclang.compiler.frontend.unitree { ability_of_symbol }
 import from jaclang.compiler.driver.jir {
     SEC_BYTECODE,
     SEC_MTIR,
-    SEC_LLVM_IR,
     SEC_INTEROP,
-    SEC_NATIVE_OBJ,
+    SEC_NBITCODE,
+    SEC_NIFACE,
+    SEC_NOBJ,
     SEC_PLACEMENT,
     SEC_IFACE,
     SEC_CLIENT,
@@ -104,7 +106,6 @@ obj JacCompiler {
         _stub_catalog: StubCatalog | None = None,
         _stub_catalog_tried: bool = False,
         stub_catalog_disabled: bool = False,
-        _stub_trees_served: bool = False,
         unit_collect: bool = True;
 
     has selfhost: SelfHostCache { getter; }
@@ -147,20 +148,14 @@ obj JacCompiler {
     def _cached_client_artifact(full_target: str) -> (ClientArtifact | None);
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
+    def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,
-        cached_ir: str,
         cached_interop: (dict[str, any] | None)
     ) -> None;
 
-    def _load_native_from_bitcode(
-        full_target: str,
-        target_program: JacProgram,
-        section_data: bytes,
-        cached_interop: (dict[str, any] | None)
-    ) -> None;
-
+    def _sealed_native_engine(full_target: str) -> (SharedNativeEngine | None);
     def _restore_sections(
         full_target: str,
         actual_program: JacProgram,
@@ -188,6 +183,10 @@ obj JacCompiler {
     def stamp_access_check_facts(mod: uni.Module) -> None;
     def stamp_native_import_facts(mod: uni.Module, target_program: JacProgram) -> None;
     def _persist_module_cache(
+        full_target: str, result: uni.Module, actual_program: JacProgram
+    ) -> None;
+
+    def _persist_native_unit(
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;
 

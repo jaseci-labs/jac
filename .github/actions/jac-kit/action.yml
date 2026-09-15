@@ -50,5 +50,5 @@ runs:
         WORK="$(mktemp -d)"
         printf 'with entry { print(6*7); }\n' > "$WORK/warm.jac"
         out="$(jac run "$WORK/warm.jac" 2>&1)" || { echo "$out"; exit 1; }
-        echo "$out" | tail -3
-        echo "$out" | grep -q 42
+        tail -3 <<<"$out"
+        grep -q 42 <<<"$out"

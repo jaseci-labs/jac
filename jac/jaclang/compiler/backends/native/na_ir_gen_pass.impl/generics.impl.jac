@@ -343,7 +343,7 @@ impl NaIRGenPass._solve_ct_args(
             chosen = p.value;
         }
         if chosen is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="call argument",
@@ -354,7 +354,7 @@ impl NaIRGenPass._solve_ct_args(
         }
         (ok, v) = self._ct_value_with_bindings(chosen);
         if not ok {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=chosen,
                 kind="argument for comptime parameter",
@@ -394,7 +394,7 @@ impl NaIRGenPass._instantiate_generic(
     ability = self.generic_fns[func_name];
     solution = self._solve_generic_call(ability, nd);
     if solution is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="function",
@@ -442,6 +442,7 @@ impl NaIRGenPass._instantiate_generic(
 impl NaIRGenPass._stamp_mono_fn(
     ability: uni.Ability, spec_name: str, memo_key: str
 ) -> (ir.Function | None) {
+    self.module.record_comptime_dependency(ability.loc.mod_path, body=True);
     name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
     sig = ability.signature;
     if not isinstance(sig, uni.FuncSignature) {
@@ -555,7 +556,7 @@ impl NaIRGenPass._instantiate_generic_method(
     ability = self._generic_methods[f"{owner_arch}.{method_name}"];
     solution = self._solve_generic_call(ability, nd);
     if not solution {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="method",
@@ -599,6 +600,7 @@ impl NaIRGenPass._stamp_mono_method(
     spec_name: str,
     memo_key: str
 ) -> (ir.Function | None) {
+    self.module.record_comptime_dependency(ability.loc.mod_path, body=True);
     full_name = f"{arch_name}.{method_name}";
     if full_name in self._native_skipped_methods {
         return None;
@@ -609,7 +611,7 @@ impl NaIRGenPass._stamp_mono_method(
         or not isinstance(sig, uni.FuncSignature)
         or ability.is_static
         or ability.is_classmethod {
-        self.ctx.emit(E5092, node_override=ability, kind="method", name=full_name);
+        self.emit(E5092, node_override=ability, kind="method", name=full_name);
         return None;
     }
     param_types: list[ir.Type] = [struct_type.as_pointer()];
@@ -676,6 +678,9 @@ impl NaIRGenPass._find_source_ability(
         } finally {
             self.prog.options = _saved_opts;
         }
+    }
+    if imported_mod is not None and self._is_catalog_module(imported_mod) {
+        imported_mod = self._full_ast_of(full_path);
     }
     if imported_mod is None {
         return None;

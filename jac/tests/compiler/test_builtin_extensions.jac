@@ -20,9 +20,7 @@ test "chunk signatures preserve list element types" {
     program.compile(
         file_path="chunk_types.jac",
         use_str="def split(xs: list[str]) -> list[list[str]] { return xs.chunks(2); }",
-        options=CompileOptions(
-            no_cgen=True, no_ir_cache=True, force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, no_ir_cache=True)
     );
     assert not program.errors_had , str(program.errors_had);
 }
@@ -32,9 +30,7 @@ test "chunk signatures reject an invalid chunk size" {
     program.compile(
         file_path="chunk_size.jac",
         use_str="def split(xs: list[int]) -> list[list[int]] { return xs.chunks(\"bad\"); }",
-        options=CompileOptions(
-            no_cgen=True, no_ir_cache=True, force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, no_ir_cache=True)
     );
     assert any("Cannot assign" in str(error) for error in program.errors_had);
 }

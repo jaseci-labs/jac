@@ -1422,7 +1422,7 @@ impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.T
         _tag = type_expr?.type_tag;
         _label = self._get_name(_tag?.tag) or str(tb);
     }
-    self.ctx.emit(
+    self.emit(
         E5092, node_override=type_expr, kind=self._sig_decl_kind or "type", name=_label
     );
 
@@ -2357,7 +2357,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
         if _src_is_fn {
             if self._pending_lambda_captures is not None {
                 self._pending_lambda_captures = None;
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     kind="expression",
                     name="capturing lambda used as a value",
@@ -2411,7 +2411,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             if _lc_re is not None {
                 return _lc_re;
             }
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=self.module,
                 kind="coercion",
@@ -2561,7 +2561,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                     return ir.Constant(target_type, val.constant);
                 }
             }
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=self.ctx.current_node,
                 kind="silent narrowing",
@@ -3027,7 +3027,7 @@ impl NaIRGenPass._emit_binary_op(
 
     if self?.jacval_type
         and (left.type == self.jacval_type or right.type == self.jacval_type) {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=self.ctx.current_node,
             kind="binary operator",
@@ -3080,7 +3080,7 @@ impl NaIRGenPass._emit_binary_op(
     } else {
         if not isinstance(left.type, ir.IntType)
             or not isinstance(right.type, ir.IntType) {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=self.ctx.current_node,
                 kind="integer operator layout",
@@ -3101,7 +3101,7 @@ impl NaIRGenPass._emit_binary_op(
             return self.builder.ashr(left, right, name="ashr");
         }
         if left.type != right.type {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=self.ctx.current_node,
                 kind="integer operator layout",
@@ -3154,7 +3154,7 @@ impl NaIRGenPass._emit_binary_op(
         return self.builder.or_(left, right, name="or");
     }
 
-    self.ctx.emit(
+    self.emit(
         E5092, node_override=self.ctx.current_node, kind="binary operator", name=op
     );
     return None;
@@ -3467,7 +3467,7 @@ impl NaIRGenPass._emit_mixed_jacval_comparison(
             _left_boxed
         );
     }
-    self.ctx.emit(
+    self.emit(
         E5090,
         kind="comparison",
         name=f"tagged `any` value against {_peer}",
@@ -3803,7 +3803,7 @@ impl NaIRGenPass._emit_comparison(
 
                 if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
                     if self?.jacval_type and lcmp_et == self.jacval_type {
-                        self.ctx.emit(
+                        self.emit(
                             E5092,
                             kind="comparison",
                             name="ordering on tagged-element lists"
@@ -4137,7 +4137,7 @@ impl NaIRGenPass._emit_comparison(
         if op in icmp_map {
             if not isinstance(left.type, ir.IntType)
                 or not isinstance(right.type, ir.IntType) {
-                self.ctx.emit(
+                self.emit(
                     E5090,
                     kind="comparison",
                     name=f"{left.type} against {right.type}",
@@ -4147,7 +4147,7 @@ impl NaIRGenPass._emit_comparison(
             }
             (left, right) = self._unify_int_widths(left, right);
             if left.type != right.type {
-                self.ctx.emit(
+                self.emit(
                     E5090,
                     kind="comparison",
                     name=f"{left.type} against {right.type}",

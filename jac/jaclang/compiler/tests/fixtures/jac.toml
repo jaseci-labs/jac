@@ -307,6 +307,7 @@
 "prim_socket.socket_cl" = "client"
 "prim_socket.socket_refused_caught_na" = "native"
 "prim_socket.socket_status_na" = "native"
+"prim_socket.socket_ipv6_family_na" = "native"
 "prim_socket.socket_total_na" = "native"
 "prim_ssl.from:socket" = "native"
 "prim_ssl.from:ssl" = "native"
