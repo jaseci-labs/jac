@@ -2,7 +2,21 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.16 (Latest Release)
+## jaclang 0.37.17 (Latest Release)
+
+### Breaking Changes
+
+- **Breaking: byLLM's `MockLLM` now parses replies like a real model**: queue typed answers as values (`36`, not `"36"`), offer the tools a `MockToolCall` names, and pass replies directly with `MockLLM(outputs=[...])`.
+
+### Bug Fixes
+
+- **Fix: comparing an optional to a number no longer erases its type**: after `if x == 0` (or `x != 0`) on a value typed `int | None`, the checker treated `x` as `None` for the rest of the function. That let an `int` be bound to a `None`-typed name and returned from a `-> None` function with nothing reported, so wrong values passed the checker, and later `is None` guards reasoned from the collapsed type. A comparison against a value now narrows only on the branch that confirms the value; the useful direction of each form is unchanged.
+- **Fix: byLLM counts a streamed call that reports no usage**: the usage event no longer shows `requests: 0` for a call that happened.
+- **Fix: byLLM no longer prints litellm's provider-list hint** on every call to a model name litellm cannot map.
+- **Fix: `jac check` no longer stops with "No scope found"** when the endpoint effect pass meets a call whose name has no scope; that endpoint is recorded with unknown effects instead.
+- **Fix: CPython release launcher on macOS**: Find static libraries and CA certificates in CPython build trees, and pin the launcher to its selected runtime's libraries so it can start without external `libzstd.dylib` or `libcrypto.dylib` files.
+
+## jaclang 0.37.16
 
 ### Bug Fixes
 
