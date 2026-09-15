@@ -73,6 +73,8 @@ async def:pub jacLogin(
 
 def:pub jacLogout -> None;
 def:pub jacIsLoggedIn -> bool;
+def:pub jacSetToken(token: str) -> None;
+def:pub useJacState(initial: any) -> any;
 
 def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
 

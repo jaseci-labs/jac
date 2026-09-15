@@ -359,8 +359,7 @@ impl jacLogin(
             console.warn("Failed to extract login token:", e);
         }
         if token {
-            __jacClearCache();
-            globalThis.__jacSetLocalStorage__("jac_token", token);
+            jacSetToken(str(token));
             return True;
         }
     }
@@ -375,6 +374,42 @@ impl jacLogout -> None {
 impl jacIsLoggedIn -> bool {
     token = globalThis.__jacGetLocalStorage__("jac_token");
     return token != None and token != "";
+}
+
+impl jacSetToken(token: str) -> None {
+    __jacClearCache();
+    globalThis.__jacSetLocalStorage__("jac_token", token);
+}
+
+impl useJacState(initial: any) -> any {
+    ref = React.useRef(None);
+    if ref.current == None {
+        cell: dict[str, any] = {"val": initial, "version": 0, "listeners": []};
+        cell["subscribe"] = lambda (cb: any) {
+            cell["listeners"].append(cb);
+            return lambda {
+                idx = cell["listeners"].indexOf(cb);
+                if idx > -1 {
+                    cell["listeners"].splice(idx, 1);
+                }
+            };
+        };
+        cell["getVersion"] = lambda { return cell["version"]; };
+        cell["set"] = lambda (v: any) {
+            if Object.`is(cell["val"], v) {
+                return;
+            }
+            cell["val"] = v;
+            cell["version"] = cell["version"] + 1;
+            for cb in cell["listeners"].slice() {
+                cb();
+            }
+        };
+        ref.current = cell;
+    }
+    store = ref.current;
+    React.useSyncExternalStore(store["subscribe"], store["getVersion"]);
+    return store;
 }
 
 impl useJacForm(form_mode: str, schema: any) -> any {
