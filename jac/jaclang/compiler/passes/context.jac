@@ -1,4 +1,3 @@
-import from contextlib { ExitStack }
 import from jaclang.compiler.frontend.srcloc { CodeLocInfo, Span }
 import from jaclang.compiler.frontend.diagnostics {
     DiagnosticInfo,
@@ -60,7 +59,7 @@ obj CompileContext {
         time_taken: float = 0.0,
         nested_depth: int = 0,
         policy: (DiagnosticPolicy | None) = None,
-        resources: ExitStack = ExitStack();
+        resources: any = None;
 
     def emit(
         diag: DiagnosticInfo,

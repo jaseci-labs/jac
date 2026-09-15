@@ -1,4 +1,5 @@
 import time;
+import from contextlib { ExitStack }
 import from jaclang.compiler.frontend.unitree { UniNode }
 import from jaclang.compiler.passes.context {
     CompileContext,
@@ -24,7 +25,8 @@ def run_walker(
         cancel_requested=cancel_requested,
         policy=policy,
         errors_had=errors_had if errors_had is not None else [],
-        warnings_had=warnings_had if warnings_had is not None else []
+        warnings_had=warnings_had if warnings_had is not None else [],
+        resources=ExitStack()
     );
     walk = walker_type(module=module, ctx=ctx, **kwargs);
     if completed is not None {

@@ -20,8 +20,10 @@ The driver calls `run_walker` to construct and spawn a walker within a timed
 resource scope. It separately owns schedule validation, analysis facts, cached
 results, completion tracking, and delivery of diagnostics. Standalone callers
 can use `run_walker` without a program or construct and spawn a walker directly.
-Callers using temporary resources must enclose direct spawning in
-`with ctx.resources` so cleanup also runs on exceptions.
+Callers using temporary resources supply `resources=ExitStack()` when creating
+the context and enclose direct spawning in `with ctx.resources` so cleanup also
+runs on exceptions. The execution helper supplies this Python resource scope;
+native compiler walkers leave it unset.
 
 Type checking and Python code generation sometimes synchronously traverse an
 attached implementation with the same walker. They use `ctx.walk_subtree` to
