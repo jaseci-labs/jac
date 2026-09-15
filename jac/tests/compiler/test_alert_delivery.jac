@@ -45,6 +45,7 @@ glob PROBE_ERR = DiagnosticInfo(
 walker ProbeEmitPass {
     has ctx: CompileContext,
         module: uni.Module;
+
     static has HOST_PASS: bool = True;
     has prog: JacProgram,
         mid_run_prog_errors: int = -1,

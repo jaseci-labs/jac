@@ -78,6 +78,7 @@ walker JacAutoLintPass(TreeWalker) {
         _pending_setters: list[dict[str, str]] = [],
         _base_decl_cache: list[uni.Archetype] = [],
         _base_decls_loaded: bool = False;
+
     static has HOST_PASS: bool = True;
 
     def postinit -> None;

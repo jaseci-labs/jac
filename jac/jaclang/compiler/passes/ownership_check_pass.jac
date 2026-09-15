@@ -127,6 +127,7 @@ walker OwnershipCheckPass {
         receiver_modes: dict[int, OwnershipKind] = {},
         receiver_probe: set[int] = set(),
         arch_view_syms: set[SymId] = set();
+
     static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;

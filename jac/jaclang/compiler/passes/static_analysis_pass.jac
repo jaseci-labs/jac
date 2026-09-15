@@ -264,6 +264,7 @@ walker StaticAnalysisPass {
         prog: JacProgram,
         module: Module,
         _checked_scopes: set[int] = set();
+
     static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;

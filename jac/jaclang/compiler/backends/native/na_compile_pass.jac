@@ -76,6 +76,7 @@ walker NativeCompilePass {
     has ctx: CompileContext,
         module: uni.Module,
         prog: JacProgram;
+
     static has HOST_PASS: bool = True;
 
     def postinit -> None;

@@ -7,6 +7,7 @@ walker AppContextPass {
     has ctx: CompileContext,
         module: Module,
         prog: JacProgram;
+
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -19,6 +20,7 @@ walker AbsorbImportsPass {
     has ctx: CompileContext,
         module: Module,
         prog: JacProgram;
+
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -30,6 +32,7 @@ walker BoundaryFactsPass {
     has ctx: CompileContext,
         module: Module,
         prog: JacProgram;
+
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -41,6 +44,7 @@ walker NativeImportFactsPass {
     has ctx: CompileContext,
         module: Module,
         prog: JacProgram;
+
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
