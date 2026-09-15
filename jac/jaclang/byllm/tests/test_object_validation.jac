@@ -1,5 +1,4 @@
 import from pydantic { TypeAdapter, ValidationError }
-import from jaclang.runtime.object_model { field }
 
 obj AdapterChild {
     has name: str;
@@ -8,7 +7,7 @@ obj AdapterChild {
 obj AdapterParent {
     has child: AdapterChild,
         count: int = 2,
-        tags: list[str] = field(default_factory=`list);
+        tags: list[str] = [];
 }
 
 obj AdapterLink {

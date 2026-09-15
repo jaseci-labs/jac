@@ -12,7 +12,6 @@ import contextlib;
 import io;
 import unittest.mock;
 import types;
-import dataclasses;
 import litellm;
 import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.lib { Model, MockLLM }
@@ -37,10 +36,12 @@ glob MODEL = "gpt-4o-mini",
          "dispatch_streaming_with_tools",
          "dispatch_streaming",
          "adispatch_streaming"
-     ],
-     _Person = dataclasses.make_dataclass(
-         "UsageTestsPerson", [("name", str), ("age", int)]
-     );
+     ];
+
+obj _Person {
+    has name: str,
+        age: int;
+}
 
 
 def step_a -> str {
@@ -120,7 +121,7 @@ def _finish_env(arguments: str, usage: dict[str, any]) -> tuple[any, ...] {
 }
 
 
-def _with_callback(cb: Callable, fn: Callable) -> object {
+def _with_callback(cb: Callable[[dict[str, any]], None], fn: Callable) -> object {
     original = _agent_callbacks.copy();
     _agent_callbacks.clear();
     register_agent_callback(cb);

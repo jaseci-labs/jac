@@ -1,34 +1,31 @@
-"""Unit tests for the typecache module (cached dataclass field-type introspection)."""
+"""Unit tests for the typecache module (cached object-model field-type introspection)."""
 
-import from dataclasses { dataclass, field }
 import from uuid { UUID, uuid4 }
 import from jaclang.runtime.typecache { get_field_types, invalidate, clear }
 import from jaclang.runtime.constructs { Root }
 
 
-@dataclass
-class _Simple {
-    name: str = "";
-    count: int = 0;
-    ratio: float = 0.0;
+obj _Simple {
+    has name: str = "",
+        count: int = 0,
+        ratio: float = 0.0;
 }
 
 
-@dataclass
-class _WithGenerics {
-    tags: list[str] = field(default_factory=list);
-    meta: dict[str, int] = field(default_factory=dict);
-    uid: UUID = field(default_factory=uuid4);
-    maybe: (int | None) = None;
+obj _WithGenerics {
+    has tags: list[str] = [],
+        meta: dict[str, int] = {},
+        uid: UUID = uuid4(),
+        maybe: (int | None) = None;
 }
 
 
-class _NotDataclass {
+class _PlainClass {
     x: int = 0;
 }
 
 
-test "get_field_types returns correct types for a simple dataclass" {
+test "get_field_types returns correct types for a simple Jac object" {
     ft = get_field_types(_Simple);
     assert 'name' in ft and ft['name'] is str;
     assert 'count' in ft and ft['count'] is int;
@@ -47,8 +44,8 @@ test "get_field_types resolves generic and union annotations" {
 }
 
 
-test "get_field_types returns empty dict for non-dataclass" {
-    ft = get_field_types(_NotDataclass);
+test "get_field_types returns empty dict for plain class" {
+    ft = get_field_types(_PlainClass);
     assert ft == {};
 }
 
@@ -92,4 +89,15 @@ test "get_field_types works on Jac archetypes" {
     ft = get_field_types(_MyNode);
     assert 'label' in ft and ft['label'] is str;
     assert 'value' in ft and ft['value'] is int;
+}
+
+
+test "external Python records retain field type introspection through the adapter" {
+    import from tests.compiler.fixtures.python_evaluator_workloads {
+        python_contract_record
+    }
+    record_type = python_contract_record();
+    ft = get_field_types(record_type);
+    assert ft["name"] is str;
+    assert ft["items"] == list[int];
 }

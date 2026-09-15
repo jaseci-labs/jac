@@ -1,22 +1,22 @@
-import from dataclasses { dataclass }
+def identity(cls: type) -> type {
+    return cls;
+}
 
-def test_func() -> None {
+def test_func {
     '''docstring for MyResult'''
     obj MyResult {
         has value: str = "";
     }
 
     '''docstring for local func'''
-    def helper() -> str {
+    def helper -> str {
         return "hi";
     }
 
-    '''docstring for decorated class'''
-    @dataclass
-    class Config {
-        with entry {
-            debug: bool = False;
-        }
+    '''docstring for local object'''
+    @identity
+    obj Config {
+        has debug: bool = False;
     }
 }
 

@@ -402,7 +402,9 @@ impl JcirGenPass._ct_param_fields(nd: Archetype) -> list[CgNode] {
                     ),
                     ann,
                     self.call_node(
-                        self._import_ref("jaclang.runtime.object_model", "field", tp),
+                        self._import_ref(
+                            "jaclang.runtime.object_model", "ObjectField", tp
+                        ),
                         [],
                         [
                             self.nod(

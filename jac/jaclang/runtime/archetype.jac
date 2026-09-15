@@ -1,5 +1,11 @@
 import from collections.abc { Callable }
-import from jaclang.runtime.object_model { asdict, field, fields, is_jac_object }
+import from jaclang.runtime.object_model {
+    asdict,
+    ObjectField,
+    fields,
+    is_jac_object,
+    make_object
+}
 import from functools { cached_property }
 import from inspect { _empty, signature }
 import from logging { getLogger }
@@ -45,15 +51,15 @@ def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
 }
 
 obj Access {
-    has anchors: dict[(str, AccessLevel)] = field(default_factory=`dict);
+    has anchors: dict[(str, AccessLevel)] = {};
 
     def check(anchor: str) -> (AccessLevel | None);
 }
 
 obj Permission {
     has all: AccessLevel = AccessLevel.NO_ACCESS,
-        roots: Access = field(default_factory=Access),
-        groups: Access = field(default_factory=Access);
+        roots: Access = Access(),
+        groups: Access = Access();
 }
 
 obj PermissionDenied {
@@ -98,12 +104,12 @@ obj AnchorReport {
 
 obj Anchor {
     has archetype: Archetype,
-        id: (UUID | None) = field(`init=False, `default=None),
-        `root: (UUID | None) = field(`init=False, `default=None),
-        access: (Permission | None) = field(`init=False, `default=None),
-        _persistent: bool = field(`init=False, `default=False),
-        destroyed: bool = field(`init=False, `default=False),
-        hash: int = field(`init=False, `default=0);
+        id: (UUID | None) = ObjectField(`init=False, `default=None),
+        `root: (UUID | None) = ObjectField(`init=False, `default=None),
+        access: (Permission | None) = ObjectField(`init=False, `default=None),
+        _persistent: bool = ObjectField(`init=False, `default=False),
+        destroyed: bool = ObjectField(`init=False, `default=False),
+        hash: int = ObjectField(`init=False, `default=0);
 
     has persistent: bool { getter; setter(persistent: bool); }
 
@@ -124,10 +130,14 @@ obj Anchor {
 obj NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
-        version: int = field(`init=False, `default=0),
-        out_light: (dict[type, list[any]] | None) = field(`init=False, `default=None),
-        in_light: (dict[type, list[any]] | None) = field(`init=False, `default=None),
-        mixed: bool = field(`init=False, `default=False);
+        version: int = ObjectField(`init=False, `default=0),
+        out_light: (dict[type, list[any]] | None) = ObjectField(
+            `init=False, `default=None
+        ),
+        in_light: (dict[type, list[any]] | None) = ObjectField(
+            `init=False, `default=None
+        ),
+        mixed: bool = ObjectField(`init=False, `default=False);
 
     def __getstate__ -> dict[(str, object)];
     def __getattr__(name: str) -> object;
@@ -145,7 +155,7 @@ obj EdgeAnchor(Anchor) {
         source: NodeAnchor,
         target: NodeAnchor,
         is_undirected: bool,
-        light: bool = field(`init=False, `default=False);
+        light: bool = ObjectField(`init=False, `default=False);
 
     def is_populated -> bool;
     def __getstate__ -> dict[(str, object)];
@@ -154,9 +164,9 @@ obj EdgeAnchor(Anchor) {
 
 obj WalkerAnchor(Anchor) {
     has archetype: WalkerArchetype,
-        path: list[(NodeAnchor | EdgeAnchor)] = field(default_factory=`list),
-        next: list[(NodeAnchor | EdgeAnchor)] = field(default_factory=`list),
-        ignores: list[NodeAnchor] = field(default_factory=`list),
+        path: list[(NodeAnchor | EdgeAnchor)] = [],
+        next: list[(NodeAnchor | EdgeAnchor)] = [],
+        ignores: list[NodeAnchor] = [],
         disengaged: bool = False;
 }
 
@@ -243,8 +253,11 @@ class EdgeArchetype(Archetype) {
     }
 }
 
+@make_object
 class WalkerArchetype(Archetype) {
-    has reports: list[any] = field(default_factory=`list);
+    has reports: list[any] = ObjectField(
+        default_factory=`list, `init=False, repr=False
+    );
 
     with entry {
         __jac_async__: ClassVar[bool] = False;

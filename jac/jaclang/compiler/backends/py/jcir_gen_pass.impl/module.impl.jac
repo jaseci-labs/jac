@@ -98,6 +98,28 @@ impl JcirGenPass.exit_module with Module exit {
             )
         );
     }
+    descriptor_alias = self._runtime_aliases.pop('ObjectField', None);
+    if descriptor_alias is not None {
+        self.preamble.append(
+            self.nod(
+                'ImportFrom',
+                ['module', 'names', 'level'],
+                [
+                    'jaclang.runtime.object_model',
+                    [
+                        self.nod(
+                            'alias',
+                            ['name', 'asname'],
+                            ['ObjectField', descriptor_alias],
+                            jac_node=self.module
+                        )
+                    ],
+                    0
+                ],
+                jac_node=self.module
+            )
+        );
+    }
     mod_path_norm = here.loc.mod_path.replace('\\', '/');
     is_jaclib_module = (
         mod_path_norm.endswith('/jaclang/lib.jac')

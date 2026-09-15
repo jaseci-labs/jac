@@ -32,9 +32,7 @@ def fields(value: object) -> tuple[ObjectField, ...] {
                     else None,
                 `init=f.`init,
                 repr=f.repr,
-                compare=f.compare,
-                kw_only=f.kw_only,
-                metadata=dict(f.metadata)
+                kw_only=f.kw_only
             )
         );
     }
