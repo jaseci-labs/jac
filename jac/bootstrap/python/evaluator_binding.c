@@ -10,6 +10,7 @@
 #include "internal/pycore_ceval.h"
 #include "internal/pycore_call.h"
 #include "internal/pycore_frame.h"
+#include "internal/pycore_function.h"
 #include "internal/pycore_interpframe.h"
 #include "internal/pycore_pystate.h"
 #include "internal/pycore_stats.h"
@@ -28,20 +29,8 @@ struct JacPyBindingStorage {
     int closed;
 };
 
-extern int32_t jacpy_bind_locals(JacPyBindingStorage *, JacPyBindingRef,
-    PyThreadState *, int64_t, PyObject *);
 extern void jacpy_binding_close_impl(JacPyBindingStorage *, JacPyBindingRef);
 
-int jacpy_initialize_locals(PyThreadState *tstate, PyFunctionObject *function,
-    _PyStackRef *locals, const _PyStackRef *arguments, Py_ssize_t positional, PyObject *keywords) {
-    Py_ssize_t keyword_count = keywords == NULL ? 0 : PyTuple_GET_SIZE(keywords);
-    assert(positional >= 0 && keyword_count <= PY_SSIZE_T_MAX - positional);
-    JacPyBindingStorage storage = {
-        function, (PyCodeObject *)function->func_code, locals, arguments,
-        positional + keyword_count, 0, 0
-    };
-    return jacpy_bind_locals(&storage, &storage, tstate, positional, keywords);
-}
 void jacpy_binding_close(JacPyBindingRef binding) {
     if (binding != NULL) {
         assert(!binding->closed);
@@ -287,3 +276,75 @@ void jacpy_callargs_convert_next(JacPyCallArgsRef arguments) {
 int64_t jacpy_callargs_filled(JacPyCallArgsRef arguments) { return arguments->filled; }
 int64_t jacpy_callargs_capacity(JacPyCallArgsRef arguments) { return arguments->capacity; }
 JacPyObjectRef jacpy_callargs_keywords(JacPyCallArgsRef arguments) { return arguments->keywords; }
+
+struct JacPyLegacyStorage {
+    PyObject *const *input;
+    PyObject *const *keywords;
+    PyObject **allocated;
+    Py_ssize_t capacity;
+    int closed;
+};
+extern PyObject *jacpy_eval_code_ex_impl(JacPyLegacyStorage *, PyObject *, PyObject *,
+    PyObject *, PyObject *const *, int64_t, PyObject *const *, int64_t,
+    PyObject *const *, int64_t, PyObject *, PyObject *);
+PyObject *PyEval_EvalCodeEx(PyObject *code, PyObject *globals, PyObject *locals,
+    PyObject *const *arguments, int positional, PyObject *const *keywords, int keyword_count,
+    PyObject *const *defaults, int default_count, PyObject *keyword_defaults, PyObject *closure) {
+    JacPyLegacyStorage storage = {0};
+    return jacpy_eval_code_ex_impl(&storage, code, globals, locals, arguments, positional,
+        keywords, keyword_count, defaults, default_count, keyword_defaults, closure);
+}
+JacPyLegacyArgsRef jacpy_legacy_arguments_begin(JacPyLegacyStorage *storage,
+    PyObject *const *arguments, PyObject *const *keywords) {
+    storage->input = arguments;
+    storage->keywords = keywords;
+    return storage;
+}
+void jacpy_legacy_arguments_close(JacPyLegacyArgsRef arguments) {
+    if (arguments != NULL) {
+        assert(!arguments->closed);
+        arguments->closed = 1;
+        PyMem_Free(arguments->allocated);
+    }
+}
+int32_t jacpy_legacy_arguments_allocate(JacPyLegacyArgsRef arguments, int64_t count) {
+    assert(arguments->allocated == NULL);
+    arguments->allocated = PyMem_Malloc(sizeof(PyObject *) * count);
+    arguments->capacity = count;
+    return arguments->allocated != NULL;
+}
+void jacpy_legacy_arguments_copy(JacPyLegacyArgsRef arguments, int64_t source, int64_t destination) {
+    assert(destination >= 0 && destination < arguments->capacity);
+    arguments->allocated[destination] = arguments->input[source];
+}
+void jacpy_legacy_keyword_copy(JacPyLegacyArgsRef arguments, int64_t source, int64_t destination) {
+    assert(destination >= 0 && destination < arguments->capacity);
+    arguments->allocated[destination] = arguments->keywords[source];
+}
+PyObject *const *jacpy_legacy_arguments_values(JacPyLegacyArgsRef arguments) {
+    return arguments->allocated == NULL ? arguments->input : arguments->allocated;
+}
+PyObject *const *jacpy_object_array_null(void) { return NULL; }
+JacPyObjectRef jacpy_tuple_from_array(PyObject *const *values, int64_t count) {
+    return _PyTuple_FromArray(values, count);
+}
+void jacpy_tuple_initialize_item(JacPyObjectRef tuple, int64_t index, JacPyObjectRef value) {
+    assert(PyTuple_GET_ITEM(tuple, index) == NULL);
+    PyTuple_SET_ITEM(tuple, index, value);
+}
+JacPyObjectRef jacpy_function_from_code(JacPyObjectRef code, JacPyObjectRef globals,
+    JacPyObjectRef builtins, JacPyObjectRef defaults, JacPyObjectRef keyword_defaults,
+    JacPyObjectRef closure) {
+    PyFrameConstructor constructor = {
+        .fc_globals = globals,
+        .fc_builtins = builtins,
+        .fc_name = ((PyCodeObject *)code)->co_name,
+        .fc_qualname = ((PyCodeObject *)code)->co_name,
+        .fc_code = code,
+        .fc_defaults = defaults,
+        .fc_kwdefaults = keyword_defaults,
+        .fc_closure = closure
+    };
+    return (PyObject *)_PyFunction_FromConstructor(&constructor);
+}
+void jacpy_eval_legacy_stat(void) { EVAL_CALL_STAT_INC(EVAL_CALL_LEGACY); }

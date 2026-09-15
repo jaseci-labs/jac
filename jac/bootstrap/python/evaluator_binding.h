@@ -14,8 +14,6 @@ typedef JacPyBindingStorage *JacPyBindingRef;
  * only the references not yet transferred or discarded. It never frees either
  * array, promotes a borrowed stackref, or clears the caller's const input.
  */
-int jacpy_initialize_locals(PyThreadState *tstate, PyFunctionObject *function,
-    _PyStackRef *locals, const _PyStackRef *arguments, Py_ssize_t positional, PyObject *keywords);
 void jacpy_binding_close(JacPyBindingRef binding);
 void jacpy_binding_disarm(JacPyBindingStorage *storage, JacPyBindingRef binding);
 int64_t jacpy_binding_remaining(JacPyBindingRef binding);
@@ -76,4 +74,20 @@ void jacpy_callargs_convert_next(JacPyCallArgsRef arguments);
 int64_t jacpy_callargs_filled(JacPyCallArgsRef arguments);
 int64_t jacpy_callargs_capacity(JacPyCallArgsRef arguments);
 JacPyObjectRef jacpy_callargs_keywords(JacPyCallArgsRef arguments);
+typedef struct JacPyLegacyStorage JacPyLegacyStorage;
+typedef JacPyLegacyStorage *JacPyLegacyArgsRef;
+JacPyLegacyArgsRef jacpy_legacy_arguments_begin(JacPyLegacyStorage *storage,
+    PyObject *const *arguments, PyObject *const *keywords);
+void jacpy_legacy_arguments_close(JacPyLegacyArgsRef arguments);
+int32_t jacpy_legacy_arguments_allocate(JacPyLegacyArgsRef arguments, int64_t count);
+void jacpy_legacy_arguments_copy(JacPyLegacyArgsRef arguments, int64_t source, int64_t destination);
+void jacpy_legacy_keyword_copy(JacPyLegacyArgsRef arguments, int64_t source, int64_t destination);
+PyObject *const *jacpy_legacy_arguments_values(JacPyLegacyArgsRef arguments);
+PyObject *const *jacpy_object_array_null(void);
+JacPyObjectRef jacpy_tuple_from_array(PyObject *const *values, int64_t count);
+void jacpy_tuple_initialize_item(JacPyObjectRef tuple, int64_t index, JacPyObjectRef value);
+JacPyObjectRef jacpy_function_from_code(JacPyObjectRef code, JacPyObjectRef globals,
+    JacPyObjectRef builtins, JacPyObjectRef defaults, JacPyObjectRef keyword_defaults,
+    JacPyObjectRef closure);
+void jacpy_eval_legacy_stat(void);
 #endif

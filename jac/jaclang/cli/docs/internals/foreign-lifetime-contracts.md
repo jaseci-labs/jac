@@ -159,7 +159,8 @@ also do not justify LLVM immutability or exclusivity attributes.
 The evaluator sources include raise logic, active-frame cleanup, monitoring and
 tracing control, coroutine-origin and async-generator setters, error formatting,
 name lookup, import handling, exception-table search, argument binding and its
-diagnostics, frame push, and vector/tuple/dict call preparation using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
+diagnostics, frame push, vector/tuple/dict call preparation, legacy code evaluation,
+frame locals/globals/builtins APIs, and iterable unpacking using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
 a dependent executable reference is closed before its thread frame is popped.
 The source changes in this review batch have not been built or tested.
 
@@ -185,6 +186,18 @@ preparation. The pinned private tuple/dict entry transfers `locals` only after
 preparation succeeds; an explicit C transfer slot preserves that conditional
 contract, including leaving the slot untouched on earlier failures.
 
+Frame-introspection helpers receive the current frame as a scoped input loan
+from the C API adapter. Borrowed results depend on that frame or the supplied
+interpreter builtins; a temporary owned locals reference cannot establish the
+lifetime of a returned view. The legacy keyword array similarly owns only its
+allocation while retaining dependencies on the caller's object arrays.
+
+`evaluator_unpack.PyUnpackRef` tracks references pushed onto the destination
+stack. Failure unwinds from the stack's current top before closing the iterator.
+Moving a starred-unpack list tail is isolated in an `errors="none"`,
+`reentrant=False` native helper: no callback or error edge can observe its
+intermediate ownership state before the list size is reduced.
+
 Generic foreign-resource storage, arbitrary closure capture, suspension,
 container-element stability across reentry, and complete effect propagation
 through every storage/interface shape remain migration prerequisites. These
@@ -193,8 +206,8 @@ evaluator and tier-two executor remain in the candidate build.
 
 The full source migration is still unfinished. Remaining C algorithms include
 opcode dispatch and all enabled instruction families, tier-two execution,
-legacy evaluation and frame-introspection APIs, recursion handling, pattern matching,
-exception-group splitting and iterable unpacking. Their source/object prerequisites remain active.
+recursion handling, pattern matching, exception-group splitting, main-module
+globals lookup, compiler flag merging, and the remaining evaluator utilities. Their source/object prerequisites remain active.
 Removing these entries from the build before replacing their implementations
 would not complete the migration.
 

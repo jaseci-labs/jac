@@ -1040,7 +1040,8 @@ async iterator/awaitable acquisition, exception-clause validation, raise logic,
 active-frame cleanup, monitoring and tracing control, coroutine-origin and
 async-generator setters, evaluator diagnostics, name lookup, imports,
 exception-table search, argument binding and its diagnostics, frame push, and
-vector/tuple/dict call preparation. A linear argument resource tracks exactly
+vector/tuple/dict call preparation, legacy code evaluation, frame introspection
+and builtins handling, and iterable unpacking. A linear argument resource tracks exactly
 which references still need cleanup; temporary call buffers are freed before
 evaluation. The latest source changes await validation.
 Opcode dispatch and the tier-two executor remain CPython C. The build emits

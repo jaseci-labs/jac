@@ -82,3 +82,10 @@ borrowed caller arguments; freeing an array alone does not make borrowed
 references heap-safe. Conditional C transfer slots must state when ownership
 moves and what happens before that point; do not silently turn a conditional
 steal into an unconditional `own` parameter.
+
+A multi-place foreign transfer may require an interval with no errors or
+reentry. The starred-unpack tail in `evaluator_unpack` uses a native
+`foreign_call(errors="none", reentrant=False)` helper to keep list entry
+transfers and the final size update together. Borrowed results from locals or
+builtins APIs must name their frame/interpreter source, not a temporary new
+reference that is closed before return.

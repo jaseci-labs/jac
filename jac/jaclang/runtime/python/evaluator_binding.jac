@@ -87,16 +87,6 @@ def jacpy_binding_close_impl(storage: &JacPyBindingStorage, binding: lin PyBindi
     jacpy_binding_disarm(storage, binding);
 }
 
-# Entry and exit stay together: the body can return at every original failure
-# edge while this wrapper releases exactly the arguments it did not consume.
-@foreign_call(requires=["gil"], errors="python", reentrant=True)
-def jacpy_bind_locals(storage: &JacPyBindingStorage, binding: lin PyBindingRef from storage,
-    tstate: &JacPyThreadState, positional: i64, keywords: &PyObjectRef) -> i32 {
-    result = jacpy_bind_locals_body(&binding, tstate, positional, keywords);
-    jacpy_binding_close(binding);
-    return result;
-}
-
 @foreign_call(requires=["gil"], errors="python", reentrant=True)
 def jacpy_binding_keyword_error(binding: &PyBindingRef, tstate: &JacPyThreadState,
     keyword: &PyObjectRef, keywords: &PyObjectRef, keyword_count: i64) {

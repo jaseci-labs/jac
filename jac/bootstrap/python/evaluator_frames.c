@@ -6,6 +6,7 @@
 #define Py_BUILD_CORE
 #endif
 #include "evaluator_frames.h"
+#include "frameobject.h"
 #include "internal/pycore_audit.h"
 #include "internal/pycore_ceval.h"
 #include "internal/pycore_frame.h"
@@ -18,6 +19,7 @@
 #include "internal/pycore_pystate.h"
 #include "internal/pycore_stackref.h"
 #include "internal/pycore_sysmodule.h"
+#include "internal/pycore_unicodeobject.h"
 
 void jacpy_frame_close(JacPyFrameRef frame) {
     if (frame != NULL) {
@@ -134,4 +136,119 @@ JacPyObjectRef jacpy_frame_globals(JacPyFrameRef frame) { return frame->f_global
 JacPyObjectRef jacpy_frame_builtins(JacPyFrameRef frame) { return frame->f_builtins; }
 int32_t jacpy_is_default_import(PyThreadState *tstate, JacPyObjectRef function) {
     return _PyImport_IsDefaultImportFunc(tstate->interp, function);
+}
+
+/* C API entries capture a frame loan at the call boundary. The Jac helpers
+ * return views of that frame/interpreter value, not of temporary newrefs.
+ */
+extern JacPyObjectRef jacpy_get_builtins(JacPyFrameRef, JacPyObjectRef);
+extern JacPyObjectRef jacpy_get_globals(JacPyFrameRef);
+extern JacPyObjectRef jacpy_get_frame_object(JacPyFrameRef);
+extern JacPyObjectRef jacpy_get_locals(PyThreadState *, JacPyFrameRef);
+extern JacPyObjectRef jacpy_get_frame_locals(PyThreadState *, JacPyFrameRef);
+extern JacPyObjectRef jacpy_get_builtin(PyThreadState *, JacPyObjectRef, JacPyObjectRef);
+
+PyObject *_PyEval_GetAsyncGenFirstiter(void) { return _PyThreadState_GET()->async_gen_firstiter; }
+PyObject *_PyEval_GetAsyncGenFinalizer(void) { return _PyThreadState_GET()->async_gen_finalizer; }
+_PyInterpreterFrame *_PyEval_GetFrame(void) { return _PyThreadState_GetFrame(_PyThreadState_GET()); }
+PyFrameObject *PyEval_GetFrame(void) {
+    return (PyFrameObject *)jacpy_get_frame_object(_PyEval_GetFrame());
+}
+PyObject *_PyEval_GetBuiltins(PyThreadState *tstate) {
+    return jacpy_get_builtins(_PyThreadState_GetFrame(tstate), tstate->interp->builtins);
+}
+PyObject *PyEval_GetBuiltins(void) { return _PyEval_GetBuiltins(_PyThreadState_GET()); }
+PyObject *_PyEval_GetBuiltin(PyObject *name) {
+    PyThreadState *tstate = _PyThreadState_GET();
+    return jacpy_get_builtin(tstate, _PyEval_GetBuiltins(tstate), name);
+}
+PyObject *_PyEval_GetBuiltinId(_Py_Identifier *name) {
+    return _PyEval_GetBuiltin(_PyUnicode_FromId(name));
+}
+PyObject *PyEval_GetLocals(void) {
+    PyThreadState *tstate = _PyThreadState_GET();
+    return jacpy_get_locals(tstate, _PyThreadState_GetFrame(tstate));
+}
+PyObject *_PyEval_GetFrameLocals(void) {
+    PyThreadState *tstate = _PyThreadState_GET();
+    return jacpy_get_frame_locals(tstate, _PyThreadState_GetFrame(tstate));
+}
+PyObject *PyEval_GetFrameLocals(void) { return _PyEval_GetFrameLocals(); }
+PyObject *PyEval_GetGlobals(void) { return jacpy_get_globals(_PyEval_GetFrame()); }
+PyObject *PyEval_GetFrameGlobals(void) { return Py_XNewRef(jacpy_get_globals(_PyEval_GetFrame())); }
+PyObject *PyEval_GetFrameBuiltins(void) { return Py_XNewRef(_PyEval_GetBuiltins(_PyThreadState_GET())); }
+PyObject *PyEval_EvalFrame(PyFrameObject *frame) {
+    return _PyEval_EvalFrame(_PyThreadState_GET(), frame->f_frame, 0);
+}
+PyObject *PyEval_EvalFrameEx(PyFrameObject *frame, int throwflag) {
+    return _PyEval_EvalFrame(_PyThreadState_GET(), frame->f_frame, throwflag);
+}
+JacPyObjectRef jacpy_ref_borrow_null(void) { return NULL; }
+JacPyObjectRef jacpy_frame_object(JacPyFrameRef frame) { return (PyObject *)_PyFrame_GetFrameObject(frame); }
+JacPyObjectRef jacpy_frame_get_locals(JacPyFrameRef frame) { return _PyFrame_GetLocals(frame); }
+int32_t jacpy_locals_proxy_check(JacPyObjectRef value) { return PyFrameLocalsProxy_Check(value); }
+JacPyObjectRef jacpy_frame_locals_cache(JacPyObjectRef frame) { return ((PyFrameObject *)frame)->f_locals_cache; }
+void jacpy_frame_install_locals_cache(JacPyObjectRef frame, JacPyObjectRef dictionary) {
+    assert(((PyFrameObject *)frame)->f_locals_cache == NULL);
+    ((PyFrameObject *)frame)->f_locals_cache = dictionary;
+}
+JacPyObjectRef jacpy_current_builtins_new(PyThreadState *tstate) { return Py_XNewRef(_PyEval_GetBuiltins(tstate)); }
+int32_t jacpy_dict_check(JacPyObjectRef value) { return PyDict_Check(value); }
+int32_t jacpy_object_output_is_null(PyObject **output) { return output == NULL; }
+void jacpy_object_output_store(PyObject **output, JacPyObjectRef value) { *output = value; }
+
+struct JacPyUnpackStorage {
+    _PyStackRef *top;
+    Py_ssize_t pending;
+    int closed;
+};
+extern int32_t jacpy_unpack_iterable(JacPyUnpackStorage *, JacPyUnpackRef,
+    PyThreadState *, PyObject *, int32_t, int32_t);
+extern void jacpy_unpack_close_impl(JacPyUnpackStorage *, JacPyUnpackRef);
+int _PyEval_UnpackIterableStackRef(PyThreadState *tstate, PyObject *value,
+    int before, int after, _PyStackRef *top) {
+    JacPyUnpackStorage storage = { top, 0, 0 };
+    return jacpy_unpack_iterable(&storage, &storage, tstate, value, before, after);
+}
+void jacpy_unpack_close(JacPyUnpackRef stack) {
+    if (stack != NULL) {
+        assert(!stack->closed);
+        jacpy_unpack_close_impl(stack, stack);
+    }
+}
+int64_t jacpy_unpack_pending(JacPyUnpackRef stack) { return stack->pending; }
+void jacpy_unpack_discard(JacPyUnpackRef stack) {
+    assert(!stack->closed && stack->pending > 0);
+    _PyStackRef value = *stack->top++;
+    stack->pending--;
+    PyStackRef_CLOSE(value);
+}
+void jacpy_unpack_commit(JacPyUnpackStorage *storage, JacPyUnpackRef stack) {
+    assert(storage == stack && !stack->closed);
+    stack->pending = 0;
+    stack->closed = 1;
+}
+void jacpy_unpack_finish_error(JacPyUnpackStorage *storage, JacPyUnpackRef stack) {
+    assert(storage == stack && !stack->closed && stack->pending == 0);
+    stack->closed = 1;
+}
+JacPyObjectRef jacpy_unpack_push(JacPyUnpackRef stack, JacPyObjectRef value) {
+    assert(!stack->closed && value != NULL);
+    *--stack->top = PyStackRef_FromPyObjectSteal(value);
+    stack->pending++;
+    return value;
+}
+void jacpy_unpack_list_item(JacPyUnpackRef stack, JacPyObjectRef values, int64_t index) {
+    assert(!stack->closed);
+    *--stack->top = PyStackRef_FromPyObjectSteal(PyList_GET_ITEM(values, index));
+    stack->pending++;
+}
+void jacpy_unpack_shrink_list(JacPyObjectRef values, int64_t count) { Py_SET_SIZE(values, count); }
+int64_t jacpy_unpack_exact_size(JacPyObjectRef value) {
+    if (PyDict_CheckExact(value)) { return PyDict_Size(value); }
+    if (PyList_CheckExact(value) || PyTuple_CheckExact(value)) { return Py_SIZE(value); }
+    return -1;
+}
+void jacpy_unpack_error(PyThreadState *tstate, const char *format, int32_t expected, int64_t actual) {
+    _PyErr_Format(tstate, PyExc_ValueError, format, (int)expected, (Py_ssize_t)actual);
 }

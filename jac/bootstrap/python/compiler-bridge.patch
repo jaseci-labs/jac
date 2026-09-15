@@ -272,7 +272,7 @@
      {"builtins", NULL},
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -377,75 +377,49 @@
+@@ -377,75 +377,52 @@
 
  ##########################################################################
  # Parser
@@ -343,6 +343,9 @@
 +		Python/jac_evaluator_binding.o \
 +		Python/jac_evaluator_bind_locals.o \
 +		Python/jac_evaluator_calls.o \
++		Python/jac_evaluator_legacy.o \
++		Python/jac_evaluator_context.o \
++		Python/jac_evaluator_unpack.o \
 +		Python/jacpython.o \
  		Python/asdl.o \
 -		Python/assemble.o \
@@ -368,7 +371,7 @@
  		Python/gc_free_threading.o \
  		Python/gc_gil.o \
  		Python/getargs.o \
-@@ -461,9 +435,8 @@
+@@ -461,9 +438,8 @@
  		Python/index_pool.o \
  		Python/initconfig.o \
  		Python/interpconfig.o \
@@ -378,7 +381,7 @@
  		Python/jit.o \
  		Python/legacy_tracing.o \
  		Python/lock.o \
-@@ -491,9 +464,8 @@
+@@ -491,9 +467,8 @@
  		Python/bootstrap_hash.o \
  		Python/specialize.o \
  		Python/stackrefs.o \
@@ -388,7 +391,7 @@
  		Python/thread.o \
  		Python/traceback.o \
  		Python/tracemalloc.o \
-@@ -1360,11 +1332,11 @@
+@@ -1360,11 +1335,11 @@
  		$(srcdir)/Include/internal/pycore_import.h \
  		$(srcdir)/Include/internal/pycore_importdl.h \
  		$(srcdir)/Include/internal/pycore_index_pool.h \
@@ -402,7 +405,7 @@
  		$(srcdir)/Include/internal/pycore_interpframe.h \
  		$(srcdir)/Include/internal/pycore_interpframe_structs.h \
  		$(srcdir)/Include/internal/pycore_interpolation.h \
-@@ -1429,9 +1401,9 @@
+@@ -1429,9 +1404,9 @@
  		$(srcdir)/Include/internal/pycore_tracemalloc.h \
  		$(srcdir)/Include/internal/pycore_tstate.h \
  		$(srcdir)/Include/internal/pycore_tuple.h \
@@ -413,7 +416,7 @@
  		$(srcdir)/Include/internal/pycore_ucnhash.h \
  		$(srcdir)/Include/internal/pycore_unicodeobject.h \
  		$(srcdir)/Include/internal/pycore_unicodeobject_generated.h \
-@@ -1982,16 +1954,10 @@
+@@ -1982,16 +1957,10 @@
  	$(srcdir)/Tools/peg_generator/pegen/grammar_parser.py.new
 
  .PHONY: regen-pegen
@@ -432,7 +435,7 @@
  .PHONY: regen-ast
  regen-ast:
  	# Regenerate 3 files using Parser/asdl_c.py:
-@@ -2011,29 +1977,10 @@
+@@ -2011,29 +1980,10 @@
  	$(UPDATE_FILE) $(srcdir)/Python/Python-ast.c $(srcdir)/Python/Python-ast.c.new
 
  .PHONY: regen-token
@@ -464,7 +467,7 @@
  .PHONY: regen-keyword
  regen-keyword:
  	# Regenerate Lib/keyword.py from Grammar/python.gram and Grammar/Tokens
-@@ -2061,9 +2008,9 @@
+@@ -2061,9 +2011,9 @@
  		$(srcdir)/Lib/re/_constants.py \
  		$(srcdir)/Modules/_sre/sre_constants.h \
  		$(srcdir)/Modules/_sre/sre_targets.h
@@ -475,7 +478,7 @@
  Python/getplatform.o: $(srcdir)/Python/getplatform.c
  		$(CC) -c $(PY_CORE_CFLAGS) -DPLATFORM='"$(MACHDEP)"' -o $@ $(srcdir)/Python/getplatform.c
 
-@@ -2197,24 +2144,14 @@
+@@ -2197,24 +2147,14 @@
  	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/uop_metadata_generator.py -o \
  	    $(srcdir)/Include/internal/pycore_uop_metadata.h.new $(srcdir)/Python/bytecodes.c
  	$(UPDATE_FILE) $(srcdir)/Include/internal/pycore_uop_metadata.h $(srcdir)/Include/internal/pycore_uop_metadata.h.new
@@ -500,7 +503,7 @@
  Python/optimizer.o: \
  		$(srcdir)/Python/executor_cases.c.h \
  		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
-@@ -2813,14 +2750,14 @@
+@@ -2813,14 +2753,14 @@
  		echo "Applying app store compliance patch"; \
  		patch --force --reject-file "$(abs_builddir)/app-store-compliance.rej" --strip 2 --directory "$(DESTDIR)$(LIBDEST)" --input "$(abs_srcdir)/$(APP_STORE_COMPLIANCE_PATCH)" || true ; \
  	fi
@@ -517,7 +520,7 @@
  		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST)/site-packages -f \
  		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
 
-@@ -3419,4 +3356,15 @@
+@@ -3419,4 +3359,15 @@
  # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
  # Local Variables:
  # mode: makefile
@@ -529,10 +532,10 @@
 +Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
 +Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
 +Python/jac_evaluator_refs.o: $(srcdir)/Python/jac_evaluator_refs.c $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_genobject.h $(srcdir)/Include/internal/pycore_pyerrors.h
-+Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_audit.h $(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h
++Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_audit.h $(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/frameobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
 +Python/jac_evaluator_objects.o: $(srcdir)/Python/jac_evaluator_objects.c $(srcdir)/Python/evaluator_objects.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h
-+Python/jac_evaluator_binding.o: $(srcdir)/Python/jac_evaluator_binding.c $(srcdir)/Python/evaluator_binding.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_tuple.h $(srcdir)/Python/evaluator_frames.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_stats.h $(srcdir)/Include/internal/pycore_call.h
++Python/jac_evaluator_binding.o: $(srcdir)/Python/jac_evaluator_binding.c $(srcdir)/Python/evaluator_binding.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_tuple.h $(srcdir)/Python/evaluator_frames.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_stats.h $(srcdir)/Include/internal/pycore_call.h $(srcdir)/Include/internal/pycore_function.h
 --- a/Python/ceval.c
 +++ b/Python/ceval.c
 @@ -279,29 +279,35 @@
@@ -580,19 +583,71 @@
  #ifdef HAVE_ERRNO_H
  #include <errno.h>
  #endif
-@@ -949,9 +955,10 @@
+@@ -949,59 +955,16 @@
      return NULL;
  }
 
 
 -static int do_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause);
+-
+-PyObject *
+-PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    if (locals == NULL) {
+-        locals = globals;
+-    }
+-    PyObject *builtins = _PyDict_LoadBuiltinsFromGlobals(globals);
+-    if (builtins == NULL) {
+-        return NULL;
+-    }
+-    PyFrameConstructor desc = {
+-        .fc_globals = globals,
+-        .fc_builtins = builtins,
+-        .fc_name = ((PyCodeObject *)co)->co_name,
+-        .fc_qualname = ((PyCodeObject *)co)->co_name,
+-        .fc_code = co,
+-        .fc_defaults = NULL,
+-        .fc_kwdefaults = NULL,
+-        .fc_closure = NULL
+-    };
+-    PyFunctionObject *func = _PyFunction_FromConstructor(&desc);
+-    _Py_DECREF_BUILTINS(builtins);
+-    if (func == NULL) {
+-        return NULL;
+-    }
+-    EVAL_CALL_STAT_INC(EVAL_CALL_LEGACY);
+-    PyObject *res = _PyEval_Vector(tstate, func, locals, NULL, 0, NULL);
+-    Py_DECREF(func);
+-    return res;
+-}
 +int jacpy_eval_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause);
 +#define do_raise jacpy_eval_raise
++
 
- PyObject *
- PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
- {
-@@ -1381,735 +1388,28 @@
+
+ /* Interpreter main loop */
+
+-PyObject *
+-PyEval_EvalFrame(PyFrameObject *f)
+-{
+-    /* Function kept for backward compatibility */
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return _PyEval_EvalFrame(tstate, f->f_frame, 0);
+-}
+-
+-PyObject *
+-PyEval_EvalFrameEx(PyFrameObject *f, int throwflag)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return _PyEval_EvalFrame(tstate, f->f_frame, throwflag);
+-}
++
+
+ #include "ceval_macros.h"
+
+
+@@ -1381,912 +1344,19 @@
  #elif defined(_MSC_VER) /* MS_WINDOWS */
  #  pragma warning(pop)
  #endif
@@ -1178,18 +1233,6 @@
 -    }
 -}
 +
-+#include "evaluator_binding.h"
-+#define initialize_locals jacpy_initialize_locals
-+#define missing_arguments jacpy_missing_arguments
-+#define too_many_positional jacpy_too_many_positional
-+#define positional_only_passed_as_keyword jacpy_positional_only_as_keyword
-+extern void missing_arguments(PyThreadState *, PyCodeObject *, Py_ssize_t, Py_ssize_t,
-+                              _PyStackRef *, PyObject *);
-+extern void too_many_positional(PyThreadState *, PyCodeObject *, Py_ssize_t, PyObject *,
-+                                _PyStackRef *, PyObject *);
-+extern int positional_only_passed_as_keyword(PyThreadState *, PyCodeObject *, Py_ssize_t,
-+                                            PyObject *, PyObject *);
-+
 
  /* Consumes references to func, locals and all the args */
 -_PyInterpreterFrame *
@@ -1340,13 +1383,79 @@
 +
 
  /* Legacy API */
- PyObject *
- PyEval_EvalCodeEx(PyObject *_co, PyObject *globals, PyObject *locals,
-@@ -2183,110 +1483,8 @@
-     Py_DECREF(defaults);
-     return res;
- }
-
+-PyObject *
+-PyEval_EvalCodeEx(PyObject *_co, PyObject *globals, PyObject *locals,
+-                  PyObject *const *args, int argcount,
+-                  PyObject *const *kws, int kwcount,
+-                  PyObject *const *defs, int defcount,
+-                  PyObject *kwdefs, PyObject *closure)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    PyObject *res = NULL;
+-    PyObject *defaults = _PyTuple_FromArray(defs, defcount);
+-    if (defaults == NULL) {
+-        return NULL;
+-    }
+-    PyObject *builtins = _PyDict_LoadBuiltinsFromGlobals(globals);
+-    if (builtins == NULL) {
+-        Py_DECREF(defaults);
+-        return NULL;
+-    }
+-    if (locals == NULL) {
+-        locals = globals;
+-    }
+-    PyObject *kwnames = NULL;
+-    PyObject *const *allargs;
+-    PyObject **newargs = NULL;
+-    PyFunctionObject *func = NULL;
+-    if (kwcount == 0) {
+-        allargs = args;
+-    }
+-    else {
+-        kwnames = PyTuple_New(kwcount);
+-        if (kwnames == NULL) {
+-            goto fail;
+-        }
+-        newargs = PyMem_Malloc(sizeof(PyObject *)*(kwcount+argcount));
+-        if (newargs == NULL) {
+-            goto fail;
+-        }
+-        for (int i = 0; i < argcount; i++) {
+-            newargs[i] = args[i];
+-        }
+-        for (int i = 0; i < kwcount; i++) {
+-            PyTuple_SET_ITEM(kwnames, i, Py_NewRef(kws[2*i]));
+-            newargs[argcount+i] = kws[2*i+1];
+-        }
+-        allargs = newargs;
+-    }
+-    PyFrameConstructor constr = {
+-        .fc_globals = globals,
+-        .fc_builtins = builtins,
+-        .fc_name = ((PyCodeObject *)_co)->co_name,
+-        .fc_qualname = ((PyCodeObject *)_co)->co_name,
+-        .fc_code = _co,
+-        .fc_defaults = defaults,
+-        .fc_kwdefaults = kwdefs,
+-        .fc_closure = closure
+-    };
+-    func = _PyFunction_FromConstructor(&constr);
+-    if (func == NULL) {
+-        goto fail;
+-    }
+-    EVAL_CALL_STAT_INC(EVAL_CALL_LEGACY);
+-    res = _PyEval_Vector(tstate, func, locals,
+-                         allargs, argcount,
+-                         kwnames);
+-fail:
+-    Py_XDECREF(func);
+-    Py_XDECREF(kwnames);
+-    PyMem_Free(newargs);
+-    _Py_DECREF_BUILTINS(builtins);
+-    Py_DECREF(defaults);
+-    return res;
+-}
+-
 -
 -/* Logic for the raise statement (too complicated for inlining).
 -   This *consumes* a reference count to each of its arguments. */
@@ -1449,15 +1558,120 @@
 -    Py_XDECREF(cause);
 -    return 0;
 -}
++
 
  /* Logic for matching an exception in an except* clause (too
     complicated for inlining).
  */
-@@ -2486,245 +1684,14 @@
-     Py_XDECREF(it);
-     return 0;
- }
+@@ -2382,513 +1452,22 @@
+    If argcntafter == -1, do a simple unpack. If it is >= 0, do an unpack
+    with a variable target.
+ */
 
+-int
+-_PyEval_UnpackIterableStackRef(PyThreadState *tstate, PyObject *v,
+-                       int argcnt, int argcntafter, _PyStackRef *sp)
+-{
+-    int i = 0, j = 0;
+-    Py_ssize_t ll = 0;
+-    PyObject *it;  /* iter(v) */
+-    PyObject *w;
+-    PyObject *l = NULL; /* variable list */
+-    assert(v != NULL);
+-
+-    it = PyObject_GetIter(v);
+-    if (it == NULL) {
+-        if (_PyErr_ExceptionMatches(tstate, PyExc_TypeError) &&
+-            Py_TYPE(v)->tp_iter == NULL && !PySequence_Check(v))
+-        {
+-            _PyErr_Format(tstate, PyExc_TypeError,
+-                          "cannot unpack non-iterable %.200s object",
+-                          Py_TYPE(v)->tp_name);
+-        }
+-        return 0;
+-    }
+-
+-    for (; i < argcnt; i++) {
+-        w = PyIter_Next(it);
+-        if (w == NULL) {
+-            /* Iterator done, via error or exhaustion. */
+-            if (!_PyErr_Occurred(tstate)) {
+-                if (argcntafter == -1) {
+-                    _PyErr_Format(tstate, PyExc_ValueError,
+-                                  "not enough values to unpack "
+-                                  "(expected %d, got %d)",
+-                                  argcnt, i);
+-                }
+-                else {
+-                    _PyErr_Format(tstate, PyExc_ValueError,
+-                                  "not enough values to unpack "
+-                                  "(expected at least %d, got %d)",
+-                                  argcnt + argcntafter, i);
+-                }
+-            }
+-            goto Error;
+-        }
+-        *--sp = PyStackRef_FromPyObjectSteal(w);
+-    }
+-
+-    if (argcntafter == -1) {
+-        /* We better have exhausted the iterator now. */
+-        w = PyIter_Next(it);
+-        if (w == NULL) {
+-            if (_PyErr_Occurred(tstate))
+-                goto Error;
+-            Py_DECREF(it);
+-            return 1;
+-        }
+-        Py_DECREF(w);
+-
+-        if (PyList_CheckExact(v) || PyTuple_CheckExact(v)
+-              || PyDict_CheckExact(v)) {
+-            ll = PyDict_CheckExact(v) ? PyDict_Size(v) : Py_SIZE(v);
+-            if (ll > argcnt) {
+-                _PyErr_Format(tstate, PyExc_ValueError,
+-                              "too many values to unpack (expected %d, got %zd)",
+-                              argcnt, ll);
+-                goto Error;
+-            }
+-        }
+-        _PyErr_Format(tstate, PyExc_ValueError,
+-                      "too many values to unpack (expected %d)",
+-                      argcnt);
+-        goto Error;
+-    }
+-
+-    l = PySequence_List(it);
+-    if (l == NULL)
+-        goto Error;
+-    *--sp = PyStackRef_FromPyObjectSteal(l);
+-    i++;
+-
+-    ll = PyList_GET_SIZE(l);
+-    if (ll < argcntafter) {
+-        _PyErr_Format(tstate, PyExc_ValueError,
+-            "not enough values to unpack (expected at least %d, got %zd)",
+-            argcnt + argcntafter, argcnt + ll);
+-        goto Error;
+-    }
+-
+-    /* Pop the "after-variable" args off the list. */
+-    for (j = argcntafter; j > 0; j--, i++) {
+-        *--sp = PyStackRef_FromPyObjectSteal(PyList_GET_ITEM(l, ll - j));
+-    }
+-    /* Resize the list. */
+-    Py_SET_SIZE(l, ll - argcntafter);
+-    Py_DECREF(it);
+-    return 1;
+-
+-Error:
+-    for (; i > 0; i--, sp++) {
+-        PyStackRef_CLOSE(*sp);
+-    }
+-    Py_XDECREF(it);
+-    return 0;
+-}
+-
 -static int
 -do_monitor_exc(PyThreadState *tstate, _PyInterpreterFrame *frame,
 -               _Py_CODEUNIT *instr, int event)
@@ -1676,12 +1890,12 @@
 -    Py_XSETREF(tstate->async_gen_firstiter, Py_XNewRef(firstiter));
 -    return 0;
 -}
-
- PyObject *
- _PyEval_GetAsyncGenFirstiter(void)
- {
-     PyThreadState *tstate = _PyThreadState_GET();
-     return tstate->async_gen_firstiter;
+-
+-PyObject *
+-_PyEval_GetAsyncGenFirstiter(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return tstate->async_gen_firstiter;
 -}
 -
 -int
@@ -1695,11 +1909,314 @@
 -
 -    Py_XSETREF(tstate->async_gen_finalizer, Py_XNewRef(finalizer));
 -    return 0;
- }
+-}
+-
+-PyObject *
+-_PyEval_GetAsyncGenFinalizer(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return tstate->async_gen_finalizer;
+-}
+-
+-_PyInterpreterFrame *
+-_PyEval_GetFrame(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return _PyThreadState_GetFrame(tstate);
+-}
+-
+-PyFrameObject *
+-PyEval_GetFrame(void)
+-{
+-    _PyInterpreterFrame *frame = _PyEval_GetFrame();
+-    if (frame == NULL) {
+-        return NULL;
+-    }
+-    PyFrameObject *f = _PyFrame_GetFrameObject(frame);
+-    if (f == NULL) {
+-        PyErr_Clear();
+-    }
+-    return f;
+-}
+-
+-PyObject *
+-_PyEval_GetBuiltins(PyThreadState *tstate)
+-{
+-    _PyInterpreterFrame *frame = _PyThreadState_GetFrame(tstate);
+-    if (frame != NULL) {
+-        return frame->f_builtins;
+-    }
+-    return tstate->interp->builtins;
+-}
+-
+-PyObject *
+-PyEval_GetBuiltins(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return _PyEval_GetBuiltins(tstate);
+-}
++
++
++
++
++
++
++
+
+ /* Convenience function to get a builtin from its name */
+-PyObject *
+-_PyEval_GetBuiltin(PyObject *name)
+-{
+-    PyObject *attr;
+-    if (PyMapping_GetOptionalItem(PyEval_GetBuiltins(), name, &attr) == 0) {
+-        PyErr_SetObject(PyExc_AttributeError, name);
+-    }
+-    return attr;
+-}
+-
+-PyObject *
+-_PyEval_GetBuiltinId(_Py_Identifier *name)
+-{
+-    return _PyEval_GetBuiltin(_PyUnicode_FromId(name));
+-}
+-
+-PyObject *
+-PyEval_GetLocals(void)
+-{
+-    // We need to return a borrowed reference here, so some tricks are needed
+-    PyThreadState *tstate = _PyThreadState_GET();
+-     _PyInterpreterFrame *current_frame = _PyThreadState_GetFrame(tstate);
+-    if (current_frame == NULL) {
+-        _PyErr_SetString(tstate, PyExc_SystemError, "frame does not exist");
+-        return NULL;
+-    }
+-
+-    // Be aware that this returns a new reference
+-    PyObject *locals = _PyFrame_GetLocals(current_frame);
+-
+-    if (locals == NULL) {
+-        return NULL;
+-    }
+-
+-    if (PyFrameLocalsProxy_Check(locals)) {
+-        PyFrameObject *f = _PyFrame_GetFrameObject(current_frame);
+-        if (f == NULL) {
+-            Py_DECREF(locals);
+-            return NULL;
+-        }
+-
+-        PyObject *ret = f->f_locals_cache;
+-        if (ret == NULL) {
+-            ret = PyDict_New();
+-            if (ret == NULL) {
+-                Py_DECREF(locals);
+-                return NULL;
+-            }
+-            f->f_locals_cache = ret;
+-        }
+-        if (PyDict_Update(ret, locals) < 0) {
+-            // At this point, if the cache dict is broken, it will stay broken, as
+-            // trying to clean it up or replace it will just cause other problems
+-            ret = NULL;
+-        }
+-        Py_DECREF(locals);
+-        return ret;
+-    }
+-
+-    assert(PyMapping_Check(locals));
+-    assert(Py_REFCNT(locals) > 1);
+-    Py_DECREF(locals);
+-
+-    return locals;
+-}
+-
+-PyObject *
+-_PyEval_GetFrameLocals(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-     _PyInterpreterFrame *current_frame = _PyThreadState_GetFrame(tstate);
+-    if (current_frame == NULL) {
+-        _PyErr_SetString(tstate, PyExc_SystemError, "frame does not exist");
+-        return NULL;
+-    }
+-
+-    PyObject *locals = _PyFrame_GetLocals(current_frame);
+-    if (locals == NULL) {
+-        return NULL;
+-    }
+-
+-    if (PyFrameLocalsProxy_Check(locals)) {
+-        PyObject* ret = PyDict_New();
+-        if (ret == NULL) {
+-            Py_DECREF(locals);
+-            return NULL;
+-        }
+-        if (PyDict_Update(ret, locals) < 0) {
+-            Py_DECREF(ret);
+-            Py_DECREF(locals);
+-            return NULL;
+-        }
+-        Py_DECREF(locals);
+-        return ret;
+-    }
+-
+-    assert(PyMapping_Check(locals));
+-    return locals;
+-}
+-
+-static PyObject *
+-_PyEval_GetGlobals(PyThreadState *tstate)
+-{
+-    _PyInterpreterFrame *current_frame = _PyThreadState_GetFrame(tstate);
+-    if (current_frame == NULL) {
+-        return NULL;
+-    }
+-    return current_frame->f_globals;
+-}
+-
+-PyObject *
+-PyEval_GetGlobals(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return _PyEval_GetGlobals(tstate);
+-}
++
++
++
++
++
 
  PyObject *
- _PyEval_GetAsyncGenFinalizer(void)
-@@ -3036,486 +2003,8 @@
+ _PyEval_GetGlobalsFromRunningMain(PyThreadState *tstate)
+ {
+@@ -2904,120 +1483,14 @@
+     Py_DECREF(mod);
+     return globals;
+ }
+
+-static PyObject *
+-get_globals_builtins(PyObject *globals)
+-{
+-    PyObject *builtins = NULL;
+-    if (PyDict_Check(globals)) {
+-        if (PyDict_GetItemRef(globals, &_Py_ID(__builtins__), &builtins) < 0) {
+-            return NULL;
+-        }
+-    }
+-    else {
+-        if (PyMapping_GetOptionalItem(
+-                        globals, &_Py_ID(__builtins__), &builtins) < 0)
+-        {
+-            return NULL;
+-        }
+-    }
+-    return builtins;
+-}
+-
+-static int
+-set_globals_builtins(PyObject *globals, PyObject *builtins)
+-{
+-    if (PyDict_Check(globals)) {
+-        if (PyDict_SetItem(globals, &_Py_ID(__builtins__), builtins) < 0) {
+-            return -1;
+-        }
+-    }
+-    else {
+-        if (PyObject_SetItem(globals, &_Py_ID(__builtins__), builtins) < 0) {
+-            return -1;
+-        }
+-    }
+-    return 0;
+-}
+-
+-int
+-_PyEval_EnsureBuiltins(PyThreadState *tstate, PyObject *globals,
+-                       PyObject **p_builtins)
+-{
+-    PyObject *builtins = get_globals_builtins(globals);
+-    if (builtins == NULL) {
+-        if (_PyErr_Occurred(tstate)) {
+-            return -1;
+-        }
+-        builtins = PyEval_GetBuiltins();  // borrowed
+-        if (builtins == NULL) {
+-            assert(_PyErr_Occurred(tstate));
+-            return -1;
+-        }
+-        Py_INCREF(builtins);
+-        if (set_globals_builtins(globals, builtins) < 0) {
+-            Py_DECREF(builtins);
+-            return -1;
+-        }
+-    }
+-    if (p_builtins != NULL) {
+-        *p_builtins = builtins;
+-    }
+-    else {
+-        Py_DECREF(builtins);
+-    }
+-    return 0;
+-}
+-
+-int
+-_PyEval_EnsureBuiltinsWithModule(PyThreadState *tstate, PyObject *globals,
+-                                 PyObject **p_builtins)
+-{
+-    PyObject *builtins = get_globals_builtins(globals);
+-    if (builtins == NULL) {
+-        if (_PyErr_Occurred(tstate)) {
+-            return -1;
+-        }
+-        builtins = PyImport_ImportModuleLevel("builtins", NULL, NULL, NULL, 0);
+-        if (builtins == NULL) {
+-            return -1;
+-        }
+-        if (set_globals_builtins(globals, builtins) < 0) {
+-            Py_DECREF(builtins);
+-            return -1;
+-        }
+-    }
+-    if (p_builtins != NULL) {
+-        *p_builtins = builtins;
+-    }
+-    else {
+-        Py_DECREF(builtins);
+-    }
+-    return 0;
+-}
+-
+-PyObject*
+-PyEval_GetFrameLocals(void)
+-{
+-    return _PyEval_GetFrameLocals();
+-}
+-
+-PyObject* PyEval_GetFrameGlobals(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    _PyInterpreterFrame *current_frame = _PyThreadState_GetFrame(tstate);
+-    if (current_frame == NULL) {
+-        return NULL;
+-    }
+-    return Py_XNewRef(current_frame->f_globals);
+-}
+-
+-PyObject* PyEval_GetFrameBuiltins(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return Py_XNewRef(_PyEval_GetBuiltins(tstate));
+-}
++
++
++
++
++
++
+
+ int
+ PyEval_MergeCompilerFlags(PyCompilerFlags *cf)
+ {
+@@ -3036,486 +1509,8 @@
      return result;
  }
 
@@ -2186,7 +2703,7 @@
  PyUnstable_Eval_RequestCodeExtraIndex(freefunc free)
  {
      PyInterpreterState *interp = _PyInterpreterState_GET();
-@@ -3555,47 +2044,8 @@
+@@ -3555,47 +1550,8 @@
 
  void Py_LeaveRecursiveCall(void)
  {
@@ -2234,7 +2751,7 @@
 
  void
  _PyEval_LoadGlobalStackRef(PyObject *globals, PyObject *builtins, PyObject *name, _PyStackRef *writeto)
-@@ -3636,90 +2086,5 @@
+@@ -3636,90 +1592,5 @@
          *writeto = PyStackRef_FromPyObjectSteal(res);
      }
  }

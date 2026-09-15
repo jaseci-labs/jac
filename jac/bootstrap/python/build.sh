@@ -171,6 +171,9 @@ cpython() {
         cp "$work/native/evaluator_arguments.o" Python/jac_evaluator_arguments.o
         cp "$work/native/evaluator_binding.o" Python/jac_evaluator_bind_locals.o
         cp "$work/native/evaluator_calls.o" Python/jac_evaluator_calls.o
+        cp "$work/native/evaluator_legacy.o" Python/jac_evaluator_legacy.o
+        cp "$work/native/evaluator_context.o" Python/jac_evaluator_context.o
+        cp "$work/native/evaluator_unpack.o" Python/jac_evaluator_unpack.o
     fi
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
@@ -331,6 +334,9 @@ if [ -n "$host" ]; then
     cp "$work/native/evaluator_arguments.sha256" "$work/python/build/jacpython-evaluator-arguments-sha256"
     cp "$work/native/evaluator_binding.sha256" "$work/python/build/jacpython-evaluator-binding-sha256"
     cp "$work/native/evaluator_calls.sha256" "$work/python/build/jacpython-evaluator-calls-sha256"
+    cp "$work/native/evaluator_legacy.sha256" "$work/python/build/jacpython-evaluator-legacy-sha256"
+    cp "$work/native/evaluator_context.sha256" "$work/python/build/jacpython-evaluator-context-sha256"
+    cp "$work/native/evaluator_unpack.sha256" "$work/python/build/jacpython-evaluator-unpack-sha256"
     cp "$work/native/evaluator-provenance.json" "$work/python/build/jacpython-evaluator-provenance.json"
     rm -rf "$work/native"
 else

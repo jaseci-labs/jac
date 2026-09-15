@@ -158,10 +158,21 @@ emit_evaluator_unit("evaluator_arguments", "evaluator_arguments", [
     "jacpy_missing_arguments", "jacpy_too_many_positional", "jacpy_positional_only_as_keyword",
 ])
 emit_evaluator_unit("evaluator_binding", "evaluator_binding", [
-    "jacpy_bind_locals", "jacpy_binding_close_impl", "jacpy_frame_push_impl",
+    "jacpy_binding_close_impl", "jacpy_frame_push_impl",
 ])
 emit_evaluator_unit("evaluator_calls", "evaluator_calls", [
     "jacpy_eval_vector_impl", "jacpy_callargs_close_impl", "jacpy_frame_push_ex_impl",
+])
+emit_evaluator_unit("evaluator_legacy", "evaluator_legacy", [
+    "PyEval_EvalCode", "jacpy_eval_code_ex_impl",
+])
+emit_evaluator_unit("evaluator_context", "evaluator_context", [
+    "jacpy_get_builtins", "jacpy_get_globals", "jacpy_get_frame_object",
+    "jacpy_get_locals", "jacpy_get_frame_locals", "jacpy_get_builtin",
+    "_PyEval_EnsureBuiltins", "_PyEval_EnsureBuiltinsWithModule",
+])
+emit_evaluator_unit("evaluator_unpack", "evaluator_unpack", [
+    "jacpy_unpack_iterable", "jacpy_unpack_close_impl",
 ])
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
