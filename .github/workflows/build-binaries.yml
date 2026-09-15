@@ -851,11 +851,8 @@ jobs:
     needs: build
     if: (github.event_name == 'release' || inputs.tag != '') && inputs.only == ''
     permissions:
-      # The called workflow also supports manual draft finalization. That
-      # write job is skipped for normal releases, whose publish job stays in
-      # release.yml; the image job itself retains read-only permissions.
-      contents: write
-    uses: ./.github/workflows/publish-docker.yml
+      contents: read
+    uses: ./.github/workflows/docker-image.yml
     with:
       tag: ${{ inputs.tag || github.event.release.tag_name }}
       commit: ${{ inputs.channel == 'dev' && github.sha || inputs.commit || inputs.tag || github.event.release.tag_name }}

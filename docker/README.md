@@ -22,12 +22,14 @@ supported once both Linux binaries and their checksums have been uploaded.
 By default this publishes Docker images only. Older versions do not replace
 `latest` when a newer GitHub release exists.
 
-To finish an otherwise-complete release after Docker was its only failure, set
-`publish_release=true` and pass `required_platforms` from the original release's
-plan job. After Docker succeeds, the workflow runs the normal release asset
-guard and publishes the draft with `GITHUB_TOKEN`, which avoids triggering
-another binary build. An empty required-platform list is rejected. The normal
-release workflow continues to wait for Docker before publishing.
+To finish an otherwise-complete release after Docker was its only failure, pass
+`-f release_run_id=34923635466` with the original Release run ID. After Docker
+succeeds, recovery reads that run's plan and checks its approval, required build
+jobs, admin build, tag commit, and binary/admin assets with checksum sidecars.
+Missing or expired plan logs refuse publication. It then runs the normal release
+asset guard and publishes the draft with `GITHUB_TOKEN`, which avoids triggering
+another binary build. The normal release workflow continues to wait for Docker
+before publishing.
 
 ## Dependency bootstrap
 

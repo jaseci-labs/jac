@@ -1,0 +1,140 @@
+name: Build and publish Jac Docker image
+
+# Normal releases and the standalone Docker recovery workflow call this.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Existing release tag (v<version> or dev)."
+        required: true
+        type: string
+      commit:
+        description: "Dockerfile commit for a normal release. Empty uses the workflow ref."
+        required: false
+        default: ""
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+# Serialize publishers of the same image tag without cancelling a release.
+concurrency:
+  group: publish-docker-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN_SET: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          persist-credentials: false
+
+      - name: Fail if publishing secrets are missing (org repo)
+        if: github.repository == 'jaseci-labs/jac' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
+        run: |
+          echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN are required to publish the Docker image."
+          exit 1
+
+      - name: Download and verify the existing release binaries
+        if: env.DOCKERHUB_USERNAME != ''
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$TAG" = dev ]; then
+            VERSION=dev
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="${TAG#v}"
+          else
+            echo "::error::Expected a canonical v<version> release tag or dev."
+            exit 1
+          fi
+          for arch in amd64 arm64; do
+            case "$arch" in
+              amd64) platform=linux-x86_64 ;;
+              arm64) platform=linux-aarch64 ;;
+            esac
+            asset="jac-${VERSION}-${platform}"
+            mkdir -p "ctx/$arch"
+            gh release download "$TAG" --pattern "$asset" --pattern "$asset.sha256" --dir "ctx/$arch"
+            ( cd "ctx/$arch" && sha256sum --check "$asset.sha256" )
+            mv "ctx/$arch/$asset" "ctx/$arch/jac"
+            chmod +x "ctx/$arch/jac"
+          done
+          cp docker/jaclang.Dockerfile ctx/Dockerfile
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        if: env.DOCKERHUB_USERNAME != ''
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        if: env.DOCKERHUB_USERNAME != ''
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: env.DOCKERHUB_USERNAME != ''
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: tags
+        if: env.DOCKERHUB_USERNAME != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          IMAGE=jaseci/jaclang
+          TAGS="$IMAGE:$VERSION"
+          if [ "$VERSION" != dev ]; then
+            # Preserve the release workflow's backport rule: latest never
+            # moves to an older version when an old image is rebuilt.
+            latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || echo "")"
+            if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
+              TAGS="$TAGS,$IMAGE:latest"
+            else
+              echo "Backport: $latest_tag stays latest; publishing $IMAGE:$VERSION only."
+            fi
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        id: build
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ctx
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+
+      - name: Summarize published image
+        if: env.DOCKERHUB_USERNAME != ''
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          {
+            echo "## Docker image"
+            echo "Release binaries: $RELEASE_TAG"
+            echo "Tags: $TAGS"
+            echo "Digest: $DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"
