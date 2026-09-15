@@ -24,7 +24,8 @@ comptime import from jaclang.cli.commands.project {
     SPEC_CREATE,
     SPEC_INSTALL,
     SPEC_REMOVE,
-    SPEC_UPDATE
+    SPEC_UPDATE,
+    SPEC_WHY
 }
 comptime import from jaclang.cli.commands.tools {
     SPEC_COMPLETIONS,
@@ -125,6 +126,7 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_TEST),
          _route(SPEC_TOOL),
          _route(SPEC_UPDATE),
+         _route(SPEC_WHY),
          _route(SPEC_X)
      ];
 

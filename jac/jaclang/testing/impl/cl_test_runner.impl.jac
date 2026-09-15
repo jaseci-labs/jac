@@ -309,7 +309,7 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
     }
 
     try {
-        boot_budget = 90.0;
+        boot_budget = 300.0;
         deadline = time.monotonic() + boot_budget;
         while True {
             if proc.poll() is not None {
