@@ -327,7 +327,7 @@ def main -> int {
     parser.add_argument(
         '--budgets',
         type=Path,
-        help='Optional operation-to-Budget JSON; compare p95 wall time and process peak RSS.'
+        help='Optional scenario-to-operation Budget JSON; compare p95 wall time and process peak RSS.'
     );
     args = parser.parse_args();
     if min(args.rounds, args.documents, args.iterations) < 1 {
@@ -337,7 +337,7 @@ def main -> int {
     if args.budgets is not None {
         budgets = {
             name: Budget(**value)
-            for (name, value) in json.loads(args.budgets.read_text()).items()
+            for (name, value) in json.loads(args.budgets.read_text())[args.scenario].items()
         };
     }
     failures: list[str] = [];
@@ -377,6 +377,7 @@ def main -> int {
                         annex=args.scenario == 'annex'
                     );
             }
+            samples['startup'] = Samples([client.startup_seconds]);
             results['operations'] = {
                 name: values.summary() for (name, values) in samples.items()
             };

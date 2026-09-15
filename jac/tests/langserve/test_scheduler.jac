@@ -60,3 +60,17 @@ test "close supersedes a cancelled check and overload rejects explicitly" {
     abandoned = queue.stop();
     assert len(abandoned) == 1 and abandoned[0].message_id == 1;
 }
+
+test "changed dependency interfaces refresh before queued consumer checks" {
+    queue = WorkQueue(debounce=0.0);
+    queue.schedule('file:///library.jac', WorkKind.DEPENDENCY);
+    queue.schedule('file:///consumer.jac', WorkKind.CHECK);
+    queue.schedule('file:///library.jac', WorkKind.INDEX);
+    producer = queue.take();
+    assert isinstance(producer, WorkItem) and producer.kind == WorkKind.DEPENDENCY;
+    queue.finish(producer);
+    consumer = queue.take();
+    assert isinstance(consumer, WorkItem) and consumer.kind == WorkKind.CHECK;
+    queue.finish(consumer);
+    queue.stop();
+}

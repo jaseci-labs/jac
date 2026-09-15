@@ -218,7 +218,7 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
     }
     old_module = self.mod.hub.get(resolved_path);
     if old_module is not None {
-        self.analysis.drop_tasks(id(old_module));
+        self.analysis.forget_module(old_module);
     }
     work = self.analysis.placement_state.get('work');
     if work is not None {

@@ -138,7 +138,12 @@ impl JacLangServer._sync_sources(
                 }
             }
         } elif path.endswith('.jac') and os.path.isfile(path) {
-            self.work.schedule(uri, WorkKind.INDEX, immediate=True, interrupt=False);
+            self.work.schedule(
+                uri,
+                WorkKind.DEPENDENCY if path in producers else WorkKind.INDEX,
+                immediate=True,
+                interrupt=False
+            );
         }
     }
 }
@@ -517,7 +522,7 @@ impl JacLangServer.dispatcher -> None {
                     self._refresh_file(item.uri);
                 } elif item.kind == WorkKind.SCAN {
                     self._scan_workspace(item.uri);
-                } elif item.kind == WorkKind.INDEX {
+                } elif item.kind in (WorkKind.INDEX, WorkKind.DEPENDENCY) {
                     self._index_file(item);
                 } else {
                     self._release_document(

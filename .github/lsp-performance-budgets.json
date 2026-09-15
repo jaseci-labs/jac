@@ -1,0 +1,66 @@
+{
+  "small": {
+    "startup": {"wall_seconds": 2, "max_rss_mib": 384},
+    "open": {"wall_seconds": 2},
+    "hover": {"wall_seconds": 0.1},
+    "definition": {"wall_seconds": 0.1},
+    "completion": {"wall_seconds": 0.15},
+    "documentSymbol": {"wall_seconds": 0.15},
+    "semanticTokens-full": {"wall_seconds": 0.15},
+    "edit-diagnostics": {"wall_seconds": 1},
+    "edit-completion": {"wall_seconds": 1},
+    "queued-hover": {"wall_seconds": 1},
+    "burst-diagnostics": {"wall_seconds": 1},
+    "cancel": {"wall_seconds": 0.1}
+  },
+  "medium": {
+    "startup": {"wall_seconds": 2, "max_rss_mib": 768},
+    "open": {"wall_seconds": 6},
+    "hover": {"wall_seconds": 0.15},
+    "definition": {"wall_seconds": 0.15},
+    "completion": {"wall_seconds": 0.3},
+    "documentSymbol": {"wall_seconds": 0.5},
+    "semanticTokens-full": {"wall_seconds": 0.3},
+    "edit-diagnostics": {"wall_seconds": 4},
+    "edit-completion": {"wall_seconds": 3},
+    "queued-hover": {"wall_seconds": 3},
+    "burst-diagnostics": {"wall_seconds": 4},
+    "cancel": {"wall_seconds": 0.15}
+  },
+  "large": {
+    "startup": {"wall_seconds": 2, "max_rss_mib": 1536},
+    "open": {"wall_seconds": 30},
+    "hover": {"wall_seconds": 0.5},
+    "definition": {"wall_seconds": 0.5},
+    "completion": {"wall_seconds": 1},
+    "documentSymbol": {"wall_seconds": 1.5},
+    "semanticTokens-full": {"wall_seconds": 1},
+    "edit-diagnostics": {"wall_seconds": 25},
+    "edit-completion": {"wall_seconds": 20},
+    "queued-hover": {"wall_seconds": 20},
+    "burst-diagnostics": {"wall_seconds": 25},
+    "cancel": {"wall_seconds": 0.2}
+  },
+  "annex": {
+    "startup": {"wall_seconds": 2, "max_rss_mib": 768},
+    "open": {"wall_seconds": 6},
+    "hover": {"wall_seconds": 0.15},
+    "definition": {"wall_seconds": 0.15},
+    "completion": {"wall_seconds": 0.3},
+    "documentSymbol": {"wall_seconds": 0.5},
+    "semanticTokens-full": {"wall_seconds": 0.3},
+    "edit-diagnostics": {"wall_seconds": 4},
+    "edit-completion": {"wall_seconds": 3},
+    "queued-hover": {"wall_seconds": 3},
+    "burst-diagnostics": {"wall_seconds": 4},
+    "cancel": {"wall_seconds": 0.15}
+  },
+  "workspace": {
+    "startup": {"wall_seconds": 2, "max_rss_mib": 768},
+    "dependency-fanout": {"wall_seconds": 4}
+  },
+  "soak": {
+    "startup": {"wall_seconds": 2, "max_rss_mib": 384},
+    "soak-cycle": {"wall_seconds": 2}
+  }
+}

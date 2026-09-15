@@ -657,12 +657,6 @@ impl LanguageServer._run_request(request: Request) -> None {
                 error=ResponseErrorCode.RequestCancelled,
                 message='Request cancelled'
             );
-        } elif not request.is_current(self.workspace) {
-            self._finish_request(
-                request,
-                error=ResponseErrorCode.ContentModified,
-                message='Workspace changed'
-            );
         } else {
             self._finish_request(request, result=result);
         }
@@ -698,10 +692,6 @@ impl LanguageServer._finish_request(
         content = encode_message(
             {'jsonrpc': '2.0', 'id': request.message_id, 'result': encoded}
         );
-        if request.inputs_current is not None and not request.inputs_current() {
-            error = ResponseErrorCode.ContentModified;
-            message = 'Analysis inputs changed';
-        }
     }
     with self.workspace.lock, self._request_lock {
         if request.responded {

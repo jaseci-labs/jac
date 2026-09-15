@@ -209,10 +209,16 @@ its revision. `lsp/server/scheduler.jac` coalesces checks per compilation unit,
 preserves work for other documents, and bounds the interactive request queue.
 One worker owns mutable compiler state and handles semantic requests; protocol
 input and cancellation continue while it works. Diagnostics include document
-versions and are published only if the captured workspace revision is current.
+versions and are published only if their captured inputs are current. Each
+request reads through a frozen workspace view, including position conversion.
+Input manifests record the files actually used; editing an unrelated buffer
+does not invalidate a query. Requests queued for an older version of their own
+document receive `ContentModified`.
 Completion can request symbol construction and evaluate the queried expression
 without waiting for workspace diagnostics. Text exclusion ranges and completion
-items are cached by the document or analysis state that owns them.
+items are cached by the document or analysis state that owns them. Lexical views
+retain at most 64 files and four million source characters; completion caches
+retain at most 20,000 items. Both discard least recently used entries.
 
 Compiler and engine positions use Unicode code points. The protocol boundary
 converts request positions and response ranges to the client's negotiated
@@ -224,7 +230,14 @@ and cancellation remains available while a response is being serialized.
 `ModuleManager` keeps editor products separate from mutable compiler graphs.
 Outlines and encoded semantic tokens contain protocol data and remain usable
 after an analysis tree is released. Invalidating a unit also invalidates its
-annex products. File watcher notifications use the same dependency invalidation
+annex products. Dependent trees retire immediately, while compact consumer
+products can survive a dependency body edit. The existing interface encoder,
+placement summaries, and exported symbol descriptions define the consumer
+contract. When that contract is unchanged, the symbol index refreshes matching
+dependency digests in retained consumer manifests. Each application context
+must remain current before its editor products can be reused. Changes to
+signatures, exported locations, annex membership, and compile-time body inputs
+remain conservative rechecks. File watcher notifications use the same dependency invalidation
 path as buffer edits; renaming an open document preserves its unsaved text and
 version. The server registers file watchers when the client supports dynamic
 registration.
@@ -248,6 +261,15 @@ remain available after its compiler trees are retired. Workspace symbol search
 returns at most 256 matching declarations and excludes function locals.
 Index reads join the query's input capture, so even results with no resident
 compiler module are checked for concurrent source changes before publication.
+Reference and rename requests wait for pending workspace indexing to complete;
+other interactive requests can run while discovery continues.
+
+`scripts/lsp_bench.jac` measures the real stdio protocol and uses the existing
+`scripts/ci_perf.jac` budget accounting. The proposed scenario budgets live in
+`.github/lsp-performance-budgets.json`. The optional `lsp_performance` input on
+the CI workflow runs the six scenarios against its existing sealed kit and
+preserves the raw measurements. It defaults to off pending budget calibration
+and review.
 
 ### `project/`
 

@@ -9,6 +9,7 @@ enum WorkKind {
     CLOSE = 'close',
     DELETE = 'delete',
     REFRESH = 'refresh',
+    DEPENDENCY = 'dependency',
     SCAN = 'scan',
     INDEX = 'index'
 }

@@ -44,13 +44,23 @@ the same. A cold development compiler may compile itself inside the first
 session; compare sealed binaries when measuring production startup and memory.
 Run enough rounds to assess variation and preserve the raw results.
 
-`--budgets /path/to/budgets.json` accepts operation names mapped to the existing
-CI `Budget` format, for example:
+`--budgets /path/to/budgets.json` selects the current scenario from a mapping of
+scenarios to operation names, using the existing CI `Budget` format:
 
 ```json
-{"edit-completion": {"wall_seconds": 4, "max_rss_mib": 1024}}
+{"medium": {"edit-completion": {"wall_seconds": 4, "max_rss_mib": 1024}}}
 ```
 
 The script uses `scripts/ci_perf.jac` to check p95 wall time and peak server RSS.
 Missing requested measurements and unavailable requested memory accounting
 fail the gate. The soak operation is named `soak-cycle`.
+`startup` records process initialization separately and can also carry the
+session's peak RSS budget.
+
+The proposed budgets in `.github/lsp-performance-budgets.json` cover all six
+scenarios. They are review targets and have not been calibrated against the
+final implementation. The CI workflow's optional `lsp_performance` dispatch
+input reuses the existing sealed kit and artifact actions to run the scenarios.
+It defaults to false and does not add benchmark runs to pull requests.
+Enable it after reviewing the source changes and agreeing on the measurement
+environment; preserve the raw samples when adjusting thresholds.

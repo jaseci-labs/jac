@@ -426,7 +426,11 @@ class AnalysisCaches {
         self.completed_passes.pop(key, None);
         self.product_tasks.pop(key, None);
         self.task_owners.pop(key, None);
-        self.early_passes.pop(key, None);
+    }
+
+    def forget_module(self: AnalysisCaches, module: uni.Module) {
+        self.early_passes.pop(id(module), None);
+        self.drop_tasks(id(module));
     }
 
     def release(self: AnalysisCaches) {
