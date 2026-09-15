@@ -32,13 +32,22 @@ def _pushable_value(v: any) -> bool {
 }
 
 
-def _type_cond(alias: str, tname: str, params: dict, pfx: str) -> str {
+def _type_cond(alias: str, names: list[str], params: dict, pfx: str) -> str {
     key = f"{pfx}t";
-    params[key] = tname;
-    return (
-        f"({alias}.arch_type = :{key} OR {alias}.arch_type IN "
-        f"(SELECT type_name FROM graph_types WHERE ancestor = :{key}))"
-    );
+    params[key] = names;
+    return f"{alias}.arch_type = ANY(CAST(:{key} AS text[]))";
+}
+
+
+def _type_names(tname: str, store: Store, cache: dict[str, list[str]]) -> list[str] {
+    if tname not in cache {
+        names = list(store.subtype_names(tname));
+        if tname not in names {
+            names.append(tname);
+        }
+        cache[tname] = names;
+    }
+    return cache[tname];
 }
 
 
@@ -196,21 +205,37 @@ def _acl_cond(alias: str, root_id: str, params: dict, pfx: str) -> str {
 }
 
 
-def _dir_cond(alias: str, fid: str, dir: int) -> str {
+def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]] {
     if dir == 1 {
-        return (
-            f"({alias}.dst = {fid} OR ({alias}.undirected AND {alias}.src = {fid}))"
-        );
+        return [
+            (f"e.dst = {fid}", 'e.src'),
+            (f"e.undirected AND e.src = {fid} AND e.dst <> {fid}", 'e.dst')
+        ];
     }
     if dir == 3 {
-        return f"({alias}.src = {fid} OR {alias}.dst = {fid})";
+        return [
+            (f"e.src = {fid}", 'e.dst'),
+            (f"e.dst = {fid} AND e.src <> {fid}", 'e.src')
+        ];
     }
-    return f"({alias}.src = {fid} OR ({alias}.undirected AND {alias}.dst = {fid}))";
+    return [
+        (f"e.src = {fid}", 'e.dst'),
+        (f"e.undirected AND e.dst = {fid} AND e.src <> {fid}", 'e.src')
+    ];
 }
 
 
-def _other_expr(alias: str, fid: str) -> str {
-    return f"CASE WHEN {alias}.src = {fid} THEN {alias}.dst ELSE {alias}.src END";
+def _edge_join(alias: str, fid: str, dir: int, econds: list[str]) -> str {
+    arms: list[str] = [];
+    for (cond, other) in _edge_branches(fid, dir) {
+        if fid == 'f0.id' {
+            end = 'e.src' if other == 'e.dst' else 'e.dst';
+            cond += f" AND {end} = ANY(CAST(:origin AS uuid[]))";
+        }
+        where = ' AND '.join(["e.kind = 'EdgeAnchor'", cond] + econds);
+        arms.append(f"SELECT e.*, {other} AS other FROM anchors e WHERE {where}");
+    }
+    return f"JOIN LATERAL ({' UNION ALL '.join(arms)}) {alias} ON TRUE";
 }
 
 
@@ -226,12 +251,14 @@ def _nd_types(hop: QHop) -> list {
 impl compile_query(
     q: GraphQuery,
     upto: int,
+    store: Store,
     promotions: (dict | None) = None,
     count_only: bool = False,
     acl_root: (str | None) = None
 ) -> CompiledQuery {
     out = CompiledQuery();
     params: dict = {};
+    types: dict[str, list[str]] = {};
     params['origin'] = [];
     joins: list[str] = [];
     order: list[str] = [];
@@ -244,30 +271,29 @@ impl compile_query(
         e = f"e{n}";
         nd_alias = f"n{n}";
         pfx_e = f"h{n}e";
-        econds = [f"{e}.kind = 'EdgeAnchor'", _dir_cond(e, fid, hop.dir)];
+        econds: list[str] = [];
         if hop.`edge is not None {
-            econds.append(_type_cond(e, hop.`edge.__name__, params, pfx_e));
+            names = _type_names(hop.`edge.__name__, store, types);
+            econds.append(_type_cond('e', names, params, pfx_e));
         }
         edge_names = (
             [str(getattr(hop.`edge, '__name__', ''))] if hop.`edge is not None else []
         );
         for (j, p) in enumerate(hop.epreds) {
-            cond = _pred_cond(e, p, params, f"{pfx_e}p{j}", edge_names, promotions);
+            cond = _pred_cond('e', p, params, f"{pfx_e}p{j}", edge_names, promotions);
             if cond is None {
                 out.residual.setdefault(i, []).append(p);
             } else {
                 econds.append(cond);
             }
         }
-        joins.append(f"JOIN anchors {e} ON {' AND '.join(econds)}");
-        nconds = [
-            f"{nd_alias}.id = {_other_expr(e, fid)}",
-            f"{nd_alias}.kind = 'NodeAnchor'"
-        ];
+        joins.append(_edge_join(e, fid, hop.dir, econds));
+        nconds = [f"{nd_alias}.id = {e}.other", f"{nd_alias}.kind = 'NodeAnchor'"];
         for (k, nt) in enumerate(_nd_types(hop)) {
             tname = str(getattr(nt, '__name__', ''));
             if tname {
-                nconds.append(_type_cond(nd_alias, tname, params, f"h{n}n{k}"));
+                names = _type_names(tname, store, types);
+                nconds.append(_type_cond(nd_alias, names, params, f"h{n}n{k}"));
             }
         }
         node_names = [str(getattr(nt, '__name__', '')) for nt in _nd_types(hop)];

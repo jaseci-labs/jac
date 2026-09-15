@@ -100,9 +100,8 @@ impl Anchor.__getstate__ -> dict[(str, any)] {
             'access': self.access,
             'persistent': self.persistent
         };
-    } else {
-        return {'id': self.ensure_id()};
     }
+    return {'id': self.ensure_id()};
 }
 
 impl Anchor.__setstate__(state: dict[(str, any)]) -> None {
@@ -164,7 +163,24 @@ impl Anchor.__eq__(other: object) -> bool {
 
 impl NodeAnchor.is_populated -> bool {
     d = self.__dict__;
-    return 'edges' in d and 'archetype' in d;
+    return ('edges' in d or '_edge_loader' in d) and 'archetype' in d;
+}
+
+impl NodeAnchor.__getattr__(name: str) -> object {
+    if name == 'edges' {
+        loader = self.__dict__.get('_edge_loader');
+        if loader is not None {
+            edges = loader();
+            self.__dict__['edges'] = edges;
+            self.__dict__.pop('_edge_loader', None);
+            return edges;
+        }
+    }
+    return super.__getattr__(name);
+}
+
+impl NodeAnchor.loaded_edges -> list[EdgeAnchor] {
+    return self.__dict__.get('edges') or [];
 }
 
 impl EdgeAnchor.is_populated -> bool {

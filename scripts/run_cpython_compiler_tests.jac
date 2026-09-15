@@ -4,6 +4,9 @@ Run with the Jac binary: jac run scripts/run_cpython_compiler_tests.jac.
 The runner requires the native compiler bridge. It does not import or install
 an interpreted replacement. Python audit events count native compiler calls;
 optional public API wrappers only count calls into the native entry points.
+Use --execution-tests to count every selected test, including tests without
+a compiler call. This exercises the linked evaluator but does not establish
+that its implementation is native Jac.
 No upstream test corpus is checked into this repository.
 """
 import argparse;
@@ -79,6 +82,11 @@ def main -> int {
         "--compile-tests",
         action="store_true",
         help="Compile the test module freshly through native JacPython"
+    );
+    parser.add_argument(
+        "--execution-tests",
+        action="store_true",
+        help="Count all selected execution tests, including those without compiler calls"
     );
     parser.add_argument(
         "--symtable-api",
@@ -237,7 +245,12 @@ def run_tests(args: any, calls: list[int]) -> int {
         }
 
         def addSuccess(self: Result, test_case: any) {
-            if (calls[0] or self.compiled_test or args.native_modules) {
+            if (
+                args.execution_tests
+                or calls[0]
+                or self.compiled_test
+                or args.native_modules
+            ) {
                 super.addSuccess(test_case);
             } else {
                 self.addSkip(test_case, "no direct call to JacPython in this test");
@@ -290,6 +303,12 @@ def run_tests(args: any, calls: list[int]) -> int {
         );
     }
     print("Compiler path: native Jac machine code", flush=True);
+    if args.execution_tests {
+        print(
+            "Execution coverage: all selected tests; evaluator provenance is not asserted",
+            flush=True
+        );
+    }
     try {
         sys.modules[args.module] = test_module;
         if args.tests {

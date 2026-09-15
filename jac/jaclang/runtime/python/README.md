@@ -102,3 +102,49 @@ CPython dictionaries store memo entries, and buffer objects keep their existing
 Python ABI. Shared serialization error notes live in `capi.jac`, also used by
 JSON. The two upstream pickle size assertions describe retired C layouts;
 smoke checks cover native memo allocation, reclamation, and callback cycles.
+
+## Evaluator migration validation
+
+The bytecode evaluator remains CPython's C implementation. Its replacement must
+preserve the release performance baseline: `bootstrap/python/smoke.py` requires
+the tail-call interpreter, `-O3`, and ThinLTO on Linux. Borrow checking by itself
+does not establish equivalence of dispatch, stack-reference ownership, or
+callback behavior.
+
+Run execution compatibility through the existing pinned upstream test runner:
+
+```sh
+jac run scripts/run_cpython_compiler_tests.jac \
+    --module test.test_generators --compile-tests --execution-tests
+```
+
+`--execution-tests` counts every selected test instead of classifying successes
+without compiler calls as skips. Upstream skips still apply. This mode exercises
+the linked evaluator; it does not claim that the evaluator has been replaced.
+The native compiler bridge remains mandatory.
+
+From the repository root, compare execution performance using the build-only
+CPython host and a candidate runtime:
+
+```sh
+python3 scripts/python_evaluator_bench.py \
+    --baseline jac/.python-build/jacpython/macos-aarch64.host/python/install/bin/python3.14 \
+    --candidate jac/.python-build/jacpython/macos-aarch64/python/install/bin/python3.14 \
+    --output /tmp/evaluator.json
+```
+
+The driver requires Python 3.11 or later and runs without Jac installed. Both
+subjects must match `sources.json`. Only the baseline compiles the workload
+corpus; both subjects receive the same marshalled code. Imports, compilation,
+startup, and warmup are excluded from timing. Each sample uses a fresh process,
+and baseline/candidate order alternates. Reports include runtime configuration,
+source and bytecode hashes, raw paired samples, and result checksums. A ratio
+above one means the candidate took longer. `--max-slowdown 1.05`, for example,
+fails if any workload's median paired ratio exceeds 1.05; no threshold is applied
+by default. This small suite is an initial regression screen, not a comprehensive
+performance-neutrality or Python-compatibility claim.
+
+The twelve Python workloads and their Jac harness tests live together under
+`jac/tests/compiler/`. The Python fixture deliberately exercises Python syntax
+and lifecycle semantics, including `except*`, `yield from`, coroutine suspension,
+and finalizers that reenter Python while a container releases an element.

@@ -518,7 +518,7 @@ def _verify_claims(
     unverified: list[str]
 ) {
     import from jaclang.compiler.placement.placement { element_display_name }
-    import from jaclang.compiler.placement.placement_pins { _module_dot_path }
+    import from jaclang.project.placement { module_dot_path }
     import from jaclang.project.modresolver { find_jac_project_root }
     import from jaclang.compiler.driver.program { JacProgram }
     proj_root = find_jac_project_root(file_path);
@@ -551,7 +551,7 @@ def _verify_claims(
         space = getattr(stmt?.code_context, 'value', '');
         stamped[nm] = (space, bool(getattr(stmt, 'codespace_dual', False)));
     }
-    mod_dot = _module_dot_path(file_path, proj_root);
+    mod_dot = module_dot_path(file_path, proj_root);
     for claim in claims {
         got = stamped.get(claim.name);
         if got is None {

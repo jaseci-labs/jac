@@ -21,7 +21,7 @@ import from jaclang.server.session { Session }
 import from typing { cast }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.data.query_planner { resolve_query }
-import from jaclang.data.sqlcompile { compile_query }
+import from jaclang.data.sqlcompile { CompiledQuery, compile_query }
 
 node OBoard {
     has name: str = "";
@@ -49,6 +49,21 @@ def _ctx(td: str) -> ExecutionContext {
 }
 
 
+"""Compiles against a real store, since a typed hop resolves its subtypes there."""
+def _compile(q: GraphQuery) -> CompiledQuery {
+    with TemporaryDirectory() as td {
+        ctx = _ctx(td);
+        try {
+            store = ctx.mem.store;
+            assert store is not None;
+            return compile_query(q, 1, store, promotions=OPROMOS);
+        } finally {
+            ctx.close();
+        }
+    }
+}
+
+
 def _seed -> OBoard {
     b = OBoard(name="b");
     root ++> b;
@@ -63,7 +78,7 @@ test "an ordering compiles to ORDER BY on the hop's node alias" {
     q = GraphQuery(
         [], hops=[QHop(dir=2, nd=OItem)], order=[QOrder(field="rank", desc=True)]
     );
-    cq = compile_query(q, 1, promotions=OPROMOS);
+    cq = _compile(q);
     assert "n1.g_oitem_rank DESC" in cq.sql , cq.sql;
     assert "e1.seq" not in cq.sql , (
         f"an explicit ordering must replace the edge-sequence default: {cq.sql}"
@@ -77,14 +92,14 @@ test "an ordering compiles to ORDER BY on the hop's node alias" {
 
 test "an unpromoted ordering still compiles, via the jsonb path" {
     q = GraphQuery([], hops=[QHop(dir=2, nd=OItem)], order=[QOrder(field="tag")]);
-    cq = compile_query(q, 1, promotions=OPROMOS);
+    cq = _compile(q);
     assert "n1.props->'archetype'->'tag' ASC" in cq.sql , cq.sql;
 }
 
 
 test "no ordering keeps the edge-sequence default" {
     q = GraphQuery([], hops=[QHop(dir=2, nd=OItem)]);
-    cq = compile_query(q, 1, promotions=OPROMOS);
+    cq = _compile(q);
     assert "e1.seq" in cq.sql , cq.sql;
 }
 
@@ -97,7 +112,7 @@ test "a bound compiles to LIMIT and OFFSET" {
         limit=5,
         offset=2
     );
-    cq = compile_query(q, 1, promotions=OPROMOS);
+    cq = _compile(q);
     assert "LIMIT 5" in cq.sql , cq.sql;
     assert "OFFSET 2" in cq.sql , cq.sql;
 }

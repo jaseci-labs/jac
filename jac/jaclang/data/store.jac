@@ -75,8 +75,7 @@ obj AnchorRow {
         dst: (UUID | None) = None,
         undirected: bool = False,
         ancestry: list[str] = [],
-        version: int = 0,
-        adjacency: (list[UUID] | None) = None;
+        version: int = 0;
 }
 
 
@@ -104,6 +103,10 @@ obj Store {
     def in_txn -> bool abst;
     def txn_isolation -> (TxnIsolation | None) abst;
     def load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] abst;
+    def adjacency(
+        node_id: UUID, after: (tuple[int, UUID] | None), limit: int
+    ) -> list[tuple[int, UUID]] abst;
+
     def upsert(rows_in: list[AnchorRow]) -> None abst;
     def delete(ids: list[UUID]) -> None abst;
     def existing(ids: list[UUID]) -> set[UUID] abst;
@@ -159,6 +162,10 @@ obj PgStore(Store) {
     def in_txn -> bool;
     def txn_isolation -> (TxnIsolation | None);
     def load_full(ids: list[UUID]) -> dict[UUID, AnchorRow];
+    def adjacency(
+        node_id: UUID, after: (tuple[int, UUID] | None), limit: int
+    ) -> list[tuple[int, UUID]];
+
     def upsert(rows_in: list[AnchorRow]) -> None;
     def delete(ids: list[UUID]) -> None;
     def existing(ids: list[UUID]) -> set[UUID];

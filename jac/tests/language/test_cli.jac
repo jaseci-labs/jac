@@ -990,8 +990,8 @@ test "cli error exit codes" {
         } finally {
             sys.stdout = old_stdout;
         }
-        assert result == 1 , (
-            "format command should exit with code 1 when file is changed"
+        assert result == 0 , (
+            "format command should exit 0 after a successful reformat"
         );
     } finally {
         os.remove(temp_path);
@@ -1081,8 +1081,9 @@ test "format tracks changed files" {
             sys.stdout = old_stdout;
             sys.stderr = old_stderr;
         }
-        # Exit code 1 indicates files were changed (useful for pre-commit hooks)
-        assert result == 1;
+        # Exit code 0 indicates success, including when files were reformatted;
+        # changed-file detection goes through the stats channel (see precommit)
+        assert result == 0;
         # Output may go to stdout or stderr depending on console implementation
         combined_output = stdout + stderr;
         assert "2/2" in combined_output;

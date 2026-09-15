@@ -111,7 +111,7 @@ test "generated host source branches on dev_port" {
 
     src = _generate_host_source("T", 800, 600, "test-app");
     assert "_ctx.dev_port" in src , "host must read _ctx.dev_port";
-    assert "target_port = dev_port if dev_port > 0 else port" in src , (
+    assert "target_port: int = dev_port if dev_port > 0 else port" in src , (
         "host must fall back to the loopback port when no dev port is set"
     );
     # No codegen-time URL bake: the env is the control-plane seam, read at boot.
