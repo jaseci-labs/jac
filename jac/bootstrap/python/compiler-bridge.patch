@@ -272,7 +272,7 @@
      {"builtins", NULL},
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -377,75 +377,40 @@
+@@ -377,75 +377,44 @@
 
  ##########################################################################
  # Parser
@@ -334,6 +334,10 @@
 +		Python/jac_evaluator_support.o \
 +		Python/jac_evaluator_frames.o \
 +		Python/jac_evaluator_frame_clear.o \
++		Python/jac_evaluator_monitoring.o \
++		Python/jac_evaluator_objects.o \
++		Python/jac_evaluator_errors.o \
++		Python/jac_evaluator_imports.o \
 +		Python/jacpython.o \
  		Python/asdl.o \
 -		Python/assemble.o \
@@ -359,7 +363,7 @@
  		Python/gc_free_threading.o \
  		Python/gc_gil.o \
  		Python/getargs.o \
-@@ -461,9 +426,8 @@
+@@ -461,9 +430,8 @@
  		Python/index_pool.o \
  		Python/initconfig.o \
  		Python/interpconfig.o \
@@ -369,7 +373,7 @@
  		Python/jit.o \
  		Python/legacy_tracing.o \
  		Python/lock.o \
-@@ -491,9 +455,8 @@
+@@ -491,9 +459,8 @@
  		Python/bootstrap_hash.o \
  		Python/specialize.o \
  		Python/stackrefs.o \
@@ -379,7 +383,32 @@
  		Python/thread.o \
  		Python/traceback.o \
  		Python/tracemalloc.o \
-@@ -1982,16 +1945,10 @@
+@@ -1360,11 +1327,11 @@
+ 		$(srcdir)/Include/internal/pycore_import.h \
+ 		$(srcdir)/Include/internal/pycore_importdl.h \
+ 		$(srcdir)/Include/internal/pycore_index_pool.h \
+ 		$(srcdir)/Include/internal/pycore_initconfig.h \
+-		$(srcdir)/Include/internal/pycore_instruments.h \
++		$(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h \
+ 		$(srcdir)/Include/internal/pycore_instruction_sequence.h \
+-		$(srcdir)/Include/internal/pycore_interp.h \
++		$(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h \
+ 		$(srcdir)/Include/internal/pycore_interp_structs.h \
+ 		$(srcdir)/Include/internal/pycore_interpframe.h \
+ 		$(srcdir)/Include/internal/pycore_interpframe_structs.h \
+ 		$(srcdir)/Include/internal/pycore_interpolation.h \
+@@ -1429,9 +1396,9 @@
+ 		$(srcdir)/Include/internal/pycore_tracemalloc.h \
+ 		$(srcdir)/Include/internal/pycore_tstate.h \
+ 		$(srcdir)/Include/internal/pycore_tuple.h \
+ 		$(srcdir)/Include/internal/pycore_typedefs.h \
+-		$(srcdir)/Include/internal/pycore_typeobject.h \
++		$(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h \
+ 		$(srcdir)/Include/internal/pycore_typevarobject.h \
+ 		$(srcdir)/Include/internal/pycore_ucnhash.h \
+ 		$(srcdir)/Include/internal/pycore_unicodeobject.h \
+ 		$(srcdir)/Include/internal/pycore_unicodeobject_generated.h \
+@@ -1982,16 +1949,10 @@
  	$(srcdir)/Tools/peg_generator/pegen/grammar_parser.py.new
 
  .PHONY: regen-pegen
@@ -398,7 +427,7 @@
  .PHONY: regen-ast
  regen-ast:
  	# Regenerate 3 files using Parser/asdl_c.py:
-@@ -2011,29 +1968,10 @@
+@@ -2011,29 +1972,10 @@
  	$(UPDATE_FILE) $(srcdir)/Python/Python-ast.c $(srcdir)/Python/Python-ast.c.new
 
  .PHONY: regen-token
@@ -430,7 +459,7 @@
  .PHONY: regen-keyword
  regen-keyword:
  	# Regenerate Lib/keyword.py from Grammar/python.gram and Grammar/Tokens
-@@ -2061,9 +1999,9 @@
+@@ -2061,9 +2003,9 @@
  		$(srcdir)/Lib/re/_constants.py \
  		$(srcdir)/Modules/_sre/sre_constants.h \
  		$(srcdir)/Modules/_sre/sre_targets.h
@@ -441,7 +470,7 @@
  Python/getplatform.o: $(srcdir)/Python/getplatform.c
  		$(CC) -c $(PY_CORE_CFLAGS) -DPLATFORM='"$(MACHDEP)"' -o $@ $(srcdir)/Python/getplatform.c
 
-@@ -2197,24 +2135,14 @@
+@@ -2197,24 +2139,14 @@
  	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/uop_metadata_generator.py -o \
  	    $(srcdir)/Include/internal/pycore_uop_metadata.h.new $(srcdir)/Python/bytecodes.c
  	$(UPDATE_FILE) $(srcdir)/Include/internal/pycore_uop_metadata.h $(srcdir)/Include/internal/pycore_uop_metadata.h.new
@@ -466,7 +495,7 @@
  Python/optimizer.o: \
  		$(srcdir)/Python/executor_cases.c.h \
  		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
-@@ -2813,14 +2741,14 @@
+@@ -2813,14 +2745,14 @@
  		echo "Applying app store compliance patch"; \
  		patch --force --reject-file "$(abs_builddir)/app-store-compliance.rej" --strip 2 --directory "$(DESTDIR)$(LIBDEST)" --input "$(abs_srcdir)/$(APP_STORE_COMPLIANCE_PATCH)" || true ; \
  	fi
@@ -483,7 +512,7 @@
  		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST)/site-packages -f \
  		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
 
-@@ -3419,4 +3347,13 @@
+@@ -3419,4 +3351,14 @@
  # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
  # Local Variables:
  # mode: makefile
@@ -495,11 +524,46 @@
 +Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
 +Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
 +Python/jac_evaluator_refs.o: $(srcdir)/Python/jac_evaluator_refs.c $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_genobject.h $(srcdir)/Include/internal/pycore_pyerrors.h
-+Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h
++Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_audit.h $(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
++Python/jac_evaluator_objects.o: $(srcdir)/Python/jac_evaluator_objects.c $(srcdir)/Python/evaluator_objects.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h
 --- a/Python/ceval.c
 +++ b/Python/ceval.c
-@@ -949,9 +949,10 @@
+@@ -279,22 +279,28 @@
+ }
+
+ #endif
+
+-static void monitor_reraise(PyThreadState *tstate,
++#define monitor_reraise jacpy_monitor_reraise
++#define monitor_stop_iteration jacpy_monitor_stop_iteration
++#define monitor_unwind jacpy_monitor_unwind
++#define monitor_handled jacpy_monitor_handled
++#define monitor_throw jacpy_monitor_throw
++
++void monitor_reraise(PyThreadState *tstate,
+                  _PyInterpreterFrame *frame,
+                  _Py_CODEUNIT *instr);
+-static int monitor_stop_iteration(PyThreadState *tstate,
++int monitor_stop_iteration(PyThreadState *tstate,
+                  _PyInterpreterFrame *frame,
+                  _Py_CODEUNIT *instr,
+                  PyObject *value);
+-static void monitor_unwind(PyThreadState *tstate,
++void monitor_unwind(PyThreadState *tstate,
+                  _PyInterpreterFrame *frame,
+                  _Py_CODEUNIT *instr);
+-static int monitor_handled(PyThreadState *tstate,
++int monitor_handled(PyThreadState *tstate,
+                  _PyInterpreterFrame *frame,
+                  _Py_CODEUNIT *instr, PyObject *exc);
+-static void monitor_throw(PyThreadState *tstate,
++void monitor_throw(PyThreadState *tstate,
+                  _PyInterpreterFrame *frame,
+                  _Py_CODEUNIT *instr);
+
+ static int get_exception_handler(PyCodeObject *, int, int*, int*, int*);
+@@ -949,9 +955,10 @@
      return NULL;
  }
 
@@ -511,7 +575,7 @@
  PyObject *
  PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
  {
-@@ -1922,48 +1923,8 @@
+@@ -1922,48 +1929,8 @@
  fail_post_args:
      return -1;
  }
@@ -560,7 +624,7 @@
  _PyInterpreterFrame *
  _PyEvalFramePushAndInit(PyThreadState *tstate, _PyStackRef func,
                          PyObject *locals, _PyStackRef const* args,
-@@ -1978,9 +1939,9 @@
+@@ -1978,9 +1945,9 @@
      }
      _PyFrame_Initialize(tstate, frame, func, locals, code, 0, previous);
      if (initialize_locals(tstate, func_obj, frame->localsplus, args, argcount, kwnames)) {
@@ -571,7 +635,7 @@
      }
      return frame;
  fail:
-@@ -2183,110 +2144,8 @@
+@@ -2183,110 +2150,8 @@
      Py_DECREF(defaults);
      return res;
  }
@@ -682,11 +746,287 @@
  /* Logic for matching an exception in an except* clause (too
     complicated for inlining).
  */
-@@ -3062,56 +2921,8 @@
-     else
-         return " object";
+@@ -2486,245 +2351,18 @@
+     Py_XDECREF(it);
+     return 0;
  }
 
+-static int
+-do_monitor_exc(PyThreadState *tstate, _PyInterpreterFrame *frame,
+-               _Py_CODEUNIT *instr, int event)
+-{
+-    assert(event < _PY_MONITORING_UNGROUPED_EVENTS);
+-    if (_PyFrame_GetCode(frame)->co_flags & CO_NO_MONITORING_EVENTS) {
+-        return 0;
+-    }
+-    PyObject *exc = PyErr_GetRaisedException();
+-    assert(exc != NULL);
+-    int err = _Py_call_instrumentation_arg(tstate, event, frame, instr, exc);
+-    if (err == 0) {
+-        PyErr_SetRaisedException(exc);
+-    }
+-    else {
+-        assert(PyErr_Occurred());
+-        Py_DECREF(exc);
+-    }
+-    return err;
+-}
+-
+-static inline bool
+-no_tools_for_global_event(PyThreadState *tstate, int event)
+-{
+-    return tstate->interp->monitors.tools[event] == 0;
+-}
+-
+-static inline bool
+-no_tools_for_local_event(PyThreadState *tstate, _PyInterpreterFrame *frame, int event)
+-{
+-    assert(event < _PY_MONITORING_LOCAL_EVENTS);
+-    _PyCoMonitoringData *data = _PyFrame_GetCode(frame)->_co_monitoring;
+-    if (data) {
+-        return data->active_monitors.tools[event] == 0;
+-    }
+-    else {
+-        return no_tools_for_global_event(tstate, event);
+-    }
+-}
+-
+-void
+-_PyEval_MonitorRaise(PyThreadState *tstate, _PyInterpreterFrame *frame,
+-              _Py_CODEUNIT *instr)
+-{
+-    if (no_tools_for_global_event(tstate, PY_MONITORING_EVENT_RAISE)) {
+-        return;
+-    }
+-    do_monitor_exc(tstate, frame, instr, PY_MONITORING_EVENT_RAISE);
+-}
+-
+-static void
+-monitor_reraise(PyThreadState *tstate, _PyInterpreterFrame *frame,
+-              _Py_CODEUNIT *instr)
+-{
+-    if (no_tools_for_global_event(tstate, PY_MONITORING_EVENT_RERAISE)) {
+-        return;
+-    }
+-    do_monitor_exc(tstate, frame, instr, PY_MONITORING_EVENT_RERAISE);
+-}
+-
+-static int
+-monitor_stop_iteration(PyThreadState *tstate, _PyInterpreterFrame *frame,
+-                       _Py_CODEUNIT *instr, PyObject *value)
+-{
+-    if (no_tools_for_local_event(tstate, frame, PY_MONITORING_EVENT_STOP_ITERATION)) {
+-        return 0;
+-    }
+-    assert(!PyErr_Occurred());
+-    PyErr_SetObject(PyExc_StopIteration, value);
+-    int res = do_monitor_exc(tstate, frame, instr, PY_MONITORING_EVENT_STOP_ITERATION);
+-    if (res < 0) {
+-        return res;
+-    }
+-    PyErr_SetRaisedException(NULL);
+-    return 0;
+-}
+-
+-static void
+-monitor_unwind(PyThreadState *tstate,
+-               _PyInterpreterFrame *frame,
+-               _Py_CODEUNIT *instr)
+-{
+-    if (no_tools_for_global_event(tstate, PY_MONITORING_EVENT_PY_UNWIND)) {
+-        return;
+-    }
+-    do_monitor_exc(tstate, frame, instr, PY_MONITORING_EVENT_PY_UNWIND);
+-}
+-
+-bool
+-_PyEval_NoToolsForUnwind(PyThreadState *tstate) {
+-    return no_tools_for_global_event(tstate, PY_MONITORING_EVENT_PY_UNWIND);
+-}
+-
+-static int
+-monitor_handled(PyThreadState *tstate,
+-                _PyInterpreterFrame *frame,
+-                _Py_CODEUNIT *instr, PyObject *exc)
+-{
+-    if (no_tools_for_global_event(tstate, PY_MONITORING_EVENT_EXCEPTION_HANDLED)) {
+-        return 0;
+-    }
+-    return _Py_call_instrumentation_arg(tstate, PY_MONITORING_EVENT_EXCEPTION_HANDLED, frame, instr, exc);
+-}
+-
+-static void
+-monitor_throw(PyThreadState *tstate,
+-              _PyInterpreterFrame *frame,
+-              _Py_CODEUNIT *instr)
+-{
+-    if (no_tools_for_global_event(tstate, PY_MONITORING_EVENT_PY_THROW)) {
+-        return;
+-    }
+-    do_monitor_exc(tstate, frame, instr, PY_MONITORING_EVENT_PY_THROW);
+-}
+-
+-void
+-PyThreadState_EnterTracing(PyThreadState *tstate)
+-{
+-    assert(tstate->tracing >= 0);
+-    tstate->tracing++;
+-}
+-
+-void
+-PyThreadState_LeaveTracing(PyThreadState *tstate)
+-{
+-    assert(tstate->tracing > 0);
+-    tstate->tracing--;
+-}
+-
+-
+-PyObject*
+-_PyEval_CallTracing(PyObject *func, PyObject *args)
+-{
+-    // Save and disable tracing
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    int save_tracing = tstate->tracing;
+-    tstate->tracing = 0;
+-
+-    // Call the tracing function
+-    PyObject *result = PyObject_Call(func, args, NULL);
+-
+-    // Restore tracing
+-    tstate->tracing = save_tracing;
+-    return result;
+-}
+-
+-void
+-PyEval_SetProfile(Py_tracefunc func, PyObject *arg)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    if (_PyEval_SetProfile(tstate, func, arg) < 0) {
+-        /* Log _PySys_Audit() error */
+-        PyErr_FormatUnraisable("Exception ignored in PyEval_SetProfile");
+-    }
+-}
+-
+-void
+-PyEval_SetProfileAllThreads(Py_tracefunc func, PyObject *arg)
+-{
+-    PyInterpreterState *interp = _PyInterpreterState_GET();
+-    if (_PyEval_SetProfileAllThreads(interp, func, arg) < 0) {
+-        /* Log _PySys_Audit() error */
+-        PyErr_FormatUnraisable("Exception ignored in PyEval_SetProfileAllThreads");
+-    }
+-}
+-
+-void
+-PyEval_SetTrace(Py_tracefunc func, PyObject *arg)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    if (_PyEval_SetTrace(tstate, func, arg) < 0) {
+-        /* Log _PySys_Audit() error */
+-        PyErr_FormatUnraisable("Exception ignored in PyEval_SetTrace");
+-    }
+-}
+-
+-void
+-PyEval_SetTraceAllThreads(Py_tracefunc func, PyObject *arg)
+-{
+-    PyInterpreterState *interp = _PyInterpreterState_GET();
+-    if (_PyEval_SetTraceAllThreads(interp, func, arg) < 0) {
+-        /* Log _PySys_Audit() error */
+-        PyErr_FormatUnraisable("Exception ignored in PyEval_SetTraceAllThreads");
+-    }
+-}
+-
+-int
+-_PyEval_SetCoroutineOriginTrackingDepth(int depth)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    if (depth < 0) {
+-        _PyErr_SetString(tstate, PyExc_ValueError, "depth must be >= 0");
+-        return -1;
+-    }
+-    tstate->coroutine_origin_tracking_depth = depth;
+-    return 0;
+-}
+-
+-
+-int
+-_PyEval_GetCoroutineOriginTrackingDepth(void)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-    return tstate->coroutine_origin_tracking_depth;
+-}
+-
+-int
+-_PyEval_SetAsyncGenFirstiter(PyObject *firstiter)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-
+-    if (_PySys_Audit(tstate, "sys.set_asyncgen_hook_firstiter", NULL) < 0) {
+-        return -1;
+-    }
+-
+-    Py_XSETREF(tstate->async_gen_firstiter, Py_XNewRef(firstiter));
+-    return 0;
+-}
++
++
++
++
+
+ PyObject *
+ _PyEval_GetAsyncGenFirstiter(void)
+ {
+     PyThreadState *tstate = _PyThreadState_GET();
+     return tstate->async_gen_firstiter;
+-}
+-
+-int
+-_PyEval_SetAsyncGenFinalizer(PyObject *finalizer)
+-{
+-    PyThreadState *tstate = _PyThreadState_GET();
+-
+-    if (_PySys_Audit(tstate, "sys.set_asyncgen_hook_finalizer", NULL) < 0) {
+-        return -1;
+-    }
+-
+-    Py_XSETREF(tstate->async_gen_finalizer, Py_XNewRef(finalizer));
+-    return 0;
+ }
+
+ PyObject *
+ _PyEval_GetAsyncGenFinalizer(void)
+@@ -3036,484 +2674,16 @@
+     return result;
+ }
+
+
+-const char *
+-PyEval_GetFuncName(PyObject *func)
+-{
+-    if (PyMethod_Check(func))
+-        return PyEval_GetFuncName(PyMethod_GET_FUNCTION(func));
+-    else if (PyFunction_Check(func))
+-        return PyUnicode_AsUTF8(((PyFunctionObject*)func)->func_name);
+-    else if (PyCFunction_Check(func))
+-        return ((PyCFunctionObject*)func)->m_ml->ml_name;
+-    else
+-        return Py_TYPE(func)->tp_name;
+-}
+-
+-const char *
+-PyEval_GetFuncDesc(PyObject *func)
+-{
+-    if (PyMethod_Check(func))
+-        return "()";
+-    else if (PyFunction_Check(func))
+-        return "()";
+-    else if (PyCFunction_Check(func))
+-        return "()";
+-    else
+-        return " object";
+-}
+-
 -/* Extract a slice index from a PyLong or an object with the
 -   nb_index slot defined, and store in *pi.
 -   Silently reduce values larger than PY_SSIZE_T_MAX to PY_SSIZE_T_MAX,
@@ -735,15 +1075,211 @@
 -    return 1;
 -}
 -
- PyObject *
- _PyEval_ImportName(PyThreadState *tstate, _PyInterpreterFrame *frame,
-             PyObject *name, PyObject *fromlist, PyObject *level)
- {
-@@ -3315,76 +3126,8 @@
-     Py_XDECREF(origin);
-     Py_XDECREF(spec);
-     Py_DECREF(mod_name_or_unknown);
-     return NULL;
+-PyObject *
+-_PyEval_ImportName(PyThreadState *tstate, _PyInterpreterFrame *frame,
+-            PyObject *name, PyObject *fromlist, PyObject *level)
+-{
+-    PyObject *import_func;
+-    if (PyMapping_GetOptionalItem(frame->f_builtins, &_Py_ID(__import__), &import_func) < 0) {
+-        return NULL;
+-    }
+-    if (import_func == NULL) {
+-        _PyErr_SetString(tstate, PyExc_ImportError, "__import__ not found");
+-        return NULL;
+-    }
+-
+-    PyObject *locals = frame->f_locals;
+-    if (locals == NULL) {
+-        locals = Py_None;
+-    }
+-
+-    /* Fast path for not overloaded __import__. */
+-    if (_PyImport_IsDefaultImportFunc(tstate->interp, import_func)) {
+-        Py_DECREF(import_func);
+-        int ilevel = PyLong_AsInt(level);
+-        if (ilevel == -1 && _PyErr_Occurred(tstate)) {
+-            return NULL;
+-        }
+-        return PyImport_ImportModuleLevelObject(
+-                        name,
+-                        frame->f_globals,
+-                        locals,
+-                        fromlist,
+-                        ilevel);
+-    }
+-
+-    PyObject* args[5] = {name, frame->f_globals, locals, fromlist, level};
+-    PyObject *res = PyObject_Vectorcall(import_func, args, 5, NULL);
+-    Py_DECREF(import_func);
+-    return res;
+-}
+-
+-PyObject *
+-_PyEval_ImportFrom(PyThreadState *tstate, PyObject *v, PyObject *name)
+-{
+-    PyObject *x;
+-    PyObject *fullmodname, *mod_name, *origin, *mod_name_or_unknown, *errmsg, *spec;
+-
+-    if (PyObject_GetOptionalAttr(v, name, &x) != 0) {
+-        return x;
+-    }
+-    /* Issue #17636: in case this failed because of a circular relative
+-       import, try to fallback on reading the module directly from
+-       sys.modules. */
+-    if (PyObject_GetOptionalAttr(v, &_Py_ID(__name__), &mod_name) < 0) {
+-        return NULL;
+-    }
+-    if (mod_name == NULL || !PyUnicode_Check(mod_name)) {
+-        Py_CLEAR(mod_name);
+-        goto error;
+-    }
+-    fullmodname = PyUnicode_FromFormat("%U.%U", mod_name, name);
+-    if (fullmodname == NULL) {
+-        Py_DECREF(mod_name);
+-        return NULL;
+-    }
+-    x = PyImport_GetModule(fullmodname);
+-    Py_DECREF(fullmodname);
+-    if (x == NULL && !_PyErr_Occurred(tstate)) {
+-        goto error;
+-    }
+-    Py_DECREF(mod_name);
+-    return x;
+-
+- error:
+-    if (mod_name == NULL) {
+-        mod_name_or_unknown = PyUnicode_FromString("<unknown module name>");
+-        if (mod_name_or_unknown == NULL) {
+-            return NULL;
+-        }
+-    } else {
+-        mod_name_or_unknown = mod_name;
+-    }
+-    // mod_name is no longer an owned reference
+-    assert(mod_name_or_unknown);
+-    assert(mod_name == NULL || mod_name == mod_name_or_unknown);
+-
+-    origin = NULL;
+-    if (PyObject_GetOptionalAttr(v, &_Py_ID(__spec__), &spec) < 0) {
+-        Py_DECREF(mod_name_or_unknown);
+-        return NULL;
+-    }
+-    if (spec == NULL) {
+-        errmsg = PyUnicode_FromFormat(
+-            "cannot import name %R from %R (unknown location)",
+-            name, mod_name_or_unknown
+-        );
+-        goto done_with_errmsg;
+-    }
+-    if (_PyModuleSpec_GetFileOrigin(spec, &origin) < 0) {
+-        goto done;
+-    }
+-
+-    int is_possibly_shadowing = _PyModule_IsPossiblyShadowing(origin);
+-    if (is_possibly_shadowing < 0) {
+-        goto done;
+-    }
+-    int is_possibly_shadowing_stdlib = 0;
+-    if (is_possibly_shadowing) {
+-        PyObject *stdlib_modules;
+-        if (_PySys_GetOptionalAttrString("stdlib_module_names", &stdlib_modules) < 0) {
+-            goto done;
+-        }
+-        if (stdlib_modules && PyAnySet_Check(stdlib_modules)) {
+-            is_possibly_shadowing_stdlib = PySet_Contains(stdlib_modules, mod_name_or_unknown);
+-            if (is_possibly_shadowing_stdlib < 0) {
+-                Py_DECREF(stdlib_modules);
+-                goto done;
+-            }
+-        }
+-        Py_XDECREF(stdlib_modules);
+-    }
+-
+-    if (origin == NULL && PyModule_Check(v)) {
+-        // Fall back to __file__ for diagnostics if we don't have
+-        // an origin that is a location
+-        origin = PyModule_GetFilenameObject(v);
+-        if (origin == NULL) {
+-            if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
+-                goto done;
+-            }
+-            // PyModule_GetFilenameObject raised "module filename missing"
+-            _PyErr_Clear(tstate);
+-        }
+-        assert(origin == NULL || PyUnicode_Check(origin));
+-    }
+-
+-    if (is_possibly_shadowing_stdlib) {
+-        assert(origin);
+-        errmsg = PyUnicode_FromFormat(
+-            "cannot import name %R from %R "
+-            "(consider renaming %R since it has the same "
+-            "name as the standard library module named %R "
+-            "and prevents importing that standard library module)",
+-            name, mod_name_or_unknown, origin, mod_name_or_unknown
+-        );
+-    }
+-    else {
+-        int rc = _PyModuleSpec_IsInitializing(spec);
+-        if (rc < 0) {
+-            goto done;
+-        }
+-        else if (rc > 0) {
+-            if (is_possibly_shadowing) {
+-                assert(origin);
+-                // For non-stdlib modules, only mention the possibility of
+-                // shadowing if the module is being initialized.
+-                errmsg = PyUnicode_FromFormat(
+-                    "cannot import name %R from %R "
+-                    "(consider renaming %R if it has the same name "
+-                    "as a library you intended to import)",
+-                    name, mod_name_or_unknown, origin
+-                );
+-            }
+-            else if (origin) {
+-                errmsg = PyUnicode_FromFormat(
+-                    "cannot import name %R from partially initialized module %R "
+-                    "(most likely due to a circular import) (%S)",
+-                    name, mod_name_or_unknown, origin
+-                );
+-            }
+-            else {
+-                errmsg = PyUnicode_FromFormat(
+-                    "cannot import name %R from partially initialized module %R "
+-                    "(most likely due to a circular import)",
+-                    name, mod_name_or_unknown
+-                );
+-            }
+-        }
+-        else {
+-            assert(rc == 0);
+-            if (origin) {
+-                errmsg = PyUnicode_FromFormat(
+-                    "cannot import name %R from %R (%S)",
+-                    name, mod_name_or_unknown, origin
+-                );
+-            }
+-            else {
+-                errmsg = PyUnicode_FromFormat(
+-                    "cannot import name %R from %R (unknown location)",
+-                    name, mod_name_or_unknown
+-                );
+-            }
+-        }
+-    }
+-
+-done_with_errmsg:
+-    if (errmsg != NULL) {
+-        /* NULL checks for mod_name and origin done by _PyErr_SetImportErrorWithNameFrom */
+-        _PyErr_SetImportErrorWithNameFrom(errmsg, mod_name, origin, name);
+-        Py_DECREF(errmsg);
+-    }
+-
+-done:
+-    Py_XDECREF(origin);
+-    Py_XDECREF(spec);
+-    Py_DECREF(mod_name_or_unknown);
+-    return NULL;
 -}
 -
 -#define CANNOT_CATCH_MSG "catching classes that do not inherit from "\
@@ -812,15 +1348,154 @@
 -            return -1;
 -    }
 -    return 0;
- }
+-}
+-
+-int
+-_Py_Check_ArgsIterable(PyThreadState *tstate, PyObject *func, PyObject *args)
+-{
+-    if (Py_TYPE(args)->tp_iter == NULL && !PySequence_Check(args)) {
+-        /* _Py_Check_ArgsIterable() may be called with a live exception:
+-         * clear it to prevent calling _PyObject_FunctionStr() with an
+-         * exception set. */
+-        _PyErr_Clear(tstate);
+-        PyObject *funcstr = _PyObject_FunctionStr(func);
+-        if (funcstr != NULL) {
+-            _PyErr_Format(tstate, PyExc_TypeError,
+-                          "%U argument after * must be an iterable, not %.200s",
+-                          funcstr, Py_TYPE(args)->tp_name);
+-            Py_DECREF(funcstr);
+-        }
+-        return -1;
+-    }
+-    return 0;
+-}
+-
+-void
+-_PyEval_FormatKwargsError(PyThreadState *tstate, PyObject *func, PyObject *kwargs)
+-{
+-    /* _PyDict_MergeEx raises attribute
+-     * error (percolated from an attempt
+-     * to get 'keys' attribute) instead of
+-     * a type error if its second argument
+-     * is not a mapping.
+-     */
+-    if (_PyErr_ExceptionMatches(tstate, PyExc_AttributeError)) {
+-        _PyErr_Clear(tstate);
+-        PyObject *funcstr = _PyObject_FunctionStr(func);
+-        if (funcstr != NULL) {
+-            _PyErr_Format(
+-                tstate, PyExc_TypeError,
+-                "%U argument after ** must be a mapping, not %.200s",
+-                funcstr, Py_TYPE(kwargs)->tp_name);
+-            Py_DECREF(funcstr);
+-        }
+-    }
+-    else if (_PyErr_ExceptionMatches(tstate, PyExc_KeyError)) {
+-        PyObject *exc = _PyErr_GetRaisedException(tstate);
+-        PyObject *args = PyException_GetArgs(exc);
+-        if (exc && PyTuple_Check(args) && PyTuple_GET_SIZE(args) == 1) {
+-            _PyErr_Clear(tstate);
+-            PyObject *funcstr = _PyObject_FunctionStr(func);
+-            if (funcstr != NULL) {
+-                PyObject *key = PyTuple_GET_ITEM(args, 0);
+-                _PyErr_Format(
+-                    tstate, PyExc_TypeError,
+-                    "%U got multiple values for keyword argument '%S'",
+-                    funcstr, key);
+-                Py_DECREF(funcstr);
+-            }
+-            Py_XDECREF(exc);
+-        }
+-        else {
+-            _PyErr_SetRaisedException(tstate, exc);
+-        }
+-        Py_DECREF(args);
+-    }
+-}
+-
+-void
+-_PyEval_FormatExcCheckArg(PyThreadState *tstate, PyObject *exc,
+-                          const char *format_str, PyObject *obj)
+-{
+-    const char *obj_str;
+-
+-    if (!obj)
+-        return;
+-
+-    obj_str = PyUnicode_AsUTF8(obj);
+-    if (!obj_str)
+-        return;
+-
+-    _PyErr_Format(tstate, exc, format_str, obj_str);
+-
+-    if (exc == PyExc_NameError) {
+-        // Include the name in the NameError exceptions to offer suggestions later.
+-        PyObject *exc = PyErr_GetRaisedException();
+-        if (PyErr_GivenExceptionMatches(exc, PyExc_NameError)) {
+-            if (((PyNameErrorObject*)exc)->name == NULL) {
+-                // We do not care if this fails because we are going to restore the
+-                // NameError anyway.
+-                (void)PyObject_SetAttr(exc, &_Py_ID(name), obj);
+-            }
+-        }
+-        PyErr_SetRaisedException(exc);
+-    }
+-}
+-
+-void
+-_PyEval_FormatExcUnbound(PyThreadState *tstate, PyCodeObject *co, int oparg)
+-{
+-    PyObject *name;
+-    /* Don't stomp existing exception */
+-    if (_PyErr_Occurred(tstate))
+-        return;
+-    name = PyTuple_GET_ITEM(co->co_localsplusnames, oparg);
+-    if (oparg < PyUnstable_Code_GetFirstFree(co)) {
+-        _PyEval_FormatExcCheckArg(tstate, PyExc_UnboundLocalError,
+-                                  UNBOUNDLOCAL_ERROR_MSG, name);
+-    } else {
+-        _PyEval_FormatExcCheckArg(tstate, PyExc_NameError,
+-                                  UNBOUNDFREE_ERROR_MSG, name);
+-    }
+-}
+-
+-void
+-_PyEval_FormatAwaitableError(PyThreadState *tstate, PyTypeObject *type, int oparg)
+-{
+-    if (type->tp_as_async == NULL || type->tp_as_async->am_await == NULL) {
+-        if (oparg == 1) {
+-            _PyErr_Format(tstate, PyExc_TypeError,
+-                          "'async with' received an object from __aenter__ "
+-                          "that does not implement __await__: %.100s",
+-                          type->tp_name);
+-        }
+-        else if (oparg == 2) {
+-            _PyErr_Format(tstate, PyExc_TypeError,
+-                          "'async with' received an object from __aexit__ "
+-                          "that does not implement __await__: %.100s",
+-                          type->tp_name);
+-        }
+-    }
+-}
++
++
++
++
++
++
++
++
 
- int
- _Py_Check_ArgsIterable(PyThreadState *tstate, PyObject *func, PyObject *args)
-@@ -3557,47 +3300,8 @@
+
+ Py_ssize_t
+ PyUnstable_Eval_RequestCodeExtraIndex(freefunc free)
+@@ -3555,47 +2725,8 @@
+
+ void Py_LeaveRecursiveCall(void)
  {
      _Py_LeaveRecursiveCall();
- }
-
+-}
+-
 -PyObject *
 -_PyEval_GetANext(PyObject *aiter)
 -{
@@ -858,17 +1533,16 @@
 -    }
 -    Py_DECREF(next_iter);
 -    return awaitable;
--}
--
+ }
+
  void
  _PyEval_LoadGlobalStackRef(PyObject *globals, PyObject *builtins, PyObject *name, _PyStackRef *writeto)
- {
-     if (PyDict_CheckExact(globals) && PyDict_CheckExact(builtins)) {
-@@ -3637,32 +3341,8 @@
+@@ -3636,90 +2767,7 @@
+         *writeto = PyStackRef_FromPyObjectSteal(res);
      }
  }
 
- PyObject *
+-PyObject *
 -_PyEval_GetAwaitable(PyObject *iterable, int oparg)
 -{
 -    PyObject *iter = _PyCoro_GetAwaitableIter(iterable);
@@ -893,7 +1567,65 @@
 -}
 -
 -PyObject *
- _PyEval_LoadName(PyThreadState *tstate, _PyInterpreterFrame *frame, PyObject *name)
- {
+-_PyEval_LoadName(PyThreadState *tstate, _PyInterpreterFrame *frame, PyObject *name)
+-{
+-
+-    PyObject *value;
+-    if (frame->f_locals == NULL) {
+-        _PyErr_SetString(tstate, PyExc_SystemError,
+-                            "no locals found");
+-        return NULL;
+-    }
+-    if (PyMapping_GetOptionalItem(frame->f_locals, name, &value) < 0) {
+-        return NULL;
+-    }
+-    if (value != NULL) {
+-        return value;
+-    }
+-    if (PyDict_GetItemRef(frame->f_globals, name, &value) < 0) {
+-        return NULL;
+-    }
+-    if (value != NULL) {
+-        return value;
+-    }
+-    if (PyMapping_GetOptionalItem(frame->f_builtins, name, &value) < 0) {
+-        return NULL;
+-    }
+-    if (value == NULL) {
+-        _PyEval_FormatExcCheckArg(
+-                    tstate, PyExc_NameError,
+-                    NAME_ERROR_MSG, name);
+-    }
+-    return value;
+-}
 
-     PyObject *value;
+ /* Check if a 'cls' provides the given special method. */
+-static inline int
+-type_has_special_method(PyTypeObject *cls, PyObject *name)
+-{
+-    // _PyType_Lookup() does not set an exception and returns a borrowed ref
+-    assert(!PyErr_Occurred());
+-    PyObject *r = _PyType_Lookup(cls, name);
+-    return r != NULL && Py_TYPE(r)->tp_descr_get != NULL;
+-}
+-
+-int
+-_PyEval_SpecialMethodCanSuggest(PyObject *self, int oparg)
+-{
+-    PyTypeObject *type = Py_TYPE(self);
+-    switch (oparg) {
+-        case SPECIAL___ENTER__:
+-        case SPECIAL___EXIT__: {
+-            return type_has_special_method(type, &_Py_ID(__aenter__))
+-                   && type_has_special_method(type, &_Py_ID(__aexit__));
+-        }
+-        case SPECIAL___AENTER__:
+-        case SPECIAL___AEXIT__: {
+-            return type_has_special_method(type, &_Py_ID(__enter__))
+-                   && type_has_special_method(type, &_Py_ID(__exit__));
+-        }
+-        default:
+-            Py_FatalError("unsupported special method");
+-    }
+-}
++

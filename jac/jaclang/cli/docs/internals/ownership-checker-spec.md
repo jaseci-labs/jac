@@ -129,6 +129,13 @@ The analysis stamps documented facts; consumers read them:
   and `reentrant` describe call requirements and effects. A Python error
   protocol is distinct from Jac's error slot; an empty `raises` set is not
   evidence that arithmetic or cleanup cannot raise.
+  For annotated native bodies, ownership analysis checks the declared capability
+  and reentry bounds after effect propagation. Native lowering checks every
+  emitted non-intrinsic call against its resolved declaration or indirect
+  callable contract, including compiler-generated calls. Such a body requires
+  `nogc`, cannot demote to Python, and cannot invoke a Jac-slot error producer.
+  `errors="none"` additionally excludes Python-error producers. The annotation
+  does not change parameter layouts or add C export conversions.
 - **`Assignment.na_move_lowerable`**: stamped by the core `RcFactsPass`
   (scheduled in the native codegen slot) from a backward-liveness proof on the
   shared dataflow framework -- a `b = a` alias whose LOCAL source is dead-out

@@ -164,8 +164,7 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self._apply_ownership_param_attrs(func, sig.get_parameters(), 0);
-    self._record_tail_requirement(func, nd);
-    self._record_foreign_requirement(func, nd);
+    self._record_linked_decl(func, nd);
     self.func_symtab[name] = func;
     _fdm = nd.find_parent_of_type(uni.Module);
     if _fdm is not None {

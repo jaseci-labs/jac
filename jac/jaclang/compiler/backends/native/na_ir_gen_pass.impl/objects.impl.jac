@@ -2675,6 +2675,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                     return None;
                 }
                 _r = self.builder.call(_fnp, _cargs, name=f"icall.{method_name}");
+                self._record_indirect_foreign_contract(_r, nd);
                 for arg in _release_args {
                     if isinstance(arg.type, ir.PointerType)
                         and self._is_owned(arg) {

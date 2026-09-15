@@ -1070,13 +1070,26 @@ impl TypeEvaluator._set_foreign_call_contract(
         }
         seen = True;
         imported = ability.find_parent_of_type(Import);
-        if imported is None or ability not in imported.clib_decls {
+        trusted = imported is not None and ability in (imported.clib_decls or []);
+        import from jaclang.compiler.frontend.constant { CodeContext }
+        if not trusted and (ability.code_context != CodeContext.NATIVE or ability.body is None) {
             self.emit_diag(
                 E1321,
                 annotation,
-                reason="trusted foreign_call declarations belong inside import from c"
+                reason="foreign_call requires a C declaration or a checked native function body"
             );
             continue;
+        }
+        if not trusted and (ability.is_async or ability.type_params or ability.is_comptime
+            or ModuleFacts.ability_is_generator(ability)) {
+            self.emit_diag(E1321, annotation,
+                reason="a checked foreign_call body must have a fixed synchronous native ABI");
+        }
+        if not trusted and any(
+            not isinstance(decorator, CompilerAnnotation) for decorator in ability.decorators or []
+        ) {
+            self.emit_diag(E1321, annotation,
+                reason="runtime decorators cannot replace a checked foreign_call body");
         }
         options: dict[str, Expr] = {};
         for argument in annotation.arguments {
@@ -1119,7 +1132,7 @@ impl TypeEvaluator._set_foreign_call_contract(
             protocol = literal_string_value(errors);
             if protocol not in ("python", "none") {
                 self.emit_diag(
-                    E1321, errors, reason="C error protocol must be python or none"
+                    E1321, errors, reason="foreign error protocol must be python or none"
                 );
             } else {
                 fn.foreign_errors = protocol;

@@ -11,7 +11,7 @@ def is_foreign_ability(decl: Ability | None) -> bool {
 }
 
 def foreign_call_uses_external_errors(decl: Ability | None) -> bool {
-    if decl is None or not is_foreign_ability(decl) { return False; }
+    if decl is None { return False; }
     fn = decl.name_spec.type;
     return isinstance(fn, FunctionType)
         and fn.foreign_errors in ("python", "none");

@@ -171,6 +171,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     self._codegen_entry(_entry_nodes);
     self._finalize_trace_lookup();
+    self._validate_foreign_protocols();
 
     if self.has_native_code {
         if self.errors_had {

@@ -364,6 +364,15 @@ impl OwnershipCheckPass._stamp_foreign_effects -> None {
     for ability in abilities {
         evaluator.get_type_of_ability(ability);
     }
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
+    declared_contracts: list[tuple] = [];
+    for ability in abilities {
+        fn = ability.name_spec.type;
+        if isinstance(fn, FunctionType) and fn.foreign_errors != "jac"
+            and not is_foreign_ability(ability) {
+            declared_contracts.append((ability, fn, set(fn.required_capabilities), fn.reentrant));
+        }
+    }
     changed = True;
     while changed {
         changed = False;
@@ -427,6 +436,16 @@ impl OwnershipCheckPass._stamp_foreign_effects -> None {
                 fn.reentrant = reentrant;
                 changed = True;
             }
+        }
+    }
+    for (ability, fn, required, reentrant) in declared_contracts {
+        if not set(fn.required_capabilities).issubset(required) {
+            self.emit(E1321, node_override=ability,
+                reason="native foreign_call body requires undeclared capabilities");
+        }
+        if fn.reentrant and not reentrant {
+            self.emit(E1321, node_override=ability,
+                reason="native foreign_call body can reenter through a call or cleanup");
         }
     }
     for call in self.ir_in.get_all_sub_nodes(FuncCall) {

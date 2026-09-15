@@ -172,6 +172,17 @@ Import CPython resource types and primitives from
 and `foreign_call` declarations; spelling a type `PyObjectRef` or naming a C
 function `jacpy_*` does not establish a lifetime or error contract.
 
+Native `nogc` helper bodies can declare `foreign_call` too. Those bodies are
+checked, including calls introduced by arithmetic and cleanup. All callees must
+preserve the external error protocol and the declared capability/reentry bounds.
+Unannotated Jac functions retain Jac error handling. These effects do not
+change the argument layout or provide a C export adapter.
+
+For optional object lookups, `evaluator_lookup.PyLookupRef` retains the separate
+error, absent, and owned-value outcomes without a heap wrapper. Its private
+missing marker cannot be used as a Python object; consume the result through
+`jacpy_lookup_take`.
+
 An explicit call to a foreign resource's declared destructor can consume a
 dependent owner without restating the dependency in its parameter. The source
 owners remain live through cleanup. This exception follows the resolved

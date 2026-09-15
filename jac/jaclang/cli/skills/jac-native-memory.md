@@ -41,6 +41,12 @@ declare `foreign_resource` cleanup and `foreign_call` effects explicitly;
 import CPython reference types and primitives from
 `jaclang.runtime.python.references` instead of assuming ambient type names;
 do not infer safety from a function name or a zero-valued integer handle.
+For a native helper that uses an external error protocol, annotate the body
+with `foreign_call` as well. Native `nogc` body checks include implicit cleanup
+and arithmetic calls; every callee needs a compatible external protocol, and
+the declared GIL/reentry effects must cover the body. The annotation does not
+convert Jac layouts to a C ABI. Do not use an empty `raises` set to omit Jac
+exception checks or replace ordinary Jac error handling with this contract.
 Only the resource's resolved destructor may discharge a dependent owner without
 repeating its `from` contract; its source owners remain live during cleanup.
 Do not treat every `own PyStackRef` as heap-safe: a `from frame` dependency still
@@ -50,6 +56,11 @@ owns an active-frame cleanup obligation, not the generator's storage allocation.
 Treat the evaluator migration's implementation-status section as authoritative
 about remaining storage, reentry, and suspension work. Source availability or an
 emitter provenance manifest does not establish runtime validation or C retirement.
+
+Optional CPython lookups use `evaluator_lookup.PyLookupRef` to distinguish error,
+absence, and an owned object without allocating a wrapper. Consume the lookup
+to obtain its object; never reinterpret its private missing marker as a Python
+reference or infer absence from pending exception state.
 
 ```bash
 jac guide reference/agent-patterns/jac-native-memory --sections

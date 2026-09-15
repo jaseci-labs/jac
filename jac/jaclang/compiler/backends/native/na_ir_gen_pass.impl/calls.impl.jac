@@ -3726,6 +3726,7 @@ impl NaIRGenPass._codegen_callable_value(
     }
     release_args = self._transfer_own_args(nd, None, coerced, args);
     result = self.builder.call(value, coerced, name="icall");
+    self._record_indirect_foreign_contract(result, nd);
     for arg in release_args {
         if isinstance(arg.type, ir.PointerType) and self._is_owned(arg) {
             self._emit_rc_release_simple(arg, op="icall_arg", loc="");

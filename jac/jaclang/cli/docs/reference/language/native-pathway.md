@@ -1037,11 +1037,20 @@ consume a dependent owner while its sources remain alive through the call.
 
 The migration is incomplete. Candidate sources port slice-index conversion,
 async iterator/awaitable acquisition, exception-clause validation, raise logic,
-and active-frame cleanup. The raise and frame-cleanup changes await validation.
+active-frame cleanup, monitoring and tracing control, coroutine-origin and
+async-generator setters, evaluator diagnostics, name lookup, and imports. The
+latest source changes await validation.
 Opcode dispatch and the tier-two executor remain CPython C. The build emits
 `python/build/jacpython-evaluator-provenance.json` to identify native support
 objects and their inputs; that manifest alone does not prove linked-runtime
 compatibility, complete C retirement, or performance parity.
+
+Native helper composition can use a checked `@foreign_call` body contract under
+`nogc`. Every emitted call, including implicit cleanup and arithmetic error
+paths, must preserve the declared external error protocol. This permits native
+Python-error helpers to call one another without touching Jac's exception slot;
+an unannotated Jac callee still uses normal Jac error handling. See
+[foreign calls and reentry](../../internals/foreign-lifetime-contracts.md#foreign-calls-and-reentry).
 
 ## Debugging
 

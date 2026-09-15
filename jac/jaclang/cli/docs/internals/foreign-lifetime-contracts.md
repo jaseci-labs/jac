@@ -107,6 +107,29 @@ calls. Python error-state operations must preserve unrelated Jac error state.
 An empty inferred `raises` set cannot suppress implicit checked arithmetic or
 cleanup errors.
 
+A synchronous native function can declare the same protocol:
+
+```jac
+@foreign_call(requires=["gil"], errors="python", reentrant=True)
+def call_once(function: &PyObjectRef) -> own PyObjectRef {
+    return py_call(function);
+}
+```
+
+This is a checked body contract under native `nogc`. Each emitted non-intrinsic
+call must have a resolved external error contract, including implicit cleanup
+and arithmetic error paths. An `errors="none"` body cannot invoke an
+`errors="python"` operation. Declared GIL and reentry requirements must cover
+the body and its cleanup. Runtime decorators, generators, async functions,
+comptime functions, and generic bodies are rejected for this form.
+
+An accepted body uses its declared external error protocol at native call sites;
+it does not read or overwrite Jac's exception slot. Unannotated Jac functions
+retain their ordinary error handling even when source inference finds no
+explicit `raise`. The annotation does not change argument layouts into C
+layouts: a borrowed opaque C string and a Jac `str` descriptor are different
+types, and target-specific C ABI conversions still need their normal adapters.
+
 A live owner does not by itself prove that a borrowed container element remains
 valid across mutation or reentry. Supporting that use requires a stability proof
 or independent ownership; until then the compiler must reject it. The CPython migration must preserve
@@ -127,10 +150,18 @@ before selecting an ABI symbol. Aliases and unrelated native functions with
 the same spelling do not grant or remove a foreign contract. Borrowed C records
 also do not justify LLVM immutability or exclusivity attributes.
 
-The evaluator sources include raise logic and active-frame cleanup using these
-contracts. A linear frame owns a cleanup obligation tied to the current thread;
+The evaluator sources include raise logic, active-frame cleanup, monitoring and
+tracing control, coroutine-origin and async-generator setters, error formatting,
+name lookup, and import handling using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
 a dependent executable reference is closed before its thread frame is popped.
 The source changes in this review batch have not been built or tested.
+
+`evaluator_lookup.PyLookupRef` owns the result of a CPython optional lookup.
+Its three states distinguish an error, absence, and an owned object without
+allocating temporary storage or inspecting Python's pending error to infer
+absence. A private marker never becomes a `PyObjectRef`; consuming the lookup
+returns its owned value or a null owner. This adapts output parameters at the
+trusted boundary and does not implement arbitrary foreign-resource fields.
 
 Generic foreign-resource storage, arbitrary closure capture, suspension,
 container-element stability across reentry, and complete effect propagation

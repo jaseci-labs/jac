@@ -354,6 +354,7 @@ impl NaIRGenPass._codegen_closure_call(
     if isinstance(clos_val.type, ir.PointerType) and self._is_owned(clos_val) {
         self._emit_rc_release_simple(clos_val, op="ccall_target", loc="");
     }
+    self._record_indirect_foreign_contract(result, nd);
     self._emit_err_check(self._callee_ability_of(nd), call=nd, indirect=True);
     if self._foreign_resource_kind(result.type) is not None {
         self._mark_owned(result);

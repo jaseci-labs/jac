@@ -133,13 +133,34 @@ emit_evaluator_unit("evaluator_support", "evaluator_support", [
 emit_evaluator_unit("evaluator_frames", "evaluator_frames", [
     "_PyEval_FrameClearAndPop",
 ])
+emit_evaluator_unit("evaluator_monitoring", "evaluator_monitoring", [
+    "_PyEval_MonitorRaise", "jacpy_monitor_no_tools_for_unwind",
+    "jacpy_monitor_reraise", "jacpy_monitor_stop_iteration",
+    "jacpy_monitor_unwind", "jacpy_monitor_handled", "jacpy_monitor_throw",
+    "PyThreadState_EnterTracing", "PyThreadState_LeaveTracing", "_PyEval_CallTracing",
+    "PyEval_SetProfile", "PyEval_SetProfileAllThreads",
+    "PyEval_SetTrace", "PyEval_SetTraceAllThreads",
+    "_PyEval_SetCoroutineOriginTrackingDepth", "_PyEval_GetCoroutineOriginTrackingDepth",
+    "_PyEval_SetAsyncGenFirstiter", "_PyEval_SetAsyncGenFinalizer",
+])
+emit_evaluator_unit("evaluator_errors", "evaluator_errors", [
+    "_Py_Check_ArgsIterable", "_PyEval_FormatKwargsError",
+    "_PyEval_FormatExcCheckArg", "_PyEval_FormatExcUnbound", "_PyEval_FormatAwaitableError",
+    "PyEval_GetFuncName", "PyEval_GetFuncDesc", "_PyEval_SpecialMethodCanSuggest",
+])
+emit_evaluator_unit("evaluator_imports", "evaluator_imports", [
+    "_PyEval_LoadName", "_PyEval_ImportName", "_PyEval_ImportFrom",
+])
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
+    "jaclang/runtime/python/evaluator_lookup.jac",
     "bootstrap/python/compiler-bridge.patch",
     "bootstrap/python/evaluator_refs.c",
     "bootstrap/python/evaluator_refs.h",
     "bootstrap/python/evaluator_frames.c",
     "bootstrap/python/evaluator_frames.h",
+    "bootstrap/python/evaluator_objects.c",
+    "bootstrap/python/evaluator_objects.h",
 ]
 (output / "evaluator-provenance.json").write_text(json.dumps({
     "schema": 1,

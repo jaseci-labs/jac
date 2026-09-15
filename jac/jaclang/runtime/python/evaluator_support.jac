@@ -25,6 +25,7 @@ import from c {
 }
 
 # CPython Python/ceval.c:3073 (_PyEval_SliceIndex).
+@foreign_call(requires=["gil"], errors="python", reentrant=True)
 def _PyEval_SliceIndex(value: &PyObjectRef, result: &mut JacPySsizeSlot) -> i32 {
     if jacpy_eval_is_none(value) == 0 {
         if jacpy_eval_index_check(value) == 0 {
@@ -43,6 +44,7 @@ def _PyEval_SliceIndex(value: &PyObjectRef, result: &mut JacPySsizeSlot) -> i32 
 }
 
 # CPython Python/ceval.c:3095 (_PyEval_SliceIndexNotNone).
+@foreign_call(requires=["gil"], errors="python", reentrant=True)
 def _PyEval_SliceIndexNotNone(value: &PyObjectRef, result: &mut JacPySsizeSlot) -> i32 {
     if jacpy_eval_index_check(value) == 0 {
         jacpy_type_error("slice indices must be integers or have an __index__ method");
@@ -72,6 +74,7 @@ import from c {
 }
 
 # CPython Python/ceval.c:3641 (_PyEval_GetAwaitable).
+@foreign_call(requires=["gil"], errors="python", reentrant=True)
 def _PyEval_GetAwaitable(iterable: &PyObjectRef, oparg: i32) -> own PyObjectRef {
     iterator: own PyObjectRef = _PyCoro_GetAwaitableIter(iterable);
     if jacpy_ref_is_null(&iterator) != 0 {
@@ -111,6 +114,7 @@ import from c {
 }
 
 # CPython Python/ceval.c:3562 (_PyEval_GetANext).
+@foreign_call(requires=["gil"], errors="python", reentrant=True)
 def _PyEval_GetANext(iterator: &PyObjectRef) -> own PyObjectRef {
     if jacpy_asyncgen_check(iterator) != 0 {
         return jacpy_anext_call(iterator);
@@ -153,6 +157,7 @@ import from c {
 }
 
 # CPython Python/ceval.c:3328 (_PyEval_CheckExceptTypeValid).
+@foreign_call(requires=["gil"], errors="python", reentrant=True)
 def _PyEval_CheckExceptTypeValid(tstate: &JacPyThreadState, right: &PyObjectRef) -> i32 {
     if jacpy_eval_tuple_check(right) != 0 {
         length = jacpy_eval_tuple_size(right);
@@ -176,6 +181,7 @@ def _PyEval_CheckExceptTypeValid(tstate: &JacPyThreadState, right: &PyObjectRef)
 }
 
 # CPython Python/ceval.c:3353 (_PyEval_CheckExceptStarTypeValid).
+@foreign_call(requires=["gil"], errors="python", reentrant=True)
 def _PyEval_CheckExceptStarTypeValid(tstate: &JacPyThreadState, right: &PyObjectRef) -> i32 {
     # Complete ordinary validation before checking any ExceptionGroup entries.
     # This preserves which error wins for a tuple containing both kinds.
@@ -245,6 +251,7 @@ import from c {
 # references. A null exception denotes bare raise and requires a null cause.
 # Return one only for a successful bare reraise; all other paths return zero
 # with CPython's exception state set. Cleanup below follows CPython's order.
+@foreign_call(requires=["gil"], errors="python", reentrant=True)
 def jacpy_eval_raise(tstate: &JacPyThreadState, exception: own PyObjectRef,
                      cause: own PyObjectRef) -> i32 {
     if jacpy_ref_is_null(&exception) != 0 {

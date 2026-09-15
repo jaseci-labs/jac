@@ -38,6 +38,7 @@ import from c {
 
 # CPython Python/ceval.c:1927-1964. Both paths explicitly discharge the frame
 # obligation. The executable loan ends before its frame can be popped.
+@foreign_call(requires=["gil"], errors="none", reentrant=True)
 def _PyEval_FrameClearAndPop(tstate: &JacPyThreadState,
                             frame: lin PyFrameRef from tstate) {
     if jacpy_frame_owned_by_thread(&frame) != 0 {

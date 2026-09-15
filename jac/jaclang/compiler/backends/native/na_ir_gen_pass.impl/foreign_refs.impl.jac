@@ -28,10 +28,72 @@ impl NaIRGenPass._foreign_resource_exprs(origin: uni.UniNode) -> list[uni.Expr] 
 impl NaIRGenPass._record_foreign_requirement(
     func: ir.Function, decl: uni.Ability
 ) -> None {
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
+    if isinstance(decl.name_spec.type, SemanticFunctionType)
+        and decl.name_spec.type.foreign_errors in ("none", "python")
+        and not is_foreign_ability(decl) {
+        self._foreign_protocol_functions[func] = decl;
+        self._foreign_required_functions[func] = decl;
+    }
     for expr in self._foreign_resource_exprs(decl) {
         if foreign_resource_name(expr.type) is not None {
             self._foreign_required_functions[func] = decl;
             return;
+        }
+    }
+}
+
+impl NaIRGenPass._record_indirect_foreign_contract(
+    call: ir.CallInstr, source: uni.FuncCall
+) -> None {
+    contract = source.target.type;
+    if isinstance(contract, SemanticFunctionType)
+        and contract.foreign_errors in ("none", "python") {
+        self._foreign_indirect_contracts[call] = contract;
+    }
+}
+
+impl NaIRGenPass._validate_foreign_protocols -> None {
+    # This proof examines emitted calls, including implicit checked arithmetic,
+    # cleanup, exception handlers, and compiler-generated runtime operations.
+    # An empty source-level raises set is not a proof of an external protocol.
+    for (function, declaration) in self._foreign_protocol_functions.items() {
+        contract = declaration.name_spec.type;
+        if not isinstance(contract, SemanticFunctionType) {
+            continue;
+        }
+        if not self._nogc_owned_world() {
+            self.emit(E5120, node_override=declaration,
+                reason="checked foreign_call bodies require native nogc ownership");
+            continue;
+        }
+        for block in function.blocks {
+            for instruction in block.instructions {
+                if not isinstance(instruction, ir.CallInstr) {
+                    continue;
+                }
+                callee = instruction.callee;
+                called_contract = self._foreign_indirect_contracts.get(instruction);
+                if isinstance(callee, ir.Function) {
+                    if callee.name.startswith("llvm.") {
+                        continue;
+                    }
+                    called_declaration = self._linked_callee_decl(callee);
+                    called_type = called_declaration.name_spec.type
+                        if called_declaration is not None else None;
+                    if isinstance(called_type, SemanticFunctionType) {
+                        called_contract = called_type;
+                    }
+                }
+                if called_contract is None or called_contract.foreign_errors == "jac" {
+                    self.emit(E5120, node_override=declaration,
+                        reason="checked foreign_call body contains a call without an external error contract: "
+                            + str(getattr(callee, "name", "indirect call")));
+                } elif contract.foreign_errors == "none" and called_contract.foreign_errors != "none" {
+                    self.emit(E5120, node_override=declaration,
+                        reason="errors=none cannot call a function that may set a foreign error");
+                }
+            }
         }
     }
 }

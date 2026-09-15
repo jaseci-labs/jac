@@ -208,6 +208,8 @@ walker NaIRGenPass(Transform) {
         _tail_required_functions: dict[ir.Function, uni.FuncCall] = {},
         _foreign_resource_specs: dict[str, tuple[str, int, str, str, bool]] = {},
         _foreign_required_functions: dict[ir.Function, uni.Ability] = {},
+        _foreign_protocol_functions: dict[ir.Function, uni.Ability] = {},
+        _foreign_indirect_contracts: dict[ir.CallInstr, SemanticFunctionType] = {},
         _str_count: int = 0,
         struct_types: dict[str, ir.IdentifiedStructType] = {},
         struct_field_indices: dict[str, dict] = {},
@@ -2099,6 +2101,8 @@ walker NaIRGenPass(Transform) {
     def _foreign_resource_close(value: ir.Value) -> bool;
     def _record_foreign_requirement(func: ir.Function, decl: uni.Ability) -> None;
     def _validate_foreign_resources -> None;
+    def _validate_foreign_protocols -> None;
+    def _record_indirect_foreign_contract(call: ir.CallInstr, source: uni.FuncCall) -> None;
     def _foreign_resource_exprs(origin: uni.UniNode) -> list[uni.Expr];
     def _lower_function_type(t: SemanticFunctionType) -> ir.PointerType;
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);

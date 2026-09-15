@@ -231,11 +231,27 @@ foreign object. Shared foreign resources do not imply LLVM `noalias`,
 sentinel and do not acquire Jac RC headers. Replacement state must be published
 before invoking a destructor that can reenter user code.
 
-`foreign_call` describes a trusted C boundary: required capabilities, the
-foreign error protocol, and whether the call can reenter. It is not an ordinary
+`foreign_call` describes required capabilities, the foreign error protocol, and
+whether the call can reenter. C declarations are trusted; synchronous native
+`nogc` bodies are checked against the same annotation. It is not an ordinary
 runtime decorator. A malformed declaration is `E1321`. These contracts do not
 prove that borrowed container elements survive mutation or callbacks; consult
 the implementation status before using a new storage or suspension shape.
+
+```jac
+@foreign_call(errors="none", reentrant=False)
+def next_index(index: i64) -> i64 {
+    return wrapping_add(index, 1);
+}
+```
+
+The native body check includes implicit calls produced by arithmetic, cleanup,
+and error handling. Calling an unannotated Jac function, or performing an
+operation that uses Jac's exception slot, rejects this contract with `E5120`.
+`errors="none"` also rejects calls that may set a Python error. GIL and reentry
+effects must fit the declaration. Use normal Jac functions when ordinary Jac
+exception propagation is needed. This annotation does not alter data layouts
+or introduce a C export adapter.
 
 ## Moving out of places: `take` and `swap`
 
