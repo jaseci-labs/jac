@@ -36,7 +36,7 @@ import from tests.equivalence.xbackend_equiv {
 `[placement.pins]` entry in the fixtures `jac.toml`: `default_codespace='native'`
 selects the native codespace,
 which is exactly what these bundled-stdlib fixtures need."""
-def _compile_native_forced(fixture: str) -> tuple {
+def _compile_native_forced(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     opts = CompileOptions(default_codespace="native");
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);

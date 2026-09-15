@@ -71,7 +71,7 @@ glob logger = logging.getLogger(__name__),
          'str': 'ctypes.c_char_p'
      },
      _pyb_shadows: dict[(int, object)] = {},
-     _pyb_class_memo: dict[(tuple, type)] = {},
+     _pyb_class_memo: dict[(tuple[any, ...], type)] = {},
      _pyb_module_memo: dict[(str, object)] = {};
 
 def _pyb_import_module(mod_path: str) -> object {
@@ -108,7 +108,7 @@ def _pyb_class_for(
     }
     mod = _pyb_import_module(mod_path);
     base = getattr(mod, base_name);
-    ns: dict = {"__module__": getattr(base, "__module__", "jac_native")};
+    ns: dict[str, any] = {"__module__": getattr(base, "__module__", "jac_native")};
     if suppress_postinit {
         def _noop_post_init(self: object) -> None {
             return;
@@ -128,7 +128,7 @@ def _pyb_instantiate(
     mod_path: str,
     base_name: str,
     cls_name: str,
-    kwargs: dict,
+    kwargs: dict[str, any],
     suppress_postinit: bool,
     owner_addr: int
 ) -> object {
@@ -153,7 +153,11 @@ def _pyb_drop_owner(owner_addr: int) {
 }
 
 def _pyb_super_call(
-    shadow: object, anchor_name: str, meth_names: tuple, args: tuple, kwargs: dict
+    shadow: object,
+    anchor_name: str,
+    meth_names: tuple[str, ...],
+    args: tuple[any, ...],
+    kwargs: dict[str, any]
 ) -> object {
     anchor: (type | None) = None;
     for c in type(shadow).__mro__ {
@@ -179,7 +183,7 @@ def _pyb_super_call(
 def register_py_callbacks(
     bindings: Iterable[CallbackSignature],
     py_func_table: dict[(str, Callable[(..., object)])],
-    callbacks_list: list,
+    callbacks_list: list[object],
     register_symbol: Callable[[str, int], None]
 ) {
     for binding in bindings {

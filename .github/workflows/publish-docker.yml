@@ -1,0 +1,59 @@
+name: Publish Jac Docker image
+
+# Recover Docker from existing assets without invoking the binary build.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag (e.g. v0.37.15 or dev)."
+        required: true
+        type: string
+      release_run_id:
+        description: "Optional: completed Release run ID to verify and finish after Docker succeeds. Empty publishes Docker only."
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    permissions:
+      # Draft release downloads require push access, even for reads.
+      contents: write
+    uses: ./.github/workflows/docker-image.yml
+    with:
+      tag: ${{ inputs.tag }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  publish-release:
+    needs: image
+    if: github.repository == 'jaseci-labs/jac' && inputs.release_run_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      # Derive the required platforms from the original run, never from an
+      # operator-supplied subset. GITHUB_TOKEN avoids a release.published run.
+      - name: Test recovery guard
+        run: bash scripts/test_release_docker_recovery.sh
+
+      - name: Verify original release and publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+        run: |
+          set -euo pipefail
+          REQUIRED=$(bash scripts/release_docker_recovery.sh "$TAG" "$RELEASE_RUN_ID")
+          read -r -a required <<<"$REQUIRED"
+          bash scripts/release_publish_guard.sh "${TAG#v}" "${required[@]}"

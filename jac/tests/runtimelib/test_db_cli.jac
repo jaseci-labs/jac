@@ -15,11 +15,11 @@ import from jaclang.data.pgembed { PgRuntime }
 
 
 """Run a subprocess and return (rc, stdout, stderr)."""
-def _run(cwd: str, argv: list) -> tuple {
+def _run(cwd: str, argv: list[str]) -> tuple[int, str, str] {
     import jaclang;
     # -m jaclang must resolve to the source tree under test, not a
     # launcher-embedded snapshot.
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     cache_home = Path(cwd) / '.cache';
     env['JAC_PG_DIST'] = PgRuntime(
         data_dir=str(cache_home / 'pg' / 'main')
@@ -35,7 +35,7 @@ def _run(cwd: str, argv: list) -> tuple {
 }
 
 
-def _jac(cwd: str, args: list) -> tuple {
+def _jac(cwd: str, args: list[str]) -> tuple[int, str, str] {
     return _run(cwd, jac_command() + args);
 }
 

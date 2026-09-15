@@ -168,9 +168,9 @@ To skip this check, add the `skip-release-notes-check` label to your PR.
 
 ## Trying the JacPython release binary
 
-Releases built after the native JacPython migration use JacPython in every
-binary, including the standard installer and Docker images. Download the normal
-platform asset from the [releases page](https://github.com/jaseci-labs/jac/releases).
+Releases provide stock CPython by default and an experimental JacPython variant.
+Pass `--jacpython` to `scripts/install.sh`, or download the platform asset ending
+in `-jacpython` from the [releases page](https://github.com/jaseci-labs/jac/releases).
 The Python compiler replacement runs as native Jac machine code. CPython still
 provides the bytecode VM, object runtime, and standard library. Compiler
 compatibility continues to be expanded; include a reproducer when reporting an issue.
@@ -183,16 +183,16 @@ Choose the platform token for your machine:
 | Linux ARM64 | `linux-aarch64` |
 | Apple Silicon Mac | `macos-aarch64` |
 
-In Bash, replace `vX.Y.Z` with a released tag containing the native JacPython compiler and
+In Bash, replace `vX.Y.Z` with a released tag containing both runtime variants and
 set `PLATFORM` from the table. Use `TAG=dev` for the rolling development release
-once it includes this migration. The commands download into a temporary directory,
+once it includes both variants. The commands download into a temporary directory,
 verify the checksum, and keep your installed `jac` unchanged:
 
 ```bash
 TAG=vX.Y.Z
 PLATFORM=linux-x86_64
 TRIAL=$(mktemp -d)
-ASSET="jac-${TAG#v}-${PLATFORM}"
+ASSET="jac-${TAG#v}-${PLATFORM}-jacpython"
 BASE="https://github.com/jaseci-labs/jac/releases/download/$TAG"
 
 curl -fL --retry 3 "$BASE/$ASSET" -o "$TRIAL/$ASSET" &&
@@ -231,15 +231,15 @@ provides the object runtime and executes the resulting Python bytecode.
 The `-c` probe exercises the Python replacement directly;
 `run` retains Jac's normal backend selection. Unset `JAC_COMPILER_IMAGE` when testing a downloaded release.
 
-Use the explicit `$JACPYTHON` path for further experiments. Include the tag,
+Use the explicit `$JACPYTHON_BIN` path for further experiments. Include the tag,
 platform, compiler-probe output, and a minimal reproducer when reporting an issue.
 Older releases may use CPython's C compiler; the probe above distinguishes them.
 
 For changes to the JacPython implementation, rebuild with
-`cd jac && zig build` and use the resulting `zig-out/bin/jac`.
+`cd jac && JACPYTHON=1 zig build` and use the resulting `zig-out/bin/jac`.
 Its native compiler object is linked at build time: editing source through the
-dev loop does not replace that object in an existing binary. There is no build
-flag or runtime fallback to the C compiler. A separate build-only CPython host
+dev loop does not replace that object in an existing binary. Plain `zig build`
+produces the stock CPython variant. A separate build-only CPython host
 produces the initial native object and is not shipped. See
 [the build guide](jac/launcher/README.md#build) for cache details and prerequisites.
 

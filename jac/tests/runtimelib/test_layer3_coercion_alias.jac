@@ -318,7 +318,7 @@ test "non-dict archetype warning re-emits on the ladder, not once per anchor" {
 
 
 test "distinct classes do not share a diagnostic slot" {
-    node_blob = {
+    node_blob: dict[str, object] = {
         '__type__': 'NodeAnchor',
         '__module__': 'jaclang.runtime.archetype',
         'id': str(uuid4()),
@@ -329,7 +329,7 @@ test "distinct classes do not share a diagnostic slot" {
         'edges': [],
         'version': 0
     };
-    edge_blob = dict(node_blob) | {'__type__': 'EdgeAnchor'};
+    edge_blob: dict[str, object] = node_blob | {'__type__': 'EdgeAnchor'};
     buf = io.StringIO();
     capture = logging.StreamHandler(buf);
     logger = logging.getLogger("jaclang.data.serializer");

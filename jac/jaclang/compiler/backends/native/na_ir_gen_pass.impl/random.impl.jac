@@ -279,7 +279,7 @@ impl NaIRGenPass._emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     f64 = ir.DoubleType();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
 
     f_gen = self._get_or_declare_extern("__mt_genrand_u32", i32, []);
     f_iba = self._get_or_declare_extern(

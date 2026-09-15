@@ -58,7 +58,7 @@ test "chunked output is identical across modes, widths, and python" {
             outs[mode] = ran.stdout;
             if mode == "none" {
                 for w in ("1", "8") {
-                    _env = dict(os.environ);
+                    _env: dict[str, str] = dict(os.environ);
                     _env["JAC_FLOW_THREADS"] = w;
                     wran = subprocess.run(
                         [out_bin], capture_output=True, text=True, env=_env

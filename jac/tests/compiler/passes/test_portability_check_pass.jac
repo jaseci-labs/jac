@@ -28,7 +28,7 @@ def count_warning_code(prog: JacProgram, code: str) -> int {
     return count;
 }
 
-def get_warnings_with_code(prog: JacProgram, code: str) -> list {
+def get_warnings_with_code(prog: JacProgram, code: str) -> list[any] {
     return [
         w
         for w in prog.warnings_had

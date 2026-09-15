@@ -28,6 +28,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     env:
+      JACPYTHON: "1"
       DTARGET: ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
     steps:
       - uses: actions/checkout@v5

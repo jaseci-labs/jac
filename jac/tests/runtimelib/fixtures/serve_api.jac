@@ -31,7 +31,7 @@ walker CreateTask {
 
 # Define a walker to list all tasks
 walker ListTasks {
-    has tasks: list = [];
+    has tasks: list[any] = [];
 
     can collect with Root entry {
         visit [-->];
@@ -46,7 +46,7 @@ walker ListTasks {
 
 # Define a walker to List completed Tasks
 walker ListCompletedTasks {
-    has completed_tasks: list = [];
+    has completed_tasks: list[any] = [];
 
     can collect with Root entry {
         visit [-->];

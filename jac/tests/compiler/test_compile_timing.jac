@@ -97,7 +97,7 @@ glob CHESS_RUNS: int = 5,
 """How many alternating rounds the baseline comparison measures each tree for."""
 glob PAIRED_ROUNDS: int = 2;
 
-glob _PROBE_CACHE: dict[str, list[dict]] = {};
+glob _PROBE_CACHE: dict[str, list[dict[str, any]]] = {};
 
 """This checkout's cache root, which is also where the probe subprocess writes."""
 def head_cache -> str {
@@ -163,8 +163,8 @@ def run_probe(
 }
 
 """Fold several runs of one tree into one row set, keeping each phase's minimum."""
-def merge_runs(runs: list[list[dict]]) -> list[dict] {
-    merged = [dict(r) for r in runs[0]];
+def merge_runs(runs: list[list[dict[str, any]]]) -> list[dict[str, any]] {
+    merged: list[dict[str, any]] = [dict(r) for r in runs[0]];
     for later in runs[1:] {
         by_rel = {str(r["rel"]): r for r in later};
         for row in merged {
@@ -200,7 +200,7 @@ def paired_rows(base_image: str, base_cache: str) -> tuple[list[dict], list[dict
 }
 
 """Format one tree's rows as a fixed-width table, phase columns in pipeline order."""
-def phase_table(title: str, rows: list[dict]) -> str {
+def phase_table(title: str, rows: list[dict[str, any]]) -> str {
     width = max([len(str(r["rel"])) for r in rows]);
     head = "  " + "module".ljust(width);
     for phase in PHASES {
@@ -223,7 +223,7 @@ def phase_table(title: str, rows: list[dict]) -> str {
 }
 
 """Format the per-phase delta between two trees as a percentage of baseline."""
-def delta_table(baseline: list[dict], current: list[dict]) -> str {
+def delta_table(baseline: list[dict[str, any]], current: list[dict[str, any]]) -> str {
     by_rel = {str(r["rel"]): r for r in baseline};
     width = max([len(str(r["rel"])) for r in current]);
     head = "  " + "module".ljust(width);

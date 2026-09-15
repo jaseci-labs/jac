@@ -5,17 +5,17 @@ Cross-backend equivalence fixture.
 """
 
 # --- Builtin functions ---
-def builtins_py -> dict {
-    nums: list = [1, 2, 3, 4, 5];
+def builtins_py -> dict[any, any] {
+    nums: list[any] = [1, 2, 3, 4, 5];
     s: str = "hello";
 
     # prim_builtins: len, abs, round, min, max, pow, divmod, chr, ord, hex, oct, bin, type conversions
-    d_extra: dict = dict([["a", 1], ["b", 2]]);
-    set_sorted: list = sorted(list(set([3, 1, 2, 1])));
-    t_list: list = list(tuple([10, 20, 30]));
-    fs_list: list = sorted(list(frozenset([5, 3, 5, 1])));
-    by_list: list = list(bytes([65, 66, 67]));
-    ba_list: list = list(bytearray([68, 69]));
+    d_extra: dict[any, any] = dict([["a", 1], ["b", 2]]);
+    set_sorted: list[any] = sorted(list(set([3, 1, 2, 1])));
+    t_list: list[any] = list(tuple([10, 20, 30]));
+    fs_list: list[any] = sorted(list(frozenset([5, 3, 5, 1])));
+    by_list: list[any] = list(bytes([65, 66, 67]));
+    ba_list: list[any] = list(bytearray([68, 69]));
     c = complex(3, 4);
     c_eq: bool = c == complex(3, 4);
 
@@ -257,16 +257,16 @@ def builtins_py -> dict {
     };
 }
 
-def builtins_cl -> dict {
-    nums: list = [1, 2, 3, 4, 5];
+def builtins_cl -> dict[any, any] {
+    nums: list[any] = [1, 2, 3, 4, 5];
     s: str = "hello";
 
-    d_extra: dict = dict([["a", 1], ["b", 2]]);
-    set_sorted: list = sorted(list(set([3, 1, 2, 1])));
-    t_list: list = list(tuple([10, 20, 30]));
-    fs_list: list = sorted(list(frozenset([5, 3, 5, 1])));
-    by_list: list = list(bytes([65, 66, 67]));
-    ba_list: list = list(bytearray([68, 69]));
+    d_extra: dict[any, any] = dict([["a", 1], ["b", 2]]);
+    set_sorted: list[any] = sorted(list(set([3, 1, 2, 1])));
+    t_list: list[any] = list(tuple([10, 20, 30]));
+    fs_list: list[any] = sorted(list(frozenset([5, 3, 5, 1])));
+    by_list: list[any] = list(bytes([65, 66, 67]));
+    ba_list: list[any] = list(bytearray([68, 69]));
     c = complex(3, 4);
     c_eq: bool = c == complex(3, 4);
 

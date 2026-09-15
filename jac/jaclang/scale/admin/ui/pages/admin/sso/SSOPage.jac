@@ -6,7 +6,7 @@ import from ....components.tables.DataTable { DataTable, TableRow, TableCell }
 import from ....context.AuthContext { useAuth }
 import from ....services.userService { getSSOProviders }
 def:pub SSOPage -> JsxElement {
-    has ssoProviders: list = [];
+    has ssoProviders: list[dict[str, any]] = [];
 
     auth = useAuth();
 

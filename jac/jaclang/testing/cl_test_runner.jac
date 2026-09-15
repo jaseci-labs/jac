@@ -67,7 +67,9 @@ obj ClTestResult {
         error: (str | None) = None;
 }
 
-def compile_cl_module(filepath: str) -> tuple[str, list, dict, list];
+def compile_cl_module(
+    filepath: str
+) -> tuple[str, list[any], dict[str, any], list[any]];
 
 def _compile_runtime -> tuple[str, str];
 
@@ -79,12 +81,15 @@ def _stub_npm_imports(
 ) -> tuple[str, dict[str, str], str, bool];
 
 def _build_harness(
-    module_js: str, tests: list, api_base_url: str = "", storage: (dict | None) = None
+    module_js: str,
+    tests: list[any],
+    api_base_url: str = "",
+    storage: (dict[str, any] | None) = None
 ) -> str;
 
 def _collect_local_imports(
     module_js: str, source_dir: str, entry_path: str, allow_runtime: bool = False
-) -> tuple[dict, dict];
+) -> tuple[dict[str, any], dict[str, any]];
 
 def _exported_names(js: str) -> set;
 
@@ -99,26 +104,26 @@ def run_cl_test_file(
     filepath: str,
     api_base_url: (str | None) = None,
     test_name: (str | None) = None,
-    storage: (dict | None) = None,
+    storage: (dict[str, any] | None) = None,
     serve: bool = True,
     timeout: float = 120.0
 ) -> list[ClTestResult];
 
 def _run_harness(
     module_js: str,
-    tests: list,
-    imports: dict,
+    tests: list[any],
+    imports: dict[str, any],
     api_base_url: str,
-    storage: (dict | None),
+    storage: (dict[str, any] | None),
     timeout: float,
     source_path: (str | None) = None
 ) -> list[ClTestResult];
 
-def _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None);
+def _parse_results(stdout: str, tests: list[any]) -> (list[ClTestResult] | None);
 
 def module_is_client(filepath: str) -> bool;
 def is_cl_test_file(filepath: str) -> bool;
 
 def is_cl_test_file_for_discovery(filepath: str) -> bool;
 
-def register_results_into_jactestcheck(filepath: str, results: list) -> None;
+def register_results_into_jactestcheck(filepath: str, results: list[any]) -> None;

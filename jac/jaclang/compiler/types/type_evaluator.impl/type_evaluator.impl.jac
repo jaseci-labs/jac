@@ -5170,9 +5170,7 @@ impl TypeEvaluator._find_predicate_for(
         match info.kind {
             case NarrowingKind.ISINSTANCE
                 | NarrowingKind.TYPE_IS
-                | NarrowingKind.TYPE_GUARD
-                | NarrowingKind.LITERAL_EQ
-                | NarrowingKind.LITERAL_NE:
+                | NarrowingKind.TYPE_GUARD:
                 narrowed_type = info.narrow_type;
                 if narrowed_type is None {
                     return None;
@@ -5180,7 +5178,7 @@ impl TypeEvaluator._find_predicate_for(
                 return NarrowingPredicate(
                     key=key,
                     narrow_type=narrowed_type,
-                    is_inverted=info.kind == NarrowingKind.LITERAL_NE,
+                    is_inverted=False,
                     narrows_on_false=info.narrows_on_false
                         and info.kind != NarrowingKind.TYPE_GUARD,
                     replaces_declared=info.kind == NarrowingKind.TYPE_GUARD
@@ -5229,6 +5227,30 @@ impl TypeEvaluator._find_predicate_for(
                         key=key, narrow_type=none_inst, is_inverted=True
                     );
                 }
+
+            case NarrowingKind.LITERAL_EQ:
+                literal_type = info.narrow_type;
+                if literal_type is None {
+                    return None;
+                }
+                return NarrowingPredicate(
+                    key=key,
+                    narrow_type=literal_type,
+                    is_inverted=False,
+                    narrows_on_false=False
+                );
+
+            case NarrowingKind.LITERAL_NE:
+                literal_type = info.narrow_type;
+                if literal_type is None {
+                    return None;
+                }
+                return NarrowingPredicate(
+                    key=key,
+                    narrow_type=literal_type,
+                    is_inverted=True,
+                    narrows_on_true=False
+                );
 
             case NarrowingKind.TRUTHINESS:
                 if self.prefetch and self.prefetch.none_type_class {
@@ -5364,7 +5386,7 @@ impl TypeEvaluator._specialize_narrow_from_base(
         if not isinstance(m, ClassType) {
             continue;
         }
-        args = m.private.type_args or [];
+        args: list[TypeBase] = m.private.type_args or [];
         if len(args) != want or m.shared.same_class(narrow_type.shared) {
             continue;
         }

@@ -283,7 +283,12 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
                 col = yf.col_offset;
             }
             return validation_error(
-                "SyntaxError", "'yield' outside function", lineno, col
+                "SyntaxError",
+                "'yield from' outside function"
+                    if isinstance(e, YieldFrom)
+                    else "'yield' outside function",
+                lineno,
+                col
             );
         }
         if isinstance(e, Yield) {
@@ -604,7 +609,12 @@ def validate_stmt(
                 col = yf.col_offset;
             }
             return validation_error(
-                "SyntaxError", "'yield' outside function", lineno, col
+                "SyntaxError",
+                "'yield from' outside function"
+                    if isinstance(s, YieldFrom)
+                    else "'yield' outside function",
+                lineno,
+                col
             );
         }
         return validation_ok();
@@ -897,7 +907,9 @@ def validate_suspensions(
             } elif in_comp {
                 message = "'yield' inside comprehension";
             } elif not in_function {
-                message = "'yield' outside function";
+                message = "'yield from' outside function"
+                    if isinstance(item, YieldFrom)
+                    else "'yield' outside function";
             } elif in_async and isinstance(item, YieldFrom) {
                 message = "'yield from' inside async function";
             }

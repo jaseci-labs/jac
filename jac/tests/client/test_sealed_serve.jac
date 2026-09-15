@@ -24,7 +24,7 @@ import from jaclang.server.sealed_serve {
 import from .test_helpers { get_jac_command }
 
 
-def _sealed_root(tmp: str, manifest: (dict | None) = None) -> str {
+def _sealed_root(tmp: str, manifest: (dict[str, any] | None) = None) -> str {
     img_root = os.path.join(tmp, "app");
     os.makedirs(os.path.join(img_root, "_precompiled"));
     dist = os.path.join(img_root, ".jac", "client", "dist");

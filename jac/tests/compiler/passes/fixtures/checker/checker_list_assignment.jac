@@ -3,5 +3,5 @@ with entry {
     foo = [1,2,3];  # <-- Error
 
     bar = [1,2,3];
-    baz: list = bar;  # <-- Ok
+    baz: list[int] = bar;  # <-- Ok
 }

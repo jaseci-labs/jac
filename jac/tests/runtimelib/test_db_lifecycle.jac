@@ -95,7 +95,7 @@ def _admin(cluster: Cluster) -> any {
 }
 
 
-def _query(cluster: Cluster, sql: str) -> list {
+def _query(cluster: Cluster, sql: str) -> list[any] {
     conn: any = _admin(cluster);
     try {
         return conn.run(sql);
@@ -152,9 +152,9 @@ def _seed_project(name: str, app: str = "") -> str {
 }
 
 
-def _child_env(cluster: Cluster, scratch: bool) -> dict {
+def _child_env(cluster: Cluster, scratch: bool) -> dict[str, any] {
     import jaclang;
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     src = str(Path(jaclang.__file__).parent.parent);
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "");
     env["JAC_CACHE_HOME"] = cluster.cache_home;
@@ -170,7 +170,7 @@ def _child_env(cluster: Cluster, scratch: bool) -> dict {
 
 
 """Run `jac run app.jac` inside *proj* against *cluster*."""
-def _run_app(cluster: Cluster, proj: str, scratch: bool = False) -> tuple {
+def _run_app(cluster: Cluster, proj: str, scratch: bool = False) -> tuple[any, ...] {
     res = subprocess.run(
         jac_command("run", os.path.join(proj, "app.jac")),
         cwd=proj,
@@ -183,7 +183,7 @@ def _run_app(cluster: Cluster, proj: str, scratch: bool = False) -> tuple {
 }
 
 
-def _run_python(cluster: Cluster, script: str) -> tuple {
+def _run_python(cluster: Cluster, script: str) -> tuple[any, ...] {
     res = subprocess.run(
         [sys.executable, "-c", script],
         cwd=cluster.workspace,

@@ -21,11 +21,11 @@ def _to_bool(value: any, fallback: bool = False) -> bool {
     return fallback;
 }
 
-def _resolve_rn_release(rn_cfg: dict) -> bool {
+def _resolve_rn_release(rn_cfg: dict[str, any]) -> bool {
     return _to_bool(rn_cfg.get("release", False), False);
 }
 
-def _resolve_rn_android_builder(rn_cfg: dict) -> str {
+def _resolve_rn_android_builder(rn_cfg: dict[str, any]) -> str {
     raw = str(rn_cfg.get("android_builder", "") or "").strip().lower();
     if raw == "" {
         if _to_bool(rn_cfg.get("use_eas_build", False), False) {
@@ -41,7 +41,7 @@ def _resolve_rn_android_builder(rn_cfg: dict) -> str {
     );
 }
 
-def _resolve_rn_ios_builder(rn_cfg: dict) -> str {
+def _resolve_rn_ios_builder(rn_cfg: dict[str, any]) -> str {
     raw = str(rn_cfg.get("ios_builder", "") or "").strip().lower();
     if raw == "" {
         if _to_bool(rn_cfg.get("use_eas_build", False), False) {
@@ -57,7 +57,7 @@ def _resolve_rn_ios_builder(rn_cfg: dict) -> str {
     );
 }
 
-def _resolve_rn_eas_profile(rn_cfg: dict, release: bool) -> str {
+def _resolve_rn_eas_profile(rn_cfg: dict[str, any], release: bool) -> str {
     raw = str(rn_cfg.get("eas_profile", "") or "").strip();
     if raw != "" {
         return raw;
@@ -65,11 +65,11 @@ def _resolve_rn_eas_profile(rn_cfg: dict, release: bool) -> str {
     return "production" if release else "preview";
 }
 
-def _resolve_rn_eas_update_enabled(rn_cfg: dict) -> bool {
+def _resolve_rn_eas_update_enabled(rn_cfg: dict[str, any]) -> bool {
     return _to_bool(rn_cfg.get("eas_update", rn_cfg.get("ota_update", False)), False);
 }
 
-def _resolve_rn_eas_update_branch(rn_cfg: dict, release: bool) -> str {
+def _resolve_rn_eas_update_branch(rn_cfg: dict[str, any], release: bool) -> str {
     raw = str(
         rn_cfg.get("eas_update_branch", rn_cfg.get("ota_update_branch", "")) or ""
     ).strip();
@@ -79,6 +79,6 @@ def _resolve_rn_eas_update_branch(rn_cfg: dict, release: bool) -> str {
     return "production" if release else "preview";
 }
 
-def _resolve_rn_eas_update_message(rn_cfg: dict) -> str {
+def _resolve_rn_eas_update_message(rn_cfg: dict[str, any]) -> str {
     return str(rn_cfg.get("eas_update_message", "") or "").strip();
 }

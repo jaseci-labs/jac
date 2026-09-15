@@ -6,13 +6,13 @@ import from pathlib { Path }
 import type from jaclang.server.server { ModuleIntrospector }
 
 obj HeaderBuilder {
-    has meta_data: dict,
+    has meta_data: dict[str, any],
         function_name: str,
-        DEFAULTS: dict = {
+        DEFAULTS: dict[str, any] = {
             "charset": "UTF-8",
             "viewport": "width=device-width,initial-scale=1"
         },
-        standard_tags: list = [
+        standard_tags: list[str] = [
             "description",
             "keywords",
             "author",
@@ -22,7 +22,7 @@ obj HeaderBuilder {
 
     def build_head -> str;
     def build_scripts -> list[str];
-    def _script_tag(spec: dict) -> str;
+    def _script_tag(spec: dict[str, any]) -> str;
     def _get_value(key: str) -> (str | None);
     def _og_property(suffix: str) -> str;
     def _build_special_tags -> list[str];

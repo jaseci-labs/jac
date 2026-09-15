@@ -1,7 +1,7 @@
 """Test: JS-idiomatic methods should produce portability warnings."""
 
 def use_array_methods {
-    items: list = [1, 2, 3];
+    items: list[any] = [1, 2, 3];
     items.push(4);
     items.forEach(print);
     idx = items.indexOf(2);
@@ -25,7 +25,7 @@ def check(x: int) -> bool {
 }
 
 def use_functional_methods {
-    items: list = [1, 2, 3];
+    items: list[any] = [1, 2, 3];
     items.every(check);
     items.some(check);
     items.find(check);
@@ -34,7 +34,7 @@ def use_functional_methods {
 }
 
 def use_object_methods {
-    d: dict = {"a": 1};
+    d: dict[any, any] = {"a": 1};
     d.hasOwnProperty("a");
     d.assign(d);
     d.freeze();

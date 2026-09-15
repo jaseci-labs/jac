@@ -300,7 +300,7 @@ def compiler_generation -> str {
     return _COMPILER_GENERATION_CACHE[0];
 }
 
-glob _JAC_VERSION_CACHE: list = [];
+glob _JAC_VERSION_CACHE: list[str] = [];
 
 def jaclang_version -> str {
     if not _JAC_VERSION_CACHE {

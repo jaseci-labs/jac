@@ -21,8 +21,8 @@ def:pub PodEnvPage -> JsxElement {
         available: bool = True,
         detail: str = "",
         namespace: str = "",
-        thisPod: list = [],
-        pods: list = [],
+        thisPod: list[dict[str, any]] = [],
+        pods: list[dict[str, any]] = [],
         selected: str = "__self__",
         errorMsg: str = "",
         loadedOnce: bool = False;
@@ -38,8 +38,8 @@ def:pub PodEnvPage -> JsxElement {
                 available = data["available"] or False;
                 detail = data["detail"] or "";
                 namespace = data["namespace"] or "";
-                thisPod = data["this_pod"] or [];
-                pods = data["pods"] or [];
+                thisPod: list[dict[str, any]] = data["this_pod"] or [];
+                pods: list[dict[str, any]] = data["pods"] or [];
                 errorMsg = "";
             } elif result["error"] {
                 errorMsg = getErrorMessage(result, "Failed to load pod env");
@@ -61,7 +61,7 @@ def:pub PodEnvPage -> JsxElement {
     );
 
     # Resolve the currently-selected env list (this pod vs a named pod).
-    def selectedEnv -> list {
+    def selectedEnv -> list[dict[str, any]] {
         if selected == "__self__" {
             return thisPod;
         }

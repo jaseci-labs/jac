@@ -15,7 +15,7 @@ two draws differ. ES/JS opts out.
 import secrets;
 
 
-def secrets_py -> dict {
+def secrets_py -> dict[any, any] {
     rb1000 = secrets.randbelow(1000);
     return {
         "tb16_len": len(secrets.token_bytes(16)),
@@ -31,7 +31,7 @@ def secrets_py -> dict {
 }
 
 
-def secrets_cl -> dict {
+def secrets_cl -> dict[any, any] {
     return {};
 }
 

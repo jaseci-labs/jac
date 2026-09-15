@@ -81,7 +81,7 @@ test "nav manifest and corpus files agree exactly" {
     assert manifest["version"] == 1;
 
     pages: list[str] = [];
-    def walk(items: list[dict]) {
+    def walk(items: list[dict[str, any]]) {
         for `entry in items {
             assert `entry.get("title") , f"nav entry missing a title: {`entry}";
             if "page" in `entry {

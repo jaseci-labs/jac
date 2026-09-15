@@ -31,11 +31,11 @@ impl Greeter.farewell -> str {
     "bye " + self.name
 }
 
-def styled -> dict {
+def styled -> dict[str, any] {
     {"color": "red", "size": 4}
 }
 
-def pair(n: int) -> tuple {
+def pair(n: int) -> tuple[any, ...] {
     (n, n + 1)
 }
 

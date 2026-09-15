@@ -29,7 +29,7 @@ import from jaclang.compiler.driver.pipeline { get_py_code_gen }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 
-glob CANARY_SUITES: tuple = (
+glob CANARY_SUITES: tuple[any, ...] = (
          "tests/compiler/test_compilation.jac",
          "tests/compiler/test_codegen_ir.jac",
          "tests/compiler/test_jcir_gen_pass.jac",

@@ -536,7 +536,7 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
     guard_form = self._type_guard_form_of(return_type);
     if guard_form is not None {
         assert isinstance(return_type, ClassType);
-        guard_args = return_type.private.type_args or [];
+        guard_args: list[TypeBase] = return_type.private.type_args or [];
         if guard_args {
             guarded_type = guard_args[0];
             guard_is_strict = guard_form == "TypeIs";
@@ -570,7 +570,7 @@ impl TypeEvaluator._apply_function_decorators(
         if not isinstance(decorator_type, FunctionType) {
             continue;
         }
-        params = decorator_type.parameters or [];
+        params: list[Parameter] = decorator_type.parameters or [];
 
         if len(params) != 1
             or not isinstance(params[0].param_type, FunctionType)

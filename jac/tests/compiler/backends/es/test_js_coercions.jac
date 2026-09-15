@@ -63,8 +63,8 @@ def boolean_value(value: any) -> bool { return Boolean(value) as bool; }
 def boolean_alias(value: any) -> bool { convert = Boolean; return convert(value); }
 def number_value(value: any) -> float { convert = Number; return convert(value); }
 def string_value(value: any) -> str { convert = String; return convert(value); }
-def defaults -> list { return [Boolean(), Number(), String()]; }
-def helpers -> list {
+def defaults -> list[bool | float | str] { return [Boolean(), Number(), String()]; }
+def helpers -> list[bool | float | str] {
     numeric = Number;
     text = String;
     return [numeric.isInteger(2), numeric.isFinite(0), numeric.parseInt("12", 10),

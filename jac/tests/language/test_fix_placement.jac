@@ -189,3 +189,20 @@ test "fix placement --dry-run leaves a template-shaped jac.toml untouched" {
         assert "sv import" in (root_path / "main.jac").read_text();
     }
 }
+
+
+test "fix placement verifies element markers and pins a claim that differs" {
+    import from pathlib { Path }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        root_path = Path(tmpdir);
+        (root_path / "jac.toml").write_text('[project]\nname = "x"\n');
+        (root_path / "mod.jac").write_text(
+            "cl def helper(x: int) -> int {\n    return x;\n}\n"
+        );
+        rc = fix("placement", [str(root_path)]);
+        assert rc == 0 , rc;
+        assert "cl def" not in (root_path / "mod.jac").read_text();
+        toml = (root_path / "jac.toml").read_text();
+        assert '"mod.helper" = "client"' in toml , toml;
+    }
+}

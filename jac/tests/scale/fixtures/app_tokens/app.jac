@@ -7,19 +7,19 @@ import from jaclang.server.identity.app_tokens {
     token_revoke
 }
 
-def invite(role: str, ttl: int) -> dict {
+def invite(role: str, ttl: int) -> dict[str, any] {
     tok = token_create(
         "invite", subject=jid(root), ttl_seconds=ttl, payload={"role": role}
     );
     return {"token": tok};
 }
 
-def peek(token: str) -> dict {
+def peek(token: str) -> dict[str, any] {
     got = token_peek("invite", token);
     return {"found": got is not None};
 }
 
-def accept(token: str) -> dict {
+def accept(token: str) -> dict[str, any] {
     got = token_consume("invite", token);
     if got is None {
         return {"ok": False};
@@ -27,11 +27,11 @@ def accept(token: str) -> dict {
     return {"ok": True, "role": got["payload"].get("role", "")};
 }
 
-def accept_other_purpose(token: str) -> dict {
+def accept_other_purpose(token: str) -> dict[str, any] {
     got = token_consume("other", token);
     return {"ok": got is not None};
 }
 
-def cancel_all -> dict {
+def cancel_all -> dict[str, any] {
     return {"revoked": token_revoke("invite", jid(root))};
 }

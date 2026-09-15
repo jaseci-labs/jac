@@ -230,7 +230,7 @@ def:pub FormPage -> JsxElement {
         }
     );
 
-    async def handleSubmit(data: dict) {
+    async def handleSubmit(data: dict[any, any]) {
         globalThis.__submitFired = True;
     }
 

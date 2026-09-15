@@ -1,7 +1,7 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release, with native JacPython on every target.
+# GitHub Release, with CPython and opt-in native JacPython on every target.
 # One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
@@ -87,6 +87,7 @@ permissions:
   contents: write
 
 jobs:
+
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -121,15 +122,20 @@ jobs:
             echo "::error::a filtered build cannot publish an incomplete release"
             exit 1
           fi
+          # Both runtimes ship for each selected platform. Keep the platform
+          # token for shared LLVM shims; only JacPython asset names get a suffix.
+          LEGS="$(jq -c '[.[] | . as $leg | ["cpython", "jacpython"][] as $runtime
+            | $leg + {runtime: $runtime, jacpython: (if $runtime == "jacpython" then "1" else "0" end),
+              asset_platform: ($leg.platform + (if $runtime == "jacpython" then "-jacpython" else "" end))}]' <<<"$LEGS")"
           echo "include=$(jq -c . <<<"$LEGS")" >> "$GITHUB_OUTPUT"
 
-          REQUIRED="$(jq -r 'map(.platform) | join(" ")' <<<"$LEGS")"
+          REQUIRED="$(jq -r 'map(.asset_platform) | join(" ")' <<<"$LEGS")"
           echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
-          echo "Building: $(jq -r 'map(.platform) | join(" ")' <<<"$LEGS")"
+          echo "Building: $(jq -r 'map(.asset_platform) | join(" ")' <<<"$LEGS")"
           echo "Required to publish: ${REQUIRED:-(none)}"
 
   build:
-    name: ${{ matrix.platform }}
+    name: ${{ matrix.asset_platform }}
     needs: plan
     strategy:
       fail-fast: false
@@ -137,6 +143,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.include) }}
     runs-on: ${{ matrix.os }}
     env:
+      JACPYTHON: ${{ matrix.jacpython }}
       # -Dtarget flag for zig build: set on release-channel Linux legs, empty
       # (host-native) on the dev channel and macOS.
       DTARGET: ${{ inputs.channel != 'dev' && matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
@@ -220,8 +227,8 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.python-build/jacpython
-          key: python-build-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/**', 'jac/jaclang/**/*.jac', 'jac/jaclang/**/*.py', 'jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256') }}
+          path: jac/.python-build/${{ matrix.runtime }}
+          key: python-build-v3-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/**', 'jac/jaclang/**/*.jac', 'jac/jaclang/**/*.py', 'jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256') }}
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
@@ -238,10 +245,10 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.payload-layers/jacpython
-          key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
+          path: jac/.payload-layers/${{ matrix.runtime }}
+          key: payload-layers-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
           restore-keys: |
-            payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -377,7 +384,7 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
-      - name: Verify the shipped native JacPython compiler
+      - name: Verify the shipped Python compiler matches the selected runtime
         working-directory: jac
         run: |
           set -euo pipefail
@@ -385,12 +392,18 @@ jobs:
           cat > "$WORK/native_compiler.jac" <<'EOF'
           import sys;
           import ctypes;
+          import os;
           with entry {
-              assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
-              assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3;
+              if os.environ.get("JACPYTHON") == "1" {
+                  assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
+                  assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3;
+              } else {
+                  assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerRequired");
+              }
               assert not hasattr(sys, "_jacpython_compile");
               assert not hasattr(sys, "_jacpython_image");
-              print("native JacPython verified");
+              assert eval("6 * 7") == 42;
+              print("Python compiler verified");
           }
           EOF
           zig-out/bin/jac run "$WORK/native_compiler.jac"
@@ -501,7 +514,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: macos-crash-evidence-${{ matrix.platform }}
+          name: macos-crash-evidence-${{ matrix.asset_platform }}
           path: ${{ runner.temp }}/jac-crash-evidence
           if-no-files-found: ignore
 
@@ -532,7 +545,7 @@ jobs:
           check "$SHIM"
 
       - name: Seed the deps release with the built shim (release channel)
-        if: inputs.channel != 'dev' && steps.shim-fetch.outputs.hit != 'true'
+        if: inputs.channel != 'dev' && matrix.runtime == 'cpython' && steps.shim-fetch.outputs.hit != 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -555,9 +568,9 @@ jobs:
         run: |
           set -euxo pipefail
           if [ "${{ inputs.channel }}" = "dev" ]; then
-            ASSET="jac-dev-${{ matrix.platform }}"
+            ASSET="jac-dev-${{ matrix.asset_platform }}"
           else
-            ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
+            ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.asset_platform }}"
           fi
           mkdir -p dist
           cp zig-out/bin/jac "dist/$ASSET"
@@ -590,7 +603,7 @@ jobs:
       # uploaded fine.
 
       # Release channel only: dev binaries are already published on the `dev`
-      # prerelease, and a per-push 3x ~130 MB artifact would be pure storage
+      # prerelease, and a per-push 6x ~130 MB artifact would be pure storage
       # churn.
       - name: Upload as workflow artifact
         if: inputs.channel != 'dev'
@@ -604,6 +617,7 @@ jobs:
       # dead platform is a red step somebody has to go looking for -- the exact
       # inattention that let this one rot for eighteen days. Say it in the run
       # summary and as an annotation instead.
+
   admin-dist:
     needs: build
     if: (github.event_name == 'release' || inputs.tag != '') && inputs.only == ''
@@ -665,120 +679,18 @@ jobs:
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
 
-  # Publishes jaseci/jaclang (Docker Hub) from the binaries this run produced:
-  #   <version> + latest on the release channel, dev on the rolling prerelease.
-  # The image bakes the extracted runtime and the scale serve closure (see
-  # docker/jaclang.Dockerfile), so it doubles as the deployment base image.
-  #
-  # Setup (one-time, repo secrets): DOCKERHUB_USERNAME + DOCKERHUB_TOKEN, an
-  # access token from the `jaseci` Docker Hub org with write access. The job
-  # is skipped when the secrets are absent (forks).
+  # Docker remains a release gate. The reusable workflow can also be
+  # dispatched on its own to retry image publishing from existing assets.
   docker-image:
     needs: build
     if: (github.event_name == 'release' || inputs.tag != '') && inputs.only == ''
-    runs-on: ubuntu-latest
     permissions:
-      contents: read
-    env:
+      # Allow the called image job to download assets from the draft release.
+      contents: write
+    uses: ./.github/workflows/docker-image.yml
+    with:
+      tag: ${{ inputs.tag || github.event.release.tag_name }}
+      commit: ${{ inputs.channel == 'dev' && github.sha || inputs.commit || inputs.tag || github.event.release.tag_name }}
+    secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      # Presence flag ("true"/"false"): `secrets` is not available in step
-      # `if:` expressions, and the token value itself must not sit in env.
-      DOCKERHUB_TOKEN_SET: ${{ secrets.DOCKERHUB_TOKEN != '' }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.commit || inputs.tag || github.event.release.tag_name }}
-
-      - name: Read version (from jac.toml)
-        id: ver
-        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
-
-      # Dev-channel legs keep no workflow artifact; that path pulls the
-      # binaries this run just re-published on the rolling prerelease instead.
-      - name: Fetch this run's linux-x86_64 binary (release channel)
-        if: inputs.channel != 'dev'
-        uses: actions/download-artifact@v4
-        with:
-          name: jac-${{ steps.ver.outputs.version }}-linux-x86_64
-          path: ctx/amd64
-
-      - name: Fetch this run's linux-aarch64 binary (release channel)
-        if: inputs.channel != 'dev'
-        uses: actions/download-artifact@v4
-        with:
-          name: jac-${{ steps.ver.outputs.version }}-linux-aarch64
-          path: ctx/arm64
-
-      - name: Stage binaries into the build context
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          mkdir -p ctx/amd64 ctx/arm64
-          if [ "${{ inputs.channel }}" = "dev" ]; then
-            gh release download dev --repo "$GITHUB_REPOSITORY" \
-              --pattern "jac-dev-linux-x86_64" --dir ctx/amd64 --clobber
-            gh release download dev --repo "$GITHUB_REPOSITORY" \
-              --pattern "jac-dev-linux-aarch64" --dir ctx/arm64 --clobber
-          fi
-          # The release-channel artifact carries the binary's .sha256 beside
-          # it; drop it so the rename glob matches exactly one file.
-          rm -f ctx/amd64/*.sha256 ctx/arm64/*.sha256
-          mv ctx/amd64/jac-* ctx/amd64/jac
-          mv ctx/arm64/jac-* ctx/arm64/jac
-          chmod +x ctx/amd64/jac ctx/arm64/jac
-          cp docker/jaclang.Dockerfile ctx/Dockerfile
-
-      # Forks skip publishing quietly, but on the org repo missing secrets
-      # mean a misconfiguration (e.g. a caller not passing them through) --
-      # fail loudly instead of green-skipping the publish.
-      - name: Fail if publishing secrets are missing (org repo)
-        if: github.repository == 'jaseci-labs/jac' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
-        run: |
-          echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN did not reach this job; workflow_call callers must pass them via 'secrets:'."
-          exit 1
-
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-        if: env.DOCKERHUB_USERNAME != ''
-
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-        if: env.DOCKERHUB_USERNAME != ''
-
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        if: env.DOCKERHUB_USERNAME != ''
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Compute image tags
-        id: tags
-        if: env.DOCKERHUB_USERNAME != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          IMAGE="jaseci/jaclang"
-          VERSION="${{ steps.ver.outputs.version }}"
-          if [ "${{ inputs.channel }}" = "dev" ]; then
-            TAGS="$IMAGE:dev"
-          else
-            # :latest never moves backwards: a backport (0.34.8 after 0.35.0)
-            # pushes its version tag only. Mirrors release.yml's publish guard.
-            TAGS="$IMAGE:${VERSION}"
-            latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || echo "")"
-            if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
-              TAGS="$TAGS,$IMAGE:latest"
-            else
-              echo "Backport: $latest_tag stays :latest, pushing $IMAGE:$VERSION only."
-            fi
-          fi
-          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push (linux/amd64, linux/arm64)
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-        with:
-          context: ctx
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

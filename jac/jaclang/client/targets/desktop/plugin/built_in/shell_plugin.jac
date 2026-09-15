@@ -5,7 +5,7 @@ import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, PluginContext }
 
 
-def _pattern_matches(pattern_argv: list, argv: list) -> bool {
+def _pattern_matches(pattern_argv: list[str], argv: list[str]) -> bool {
     for (i, ptok) in enumerate(pattern_argv) {
         if ptok == "*" and i == len(pattern_argv) - 1 {
             return True;
@@ -22,7 +22,7 @@ def _pattern_matches(pattern_argv: list, argv: list) -> bool {
 }
 
 
-def _is_allowed(allow: list, argv: list) -> bool {
+def _is_allowed(allow: list[str], argv: list[str]) -> bool {
     for pattern in allow {
         pattern_argv = shlex.split(pattern);
         if not pattern_argv {
@@ -37,7 +37,7 @@ def _is_allowed(allow: list, argv: list) -> bool {
 
 
 obj ShellPlugin(DesktopPlugin) {
-    has _allow: list = [];
+    has _allow: list[str] = [];
 
     static def manifest -> PluginManifest {
         return PluginManifest(
@@ -53,7 +53,7 @@ obj ShellPlugin(DesktopPlugin) {
         return ShellPlugin(DesktopPlugin._coerce_config(config));
     }
 
-    def init(config: dict) {
+    def init(config: dict[str, any]) {
         self.plugin_name = "jac.shell";
 
         if not isinstance(config, dict) {
@@ -62,14 +62,14 @@ obj ShellPlugin(DesktopPlugin) {
         self._allow = config.get("allow", []);
     }
 
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         if command == "exec" {
             return self._exec(args);
         }
         return super.handle(command, args);
     }
 
-    def _exec(args: dict) -> dict {
+    def _exec(args: dict[str, any]) -> dict[str, any] {
         cmd = args.get("command", "");
         if not cmd {
             raise PluginError(

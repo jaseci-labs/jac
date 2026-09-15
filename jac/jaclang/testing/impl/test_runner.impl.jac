@@ -720,7 +720,7 @@ impl run_file(
                 )
             ];
         }
-        pending: list = [];
+        pending: list[any] = [];
         for (_key, registered) in list(JacTestCheck.test_suite_path.items()) {
             for info in list(registered) {
                 pending.append(info);

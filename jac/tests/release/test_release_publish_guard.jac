@@ -65,6 +65,35 @@ glob ALL_PLATFORMS: list[str] = [
          "macos-x86_64"
      ];
 
+test "both runtimes and their checksums are required for every automatic platform" {
+    platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"];
+    required = platforms + [p + "-jacpython" for p in platforms];
+    assets = assets_for(required);
+    for missing in [""] + assets[:-1] {
+        fx = scaffold(
+            [
+                a
+                for a in assets
+                if a != missing
+            ]
+        );
+        try {
+            res = run_guard(fx, required);
+            out = res.stdout + res.stderr;
+            if missing {
+                assert res.returncode != 0 , out;
+                assert missing in out , out;
+                assert publish_call(fx) == "";
+            } else {
+                assert res.returncode == 0 , out;
+                assert "--draft=false" in publish_call(fx);
+            }
+        } finally {
+            shutil.rmtree(fx["base"], ignore_errors=True);
+        }
+    }
+}
+
 """A stub `gh` on PATH plus the files that drive what it answers."""
 def scaffold(
     assets: list[str], is_draft: str = "true", latest: str = ""
@@ -104,7 +133,7 @@ def assets_for(platforms: list[str]) -> list[str] {
 def run_guard(
     fx: dict[(str, str)], required: list[str], api_fails: bool = False
 ) -> subprocess.CompletedProcess[str] {
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["PATH"] = fx["bin"] + os.pathsep + env["PATH"];
     env["GH_LOG"] = fx["log"];
     env["GH_ASSETS"] = fx["assets"];

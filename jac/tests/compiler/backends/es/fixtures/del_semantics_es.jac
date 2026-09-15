@@ -11,7 +11,7 @@ node N {
 
 edge E {}
 
-def del_forms -> dict {
+def del_forms -> dict[any, any] {
     d = {"k": 1, "j": 2};
     del d["k"];
     seq = [1, 2, 3];
@@ -41,7 +41,7 @@ def del_forms -> dict {
     calls = [0];
     picked = {"k": N(8)};
 
-    def pick() -> dict {
+    def pick() -> dict[any, any] {
         calls[0] = calls[0] + 1;
         return picked;
     }

@@ -5,7 +5,7 @@ true, `is not None` false, truthiness false. Values are returned as
 ints so the comparison is representation-agnostic.
 """
 
-def dgn_py -> dict {
+def dgn_py -> dict[any, any] {
     d: dict[str, int] = {"value": 1};
     miss_is_none: int = 1 if (d.get("error") is None) else 0;
     miss_is_not_none: int = 1 if (d.get("error") is not None) else 0;
@@ -23,7 +23,7 @@ def dgn_py -> dict {
     };
 }
 
-def dgn_cl -> dict {
+def dgn_cl -> dict[any, any] {
     d: dict[str, int] = {"value": 1};
     miss_is_none: int = 1 if (d.get("error") is None) else 0;
     miss_is_not_none: int = 1 if (d.get("error") is not None) else 0;

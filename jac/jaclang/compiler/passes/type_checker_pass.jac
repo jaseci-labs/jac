@@ -78,6 +78,7 @@ import from jaclang.compiler.types.types {
     UnknownType
 }
 import from jaclang.compiler.types.type_utils {
+    BARE_GENERIC_REQUIRED,
     PropertyWriteKind,
     get_declared_generator_return_type,
     get_generator_yield_type,
@@ -129,6 +130,7 @@ import from jaclang.project.diagnostics {
     E1132,
     E5095,
     E1133,
+    E1036,
     W1036,
     W1037,
     W1052,
@@ -209,7 +211,20 @@ walker TypeCheckPass(UniPass) {
     can exit_sub_tag with SubTag exit;
     def _eval_unpacking_names(container: Expr) -> None;
     def _body_always_returns(body: list[CodeBlockStmt]) -> bool;
-    def _check_bare_generic(ann_node: UniNode, ty: object) -> None;
+    def _check_bare_generic(
+        ann_node: UniNode,
+        ty: object,
+        shape: (UniNode | None) = None,
+        nested: bool = False
+    ) -> None;
+
+    def _written_type_args(
+        shape: (UniNode | None), ty: ClassType
+    ) -> (list[Expr] | None);
+
+    def _index_args(index: IndexSlice) -> list[Expr];
+    def _union_leaves(shape: (UniNode | None)) -> list[UniNode];
+    def _names_union_form(target: Expr) -> bool;
     def _check_explicit_any(ann_node: UniNode) -> None;
     def _check_walker_reports_shape(nd: HasVar, declared_type: object) -> None;
     def _enclosing_walker_report_elem_type(nd: UniNode) -> (TypeBase | None);

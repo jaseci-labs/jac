@@ -41,7 +41,7 @@ def _write(root_dir: str, rel: str, text: str) -> str {
 }
 
 
-def _e5105(prog: JacProgram) -> list {
+def _e5105(prog: JacProgram) -> list[any] {
     return [
         e
         for e in prog.errors_had

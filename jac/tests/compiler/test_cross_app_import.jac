@@ -10,6 +10,7 @@ pair of mutually-importing services that close an app cycle.
 """
 
 import os;
+import re;
 import from tests.support { JAC_ROOT }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.boundary_classify {
@@ -33,7 +34,7 @@ def fixture(*parts: str) -> str {
     return os.path.join(APPS_DIR, *parts);
 }
 
-def compile_fixture(path: str, cgen: bool = False, app: str = "") -> tuple {
+def compile_fixture(path: str, cgen: bool = False, app: str = "") -> tuple[any, ...] {
     prog = JacProgram();
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     options = CompileOptions(no_cgen=not cgen);
@@ -134,6 +135,19 @@ test "client-context import of server-placed elements is CLIENT_BRIDGE" {
         "cross-app client stubs carry the provider route; got:\n" + js
     );
     assert ("web", "social") in mod.gen.interop_manifest.app_edges;
+}
+
+test "direct and aliased client RPC calls retain the service route" {
+    (prog, mod) = compile_fixture(fixture("web", "panel.jac"), cgen=True, app="web");
+    assert not prog.errors_had , str(prog.errors_had);
+    calls = re.findall(r'__jacCallFunction\("greet",[^\n]+', mod.gen.js);
+    assert len(calls) == 4 , mod.gen.js;
+    for call in calls {
+        assert '"app": "social"' in call , call;
+        assert '"route": "/api/social"' in call , call;
+        assert '"contract":' in call , call;
+    }
+    assert '__jacCallFunction("hello"' not in mod.gen.js;
 }
 
 test "NATIVE_BIND wins for a client import recorded as a client-native edge" {

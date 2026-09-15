@@ -21,7 +21,7 @@ def:pub get_todos -> list[Todo] {
 import from .typed_return_obj { create_todo, get_todos }
 
 def:pub app -> JsxElement {
-    has todos: list = [];
+    has todos: list[any] = [];
 
     async can with entry {
         todos = await get_todos();

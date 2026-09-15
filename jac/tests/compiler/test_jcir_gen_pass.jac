@@ -39,7 +39,7 @@ import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
 
 """Compile a source string, then re-emit it: (pipeline tree, fresh tree, bytes)."""
-def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple {
+def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(
         use_str=src,
@@ -63,7 +63,7 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple {
 }
 
 """The same double emission, for a fixture that must be compiled from disk."""
-def dual_compile_file(path: str) -> tuple {
+def dual_compile_file(path: str) -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(path, options=CompileOptions(no_ir_cache=True));
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
@@ -97,7 +97,7 @@ def assert_dump_equal(ref_tree: any, got_tree: any) {
     }
 }
 
-def code_diffs(a: any, b: any, path: str, out: list) -> list {
+def code_diffs(a: any, b: any, path: str, out: list[any]) -> list[any] {
     for attr in [
         "co_name",
         "co_qualname",
@@ -144,9 +144,9 @@ def assert_bytecode_equal(ref_tree: any, mod_path: str, bytecode: bytes) {
     assert diffs == [] , "\n".join(diffs);
 }
 
-def exec_both(ref_tree: any, got_tree: any, path: str, names: list) {
-    ref_ns: dict = {};
-    got_ns: dict = {};
+def exec_both(ref_tree: any, got_tree: any, path: str, names: list[any]) {
+    ref_ns: dict[str, any] = {};
+    got_ns: dict[str, any] = {};
     pyexec(pycompile(ref_tree, path, "exec"), ref_ns);
     pyexec(pycompile(got_tree, path, "exec"), got_ns);
     for name in names {
@@ -388,7 +388,7 @@ with entry {
 
 test "expression forms match" {
     src = """
-def exprs(a: int, b: int) -> dict {
+def exprs(a: int, b: int) -> dict[any, any] {
     lst = [a, b, a + b];
     st = {a, b};
     tp = (a, b);
@@ -435,7 +435,7 @@ obj Box {
         label: str = "leaf";
 }
 
-def probe(b: (Box | None)) -> tuple {
+def probe(b: (Box | None)) -> tuple[any, ...] {
     lab = b?.label;
     deep = b.inner?.label if b else None;
     ms = "one "
@@ -514,7 +514,7 @@ with entry {
     (ref_tree, got_tree, _) = dual_compile(src, "lambda_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
     exec_both(ref_tree, got_tree, "lambda_fixture.jac", ["r1", "r2", "r3", "r4", "r5"]);
-    missing: list = [];
+    missing: list[str] = [];
     for node in pyast.walk(got_tree) {
         if "lineno" in node._attributes {
             # `lineno` lives on concrete nodes, not the `AST` base the stub
@@ -708,7 +708,7 @@ with entry {
 test "llm ability bodies lower to call_llm recipes" {
     src = """
 obj FakeModel {
-    has call_params: dict = {};
+    has call_params: dict[any, any] = {};
 }
 
 def make_model -> FakeModel {
@@ -778,7 +778,7 @@ walker Traveler {
     }
 }
 
-def build_map -> list {
+def build_map -> list[any] {
     a = Spot(name="a");
     b = Spot(name="b");
     root ++> a;
@@ -939,7 +939,7 @@ with entry {
 test "server-side jsx lowers to jaclib jsx calls" {
     import tempfile;
     src = """
-def page(title: str, items: list[str], extra: dict) -> JsxElement {
+def page(title: str, items: list[str], extra: dict[any, any]) -> JsxElement {
     rows = [<li key={it}>{it}</li> for it in items];
     return <div title="box" active data={len(items)}>
         <h1>Hello &amp; {title}</h1>

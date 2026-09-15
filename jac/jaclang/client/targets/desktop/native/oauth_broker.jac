@@ -11,8 +11,8 @@ glob LOOPBACK_HOSTS: frozenset = frozenset({"127.0.0.1", "localhost", "::1"});
 glob SAME_SITE_VALUES: frozenset = frozenset({"same-origin", "none"});
 
 glob DEFAULT_PREFIX: str = "/__jac",
-     ALLOWED_PLATFORMS: tuple = ("google", "github", "apple"),
-     ALLOWED_OPERATIONS: tuple = ("login", "register"),
+     ALLOWED_PLATFORMS: tuple[str, ...] = ("google", "github", "apple"),
+     ALLOWED_OPERATIONS: tuple[str, ...] = ("login", "register"),
      CLOSE_PAGE: str = "<!doctype html><meta charset=utf-8><title>{heading}</title>"
          + "<body style='font-family:system-ui,sans-serif;text-align:center;margin-top:4rem'>"
          + "<h2>{heading}</h2><p>{body}</p>"

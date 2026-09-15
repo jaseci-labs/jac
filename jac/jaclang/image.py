@@ -73,6 +73,7 @@ import sys
 import types
 import zlib
 from pathlib import Path
+from typing import Any
 
 
 MANIFEST_NAME = "MANIFEST.json"
@@ -228,10 +229,10 @@ def python_tag() -> str:
 class SealedImage:
     """One sealed ``_precompiled`` bundle: manifest + name-keyed module index."""
 
-    def __init__(self, precompiled_dir: Path, manifest: dict) -> None:
+    def __init__(self, precompiled_dir: Path, manifest: dict[str, Any]) -> None:
         self.precompiled_dir = precompiled_dir
         self.pkg_dir = precompiled_dir.parent
-        self.manifest = manifest
+        self.manifest: dict[str, Any] = manifest
         self.package: str = manifest.get("package", "")
         self.jir_dir = precompiled_dir / manifest.get("python_tag", python_tag())
         # Optional non-module payloads baked into the image (prebuilt client

@@ -43,7 +43,7 @@ import from tests.support { JAC_ROOT, native_force_opts }
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
      ),
-     _ENGINE: list = [];
+     _ENGINE: list[any] = [];
 
 
 """JIT the fixture once; return its execution engine."""

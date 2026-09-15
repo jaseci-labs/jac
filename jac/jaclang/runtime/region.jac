@@ -4,7 +4,7 @@ import weakref;
 
 glob _region_tls: any = threading.local();
 
-def _stack -> list {
+def _stack -> list[JacRegion] {
     s = _region_tls?.stack;
     if s is None {
         s = [];
@@ -24,7 +24,7 @@ class JacRegion {
             c._parent = self;
             return c;
         }
-        out: list = [];
+        out: list[JacRegion] = [];
         for _i in range(n) {
             c = JacRegion();
             c._parent = self;

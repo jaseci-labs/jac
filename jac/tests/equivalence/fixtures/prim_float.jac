@@ -4,7 +4,7 @@ Cross-backend equivalence fixture.
 """
 
 # --- Float operators and methods ---
-def float_py -> dict {
+def float_py -> dict[any, any] {
     x: float = 3.0;
     y: float = 3.5;
     a: float = 7.5;
@@ -122,7 +122,7 @@ def float_py -> dict {
     };
 }
 
-def float_cl -> dict {
+def float_cl -> dict[any, any] {
     x: float = 3.0;
     y: float = 3.5;
     a: float = 7.5;
@@ -314,7 +314,7 @@ def float_na -> dict[str, any] {
     };
 }
 
-def numparse_py -> dict {
+def numparse_py -> dict[any, any] {
     ok: float = float("1.5");
     ws: float = float("  2.5  ");
     expn: float = float("1e3");
@@ -379,7 +379,7 @@ def numparse_py -> dict {
     };
 }
 
-def numparse_cl -> dict {
+def numparse_cl -> dict[any, any] {
     ok: float = float("1.5");
     ws: float = float("  2.5  ");
     expn: float = float("1e3");
@@ -444,6 +444,6 @@ def numparse_cl -> dict {
     };
 }
 
-def numparse_na -> dict {
+def numparse_na -> dict[any, any] {
     return {};
 }

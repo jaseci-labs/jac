@@ -4,11 +4,12 @@ Slicing an object field (`b.items[:pos]`) with a conditionally-computed
 index used to fall through the slice handler and be mis-lowered as a plain
 index (`b.items[pos]`), aborting with SIGABRT (out-of-bounds IndexError).
 These fixtures exercise the object-field slice path against the equivalent
-plain-local path, which has always worked.
+plain-local path, which has always worked. `Box`/`Scope` hold erased
+elements; `IntBox` is the concrete-int control.
 """
 
 obj Box {
-    has items: list;
+    has items: list[any];
 }
 
 obj IntBox {
@@ -16,7 +17,7 @@ obj IntBox {
 }
 
 obj Scope {
-    has next: list;
+    has next: list[any];
 }
 
 """Slice an object field with a conditionally-computed index (the crashing shape)."""
@@ -25,17 +26,17 @@ def slice_field(b: Box, k: int) -> int {
     if pos < 0 {
         pos = pos + len(b.items) + 1;
     }
-    ys: list = b.items[:pos] + b.items[pos:];
+    ys: list[any] = b.items[:pos] + b.items[pos:];
     return len(ys);
 }
 
 """Identical logic on a plain-list local (the always-working control)."""
-def slice_local(xs: list, k: int) -> int {
+def slice_local(xs: list[any], k: int) -> int {
     pos = k;
     if pos < 0 {
         pos = pos + len(xs) + 1;
     }
-    ys: list = xs[:pos] + xs[pos:];
+    ys: list[any] = xs[:pos] + xs[pos:];
     return len(ys);
 }
 
@@ -47,7 +48,7 @@ def field_roundtrip(k: int) -> int {
 
 """Same on a plain-list local."""
 def local_roundtrip(k: int) -> int {
-    e: list = [1, 2, 3];
+    e: list[any] = [1, 2, 3];
     return slice_local(e, k);
 }
 
@@ -65,7 +66,7 @@ def field_prefix_sum(n: int) -> int {
 """The portable OSP-kernel `osp_visit` shape: insert `filtered` at `pos` of a field."""
 def osp_insert(insert_loc: int) -> int {
     scope = Scope(next=[1, 2, 3]);
-    filtered: list = [9];
+    filtered: list[any] = [9];
     pos = insert_loc;
     if pos < -len(scope.next) {
         pos = 0;

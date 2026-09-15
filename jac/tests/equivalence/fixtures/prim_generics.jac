@@ -13,7 +13,7 @@ def gfirst[T](xs: list[T]) -> T {
     return xs[0];
 }
 
-def generics_py -> dict {
+def generics_py -> dict[any, any] {
     a = gid(41) + 1;
     s = gid("abc");
     f = gid(1.5) + gid(2.5);
@@ -29,7 +29,7 @@ def generics_py -> dict {
     };
 }
 
-def generics_cl -> dict {
+def generics_cl -> dict[any, any] {
     return {};
 }
 

@@ -41,7 +41,7 @@ glob SMALL_SET: list[str] = [
          "js_globals",
          "typing_ambient"
      ],
-     _built: list = [];
+     _built: list[any] = [];
 
 test "catalog export releases its temporary compiler and stub trees" {
     import gc;

@@ -104,7 +104,7 @@ impl JacTestResult.postinit -> None {
 }
 
 impl invoke_native_test(
-    engine: any, symbol: str, test_name: str, init_symbols: (list | None) = None
+    engine: any, symbol: str, test_name: str, init_symbols: (list[str] | None) = None
 ) -> None {
     import ctypes;
     import os;
@@ -137,7 +137,7 @@ impl invoke_native_test(
             }
         }
     }
-    mirrors: list = [];
+    mirrors: list[tuple[int, str]] = [];
     for (fd, name) in ((1, "stdout"), (2, "stderr")) {
         stream = getattr(sys, name, None);
         stream_fd: (int | None) = None;
@@ -160,8 +160,8 @@ impl invoke_native_test(
         }
         return;
     }
-    saved: dict = {};
-    sinks: dict = {};
+    saved: dict[int, int] = {};
+    sinks: dict[int, tuple[any, str]] = {};
     for (fd, name) in mirrors {
         saved[fd] = os.dup(fd);
         sink = tempfile.TemporaryFile();

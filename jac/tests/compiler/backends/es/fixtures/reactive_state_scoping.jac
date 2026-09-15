@@ -1,7 +1,7 @@
 """Test has-var useState scoping across sibling functions."""
 
 def:pub useCart() {
-    has cart: list = [];
+    has cart: list[any] = [];
     return {"cart": cart};
 }
 

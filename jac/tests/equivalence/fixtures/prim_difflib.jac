@@ -18,7 +18,7 @@ keywords, and `err*` pin the ValueError paths. ES/JS opts out.
 import from difflib { Match, SequenceMatcher, get_close_matches }
 
 
-def difflib_py -> dict {
+def difflib_py -> dict[any, any] {
     sm1 = SequenceMatcher(None, "abcde", "abfde");
     bl1: list[Match] = sm1.get_matching_blocks();
     m1: int = 0;
@@ -115,7 +115,7 @@ def difflib_py -> dict {
 }
 
 
-def difflib_cl -> dict {
+def difflib_cl -> dict[any, any] {
     return {};
 }
 

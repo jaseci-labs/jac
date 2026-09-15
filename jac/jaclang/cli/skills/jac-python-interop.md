@@ -59,9 +59,9 @@ import from pygments.token { Keyword, Name, Whitespace }
 
 class JacLexer(RegexLexer) {
     static has name: str = "Jac";
-    static has aliases: list = ["jac"];
-    static has filenames: list = ["*.jac"];
-    static has tokens: dict = {
+    static has aliases: list[str] = ["jac"];
+    static has filenames: list[str] = ["*.jac"];
+    static has tokens: dict[str, any] = {
         "root": [
             (r"\b(walker|node|edge)\b", Keyword),
             (r"\w+", Name),

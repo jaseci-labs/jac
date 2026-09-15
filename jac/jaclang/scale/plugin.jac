@@ -145,7 +145,7 @@ def _resolve_deploy_target(target: str) -> tuple[str, str, str] {
     return (entry_path, "" if app.implicit else app.name, "");
 }
 
-def _print_deployment_status(status_data: dict) -> None {
+def _print_deployment_status(status_data: dict[str, any]) -> None {
     app_name = status_data.get('app_name', 'unknown');
     namespace = status_data.get('namespace', 'default');
     components = status_data.get('components', []);

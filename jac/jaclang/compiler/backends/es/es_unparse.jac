@@ -5,8 +5,8 @@ obj JSCodeGenerator {
 
     has indent_str: str = '  ',
         indent_level: int = 0,
-        _frames: list[list[tuple[es.Node, str, list]]] = [],
-        _root: list[tuple[es.Node, str, list]] = [];
+        _frames: list[list[tuple[es.Node, str, list[any]]]] = [],
+        _root: list[tuple[es.Node, str, list[any]]] = [];
 
     def indent -> str;
     def build_segments(code: str) -> list[tuple[int, int, int, int, str]];

@@ -8,7 +8,7 @@ impl NaIRGenPass._codegen_body(stmts: Sequence[uni.UniNode]) -> None {
         _di_instr_snap = 0;
         _di_line_snap = 0;
         _di_blk_snap = None;
-        _di_blk_instr_counts: dict = {};
+        _di_blk_instr_counts: dict[int, int] = {};
         if self._di_current_sp is not None and stmt?.loc {
             _di_blk_snap = self.builder.block;
             _di_instr_snap = len(self.builder.block.instructions);
@@ -402,7 +402,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 and not self._is_owned(val) {
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
-                tup_elems = nd.expr.values or [];
+                tup_elems: list[uni.Expr | uni.KWPair] = list(nd.expr.values or []);
                 for tup_elem in tup_elems {
                     elem_name: (str | None) = None;
                     if isinstance(tup_elem, uni.Name) {
@@ -587,7 +587,7 @@ impl NaIRGenPass._codegen_switch(nd: uni.SwitchStmt) -> None {
     merge_bb = func.append_basic_block(name="switch.end");
 
     default_case: (uni.SwitchCase | None) = None;
-    value_cases: list = [];
+    value_cases: list[uni.SwitchCase] = [];
     for sc in nd.cases {
         if sc.pattern is None {
             default_case = sc;
@@ -966,9 +966,11 @@ impl NaIRGenPass._match_subj_ty(expr: (uni.UniNode | None)) -> (TypeBase | None)
     return None;
 }
 
-impl NaIRGenPass._match_seq_parts(pat: uni.MatchSequence) -> tuple {
-    heads: list = [];
-    tails: list = [];
+impl NaIRGenPass._match_seq_parts(
+    pat: uni.MatchSequence
+) -> tuple[list[uni.MatchPattern], uni.MatchStar | None, list[uni.MatchPattern]] {
+    heads: list[uni.MatchPattern] = [];
+    tails: list[uni.MatchPattern] = [];
     star: (uni.MatchStar | None) = None;
     for sub in pat.values {
         if isinstance(sub, uni.MatchStar) {
@@ -992,7 +994,7 @@ impl NaIRGenPass._match_elem_ty_of(
     if mangled is None or not mangled.startswith(prefix) {
         return None;
     }
-    targs = subj_ty.private.type_args or [];
+    targs: list[TypeBase] = subj_ty.private.type_args or [];
     if idx < len(targs) {
         return targs[idx];
     }
@@ -1133,7 +1135,7 @@ impl NaIRGenPass._match_tuple_seq_cond(
 }
 
 impl NaIRGenPass._match_map_key(
-    kv: uni.MatchKVPair, helpers: dict
+    kv: uni.MatchKVPair, helpers: dict[str, any]
 ) -> (ir.Value | None) {
     key_node = kv.key.value if isinstance(kv.key, uni.MatchValue) else kv.key;
     key_val = self._codegen_expr(key_node) if isinstance(key_node, uni.Expr) else None;
@@ -1217,8 +1219,8 @@ impl NaIRGenPass._match_map_cond(
 
 impl NaIRGenPass._match_arch_fields(
     pat: uni.MatchArch, arch_name: str
-) -> (list | None) {
-    out: list = [];
+) -> (list[tuple[str, uni.MatchPattern]] | None) {
+    out: list[tuple[str, uni.MatchPattern]] = [];
     args = list(pat.arg_patterns) if pat.arg_patterns else [];
     if args {
         order = self.struct_field_order.get(arch_name);
@@ -1294,7 +1296,7 @@ impl NaIRGenPass._match_arch_cond(
         return None;
     }
     vt_mode = False;
-    target_vtables: list = [];
+    target_vtables: list[ir.GlobalVariable] = [];
     if static_name == arch_name and not self._arch_has_vtable(static_name) {
         vt_mode = False;
     } elif self._arch_has_vtable(static_name) {
@@ -1539,7 +1541,7 @@ impl NaIRGenPass._bind_match_map(
     helpers = self.dict_helpers[f"{kspec}:{vspec}"];
     val_ty = self._match_elem_ty_of(subj_ty, "dict[", 1);
     star: (uni.MatchStar | None) = None;
-    matched_keys: list = [];
+    matched_keys: list[ir.Value] = [];
     for kv in pat.values {
         if isinstance(kv, uni.MatchStar) {
             star = kv;
@@ -1735,7 +1737,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             );
         }
 
-        _unbound: list = list(nd.target)
+        _unbound: list[uni.UniNode] = list(nd.target)
             if isinstance(nd.target, (list, tuple))
             else [nd.target];
         while _unbound {
@@ -1765,7 +1767,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         name=type(target_expr).__name__
                     );
                 }
-                _unbound: list = [target_expr];
+                _unbound: list[uni.UniNode] = [target_expr];
                 while _unbound {
                     _t = _unbound.pop();
                     if isinstance(_t, uni.Name) {
@@ -1819,7 +1821,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and isinstance(target_expr.right, uni.IndexSlice)
                 and target_expr.right.slices
             ) {
-                _env_slices = target_expr.right.slices or [];
+                _env_slices: list[uni.Slice] = target_expr.right.slices or [];
                 _env_key: (ir.Value | None) = None;
                 if _env_slices {
                     _env_key = self._codegen_expr(_env_slices[0]);
@@ -3168,7 +3170,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         and nd.collection.target.is_attr
         and self._get_name(nd.collection.target.right) == "items" {
         items_dict_key = self._dict_key_of(nd.collection.target.target);
-        unpack_targets = nd.target.values or [];
+        unpack_targets: list[uni.Expr | uni.KWPair] = list(nd.target.values or []);
         if items_dict_key is not None and len(unpack_targets) == 2 {
             key_var_name = self._get_name(unpack_targets[0]);
             val_var_name = self._get_name(unpack_targets[1]);
@@ -3211,7 +3213,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if isinstance(nd.collection, uni.FuncCall)
         and self._get_name(nd.collection.target) == "range"
         and nd.collection.call_kind == "builtin" {
-        params = nd.collection.params or [];
+        params: list[uni.Expr | uni.KWPair] = list(nd.collection.params or []);
         start_val: (ir.Value | None) = None;
         stop_val: (ir.Value | None) = None;
         step_val: (ir.Value | None) = None;
@@ -3495,7 +3497,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     if loop_var is None or not isinstance(nd.collection, uni.UnaryExpr) {
         return False;
     }
-    _reds: list = [];
+    _reds: list[tuple[str, str]] = [];
     _red_names: set[str] = set();
     for st in (nd.body or []) {
         _r_asgns = ([st] if isinstance(st, uni.Assignment) else [])
@@ -3579,7 +3581,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
             }
         }
     }
-    _cap_vals: list = [];
+    _cap_vals: list[ir.Value] = [];
     for _cn in _caps {
         _cap_vals.append(
             self.builder.load(self.local_vars[_cn], name=f"ffor.cap.{_cn}")
@@ -3694,7 +3696,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
             }
         }
         self.local_vars[loop_var] = _lv_alloca;
-        _red_slots: list = [];
+        _red_slots: list[ir.Value] = [];
         for (_ri, _red) in enumerate(_reds) {
             _rslot = self._entry_alloca(i64, _red[0]);
             self.builder.store(ir.Constant(i64, _red_identity[_red[1]]), _rslot);
@@ -4128,9 +4130,9 @@ impl NaIRGenPass._codegen_for_indexed(
     nd: uni.InForStmt,
     kind: str,
     collection_val: ir.Value,
-    helpers: (dict | None),
-    var_names: list,
-    var_types: list,
+    helpers: (dict[str, any] | None),
+    var_names: list[str],
+    var_types: list[ir.Type],
     rc_vars: bool,
     coll_release_op: str,
     range_start: (ir.Value | None) = None,
@@ -4409,7 +4411,7 @@ impl NaIRGenPass._codegen_for_indexed(
     }
 }
 
-impl NaIRGenPass._na_chunks_shape(expr: object) -> (tuple | None) {
+impl NaIRGenPass._na_chunks_shape(expr: object) -> (tuple[uni.Expr, uni.Expr] | None) {
     if not isinstance(expr, uni.FuncCall) {
         return None;
     }

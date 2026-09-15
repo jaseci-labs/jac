@@ -4,7 +4,7 @@ Natively referenced, so the unused-glob escape hatch does not apply: the
 glob itself has to lower.
 """
 
-glob MOVE_EXEMPT: tuple = ('len', 'id', );
+glob MOVE_EXEMPT: tuple[str, str] = ('len', 'id', );
 
 
 def is_exempt(name: str) -> bool {

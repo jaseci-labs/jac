@@ -26,7 +26,7 @@ glob _NO_TRIGGER = object(),
      _subclass_hook_lock = Lock();
 
 glob _light_edge_types: dict[type, bool] = {},
-     _edge_subtypes: dict[type, tuple] = {},
+     _edge_subtypes: dict[type, tuple[type, ...]] = {},
      _tracked_classes: dict[type, type] = {};
 
 def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
@@ -36,7 +36,7 @@ def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
     if isinstance(val, str) {
         val = val.upper();
     }
-    _map: dict = {
+    _map: dict[int | str, AccessLevel] = {
         -1: AccessLevel.NO_ACCESS,
         0: AccessLevel.READ,
         1: AccessLevel.CONNECT,
@@ -136,8 +136,8 @@ class NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
         version: int = field(`init=False, `default=0),
-        out_light: (dict[type, list] | None) = field(`init=False, `default=None),
-        in_light: (dict[type, list] | None) = field(`init=False, `default=None),
+        out_light: (dict[type, list[any]] | None) = field(`init=False, `default=None),
+        in_light: (dict[type, list[any]] | None) = field(`init=False, `default=None),
         mixed: bool = field(`init=False, `default=False);
 
     def __getstate__(self: NodeAnchor) -> dict[(str, object)];
@@ -321,7 +321,7 @@ class ObjectSpatialFunction {
 class JsxElement {
     has tag: object,
         `props: dict[(str, object)],
-        children: list;
+        children: list[any];
 }
 
 
@@ -341,12 +341,12 @@ def is_light_edge_type(cls: type) -> bool {
     return light;
 }
 
-def edge_subtypes(cls: type) -> tuple {
+def edge_subtypes(cls: type) -> tuple[type, ...] {
     known = _edge_subtypes.get(cls);
     if known is not None {
         return known;
     }
-    out: list = [cls];
+    out: list[type] = [cls];
     i = 0;
     while i < len(out) {
         for sub in out[i].__subclasses__() {
@@ -361,8 +361,8 @@ def edge_subtypes(cls: type) -> tuple {
     return result;
 }
 
-def _deref(lst: list) -> list {
-    out: list = [];
+def _deref(lst: list[any]) -> list[any] {
+    out: list[any] = [];
     for r in lst {
         a = r();
         if a is not None {
@@ -405,7 +405,7 @@ def light_connect(src: NodeAnchor, cls: type, tgt: NodeAnchor) {
     }
 }
 
-def _drop_entry(d: (dict | None), cls: type, key: any) -> bool {
+def _drop_entry(d: (dict[type, list[any]] | None), cls: type, key: any) -> bool {
     if d is None {
         return False;
     }
@@ -474,9 +474,9 @@ def light_clear_matching(
     return hit;
 }
 
-def _collect_light(d: dict, cls: (type | None)) -> list {
+def _collect_light(d: dict[type, list[any]], cls: (type | None)) -> list[any] {
     if cls is None {
-        out: list = [];
+        out: list[any] = [];
         for lst in d.values() {
             out.extend(lst);
         }
@@ -487,7 +487,7 @@ def _collect_light(d: dict, cls: (type | None)) -> list {
         lst = d.get(cls);
         return lst if lst is not None else [];
     }
-    found: list = [];
+    found: list[any] = [];
     if len(subs) <= len(d) {
         for sub in subs {
             lst = d.get(sub);
@@ -505,21 +505,21 @@ def _collect_light(d: dict, cls: (type | None)) -> list {
     return found;
 }
 
-def light_out(anchor: NodeAnchor, cls: (type | None)) -> list {
+def light_out(anchor: NodeAnchor, cls: (type | None)) -> list[any] {
     d = anchor.out_light;
     return _collect_light(d, cls) if d else [];
 }
 
-def light_in(anchor: NodeAnchor, cls: (type | None)) -> list {
+def light_in(anchor: NodeAnchor, cls: (type | None)) -> list[any] {
     d = anchor.in_light;
     return _deref(_collect_light(d, cls)) if d else [];
 }
 
 def light_hop(
     anchor: NodeAnchor, dir: int, cls: (type | None), edges_only: bool
-) -> list {
+) -> list[any] {
     if edges_only {
-        out: list = [];
+        out: list[any] = [];
         if dir != 1 {
             for ea in light_edge_views(anchor, cls, True) {
                 out.append(ea.archetype);
@@ -543,7 +543,7 @@ def light_hop(
             lst = d.get(cls) if d else None;
             return _deref(lst) if lst else [];
         }
-        found: list = [];
+        found: list[any] = [];
         d = anchor.out_light;
         lst = d.get(cls) if d else None;
         if lst {
@@ -652,7 +652,9 @@ def _untracked_new(cls: type[Archetype]) -> Archetype {
     return object.__new__(cls);
 }
 
-def _tracked_reduce_ex(self: any, protocol: int) -> tuple {
+def _tracked_reduce_ex(
+    self: any, protocol: int
+) -> tuple[Callable, tuple[type], dict[str, any]] {
     return (_untracked_new, (untracked_class(`type(self)), ), self.__dict__);
 }
 

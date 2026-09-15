@@ -29,7 +29,7 @@ with entry {
 
 
 # Kubernetes API doubles where every read is a 404, so every create path is taken.
-def _mock_apis -> dict {
+def _mock_apis -> dict[str, any] {
     apps_v1 = unittest.mock.MagicMock();
     core_v1 = unittest.mock.MagicMock();
     apps_v1.read_namespaced_stateful_set.side_effect = ApiException(status=404);
@@ -44,7 +44,7 @@ def _mock_apis -> dict {
 
 
 # Run the database half of a deploy against API doubles and report what it did.
-def _run_deploy(cfg: KubernetesConfig, app_name: str) -> dict {
+def _run_deploy(cfg: KubernetesConfig, app_name: str) -> dict[str, any] {
     target = KubernetesTargetBase(config=cfg);
     apis = _mock_apis();
     target._deploy_databases(app_name, cfg.namespace, apis["apps_v1"], apis["core_v1"]);
@@ -54,7 +54,7 @@ def _run_deploy(cfg: KubernetesConfig, app_name: str) -> dict {
 
 
 # The external url reaches pods through a secret, so read what the deploy wrote.
-def _db_url_written(apis: dict) -> str {
+def _db_url_written(apis: dict[str, any]) -> str {
     call = apis["core_v1"].create_namespaced_secret.call_args;
     assert call is not None , "external mode wrote no secret for JAC_DB_URL";
     return call.kwargs["body"]["stringData"]["connection-string"];

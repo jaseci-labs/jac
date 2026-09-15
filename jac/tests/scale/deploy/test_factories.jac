@@ -225,7 +225,7 @@ test "deployment target with logger" {
 test "deployment target factory register and create custom target" {
     mock_target = unittest.mock.MagicMock();
 
-    def custom_factory(config: dict, logger: any = None) -> any {
+    def custom_factory(config: dict[str, any], logger: any = None) -> any {
         mock_target.config = config;
         mock_target.logger = logger;
         return mock_target;
@@ -241,9 +241,9 @@ test "deployment target factory register and create custom target" {
 }
 
 test "deployment target factory custom target with logger" {
-    calls: list = [];
+    calls: list[dict[str, any]] = [];
 
-    def custom_factory(config: dict, logger: any = None) -> any {
+    def custom_factory(config: dict[str, any], logger: any = None) -> any {
         calls.append({"config": config, "logger": logger});
         return unittest.mock.MagicMock();
     }
@@ -262,7 +262,7 @@ test "deployment target factory custom target with logger" {
 test "deployment target factory custom target overrides builtin" {
     mock_target = unittest.mock.MagicMock();
 
-    def override_factory(config: dict, logger: any = None) -> any {
+    def override_factory(config: dict[str, any], logger: any = None) -> any {
         return mock_target;
     }
 
@@ -297,7 +297,7 @@ test "autoscaler factory raises for unsupported engine" {
 test "autoscaler factory register and create custom engine" {
     mock_autoscaler = unittest.mock.MagicMock();
 
-    def custom_factory(config: dict, logger: any = None) -> any {
+    def custom_factory(config: dict[str, any], logger: any = None) -> any {
         return mock_autoscaler;
     }
 
@@ -313,7 +313,7 @@ test "autoscaler factory register and create custom engine" {
 test "autoscaler factory custom engine overrides builtin" {
     mock_autoscaler = unittest.mock.MagicMock();
 
-    def override_factory(config: dict, logger: any = None) -> any {
+    def override_factory(config: dict[str, any], logger: any = None) -> any {
         return mock_autoscaler;
     }
 

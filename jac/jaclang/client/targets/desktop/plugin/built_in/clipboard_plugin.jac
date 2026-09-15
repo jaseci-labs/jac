@@ -21,7 +21,7 @@ obj ClipboardPlugin(DesktopPlugin) {
         return ClipboardPlugin(DesktopPlugin._coerce_config(config));
     }
 
-    def init(config: dict) {
+    def init(config: dict[str, any]) {
         self.plugin_name = "jac.clipboard";
 
         if not isinstance(config, dict) {
@@ -31,7 +31,7 @@ obj ClipboardPlugin(DesktopPlugin) {
         self._allow_write = bool(config.get("allow_write", True));
     }
 
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         if command == "read" {
             return self._read();
         }
@@ -41,7 +41,7 @@ obj ClipboardPlugin(DesktopPlugin) {
         return super.handle(command, args);
     }
 
-    def _read -> dict {
+    def _read -> dict[str, any] {
         if not self._allow_read {
             raise PluginError(ErrorCode.FORBIDDEN, "Clipboard read is not allowed.");
         }
@@ -85,7 +85,7 @@ obj ClipboardPlugin(DesktopPlugin) {
         }
     }
 
-    def _write(args: dict) -> dict {
+    def _write(args: dict[str, any]) -> dict[str, any] {
         if not self._allow_write {
             raise PluginError(ErrorCode.FORBIDDEN, "Clipboard write is not allowed.");
         }

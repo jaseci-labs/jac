@@ -476,7 +476,7 @@ impl MachOLinker.parse_object -> bool {
     self.cpu_subtype = cpusubtype;
 
     cmd_offset = 32;
-    symtab_info: tuple | None = None;
+    symtab_info: tuple[int, int, int, int] | None = None;
     self.sections = [];
     self.symbols = [];
     self.relocations = [];

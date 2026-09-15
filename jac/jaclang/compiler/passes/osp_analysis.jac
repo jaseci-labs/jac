@@ -235,9 +235,11 @@ obj OspAnalysis {
     static def _uses_construct(
         module: uni.Module, context: (CodeContext | None)
     ) -> bool {
-        roots: list = list(ModuleFacts.iter_context_stmts(module, context));
+        roots: list[uni.UniNode] = list(
+            ModuleFacts.iter_context_stmts(module, context)
+        );
         for stmt in roots {
-            work: list = [stmt];
+            work: list[uni.UniNode] = [stmt];
             while work {
                 nd = work.pop();
                 if isinstance(nd, (uni.ConnectOp, uni.VisitStmt, uni.EdgeOpRef)) {

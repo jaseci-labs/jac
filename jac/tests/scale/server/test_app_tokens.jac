@@ -74,7 +74,7 @@ def _prewarm {
     }
 }
 
-def _call(base: str, name: str, token: str, payload: dict) -> dict {
+def _call(base: str, name: str, token: str, payload: dict[str, any]) -> dict[str, any] {
     res = requests.post(
         f"{base}/function/{name}",
         json=payload,

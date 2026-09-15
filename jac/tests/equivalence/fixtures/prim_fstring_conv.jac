@@ -6,7 +6,7 @@ failure or value mismatch is a hard failure, not a silent skip.
 """
 
 # --- !r conversion on scalars (conversion applies BEFORE the spec) ---
-def fconv_py -> dict {
+def fconv_py -> dict[any, any] {
     s: str = chr(39) + "ab" + chr(10);
     return {
         "r_int": f"{42!r}",
@@ -39,7 +39,7 @@ def fconv_na -> dict[str, any] {
 
 
 # --- dynamic format specs (spec text computed at runtime) ---
-def fdyn_py -> dict {
+def fdyn_py -> dict[any, any] {
     w: int = 8;
     p: int = 3;
     wd: int = 10;
@@ -80,7 +80,7 @@ def fdyn_na -> dict[str, any] {
 
 
 # --- !r conversion on containers (rides item #5's repr machinery) ---
-def fcont_py -> dict {
+def fcont_py -> dict[any, any] {
     lst: list[int] = [1, 2, 3];
     sl: list[str] = ["a", "b"];
     d: dict[str, int] = {"k": 1};

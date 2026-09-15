@@ -52,8 +52,8 @@ async def serve_ws_connection(
     rate_capacity = max(msgs_per_sec, 1.0);
     user_id: (str | None) = None;
     token_exp: (float | None) = None;
-    first_data: (dict | None) = None;
-    pre_auth: (dict | None) = None;
+    first_data: (dict[str, any] | None) = None;
+    pre_auth: (dict[str, any] | None) = None;
     if requires_auth {
         pre_auth = ws_pre_accept_auth(websocket, user_manager);
         if pre_auth is not None and pre_auth['status'] != 'ok' {
@@ -94,7 +94,7 @@ async def serve_ws_connection(
     heartbeat_task = asyncio.create_task(
         ws_heartbeat_loop(ctx, HEARTBEAT_SECONDS, HEARTBEAT_MISSED_ALLOWED)
     );
-    async def send_result(payload: dict) {
+    async def send_result(payload: dict[str, any]) {
         if is_broadcast {
             await ws_manager.broadcast_target(target_kind, target_name, payload);
         } else {
@@ -246,7 +246,7 @@ obj WebSocketExtension(ServerExtension) {
             or int(ws_cfg['max_message_bytes']);
 
         async def websocket_handler(websocket: WebSocket) {
-            def make_awaitable(data: dict, user: str) -> any {
+            def make_awaitable(data: dict[str, any], user: str) -> any {
                 return execute(target, data, user);
             }
             await serve_ws_connection(

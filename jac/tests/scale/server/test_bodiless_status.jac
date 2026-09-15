@@ -23,7 +23,7 @@ def _serve(app: ServingApp) -> ServingServer {
 }
 
 
-def _raw_get(port: int, path: str) -> tuple {
+def _raw_get(port: int, path: str) -> tuple[any, ...] {
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10);
     conn.request("GET", path);
     resp = conn.getresponse();

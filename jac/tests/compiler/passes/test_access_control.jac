@@ -54,7 +54,7 @@ def count_code(program: JacProgram, code: str, in_warnings: bool = False) -> int
 `files` maps a relative path (posix-style) to file contents.
 Returns the project root directory.
 """
-def make_project(files: dict, enforce_access: bool = False) -> str {
+def make_project(files: dict[str, any], enforce_access: bool = False) -> str {
     proj = tempfile.mkdtemp();
     toml = "[project]\nname = \"t\"\n";
     if enforce_access {

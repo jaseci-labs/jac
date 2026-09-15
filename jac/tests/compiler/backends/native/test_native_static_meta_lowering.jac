@@ -26,7 +26,7 @@ glob FIXTURES = os.path.join(
 
 
 """Compile a fixture in the native codespace; return the program and module."""
-def compile_native(name: str) -> tuple {
+def compile_native(name: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, name),
@@ -43,7 +43,7 @@ def compile_native(name: str) -> tuple {
 
 
 """Compile a fixture in the server codespace; return its errors."""
-def server_errors(name: str) -> list {
+def server_errors(name: str) -> list[any] {
     prog = JacProgram();
     prog.compile(
         file_path=os.path.join(FIXTURES, name),
@@ -53,7 +53,7 @@ def server_errors(name: str) -> list {
 }
 
 
-def diag_codes(entries: list) -> list {
+def diag_codes(entries: list[any]) -> list[any] {
     return [
         e.code.code
         for e in entries

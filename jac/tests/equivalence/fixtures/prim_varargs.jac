@@ -51,7 +51,7 @@ def str_lens_py(*words: str) -> int {
     return t;
 }
 
-def varargs_py -> dict {
+def varargs_py -> dict[any, any] {
     return {
         "sum_all": sum_all_py(1, 2, 3),
         "sum_empty": sum_all_py(),
@@ -64,7 +64,7 @@ def varargs_py -> dict {
     };
 }
 
-def varargs_cl -> dict {
+def varargs_cl -> dict[any, any] {
     return {};
 }
 

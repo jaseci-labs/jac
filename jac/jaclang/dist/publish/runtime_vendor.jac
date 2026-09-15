@@ -114,7 +114,7 @@ def _compile_runtime_module(
     pkg_root: Path,
     path: Path,
     prog: JacProgram,
-    native: dict | None = None,
+    native: dict[str, any] | None = None,
     native_sources: bool = True
 ) -> str {
     if path.suffix == ".py" {

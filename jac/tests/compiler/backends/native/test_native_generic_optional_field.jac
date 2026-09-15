@@ -109,7 +109,7 @@ def _demotions(fixture: str) -> list[str] {
 
 
 """Compile a snippet natively and hand back the program and its IR."""
-def _compile_src(label: str, code: str) -> tuple {
+def _compile_src(label: str, code: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, f"_gen_opt_{label}.jac"),

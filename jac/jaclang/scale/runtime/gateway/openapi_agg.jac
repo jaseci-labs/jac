@@ -6,9 +6,9 @@ import from jaclang.scale.runtime.gateway.service_registry {
 
 glob _agg_logger = logging.getLogger(__name__);
 
-def _prefixed_paths(paths: dict, prefix: str) -> dict {
+def _prefixed_paths(paths: dict[str, any], prefix: str) -> dict[str, any] {
     clean_prefix: str = prefix.rstrip("/");
-    result: dict = {};
+    result: dict[str, any] = {};
     for (path, op) in paths.items() {
         path_str: str = str(path);
         if path_str.startswith("/") {
@@ -22,7 +22,7 @@ def _prefixed_paths(paths: dict, prefix: str) -> dict {
 
 obj SpecFetch {
     has status: int = 0,
-        doc: dict | None = None;
+        doc: dict[str, any] | None = None;
 
     def answered -> bool;
 }
@@ -59,7 +59,7 @@ async def fetch_service_spec(
 }
 
 
-async def aggregate_openapi(registry: ServiceRegistry) -> dict {
+async def aggregate_openapi(registry: ServiceRegistry) -> dict[str, any] {
     import asyncio;
 
     candidates: list[tuple[str, ServiceEntry]] = [
@@ -81,8 +81,8 @@ async def aggregate_openapi(registry: ServiceRegistry) -> dict {
         return_exceptions=True
     );
 
-    merged_paths: dict = {};
-    merged_schemas: dict = {};
+    merged_paths: dict[str, any] = {};
+    merged_schemas: dict[str, any] = {};
     for (name, `entry) in candidates {
         got: SpecFetch | None = answers.get(name);
         doc: any = got.doc if got is not None else None;
@@ -92,7 +92,7 @@ async def aggregate_openapi(registry: ServiceRegistry) -> dict {
         }
 
         raw_paths = doc.get("paths");
-        paths: dict = raw_paths if isinstance(raw_paths, dict) else {};
+        paths: dict[str, any] = raw_paths if isinstance(raw_paths, dict) else {};
         for (path, op) in _prefixed_paths(paths, `entry.prefix).items() {
             if path in merged_paths {
                 _agg_logger.warning(
@@ -105,9 +105,9 @@ async def aggregate_openapi(registry: ServiceRegistry) -> dict {
         }
 
         raw_comps = doc.get("components");
-        comps: dict = raw_comps if isinstance(raw_comps, dict) else {};
+        comps: dict[str, any] = raw_comps if isinstance(raw_comps, dict) else {};
         raw_schemas = comps.get("schemas");
-        schemas: dict = raw_schemas if isinstance(raw_schemas, dict) else {};
+        schemas: dict[str, any] = raw_schemas if isinstance(raw_schemas, dict) else {};
         for (schema_name, schema_def) in schemas.items() {
             if schema_name in merged_schemas {
                 if merged_schemas[schema_name] != schema_def {

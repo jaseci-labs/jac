@@ -45,8 +45,8 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
     if opts is not None and getattr(opts, "nogc_enforce_all", False) {
         return "enforced by the nogc profile";
     }
-    _pats = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
-    _grand = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
+    _pats: list[str] = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
+    _grand: list[str] = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
     if not _pats {
         try {
             import from jaclang.project { get_config }
@@ -625,8 +625,8 @@ impl OwnershipCheckPass._nogc_module_enforced(mod_name: str) -> bool {
     if opts is not None and opts.nogc_enforced_for(mod_name) {
         return True;
     }
-    _pats = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
-    _grand = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
+    _pats: list[str] = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
+    _grand: list[str] = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
     if not _pats {
         try {
             import from jaclang.project { get_config }
@@ -771,7 +771,7 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
             and isinstance(_a.target, Name)
             and _a.target.sym_name == "managed" {
             if _hl_c {
-                _m_params = list(_a.params or []);
+                _m_params: list[Expr] = list(_a.params or []);
                 _m_arg = _m_params[0] if _m_params else None;
                 _m_value = _m_arg.value if isinstance(_m_arg, KWPair) else _m_arg;
                 _m_root = self._place_of(_m_value);

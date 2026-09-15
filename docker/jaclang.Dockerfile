@@ -16,7 +16,7 @@
 #      /etc/passwd entry, so `runAsUser: 1000` matches this account instead
 #      of failing to resolve
 #
-# Built per release by .github/workflows/build-binaries.yml (docker-image job):
+# Published by .github/workflows/publish-docker.yml, required by each release:
 #   jaseci/jaclang:<version>  - each jaclang release
 #   jaseci/jaclang:latest     - the newest release
 #   jaseci/jaclang:dev        - rolling main HEAD
@@ -50,12 +50,14 @@ COPY ${TARGETARCH}/jac /usr/local/bin/jac
 # CPython - same interpreter, same ABI), so the venv's site-packages is then
 # promoted into the runtime site, where the embedded interpreter imports from
 # at serve time - pods pay no pip at boot. setuptools lands there too: the
-# seed declares it (>=75) and venv creation seeds the build backend - in-pod
+# seed declares it (>=75) - in-pod
 # installs of any dependency lacking a wheel for this Python fall back to an
 # sdist build that needs setuptools.build_meta - pip fails the whole install
 # without it. The launcher write-probes the cache root before taking the warm
 # path, so the root dir must stay writable for any uid (sticky bit); the tree
-# itself stays read-only.
+# itself stays read-only. Reuse the runtime's precompiled pip in the seed venv:
+# ensurepip otherwise compiles its source-only wheel again, exceeding jac's
+# venv timeout under ARM64 emulation.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/* \
@@ -65,8 +67,11 @@ RUN apt-get update \
     && mkdir /tmp/seed \
     && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main"\n\n[dependencies]\nsetuptools = ">=75"\n\n[scale.kubernetes]\nnamespace = "seed"\n' > /tmp/seed/jac.toml \
     && printf 'with entry {}\n' > /tmp/seed/main.jac \
-    && (cd /tmp/seed && jac install) \
     && rt_lib=$(ls -d /opt/jac/cache/jac/rt/*/python/lib/python3.*) \
+    && /opt/jac/cache/jac/rt/*/python/bin/python3.* -m venv --without-pip /tmp/seed/.jac/venv \
+    && cp -a "$rt_lib/site-packages/pip" "$rt_lib"/site-packages/pip-*.dist-info \
+        /tmp/seed/.jac/venv/lib/python3.*/site-packages/ \
+    && (cd /tmp/seed && jac install) \
     && mkdir -p "$rt_lib/site-packages" \
     && cp -a /tmp/seed/.jac/venv/lib/python3.*/site-packages/. "$rt_lib/site-packages/" \
     && ls "$rt_lib/site-packages" | grep -q dotenv \

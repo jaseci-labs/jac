@@ -1,5 +1,6 @@
 import type from jaclang.compiler.driver.program { JacProgram }
 import hashlib;
+import type from jaclang.compiler.driver.program { JacProgram }
 import json;
 import marshal;
 import os;

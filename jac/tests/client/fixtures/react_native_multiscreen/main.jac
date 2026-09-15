@@ -32,7 +32,7 @@ def:pub LoginPage -> JsxElement {
         }
     );
 
-    async def handleSubmit(data: dict) {
+    async def handleSubmit(data: dict[any, any]) {
         await jacLogin(data["username"], data["password"]);
     }
 

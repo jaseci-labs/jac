@@ -1056,8 +1056,8 @@ impl JacAPIServerAdmin.admin_graph_data(
         visited_nodes: set = set();
         connections: set = set();
         edge_ids: set = set();
-        nodes: list[dict] = [];
-        edges: list[dict] = [];
+        nodes: list[dict[str, str]] = [];
+        edges: list[dict[str, str]] = [];
 
         collect_node_connections(user_root, visited_nodes, connections, edge_ids);
 
@@ -1070,7 +1070,7 @@ impl JacAPIServerAdmin.admin_graph_data(
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict = {
+            edge_data: dict[str, str] = {
                 'from': Jac.object_ref(source_node),
                 'to': Jac.object_ref(target_node)
             };
@@ -1245,7 +1245,9 @@ def _sorted_buckets(acc: dict[float, float]) -> list[dict[str, float]] {
 }
 
 
-def _percentile_from_buckets(buckets: list[dict[str, float]], q: float) -> dict {
+def _percentile_from_buckets(
+    buckets: list[dict[str, float]], q: float
+) -> dict[str, float | bool] {
     total: float = buckets[-1]['count'] if buckets else 0.0;
     if total <= 0 {
         return {'value': 0.0, 'over': False, 'known': False};
@@ -1312,7 +1314,7 @@ def _band_edges(edges: list[float]) -> list[float] {
 }
 
 
-def _latency_groups(buckets: list[dict[str, float]]) -> list[dict] {
+def _latency_groups(buckets: list[dict[str, float]]) -> list[dict[str, str | int]] {
     edges: list[float] = [
         b['le']
         for b in buckets
@@ -1323,7 +1325,7 @@ def _latency_groups(buckets: list[dict[str, float]]) -> list[dict] {
     }
     counts: dict[float, float] = {b['le']: b['count'] for b in buckets};
     total: float = buckets[-1]['count'];
-    out: list[dict] = [];
+    out: list[dict[str, str | int]] = [];
     prev: float = 0.0;
     lo: float = 0.0;
     for (i, hi) in enumerate(_band_edges(edges)) {
@@ -1340,14 +1342,14 @@ def _latency_groups(buckets: list[dict[str, float]]) -> list[dict] {
 }
 
 
-def _endpoint_sort_key(row: dict) -> tuple {
+def _endpoint_sort_key(row: dict[str, any]) -> tuple[float, int] {
     return (-row['p95']['value'], -row['count']);
 }
 
 
-def _calculate_metrics_summary(metrics_data: list[dict[str, any]]) -> dict {
+def _calculate_metrics_summary(metrics_data: list[dict[str, any]]) -> dict[str, any] {
     active: int = 0;
-    rows: dict[str, dict] = {};
+    rows: dict[str, dict[str, any]] = {};
     hist: dict[str, dict[float, float]] = {};
 
     for metric in metrics_data {
@@ -1371,7 +1373,7 @@ def _calculate_metrics_summary(metrics_data: list[dict[str, any]]) -> dict {
                         'client_errors': 0
                     };
                 }
-                row: dict = rows[key];
+                row: dict[str, any] = rows[key];
                 n: int = int(v['value']);
                 row['count'] += n;
                 status: str = labels.get('status_code', '');
@@ -1406,7 +1408,7 @@ def _calculate_metrics_summary(metrics_data: list[dict[str, any]]) -> dict {
         }
     }
 
-    endpoints: list[dict] = [];
+    endpoints: list[dict[str, any]] = [];
     for (key, row) in rows.items() {
         buckets = _sorted_buckets(hist.get(key, {}));
         endpoints.append(
@@ -1423,7 +1425,7 @@ def _calculate_metrics_summary(metrics_data: list[dict[str, any]]) -> dict {
     }
     endpoints.sort(key=_endpoint_sort_key);
 
-    scopes: dict[str, dict] = {};
+    scopes: dict[str, dict[str, any]] = {};
     for scope_name in ('app', 'other', 'all') {
         requests: int = 0;
         server_errors: int = 0;

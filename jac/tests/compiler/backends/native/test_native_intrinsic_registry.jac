@@ -41,7 +41,7 @@ def _native_opts(gc_mode: str | None = None) -> any {
 }
 
 """Compile a probe source in an isolated tempdir; return (prog, module)."""
-def _compile_src(source: str, gc_mode: str | None = None) -> tuple {
+def _compile_src(source: str, gc_mode: str | None = None) -> tuple[any, ...] {
     with tempfile.TemporaryDirectory() as tmp {
         src = os.path.join(tmp, "intrinsic_probe.jac");
         with open(src, "w") as f {

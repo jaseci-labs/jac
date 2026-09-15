@@ -12,8 +12,7 @@ Inside `Display`, `{props["value"]}` is compiled to a reactive insertion
 that reads through the getter on every update, tracking `count`.
 """
 
-
-def:pub Display(props: dict) -> JsxElement {
+def:pub Display(props: dict[str, any]) -> JsxElement {
     <p data-testid="display">Value: {props["value"]}</p>
 }
 

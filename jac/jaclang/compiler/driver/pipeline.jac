@@ -289,6 +289,7 @@ def get_symtab_ir_sched -> list[type[Transform]] {
     );
 }
 
+
 def pass_requires(p: type[Transform]) -> tuple[AnalysisFact, ...] {
     return PASS_CONTRACTS.get(p.__name__, PassContract()).requires;
 }

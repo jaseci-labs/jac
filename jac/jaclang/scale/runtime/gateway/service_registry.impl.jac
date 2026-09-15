@@ -45,8 +45,8 @@ impl ServiceEntry.owns_root -> bool {
     return self.is_root and self.serves_client;
 }
 
-impl ServiceRegistry.health_summary -> dict[str, dict] {
-    result: dict[str, dict] = {};
+impl ServiceRegistry.health_summary -> dict[str, dict[str, any]] {
+    result: dict[str, dict[str, any]] = {};
     for (name, `entry) in self.entries.items() {
         result[name] = {
             "file": `entry.file,

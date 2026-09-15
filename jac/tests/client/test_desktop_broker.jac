@@ -26,8 +26,8 @@ import from jaclang.client.targets.desktop.native.oauth_broker { SessionStore }
 
 
 obj _FakeHost {
-    has calls: list = [],
-        subscribers: list = [];
+    has calls: list[any] = [],
+        subscribers: list[any] = [];
 
     def dispatch(req_json: str) -> str {
         self.calls.append(req_json);
@@ -53,7 +53,7 @@ glob _counter: list[int] = [0];
 
 
 def _server(
-    tmp: str, opened: list, host: _FakeHost
+    tmp: str, opened: list[any], host: _FakeHost
 ) -> tuple[TestClient, SessionStore] {
     _counter[0] += 1;
     mod = f"broker_app_{_counter[0]}";
@@ -79,7 +79,7 @@ def _server(
 }
 
 
-def _setup -> tuple[str, list, _FakeHost] {
+def _setup -> tuple[str, list[any], _FakeHost] {
     os.environ["JAC_SCALE_RUNTIME"] = "1";
     tmp = tempfile.mkdtemp(prefix="jac_broker_ext_");
     Jac.set_base_path(tmp);
@@ -88,7 +88,7 @@ def _setup -> tuple[str, list, _FakeHost] {
 }
 
 
-def _callback_path(opened: list) -> str {
+def _callback_path(opened: list[any]) -> str {
     parsed = urlparse(opened[-1]);
     cb = parse_qs(parsed.query)["client_callback"][0];
     return urlparse(unquote(cb)).path;

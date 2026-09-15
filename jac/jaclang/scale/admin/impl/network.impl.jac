@@ -23,7 +23,7 @@ def _s(v: any) -> str {
 }
 
 
-def endpoint_ready_counts(ep: dict) -> dict {
+def endpoint_ready_counts(ep: dict[str, any]) -> dict[str, int] {
     ready = 0;
     not_ready = 0;
     for subset in (ep.get("subsets", []) or []) {
@@ -34,11 +34,13 @@ def endpoint_ready_counts(ep: dict) -> dict {
 }
 
 
-def summarize_service(svc: dict, ready_by_name: dict) -> dict {
-    meta = svc.get("metadata", {}) or {};
-    spec = svc.get("spec", {}) or {};
+def summarize_service(
+    svc: dict[str, any], ready_by_name: dict[str, dict[str, int]]
+) -> dict[str, any] {
+    meta: any = svc.get("metadata", {}) or {};
+    spec: any = svc.get("spec", {}) or {};
     name = _s(meta.get("name"));
-    ports: list = [];
+    ports: list[dict[str, any]] = [];
     for p in (spec.get("ports", []) or []) {
         ports.append(
             {
@@ -60,18 +62,18 @@ def summarize_service(svc: dict, ready_by_name: dict) -> dict {
 }
 
 
-def summarize_ingress(ing: dict) -> dict {
-    meta = ing.get("metadata", {}) or {};
-    spec = ing.get("spec", {}) or {};
-    status = ing.get("status", {}) or {};
-    rules_out: list = [];
+def summarize_ingress(ing: dict[str, any]) -> dict[str, any] {
+    meta: any = ing.get("metadata", {}) or {};
+    spec: any = ing.get("spec", {}) or {};
+    status: any = ing.get("status", {}) or {};
+    rules_out: list[dict[str, any]] = [];
     for rule in (spec.get("rules", []) or []) {
         host = _s(rule.get("host"));
-        http = rule.get("http", {}) or {};
+        http: any = rule.get("http", {}) or {};
         for path in (http.get("paths", []) or []) {
-            backend = path.get("backend", {}) or {};
-            svc = backend.get("service", {}) or {};
-            svc_port = svc.get("port", {}) or {};
+            backend: any = path.get("backend", {}) or {};
+            svc: any = backend.get("service", {}) or {};
+            svc_port: any = svc.get("port", {}) or {};
             rules_out.append(
                 {
                     "host": host,
@@ -82,7 +84,7 @@ def summarize_ingress(ing: dict) -> dict {
             );
         }
     }
-    lb: list = [];
+    lb: list[str] = [];
     ingress_status = (status.get("load_balancer", {}) or {}).get("ingress", []) or [];
     for `entry in ingress_status {
         addr = `entry.get("hostname") or `entry.get("ip");
@@ -94,11 +96,11 @@ def summarize_ingress(ing: dict) -> dict {
 }
 
 
-def pvc_claimants(pods: list) -> dict {
-    out: dict = {};
+def pvc_claimants(pods: list[dict[str, any]]) -> dict[str, list[str]] {
+    out: dict[str, list[str]] = {};
     for pod in pods {
-        meta = pod.get("metadata", {}) or {};
-        spec = pod.get("spec", {}) or {};
+        meta: any = pod.get("metadata", {}) or {};
+        spec: any = pod.get("spec", {}) or {};
         pod_name = _s(meta.get("name"));
         for vol in (spec.get("volumes", []) or []) {
             pvc = vol.get("persistent_volume_claim");
@@ -117,10 +119,12 @@ def pvc_claimants(pods: list) -> dict {
 }
 
 
-def summarize_pvc(pvc: dict, claimants_by_name: dict) -> dict {
-    meta = pvc.get("metadata", {}) or {};
-    spec = pvc.get("spec", {}) or {};
-    status = pvc.get("status", {}) or {};
+def summarize_pvc(
+    pvc: dict[str, any], claimants_by_name: dict[str, list[str]]
+) -> dict[str, any] {
+    meta: any = pvc.get("metadata", {}) or {};
+    spec: any = pvc.get("spec", {}) or {};
+    status: any = pvc.get("status", {}) or {};
     name = _s(meta.get("name"));
     capacity = (status.get("capacity", {}) or {}).get("storage");
     return {
@@ -136,13 +140,13 @@ def summarize_pvc(pvc: dict, claimants_by_name: dict) -> dict {
 
 def build_network(
     namespace: str,
-    services: list,
-    endpoints: list,
-    ingresses: list,
-    pvcs: list,
-    pods: list
-) -> dict {
-    ready_by_name: dict = {};
+    services: list[dict[str, any]],
+    endpoints: list[dict[str, any]],
+    ingresses: list[dict[str, any]],
+    pvcs: list[dict[str, any]],
+    pods: list[dict[str, any]]
+) -> dict[str, any] {
+    ready_by_name: dict[str, dict[str, int]] = {};
     for ep in endpoints {
         nm = _s((ep.get("metadata", {}) or {}).get("name"));
         if nm {
@@ -165,7 +169,7 @@ def build_network(
 }
 
 
-def _collect_network -> dict {
+def _collect_network -> dict[str, any] {
     if not k8s_available() {
         return {"available": False, "detail": unavailable_detail()};
     }

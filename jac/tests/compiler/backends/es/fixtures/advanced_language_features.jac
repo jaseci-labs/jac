@@ -1,8 +1,7 @@
 """Advanced Jac constructs combined fixture for ECMAScript generator tests."""
 
-
 # Lambdas and higher-order helpers
-def lambda_examples() -> dict {
+def lambda_examples() -> dict[any, any] {
     adder = lambda (a: int, b: int) { a + b; };
     scaler = lambda (value: int, factor: int) { value * factor; };
     numbers = [1, 2, 3, 4];
@@ -20,7 +19,7 @@ async def fetch_value(value: int) -> int {
     return value;
 }
 
-async def async_pipeline(data: list) -> dict {
+async def async_pipeline(data: list[any]) -> dict[any, any] {
     total = 0;
     results = [];
     for item in data {
@@ -42,7 +41,7 @@ def generator_examples(limit: int) {
 }
 
 # Spread and rest patterns
-def spread_and_rest_examples() -> dict {
+def spread_and_rest_examples() -> dict[any, any] {
     base = [1, 2, 3];
     extras = [4, 5];
     combined = [*base, *extras, 6];
@@ -51,7 +50,7 @@ def spread_and_rest_examples() -> dict {
     overrides = {"retries": 3, "timeout": 30};
     merged = {** defaults, ** overrides};
 
-    def collect(label: str, *items: tuple, **options: int) -> dict {
+    def collect(label: str, *items: tuple[any, ...], **options: int) -> dict[any, any] {
         return {"label": label, "items": list(items), "options": options};
     }
 
@@ -84,7 +83,7 @@ def template_literal_examples(user: str, score: int) -> str {
 }
 
 # Destructuring & rest patterns
-def advanced_destructuring() -> dict {
+def advanced_destructuring() -> dict[any, any] {
     (first, *middle, last) = [10, 20, 30, 40, 50];
     point = (100, 200);
     (x, y) = point;
@@ -106,7 +105,7 @@ def advanced_destructuring() -> dict {
 }
 
 # Optional access simulations
-def optional_access_examples(payload: dict) -> dict {
+def optional_access_examples(payload: dict[any, any]) -> dict[any, any] {
     result = {"value": 0, "mode": "basic"};
     if payload is not None and "config" in payload {
         config = payload["config"];
@@ -121,7 +120,7 @@ def optional_access_examples(payload: dict) -> dict {
 }
 
 # Update expression stand-ins
-def update_expression_examples() -> dict {
+def update_expression_examples() -> dict[any, any] {
     counter = 0;
     for _ in range(5) {
         counter += 1;
@@ -147,13 +146,13 @@ def do_while_simulation(limit: int) -> int {
 }
 
 # Combined advanced report
-def build_advanced_report(values: list) -> dict {
+def build_advanced_report(values: list[any]) -> dict[any, any] {
     lambda_data = lambda_examples();
     spread_data = spread_and_rest_examples();
     optional = optional_access_examples({"config": {"value": 7, "mode": "strict"}});
     destructured = advanced_destructuring();
 
-    async def gather_async() -> dict {
+    async def gather_async() -> dict[any, any] {
         return await async_pipeline(values);
     }
 

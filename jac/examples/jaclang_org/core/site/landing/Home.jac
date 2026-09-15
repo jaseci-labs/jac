@@ -11,7 +11,7 @@ import from core.site.landing.BookSection { BookSection }
 import from core.site.landing.ExplorerFinale { ExplorerFinale }
 import from core.site.ui.SectionRail { SectionRail }
 
-glob HOME_NAV: list[dict] = [
+glob HOME_NAV: list[dict[str, any]] = [
          {"id": "h-arena", "label": "arena"},
          {"id": "h-mobile", "label": "mobile"},
          {"id": "h-why", "label": "why jac"},

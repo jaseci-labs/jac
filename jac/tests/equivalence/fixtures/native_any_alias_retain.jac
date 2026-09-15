@@ -8,14 +8,14 @@ cell -- `len` through the alias then reported the RESULT dict's length
 (and richer probes segfaulted). ES/JS opts out.
 """
 
-def alias_retain_py -> dict {
+def alias_retain_py -> dict[any, any] {
     payload = {"n": 42};
     pa = payload;
     return {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "len_thru_alias": len(pa)};
 }
 
 
-def alias_retain_cl -> dict {
+def alias_retain_cl -> dict[any, any] {
     return {};
 }
 

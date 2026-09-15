@@ -161,7 +161,7 @@ impl QHop.add_node_constraint(node_type: (type | None)) -> None {
 }
 
 
-impl QHop.only_ids -> (set | None) {
+impl QHop.only_ids -> (set[any] | None) {
     if self.only is None {
         return None;
     }

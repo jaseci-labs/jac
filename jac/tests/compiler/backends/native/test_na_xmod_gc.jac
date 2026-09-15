@@ -25,7 +25,7 @@ glob FIXTURES = os.path.join(
      ),
      ENFORCE = ["xmod_gc_entry*", "xmod_gc_lib*"];
 
-def _compile_ir(entry_path: str, gc_mode: str, enforce: list) -> str {
+def _compile_ir(entry_path: str, gc_mode: str, enforce: list[any]) -> str {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();

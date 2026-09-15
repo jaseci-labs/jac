@@ -331,12 +331,13 @@ def _bridge_workspace -> str {
     (Path(d) / "web" / "main.jac").write_text("with entry {}\n", encoding="utf-8");
     (Path(d) / "core").mkdir();
     (Path(d) / "core" / "cart.jac").write_text(
-        'def:pub view_cart -> dict {\n    return {"items": []};\n}\n', encoding="utf-8"
+        'def:pub view_cart -> dict[str, any] {\n    return {"items": []};\n}\n',
+        encoding="utf-8"
     );
     (Path(d) / "core" / "orders.jac").write_text(
         'import from cart { view_cart }\n'
         '\n'
-        'async def:pub place_order -> dict {\n'
+        'async def:pub place_order -> dict[str, any] {\n'
         '    return await view_cart();\n'
         '}\n',
         encoding="utf-8"
@@ -365,7 +366,7 @@ test "edge analysis visits modules registered while analyzing either hub" {
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.scale.runtime.fleet { _compiled_app_edges }
-    def module(edges: list) -> any {
+    def module(edges: list[any]) -> any {
         return SimpleNamespace(
             gen=SimpleNamespace(
                 interop_manifest=SimpleNamespace(

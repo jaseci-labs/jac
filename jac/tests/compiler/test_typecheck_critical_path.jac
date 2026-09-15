@@ -23,7 +23,7 @@ glob _BAD_SRC: str = "def widen(a: int, b: int) -> int {\n    return a * b;\n}\n
      _GOOD_SRC: str = "def widen(a: int, b: int) -> int {\n    return a * b;\n}\n\nwith entry {\n    total: int = widen(6, 7);\n}\n";
 
 
-def _compile_src(src: str) -> tuple[any, list] {
+def _compile_src(src: str) -> tuple[any, list[any]] {
     proj = tempfile.mkdtemp(prefix="tc_path_");
     try {
         target = os.path.join(proj, "main.jac");
