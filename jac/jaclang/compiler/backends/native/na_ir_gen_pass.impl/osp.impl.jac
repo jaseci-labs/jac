@@ -411,6 +411,13 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
     self.builder.ret_void();
     out["on_complete"] = _ocf;
     self._builder = _saved;
+    import from jaclang.compiler.backends.native.walker_speculation {
+        NativeWalkerSpeculation,
+        walker_speculation_enabled
+    }
+    if walker_speculation_enabled(self.prog.options, str(self.llvm_module.triple)) {
+        out.update(NativeWalkerSpeculation(self).callbacks());
+    }
     return out;
 }
 
@@ -507,7 +514,7 @@ impl NaIRGenPass._emit_osp_setup -> None {
     if _rt is not None {
         _rf = self.struct_field_types.get("OspRuntime", {});
         _ridx = self.struct_field_indices.get("OspRuntime", {});
-        for _fname in ["tag_of", "is_a", "node_desc", "on_complete"] {
+        for _fname in _cbs {
             _cb = self._coerce_type(_cbs[_fname], _rf[_fname]);
             self.builder.store(
                 _cb,
@@ -515,6 +522,17 @@ impl NaIRGenPass._emit_osp_setup -> None {
                     _rt,
                     [ir.Constant(i32, 0), ir.Constant(i32, _ridx.get(_fname, 0))],
                     name=f"rt.{_fname}"
+                )
+            );
+        }
+        if "run_tasks" in _cbs {
+            _width = ir.Constant(
+                i64, min(64, max(1, self.prog.options.native_threads or 4))
+            );
+            self.builder.store(
+                _width,
+                self.builder.gep(
+                    _rt, [ir.Constant(i32, 0), ir.Constant(i32, _ridx["task_width"])]
                 )
             );
         }

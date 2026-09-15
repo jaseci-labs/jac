@@ -455,7 +455,8 @@ How `jac build --native` emits code:
 target = ""               # "" or "host" (default), "wasm32", or an LLVM triple
 opt = 2                   # optimization level
 debug = false             # DWARF, unoptimized JIT path, and the RC trace machinery, together
-threads = 4               # `flow for` width; a built binary can override with JAC_THREADS
+threads = 4               # Native parallel work width
+walker_speculation = "off" # Default off; "auto" opts in
 require = []              # Module-name patterns whose native lowering must succeed
 ```
 
@@ -468,6 +469,27 @@ without executing it. The policy is included in analysis and code-generation
 cache identities.
 
 A built binary reads two environment variables at run time and no others: `JAC_GC=off` disables collection for leak debugging (collection is on by default under `managed`), and `JAC_THREADS` overrides the `flow for` width. Nothing at compile time reads the environment; `jac explain memory|placement|ir` replaces the old diagnostic variables.
+
+Walker speculation is disabled by default. Set `walker_speculation = "auto"`
+to enable speculative execution of complete entry abilities in Native AOT
+programs using RC on 64-bit Linux. Tasks compute against
+isolated state, then validate their reads and commit in the original traversal
+order. Conflicts cause serial re-execution at the original ability position.
+The setting participates in the native compilation cache identity.
+
+Fields, lists, dictionaries, reports, read-only graph queries, and ordinary
+append-style `visit` are supported. Reporting does not create a dependency on
+other reports. Mutable reported objects keep their reference identity. Entry
+order, reverse exit order, repeated visits, `visit ... else`, `skip`, and
+`disengage` retain their serial behavior. Exit abilities execute serially.
+
+Graph changes, positional visits, nested spawns, and unknown external calls
+fall back before performing the unsupported operation. Programs with custom
+`drop` methods or explicit regions/raw memory operations use serial execution.
+Debug RC builds, other memory profiles, Python/JIT, and unsupported targets also
+execute serially. Tasks that exceed internal work or memory limits also retry
+serially. Set `walker_speculation = "off"` for
+serial comparison. The initial implementation caps a batch at 64 tasks.
 
 ---
 

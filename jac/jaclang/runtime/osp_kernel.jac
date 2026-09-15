@@ -54,14 +54,37 @@ obj WalkScope {
         sidx: int = 0,
         frames: (list[Frame] | None) = None,
         cur_a: any = None,
-        cur_b: any = None;
+        cur_b: any = None,
+        cur_entry: bool = False;
+}
+
+obj OspTask {
+    has slot: Slot,
+        a: any,
+        b: any,
+        ignores: list[int],
+        state: int = 0;
+}
+
+def _osp_no_tasks(tasks: list[OspTask]) {}
+def _osp_no_commit(task: OspTask) -> bool {
+    return False;
+}
+
+def _osp_no_drop(task: OspTask) {}
+def _osp_call_slot(slot: Slot, a: any, b: any) {
+    slot.fn(a, b);
 }
 
 obj OspRuntime {
     has tag_of: Callable[([any], int)],
         is_a: Callable[([int, int], bool)],
         node_desc: Callable[([int], NodeDesc)],
-        on_complete: Callable[([WalkScope, bool], None)];
+        on_complete: Callable[([WalkScope, bool], None)],
+        task_width: int = 0,
+        run_tasks: Callable[([list[OspTask]], None)] = _osp_no_tasks,
+        commit_task: Callable[([OspTask], bool)] = _osp_no_commit,
+        drop_task: Callable[([OspTask], None)] = _osp_no_drop;
 }
 
 glob _descs: dict[int, NodeDesc] = {};
@@ -279,6 +302,7 @@ obj OspEngine {
     def next_slot(
         rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc
     ) -> (Slot | None) {
+        scope.cur_entry = False;
         if scope.frames is None {
             scope.frames = [];
         }
@@ -297,6 +321,7 @@ obj OspEngine {
                     scope.sidx += 1;
                     if s.trig_tag == UNTYPED {
                         scope.cur_a = scope.wlk;
+                        scope.cur_entry = True;
                         return s;
                     }
                 }
@@ -346,6 +371,7 @@ obj OspEngine {
                             f.idx += 1;
                             scope.cur_a = scope.wlk;
                             scope.cur_b = f.loc;
+                            scope.cur_entry = True;
                             return s;
                         }
                         f.idx = 0;
@@ -363,6 +389,7 @@ obj OspEngine {
                             f.idx += 1;
                             scope.cur_a = f.loc;
                             scope.cur_b = scope.wlk;
+                            scope.cur_entry = True;
                             return s;
                         }
                         f.idx = 0;
@@ -376,6 +403,7 @@ obj OspEngine {
                         f.idx += 1;
                         scope.cur_a = f.loc;
                         scope.cur_b = scope.wlk;
+                        scope.cur_entry = True;
                         return s;
                     } else {
                         f.idx = 0;
@@ -518,16 +546,114 @@ obj OspEngine {
         return None;
     }
 
+    def preview(scope: WalkScope) -> WalkScope {
+        frames: list[Frame] = [];
+        if scope.frames is not None {
+            for f in scope.frames {
+                frames.append(
+                    Frame(
+                        loc=f.loc,
+                        phase=f.phase,
+                        band=f.band,
+                        idx=f.idx,
+                        budget=f.budget,
+                        plan=f.plan
+                    )
+                );
+            }
+        }
+        return WalkScope(
+            wlk=scope.wlk,
+            path=`list(scope.path),
+            next=`list(scope.next),
+            front=`list(scope.front),
+            ignores=`list(scope.ignores),
+            reports=[],
+            disengaged=scope.disengaged,
+            next_head=scope.next_head,
+            nested=scope.nested,
+            fenced=scope.fenced,
+            pending_fence=scope.pending_fence,
+            skip_node=scope.skip_node,
+            stage=scope.stage,
+            sidx=scope.sidx,
+            frames=frames,
+            cur_a=scope.cur_a,
+            cur_b=scope.cur_b,
+            cur_entry=scope.cur_entry
+        );
+    }
+
+    def tasks(
+        rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc, first: Slot
+    ) -> list[OspTask] {
+        out = [OspTask(first, scope.cur_a, scope.cur_b, scope.ignores)];
+        preview = self.preview(scope);
+        while len(out) < rt.task_width {
+            slot = self.next_slot(rt, preview, wdesc);
+            if slot is None or not preview.cur_entry {
+                break;
+            }
+            out.append(OspTask(slot, preview.cur_a, preview.cur_b, scope.ignores));
+        }
+        return out;
+    }
+
     def `spawn(rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list[int]) -> any {
         scope = self.begin(wlk, starts);
         ok = False;
         try {
+            s = self.next_slot(rt, scope, wdesc);
             while True {
-                s = self.next_slot(rt, scope, wdesc);
                 if s is None {
                     break;
                 }
-                s.fn(scope.cur_a, scope.cur_b);
+                run_tasks = rt.run_tasks;
+                commit_task = rt.commit_task;
+                drop_task = rt.drop_task;
+                if not scope.cur_entry
+                    or scope.fenced
+                    or rt.task_width < 2
+                    or run_tasks is None
+                    or commit_task is None
+                    or drop_task is None {
+                    _osp_call_slot(s, scope.cur_a, scope.cur_b);
+                    s = self.next_slot(rt, scope, wdesc);
+                    continue;
+                }
+                tasks = self.tasks(rt, scope, wdesc, s);
+                if len(tasks) < 2 {
+                    _osp_call_slot(s, scope.cur_a, scope.cur_b);
+                    s = self.next_slot(rt, scope, wdesc);
+                    continue;
+                }
+                retry = False;
+                try {
+                    run_tasks(tasks);
+                    for task in tasks {
+                        if s is None
+                            or not scope.cur_entry
+                            or s is not task.slot
+                            or scope.cur_a != task.a
+                            or scope.cur_b != task.b
+                            or scope.ignores is not task.ignores {
+                            break;
+                        }
+                        if not commit_task(task) {
+                            retry = True;
+                            break;
+                        }
+                        s = self.next_slot(rt, scope, wdesc);
+                    }
+                } finally {
+                    for task in tasks {
+                        drop_task(task);
+                    }
+                }
+                if retry and s is not None {
+                    _osp_call_slot(s, scope.cur_a, scope.cur_b);
+                    s = self.next_slot(rt, scope, wdesc);
+                }
             }
             ok = True;
         } finally {

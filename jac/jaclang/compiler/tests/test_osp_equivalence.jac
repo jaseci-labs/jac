@@ -31,7 +31,18 @@ Backend support today (see each fixture's docstring for specifics):
     is how "support landed" becomes an enforced regression.
 """
 
-import from jaclang.compiler.tests.xbackend_equiv { run_with_both, run_py_fixture }
+import from jaclang.compiler.tests.xbackend_equiv {
+    run_with_both,
+    run_py_fixture,
+    run_js_function
+}
+
+test "javascript harness accepts bundles larger than the process argument limit" {
+    source = "//"
+        + "x" * (256 * 1024)
+        + "\nfunction large_bundle() { return {value: 42}; }\n";
+    assert run_js_function(source, "large_bundle") == {"value": 42};
+}
 
 # ---------------------------------------------------------------------------
 # Spawn/dispatch core.

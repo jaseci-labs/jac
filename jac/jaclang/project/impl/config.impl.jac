@@ -1674,6 +1674,11 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
             cfg.native.opt = 2;
         }
         cfg.native.debug = bool(nat.get("debug", cfg.native.debug));
+        speculation = nat.get("walker_speculation", cfg.native.walker_speculation);
+        if speculation not in ("auto", "off") {
+            raise ValueError("[native] walker_speculation must be 'auto' or 'off'");
+        }
+        cfg.native.walker_speculation = speculation;
         try {
             cfg.native.threads = max(1, int(nat.get("threads", cfg.native.threads)));
         } except (TypeError, ValueError) {

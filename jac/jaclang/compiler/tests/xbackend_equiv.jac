@@ -129,7 +129,7 @@ def run_js_function(js_code: str, func_name: str) -> dict[str, any] {
             + "()));"
         );
     result = subprocess.run(
-        ["node", "-e", wrapper], capture_output=True, text=True, timeout=10
+        ["node", "-"], input=wrapper, capture_output=True, text=True, timeout=10
     );
     assert result.returncode == 0 , f"Node.js failed: {result.stderr}";
     return json.loads(result.stdout.strip());

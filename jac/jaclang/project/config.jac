@@ -53,7 +53,8 @@ obj NativeConfig {
         target: str = "",
         opt: int = 2,
         debug: bool = False,
-        threads: int = 4;
+        threads: int = 4,
+        walker_speculation: str = "off";
 }
 
 obj MemoryConfig {
