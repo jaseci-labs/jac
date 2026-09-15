@@ -86,16 +86,18 @@ historical samples fit the new limits; this does not guarantee future passes.
 | Site type check | 77.38 | 86 | 2012.57 | 2237 |
 | Desktop build | 209.91 | 234 | 5154.24 | 5727 |
 | Production build | 164.26 | 183 | 5309.57 | 5900 |
-| Quickstart readiness | 85.08 | 95 | — | — |
-| Production readiness | 5.04 | 6 | — | — |
-| Fleet readiness | 115.06 | 128 | — | — |
+| Quickstart readiness | 85.08 | 95 | - | - |
+| Production readiness | 5.04 | 6 | - | - |
+| Fleet readiness | 115.06 | 128 | - | - |
 
 Production build time increases from 180 to 183 seconds because its previous
 worst-case margin was only 8.7%. Every other limit tightens. Production readiness
-has 16% headroom after whole-second rounding, but the existing five-second polling
-interval means one additional unsuccessful probe will normally exceed its new
-six-second limit. These tighter limits trade tolerance of runner noise for earlier
-regression detection.
+has 16% headroom after whole-second rounding. Its readiness polling interval is
+reduced from five seconds to one second so one additional unsuccessful probe does
+not consume nearly the entire six-second budget. The historical samples above
+used five-second polling; future readiness measurements have finer resolution.
+These tighter limits trade tolerance of runner noise for earlier regression
+detection.
 
 ## Targeted validation
 

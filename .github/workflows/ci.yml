@@ -52,6 +52,8 @@ jobs:
               - 'jac/**'
               - 'scripts/run_cpython_compiler_tests.jac'
               - 'scripts/ci_measure.sh'
+              - 'scripts/ci_measure_gate.jq'
+              - '.github/ci-performance-budgets.json'
               - 'scripts/test_ci_measure.jac'
               - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
@@ -1357,7 +1359,7 @@ jobs:
               cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/production-ready.ready"
               exit 0
             fi
-            sleep 5
+            sleep 1
           done
           cat /tmp/site-artifact.log
           exit 1

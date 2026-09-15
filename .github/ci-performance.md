@@ -1,9 +1,10 @@
 # Checker and kit performance calibration
 
 `jac-check` and `build-kit` record their existing commands with GNU `time`, using
-`scripts/ci_measure.sh`. These new lanes are **reporting only**: there are no
-unmeasured, guessed limits, and a successful report does not mean a performance
-budget passed. The existing pack-smoke budgets remain enforced separately.
+`scripts/ci_measure.sh`. Calibrated local-compute phases enforce the fixed limits
+in `ci-performance-budgets.json`; other phases and uncalibrated cache states remain
+explicitly reporting-only. The existing pack-smoke budgets remain enforced
+separately. Successful runs never raise any limit automatically.
 
 The shell recorder uses the same raw accounting fields as `scripts/ci_perf.jac`.
 It works before the Jac binary is built and publishes reports even when the build
@@ -47,7 +48,7 @@ step outcomes so a skipped build on a binary cache hit or an unreached checker
 is not interpreted as a zero-duration success. Missing/malformed accounting
 must be investigated before using a run for calibration.
 
-## Cache states and future fixed bands
+## Cache states and fixed bands
 
 Build context records exact-hit and matched-key outputs for binary, typeshed,
 Python, LLVM shim, LLVM, Bun, JIR precompile, payload-layer, and Zig package caches.
@@ -62,7 +63,23 @@ Attempts after the first deliberately skip analysis-cache restoration. A restore
 analysis tree can still contain misses. Keep compiler generation, cache state,
 format scope, and run attempt visible when comparing samples.
 
-After collecting representative successful runs:
+`scripts/ci_measure_gate.jq` checks wall time and peak RSS at the end of the job.
+It fails for exceeded limits, failed commands in enforced phases, and missing
+required measurements. This final gate does not interrupt a running command or
+limit allocations. Raw measurements and the verdict remain available on failure.
+`report.json` and each per-phase JSON contain the selected state, mode, limits,
+and failures. Reporting-only command failures still retain their original exit
+codes and functional job behavior.
+
+Checker states are `cold` (first attempt with no restored analysis cache),
+`restored` (nonempty matched cache key, including prefix restores), and
+`retry-cold` (later attempt without a restore). Local kit smoke phases use `local`.
+These labels describe cache availability; a restored cache can still have analysis
+misses. Uncalibrated states explicitly report rather than borrowing another state's
+limits. Formatting, the optional diagnostics sweep, downloads/materialization,
+whole binary-build attempts, and trivial kit verification remain reporting-only.
+
+For subsequent calibration:
 
 1. Separate first-attempt builds by relevant dependency-cache states; keep retries
    separate. Binary hits have no binary-build sample.
@@ -72,7 +89,8 @@ After collecting representative successful runs:
    inside Zig builds and materialization commands; initially report those timings
    without treating them as stable compute-only workloads.
 4. Set reviewed, versioned limits per comparable phase/state using
-   `ceil(maximum / 0.9)` for roughly 10% minimum headroom. Memory needs actual RSS
+   `maximum / 0.9`, rounded up to 0.1 seconds and whole MiB, for roughly 10%
+   minimum headroom. Memory needs actual RSS
    samples; old GitHub step durations cannot provide it.
 5. Require expected measurements for the selected state when enforcement is added,
    and retain explicit skips for conditional phases. Do not silently fall back to
@@ -82,6 +100,33 @@ Checkout, external dependency installation, cache transfers, and artifact upload
 are not measured by this recorder. Setup-jac consumers without
 `JAC_CI_MEASURE_DIR` simply execute the original commands, including on macOS.
 No rolling baseline or automatic limit increase is introduced.
+
+## Initial enforcement calibration
+
+The first reporting CI run,
+[35003506572](https://github.com/jaseci-labs/jac/actions/runs/35003506572), passed
+all workflow jobs. Its saved measurements establish these initial fixed limits:
+
+| Phase | State | Observed seconds | Limit seconds | Observed RSS MiB | Limit RSS MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| hermetic-smoke | local | 9.88 | 11.0 | 248.125 | 276 |
+| program-smoke | local | 5.20 | 5.8 | 264.875 | 295 |
+| test-runner-smoke | local | 4.57 | 5.1 | 248.125 | 276 |
+| runtime-warmup | restored | 4.12 | 4.6 | 248.125 | 276 |
+| check-repository | restored | 1486.74 | 1652.0 | 5708.234 | 6343 |
+
+The checker restored a prefix-matched analysis cache, not an exact commit hit.
+It still used 2970.56 CPU seconds over 1486.74 wall seconds with two workers;
+"restored" must not be read as a guarantee of diagnostics-only replay.
+The scoped formatter did no work, and cold/retry checker states were not measured,
+so they receive no guessed limit. These are single-run initial limits, not a
+statistical estimate of normal variability; further CI runs validate them.
+
+The whole binary build took 751.31 seconds and 6677.93 MiB. Its mixed workload
+remains reporting-only. Likewise, x86-64 musl materialization took 332.48 wall
+seconds and 988.52 CPU seconds: it includes substantial compilation and is not
+merely a download. Separate its internal work before giving it tight compute
+bands. The tightened pack-smoke limits also all passed in this run.
 
 ## Validation
 
