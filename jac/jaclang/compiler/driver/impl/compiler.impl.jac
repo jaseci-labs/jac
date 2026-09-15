@@ -275,7 +275,11 @@ impl JacCompiler._get_bytecode(
         setup_progress.on_internal_compile(full_target);
         self.selfhost.enter_bytecode();
     }
-    options = CompileOptions();
+    import copy;
+    options = copy.copy(actual_program.options);
+    options.symtab_ir_only = False;
+    options.no_cgen = False;
+    options.iface_ok = False;
     result: (uni.Module | None) = None;
     enclosing_closure = self._closure_opts;
     self._closure_opts = options;
@@ -1291,9 +1295,7 @@ impl JacCompiler.compile(
             }
             unit_path = JacProgram.hub_key(module.loc.mod_path);
             owner.hub.inputs[unit_path] = manifest;
-            for dependency in manifest.files {
-                owner.deps.record(unit_path, dependency);
-            }
+            owner.deps.record_inputs(unit_path, manifest);
         }
         return module;
     }

@@ -216,11 +216,10 @@ obj ModuleCompilation {
             cb_worklist: list[uni.Module | None] = [self.module];
             cb_paths: list[str] = [];
 
-            cb_opts = CompileOptions(
-                no_cgen=True,
-                force_target_program=True,
-                cancel_token=self.options.cancel_token
-            );
+            import copy;
+            cb_opts = copy.copy(self.options);
+            cb_opts.no_cgen = True;
+            cb_opts.force_target_program = True;
             cb_reg = self.program.iface_registry();
             while cb_worklist or cb_paths {
                 if cb_worklist {

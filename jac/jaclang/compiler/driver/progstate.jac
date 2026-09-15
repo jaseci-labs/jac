@@ -63,7 +63,7 @@ obj ModuleHub {
             return None;
         }
         was_main = any(item is prev for item in [self.mod->:MainRole:->]);
-        self.detach(prev);
+        self.detach([prev]);
         if was_main {
             self.mod.main_mod = mod;
             self.mod.add_kids_right([mod]);
@@ -71,19 +71,22 @@ obj ModuleHub {
         return prev;
     }
 
-    def detach(module: uni.Module) {
-        if any(item is module for item in [self.mod->:MainRole:->]) {
+    def detach(modules: list[uni.Module]) {
+        removed = {id(module) for module in modules};
+        if any(id(item) in removed for item in [self.mod->:MainRole:->]) {
             self.mod.main_mod = None;
         }
         self.mod.set_kids(
             [
                 child
                 for child in self.mod.kid
-                if child is not module
+                if id(child) not in removed
             ],
             pos_update=False
         );
-        del [edge module<-:ScopeChild:<-];
+        for module in modules {
+            del [edge module<-:ScopeChild:<-];
+        }
         if self.mod.kid {
             (first_tok, last_tok) = self.mod.resolve_tok_range();
             self.mod.loc.update_token_range(first_tok, last_tok);
@@ -97,7 +100,7 @@ obj ModuleHub {
         self.inputs.pop(resolved_path, None);
         previous = self.mod.hub.pop(resolved_path, None);
         if previous is not None {
-            self.detach(previous);
+            self.detach([previous]);
         }
         if resolved_path in self.stamps {
             del self.stamps[resolved_path];
@@ -125,9 +128,7 @@ obj ModuleHub {
             }
         }
         prog_root = self.mod;
-        for mod in dropped {
-            self.detach(mod);
-        }
+        self.detach(dropped);
         prog_root.hub.clear();
         prog_root.hub.update(retained_mods);
         self.stamps.clear();
@@ -144,8 +145,18 @@ obj DepGraph {
         tracking: bool = False;
 
     def record(importer_path: str, target_path: str) -> None {
+        self._record(os.path.realpath(importer_path), os.path.realpath(target_path));
+    }
+
+    """Record source-store inputs, whose paths are already canonical."""
+    def record_inputs(importer_path: str, inputs: InputManifest) -> None {
         importer_path = os.path.realpath(importer_path);
-        target_path = os.path.realpath(target_path);
+        for target_path in inputs.files {
+            self._record(importer_path, target_path);
+        }
+    }
+
+    def _record(importer_path: str, target_path: str) -> None {
         if importer_path == target_path {
             return;
         }

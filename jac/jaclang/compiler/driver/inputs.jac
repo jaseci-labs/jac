@@ -83,6 +83,7 @@ obj SourceSnapshot {
         modules: set[str] = set(),
         read_paths: set[str] = set(),
         digests: dict[str, str | None] = {},
+        validated_manifests: dict[bytes, InputManifest | None] = {},
         read_sets: list[InputReads] = [];
 
     @contextmanager
@@ -189,6 +190,31 @@ obj SourceSnapshot {
 obj SourceStore {
     has overrides: dict[str, str] = {},
         snapshot: SourceSnapshot | None = None;
+
+    """Reuse validation within a snapshot while retaining each caller's reads."""
+    def matches_manifest(encoded: bytes) -> bool {
+        import json;
+        snapshot = self.snapshot;
+        if snapshot is None {
+            return InputManifest.from_dict(json.loads(encoded)).is_current(self);
+        }
+        if encoded not in snapshot.validated_manifests {
+            inputs = InputManifest.from_dict(json.loads(encoded));
+            snapshot.validated_manifests[encoded] = inputs
+                if inputs.is_current(self)
+                else None;
+        }
+        validated = snapshot.validated_manifests[encoded];
+        if validated is None {
+            return False;
+        }
+        snapshot.read_paths.update(validated.files);
+        for reads in snapshot.read_sets {
+            reads.files.update(validated.files);
+            reads.annexes.update(validated.annexes);
+        }
+        return True;
+    }
 
     @contextmanager
     def capture -> Iterator[SourceSnapshot] {

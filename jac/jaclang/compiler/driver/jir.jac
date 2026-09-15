@@ -185,9 +185,7 @@ def get_jir_cache_dir -> Path {
     return _root();
 }
 
-def compute_content_sha256(
-    file_path: str, use_source_provider: bool = True
-) -> str {
+def compute_content_sha256(file_path: str, use_source_provider: bool = True) -> str {
     import from jaclang.project.source { read_file_bytes }
     data = read_file_bytes(file_path)
         if use_source_provider

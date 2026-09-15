@@ -500,9 +500,7 @@ obj IfaceRegistry {
         encoded = read_section_bytes(data, SEC_INPUTS);
         if encoded is not None {
             try {
-                return InputManifest.from_dict(json.loads(encoded)).is_current(
-                    self.prog.source_store
-                );
+                return self.prog.source_store.matches_manifest(encoded);
             } except (ValueError, KeyError, TypeError) {
                 return False;
             }
@@ -1041,16 +1039,19 @@ obj IfaceRegistry {
             }
             inputs = InputManifest(
                 {
-                    path: digest for (path, digest) in inputs.files.items()
+                    path: digest
+                    for (path, digest) in inputs.files.items()
                     if path not in module_inputs
                 },
                 {
-                    path: paths for (path, paths) in inputs.annexes.items()
+                    path: paths
+                    for (path, paths) in inputs.annexes.items()
                     if path not in dependencies
                 }
             );
         } elif any(
-            content_digest(source.encode('utf-8')) != content_digest(source_bytes(path))
+            content_digest(source.encode('utf-8'))
+                != content_digest(source_bytes(path))
             for (path, source) in self.prog.source_store.overrides.items()
         ) {
             return;
