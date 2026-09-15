@@ -45,8 +45,7 @@ obj EdgeRow {
         tgt: int,
         tag: int,
         handle: int,
-        undirected: bool = False,
-        live: bool = True;
+        undirected: bool = False;
 }
 
 obj Adj {
@@ -58,7 +57,7 @@ obj Adj {
 
 obj OspGraph {
     has adj: dict[int, Adj],
-        rows: list[EdgeRow],
+        rows: list[EdgeRow | None],
         free_rows: list[int],
         row_of: dict[int, int],
         dead: dict[int, int],
@@ -215,34 +214,47 @@ obj OspGraph {
     }
 
     def _row_alloc(src: int, tgt: int, tag: int, eobj: int, undirected: bool) -> int {
+        row = EdgeRow(src=src, tgt=tgt, tag=tag, handle=eobj, undirected=undirected);
         if self.free_rows {
             rid: int = self.free_rows.pop();
-            row: EdgeRow = self.rows[rid];
-            row.src = src;
-            row.tgt = tgt;
-            row.tag = tag;
-            row.handle = eobj;
-            row.undirected = undirected;
-            row.live = True;
-            self.row_of[eobj] = rid;
-            return rid;
+            self.rows[rid] = row;
+        } else {
+            rid = len(self.rows);
+            self.rows.append(row);
         }
-        rid = len(self.rows);
-        self.rows.append(
-            EdgeRow(src=src, tgt=tgt, tag=tag, handle=eobj, undirected=undirected)
-        );
         self.row_of[eobj] = rid;
         return rid;
     }
 
     def _row_retire(rid: int) {
-        row: EdgeRow = self.rows[rid];
+        row: EdgeRow | None = self.rows[rid];
+        if row is None {
+            return;
+        }
         if row.handle in self.row_of {
             del self.row_of[row.handle];
         }
-        row.live = False;
-        row.handle = 0;
+        # Recycle the slot, not the object: retained rows pin native heap pages
+        # after the region that produced them has gone away.
+        self.rows[rid] = None;
         self.free_rows.append(rid);
+    }
+
+    def _release_idle_storage {
+        # Called after teardown has finished traversing its saved row indices.
+        # Preserve all indices while another graph still has live topology.
+        if not self.adj and not self.row_of {
+            self.adj = {};
+            self.row_of = {};
+            self.rows = [];
+            self.free_rows = [];
+            if not self.regions {
+                self.regions = {};
+            }
+            if not self.dead {
+                self.dead = {};
+            }
+        }
     }
 
     def _drop_rid(lst: list[int], rid: int) {
@@ -312,8 +324,8 @@ obj OspGraph {
         }
         a: Adj = self.adj[origin];
         for rid in a.rows_out {
-            row: EdgeRow = self.rows[rid];
-            if not row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is None {
                 continue;
             }
             eff = dir;
@@ -329,8 +341,8 @@ obj OspGraph {
             }
         }
         for rid in a.rows_in {
-            row: EdgeRow = self.rows[rid];
-            if not row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is None {
                 continue;
             }
             eff = dir;
@@ -409,8 +421,8 @@ obj OspGraph {
             }
             a: Adj = self.adj[origin];
             for rid in a.rows_out {
-                row: EdgeRow = self.rows[rid];
-                if not row.live {
+                row: EdgeRow | None = self.rows[rid];
+                if row is None {
                     continue;
                 }
                 eff = dir;
@@ -428,8 +440,8 @@ obj OspGraph {
                 }
             }
             for rid in a.rows_in {
-                row: EdgeRow = self.rows[rid];
-                if not row.live {
+                row: EdgeRow | None = self.rows[rid];
+                if row is None {
                     continue;
                 }
                 eff = dir;
@@ -503,8 +515,8 @@ obj OspGraph {
             return -1;
         }
         rid: int = self.row_of[eobj];
-        row: EdgeRow = self.rows[rid];
-        if not row.live {
+        row: EdgeRow | None = self.rows[rid];
+        if row is None {
             return -1;
         }
         if row.src == origin {
@@ -517,7 +529,10 @@ obj OspGraph {
     }
 
     def _unlink(rid: int) {
-        row: EdgeRow = self.rows[rid];
+        row: EdgeRow | None = self.rows[rid];
+        if row is None {
+            return;
+        }
         if row.src in self.adj {
             sa: Adj = self.adj[row.src];
             self._drop_rid(sa.rows_out, rid);
@@ -533,8 +548,8 @@ obj OspGraph {
             return False;
         }
         rid: int = self.row_of[eobj];
-        row: EdgeRow = self.rows[rid];
-        if not row.live {
+        row: EdgeRow | None = self.rows[rid];
+        if row is None {
             return False;
         }
         self._unlink(rid);
@@ -550,8 +565,8 @@ obj OspGraph {
         hits: list[int] = [];
         hit_set: set[int] = set();
         for rid in a.rows_out {
-            row: EdgeRow = self.rows[rid];
-            if not row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is None {
                 continue;
             }
             eff = dir;
@@ -568,8 +583,8 @@ obj OspGraph {
             }
         }
         for rid in a.rows_in {
-            row: EdgeRow = self.rows[rid];
-            if not row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is None {
                 continue;
             }
             eff = dir;
@@ -602,8 +617,8 @@ obj OspGraph {
         hits: list[int] = [];
         hit_set: set[int] = set();
         for rid in a.rows_out {
-            row: EdgeRow = self.rows[rid];
-            if not row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is None {
                 continue;
             }
             eff = dir;
@@ -621,8 +636,8 @@ obj OspGraph {
             }
         }
         for rid in a.rows_in {
-            row: EdgeRow = self.rows[rid];
-            if not row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is None {
                 continue;
             }
             eff = dir;
@@ -705,21 +720,21 @@ obj OspGraph {
         a: Adj = self.adj[h];
         gone: list[int] = [];
         for rid in a.rows_out {
-            row: EdgeRow = self.rows[rid];
-            if row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is not None {
                 gone.append(rid);
             }
         }
         for rid in a.rows_in {
-            row: EdgeRow = self.rows[rid];
-            if row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is not None {
                 gone.append(rid);
             }
         }
         n = n0;
         for rid in gone {
-            row: EdgeRow = self.rows[rid];
-            if not row.live {
+            row: EdgeRow | None = self.rows[rid];
+            if row is None {
                 continue;
             }
             self._unlink(rid);
@@ -752,6 +767,7 @@ obj OspGraph {
         if h in self.dead {
             self.dead.pop(h);
         }
+        self._release_idle_storage();
         return n;
     }
 
@@ -776,8 +792,8 @@ obj OspGraph {
         n = 0;
         for a in stash {
             for rid in a.rows_out {
-                row: EdgeRow = self.rows[rid];
-                if not row.live {
+                row: EdgeRow | None = self.rows[rid];
+                if row is None {
                     continue;
                 }
                 if row.tgt in self.adj {
@@ -788,8 +804,8 @@ obj OspGraph {
                 n += 1;
             }
             for rid in a.rows_in {
-                row: EdgeRow = self.rows[rid];
-                if not row.live {
+                row: EdgeRow | None = self.rows[rid];
+                if row is None {
                     continue;
                 }
                 if row.src in self.adj {
@@ -800,6 +816,7 @@ obj OspGraph {
                 n += 1;
             }
         }
+        self._release_idle_storage();
         return n;
     }
 }
@@ -816,8 +833,8 @@ def osp_adj_pairs(origin: int, dir: int) -> list[int] {
         a: Adj = DEFAULT_GRAPH.adj[origin];
         if dir == 2 {
             for rid in a.rows_out {
-                row: EdgeRow = DEFAULT_GRAPH.rows[rid];
-                if row.live {
+                row: EdgeRow | None = DEFAULT_GRAPH.rows[rid];
+                if row is not None {
                     out.append(row.tag);
                     out.append(row.tgt);
                 }
@@ -831,8 +848,8 @@ def osp_adj_pairs(origin: int, dir: int) -> list[int] {
             }
         } else {
             for rid in a.rows_in {
-                row: EdgeRow = DEFAULT_GRAPH.rows[rid];
-                if row.live {
+                row: EdgeRow | None = DEFAULT_GRAPH.rows[rid];
+                if row is not None {
                     out.append(row.tag);
                     out.append(row.src);
                 }

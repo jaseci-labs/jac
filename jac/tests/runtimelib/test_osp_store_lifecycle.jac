@@ -153,6 +153,47 @@ def _live_rows -> int {
     return len(_g.DEFAULT_GRAPH.rows) - len(_g.DEFAULT_GRAPH.free_rows);
 }
 
+test "retired edge slots release their objects while another region remains live" {
+    import gc;
+    store = _g._new_graph();
+    store.connect(1, 2, 11, False, 1, 101, 101);
+    store.connect(3, 4, 12, False, 1, 102, 102);
+    retired_slot = store.row_of[11];
+    retired_row = ref(store.rows[retired_slot]);
+    survivor_slot = store.row_of[12];
+    survivor = store.rows[survivor_slot];
+    assert store.region_died(101) == 1;
+    gc.collect();
+    assert retired_row() is None , "the free-slot pool retained an edge object";
+    assert store.rows[retired_slot] is None;
+    assert store.rows[survivor_slot] is survivor;
+    assert store.edge_peer(12, 3) == 4;
+    store.connect(5, 6, 13, False, 1, 102, 102);
+    assert store.row_of[13] == retired_slot;
+    assert store.edge_peer(13, 5) == 6;
+    assert store.region_died(102) == 2;
+    assert store.rows == [];
+    assert store.free_rows == [];
+    assert store.adj == {};
+}
+
+test "idle graph storage is released after complete region and node teardown" {
+    store = _g._new_graph();
+    for i in range(32) {
+        store.connect(i, i, 100 + i, True, 1, 10, 10);
+    }
+    assert store.region_died(10) == 32;
+    assert store.rows == [];
+    assert store.free_rows == [];
+    assert store.region_died(10) == 0;
+    store.connect(1, 2, 11, False, 1, 0, 0);
+    assert store.drop_node(1) == 1;
+    assert store.drop_node(2) == 0;
+    assert store.rows == [];
+    assert store.free_rows == [];
+    assert store.row_of == {};
+}
+
 def _mk_ctx(dirpath: str, name: str) -> ExecutionContext {
     return ExecutionContext(
         base_path_dir=dirpath, full_target_path=str(Path(dirpath) / f"{name}.jac")

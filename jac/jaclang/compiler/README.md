@@ -283,6 +283,11 @@ releases a component, weak-handle callbacks retire its kernel rows and recycle
 its handles. Closing a context also retires its region, even for graph objects
 still held by callers. Handle metadata uses a slotted weak reference with a
 shared callback, avoiding a closure and captured cells for every anchor.
+The shared graph store recycles empty row slots without retaining retired edge
+objects. Once teardown has traversed every saved row index and no adjacency
+remains, it releases the empty backing tables too. This prevents a large native
+parse from pinning its peak graph storage throughout later compilations; live
+regions retain their row indices and topology.
 At a completed compilation boundary, `release_compile_state` releases both
 source and stub roots. Activating the stub catalog also retires the private
 selfhost bootstrap closure before application compilation starts; it never
