@@ -190,17 +190,19 @@ obj SourceSnapshot {
     def is_current(store: SourceStore) -> bool {
         for path in self.disk.keys() | self.modules | self.read_paths {
             expected = self.overrides[path].encode('utf-8')
-                if path in self.overrides else self.disk.get(path);
+                if path in self.overrides
+                else self.disk.get(path);
             actual = store.overrides[path].encode('utf-8')
-                if path in store.overrides else source_bytes(path);
+                if path in store.overrides
+                else source_bytes(path);
             if actual != expected {
                 return False;
             }
         }
         return all(
-                store.discover_annex_paths(path) == paths
-                for (path, paths) in self.annex_paths.items()
-            );
+            store.discover_annex_paths(path) == paths
+            for (path, paths) in self.annex_paths.items()
+        );
     }
 }
 

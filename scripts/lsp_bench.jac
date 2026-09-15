@@ -337,7 +337,9 @@ def main -> int {
     if args.budgets is not None {
         budgets = {
             name: Budget(**value)
-            for (name, value) in json.loads(args.budgets.read_text())[args.scenario].items()
+            for (name, value) in json.loads(args.budgets.read_text())[
+                args.scenario
+            ].items()
         };
     }
     failures: list[str] = [];

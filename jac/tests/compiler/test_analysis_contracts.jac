@@ -24,7 +24,9 @@ test "a body edit refreshes compact consumers while a signature edit invalidates
                 module = program.compile(
                     file_path=str(path),
                     options=CompileOptions(
-                        no_cgen=True, need_full_ast=True, force_target_program=True,
+                        no_cgen=True,
+                        need_full_ast=True,
+                        force_target_program=True,
                         entry_point=str(consumer)
                     )
                 );

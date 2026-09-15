@@ -33,7 +33,8 @@ obj WorkspaceIndexer {
         }
         if signature is not None {
             visible = {
-                key: info.to_dict() for (key, info) in shard.definitions.items()
+                key: info.to_dict()
+                for (key, info) in shard.definitions.items()
                 if info.workspace_visible
             };
             shard.interface = hashlib.sha256(

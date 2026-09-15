@@ -75,7 +75,7 @@ test "a captured input validator supersedes unrelated workspace revisions" {
     }
     server._features['probe'] = respond;
     request = Request(1, 'probe', {}, server.workspace.revision);
-    request.inputs_current = lambda () -> bool { return True; };
+    request.inputs_current = lambda() -> bool { return True; };
     server._requests[1] = request;
     server._run_request(request);
     response = server._read_message(BytesIO(output.getvalue()));

@@ -73,7 +73,8 @@ obj Request {
     }
 
     def is_current(workspace: Workspace) -> bool {
-        return self.inputs_current() if self.inputs_current is not None
+        return self.inputs_current()
+            if self.inputs_current is not None
             else self.revision == workspace.revision;
     }
 }
@@ -142,6 +143,7 @@ obj Workspace {
             self._view.reset(token);
         }
     }
+
     def change_text_document(params: DidChangeTextDocumentParams) -> None;
 }
 

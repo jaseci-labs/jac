@@ -50,10 +50,11 @@ obj ModuleManager {
     def trim -> None;
     def trim_editor_caches {
         chars = sum(len(view.source) for view in self.source_views.values());
-        while self.source_views and (
-            len(self.source_views) > self.editor_budget.max_source_views
-            or chars > self.editor_budget.max_source_chars
-        ) {
+        while self.source_views
+            and (
+                len(self.source_views) > self.editor_budget.max_source_views
+                or chars > self.editor_budget.max_source_chars
+            ) {
             oldest = next(iter(self.source_views));
             chars -= len(self.source_views.pop(oldest).source);
         }
@@ -63,9 +64,11 @@ obj ModuleManager {
             count -= len(self.completions.pop(oldest));
         }
     }
+
     def has_current_analysis(path: str) -> bool {
         products = self.products.get(path);
-        return products is not None and bool(products.index_shards)
+        return products is not None
+            and bool(products.index_shards)
             and products.is_current(self.program.source_store);
     }
 
@@ -74,9 +77,12 @@ obj ModuleManager {
             import from jaclang.lsp.server.utils { get_symbols_for_outline }
             for (file, manager) in self.sem_managers.items() {
                 products = self.products.get(file);
-                if products is not None and products.unit_path == path
+                if products is not None
+                    and products.unit_path == path
                     and products.outline is None {
-                    products.outline = get_symbols_for_outline(manager.ir.sym_tab, file);
+                    products.outline = get_symbols_for_outline(
+                        manager.ir.sym_tab, file
+                    );
                 }
             }
         }

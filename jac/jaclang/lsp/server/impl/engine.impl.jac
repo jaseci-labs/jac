@@ -367,7 +367,9 @@ impl JacLangServer.type_check_file(
                         self.update_modules(main_path, build, files=files_to_check);
                         if len(shards) == len(builds) {
                             for path in files_to_check {
-                                self.module_manager.products[path].index_shards = tuple(shards);
+                                self.module_manager.products[path].index_shards = tuple(
+                                    shards
+                                );
                             }
                         }
                     }
@@ -452,7 +454,8 @@ impl JacLangServer._run_query(request: Request) -> None {
         now = snapshot.documents.get(uri);
         if (before is None) != (now is None)
             or (
-                before is not None and now is not None
+                before is not None
+                and now is not None
                 and (before.version != now.version or before.source != now.source)
             ) {
             self._finish_request(
@@ -497,6 +500,7 @@ impl JacLangServer._run_query(request: Request) -> None {
                     self.module_manager.invalidate(path);
                 }
                 self._sync_sources(self.workspace.snapshot(live=True), inputs.modules);
+            }
         }
     }
 }

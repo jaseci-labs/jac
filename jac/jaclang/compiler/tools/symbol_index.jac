@@ -410,7 +410,8 @@ obj SymbolIndex(SymbolExtractor) {
             return;
         }
         changed = {
-            path for path in paths
+            path
+            for path in paths
             if previous.inputs.files.get(path) != current.inputs.files.get(path)
         };
         if not changed {
@@ -423,10 +424,11 @@ obj SymbolIndex(SymbolExtractor) {
                 continue;
             }
             relevant = changed & shard.inputs.files.keys();
-            if not relevant or any(
-                shard.inputs.files[path] != previous.inputs.files.get(path)
-                for path in relevant
-            ) {
+            if not relevant
+                or any(
+                    shard.inputs.files[path] != previous.inputs.files.get(path)
+                    for path in relevant
+                ) {
                 continue;
             }
             files = dict(shard.inputs.files);

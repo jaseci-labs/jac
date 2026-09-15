@@ -81,7 +81,9 @@ test "request position conversion uses its captured source and restores the live
         assert workspace.convert_positions({'line': 0, 'character': 2}, uri)
             == {'line': 0, 'character': 3};
         assert workspace.snapshot().revision == snapshot.revision;
-        assert not inputs.is_current(SourceStore(workspace.snapshot(live=True).sources()));
+        assert not inputs.is_current(
+            SourceStore(workspace.snapshot(live=True).sources())
+        );
     }
     assert workspace.get_text_document(uri).source == 'axb\n';
 }
