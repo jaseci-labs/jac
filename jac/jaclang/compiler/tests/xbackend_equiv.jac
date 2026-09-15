@@ -207,6 +207,17 @@ def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple {
     return (eng, ir);
 }
 
+def compile_native_errors(fixture: str) -> list[str] {
+    # compile_native for fixtures whose native lane is EXPECTED to emit
+    # diagnostics; returns the rendered errors for assertion.
+    prog = JacProgram();
+    prog.compile(
+        file_path=str(os.path.join(_fixture_shadow_dir(), fixture)),
+        options=CompileOptions()
+    );
+    return [str(e) for e in prog.errors_had] if prog.errors_had else [];
+}
+
 def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
     addr = eng.get_function_address(name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
