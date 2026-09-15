@@ -397,7 +397,15 @@ obj IndexShard {
 obj SymbolIndex(SymbolExtractor) {
     has shards: dict[tuple[str, str], IndexShard] = {},
         symbols: dict[str, set[tuple[str, str]]] = {},
-        names: dict[str, set[tuple[str, str]]] = {};
+        names: dict[str, set[tuple[str, str]]] = {},
+        input_units: dict[str, set[tuple[str, str]]] = {};
+
+    def affected_by(paths: set[str]) -> set[str] {
+        return {
+            unit for path in paths
+            for (_, unit) in self.input_units.get(os.path.realpath(path), set())
+        };
+    }
 
     def refresh_dependents(previous: IndexShard, current: IndexShard) {
         if previous.interface is None or previous.interface != current.interface {
@@ -445,6 +453,15 @@ obj SymbolIndex(SymbolExtractor) {
         if previous is None {
             return;
         }
+        for path in previous.inputs.files {
+            entries = self.input_units.get(path);
+            if entries is not None {
+                entries.discard(key);
+                if not entries {
+                    self.input_units.pop(path);
+                }
+            }
+        }
         for symbol in previous.references {
             self.symbols[symbol].discard(key);
             if not self.symbols[symbol] {
@@ -466,6 +483,9 @@ obj SymbolIndex(SymbolExtractor) {
         self.discard(shard.path, shard.context);
         key = (shard.context, shard.path);
         self.shards[key] = shard;
+        for path in shard.inputs.files {
+            self.input_units.setdefault(path, set()).add(key);
+        }
         for symbol in shard.references {
             self.symbols.setdefault(symbol, set()).add(key);
         }

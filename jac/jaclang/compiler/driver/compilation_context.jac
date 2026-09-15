@@ -126,6 +126,10 @@ obj SourceSnapshot {
         read_paths: set[str] = set(),
         digests: dict[str, str | None] = {};
 
+    def exists(path: str) -> bool {
+        return self.digest(os.path.realpath(path)) is not None;
+    }
+
     def digest(path: str) -> str | None {
         self.read_paths.add(path);
         if path not in self.digests {
@@ -221,7 +225,7 @@ obj SourceStore {
         captured = SourceSnapshot(dict(self.overrides));
         self.snapshot = captured;
         try {
-            with source_scope(captured.read, self.annexes) {
+            with source_scope(captured.read, self.annexes, captured.exists) {
                 yield captured;
             }
         } finally {

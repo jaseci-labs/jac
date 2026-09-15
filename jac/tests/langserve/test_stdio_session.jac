@@ -151,3 +151,37 @@ test "watched closed dependencies invalidate consumers and recover after deletio
         }
     }
 }
+
+test "creating a previously missing dependency refreshes its open consumer" {
+    with TemporaryDirectory() as directory {
+        library = Path(directory) / 'new_library.jac';
+        consumer = Path(directory) / 'app.jac';
+        source = 'import from .new_library { answer }\ndef run -> int { return answer(); }\n';
+        consumer.write_text(source);
+        client = LspClient(directory);
+        try {
+            client.open(str(consumer), source);
+            first = client.diagnostics(str(consumer), 1, timeout=60.0);
+            assert any(
+                item.get('severity') == 1
+                for item in first.body['params']['diagnostics']
+            );
+            started = time.monotonic();
+            library.write_text('def answer -> int { return 42; }\n');
+            client.notify(
+                'workspace/didChangeWatchedFiles',
+                {'changes': [{'uri': library.as_uri(), 'type': 1}]}
+            );
+            recovered = client.until(
+                lambda (body: dict) -> bool { return body.get('method')
+                    == 'textDocument/publishDiagnostics'
+                    and body.get('params', {}).get('uri') == consumer.as_uri(); },
+                since=started,
+                timeout=60.0
+            );
+            assert not recovered.body['params']['diagnostics'];
+        } finally {
+            client.close();
+        }
+    }
+}

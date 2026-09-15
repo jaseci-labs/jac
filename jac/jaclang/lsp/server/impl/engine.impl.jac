@@ -112,7 +112,7 @@ impl JacLangServer._sync_sources(
 ) -> None {
     changed = self.program.source_store.set_overrides(snapshot.sources());
     changed.update(changed_paths or set());
-    affected: set[str] = set();
+    affected = self.module_manager.index.affected_by(changed);
     producers = {discover_base_file(path) or path for path in changed};
     open_units = {
         discover_base_file(os.path.realpath(document.path))

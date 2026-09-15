@@ -6,7 +6,8 @@ import type from jaclang.compiler.frontend.srcloc { Span }
 
 obj SourceAccess {
     has read: Callable[[str], str],
-        annexes: Callable[[str], list[tuple[str, str]]] | None = None;
+        annexes: Callable[[str], list[tuple[str, str]]] | None = None,
+        exists: Callable[[str], bool] | None = None;
 }
 
 glob _source_access: ContextVar[SourceAccess | None] = ContextVar(
@@ -16,9 +17,10 @@ glob _source_access: ContextVar[SourceAccess | None] = ContextVar(
 @contextmanager
 def source_scope(
     reader: Callable[[str], str],
-    annexes: Callable[[str], list[tuple[str, str]]] | None = None
+    annexes: Callable[[str], list[tuple[str, str]]] | None = None,
+    exists: Callable[[str], bool] | None = None
 ) -> Iterator[None] {
-    token = _source_access.set(SourceAccess(reader, annexes));
+    token = _source_access.set(SourceAccess(reader, annexes, exists));
     try {
         yield ;
     } finally {
@@ -402,6 +404,9 @@ def source_exists(file_path: str) -> bool {
     access = _source_access.get();
     if access is None {
         return os.path.isfile(file_path);
+    }
+    if access.exists is not None {
+        return access.exists(file_path);
     }
     try {
         access.read(file_path);

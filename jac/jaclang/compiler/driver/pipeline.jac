@@ -285,6 +285,7 @@ def compile_module(
         }
         complete = not task.parse_failed
             and not task.blocked
+            and not program.diags.owned_errors(path)
             and (options.cancel_token is None or not options.cancel_token.is_set());
     } finally {
         program.deps.finish(path, complete);

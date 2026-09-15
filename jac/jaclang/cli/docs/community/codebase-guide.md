@@ -189,6 +189,12 @@ timestamps alone do not identify a revision. `project/config.jac` scopes project
 selection and discovery caches to an operation, so one workspace cannot change
 another workspace's compilation settings.
 
+Import-resolution probes are inputs too, including files that do not yet exist.
+The source snapshot records their absence without decoding binary assets, and
+the symbol index maps captured input paths back to their consuming units. File
+creation can therefore recheck a previously unresolved import. Compilations
+with semantic errors preserve their last known dependency edges.
+
 The module hub owns both lookup entries and links from the program root.
 Replacement, invalidation, and release detach displaced trees through that
 shared owner. Parser trees transfer directly to their compilation context;

@@ -165,3 +165,21 @@ test "only read overrides participate in an operation revision" {
         assert not inputs.is_current(store);
     }
 }
+
+test "existence probes capture missing and binary inputs without decoding them" {
+    import from jaclang.project.source { source_exists }
+    with TemporaryDirectory() as directory {
+        missing = Path(directory) / 'new.jac';
+        binary = Path(directory) / 'asset.bin';
+        binary.write_bytes(b'\xff\x00\xfe');
+        store = SourceStore();
+        with store.capture() as inputs {
+            assert source_exists(str(binary));
+            assert not source_exists(str(missing));
+            assert str(missing) in inputs.manifest().files;
+            missing.write_text('glob value = 1;\n');
+            assert not source_exists(str(missing));
+            assert not inputs.is_current(store);
+        }
+    }
+}
