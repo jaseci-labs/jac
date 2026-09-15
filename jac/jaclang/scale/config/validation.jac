@@ -5,3 +5,4 @@ def scale_schema_options -> dict[str, any];
 def validate_scale_config(raw: dict[str, any] | None) -> list[str];
 def validate_app_scale_config(raw: dict[str, any] | None, app_name: str) -> list[str];
 def _declared_target_findings(raw: dict[str, any]) -> list[str];
+def _scheduler_bound_findings(raw: dict[str, any]) -> list[str];

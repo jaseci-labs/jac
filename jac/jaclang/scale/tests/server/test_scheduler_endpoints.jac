@@ -6,7 +6,7 @@ generic 500 SCHEDULER_ERROR and the 503 path was unreachable.
 
 import from jaclang.data.pgwire { PgWireError }
 import from jaclang.scale.server.jobs_ext { _err_response }
-import from jaclang.scale.scheduler.scheduler { TriggerSpec }
+import from jaclang.scale.scheduler.scheduler { MemoryJobStore, TriggerSpec }
 
 
 test "pg wire failure maps to 503 storage unavailable" {
@@ -67,4 +67,48 @@ test "a zero interval is still refused" {
         caught = str(e);
     }
     assert "> 0" in caught , f"expected the positive-interval message, got {caught!r}";
+}
+
+
+test "the quota is decided where the row is written" {
+    # #9032 again: the cap used to be a count read before a separate insert,
+    # so two concurrent creates could both see room and both take it. The
+    # store decides now, so the check and the write cannot be separated.
+    store = MemoryJobStore();
+    for i in range(3) {
+        placed = store.insert_within_quota(
+            {"job_id": f"j{i}", "created_by": "ana", "status": "active"}, "ana", 3
+        );
+        assert placed , f"job {i} should fit under a cap of 3";
+    }
+    refused = store.insert_within_quota(
+        {"job_id": "j3", "created_by": "ana", "status": "active"}, "ana", 3
+    );
+    assert not refused , "the fourth job must be refused at a cap of 3";
+    (rows, total) = store.find_active(created_by="ana");
+    assert total == 3 , f"the refused job must not have been written, got {total}";
+}
+
+
+test "another account's jobs do not count against mine" {
+    store = MemoryJobStore();
+    store.insert_within_quota(
+        {"job_id": "a1", "created_by": "ana", "status": "active"}, "ana", 1
+    );
+    placed = store.insert_within_quota(
+        {"job_id": "b1", "created_by": "ben", "status": "active"}, "ben", 1
+    );
+    assert placed , "ben's first job must fit under his own cap";
+}
+
+
+test "a cap of zero means unlimited" {
+    store = MemoryJobStore();
+    for i in range(5) {
+        assert store.insert_within_quota(
+            {"job_id": f"u{i}", "created_by": "ana", "status": "active"}, "ana", 0
+        );
+    }
+    (rows, total) = store.find_active(created_by="ana");
+    assert total == 5 , total;
 }

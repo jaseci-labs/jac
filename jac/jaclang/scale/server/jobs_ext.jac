@@ -153,24 +153,19 @@ obj JobsExtension(ServerExtension) {
                     400
                 );
             }
-            cap = _job_cap();
-            if cap > 0 and not _is_admin(str(user_id)) {
-                (_held, held_total) = JacScaleScheduler.instance().list_jobs(
-                    limit=1, offset=0, created_by=str(user_id)
+            cap = 0 if _is_admin(str(user_id)) else _job_cap();
+            try {
+                job = JacScaleScheduler.instance().create_job(
+                    name=name, spec=spec, created_by=str(user_id), max_active=cap
                 );
-                if held_total >= cap {
+                if job is None {
                     return _fail(
                         'QUOTA_EXCEEDED',
-                        f'{held_total} of {cap} scheduled jobs already in use; '
-                        'delete one or raise [scale.scheduler] max_jobs_per_user',
+                        f'already at the {cap}-job limit; delete one or raise '
+                        '[scale.scheduler] max_jobs_per_user',
                         429
                     );
                 }
-            }
-            try {
-                job = JacScaleScheduler.instance().create_job(
-                    name=name, spec=spec, created_by=str(user_id)
-                );
                 return TransportResponse.success(
                     data=job, meta=Meta(extra={'http_status': 201})
                 );
