@@ -191,14 +191,7 @@ impl JcirGenPass.nod(
     l2 = last_line if (last_line and last_line > l1) else l1;
     c2 = col_end if (col_end and col_end > c1) else c1;
     return CgNode(
-        cls=cls_name,
-        keys=keys,
-        vals=vals,
-        l1=l1,
-        c1=c1,
-        l2=l2,
-        c2=c2,
-        jac_src=src
+        cls=cls_name, keys=keys, vals=vals, l1=l1, c1=c1, l2=l2, c2=c2, jac_src=src
     );
 }
 

@@ -277,11 +277,8 @@ obj OspEngine {
     }
 
     def next_slot(
-        rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc,
-        run: bool = False
+        rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc, run: bool = False
     ) -> (Slot | None) {
-        # Synchronous spawns execute a complete event band here. Async callers
-        # still receive one slot at a time so they can await its result.
         if scope.frames is None {
             scope.frames = [];
         }
@@ -302,7 +299,9 @@ obj OspEngine {
                         scope.cur_a = scope.wlk;
                         if run {
                             s.fn(scope.cur_a, scope.cur_b);
-                            if scope.disengaged or scope.skip_node or (not scope.next) {
+                            if scope.disengaged
+                                or scope.skip_node
+                                or (not scope.next) {
                                 break;
                             }
                             continue;
@@ -354,7 +353,9 @@ obj OspEngine {
                                 scope.stage = 3;
                                 return None;
                             }
-                            if scope.skip_node { break; }
+                            if scope.skip_node {
+                                break;
+                            }
                         }
                         if not scope.skip_node {
                             for s in plan.n_entry_u {
@@ -365,7 +366,9 @@ obj OspEngine {
                                     scope.stage = 3;
                                     return None;
                                 }
-                                if scope.skip_node { break; }
+                                if scope.skip_node {
+                                    break;
+                                }
                             }
                         }
                         if not scope.skip_node {
@@ -377,7 +380,9 @@ obj OspEngine {
                                     scope.stage = 3;
                                     return None;
                                 }
-                                if scope.skip_node { break; }
+                                if scope.skip_node {
+                                    break;
+                                }
                             }
                         }
                         scope.skip_node = False;
@@ -499,7 +504,9 @@ obj OspEngine {
                                 scope.stage = 3;
                                 return None;
                             }
-                            if scope.skip_node { break; }
+                            if scope.skip_node {
+                                break;
+                            }
                         }
                         if not scope.skip_node {
                             for s in plan.n_exit_u {
@@ -510,7 +517,9 @@ obj OspEngine {
                                     scope.stage = 3;
                                     return None;
                                 }
-                                if scope.skip_node { break; }
+                                if scope.skip_node {
+                                    break;
+                                }
                             }
                         }
                         if not scope.skip_node {
@@ -522,7 +531,9 @@ obj OspEngine {
                                     scope.stage = 3;
                                     return None;
                                 }
-                                if scope.skip_node { break; }
+                                if scope.skip_node {
+                                    break;
+                                }
                             }
                         }
                         scope.skip_node = False;

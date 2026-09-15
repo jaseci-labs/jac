@@ -1083,8 +1083,6 @@ impl UniNode._sub_node_tab.getter -> dict[(type, list[UniNode])] {
 }
 
 impl UniNode._construct_sub_node_tab -> None {
-    # Index this subtree on demand. Building an index at every descendant
-    # duplicates the same references at each level of a large syntax tree.
     pending = self.kid;
     ordered: list[UniNode] = [];
     while pending {
@@ -1095,7 +1093,7 @@ impl UniNode._construct_sub_node_tab -> None {
         ordered.append(nd);
         pending.extend(nd.kid);
     }
-    # Reverse the right-to-left preorder to preserve the existing postorder.
+
     for nd in reversed(ordered) {
         kind = type(nd);
         if kind in self.__sub_node_tab {

@@ -51,10 +51,10 @@ walker EndpointEffectPass(UniPass) {
             }
             self.cur_node = nd;
             if isinstance(nd, Ability) {
-                self.enter_ability(nd);
+                self._analyze_ability(nd);
             }
             if isinstance(nd, Archetype) {
-                self.enter_archetype(nd);
+                self._analyze_archetype(nd);
             }
             pending.extend(reversed(nd.kid));
         }
@@ -74,33 +74,41 @@ walker EndpointEffectPass(UniPass) {
     }
 
     can enter_ability with Ability entry {
+        self._analyze_ability(here);
+    }
+
+    def _analyze_ability(nd: Ability) {
         import from jaclang.compiler.frontend.codeinfo { endpoint_key }
         if (
-            not here.is_method
-            and not here.in_client_context()
-            and here.access is not None
-            and here.access.tag.name == Tok.KW_PUB
-            and isinstance(here.name_ref, Name)
+            not nd.is_method
+            and not nd.in_client_context()
+            and nd.access is not None
+            and nd.access.tag.name == Tok.KW_PUB
+            and isinstance(nd.name_ref, Name)
         ) {
             self.ir_in.gen.interop_manifest.endpoint_effects[
-                endpoint_key(self.ir_in, "func", here.name_ref.sym_name)
+                endpoint_key(self.ir_in, "func", nd.name_ref.sym_name)
             ] = self._classify(
-                self._resolved_body(here), "func", here.name_ref.sym_name, here
+                self._resolved_body(nd), "func", nd.name_ref.sym_name, nd
             );
         }
     }
 
     can enter_archetype with Archetype entry {
+        self._analyze_archetype(here);
+    }
+
+    def _analyze_archetype(nd: Archetype) -> None {
         import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-        if here.arch_kind != "walker" {
+        if nd.arch_kind != "walker" {
             return;
         }
-        if not isinstance(here.name, Name) {
+        if not isinstance(nd.name, Name) {
             return;
         }
         self.ir_in.gen.interop_manifest.endpoint_effects[
-            endpoint_key(self.ir_in, "walker", here.name.sym_name)
-        ] = self._classify(self._resolved_body(here), "walker", here.name.sym_name);
+            endpoint_key(self.ir_in, "walker", nd.name.sym_name)
+        ] = self._classify(self._resolved_body(nd), "walker", nd.name.sym_name);
     }
 
     def _classify(

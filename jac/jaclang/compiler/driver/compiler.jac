@@ -95,8 +95,6 @@ import from jaclang.compiler.driver.na_coverage {
     na_demotion_note
 }
 
-# Large compilation units keep their syntax graphs alive through code generation.
-# Avoid repeatedly scanning them; _compile_once restores the caller's thresholds.
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (5000000, 50, 100);
 
 obj JacCompiler {

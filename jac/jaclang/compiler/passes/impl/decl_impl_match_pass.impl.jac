@@ -298,7 +298,9 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(root_node: UniNode) -> None {
         chain = trailer_node.as_attr_list;
         if chain and chain[0].sym is None {
             scope = trailer_node.sym_tab;
-            if scope is None { continue; }
+            if scope is None {
+                continue;
+            }
             try {
                 scope.chain_use_lookup(chain);
             } except ValueError {}
