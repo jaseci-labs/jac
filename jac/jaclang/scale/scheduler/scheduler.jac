@@ -10,11 +10,19 @@ import from jaclang.scale._optdeps.apscheduler {
     HAS_APSCHEDULER
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.task_scheduler { Scheduler, ScheduleTrigger }
+import from jaclang.server.task_scheduler {
+    Scheduler,
+    ScheduleTrigger,
+    schedule_namespace,
+    tick_of
+}
 import from jaclang.server.shared_store { open_docs_store }
 
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',
+     _EPOCH: datetime.datetime = datetime.datetime(
+         1970, 1, 1, tzinfo=datetime.timezone.utc
+     ),
      logger = logging.getLogger(__name__);
 
 obj JobStore {
@@ -34,7 +42,8 @@ obj JobStore {
 
 obj PgJobStore(JobStore) {
     has store: any,
-        _collection: str;
+        _collection: str,
+        _service: str = "";
 
     def insert(job: dict) -> str;
     def find_active(
@@ -84,6 +93,7 @@ obj TriggerSpec {
     static def from_dict(d: dict) -> TriggerSpec;
     def to_dict -> dict;
     def apscheduler_kwargs -> dict;
+    def due_tick(now: datetime.datetime) -> int;
 }
 
 obj JacScaleScheduler {
@@ -92,7 +102,9 @@ obj JacScaleScheduler {
         _store: JobStore | None = None,
         _server: any | None = None,
         _user_exists_cache: dict[str, float] postinit,
-        _user_exists_ttl: float = 30.0;
+        _user_exists_ttl: float = 30.0,
+        _service: str = "",
+        _failing_claims: set[str] = set();
 
     def postinit -> None;
     static def instance -> JacScaleScheduler;
@@ -114,7 +126,9 @@ obj JacScaleScheduler {
     ) -> (dict | None);
 
     def delete_job(job_id: str, acting_as: str | None = None) -> bool;
-    def _acquire_fire_lease(job_id: str, spec: TriggerSpec) -> bool;
+    def _claim_fire(job_id: str, spec: TriggerSpec, now: datetime.datetime) -> bool;
+    def _target(name: str, is_walker: bool) -> any;
+    def _serves(job: dict) -> bool;
     def _notify_jobs_changed(job_id: str) -> None;
     def _start_jobs_listener -> None;
     def _on_jobs_changed(payload: str) -> None;

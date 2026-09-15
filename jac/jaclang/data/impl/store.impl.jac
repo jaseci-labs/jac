@@ -1142,6 +1142,31 @@ impl PgStore.kv_release_lease(key: str, owner: str) -> bool {
 }
 
 
+impl PgStore.kv_claim_tick(key: str, tick: int) -> bool {
+    with self._lock {
+        conn: any = self._side();
+        rows = conn.run(
+            """
+            INSERT INTO kv_state (key, value, expires_at, updated_at)
+            VALUES (:k, CAST(:t AS bigint)::text, NULL, now())
+            ON CONFLICT (key) DO UPDATE SET
+                value = EXCLUDED.value,
+                updated_at = now()
+            WHERE CASE
+                WHEN kv_state.value ~ '^[0-9]+$'
+                THEN kv_state.value::bigint < CAST(:t AS bigint)
+                ELSE true
+            END
+            RETURNING key
+            """,
+            k=f"tick:{key}",
+            t=int(tick)
+        );
+    }
+    return bool(rows);
+}
+
+
 impl PgStore.quarantine(
     missing_id: UUID, referrer_id: (UUID | None), kind: str
 ) -> None {
