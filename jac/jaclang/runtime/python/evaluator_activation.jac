@@ -26,3 +26,14 @@ import from c {
         frame: lin PyFrameRef from (storage, tstate), instruction: &JacPyCodeUnit from frame)
         -> lin PyVMRef from (storage, tstate);
 }
+
+# A JIT stencil lends its activation to one native uop. Consuming this linear
+# permission publishes a continuation to the caller's storage; the trampoline
+# regains the activation only after the native body returns. It cannot escape.
+@foreign_resource(abi="pointer", empty=0, drop=jacpy_jit_step_invalid_drop,
+                  aliasing="shared", reentrant_drop=False)
+obj PyJITStepRef;
+import from c {
+    @foreign_call(requires=["gil"], errors="none", reentrant=False)
+    def jacpy_jit_step_invalid_drop(step: own PyJITStepRef);
+}

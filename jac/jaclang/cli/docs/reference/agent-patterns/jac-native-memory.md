@@ -228,6 +228,9 @@ The checker tracks the aggregate, not individual C-slot lifetimes. Keep scratch
 addresses in the outer evaluation storage so they survive native tail transfers.
 Edit `bootstrap/python/generate_evaluator.py` and regenerate its checked-in
 outputs; do not hand-edit handler output or restore C fallback handlers.
-Optional JIT stencil inputs remain C and must be reported separately from the
-native tier-two interpreter. Consult the migration status before claiming
-full ownership proof, native JIT stencils, or compatibility/performance parity.
+JIT stencils use the same native uop policies under a linear `PyJITStepRef`.
+A consumed step permission publishes the continuation to caller storage; its
+C trampoline regains access after the native body returns. Preserve the pinned
+patch points and `preserve_none` ABI, and require native bodies and expression
+adapters to inline into stencils. Consult the migration status before claiming
+per-slot ownership proof or compatibility/performance parity.

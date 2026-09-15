@@ -11,6 +11,7 @@ import sys
 
 root = Path(sys.argv[1]).resolve()
 output = Path(sys.argv[2]).resolve()
+cpython_source = Path(sys.argv[4]).resolve()
 triple = {
     "linux-x86_64": "x86_64-unknown-linux-gnu",
     "linux-aarch64": "aarch64-unknown-linux-gnu",
@@ -42,6 +43,12 @@ if generation["cpython"] != pin["version"]:
     raise RuntimeError("Native handler generation does not match the CPython pin")
 if generation["generator_sha256"] != hashlib.sha256((root / "bootstrap/python/generate_evaluator.py").read_bytes()).hexdigest():
     raise RuntimeError("Regenerate native evaluator sources after changing the generator")
+# The allowlisted extraction is still pristine here: the bridge patch is
+# applied only after native preparation. Compare against the exact instruction
+# definitions and upstream generators that supplied the checked-in sources.
+for name, expected in generation["inputs"].items():
+    if hashlib.sha256((cpython_source / name).read_bytes()).hexdigest() != expected:
+        raise RuntimeError("Regenerate native evaluator for changed CPython input: " + name)
 for name, expected in generation["outputs"].items():
     generated_path = root / ("jaclang/runtime/python" if name.endswith(".jac") else "bootstrap/python/generated") / name
     if hashlib.sha256(generated_path.read_bytes()).hexdigest() != expected:
@@ -105,6 +112,31 @@ def emit_evaluator_unit(module_name, artifact_name, exports):
     missing = set(exports) - defined
     if missing:
         raise RuntimeError("Missing native evaluator definitions: " + ", ".join(sorted(missing)))
+    if artifact_name == "evaluator_jit":
+        # Emit a small independent IR unit per uop. JIT builds can compile
+        # stencils concurrently without reparsing the entire native evaluator.
+        directory = output / "jit"
+        directory.mkdir(exist_ok=True)
+        records = {}
+        for opname, symbol in sorted(generation["jit_exports"].items()):
+            body = support_module.clone()
+            internalize_native_implementation(body, [symbol])
+            with llvm.create_pipeline_tuning_options(speed_level=0) as tuning:
+                with llvm.create_pass_builder(machine, tuning) as passes:
+                    with llvm.ModulePassManager() as manager:
+                        manager.add_global_dead_code_eliminate_pass()
+                        manager.add_strip_dead_prototype_pass()
+                        manager.run(body, passes)
+            body.verify()
+            for function in body.functions:
+                if function.name.startswith("__jac_"):
+                    raise RuntimeError("Native JIT body retains Jac machinery: " + function.name)
+            text = str(body)
+            (directory / (opname + ".ll")).write_text(text)
+            records[opname] = {"symbol": symbol, "ir_sha256": hashlib.sha256(text.encode()).hexdigest()}
+            body.close()
+        (directory / "manifest.json").write_text(json.dumps(records, indent=2, sort_keys=True) + "\n")
+        return
     if artifact_name == "evaluator_entry":
         # The generated ABI expressions need the target's configured headers.
         # Keep checked native IR until that C IR can be linked and optimized.
@@ -223,6 +255,7 @@ emit_evaluator_unit("evaluator_utilities", "evaluator_utilities", [
 emit_evaluator_unit("evaluator_entry", "evaluator_entry", [
     "jacpy_eval_frame_entry", "jacpy_enter_recursive_py", "jacpy_leave_recursive_py",
 ])
+emit_evaluator_unit("evaluator_jit", "evaluator_jit", list(generation["jit_exports"].values()))
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
     "jaclang/runtime/python/evaluator_lookup.jac",
@@ -250,6 +283,9 @@ provenance_inputs = [
     "bootstrap/python/generated/evaluator-generation.json",
     "jaclang/runtime/python/evaluator_activation.jac",
     "jaclang/runtime/python/evaluator_handlers.jac",
+    "jaclang/runtime/python/evaluator_jit.jac",
+    "bootstrap/python/generated/evaluator_jit_abi.c",
+    "bootstrap/python/evaluator_jit_template.c", "bootstrap/python/link_jit.py",
 ]
 (output / "evaluator-provenance.json").write_text(json.dumps({
     "schema": 1,
@@ -260,8 +296,9 @@ provenance_inputs = [
     "dispatch": "checked native tail transfers",
     "opcode_handlers": "jac-native-control/typed-c-slot-primitives",
     "tier_two_executor": "jac-native-interpreter",
-    "jit_stencils": "retained CPython generation inputs; optional JIT configuration",
-    "retired_runtime_sources": ["Python/ceval.c", "Python/generated_cases.c.h", "Python/opcode_targets.h"],
+    "jit_stencils": "native Jac uops with CPython patch-point ABI and relocation machinery",
+    "jit_ir": json.loads((output / "jit/manifest.json").read_text()),
+    "retired_runtime_sources": ["Python/ceval.c", "Python/generated_cases.c.h", "Python/opcode_targets.h", "Python/executor_cases.c.h", "Python/ceval_macros.h"],
     "units": evaluator_units,
     "inputs": {
         path: hashlib.sha256((root / path).read_bytes()).hexdigest()

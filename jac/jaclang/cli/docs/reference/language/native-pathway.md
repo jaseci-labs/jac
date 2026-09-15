@@ -1054,10 +1054,12 @@ typed C scratch storage. C expressions retain the pinned ABI and reference
 operations; the build merges their LLVM IR with native Jac before optimization.
 The checker tracks the activation as an aggregate, not each internal C slot.
 
-The candidate removes `ceval.c`, `generated_cases.c.h`, and `opcode_targets.h`
-from runtime sources and object prerequisites. `bytecodes.c` remains generation
-input; `executor_cases.c.h` and `ceval_macros.h` remain inputs for the optional
-CPython JIT stencil generator. Those C stencils are explicitly retained.
+The candidate removes `ceval.c`, `generated_cases.c.h`, `opcode_targets.h`,
+`executor_cases.c.h`, and `ceval_macros.h` from runtime sources and their build
+prerequisites. `bytecodes.c` remains generation input. Optional JIT stencils use
+native Jac uop bodies, inlined into a C patch-point trampoline that preserves
+CPython's `preserve_none` tail ABI and relocation machinery. A linear step
+permission prevents its native body from retaining the caller's activation.
 The full bootstrap host still uses its complete pinned CPython implementation.
 
 The build emits `python/build/jacpython-evaluator-provenance.json` with source,

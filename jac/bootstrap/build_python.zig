@@ -23,6 +23,8 @@ const inputs = [_][]const u8{
     "bootstrap/python/link_evaluator.py", "bootstrap/python/generated/evaluator_scratch.h",
     "bootstrap/python/generated/evaluator_tier1_abi.c", "bootstrap/python/generated/evaluator_tier2_abi.c",
     "bootstrap/python/generated/evaluator-generation.json",
+    "bootstrap/python/generated/evaluator_jit_abi.c", "bootstrap/python/evaluator_jit_template.c",
+    "bootstrap/python/link_jit.py",
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
@@ -182,7 +184,8 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
             std.mem.endsWith(u8, path, "/evaluator_entry.c") or std.mem.endsWith(u8, path, "/evaluator_entry.h") or
             std.mem.endsWith(u8, path, "/evaluator_activation.c") or std.mem.endsWith(u8, path, "/evaluator_activation.h") or
             std.mem.endsWith(u8, path, "/evaluator_operations.h") or std.mem.endsWith(u8, path, "/generate_evaluator.py") or
-            std.mem.endsWith(u8, path, "/link_evaluator.py") or std.mem.startsWith(u8, path, "bootstrap/python/generated/"))) continue;
+            std.mem.endsWith(u8, path, "/link_evaluator.py") or std.mem.endsWith(u8, path, "/link_jit.py") or
+            std.mem.endsWith(u8, path, "/evaluator_jit_template.c") or std.mem.startsWith(u8, path, "bootstrap/python/generated/"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
@@ -431,6 +434,8 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
         "bootstrap/python/link_evaluator.py", "bootstrap/python/generated/evaluator_scratch.h",
         "bootstrap/python/generated/evaluator_tier1_abi.c", "bootstrap/python/generated/evaluator_tier2_abi.c",
         "bootstrap/python/generated/evaluator-generation.json",
+        "bootstrap/python/generated/evaluator_jit_abi.c", "bootstrap/python/evaluator_jit_template.c",
+        "bootstrap/python/link_jit.py",
         "jaclang/native.pyi",
     }) |path| {
         const before_refs = try buildKey(io, a, hostPlatform(), root, host, .jacpython);

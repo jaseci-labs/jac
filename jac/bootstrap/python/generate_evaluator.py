@@ -49,6 +49,7 @@ GLOBAL_TYPES = {
     'uopcode': 'uint16_t',
     'lastuop': 'int',
     'trace_uop_execution_counter': 'uint64_t',
+    '_oparg': 'uint16_t', '_operand0': 'uint64_t', '_operand1': 'uint64_t', '_target': 'uint32_t',
 }
 # These are representation choices enforced by evaluator_refs.h, not guesses
 # about optional optimizers. Native handlers always use tail-entry semantics.
@@ -104,6 +105,7 @@ class Handler:
     adapters: list[str] = field(default_factory=list)
     declarations: list[str] = field(default_factory=list)
     source_operations: list[dict] = field(default_factory=list)
+    jit: bool = False
 
 
 class Lowerer:
@@ -164,6 +166,8 @@ class Lowerer:
         jac_result = ' -> own PyObjectRef' if result else ' -> i32' if condition or scalar else ''
         param = 'vm: lin PyVMRef from (storage, tstate), storage: &JacPyVMStorage, tstate: &JacPyThreadState' if result else 'vm: &PyVMRef'
         c_params = 'JacPyVMRef vm, JacPyVMStorage *storage, PyThreadState *owner_thread' if result else 'JacPyVMRef vm'
+        if self.handler.jit:
+            param = param.replace('PyVMRef', 'PyJITStepRef')
         self.handler.declarations.append(('    ' + (PURE if pure else PROTOCOL)) + '\n    def ' + name + '(' + param + ')' + jac_result + ';')
         # Macros in the pinned headers refer to these registers implicitly.
         # Reentrant operations publish the frame stack at the upstream points,
@@ -188,7 +192,25 @@ class Lowerer:
         return name + '(' + call_args + ')'
 
     def transfer(self, destination):
+        if self.handler.jit:
+            if destination != 'tier2_dispatch':
+                raise ValueError('unsupported JIT continuation: ' + destination)
+            self.jit_finish(0)
+            return
         self.emit('return __musttail(jacpy_vm_' + destination + '(' + ARGUMENTS + '));')
+
+    def jit_finish(self, action):
+        self.serial += 1
+        name = 'jacpy_abi_' + self.handler.name + '_' + str(self.serial)
+        self.handler.declarations.append('    ' + PURE + '\n    def ' + name +
+            '(storage: &JacPyVMStorage, tstate: &JacPyThreadState, vm: lin PyJITStepRef from (storage, tstate)) -> i32;')
+        self.handler.adapters.append('__attribute__((always_inline)) int32_t ' + name +
+            '(JacPyVMStorage *storage, PyThreadState *tstate, JacPyVMRef vm) {\n'
+            '    (void)storage; (void)tstate; (void)vm;\n    return ' + str(action) + ';\n}\n')
+        label = {0: 'continue', 1: 'jump', 2: 'error', 3: 'tier-one return', 4: 'executor chain'}[action]
+        self.handler.source_operations.append({'symbol': name, 'kind': 'jit-continuation', 'action': action, 'meaning': label})
+        self.emit('# Publish ' + label + ' and release the one-step permission.')
+        self.emit('return ' + name + '(' + ARGUMENTS + ');')
 
     def config(self, token):
         directive = token.text.strip()
@@ -233,11 +255,15 @@ class Lowerer:
             head += 1
         if head == len(raw):
             return False
+        if 'static' in raw[:head]:
+            raise ValueError('static storage needs an explicit ABI binding: ' + text_tokens(tokens))
         typename = raw[head]
         if typename not in C_TYPES and not re.fullmatch(r'(?:_?Py)[A-Za-z_0-9]+', typename):
             return False
         # A call beginning with PySomething(...) is an expression, not a type.
         if head + 1 < len(raw) and raw[head + 1] == '(':
+            if head + 2 < len(raw) and raw[head + 2] == '*':
+                raise ValueError('function-pointer declarator needs an ABI typedef: ' + text_tokens(tokens))
             return False
         cursor = head + 1
         while cursor < len(raw) and raw[cursor] in C_TYPES | {'const', 'volatile'}:
@@ -268,6 +294,15 @@ class Lowerer:
             suffix = lhs[ni + 1:]
             if suffix and suffix[0].text != '[':
                 raise ValueError('unsupported C declarator suffix: ' + text_tokens(tokens))
+            if len(suffix) == 2:
+                if not init or init[0].text != '{' or init[-1].text != '}':
+                    raise ValueError('incomplete scratch array without a braced initializer: ' + text_tokens(tokens))
+                elements = [part for part in split_top(init[1:-1], ',') if part]
+                if not elements or any(part[0].text in {'[', '.'} for part in elements):
+                    raise ValueError('scratch array needs a positional initializer: ' + text_tokens(tokens))
+                suffix = self.tokens('[' + str(len(elements)) + ']')
+            if suffix and any(t.text in GLOBAL_TYPES or self.binding(t.text) != t.text for t in suffix if t.kind == 'IDENTIFIER'):
+                raise ValueError('variable scratch array: ' + text_tokens(tokens))
             # Opcode declarations from the tier-one prelude are the VM register;
             # inner opcode temporaries remain distinct C scratch places.
             if original == 'opcode' and len(self.scopes) <= 2:
@@ -341,6 +376,10 @@ class Lowerer:
             pass
         elif name == 'GOTO_TIER_TWO':
             executor = self.expression(args[0])
+            if self.handler.jit:
+                self.emit(self.adapter(source='OPT_STAT_INC(traces_executed); current_executor = (' + executor + '); tstate->current_executor = (PyObject *)current_executor;') + ';')
+                self.jit_finish(4)
+                return True
             self.emit(self.adapter(source='OPT_STAT_INC(traces_executed); tstate->current_executor = (PyObject *)(' + executor + ');') + ';')
             self.emit('if ' + self.config_call('defined(_Py_JIT)') + ' {')
             self.indent += 1
@@ -365,6 +404,10 @@ class Lowerer:
             self.indent -= 1
             self.emit('}')
         elif name == 'GOTO_TIER_ONE':
+            if self.handler.jit:
+                self.emit(self.adapter(source='tstate->current_executor = NULL; _PyFrame_SetStackPointer(frame, stack_pointer); next_instr = (' + self.expression(args[0]) + ');') + ';')
+                self.jit_finish(3)
+                return True
             self.emit(self.adapter(source='tstate->current_executor = NULL; next_instr = (' + self.expression(args[0]) + '); OPT_HIST(trace_uop_execution_counter, trace_run_length_hist); _PyFrame_SetStackPointer(frame, stack_pointer); stack_pointer = _PyFrame_GetStackPointer(frame);') + ';')
             self.emit('if ' + self.adapter(source='next_instr == NULL', condition=True) + ' != 0 {')
             self.indent += 1
@@ -374,6 +417,9 @@ class Lowerer:
             self.emit('}')
             self.macro('DISPATCH', [])
         elif name in {'JUMP_TO_JUMP_TARGET', 'JUMP_TO_ERROR'}:
+            if self.handler.jit:
+                self.jit_finish(1 if name == 'JUMP_TO_JUMP_TARGET' else 2)
+                return True
             target = 'uop_get_jump_target' if name == 'JUMP_TO_JUMP_TARGET' else 'uop_get_error_target'
             self.emit(self.adapter(source='assert(next_uop[-1].format == UOP_FORMAT_JUMP); next_uop = current_executor->trace + ' + target + '(&next_uop[-1]);') + ';')
             self.transfer('tier2_dispatch')
@@ -435,10 +481,19 @@ class Lowerer:
     def block(self, block, new_scope=True):
         if new_scope:
             self.scopes.append({})
-        for statement in block.body:
-            self.statement(statement)
+        self.sequence(block.body)
         if new_scope:
             self.scopes.pop()
+
+    def sequence(self, statements):
+        for statement in statements:
+            self.statement(statement)
+            if self.handler.jac and (self.handler.jac[-1].lstrip().startswith('return ')
+                    or self.handler.jac[-1].strip() in {'break;', 'continue;'}):
+                # Upstream macros such as GOTO_TIER_TWO are followed by a
+                # syntactic break in some uops. The native transfer has already
+                # consumed the activation; do not emit unreachable uses of it.
+                break
 
     def statement(self, stmt):
         p = self.parsing
@@ -470,7 +525,8 @@ class Lowerer:
             self.loops.append(increment)
             self.statement(stmt.body)
             self.loops.pop()
-            if increment:
+            if increment and not (self.handler.jac[-1].lstrip().startswith('return ')
+                    or self.handler.jac[-1].strip() in {'break;', 'continue;'}):
                 self.simple(increment)
             self.indent -= 1
             self.emit('}')
@@ -478,22 +534,19 @@ class Lowerer:
         elif isinstance(stmt, p.MacroIfStmt):
             selected, condition = self.config(stmt.condition)
             if selected is not None:
-                for child in (stmt.body if selected else stmt.else_body or []):
-                    self.statement(child)
+                self.sequence(stmt.body if selected else stmt.else_body or [])
                 return
             self.emit('if ' + self.config_call(condition) + ' {')
             old = self.guard
             self.guard += (condition,)
             self.indent += 1
-            for child in stmt.body:
-                self.statement(child)
+            self.sequence(stmt.body)
             self.indent -= 1
             if stmt.else_body:
                 self.emit('} else {')
                 self.guard = old + ('!(' + condition + ')',)
                 self.indent += 1
-                for child in stmt.else_body:
-                    self.statement(child)
+                self.sequence(stmt.else_body)
                 self.indent -= 1
             self.emit('}')
             self.guard = old
@@ -502,6 +555,10 @@ class Lowerer:
 
     def lower(self):
         self.block(self.handler.block)
+        if self.handler.jit and (not self.handler.jac or not self.handler.jac[-1].lstrip().startswith('return ')):
+            # Only explicit upstream fatal/unreachable paths can fall through.
+            self.emit(self.adapter(source='Py_UNREACHABLE();') + ';')
+            self.jit_finish(0)
         return self.handler
 
 
@@ -537,6 +594,11 @@ def generate(source: Path, output: Path):
     tier1_generator.generate_tier1([str(bytecodes)], analysis, tier1, False)
     tier2_generator.generate_tier2([str(bytecodes)], analysis, tier2, False)
     handlers = generated_blocks(tier1.getvalue(), parsing, 1) + generated_blocks(tier2.getvalue(), parsing, 2)
+    jit_handlers = generated_blocks(tier2.getvalue(), parsing, 2)
+    for handler in jit_handlers:
+        handler.name = handler.name.replace('uop_', 'jit_', 1)
+        handler.jit = True
+    handlers += jit_handlers
     for handler in handlers:
         try:
             Lowerer(handler, parsing, lexer).lower()
@@ -547,6 +609,8 @@ def generate(source: Path, output: Path):
 
 
 def write_sources(source, output, handlers, analysis):
+    jit_handlers = [handler for handler in handlers if handler.jit]
+    handlers = [handler for handler in handlers if not handler.jit]
     jac = ['"""Generated from CPython 3.14.6 Python/bytecodes.c. PSF licensed.',
            'Regenerate with bootstrap/python/generate_evaluator.py; do not hand edit.',
            'C adapters are typed storage/API expressions; control flow is native Jac.',
@@ -617,7 +681,7 @@ def write_sources(source, output, handlers, analysis):
             '    def jacpy_vm_unreachable(vm: lin PyVMRef from (storage, tstate), storage: &JacPyVMStorage, tstate: &JacPyThreadState) -> own PyObjectRef;', '}']
     (output / 'evaluator_handlers.jac').write_text('\n'.join(jac) + '\n')
     fields = ['/* Generated typed scratch storage, CPython 3.14.6; PSF licensed. */', 'union JacPyVMScratch {']
-    for handler in handlers:
+    for handler in handlers + jit_handlers:
         fields.append('    struct {')
         fields.append('        unsigned char empty;')
         for slot in handler.slots:
@@ -642,19 +706,43 @@ def write_sources(source, output, handlers, analysis):
             if handler.tier == tier:
                 c.extend(handler.adapters)
         (output / ('evaluator_tier' + str(tier) + '_abi.c')).write_text('\n'.join(c) + '\n')
+    # JIT bodies consume a one-step permission and return an ABI continuation.
+    # The C patch-point trampoline resumes only after the native body returns.
+    jit_jac = ['"""Generated native JIT uop policies; CPython 3.14.6, PSF licensed."""',
+        'import from jaclang.runtime.python.references { JacPyThreadState }',
+        'import from jaclang.runtime.python.evaluator_activation { PyJITStepRef, JacPyVMStorage }',
+        'import from c {']
+    for handler in jit_handlers:
+        jit_jac.extend(handler.declarations)
+    jit_jac.append('}')
+    jit_c = ['/* Generated JIT ABI expressions, CPython 3.14.6; PSF licensed. */',
+        '#include "evaluator_activation.h"',
+        '#undef CURRENT_OPARG', '#define CURRENT_OPARG() (_oparg)',
+        '#undef CURRENT_OPERAND0', '#define CURRENT_OPERAND0() (_operand0)',
+        '#undef CURRENT_OPERAND1', '#define CURRENT_OPERAND1() (_operand1)',
+        '#undef CURRENT_TARGET', '#define CURRENT_TARGET() (_target)']
+    for handler in jit_handlers:
+        jit_jac += ['', PROTOCOL, 'def jacpy_vm_' + handler.name + '(' +
+            PARAMETERS.replace('PyVMRef', 'PyJITStepRef') + ') -> i32 {'] + handler.jac + ['}']
+        jit_c.append('#if _JIT_OPCODE == ' + handler.name[len('jit_'):])
+        jit_c.extend(handler.adapters)
+        jit_c.append('#endif')
+    (output / 'evaluator_jit.jac').write_text('\n'.join(jit_jac) + '\n')
+    (output / 'evaluator_jit_abi.c').write_text('\n'.join(jit_c) + '\n')
     inputs = sorted((source / 'Tools/cases_generator').glob('*.py')) + [source / 'Python/bytecodes.c']
     manifest = {
         'schema': 1, 'cpython': '3.14.6',
         'generator_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         'inputs': {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs},
-        'handlers': {h.name: {'tier': h.tier, 'operations': h.source_operations} for h in handlers},
+        'handlers': {h.name: {'tier': h.tier, 'jit': h.jit, 'operations': h.source_operations} for h in handlers + jit_handlers},
         'instruction_definitions': sorted(analysis.instructions),
         'families': sorted(analysis.families),
         'configuration': FIXED_CONFIG,
         'ownership': 'linear activation aggregate with trusted typed slot-transfer adapters',
         'native_exports': ['jacpy_vm_' + h.name for h in handlers],
+        'jit_exports': {h.name[len('jit_'):]: 'jacpy_vm_' + h.name for h in jit_handlers},
         'outputs': {name: hashlib.sha256((output / name).read_bytes()).hexdigest() for name in [
-            'evaluator_handlers.jac', 'evaluator_scratch.h', 'evaluator_tier1_abi.c', 'evaluator_tier2_abi.c',
+            'evaluator_handlers.jac', 'evaluator_jit.jac', 'evaluator_scratch.h', 'evaluator_tier1_abi.c', 'evaluator_tier2_abi.c', 'evaluator_jit_abi.c',
         ]},
         'validation': 'not performed by source generation',
     }

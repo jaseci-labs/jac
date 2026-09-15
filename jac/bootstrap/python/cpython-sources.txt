@@ -8,8 +8,8 @@
 #
 # Commented source paths record exclusions for the JacPython replacement.
 # Counts use pinned CPython 3.14.6 source lines, including comments and blanks.
-# Excluded: 42 C files / 103,864 lines; 25 headers / 11,178 lines.
-# Total: 67 files / 115,042 source lines excluded from every shipped runtime.
+# Excluded: 43 C files / 107,589 lines; 29 headers / 32,074 lines.
+# Total: 72 files / 139,663 source lines excluded from every shipped runtime.
 # A separate build-only CPython host restores these marked entries to produce
 # the native object. The shipped JacPython runtime includes none of them.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
@@ -41,6 +41,8 @@ Programs/python.c
 Programs/test_frozenmain.h
 README.rst
 Tools/build/
+Tools/cases_generator/
+Tools/jit/
 Tools/freeze/flag.py
 Tools/gdb/libpython.py
 Tools/scripts/idle3
@@ -99,8 +101,7 @@ Python/brc.c
 Python/bytecodes.c
 # Python/ceval.c  # removed: 3725 source lines
 Python/ceval_gil.c
-# Retained as input to optional Tools/jit/template.c; native dispatch does not include it.
-Python/ceval_macros.h
+# Python/ceval_macros.h  # removed: 439 source lines
 # Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
 Python/clinic/_contextvars.c.h
 Python/clinic/_warnings.c.h
@@ -126,8 +127,7 @@ Python/dtoa.c
 Python/dynamic_annotations.c
 Python/dynload_shlib.c
 Python/errors.c
-# Retained for optional JIT stencil generation; native tier-two interpretation uses Jac.
-Python/executor_cases.c.h
+# Python/executor_cases.c.h  # removed: 7163 source lines
 Python/fileutils.c
 # Python/flowgraph.c  # removed: 4,167 source lines
 Python/formatter_unicode.c

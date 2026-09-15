@@ -16,6 +16,7 @@ JacPyVMRef jacpy_vm_begin(JacPyVMStorage *storage, PyThreadState *tstate,
     vm->uopcode = 0;
     vm->lastuop = 0;
     vm->trace_uop_execution_counter = 0;
+    vm->_oparg = 0; vm->_operand0 = 0; vm->_operand1 = 0; vm->_target = 0;
     return vm;
 }
 JacPyVMRef jacpy_vm_begin_error(JacPyVMStorage *storage, PyThreadState *tstate,
@@ -47,4 +48,9 @@ void jacpy_vm_record_native_entry(void) {
 }
 PyAPI_FUNC(uint64_t) _PyJac_NativeEvaluatorEntries(void) {
     return _Py_atomic_load_uint64_relaxed(&native_evaluator_entries);
+}
+
+void jacpy_jit_step_invalid_drop(JacPyVMRef vm) {
+    (void)vm;
+    _Py_FatalErrorFunc("native JIT evaluator", "unconsumed linear step permission");
 }

@@ -1,9 +1,11 @@
 # Lifetime contracts for the native evaluator
 
 This document records the accepted design for the evaluator migration in PR
-9188. Implementation and validation are in progress; this is not a claim that
-the C evaluator has been retired. The implementation must satisfy the rules
-below before its corresponding migration gate is complete.
+9188. The candidate source replaces the evaluator entry, support routines,
+instruction handlers, tier-two interpreter, and optional JIT uop bodies. Its
+runtime source manifest retires the corresponding C evaluator inputs. Builds
+and validation are deferred for source review; these edits do not establish
+runtime retirement or completion of the acceptance gates below.
 
 ## Ownership and dependency are separate
 
@@ -246,17 +248,24 @@ selection or handler bodies. The build links their target-configured LLVM IR
 with native Jac IR and requires the adapters to disappear during optimization.
 Unknown source constructs stop generation instead of retaining a C handler.
 
-The candidate source retires `Python/ceval.c`, `Python/generated_cases.c.h`, and
-`Python/opcode_targets.h`, including object membership and make prerequisites.
-There is no non-tail C evaluator fallback. `Python/bytecodes.c` remains the
-instruction-generation input. `Python/executor_cases.c.h` and
-`Python/ceval_macros.h` remain inputs for CPython's optional JIT stencil generator;
-the native tier-two **interpreter** does not include them. The optional JIT's
-stencils remain CPython-generated C. No JIT configuration has been silently
-disabled or represented as a completed native stencil port.
+The candidate source retires `Python/ceval.c`, `Python/generated_cases.c.h`,
+`Python/opcode_targets.h`, `Python/executor_cases.c.h`, and
+`Python/ceval_macros.h`, including object membership, includes and make
+prerequisites. There is no C evaluator fallback. `Python/bytecodes.c` remains the
+instruction-generation input, and the full bootstrap host stays separate.
+
+The optional JIT uses the same native uop translation. A `lin PyJITStepRef from
+(storage, tstate)` lends a stencil activation to one native body; consuming it
+publishes one continuation back to the caller's storage. A small C trampoline
+retains CPython's relocation patch points and `preserve_none` tail-call ABI.
+The body selects normal continuation, jump, error, tier-one return, or executor
+chaining. The JIT build inlines native Jac and ABI expressions into each stencil
+before passing the object to CPython's existing relocation/patch machinery.
+It requires both to disappear as callable helpers from the stencil object. No
+JIT configuration is silently disabled and no C uop body is retained.
 
 Read-only ABI metadata remains C data. Build provenance records the generated
-sources, linked ABI IR, native object, and these retained JIT inputs separately.
+sources, linked ABI IR, native object, and optional native JIT stencils separately.
 `_PyJac_NativeEvaluatorEntries` counts native entry calls independently of the
 compiler bridge. An observed entry is useful provenance, not compatibility or
 performance evidence. The source changes have not been built, tested, or otherwise

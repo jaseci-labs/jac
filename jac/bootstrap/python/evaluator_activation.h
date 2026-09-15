@@ -31,6 +31,9 @@ struct JacPyVM {
     uint16_t uopcode;
     int lastuop;
     uint64_t trace_uop_execution_counter;
+    uint16_t _oparg;
+    uint64_t _operand0, _operand1;
+    uint32_t _target;
     union JacPyVMScratch scratch;
 };
 struct JacPyVMStorage {
@@ -50,7 +53,10 @@ struct JacPyVMStorage {
     _PyExecutorObject * current_executor = (vm)->current_executor; \
     uint16_t uopcode = (vm)->uopcode; \
     int lastuop = (vm)->lastuop; \
-    uint64_t trace_uop_execution_counter = (vm)->trace_uop_execution_counter
+    uint64_t trace_uop_execution_counter = (vm)->trace_uop_execution_counter; \
+    uint16_t _oparg = (vm)->_oparg; \
+    uint64_t _operand0 = (vm)->_operand0, _operand1 = (vm)->_operand1; \
+    uint32_t _target = (vm)->_target
 #define JAC_VM_SAVE_REGISTERS(vm) \
     (vm)->frame = frame; \
     (vm)->stack_pointer = stack_pointer; \
@@ -63,11 +69,14 @@ struct JacPyVMStorage {
     (vm)->current_executor = current_executor; \
     (vm)->uopcode = uopcode; \
     (vm)->lastuop = lastuop; \
-    (vm)->trace_uop_execution_counter = trace_uop_execution_counter
+    (vm)->trace_uop_execution_counter = trace_uop_execution_counter; \
+    (vm)->_oparg = _oparg; (vm)->_operand0 = _operand0; \
+    (vm)->_operand1 = _operand1; (vm)->_target = _target
 
 JacPyVMRef jacpy_vm_begin(JacPyVMStorage *, PyThreadState *, JacPyFrameRef);
 JacPyVMRef jacpy_vm_begin_error(JacPyVMStorage *, PyThreadState *, JacPyFrameRef, _Py_CODEUNIT *);
 void jacpy_vm_invalid_drop(JacPyVMRef);
+void jacpy_jit_step_invalid_drop(JacPyVMRef);
 void jacpy_vm_record_native_entry(void);
 PyAPI_FUNC(uint64_t) _PyJac_NativeEvaluatorEntries(void);
 PyObject *jacpy_vm_unreachable(JacPyVMRef, JacPyVMStorage *, PyThreadState *);

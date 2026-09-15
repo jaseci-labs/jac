@@ -1393,7 +1393,7 @@ union JacPyVMScratch {
         PyObject * s10_arg;
         int s11_err;
         _PyStackRef s12_tmp;
-        PyObject * s13_stack[ ];
+        PyObject * s13_stack[ 2 ];
         PyObject * s14_super;
         PyObject * s15_arg;
         int s16_err;
@@ -1877,7 +1877,7 @@ union JacPyVMScratch {
         PyObject * s12_arg;
         int s13_err;
         _PyStackRef s14_tmp;
-        PyObject * s15_stack[ ];
+        PyObject * s15_stack[ 2 ];
         PyObject * s16_super;
         PyObject * s17_arg;
         int s18_err;
@@ -7013,4 +7013,4561 @@ union JacPyVMScratch {
     struct {
         unsigned char empty;
     } tier2_dispatch;
+    struct {
+        unsigned char empty;
+    } jit__NOP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        int s1_err;
+#endif
+    } jit__CHECK_PERIODIC;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        int s1_err;
+#endif
+    } jit__CHECK_PERIODIC_IF_NOT_YIELD_FROM;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        uintptr_t s1_eval_breaker;
+#endif
+#if (defined(_Py_TIER2))
+        uintptr_t s2_version;
+#endif
+    } jit__RESUME_CHECK;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value_s;
+#endif
+    } jit__LOAD_FAST_CHECK;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_0;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_2;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_3;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_4;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_5;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_6;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_7;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW_0;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW_2;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW_3;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW_4;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW_5;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW_6;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW_7;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_BORROW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_FAST_AND_CLEAR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_obj;
+#endif
+    } jit__LOAD_CONST_MORTAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_obj;
+#endif
+    } jit__LOAD_CONST_IMMORTAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_obj;
+#endif
+    } jit__LOAD_SMALL_INT_0;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_obj;
+#endif
+    } jit__LOAD_SMALL_INT_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_obj;
+#endif
+    } jit__LOAD_SMALL_INT_2;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_obj;
+#endif
+    } jit__LOAD_SMALL_INT_3;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_obj;
+#endif
+    } jit__LOAD_SMALL_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST_0;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST_2;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST_3;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST_4;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST_5;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST_6;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST_7;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__STORE_FAST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__POP_TOP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_res;
+#endif
+    } jit__PUSH_NULL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__END_FOR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_receiver;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_val;
+#endif
+    } jit__END_SEND;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_res_o;
+#endif
+    } jit__UNARY_NEGATIVE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+    } jit__UNARY_NOT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+    } jit__TO_BOOL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__TO_BOOL_BOOL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_value_o;
+#endif
+    } jit__TO_BOOL_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_nos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_NOS_LIST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_tos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_TOS_LIST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_tos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_TOS_SLICE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_value_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_tmp;
+#endif
+    } jit__TO_BOOL_LIST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+    } jit__TO_BOOL_NONE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_nos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_NOS_UNICODE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_value_o;
+#endif
+    } jit__GUARD_TOS_UNICODE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_value_o;
+#endif
+    } jit__TO_BOOL_STR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+    } jit__REPLACE_WITH_TRUE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_res_o;
+#endif
+    } jit__UNARY_INVERT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_left;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_left_o;
+#endif
+    } jit__GUARD_NOS_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_value_o;
+#endif
+    } jit__GUARD_TOS_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+    } jit__BINARY_OP_MULTIPLY_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+    } jit__BINARY_OP_ADD_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+    } jit__BINARY_OP_SUBTRACT_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_left;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_left_o;
+#endif
+    } jit__GUARD_NOS_FLOAT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_value_o;
+#endif
+    } jit__GUARD_TOS_FLOAT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        double s6_dres;
+#endif
+    } jit__BINARY_OP_MULTIPLY_FLOAT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        double s6_dres;
+#endif
+    } jit__BINARY_OP_ADD_FLOAT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        double s6_dres;
+#endif
+    } jit__BINARY_OP_SUBTRACT_FLOAT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+    } jit__BINARY_OP_ADD_UNICODE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_next_oparg;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s5_target_local;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_temp;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_right_o;
+#endif
+    } jit__BINARY_OP_INPLACE_ADD_UNICODE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_descr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyBinaryOpSpecializationDescr * s6_d;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_res;
+#endif
+    } jit__GUARD_BINARY_OP_EXTEND;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_descr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyBinaryOpSpecializationDescr * s7_d;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s9_tmp;
+#endif
+    } jit__BINARY_OP_EXTEND;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_stop;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_start;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_container;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_slice;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+    } jit__BINARY_SLICE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_stop;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_start;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_container;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_v;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_slice;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_err;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+    } jit__STORE_SLICE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_list_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_sub;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_list;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s6_index;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s8_tmp;
+#endif
+    } jit__BINARY_OP_SUBSCR_LIST_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_list_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_sub;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_list;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+    } jit__BINARY_OP_SUBSCR_LIST_SLICE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_str_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_sub;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_str;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s6_index;
+#endif
+#if (defined(_Py_TIER2))
+        Py_UCS4 s7_c;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_res_o;
+#endif
+    } jit__BINARY_OP_SUBSCR_STR_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_nos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_NOS_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_tos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_TOS_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tuple_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_sub;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_tuple;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s6_index;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s8_tmp;
+#endif
+    } jit__BINARY_OP_SUBSCR_TUPLE_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_nos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_NOS_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_tos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_TOS_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_dict_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_sub;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_dict;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_rc;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s8_tmp;
+#endif
+    } jit__BINARY_OP_SUBSCR_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_container;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_getitem;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s3_tp;
+#endif
+#if (defined(_Py_TIER2))
+        PyHeapTypeObject * s4_ht;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_getitem_o;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s6_cached_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyCodeObject * s7_code;
+#endif
+    } jit__BINARY_OP_SUBSCR_CHECK_FUNC;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_getitem;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_sub;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_container;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_new_frame;
+#endif
+    } jit__BINARY_OP_SUBSCR_INIT_CALL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_v;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_list;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+    } jit__LIST_APPEND;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_v;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_set;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+    } jit__SET_ADD;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_container;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_v;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_err;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_tmp;
+#endif
+    } jit__STORE_SUBSCR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_list_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_sub;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_list;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s6_index;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_old_value;
+#endif
+    } jit__STORE_SUBSCR_LIST_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_dict_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_dict;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_err;
+#endif
+    } jit__STORE_SUBSCR_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_sub;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_container;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_tmp;
+#endif
+    } jit__DELETE_SUBSCR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_res_o;
+#endif
+    } jit__CALL_INTRINSIC_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value1_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value2_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_value1;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_value2;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+    } jit__CALL_INTRINSIC_2;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_retval;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_temp;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_dying;
+#endif
+    } jit__RETURN_VALUE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_obj;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_iter;
+#endif
+#if (defined(_Py_TIER2))
+        unaryfunc s3_getter;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_obj_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_iter_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s6_type;
+#endif
+    } jit__GET_AITER;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_aiter;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_awaitable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_awaitable_o;
+#endif
+    } jit__GET_ANEXT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iterable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_iter;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_iter_o;
+#endif
+    } jit__GET_AWAITABLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_v;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_receiver;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s3_gen_frame;
+#endif
+#if (defined(_Py_TIER2))
+        PyGenObject * s4_gen;
+#endif
+    } jit__SEND_GEN_FRAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_retval;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyGenObject * s3_gen;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_temp;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s5_gen_frame;
+#endif
+    } jit__YIELD_VALUE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_exc_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyErr_StackItem * s2_exc_info;
+#endif
+    } jit__POP_EXCEPT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+    } jit__LOAD_COMMON_CONSTANT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_bc;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_bc_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+    } jit__LOAD_BUILD_CLASS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_v;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_ns;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_err;
+#endif
+    } jit__STORE_NAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyObject * s1_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_ns;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+    } jit__DELETE_NAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_seq;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s2_top;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_seq_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_res;
+#endif
+    } jit__UNPACK_SEQUENCE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_seq;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_val1;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_val0;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_seq_o;
+#endif
+    } jit__UNPACK_SEQUENCE_TWO_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_seq;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s2_values;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_seq_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s4_items;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_i;
+#endif
+    } jit__UNPACK_SEQUENCE_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_seq;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s2_values;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_seq_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s4_items;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_i;
+#endif
+    } jit__UNPACK_SEQUENCE_LIST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_seq;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s2_top;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_seq_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_res;
+#endif
+    } jit__UNPACK_EX;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_v;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_name;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_err;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_tmp;
+#endif
+    } jit__STORE_ATTR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_name;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+    } jit__DELETE_ATTR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_v;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_name;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+    } jit__STORE_GLOBAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyObject * s1_name;
+#endif
+#if (defined(_Py_TIER2))
+        int s2_err;
+#endif
+    } jit__DELETE_GLOBAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_locals;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_l;
+#endif
+    } jit__LOAD_LOCALS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_v;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_v_o;
+#endif
+    } jit__LOAD_NAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_name;
+#endif
+    } jit__LOAD_GLOBAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_null;
+#endif
+    } jit__PUSH_NULL_CONDITIONAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        uint16_t s1_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictObject * s2_dict;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictKeysObject * s3_keys;
+#endif
+    } jit__GUARD_GLOBALS_VERSION;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_res;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s2_version;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s3_index;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictObject * s4_dict;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictKeysObject * s5_keys;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictUnicodeEntry * s6_entries;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_res_o;
+#endif
+    } jit__LOAD_GLOBAL_MODULE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_res;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s2_version;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s3_index;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictObject * s4_dict;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictKeysObject * s5_keys;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictUnicodeEntry * s6_entries;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_res_o;
+#endif
+    } jit__LOAD_GLOBAL_BUILTINS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_v;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tmp;
+#endif
+    } jit__DELETE_FAST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyObject * s1_initial;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_cell;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_tmp;
+#endif
+    } jit__MAKE_CELL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyObject * s1_cell;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_oldobj;
+#endif
+    } jit__DELETE_DEREF;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_class_dict_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_value_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_class_dict;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_err;
+#endif
+#if (defined(_Py_TIER2))
+        PyCellObject * s7_cell;
+#endif
+    } jit__LOAD_FROM_DICT_OR_DEREF;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyCellObject * s2_cell;
+#endif
+    } jit__LOAD_DEREF;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_v;
+#endif
+#if (defined(_Py_TIER2))
+        PyCellObject * s2_cell;
+#endif
+    } jit__STORE_DEREF;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyCodeObject * s1_co;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s2_func;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_closure;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_offset;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_o;
+#endif
+    } jit__COPY_FREE_VARS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_pieces;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_str;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_pieces_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s4_pieces_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s6__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_str_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s8_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s9__i;
+#endif
+    } jit__BUILD_STRING;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_format;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_str;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_interpolation;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_value_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_str_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_conversion;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_format_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_interpolation_o;
+#endif
+    } jit__BUILD_INTERPOLATION;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_interpolations;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_strings;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_template;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_strings_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_interpolations_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_template_o;
+#endif
+    } jit__BUILD_TEMPLATE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_values;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_tup;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_tup_o;
+#endif
+    } jit__BUILD_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_values;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_list;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_list_o;
+#endif
+    } jit__BUILD_LIST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iterable_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_list_st;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_list;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_iterable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_none_val;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_matches;
+#endif
+    } jit__LIST_EXTEND;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iterable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_set;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+    } jit__SET_UPDATE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_values;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_set;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_set_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s5__i;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_err;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s7_i;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s8_value;
+#endif
+    } jit__BUILD_SET;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_values;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_map;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_values_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s4_values_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s6__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_map_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s8_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s9__i;
+#endif
+    } jit__BUILD_MAP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyObject * s1_ann_dict;
+#endif
+#if (defined(_Py_TIER2))
+        int s2_err;
+#endif
+    } jit__SETUP_ANNOTATIONS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_update;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_dict;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_dict_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_update_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_err;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_matches;
+#endif
+    } jit__DICT_UPDATE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_update;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_dict;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_dict_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_update_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_err;
+#endif
+    } jit__DICT_MERGE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_key;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_dict_st;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_dict;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_err;
+#endif
+    } jit__MAP_ADD;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_class_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_global_super_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_attr_st;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_global_super;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_class;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_attr;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s10_tmp;
+#endif
+    } jit__LOAD_SUPER_ATTR_ATTR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_class_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_global_super_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_attr;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_global_super;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_class;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s10_cls;
+#endif
+#if (defined(_Py_TIER2))
+        int s11_method_found;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s12_attr_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s13_tmp;
+#endif
+    } jit__LOAD_SUPER_ATTR_METHOD;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s3_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_attr_o;
+#endif
+    } jit__LOAD_ATTR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s2_type_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s3_tp;
+#endif
+    } jit__GUARD_TYPE_VERSION;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s2_type_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s4_tp;
+#endif
+    } jit__GUARD_TYPE_VERSION_AND_LOCK;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_owner_o;
+#endif
+    } jit__CHECK_MANAGED_OBJECT_HAS_VALUES;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s3_offset;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s5_value_ptr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_attr_o;
+#endif
+    } jit__LOAD_ATTR_INSTANCE_VALUE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s3_dict_version;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s4_index;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictObject * s6_dict;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictKeysObject * s7_keys;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictUnicodeEntry * s8_ep;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_attr_o;
+#endif
+    } jit__LOAD_ATTR_MODULE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s3_hint;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictObject * s5_dict;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictKeysObject * s6_dk;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_attr_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictUnicodeEntry * s9_ep;
+#endif
+    } jit__LOAD_ATTR_WITH_HINT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s3_index;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s5_addr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_attr_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+    } jit__LOAD_ATTR_SLOT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s2_type_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_owner_o;
+#endif
+    } jit__CHECK_ATTR_CLASS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_descr;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_tmp;
+#endif
+    } jit__LOAD_ATTR_CLASS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s2_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_fget;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s4_f;
+#endif
+#if (defined(_Py_TIER2))
+        PyCodeObject * s5_code;
+#endif
+    } jit__LOAD_ATTR_PROPERTY_FRAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_owner_o;
+#endif
+    } jit__GUARD_DORV_NO_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s3_offset;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s5_value_ptr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_old_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictValues * s7_values;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s8_index;
+#endif
+    } jit__STORE_ATTR_INSTANCE_VALUE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s3_hint;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictObject * s5_dict;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictUnicodeEntry * s7_ep;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_old_value;
+#endif
+    } jit__STORE_ATTR_WITH_HINT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s3_index;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        char * s5_addr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_old_value;
+#endif
+    } jit__STORE_ATTR_SLOT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s8_res_bool;
+#endif
+    } jit__COMPARE_OP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        double s6_dleft;
+#endif
+#if (defined(_Py_TIER2))
+        double s7_dright;
+#endif
+#if (defined(_Py_TIER2))
+        int s8_sign_ish;
+#endif
+    } jit__COMPARE_OP_FLOAT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s6_ileft;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s7_iright;
+#endif
+#if (defined(_Py_TIER2))
+        int s8_sign_ish;
+#endif
+    } jit__COMPARE_OP_INT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_eq;
+#endif
+    } jit__COMPARE_OP_STR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_b;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_tmp;
+#endif
+    } jit__IS_OP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_b;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_res;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+    } jit__CONTAINS_OP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_tos;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_o;
+#endif
+    } jit__GUARD_TOS_ANY_SET;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_b;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_res;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+    } jit__CONTAINS_OP_SET;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_b;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_res;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+    } jit__CONTAINS_OP_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_match_type_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_exc_value_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_rest;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_match;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_exc_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_match_type;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_err;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s8_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_match_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s10_rest_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s11_res;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s12_tmp;
+#endif
+    } jit__CHECK_EG_MATCH;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_right;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_left;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_b;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_left_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_right_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_err;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_res;
+#endif
+    } jit__CHECK_EXC_MATCH;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_fromlist;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_level;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s6_tmp;
+#endif
+    } jit__IMPORT_NAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_from;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_name;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_res_o;
+#endif
+    } jit__IMPORT_FROM;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_b;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_tmp;
+#endif
+    } jit__IS_NONE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_obj;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_len;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s3_len_i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_len_o;
+#endif
+    } jit__GET_LEN;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_names;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_type;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_subject;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_attrs;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_attrs_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s6_tmp;
+#endif
+    } jit__MATCH_CLASS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_subject;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_match;
+#endif
+    } jit__MATCH_MAPPING;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_subject;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_match;
+#endif
+    } jit__MATCH_SEQUENCE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_keys;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_subject;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_values_or_none;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_values_or_none_o;
+#endif
+    } jit__MATCH_KEYS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iterable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_iter;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_iter_o;
+#endif
+    } jit__GET_ITER;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iterable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_iter;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_iterable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_iter_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_tmp;
+#endif
+    } jit__GET_YIELD_FROM_ITER;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_next;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_iter_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_next_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_matches;
+#endif
+    } jit__FOR_ITER_TIER_TWO;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_iter_o;
+#endif
+    } jit__ITER_CHECK_LIST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_iter_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyListIterObject * s3_it;
+#endif
+#if (defined(_Py_TIER2))
+        PyListObject * s4_seq;
+#endif
+    } jit__GUARD_NOT_EXHAUSTED_LIST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_next;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_iter_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyListIterObject * s4_it;
+#endif
+#if (defined(_Py_TIER2))
+        PyListObject * s5_seq;
+#endif
+    } jit__ITER_NEXT_LIST_TIER_TWO;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_iter_o;
+#endif
+    } jit__ITER_CHECK_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_iter_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyTupleIterObject * s3_it;
+#endif
+#if (defined(_Py_TIER2))
+        PyTupleObject * s4_seq;
+#endif
+    } jit__GUARD_NOT_EXHAUSTED_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_next;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_iter_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyTupleIterObject * s4_it;
+#endif
+#if (defined(_Py_TIER2))
+        PyTupleObject * s5_seq;
+#endif
+    } jit__ITER_NEXT_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        _PyRangeIterObject * s2_r;
+#endif
+    } jit__ITER_CHECK_RANGE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        _PyRangeIterObject * s2_r;
+#endif
+    } jit__GUARD_NOT_EXHAUSTED_RANGE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_next;
+#endif
+#if (defined(_Py_TIER2))
+        _PyRangeIterObject * s3_r;
+#endif
+#if (defined(_Py_TIER2))
+        long s4_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_res;
+#endif
+    } jit__ITER_NEXT_RANGE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_iter;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s2_gen_frame;
+#endif
+#if (defined(_Py_TIER2))
+        PyGenObject * s3_gen;
+#endif
+    } jit__FOR_ITER_GEN_FRAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s2_method_and_self;
+#endif
+    } jit__INSERT_NULL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_method_and_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_name;
+#endif
+#if (defined(_Py_TIER2))
+        int s3_err;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_owner;
+#endif
+#if (defined(_Py_TIER2))
+        const char * s5_errfmt;
+#endif
+    } jit__LOAD_SPECIAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_val;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_lasti;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_exit_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_exit_func;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_exc;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_tb;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_val_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_exit_func_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s10_original_tb;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s11_stack[ 5 ];
+#endif
+#if (defined(_Py_TIER2))
+        int s12_has_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s13_res_o;
+#endif
+    } jit__WITH_EXCEPT_START;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_exc;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_prev_exc;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_new_exc;
+#endif
+#if (defined(_Py_TIER2))
+        _PyErr_StackItem * s4_exc_info;
+#endif
+    } jit__PUSH_EXC_INFO;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_owner_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictValues * s3_ivs;
+#endif
+    } jit__GUARD_DORV_VALUES_INST_ATTR_FROM_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s2_keys_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s3_owner_cls;
+#endif
+#if (defined(_Py_TIER2))
+        PyHeapTypeObject * s4_owner_heap_type;
+#endif
+#if (defined(_Py_TIER2))
+        PyDictKeysObject * s5_keys;
+#endif
+    } jit__GUARD_KEYS_VERSION;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_descr;
+#endif
+    } jit__LOAD_ATTR_METHOD_WITH_VALUES;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_descr;
+#endif
+    } jit__LOAD_ATTR_METHOD_NO_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_descr;
+#endif
+    } jit__LOAD_ATTR_NONDESCRIPTOR_WITH_VALUES;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_descr;
+#endif
+    } jit__LOAD_ATTR_NONDESCRIPTOR_NO_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        uint16_t s2_dictoffset;
+#endif
+#if (defined(_Py_TIER2))
+        char * s3_ptr;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_dict;
+#endif
+    } jit__CHECK_ATTR_METHOD_LAZY_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_owner;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_descr;
+#endif
+    } jit__LOAD_ATTR_METHOD_LAZY_DICT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_method;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s6_temp;
+#endif
+    } jit__MAYBE_EXPAND_METHOD;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_code_flags;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_locals;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s9_temp;
+#endif
+    } jit__PY_FRAME_GENERAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s2_func_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s4_func;
+#endif
+    } jit__CHECK_FUNCTION_VERSION;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        uint32_t s1_func_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s3_func;
+#endif
+    } jit__CHECK_FUNCTION_VERSION_INLINE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s3_func_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_func;
+#endif
+    } jit__CHECK_METHOD_VERSION;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_temp;
+#endif
+    } jit__EXPAND_METHOD;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_callable_o;
+#endif
+    } jit__CHECK_IS_NOT_PY_CALLABLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s7_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s8_args_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s9_args_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s10_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s11__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s12_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s13_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s14__i;
+#endif
+    } jit__CALL_NON_PY_GENERAL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+    } jit__CHECK_CALL_BOUND_METHOD_EXACT_ARGS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_temp;
+#endif
+    } jit__INIT_CALL_BOUND_METHOD_EXACT_ARGS;
+    struct {
+        unsigned char empty;
+    } jit__CHECK_PEP_523;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s4_func;
+#endif
+#if (defined(_Py_TIER2))
+        PyCodeObject * s5_code;
+#endif
+    } jit__CHECK_FUNCTION_EXACT_ARGS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s3_func;
+#endif
+#if (defined(_Py_TIER2))
+        PyCodeObject * s4_code;
+#endif
+    } jit__CHECK_STACK_SPACE;
+    struct {
+        unsigned char empty;
+    } jit__CHECK_RECURSION_REMAINING;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_has_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s6_first_non_self_local;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_i;
+#endif
+    } jit__INIT_CALL_PY_EXACT_ARGS_0;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_has_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s6_first_non_self_local;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_i;
+#endif
+    } jit__INIT_CALL_PY_EXACT_ARGS_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_has_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s6_first_non_self_local;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_i;
+#endif
+    } jit__INIT_CALL_PY_EXACT_ARGS_2;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_has_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s6_first_non_self_local;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_i;
+#endif
+    } jit__INIT_CALL_PY_EXACT_ARGS_3;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_has_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s6_first_non_self_local;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_i;
+#endif
+    } jit__INIT_CALL_PY_EXACT_ARGS_4;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        int s5_has_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s6_first_non_self_local;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_i;
+#endif
+    } jit__INIT_CALL_PY_EXACT_ARGS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s1_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s2_temp;
+#endif
+    } jit__PUSH_FRAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_null;
+#endif
+    } jit__GUARD_NOS_NULL;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_callable_o;
+#endif
+    } jit__GUARD_CALLABLE_TYPE_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_arg;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_arg_o;
+#endif
+    } jit__CALL_TYPE_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_callable_o;
+#endif
+    } jit__GUARD_CALLABLE_STR_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_arg;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_arg_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+    } jit__CALL_STR_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_callable_o;
+#endif
+    } jit__GUARD_CALLABLE_TUPLE_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_arg;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_arg_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+    } jit__CALL_TUPLE_1;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s3_type_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s5_tp;
+#endif
+#if (defined(_Py_TIER2))
+        PyHeapTypeObject * s6_cls;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s7_init_func;
+#endif
+#if (defined(_Py_TIER2))
+        PyCodeObject * s8_code;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_self_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s10_temp;
+#endif
+    } jit__CHECK_AND_ALLOCATE_OBJECT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_init;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_init_frame;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s5_shim;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s6_temp;
+#endif
+    } jit__CREATE_INIT_FRAME;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_should_be_none;
+#endif
+    } jit__EXIT_INIT_CHECK;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s6_tp;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s8_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_args_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s10_args_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s11_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s12__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s13_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s14_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s15__i;
+#endif
+    } jit__CALL_BUILTIN_CLASS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        PyCFunction s7_cfunc;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s8_arg;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_res_o;
+#endif
+    } jit__CALL_BUILTIN_O;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s7_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyCFunction s8_cfunc;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_args_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s10_args_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s11_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s12__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s13_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s14_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s15__i;
+#endif
+    } jit__CALL_BUILTIN_FAST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s7_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyCFunctionFastWithKeywords s8_cfunc;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_args_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s10_args_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s11_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s12__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s13_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s14_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s15__i;
+#endif
+    } jit__CALL_BUILTIN_FAST_WITH_KEYWORDS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyInterpreterState * s3_interp;
+#endif
+    } jit__GUARD_CALLABLE_LEN;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_arg;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_arg_o;
+#endif
+#if (defined(_Py_TIER2))
+        Py_ssize_t s6_len_i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s7_res_o;
+#endif
+    } jit__CALL_LEN;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s7_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyInterpreterState * s8_interp;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s9_cls_stackref;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s10_inst_stackref;
+#endif
+#if (defined(_Py_TIER2))
+        int s11_retval;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s12_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s13__i;
+#endif
+    } jit__CALL_ISINSTANCE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_arg;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_self_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyInterpreterState * s6_interp;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_err;
+#endif
+    } jit__CALL_LIST_APPEND;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s7_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyMethodDescrObject * s8_method;
+#endif
+#if (defined(_Py_TIER2))
+        PyMethodDef * s9_meth;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s10_arg_stackref;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s11_self_stackref;
+#endif
+#if (defined(_Py_TIER2))
+        PyCFunction s12_cfunc;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s13_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s14_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s15__i;
+#endif
+    } jit__CALL_METHOD_DESCRIPTOR_O;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s7_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyMethodDescrObject * s8_method;
+#endif
+#if (defined(_Py_TIER2))
+        PyMethodDef * s9_meth;
+#endif
+#if (defined(_Py_TIER2))
+        PyTypeObject * s10_d_type;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s11_self;
+#endif
+#if (defined(_Py_TIER2))
+        int s12_nargs;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s13_args_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s14_args_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s15_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s16__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyCFunctionFastWithKeywords s17_cfunc;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s18_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s19_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s20__i;
+#endif
+    } jit__CALL_METHOD_DESCRIPTOR_FAST_WITH_KEYWORDS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        PyMethodDescrObject * s7_method;
+#endif
+#if (defined(_Py_TIER2))
+        PyMethodDef * s8_meth;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s9_self_stackref;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s10_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyCFunction s11_cfunc;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s12_res_o;
+#endif
+    } jit__CALL_METHOD_DESCRIPTOR_NOARGS;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s6_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s7_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyMethodDescrObject * s8_method;
+#endif
+#if (defined(_Py_TIER2))
+        PyMethodDef * s9_meth;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s10_self;
+#endif
+#if (defined(_Py_TIER2))
+        int s11_nargs;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s12_args_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s13_args_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s14_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s15__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyCFunctionFast s16_cfunc;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s17_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s18_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s19__i;
+#endif
+    } jit__CALL_METHOD_DESCRIPTOR_FAST;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_self;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_method;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s6_temp;
+#endif
+    } jit__MAYBE_EXPAND_METHOD_KW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_kwnames;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s2_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s5_new_frame;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s8_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_kwnames_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s10_positional_args;
+#endif
+#if (defined(_Py_TIER2))
+        int s11_code_flags;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s12_locals;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s13_temp;
+#endif
+    } jit__PY_FRAME_KW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s2_func_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s4_func;
+#endif
+    } jit__CHECK_FUNCTION_VERSION_KW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        uint32_t s3_func_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_func;
+#endif
+    } jit__CHECK_METHOD_VERSION_KW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_callable_s;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_callable_o;
+#endif
+    } jit__EXPAND_METHOD_KW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callable;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_callable_o;
+#endif
+    } jit__CHECK_IS_NOT_PY_CALLABLE_KW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_kwnames;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s2_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_self_or_null;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s4_callable;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_callable_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_total_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef * s8_arguments;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_args_o_temp[ 11 ];
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s10_args_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s11_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s12__i;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s13_kwnames_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s14_positional_args;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s15_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s16_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s17__i;
+#endif
+    } jit__CALL_KW_NON_PY;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_callargs;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_func;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_callargs_o;
+#endif
+#if (defined(_Py_TIER2))
+        int s4_err;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_tuple_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s6_temp;
+#endif
+    } jit__MAKE_CALLARGS_A_TUPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_codeobj_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_func;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_codeobj;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s4_func_obj;
+#endif
+    } jit__MAKE_FUNCTION;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_func_in;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_attr_st;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_func_out;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_func;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_attr;
+#endif
+#if (defined(_Py_TIER2))
+        size_t s6_offset;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * * s7_ptr;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s8_func_obj;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s9_fixed_qualname;
+#endif
+    } jit__SET_FUNCTION_ATTRIBUTE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s2_func;
+#endif
+#if (defined(_Py_TIER2))
+        PyGenObject * s3_gen;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s4_gen_frame;
+#endif
+#if (defined(_Py_TIER2))
+        _PyInterpreterFrame * s5_prev;
+#endif
+    } jit__RETURN_GENERATOR;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef * s1_args;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_slice;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_start_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_stop_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_step_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_slice_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+#if (defined(_Py_TIER2))
+        int s8__i;
+#endif
+    } jit__BUILD_SLICE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_result;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_result_o;
+#endif
+    } jit__CONVERT_VALUE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_value_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_res_o;
+#endif
+    } jit__FORMAT_SIMPLE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_fmt_spec;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s5_tmp;
+#endif
+    } jit__FORMAT_WITH_SPEC;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_bottom;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_top;
+#endif
+    } jit__COPY;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_rhs;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_lhs;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_res;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_lhs_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s5_rhs_o;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s6_res_o;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s7_tmp;
+#endif
+    } jit__BINARY_OP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_top;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_bottom;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_temp;
+#endif
+    } jit__SWAP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_flag;
+#endif
+#if (defined(_Py_TIER2))
+        int s2_is_true;
+#endif
+    } jit__GUARD_IS_TRUE_POP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_flag;
+#endif
+#if (defined(_Py_TIER2))
+        int s2_is_false;
+#endif
+    } jit__GUARD_IS_FALSE_POP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_val;
+#endif
+#if (defined(_Py_TIER2))
+        int s2_is_none;
+#endif
+    } jit__GUARD_IS_NONE_POP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_val;
+#endif
+#if (defined(_Py_TIER2))
+        int s2_is_none;
+#endif
+    } jit__GUARD_IS_NOT_NONE_POP;
+    struct {
+        unsigned char empty;
+    } jit__JUMP_TO_TOP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyObject * s1_instr_ptr;
+#endif
+    } jit__SET_IP;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        uint32_t s1_framesize;
+#endif
+    } jit__CHECK_STACK_SPACE_OPERAND;
+    struct {
+        unsigned char empty;
+    } jit__SAVE_RETURN_OFFSET;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyObject * s1_exit_p;
+#endif
+#if (defined(_Py_TIER2))
+        _PyExitData * s2_exit;
+#endif
+#if (defined(_Py_TIER2))
+        PyCodeObject * s3_code;
+#endif
+#if (defined(_Py_TIER2))
+        _Py_CODEUNIT * s4_target;
+#endif
+#if (defined(_Py_TIER2))
+        _Py_BackoffCounter s5_temperature;
+#endif
+#if (defined(_Py_TIER2))
+        _PyExecutorObject * s6_executor;
+#endif
+#if (defined(_Py_TIER2))
+        int s7_chain_depth;
+#endif
+#if (defined(_Py_TIER2))
+        int s8_optimized;
+#endif
+    } jit__EXIT_TRACE;
+    struct {
+        unsigned char empty;
+    } jit__CHECK_VALIDITY;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_ptr;
+#endif
+    } jit__LOAD_CONST_INLINE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_pop;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_ptr;
+#endif
+    } jit__POP_TOP_LOAD_CONST_INLINE;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s2_ptr;
+#endif
+    } jit__LOAD_CONST_INLINE_BORROW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_pop;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s3_ptr;
+#endif
+    } jit__POP_TOP_LOAD_CONST_INLINE_BORROW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        _PyStackRef s1_pop2;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s2_pop1;
+#endif
+#if (defined(_Py_TIER2))
+        _PyStackRef s3_value;
+#endif
+#if (defined(_Py_TIER2))
+        PyObject * s4_ptr;
+#endif
+    } jit__POP_TWO_LOAD_CONST_INLINE_BORROW;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        uint32_t s1_func_version;
+#endif
+#if (defined(_Py_TIER2))
+        PyFunctionObject * s2_func;
+#endif
+    } jit__CHECK_FUNCTION;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        PyObject * s1_executor;
+#endif
+    } jit__START_EXECUTOR;
+    struct {
+        unsigned char empty;
+    } jit__MAKE_WARM;
+    struct {
+        unsigned char empty;
+    } jit__FATAL_ERROR;
+    struct {
+        unsigned char empty;
+    } jit__DEOPT;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        uint32_t s1_target;
+#endif
+    } jit__ERROR_POP_N;
+    struct {
+        unsigned char empty;
+#if (defined(_Py_TIER2))
+        uintptr_t s1_eval_breaker;
+#endif
+    } jit__TIER2_RESUME_CHECK;
 };

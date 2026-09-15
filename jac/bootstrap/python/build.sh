@@ -173,6 +173,12 @@ cpython() {
         cp "$recipe/generated/evaluator_scratch.h" Python/evaluator_scratch.h
         cp "$recipe/generated/evaluator_tier1_abi.c" Python/jac_evaluator_tier1_abi.c
         cp "$recipe/generated/evaluator_tier2_abi.c" Python/jac_evaluator_tier2_abi.c
+        cp "$recipe/generated/evaluator_jit_abi.c" Python/evaluator_jit_abi.c
+        cp "$recipe/generated/evaluator-generation.json" Python/evaluator-generation.json
+        cp "$recipe/evaluator_jit_template.c" Tools/jit/template.c
+        cp "$recipe/link_jit.py" Tools/jit/native_link.py
+        export JAC_NATIVE_ROOT="$root" JAC_NATIVE_ARTIFACTS="$work/native"
+        export JAC_NATIVE_PYTHON="$host/python/install/bin/python3.14"
         cp "$work/native/jacpython.o" Python/jacpython.o
         cp "$work/native/evaluator_support.o" Python/jac_evaluator_support.o
         cp "$work/native/evaluator_frames.o" Python/jac_evaluator_frame_clear.o
@@ -317,7 +323,7 @@ if [ -n "$host" ]; then
     cp -R "$host/python/build/include/." "$deps/include/"
     cp "$host/python/build/lib/"*.a "$deps/lib/"
     cp -R "$host/python/licenses" "$work/python/licenses"
-    step native "$host/python/install/bin/python3.14" -I "$recipe/prepare_native.py" "$root" "$work/native" "$platform"
+    step native "$host/python/install/bin/python3.14" -I "$recipe/prepare_native.py" "$root" "$work/native" "$platform" "$src/cpython"
 else
     # Preserve notices before discarding each dependency's installed build tree.
     mkdir -p "$work/python/licenses"
@@ -362,6 +368,11 @@ if [ -n "$host" ]; then
     cp "$work/native/evaluator_utilities.sha256" "$work/python/build/jacpython-evaluator-utilities-sha256"
     cp "$work/native/evaluator_entry.sha256" "$work/python/build/jacpython-evaluator-entry-sha256"
     cp "$work/native/evaluator-provenance.json" "$work/python/build/jacpython-evaluator-provenance.json"
+    for stencil_provenance in "$src/cpython"/jit_stencils-*.native.json; do
+        if [ -f "$stencil_provenance" ]; then
+            cp "$stencil_provenance" "$work/python/build/"
+        fi
+    done
     rm -rf "$work/native"
 else
     # Only dependency headers/archives are reused by the target build. Host

@@ -53686,7 +53686,6 @@ def jacpy_vm_uop__JUMP_TO_TOP(storage: &JacPyVMStorage, tstate: &JacPyThreadStat
     # assert(next_uop[-1].format == UOP_FORMAT_JUMP); next_uop = current_executor->trace + uop_get_jump_target(&next_uop[-1]);
     jacpy_abi_uop__JUMP_TO_TOP_1(&vm);
     return __musttail(jacpy_vm_tier2_dispatch(storage, tstate, vm));
-    return __musttail(jacpy_vm_tier2_dispatch(storage, tstate, vm));
 }
 
 @foreign_call(requires=["gil"], errors="python", reentrant=True)
@@ -54051,7 +54050,6 @@ def jacpy_vm_uop__DEOPT(storage: &JacPyVMStorage, tstate: &JacPyThreadState, vm:
     # assert(frame->stackpointer == NULL); NEXTOPARG();
     jacpy_abi_uop__DEOPT_4(&vm);
     return __musttail(jacpy_vm_dispatch(storage, tstate, vm));
-    return __musttail(jacpy_vm_tier2_dispatch(storage, tstate, vm));
 }
 
 @foreign_call(requires=["gil"], errors="python", reentrant=True)
@@ -54075,7 +54073,6 @@ def jacpy_vm_uop__ERROR_POP_N(storage: &JacPyVMStorage, tstate: &JacPyThreadStat
     # assert(frame->stackpointer == NULL); NEXTOPARG();
     jacpy_abi_uop__ERROR_POP_N_8(&vm);
     return __musttail(jacpy_vm_dispatch(storage, tstate, vm));
-    return __musttail(jacpy_vm_tier2_dispatch(storage, tstate, vm));
 }
 
 @foreign_call(requires=["gil"], errors="python", reentrant=True)

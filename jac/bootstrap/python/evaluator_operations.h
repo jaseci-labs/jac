@@ -13,6 +13,7 @@
 #include "pycore_cell.h"          // PyCell_GetRef()
 #include "pycore_ceval.h"         // SPECIAL___ENTER__
 #include "pycore_code.h"
+#include "pycore_descrobject.h"
 #include "pycore_dict.h"
 #include "pycore_emscripten_signal.h"  // _Py_CHECK_EMSCRIPTEN_SIGNALS
 #include "pycore_floatobject.h"   // _PyFloat_ExactDealloc()
@@ -42,6 +43,7 @@
 #include "pycore_template.h"      // _PyTemplate_Build()
 #include "pycore_traceback.h"     // _PyTraceBack_FromFrame
 #include "pycore_tuple.h"         // _PyTuple_ITEMS()
+#include "pycore_unicodeobject.h"
 #include "pycore_uop_ids.h"       // Uops
 
 #include "dictobject.h"
