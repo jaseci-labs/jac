@@ -32,7 +32,7 @@ def _pushable_value(v: any) -> bool {
 }
 
 
-def _type_cond(alias: str, names: list[str], params: dict, pfx: str) -> str {
+def _type_cond(alias: str, names: list[str], params: dict[str, any], pfx: str) -> str {
     key = f"{pfx}t";
     params[key] = names;
     return f"{alias}.arch_type = ANY(CAST(:{key} AS text[]))";
@@ -75,7 +75,7 @@ def _sanitize_ident(name: str) -> str {
 
 
 def _promoted_col(
-    alias: str, arch_names: list[str], field: str, promotions: (dict | None)
+    alias: str, arch_names: list[str], field: str, promotions: (dict[str, any] | None)
 ) -> (str | None) {
     if not promotions {
         return None;
@@ -92,7 +92,7 @@ def _promoted_col(
 
 
 def _field_expr(
-    alias: str, field: str, arch_names: list[str], promotions: (dict | None)
+    alias: str, field: str, arch_names: list[str], promotions: (dict[str, any] | None)
 ) -> str {
     col = _promoted_col(alias, arch_names, field, promotions);
     return col if col is not None else f"{alias}.props->'archetype'->'{field}'";
@@ -102,10 +102,10 @@ def _field_expr(
 def _row_cond(
     alias: str,
     p: QPred,
-    params: dict,
+    params: dict[str, any],
     pfx: str,
     arch_names: list[str],
-    promotions: (dict | None)
+    promotions: (dict[str, any] | None)
 ) -> (str | None) {
     op = {'<': '<', '<=': '<=', '>': '>', '>=': '>=', '==': '=', '!=': '<>'}.get(p.op);
     if op is None {
@@ -134,10 +134,10 @@ def _row_cond(
 def _pred_cond(
     alias: str,
     p: QPred,
-    params: dict,
+    params: dict[str, any],
     pfx: str,
     arch_names: (list[str] | None) = None,
-    promotions: (dict | None) = None
+    promotions: (dict[str, any] | None) = None
 ) -> (str | None) {
     if isinstance(p.field, tuple) {
         return _row_cond(alias, p, params, pfx, arch_names or [], promotions);
@@ -185,7 +185,7 @@ def _pred_cond(
 }
 
 
-def _acl_cond(alias: str, root_id: str, params: dict, pfx: str) -> str {
+def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str {
     mu = f"{pfx}mu";
     mt = f"{pfx}mt";
     params[mu] = root_id;
@@ -239,7 +239,7 @@ def _edge_join(alias: str, fid: str, dir: int, econds: list[str]) -> str {
 }
 
 
-def _nd_types(hop: QHop) -> list {
+def _nd_types(hop: QHop) -> list[type] {
     nd = hop.nd;
     if nd is None {
         return [];
@@ -252,12 +252,12 @@ impl compile_query(
     q: GraphQuery,
     upto: int,
     store: Store,
-    promotions: (dict | None) = None,
+    promotions: (dict[str, any] | None) = None,
     count_only: bool = False,
     acl_root: (str | None) = None
 ) -> CompiledQuery {
     out = CompiledQuery();
-    params: dict = {};
+    params: dict[str, any] = {};
     types: dict[str, list[str]] = {};
     params['origin'] = [];
     joins: list[str] = [];

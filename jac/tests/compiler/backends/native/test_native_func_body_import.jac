@@ -146,7 +146,7 @@ test "nested imports are harvested only from native-context elements" {
         file_path=os.path.join(FIXTURES, "clib_ctx_gated_lib.jac"),
         options=CompileOptions(no_cgen=True)
     );
-    _stmts: list = list(ModuleFacts.iter_context_stmts(ir));
+    _stmts: list[any] = list(ModuleFacts.iter_context_stmts(ir));
     placements = [stmt.code_context for stmt in _stmts];
     assert CodeContext.NATIVE not in placements , (
         f"fixture no longer exercises server placement: {placements}"

@@ -1,9 +1,9 @@
 import json;
 
-def boundary_audit(program: any, artifacts: list[dict]) -> dict {
-    boundaries: dict = {};
-    effects: dict = {};
-    host_imports: dict = {};
+def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, any] {
+    boundaries: dict[str, dict[str, any]] = {};
+    effects: dict[str, dict[str, any]] = {};
+    host_imports: dict[str, dict[str, any]] = {};
     manifests = list(artifacts);
     compiler = program._get_compiler();
     for hub in program._search_hubs() {

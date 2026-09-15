@@ -12,8 +12,8 @@ def _run(coro: any) -> any {
 }
 
 
-async def _collect(agen: any) -> list {
-    out: list = [];
+async def _collect(agen: any) -> list[any] {
+    out: list[any] = [];
     async for frame in agen {
         out.append(frame);
     }
@@ -21,20 +21,20 @@ async def _collect(agen: any) -> list {
 }
 
 
-async def _async_producer -> AsyncIterator[dict] {
+async def _async_producer -> AsyncIterator[dict[str, any]] {
     yield {"n": 0};
     yield {"n": 1};
     yield {"n": 2};
 }
 
 
-async def _raising_producer -> AsyncIterator[dict] {
+async def _raising_producer -> AsyncIterator[dict[str, any]] {
     yield {"ok": 1};
     raise ValueError("boom");
 }
 
 
-def _sync_producer -> Iterator[dict] {
+def _sync_producer -> Iterator[dict[str, any]] {
     yield {"a": 1};
     yield {"a": 2};
 }

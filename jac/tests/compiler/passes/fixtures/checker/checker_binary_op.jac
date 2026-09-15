@@ -15,7 +15,7 @@ glob a: A = A(),
      r2: A = a + a,  # <-- Error
      r3: int = (a + a) * B(),  # <-- Ok
      r4: str = (a + a) * B(),  # <-- Error
-     l: list = ["a", "b", "c"];
+     l: list[str] = ["a", "b", "c"];
 
 with entry {
     ''.join(l) + 'alpha';  # <-- Ok

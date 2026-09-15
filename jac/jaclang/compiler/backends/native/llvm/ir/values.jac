@@ -1399,7 +1399,7 @@ class Block(NamedValue) {
     def init(self: Block, parent: any, name: any = '') -> object {
         super.init(parent, types.LabelType(), name=name);
         self.scope = parent.scope;
-        self.instructions = [];
+        self.instructions: list[NamedValue] = [];
         self.terminator = None;
     }
 

@@ -564,7 +564,7 @@ def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
         / "apk"
         / ("release" if release else "debug")
     );
-    candidates = [];
+    candidates: list[Path] = [];
     if preferred.exists() {
         candidates.extend(
             [
@@ -683,7 +683,7 @@ def run_xcodebuild_ios(
         / "Build"
         / "Products"
         / f"{configuration}-{products_suffix}";
-    app_candidates = [];
+    app_candidates: list[Path] = [];
     if products_dir.exists() {
         app_candidates.extend(
             [

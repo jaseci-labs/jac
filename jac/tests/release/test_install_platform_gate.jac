@@ -91,7 +91,7 @@ def scaffold(arch: str, assets: list[str]) -> dict[(str, str)] {
 def run_installer(
     fx: dict[(str, str)], args: list[str] | None = None
 ) -> subprocess.CompletedProcess[str] {
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["PATH"] = fx["bin"] + os.pathsep + env["PATH"];
     env["HOME"] = fx["base"];
     env["FAKE_OS"] = fx["os"];

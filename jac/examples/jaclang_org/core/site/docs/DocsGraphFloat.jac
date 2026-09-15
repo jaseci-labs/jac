@@ -14,7 +14,7 @@ def _short(t: str) -> str {
     return t;
 }
 
-def _edge_d(e: dict) -> str {
+def _edge_d(e: dict[str, any]) -> str {
     x1 = e["x1"] as float;
     y1 = e["y1"] as float;
     x2 = e["x2"] as float;
@@ -38,10 +38,10 @@ def _edge_d(e: dict) -> str {
         + str(y2);
 }
 
-def _push(n: TreeNode, depth: int, acc: dict, px: float, py: float) {
-    nodes: list = acc["nodes"] as list;
-    edges: list = acc["edges"] as list;
-    index: dict = acc["index"] as dict;
+def _push(n: TreeNode, depth: int, acc: dict[str, any], px: float, py: float) {
+    nodes: list[dict[str, any]] = acc["nodes"] as list[dict[str, any]];
+    edges: list[dict[str, any]] = acc["edges"] as list[dict[str, any]];
+    index: dict[str, any] = acc["index"] as dict[str, any];
     x = PAD_X + (depth as float) * COL_W;
     y = PAD_Y + (acc["row"] as float) * ROW_H;
     acc["row"] = (acc["row"] as float) + 1.0;
@@ -66,9 +66,15 @@ def _push(n: TreeNode, depth: int, acc: dict, px: float, py: float) {
     }
 }
 
-def _model(tree: list[TreeNode], version: str) -> dict {
-    acc: dict = {"row": 1.0, "nodes": [], "edges": [], "index": {"": 0}, "w": 234.0};
-    (acc["nodes"] as list).append(
+def _model(tree: list[TreeNode], version: str) -> dict[str, any] {
+    acc: dict[str, any] = {
+        "row": 1.0,
+        "nodes": [],
+        "edges": [],
+        "index": {"": 0},
+        "w": 234.0
+    };
+    (acc["nodes"] as list[dict[str, any]]).append(
         {"i": 0, "path": "", "label": version, "kind": "root", "x": PAD_X, "y": PAD_Y}
     );
     for t in tree {
@@ -78,8 +84,8 @@ def _model(tree: list[TreeNode], version: str) -> dict {
     return acc;
 }
 
-def _chain(index: dict, cur_path: str) -> list {
-    chain: list = [0];
+def _chain(index: dict[str, any], cur_path: str) -> list[int] {
+    chain: list[int] = [0];
     walk = "";
     for seg in cur_path.split("/") {
         if seg == "" {
@@ -116,20 +122,20 @@ def:pub DocsGraphFloat(
             rafRef.current = 0;
         }
         m = _model(tree, version);
-        chain = _chain(m["index"] as dict, cur_path);
-        nodes = m["nodes"] as list;
+        chain = _chain(m["index"] as dict[str, any], cur_path);
+        nodes = m["nodes"] as list[dict[str, any]];
         dot: any = dotRef.current;
         if not dot {
             return;
         }
         if len(chain) < 2 {
-            rn = nodes[0] as dict;
+            rn = nodes[0] as dict[str, any];
             dot.setAttribute("cx", str(rn["x"] as float));
             dot.setAttribute("cy", str(rn["y"] as float));
             dot.setAttribute("opacity", "1");
             return;
         }
-        segs: list = [];
+        segs: list[dict[str, any]] = [];
         total = 0.0;
         k = 1;
         while k < len(chain) {
@@ -147,8 +153,8 @@ def:pub DocsGraphFloat(
             return;
         }
         dot.setAttribute("opacity", "1");
-        st: dict = {"t0": -1.0};
-        fns: dict = {"step": None};
+        st: dict[str, any] = {"t0": -1.0};
+        fns: dict[str, any] = {"step": None};
         fns["step"] = lambda (ts: any) {
             if (st["t0"] as float) < 0.0 {
                 st["t0"] = ts as float;
@@ -184,7 +190,7 @@ def:pub DocsGraphFloat(
                 rafRef.current = window.requestAnimationFrame(fns["step"]);
             } else {
                 rafRef.current = 0;
-                last = segs[len(segs) - 1] as dict;
+                last = segs[len(segs) - 1] as dict[str, any];
                 lel: any = last["el"];
                 ept: any = lel.getPointAtLength(last["len"] as float);
                 dot.setAttribute("cx", str(ept.x as float));
@@ -201,9 +207,9 @@ def:pub DocsGraphFloat(
     }
 
     m = _model(tree, version);
-    nodes = m["nodes"] as list;
-    edges = m["edges"] as list;
-    chain = _chain(m["index"] as dict, cur_path);
+    nodes = m["nodes"] as list[dict[str, any]];
+    edges = m["edges"] as list[dict[str, any]];
+    chain = _chain(m["index"] as dict[str, any], cur_path);
     target_i = (chain[len(chain) - 1] as int) if len(chain) > 1 else -1;
     return
         <div>

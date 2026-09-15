@@ -6,9 +6,9 @@ annotation is lost and downstream passes treat it as untyped.
 """
 
 obj TaskManager {
-    has tasks: list = [],
+    has tasks: list[any] = [],
         label: str = "default";
 
     def add_task(task: str) -> None;
-    def get_tasks -> list;
+    def get_tasks -> list[any];
 }

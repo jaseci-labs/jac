@@ -10,7 +10,7 @@ def _make_deployer(domain: str = '', cert_email: str = '') -> IngressDeployer {
     return IngressDeployer(k8s_config=cfg);
 }
 
-def _make_shared_deployer(annotations: dict) -> IngressDeployer {
+def _make_shared_deployer(annotations: dict[str, any]) -> IngressDeployer {
     cfg = KubernetesConfig(
         domain='app.example.com',
         shared_ingress=True,

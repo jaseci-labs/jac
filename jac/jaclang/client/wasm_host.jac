@@ -46,7 +46,7 @@ def _clock_gettime(st: _HostState, clk: int, ts: int) -> int {
     return 0;
 }
 
-def:pub make_jac_host(sh: any) -> dict {
+def:pub make_jac_host(sh: any) -> dict[str, any] {
     st = _HostState(sh=sh);
     return {
         "write": lambda (fd: int, ptr: int, n: int) {
@@ -117,14 +117,14 @@ async def:pub instantiate_na_wasm(url: str, sh: any, extra_imports: any = None) 
     return inst;
 }
 
-glob _na_env_cfg: dict = {},
-     _na_pending: dict = {},
-     _na_contracts: dict = {},
+glob _na_env_cfg: dict[str, list[any]] = {},
+     _na_pending: dict[str, any] = {},
+     _na_contracts: dict[str, any] = {},
      _na_exports: any = new(globalThis.WeakMap as any);
 
 def _host_callback(host: any, name: str, contract: any) -> any {
     def callback(*args: any) -> any {
-        values: list = [];
+        values: list[any] = [];
         for i in range(len(args)) {
             value = args[i];
             c = contract.params[i];
@@ -277,7 +277,7 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
 }
 
 def _na_result(
-    value: any, contract: any, module_stem: str, inst: any, parents: list
+    value: any, contract: any, module_stem: str, inst: any, parents: list[any]
 ) -> any {
     if contract.kind == "handle" {
         token: any = Object.freeze({});
@@ -325,8 +325,8 @@ def _na_caller(module_stem: str, fn_name: str, contract: any) -> any {
         if len(args) != len(contract.params) {
             raise Error("Native argument count mismatch for " + fn_name);
         }
-        values: list = [];
-        handles: list = [];
+        values: list[any] = [];
+        handles: list[any] = [];
         for i in range(len(args)) {
             parameter = contract.params[i];
             values.append(_na_argument(args[i], parameter, module_stem, inst));

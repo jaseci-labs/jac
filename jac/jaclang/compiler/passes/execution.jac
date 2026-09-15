@@ -2,6 +2,7 @@ import time;
 import from contextlib { ExitStack }
 import from jaclang.compiler.frontend.unitree { UniNode }
 import from jaclang.compiler.passes.context {
+    Alert,
     CompileContext,
     DiagnosticPolicy,
     PassResult
@@ -13,8 +14,8 @@ def run_walker(
     cancel_token: any = None,
     cancel_requested: bool = False,
     policy: DiagnosticPolicy | None = None,
-    errors_had: list | None = None,
-    warnings_had: list | None = None,
+    errors_had: list[Alert] | None = None,
+    warnings_had: list[Alert] | None = None,
     completed: PassResult | None = None,
     **kwargs: any
 ) -> any {

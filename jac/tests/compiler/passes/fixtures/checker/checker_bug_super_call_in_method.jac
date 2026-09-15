@@ -18,7 +18,7 @@ This fixture should produce 0 errors.
 obj Base {
     has foo: str = "base";
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {"foo": self.foo};
     }
 }
@@ -26,7 +26,7 @@ obj Base {
 obj Child(Base) {
     has bar: str = "child";
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         base = super().to_dict();
         base["bar"] = self.bar;
         return base;

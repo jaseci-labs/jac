@@ -11,12 +11,12 @@ obj Pt {
         y: int;
 }
 
-def shared_py() -> dict {
+def shared_py() -> dict[any, any] {
     p = Pt(x=3, y=4);
     return {"sum": p.x + p.y};
 }
 
-def shared_cl() -> dict {
+def shared_cl() -> dict[any, any] {
     p = Pt(x=3, y=4);
     return {"sum": p.x + p.y};
 }

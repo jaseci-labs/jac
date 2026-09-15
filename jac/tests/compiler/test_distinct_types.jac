@@ -20,7 +20,7 @@ glob FIXTURE_DIR = os.path.join(
      );
 
 
-def compile_fixture(name: str) -> list {
+def compile_fixture(name: str) -> list[any] {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, name), no_cgen=True);
     return prog.errors_had;

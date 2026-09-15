@@ -42,7 +42,7 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
-    candidates: dict = {};
+    candidates: dict[str, ir.Type] = {};
     dropped: set = set();
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if not isinstance(stmt, uni.ModuleCode) {
@@ -196,7 +196,7 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
 
             if assign.value is not None and const_init is None {
                 if not self?._global_init_nodes {
-                    self._global_init_nodes: list = [];
+                    self._global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [];
                 }
                 self._global_init_nodes.append((var_name, assign.value, var_type));
             }

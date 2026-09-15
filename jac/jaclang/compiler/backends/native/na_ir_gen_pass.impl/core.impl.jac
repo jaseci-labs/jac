@@ -137,7 +137,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._register_archetypes(self.module);
     self._register_enum_methods(self.module, declare=False);
 
-    _entry_nodes: list = [];
+    _entry_nodes: list[uni.UniNode] = [];
     for stmt in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE) {
         if (
             isinstance(stmt, uni.Ability)
@@ -214,7 +214,10 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
 }
 
 impl NaIRGenPass._predemote_capability_unit(
-    full_name: str, func: ir.Function, viols: list, keep_func: bool = False
+    full_name: str,
+    func: ir.Function,
+    viols: list[tuple[uni.UniNode, str, str, str | None]],
+    keep_func: bool = False
 ) -> bool {
     _local_mark = len(self.ctx.errors_had);
     for (_vnode, _vkind, _vname, _vhelp) in viols {
@@ -443,7 +446,7 @@ impl NaIRGenPass._export_native_layout -> None {
             }
         }
 
-        ret_elem: (list | None) = None;
+        ret_elem: (list[str | None] | None) = None;
         if (
             ret_type.startswith("List.")
             or ret_type.startswith("Dict.")
@@ -523,12 +526,14 @@ impl NaIRGenPass._exported_accessors(arch_name: str) -> dict[(str, dict[(str, st
     return out;
 }
 
-impl NaIRGenPass._ret_tuple_hints(fname: str, ret_tuple: any) -> (list | None) {
+impl NaIRGenPass._ret_tuple_hints(
+    fname: str, ret_tuple: any
+) -> (list[str | None] | None) {
     keys = self.func_ret_elem_keys.get(fname);
     if not keys or len(keys) != len(ret_tuple.element_types) {
         return None;
     }
-    hints: list = [];
+    hints: list[str | None] = [];
     _any = False;
     for k in keys {
         hint: (str | None) = None;
@@ -558,7 +563,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 
     processed_modules: set[str] = set();
-    imported_mods: list = [];
+    imported_mods: list[tuple[str, uni.Module]] = [];
     manifest = self.module.gen.interop_manifest;
 
     entry_base = os.path.dirname(os.path.abspath(self.module.loc.mod_path))
@@ -610,9 +615,9 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     import from jaclang.compiler.frontend.codeinfo { native_module_key }
     import from jaclang.compiler.backends.common.kernel_units { kernel_unit_owner }
 
-    _canon_src: dict = {};
+    _canon_src: dict[str, str] = {};
     _src_keys: dict[str, str] = {};
-    dep_edges: dict = {};
+    dep_edges: dict[str | None, list[str]] = {};
     qi = 0;
     while qi < len(wq) {
         (mod_name, cur_base, parent_key) = wq[qi];
@@ -692,7 +697,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
     }
     _visited: set = set();
-    _order_stack: list = [(None, 0)];
+    _order_stack: list[tuple[str | None, int]] = [(None, 0)];
     while _order_stack {
         (_nd, _idx) = _order_stack.pop();
         _kids = dep_edges.get(_nd, []);
@@ -756,7 +761,9 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 }
 
-impl NaIRGenPass._permuted_walk_order(mods: list) -> list {
+impl NaIRGenPass._permuted_walk_order(
+    mods: list[tuple[str, uni.Module]]
+) -> list[tuple[str, uni.Module]] {
     _spec = self.prog.options.native_module_walk_order or "";
     if not _spec {
         return mods;
@@ -1569,7 +1576,7 @@ impl NaIRGenPass._dispatch_primitive_method(
     target: ir.Value,
     args: list[ir.Value],
     type_key: str,
-    kwargs: (dict | None) = None,
+    kwargs: (dict[str, uni.UniNode] | None) = None,
     kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     target = self._str_norm(target);
@@ -1623,10 +1630,10 @@ impl NaIRGenPass._dispatch_primitive_method(
 impl NaIRGenPass._dispatch_builtin(
     func_name: str,
     args: list[ir.Value],
-    kwargs: (dict | None) = None,
+    kwargs: (dict[str, uni.UniNode] | None) = None,
     kw_node: (uni.UniNode | None) = None,
     type_key: str = "",
-    arg_nodes: (list | None) = None
+    arg_nodes: (list[uni.UniNode] | None) = None
 ) -> (ir.Value | None) {
     args = [self._str_norm(_a) for _a in args];
     self._ensure_emitters();
@@ -1660,8 +1667,8 @@ impl NaIRGenPass._dispatch_builtin(
     return _emit_fn(_ctx, args);
 }
 
-impl NaIRGenPass._split_call_kwargs(nd: uni.FuncCall) -> dict {
-    out: dict = {};
+impl NaIRGenPass._split_call_kwargs(nd: uni.FuncCall) -> dict[str, uni.UniNode] {
+    out: dict[str, uni.UniNode] = {};
     for param in (nd.params or []) {
         if isinstance(param, uni.KWPair) and param.key is not None {
             out[param.key.sym_name] = param.value;

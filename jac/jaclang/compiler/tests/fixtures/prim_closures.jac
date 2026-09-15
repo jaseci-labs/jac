@@ -6,7 +6,7 @@ captures (Jac implicit-rebind, sv emits `nonlocal`) write through to the
 enclosing frame. ES/JS opts out.
 """
 
-def closures_py -> dict {
+def closures_py -> dict[any, any] {
     y = 2;
     def add_y(x: int) -> int {
         return x + y;
@@ -41,7 +41,7 @@ def closures_py -> dict {
     };
 }
 
-def closures_escape_py -> dict {
+def closures_escape_py -> dict[any, any] {
     count = 0;
     def bump -> int {
         count = count + 1;
@@ -102,7 +102,7 @@ def closures_escape_py -> dict {
 }
 
 
-def closures_adapters_py -> dict {
+def closures_adapters_py -> dict[any, any] {
     k = 3;
     scaled = 0;
     for v in map(lambda (x: int) -> int { x * k; }, [1, 2, 3]) {
@@ -123,15 +123,15 @@ def closures_adapters_py -> dict {
     return {"scaled": scaled, "kept": kept, "chained": chained,};
 }
 
-def closures_cl -> dict {
+def closures_cl -> dict[any, any] {
     return {};
 }
 
-def closures_escape_cl -> dict {
+def closures_escape_cl -> dict[any, any] {
     return {};
 }
 
-def closures_adapters_cl -> dict {
+def closures_adapters_cl -> dict[any, any] {
     return {};
 }
 

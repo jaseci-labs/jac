@@ -8,7 +8,7 @@ obj Box {
     has v: int = 0;
 }
 
-def chain_cmp_py -> dict {
+def chain_cmp_py -> dict[any, any] {
     t = Box();
     u = t;
     w = Box();
@@ -37,7 +37,7 @@ def chain_cmp_py -> dict {
     };
 }
 
-def chain_cmp_cl -> dict {
+def chain_cmp_cl -> dict[any, any] {
     return {};
 }
 

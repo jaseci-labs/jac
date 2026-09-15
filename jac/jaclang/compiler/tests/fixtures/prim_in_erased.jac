@@ -58,7 +58,7 @@ obj Bag {
     }
 }
 
-def in_erased_py -> dict {
+def in_erased_py -> dict[any, any] {
     b = Bag();
     t1 = Tag(n=1);
     t2 = Tag(n=2);
@@ -75,7 +75,7 @@ def in_erased_py -> dict {
     };
 }
 
-def in_erased_cl -> dict {
+def in_erased_cl -> dict[any, any] {
     b = Bag();
     t1 = Tag(n=1);
     t2 = Tag(n=2);

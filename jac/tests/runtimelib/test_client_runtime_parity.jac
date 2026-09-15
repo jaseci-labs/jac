@@ -79,21 +79,22 @@ Non-public helpers are excluded on purpose: parsing pulls in the `impl/` annex,
 and targets may name internal arguments after whatever library they wrap
 (react-form's `field` vs solid-form's `fieldApi`). Parity covers the public
 surface, not private plumbing."""
-def _signatures(path: Path) -> dict[str, list] {
+def _signatures(path: Path) -> dict[str, list[any]] {
     src = path.read_text(encoding="utf-8");
     prog = JacProgram();
     mod = prog.parse_str(src, str(path));
     assert not prog.errors_had , (
         f"{path.name} failed to parse: {[str(e) for e in prog.errors_had]}"
     );
-    out: dict[str, list] = {};
+    out: dict[str, list[any]] = {};
     for abl in mod.get_all_sub_nodes(uni.Ability) {
         name = abl.name_ref?.value;
         if not name or not _is_public(abl) {
             continue;
         }
-        params = [];
-        for prm in (_as_any(abl.signature).params or []) {
+        params: list[any] = [];
+        sig_params: any = _as_any(abl.signature).params or [];
+        for prm in sig_params {
             type_node = prm.type_tag.tag if prm.type_tag else None;
             params.append(
                 (prm.name.value, _node_text(src, type_node), _node_text(src, prm.value))
@@ -136,7 +137,7 @@ def _compiled_body(path: Path, backend: any, name: str) -> str {
 }
 
 """Render one signature for a failure message."""
-def _render(name: str, params: list) -> str {
+def _render(name: str, params: list[any]) -> str {
     parts = [];
     for (pname, ptype, pdefault) in params {
         text = pname;
@@ -154,7 +155,7 @@ def _render(name: str, params: list) -> str {
 """Names declared by two or more `runtimes` must have identical parameter lists.
 Returns the compared names, so callers can assert the run was not vacuous."""
 def _assert_parity(runtimes: dict[str, Path], label: str) -> set {
-    tables = {};
+    tables: dict[str, dict[str, list[any]]] = {};
     for (target, path) in runtimes.items() {
         tables[target] = _signatures(path);
     }

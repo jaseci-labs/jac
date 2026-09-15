@@ -395,7 +395,7 @@ obj SourceMapper {
             for map_file in compiled_dir.rglob("*.js.map") {
                 try {
                     with open(map_file, encoding="utf-8") as f {
-                        raw: dict = dict(json.load(f));
+                        raw: dict[str, any] = dict(json.load(f));
                     }
                     sources: list[str] = list(raw.get("sources", []));
                     mappings: str = str(raw.get("mappings", ""));
@@ -424,7 +424,7 @@ obj SourceMapper {
             for map_file in dist_dir.`glob("*.js.map") {
                 try {
                     with open(map_file, encoding="utf-8") as f {
-                        raw: dict = dict(json.load(f));
+                        raw: dict[str, any] = dict(json.load(f));
                     }
                     sources: list[str] = list(raw.get("sources", []));
                     mappings: str = str(raw.get("mappings", ""));
@@ -749,7 +749,7 @@ obj JacLocator {
 
     def _load_map(rel: str) -> (SourceMap | None) {
         try {
-            raw: dict = dict(
+            raw: dict[str, any] = dict(
                 json.loads(
                     (self.compiled_dir / (rel + ".map")).read_text(encoding="utf-8")
                 )

@@ -25,7 +25,7 @@ def _as_any(value: any) -> any {
 }
 
 
-def mock_sso_config_with_firebase -> dict {
+def mock_sso_config_with_firebase -> dict[str, any] {
     return {
         'host': 'http://localhost:8000',
         'google': {'client_id': '', 'client_secret': ''},
@@ -36,7 +36,7 @@ def mock_sso_config_with_firebase -> dict {
 }
 
 
-def mock_sso_config_without_firebase -> dict {
+def mock_sso_config_without_firebase -> dict[str, any] {
     return {
         'host': 'http://localhost:8000',
         'google': {'client_id': '', 'client_secret': ''},
@@ -48,27 +48,27 @@ def mock_sso_config_without_firebase -> dict {
 
 
 obj MockScaleConfig {
-    has sso_config: dict;
+    has sso_config: dict[str, any];
 
-    def get_sso_config -> dict {
+    def get_sso_config -> dict[str, any] {
         return self.sso_config;
     }
 
-    def get_jwt_config -> dict {
+    def get_jwt_config -> dict[str, any] {
         return {'secret': 'test_secret', 'algorithm': 'HS256', 'exp_delta_days': 1};
     }
 
-    def get_database_config -> dict {
+    def get_database_config -> dict[str, any] {
         return {'redis_url': None, 'shelf_db_path': '.jac/data/anchor_store.db'};
     }
 
-    def get_monitoring_config -> dict {
+    def get_monitoring_config -> dict[str, any] {
         return {'enabled': False, 'port': 9090};
     }
 }
 
 
-def _setup_user_manager(sso_config: dict) -> tuple[str, SSOAuth] {
+def _setup_user_manager(sso_config: dict[str, any]) -> tuple[str, SSOAuth] {
     test_dir = mkdtemp();
     reset_scale_config();
     mock_config = MockScaleConfig(sso_config);
@@ -120,7 +120,7 @@ def _teardown_user_manager(test_dir: str) {
 }
 
 
-def _make_request(body: dict) -> Request {
+def _make_request(body: dict[str, any]) -> Request {
     mock_request: any = unittest.mock.Mock(spec=Request);
     mock_request.body = _as_any(json.dumps(body).encode('utf-8'));
     return mock_request;

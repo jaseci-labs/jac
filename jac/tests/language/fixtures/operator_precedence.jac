@@ -5,7 +5,7 @@ and asserts the outputs match.
 """
 
 with entry {
-    jac_results: list = [];
+    jac_results: list[str] = [];
 
     # Bitwise AND vs comparison: should be (3 & 1) == 1, not 3 & (1 == 1)
     jac_results.append(str(3 & 1 == 1));
@@ -32,7 +32,7 @@ with entry {
     jac_results.append(str(1 << 2 + 1));
 
     # Get Python results via inline Python
-    py_results: list = [];
+    py_results: list[any] = [];
     ::py::
 py_results = []
 py_results.append(str(3 & 1 == 1))
@@ -45,9 +45,10 @@ py_results.append(str(5 | 3 ^ 1 & 2))
 py_results.append(str(1 << 2 + 1))
     ::py::
 
+
     # Compare and report
     for i in range(len(jac_results)) {
-        assert jac_results[i] == py_results[i], (
+        assert jac_results[i] == py_results[i] , (
             f"Mismatch at expression {i}: jac={jac_results[i]} py={py_results[i]}"
         );
     }

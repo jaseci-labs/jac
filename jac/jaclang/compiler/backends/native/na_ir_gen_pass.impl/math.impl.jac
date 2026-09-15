@@ -57,7 +57,7 @@ impl NaIRGenPass._emit_math_call(name: str, nd: uni.FuncCall) -> (ir.Value | Non
     f64 = ir.DoubleType();
     i64 = ir.IntType(64);
     i1 = ir.IntType(1);
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
 
     args: list[ir.Value] = [];
     for p in params {

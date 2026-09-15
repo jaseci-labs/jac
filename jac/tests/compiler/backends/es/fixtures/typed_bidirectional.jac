@@ -44,7 +44,7 @@ def:pub update_item(order_id: str, item: CartItem) -> OrderSummary {
 import from .typed_bidirectional { place_order, update_item }
 
 def:pub app -> JsxElement {
-    has cart: list = [],
+    has cart: list[any] = [],
         order: any = None;
 
     async def checkout -> None {

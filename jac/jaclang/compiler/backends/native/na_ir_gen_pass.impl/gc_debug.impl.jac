@@ -87,7 +87,7 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
     self.rc_live_head_gv = live_head_gv;
 }
 
-impl NaIRGenPass._emit_ctx_load(b: ir.IRBuilder) -> tuple {
+impl NaIRGenPass._emit_ctx_load(b: ir.IRBuilder) -> tuple[ir.Value, ir.Value] {
     i8_ptr = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     _op_raw = b.load(self.rc_ctx_op_gv, name="ctx.op.raw");

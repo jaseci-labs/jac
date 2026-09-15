@@ -7,7 +7,7 @@ deterministically true on both sv (Python) and na (LLVM). ES/JS opts out.
 
 import time;
 
-def time_py() -> dict {
+def time_py() -> dict[any, any] {
     t0: float = time.monotonic();
     time.sleep(0.02);
     t1: float = time.monotonic();
@@ -23,7 +23,7 @@ def time_py() -> dict {
     };
 }
 
-def time_cl() -> dict {
+def time_cl() -> dict[any, any] {
     return {};
 }
 

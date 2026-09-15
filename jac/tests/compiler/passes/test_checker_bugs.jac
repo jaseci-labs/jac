@@ -668,7 +668,7 @@ test "bug_impl1_has_var_shadow_in_impl_body" {
     #   - `x: list[dict] = tasks` is a sound assignment
     assert len(program.errors_had) == 0 , (
         "Bug #IMPL-1: has var `tasks` in impl body should resolve to the "
-        "parent HasVar (type list[dict]), not a local shadow (type Unknown). "
+        "parent HasVar (type list[dict[str, any]]), not a local shadow (type Unknown). "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
@@ -1303,7 +1303,7 @@ test "bug_cyctaint1_settling_cycle_checks_clean_and_resolves" {
     config_sym = mod.names_in_scope.get("CONFIG");
     assert config_sym is not None , "CONFIG symbol missing from fixture module";
     settled = program.get_type_evaluator().get_type_of_symbol(config_sym);
-    assert not isinstance(settled, UnknownType) and str(settled) == "dict" , (
+    assert not isinstance(settled, UnknownType) and str(settled) == "dict[Any, Any]" , (
         "Bug #CYCLE-TAINT-1: after the cycle unwinds, a later query must "
         "resolve the settled type (dict via Reg.defaults), not a frozen "
         f"Unknown. Got: {settled}"
@@ -1356,7 +1356,7 @@ test "bug_cycprec1_genuine_error_in_cycle_window_still_fires" {
     config_sym = mod.names_in_scope.get("CONFIG");
     assert config_sym is not None , "CONFIG symbol missing from fixture module";
     settled = program.get_type_evaluator().get_type_of_symbol(config_sym);
-    assert not isinstance(settled, UnknownType) and str(settled) == "dict" , (
+    assert not isinstance(settled, UnknownType) and str(settled) == "dict[Any, Any]" , (
         "Bug #CYCLE-PRECISION-1: CONFIG must still settle to dict. " f"Got: {settled}"
     );
 }
@@ -1411,11 +1411,11 @@ test "bug_cycprec1_node_type_never_stores_incomplete_result" {
     );
 
     settled = evaluator.get_type_of_expression(config_use);
-    assert not isinstance(settled, UnknownType) and str(settled) == "dict" , (
+    assert not isinstance(settled, UnknownType) and str(settled) == "dict[Any, Any]" , (
         "Bug #CYCLE-PRECISION-1: after the stack unwinds, the same query "
         f"must resolve the settled type. Got: {settled}"
     );
-    assert config_use.type is not None and str(config_use.type) == "dict" , (
+    assert config_use.type is not None and str(config_use.type) == "dict[Any, Any]" , (
         "Bug #CYCLE-PRECISION-1: the settled (complete) type must be "
         f"cached on the node. Got: {config_use.type}"
     );
@@ -1992,6 +1992,42 @@ test "bug_tvarmeth1_method_type_param_shadows_class_param" {
     );
 }
 
+# Bug #LITEQ-1: `x == 0` dropped `int` from `int | None` in the other branch;
+# a literal comparison now narrows only the branch that confirms it.
+test "bug_liteq_1_int_literal_comparison_keeps_int_arm" {
+    program = compile_and_check("checker_literal_eq_keeps_base.jac");
+
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+
+    assert len(program.errors_had) == 4 , (
+        "Bug #LITEQ-1: only the two optional returns and the two None-binding "
+        f"reports may fire. Got: {[str(e) for e in program.errors_had]}"
+    );
+
+    # Both read plain "NoneType" before the fix.
+    for line in [7, 12] {
+        assert "int | NoneType" in by_line.get(line, "") , (
+            "Bug #LITEQ-1: an int-literal comparison must leave the int arm "
+            f"standing. Line {line} reported: {by_line.get(line)}"
+        );
+    }
+
+    # The collapse was unsound, not just mislabelled: before the fix the else
+    # branch bound a live `int` to a `None` name and reported nothing.
+    for (line, expected) in [
+        (31, "Cannot assign int | NoneType to NoneType"),
+        (32, "Cannot return int | NoneType, expected NoneType")
+    ] {
+        assert expected in by_line.get(line, "") , (
+            "Bug #LITEQ-1: the else branch of an int-literal comparison must "
+            f"not admit the int arm. Line {line} reported: {by_line.get(line)}"
+        );
+    }
+}
 
 test "bug_selfovl1_receiver_selects_the_self_typed_overload" {
     program = compile_and_check("checker_self_typed_overload.jac");

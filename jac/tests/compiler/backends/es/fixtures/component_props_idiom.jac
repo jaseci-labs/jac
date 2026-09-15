@@ -24,6 +24,6 @@ def:pub DirectStyle(foo: str, bar: str) -> JsxElement {
 # `<SingleKeyStyle payload={...} />` validates `payload` against its
 # declared type, so this is a typed bundle, not the props-bundle shape.
 # No warning.
-def:pub SingleKeyStyle(payload: dict) -> JsxElement {
+def:pub SingleKeyStyle(payload: dict[any, any]) -> JsxElement {
     return <div>{payload}</div>;
 }

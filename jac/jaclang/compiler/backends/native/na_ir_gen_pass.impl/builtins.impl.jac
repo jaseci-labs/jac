@@ -25,7 +25,7 @@ impl NaIRGenPass._get_printf -> ir.Function {
 
 impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     printf = self._get_printf();
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if not params {
         fmt = self._get_fmt_string("");
         fmt_ptr = self.builder.bitcast(fmt, ir.IntType(8).as_pointer());
@@ -34,7 +34,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     fmt_parts = [];
-    args = [];
+    args: list[ir.Value] = [];
     for (i, param) in enumerate(params) {
         val = self._str_norm_optional(self._codegen_expr(param));
         if val is None {
@@ -237,7 +237,7 @@ impl NaIRGenPass._codegen_multistring(nd: uni.MultiString) -> (ir.Value | None) 
     return result;
 }
 
-impl NaIRGenPass._static_str_struct_const(data: bytes) -> tuple {
+impl NaIRGenPass._static_str_struct_const(data: bytes) -> tuple[ir.Type, ir.Constant] {
     i64 = ir.IntType(64);
     i8 = ir.IntType(8);
     arr_type = ir.ArrayType(i8, len(data));
@@ -289,7 +289,9 @@ impl NaIRGenPass._fstring_spec_text(spec: uni.Expr) -> (str | None) {
     return static_fstring_spec_text(spec);
 }
 
-impl NaIRGenPass._fstring_spec_to_printf(spec: str, kind: str) -> (tuple | None) {
+impl NaIRGenPass._fstring_spec_to_printf(
+    spec: str, kind: str
+) -> (tuple[str, str] | None) {
     fill: (str | None) = None;
     align: (str | None) = None;
     i = 0;
@@ -738,7 +740,7 @@ impl NaIRGenPass._codegen_string_index(
 
 impl NaIRGenPass._emit_norm_slice_bounds(
     slice_node: object, src_len: ir.Value
-) -> (tuple | None) {
+) -> (tuple[ir.Value, ir.Value, ir.Value, ir.Value] | None) {
     i64 = ir.IntType(64);
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);

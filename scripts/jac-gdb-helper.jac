@@ -165,7 +165,7 @@ class JacBacktrace(gdb.Command) {
 
     def invoke(self: JacBacktrace, _arg: str, _from_tty: bool) {
         frame = gdb.newest_frame();
-        frames: list = [];
+        frames: list[any] = [];
         while frame is not None {
             frames.append(frame);
             try {

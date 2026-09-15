@@ -5,7 +5,11 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
 
     python_build = os.path.join(pkg_root, ".python-build");
     fallback: (str | None) = None;
-    for build_root in [os.path.join(python_build, "jacpython"), python_build] {
+    for build_root in [
+        os.path.join(python_build, "cpython"),
+        os.path.join(python_build, "jacpython"),
+        python_build
+    ] {
         if not os.path.isdir(build_root) {
             continue;
         }
@@ -55,8 +59,8 @@ def clib_to_archive_name(clib_path: str) -> str {
 }
 
 def collect_floor_archives(
-    clib_paths: list, clib_symbol_lib: dict, triple: str, is_macos: bool
-) -> tuple {
+    clib_paths: list[str], clib_symbol_lib: dict[str, str], triple: str, is_macos: bool
+) -> tuple[list[bytes], set[str]] {
     import os;
     import from jaclang.compiler.backends.native.linker_common { select_ar_members }
     member_bytes: list[bytes] = [];

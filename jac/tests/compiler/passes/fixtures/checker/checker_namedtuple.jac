@@ -23,7 +23,7 @@ def process_point(p: Point) -> int {
 }
 
 # Test helper function that expects tuple
-def process_tuple(t: tuple) -> None {
+def process_tuple(t: tuple[any, ...]) -> None {
     print(t);
 }
 

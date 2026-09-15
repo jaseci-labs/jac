@@ -8,6 +8,6 @@ impl TaskManager.add_task(task: str) -> None {
     tasks = tasks + [task];
 }
 
-impl TaskManager.get_tasks -> list {
+impl TaskManager.get_tasks -> list[any] {
     return tasks;
 }

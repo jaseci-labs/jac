@@ -1,4 +1,4 @@
-def resolve_diagnostic_tokens(tokens: list) -> tuple[list[str], list[str]] {
+def resolve_diagnostic_tokens(tokens: list[str]) -> tuple[list[str], list[str]] {
     import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS, LINT_ALIASES }
     resolved: list[str] = [];
     unknown: list[str] = [];

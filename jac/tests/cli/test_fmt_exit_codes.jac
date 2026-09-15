@@ -158,7 +158,7 @@ test "cache_stats reports how many files were changed" {
         f = Path(repo) / "a.jac";
         f.write_text(NEEDS_FMT);
         reset_state();
-        stats: dict = {};
+        stats: dict[str, int] = {};
         fmt_cmd([str(f)], cache_stats=stats);
         changed = stats.get("changed");
     } finally {

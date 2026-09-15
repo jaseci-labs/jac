@@ -208,7 +208,7 @@ test "plain import of a native module from client code takes the na edge" {
 
 test "the injected wasm host import is registered for materialization" {
     mod = compile_host();
-    imports = dict(mod.gen.client_manifest.imports);
+    imports: dict[str, str] = dict(mod.gen.client_manifest.imports);
     assert "@jac/wasm_host" in imports , (
         "the compiler injects `import { __na_bind } from '@jac/wasm_host'`, so the"
         " specifier must join manifest.imports -- that list is what compiles"

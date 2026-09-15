@@ -137,12 +137,12 @@ impl NaIRGenPass._codegen_enum_layout(
 }
 
 impl NaIRGenPass._build_enum_string_table(
-    enum_name: str, entries: list, with_values: bool = True
+    enum_name: str, entries: list[tuple[str, str, int]], with_values: bool = True
 ) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    value_ptrs: list = [];
-    name_ptrs: list = [];
+    value_ptrs: list[ir.Value] = [];
+    name_ptrs: list[ir.Value] = [];
     for (mname, str_val, ordinal) in entries {
         if with_values {
             (val_struct_type, val_struct) = self._static_str_struct_const(
@@ -247,7 +247,7 @@ impl NaIRGenPass._enum_ordinal_fn(enum_name: str) -> (ir.Function | None) {
     fn.args[0].name = "val";
     b = ir.IRBuilder(fn.append_basic_block("entry"));
     seen: set = set();
-    ordered: list = [];
+    ordered: list[tuple[int, int]] = [];
     for (_iv, _ord) in entries {
         if _iv in seen {
             continue;
@@ -362,7 +362,7 @@ impl NaIRGenPass._codegen_enum_ctor(
     if lay is None {
         return None;
     }
-    _params = nd.params or [];
+    _params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if len(_params) != 1 or isinstance(_params[0], uni.KWPair) {
         self._emit_enum_ctor_refusal(
             nd, enum_name, "It takes exactly one positional value."

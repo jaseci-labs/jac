@@ -10,7 +10,7 @@ glob logger = logging.getLogger(__name__),
 
 obj CompiledQuery {
     has sql: str = '',
-        params: dict = {},
+        params: dict[str, any] = {},
         residual: dict[int, list[QPred]] = {};
 }
 
@@ -19,7 +19,7 @@ def compile_query(
     q: GraphQuery,
     upto: int,
     store: Store,
-    promotions: (dict | None) = None,
+    promotions: (dict[str, any] | None) = None,
     count_only: bool = False,
     acl_root: (str | None) = None
 ) -> CompiledQuery;

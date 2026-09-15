@@ -18,7 +18,7 @@ walker BaseAstGenPass[AstNodeT](TreeWalker) {
     has ctx: CompileContext,
         module: uni.Module;
 
-    def _merge_module_bodies(nd: uni.Module) -> list;
+    def _merge_module_bodies(nd: uni.Module) -> list[uni.UniNode];
     def _init_child_passes(pass_class: type[ChildPassT]) -> list[ChildPassT];
     def _flatten_ast_list(
         items: list[AstNodeT | list[AstNodeT] | None]

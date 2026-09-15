@@ -2,11 +2,11 @@
 corrupts a registered user's stored root_id with real SQL, simulating a store
 reset or migration out from under the users db."""
 
-def whoami -> dict {
+def whoami -> dict[str, any] {
     return {"root": jid(root)};
 }
 
-def:pub corrupt_root(username: str, new_root_id: str) -> dict {
+def:pub corrupt_root(username: str, new_root_id: str) -> dict[str, any] {
     import from jaclang.server.shared_store { shared_store }
     store = shared_store();
     if store is None {

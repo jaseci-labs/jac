@@ -12,7 +12,7 @@ glob _DEFAULT_RUNTIME_PKG: str = "@jaseci/runtime";
 impl runtime_pkg_name(config: JacConfig) -> str {
     npm = config._raw_data.get("npm", {});
     if isinstance(npm, dict) and npm.get("runtime") {
-        return npm["runtime"];
+        return str(npm["runtime"]);
     }
     return _DEFAULT_RUNTIME_PKG;
 }

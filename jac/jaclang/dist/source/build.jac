@@ -6,7 +6,7 @@ import subprocess;
 import from pathlib { Path }
 
 
-def build_native_product(base: Path, record: dict) {
+def build_native_product(base: Path, record: dict[str, any]) {
     source = base / record['source'];
     output = base / record['output'];
     output.parent.mkdir(parents=True, exist_ok=True);

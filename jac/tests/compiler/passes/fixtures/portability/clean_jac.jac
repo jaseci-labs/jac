@@ -13,7 +13,7 @@ def proper_math() -> None {
 }
 
 def proper_list_ops() -> None {
-    items: list = [1, 2, 3];
+    items: list[any] = [1, 2, 3];
     items.append(4);
     items.insert(0, 0);
     items.pop(0);
@@ -30,7 +30,7 @@ def proper_string_ops() -> None {
 }
 
 def proper_dict_ops() -> None {
-    d: dict = {"a": 1};
+    d: dict[any, any] = {"a": 1};
     k = d.keys();
     v = d.values();
     i = d.items();

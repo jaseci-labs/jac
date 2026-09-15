@@ -163,7 +163,7 @@ node ClassDetailsShared {
         ct_params: (list[str] | None) = None,
         _mro_cache: (list[ClassType] | None) = None,
         _acc_cache: (dict[str, any] | None) = None,
-        _mro_sig: (tuple | None) = None,
+        _mro_sig: (tuple[tuple[int, int | str], ...] | None) = None,
         _provisional: bool = False,
         _heal_stamp: int = 0;
 
@@ -266,7 +266,7 @@ node ClassType(TypeBase) {
     def specialize_generics(type_args: list[TypeBase]) -> ClassType;
     def get_class_symbol -> (Symbol | None);
     def lookup_member_symbol(
-        member: str, r_overloaded: list | None = None
+        member: str, r_overloaded: list[Symbol] | None = None
     ) -> (Symbol | None);
 
     def is_builtin(class_name: (str | list[str] | None) = None) -> bool;

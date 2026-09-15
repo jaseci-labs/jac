@@ -19,7 +19,7 @@ def ensure_apple -> dict[str, str] {
             "Install Xcode from the Mac App Store, select it with sudo xcode-select --switch /Applications/Xcode.app, and finish its first-launch setup. Apple requires this setup before iOS builds."
         );
     }
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     if shutil.which("pod") and use_system_tools() {
         return env;
     }

@@ -25,7 +25,7 @@ def default_pss_labels -> dict[str, str];
 
 def privileged_pss_labels(existing: dict[str, str]) -> dict[str, str] | None;
 
-glob COMPANION_DEFS: list = [
+glob COMPANION_DEFS: list[tuple[str, str, bool]] = [
          ("", "Jaseci App", False),
          ("-postgres", "PostgreSQL", True),
          ("-prometheus", "Prometheus", False),

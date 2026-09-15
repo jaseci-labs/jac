@@ -30,7 +30,7 @@ import hashlib;
 import hmac;
 
 
-def hashlib_py -> dict {
+def hashlib_py -> dict[any, any] {
     msg = b"The quick brown fox jumps over the lazy dog";
     key = b"a-secret-hmac-key";
 
@@ -69,7 +69,7 @@ def hashlib_py -> dict {
 }
 
 
-def hashlib_cl -> dict {
+def hashlib_cl -> dict[any, any] {
     return {};
 }
 

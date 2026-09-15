@@ -38,7 +38,7 @@ obj ErrorCode {
     assert "NOT_FOUND" in result , "static has field NOT_FOUND missing";
     assert "from jaclang.runtime.object_model import" in result;
     assert "dataclasses" not in result;
-    namespace: dict = {};
+    namespace: dict[str, any] = {};
     exec(result, namespace);
     error_code = namespace["ErrorCode"];
     assert error_code.INVALID_ARGS == "INVALID_ARGS";
@@ -69,7 +69,7 @@ test "jac0 preserves escaped field names that resemble constructor methods" {
         + "def init { self.`init = True; self.`postinit = 7; } "
         + "def read -> bool { return self.`init; } }";
     result = compile_jac(source, "escaped_fields.jac");
-    namespace: dict = {};
+    namespace: dict[str, any] = {};
     exec(result, namespace);
     record = namespace["Record"]();
     assert getattr(record, "init") is True;

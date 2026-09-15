@@ -13,10 +13,10 @@ glob FIXTURES = os.path.join(
      ),
      FIXTURE = "emitter_ice_refusals.jac";
 
-glob _MEMO: list = [];
+glob _MEMO: list[any] = [];
 
 """Compile the fixture once and return (coverage record, program, ir)."""
-def measured -> tuple {
+def measured -> tuple[any, ...] {
     if _MEMO {
         return _MEMO[0];
     }
@@ -41,7 +41,7 @@ def measured -> tuple {
 }
 
 """The one seam owned by `name`, or the empty string."""
-def seam_for(seams: list, name: str) -> str {
+def seam_for(seams: list[any], name: str) -> str {
     owned = [
         s
         for s in seams

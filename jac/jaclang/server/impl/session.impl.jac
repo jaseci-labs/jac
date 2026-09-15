@@ -1,4 +1,4 @@
-def _toml_section(base_path: (str | None), section: str) -> dict {
+def _toml_section(base_path: (str | None), section: str) -> dict[str, any] {
     if not base_path {
         return {};
     }
@@ -20,7 +20,7 @@ def _toml_section(base_path: (str | None), section: str) -> dict {
 
 
 impl promotions_for(base_path: (str | None)) -> dict[str, list[str]] {
-    raw = _toml_section(base_path, 'database').get('indexes') or {};
+    raw: any = _toml_section(base_path, 'database').get('indexes') or {};
     out: dict[str, list[str]] = {};
     for (arch, fields_l) in raw.items() {
         if isinstance(fields_l, list) {

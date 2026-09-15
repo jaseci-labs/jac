@@ -286,6 +286,9 @@ pub fn build(b: *std.Build) void {
     // see the bundled per-OS native floors the launcher imports.) Needs the
     // LLVMPY_* shim placed in-tree and the target's C floor archives.
     const build_stub = tool.run("jac", &.{ "build", "--native" });
+    // Pin the selected runtime's libraries and certificates when both variants are cached.
+    build_stub.setEnvironmentVariable("JAC_NATIVE_FLOOR_DIR", b.fmt("{s}/build/lib", .{python_tree}));
+    build_stub.setEnvironmentVariable("JAC_NATIVE_CA_BUNDLE", b.fmt("{s}/build/cacert.pem", .{python_tree}));
     build_stub.addFileArg(b.path("launcher/launcher.jac"));
     build_stub.addArg("-o");
     const stub = build_stub.addOutputFileArg("jac-stub");

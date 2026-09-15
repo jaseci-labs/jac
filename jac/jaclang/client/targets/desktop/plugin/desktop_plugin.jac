@@ -33,7 +33,7 @@ obj ErrorCode {
 obj DesktopPlugin {
     has plugin_name: str;
 
-    static def _coerce_config(config: object) -> dict {
+    static def _coerce_config(config: object) -> dict[str, any] {
         if isinstance(config, dict) {
             return config;
         }
@@ -47,7 +47,7 @@ obj DesktopPlugin {
     def init {}
     def setup(wv_handle: int, wv_lib: ctypes.CDLL) {}
     def setup_cef(host: object) {}
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         raise PluginError(
             ErrorCode.UNKNOWN_COMMAND,
             f"Plugin '{self.plugin_name}' has no command '{command}'"

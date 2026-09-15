@@ -45,7 +45,7 @@ def config_module_pin(source_path: str) -> str {
 }
 
 
-glob _na_demotion_memo: dict[str, tuple] = {},
+glob _na_demotion_memo: dict[str, tuple[int, int] | None] = {},
      _na_demotion_code: dict[str, str] = {},
      _na_demotion_probed: set[str] = set();
 
@@ -60,7 +60,7 @@ def _demotion_sidecar(path: str) -> (str | None) {
 }
 
 
-def _file_key(path: str) -> (tuple | None) {
+def _file_key(path: str) -> (tuple[int, int] | None) {
     try {
         st = os.stat(path);
         return (st.st_mtime_ns, st.st_size);
@@ -70,7 +70,7 @@ def _file_key(path: str) -> (tuple | None) {
 }
 
 
-def _load_demotion(path: str) -> (tuple | None) {
+def _load_demotion(path: str) -> (tuple[int, int] | None) {
     sidecar = _demotion_sidecar(path);
     if sidecar is None {
         return None;

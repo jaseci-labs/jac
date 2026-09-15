@@ -27,7 +27,13 @@ import from jaclang.server.static_files {
 
 glob logger: logging.Logger = logging.getLogger('jaclang.serve'),
      CL_PREFIX: str = 'cl/',
-     API_PREFIXES: tuple = ('walker/', 'function/', 'user/', 'static/', 'healthz'),
+     API_PREFIXES: tuple[str, ...] = (
+         'walker/',
+         'function/',
+         'user/',
+         'static/',
+         'healthz'
+     ),
      ASSET_CACHE_CONTROL: str = 'public, max-age=31536000, immutable';
 
 
@@ -354,8 +360,8 @@ def register_graph_endpoints(server: JacAPIServer) {
         visited_nodes: set = set();
         connections: set = set();
         edge_ids: set = set();
-        nodes: list[dict] = [];
-        edges: list[dict] = [];
+        nodes: list[dict[str, any]] = [];
+        edges: list[dict[str, any]] = [];
         collect_node_connections(user_root, visited_nodes, connections, edge_ids);
         nodes.append({'id': Jac.object_ref(user_root), 'label': 'root'});
         for node_arch in visited_nodes {
@@ -366,7 +372,7 @@ def register_graph_endpoints(server: JacAPIServer) {
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict = {
+            edge_data: dict[str, any] = {
                 'from': Jac.object_ref(source_node),
                 'to': Jac.object_ref(target_node)
             };

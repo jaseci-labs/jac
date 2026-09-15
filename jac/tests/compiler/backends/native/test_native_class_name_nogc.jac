@@ -58,7 +58,7 @@ def _headerless_opts -> any {
 
 
 """Compile a fixture and hand back the program and its module, errors and all."""
-def _compile(fixture: str, options: any) -> tuple {
+def _compile(fixture: str, options: any) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=options);
     return (prog, ir);

@@ -82,7 +82,7 @@ impl GrammarRule.__repr__ -> str {
 impl GrammarExtractPass.format_ebnf(expr: GExpr) -> str {
     fmt = GrammarExtractPass.format_ebnf;
     if isinstance(expr, GSeq) {
-        parts: list = [];
+        parts: list[str] = [];
         for item in expr.items {
             s = fmt(item);
 
@@ -94,7 +94,7 @@ impl GrammarExtractPass.format_ebnf(expr: GExpr) -> str {
         return " ".join(parts);
     }
     if isinstance(expr, GAlt) {
-        parts2: list = [];
+        parts2: list[str] = [];
         for choice in expr.choices {
             parts2.append(fmt(choice));
         }
@@ -141,7 +141,7 @@ impl GrammarExtractPass.format_ebnf(expr: GExpr) -> str {
 
 impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {
     if isinstance(expr, GSeq) {
-        flat: list = [];
+        flat: list[GExpr] = [];
         for item in expr.items {
             simplified = GrammarExtractPass.simplify_expr(item);
             if isinstance(simplified, GSeq) {
@@ -159,7 +159,7 @@ impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {
         return GSeq(items=flat);
     }
     if isinstance(expr, GAlt) {
-        flat2: list = [];
+        flat2: list[GExpr] = [];
         seen: set = set();
         for choice in expr.choices {
             simplified = GrammarExtractPass.simplify_expr(choice);
@@ -205,7 +205,7 @@ impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {
             }
         }
         if has_opt and len(flat2) > 1 {
-            hoisted: list = [];
+            hoisted: list[GExpr] = [];
             for c in flat2 {
                 inner_c = c.inner if isinstance(c, GOpt) else c;
                 if isinstance(inner_c, GAlt) {
@@ -293,7 +293,7 @@ impl GrammarExtractPass._returns_none(nd: uni.ImplDef) -> bool {
     if isinstance(rt, uni.Name) and rt.value == "int" {
         return True;
     }
-    stack: list = [spec.return_type];
+    stack: list[uni.UniNode] = [spec.return_type];
     while len(stack) > 0 {
         cur = stack.pop();
         if isinstance(cur, uni.Null) {
@@ -335,8 +335,8 @@ impl GrammarExtractPass.finish with exit {
     self.rules = self._stage_remove_unreachable(self.rules);
 }
 
-impl GrammarExtractPass._interpret_all -> list {
-    result: list = [];
+impl GrammarExtractPass._interpret_all -> list[GrammarRule] {
+    result: list[GrammarRule] = [];
     for (rule_name, stmts) in self._parse_impls {
         self._current_rule = rule_name;
         grammar_expr = self.interpret_stmts(list(stmts));
@@ -348,8 +348,10 @@ impl GrammarExtractPass._interpret_all -> list {
     return result;
 }
 
-impl GrammarExtractPass._compute_rule_firsts(rules: list) -> dict {
-    firsts: dict = {};
+impl GrammarExtractPass._compute_rule_firsts(
+    rules: list[GrammarRule]
+) -> dict[str, tuple[set[str], bool]] {
+    firsts: dict[str, tuple[set[str], bool]] = {};
     saved = self._rule_firsts;
     self._rule_firsts = {};
     for rule in rules {
@@ -359,8 +361,8 @@ impl GrammarExtractPass._compute_rule_firsts(rules: list) -> dict {
     return firsts;
 }
 
-impl GrammarExtractPass._stage_simplify(rules: list) -> list {
-    result: list = [];
+impl GrammarExtractPass._stage_simplify(rules: list[GrammarRule]) -> list[GrammarRule] {
+    result: list[GrammarRule] = [];
     for rule in rules {
         result.append(
             GrammarRule(
@@ -371,8 +373,10 @@ impl GrammarExtractPass._stage_simplify(rules: list) -> list {
     return result;
 }
 
-impl GrammarExtractPass._stage_unwrap_top_opt(rules: list) -> list {
-    result: list = [];
+impl GrammarExtractPass._stage_unwrap_top_opt(
+    rules: list[GrammarRule]
+) -> list[GrammarRule] {
+    result: list[GrammarRule] = [];
     for rule in rules {
         body = rule.body;
         if isinstance(body, GOpt)
@@ -386,12 +390,14 @@ impl GrammarExtractPass._stage_unwrap_top_opt(rules: list) -> list {
     return result;
 }
 
-impl GrammarExtractPass._stage_dedup_tokens(rules: list) -> list {
-    rule_map: dict = {};
+impl GrammarExtractPass._stage_dedup_tokens(
+    rules: list[GrammarRule]
+) -> list[GrammarRule] {
+    rule_map: dict[str, GrammarRule] = {};
     for rule in rules {
         rule_map[rule.name] = rule;
     }
-    result: list = [];
+    result: list[GrammarRule] = [];
     for rule in rules {
         result.append(
             GrammarRule(
@@ -403,8 +409,10 @@ impl GrammarExtractPass._stage_dedup_tokens(rules: list) -> list {
     return result;
 }
 
-impl GrammarExtractPass._compute_rule_firsts_deep(rules: list) -> dict {
-    firsts: dict = {};
+impl GrammarExtractPass._compute_rule_firsts_deep(
+    rules: list[GrammarRule]
+) -> dict[str, tuple[set[str], bool]] {
+    firsts: dict[str, tuple[set[str], bool]] = {};
     for rule in rules {
         firsts[rule.name] = (set(), False);
     }
@@ -447,11 +455,13 @@ impl GrammarExtractPass._guard_tok_set(expr: GExpr) -> set | None {
     return None;
 }
 
-impl GrammarExtractPass._stage_elide_covered_guards(rules: list) -> list {
+impl GrammarExtractPass._stage_elide_covered_guards(
+    rules: list[GrammarRule]
+) -> list[GrammarRule] {
     deep = self._compute_rule_firsts_deep(rules);
     saved = self._rule_firsts;
     self._rule_firsts = deep;
-    result: list = [];
+    result: list[GrammarRule] = [];
     for rule in rules {
         self._current_rule = rule.name;
         result.append(
@@ -465,7 +475,7 @@ impl GrammarExtractPass._stage_elide_covered_guards(rules: list) -> list {
 
 impl GrammarExtractPass._elide_guards_in_expr(expr: GExpr) -> GExpr {
     if isinstance(expr, GSeq) {
-        new_items: list = [];
+        new_items: list[GExpr] = [];
         n = len(expr.items);
         for (i, item) in enumerate(expr.items) {
             guard_toks = self._guard_tok_set(item);
@@ -498,8 +508,10 @@ impl GrammarExtractPass._elide_guards_in_expr(expr: GExpr) -> GExpr {
     return expr;
 }
 
-impl GrammarExtractPass._stage_inline_aliases(rules: list) -> list {
-    mapping: dict = {};
+impl GrammarExtractPass._stage_inline_aliases(
+    rules: list[GrammarRule]
+) -> list[GrammarRule] {
+    mapping: dict[str, str] = {};
     for rule in rules {
         if isinstance(rule.body, GRef) and rule.body.name != rule.name {
             mapping[rule.name] = rule.body.name;
@@ -508,7 +520,7 @@ impl GrammarExtractPass._stage_inline_aliases(rules: list) -> list {
     if len(mapping) == 0 {
         return rules;
     }
-    resolved: dict = {};
+    resolved: dict[str, str] = {};
     for alias in mapping {
         target = mapping[alias];
         seen: set = {alias};
@@ -520,7 +532,7 @@ impl GrammarExtractPass._stage_inline_aliases(rules: list) -> list {
             resolved[alias] = target;
         }
     }
-    result: list = [];
+    result: list[GrammarRule] = [];
     for rule in rules {
         if rule.name in resolved {
             continue;
@@ -532,7 +544,7 @@ impl GrammarExtractPass._stage_inline_aliases(rules: list) -> list {
     return result;
 }
 
-impl GrammarExtractPass._replace_refs(expr: GExpr, mapping: dict) -> GExpr {
+impl GrammarExtractPass._replace_refs(expr: GExpr, mapping: dict[str, str]) -> GExpr {
     if isinstance(expr, GRef) and expr.name in mapping {
         return GRef(name=mapping[expr.name]);
     }
@@ -554,8 +566,10 @@ impl GrammarExtractPass._replace_refs(expr: GExpr, mapping: dict) -> GExpr {
     return expr;
 }
 
-impl GrammarExtractPass._stage_fold_token_sets(rules: list) -> list {
-    raw: list = [];
+impl GrammarExtractPass._stage_fold_token_sets(
+    rules: list[GrammarRule]
+) -> list[GrammarRule] {
+    raw: list[tuple[int, str, set[str]]] = [];
     for rule in rules {
         body = rule.body;
         if isinstance(body, GAlt) and len(body.choices) >= 4 {
@@ -578,8 +592,8 @@ impl GrammarExtractPass._stage_fold_token_sets(rules: list) -> list {
         return rules;
     }
     raw.sort();
-    candidates: list = [(`entry[1], `entry[2]) for `entry in raw];
-    result: list = [];
+    candidates: list[tuple[str, set[str]]] = [(`entry[1], `entry[2]) for `entry in raw];
+    result: list[GrammarRule] = [];
     for rule in rules {
         result.append(
             GrammarRule(
@@ -592,7 +606,7 @@ impl GrammarExtractPass._stage_fold_token_sets(rules: list) -> list {
 }
 
 impl GrammarExtractPass._fold_tokens_in_expr(
-    expr: GExpr, candidates: list, current: str
+    expr: GExpr, candidates: list[tuple[str, set[str]]], current: str
 ) -> GExpr {
     if isinstance(expr, GAlt) {
         tok_names: set = set();
@@ -601,7 +615,7 @@ impl GrammarExtractPass._fold_tokens_in_expr(
                 tok_names.add(c.name);
             }
         }
-        folded: dict = {};
+        folded: dict[str, str] = {};
         for (rname, rset) in candidates {
             if rname == current {
                 continue;
@@ -621,7 +635,7 @@ impl GrammarExtractPass._fold_tokens_in_expr(
             }
         }
         if len(folded) > 0 {
-            new_choices: list = [];
+            new_choices: list[GExpr] = [];
             emitted: set = set();
             for c in expr.choices {
                 if isinstance(c, GTok) and c.name in folded {
@@ -661,14 +675,16 @@ impl GrammarExtractPass._fold_tokens_in_expr(
     return expr;
 }
 
-impl GrammarExtractPass._stage_remove_errors(rules: list) -> list {
+impl GrammarExtractPass._stage_remove_errors(
+    rules: list[GrammarRule]
+) -> list[GrammarRule] {
     error_recovery_tokens: set = set(
         ["KW_ELIF", "KW_ELSE", "KW_EXCEPT", "KW_FINALLY", "KW_CASE"]
     );
-    result: list = [];
+    result: list[GrammarRule] = [];
     for rule in rules {
         if rule.name == "statement" and isinstance(rule.body, GAlt) {
-            filtered: list = [];
+            filtered: list[GExpr] = [];
             for choice in rule.body.choices {
                 if isinstance(choice, GTok) and choice.name in error_recovery_tokens {
                     continue;
@@ -696,7 +712,7 @@ impl GrammarExtractPass._strip_lambda_body_recovery(body: GExpr) -> GExpr {
     if not isinstance(body, GSeq) {
         return body;
     }
-    items: list = [];
+    items: list[GExpr] = [];
     for item in body.items {
         if isinstance(item, GAlt) and len(item.choices) == 2 {
             braced = item.choices[0];
@@ -749,13 +765,15 @@ impl GrammarExtractPass._is_redundant_slot_wrap_recovery(expr: GExpr) -> bool {
     return True;
 }
 
-impl GrammarExtractPass._stage_remove_unreachable(rules: list) -> list {
+impl GrammarExtractPass._stage_remove_unreachable(
+    rules: list[GrammarRule]
+) -> list[GrammarRule] {
     reachable: set = set();
-    reachable_map: dict = {};
+    reachable_map: dict[str, GrammarRule] = {};
     for rule in rules {
         reachable_map[rule.name] = rule;
     }
-    worklist: list = ["module"];
+    worklist: list[str] = ["module"];
     while len(worklist) > 0 {
         name = worklist.pop();
         if name in reachable {
@@ -771,7 +789,7 @@ impl GrammarExtractPass._stage_remove_unreachable(rules: list) -> list {
             }
         }
     }
-    result: list = [];
+    result: list[GrammarRule] = [];
     for rule in rules {
         if rule.name in reachable {
             result.append(rule);
@@ -807,8 +825,8 @@ impl GrammarExtractPass.enter_impl_def with uni.ImplDef entry {
     osp_skip_rest();
 }
 
-impl GrammarExtractPass.get_impl_target_names(nd: uni.ImplDef) -> list {
-    names: list = [];
+impl GrammarExtractPass.get_impl_target_names(nd: uni.ImplDef) -> list[str] {
+    names: list[str] = [];
     for name_atom in nd.target {
         if isinstance(name_atom, uni.Name) {
             names.append(name_atom.value);
@@ -819,7 +837,7 @@ impl GrammarExtractPass.get_impl_target_names(nd: uni.ImplDef) -> list {
     return names;
 }
 
-impl GrammarExtractPass.compute_first_set(expr: GExpr) -> tuple {
+impl GrammarExtractPass.compute_first_set(expr: GExpr) -> tuple[set[str], bool] {
     if isinstance(expr, GTok) {
         return (set([expr.name]), False);
     }
@@ -951,7 +969,9 @@ impl GrammarExtractPass._is_self_pos_access(expr: uni.Expr) -> bool {
     return False;
 }
 
-impl GrammarExtractPass._extract_savepoint_delegation(stmts: list) -> GExpr | None {
+impl GrammarExtractPass._extract_savepoint_delegation(
+    stmts: list[uni.UniNode]
+) -> GExpr | None {
     if len(stmts) == 0 {
         return None;
     }
@@ -966,7 +986,9 @@ impl GrammarExtractPass._extract_savepoint_delegation(stmts: list) -> GExpr | No
     return self._find_post_restore_delegation(stmts[1:]);
 }
 
-impl GrammarExtractPass._find_post_restore_delegation(stmts: list) -> GExpr | None {
+impl GrammarExtractPass._find_post_restore_delegation(
+    stmts: list[uni.UniNode]
+) -> GExpr | None {
     for stmt in stmts {
         if isinstance(stmt, uni.ReturnStmt) and stmt.expr is not None {
             call = self.get_call_from_expr(stmt.expr);
@@ -1003,9 +1025,9 @@ impl GrammarExtractPass._find_post_restore_delegation(stmts: list) -> GExpr | No
     return None;
 }
 
-impl GrammarExtractPass._has_diag_call(stmts: list) -> bool {
+impl GrammarExtractPass._has_diag_call(stmts: list[uni.UniNode]) -> bool {
     visited: set = set();
-    stack: list = list(stmts);
+    stack: list[uni.UniNode] = list(stmts);
     while len(stack) > 0 {
         nd = stack.pop();
         if isinstance(nd, uni.FuncCall) {
@@ -1031,7 +1053,7 @@ impl GrammarExtractPass._has_diag_call(stmts: list) -> bool {
     return False;
 }
 
-impl GrammarExtractPass._always_returns(stmts: list) -> bool {
+impl GrammarExtractPass._always_returns(stmts: list[uni.UniNode]) -> bool {
     if len(stmts) == 0 {
         return False;
     }
@@ -1084,13 +1106,13 @@ impl GrammarExtractPass._chain_is_exhaustive(stmt: uni.IfStmt) -> bool {
     return False;
 }
 
-impl GrammarExtractPass.interpret_stmts(stmts: list) -> GExpr | None {
+impl GrammarExtractPass.interpret_stmts(stmts: list[uni.UniNode]) -> GExpr | None {
     savepoint_result = self._extract_savepoint_delegation(stmts);
     if savepoint_result is not None {
         return savepoint_result;
     }
-    parts: list = [];
-    alt_branches: list = [];
+    parts: list[GExpr] = [];
+    alt_branches: list[GExpr] = [];
     alt_exhaustive = False;
     alt_all_try_parse = True;
     i = 0;
@@ -1251,7 +1273,7 @@ impl GrammarExtractPass.interpret_stmts(stmts: list) -> GExpr | None {
     return GSeq(items=parts);
 }
 
-impl GrammarExtractPass.has_early_return(stmts: list) -> bool {
+impl GrammarExtractPass.has_early_return(stmts: list[uni.UniNode]) -> bool {
     for stmt in stmts {
         if isinstance(stmt, uni.ReturnStmt) {
             return True;
@@ -1340,7 +1362,7 @@ impl GrammarExtractPass.interpret_stmt(stmt: uni.UniNode) -> GExpr | None {
 
             if isinstance(stmt.value, uni.IfElseExpr) {
                 ternary = stmt.value;
-                ternary_parts: list = [];
+                ternary_parts: list[GExpr] = [];
                 true_call = self.get_call_from_expr(ternary.value);
                 if true_call is not None {
                     true_result = self.interpret_call(true_call);
@@ -1537,7 +1559,7 @@ impl GrammarExtractPass.interpret_if(stmt: uni.IfStmt) -> GExpr | None {
         body_expr = self.interpret_stmts(list(stmt.body));
 
         if self.has_early_return(list(stmt.body)) and stmt.else_body is not None {
-            alt_list: list = [];
+            alt_list: list[GExpr] = [];
             if body_expr is not None {
                 alt_list.append(body_expr);
             }
@@ -1560,7 +1582,7 @@ impl GrammarExtractPass.interpret_if(stmt: uni.IfStmt) -> GExpr | None {
                 }
             }
 
-            unique_alts: list = [];
+            unique_alts: list[GExpr] = [];
             seen_reprs: set = set();
             for a in alt_list {
                 r = repr(a);
@@ -1584,7 +1606,7 @@ impl GrammarExtractPass.interpret_if(stmt: uni.IfStmt) -> GExpr | None {
                 else_expr = self.interpret_stmts(list(stmt.else_body.body));
             }
         }
-        found: list = [];
+        found: list[GExpr] = [];
         if body_expr is not None {
             found.append(body_expr);
         }
@@ -1603,7 +1625,9 @@ impl GrammarExtractPass.interpret_if(stmt: uni.IfStmt) -> GExpr | None {
 
     if cond_info.kind == "consume_opt" and len(cond_info.tokens) > 0 {
         body_expr = self.interpret_stmts(list(stmt.body));
-        inner_parts: list = [self._tok_set_expr(cond_info.tokens)];
+        tok_set = self._tok_set_expr(cond_info.tokens);
+        assert tok_set is not None;
+        inner_parts: list[GExpr] = [tok_set];
         if body_expr is not None {
             inner_parts.append(body_expr);
         }
@@ -1657,8 +1681,8 @@ impl GrammarExtractPass.interpret_if(stmt: uni.IfStmt) -> GExpr | None {
     return None;
 }
 
-impl GrammarExtractPass.collect_dispatch_chain(stmt: uni.IfStmt) -> list {
-    branches: list = [];
+impl GrammarExtractPass.collect_dispatch_chain(stmt: uni.IfStmt) -> list[GExpr] {
+    branches: list[GExpr] = [];
     cur: uni.IfStmt | None = stmt;
     while cur is not None {
         cond_info = self.interpret_condition(cur.condition);
@@ -1666,7 +1690,7 @@ impl GrammarExtractPass.collect_dispatch_chain(stmt: uni.IfStmt) -> list {
 
         if cond_info is not None {
             if cond_info.kind.startswith("lookahead") {
-                tokens: list = cond_info.tokens;
+                tokens: list[str] = cond_info.tokens;
                 tok_expr: GExpr | None = None;
 
                 if "peek" not in cond_info.kind {
@@ -1723,7 +1747,9 @@ impl GrammarExtractPass.collect_dispatch_chain(stmt: uni.IfStmt) -> list {
                     branches.append(branch_body);
                 }
             } elif cond_info.kind == "consume_opt" and len(cond_info.tokens) > 0 {
-                inner_parts: list = [self._tok_set_expr(cond_info.tokens)];
+                tok_set = self._tok_set_expr(cond_info.tokens);
+                assert tok_set is not None;
+                inner_parts: list[GExpr] = [tok_set];
                 if branch_body is not None {
                     inner_parts.append(branch_body);
                 }
@@ -1768,10 +1794,10 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
         if isinstance(stmt.condition, uni.Bool) and stmt.condition.value == "True" {
             break_info = self.find_break_match_tok(list(stmt.body));
             if break_info is not None {
-                break_tokens: list = break_info[0];
-                body_stmts: list = break_info[1];
+                break_tokens: list[str] = break_info[0];
+                body_stmts: list[uni.UniNode] = break_info[1];
                 body_expr = self.interpret_stmts(body_stmts);
-                inner_parts: list = [];
+                inner_parts: list[GExpr] = [];
                 if body_expr is not None {
                     inner_parts.append(body_expr);
                 }
@@ -1790,9 +1816,9 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
             none_check_info = self.find_break_none_check(list(stmt.body));
             if none_check_info is not None {
                 ref_name: str = none_check_info[0];
-                remaining_stmts: list = none_check_info[1];
+                remaining_stmts: list[uni.UniNode] = none_check_info[1];
                 remaining_expr = self.interpret_stmts(remaining_stmts);
-                inner_parts2: list = [GRef(name=ref_name)];
+                inner_parts2: list[GExpr] = [GRef(name=ref_name)];
                 if remaining_expr is not None {
                     inner_parts2.append(remaining_expr);
                 }
@@ -1869,11 +1895,13 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
         }
         return self.interpret_stmts(list(stmt.body));
     }
-    tokens: list = cond_info.tokens;
+    tokens: list[str] = cond_info.tokens;
 
     if cond_info.kind == "consume_opt" and len(tokens) > 0 {
         body_expr = self.interpret_stmts(list(stmt.body));
-        inner_parts: list = [self._tok_set_expr(tokens)];
+        tok_set = self._tok_set_expr(tokens);
+        assert tok_set is not None;
+        inner_parts: list[GExpr] = [tok_set];
         if body_expr is not None {
             inner_parts.append(body_expr);
         }
@@ -1907,7 +1935,7 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
         } else {
             tok_expr = GTok(name=tokens[0], from_guard=True);
         }
-        inner_parts2: list = [tok_expr];
+        inner_parts2: list[GExpr] = [tok_expr];
         if body_expr is not None {
             inner_parts2.append(body_expr);
         }
@@ -1919,7 +1947,9 @@ impl GrammarExtractPass.interpret_while(stmt: uni.WhileStmt) -> GExpr | None {
     return None;
 }
 
-impl GrammarExtractPass.find_break_match_tok(stmts: list) -> tuple | None {
+impl GrammarExtractPass.find_break_match_tok(
+    stmts: list[uni.UniNode]
+) -> tuple[list[str], list[uni.UniNode]] | None {
     if len(stmts) == 0 {
         return None;
     }
@@ -1958,7 +1988,9 @@ impl GrammarExtractPass.find_break_match_tok(stmts: list) -> tuple | None {
     return (tokens, body_stmts);
 }
 
-impl GrammarExtractPass.find_break_none_check(stmts: list) -> tuple | None {
+impl GrammarExtractPass.find_break_none_check(
+    stmts: list[uni.UniNode]
+) -> tuple[str, list[uni.UniNode]] | None {
     if len(stmts) < 2 {
         return None;
     }
@@ -2018,8 +2050,8 @@ impl GrammarExtractPass.find_break_none_check(stmts: list) -> tuple | None {
     return (rule_name, remaining);
 }
 
-impl GrammarExtractPass._tok_set_expr(tokens: list) -> GExpr | None {
-    uniq: list = [];
+impl GrammarExtractPass._tok_set_expr(tokens: list[str]) -> GExpr | None {
+    uniq: list[str] = [];
     seen: set = set();
     for t in tokens {
         if t not in seen {
@@ -2038,7 +2070,7 @@ impl GrammarExtractPass._tok_set_expr(tokens: list) -> GExpr | None {
 
 impl GrammarExtractPass._resolve_tokens(
     method: str, call: uni.FuncCall | None
-) -> list {
+) -> list[str] {
     if method in SPECIAL_LOOKAHEAD_TOKENS {
         return list(SPECIAL_LOOKAHEAD_TOKENS[method]);
     }
@@ -2052,8 +2084,10 @@ impl GrammarExtractPass._resolve_tokens(
     return [];
 }
 
-impl GrammarExtractPass._merge_or_conditions(exprs: list) -> ConditionResult | None {
-    all_toks: list = [];
+impl GrammarExtractPass._merge_or_conditions(
+    exprs: list[uni.Expr]
+) -> ConditionResult | None {
+    all_toks: list[str] = [];
     found_method: str | None = None;
     found_kind: str | None = None;
     for raw_val in exprs {
@@ -2162,7 +2196,7 @@ impl GrammarExtractPass.interpret_condition(cond: uni.Expr) -> ConditionResult |
                 } elif op_val == "in" {
                     right = cond.rights[0];
                     if isinstance(right, uni.ListVal) {
-                        tok_names: list = [];
+                        tok_names: list[str] = [];
                         for item in right.values {
                             tn = self.extract_token_kind(item);
                             if tn is not None {
@@ -2263,16 +2297,17 @@ impl GrammarExtractPass._collect_refs(body: GExpr) -> set {
 }
 
 impl GrammarExtractPass._dedup_parent_child_tokens(
-    expr: GExpr, rule_map: dict
+    expr: GExpr, rule_map: dict[str, GrammarRule]
 ) -> GExpr {
     if isinstance(expr, GSeq) {
-        new_items: list = [];
+        new_items: list[GExpr] = [];
         i = 0;
         while i < len(expr.items) {
             item = expr.items[i];
 
-            if i + 1 < len(expr.items) and isinstance(expr.items[i + 1], GRef) {
-                ref = expr.items[i + 1];
+            next_item = expr.items[i + 1] if i + 1 < len(expr.items) else None;
+            if isinstance(next_item, GRef) {
+                ref = next_item;
                 should_remove = False;
                 if ref.name in rule_map {
                     child_body = rule_map[ref.name].body;
@@ -2385,7 +2420,7 @@ impl GrammarExtractPass.get_self_method(nd: uni.Expr) -> str | None {
     return None;
 }
 
-impl GrammarExtractPass.get_token_args(call: uni.FuncCall) -> list {
+impl GrammarExtractPass.get_token_args(call: uni.FuncCall) -> list[str] {
     params = call.params;
     if params is None {
         return [];
@@ -2397,7 +2432,7 @@ impl GrammarExtractPass.get_token_args(call: uni.FuncCall) -> list {
             return [json.dumps(literal)];
         }
     }
-    result: list = [];
+    result: list[str] = [];
     for param in params {
         if isinstance(param, uni.AtomTrailer) and param.is_attr {
             if isinstance(param.target, uni.Name) {
@@ -2429,7 +2464,9 @@ impl GrammarExtractPass.get_call_from_expr(
     return None;
 }
 
-impl GrammarExtractPass._collect_strict_diags(rule_name: str, stmts: list) -> None {
+impl GrammarExtractPass._collect_strict_diags(
+    rule_name: str, stmts: list[uni.UniNode]
+) -> None {
     for s in stmts {
         self._walk_strict(rule_name, s);
     }
@@ -2484,18 +2521,18 @@ impl GrammarExtractPass.emit_diagnostics -> str {
     if len(self.diagnostics) == 0 {
         return "grammar strict check: no findings";
     }
-    rows: list = [];
+    rows: list[tuple[str, int, str, str]] = [];
     for d in self.diagnostics {
         rows.append((d["rule"], d["line"], d["kind"], d["msg"]));
     }
     rows.sort();
-    counts: dict = {};
-    lines: list = [];
+    counts: dict[str, int] = {};
+    lines: list[str] = [];
     for (rule, line, kind, msg) in rows {
         lines.append(f"{rule} (line {line}): [{kind}] {msg}");
         counts[kind] = counts.get(kind, 0) + 1;
     }
-    summary_parts: list = [];
+    summary_parts: list[str] = [];
     for (k, v) in sorted(counts.items()) {
         summary_parts.append(f"{v} {k}");
     }
@@ -2543,9 +2580,9 @@ impl GrammarExtractPass.format_expr_pretty(
 }
 
 impl GrammarExtractPass.format_alt_pretty(
-    choices: list, indent: int, max_line: int
+    choices: list[GExpr], indent: int, max_line: int
 ) -> str {
-    lines: list = [];
+    lines: list[str] = [];
     for (i, choice) in enumerate(choices) {
         if i == 0 {
             prefix = " " * indent;
@@ -2568,10 +2605,10 @@ impl GrammarExtractPass.format_alt_pretty(
 }
 
 impl GrammarExtractPass.format_seq_pretty(
-    items: list, indent: int, max_line: int
+    items: list[GExpr], indent: int, max_line: int
 ) -> str {
     pad = " " * indent;
-    lines: list = [];
+    lines: list[str] = [];
     cur = pad;
     for item in items {
         item_flat = GrammarExtractPass.format_ebnf(item);
@@ -2652,7 +2689,7 @@ impl GrammarExtractPass.format_group_pretty(
 }
 
 impl GrammarExtractPass.emit_ebnf -> str {
-    lines: list = [];
+    lines: list[str] = [];
     for rule in self.rules {
         lines.append(self.format_rule_pretty(rule, "::=", 88));
     }

@@ -21,7 +21,7 @@ def main -> int {
     }
     args = parser.parse_args();
     repo_root = Path(__file__).resolve().parent.parent;
-    releases: list[dict] = [];
+    releases: list[dict[str, any]] = [];
     errors: list[str] = [];
     for (pkg_name, pkg_info) in PACKAGES.items() {
         bump_type = getattr(args, pkg_name.replace("-", "_"));

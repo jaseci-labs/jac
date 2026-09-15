@@ -1,6 +1,6 @@
 import from .Reveal { Reveal }
 
-glob _STATS: list[dict] = [
+glob _STATS: list[dict[str, any]] = [
          {"n": "1", "label": "binary", "sub": "replaces your whole toolchain"},
          {
              "n": "1",

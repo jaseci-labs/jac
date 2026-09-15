@@ -6,15 +6,15 @@ difference, symmetric_difference, issubset, issuperset, isdisjoint,
 op_or, op_and, op_sub, op_xor, op_eq, op_ne, op_le, op_lt, op_ge, op_gt.
 """
 
-def frozenset_py() -> dict {
+def frozenset_py() -> dict[any, any] {
     a = frozenset([1, 2, 3, 4]);
     b = frozenset([3, 4, 5, 6]);
 
-    copy_a: list = sorted(list(a.copy()));
-    union: list = sorted(list(a.union(b)));
-    intersection: list = sorted(list(a.intersection(b)));
-    difference: list = sorted(list(a.difference(b)));
-    sym_diff: list = sorted(list(a.symmetric_difference(b)));
+    copy_a: list[any] = sorted(list(a.copy()));
+    union: list[any] = sorted(list(a.union(b)));
+    intersection: list[any] = sorted(list(a.intersection(b)));
+    difference: list[any] = sorted(list(a.difference(b)));
+    sym_diff: list[any] = sorted(list(a.symmetric_difference(b)));
 
     sub_yes: bool = frozenset([1, 2]).issubset(frozenset([1, 2, 3]));
     sub_no: bool = frozenset([1, 4]).issubset(frozenset([1, 2, 3]));
@@ -23,10 +23,10 @@ def frozenset_py() -> dict {
     disj_yes: bool = frozenset([1, 2]).isdisjoint(frozenset([3, 4]));
     disj_no: bool = frozenset([1, 2]).isdisjoint(frozenset([2, 3]));
 
-    or_op: list = sorted(list(a | b));
-    and_op: list = sorted(list(a & b));
-    sub_op: list = sorted(list(a - b));
-    xor_op: list = sorted(list(a ^ b));
+    or_op: list[any] = sorted(list(a | b));
+    and_op: list[any] = sorted(list(a & b));
+    sub_op: list[any] = sorted(list(a - b));
+    xor_op: list[any] = sorted(list(a ^ b));
 
     eq_yes: bool = frozenset([1, 2]) == frozenset([1, 2]);
     eq_no: bool = frozenset([1, 2]) == frozenset([1, 3]);
@@ -123,15 +123,15 @@ def frozenset_py() -> dict {
     };
 }
 
-def frozenset_cl() -> dict {
+def frozenset_cl() -> dict[any, any] {
     a = frozenset([1, 2, 3, 4]);
     b = frozenset([3, 4, 5, 6]);
 
-    copy_a: list = sorted(list(a.copy()));
-    union: list = sorted(list(a.union(b)));
-    intersection: list = sorted(list(a.intersection(b)));
-    difference: list = sorted(list(a.difference(b)));
-    sym_diff: list = sorted(list(a.symmetric_difference(b)));
+    copy_a: list[any] = sorted(list(a.copy()));
+    union: list[any] = sorted(list(a.union(b)));
+    intersection: list[any] = sorted(list(a.intersection(b)));
+    difference: list[any] = sorted(list(a.difference(b)));
+    sym_diff: list[any] = sorted(list(a.symmetric_difference(b)));
 
     sub_yes: bool = frozenset([1, 2]).issubset(frozenset([1, 2, 3]));
     sub_no: bool = frozenset([1, 4]).issubset(frozenset([1, 2, 3]));
@@ -140,10 +140,10 @@ def frozenset_cl() -> dict {
     disj_yes: bool = frozenset([1, 2]).isdisjoint(frozenset([3, 4]));
     disj_no: bool = frozenset([1, 2]).isdisjoint(frozenset([2, 3]));
 
-    or_op: list = sorted(list(a | b));
-    and_op: list = sorted(list(a & b));
-    sub_op: list = sorted(list(a - b));
-    xor_op: list = sorted(list(a ^ b));
+    or_op: list[any] = sorted(list(a | b));
+    and_op: list[any] = sorted(list(a & b));
+    sub_op: list[any] = sorted(list(a - b));
+    xor_op: list[any] = sorted(list(a ^ b));
 
     eq_yes: bool = frozenset([1, 2]) == frozenset([1, 2]);
     eq_no: bool = frozenset([1, 2]) == frozenset([1, 3]);

@@ -29,7 +29,9 @@ def make_client(base_path: str) -> JacTestClient {
 }
 
 """Attach a StringIO handler to logger and return (buf, handler, old_level)."""
-def capture_log_start(logger: logging.Logger, level: int = logging.DEBUG) -> tuple {
+def capture_log_start(
+    logger: logging.Logger, level: int = logging.DEBUG
+) -> tuple[any, ...] {
     buf = io.StringIO();
     handler = logging.StreamHandler(buf);
     handler.setLevel(level);

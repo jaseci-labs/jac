@@ -6,7 +6,7 @@ import logging;
 import os;
 import time;
 
-import from concurrent.futures { ThreadPoolExecutor, as_completed }
+import from concurrent.futures { Future, ThreadPoolExecutor, as_completed }
 import from jaclang.byllm.types { ToolCallResultMsg, normalize_tool_result }
 
 glob _plog = logging.getLogger("byllm.parallel"),
@@ -40,7 +40,7 @@ def _is_async(func: any) -> bool {
 }
 
 
-def _index_by_identity(seq: list, item: any) -> int {
+def _index_by_identity(seq: list[any], item: any) -> int {
     target_id = id(item);
     for (i, elem) in enumerate(seq) {
         if id(elem) == target_id {
@@ -56,8 +56,8 @@ def _call_sync(tc: any, timeout: any) -> any {
         return tc();
     }
     import threading;
-    result_box: list = [None];
-    error_box: list = [None];
+    result_box: list[any] = [None];
+    error_box: list[Exception | None] = [None];
     def _worker {
         try {
             result_box[0] = tc();
@@ -97,7 +97,7 @@ def _call_async(tc: any, timeout: any) -> any {
 }
 
 
-def _run_one(tc: any) -> tuple {
+def _run_one(tc: any) -> tuple[any, ...] {
     t0 = time.time();
     timeout = tc.tool.timeout_sec;
     try {
@@ -122,8 +122,8 @@ def _run_one(tc: any) -> tuple {
 }
 
 
-def _tool_names(tool_calls: list) -> list {
-    names: list = [];
+def _tool_names(tool_calls: list[any]) -> list[str] {
+    names: list[str] = [];
     for tc in tool_calls {
         try {
             names.append(tc.tool.get_name());
@@ -135,7 +135,7 @@ def _tool_names(tool_calls: list) -> list {
 }
 
 
-def _any_serialize(tool_calls: list) -> bool {
+def _any_serialize(tool_calls: list[any]) -> bool {
     for tc in tool_calls {
         if tc.tool.serialize {
             return True;
@@ -145,7 +145,7 @@ def _any_serialize(tool_calls: list) -> bool {
 }
 
 
-def dispatch_batch(tool_calls: list) -> any {
+def dispatch_batch(tool_calls: list[any]) -> any {
     n = len(tool_calls);
     if n == 0 {
         return;
@@ -174,7 +174,7 @@ def dispatch_batch(tool_calls: list) -> any {
     );
     t_batch = time.time();
 
-    futures: dict = {};
+    futures: dict[Future[tuple[any, ...]], any] = {};
     for tc in tool_calls {
         ctx = contextvars.copy_context();
         f = _WORKER_POOL.submit(ctx.run, _run_one, tc);

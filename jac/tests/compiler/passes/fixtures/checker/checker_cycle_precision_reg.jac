@@ -10,7 +10,7 @@ import from checker_cycle_precision_main { CONFIG }
 glob N: int = 3;
 
 obj Reg {
-    has defaults: dict = {};
+    has defaults: dict[any, any] = {};
 }
 
 glob JUNK = (N if CONFIG is None else N)(),

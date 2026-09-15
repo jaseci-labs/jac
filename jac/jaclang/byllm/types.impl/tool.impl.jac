@@ -2,7 +2,7 @@ impl Tool.postinit -> None {
     try {
         annotations = get_type_hints(self.func);
     } except Exception {
-        annotations = getattr(self.func, '__annotations__', {}) or {};
+        annotations: dict[str, any] = getattr(self.func, '__annotations__', {}) or {};
     }
     with suppress(Exception) {
         self.func.__annotations__ = annotations;
@@ -87,8 +87,8 @@ impl Tool.get_json_schema -> dict[str, object] {
     );
 }
 
-impl Tool.parse_arguments(args_json: dict | str) -> dict {
-    annotations: dict = {};
+impl Tool.parse_arguments(args_json: dict[str, any] | str) -> dict[str, any] {
+    annotations: dict[str, any] = {};
     try {
         annotations = self.func.__annotations__;
     } except AttributeError {
@@ -132,10 +132,12 @@ impl Tool.parse_arguments(args_json: dict | str) -> dict {
     return args;
 }
 
-impl Tool._parse_finish_arguments(args_json: dict, params: dict) -> dict {
+impl Tool._parse_finish_arguments(
+    args_json: dict[str, any], params: dict[str, any]
+) -> dict[str, any] {
     resp_type = params.get("final_output", object);
 
-    candidates: list = [];
+    candidates: list[any] = [];
     if "final_output" in args_json {
         candidates.append(args_json["final_output"]);
     } elif len(args_json) == 1 {
@@ -157,13 +159,13 @@ impl Tool._parse_finish_arguments(args_json: dict, params: dict) -> dict {
     );
 }
 
-impl Tool._required_params(params: dict) -> list {
+impl Tool._required_params(params: dict[str, any]) -> list[str] {
     try {
         sig = inspect.signature(self.func);
     } except (TypeError, ValueError) {
         return list(params.keys());
     }
-    required: list = [];
+    required: list[str] = [];
     for (name, param) in sig.parameters.items() {
         if (
             name in params

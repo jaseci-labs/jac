@@ -1,7 +1,9 @@
 """API utility functions."""
 
 # Extract error message from API response or return fallback.
-def:pub getErrorMessage(result: dict, fallback: str = "An error occurred") -> str {
+def:pub getErrorMessage(
+    result: dict[str, any], fallback: str = "An error occurred"
+) -> str {
     if not result {
         return fallback;
     }

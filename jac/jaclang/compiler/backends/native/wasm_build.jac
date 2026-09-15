@@ -354,7 +354,7 @@ def prepare_wasm_module(llvm_ir_str: str) -> tuple[ModuleRef, TargetMachine, boo
 }
 
 def emit_wasm_from_ir(
-    llvm_ir_str: str, export_funcs: list = [], app_imports: (set | None) = None
+    llvm_ir_str: str, export_funcs: list[str] = [], app_imports: (set | None) = None
 ) -> bytes {
     import from jaclang.compiler.backends.native.wasm_linker { WasmLinker }
     import from jaclang.compiler.backends.native.wasm_host_abi {
@@ -433,7 +433,7 @@ def _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
     }
 }
 
-def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
+def compile_to_wasm(file_path: str, export_funcs: list[str] = []) -> bytes {
     import from jaclang.compiler.driver.pipeline { build_wasm }
     import from jaclang.runtime.runtime { JacRuntime }
     return build_wasm(JacRuntime.get_program(), file_path, export_funcs);

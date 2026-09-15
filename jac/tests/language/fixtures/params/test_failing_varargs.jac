@@ -15,7 +15,7 @@ def args_with_required(req: str, *args: int) -> str {
     return f"{req}: {sum(args)}";
 }
 
-def kwargs_with_required(req: int, **kwargs: str) -> dict {
+def kwargs_with_required(req: int, **kwargs: str) -> dict[any, any] {
     return {"req": req, "kwargs": kwargs};
 }
 
@@ -28,7 +28,7 @@ def full_varargs_signature(
     kw_req: bool,
     kw_opt: str = "default",
     **kwargs: any
-) -> dict {
+) -> dict[any, any] {
     return {
         "pos": pos,
         "reg": reg,
@@ -40,11 +40,13 @@ def full_varargs_signature(
     };
 }
 
-def conflicting_names(name: str, *args: str, name_kw: str, **kwargs: str) -> dict {
+def conflicting_names(
+    name: str, *args: str, name_kw: str, **kwargs: str
+) -> dict[any, any] {
     return {"name": name, "args": list(args), "name_kw": name_kw, "kwargs": kwargs};
 }
 
-def type_sensitive_varargs(*args: int, **kwargs: int) -> dict {
+def type_sensitive_varargs(*args: int, **kwargs: int) -> dict[any, any] {
     return {"args_sum": sum(args), "kwargs_sum": sum(kwargs.values())};
 }
 
@@ -52,7 +54,7 @@ def edge_case_empty_varargs(required: str, *args: float, **kwargs: bool) -> str 
     return f"{required}: args={len(args)}, kwargs={len(kwargs)}";
 }
 
-def double_star_issues(**kwargs: dict) -> int {
+def double_star_issues(**kwargs: dict[any, any]) -> int {
     total = 0;
     for (k, v) in kwargs.items() {
         if isinstance(v, dict) {
@@ -68,7 +70,9 @@ def additional_varargs_edge_cases {
     print("\n=== ADDITIONAL VARARGS EDGE CASES ===");
 
     # Test 16: Empty containers passed to varargs
-    def test_empty_containers(*args: list, **kwargs: dict) -> dict {
+    def test_empty_containers(
+        *args: list[any], **kwargs: dict[any, any]
+    ) -> dict[any, any] {
         return {"args_count": len(args), "kwargs_count": len(kwargs)};
     }
 
@@ -80,7 +84,9 @@ def additional_varargs_edge_cases {
     }
 
     # Test 17: Nested data structures
-    def complex_data_varargs(*args: dict, **kwargs: list) -> dict {
+    def complex_data_varargs(
+        *args: dict[any, any], **kwargs: list[any]
+    ) -> dict[any, any] {
         return {"total_keys": sum(args), "total_items": len(kwargs)};
     }
 
@@ -92,7 +98,7 @@ def additional_varargs_edge_cases {
     }
 
     # Test 18: Special character handling in kwargs keys
-    def special_chars_kwargs(**kwargs: str) -> dict {
+    def special_chars_kwargs(**kwargs: str) -> dict[any, any] {
         return {"keys": list(kwargs.keys()), "count": len(kwargs)};
     }
 
@@ -105,7 +111,7 @@ def additional_varargs_edge_cases {
     }
 
     # Test 19: Very large argument counts
-    def stress_test_args(*args: int) -> dict {
+    def stress_test_args(*args: int) -> dict[any, any] {
         return {
             "count": len(args),
             "sum": sum(args),
@@ -126,7 +132,7 @@ def additional_varargs_edge_cases {
     # Test 20: Mixing unpacking with explicit args
     def mixed_unpacking_test(
         first: str, *args: int, last: str, **kwargs: bool
-    ) -> dict {
+    ) -> dict[any, any] {
         _sum = sum(args);
         _kwargs_true_count = 0;
         for v in kwargs.values() {
@@ -152,7 +158,7 @@ def additional_varargs_edge_cases {
     }
 
     # Test 21: Recursive function with varargs
-    def recursive_varargs(depth: int, *args: str, **kwargs: int) -> dict {
+    def recursive_varargs(depth: int, *args: str, **kwargs: int) -> dict[any, any] {
         if depth <= 0 or not args {
             return {"depth": depth, "args": list(args), "kwargs": kwargs};
         }

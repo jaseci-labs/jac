@@ -316,7 +316,7 @@ test "pyi stubs derive identically in every process" {
 
         import from jaclang.compiler.frontend.unitree { Archetype }
         import from jaclang.compiler.frontend.constant { Tokens as Tok }
-        foo2: list = [];
+        foo2: list[any] = [];
         for a in mod2.get_all_sub_nodes(Archetype) {
             if a.name is not None and a.name.value == "Foo" {
                 foo2.append(a);
@@ -738,7 +738,7 @@ test "get_bytecode busts in-memory hub when .impl.jac changes" {
         def tag_of -> int {
             code = compiler.get_bytecode(mod, prog);
             assert code is not None , "get_bytecode returned None";
-            ns: dict = {};
+            ns: dict[str, any] = {};
             exec(code, ns);
             return ns["Thing"]().get_tag();
         }
