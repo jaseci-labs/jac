@@ -51,6 +51,8 @@ jobs:
             core:
               - 'jac/**'
               - 'scripts/run_cpython_compiler_tests.jac'
+              - 'scripts/ci_measure.sh'
+              - 'scripts/test_ci_measure.jac'
               - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
@@ -105,9 +107,13 @@ jobs:
   build-kit:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
+      - name: Initialize performance output
+        run: echo "JAC_CI_MEASURE_DIR=$RUNNER_TEMP/build-kit-performance" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v5
 
       - name: Build the jac binary (cached)
+        id: setup
         uses: ./.github/actions/setup-jac
 
       - name: Set up Zig 0.16.0
@@ -123,16 +129,19 @@ jobs:
       # function of cache state -- present on a miss, missing on a hit, with
       # if-no-files-found blind to it because the other paths matched.
       - name: Materialize typeshed + vendored runtimes
+        id: materialize
         working-directory: jac
         run: |
-          zig build fetch-typeshed --summary all
-          zig build vendor-musl --summary all
-          zig build vendor-musl-linux-aarch64 --summary all
-          zig build vendor-wasm-libc --summary all
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record fetch-typeshed zig build fetch-typeshed --summary all
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record vendor-musl zig build vendor-musl --summary all
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record vendor-musl-linux-aarch64 zig build vendor-musl-linux-aarch64 --summary all
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record vendor-wasm-libc zig build vendor-wasm-libc --summary all
 
       - name: Hermeticity + smoke (no system Python)
+        id: hermetic
         working-directory: jac
         run: |
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record hermetic-smoke bash -e -o pipefail <<'CI_MEASURE_COMMAND'
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
           ldd "$BIN" || true
@@ -144,10 +153,13 @@ jobs:
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" -c 'import os, ssl; assert os.path.isfile(os.environ["SSL_CERT_FILE"]); assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0'
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/obj.jac")"
           echo "$out" | grep -q 49
+          CI_MEASURE_COMMAND
 
       - name: Run real jac programs (end-to-end execution)
+        id: programs
         working-directory: jac
         run: |
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record program-smoke bash -e -o pipefail <<'CI_MEASURE_COMMAND'
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
           WORK="$(mktemp -d)"; cd "$WORK"
@@ -162,10 +174,13 @@ jobs:
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/a.jac")"
           echo "$out" | grep -q "dist 5.0"
           echo "$out" | grep -q "0, 1, 4, 9, 16"
+          CI_MEASURE_COMMAND
 
       - name: jac test runner (self-contained test file)
+        id: test-runner
         working-directory: jac
         run: |
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record test-runner-smoke bash -e -o pipefail <<'CI_MEASURE_COMMAND'
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
           WORK="$(mktemp -d)"
@@ -175,12 +190,15 @@ jobs:
           test "strings" { assert "ja" + "c" == "jac"; }
           JAC
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 JAC_NO_DEV_SOURCE=1 "$BIN" test "$WORK/test_smoke.jac"
+          CI_MEASURE_COMMAND
 
       # if-no-files-found only fires when NO path matches, so a single missing
       # tree ships a quietly incomplete kit to every consumer. Assert each one.
       - name: Verify the kit is complete
+        id: verify
         working-directory: jac
         run: |
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record verify-kit bash -e -o pipefail <<'CI_MEASURE_COMMAND'
           set -euo pipefail
           for p in zig-out/bin/jac jaclang/vendor/typeshed/stdlib \
                    .pbs-build/linux-x86_64/musl/lib \
@@ -188,6 +206,7 @@ jobs:
                    .pbs-build/wasm32/libc; do
             [ -e "$p" ] || { echo "::error::kit is missing $p"; exit 1; }
           done
+          CI_MEASURE_COMMAND
 
       - name: Upload the kit
         uses: actions/upload-artifact@v4
@@ -203,6 +222,30 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      - name: Report build performance
+        if: always()
+        env:
+          CACHE_STATE: ${{ steps.setup.outputs.performance-cache-state }}
+          STEP_STATE: ${{ toJSON(steps) }}
+        run: |
+          mkdir -p "$JAC_CI_MEASURE_DIR"
+          if [ -f "$JAC_CI_MEASURE_DIR/build-cache.json" ]; then
+            CACHE_STATE=$(cat "$JAC_CI_MEASURE_DIR/build-cache.json")
+          fi
+          if [ -z "$CACHE_STATE" ]; then CACHE_STATE='{}'; fi
+          jq -n --argjson caches "$CACHE_STATE" --argjson steps "$STEP_STATE" \
+            '{caches:$caches, steps:$steps}' > "$JAC_CI_MEASURE_DIR/context.json"
+          bash scripts/ci_measure.sh report
+
+      - name: Upload build performance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-kit-performance
+          path: ${{ env.JAC_CI_MEASURE_DIR }}
+          retention-days: 30
+          if-no-files-found: error
+
   jac-check:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
@@ -215,6 +258,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Initialize performance output
+        run: echo "JAC_CI_MEASURE_DIR=$RUNNER_TEMP/jac-check-performance" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v5
         with:
           submodules: true
@@ -262,6 +308,7 @@ jobs:
       # is dead weight to restore.
       # Retries must be able to rule out a stale analysis/runtime cache.
       - name: Restore JIR analysis cache
+        id: analysis-cache
         if: github.run_attempt == 1
         uses: actions/cache/restore@v4
         with:
@@ -294,6 +341,7 @@ jobs:
         id: fmt
         continue-on-error: true
         run: |
+          bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record format-check bash -e -o pipefail <<'CI_MEASURE_COMMAND'
           set -euo pipefail
           if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
             if [ "${{ steps.changes.outputs.any }}" != "true" ]; then
@@ -310,6 +358,7 @@ jobs:
           else
             git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
+          CI_MEASURE_COMMAND
 
       # Autofix push mirrors pre-commit.ci. Without a JAC_AUTOFIX_TOKEN secret
       # the pushed commit does not retrigger CI (GitHub loop protection).
@@ -383,10 +432,11 @@ jobs:
       # clears JAC_NO_DEV_SOURCE ("" engages the reroute, as the equivalence
       # chunk does).
       - name: Run jac check (using .jacignore)
+        id: check
         run: |
           set -euo pipefail
           IGNORE_ARGS="tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
-          jac check . --ignore $IGNORE_ARGS --nowarn
+          bash scripts/ci_measure.sh record check-repository jac check . --ignore $IGNORE_ARGS --nowarn
 
       - name: Save JIR analysis cache
         if: success()
@@ -396,10 +446,11 @@ jobs:
           key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
+        id: error-report
         if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
         run: |
           set +e
-          jac check . --nowarn > jac-check-full.log 2>&1
+          bash scripts/ci_measure.sh record check-error-report jac check . --nowarn > jac-check-full.log 2>&1
           {
             echo "## jac check error-code breakdown (whole codebase, no ignores)"
             echo ""
@@ -412,6 +463,32 @@ jobs:
                      END { printf "| **TOTAL** | **%d** |\n", total }'
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
+
+      - name: Validate performance accounting
+        run: jac test scripts/test_ci_measure.jac
+
+      - name: Report checker performance
+        if: always()
+        env:
+          STEP_STATE: ${{ toJSON(steps) }}
+          CACHE_EXACT: ${{ steps.analysis-cache.outputs.cache-hit }}
+          CACHE_MATCHED: ${{ steps.analysis-cache.outputs.cache-matched-key }}
+        run: |
+          mkdir -p "$JAC_CI_MEASURE_DIR"
+          jq -n --arg exact "$CACHE_EXACT" --arg matched "$CACHE_MATCHED" \
+            --argjson steps "$STEP_STATE" \
+            '{analysis_cache:{exact:$exact, matched:$matched}, workers:2, steps:$steps}' \
+            > "$JAC_CI_MEASURE_DIR/context.json"
+          bash scripts/ci_measure.sh report
+
+      - name: Upload checker performance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-check-performance
+          path: ${{ env.JAC_CI_MEASURE_DIR }}
+          retention-days: 30
+          if-no-files-found: error
 
   # Pure PR-metadata policy: no kit, no jac. Docs code blocks are validated
   # by the suite (tests/cli/test_docs_code_blocks.jac) in the test lanes.
