@@ -349,9 +349,6 @@ def _http_spawn(
     headers: dict[str, str]
 ) -> any {
     import from jaclang.server.serving.client { request_sync }
-    if stub_cls is None {
-        raise BridgeError(detail="Walker response has no declared boundary contract");
-    }
     if app in _test_clients {
         client = _test_clients[app];
         data = client.post(
@@ -502,6 +499,13 @@ async def spawn_walker(
     stub_cls: any,
     idempotency_key: str = ""
 ) -> any {
+    if stub_cls is None and app not in _local_providers {
+        raise BridgeError(
+            app=app,
+            name=walker_name,
+            detail="Walker response has no declared boundary contract"
+        );
+    }
     _active_writes[app] = _active_writes.get(app, 0) + 1;
     clear_read_cache(app);
     try {
