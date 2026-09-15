@@ -75,7 +75,7 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
             continue;
         }
         slot_ty = allocation_type.pointee;
-        if self._cpython_ref_kind(slot_ty) is not None {
+        if self._foreign_resource_kind(slot_ty) is not None {
             continue;
         }
         _lu_ptr = isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee;
@@ -2400,7 +2400,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
 
             _is_raw_int_ptr = getattr(coerced, 'opname', '') == 'inttoptr'
-                and self._cpython_ref_kind(coerced.type) is None;
+                and self._foreign_resource_kind(coerced.type) is None;
             self._register_region_handle_var(nd, var_name);
             if (
                 isinstance(alloca.pointee_type, ir.PointerType)
@@ -2449,7 +2449,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             and var_name in self.nogc_no_free_vars
                         ) {
                         old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                        if self._cpython_ref_kind(alloca.pointee_type) is not None {
+                        if self._foreign_resource_kind(alloca.pointee_type) is not None {
                             self.builder.store(coerced, alloca);
                         }
                         self._emit_rc_release_typed(
@@ -2911,7 +2911,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             )
                 or (self._str_desc_ty is not None and var_type == self._str_desc_ty) {
                 if getattr(value, 'opname', '') == 'inttoptr'
-                    and self._cpython_ref_kind(value.type) is None {
+                    and self._foreign_resource_kind(value.type) is None {
                     self.param_vars.add(var_name);
                 } else {
                     import from jaclang.compiler.frontend.constant { OwnershipKind }
@@ -2989,7 +2989,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             and var_name in self.nogc_no_free_vars
                         ) {
                         old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                        if self._cpython_ref_kind(var_type) is not None {
+                        if self._foreign_resource_kind(var_type) is not None {
                             self.builder.store(value, alloca);
                         }
                         if _own_str_tgt {

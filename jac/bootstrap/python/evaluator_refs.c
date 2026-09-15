@@ -139,3 +139,22 @@ int64_t jacpy_eval_exception_group_subclass(JacPyObjectRef value) {
 void jacpy_eval_type_error(PyThreadState *tstate, const char *message) {
     _PyErr_SetString(tstate, PyExc_TypeError, message);
 }
+
+JacPyObjectRef jacpy_eval_topmost_exception(PyThreadState *tstate) {
+    return _PyErr_GetTopmostException(tstate)->exc_value;
+}
+int64_t jacpy_eval_exception_instance_check(JacPyObjectRef value) {
+    return PyExceptionInstance_Check(value);
+}
+JacPyObjectRef jacpy_eval_exception_type_new(JacPyObjectRef value) {
+    return Py_NewRef(PyExceptionInstance_Class(value));
+}
+void jacpy_eval_runtime_error(PyThreadState *tstate, const char *message) {
+    _PyErr_SetString(tstate, PyExc_RuntimeError, message);
+}
+void jacpy_eval_bad_exception_result(PyThreadState *tstate,
+                                   JacPyObjectRef factory, JacPyObjectRef result) {
+    _PyErr_Format(tstate, PyExc_TypeError,
+                  "calling %R should have returned an instance of "
+                  "BaseException, not %R", factory, Py_TYPE(result));
+}

@@ -272,7 +272,11 @@
      {"builtins", NULL},
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -381,38 +381,2 @@
+@@ -377,75 +377,40 @@
+
+ ##########################################################################
+ # Parser
+
 -PEGEN_OBJS=		\
 -		Parser/pegen.o \
 -		Parser/pegen_errors.o \
@@ -313,7 +317,14 @@
 -		$(TOKENIZER_HEADERS)
 +PARSER_OBJS= Parser/myreadline.o
 +PARSER_HEADERS= $(srcdir)/Include/internal/pycore_parser.h
-@@ -427,1 +391,7 @@
+
+ ##########################################################################
+ # Python
+
+ PYTHON_OBJS=	\
+ 		Python/_contextvars.o \
+ 		Python/_warnings.o \
+ 		Python/Python-ast.o \
 -		Python/Python-tokenize.o \
 +		Python/jac_compile.o \
 +		Python/jac_runtime.o \
@@ -321,23 +332,58 @@
 +		Python/jac_bindings.o \
 +		Python/jac_evaluator_refs.o \
 +		Python/jac_evaluator_support.o \
++		Python/jac_evaluator_frames.o \
++		Python/jac_evaluator_frame_clear.o \
 +		Python/jacpython.o \
-@@ -429,3 +392,0 @@
+ 		Python/asdl.o \
 -		Python/assemble.o \
 -		Python/ast.o \
 -		Python/ast_preprocess.o \
-@@ -437,2 +397,0 @@
+ 		Python/ast_unparse.o \
+ 		Python/bltinmodule.o \
+ 		Python/brc.o \
+ 		Python/ceval.o \
+ 		Python/codecs.o \
 -		Python/codegen.o \
 -		Python/compile.o \
-@@ -444,1 +402,0 @@
+ 		Python/context.o \
+ 		Python/critical_section.o \
+ 		Python/crossinterp.o \
+ 		Python/dynamic_annotations.o \
+ 		Python/errors.o \
 -		Python/flowgraph.o \
-@@ -447,1 +404,0 @@
+ 		Python/frame.o \
+ 		Python/frozenmain.o \
 -		Python/future.o \
-@@ -465,1 +421,0 @@
+ 		Python/gc.o \
+ 		Python/gc_free_threading.o \
+ 		Python/gc_gil.o \
+ 		Python/getargs.o \
+@@ -461,9 +426,8 @@
+ 		Python/index_pool.o \
+ 		Python/initconfig.o \
+ 		Python/interpconfig.o \
+ 		Python/instrumentation.o \
 -		Python/instruction_sequence.o \
-@@ -495,1 +450,0 @@
+ 		Python/intrinsics.o \
+ 		Python/jit.o \
+ 		Python/legacy_tracing.o \
+ 		Python/lock.o \
+@@ -491,9 +455,8 @@
+ 		Python/bootstrap_hash.o \
+ 		Python/specialize.o \
+ 		Python/stackrefs.o \
+ 		Python/structmember.o \
 -		Python/symtable.o \
-@@ -1986,8 +1941,2 @@
+ 		Python/sysmodule.o \
+ 		Python/thread.o \
+ 		Python/traceback.o \
+ 		Python/tracemalloc.o \
+@@ -1982,16 +1945,10 @@
+ 	$(srcdir)/Tools/peg_generator/pegen/grammar_parser.py.new
+
+ .PHONY: regen-pegen
+ regen-pegen:
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
 -	@$(MKDIR_P) $(srcdir)/Parser/lexer
@@ -348,7 +394,15 @@
 -	$(UPDATE_FILE) --create $(srcdir)/Parser/parser.c $(srcdir)/Parser/parser.c.new
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2015,21 +1964,2 @@
+
+ .PHONY: regen-ast
+ regen-ast:
+ 	# Regenerate 3 files using Parser/asdl_c.py:
+@@ -2011,29 +1968,10 @@
+ 	$(UPDATE_FILE) $(srcdir)/Python/Python-ast.c $(srcdir)/Python/Python-ast.c.new
+
+ .PHONY: regen-token
+ regen-token:
 -	# Regenerate Doc/library/token-list.inc from Grammar/Tokens
 -	# using Tools/build/generate_token.py
 -	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py rst \
@@ -372,10 +426,26 @@
 -		$(srcdir)/Lib/token.py
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2065,1 +1995,1 @@
+
+ .PHONY: regen-keyword
+ regen-keyword:
+ 	# Regenerate Lib/keyword.py from Grammar/python.gram and Grammar/Tokens
+@@ -2061,9 +1999,9 @@
+ 		$(srcdir)/Lib/re/_constants.py \
+ 		$(srcdir)/Modules/_sre/sre_constants.h \
+ 		$(srcdir)/Modules/_sre/sre_targets.h
+
 -Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
 +Python/ast_unparse.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
-@@ -2201,7 +2130,0 @@
+
+ Python/getplatform.o: $(srcdir)/Python/getplatform.c
+ 		$(CC) -c $(PY_CORE_CFLAGS) -DPLATFORM='"$(MACHDEP)"' -o $@ $(srcdir)/Python/getplatform.c
+
+@@ -2197,24 +2135,14 @@
+ 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/uop_metadata_generator.py -o \
+ 	    $(srcdir)/Include/internal/pycore_uop_metadata.h.new $(srcdir)/Python/bytecodes.c
+ 	$(UPDATE_FILE) $(srcdir)/Include/internal/pycore_uop_metadata.h $(srcdir)/Include/internal/pycore_uop_metadata.h.new
+
 -Python/compile.o Python/codegen.o Python/assemble.o Python/flowgraph.o Python/instruction_sequence.o: \
 -                $(srcdir)/Include/internal/pycore_compile.h \
 -                $(srcdir)/Include/internal/pycore_flowgraph.h \
@@ -383,17 +453,41 @@
 -                $(srcdir)/Include/internal/pycore_opcode_metadata.h \
 -                $(srcdir)/Include/internal/pycore_opcode_utils.h
 -
-@@ -2214,3 +2136,0 @@
+ Python/ceval.o: \
+ 		$(srcdir)/Python/ceval_macros.h \
+ 		$(srcdir)/Python/condvar.h \
+ 		$(srcdir)/Python/generated_cases.c.h \
+ 		$(srcdir)/Python/executor_cases.c.h \
+ 		$(srcdir)/Python/opcode_targets.h
 -
 -Python/flowgraph.o: \
 -		$(srcdir)/Include/internal/pycore_opcode_metadata.h
-@@ -2817,1 +2737,1 @@
+
+ Python/optimizer.o: \
+ 		$(srcdir)/Python/executor_cases.c.h \
+ 		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
+@@ -2813,14 +2741,14 @@
+ 		echo "Applying app store compliance patch"; \
+ 		patch --force --reject-file "$(abs_builddir)/app-store-compliance.rej" --strip 2 --directory "$(DESTDIR)$(LIBDEST)" --input "$(abs_srcdir)/$(APP_STORE_COMPLIANCE_PATCH)" || true ; \
+ 	fi
+ 	@ # Build PYC files for the 3 optimization levels (0, 1, 2)
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -2822,1 +2742,1 @@
+ 		$(PYTHON_FOR_BUILD) -Wi $(DESTDIR)$(LIBDEST)/compileall.py \
+ 		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST) -f \
+ 		-x 'bad_coding|badsyntax|site-packages' \
+ 		$(DESTDIR)$(LIBDEST)
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -3422,0 +3343,8 @@
+ 		$(PYTHON_FOR_BUILD) -Wi $(DESTDIR)$(LIBDEST)/compileall.py \
+ 		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST)/site-packages -f \
+ 		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
+
+@@ -3419,4 +3347,13 @@
+ # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
+ # Local Variables:
+ # mode: makefile
+ # End:
 +
 +# Compiler/parser objects are supplied by native Jac and retained-runtime ABI adapters.
 +Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h
@@ -401,10 +495,194 @@
 +Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
 +Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
 +Python/jac_evaluator_refs.o: $(srcdir)/Python/jac_evaluator_refs.c $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_genobject.h $(srcdir)/Include/internal/pycore_pyerrors.h
++Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
 --- a/Python/ceval.c
 +++ b/Python/ceval.c
-@@ -3062,56 +3062,8 @@
+@@ -949,9 +949,10 @@
+     return NULL;
+ }
+
+
+-static int do_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause);
++int jacpy_eval_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause);
++#define do_raise jacpy_eval_raise
+
+ PyObject *
+ PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
+ {
+@@ -1922,48 +1923,8 @@
+ fail_post_args:
+     return -1;
+ }
+
+-static void
+-clear_thread_frame(PyThreadState *tstate, _PyInterpreterFrame * frame)
+-{
+-    assert(frame->owner == FRAME_OWNED_BY_THREAD);
+-    // Make sure that this is, indeed, the top frame. We can't check this in
+-    // _PyThreadState_PopFrame, since f_code is already cleared at that point:
+-    assert((PyObject **)frame + _PyFrame_GetCode(frame)->co_framesize ==
+-        tstate->datastack_top);
+-    assert(frame->frame_obj == NULL || frame->frame_obj->f_frame == frame);
+-    _PyFrame_ClearExceptCode(frame);
+-    PyStackRef_CLEAR(frame->f_executable);
+-    _PyThreadState_PopFrame(tstate, frame);
+-}
+-
+-static void
+-clear_gen_frame(PyThreadState *tstate, _PyInterpreterFrame * frame)
+-{
+-    assert(frame->owner == FRAME_OWNED_BY_GENERATOR);
+-    PyGenObject *gen = _PyGen_GetGeneratorFromFrame(frame);
+-    gen->gi_frame_state = FRAME_CLEARED;
+-    assert(tstate->exc_info == &gen->gi_exc_state);
+-    tstate->exc_info = gen->gi_exc_state.previous_item;
+-    gen->gi_exc_state.previous_item = NULL;
+-    assert(frame->frame_obj == NULL || frame->frame_obj->f_frame == frame);
+-    frame->previous = NULL;
+-    _PyFrame_ClearExceptCode(frame);
+-    _PyErr_ClearExcState(&gen->gi_exc_state);
+-}
+-
+-void
+-_PyEval_FrameClearAndPop(PyThreadState *tstate, _PyInterpreterFrame * frame)
+-{
+-    if (frame->owner == FRAME_OWNED_BY_THREAD) {
+-        clear_thread_frame(tstate, frame);
+-    }
+-    else {
+-        clear_gen_frame(tstate, frame);
+-    }
+-}
+-
+ /* Consumes references to func, locals and all the args */
+ _PyInterpreterFrame *
+ _PyEvalFramePushAndInit(PyThreadState *tstate, _PyStackRef func,
+                         PyObject *locals, _PyStackRef const* args,
+@@ -1978,9 +1939,9 @@
+     }
+     _PyFrame_Initialize(tstate, frame, func, locals, code, 0, previous);
+     if (initialize_locals(tstate, func_obj, frame->localsplus, args, argcount, kwnames)) {
+         assert(frame->owner == FRAME_OWNED_BY_THREAD);
+-        clear_thread_frame(tstate, frame);
++        _PyEval_FrameClearAndPop(tstate, frame);
+         return NULL;
+     }
+     return frame;
+ fail:
+@@ -2183,110 +2144,8 @@
+     Py_DECREF(defaults);
+     return res;
+ }
+
+-
+-/* Logic for the raise statement (too complicated for inlining).
+-   This *consumes* a reference count to each of its arguments. */
+-static int
+-do_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause)
+-{
+-    PyObject *type = NULL, *value = NULL;
+-
+-    if (exc == NULL) {
+-        /* Reraise */
+-        _PyErr_StackItem *exc_info = _PyErr_GetTopmostException(tstate);
+-        exc = exc_info->exc_value;
+-        if (Py_IsNone(exc) || exc == NULL) {
+-            _PyErr_SetString(tstate, PyExc_RuntimeError,
+-                             "No active exception to reraise");
+-            return 0;
+-        }
+-        Py_INCREF(exc);
+-        assert(PyExceptionInstance_Check(exc));
+-        _PyErr_SetRaisedException(tstate, exc);
+-        return 1;
+-    }
+-
+-    /* We support the following forms of raise:
+-       raise
+-       raise <instance>
+-       raise <type> */
+-
+-    if (PyExceptionClass_Check(exc)) {
+-        type = exc;
+-        value = _PyObject_CallNoArgs(exc);
+-        if (value == NULL)
+-            goto raise_error;
+-        if (!PyExceptionInstance_Check(value)) {
+-            _PyErr_Format(tstate, PyExc_TypeError,
+-                          "calling %R should have returned an instance of "
+-                          "BaseException, not %R",
+-                          type, Py_TYPE(value));
+-             goto raise_error;
+-        }
+-    }
+-    else if (PyExceptionInstance_Check(exc)) {
+-        value = exc;
+-        type = PyExceptionInstance_Class(exc);
+-        Py_INCREF(type);
+-    }
+-    else {
+-        /* Not something you can raise.  You get an exception
+-           anyway, just not what you specified :-) */
+-        Py_DECREF(exc);
+-        _PyErr_SetString(tstate, PyExc_TypeError,
+-                         "exceptions must derive from BaseException");
+-        goto raise_error;
+-    }
+-
+-    assert(type != NULL);
+-    assert(value != NULL);
+-
+-    if (cause) {
+-        PyObject *fixed_cause;
+-        if (PyExceptionClass_Check(cause)) {
+-            fixed_cause = _PyObject_CallNoArgs(cause);
+-            if (fixed_cause == NULL)
+-                goto raise_error;
+-            if (!PyExceptionInstance_Check(fixed_cause)) {
+-                _PyErr_Format(tstate, PyExc_TypeError,
+-                              "calling %R should have returned an instance of "
+-                              "BaseException, not %R",
+-                              cause, Py_TYPE(fixed_cause));
+-                Py_DECREF(fixed_cause);
+-                goto raise_error;
+-            }
+-            Py_DECREF(cause);
+-        }
+-        else if (PyExceptionInstance_Check(cause)) {
+-            fixed_cause = cause;
+-        }
+-        else if (Py_IsNone(cause)) {
+-            Py_DECREF(cause);
+-            fixed_cause = NULL;
+-        }
+-        else {
+-            _PyErr_SetString(tstate, PyExc_TypeError,
+-                             "exception causes must derive from "
+-                             "BaseException");
+-            goto raise_error;
+-        }
+-        PyException_SetCause(value, fixed_cause);
+-    }
+-
+-    _PyErr_SetObject(tstate, type, value);
+-    /* _PyErr_SetObject incref's its arguments */
+-    Py_DECREF(value);
+-    Py_DECREF(type);
+-    return 0;
+-
+-raise_error:
+-    Py_XDECREF(value);
+-    Py_XDECREF(type);
+-    Py_XDECREF(cause);
+-    return 0;
+-}
+
+ /* Logic for matching an exception in an except* clause (too
+    complicated for inlining).
+ */
+@@ -3062,56 +2921,8 @@
      else
          return " object";
  }
@@ -461,7 +739,7 @@
  _PyEval_ImportName(PyThreadState *tstate, _PyInterpreterFrame *frame,
              PyObject *name, PyObject *fromlist, PyObject *level)
  {
-@@ -3315,76 +3267,8 @@
+@@ -3315,76 +3126,8 @@
      Py_XDECREF(origin);
      Py_XDECREF(spec);
      Py_DECREF(mod_name_or_unknown);
@@ -538,7 +816,7 @@
 
  int
  _Py_Check_ArgsIterable(PyThreadState *tstate, PyObject *func, PyObject *args)
-@@ -3557,47 +3441,8 @@
+@@ -3557,47 +3300,8 @@
  {
      _Py_LeaveRecursiveCall();
  }
@@ -586,7 +864,7 @@
  _PyEval_LoadGlobalStackRef(PyObject *globals, PyObject *builtins, PyObject *name, _PyStackRef *writeto)
  {
      if (PyDict_CheckExact(globals) && PyDict_CheckExact(builtins)) {
-@@ -3637,32 +3482,8 @@
+@@ -3637,32 +3341,8 @@
      }
  }
 

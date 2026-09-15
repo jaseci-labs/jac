@@ -1459,7 +1459,7 @@ impl NaIRGenPass._nogc_drop_op_active(op: str) -> bool {
 impl NaIRGenPass._emit_rc_release_simple(
     ptr: ir.Value, op: str = "", loc: str = ""
 ) -> None {
-    if self._cpython_ref_close(ptr) {
+    if self._foreign_resource_close(ptr) {
         return;
     }
     _rls_owned = self._is_owned(ptr);
@@ -1512,7 +1512,7 @@ impl NaIRGenPass._emit_rc_release_simple(
 impl NaIRGenPass._emit_rc_release_typed(
     val: ir.Value, op: str = "", loc: str = ""
 ) -> None {
-    if self._cpython_ref_close(val) {
+    if self._foreign_resource_close(val) {
         return;
     }
     _rlt_owned = self._is_owned(val);
@@ -2311,7 +2311,7 @@ impl NaIRGenPass._emit_scope_cleanup(
     }
     for (var_name, alloca) in cleanup_locals {
         if loc == "musttail"
-            and self._cpython_ref_kind(alloca.pointee_type) is not None
+            and self._foreign_resource_kind(alloca.pointee_type) is not None
             and self._tail_slot_was_cleared(alloca) {
             continue;
         }
@@ -2377,9 +2377,9 @@ impl NaIRGenPass._emit_scope_cleanup(
             val = self.builder.load(alloca, name=f"cleanup.{var_name}");
             if var_name == skip_var {
                 self.builder.store(self._zero_const(alloca.pointee_type), alloca);
-            } elif self._cpython_ref_kind(val.type) is not None {
+            } elif self._foreign_resource_kind(val.type) is not None {
                 self.builder.store(self._zero_const(alloca.pointee_type), alloca);
-                self._cpython_ref_close(val);
+                self._foreign_resource_close(val);
             } else {
                 self._emit_rc_release_typed(val, op="scope_exit", loc=loc);
                 self.builder.store(self._zero_const(alloca.pointee_type), alloca);
@@ -2455,9 +2455,9 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
                 continue;
             }
             val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
-            if self._cpython_ref_kind(val.type) is not None {
+            if self._foreign_resource_kind(val.type) is not None {
                 self.builder.store(self._zero_const(alloca.pointee_type), alloca);
-                self._cpython_ref_close(val);
+                self._foreign_resource_close(val);
                 continue;
             }
             self._emit_rc_release_typed(val, op="iter_end", loc=loc);

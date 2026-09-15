@@ -334,7 +334,7 @@ impl NaIRGenPass._codegen_clib_call(
         if ret_plan.get("is_str") {
             result = self._membrane_str_in(self.builder, result);
         }
-        if not ret_plan.get("borrowed_cpython", False) {
+        if not ret_plan.get("borrowed_foreign", False) {
             self._mark_owned(result);
         }
     }
@@ -353,8 +353,8 @@ impl NaIRGenPass._clib_reinterpret(
     if val.type == ir.IntType(64) and self._foreign_word_type(want) {
         return self.builder.inttoptr(val, want, name=name);
     }
-    if self._cpython_ref_kind(val.type) is not None
-        or self._cpython_ref_kind(want) is not None {
+    if self._foreign_resource_kind(val.type) is not None
+        or self._foreign_resource_kind(want) is not None {
         return self._coerce_type(val, want);
     }
     if isinstance(val.type, ir.PointerType) and isinstance(want, ir.IntType) {

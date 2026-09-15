@@ -87,14 +87,14 @@ impl NaIRGenPass._emit_clib_c_trampoline(
     self._builder = ir.IRBuilder(`entry);
     jac_params = jac_fn.function_type.args;
     if any(
-        self._cpython_ref_kind(typ) is not None
+        self._foreign_resource_kind(typ) is not None
         for typ in list(jac_params)
             + list(c_fn_ty.pointee.args)
             + [jac_fn.function_type.return_type, c_fn_ty.pointee.return_type]
     ) {
         self.emit(
             E5120,
-            reason="CPython callbacks require an exact ABI; adapting their arguments or results cannot establish ownership"
+            reason="foreign callbacks require an exact ABI; adapting their arguments or results cannot establish ownership"
         );
         self.builder.unreachable();
         self._builder = saved_builder;
@@ -165,7 +165,7 @@ impl NaIRGenPass._lower_clib_function_type(
                 }
                 self.clib_fnptr_str_ret[arch_name].add(fname);
             }
-            if self._cpython_ref_kind(_r) is not None {
+            if self._foreign_resource_kind(_r) is not None {
                 if arch_name not in self.clib_fnptr_resource_ret {
                     self.clib_fnptr_resource_ret[arch_name] = {};
                 }

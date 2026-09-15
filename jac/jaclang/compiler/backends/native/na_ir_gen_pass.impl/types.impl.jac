@@ -45,11 +45,11 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     } elif isinstance(t, _ClassType) {
         lowered = self._lower_class_type(t);
     } elif isinstance(t, _UnionType) {
-        import from jaclang.compiler.foreign_refs { cpython_ref_name }
-        if any(cpython_ref_name(member) is not None for member in (t.types or [])) {
+        import from jaclang.compiler.foreign_refs { foreign_resource_name }
+        if any(foreign_resource_name(member) is not None for member in (t.types or [])) {
             self.emit(
                 E5120,
-                reason="CPython references use their ABI null value, not Jac optional or union storage"
+                reason="foreign resources use their ABI null value, not Jac optional or union storage"
             );
         }
         lowered = ir.VoidType();
@@ -1592,9 +1592,9 @@ impl NaIRGenPass._consume_bool(val: ir.Value) -> ir.Value {
 }
 
 impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
-    if self._cpython_ref_kind(val.type) is not None {
+    if self._foreign_resource_kind(val.type) is not None {
         self.emit(
-            E5120, reason="use the typed foreign ABI to test a CPython reference"
+            E5120, reason="use the typed foreign ABI to test a foreign resource"
         );
         return ir.Constant(ir.IntType(1), 0);
     }
@@ -1793,7 +1793,7 @@ impl NaIRGenPass._jacval_is_none(jv: ir.Value, negate: bool) -> ir.Value {
 }
 
 impl NaIRGenPass._zero_const(ty: ir.Type) -> ir.Constant {
-    kind = self._cpython_ref_kind(ty);
+    kind = self._foreign_resource_kind(ty);
     spec = self._foreign_resource_specs.get(kind) if kind is not None else None;
     if spec is not None {
         empty = ir.Constant(ir.IntType(64), spec[1]).inttoptr(ty);
@@ -2139,10 +2139,10 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
     if val.type == target_type {
         return val;
     }
-    if self._cpython_ref_kind(val.type) is not None
-        or self._cpython_ref_kind(target_type) is not None {
+    if self._foreign_resource_kind(val.type) is not None
+        or self._foreign_resource_kind(target_type) is not None {
         self.emit(
-            E5120, reason="CPython references cannot be cast, boxed, or reinterpreted"
+            E5120, reason="foreign resources cannot be cast, boxed, or reinterpreted"
         );
         return self._zero_const(target_type);
     }

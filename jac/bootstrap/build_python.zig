@@ -12,7 +12,7 @@ const inputs = [_][]const u8{
     "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
     "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
     "bootstrap/python/evaluator_refs.c",   "bootstrap/python/evaluator_refs.h",
-
+    "bootstrap/python/evaluator_frames.c", "bootstrap/python/evaluator_frames.h",
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
@@ -163,7 +163,8 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
             std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
             std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c") or
             std.mem.endsWith(u8, path, "/object_api.c") or std.mem.endsWith(u8, path, "/binding_api.c") or
-            std.mem.endsWith(u8, path, "/evaluator_refs.c") or std.mem.endsWith(u8, path, "/evaluator_refs.h"))) continue;
+            std.mem.endsWith(u8, path, "/evaluator_refs.c") or std.mem.endsWith(u8, path, "/evaluator_refs.h") or
+            std.mem.endsWith(u8, path, "/evaluator_frames.c") or std.mem.endsWith(u8, path, "/evaluator_frames.h"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);

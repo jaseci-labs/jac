@@ -111,11 +111,16 @@ The analysis stamps documented facts; consumers read them:
   source spellings live on annotation nodes only. Ownership, linearity, and
   dependencies survive callable cloning and interface serialization together;
   a cached signature must not silently remove any part of the contract.
+  Callable compatibility rebases indices around omitted implicit receivers and
+  compares source sets; a dependency on `self` cannot turn into a dependency on
+  the first explicit parameter.
 - **Owned dependents**: a dependent binding can remain `OwnershipKind.OWN`.
   Its transitive `BorrowMeta` roots pin sources through consumption or cleanup,
   including after its last ordinary read. Matching consuming call parameters
   can transfer source and dependent together. `Module.own_dependency_order`
   records destruction order per ability, with dependents preceding sources.
+  The resource's declared destructor can discharge a dependent owner without
+  restating its dependency; all source owners stay live through that call.
   See the [migration contract and validation status](foreign-lifetime-contracts.md)
   for storage shapes and backend gates still under implementation.
 - **Foreign contracts**: `ClassDetailsShared.foreign_resource` carries the

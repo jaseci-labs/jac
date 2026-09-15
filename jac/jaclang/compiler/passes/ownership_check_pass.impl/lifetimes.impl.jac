@@ -272,8 +272,23 @@ impl OwnershipCheckPass._emit_lifetime_diagnostics -> None {
                     }
                 }
             }
+            cleanup = False;
+            resource_type = parameter.param_type;
+            if index == 0 and len(fn.parameters) == 1
+                and isinstance(resource_type, ClassType)
+                and resource_type.shared.foreign_resource is not None {
+                # A declared destructor discharges the obligation before it
+                # returns. Its owner's dependencies stay live through the call;
+                # they are not transferred into independently owned storage.
+                resource = resource_type.shared.foreign_resource;
+                drop_symbol = lookup_symtab(resource_type.shared.symbol_table, resource[2], None);
+                import from jaclang.compiler.symbol_utils { resolved_callee }
+                cleanup = drop_symbol is not None and drop_symbol.decl is not None
+                    and resolved_callee(call) is drop_symbol.decl.name_of;
+            }
             if parameter.ownership == OwnershipKind.OWN
                 and actual
+                and not cleanup
                 and not all(owner in expected for owner in actual) {
                 self.emit(
                     E1320,

@@ -1162,11 +1162,11 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     if any(error.code in (E5109, E5120) for error in _own) {
         return False;
     }
-    if func in self._cpython_required_functions {
+    if func in self._foreign_required_functions {
         self.emit(
             E5120,
-            node_override=self._cpython_required_functions[func],
-            reason="a function using CPython references cannot be demoted to Python"
+            node_override=self._foreign_required_functions[func],
+            reason="a function using foreign resources cannot be demoted to Python"
         );
         return False;
     }
@@ -2688,7 +2688,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                 if _is_clib {
                     _r = self._clib_fnptr_ret(_fld_struct, method_name, _r);
                 }
-                if self._cpython_ref_kind(_r.type) is not None {
+                if self._foreign_resource_kind(_r.type) is not None {
                     function_type = nd.target.type;
                     if not isinstance(function_type, SemanticFunctionType)
                         or function_type.return_ownership != OwnershipKind.BORROW {

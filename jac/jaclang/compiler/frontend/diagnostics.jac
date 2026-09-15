@@ -1963,8 +1963,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5120 = _err(
          "E5120",
          Category.CODEGEN,
-         "Invalid native CPython reference operation: {reason}",
-         help="CPython references are sealed foreign resources. Use the typed reference ABI in native nogc code, and preserve the Python object's lifetime across calls, cleanup and suspension.",
+         "Invalid native foreign resource operation: {reason}",
+         help="Use declared foreign resources in native nogc code, and preserve their lifetimes across calls, cleanup and suspension.",
          blocks_codegen=True
      ),
      E5093 = _err(

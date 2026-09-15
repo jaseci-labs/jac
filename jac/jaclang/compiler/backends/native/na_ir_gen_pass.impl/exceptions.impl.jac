@@ -687,8 +687,16 @@ impl NaIRGenPass._emit_err_check(
     if (callee is None and not indirect) or not self._slot_lowering_active() {
         return;
     }
-    import from jaclang.compiler.foreign_refs { cpython_error_call }
-    if not indirect and cpython_error_call(callee) {
+    import from jaclang.compiler.foreign_refs { foreign_call_uses_external_errors }
+    if not indirect and foreign_call_uses_external_errors(callee) {
+        return;
+    }
+    if indirect and call is not None
+        and isinstance(call.target.type, SemanticFunctionType)
+        and call.target.type.foreign_errors in ("python", "none") {
+        # Typed C function values retain their declaration's error protocol.
+        # Callable compatibility prevents an ordinary Jac function from
+        # acquiring this contract through an assignment or cast.
         return;
     }
     if call is not None and self._tail_transfer_requested(call) {

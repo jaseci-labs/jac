@@ -25,6 +25,11 @@ or destruction, including its destructor; its last ordinary read is insufficient
 A borrowed result can use last-use liveness. A `from (a, b)` result conservatively
 requires both sources, regardless of which branch produced it.
 
+A resource's declared destructor may consume a dependent owner: the source
+owners remain live for the entire cleanup call. This exception belongs to the
+resolved destructor declaration, not another function with the same name. Other
+consuming calls must preserve the dependency in their parameter contracts.
+
 Bodies are checked against their declared sources. Unknown, duplicate,
 self-referential, and cyclic sources are errors. A function cannot return a
 value depending on an owned parameter it destroys on return. Single-source
@@ -103,10 +108,35 @@ An empty inferred `raises` set cannot suppress implicit checked arithmetic or
 cleanup errors.
 
 A live owner does not by itself prove that a borrowed container element remains
-valid across mutation or reentry. The compiler requires a stability proof,
-independent ownership, or rejects the use. The CPython migration must preserve
+valid across mutation or reentry. Supporting that use requires a stability proof
+or independent ownership; until then the compiler must reject it. The CPython migration must preserve
 its frame-local overwrite retention rules rather than introduce unconditional
 retains for all borrowed stack references.
+
+## Source implementation status
+
+The current source implements declared foreign resources, callable ownership
+and dependency metadata, dependent local cleanup, and checked native tail
+transfers. Callable compatibility rebases dependency positions when omitting
+implicit receivers; a dependency on `self` cannot become a dependency on the
+first explicit argument. Lists of required sources denote sets, so their order
+does not change callable compatibility.
+
+C calls, function values, and resource destructors resolve their declarations
+before selecting an ABI symbol. Aliases and unrelated native functions with
+the same spelling do not grant or remove a foreign contract. Borrowed C records
+also do not justify LLVM immutability or exclusivity attributes.
+
+The evaluator sources include raise logic and active-frame cleanup using these
+contracts. A linear frame owns a cleanup obligation tied to the current thread;
+a dependent executable reference is closed before its thread frame is popped.
+The source changes in this review batch have not been built or tested.
+
+Generic foreign-resource storage, arbitrary closure capture, suspension,
+container-element stability across reentry, and complete effect propagation
+through every storage/interface shape remain migration prerequisites. These
+design requirements must not be treated as implemented guarantees. The C opcode
+evaluator and tier-two executor remain in the candidate build.
 
 ## Validation before completing the migration
 

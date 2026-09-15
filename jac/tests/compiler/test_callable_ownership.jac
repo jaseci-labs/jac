@@ -132,6 +132,60 @@ test "lifetime contract sources must exist and cannot form cycles" {
     }
 }
 
+test "callable dependencies account for implicit receivers and unordered sources" {
+    evaluator = JacProgram().get_type_evaluator();
+    method = FunctionType(
+        return_type=UnknownType(),
+        return_ownership=OwnershipKind.BORROW,
+        return_sources=[1, 2],
+        parameters=[
+            Parameter(name="self", category=ParameterCategory.Positional,
+                      param_type=UnknownType(), is_self=True,
+                      ownership=OwnershipKind.BORROW),
+            Parameter(name="owner", category=ParameterCategory.Positional,
+                      param_type=UnknownType(), ownership=OwnershipKind.BORROW),
+            Parameter(name="child", category=ParameterCategory.Positional,
+                      param_type=UnknownType(), ownership=OwnershipKind.BORROW,
+                      lifetime_sources=[1])
+        ]
+    );
+    callable_type = method.clone();
+    callable_type.parameters = callable_type.parameters[1:];
+    callable_type.parameters[1].lifetime_sources = [0];
+    callable_type.return_sources = [1, 0];
+    assert evaluator.assign_type(method, callable_type);
+    method.return_sources = [0];
+    callable_type.return_sources = [0];
+    assert not evaluator.assign_type(method, callable_type);
+    method.return_sources = [1, 2];
+    callable_type.return_sources = [1, 0];
+    method.parameters[2].lifetime_sources = [0];
+    assert not evaluator.assign_type(method, callable_type);
+}
+
+test "only the declared foreign destructor may discharge a dependent owner" {
+    declarations = '@foreign_resource(abi="word", empty=1, drop=release_handle, aliasing="shared", reentrant_drop=True) obj Handle; '
+        'import from c { '
+        '@foreign_call(errors="none", reentrant=True) def release_handle(value: own Handle); '
+        '@foreign_call(errors="none", reentrant=True) def store_handle(value: own Handle); } ';
+    for (callee, rejected) in [("release_handle", False), ("store_handle", True)] {
+        program = JacProgram();
+        program.compile(
+            "dependent_cleanup.jac",
+            use_str=declarations
+                + 'def finish(owner: &Handle, child: lin Handle from owner) { '
+                + callee + '(child); }',
+            options=CompileOptions(no_cgen=True, force_target_program=True,
+                                   force_codespace="native", memory_profile="nogc")
+        );
+        if rejected {
+            assert any(e.code == E1320 for e in program.errors_had);
+        } else {
+            assert not program.errors_had , "\n".join(str(e) for e in program.errors_had);
+        }
+    }
+}
+
 test "return bodies cannot substitute an undeclared lifetime source" {
     program = JacProgram();
     program.compile(

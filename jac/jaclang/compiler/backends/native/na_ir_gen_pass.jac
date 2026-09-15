@@ -178,6 +178,7 @@ walker NaIRGenPass(Transform) {
         _interned_strs: dict[str, ir.GlobalVariable] = {},
         extern_funcs: dict[str, ir.Function] = {},
         clib_extern_names: set[str] = set(),
+        clib_functions: dict[str, ir.Function] = {},
         _pending_clib_abilities: list[uni.Ability] = [],
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
@@ -206,7 +207,7 @@ walker NaIRGenPass(Transform) {
         _tail_transfers: dict[ir.Function, uni.FuncCall] = {},
         _tail_required_functions: dict[ir.Function, uni.FuncCall] = {},
         _foreign_resource_specs: dict[str, tuple[str, int, str, str, bool]] = {},
-        _cpython_required_functions: dict[ir.Function, uni.Ability] = {},
+        _foreign_required_functions: dict[ir.Function, uni.Ability] = {},
         _str_count: int = 0,
         struct_types: dict[str, ir.IdentifiedStructType] = {},
         struct_field_indices: dict[str, dict] = {},
@@ -1127,6 +1128,7 @@ walker NaIRGenPass(Transform) {
     def _mark_local_unlowered(name: str) -> None;
     def _reads_unlowered_local(nd: uni.UniNode) -> bool;
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
+    def _resolved_function_value(nd: uni.Expr) -> (ir.Function | None);
     def _ct_type_param_owner(nd: uni.Name) -> (str | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
@@ -2091,13 +2093,13 @@ walker NaIRGenPass(Transform) {
     def _lower_type(t: any) -> (ir.Type | None);
     def _unify_repr_lowering(reprs: list) -> (ir.Type | None);
     def _lower_class_type(t: ClassType) -> (ir.Type | None);
-    def _cpython_ref_kind(typ: ir.Type) -> str | None;
+    def _foreign_resource_kind(typ: ir.Type) -> str | None;
     def _foreign_resource_type(typ: ClassType) -> ir.Type;
     def _foreign_word_type(typ: ir.Type) -> bool;
-    def _cpython_ref_close(value: ir.Value) -> bool;
-    def _record_cpython_requirement(func: ir.Function, decl: uni.Ability) -> None;
-    def _validate_cpython_refs -> None;
-    def _cpython_ref_exprs(origin: uni.UniNode) -> list[uni.Expr];
+    def _foreign_resource_close(value: ir.Value) -> bool;
+    def _record_foreign_requirement(func: ir.Function, decl: uni.Ability) -> None;
+    def _validate_foreign_resources -> None;
+    def _foreign_resource_exprs(origin: uni.UniNode) -> list[uni.Expr];
     def _lower_function_type(t: SemanticFunctionType) -> ir.PointerType;
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);

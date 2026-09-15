@@ -92,7 +92,7 @@ impl NaIRGenPass.postinit -> None {
 }
 
 impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
-    self._validate_cpython_refs();
+    self._validate_foreign_resources();
     import from jaclang.compiler.passes.capability_check_pass {
         native_capability_violations,
         partition_native_capability_violations
@@ -1253,7 +1253,7 @@ impl NaIRGenPass._record_linked_decl(
     }
     self._linked_fn_decls[id(func)] = (func, decl);
     self._record_tail_requirement(func, decl);
-    self._record_cpython_requirement(func, decl);
+    self._record_foreign_requirement(func, decl);
 }
 
 impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {

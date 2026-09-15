@@ -198,7 +198,7 @@ impl NaIRGenPass._callee_sig_of(
     if linked is not None and isinstance(linked.signature, uni.FuncSignature) {
         return linked.signature;
     }
-    decl = nd.callee_decl;
+    decl = self._callee_ability_of(nd);
     sig = decl.signature if decl is not None else None;
     return sig if isinstance(sig, uni.FuncSignature) else None;
 }
@@ -220,7 +220,7 @@ impl NaIRGenPass._arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None)
 }
 
 impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
-    if self._cpython_ref_kind(t) is not None {
+    if self._foreign_resource_kind(t) is not None {
         return self._zero_const(t);
     }
     if isinstance(t, ir.PointerType) {
@@ -1471,8 +1471,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     _call_kind = nd.call_kind or "";
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
+    declaration = self._callee_ability_of(nd);
+    _is_foreign = is_foreign_ability(declaration);
 
-    _sized_call = self._codegen_sized_builtin_call(
+    _sized_call = None if _is_foreign else self._codegen_sized_builtin_call(
         nd, self._get_name(nd.target), _call_kind
     );
     if _sized_call is not None {
@@ -1481,7 +1484,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
     func_name: str | None = None;
     _mod_qual: (str | None) = None;
-    if _call_kind == "method" {
+    if _is_foreign and declaration is not None and declaration.name_ref is not None {
+        func_name = declaration.name_ref.sym_name;
+    } elif _call_kind == "method" {
         _mod_fn = self._native_module_call_target(nd);
         if _mod_fn is None {
             return self._codegen_method_call(nd);
@@ -1506,11 +1511,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     _intrinsic_entry = INTRINSIC_REGISTRY.get(func_name);
-    if _intrinsic_entry is not None {
+    if not _is_foreign and _intrinsic_entry is not None {
         return self._codegen_intrinsic(nd, _intrinsic_entry);
     }
 
-    if _call_kind != "method" and func_name not in self.local_vars {
+    if not _is_foreign and _call_kind != "method" and func_name not in self.local_vars {
         _ec_name = self._enum_ctor_target(nd);
         if _ec_name is not None {
             return self._codegen_enum_ctor(nd, _ec_name);
@@ -1552,7 +1557,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
 
-    if _call_kind == "builtin" {
+    if not _is_foreign and _call_kind == "builtin" {
         if func_name == "print" {
             return self._emit_print(nd);
         }
@@ -2193,15 +2198,16 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
-    if func_name in self.struct_types {
+    if not _is_foreign and func_name in self.struct_types {
         return self._codegen_instantiation(nd, type_name_override=func_name);
     }
     _alias_arch = self._arch_alias_target(nd.target);
-    if _alias_arch is not None and _alias_arch in self.struct_types {
+    if not _is_foreign and _alias_arch is not None and _alias_arch in self.struct_types {
         return self._codegen_instantiation(nd, type_name_override=_alias_arch);
     }
     if (
-        func_name in self._native_skipped_methods and func_name not in self.generic_fns
+        not _is_foreign
+        and func_name in self._native_skipped_methods and func_name not in self.generic_fns
     ) {
         self.emit(
             E5092,
@@ -2215,12 +2221,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         );
         return None;
     }
-    if func_name in self.decorated_fns {
+    if not _is_foreign and func_name in self.decorated_fns {
         return self._codegen_decorated_call(nd, func_name);
     }
-    func: ir.Function | None = self.func_symtab.get(func_name);
-    declaration = self._callee_ability_of(nd);
-    if declaration is not None and declaration.name_ref is not None {
+    func: ir.Function | None = self.clib_functions.get(func_name)
+        if _is_foreign else self.func_symtab.get(func_name);
+    if not _is_foreign and declaration is not None and declaration.name_ref is not None {
         declaring_module = declaration.parent_scope;
         if isinstance(declaring_module, uni.Module) {
             declared_function = self._module_functions.get(
@@ -2336,11 +2342,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
     args: list[ir.Value] = self._codegen_bound_args(nd, func, self_offset=0);
 
-    if func_name in self.clib_fn_abi {
+    if _is_foreign and func_name in self.clib_fn_abi {
         return self._codegen_clib_call(func, func_name, args, nd);
     }
 
-    _is_foreign = func_name in self.clib_extern_names;
     coerced: list[ir.Value] = [];
 
     _clib_str_args: set = set();
@@ -2401,7 +2406,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             _c = self._clib_reinterpret(arg, func.args[i].type, name="foreign.arg")
                 if _is_foreign else self._coerce_type(arg, func.args[i].type);
             coerced.append(_c);
-            release_args.append(arg if _is_foreign and self._cpython_ref_kind(arg.type) is not None else _c);
+            release_args.append(arg if _is_foreign and self._foreign_resource_kind(arg.type) is not None else _c);
         } else {
             coerced.append(arg);
             release_args.append(arg);
@@ -2422,7 +2427,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
     call_result: ir.Value = self.builder.call(func, coerced, name=f"call.{func_name}");
-    if func_name in self.clib_extern_names {
+    if _is_foreign {
         _declared = self.clib_declared_sigs.get(func_name);
         _declared_ret = _declared[0] if _declared is not None else None;
         if (
@@ -2441,9 +2446,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             call_result = self._mark_owned(call_result);
         }
     }
-    if self._cpython_ref_kind(call_result.type) is not None {
-        import from jaclang.compiler.foreign_refs { cpython_borrow_source }
-        if cpython_borrow_source(self._callee_ability_of(nd)) is None {
+    if self._foreign_resource_kind(call_result.type) is not None {
+        import from jaclang.compiler.foreign_refs { borrowed_return_source }
+        if borrowed_return_source(self._callee_ability_of(nd)) is None {
             self._mark_owned(call_result);
         }
     }
@@ -2453,7 +2458,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         self._callee_ability_of(nd) or self._linked_callee_decl(func), call=nd
     );
 
-    if func_name in self.clib_extern_names {
+    if _is_foreign {
         _declared_struct = self._struct_name_of(nd);
         for (sname, abi_type) in self.clib_struct_abi_types.items() {
             if sname == _declared_struct and call_result.type == abi_type {
@@ -3343,11 +3348,11 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
         return None;
     }
     fname = call.target.sym_name;
-    callee = self.func_symtab.get(fname);
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
+    callee = self._resolved_function_value(call.target) or self.func_symtab.get(fname);
     if callee is None
         or not isinstance(callee, ir.Function)
-        or fname in self.clib_fn_abi
-        or fname in self.clib_extern_names {
+        or is_foreign_ability(self._callee_ability_of(call)) {
         return None;
     }
     _res_ty = callee.function_type.return_type;
@@ -3727,7 +3732,7 @@ impl NaIRGenPass._codegen_callable_value(
         }
     }
     self._emit_err_check(self._callee_ability_of(nd), call=nd, indirect=True);
-    if self._cpython_ref_kind(result.type) is not None {
+    if self._foreign_resource_kind(result.type) is not None {
         function_type = nd.target.type;
         if not isinstance(function_type, SemanticFunctionType)
             or function_type.return_ownership != OwnershipKind.BORROW {

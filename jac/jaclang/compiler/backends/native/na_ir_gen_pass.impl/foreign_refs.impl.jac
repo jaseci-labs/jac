@@ -1,10 +1,10 @@
 import from jaclang.compiler.foreign_refs {
-    cpython_ref_name,
-    contains_cpython_ref,
-    cpython_borrow_source
+    foreign_resource_name,
+    contains_foreign_resource,
+    borrowed_return_source
 }
 
-impl NaIRGenPass._cpython_ref_exprs(origin: uni.UniNode) -> list[uni.Expr] {
+impl NaIRGenPass._foreign_resource_exprs(origin: uni.UniNode) -> list[uni.Expr] {
     pending: list[uni.UniNode] = [origin];
     if isinstance(origin, uni.Ability) {
         pending.extend(ModuleFacts.unwrap_body(origin) or []);
@@ -25,33 +25,33 @@ impl NaIRGenPass._cpython_ref_exprs(origin: uni.UniNode) -> list[uni.Expr] {
     return expressions;
 }
 
-impl NaIRGenPass._record_cpython_requirement(
+impl NaIRGenPass._record_foreign_requirement(
     func: ir.Function, decl: uni.Ability
 ) -> None {
-    for expr in self._cpython_ref_exprs(decl) {
-        if cpython_ref_name(expr.type) is not None {
-            self._cpython_required_functions[func] = decl;
+    for expr in self._foreign_resource_exprs(decl) {
+        if foreign_resource_name(expr.type) is not None {
+            self._foreign_required_functions[func] = decl;
             return;
         }
     }
 }
 
-impl NaIRGenPass._validate_cpython_refs -> None {
-    for expr in self._cpython_ref_exprs(self.ir_in) {
+impl NaIRGenPass._validate_foreign_resources -> None {
+    for expr in self._foreign_resource_exprs(self.ir_in) {
         typ = expr.type;
         if isinstance(typ, SemanticFunctionType) {
             for param in typ.parameters {
-                if cpython_ref_name(param.param_type) is not None
+                if foreign_resource_name(param.param_type) is not None
                     and param.ownership
                         not in (OwnershipKind.OWN, OwnershipKind.BORROW) {
                     self.emit(
                         E5120,
                         node_override=expr,
-                        reason="CPython callable parameters require own or a shared borrow"
+                        reason="foreign callable parameters require own or a shared borrow"
                     );
                 }
             }
-            if cpython_ref_name(typ.return_type) is not None
+            if foreign_resource_name(typ.return_type) is not None
                 and typ.return_ownership != OwnershipKind.OWN {
                 declaration: uni.Ability | None = None;
                 if isinstance(expr, uni.NameAtom)
@@ -61,11 +61,11 @@ impl NaIRGenPass._validate_cpython_refs -> None {
                     declaration = expr.sym.decl.name_of;
                 }
                 if not (typ.return_ownership == OwnershipKind.BORROW and typ.return_sources)
-                    and cpython_borrow_source(declaration) is None {
+                    and borrowed_return_source(declaration) is None {
                     self.emit(
                         E5120,
                         node_override=expr,
-                        reason="CPython callable returns require an owned result or a trusted loan contract"
+                        reason="foreign callable returns require an owned result or a trusted loan contract"
                     );
                 }
             }
@@ -86,16 +86,16 @@ impl NaIRGenPass._validate_cpython_refs -> None {
         }
         if isinstance(typ, ClassType) and not callable_annotation {
             for arg in (typ.private.type_args or []) {
-                if contains_cpython_ref(arg) {
+                if contains_foreign_resource(arg) {
                     self.emit(
                         E5120,
                         node_override=expr,
-                        reason="CPython references cannot be stored in Jac containers"
+                        reason="foreign resources cannot be stored in Jac containers"
                     );
                 }
             }
         }
-        if cpython_ref_name(typ) is None {
+        if foreign_resource_name(typ) is None {
             continue;
         }
         enclosing = expr.find_parent_of_type(uni.Ability);
@@ -104,14 +104,14 @@ impl NaIRGenPass._validate_cpython_refs -> None {
                 self.emit(
                     E5120,
                     node_override=expr,
-                    reason="CPython references cannot be captured in Jac closures"
+                    reason="foreign resources cannot be captured in Jac closures"
                 );
             }
             if enclosing.is_async or self._ability_is_generator(enclosing) {
                 self.emit(
                     E5120,
                     node_override=expr,
-                    reason="CPython references require an explicit foreign suspension contract"
+                    reason="foreign resources require an explicit foreign suspension contract"
                 );
             }
         }
@@ -119,7 +119,7 @@ impl NaIRGenPass._validate_cpython_refs -> None {
             self.emit(
                 E5120,
                 node_override=expr,
-                reason="CPython references require the GIL and cannot cross a native task boundary"
+                reason="foreign resources require an explicit contract to cross a native task boundary"
             );
         }
         loop = expr.find_parent_of_type(uni.InForStmt);
@@ -131,7 +131,7 @@ impl NaIRGenPass._validate_cpython_refs -> None {
                 self.emit(
                     E5120,
                     node_override=expr,
-                    reason="CPython references require the GIL and cannot cross a native task boundary"
+                    reason="foreign resources require an explicit contract to cross a native task boundary"
                 );
                 break;
             }
@@ -147,11 +147,11 @@ impl NaIRGenPass._validate_cpython_refs -> None {
                 not isinstance(annotation, uni.UnaryExpr)
                 or annotation.ownership != OwnershipKind.OWN
             )
-                and cpython_borrow_source(enclosing) is None {
+                and borrowed_return_source(enclosing) is None {
                 self.emit(
                     E5120,
                     node_override=expr,
-                    reason="CPython reference returns must explicitly transfer ownership"
+                    reason="foreign resource returns must explicitly transfer ownership"
                 );
             }
         }
@@ -173,7 +173,7 @@ impl NaIRGenPass._validate_cpython_refs -> None {
             self.emit(
                 E5120,
                 node_override=expr,
-                reason="CPython reference fields require a foreign storage contract"
+                reason="foreign resource fields require a foreign storage contract"
             );
         }
         arch = expr.find_parent_of_type(uni.Archetype);
@@ -181,21 +181,21 @@ impl NaIRGenPass._validate_cpython_refs -> None {
             self.emit(
                 E5120,
                 node_override=expr,
-                reason="CPython reference types are sealed and cannot be inherited"
+                reason="foreign resource types are sealed and cannot be inherited"
             );
         }
         if expr.find_parent_of_type(uni.LambdaExpr) is not None {
             self.emit(
                 E5120,
                 node_override=expr,
-                reason="CPython references cannot be captured in Jac closures"
+                reason="foreign resources cannot be captured in Jac closures"
             );
         }
         if isinstance(expr.parent, uni.FuncCall) and expr.parent.target is expr {
             self.emit(
                 E5120,
                 node_override=expr.parent,
-                reason="CPython references can only be created by the typed foreign ABI"
+                reason="foreign resources can only be created by the typed foreign ABI"
             );
         }
         if isinstance(annotation.parent, uni.FuncCall)
@@ -213,14 +213,14 @@ impl NaIRGenPass._validate_cpython_refs -> None {
             self.emit(
                 E5120,
                 node_override=annotation.parent,
-                reason="use the typed foreign ABI to inspect CPython references"
+                reason="use the typed foreign ABI to inspect foreign resources"
             );
         }
         if isinstance(expr.parent, (uni.CompareExpr, uni.BinaryExpr)) {
             self.emit(
                 E5120,
                 node_override=expr.parent,
-                reason="use the typed foreign ABI to compare CPython references"
+                reason="use the typed foreign ABI to compare foreign resources"
             );
         }
         if isinstance(expr, uni.Name) and isinstance(expr.parent, uni.ParamVar) {
@@ -230,7 +230,7 @@ impl NaIRGenPass._validate_cpython_refs -> None {
                 self.emit(
                     E5120,
                     node_override=expr,
-                    reason="CPython parameters require own or a shared borrow"
+                    reason="foreign resource parameters require own or a shared borrow"
                 );
             }
         }
@@ -243,21 +243,21 @@ impl NaIRGenPass._validate_cpython_refs -> None {
                 self.emit(
                     E5120,
                     node_override=expr,
-                    reason="CPython locals require own or a shared borrow"
+                    reason="foreign resource locals require own or a shared borrow"
                 );
             }
             if expr.find_parent_of_type(uni.Ability) is None {
                 self.emit(
                     E5120,
                     node_override=expr,
-                    reason="CPython global references require a foreign storage contract"
+                    reason="foreign resource global references require a foreign storage contract"
                 );
             }
         }
     }
 }
 
-impl NaIRGenPass._cpython_ref_kind(typ: ir.Type) -> str | None {
+impl NaIRGenPass._foreign_resource_kind(typ: ir.Type) -> str | None {
     if isinstance(typ, ir.PointerType)
         and not typ.is_opaque
         and isinstance(typ.pointee, ir.IdentifiedStructType) {
@@ -269,8 +269,8 @@ impl NaIRGenPass._cpython_ref_kind(typ: ir.Type) -> str | None {
     return None;
 }
 
-impl NaIRGenPass._cpython_ref_close(value: ir.Value) -> bool {
-    kind = self._cpython_ref_kind(value.type);
+impl NaIRGenPass._foreign_resource_close(value: ir.Value) -> bool {
+    kind = self._foreign_resource_kind(value.type);
     if kind is None {
         return False;
     }
@@ -305,12 +305,21 @@ impl NaIRGenPass._foreign_resource_type(typ: ClassType) -> ir.Type {
         self.emit(E5120, reason="foreign resource ABI requires a supported 64-bit target");
     }
     key = "JacForeign." + str(typ.shared.canonical_key());
-    self._foreign_resource_specs[key] = spec;
+    import from jaclang.compiler.types.type_utils { lookup_symtab }
+    drop_symbol = lookup_symtab(typ.shared.symbol_table, spec[2], None);
+    declaration = drop_symbol.decl.name_of
+        if drop_symbol is not None and drop_symbol.decl is not None else None;
+    drop_name = declaration.name_ref.sym_name
+        if isinstance(declaration, uni.Ability) and declaration.name_ref is not None
+        else spec[2];
+    # Keep the source-level binding in semantic metadata for lifetime/effect
+    # checking, and use its resolved C symbol for emitted cleanup calls.
+    self._foreign_resource_specs[key] = (spec[0], spec[1], drop_name, spec[3], spec[4]);
     return self.llvm_module.context.get_identified_type(key).as_pointer();
 }
 
 impl NaIRGenPass._foreign_word_type(typ: ir.Type) -> bool {
-    kind = self._cpython_ref_kind(typ);
+    kind = self._foreign_resource_kind(typ);
     spec = self._foreign_resource_specs.get(kind) if kind is not None else None;
     return spec is not None and spec[0] == "word";
 }

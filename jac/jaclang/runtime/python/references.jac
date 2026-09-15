@@ -22,6 +22,8 @@ obj PyObjectRef;
 obj PyStackRef;
 
 import from c {
+    obj JacPyThreadState;
+
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
     def jacpy_ref_null -> own PyObjectRef;
     @foreign_call(requires=["gil"], errors="none", reentrant=False)

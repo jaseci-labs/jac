@@ -172,3 +172,15 @@ Import CPython resource types and primitives from
 `jaclang.runtime.python.references`. They use the ordinary `foreign_resource`
 and `foreign_call` declarations; spelling a type `PyObjectRef` or naming a C
 function `jacpy_*` does not establish a lifetime or error contract.
+
+An explicit call to a foreign resource's declared destructor can consume a
+dependent owner without restating the dependency in its parameter. The source
+owners remain live through cleanup. This exception follows the resolved
+declaration; another same-named consumer cannot erase the dependency.
+
+An `own PyStackRef from frame` remains dependent on that frame and needs
+promotion before suspension or frame destruction. A `lin PyFrameRef from tstate`
+owns the active-frame cleanup obligation, not a generator's embedded allocation.
+Close dependent executable references before consuming a thread frame. Consult
+the migration status before assuming general foreign storage or reentry stability
+is implemented; the current opcode evaluator remains C.

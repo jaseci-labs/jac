@@ -15,6 +15,106 @@ def python_function(name, result, *arguments):
     return ctypes.PYFUNCTYPE(result, *arguments)(address)
 
 
+def check_raise_helper(candidate_address):
+    """Compare the port to Python raise, including stealing and bare reraise."""
+    native = ctypes.PYFUNCTYPE(
+        ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p
+    )(candidate_address)
+    tstate = python_function("PyThreadState_Get", ctypes.c_void_p)()
+    retain = python_function("Py_IncRef", None, ctypes.c_void_p)
+    missing = object()
+
+    def candidate(value, cause=missing):
+        # do_raise consumes both references. The fixture retains its own
+        # Python bindings so the transfer must use separate references.
+        retain(id(value))
+        if cause is not missing:
+            retain(id(cause))
+        return native(tstate, id(value), None if cause is missing else id(cause))
+
+    def baseline(value, cause=missing):
+        if cause is missing:
+            raise value
+        raise value from cause
+
+    def outcome(function, value, cause):
+        try:
+            function(value, cause)
+        except BaseException as error:
+            result = (
+                type(error).__name__, str(error),
+                None if error.__cause__ is None else (
+                    type(error.__cause__).__name__, str(error.__cause__)
+                ),
+                error.__suppress_context__,
+            )
+            # Comparing traceback frame layouts would compare the Python
+            # fixture to its ctypes wrapper. Clear those frames before the
+            # separate ownership checks below.
+            error.__traceback__ = None
+            return result
+        raise AssertionError("raise returned without a Python exception")
+
+    class ConstructorError(Exception):
+        def __new__(cls):
+            raise LookupError("exception construction failed")
+
+    class BadConstructor(Exception):
+        def __new__(cls):
+            return 42
+
+    values = [
+        lambda: ValueError,
+        lambda: ValueError("raised"),
+        lambda: ConstructorError,
+        lambda: BadConstructor,
+        lambda: 42,
+        lambda: None,
+    ]
+    causes = [
+        lambda: missing,
+        lambda: None,
+        lambda: KeyError,
+        lambda: KeyError("cause"),
+        lambda: ConstructorError,
+        lambda: BadConstructor,
+        lambda: 42,
+    ]
+    for make_value in values:
+        for make_cause in causes:
+            expected = outcome(baseline, make_value(), make_cause())
+            actual = outcome(candidate, make_value(), make_cause())
+            assert actual == expected, (expected, actual)
+
+    value = ValueError("owned operand")
+    count = sys.getrefcount(value)
+    outcome(candidate, value, missing)
+    assert sys.getrefcount(value) == count
+    invalid = []
+    count = sys.getrefcount(invalid)
+    outcome(candidate, invalid, missing)
+    assert sys.getrefcount(invalid) == count
+
+    try:
+        native(tstate, None, None)
+    except RuntimeError as error:
+        assert str(error) == "No active exception to reraise"
+    else:
+        raise AssertionError("bare raise accepted without an active exception")
+
+    active = ValueError("active handled exception")
+    try:
+        raise active
+    except ValueError:
+        try:
+            native(tstate, None, None)
+        except ValueError as reraised:
+            assert reraised is active
+        else:
+            raise AssertionError("bare raise did not restore the handled exception")
+    active.__traceback__ = None
+
+
 def check_except_type_helper(candidate_address: int, name: str):
     """Validate error precedence, exception classes, and tuple subclasses."""
     prototype = ctypes.PYFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p)

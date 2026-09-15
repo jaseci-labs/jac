@@ -2777,21 +2777,40 @@ impl TypeEvaluator._get_enum_member_type_for_decl(
 impl TypeEvaluator._assign_callable(
     src_func: FunctionType, dest_func: FunctionType, strict: bool = False
 ) -> bool {
-    import from jaclang.compiler.foreign_refs { contains_cpython_ref }
+    import from jaclang.compiler.foreign_refs { contains_foreign_resource }
+    def normalized_sources(fn: FunctionType, sources: list[int]) -> list[int] {
+        # Compatibility below omits implicit receivers. Rebase dependency
+        # positions with that same mapping; a receiver dependency must never
+        # become a dependency on the first explicit argument by accident.
+        positions: dict[int, int] = {};
+        explicit = 0;
+        for (index, parameter) in enumerate(fn.parameters) {
+            if parameter.is_self {
+                positions[index] = -1;
+            } elif parameter.is_cls {
+                positions[index] = -2;
+            } else {
+                positions[index] = explicit;
+                explicit += 1;
+            }
+        }
+        return sorted({positions.get(index, -3) for index in sources});
+    }
     foreign_contract = any(
         bool(getattr(fn, "required_capabilities", [])) or getattr(fn, "foreign_errors", "jac") != "jac" or getattr(fn, "reentrant", False)
             or fn.return_ownership != OwnershipKind.NONE
             or bool(fn.return_sources) or fn.return_linear
             or any(p.ownership != OwnershipKind.NONE or p.linear or bool(p.lifetime_sources) for p in fn.parameters)
-            or contains_cpython_ref(fn.return_type)
-            or any(contains_cpython_ref(p.param_type) for p in fn.parameters)
+            or contains_foreign_resource(fn.return_type)
+            or any(contains_foreign_resource(p.param_type) for p in fn.parameters)
         for fn in (src_func, dest_func)
     );
     if foreign_contract {
         if src_func.is_gradual_callable_form()
             or dest_func.is_gradual_callable_form()
             or src_func.return_ownership != dest_func.return_ownership
-            or src_func.return_sources != dest_func.return_sources
+            or normalized_sources(src_func, src_func.return_sources)
+                != normalized_sources(dest_func, dest_func.return_sources)
             or src_func.return_linear != dest_func.return_linear
             or not set(getattr(src_func, "required_capabilities", [])).issubset(set(getattr(dest_func, "required_capabilities", [])))
             or getattr(src_func, "foreign_errors", "jac") != getattr(dest_func, "foreign_errors", "jac")
@@ -2836,7 +2855,8 @@ impl TypeEvaluator._assign_callable(
             and (
                 src_param.ownership != dest_param.ownership
                 or src_param.linear != dest_param.linear
-                or src_param.lifetime_sources != dest_param.lifetime_sources
+                or normalized_sources(src_func, src_param.lifetime_sources)
+                    != normalized_sources(dest_func, dest_param.lifetime_sources)
             ) {
             return False;
         }

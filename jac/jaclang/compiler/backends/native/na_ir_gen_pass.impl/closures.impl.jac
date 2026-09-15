@@ -355,7 +355,7 @@ impl NaIRGenPass._codegen_closure_call(
         self._emit_rc_release_simple(clos_val, op="ccall_target", loc="");
     }
     self._emit_err_check(self._callee_ability_of(nd), call=nd, indirect=True);
-    if self._cpython_ref_kind(result.type) is not None {
+    if self._foreign_resource_kind(result.type) is not None {
         self._mark_owned(result);
     }
     return result;

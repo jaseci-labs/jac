@@ -41,6 +41,15 @@ declare `foreign_resource` cleanup and `foreign_call` effects explicitly;
 import CPython reference types and primitives from
 `jaclang.runtime.python.references` instead of assuming ambient type names;
 do not infer safety from a function name or a zero-valued integer handle.
+Only the resource's resolved destructor may discharge a dependent owner without
+repeating its `from` contract; its source owners remain live during cleanup.
+Do not treat every `own PyStackRef` as heap-safe: a `from frame` dependency still
+requires promotion before suspension or frame destruction. A linear `PyFrameRef`
+owns an active-frame cleanup obligation, not the generator's storage allocation.
+
+Treat the evaluator migration's implementation-status section as authoritative
+about remaining storage, reentry, and suspension work. Source availability or an
+emitter provenance manifest does not establish runtime validation or C retirement.
 
 ```bash
 jac guide reference/agent-patterns/jac-native-memory --sections

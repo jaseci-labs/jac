@@ -3,10 +3,49 @@
 import ctypes;
 import os;
 import tempfile;
+import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.backends.native.llvm { binding as llvm }
+
+test "imported C aliases and function values keep their binding when native names collide" {
+    calls: list[int] = [];
+    def called(value: int) -> int {
+        calls.append(value);
+        return value + 10;
+    }
+    callback = ctypes.CFUNCTYPE(ctypes.c_uint64, ctypes.c_uint64)(called);
+    address = ctypes.cast(callback, ctypes.c_void_p).value;
+    assert address is not None;
+    llvm.add_symbol("foreign_binding_collision", address);
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "bindings.jac").write_text(
+            'import from c { @foreign_call(errors="none", reentrant=False) '
+            'def foreign_binding_collision(value: u64) -> u64; }'
+        );
+        program = JacProgram();
+        module = program.compile(
+            os.path.join(directory, "caller.jac"),
+            use_str='import bindings as api; '
+                'import from bindings { foreign_binding_collision as imported } '
+                'def foreign_binding_collision(value: u64) -> u64 { return wrapping_add(value, 100); } '
+                'def probe -> u64 { handler = imported; '
+                'return wrapping_add(foreign_binding_collision(1), '
+                'wrapping_add(imported(2), wrapping_add(api.foreign_binding_collision(3), handler(4)))); }',
+            options=CompileOptions(force_codespace="native", force_target_program=True,
+                                   native_required=True, memory_profile="nogc",
+                                   no_ir_cache=True, opt_level=0)
+        );
+        assert not program.errors_had , "\n".join(str(e) for e in program.errors_had);
+        assert module is not None and module.gen.native_engine is not None;
+        probe = ctypes.CFUNCTYPE(ctypes.c_uint64)(
+            module.gen.native_engine.get_function_address("probe")
+        );
+        assert probe() == 140;
+        assert calls == [2, 3, 4];
+    }
+}
 
 def compile_resource(source: str) -> Module {
     with tempfile.TemporaryDirectory() as directory {

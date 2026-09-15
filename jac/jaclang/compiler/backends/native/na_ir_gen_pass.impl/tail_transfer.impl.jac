@@ -37,6 +37,7 @@ impl NaIRGenPass._emit_intrinsic_musttail(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list
 ) -> (ir.Value | None) {
     call = args[0];
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
     reason = "";
     parent = nd.parent;
     while parent is not None
@@ -68,8 +69,7 @@ impl NaIRGenPass._emit_intrinsic_musttail(
         reason = "closure cells must be released after the call";
     } elif not isinstance(call.target, (uni.Name, uni.AtomTrailer)) {
         reason = "requires a named native function or a function pointer field";
-    } elif isinstance(call.target, uni.Name)
-        and call.target.sym_name in self.clib_extern_names {
+    } elif is_foreign_ability(self._callee_ability_of(call)) {
         reason = "a foreign call has no checked native exception and lifetime contract";
     }
     if reason {
@@ -81,9 +81,9 @@ impl NaIRGenPass._emit_intrinsic_musttail(
     self._tail_required_functions[func] = nd;
     rt = func.function_type.return_type;
     if not isinstance(rt, (ir.IntType, ir.FloatType, ir.DoubleType, ir.VoidType))
-        and self._cpython_ref_kind(rt) is None {
+        and self._foreign_resource_kind(rt) is None {
         self._emit_intrinsic_misuse(
-            nd, intr, "requires a scalar, void, or CPython reference return ABI"
+            nd, intr, "requires a scalar, void, or foreign resource return ABI"
         );
         return None;
     }

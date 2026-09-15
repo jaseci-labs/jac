@@ -18,7 +18,8 @@ import from tests.compiler.backends.native.fixtures.cpython_refs {
     check_slice_helper,
     check_await_helper,
     check_anext_helper,
-    check_except_type_helper
+    check_except_type_helper,
+    check_raise_helper
 }
 
 glob _boundary_state: dict[str, any] = {};
@@ -110,13 +111,31 @@ def boundary -> any {
         "jacpy_eval_tuple_item",
         "jacpy_eval_exception_class_check",
         "jacpy_eval_exception_group_subclass",
-        "jacpy_eval_type_error"
+        "jacpy_eval_type_error",
+        "jacpy_eval_topmost_exception",
+        "jacpy_eval_exception_instance_check",
+        "jacpy_eval_exception_type_new",
+        "jacpy_eval_runtime_error",
+        "jacpy_eval_bad_exception_result"
     ) {
         address = ctypes.cast(getattr(library, name), ctypes.c_void_p).value;
         assert address is not None;
         llvm.add_symbol(name, address);
     }
     return library;
+}
+
+test "native raise preserves operands causes and the handled exception" {
+    boundary();
+    source = (
+        Path(JAC_ROOT) / "jaclang" / "runtime" / "python" / "evaluator_support.jac"
+    ).read_text();
+    module = compile_refs(source + "\ndef probe -> int { return 0; }\n", declarations=False);
+    engine = module.gen.native_engine;
+    assert engine is not None;
+    address = engine.get_function_address("jacpy_eval_raise");
+    assert address != 0;
+    check_raise_helper(address);
 }
 
 test "native slice helpers preserve the pinned evaluator conversion and callback behavior" {
@@ -504,7 +523,7 @@ test "foreign references reject managed code and implicit aliasing" {
     );
     compile_refs(
         DECLARATIONS + "def probe(value: imm PyObjectRef) -> int { return 1; }",
-        "CPython parameters require"
+        "foreign resource parameters require"
     );
 }
 
@@ -594,7 +613,7 @@ test "foreign references reject unsafe representation and lifetime operations" {
         "foreign storage contract"
     );
     compile_refs(
-        "def probe(value: own PyStackRef | None) -> int { return 0; }", "CPython"
+        "def probe(value: own PyStackRef | None) -> int { return 0; }", "foreign resource"
     );
     compile_refs(
         "def probe -> int { value: own PyObjectRef = PyObjectRef(); return 0; }",
@@ -665,7 +684,7 @@ test "tail dispatch preserves an owning CPython result without accumulating fram
 test "foreign identity is nominal and nested containers cannot hide references" {
     compile_refs(
         "def probe(values: own list[list[PyStackRef]]) -> int { return 0; }",
-        "CPython references cannot be stored"
+        "foreign resources cannot be stored"
     );
     module = compile_refs(
         "obj PyObjectRef { has count: int; } def probe -> int { value: own PyObjectRef = PyObjectRef(7); return value.count; }", declarations=False

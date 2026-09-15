@@ -41,9 +41,9 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
             if not getattr(self.prog.options, "nogc_enforce_all", False) {
                 return None;
             }
-            import from jaclang.compiler.foreign_refs { cpython_ref_name }
+            import from jaclang.compiler.foreign_refs { foreign_resource_name }
             if not any(
-                cpython_ref_name(name.type) is not None for name in self.idx_names
+                foreign_resource_name(name.type) is not None for name in self.idx_names
             ) {
                 return None;
             }
@@ -1433,10 +1433,10 @@ impl OwnershipCheckPass._view_call_owner(call: FuncCall) -> (SymId | None) {
     if _ab is None {
         return None;
     }
-    import from jaclang.compiler.foreign_refs { cpython_borrow_source }
+    import from jaclang.compiler.foreign_refs { borrowed_return_source }
     _fct = self.view_elision_fns.get(id(_ab));
     if _fct is None {
-        _fct = cpython_borrow_source(_ab);
+        _fct = borrowed_return_source(_ab);
     }
     if _fct is None {
         return None;
@@ -1624,9 +1624,9 @@ impl OwnershipCheckPass._stamp_view_call_results(
             continue;
         }
         if nd.type_tag is not None and nd.type_tag.ownership != OwnershipKind.NONE {
-            import from jaclang.compiler.foreign_refs { cpython_ref_name }
+            import from jaclang.compiler.foreign_refs { foreign_resource_name }
             if nd.type_tag.ownership != OwnershipKind.BORROW
-                or cpython_ref_name(nd.type_tag.tag.type) is None {
+                or foreign_resource_name(nd.type_tag.tag.type) is None {
                 continue;
             }
         }

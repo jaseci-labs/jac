@@ -91,4 +91,12 @@ int64_t jacpy_eval_exception_class_check(JacPyObjectRef value);
 int64_t jacpy_eval_exception_group_subclass(JacPyObjectRef value);
 void jacpy_eval_type_error(PyThreadState *tstate, const char *message);
 
+/* The returned exception is borrowed from the thread's handled-exception stack. */
+JacPyObjectRef jacpy_eval_topmost_exception(PyThreadState *tstate);
+int64_t jacpy_eval_exception_instance_check(JacPyObjectRef value);
+JacPyObjectRef jacpy_eval_exception_type_new(JacPyObjectRef value);
+void jacpy_eval_runtime_error(PyThreadState *tstate, const char *message);
+void jacpy_eval_bad_exception_result(PyThreadState *tstate,
+                                   JacPyObjectRef factory, JacPyObjectRef result);
+
 #endif

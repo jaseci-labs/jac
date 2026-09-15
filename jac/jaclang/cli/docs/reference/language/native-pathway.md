@@ -998,9 +998,11 @@ not advance their finalizers. Cleanup publishes an empty slot before releasing
 its previous reference, because a decref can execute Python and resurrect an
 object.
 
-An owning `PyStackRef` is heap-safe. Copying a tagged mortal frame borrow with
-CPython's `DUP` operation does not make it heap-safe: promotion must acquire the
-missing reference before the frame can clear, unwind, or suspend. The boundary
+An independent owning `PyStackRef` is heap-safe. An `own PyStackRef from frame`
+also carries a release obligation, but remains dependent on the frame. Copying
+a tagged mortal frame borrow with CPython's `DUP` operation does not make it
+heap-safe: promotion must acquire the missing reference before the frame can
+clear, unwind, or suspend. The boundary
 uses the pinned upstream stack-reference operations, including its nonzero null
 value, tagged integers, and immortal references. It rejects debug, stack-reference
 debug, free-threaded, non-64-bit, and different CPython versions at build time.
@@ -1023,6 +1025,23 @@ The result borrows the supplied stack owner, which cannot be consumed while that
 borrow is live. This operation does not allocate or increment a reference count.
 Frame borrows, suspension, and foreign storage require dedicated
 contracts. A function using these resources cannot fall back to Python code.
+
+The frame-cleanup port declares `PyFrameRef` in
+`jaclang.runtime.python.evaluator_frames`. A `lin PyFrameRef from tstate`
+requires explicit completion of the active frame's cleanup while its thread
+remains alive. It does not own a generator's embedded frame allocation.
+Thread-frame cleanup releases its executable before popping the frame;
+generator cleanup unlinks the thread's exception state before releasing
+frame references. An explicit call to the resource's declared destructor may
+consume a dependent owner while its sources remain alive through the call.
+
+The migration is incomplete. Candidate sources port slice-index conversion,
+async iterator/awaitable acquisition, exception-clause validation, raise logic,
+and active-frame cleanup. The raise and frame-cleanup changes await validation.
+Opcode dispatch and the tier-two executor remain CPython C. The build emits
+`python/build/jacpython-evaluator-provenance.json` to identify native support
+objects and their inputs; that manifest alone does not prove linked-runtime
+compatibility, complete C retirement, or performance parity.
 
 ## Debugging
 

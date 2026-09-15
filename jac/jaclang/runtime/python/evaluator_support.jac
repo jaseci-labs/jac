@@ -6,7 +6,8 @@ The C boundary exposes object-runtime primitives only.
 """
 
 import from jaclang.runtime.python.references {
-    PyObjectRef, jacpy_ref_null, jacpy_ref_is_null, jacpy_ref_close
+    PyObjectRef, JacPyThreadState,
+    jacpy_ref_null, jacpy_ref_is_null, jacpy_ref_close, jacpy_ref_new
 }
 
 import from c {
@@ -137,7 +138,6 @@ def _PyEval_GetANext(iterator: &PyObjectRef) -> own PyObjectRef {
 }
 
 import from c {
-    obj JacPyThreadState;
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
     def jacpy_eval_tuple_check(value: &PyObjectRef) -> i64;
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
@@ -217,5 +217,106 @@ def _PyEval_CheckExceptStarTypeValid(tstate: &JacPyThreadState, right: &PyObject
             "catching ExceptionGroup with except* is not allowed. Use except instead.");
         return -1;
     }
+    return 0;
+}
+
+import from c {
+    @foreign_call(requires=["gil"], errors="none", reentrant=False)
+    def jacpy_eval_topmost_exception(tstate: &JacPyThreadState) -> &PyObjectRef from tstate;
+    @foreign_call(requires=["gil"], errors="none", reentrant=False)
+    def jacpy_eval_exception_instance_check(value: &PyObjectRef) -> i64;
+    @foreign_call(requires=["gil"], errors="none", reentrant=False)
+    def jacpy_eval_exception_type_new(value: &PyObjectRef) -> own PyObjectRef;
+    @foreign_call(requires=["gil"], errors="python", reentrant=True)
+    def PyObject_CallNoArgs(callable: &PyObjectRef) -> own PyObjectRef;
+    @foreign_call(requires=["gil"], errors="python", reentrant=True)
+    def _PyErr_SetRaisedException(tstate: &JacPyThreadState, value: own PyObjectRef);
+    @foreign_call(requires=["gil"], errors="python", reentrant=True)
+    def PyErr_SetObject(exception: &PyObjectRef, value: &PyObjectRef);
+    @foreign_call(requires=["gil"], errors="none", reentrant=True)
+    def PyException_SetCause(value: &PyObjectRef, cause: own PyObjectRef);
+    @foreign_call(requires=["gil"], errors="python", reentrant=True)
+    def jacpy_eval_runtime_error(tstate: &JacPyThreadState, message: str);
+    @foreign_call(requires=["gil"], errors="python", reentrant=True)
+    def jacpy_eval_bad_exception_result(tstate: &JacPyThreadState, factory: &PyObjectRef, result: &PyObjectRef);
+}
+
+# CPython Python/ceval.c:2191 (do_raise). The C opcode caller transfers both
+# references. A null exception denotes bare raise and requires a null cause.
+# Return one only for a successful bare reraise; all other paths return zero
+# with CPython's exception state set. Cleanup below follows CPython's order.
+def jacpy_eval_raise(tstate: &JacPyThreadState, exception: own PyObjectRef,
+                     cause: own PyObjectRef) -> i32 {
+    if jacpy_ref_is_null(&exception) != 0 {
+        active: &PyObjectRef from tstate = jacpy_eval_topmost_exception(tstate);
+        if jacpy_ref_is_null(active) != 0 or jacpy_eval_is_none(active) != 0 {
+            jacpy_eval_runtime_error(tstate, "No active exception to reraise");
+            return 0;
+        }
+        raised: own PyObjectRef = jacpy_ref_new(active);
+        _PyErr_SetRaisedException(tstate, raised);
+        return 1;
+    }
+
+    exception_type: own PyObjectRef = jacpy_ref_null();
+    value: own PyObjectRef = jacpy_ref_null();
+    ready: i64 = 0;
+    if jacpy_eval_exception_class_check(&exception) != 0 {
+        exception_type = exception;
+        value = PyObject_CallNoArgs(&exception_type);
+        if jacpy_ref_is_null(&value) == 0 {
+            if jacpy_eval_exception_instance_check(&value) != 0 {
+                ready = 1;
+            } else {
+                jacpy_eval_bad_exception_result(tstate, &exception_type, &value);
+            }
+        }
+    } elif jacpy_eval_exception_instance_check(&exception) != 0 {
+        value = exception;
+        exception_type = jacpy_eval_exception_type_new(&value);
+        ready = 1;
+    } else {
+        # Invalid raise operands are released before installing TypeError.
+        jacpy_ref_close(exception);
+        jacpy_eval_type_error(tstate, "exceptions must derive from BaseException");
+    }
+
+    if ready != 0 and jacpy_ref_is_null(&cause) == 0 {
+        fixed_cause: own PyObjectRef = jacpy_ref_null();
+        if jacpy_eval_exception_class_check(&cause) != 0 {
+            fixed_cause = PyObject_CallNoArgs(&cause);
+            if jacpy_ref_is_null(&fixed_cause) != 0 {
+                ready = 0;
+            } elif jacpy_eval_exception_instance_check(&fixed_cause) == 0 {
+                jacpy_eval_bad_exception_result(tstate, &cause, &fixed_cause);
+                # Match the early release before value, type, and original cause.
+                jacpy_ref_close(fixed_cause);
+                fixed_cause = jacpy_ref_null();
+                ready = 0;
+            } else {
+                jacpy_ref_close(cause);
+                cause = jacpy_ref_null();
+            }
+        } elif jacpy_eval_exception_instance_check(&cause) != 0 {
+            fixed_cause = cause;
+            cause = jacpy_ref_null();
+        } elif jacpy_eval_is_none(&cause) != 0 {
+            jacpy_ref_close(cause);
+            cause = jacpy_ref_null();
+        } else {
+            jacpy_eval_type_error(tstate, "exception causes must derive from BaseException");
+            ready = 0;
+        }
+        if ready != 0 {
+            PyException_SetCause(&value, fixed_cause);
+        }
+    }
+    if ready != 0 {
+        # The evaluator requires tstate to be the current attached thread.
+        PyErr_SetObject(&exception_type, &value);
+    }
+    jacpy_ref_close(value);
+    jacpy_ref_close(exception_type);
+    jacpy_ref_close(cause);
     return 0;
 }

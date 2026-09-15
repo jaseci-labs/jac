@@ -4,24 +4,27 @@ import from jaclang.compiler.types.types { ClassType, TypeBase, UnionType, Funct
 import from jaclang.compiler.frontend.unitree { Ability, Import }
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
-def cpython_error_call(decl: Ability | None) -> bool {
+def is_foreign_ability(decl: Ability | None) -> bool {
     if decl is None { return False; }
-    fn = decl.name_spec.type;
     imported = decl.find_parent_of_type(Import);
-    return isinstance(fn, FunctionType)
-        and fn.foreign_errors in ("python", "none")
-        and imported is not None
-        and decl in (imported.clib_decls or []);
+    return imported is not None and decl in (imported.clib_decls or []);
 }
 
-def cpython_ref_name(typ: TypeBase | None) -> str | None {
+def foreign_call_uses_external_errors(decl: Ability | None) -> bool {
+    if decl is None or not is_foreign_ability(decl) { return False; }
+    fn = decl.name_spec.type;
+    return isinstance(fn, FunctionType)
+        and fn.foreign_errors in ("python", "none");
+}
+
+def foreign_resource_name(typ: TypeBase | None) -> str | None {
     if isinstance(typ, ClassType) and typ.shared.foreign_resource is not None {
         return typ.shared.class_name;
     }
     return None;
 }
 
-def contains_cpython_ref(typ: TypeBase | None) -> bool {
+def contains_foreign_resource(typ: TypeBase | None) -> bool {
     pending = [typ];
     seen: set[int] = set();
     while pending {
@@ -30,7 +33,7 @@ def contains_cpython_ref(typ: TypeBase | None) -> bool {
             continue;
         }
         seen.add(id(current));
-        if cpython_ref_name(current) is not None {
+        if foreign_resource_name(current) is not None {
             return True;
         }
         if isinstance(current, ClassType) {
@@ -42,7 +45,7 @@ def contains_cpython_ref(typ: TypeBase | None) -> bool {
     return False;
 }
 
-def cpython_borrow_source(decl: Ability | None) -> int | None {
+def borrowed_return_source(decl: Ability | None) -> int | None {
     if decl is not None {
         fn = decl.name_spec.type;
         if isinstance(fn, FunctionType) and fn.return_sources
