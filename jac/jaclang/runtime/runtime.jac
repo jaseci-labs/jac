@@ -9,7 +9,7 @@ import from collections { OrderedDict, deque }
 import from collections.abc { Callable, Coroutine, Iterable, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
-import from jaclang.runtime.object_model { ObjectField, make_object }
+import from jaclang.runtime.object_model { make_object }
 import from inspect { getfile }
 import from logging { getLogger }
 import from typing { TYPE_CHECKING, Literal, ParamSpec, Protocol, TypeAlias, TypeVar }

@@ -1,6 +1,11 @@
 import from collections.abc { Callable }
-import from dataclasses { field as dataclass_field }
-import from jaclang.runtime.object_model { asdict, ObjectField, fields, is_jac_object }
+import from jaclang.runtime.object_model {
+    asdict,
+    ObjectField,
+    fields,
+    is_jac_object,
+    make_object
+}
 import from functools { cached_property }
 import from inspect { _empty, signature }
 import from logging { getLogger }
@@ -244,8 +249,11 @@ class EdgeArchetype(Archetype) {
     }
 }
 
+@make_object
 class WalkerArchetype(Archetype) {
-    has reports: list[any] = dataclass_field(default_factory=`list);
+    has reports: list[any] = ObjectField(
+        default_factory=`list, `init=False, repr=False
+    );
 
     with entry {
         __jac_async__: ClassVar[bool] = False;

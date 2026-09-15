@@ -635,16 +635,6 @@ impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
     }
     cls._jac_entry_funcs_ = [*entries.values()];
     cls._jac_exit_funcs_ = [*exits.values()];
-    if issubclass(cls, WalkerArchetype)
-        and 'reports' not in cls.__dict__.get('__annotations__', {}) {
-        if not hasattr(cls, '__annotations__') {
-            cls.__annotations__ = {};
-        }
-        cls.__annotations__['reports'] = list;
-        setattr(
-            cls, 'reports', ObjectField(default_factory=`list, init=False, repr=False)
-        );
-    }
     if cls.__dict__.get('__annotations__') and not cls.__doc__ {
         cls.__doc__ = cls.__name__;
     }

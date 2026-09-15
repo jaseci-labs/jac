@@ -1,5 +1,6 @@
 """Jac field semantics are independent of Python's dataclass implementation."""
 import from inspect { signature, Parameter }
+import from jaclang.runtime.archetype { WalkerArchetype }
 import from jaclang.runtime.object_model {
     ObjectField,
     MISSING,
@@ -126,6 +127,38 @@ test "compiled Jac archetypes use Jac fields and independent mutable defaults" {
     w = JacWalkerFields();
     assert w.reports == [];
     assert not hasattr(JacWalkerFields, "__dataclass_fields__");
+}
+
+walker InheritedWalkerFields(JacWalkerFields) {
+    has label: str = "child";
+}
+
+walker CustomReportsWalker {
+    has reports: list[any] = ["initial"];
+}
+
+test "walker reports are inherited Jac fields with independent storage" {
+    for cls in [WalkerArchetype, JacWalkerFields, InheritedWalkerFields] {
+        first = cls();
+        second = cls();
+        first.reports.append("report");
+        assert second.reports == [];
+        assert "reports" not in signature(cls).parameters;
+        assert "reports=" not in repr(first);
+        report_fields = [
+            f
+            for f in fields(cls)
+            if f.name == "reports"
+        ];
+        assert len(report_fields) == 1;
+        assert not report_fields[0].`init;
+        assert not report_fields[0].repr;
+        assert not hasattr(cls, "__dataclass_fields__");
+    }
+    assert "reports" not in JacWalkerFields.__dict__.get("__annotations__", {});
+    assert "reports" not in InheritedWalkerFields.__dict__.get("__annotations__", {});
+    assert CustomReportsWalker().reports == ["initial"];
+    assert CustomReportsWalker(reports=["custom"]).reports == ["custom"];
 }
 
 @make_object
