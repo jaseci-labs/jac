@@ -870,24 +870,44 @@ impl EsastGenPass._try_lower_server_rpc_call(
     import from jaclang.compiler.frontend.codeinfo { endpoint_key }
     source_module = ability_node.find_parent_of_type(uni.Module);
     contract_id = endpoint_key(source_module, "func", ability_node.sym_name);
+    rpc_options = es.ObjectExpression(
+        properties=[
+            es.Property(
+                key=es.Literal(value="contract"),
+                value=es.Literal(value=contract_id),
+                kind="init",
+                method=False,
+                shorthand=False,
+                computed=False
+            )
+        ]
+    );
+    manifest = self.ir_in.gen.interop_manifest;
+    binding = manifest.bindings.get(func_name) if manifest else None;
+    if binding and binding.provider_app {
+        for (key, value) in [
+            ("app", binding.provider_app),
+            ("route", manifest.provider_routes.get(binding.provider_app, ""))
+        ] {
+            rpc_options.properties.append(
+                es.Property(
+                    key=es.Literal(value=key),
+                    value=es.Literal(value=value),
+                    kind="init",
+                    method=False,
+                    shorthand=False,
+                    computed=False
+                )
+            );
+        }
+    }
     result_expr: es.Expression = self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name='__jacCallFunction'), jac_node=nd),
             arguments=[
-                self.sync_loc(es.Literal(value=func_name), jac_node=nd),
+                self.sync_loc(es.Literal(value=ability_node.sym_name), jac_node=nd),
                 args_obj,
-                es.ObjectExpression(
-                    properties=[
-                        es.Property(
-                            key=es.Literal(value="contract"),
-                            value=es.Literal(value=contract_id),
-                            kind="init",
-                            method=False,
-                            shorthand=False,
-                            computed=False
-                        )
-                    ]
-                )
+                rpc_options
             ]
         ),
         jac_node=nd
