@@ -1799,6 +1799,7 @@ walker NaIRGenPass(Transform) {
     def _release_owned_args(
         call_args: list[ir.Value], op: str = "call_arg", loc: str = ""
     ) -> None;
+
     def _rc_call_with_ctx(
         fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
     ) -> ir.Value;
@@ -2054,6 +2055,7 @@ walker NaIRGenPass(Transform) {
     def _tuple_managed_fields(
         struct_type: ir.LiteralStructType
     ) -> list[tuple[int, bool]];
+
     def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
