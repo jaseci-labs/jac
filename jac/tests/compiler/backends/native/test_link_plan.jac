@@ -683,6 +683,25 @@ test "unhandled errors in a qualified native entry fail the executable" {
 }
 
 
+test "native source fingerprints are stable across caller cache contexts" {
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+    with tempfile.TemporaryDirectory() as work {
+        source = Path(work) / "stable.jac";
+        source.write_text("def value() -> int { return 1; }\n");
+        with cache_scope("caller") {
+            before = NativeUnitRegistry._source_key(str(source));
+        }
+        with cache_scope("dependency") {
+            after = NativeUnitRegistry._source_key(str(source));
+        }
+        assert before is not None;
+        assert before == after;
+        source.write_text("def value() -> int { return 2; }\n");
+        assert NativeUnitRegistry._source_key(str(source)) != before;
+    }
+}
+
 test "a source edit during settlement aborts without persisting a stale unit" {
     import from jaclang.compiler.driver.nativecache { NativeBuildSession }
     with tempfile.TemporaryDirectory() as work {

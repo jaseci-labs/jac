@@ -77,8 +77,11 @@ obj NativeUnitRegistry {
     }
 
     static def _source_key(path: str) -> (str | None) {
+        import from jaclang.compiler.driver.compilation_context { cache_scope }
         try {
-            return module_cache_key(path);
+            with cache_scope("") {
+                return module_cache_key(path);
+            }
         } except OSError {
             return None;
         }
