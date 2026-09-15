@@ -304,7 +304,14 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       if (t === "boolean") return "bool";
       if (t === "number") return Number.isInteger(o) ? "int" : "float";
       if (t === "bigint") return "int";
-      if (t === "object") return (o.constructor && o.constructor.name) || "object";
+      if (t === "object") {
+        // Jac dicts compile to plain objects (the Map branch above is interop
+        // only), so a plain object has to name itself "dict" -- this is the
+        // same prototype test `poly.call` dispatches `_dict` on.
+        const proto = Object.getPrototypeOf(o);
+        if (proto === Object.prototype || proto === null) return "dict";
+        return (o.constructor && o.constructor.name) || "object";
+      }
       return t;
     },
     // --- per-runtime-type Python method tables (keyed by Python name) ---
@@ -1328,6 +1335,17 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         proto = Object.getPrototypeOf(proto);
       }
       return false;
+    },
+    // Python `type(x)`: the type itself, as the very object a type name lowers
+    // to, so `type(x) is str` compares identity the way Python does.  It must
+    // not be `typeof x` -- that is a string, while `str` lowers to a function
+    // object, so every such comparison would be false.
+    type(o) {
+      const tag = _jac.poly._typename(o);
+      if (Object.hasOwn(_jac.types, tag)) return _jac.types[tag];
+      // An archetype is its own constructor; a tag with no runtime object
+      // (NoneType) stays the bare tag, the second spelling `_typeTag` accepts.
+      return (o === null || o === undefined) ? tag : (o.constructor ?? tag);
     },
     id(o) {
       if (o === null || o === undefined) return 0;

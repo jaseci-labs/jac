@@ -339,20 +339,77 @@ test "empty file generates minimal js" {
     }
 }
 
-test "type to typeof transformation" {
-    jac_code = "\"\"\"Test type() to typeof conversion.\"\"\"\n\ndef check_types() {\n    x = 42;\n    y = \"hello\";\n    my_obj = {\"key\": \"value\"};\n    arr = [1, 2, 3];\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(my_obj);\n    t4 = type(arr[0]);\n\n    return t1;\n}\n";
+test "type lowers to the runtime type object not a typeof string" {
+    jac_code = (
+        "\"\"\"Test type() lowering.\"\"\"\n\n"
+        "obj Box { has v: int = 0; }\n\n"
+        "def check_types() -> dict {\n"
+        "    x = 42;\n"
+        "    y = \"hello\";\n"
+        "    my_obj = {\"key\": \"value\"};\n"
+        "    arr = [1, 2, 3];\n"
+        "    return {\n"
+        "        \"x_is_int\": type(x) is int,\n"
+        "        \"y_is_str\": type(y) is str,\n"
+        "        \"obj_is_dict\": type(my_obj) is dict,\n"
+        "        \"elem_is_int\": type(arr[0]) is int,\n"
+        "        \"x_is_str\": type(x) is str,\n"
+        "        \"bool_is_int\": type(True) is int,\n"
+        "        \"int_eq_float\": type(1) == type(1.5),\n"
+        "        \"box_is_box\": type(Box()) is Box,\n"
+        "        \"as_str\": str(type(x))\n"
+        "    };\n"
+        "}\n"
+    );
 
     temp_path = write_temp_jac(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
 
-        for pattern in ["typeof x", "typeof y", "typeof my_obj", "typeof arr[0]"] {
+        for pattern in [
+            "_jac.builtin.type(x)",
+            "_jac.builtin.type(y)",
+            "_jac.builtin.type(my_obj)",
+            "_jac.builtin.type(arr[0])"
+        ] {
             assert pattern in js_code;
         }
-        assert "type(" not in js_code;
-        assert js_code.count("typeof") == 4;
+        # `typeof x` is a string and a type name lowers to a `_jac.types.*`
+        # object, so the two can never compare equal -- #6149.  Scoped to the
+        # emitted function: the runtime prelude uses `typeof` legitimately.
+        body = js_code[js_code.index("function check_types"):];
+        for pattern in ["typeof x", "typeof y", "typeof my_obj", "typeof arr[0]"] {
+            assert pattern not in body;
+        }
         assert_balanced_syntax(js_code, temp_path);
+
+        # Shape alone cannot see the defect: `typeof` also *ran*, it just
+        # always answered false.  Run the bundle and compare with Python.
+        wrapper = js_code + "\nconsole.log(JSON.stringify(check_types()));\n";
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "type() bundle crashed in Node:\nstderr=" + result.stderr
+        );
+        # `is` is identity, so a coarser test is wrong in both directions:
+        # isinstance would call a bool an int, and JS `typeof` puts int and
+        # float in one bucket.
+        assert json.loads(result.stdout.strip()) == {
+            "x_is_int": True,
+            "y_is_str": True,
+            "obj_is_dict": True,
+            "elem_is_int": True,
+            "x_is_str": False,
+            "bool_is_int": False,
+            "int_eq_float": False,
+            "box_is_box": True,
+            "as_str": "<class 'int'>"
+        };
     } finally {
         os.unlink(temp_path);
     }
