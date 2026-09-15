@@ -31,7 +31,7 @@ import from jaclang.compiler.driver.source_failures { CompilerSourceError }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.driver.pipeline { get_py_code_gen }
-import from jaclang.compiler.passes { Transform }
+
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
 # The #8215 defect shape: an import list whose separator went missing.
@@ -82,7 +82,7 @@ def _absent_backend -> types.ModuleType {
 }
 
 """Run `get_py_code_gen` with `stub` standing in for the ES backend."""
-def _codegen_with(stub: types.ModuleType) -> list[type[Transform]] {
+def _codegen_with(stub: types.ModuleType) -> list[type] {
     had = ES_BACKEND in sys.modules;
     saved: types.ModuleType = sys.modules[ES_BACKEND] if had else stub;
     sys.modules[ES_BACKEND] = stub;
@@ -126,7 +126,6 @@ test "a .jac source that fails to compile names the file and the parse error" {
     assert "failed to compile" in str(err);
     assert "error[" in str(err) , f"no diagnostic in: {err}";
 }
-
 
 test "a compile error in a shared impl/ annex is reported as the module's own" {
     # #8982 item 2: the error lived in `impl/config.impl.jac`, the importer

@@ -370,7 +370,7 @@ impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
         );
         if ref_ctor or ref_typed {
             if ref_typed and not ref_ctor {
-                self.emit(E2025, node_override=has_var);
+                self.ctx.emit(E2025, node_override=has_var);
             }
             ref_init: es.Expression = self.sync_loc(
                 es.Literal(value=None, raw='null'), jac_node=has_var

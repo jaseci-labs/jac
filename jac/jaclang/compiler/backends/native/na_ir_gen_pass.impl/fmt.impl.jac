@@ -43,7 +43,7 @@ impl NaIRGenPass._ensure_fmt_kernel -> bool {
     self._walk_imported_module_abilities(kernel_mod, with_fn_verdicts=False);
     self._fmt_kernel_mod = kernel_mod;
 
-    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
+    _manifest = self.module.gen.interop_manifest if (self.module?.gen) else None;
     if (_manifest is not None)
         and ("fmt_kernel" not in _manifest.native_transitive_sources) {
         _manifest.native_transitive_sources.append("fmt_kernel");

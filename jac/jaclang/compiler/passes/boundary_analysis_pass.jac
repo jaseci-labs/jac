@@ -1,6 +1,7 @@
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
+    Module,
+    TreeWalker,
+    UniNode,
     Ability,
     ArchHas,
     Archetype,
@@ -22,7 +23,6 @@ import from jaclang.compiler.frontend.unitree {
     KVPair,
     LambdaExpr,
     ListVal,
-    Module,
     ModuleItem,
     ModulePath,
     MultiString,
@@ -35,10 +35,12 @@ import from jaclang.compiler.frontend.unitree {
     Token,
     TupleVal,
     UnaryExpr,
-    UniNode,
     ability_of_symbol,
     resolved_decl_of
 }
+import from jaclang.compiler.passes.context { CompileContext }
+import type from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
     SymbolType,
@@ -49,9 +51,18 @@ import from jaclang.compiler.frontend.codeinfo {
     InteropBinding,
     InteropContext
 }
-import from jaclang.compiler.passes.uni_pass { UniPass }
 
-walker BoundaryAnalysisPass(UniPass) {
+walker BoundaryAnalysisPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext;
+    has module: Module;
     has prog: JacProgram;
     static has HOST_PASS: bool = True;
     has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = field(
@@ -64,7 +75,7 @@ walker BoundaryAnalysisPass(UniPass) {
             default_factory=`dict
         );
 
-    def before_pass -> None;
+    can prepare with entry;
     def _resolved_native_decl(name_node: (UniNode | None)) -> (Ability | None);
     def _signature_of_decl(
         decl: (Ability | None)
@@ -117,6 +128,6 @@ walker BoundaryAnalysisPass(UniPass) {
     ) -> (BoundaryTypeInfo | None);
 
     def _literal_default(expr: (UniNode | None)) -> tuple[(bool, any)];
-    def after_pass -> None;
+    can finish with exit;
     def _record_access_levels(manifest: any) -> None;
 }

@@ -112,7 +112,7 @@ def compile_to_esast(filename: str) -> es.Program {
     );
 
     es_pass = run_pass(EsastGenPass, ir, prog);
-    es_ir = es_pass.ir_out;
+    es_ir = es_pass.module;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
     assert isinstance(es_ir.gen.es_ast, es.Program);
@@ -130,7 +130,7 @@ def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program 
     );
 
     es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
-    es_ir = es_pass.ir_out;
+    es_ir = es_pass.module;
 
     assert isinstance(es_ir.gen.es_ast, es.Program);
     return es_ir.gen.es_ast;

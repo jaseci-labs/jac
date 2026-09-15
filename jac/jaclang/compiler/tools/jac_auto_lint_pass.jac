@@ -1,6 +1,8 @@
+import from jaclang.compiler.frontend.unitree { TreeWalker }
+import from jaclang.compiler.passes.context { CompileContext }
 import keyword;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes { UniPass }
+
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.constant { TOKEN_MAP }
 import from jaclang.compiler.frontend.parser.tokens { KEYWORDS }
@@ -55,7 +57,17 @@ import from jaclang.compiler.frontend.roles {
     VarsRole
 }
 
-walker JacAutoLintPass(UniPass) {
+walker JacAutoLintPass(TreeWalker) {
+    can enter_walk with uni.UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with uni.UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext;
+    has module: uni.Module;
     has prog: JacProgram,
         lint_enabled: bool = True,
         report_only: bool = False,

@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from enum { Enum }
 import from typing { TypeAlias }
 import from jaclang.compiler.frontend.unitree {
@@ -61,7 +62,7 @@ import from jaclang.compiler.frontend.constant {
     is_borrow_kind,
     is_mut_kind
 }
-import from jaclang.compiler.passes.transform { Transform }
+
 import from jaclang.compiler.passes.dataflow {
     solve_backward,
     solve_forward,
@@ -99,10 +100,10 @@ obj BorrowMeta {
     }
 }
 
-walker OwnershipCheckPass(Transform) {
+walker OwnershipCheckPass {
+    has ctx: CompileContext;
     has prog: JacProgram,
-        ir_in: Module,
-        cancel_token: any = None,
+        module: Module,
         owned_decl: dict[SymId, Name] = {},
         linear_decl: dict[SymId, Name] = {},
         consumed_syms: set[SymId] = set(),
@@ -129,8 +130,6 @@ walker OwnershipCheckPass(Transform) {
 
     static has HOST_PASS: bool = True;
 
-    def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _nogc_setup -> None;

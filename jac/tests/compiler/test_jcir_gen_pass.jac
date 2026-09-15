@@ -24,6 +24,8 @@ cannot make: the binder retains no function pointer, so both sides of it
 are the source lane until #8288 M1 rung 3.
 """
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import ast as pyast;
 import marshal;
 import os;
@@ -53,7 +55,7 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple {
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
-    emitter = JcirGenPass(ir_in=mod);
+    emitter = run_walker(JcirGenPass, module=mod);
     blob = emitter.ir_bytes();
     (mods, diags) = transcribe(blob);
     assert diags == [];
@@ -68,7 +70,7 @@ def dual_compile_file(path: str) -> tuple {
     mod = prog.compile(path, options=CompileOptions(no_ir_cache=True));
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
-    emitter = JcirGenPass(ir_in=mod);
+    emitter = run_walker(JcirGenPass, module=mod);
     blob = emitter.ir_bytes();
     (mods, diags) = transcribe(blob);
     assert diags == [];
@@ -988,7 +990,7 @@ def f -> int {
     calls[0].genai_call = calls[0].target;
     caught_jcir = "";
     try {
-        JcirGenPass(ir_in=mod);
+        run_walker(JcirGenPass, module=mod);
     } except NotImplementedError as e {
         caught_jcir = str(e);
     }

@@ -1,6 +1,6 @@
 impl JcirGenPass.ir_bytes -> bytes {
     if self._module_root is None {
-        raise RuntimeError(self.ice('JCIR emitter produced no module root'));
+        raise RuntimeError(self.ctx.ice('JCIR emitter produced no module root'));
     }
     return module_container_bytes(self._module_path, self._module_root);
 }
@@ -23,7 +23,7 @@ impl JcirGenPass.exit_module with Module exit {
             _t = stable_osp_tag(_an);
             _prior = _tag_names.get(_t);
             if (_prior is not None) and (_prior != _an) {
-                self.emit(E5102, node_override=_stmt, name=_an, other=_prior);
+                self.ctx.emit(E5102, node_override=_stmt, name=_an, other=_prior);
             } else {
                 _tag_names[_t] = _an;
             }
@@ -46,12 +46,12 @@ impl JcirGenPass.exit_module with Module exit {
                             'alias',
                             ['name', 'asname'],
                             [name, None],
-                            jac_node=self.ir_out
+                            jac_node=self.module
                         ) for name in sorted(list(self.builtin_imports))
                     ],
                     0
                 ],
-                jac_node=self.ir_out
+                jac_node=self.module
             )
         );
     }
@@ -68,12 +68,12 @@ impl JcirGenPass.exit_module with Module exit {
                             'alias',
                             ['name', 'asname'],
                             [name, None],
-                            jac_node=self.ir_out
+                            jac_node=self.module
                         ) for name in sorted(list(self.sized_imports))
                     ],
                     0
                 ],
-                jac_node=self.ir_out
+                jac_node=self.module
             )
         );
     }
@@ -89,12 +89,12 @@ impl JcirGenPass.exit_module with Module exit {
                             'alias',
                             ['name', 'asname'],
                             [name, None],
-                            jac_node=self.ir_out
+                            jac_node=self.module
                         ) for name in sorted(list(self.typing_imports))
                     ],
                     0
                 ],
-                jac_node=self.ir_out
+                jac_node=self.module
             )
         );
     }
@@ -115,7 +115,7 @@ impl JcirGenPass.exit_module with Module exit {
                             'alias',
                             ['name', 'asname'],
                             [name, None],
-                            jac_node=self.ir_out
+                            jac_node=self.module
                         ) for name in sorted(list(self.jaclib_imports))
                     ]
                         + [
@@ -123,12 +123,12 @@ impl JcirGenPass.exit_module with Module exit {
                                 'alias',
                                 ['name', 'asname'],
                                 [name, self._runtime_aliases[name]],
-                                jac_node=self.ir_out
+                                jac_node=self.module
                             ) for name in sorted(self._runtime_aliases)
                         ],
                     0
                 ],
-                jac_node=self.ir_out
+                jac_node=self.module
             )
         );
     }
@@ -391,7 +391,7 @@ impl JcirGenPass.exit_import with Import exit {
         import_binds_client_native
     }
     if (
-        import_binds_client_native(here, self.ir_in.gen.interop_manifest)
+        import_binds_client_native(here, self.module.gen.interop_manifest)
         or here.native_only_drop
     ) {
         self.set_out(here, []);
@@ -411,7 +411,7 @@ impl JcirGenPass.exit_import with Import exit {
     if (
         here.from_loc
         and here.items
-        and classify_cross_app_import(here, self.ir_in.gen.interop_manifest)
+        and classify_cross_app_import(here, self.module.gen.interop_manifest)
             == CrossAppKind.SERVICE_BRIDGE
         and self._generate_sv_to_sv_stubs(here)
     ) {
@@ -426,7 +426,7 @@ impl JcirGenPass.exit_import with Import exit {
     if here.is_absorb {
         source = here.items[0];
         if not isinstance(source, ModulePath) {
-            raise RuntimeError(self.ice());
+            raise RuntimeError(self.ctx.ice());
         }
         module_name_parts = [p.value for p in source.path] if source.path else [];
         module_name = '.'.join(module_name_parts) if module_name_parts else None;
@@ -492,7 +492,7 @@ impl JcirGenPass.exit_module_path with ModulePath exit {
     if here.string_path_value is not None {
         import_node = here.parent_of_type(Import);
         if (import_node and (import_node.code_context != CodeContext.CLIENT)) {
-            self.emit(E5001, node_override=here, path=str(here.string_path_value));
+            self.ctx.emit(E5001, node_override=here, path=str(here.string_path_value));
         }
     }
     self.set_out(
@@ -512,7 +512,7 @@ impl JcirGenPass.exit_module_item with ModuleItem exit {
         import_node = here.from_parent;
         if (import_node.code_context != CodeContext.CLIENT) {
             import_type = 'Default' if (here.name.value == 'default') else 'Namespace';
-            self.emit(
+            self.ctx.emit(
                 E5002,
                 node_override=here,
                 import_type=import_type,

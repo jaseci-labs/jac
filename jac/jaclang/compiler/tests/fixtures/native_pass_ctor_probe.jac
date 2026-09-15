@@ -1,16 +1,22 @@
-"""A pass constructed inside a native root, which is the rung-3 gate.
+"""Construct and spawn a compiler walker from a native root.
 
-Measured by `test_pass_base_chain_lowers.jac`. `probe_construct` is the
-smallest thing a fused root has to be able to do: construct a pass over a
-tree it already holds and read a field back off it. Nothing here is
-Python-lane -- the construction passes no `prog`, because the pass base
-declares none.
+The context carries diagnostics; the walker owns its traversal state.
 """
 
-import from jaclang.compiler.frontend.unitree { Module, Name }
-import from jaclang.compiler.passes.uni_pass { UniPass }
+import from jaclang.compiler.frontend.unitree { Module, TreeWalker, UniNode, Name }
+import from jaclang.compiler.passes.context { CompileContext }
 
-walker LocalCountPass(UniPass) {
+walker LocalCountPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext;
+    has module: Module;
     has seen: int = 0;
 
     can enter_name with Name entry {
@@ -19,6 +25,9 @@ walker LocalCountPass(UniPass) {
 }
 
 def probe_construct(m: Module) -> int {
-    p = LocalCountPass(ir_in=m);
+    p = LocalCountPass(
+        module=m, ctx=CompileContext(current_node=m, from_pass=LocalCountPass)
+    );
+    m spawn p;
     return p.seen;
 }

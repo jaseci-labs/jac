@@ -340,7 +340,7 @@ impl NaIRGenPass._solve_ct_args(
             chosen = p.value;
         }
         if chosen is None {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=nd,
                 kind="call argument",
@@ -351,7 +351,7 @@ impl NaIRGenPass._solve_ct_args(
         }
         (ok, v) = self._ct_value_with_bindings(chosen);
         if not ok {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=chosen,
                 kind="argument for comptime parameter",
@@ -391,7 +391,7 @@ impl NaIRGenPass._instantiate_generic(
     ability = self.generic_fns[func_name];
     solution = self._solve_generic_call(ability, nd);
     if solution is None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="function",
@@ -552,7 +552,7 @@ impl NaIRGenPass._instantiate_generic_method(
     ability = self._generic_methods[f"{owner_arch}.{method_name}"];
     solution = self._solve_generic_call(ability, nd);
     if not solution {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="method",
@@ -606,7 +606,7 @@ impl NaIRGenPass._stamp_mono_method(
         or not isinstance(sig, uni.FuncSignature)
         or ability.is_static
         or ability.is_classmethod {
-        self.emit(E5092, node_override=ability, kind="method", name=full_name);
+        self.ctx.emit(E5092, node_override=ability, kind="method", name=full_name);
         return None;
     }
     param_types: list[ir.Type] = [struct_type.as_pointer()];
@@ -652,7 +652,7 @@ impl NaIRGenPass._find_source_ability(
 ) -> (uni.Ability | None) {
     import os;
     import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
-    _base = os.path.dirname(self.ir_in.loc.mod_path);
+    _base = os.path.dirname(self.module.loc.mod_path);
     _clean = mod_name[:-3] if mod_name.endswith(".na") else mod_name;
     (_src, full_path) = resolve_native_module(_clean, _base);
     if full_path is None {

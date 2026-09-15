@@ -529,7 +529,7 @@ impl NaIRGenPass._tuple_iter_seq(
     self._emit_list_helpers(spec, store_type);
     helpers = self.list_helpers[spec];
 
-    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{expr.loc.first_line
+    _loc = f"{os.path.basename(self.module.loc.mod_path)}:{expr.loc.first_line
         if expr is not None and expr.loc
         else 0}";
     seq = self._rc_call_with_ctx(

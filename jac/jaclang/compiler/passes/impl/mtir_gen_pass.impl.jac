@@ -14,10 +14,6 @@ import from jaclang.runtime.semantic {
     type_to_str
 }
 
-impl MTIRGenPass.postinit -> None {
-    super.postinit();
-}
-
 impl MTIRGenPass._run_impl(ir_in: Module) -> Module {
     for nd in ir_in.get_all_sub_nodes(Ability) {
         self._process_ability(nd);
@@ -137,7 +133,7 @@ impl MTIRGenPass._extract_type_symbol(
 impl MTIRGenPass._extract_enum_info(symbol: Symbol) -> EnumInfo {
     decl = symbol.decl;
     if not isinstance(decl.name_of, Enum) {
-        raise RuntimeError(self.ice(f"Symbol {symbol} is not an Enum."));
+        raise RuntimeError(self.ctx.ice(f"Symbol {symbol} is not an Enum."));
     }
     enum_node = decl.name_of;
     members: list[FieldInfo] = [];
@@ -164,7 +160,7 @@ impl MTIRGenPass._extract_enum_info(symbol: Symbol) -> EnumInfo {
                                 type_info = "bool";
                             } else {
                                 raise RuntimeError(
-                                    self.ice(
+                                    self.ctx.ice(
                                         f"Enum member '{member_name}' has invalid value type: {type(
                                             enum_stmt.value
                                         ).__name__}. "
@@ -617,14 +613,6 @@ impl MTIRGenPass._register_archetype_light(nd: Archetype) -> None {
     Jac.add_mtir_to_map(self._get_scope_str(nd), class_info);
 }
 
-impl MTIRGenPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl MTIRGenPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

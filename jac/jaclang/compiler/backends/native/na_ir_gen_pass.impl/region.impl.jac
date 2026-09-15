@@ -10,7 +10,7 @@ impl NaIRGenPass._register_region_kernel -> None {
         return;
     }
     self._region_kernel_registered = True;
-    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
+    _manifest = self.module.gen.interop_manifest if (self.module?.gen) else None;
     if (_manifest is not None)
         and ("region_kernel" not in _manifest.native_transitive_sources) {
         _manifest.native_transitive_sources.append("region_kernel");

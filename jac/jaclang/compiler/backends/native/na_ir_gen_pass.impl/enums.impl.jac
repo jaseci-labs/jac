@@ -73,7 +73,7 @@ impl NaIRGenPass._codegen_enum(nd: (uni.Enum | uni.Archetype)) -> None {
         self.has_native_code = True;
         return;
     }
-    _owner_mod = nd.find_parent_of_type(uni.Module) or self.ir_in;
+    _owner_mod = nd.find_parent_of_type(uni.Module) or self.module;
     self._codegen_enum_layout(enum_name, _owner_mod);
 }
 
@@ -89,7 +89,7 @@ impl NaIRGenPass._codegen_enum_layout(
     if owner is not None {
         candidates.append(owner);
     }
-    candidates.append(self.ir_in);
+    candidates.append(self.module);
     for _fm in (self?._foreign_modules or []) {
         candidates.append(_fm);
     }
@@ -308,7 +308,7 @@ impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
             candidates.append(_own);
         }
     }
-    candidates.append(self.ir_in);
+    candidates.append(self.module);
     for _fm in (self?._foreign_modules or []) {
         candidates.append(_fm);
     }
@@ -340,7 +340,7 @@ impl NaIRGenPass._enum_ctor_target(nd: uni.FuncCall) -> (str | None) {
 impl NaIRGenPass._emit_enum_ctor_refusal(
     nd: uni.FuncCall, enum_name: str, why: str
 ) -> None {
-    self.emit(
+    self.ctx.emit(
         E5092,
         node_override=nd,
         kind="enum constructor",

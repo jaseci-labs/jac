@@ -54,7 +54,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
                 ]
             );
         } else {
-            self.emit(E5008);
+            self.ctx.emit(E5008);
         }
     } elif isinstance(here.right, FilterCompr) {
         if self._is_edge_ref_target(here.target) {
@@ -245,7 +245,7 @@ impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[(list, list)] {
             } elif (isinstance(x, KWPair) and self.val(x).cls == 'keyword') {
                 keywords.append(self.val(x));
             } else {
-                raise RuntimeError(self.ice('Invalid Parameter'));
+                raise RuntimeError(self.ctx.ice('Invalid Parameter'));
             }
         }
     }

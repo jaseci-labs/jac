@@ -4,7 +4,7 @@ import os;
 import sys;
 import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
-import type from jaclang.compiler.passes.transform { PassResult }
+import type from jaclang.compiler.passes.context { PassResult }
 
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
@@ -26,10 +26,9 @@ glob CLASS_MODULES: tuple = (
          "jaclang.compiler.frontend.roles",
          "jaclang.compiler.frontend.relations",
          "jaclang.compiler.frontend.diagnostics",
-         "jaclang.compiler.passes.transform",
+         "jaclang.compiler.passes.context",
 
      );
-
 
 def _enum_class(name: str, owner: type) -> type | None {
     import from enum { Enum }
@@ -53,7 +52,6 @@ def _enum_class(name: str, owner: type) -> type | None {
     return None;
 }
 
-
 def _enum_table(cls: any) -> (dict | None) {
     import enum as _enum;
     if not (isinstance(cls, `type) and issubclass(cls, _enum.Enum)) {
@@ -68,7 +66,6 @@ def _enum_table(cls: any) -> (dict | None) {
     }
     return {i: members[i] for i in range(len(members))};
 }
-
 
 class NativeCompiler {
     def init(self: NativeCompiler, lib_path: str) {
@@ -439,7 +436,7 @@ class NativeCompiler {
     }
 
     def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
-        import from jaclang.compiler.passes.transform { PassResult }
+        import type from jaclang.compiler.passes.context { PassResult }
         import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
         import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
         out: dict[str, PassResult] = {};
@@ -509,10 +506,8 @@ class NativeCompiler {
     }
 }
 
-
 glob _KERNEL_CELL: list = [],
      _RESOLVED: list = [];
-
 
 def _lib_name -> str {
     if sys.platform == "darwin" {
@@ -520,7 +515,6 @@ def _lib_name -> str {
     }
     return "libjac_compiler.so";
 }
-
 
 def _kit_site_present -> bool {
     shim = "libjacllvm.dylib" if sys.platform == "darwin" else "libjacllvm.so";
@@ -540,7 +534,6 @@ def _kit_site_present -> bool {
     }
     return False;
 }
-
 
 def _find_lib -> (str | None) {
     if os.environ.get("JAC_STUBCAT_BUILDING") {
@@ -587,7 +580,6 @@ def _find_lib -> (str | None) {
     }
     return None;
 }
-
 
 def ensure_loaded -> (NativeCompiler | None) {
     if _KERNEL_CELL {

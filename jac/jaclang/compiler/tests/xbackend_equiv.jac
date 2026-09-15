@@ -15,6 +15,8 @@ compare_results uses intersection semantics: only keys present in both dicts
 are checked, so a backend that returns {} (unimplemented) is silently skipped.
 """
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import ctypes;
 import importlib;
 import json;
@@ -108,8 +110,8 @@ def compile_fixture_to_js(fixture_name: str) -> str {
     assert not fatal , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in fatal]}"
     );
-    es_pass = EsastGenPass(ir_in=ir, prog=prog);
-    es_ir = es_pass.ir_out;
+    es_pass = run_walker(EsastGenPass, module=ir, prog=prog);
+    es_ir = es_pass.module;
     assert isinstance(es_ir.gen.es_ast, EsNode) , "es_ast should be an EsNode";
     return es_to_js(es_ir.gen.es_ast);
 }

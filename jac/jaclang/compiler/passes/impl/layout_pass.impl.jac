@@ -4,11 +4,10 @@ import from jaclang.compiler.tools.unparse_pass { unparse_node }
 impl LayoutPass.postinit -> None {
     self.registry = LayoutRegistry();
     self.isinstance_targets = set();
-    super.postinit();
 }
 
 impl LayoutPass._run_impl(ir_in: Module) -> Module {
-    module = self.ir_in;
+    module = self.module;
 
     self._build_enum_layouts(module);
 
@@ -177,7 +176,7 @@ impl LayoutPass._compute_c3_mro(class_name: str) -> list[str] {
             }
         }
         if candidate is None {
-            self.emit(E5030, name=class_name);
+            self.ctx.emit(E5030, name=class_name);
             return result;
         }
         result.append(candidate);
@@ -779,14 +778,16 @@ impl LayoutPass._validate_obj_fields(
         }
 
         if not var.type_tag or not var.type_tag.tag {
-            self.emit(W5031, node_override=var, arch=aname, field=fname);
+            self.ctx.emit(W5031, node_override=var, arch=aname, field=fname);
             continue;
         }
         type_node = var.type_tag.tag;
         if not self._is_layout_compatible_semantic_type(var.type)
             and not self._is_layout_compatible_type(type_node, arch_map) {
             type_str = unparse_node(type_node) or str(type_node);
-            self.emit(W5032, node_override=var, arch=aname, field=fname, type=type_str);
+            self.ctx.emit(
+                W5032, node_override=var, arch=aname, field=fname, type=type_str
+            );
         }
     }
 }
@@ -910,18 +911,9 @@ impl LayoutPass._is_layout_compatible_type(
     return False;
 }
 
-impl LayoutPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl LayoutPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }
-
 
 impl FieldInfo.semantic_type.getter -> TypeBase | None {
     declaration = self.decl_node;

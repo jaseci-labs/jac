@@ -1,3 +1,4 @@
+import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl GExpr.__eq__(other: object) -> bool {
     return type(self) == type(other);
 }
@@ -77,7 +78,6 @@ impl GrammarRule.to_ebnf -> str {
 impl GrammarRule.__repr__ -> str {
     return f"GrammarRule({self.name!r}, {self.body!r})";
 }
-
 
 impl GrammarExtractPass.format_ebnf(expr: GExpr) -> str {
     fmt = GrammarExtractPass.format_ebnf;
@@ -257,7 +257,10 @@ impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {
     return expr;
 }
 
-impl GrammarExtractPass.before_pass -> None {
+impl GrammarExtractPass.prepare with entry {
+    if self.ctx.nested_depth {
+        return;
+    }
     self.rules = [];
     self.diagnostics = [];
     self._parse_impls = [];
@@ -303,7 +306,10 @@ impl GrammarExtractPass._returns_none(nd: uni.ImplDef) -> bool {
     return False;
 }
 
-impl GrammarExtractPass.after_pass -> None {
+impl GrammarExtractPass.finish with exit {
+    if self.ctx.nested_depth {
+        return;
+    }
     self.rules = self._interpret_all();
 
     for _round in range(3) {

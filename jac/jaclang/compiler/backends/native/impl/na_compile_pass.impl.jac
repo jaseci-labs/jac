@@ -318,7 +318,6 @@ impl DepClibMeta.propagate_to(gen: CodeGenTarget) -> None {
 impl NativeCompilePass.postinit -> None {
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
-    super.postinit();
 }
 
 impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
@@ -352,10 +351,10 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             for lib_path in clib_paths {
                 try {
                     if not self._jit_load_clib(lib_path) {
-                        self.emit(W5021, path=lib_path);
+                        self.ctx.emit(W5021, path=lib_path);
                     }
                 } except Exception as lib_err {
-                    self.emit(W5022, path=lib_path, error=str(lib_err));
+                    self.ctx.emit(W5022, path=lib_path, error=str(lib_err));
                 }
             }
         }
@@ -496,7 +495,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             return ir_in;
         }
 
-        if self.errors_had {
+        if self.ctx.errors_had {
             return ir_in;
         }
 
@@ -550,7 +549,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             } except Exception as _sym_err {}
         }
     } except Exception as e {
-        self.emit(E5020, error=str(e));
+        self.ctx.emit(E5020, error=str(e));
     }
     return ir_in;
 }
@@ -709,7 +708,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
         _bg_aot = _link_opts.aot_mode;
         _bg_msg = native_verdict_blast_guard(self.prog, _lk_composed, _bg_aot);
         if _bg_msg {
-            self.emit(E5029, path=str(source_mod_path), detail=_bg_msg);
+            self.ctx.emit(E5029, path=str(source_mod_path), detail=_bg_msg);
             break;
         }
 
@@ -734,7 +733,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     f"Required native module not found: {full_path}"
                 );
             }
-            self.emit(W5023, path=full_path);
+            self.ctx.emit(W5023, path=full_path);
             continue;
         }
 
@@ -811,7 +810,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             and link_fingerprint_mismatches(
                 [(real_path, meta.options_fingerprint)], _link_fp
             ) {
-            self.emit(
+            self.ctx.emit(
                 E5027,
                 path=full_path,
                 cached_fp=(meta.options_fingerprint or "(unstamped)"),
@@ -856,7 +855,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             if real_path in _na_units {
                 _memo_entry = _na_units.pop(real_path);
                 if isinstance(_memo_entry, str) {
-                    self.emit(E5024, path=full_path, error=_memo_entry);
+                    self.ctx.emit(E5024, path=full_path, error=_memo_entry);
                     continue;
                 }
                 imported_ir = _memo_entry;
@@ -867,12 +866,12 @@ impl NativeCompilePass._compile_and_link_native_imports(
                         file_path=full_path, options=import_options
                     );
                 } except Exception as e {
-                    self.emit(E5024, path=full_path, error=str(e));
+                    self.ctx.emit(E5024, path=full_path, error=str(e));
                     continue;
                 }
             }
             if imported_ir is None or imported_ir.gen.llvm_ir is None {
-                self.emit(E5024, path=full_path, error="No LLVM IR generated");
+                self.ctx.emit(E5024, path=full_path, error="No LLVM IR generated");
                 continue;
             }
             _uv_record = self.prog.scratch.na_unverified_live.get(real_path) or {};
@@ -928,7 +927,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     else {};
             }
             if _uv_failed {
-                self.emit(E5024, path=full_path, error=_uv_failed);
+                self.ctx.emit(E5024, path=full_path, error=_uv_failed);
                 continue;
             }
             if _uv_pending and _uv_attempts >= 3 {
@@ -936,7 +935,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     self.prog, _uv_pending, _link_opts
                 );
                 if _uv_conflicts {
-                    self.emit(
+                    self.ctx.emit(
                         E5028,
                         path=full_path,
                         names=", ".join(
@@ -1106,7 +1105,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                             else _func_name not in dep_imported_set
                     );
                     if _is_owned and symbol_owned.get(_func_name, True) {
-                        self.emit(
+                        self.ctx.emit(
                             E5026,
                             symbol=_func_name,
                             existing_module=symbol_origins[_func_name],
@@ -1132,7 +1131,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                             else _gv_name not in dep_imported_set
                     );
                     if _is_owned and symbol_owned.get(_gv_name, True) {
-                        self.emit(
+                        self.ctx.emit(
                             E5026,
                             symbol=_gv_name,
                             existing_module=symbol_origins[_gv_name],
@@ -1197,7 +1196,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             linked_modules[real_path] = mod_info;
             module.gen.interop_manifest.native_module_imports[source_mod_path] = mod_info;
         } except Exception as e {
-            self.emit(E5025, path=full_path, error=str(e));
+            self.ctx.emit(E5025, path=full_path, error=str(e));
         }
     }
 }
@@ -1343,12 +1342,12 @@ impl NativeCompilePass._references_undefined_region_kernel(
 impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
     _gc = str(getattr(self.prog?.options, "na_gc_mode", "cycles") or "cycles");
     _enf = bool(getattr(self.prog?.options, "nogc_enforce_all", False))
-        or bool(getattr(self.ir_in.gen, "nogc_enforced", False));
+        or bool(getattr(self.module.gen, "nogc_enforced", False));
     ir_str = _compile_region_kernel_ir(
         _gc, _enf and _gc == "none", self.prog.options.no_ir_cache
     );
     if ir_str is None {
-        self.emit(
+        self.ctx.emit(
             E5025,
             path=f"region kernel unit (gc={_gc})",
             error="the kernel unit failed to compile to LLVM IR; every region "
@@ -1367,7 +1366,7 @@ impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
         }
         main_mod.link_in(kmod);
     } except Exception as _e {
-        self.emit(E5025, path=f"region kernel unit (gc={_gc})", error=str(_e));
+        self.ctx.emit(E5025, path=f"region kernel unit (gc={_gc})", error=str(_e));
         return;
     }
     if self._module_defines(main_mod, "__jac_region_died_hook") {
@@ -1384,7 +1383,7 @@ impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
         hmod.verify();
         main_mod.link_in(hmod);
     } except Exception as _e {
-        self.emit(E5025, path="region kernel died hook", error=str(_e));
+        self.ctx.emit(E5025, path="region kernel died hook", error=str(_e));
     }
 }
 
@@ -1404,12 +1403,12 @@ impl NativeCompilePass._references_undefined_osp_kernel(main_mod: ModuleRef) -> 
 impl NativeCompilePass._link_osp_kernel(main_mod: ModuleRef) -> None {
     _gc = str(getattr(self.prog?.options, "na_gc_mode", "cycles") or "cycles");
     _enf = bool(getattr(self.prog?.options, "nogc_enforce_all", False))
-        or bool(getattr(self.ir_in.gen, "nogc_enforced", False));
+        or bool(getattr(self.module.gen, "nogc_enforced", False));
     ir_str = _compile_osp_kernel_ir(
         _gc, _enf and _gc == "none", self.prog.options.no_ir_cache
     );
     if ir_str is None {
-        self.emit(
+        self.ctx.emit(
             E5025,
             path=f"osp_core kernel unit (gc={_gc})",
             error="the kernel unit failed to compile to LLVM IR; every OSP "
@@ -1424,7 +1423,7 @@ impl NativeCompilePass._link_osp_kernel(main_mod: ModuleRef) -> None {
         kmod.verify();
         main_mod.link_in(kmod);
     } except Exception as _e {
-        self.emit(E5025, path=f"osp_core kernel unit (gc={_gc})", error=str(_e));
+        self.ctx.emit(E5025, path=f"osp_core kernel unit (gc={_gc})", error=str(_e));
     }
 }
 
@@ -1481,14 +1480,6 @@ impl NativeCompilePass._link_fmt_kernel(main_mod: ModuleRef) -> None {
     } except Exception as _e {}
 }
 
-impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, uni.Module);
-    return out;
-}
-
 impl NativeCompilePass.run_walk with uni.Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

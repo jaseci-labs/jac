@@ -1,7 +1,8 @@
+import from jaclang.compiler.frontend.unitree { TreeWalker }
+import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes { UniPass }
+
 import from jaclang.compiler.frontend.parser.tokens { BUILTIN_TYPE_KINDS, TokenKind }
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
 
 def is_nil_expr(nd: object) -> bool {
     if isinstance(nd, uni.CfgExpr) {
@@ -136,7 +137,17 @@ obj ConditionResult {
         tokens: list;
 }
 
-walker GrammarExtractPass(UniPass) {
+walker GrammarExtractPass(TreeWalker) {
+    can enter_walk with uni.UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with uni.UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext;
+    has module: uni.Module;
     has rules: list = [],
         target_class: str = "Parser",
         diagnostics: list = [],
@@ -146,9 +157,9 @@ walker GrammarExtractPass(UniPass) {
         _none_returning: dict = {},
         _helper_bodies: dict = {};
 
-    def before_pass -> None;
+    can prepare with entry;
     can enter_impl_def with uni.ImplDef entry;
-    def after_pass -> None;
+    can finish with exit;
     def _interpret_all -> list;
     def _compute_rule_firsts(rules: list) -> dict;
     def _compute_rule_firsts_deep(rules: list) -> dict;

@@ -84,7 +84,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
                 _pointee = val.type?.pointee;
                 _is_char_ptr = isinstance(_pointee, ir.IntType) and _pointee.width == 8;
                 if not _is_char_ptr {
-                    self.emit(
+                    self.ctx.emit(
                         E5092,
                         node_override=param,
                         kind="print argument",
@@ -98,7 +98,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         } elif self._opt_payload_of(val.type) is not None {
             _opt_s = self._emit_opt_repr(val);
             if _opt_s is None {
-                self.emit(
+                self.ctx.emit(
                     E5092,
                     node_override=param,
                     kind="print argument",
@@ -111,7 +111,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         } elif self?.jacval_type is not None and val.type == self.jacval_type {
             _jv_s = self._str_jacval_fn();
             if _jv_s is None {
-                self.emit(
+                self.ctx.emit(
                     E5092,
                     node_override=param,
                     kind="print argument",
@@ -124,7 +124,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         } elif isinstance(val.type, ir.LiteralStructType) {
             _tup_s = self._emit_container_repr(val, self._type_key_of(param));
             if _tup_s is None {
-                self.emit(
+                self.ctx.emit(
                     E5092,
                     node_override=param,
                     kind="print argument",
@@ -135,7 +135,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
             fmt_parts.append("%s");
             args.append(_tup_s);
         } else {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=param,
                 kind="print argument",
@@ -469,7 +469,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
             if self._opt_payload_of(val.type) is not None {
                 _opt_s = self._emit_optional_str(val, part);
                 if _opt_s is None {
-                    self.emit(
+                    self.ctx.emit(
                         E5092,
                         node_override=part,
                         kind="f-string value",
@@ -492,7 +492,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                     obj_strs.append(val);
                 }
             } elif _conv not in (-1, 115) {
-                self.emit(
+                self.ctx.emit(
                     E5092, node_override=part, kind="f-string conversion", name="!a"
                 );
                 return None;
@@ -503,7 +503,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 _spec_txt = self._fstring_spec_text(part.format_spec);
                 if _spec_txt is None {
                     if not isinstance(part.format_spec, uni.FString) {
-                        self.emit(
+                        self.ctx.emit(
                             E5092,
                             node_override=part,
                             kind="f-string format spec",
@@ -588,7 +588,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                             val = obj_s;
                             obj_strs.append(obj_s);
                         } else {
-                            self.emit(
+                            self.ctx.emit(
                                 E5092,
                                 node_override=part,
                                 kind="f-string value",
@@ -629,7 +629,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                     val = obj_s;
                     obj_strs.append(obj_s);
                 } elif val.type != ir.IntType(8).as_pointer() {
-                    self.emit(
+                    self.ctx.emit(
                         E5092,
                         node_override=part,
                         kind="f-string value",
@@ -644,7 +644,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                     val, self._type_key_of(part.format_part)
                 );
                 if _tup_s is None {
-                    self.emit(
+                    self.ctx.emit(
                         E5092,
                         node_override=part,
                         kind="f-string value",
@@ -660,7 +660,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
     }
     fmt_str = "".join(fmt_parts);
 
-    _fstr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _fstr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     snprintf_fn = self._get_or_declare_extern(
@@ -1484,7 +1484,7 @@ impl NaIRGenPass._emit_fstr_repr(
             return _r;
         }
     }
-    self.emit(E5092, node_override=part, kind="f-string conversion", name="!r");
+    self.ctx.emit(E5092, node_override=part, kind="f-string conversion", name="!r");
     return None;
 }
 
@@ -1521,7 +1521,7 @@ impl NaIRGenPass._emit_dyn_spec_format(
             _s = self._emit_container_repr(val, self._type_key_of(part.format_part));
         }
         if _s is None {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=part,
                 kind="f-string value",
@@ -1532,7 +1532,7 @@ impl NaIRGenPass._emit_dyn_spec_format(
         sval = _s;
         kname = "jac_fmt_str";
     } else {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=part,
             kind="f-string format spec",
@@ -1542,7 +1542,7 @@ impl NaIRGenPass._emit_dyn_spec_format(
     }
     fn = self._get_fmt_kernel_fn(kname);
     if fn is None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=part,
             kind="f-string format spec",

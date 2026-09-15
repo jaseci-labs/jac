@@ -1,4 +1,6 @@
 """Prelude exports are read from the same module tree as other compiler facts."""
+
+import from jaclang.compiler.passes.execution { run_walker }
 import ast;
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.parser.frontend { parse }
@@ -42,11 +44,12 @@ test "Python stub trees use the same export extraction" {
     source = "from first import A as Alias, Hidden\n"
         + "from first import B\nfrom second import C\n"
         + "__all__ = ('Alias', 'B', 'C', 3)\n";
-    module = PyastBuildPass(
-        ir_in=PythonModuleAst(
+    module = run_walker(
+        PyastBuildPass,
+        module=PythonModuleAst(
             ast.parse(source), orig_src=Source(source, "module_exports.pyi")
         )
-    ).ir_out;
+    ).module;
     assert ModuleFacts.literal_exports(module) == {'Alias', 'B', 'C'};
     assert ModuleFacts.exported_import_names(module)
         == {'first': {'Alias', 'B'}, 'second': {'C'}};

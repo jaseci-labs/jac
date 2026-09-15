@@ -57,7 +57,7 @@ impl JcirGenPass._comptime_only_names -> set[str] {
         return cached;
     }
     names: set[str] = set();
-    for imp in self.ir_in.get_all_sub_nodes(Import) {
+    for imp in self.module.get_all_sub_nodes(Import) {
         if not imp.is_comptime {
             continue;
         }
@@ -77,7 +77,7 @@ impl JcirGenPass._comptime_only_names -> set[str] {
             }
         }
     }
-    for ab in self.ir_in.get_all_sub_nodes(Ability) {
+    for ab in self.module.get_all_sub_nodes(Ability) {
         if ab.is_comptime and ab.name_ref is not None {
             names.add(ab.name_ref.sym_name);
         }
@@ -106,7 +106,7 @@ impl JcirGenPass._is_comptime_only_name(nd: Name) -> bool {
         par = decl.parent if isinstance(decl, Name) else None;
         if isinstance(par, Assignment) and isinstance(par.parent, GlobalVars) {
             home = par.find_parent_of_type(Module);
-            if home is not None and home is not self.ir_in {
+            if home is not None and home is not self.module {
                 hp = (home.loc.mod_path if home.loc else "").replace("\\", "/");
                 if hp.endswith("jaclang/comptime.jac") {
                     return True;
@@ -152,11 +152,11 @@ impl JcirGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode
     }
     if module
         == module_dotted_name(
-            self.ir_in.loc.mod_path if self.ir_in.loc else "", self.ir_in.name
+            self.module.loc.mod_path if self.module.loc else "", self.module.name
         ) {
         return self.name_load(name, jac_node);
     }
-    local_sym = self.ir_in.sym_tab.lookup(name, deep=False);
+    local_sym = self.module.sym_tab.lookup(name, deep=False);
     if local_sym is not None {
         return self.name_load(name, jac_node);
     }
@@ -284,7 +284,7 @@ impl JcirGenPass._materialize(v: any, jac_node: UniNode) -> (CgNode | None) {
     if kind == "CtFunc" {
         same_module = v.module
             == module_dotted_name(
-                self.ir_in.loc.mod_path if self.ir_in.loc else "", self.ir_in.name
+                self.module.loc.mod_path if self.module.loc else "", self.module.name
             );
         ct_only = v.ability is not None and v.ability.is_comptime;
         if same_module and not ct_only {

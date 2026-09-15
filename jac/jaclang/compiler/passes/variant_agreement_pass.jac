@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import os;
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -10,7 +11,7 @@ import from jaclang.compiler.frontend.unitree {
     Name,
     UniNode
 }
-import from jaclang.compiler.passes.transform { Transform }
+
 import from jaclang.compiler.frontend.constant { SymbolAccess }
 import from jaclang.compiler.frontend.diagnostics { E5105 }
 import type from jaclang.compiler.driver.program { JacProgram }
@@ -22,15 +23,13 @@ def variant_sibling(mod_path: str) -> (str | None);
 def annotation_text(nd: (UniNode | None)) -> str;
 def public_surface(mod: Module) -> dict[str, tuple[str, str, UniNode]];
 
-walker VariantAgreementPass(Transform) {
+walker VariantAgreementPass {
+    has ctx: CompileContext;
     has prog: JacProgram,
-        ir_in: Module,
-        cancel_token: any = None;
+        module: Module;
 
     static has HOST_PASS: bool = True;
 
-    def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _parse_sibling(path: str) -> (Module | None);

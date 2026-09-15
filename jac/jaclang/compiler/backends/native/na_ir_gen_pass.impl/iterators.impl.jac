@@ -654,7 +654,7 @@ impl NaIRGenPass._adapter_callee(fn_expr: uni.UniNode) -> (tuple | None) {
         lv = self._codegen_lambda(fn_expr);
         if self._pending_lambda_captures is not None {
             self._pending_lambda_captures = None;
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=fn_expr,
                 kind="expression",
@@ -1003,7 +1003,7 @@ impl NaIRGenPass._resolve_method_owner(
     arch_name: str, method_name: str
 ) -> (str | None) {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    owner = get_layout_registry(self.ir_in, self.prog).resolve_method_owner(
+    owner = get_layout_registry(self.module, self.prog).resolve_method_owner(
         arch_name, method_name
     );
     if owner is not None {
@@ -1012,7 +1012,7 @@ impl NaIRGenPass._resolve_method_owner(
     _arch = self.arch_ast_map.get(arch_name);
     if isinstance(_arch, uni.Archetype) {
         _mod = _arch.find_parent_of_type(uni.Module);
-        if _mod is not None and _mod is not self.ir_in {
+        if _mod is not None and _mod is not self.module {
             return get_layout_registry(_mod, self.prog).resolve_method_owner(
                 arch_name, method_name
             );
@@ -1025,7 +1025,7 @@ impl NaIRGenPass._resolve_method(
     arch_name: str, method_name: str
 ) -> (ir.Function | None) {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    _reg = get_layout_registry(self.ir_in, self.prog);
+    _reg = get_layout_registry(self.module, self.prog);
     cur: (str | None) = arch_name;
     _guard = 0;
     while cur is not None and _guard < 64 {

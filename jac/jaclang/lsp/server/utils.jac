@@ -6,7 +6,7 @@ import from typing { Optional }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.codeinfo { CodeLocInfo }
 import from jaclang.compiler.frontend.srcloc { Span }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.passes.context { Alert }
 import from jaclang.compiler.frontend.unitree { Symbol, UniScopeNode }
 import from jaclang.lsp.protocol { uris }
 

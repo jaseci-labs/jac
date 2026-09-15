@@ -1,9 +1,20 @@
+import from jaclang.compiler.frontend.unitree { TreeWalker }
+import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.tools.doc_ir as doc;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { Tokens as Tok, is_mut_kind }
-import from jaclang.compiler.passes { UniPass }
 
-walker DocIRGenPass(UniPass) {
+walker DocIRGenPass(TreeWalker) {
+    can enter_walk with uni.UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with uni.UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext;
+    has module: uni.Module;
     has _live_comment_ids: (set[int] | None) = None,
         _emitted_comment_ids: (set[int] | None) = None;
 
