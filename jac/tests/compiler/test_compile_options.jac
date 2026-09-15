@@ -47,10 +47,7 @@ test "forced server compilation retains Python standard-library imports" {
             + "def bind_local { sock = socket.socket(); "
             + "sock.bind(('127.0.0.1', 0)); sock.close(); }\n",
         options=CompileOptions(
-            default_codespace="native",
-            force_codespace="server",
-            force_target_program=True,
-            need_full_ast=True
+            default_codespace="native", force_codespace="server", need_full_ast=True
         )
     );
     assert not program.errors_had , str(program.errors_had);

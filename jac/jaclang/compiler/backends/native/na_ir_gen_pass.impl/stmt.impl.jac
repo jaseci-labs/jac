@@ -144,7 +144,12 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
 
             is_false = self.builder.not_(cond_bool, name="assert.fail");
 
-            _a_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+            import from jaclang.compiler.driver.compilation_context {
+                codegen_source_path
+            }
+            _a_path = codegen_source_path(self.ir_in.loc.mod_path)
+                if self.ir_in.loc
+                else "";
             _a_line = nd.loc.first_line if nd.loc else 0;
             _a_text = "assertion failed";
             if isinstance(nd.error_msg, uni.String) {
@@ -436,6 +441,11 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 and self._elem_kind(val.type) in ("rc_ptr", "str")
                 and not self._is_owned(val)
             ) {
+                if self._nogc_headerless() and self._elem_kind(val.type) == "str" {
+                    prepared = self._nogc_elem_prep(None, val);
+                    assert prepared is not None;
+                    val = self._coerce_type(prepared, func_ret_type);
+                }
                 self._emit_rc_retain(
                     val,
                     op="return",
@@ -2530,6 +2540,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     [self._region_i64(_old_opt_hdl, name=f"{var_name}.old.i64")]
                 );
             } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
+                and self._nogc_headerless()
+                and not is_inplace_set_op {
+                self._can_native_move_lower(nd);
+            } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
                 and not self._nogc_headerless()
                 and not is_inplace_set_op
                 and not _is_raw_int_ptr {
@@ -3007,6 +3021,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } elif self._is_owned(_pre_box_val) {
                     self.rc_ops_elided += 1;
                 }
+            } elif self._opt_ptr_payload_of(var_type) is not None
+                and self._nogc_headerless() {
+                self._can_native_move_lower(nd);
             } elif self._opt_ptr_payload_of(var_type) is not None
                 and not self._nogc_headerless() {
                 _opt_asg_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line

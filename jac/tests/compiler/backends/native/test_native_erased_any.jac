@@ -21,10 +21,10 @@ accident is lane-scoped now: B4 (#8323) answered what it priced for the
 compiler's own roots -- `test_codeinfo_baseline.jac` carried the closure and
 its arriving seams until #8746 retired it with the rest of the seal's
 coverage baselines -- so `PLACEMENT_HOLD_EXEMPT_ROOTS` exempts
-`jac0core/` and `compiler/` from the hold, while user-facing inference keeps
+`compiler/`, `runtime/`, and `lib/` from the hold, while user-facing inference keeps
 it (admitting codeinfo there flipped byllm/scale module codespaces). The
 third test below pins that contract: exactly codeinfo is held, its reason
-names the exemption, and both compiler roots are exempt.
+names the exemption, and the compiler runtime roots are exempt.
 
 The clearing list, and where each item stands:
 
@@ -129,7 +129,7 @@ test "the inference hold is lane-scoped: codeinfo held for users, compiler roots
     assert "PLACEMENT_HOLD_EXEMPT_ROOTS" in why , (
         f"codeinfo's hold reason must name the exemption that answers it: {why!r}"
     );
-    for marker in ("/jaclang/jac0core/", "/jaclang/compiler/") {
+    for marker in ("/jaclang/compiler/", ) {
         assert marker in PLACEMENT_HOLD_EXEMPT_ROOTS , (
             f"{marker} is no longer exempt from the hold: "
             f"{PLACEMENT_HOLD_EXEMPT_ROOTS!r}. The compiler's own roots are "

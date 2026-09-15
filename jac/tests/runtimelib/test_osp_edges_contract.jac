@@ -56,15 +56,19 @@ glob SCAN_ROOTS: list[str] = [
              "which pages the src/dst edge rows in seq order"
          ),
          "runtime/impl/runtime.impl.jac": (
-             7,
+             6,
              "mutation bookkeeping and persistence: heavy_edge's dual-write "
              "appends (the store write sits beside them), disconnect's "
-             "stub-populate priming before driver hydration, destroy's and "
+             "stub-populate priming before driver hydration, and "
              "clear_edges' detach iterations, and reset_graph's "
              "persistence-record rewrite (paired with sv_forget_by_id so the "
              "store retracts in step); tier routing asks the anchor's "
              "has_heavy_edges primitive and save's cascade reads through "
              "all_edges so light edges materialize first"
+         ),
+         "runtime/deletion.jac": (
+             1,
+             "destruction detaches recorded heavy edges before retracting the anchor"
          ),
          "runtime/osp_graph_sv.jac": (
              1,

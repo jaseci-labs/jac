@@ -1,5 +1,3 @@
-import from collections.abc { Sequence }
-
 import from jaclang.compiler.frontend.roles {
     ImplOf,
     AccessRole,

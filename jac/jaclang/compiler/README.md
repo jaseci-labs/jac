@@ -83,31 +83,22 @@ contracts.
 
 ## Packaged interfaces and compilation lifetimes
 
-Precompilation requests an analysis interface through the dependency registry
-before generating bytecode through the existing pipeline. Packaging explicitly
-initializes the existing interface codec: the separate bootstrap finalization
-process does not otherwise load it during symbol-only compilation. The registry's
-non-importing readiness check remains safe during compiler bootstrapping.
-The precompiler also activates the existing stub catalog before sealing
-symbol-only selfhost units, so cross-references to conditional stub classes
-resolve through the same authority used by application analysis.
-Payload assembly builds this catalog from staged sources before precompilation
-and bootstrap finalization. Its recursion guard belongs only to catalog
-construction; interface encoding must be able to open the completed catalog.
-Sealing preserves the interface, dependency hashes,
-diagnostic profiles, and placement facts, including for bootstrap modules
-whose executable bytecode is produced by jac0. A bytecode-only cache is
-upgraded through `IfaceRegistry` instead of introducing a second analyzer.
-Normal code generation keeps its existing interface policy.
-Bytecode loads establish their own compilation request, including when a
-type check lazily loads compiler code. The caller's analysis and full-tree
-requirements resume after the bytecode load and do not force interface
-encoding into that executable build.
-An application's analysis request also does not implicitly publish interfaces
-for symbol-only selfhost dependencies covered by the compiler fingerprint.
-Their types remain available on demand; packaging requests the interface
-product explicitly through the same registry. Other bundled libraries keep
-their dependency interfaces because their sources are outside that fingerprint.
+Precompilation uses the ordinary interface registry, stub catalog, and code
+pipeline. The compiler-image builder preserves interface sections, dependency
+hashes, diagnostic profiles, and placement facts alongside executable bytecode.
+Serialization runs in the same compilation context that produced those facts,
+so temporary source paths can be relocated without changing type identities.
+A bytecode-only cache is upgraded through `IfaceRegistry`.
+
+Packaging consumes a verified complete image and its prebuilt catalog; it does
+not compile or mutate the compiler. Catalog construction alone owns the recursion
+guard. Image startup loads compiled modules without source compilation.
+
+Bytecode loads establish their own compilation request. A caller's analysis and
+full-tree requirements resume after loading the executable dependency. Ordinary
+analysis programs own their graphs and interfaces; there is no separate self-host
+program or seed compiler.
+
 Interface preparation, replay, and persistence share one source eligibility
 rule. Typed Python packages and type stubs remain content-fingerprinted
 dependencies; explicitly requesting an interface does not force their lazy
@@ -141,9 +132,9 @@ its handles. Closing a context also retires its region, even for graph objects
 still held by callers. Handle metadata uses a slotted weak reference with a
 shared callback, avoiding a closure and captured cells for every anchor.
 At a completed compilation boundary, `release_compile_state` releases both
-source and stub roots. Activating the stub catalog also retires the private
-selfhost bootstrap closure before application compilation starts; it never
-changes the stub lens of an active application compilation.
+source and stub roots. Compiler execution uses the immutable compiler image;
+application analysis owns its own source and stub roots. Activating a stub
+catalog never changes the stub lens of an active application compilation.
 
 ## Rules
 
@@ -168,12 +159,11 @@ no redeclared signatures.
 `impl/<module>.impl.jac`. A declaration with several keeps them in
 `<module>.impl/<part>.impl.jac`. Nothing else.
 
-**The bootstrap tier constrains imports.** `jaclang/bootstrap_manifest.py`
-lists the modules the seed transpiler (`jac0`) compiles: the frontend, the
-driver, placement, the Python backend and the pass bases. A seed module may
-import a non-seed module only inside a function body, because a hoisted
-import deadlocks bootstrap. That is why many imports in this tree are local
-to the function that uses them; `scripts/check_seed_manifest.py` enforces it.
+**The compiler is built by a pinned prior compiler.** All executable compiler
+modules use the full pipeline and load from a compiled image. There is no seed
+membership or reduced import schedule. Preserve normal architectural layering
+and resolve real import cycles at their owners. See
+[the bootstrap guide](../../bootstrap/README.md).
 
 **Type checking.** `jac check .` runs in CI over the whole repository with
 the exclusions in the root `.jacignore`. Every entry there is a debt with a

@@ -8,6 +8,7 @@ scheduling gate sees when the shared object is genuinely absent. This is
 the suite home of what used to be ci.yml's `test-no-llvm` job.
 """
 
+import from tests.support { COMPILER_SITE }
 import os;
 import subprocess;
 import sys;
@@ -28,7 +29,7 @@ def _run_no_llvm(argv: list[str], work: str) -> tuple[int, str] {
     argv_repr = repr(["jac"] + argv);
     script = f"""
 import sys, runpy
-sys.path.insert(0, {JAC_ROOT!r})
+sys.path.insert(0, {COMPILER_SITE!r})
 sys.argv = {argv_repr}
 try:
     runpy.run_module('jaclang', run_name='__main__', alter_sys=True)
@@ -85,6 +86,7 @@ with tempfile.TemporaryDirectory() as directory:
         loaded = [name for name in sys.modules if name.startswith(heavy)]
         assert not loaded, f'availability probe imported compiler backends: {loaded}'
 """;
+    script = "import sys\nsys.path.insert(0, " + repr(COMPILER_SITE) + ")\n" + script;
     proc = subprocess.run(
         [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
     );

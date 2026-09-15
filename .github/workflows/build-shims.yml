@@ -134,7 +134,7 @@ jobs:
         run: |
           set -euxo pipefail
           FLOOR="${ZIG_TARGET##*gnu.}"
-          SHIM="jaclang/compiler/backends/native/llvm/libjacllvm.so"
+          SHIM="zig-out/lib/libjacllvm.so"
           hi="$(objdump -T "$SHIM" 2>/dev/null | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -V | tail -1 || true)"
           : "${hi:=0}"
           echo "$SHIM -> max GLIBC_$hi (floor $FLOOR)"
@@ -150,7 +150,7 @@ jobs:
         run: |
           set -euxo pipefail
           FLOOR="${ZIG_TARGET##*macos.}"
-          SHIM="jaclang/compiler/backends/native/llvm/libjacllvm.dylib"
+          SHIM="zig-out/lib/libjacllvm.dylib"
           minos="$(otool -l "$SHIM" | awk '/minos/ {print $2; exit}')"
           echo "$SHIM -> minos $minos (floor $FLOOR)"
           if [ "$(printf '%s\n%s\n' "$FLOOR" "$minos" | sort -V | tail -1)" != "$FLOOR" ]; then
@@ -168,7 +168,7 @@ jobs:
           set -euo pipefail
           ASSET="${{ steps.asset.outputs.name }}"
           mkdir -p dist
-          cp jac/jaclang/compiler/backends/native/llvm/libjacllvm.* "dist/$ASSET"
+          cp jac/zig-out/lib/libjacllvm.* "dist/$ASSET"
           ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
           gh release create deps --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "Prebuilt build dependencies (rolling)" \

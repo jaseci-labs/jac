@@ -51,17 +51,13 @@ test "a fully compiled module is collectable after release_compile_closure" {
     );
 }
 
-test "a compiler phase boundary collects both application and selfhost trees" {
+test "a compiler phase boundary collects the application and remains reusable" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    internal = compiler.selfhost.program;
     (_, app_ref, _, _) = _probe(prog);
-    (_, internal_ref, _, _) = _probe(internal);
     compiler.release_compile_state(prog);
     assert app_ref() is None;
-    assert internal_ref() is None;
     assert not prog.source_store.units;
-    assert not internal.source_store.units;
     # Releasing working state must leave the compiler reusable.
     (_, next_ref, _, _) = _probe(prog);
     assert next_ref() is not None;
@@ -93,30 +89,10 @@ def _stub_probe(prog: JacProgram) -> any {
 }
 
 test "a compiler phase boundary releases stub roots as well as source trees" {
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    internal = JacProgram();
-    compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
-    internal._compiler = compiler;
     program = JacProgram();
-    program._compiler = compiler;
-    app_stub = _stub_probe(program);
-    bootstrap_stub = _stub_probe(internal);
-    compiler.release_compile_state(program);
-    assert app_stub() is None , "completed application still owns its stub trees";
-    assert bootstrap_stub() is None , "completed compiler still owns bootstrap stubs";
-}
-
-test "activating the catalog releases the compiler's bootstrap stub trees" {
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    internal = JacProgram();
-    compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
-    internal._compiler = compiler;
-    bootstrap_stub = _stub_probe(internal);
-    assert compiler.ensure_stub_catalog() is not None;
-    gc.collect();
-    assert bootstrap_stub() is None , "the active catalog still retains bootstrap stubs";
+    stub = _stub_probe(program);
+    program._get_compiler().release_compile_state(program);
+    assert stub() is None , "completed application still owns its stub trees";
 }
 
 glob STUB_SRC: str = (
@@ -130,8 +106,8 @@ glob STUB_SRC: str = (
 
 def _stub_modules(prog: JacProgram) -> dict[str, any] {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    out: dict[str, any] = {};
-    for p in [prog, Jac.get_compiler().selfhost.program] {
+    out: dict = {};
+    for p in [prog] {
         for (path, mod) in p.mod.hub.items() {
             if path.endswith(".pyi") {
                 out[path] = weakref.ref(mod);
@@ -154,7 +130,6 @@ test "typeshed never enters the hub and builtins bindings survive a release" {
         "catalog serves them and nothing should parse a stdlib .pyi into a hub"
     );
     prog.release_compile_closure();
-    Jac.get_compiler().selfhost.program.release_compile_closure();
     gc.collect();
     second = prog.compile(
         file_path="stub_retention_probe_2.jac", use_str=STUB_SRC + "# second unit\n"

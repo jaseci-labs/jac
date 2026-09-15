@@ -97,7 +97,7 @@ import from jaclang.compiler.frontend.unitree {
     YieldExpr
 }
 import from jaclang.compiler.frontend.constant { Tokens as Tok, RESERVED_IDENT_NAMES }
-import from jaclang.compiler.frontend.diagnostics { E5041, E5042 }
+import from jaclang.project.diagnostics { E5041, E5042 }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.frontend.roles {
     NameRefRole,

@@ -213,6 +213,14 @@ impl native_unit_demotions(
             prog.scratch.na_dep_units[real_path] = `entry;
         }
     }
+    if `entry is None
+        and (
+            _ud_mid_compile
+            or real_path in prog.scratch.na_dep_inflight
+            or real_path in prog.scratch.na_verdict_resolving
+        ) {
+        return None;
+    }
     if `entry is None or isinstance(`entry, str) or `entry.gen.llvm_ir is None {
         prog.scratch.na_verdict_misses += 1;
         _ud_tree = `entry
@@ -716,7 +724,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         if source_mod_path.endswith(".jac") {
-            full_path = os.path.join(cur_base_dir, source_mod_path);
+            full_path = os.path.normpath(os.path.join(cur_base_dir, source_mod_path));
         } else {
             import from jaclang.compiler.frontend.codeinfo {
                 resolve_native_module as _resolve_na

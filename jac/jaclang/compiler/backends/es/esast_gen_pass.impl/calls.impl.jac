@@ -228,7 +228,7 @@ impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
 }
 
 impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
-    cached_abi = ability_node.gen?.component_call_abi;
+    cached_abi = self._component_call_abis.get(ability_node);
     if isinstance(cached_abi, str) and cached_abi {
         return cached_abi;
     }
@@ -259,7 +259,7 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
             }
         }
     }
-    ability_node.gen.component_call_abi = abi;
+    self._component_call_abis[ability_node] = abi;
     return abi;
 }
 
@@ -592,7 +592,7 @@ impl EsastGenPass._resolve_call_arg_slots(
     func_name: str,
     spread_read_source: (es.Expression | None)
 ) -> list[CallArgSlot] {
-    by_name: dict[str, (es.Expression | es.SpreadElement)] = {};
+    by_name: dict[str, (es.Expression | es.SpreadElement | None)] = {};
     extras: list[CallArgSlot] = [];
     spread_sources: list[es.Expression] = [];
     seen_names: set[str] = set();
@@ -926,7 +926,7 @@ impl EsastGenPass._warn_rpc_callable_params(
         return;
     }
     import re;
-    import from jaclang.compiler.frontend.diagnostics { W6005 }
+    import from jaclang.project.diagnostics { W6005 }
     _sig = ability_node.signature;
     for _plist in [_sig.posonly_params, _sig.params or [], _sig.kwonlyargs] {
         for _p in _plist {
@@ -1009,7 +1009,7 @@ impl EsastGenPass._build_server_forwarder(
     self._inject_runtime_import('__jacCallFunction', jac_node);
     ret_label = self._forwarder_ret_label(ability_node);
     if ret_label {
-        import from jaclang.compiler.frontend.diagnostics { W6009 }
+        import from jaclang.project.diagnostics { W6009 }
         self.emit(W6009, node_override=jac_node, name=func_name, ret=ret_label);
     }
     return self.sync_loc(

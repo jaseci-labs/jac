@@ -147,7 +147,6 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             compile_options = CompileOptions(
                 no_cgen=not bool(opts.get("native_coverage")),
                 native_parity=True,
-                force_target_program=True,
                 iface_ok=True,
                 suppress_codes=list(opts.get("suppress_codes") or []),
                 target_app=str(opts.get("target_app") or ""),
@@ -1394,8 +1393,8 @@ impl precommit(
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
     console.print("[precommit] Running check...");
-    check_ret = check(targets);
-
+    import from jaclang.project.source { read_jacignore_patterns }
+    check_ret = check(targets, ignore=read_jacignore_patterns(git_root));
     fixes_applied = (
         int(stats.get("changed", 0)) > 0
         or (staged and _staged_dirty_files(git_root, rel_targets))
@@ -1692,12 +1691,6 @@ impl `test(
     return rc;
 }
 
-impl gen_parser -> int {
-    import from jaclang.compiler { gen_all_parsers }
-    gen_all_parsers();
-    console.success('Parser generated.');
-    return 0;
-}
 
 impl grammar(output: str = "", strict: bool = False) -> int {
     import from jaclang.compiler.driver.program { JacProgram }
@@ -1714,12 +1707,7 @@ impl grammar(output: str = "", strict: bool = False) -> int {
     prog = JacProgram();
     mod = prog.compile(
         parser_path,
-        options=CompileOptions(
-            symtab_ir_only=True,
-            no_cgen=True,
-            need_full_ast=True,
-            force_target_program=True
-        )
+        options=CompileOptions(symtab_ir_only=True, no_cgen=True, need_full_ast=True,)
     );
     if prog.errors_had {
         console.error("Failed to compile parser module.");
@@ -1801,7 +1789,7 @@ def _iter_jac_files(
 def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
     import os;
     import from jaclang.compiler.driver.bccache { discover_base_file }
-    import from jaclang.jac0core.ext_registry { is_annex }
+    import from jaclang.extensions { is_annex }
     modules = {
         os.path.realpath(f)
         for f in files
@@ -1925,9 +1913,7 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
     }
     mod = prog.compile(
         file_path=path,
-        options=CompileOptions(
-            aot_mode=True, default_codespace="native", force_target_program=True
-        )
+        options=CompileOptions(aot_mode=True, default_codespace="native")
     );
     for err in prog.errors_had {
         console.print(err.pretty_print());

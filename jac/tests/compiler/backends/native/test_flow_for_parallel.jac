@@ -9,6 +9,7 @@ state is deterministic (disjoint element writes), so output is
 byte-identical across thread counts and across gc modes.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

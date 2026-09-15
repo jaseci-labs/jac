@@ -1270,7 +1270,6 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     (iter_val, elem_name, elem_type) = built;
     i8p = ir.IntType(8).as_pointer();
     _loc = "iter_for";
-    is_tuple_target = isinstance(nd.target, uni.TupleVal);
 
     _gen_it_spill: (ir.Value | None) = None;
     if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
@@ -1284,7 +1283,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
 
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
-    if is_tuple_target {
+    if isinstance(nd.target, uni.TupleVal) {
         targets = nd.target.values or [];
         if not isinstance(elem_type, ir.LiteralStructType)
             or len(targets) != len(elem_type.elements)
@@ -1310,7 +1309,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     self.builder.position_at_end(body_bb);
     yielded = self.builder.load(elem_slot, name="iterf.value");
 
-    if is_tuple_target {
+    if isinstance(nd.target, uni.TupleVal) {
         if not self._codegen_tuple_unpack(nd.target.values, yielded, None) {
             return False;
         }

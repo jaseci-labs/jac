@@ -346,3 +346,83 @@ def:pub jc_rc_debug(v: int) -> int {
     }
     return 0;
 }
+
+
+obj JcSyntax {
+    has module: Module | None = None,
+        parser_errors: int = 0,
+        lexer_errors: int = 0,
+        parser_diags: list[SrcDiag] = [],
+        lexer_diags: list[SrcDiag] = [],
+        comments: list[CommentData] = [],
+        status: int = 0;
+}
+
+
+def _snapshot_result(
+    r: &Region,
+    mod: Module,
+    p_errs: int,
+    lex_errs: int,
+    p_diags: list[SrcDiag],
+    lex_diags: list[SrcDiag],
+    comments: list[CommentData],
+    status: int
+) -> JcSyntax {
+    syntax = JcSyntax();
+    syntax.module = mod;
+    syntax.parser_errors = p_errs;
+    syntax.lexer_errors = lex_errs;
+    syntax.parser_diags = p_diags;
+    syntax.lexer_diags = lex_diags;
+    syntax.comments = comments;
+    syntax.status = status;
+    return syntax;
+}
+
+def:pub jc_snapshot_region -> Region {
+    return Region();
+}
+
+def:pub jc_snapshot(src: str, path: str, r: &Region) -> JcSyntax {
+    in r {
+        (mod, p_errs, p_diags, comments, lex_diags, lex_errs) = parse_program(
+            src, path
+        );
+        status = 0;
+        if p_errs == 0 and lex_errs == 0 {
+            i = 0;
+            while i < len(_ANNEX_SRC) and status == 0 {
+                status = _weave(r, mod, _ANNEX_SRC[i], _ANNEX_PATH[i]);
+                i += 1;
+            }
+        }
+        _clear_annexes();
+        return _snapshot_result(
+            &r, mod, p_errs, lex_errs, p_diags, lex_diags, comments, status
+        );
+    }
+}
+
+def:pub jc_snapshot_materialize(syntax: JcSyntax, r: &Region) -> int {
+    _clear_results();
+    if syntax.status != 0 {
+        return syntax.status;
+    }
+    _JC.p_errs = syntax.parser_errors;
+    _JC.lex_errs = syntax.lexer_errors;
+    mod = syntax.module;
+    if mod is None {
+        return 1;
+    }
+    return _materialize(
+        r, mod, syntax.parser_diags, syntax.comments, syntax.lexer_diags
+    );
+}
+
+import from c { def __jac_region_drop(region: int) -> None;  }
+
+def:pub jc_snapshot_close(region: int) -> int {
+    __jac_region_drop(region);
+    return 0;
+}

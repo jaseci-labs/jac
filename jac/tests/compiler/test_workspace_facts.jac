@@ -26,7 +26,7 @@ def workspace(base: Path) {
 
 test "only declared entries have a filesystem app identity" {
     with TemporaryDirectory() as td {
-        base = Path(td);
+        base = Path(td).resolve();
         workspace(base);
         web = app_for_path(str(base / 'web.jac'));
         api = app_for_path(str(base / 'api.jac'));
@@ -46,7 +46,7 @@ test "workspace probes scale with modules within a compilation request" {
         context_app
     }
     with TemporaryDirectory() as td {
-        base = Path(td);
+        base = Path(td).resolve();
         workspace(base);
         path = str(base / 'shared.jac');
         options = CompileOptions(project_root=td, target_app='web');
@@ -87,7 +87,7 @@ test "workspace probes scale with modules within a compilation request" {
 test "application identity scopes observe workspace edits between requests" {
     import from jaclang.compiler.driver.compilation_context { context_app }
     with TemporaryDirectory() as td {
-        base = Path(td);
+        base = Path(td).resolve();
         workspace(base);
         path = str(base / 'shared.jac');
         options = CompileOptions(project_root=td, target_app='web');
@@ -108,7 +108,7 @@ test "application identity scopes observe workspace edits between requests" {
 
 test "a normal import inherits its app and an entry import changes context" {
     with TemporaryDirectory() as td {
-        base = Path(td);
+        base = Path(td).resolve();
         workspace(base);
         program = JacProgram();
         web_options = bind_options(
@@ -136,7 +136,7 @@ test "a normal import inherits its app and an entry import changes context" {
 test "shared syntax produces distinct app facts in either request order" {
     for names in [('web', 'api'), ('api', 'web')] {
         with TemporaryDirectory() as td {
-            base = Path(td);
+            base = Path(td).resolve();
             workspace(base);
             program = JacProgram();
             modules = [];
@@ -163,7 +163,7 @@ test "shared syntax produces distinct app facts in either request order" {
 test "contextual artifacts cannot overwrite another app cache slot" {
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     with TemporaryDirectory() as td {
-        base = Path(td);
+        base = Path(td).resolve();
         workspace(base);
         program = JacProgram();
         slots = [];
@@ -184,7 +184,7 @@ test "placement reuses an untyped dependency tree across app contexts" {
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
     with TemporaryDirectory() as td {
-        base = Path(td);
+        base = Path(td).resolve();
         workspace(base);
         program = JacProgram();
         web = context_program(
@@ -210,7 +210,7 @@ test "placement reuses an untyped dependency tree across app contexts" {
 
 test "implicit projects still identify their entry" {
     with TemporaryDirectory() as td {
-        base = Path(td);
+        base = Path(td).resolve();
         (base / 'jac.toml').write_text('[project]\nname="hello"\nkind="cli"\n');
         (base / 'main.jac').write_text('with entry { print(1); }\n');
         spec = workspace_for_path(str(base / 'main.jac'));
@@ -224,7 +224,7 @@ test "implicit projects still identify their entry" {
 test "application traversal checks imported bodies on cold and warm requests" {
     import from jaclang.compiler.driver.pipeline { compile_application }
     with TemporaryDirectory() as td {
-        base = Path(td);
+        base = Path(td).resolve();
         entry_path = str(base / 'main.jac');
         helper_path = str(base / 'helper.jac');
         (base / 'main.jac').write_text(
@@ -245,6 +245,52 @@ test "application traversal checks imported bodies on cold and warm requests" {
                     and alert.code is not None
                     and alert.code.code == 'E1002' for alert in checked.errors_had
             ) , f'imported body escaped checking on request {iteration}';
+        }
+    }
+}
+
+test "different check entries reuse dependency analysis and observe edits" {
+    with TemporaryDirectory() as td {
+        base = Path(td).resolve();
+        (base / 'jac.toml').write_text('[project]\nname="entry-cache"\n');
+        shared = base / 'shared.jac';
+        shared.write_text('def:pub answer -> int { return 42; }\n');
+        for (name, expected_parses) in [('first', 2), ('second', 1)] {
+            entry_path = str(base / f'{name}.jac');
+            Path(entry_path).write_text(
+                'import from shared { answer }\ndef:pub read -> int { return answer(); }\n'
+            );
+            program = JacProgram();
+            try {
+                program.compile(
+                    entry_path,
+                    options=CompileOptions(
+                        no_cgen=True, iface_ok=True, entry_point=entry_path
+                    )
+                );
+                assert not program.errors_had;
+                assert program.analysis.pass_runs.get('ASTValidationPass', 0)
+                    == expected_parses , str(program.analysis.pass_runs);
+            } finally {
+                program.release_compile_closure();
+            }
+        }
+        shared.write_text('def:pub answer -> str { return "changed"; }\n');
+        entry_path = str(base / 'second.jac');
+        program = JacProgram();
+        try {
+            program.compile(
+                entry_path,
+                options=CompileOptions(
+                    no_cgen=True, iface_ok=True, entry_point=entry_path
+                )
+            );
+            assert any(
+                'Cannot return str, expected int' in error.msg
+                for error in program.errors_had
+            );
+        } finally {
+            program.release_compile_closure();
         }
     }
 }

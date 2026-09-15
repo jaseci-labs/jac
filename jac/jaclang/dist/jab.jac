@@ -6,12 +6,8 @@ import shutil;
 import tarfile;
 
 import from pathlib { Path }
-import from jaclang.jac0core.cache_paths { get_app_cache_dir }
-import from jaclang.jac0core.sealed {
-    MANIFEST_NAME,
-    register_image,
-    image_for_bundle_dir
-}
+import from jaclang.project.cache_paths { get_app_cache_dir }
+import from jaclang.image { MANIFEST_NAME, register_image, image_for_bundle_dir }
 import from jaclang.dist.jab_vendor { activate_vendored }
 
 glob JAB_SUFFIX: str = ".jab";

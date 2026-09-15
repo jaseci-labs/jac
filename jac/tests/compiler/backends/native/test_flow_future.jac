@@ -4,6 +4,7 @@ heap future record joining at `wait`. Parallel in enforced zero-RC and
 atomic-rc builds; cycles, wasm, rc-debug, and any handle whose uses
 are not exactly `wait` keep the sequential erasure."""
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

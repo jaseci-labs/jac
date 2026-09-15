@@ -9,7 +9,7 @@ import from jaclang.compiler.driver.pass_driver { run_pass }
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
-import from .react_jsdom_harness { bun_install, require_client_integration }
+import from .jsdom_harness { bun_install, require_client_integration }
 
 glob HARNESS: str = """
 import {createRoot, createSignal} from 'solid-js';

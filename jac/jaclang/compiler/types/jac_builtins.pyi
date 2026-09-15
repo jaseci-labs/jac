@@ -400,9 +400,9 @@ def testraises(
     *excs: type[BaseException], match: str | None = None
 ) -> RaisesContext: ...
 
-# ── User-facing builtin functions (from jaclang.jac0core.jaclib) ────
+# ── User-facing builtin functions (from jaclang.lib.jaclib) ────
 # These jaclib functions are directly callable by users in Jac code.
-# Codegen emits `from jaclang.jac0core.jaclib import <name>`.
+# Codegen emits `from jaclang.lib.jaclib import <name>`.
 
 def destroy(objs: object) -> None: ...
 

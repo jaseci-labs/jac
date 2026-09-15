@@ -81,7 +81,7 @@ impl JcirGenPass.resolve_stmt_block(
         if not isinstance(i, Semi)
     ];
     ret: list[CgItem] = [self.nod('Pass', [], [])]
-        if (isinstance(nd, Sequence) and not valid_stmts)
+        if (isinstance(nd, runtime_abc.Sequence) and not valid_stmts)
         else self._stmts_with_releases(valid_stmts)
             if (nd is not None)
             else [self.nod('Pass', [], [])];

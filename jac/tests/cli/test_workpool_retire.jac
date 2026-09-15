@@ -73,3 +73,48 @@ test "every item completes when a worker retires after each one" {
         assert after <= before + 4 , f"file descriptors leaked: {before} -> {after}";
     }
 }
+
+test "workers run their own shutdown handlers without running parent handlers" {
+    import atexit;
+    import tempfile;
+    import from pathlib { Path }
+    if not pool_available() {
+        return;
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        parent_marker = Path(directory) / "parent";
+        def parent_cleanup {
+            parent_marker.write_text("parent");
+        }
+        def job(request: dict[(str, any)]) -> any {
+            marker = Path(directory) / str(request["idx"]);
+            atexit.register(marker.write_text, "worker");
+            return {"idx": int(request["idx"])};
+        }
+        atexit.register(parent_cleanup);
+        try {
+            for retire in [None, _retire_always] {
+                _done.clear();
+                _failed.clear();
+                for idx in range(2) {
+                    (Path(directory) / str(idx)).unlink(missing_ok=True);
+                }
+                WorkPool(
+                    items=["first", "second"],
+                    job=job,
+                    on_record=_on_record,
+                    jobs=1,
+                    retire=retire
+                ).run();
+                assert not _failed , str(_failed);
+                assert len(_done) == 2;
+                for idx in range(2) {
+                    assert (Path(directory) / str(idx)).read_text() == "worker";
+                }
+                assert not parent_marker.exists();
+            }
+        } finally {
+            atexit.unregister(parent_cleanup);
+        }
+    }
+}

@@ -3,47 +3,64 @@ import sys;
 import shutil;
 import from pathlib { Path }
 
-def _get_cache_dir -> Path {
-    if sys.platform == "win32" {
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"));
-        return base / "jac" / "cache" / "bytecode";
-    } elif sys.platform == "darwin" {
-        return Path.home() / "Library" / "Caches" / "jac" / "bytecode";
-    } else {
-        xdg = os.environ.get("XDG_CACHE_HOME");
-        base = Path(xdg) if xdg else (Path.home() / ".cache");
-        return base / "jac" / "bytecode";
+"""Run Python with the selected compiler package ahead of the working directory."""
+def compiler_python_command(
+    source: str, *args: str, compiler_root: str | None = None
+) -> list[str] {
+    import jaclang;
+    selected = compiler_root or os.environ.get("JAC_COMPILER_IMAGE");
+    package_root = str(Path(selected).resolve())
+        if selected
+        else str(Path(str(jaclang.__file__)).resolve().parent.parent);
+    if not (Path(package_root) / "jaclang" / "__init__.py").is_file() {
+        raise ValueError(f"No compiler package at {package_root}");
     }
+    boot = (
+        "import sys\nsys.path.insert(0, "
+        + repr(package_root)
+        + ")\n"
+        + "sys.path.extend("
+        + repr(sys.path)
+        + ")\n"
+        + source
+    );
+    return [sys.executable, "-P", "-c", boot, *args];
+}
+
+"""Invoke the selected compiler's CLI without letting a checkout shadow it."""
+def jac_command(*args: str, compiler_root: str | None = None) -> list[str] {
+    return compiler_python_command(
+        "import runpy\nsys.argv[0] = 'jac'\n"
+            + "runpy.run_module('jaclang', run_name='__main__', alter_sys=True)",
+        *args,
+        compiler_root=compiler_root
+    );
 }
 
 def _handle_purge {
     if "-h" in sys.argv or "--help" in sys.argv {
         print("usage: jac purge [-h]\n");
-        print(
-            "Remove all cached Jac files (JIR, bytecode, bootstrap) from the cache directories.\n"
-        );
+        print("Remove global Jac compilation caches (JIR and native artifacts).\n");
         print("Useful when switching branches or when cache becomes corrupted.");
         sys.`exit(0);
     }
 
-    cache_dir = _get_cache_dir();
-    bootstrap_dir = cache_dir.parent / "bootstrap";
-
-    jir_dir = cache_dir.parent / "jir";
+    import from jaclang.project.cache_paths { get_jir_cache_dir }
+    jir_dir = get_jir_cache_dir();
 
     total_files = 0;
     total_size = 0;
     removed_dirs: list[str] = [];
-    for d in [cache_dir, bootstrap_dir, jir_dir] {
+    for d in [jir_dir] {
         if d.exists() {
             total_files += sum(
                 1
-                for f in d.iterdir()
+                for f in d.rglob("*")
                 if f.is_file()
             );
             total_size += sum(
                 f.stat().st_size
-                for f in d.iterdir()
+                for f in d.rglob("*")
                 if f.is_file()
             );
             try {

@@ -15,14 +15,10 @@ or a phase that took no time at all -- because a wall-clock gate on a developer
 laptop is a coin flip, and a coin flip that fails the suite teaches people to
 ignore it.
 
-`against the pinned baseline` is the same corpus measured on this checkout and
-on a snapshot of `BASELINE_REF`, in alternating rounds, so the delta belongs to
-the branch rather than to the machine or to the order the two were run in. The
-snapshot is a `git archive` of the pinned ref plus symlinks to this checkout's
-gitignored build artifacts, cached under the jac cache root and reused across
-runs. It is opt-in (`JAC_TIMING_BASELINE=1`) because the first run bootstraps a
-second compiler from scratch, which takes minutes and belongs in a deliberate
-measurement, never in `jac test`.
+`against an explicit baseline image` measures the same corpus with this
+compiler and the independently built image selected by
+`JAC_TIMING_BASELINE_IMAGE`, in alternating rounds. The comparison is opt-in
+because it requires a compatible baseline image and several full corpus runs.
 
 `the chess AOT binary` is a real GATE, and the only one here. The AOT lane's
 output is the product; if a compiled chess game gets multiples slower, that is
@@ -40,6 +36,7 @@ only survives a failure is not much of a report. Since the runner came in-house
 (#8287) that file is the only durable copy, so read the tables there.
 """
 
+import from tests.support { jac_command }
 import json;
 import os;
 import shutil;
@@ -49,8 +46,8 @@ import tempfile;
 import time;
 
 import from pathlib { Path }
-import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
-import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+import from tests.support { JAC_ROOT, TESTS_DIR }
+import from jaclang.project.cache_paths { get_jir_cache_dir }
 
 glob PROBE: str = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "compile_timing_probe.jac"
@@ -81,33 +78,6 @@ glob CORPUS: list[str] = [
          "jaclang/compiler/passes/uni_pass.jac",
          "jaclang/compiler/frontend/constant.jac",
          "examples/chess/chess.jac"
-     ];
-
-"""The ref this branch's compile cost is measured against.
-
-Pre-cutover `main`: `f76ca633f`, the type-checker coverage and the pooled
-native seal (#8280), which is the commit this branch forked from. The
-baseline tree therefore runs the retired Python-AST emitter and this tree
-runs the container, so the delta is exactly the cost of the codegen
-change and nothing that landed upstream alongside it. Move it whenever
-the branch rebases, and say so in the commit -- a moved baseline silently
-reinterprets every number here.
-"""
-glob BASELINE_REF: str = "f76ca633fa5f82038a0629325d5b8f9df6258e9d";
-
-"""Gitignored build artifacts a fresh checkout of the baseline cannot produce.
-
-Symlinked into the snapshot from this checkout. Without the typeshed stdlib
-every compile dies with a scheduling error for the missing `inference`
-provider, and without the LLVM shared object the native passes cannot load at
-all -- either one would be measured as "the baseline is broken", not as a
-timing.
-"""
-glob SNAPSHOT_LINKS: list[str] = [
-         "jaclang/vendor/typeshed/stdlib",
-         "jaclang/compiler/backends/native/llvm/libjacllvm.so",
-         ".pbs-build",
-         ".llvm-build"
      ];
 
 """What a `-b 1` game of AOT-compiled chess costs, and how far it may drift.
@@ -148,12 +118,9 @@ def publish(name: str, text: str) {
     (out_dir / f"{name}.txt").write_text(text + "\n", encoding="utf-8");
 }
 
-"""Keep the probe's imports and native tooling on its selected compiler tree."""
-def _probe_env(cache: str, tree_dir: str) -> dict[str, str] {
-    env: dict[str, str] = dict(os.environ);
-    env.pop("JAC_NO_DEV_SOURCE", None);
-    env["JAC_DEV_SOURCE"] = os.path.abspath(tree_dir);
-    env["JAC_NO_PRECOMPILE"] = "1";
+"""Keep probe caches separate while the caller selects the compiler image."""
+def _probe_env(cache: str) -> dict[str, str] {
+    env = dict(os.environ);
     env["XDG_CACHE_HOME"] = cache;
     return env;
 }
@@ -163,15 +130,21 @@ def _probe_env(cache: str, tree_dir: str) -> dict[str, str] {
 Memoized per `(tree, round)` so the paired comparison can ask for a specific
 round and the HEAD-only report can share round zero with it.
 """
-def run_probe(tree_dir: str, cache: str, round_no: int = 0) -> list[dict[str, any]] {
-    key = f"{os.path.abspath(tree_dir)}#{round_no}";
+def run_probe(
+    tree_dir: str, cache: str, round_no: int = 0, image: str = ""
+) -> list[dict] {
+    key = f"{os.path.abspath(tree_dir)}#{image}#{round_no}";
+    env = _probe_env(cache);
+    if image {
+        env["JAC_COMPILER_IMAGE"] = image;
+    }
     if key in _PROBE_CACHE {
         return _PROBE_CACHE[key];
     }
     proc = subprocess.run(
-        jac_command("run", PROBE, compiler_root=tree_dir),
+        jac_command("run", PROBE, compiler_root=image or None),
         cwd=tree_dir,
-        env=_probe_env(cache, tree_dir),
+        env=env,
         capture_output=True,
         text=True,
         timeout=1800
@@ -216,79 +189,14 @@ duly reported HEAD faster on every phase of every module -- a result shaped
 like the ordering, not like the branch. Alternating and keeping each phase's
 minimum across rounds removes the monotonic half of that bias.
 """
-def paired_rows(
-    base_tree: str, base_cache: str
-) -> tuple[list[dict[str, any]], list[dict[str, any]]] {
-    base_runs: list[list[dict[str, any]]] = [];
-    head_runs: list[list[dict[str, any]]] = [];
+def paired_rows(base_image: str, base_cache: str) -> tuple[list[dict], list[dict]] {
+    base_runs: list[list[dict]] = [];
+    head_runs: list[list[dict]] = [];
     for round_no in range(PAIRED_ROUNDS) {
-        base_runs.append(run_probe(base_tree, base_cache, round_no));
+        base_runs.append(run_probe(JAC_ROOT, base_cache, round_no, base_image));
         head_runs.append(run_probe(JAC_ROOT, head_cache(), round_no));
     }
     return (merge_runs(base_runs), merge_runs(head_runs));
-}
-
-"""Materialize the pinned baseline as a compilable tree, or explain why not.
-
-`git archive` rather than `git worktree add`: the snapshot is a read-only
-measurement subject that must not register itself in the repo the suite is
-running out of. Cached by ref under the jac cache root, so only the first run
-pays the extraction and the baseline compiler's bootstrap.
-"""
-def baseline_tree -> str {
-    dest = get_jir_cache_dir().parent / "timing-baseline" / BASELINE_REF[:12];
-    tree = dest / "jac";
-    if (tree / "jac.toml").is_file() {
-        return str(tree);
-    }
-    if shutil.which("git") is None {
-        testskip("git is not on PATH; cannot materialize the baseline ref");
-    }
-    known = subprocess.run(
-        ["git", "-C", REPO_ROOT, "cat-file", "-e", BASELINE_REF + "^{commit}"],
-        capture_output=True,
-        text=True
-    );
-    if known.returncode != 0 {
-        testskip(
-            f"baseline ref {BASELINE_REF[:12]} is not in this clone; fetch it "
-            "(a shallow or fork clone may not carry it) to run the comparison"
-        );
-    }
-    shutil.rmtree(dest, ignore_errors=True);
-    dest.mkdir(parents=True, exist_ok=True);
-    archive = subprocess.run(
-        ["git", "-C", REPO_ROOT, "archive", BASELINE_REF, "jac"],
-        capture_output=True,
-        timeout=600
-    );
-    assert archive.returncode == 0 , (
-        f"git archive of {BASELINE_REF[:12]} failed: "
-        f"{(archive.stderr or b'').decode('utf-8', 'replace')[-800:]}"
-    );
-    extract = subprocess.run(
-        ["tar", "-x", "-C", str(dest)],
-        input=archive.stdout,
-        capture_output=True,
-        timeout=600
-    );
-    assert extract.returncode == 0 , (
-        f"unpacking the baseline archive failed: "
-        f"{(extract.stderr or b'').decode('utf-8', 'replace')[-800:]}"
-    );
-    for rel in SNAPSHOT_LINKS {
-        live = Path(JAC_ROOT) / rel;
-        if not live.exists() {
-            continue;
-        }
-        link = tree / rel;
-        link.parent.mkdir(parents=True, exist_ok=True);
-        if link.is_symlink() or link.exists() {
-            continue;
-        }
-        os.symlink(str(live.resolve()), str(link));
-    }
-    return str(tree);
 }
 
 """Format one tree's rows as a fixed-width table, phase columns in pipeline order."""
@@ -345,31 +253,29 @@ def delta_table(baseline: list[dict[str, any]], current: list[dict[str, any]]) -
     return "\n".join(out);
 }
 
-test "timing subprocess selects each requested compiler checkout" {
+test "timing subprocess selects each requested compiler image" {
+    import from jaclang.image { _jaclang_image }
+    import from unittest.mock { patch }
+    image = _jaclang_image();
+    assert image is not None;
     with tempfile.TemporaryDirectory() as tmp {
-        for name in ("baseline", "head") {
-            tree = Path(tmp) / name;
-            package = tree / "jaclang";
-            package.mkdir(parents=True);
-            bootstrap = package / "jac0core";
-            bootstrap.mkdir();
-            shutil.copyfile(
-                str(Path(JAC_ROOT) / "jaclang" / "jac0core" / "ext_registry.py"),
-                str(bootstrap / "ext_registry.py")
-            );
-            (package / "__init__.py").write_text("");
-            (package / "__main__.py").write_text(
-                "import json, os, sys\nfrom pathlib import Path\n"
-                    + "print('TIMING_ROW ' + json.dumps({"
-                    + "'compiler': str(Path(__file__).resolve().parent.parent),"
-                    + "'dev_source': os.environ.get('JAC_DEV_SOURCE'),"
-                    + "'args': sys.argv[1:]}))\n"
-            );
-            rows = run_probe(str(tree), str(Path(tmp) / "cache"));
-            assert len(rows) == 1;
-            assert rows[0]["compiler"] == str(tree);
-            assert rows[0]["dev_source"] == str(tree);
-            assert rows[0]["args"] == ["run", PROBE];
+        probe = Path(tmp) / "selection.jac";
+        probe.write_text(
+            "import json; import jaclang; import from pathlib { Path }\n"
+                + 'with entry { print("TIMING_ROW " + json.dumps({"compiler": '
+                + "str(Path(jaclang.__file__).resolve().parent.parent)})); }\n"
+        );
+        with patch.dict(globals(), {"PROBE": str(probe)}) {
+            for name in ("baseline", "head") {
+                tree = Path(tmp) / name;
+                shutil.copytree(image.pkg_dir, tree / "jaclang");
+                shutil.copyfile(
+                    image.pkg_dir.parent / "_jac_finder.py", tree / "_jac_finder.py"
+                );
+                rows = run_probe(str(tree), str(Path(tmp) / "cache"), image=str(tree));
+                assert len(rows) == 1;
+                assert rows[0]["compiler"] == str(tree.resolve());
+            }
         }
     }
 }
@@ -408,25 +314,24 @@ test "warm-compile phase timings for the corpus" {
     }
 }
 
-test "warm-compile phase timings against the pinned baseline" {
-    if os.environ.get("JAC_TIMING_BASELINE", "") != "1" {
+test "warm-compile phase timings against an explicit baseline image" {
+    image = os.environ.get("JAC_TIMING_BASELINE_IMAGE", "");
+    if not image {
         testskip(
-            "set JAC_TIMING_BASELINE=1 to measure against "
-            f"{BASELINE_REF[:12]}; the first run extracts that ref and "
-            "bootstraps its compiler, which takes minutes"
+            "set JAC_TIMING_BASELINE_IMAGE to an independently built compiler image"
         );
     }
-    tree = baseline_tree();
-    cache = str(Path(tree).parent / "cache");
-    (base_rows, head_rows) = paired_rows(tree, cache);
+    assert (Path(image) / "jaclang/_precompiled/MANIFEST.json").is_file();
+    cache = str(get_jir_cache_dir().parent / "timing-baseline");
+    (base_rows, head_rows) = paired_rows(image, cache);
     publish(
         "phase-timings-baseline",
         "\n".join(
             [
                 f"{PAIRED_ROUNDS} alternating round(s) per tree, per-phase minimum",
-                phase_table(f"baseline {BASELINE_REF[:12]}:", base_rows),
+                phase_table(f"baseline {image}:", base_rows),
                 phase_table("HEAD:", head_rows),
-                f"delta (HEAD vs {BASELINE_REF[:12]}, + is slower):",
+                f"delta (HEAD vs {image}, + is slower):",
                 delta_table(base_rows, head_rows)
             ]
         )
@@ -439,7 +344,7 @@ test "warm-compile phase timings against the pinned baseline" {
     );
     for r in base_rows {
         assert r["errors"] == 0 , (
-            f"{r['rel']} did not compile clean at {BASELINE_REF[:12]}; the "
+            f"{r['rel']} did not compile clean at {image}; the "
             "delta above compares against a failure"
         );
     }
@@ -449,7 +354,7 @@ test "the chess AOT binary stays inside its recorded run envelope" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "chess");
         comp = subprocess.run(
-            jac_command("build", "--native", CHESS, "-o", out_bin),
+            jac_command() + ["build", "--native", CHESS, "-o", out_bin],
             capture_output=True,
             text=True,
             timeout=1800
@@ -517,12 +422,8 @@ glob PRECOMPILE_GATE: str = os.path.join(
      GATE_COLD_MAX_RUNS: int = 760,
      GATE_COLD_MAX_RATIO: float = 0.6;
 
-def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], float] {
-    import from jaclang.dist.precompile_bytecode {
-        precompile_unit,
-        find_jac_files,
-        _unit_program
-    }
+def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
+    import from jaclang.dist.precompile_bytecode { precompile_unit, find_jac_files }
     import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.dist.precompile_bytecode { precompile_context }
@@ -530,6 +431,7 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
+    prog = JacProgram();
     files = find_jac_files(pkg);
     for f in files {
         cp = artifact_cache_path(f, precompile_context(f, pkg, JacProgram()));
@@ -546,7 +448,8 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
     started = time.perf_counter();
     try {
         for f in files {
-            assert precompile_unit(f, pkg, False, collect=False) is not None , f"{f} did not precompile";
+            assert precompile_unit(f, pkg, False, collect=False, program=prog)
+                is not None , f"{f} did not precompile";
         }
     } finally {
         set_effective_default_codespace(prior_default);
@@ -555,7 +458,6 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
         }
     }
     wall = time.perf_counter() - started;
-    prog: any = _unit_program[0] if _unit_program else None;
     runs = sum(prog.analysis.pass_runs.values()) if prog is not None else 0;
     events = dict(prog.analysis.cache_events) if prog is not None else {};
     if prog is not None {
@@ -568,15 +470,13 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
 }
 
 test "the cold precompile path stays inside its work envelope" {
-    import from jaclang.dist.precompile_bytecode {
-        precompile_unit,
-        find_jac_files,
-        _unit_program
-    }
+    import from jaclang.dist.precompile_bytecode { precompile_unit, find_jac_files }
     import from jaclang.compiler.frontend.codeinfo {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
+    import from jaclang.compiler.driver.program { JacProgram }
+    prog = JacProgram();
     with tempfile.TemporaryDirectory() as tmp {
         pkg = os.path.join(tmp, "precompile_gate");
         shutil.copytree(
@@ -590,14 +490,14 @@ test "the cold precompile path stays inside its work envelope" {
         started = time.perf_counter();
         try {
             for f in find_jac_files(pkg) {
-                assert precompile_unit(f, pkg, False, collect=False) is not None;
+                assert precompile_unit(f, pkg, False, collect=False, program=prog)
+                    is not None;
             }
         } finally {
             set_effective_default_codespace(prior_default);
         }
         wall_warm = time.perf_counter() - started;
-        prog: any = _unit_program[0] if _unit_program else None;
-        warm_runs = sum(prog.analysis.pass_runs.values()) if prog is not None else 0;
+        warm_runs = sum(prog.analysis.pass_runs.values());
         publish(
             "precompile-gate",
             f"precompile gate x12 units: no-cache {no_cache} runs {wall_none:.2f}s, "

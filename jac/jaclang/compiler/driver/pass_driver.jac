@@ -1,7 +1,6 @@
 import atexit;
 import os;
 import sys;
-import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
 import from jaclang.compiler.passes.transform { Alert, DiagnosticPolicy }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -98,6 +97,8 @@ def deliver_alerts(
     policy: (DiagnosticPolicy | None) = None
 ) {
     pol = policy if policy is not None else build_diagnostic_policy(prog);
+    accepted_errors: list[Alert] = [];
+    accepted_warnings: list[Alert] = [];
     for alrt in errors {
         if alrt.code is not None and pol.is_suppressed(alrt.code, alrt.loc) {
             continue;
@@ -107,7 +108,7 @@ def deliver_alerts(
             and _alert_in_internal_stub(str(alrt.loc.mod_path or "")) {
             continue;
         }
-        prog.errors_had.append(alrt);
+        accepted_errors.append(alrt);
     }
     for alrt in warnings {
         if alrt.code is not None and pol.is_suppressed(alrt.code, alrt.loc) {
@@ -117,8 +118,9 @@ def deliver_alerts(
             and _alert_in_internal_stub(str(alrt.loc.mod_path or "")) {
             continue;
         }
-        prog.warnings_had.append(alrt);
+        accepted_warnings.append(alrt);
     }
+    prog.diags.extend(accepted_errors, accepted_warnings);
 }
 
 def run_pass(
@@ -188,25 +190,6 @@ def run_pass(
     }
     return inst;
 }
-
-obj _SetupProgress {
-    has _banner_shown: bool = False,
-        _compile_count: int = 0,
-        _seen_files: set[str] postinit,
-        _jaclang_root: (str | None) = None,
-        _first_compile_at: (float | None) = None;
-
-    def postinit -> None;
-    def _get_jaclang_root -> str;
-    def _atexit_handler -> None;
-    def on_internal_compile(file_path: str) -> None;
-    def _precompile_limit -> int;
-    def _halt_at_limit -> None;
-
-    has is_active: bool { getter; }
-}
-
-glob setup_progress = _SetupProgress();
 
 obj CompileProgress {
     has _listeners: list[Callable[[str], None]] postinit,

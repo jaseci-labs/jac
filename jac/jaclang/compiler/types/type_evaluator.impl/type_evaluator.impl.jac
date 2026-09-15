@@ -15,7 +15,15 @@ impl TypeEvaluator._walk_compr_clauses(comprs: list[InnerCompr]) -> None {
 impl TypeEvaluator._null_ok_attr_type(
     expr: AtomTrailer, base_type: (TypeBase | None) = None
 ) -> TypeBase {
-    if base_type is not None and self.is_any_type(base_type) {
+    if base_type is not None
+        and (
+            self.is_any_type(base_type)
+            or (
+                isinstance(base_type, ClassType)
+                and base_type.is_class_instance()
+                and base_type.is_builtin("object")
+            )
+        ) {
         expr.right.type = AnyType();
         return expr.right.type;
     }
@@ -906,7 +914,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     if self.is_any_type(lookup_type)
                         and self.prefetch.any_class is not None {
-                        return self.prefetch.any_class;
+                        return self._convert_to_instance(self.prefetch.any_class);
                     }
                     return UnknownType();
                 } elif base_type.is_class_instance() {
@@ -1097,7 +1105,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     if self.is_any_type(base_type)
                         and self.prefetch.any_class is not None {
-                        return self.prefetch.any_class;
+                        return self._convert_to_instance(self.prefetch.any_class);
                     }
                     return UnknownType();
                 } elif isinstance(base_type, EnumMemberType) {
@@ -1492,7 +1500,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
                 if base_type.is_any_instance()
                     and self.prefetch.any_class is not None {
-                    return self.prefetch.any_class;
+                    return self._convert_to_instance(self.prefetch.any_class);
                 }
                 if isinstance(base_type, ClassType)
                     and base_type.is_instantiable_class() {
@@ -2339,7 +2347,7 @@ impl TypeEvaluator._widen_literal_for_declaration(ty: TypeBase) -> TypeBase {
     }
     if isinstance(ty, UnionType) and ty.types is not None {
         widened = [self._widen_literal_for_declaration(member) for member in ty.types];
-        return UnionType(types=widened);
+        return UnionType(types=widened, flags=ty.flags);
     }
     return ty;
 }
@@ -2448,6 +2456,10 @@ impl TypeEvaluator._get_type_of_symbol_decl(
         case Name():
             if node_.type is not None {
                 return node_.type;
+            }
+
+            if isinstance(node_.parent, ExprAsItem) and node_.parent.alias is node_ {
+                return self.get_type_of_context_item(node_.parent);
             }
 
             if enum_member_type := self._get_enum_member_type_for_decl(node_) {
@@ -2663,8 +2675,8 @@ impl TypeEvaluator._get_type_of_symbol_decl(
 
                 if self.is_any_type(collection_type)
                     and self.prefetch.any_class is not None {
-                    node_.type = self.prefetch.any_class;
-                    return self.prefetch.any_class;
+                    node_.type = self._convert_to_instance(self.prefetch.any_class);
+                    return self._convert_to_instance(self.prefetch.any_class);
                 }
 
                 if isinstance(collection_type, AnyType) {
@@ -3103,6 +3115,22 @@ impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
     shared._mro_sig = mro_signature(cls);
 }
 
+impl TypeEvaluator.get_type_of_context_item(item: ExprAsItem) -> TypeBase {
+    expr_type = self.get_type_of_expression(item.expr);
+    if isinstance(expr_type, UnknownType) {
+        return expr_type;
+    }
+    stmt = item.find_parent_of_type(WithStmt);
+    is_async = stmt is not None and stmt.is_async;
+    enter_ret = self.get_type_of_magic_method_call(
+        expr_type, "__aenter__" if is_async else "__enter__", [], item.expr
+    );
+    if enter_ret is None {
+        return expr_type;
+    }
+    return self._unwrap_awaitable_type(enter_ret, item.expr) if is_async else enter_ret;
+}
+
 impl TypeEvaluator.get_type_of_magic_method_call(
     obj_type: TypeBase,
     method_name: str,
@@ -3381,6 +3409,19 @@ impl TypeEvaluator.assign_type(
 
     if isinstance(src_type, NeverType) {
         return True;
+    }
+
+    if isinstance(dest_type, UnionType)
+        and dest_type.is_instantiable()
+        and self.prefetch.union_type_class is not None {
+        dest_type = self.prefetch.union_type_class.clone_as_instance();
+    }
+    if isinstance(src_type, UnionType)
+        and src_type.is_instantiable()
+        and self.prefetch.union_type_class is not None {
+        return self.assign_type(
+            self.prefetch.union_type_class.clone_as_instance(), dest_type, strict
+        );
     }
 
     if self.is_explicit_any(dest_type) {
@@ -4016,6 +4057,7 @@ impl TypeEvaluator._prefetch_types{
     }
 
     self.prefetch.none_type_class = get_types_class("NoneType");
+    self.prefetch.union_type_class = get_types_class("UnionType");
     self.prefetch.object_class = get_builtin_class("object");
     self.prefetch.type_class = get_builtin_class("type");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
@@ -4086,7 +4128,7 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
 
     resolved_path = str(Path(path).resolve());
     compiler = self.program._get_compiler();
-    target_program = compiler.selfhost.resolve(resolved_path, self.program);
+    target_program = self.program;
     target_hub = target_program.mod.hub;
 
     if resolved_path in self.program.mod.hub {
@@ -5239,13 +5281,6 @@ impl TypeEvaluator._find_predicate_for(
 impl TypeEvaluator._narrowing_equivalent(
     left: NarrowingPredicate, right: NarrowingPredicate
 ) -> bool {
-    """Report whether two predicates narrow a target identically.
-
-    A conjunction's false edge is `not A or not B`, so it may only narrow
-    when every conjunct negates to the same thing. Mutual `isinstance`
-    matching is the equivalence used: it holds for the same class and for two
-    references to it that were converted to instances separately.
-    """;
     if left is right {
         return True;
     }
@@ -5334,16 +5369,6 @@ impl TypeEvaluator._apply_narrowing(
 impl TypeEvaluator._specialize_narrow_from_base(
     base_type: TypeBase, narrow_type: TypeBase
 ) -> TypeBase {
-    """Carry a member's type arguments onto the narrow target it sits above.
-
-    A member the target derives from is narrowed to the bare target class,
-    which loses the member's arguments -- `isinstance(x, list)` over an
-    `Expr | Sequence[T]` yields `list`, dropping `T`. The container protocols
-    are exactly that shape (`list` is a `Sequence`, `dict` a `Mapping`), and
-    a value that is both a `Sequence[T]` and a `list` is a `list[T]`, so the
-    member's arguments carry over when the target declares the same number of
-    parameters.
-    """;
     if not isinstance(narrow_type, ClassType)
         or (narrow_type.private.type_args or []) {
         return narrow_type;
@@ -5375,13 +5400,6 @@ impl TypeEvaluator._specialize_narrow_from_base(
 impl TypeEvaluator._narrow_type_to(
     base_type: TypeBase, narrow_type: TypeBase
 ) -> TypeBase | None {
-    """Narrow a declared type against an isinstance filter, member by member.
-
-    Narrowing the union as a whole threw the declared type away whenever no
-    member matched: `isinstance(x, Marker)` on an `x: Carrier | None` became
-    a bare `Marker` and every `Carrier` member went missing. Each member is
-    now narrowed on its own and the surviving results are re-joined.
-    """;
     members = (
         base_type.types
             if isinstance(base_type, UnionType) and base_type.types
@@ -5403,14 +5421,6 @@ impl TypeEvaluator._narrow_type_to(
 impl TypeEvaluator._narrow_member_to(
     member: TypeBase, narrow_type: TypeBase
 ) -> TypeBase | None {
-    """Narrow one declared member against the filter, or a tuple of filters.
-
-    A tuple filter is a disjunction, so the member is narrowed against every
-    alternative it is related to and the results joined. A member related to
-    none of them drops: the value cannot be that member and pass the guard,
-    unless it is an instance of a class deriving from both, which this
-    checker does not model.
-    """;
     if isinstance(narrow_type, UnionType) and narrow_type.types {
         related: list[TypeBase] = [];
         for t in narrow_type.types {
@@ -5735,14 +5745,6 @@ impl TypeEvaluator._isinstance_class_alternatives(
 impl TypeEvaluator._create_type_guard_type(
     name: str, guarded: TypeBase | None
 ) -> TypeBase {
-    """Model `TypeIs[T]`/`TypeGuard[T]` as a bool that carries the guarded type.
-
-    Both forms are `bool` at runtime and both PEPs require the predicate to
-    return one, so the synthesized class derives from `bool`: a predicate's
-    result stays usable anywhere a bool is, and a plain `bool` return
-    satisfies the annotation. `T` rides along in the type arguments, which is
-    where `_extract_type_guard_info` reads it back out at the call site.
-    """;
     if not self.prefetch or self.prefetch.bool_class is None {
         return UnknownType();
     }
@@ -5754,14 +5756,6 @@ impl TypeEvaluator._create_type_guard_type(
 }
 
 impl TypeEvaluator._unwrap_type_guard_return(ty: TypeBase) -> TypeBase {
-    """Give back the bool a `TypeIs[T]`/`TypeGuard[T]` annotation stands for.
-
-    Both PEPs say the predicate returns a bool; the guarded type is a claim
-    about the argument, not about the value handed back. Keeping the special
-    form out of every declared return type is what lets the rest of the
-    compiler -- assignability, the layout pass, the native lane -- go on
-    seeing an ordinary bool. `FunctionType.type_guard` carries the claim.
-    """;
     if self._type_guard_form_of(ty) is None {
         return ty;
     }
@@ -5787,13 +5781,6 @@ impl TypeEvaluator._type_guard_form_of(ty: TypeBase) -> str | None {
 impl TypeEvaluator._extract_type_guard_info(
     condition: Expr
 ) -> tuple[str, TypeBase, bool] | None {
-    """Read a user-defined type predicate off a call in a condition.
-
-    The guarded argument is the one that binds the callee's first parameter
-    after any implicit receiver, which is the parameter both PEPs narrow. A
-    call that spells the receiver out takes the same route the argument
-    matcher does, so `Cls.pred(inst, x)` narrows `x` and not `inst`.
-    """;
     if not isinstance(condition, FuncCall) or not condition.params {
         return None;
     }
@@ -5912,11 +5899,16 @@ impl TypeEvaluator._is_callable_type(t: TypeBase) -> bool {
 }
 
 impl TypeEvaluator._filter_union_to_callables(union_type: TypeBase) -> TypeBase {
+    if isinstance(union_type, ClassType)
+        and union_type.is_builtin("object")
+        and union_type.is_class_instance() {
+        return create_callable_type([], AnyType(), is_gradual=True);
+    }
     if isinstance(union_type, UnionType) and union_type.types {
         callables: list[TypeBase] = [
-            t
+            narrowed
             for t in union_type.types
-            if self._is_callable_type(t)
+            if not isinstance(narrowed := self._filter_union_to_callables(t), NeverType)
         ];
         if len(callables) == 0 {
             return NeverType();

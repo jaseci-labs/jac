@@ -11,6 +11,7 @@ O(n^2) dict explodes far past the fixture's generous bound. The assertion lives
 inside the fixture, so a regression makes the host binary exit non-zero.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

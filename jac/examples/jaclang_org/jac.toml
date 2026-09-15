@@ -41,8 +41,6 @@ entry-point = "core.social_graph"
 kind = "service"
 entry-point = "core.scoring_service"
 
-[dev]
-jaclang_source = "../.."
 
 [precommit]
 typecheck = true

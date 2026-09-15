@@ -19,6 +19,7 @@ mode is a segfault, which has to fail the test rather than take the runner
 down with it.
 """
 
+import from tests.support { jac_command }
 import ctypes;
 import os;
 import subprocess;

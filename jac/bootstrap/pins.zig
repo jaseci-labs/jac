@@ -7,6 +7,27 @@ const std = @import("std");
 
 pub const PINS_PATH = "bootstrap/pins.json";
 
+pub const JacRelease = struct {
+    version: []const u8,
+    url: []const u8,
+    sha256: []const u8,
+};
+
+/// The compiler runs on the build host, independently of the target runtime.
+pub fn jacRelease(b: *std.Build, host: []const u8) ?JacRelease {
+    const jac = field(root(b), "jac");
+    const artifact = field(field(jac, "artifacts"), host) orelse return null;
+    const version = string(jac, "version");
+    return .{
+        .version = version,
+        .url = b.fmt("{s}/v{s}/jac-{s}-{s}", .{ string(jac, "release_base"), version, version, host }),
+        .sha256 = switch (artifact) {
+            .string => |s| s,
+            else => std.debug.panic("{s}: jac.artifacts.{s} must be a SHA256 string", .{ PINS_PATH, host }),
+        },
+    };
+}
+
 /// One pinned LLVM slice. `dirname` is the release's top-level dir (also the
 /// -Dllvm-dir basename under .llvm-build); `upstream` decides the macOS shim
 /// link shape (ThinLTO bitcode + libLTO + external deps for a repackaged
@@ -82,4 +103,22 @@ pub fn pyMinor(b: *std.Build) []const u8 {
     const first = std.mem.indexOfScalar(u8, patch, '.') orelse return patch;
     const second = std.mem.indexOfScalarPos(u8, patch, first + 1, '.') orelse return patch;
     return patch[0..second];
+}
+
+/// Map a target to the os-arch token the build-python subcommand understands,
+/// or null for targets we don't ship a binary for yet.
+pub fn osArchString(t: std.Target) ?[]const u8 {
+    return switch (t.os.tag) {
+        .macos => switch (t.cpu.arch) {
+            .aarch64 => "macos-aarch64",
+            .x86_64 => "macos-x86_64",
+            else => null,
+        },
+        .linux => switch (t.cpu.arch) {
+            .x86_64 => "linux-x86_64",
+            .aarch64 => "linux-aarch64",
+            else => null,
+        },
+        else => null,
+    };
 }

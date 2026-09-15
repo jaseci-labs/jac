@@ -19,6 +19,7 @@ hard exit); a single serving module present after the check is a failure,
 regardless of any try/except swallowing on the way there.
 """
 
+import from tests.support { COMPILER_SITE }
 import os;
 import subprocess;
 import sys;
@@ -58,8 +59,8 @@ scan_and_exit(0)
 
 
 def _check_probe(fixture: str) -> tuple[int, str] {
-    env: dict[str, str] = dict(os.environ);
-    env["PROBE_JAC_ROOT"] = JAC_ROOT;
+    env = dict(os.environ);
+    env["PROBE_JAC_ROOT"] = COMPILER_SITE;
     env["PROBE_FIXTURE"] = str((Path(FIXTURES) / fixture).resolve());
     proc = subprocess.run(
         [sys.executable, "-c", _PROBE_SCRIPT],

@@ -13,6 +13,7 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
+import from unittest.mock { patch }
 import from jaclang.dist.jab { jab_app_meta, materialize_jab }
 import from jaclang.dist.seal { build_jab }
 import from jaclang.project.config { JacConfig, set_config }
@@ -62,7 +63,10 @@ test "build_jab seals the named app and its manifest names it" {
     try {
         config = JacConfig.load(Path(ws) / "jac.toml");
         out = Path(ws) / "out" / "cli.jab";
-        built = build_jab(config, out, app="cli", bake_client=False);
+        with patch.dict(os.environ) {
+            os.environ.pop("JAC_COMPILER_IMAGE", None);
+            built = build_jab(config, out, app="cli", bake_client=False);
+        }
         assert built == out and out.is_file() , built;
         img = materialize_jab(str(out));
         meta = jab_app_meta(img);

@@ -5,7 +5,6 @@ comptime import from jaclang.cli.commands.analysis {
     SPEC_CHECK,
     SPEC_EXPLAIN,
     SPEC_FORMAT,
-    SPEC_GEN_PARSER,
     SPEC_PRECOMMIT,
     SPEC_TEST
 }
@@ -109,7 +108,6 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_EXPLAIN),
          _route(SPEC_FIX),
          _route(SPEC_FORMAT),
-         _route(SPEC_GEN_PARSER),
          _route(SPEC_GUIDE),
          _route(SPEC_INSTALL),
          _route(SPEC_LSP),

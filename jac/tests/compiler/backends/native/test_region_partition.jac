@@ -7,6 +7,7 @@ children defers teardown to the last reabsorb (zombie parent). Output is
 byte-identical across gc modes.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

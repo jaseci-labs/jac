@@ -1,6 +1,5 @@
 import os;
 import json;
-import from collections.abc { Callable }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
@@ -24,8 +23,7 @@ glob PLACEMENT_SCHEMA: int = 1,
      PLACEMENT_HOLD_EXEMPT_ROOTS: tuple[str, ...] = (
          "/jaclang/compiler/",
          "/jaclang/runtime/",
-         "/jaclang/lib/",
-         "/jaclang/jac0core/"
+         "/jaclang/lib/"
      );
 
 obj ElementSummary {

@@ -1,8 +1,7 @@
 """One binary, several compiler trees, one cache: the slots must not collide.
 
-The dev loop picks a compiler source per process from the nearest `jac.toml`,
-so two checkouts can compile the same file concurrently through the same
-binary. The module cache keyed only the source path, and the compiler identity
+The dev loop selects an explicit compiler image per process, so two
+checkouts can compile the same file concurrently through the same binary. The module cache keyed only the source path, and the compiler identity
 lived in the JIR's ENVKEY -- a field read *after* the file was opened. Both
 trees therefore targeted one filename and each rejected, then overwrote, what
 the other had just written: correct results, unbounded rebuilds.
@@ -141,25 +140,74 @@ test "a zero TTL disables the sweep" {
     assert gen.is_dir();
 }
 
-test "JacPython sources participate in the producing compiler identity" {
-    import from jaclang.compiler.driver.jir {
-        compiler_source_digest,
-        _manifest_compiler_digest
-    }
-    prefixes = (
+test "JacPython uses the native runtime boundary" {
+    import ctypes;
+    import jaclang;
+    import from jaclang.image { load_image }
+    image = load_image(Path(jaclang.__file__).parent / "_precompiled");
+    assert image is not None;
+    for prefix in (
         "compiler/frontend/python/",
         "compiler/backends/py/jacpython/",
         "runtime/python/"
-    );
-    with tempfile.TemporaryDirectory() as pkg {
-        for prefix in prefixes {
-            src = Path(pkg) / prefix / "module.jac";
-            src.parent.mkdir(parents=True, exist_ok=True);
-            src.write_text("def f() -> int { return 1; }\n");
-            before = compiler_source_digest(pkg);
-            src.write_text("def f() -> int { return 2; }\n");
-            assert compiler_source_digest(pkg) != before;
-            assert _manifest_compiler_digest(pkg) != before;
+    ) {
+        assert not any(path.startswith(prefix) for path in image.manifest["modules"]);
+        assert not any(
+            path.startswith(prefix) and path.endswith(".jac") for path in image.payloads
+        );
+    }
+    assert "runtime/python/LICENSE.cpython" in image.payloads;
+    assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
+    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3;
+}
+
+
+test "source cache keys use their own native policy instead of ambient config" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.project.config {
+        get_config,
+        get_config_for_path,
+        pin_project_scope,
+        project_scope_is_pinned,
+        set_config
+    }
+    saved = get_config();
+    pinned = project_scope_is_pinned();
+    with tempfile.TemporaryDirectory() as directory {
+        directory_path = Path(directory);
+        owner = directory_path / "owner";
+        other = directory_path / "other";
+        owner.mkdir();
+        other.mkdir();
+        owner_config = owner / "jac.toml";
+        owner_config.write_text(
+            '[project]\nname = "owner"\n[native]\nrequire = ["owned.*"]\n'
+        );
+        (other / "jac.toml").write_text(
+            '[project]\nname = "other"\n[native]\nrequire = ["other.*"]\n'
+        );
+        source = owner / "main.jac";
+        source.write_text("def value -> int { return 1; }\n");
+        try {
+            set_config(None);
+            get_config(start_path=other, force_discover=True);
+            ambient = jir.module_cache_key(str(source));
+            pin_project_scope(None);
+            isolated = jir.module_cache_key(str(source));
+            assert ambient == isolated , "Unrelated ambient policy changed the source cache key";
+            owner_config.write_text(
+                '[project]\nname = "owner"\n[native]\nrequire = ["changed.*"]\n'
+            );
+            get_config_for_path(owner, force_discover=True);
+            assert jir.module_cache_key(str(source)) != isolated , "The owning native policy must invalidate its cache";
+        } finally {
+            if pinned {
+                pin_project_scope(saved);
+            } else {
+                set_config(None);
+                get_config(force_discover=True);
+            }
         }
     }
 }

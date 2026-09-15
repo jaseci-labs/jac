@@ -19,6 +19,7 @@ Coverage:
   - AOT runs of the self-checking fixture across --memory rc / cycles / none.
 """
 
+import from tests.support { jac_command }
 import ctypes;
 import os;
 import subprocess;
@@ -39,10 +40,7 @@ def _opts(gc_mode: str | None = None, enforce: bool = False) -> any {
         return native_force_opts();
     }
     return CompileOptions(
-        force_codespace='native',
-        force_target_program=True,
-        na_gc_mode=gc_mode,
-        nogc_enforce_all=enforce
+        force_codespace='native', na_gc_mode=gc_mode, nogc_enforce_all=enforce
     );
 }
 

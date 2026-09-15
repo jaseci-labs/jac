@@ -37,7 +37,7 @@ async def:pub story(n: int) -> Generator[str, None, None] {
 }
 ```
 
-`for chunk in narrate(n)` without the `await` is a type error (`Coroutine[...] is not iterable`) and would be a runtime `TypeError` if it got through; the stub never returns the generator directly. Pinned by `tests/compiler/test_cross_app_import.jac` (typing) and `jaclang/scale/tests/microservices/test_microservice.jac` (remote and colocated, frame by frame).
+`for chunk in narrate(n)` without the `await` is a type error (`Coroutine[...] is not iterable`) and would be a runtime `TypeError` if it got through; the stub never returns the generator directly. Pinned by `tests/compiler/test_cross_app_import.jac` (typing) and `tests/scale/microservices/test_microservice.jac` (remote and colocated, frame by frame).
 
 ## Consuming a stream in the browser
 

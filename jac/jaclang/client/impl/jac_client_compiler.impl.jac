@@ -72,7 +72,7 @@ impl JacClientCompiler._jac_path_to_js(self: JacClientCompiler, rel_str: str) ->
 }
 
 impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> Path {
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.extensions { base_stem }
     name = path.name;
     if ".native." in name {
         return path;
@@ -737,7 +737,6 @@ impl JacClientCompiler.init(
     self.jac_compiler = JacToJSCompiler(
         compile_to_js_func, extract_exports_func, extract_globals_func
     );
-    self.import_processor = ImportProcessor();
     self.asset_processor = AssetProcessor();
     self._has_pages = False;
     self._route_scanner: (RouteScanner | None) = None;

@@ -50,9 +50,7 @@ glob FIXTURES = os.path.join(
 
 """Forced-native options that skip the IR cache."""
 def _opts -> CompileOptions {
-    return CompileOptions(
-        force_codespace='native', force_target_program=True, no_ir_cache=True
-    );
+    return CompileOptions(force_codespace='native', no_ir_cache=True);
 }
 
 

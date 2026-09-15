@@ -1,7 +1,6 @@
 import from jaclang.runtime.build_services { BuildServices }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.driver.selfhost { SelfHostCache }
 import type from jaclang.client.client_bundle { ClientBundleBuilder }
 import type from jaclang.runtime.prepared { PreparedApplication }
 import type from jaclang.server.hmr { HotReloader }
@@ -15,11 +14,6 @@ obj CompilerBuildServices(BuildServices) {
     def program -> JacProgram {
         import from jaclang.compiler.driver.program { JacProgram }
         return JacProgram();
-    }
-
-    def selfhost -> SelfHostCache {
-        import from jaclang.compiler.driver.selfhost { SelfHostCache }
-        return SelfHostCache();
     }
 
     def client_builder -> ClientBundleBuilder {

@@ -1,7 +1,7 @@
 """Erased distinct types (#8030 B1): check-time brand, runtime primitive.
 
 `type X := int;` brands X nominally in the checker while every
-lowering (jac0, sv, native) erases it to the base primitive; X(v) is a
+backend erases it to the base primitive; X(v) is a
 zero-cost cast. `obj X(builtin)` is rejected with a pointer at the
 distinct form (E1106); a distinct alias over a non-primitive base is
 rejected (E1107).
@@ -11,7 +11,6 @@ import os;
 import from tests.support { JAC_ROOT }
 import from jaclang { JacRuntime as Jac }
 import from jaclang { JacRuntimeInterface }
-import from jaclang.jac0 { compile_jac }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.parser.frontend { parse_diags }
 
@@ -86,15 +85,4 @@ test "runtime value is the erased primitive" {
     assert m.mk_user(5) == 5;
     assert m.double_user(m.mk_user(5)) == 10;
     assert m.runtime_erased(3) , "type(UserId(x)) must be the erased base";
-}
-
-
-test "jac0 bootstrap erases distinct to a plain alias" {
-    py_src = compile_jac(
-        "type NodeId := int;\n\ndef f(x: NodeId) -> NodeId {\n"
-            + "    return NodeId(x);\n}\n",
-        "d.jac"
-    );
-    assert "NodeId = int" in py_src , py_src;
-    assert "distinct" not in py_src , py_src;
 }

@@ -6,10 +6,10 @@ Python, uv, or pip** at install or runtime. Both halves are Jac:
 
 | Piece | Where | Tier |
 |---|---|---|
-| Launcher stub (`launcher.jac`) | this directory | native (`jac build --as native` / `nacompile`) |
+| Launcher stub (`launcher.jac`) | this directory | native (`jac build --native`) |
 | Fused-runtime library | `jaclang/dist/fused/` | native, shipped in the payload |
-| Payload tool (fetch, stage, precompile, pack) | `jaclang/dist/payload/` | Python tier, run on source-built CPython |
-| Bootstrap seeds (`build_python.zig`, `fetch_typeshed.zig`), `pins.json` | `bootstrap/` | Zig + the pin files |
+| Payload tool (fetch, stage, pack) | `jaclang/dist/payload/` | compiled Stage-1 image, run on the build-only Python host |
+| Pinned toolchain and source-runtime builders, `pins.json` | `bootstrap/` | Zig + the pin files |
 | `build.zig` | `jac/` | the one-command entry; also the C/C++ cross-compiler for the LLVM shim and the vendored runtimes |
 
 Instead of statically linking CPython, the launcher **`dlopen`s the bundled
@@ -82,14 +82,18 @@ JACPYTHON=1 zig build                 # opt in to the native JacPython compiler
 
 zig build -Dpayload-progress         # stream the payload build live
 zig build -Dpayload=/tmp/p.tar.zst   # pack a prebuilt payload (skip fetch+assemble)
-zig build -Ddev                      # editable dev binary: link the compiler from this tree
+zig build compiler-image            # rebuild the development compiler image
+zig build compiler-stage2           # rebuild that image with itself
 ```
 
 `zig build` first builds CPython from the checksum-pinned sources in
 `bootstrap/python/sources.json` and fetches the pinned typeshed stubs. The
 Python bootstrap uses Zig for C compilation and archiving, with the upstream
 configure/make recipes retained for platform probes and generated files.
-No installed Python, Jac, or python-build-standalone distribution is needed.
+The build fetches the checksum-pinned prior Jac compiler and uses it to build
+the current compiler image. No installed Python or Jac is needed. See the
+[bootstrap guide](../bootstrap/README.md) for the artifact graph and development
+image selection.
 Build hosts need Zig 0.16.0, make, Perl, a POSIX shell, and network access.
 macOS also needs the SDK provided by Xcode command line tools.
 
@@ -110,7 +114,8 @@ source and checks relocation before marking the distribution complete.
 `JAC_PYTHON_JOBS` controls build parallelism (default 4).
 
 Each supported release platform builds on its matching runner. Linux targets
-retain the glibc 2.17 floor; Intel macOS targets 12.0 and ARM macOS targets 11.0.
+retain the glibc 2.17 floor; ARM macOS targets 11.0. The bootstrap pin currently
+supports Linux x86-64/ARM64 and macOS ARM64.
 The existing launcher still loads the shared CPython library from its payload.
 The source-built runtime excludes Tk, curses, readline, dbm, and CPython test
 extensions. `bootstrap/python/cpython-sources.txt` is the source allowlist:
@@ -157,3 +162,12 @@ performance parity has not been established.
 * `jac test jac/tests/payload/` covers the trailer codec, deterministic staging,
   frame routing and the payload CLI; the bundled `compression.zstd` / `tarfile`
   equivalence tests cover the decode path the launcher uses.
+
+## Runtime cache lifetime
+
+The shared materializer in `jaclang/dist/fused/materialize.jac` serializes
+extraction with a cache lock and holds a shared lock for each runtime generation
+until the process exits. Cleanup requires a nonblocking exclusive lock before
+removing an older generation. Replacing a binary therefore cannot delete the
+Python files still used by its running processes. The operating system releases
+leases after normal exit or a crash; lock files remain stable across cleanup.

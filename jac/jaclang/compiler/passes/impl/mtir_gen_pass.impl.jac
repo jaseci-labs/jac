@@ -1,7 +1,6 @@
 import from pathlib { Path }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
-import from jaclang { JacRuntime as Jac }
 import from jaclang.runtime.semantic {
     ClassInfo,
     FieldInfo,
@@ -355,7 +354,7 @@ impl MTIRGenPass._extract_method_info(
 }
 
 impl MTIRGenPass._get_scope_str(nd: UniScopeNode) -> str {
-    import from jaclang.jac0core.ext_registry { STEM_REKEY_SUFFIXES }
+    import from jaclang.extensions { STEM_REKEY_SUFFIXES }
 
     if isinstance(nd, Module) {
         mod_path = nd.loc.mod_path;
@@ -470,7 +469,7 @@ impl MTIRGenPass._process_ability(nd: Ability) -> None {
         }
     }
     scope = self._get_scope_str(nd);
-    Jac.add_mtir_to_map(scope, func_info);
+    self.prog.mtir_map[scope] = func_info;
 }
 
 impl MTIRGenPass._collect_routing_archetypes(ir_in: Module) -> list[Archetype] {
@@ -614,7 +613,7 @@ impl MTIRGenPass._register_archetype_light(nd: Archetype) -> None {
         base_classes=[],
         methods=methods
     );
-    Jac.add_mtir_to_map(self._get_scope_str(nd), class_info);
+    self.prog.mtir_map[self._get_scope_str(nd)] = class_info;
 }
 
 impl MTIRGenPass.transform(ir_in: Module) -> Module {

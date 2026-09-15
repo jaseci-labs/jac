@@ -43,11 +43,7 @@ def _jac(cwd: str, args: list[str]) -> tuple[int, str, str] {
 """Point the tmp project at the source tree under test (launcher binaries
 otherwise serve their embedded jaclang snapshot for CLI dispatch)."""
 def _seed_project(tmpdir: str, name: str) {
-    import jaclang;
-    src = str(Path(jaclang.__file__).parent.parent);
-    (Path(tmpdir) / "jac.toml").write_text(
-        f'[project]\nname = "{name}"\n\n[dev]\njaclang_source = "{src}"\n'
-    );
+    (Path(tmpdir) / "jac.toml").write_text(f'[project]\nname = "{name}"\n');
 }
 
 

@@ -22,7 +22,7 @@ import os;
 import subprocess;
 import sys;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, COMPILER_SITE }
 import from jaclang.cli.manifest { iter_command_meta }
 
 glob REPO: str = str(Path(JAC_ROOT).parent),
@@ -41,7 +41,7 @@ glob REPO: str = str(Path(JAC_ROOT).parent),
      TARGET_COMMANDS: list[str] = ["run", "check", "config", "guide", "build", "dot"],
      PROBE_SINGLE: str = """
 import sys, json, os
-sys.path.insert(0, os.environ['JAC_BENCH_ROOT'])
+sys.path.insert(0, os.environ['JAC_TEST_COMPILER_SITE'])
 from jaclang.cli.loader import load_handler
 load_handler(sys.argv[1])
 mods = sorted(m for m in sys.modules if m.startswith('jaclang.cli.commands.'))
@@ -49,7 +49,7 @@ print('PROBE=' + json.dumps(mods))
 """,
      OWNING_PROBE: str = """
 import sys, json, os
-sys.path.insert(0, os.environ['JAC_BENCH_ROOT'])
+sys.path.insert(0, os.environ['JAC_TEST_COMPILER_SITE'])
 from jaclang.cli.manifest import get_command_meta
 names = json.loads(sys.argv[1])
 out = {}
@@ -62,8 +62,8 @@ print('OWNING=' + json.dumps(out))
 """;
 
 def _env -> dict[str, str] {
-    env: dict[str, str] = dict(os.environ);
-    env["JAC_BENCH_ROOT"] = JAC_ROOT;
+    env = dict(os.environ);
+    env["JAC_TEST_COMPILER_SITE"] = COMPILER_SITE;
     return env;
 }
 

@@ -100,7 +100,7 @@ def _project_modules(program: any, `root: any) -> dict[str, uni.Module] {
 
 def _semantic_metadata(revision: PreparedApplication, program: any) {
     import from jaclang.compiler.driver.compilation_context { program_for }
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.extensions { base_stem }
     for path in revision.code {
         actual = program_for(path, program);
         prefix = base_stem(path) + '.';
@@ -220,7 +220,7 @@ def _prepare_sealed(
         runtime_sources,
         package_sources
     }
-    import from jaclang.jac0core.sealed { image_for_bundle_dir, register_image }
+    import from jaclang.image { image_for_bundle_dir, register_image }
     bundle_dir = Path(image_root) / '_precompiled';
     image = image_for_bundle_dir(bundle_dir) or register_image(bundle_dir);
     if image is None {
@@ -306,9 +306,7 @@ def _prepare_sealed(
         pos = data.find(SECTIONS_MAGIC, HEADER_SIZE);
         if pos >= 0 {
             compiler._restore_sections(
-                path,
-                compiler.selfhost.resolve(path, program),
-                read_sections(data, pos + len(SECTIONS_MAGIC))
+                path, program, read_sections(data, pos + len(SECTIONS_MAGIC))
             );
         }
         revision.native[path] = compiler.get_native_interop_setup(path, program);
@@ -563,13 +561,9 @@ def _prepare(
         code = compiler.get_bytecode(path, program);
         _check(program, before);
         if (code is None) {
-            import from jaclang.compiler.driver.source_failures {
-                module_scoped_failure_details,
-                bootstrap_tier_failure_details
-            }
-            actual = compiler.selfhost.resolve(path, program);
-            details = module_scoped_failure_details(path, actual)
-                or bootstrap_tier_failure_details(path);
+            details = "\n".join(
+                alert.pretty_print() for alert in program.diags.owned_errors(path)
+            );
             if details {
                 raise RuntimeError(details);
             }

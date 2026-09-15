@@ -51,6 +51,7 @@ one. On the four-vCPU box `test-native` runs on, that is the difference
 between this file costing one native compile and costing four.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

@@ -106,7 +106,7 @@ test "optional container elements ride jacval slots" {
 }
 
 test "optional operands in container membership ride tagged slots" {
-    # The sealed-binary build hit this shape in the jac0core lexer
+    # The sealed-binary build hit this shape in the compiler lexer
     # (`prev_token_kind: TokenKind | None` tested with `in [TokenKind...]`):
     # the optional operand makes the literal a jacval-element list, and the
     # membership loop used to emit a raw integer icmp on the JacVal struct

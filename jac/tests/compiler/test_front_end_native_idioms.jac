@@ -6,11 +6,6 @@ authority rejects, reached for where Jac (or plain data) already said the
 same thing. This file pins the replacements behaviorally, and guards the
 native boundary each one was crossing.
 
-Scope note: the sweep's original table over-collected by globbing
-`jac0core/*.jac`. `archetype.jac` and `runtime.jac` are NOT imported by the
-front end -- they are the object-spatial runtime and the driver -- so their
-`@cached_property` / `object.__new__` / `cls` uses are outside the native
-closure and are deliberately untouched.
 """
 
 import os;
@@ -33,9 +28,7 @@ def check_na_inline(label: str, code: str) -> JacProgram {
     prog.compile(
         file_path=os.path.join(FIXTURES, f"_idiom_{label}.jac"),
         use_str=code,
-        options=CompileOptions(
-            no_cgen=True, force_codespace="native", force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, force_codespace="native")
     );
     return prog;
 }
@@ -175,10 +168,7 @@ test "source helpers lower when a native unit reaches them" {
     );
     prog = JacProgram();
     opts = CompileOptions(
-        aot_mode=True,
-        force_codespace='native',
-        force_target_program=True,
-        no_ir_cache=True
+        aot_mode=True, force_codespace='native', no_ir_cache=True
     ).clone_for_native_import();
     na_coverage_begin();
     try {

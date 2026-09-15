@@ -892,20 +892,16 @@ impl PyastBuildPass.proc_lambda(nd: py_ast.Lambda) -> LambdaExpr {
 }
 
 impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> MultiString {
-    ast_seg = self._get_source_segment(nd);
-    if (ast_seg is None) {
-        ast_seg = 'f""';
-    }
-    fstr_match = re.`match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
+    import json;
+
+    start = 'f"""';
+    end = '"""';
 
     valid: list[(String | FormattedValue)] = [];
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
-            escaped_value = self._get_source_segment(i);
-            if escaped_value is None {
-                raw_repr = repr(i.value);
-                escaped_value = raw_repr[1:-1];
-            }
+            escaped_value = json.dumps(i.value, ensure_ascii=False)[1:-1];
+            escaped_value = escaped_value.replace("{", "{{").replace("}", "}}");
 
             valid.append(
                 String(
@@ -927,39 +923,6 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> MultiString {
             }
         } else {
             raise RuntimeError(self.ice('Invalid node in joined str'));
-        }
-    }
-    if fstr_match {
-        (prefix, quote) = fstr_match.groups();
-        start = fstr_match.group(0);
-        end = quote;
-    } else {
-        start = "f'";
-        end = "'";
-    }
-    all_content = ''.join(
-        part.lit_value
-        for part in valid
-        if isinstance(part, String)
-    );
-    has_single = "'" in all_content;
-    has_double = '"' in all_content;
-    is_triple = len(end) == 3;
-    if (has_single and has_double and not is_triple) {
-        if ("'" in end) {
-            start = 'f"""';
-            end = '"""';
-        } else {
-            start = "f'''";
-            end = "'''";
-        }
-    } elif ((("'" in end) and has_single) or (('"' in end) and has_double)) {
-        if ("'" in end) {
-            start = start.replace("'", '"');
-            end = end.replace("'", '"');
-        } else {
-            start = start.replace('"', "'");
-            end = end.replace('"', "'");
         }
     }
     tok_start = self.operator(Tok.STRING, start);

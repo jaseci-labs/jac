@@ -19,6 +19,7 @@ those slots, the capture walk skips them, and the Python lane builds a keyword
 key from its spelling rather than from a lowered reference.
 """
 
+import from tests.support { jac_command }
 import ast as ast3;
 import os;
 import subprocess;

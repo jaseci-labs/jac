@@ -384,7 +384,7 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
         function_contract,
         host_contracts
     }
-    import from jaclang.compiler.frontend.diagnostics { E5083, E5100 }
+    import from jaclang.project.diagnostics { E5083, E5100 }
     if not nd.from_loc or not nd.items {
         return;
     }
@@ -607,7 +607,7 @@ impl BoundaryAnalysisPass._check_app_cycle(
     nd: Import, consumer_app: str, provider_app: str
 ) -> None {
     import from jaclang.compiler.driver.boundary_classify { bridgeable_import_target }
-    import from jaclang.compiler.frontend.diagnostics { E5104 }
+    import from jaclang.project.diagnostics { E5104 }
     start = bridgeable_import_target(nd);
     if start is None {
         return;
@@ -666,7 +666,7 @@ impl BoundaryAnalysisPass._reject_owned_type_import(
         module_app,
         import_provider_app
     }
-    import from jaclang.compiler.frontend.diagnostics { E5108 }
+    import from jaclang.project.diagnostics { E5108 }
     consumer = module_app(self.ir_in) or self.ir_in.name;
     self.emit(
         E5108,
@@ -689,7 +689,7 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
         decl_has_access,
         import_target_pinned_server
     }
-    import from jaclang.compiler.frontend.diagnostics { E5106 }
+    import from jaclang.project.diagnostics { E5106 }
     provider_mod = self._provider_module_of(nd);
     if provider_mod is None {
         return;
@@ -826,7 +826,7 @@ impl BoundaryAnalysisPass.enter_ability with Ability entry {
 impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
     if isinstance(here.target, Name) and here.target.value == "bind_na_host" {
         import from jaclang.compiler.passes.wasm_contract { check_host_call }
-        import from jaclang.compiler.frontend.diagnostics { E5110 }
+        import from jaclang.project.diagnostics { E5110 }
         try {
             check_host_call(here, self.prog);
         } except ValueError as e {
@@ -1351,7 +1351,7 @@ impl BoundaryAnalysisPass._literal_default(
 }
 
 impl BoundaryAnalysisPass.after_pass -> None {
-    import from jaclang.compiler.frontend.diagnostics { E5093 }
+    import from jaclang.project.diagnostics { E5093 }
     import from jaclang.runtime.scalars { sized_scalar_names }
     manifest = self.ir_in.gen.interop_manifest;
 
@@ -1520,7 +1520,7 @@ impl BoundaryAnalysisPass.enter_atom_trailer with AtomTrailer entry {
         if isinstance(target_type, ClassType)
         else None;
     if isinstance(scope, Archetype) and scope.in_native_context() {
-        import from jaclang.compiler.frontend.diagnostics { E5112 }
+        import from jaclang.project.diagnostics { E5112 }
         self.emit(E5112, node_override=here, name=scope.sym_name);
     }
 }

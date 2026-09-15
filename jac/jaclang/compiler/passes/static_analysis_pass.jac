@@ -48,7 +48,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.frontend.constant { ExprCtx, SymbolType }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     W1103,
     W2001,
     W2002,
@@ -238,20 +238,6 @@ glob BUILTIN_NAMES: set[str] = {
          'Tuple': 'tuple',
          'Type': 'type'
      };
-
-def is_bootstrap_compiled_module(mod_path: str) -> bool {
-    import from jaclang.bootstrap_manifest { is_seed_source }
-    norm = mod_path.replace("\\", "/");
-    if norm.startswith("jaclang/") {
-        return is_seed_source(norm[len("jaclang/"):]);
-    }
-    marker = "/jaclang/";
-    idx = norm.rfind(marker);
-    if idx < 0 {
-        return False;
-    }
-    return is_seed_source(norm[idx + len(marker):]);
-}
 
 def is_ambient_provider_module(mod_path: str) -> bool {
     return (mod_path.endswith("builtin.jac") or mod_path.endswith("builtin.py"))

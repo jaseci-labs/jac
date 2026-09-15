@@ -15,7 +15,6 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.autoscale.http_activation_config {
     build_http_activation_spec
 }
-import from enum { StrEnum }
 
 
 glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
@@ -63,7 +62,7 @@ def _is_transient_client_build_failure(output: str) -> bool {
 }
 
 
-enum ScalingMode(StrEnum) {
+enum ScalingMode: str {
     NONE = "none",
     METRIC = "metric",
     HTTP_ACTIVATION = "http_activation"

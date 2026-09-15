@@ -22,6 +22,7 @@ print the same lines, and CPython's own answers for the same six calls are
 `2 1 25 4 rejected rejected 0`.
 """
 
+import from tests.support { jac_command }
 import contextlib;
 import io;
 import os;

@@ -12,14 +12,12 @@ import from contextlib { contextmanager }
 
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core { ext_registry }
+import from jaclang { extensions as ext_registry }
 import from jaclang.compiler.driver.jir { patch_co_filenames_bytes }
 import from jaclang.compiler.driver.jir {
     write_precompiled_jir,
+    running_compiler_digest,
     FLAG_PRECOMPILED,
-    FLAG_BOOTSTRAP,
-    HEADER_SIZE,
-    SECTIONS_MAGIC,
     SEC_BYTECODE,
     SEC_CTDEPS,
     SEC_DEBUG_SRC,
@@ -41,32 +39,10 @@ import from jaclang.compiler.driver.jir {
     running_compiler_digest,
     PRECOMPILE_SENTINEL
 }
-import from jaclang.jac0core.sealed {
-    MANIFEST_NAME,
-    MANIFEST_FORMAT,
-    JIR_FORMAT_VERSION as SEALED_JIR_FORMAT_VERSION,
-    PRECOMPILE_SENTINEL as SEALED_SENTINEL,
-    HEADER_SIZE as SEALED_HEADER_SIZE,
-    SECTIONS_MAGIC as SEALED_SECTIONS_MAGIC,
-    SEC_BYTECODE as SEALED_SEC_BYTECODE,
-    SEC_DEBUG_SRC as SEALED_SEC_DEBUG_SRC
-}
+import from jaclang.image { MANIFEST_NAME, MANIFEST_FORMAT }
 
 glob RESULT_NAME: str = "PRECOMPILE_RESULT.json";
 
-def compiler_identity -> str {
-    digest = running_compiler_digest();
-    if digest.startswith("0:") {
-        raise RuntimeError(
-            "Precompile aborted: no compiler sources found under the running "
-            "jaclang package, so this build cannot state which compiler it is. "
-            "Every seeded .jir would then be reusable by any other compiler at "
-            "this version -- the #8178 failure mode. Check that the seed tree and "
-            "compiler/ ship with the running jaclang."
-        );
-    }
-    return digest;
-}
 
 def find_package_dir(source_dir: str) -> str | None {
     src = Path(source_dir).resolve();
@@ -109,7 +85,6 @@ def _nested_project_dirs(package_dir: str) -> list[str] {
 }
 
 def find_jac_files(package_dir: str) -> list[str] {
-    import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
     result: list[str] = [];
     pkg = Path(package_dir);
     for jac_file in sorted(pkg.rglob("*.jac")) {
@@ -118,14 +93,6 @@ def find_jac_files(package_dir: str) -> list[str] {
         }
         rel_path = jac_file.relative_to(pkg);
         rel = str(rel_path);
-
-        if pkg.name == "jaclang"
-            and any(
-                rel.replace(os.sep, "/").startswith(prefix)
-                for prefix in SOURCE_ONLY_PATHS
-            ) {
-            continue;
-        }
 
         if any(
             part.startswith(".") or part == "__pycache__" for part in rel_path.parts
@@ -230,14 +197,12 @@ def sealable_sources(package_dir: str, app: str = "") -> list[str] {
             return application;
         }
     }
-    import from jaclang.bootstrap_manifest { is_seed_source }
     base = os.path.abspath(package_dir);
     nested = _nested_project_dirs(package_dir);
     candidates = [
         p
         for p in find_jac_files(package_dir)
-        if not is_seed_source(os.path.relpath(p, base).replace(os.sep, "/"))
-            and not any(p.startswith(n) for n in nested)
+        if not any(p.startswith(n) for n in nested)
     ];
     if Path(package_dir).name == "jaclang" {
         import from jaclang.compiler.placement.placement_facts {
@@ -306,55 +271,20 @@ def placement_facts_map(package_dir: str, app: str = "") -> dict[str, list[str]]
 }
 
 def _emit_unit_diagnostics(jac_path: str, programs: list[JacProgram]) {
-    import from jaclang.compiler.driver.source_failures {
-        compiler_source_failure_details
-    }
-    stashed = compiler_source_failure_details(jac_path);
-    if stashed {
-        stash_lines = stashed.splitlines();
-        for line in stash_lines[:40] {
-            console.error(line);
+    lines = sorted(
+        {
+            alert.pretty_print() for program in programs
+            for alert in program.diags.owned_errors(jac_path)
         }
-        if len(stash_lines) > 40 {
-            console.error(f"  ... and {len(stash_lines) - 40} more line(s)");
-        }
-        return;
-    }
-    norm = os.path.normpath(jac_path);
-    stem = norm[:-4] if norm.endswith(".jac") else norm;
-    base = os.path.basename(stem) + ".";
-    lines: list[str] = [];
-    seen: set[str] = set();
-    for prog in programs {
-        for alert in prog.errors_had {
-            try {
-                alert_path = os.path.normpath(alert.loc.mod_path);
-            } except Exception {
-                continue;
-            }
-            if not (
-                alert_path == norm
-                or alert_path.startswith(stem + ".")
-                or os.path.basename(alert_path).startswith(base)
-            ) {
-                continue;
-            }
-            pretty = alert.pretty_print();
-            if pretty not in seen {
-                seen.add(pretty);
-                lines.append(pretty);
-            }
-        }
-    }
-    for line in lines[:10] {
+    );
+    for line in lines[:40] {
         console.error(line);
     }
-    if len(lines) > 10 {
-        console.error(f"  ... and {len(lines) - 10} more error(s)");
+    if len(lines) > 40 {
+        console.error(f"  ... and {len(lines) - 40} more diagnostic(s)");
     }
 }
 
-glob _unit_program: list[JacProgram] = [];
 
 def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
     pkg_root = os.path.realpath(pkg_root);
@@ -433,11 +363,6 @@ def precompile_context(
         bind_options,
         context_program
     }
-    compiler = program._get_compiler();
-    selected = compiler.selfhost.resolve(jac_path, program);
-    if compiler.selfhost.is_selfhost(selected) {
-        return selected;
-    }
     entry_path = os.path.join(pkg_root, '__init__.jac');
     if os.path.isfile(os.path.join(pkg_root, 'jac.toml')) {
         import from jaclang.project.config { get_config_for_path }
@@ -457,24 +382,27 @@ def precompile_context(
 
 @contextmanager
 def precompile_unit_context(
-    jac_path: str, pkg_root: str, collect: bool = True, app: str = ""
+    jac_path: str,
+    pkg_root: str,
+    collect: bool = True,
+    app: str = "",
+    program: JacProgram | None = None
 ) -> Iterator[JacProgram] {
     import jaclang.compiler.types.type_evaluator;
     import jaclang.compiler.types.stubcat.modiface;
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     import from jaclang.cli.workpool { maybe_malloc_trim }
-    if not _unit_program {
-        _unit_program.append(JacProgram());
+    if program is None {
+        program = JacProgram();
     }
-    program = _unit_program[0];
     compiler = program._get_compiler();
     compiler.ensure_stub_catalog();
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
         os.path.realpath(jac_path), app
     );
     selected = precompile_context(jac_path, pkg_root, program, source_app);
-    identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
+    identity = selected.context_key;
     compiler.unit_collect = collect;
     with cache_scope(identity, selected.options) {
         try {
@@ -484,9 +412,6 @@ def precompile_unit_context(
                 if selected.context_root is not None
                 else selected;
             owner.release_compile_closure(collect=collect);
-            if owner is not compiler.selfhost.program {
-                compiler.selfhost.program.release_compile_closure(collect=collect);
-            }
             maybe_malloc_trim();
         }
     }
@@ -497,10 +422,13 @@ def precompile_unit(
     pkg_root: str,
     embed_src: bool = False,
     collect: bool = True,
-    app: str = ""
+    app: str = "",
+    program: JacProgram | None = None
 ) -> bytes | None {
-    with precompile_unit_context(jac_path, pkg_root, collect, app) as program {
-        return _precompile_unit(jac_path, pkg_root, program, embed_src);
+    with precompile_unit_context(
+        jac_path, pkg_root, collect, app, program
+    ) as selected {
+        return _precompile_unit(jac_path, pkg_root, selected, embed_src);
     }
 }
 
@@ -534,7 +462,7 @@ def _precompile_unit(
     program.iface_registry().ensure(jac_path);
     code = compiler.get_bytecode(full_target=jac_path, target_program=program);
     if code is None {
-        _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
+        _emit_unit_diagnostics(jac_path, [program]);
         return None;
     }
     patched = patch_co_filenames_bytes(
@@ -546,73 +474,6 @@ def _precompile_unit(
         FLAG_PRECOMPILED,
         _unit_extra(jac_path, pkg_root, embed_src)
     );
-}
-
-def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
-    import from jaclang.jac0 {
-        compile_jac as jac0_compile,
-        discover_impl_files as jac0_impls
-    }
-    failed = 0;
-    if pkg_dir.name != "jaclang" {
-        return failed;
-    }
-    import from jaclang.bootstrap_manifest { seed_abs_entries, is_native_only_seed }
-    (seed_dirs, seed_files) = seed_abs_entries(str(pkg_dir));
-    seed_sources: list[Path] = [
-        Path(p)
-        for p in seed_files
-        if str(p).endswith(".jac")
-    ];
-    for d in seed_dirs {
-        seed_sources.extend(Path(d).rglob("*.jac"));
-    }
-    for jac_file in sorted(seed_sources) {
-        if ext_registry.is_annex(str(jac_file)) {
-            continue;
-        }
-        if any(
-            part.startswith(".") or part == "__pycache__"
-            for part in jac_file.relative_to(pkg_dir).parts
-        ) {
-            continue;
-        }
-        if is_native_only_seed(
-            str(jac_file.relative_to(pkg_dir)).replace(os.sep, "/")
-        ) {
-            continue;
-        }
-        try {
-            impl_paths = jac0_impls(str(jac_file));
-            impl_sources: list[tuple[str, str]] = [];
-            for impl_path in impl_paths {
-                impl_sources.append(
-                    (Path(impl_path).read_text(encoding="utf-8"), impl_path)
-                );
-            }
-            py_source = jac0_compile(
-                jac_file.read_text(encoding="utf-8"),
-                str(jac_file),
-                impl_sources=impl_sources or None
-            );
-            code = compile(py_source, str(jac_file), "exec");
-            bc = patch_co_filenames_bytes(
-                marshal.dumps(code), str(pkg_dir), PRECOMPILE_SENTINEL
-            );
-            with precompile_unit_context(str(jac_file), str(pkg_dir)) as program {
-                program.iface_registry().ensure(str(jac_file));
-                extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src);
-            }
-            jir_rel = jac_file.relative_to(pkg_dir).with_suffix(".jir");
-            jir_path = out_dir / jir_rel;
-            jir_path.parent.mkdir(parents=True, exist_ok=True);
-            jir_path.write_bytes(write_precompiled_jir(bc, "", FLAG_BOOTSTRAP, extra));
-        } except Exception as e {
-            console.error(f"BOOTSTRAP FAIL: {jac_file.name} - {e}");
-            failed += 1;
-        }
-    }
-    return failed;
 }
 
 glob PRECOMPILED_KEEP_DIRS: tuple[str, ...] = ();
@@ -837,30 +698,6 @@ def seal_finalize(
     embed_src: bool,
     app: str = ""
 ) -> int {
-    writes = (
-        FORMAT_VERSION,
-        HEADER_SIZE,
-        SECTIONS_MAGIC,
-        SEC_BYTECODE,
-        SEC_DEBUG_SRC,
-        PRECOMPILE_SENTINEL
-    );
-    reads = (
-        SEALED_JIR_FORMAT_VERSION,
-        SEALED_HEADER_SIZE,
-        SEALED_SECTIONS_MAGIC,
-        SEALED_SEC_BYTECODE,
-        SEALED_SEC_DEBUG_SRC,
-        SEALED_SENTINEL
-    );
-    if reads != writes {
-        console.error(
-            f"JIR format drift: jir.jac writes {writes} but sealed.py "
-            f"reads {reads}. Update jaclang/jac0core/sealed.py."
-        );
-        return 1;
-    }
-
     if pkg_name != "jaclang"
         and not seal_runtime_closure(
             pkg_path, precompiled_dir / pyver, embed_src, app
@@ -883,7 +720,7 @@ def seal_finalize(
         return 1;
     }
 
-    identity = compiler_identity();
+    identity = running_compiler_digest();
     foreign: list[str] = [];
     for p in sealable_sources(str(pkg_path), app) {
         rel = Path(p).relative_to(pkg_path);
@@ -907,20 +744,7 @@ def seal_finalize(
 
     out_dir = precompiled_dir / pyver;
 
-    stale_boot = precompiled_dir / "bootstrap";
-    if stale_boot.is_dir() {
-        shutil.rmtree(stale_boot, ignore_errors=True);
-    }
-
-    console.print("  Freezing the bootstrap seed layer...");
-    boot_failed = seal_bootstrap(pkg_path, out_dir, embed_src);
-    if boot_failed > 0 {
-        console.error(f"Seal aborted: {boot_failed} bootstrap module(s) failed.");
-        return 1;
-    }
-
     manifest_modules: dict[str, dict[str, any]] = {};
-    n_boot = 0;
     for jir in sorted(out_dir.rglob("*.jir")) {
         rel_jir = jir.relative_to(out_dir).as_posix();
         (source_rel, fullname, is_pkg) = jir_to_module(pkg_name, rel_jir);
@@ -930,14 +754,9 @@ def seal_finalize(
             "package": is_pkg,
             "sha256": hashlib.sha256(jir.read_bytes()).hexdigest()
         };
-        import from jaclang.bootstrap_manifest { is_seed_source }
-        if is_seed_source(source_rel) {
-            `entry["bootstrap"] = True;
-            n_boot += 1;
-        }
         manifest_modules[source_rel] = `entry;
     }
-    console.print(f"  Manifest modules: {len(manifest_modules)} ({n_boot} bootstrap)");
+    console.print(f"  Manifest modules: {len(manifest_modules)} ");
 
     payloads = collect_payloads(pkg_path);
     if payloads {
@@ -984,7 +803,7 @@ def write_manifest(
         "python_tag": pyver,
         "jir_format_version": FORMAT_VERSION,
         "jaclang_version": jac_ver,
-        "compiler_digest": compiler_identity(),
+        "compiler_digest": running_compiler_digest(),
         "modules": modules
     };
     if payloads {
@@ -992,13 +811,6 @@ def write_manifest(
     }
     if app_meta {
         manifest.update(app_meta);
-    }
-    if pkg_name == "jaclang" {
-        import from jaclang.compiler.native_scope { NATIVE_SCOPE }
-        scope_mods = sorted([e.module for e in NATIVE_SCOPE]);
-        if scope_mods {
-            manifest["native"] = {"modules": scope_mods};
-        }
     }
     (precompiled_dir / MANIFEST_NAME).write_text(
         json.dumps(manifest, sort_keys=True, indent=1) + "\n", encoding="utf-8"
@@ -1066,14 +878,12 @@ def main {
         console.print("\nExamples:");
         console.print("  jac precompile ./jac");
         console.print("  jac precompile ./jac/jaclang/scale");
-        console.print("\n--seal: precompile, freeze the bootstrap seed tier, and emit");
+        console.print("\n--seal: precompile the selected application closure and emit");
         console.print("        MANIFEST.json (JIR-authoritative image; .jac sources");
         console.print(
             "        stay on disk for tracebacks, never compiled at runtime)."
         );
-        console.print(
-            "--seal-compile: compile only (exclude the seed tier), no finalize -- the"
-        );
+        console.print("--seal-compile: compile only, no finalize -- the");
         console.print("        payload build's crash-tolerant first pass.");
         console.print(
             "--seal-finalize: run ONLY the seal step over an already-precompiled tree"
@@ -1113,7 +923,7 @@ def run_precompile(
     jobs_arg: str = "",
     app: str = ""
 ) {
-    exclude_seed = seal or seal_compile;
+    select_sealable = seal or seal_compile;
     package_dir = find_package_dir(source_dir);
     if package_dir is None {
         console.error(f"Could not find a Python package in {source_dir}");
@@ -1146,16 +956,16 @@ def run_precompile(
 
     console.print(f"Precompiling {pkg_name} for {pyver}...");
     console.print(f"  Package directory: {package_dir}");
-    console.print(f"  Compiler identity: {compiler_identity()}");
+    console.print(f"  Compiler identity: {running_compiler_digest()}");
 
     jac_files = (
         sealable_sources(package_dir, app)
-            if exclude_seed
+            if select_sealable
             else find_jac_files(package_dir)
     );
     console.print(f"  Found {len(jac_files)} .jac files");
 
-    if not jac_files and not exclude_seed {
+    if not jac_files and not select_sealable {
         console.print("  No .jac files to precompile.");
         sys.`exit(0);
     }

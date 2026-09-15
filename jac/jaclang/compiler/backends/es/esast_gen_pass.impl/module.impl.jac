@@ -255,13 +255,3 @@ impl EsastGenPass.exit_module with uni.Module exit {
     here.gen.client_manifest = self.client_manifest;
     self._audit_free_identifiers(here, program);
 }
-
-impl EsastGenPass.get_main_mod -> uni.Module {
-    main_mod_path = self.ir_in.annexable_by or self.ir_in.loc.mod_path;
-    mod = self.prog.mod.hub.get(main_mod_path);
-    if not isinstance(mod, uni.Module) {
-        self.emit(E5012);
-        raise RuntimeError(f"Missing main module: {main_mod_path}");
-    }
-    return mod;
-}

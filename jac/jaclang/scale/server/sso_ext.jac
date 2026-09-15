@@ -2,7 +2,7 @@ import json;
 import from urllib.parse { quote }
 import from jaclang.server.identity.auth_models { FirebaseTokenRequest }
 import from jaclang.server.middleware { require_user }
-import from jaclang.server.server { JacAPIServer, ServerExtension }
+import from jaclang.server.server { EndpointHost, ServerExtension }
 import from jaclang.server.serving.datatypes { RedirectResponse, Request, Response }
 import from jaclang.server.serving.endpoint {
     APIParameter,
@@ -31,8 +31,8 @@ def resolve_sso_client_redirect(requested: (str | None), configured: str) -> str
 obj SSOExtension(ServerExtension) {
     has sso: (SSOAuth | None) = None;
 
-    def register(server: JacAPIServer) {
-        sso = SSOAuth(users=server.user_manager);
+    def register(server: EndpointHost) {
+        sso = SSOAuth(users=server.identity());
         self.sso = sso;
         platform_param = APIParameter(
             name='platform',
@@ -81,7 +81,7 @@ obj SSOExtension(ServerExtension) {
                 return None;
             }
             return OAuthSession(
-                users=server.user_manager, provider=provider, platform=platform
+                users=server.identity(), provider=provider, platform=platform
             );
         }
         async def oauth_begin(
@@ -263,7 +263,7 @@ obj ApiKeyExtension(ServerExtension) {
         return self.manager;
     }
 
-    def register(server: JacAPIServer) {
+    def register(server: EndpointHost) {
         keys = self.api_keys;
 
         async def create_api_key(

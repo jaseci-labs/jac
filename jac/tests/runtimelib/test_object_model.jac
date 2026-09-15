@@ -169,3 +169,20 @@ test "field declarations retain defaults, factories and deferred initialization"
     assert child.required == "present";
     assert child.items == [];
 }
+
+
+obj CustomFactoryFields {
+    has values: list[int] = [];
+
+    def init(value: int) {
+        self.values.append(value);
+    }
+}
+
+test "field factories run before custom constructors with independent instance values" {
+    first = CustomFactoryFields(7);
+    second = CustomFactoryFields(11);
+    assert first.values == [7];
+    assert second.values == [11];
+    assert list(signature(CustomFactoryFields).parameters) == ["value"];
+}

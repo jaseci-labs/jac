@@ -6,6 +6,7 @@ uses -- and then aborts. Deterministic resource cleanup with zero
 EH-table machinery; drops fire exactly once, before the abort banner.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

@@ -1,22 +1,6 @@
-"""Typeshed is served through one lens for the life of a process.
+import from pathlib { Path }
+import from tests.support { JAC_ROOT, COMPILER_SITE }
 
-Typeshed reaches the checker two ways: as parsed `.pyi` trees, or from the
-stub catalog. The catalog used to be activated only by the first compile of
-a file outside the compiler tree, so a long-lived `jac check` worker that
-started on compiler-tree files parsed stubs as trees, cached their classes
-on the compiler-tree dependencies it keeps between files, and then flipped
-to the catalog for its first application file. From then on the evaluator's
-own `NoneType` (and `TypeVar`, `type`, every prelude class) was a different
-record from the ones in every type it had cached, so `x: T | None` never
-narrowed, generics stopped binding, and impl bodies reported E1099 / E1053
-on lines that pass in isolation. Which files lost depended on the worker's
-history, which is the order-dependent `jac check .` failure in CI.
-
-The contract now: any top-level compile for a non-selfhost program decides
-the lens up front by activating the catalog, and once stub trees have been
-served to a non-selfhost program the catalog stays closed for that process.
-None recognition additionally compares class records by canonical identity.
-"""
 import os;
 import subprocess;
 import sys;
@@ -24,7 +8,7 @@ import tempfile;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.jir { get_module_cache_path }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.jac0core.stubcat_hook { active, set_active }
+import from jaclang.compiler.types.stubcat.state { active, set_active }
 
 glob IMPORTER: str = (
          "import from pathlib { Path }\n"
@@ -47,6 +31,7 @@ glob IMPORTER: str = (
      ),
      CHECK_PROBE: str = (
          "import sys\n"
+         f"sys.path.insert(0, {COMPILER_SITE!r})\n"
          "import jaclang\n"
          "from jaclang.cli.commands.analysis import check\n"
          "sys.exit(check(paths=sys.argv[1:], jobs='0', nowarn=True))\n"
@@ -124,19 +109,16 @@ obj LensState {
 test "a compiler-tree compile activates the catalog instead of parsing stub trees" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=compiler.selfhost.program);
+    state = LensState(compiler=compiler, internal=prog);
     try {
         state.deactivate_catalog();
         target = os.path.join(
-            compiler.selfhost.jaclang_root(), "compiler", "driver", "log.jac"
+            str(Path(JAC_ROOT) / "jaclang"), "compiler", "driver", "log.jac"
         );
         assert os.path.isfile(target) , f"missing fixture {target}";
-        prog.compile(
-            file_path=target,
-            options=CompileOptions(no_cgen=True, force_target_program=True)
-        );
+        prog.compile(file_path=target, options=CompileOptions(no_cgen=True));
         assert compiler.stub_catalog() is not None , (
-            "a non-selfhost compile of a compiler-tree file left the catalog inactive"
+            "compiling a compiler-tree file left the catalog inactive"
         );
         assert not state.new_stub_trees() , (
             f"typeshed was parsed as trees with the catalog available: {sorted(
@@ -152,8 +134,8 @@ test "a compiler-tree compile activates the catalog instead of parsing stub tree
 test "once stub trees serve a program the catalog stays closed" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=compiler.selfhost.program);
-    opts = CompileOptions(no_cgen=True, native_parity=True, force_target_program=True);
+    state = LensState(compiler=compiler, internal=prog);
+    opts = CompileOptions(no_cgen=True, native_parity=True);
     try {
         with tempfile.TemporaryDirectory() as d {
             state.deactivate_catalog();
@@ -186,8 +168,8 @@ test "once stub trees serve a program the catalog stays closed" {
 test "None recognition survives a forced lens flip" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=compiler.selfhost.program);
-    opts = CompileOptions(no_cgen=True, native_parity=True, force_target_program=True);
+    state = LensState(compiler=compiler, internal=prog);
+    opts = CompileOptions(no_cgen=True, native_parity=True);
     try {
         with tempfile.TemporaryDirectory() as d {
             state.deactivate_catalog();
@@ -222,7 +204,7 @@ test "None recognition survives a forced lens flip" {
 
 test "a serial jac check over compiler-tree then client files stays clean" {
     prog = JacProgram();
-    pkg = prog._get_compiler().selfhost.jaclang_root();
+    pkg = str(Path(JAC_ROOT) / "jaclang");
     files = [
         os.path.join(pkg, "compiler", "driver", "ifacecache.jac"),
         os.path.join(pkg, "client", "targets", "pwa_build.jac")

@@ -3,10 +3,12 @@ obj Base {}
 obj Value {
     has number: int;
 }
+
 obj First(Base) {
     has value: Value | None,
         guard: int = 17;
 }
+
 obj Second(Base) {
     has padding: str = "padding",
         guard: int = 23,

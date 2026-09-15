@@ -398,7 +398,7 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
    container/None branches with `isinstance` -- `x is None` does not lower to a
    branch condition on the native pathway.
 3. Add a tri-backend equivalence fixture
-   (`jac/jaclang/compiler/tests/fixtures/prim_<name>.jac`) and register it in
+   (`jac/tests/equivalence/fixtures/prim_<name>.jac`) and register it in
    `test_prim_equivalence.jac` with `require=["na"]` so sv/na congruence is
    enforced, not assumed. Keep the `na { }` block self-contained (a
    module-level helper called from native code lowers to an unregistered

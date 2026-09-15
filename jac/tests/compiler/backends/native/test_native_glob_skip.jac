@@ -19,7 +19,6 @@ def aot_native_errors(name: str) -> list[any] {
         options=CompileOptions(
             aot_mode=True,
             force_codespace="native",
-            force_target_program=True,
             memory_profile="managed",
             no_ir_cache=True
         )

@@ -2,7 +2,6 @@ import json;
 import logging;
 import os;
 import threading;
-import from enum { StrEnum }
 import from uuid { UUID }
 
 import from jaclang.data.pgwire { PgWireError }
@@ -17,6 +16,7 @@ glob logger = logging.getLogger(__name__),
      __all__ = [
          'AnchorRow',
          'Store',
+         'StoreReset',
          'PgStore',
          'ConnInfo',
          'TxnIsolation',
@@ -35,7 +35,7 @@ def _schema_extension_key -> str {
 }
 
 
-enum TxnIsolation(StrEnum) {
+enum TxnIsolation: str {
     SERIALIZABLE = 'ISOLATION LEVEL SERIALIZABLE',
     READ_COMMITTED = 'ISOLATION LEVEL READ COMMITTED',
     SNAPSHOT_READ_ONLY = 'ISOLATION LEVEL REPEATABLE READ READ ONLY'
@@ -128,12 +128,26 @@ obj Store {
 }
 
 
+obj StoreReset {
+    has _pending: bool = True,
+        _lock: threading.Lock = threading.Lock();
+
+    def apply(store: Store) {
+        with self._lock {
+            if self._pending {
+                store.reset_data();
+                self._pending = False;
+            }
+        }
+    }
+}
+
 obj PgStore(Store) {
     has conninfo: ConnInfo,
         ensure_cb: (any | None) = None,
         promotions: dict[str, list[str]] = {},
         auto_schema: bool = False,
-        pending_reset: bool = False,
+        pending_reset: StoreReset | None = None,
         _conn: (any | None) postinit,
         _side_conn: (any | None) postinit,
         _lock: threading.RLock postinit,

@@ -2,6 +2,7 @@
 obj Item {
     has name: str;
 }
+
 def flags(item: Item, member: bool) -> tuple[Item, bool, bool, bool, bool] {
     matched = member or item.name in ("annotation", "returns");
     return (item, False, True, False, matched);

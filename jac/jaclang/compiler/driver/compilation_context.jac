@@ -5,10 +5,10 @@ import hashlib;
 import os;
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
-import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.native_compiler { NativeSyntax }
 import from jaclang.compiler.passes.transform { Alert }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
@@ -20,6 +20,11 @@ glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
 def cache_scope(
     identity: str, options: CompileOptions | None = None
 ) -> Iterator[None] {
+    if options is not None and options.project_root {
+        project_root = os.path.realpath(options.project_root);
+        options = copy.copy(options);
+        options.project_root = project_root;
+    }
     token = _cache_context.set(identity);
     option_token = _active_options.set(options);
     try {
@@ -44,11 +49,52 @@ def cache_identity -> str {
     return _cache_context.get();
 }
 
+def codegen_source_path(path: str) -> str {
+    options = _active_options.get();
+    if not path or options is None or not options.source_prefix_map {
+        return path;
+    }
+    resolved = os.path.realpath(path);
+    mappings: list[tuple[str, str]] = sorted(
+        [
+            (os.path.realpath(directory), prefix)
+            for (directory, prefix) in sorted(options.source_prefix_map.items())
+        ],
+        key=lambda (item: tuple[str, str]) { len(item[0]); },
+        reverse=True
+    );
+    for (directory, prefix) in mappings {
+        if resolved == directory {
+            return prefix;
+        }
+        if resolved.startswith(directory.rstrip(os.sep) + os.sep) {
+            relative = os.path.relpath(resolved, directory).replace(os.sep, "/");
+            return prefix.rstrip("/") + "/" + relative;
+        }
+    }
+    return path;
+}
+
 obj SourceUnit {
-    has syntax: Module,
+    has syntax: Module | NativeSyntax,
         failed: bool,
         errors: list[Alert],
         warnings: list[Alert];
+
+    def close {
+        if not isinstance(self.syntax, Module) {
+            self.syntax.close();
+        }
+    }
+
+    def materialize -> Module {
+        if isinstance(self.syntax, Module) {
+            return copy.deepcopy(self.syntax);
+        }
+        parsed = self.syntax.materialize();
+        assert parsed is not None;
+        return parsed[0];
+    }
 }
 
 obj SourceStore {
@@ -57,25 +103,42 @@ obj SourceStore {
         parses: int = 0,
         hits: int = 0;
 
+    def clear {
+        for unit in self.units.values() {
+            unit.close();
+        }
+        self.units.clear();
+        self.revisions.clear();
+    }
+
     def parse(
         source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
     ) -> tuple[Module, bool] {
-        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+        import from jaclang.compiler.frontend.parser.frontend { parse_woven_snapshot }
         import from jaclang.compiler.driver.program { JacProgram }
         key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
         unit = self.units.get(key);
+        fresh: Module | None = None;
         if unit is None {
             diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
+            (syntax, failed, snapshot) = parse_woven_snapshot(
+                source, path, diagnostics, annexes
+            );
+            if snapshot is not None {
+                fresh = syntax;
+            }
             unit = SourceUnit(
-                syntax,
+                snapshot if snapshot is not None else syntax,
                 failed,
                 list(diagnostics.errors_had),
                 list(diagnostics.warnings_had)
             );
             previous = self.revisions.get(path);
             if previous is not None {
-                self.units.pop(previous, None);
+                replaced = self.units.pop(previous, None);
+                if replaced is not None {
+                    replaced.close();
+                }
             }
             self.revisions[path] = key;
             self.units[key] = unit;
@@ -83,10 +146,8 @@ obj SourceStore {
         } else {
             self.hits += 1;
         }
-        syntax = copy.deepcopy(unit.syntax);
-        assert isinstance(syntax, Module);
-        program.errors_had.extend(unit.errors);
-        program.warnings_had.extend(unit.warnings);
+        syntax = fresh if fresh is not None else unit.materialize();
+        program.diags.extend(unit.errors, unit.warnings);
         return (syntax, unit.failed);
     }
 }
@@ -161,8 +222,7 @@ def context_identity(options: CompileOptions) -> str {
                 options.force_codespace,
                 options.default_codespace,
                 options.ui,
-                options.project_root,
-                options.entry_point
+                options.project_root
             )
         ).encode()
     ).hexdigest()[:20];
@@ -197,12 +257,8 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
 }
 
 def program_for(path: str, program: JacProgram) -> JacProgram {
-    compiler = program._get_compiler();
-    actual = compiler.selfhost.resolve(path, program);
-    if compiler.selfhost.is_selfhost(actual) {
-        return actual;
-    }
-    return context_program(actual, bind_options(path, actual, actual.options));
+    program._get_compiler();
+    return context_program(program, bind_options(path, program, program.options));
 }
 
 def context_app(path: str) -> AppSpec | None {
@@ -225,9 +281,7 @@ def context_app(path: str) -> AppSpec | None {
 def artifact_cache_path(path: str, program: JacProgram) -> Path {
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     selected = program_for(path, program);
-    identity = ''
-        if selected._get_compiler().selfhost.is_selfhost(selected)
-        else selected.context_key;
+    identity = selected.context_key;
     with cache_scope(identity, selected.options) {
         return get_module_cache_path(path);
     }

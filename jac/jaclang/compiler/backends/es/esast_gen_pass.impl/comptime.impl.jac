@@ -123,7 +123,7 @@ impl EsastGenPass._ct_ctor_slots(
     if not shared.ct_params {
         return None;
     }
-    arch = shared.symbol_table;
+    arch = t.shared.symbol_table;
     if not isinstance(arch, uni.Archetype) {
         return None;
     }

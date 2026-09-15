@@ -278,7 +278,7 @@ if [ -n "$host" ]; then
     cp -R "$host/python/build/include/." "$deps/include/"
     cp "$host/python/build/lib/"*.a "$deps/lib/"
     cp -R "$host/python/licenses" "$work/python/licenses"
-    step native "$host/python/install/bin/python3.14" -I "$recipe/prepare_native.py" "$root" "$work/native" "$platform"
+    test -s "$work/native/jacpython.o" || { echo "Missing explicit JacPython native object" >&2; exit 1; }
 else
     # Preserve notices before discarding each dependency's installed build tree.
     mkdir -p "$work/python/licenses"

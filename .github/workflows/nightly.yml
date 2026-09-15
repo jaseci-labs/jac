@@ -7,7 +7,6 @@ on:
   schedule:
     - cron: '0 3 * * *'   # source-build and native runtime checks
     - cron: '17 8 * * *'  # installer against the LIVE latest release
-    - cron: '41 9 * * 1'  # Intel-Mac probe (the manual release leg)
   workflow_dispatch:
 
 permissions:
@@ -16,7 +15,6 @@ permissions:
 jobs:
   # Validate the native runtime on the other automatic release platforms.
   # Linux x86-64 is built and exercised by build-kit and its consumers.
-  # Intel macOS remains in the manually selected release leg.
   jacpython-native:
     name: jacpython-native (${{ matrix.os }})
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
@@ -28,29 +26,16 @@ jobs:
             zig_target: aarch64-linux-gnu.2.17
           - os: macos-14
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       JACPYTHON: "1"
       DTARGET: ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
     steps:
       - uses: actions/checkout@v5
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          use-cache: false
-      - uses: actions/cache/restore@v4
-        with:
-          path: jac/.llvm-build
-          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
-      - name: Build and smoke-test the native JacPython runtime
+      - uses: ./.github/actions/setup-jac
+      - name: Probe the packaged native JacPython binary
         working-directory: jac
-        run: zig build build-python $DTARGET --summary all
-      - name: Build and probe the packaged native JacPython binary
-        working-directory: jac
-        env:
-          JAC_NO_DEV_SOURCE: "1"
         run: |
-          zig build $DTARGET --summary all
           zig-out/bin/jac -c '
           import ast, ctypes, sys
           assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
@@ -63,8 +48,6 @@ jobs:
         if: failure() && runner.os == 'macOS'
         continue-on-error: true
         working-directory: jac
-        env:
-          JAC_NO_DEV_SOURCE: "1"
         run: |
           if [ -x zig-out/bin/jac ]; then
             lldb --batch -o 'settings set target.disable-aslr false' -o run \
@@ -92,59 +75,59 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-    - uses: actions/checkout@v5
-      with:
-        submodules: true
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
 
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
-    - name: Install display deps
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
-          libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
-          libasound2t64 patchelf
+      - name: Install display deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+            libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+            libasound2t64 patchelf
 
-    - name: Build notes-app example
-      run: |
-        cd jac/examples/notes-app
-        jac build   # [project] kind = "desktop", [desktop] engine = "cef"
+      - name: Build notes-app example
+        run: |
+          cd jac/examples/notes-app
+          jac build   # [project] kind = "desktop", [desktop] engine = "cef"
 
-    - name: Bundle existence audit
-      working-directory: jac/examples/notes-app
-      run: |
-        BUNDLE=.jac/client/desktop
-        test -f $BUNDLE/libcef.so
-        test -f $BUNDLE/cef-subprocess
-        test -f $BUNDLE/minimal-fonts.conf
-        test -f $BUNDLE/icudtl.dat
-        test -d $BUNDLE/locales
-        test -f $BUNDLE/app.jab
-        ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
+      - name: Bundle existence audit
+        working-directory: jac/examples/notes-app
+        run: |
+          BUNDLE=.jac/client/desktop
+          test -f $BUNDLE/libcef.so
+          test -f $BUNDLE/cef-subprocess
+          test -f $BUNDLE/minimal-fonts.conf
+          test -f $BUNDLE/icudtl.dat
+          test -d $BUNDLE/locales
+          test -f $BUNDLE/app.jab
+          ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
 
-    - name: Headless smoke with timeout (X11)
-      working-directory: jac/examples/notes-app/.jac/client/desktop
-      run: |
-        Xvfb :99 -screen 0 1280x720x24 &
-        XVFB_PID=$!
-        DISPLAY=:99 \
-        FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
-        JAC_CEF_DISABLE_GPU=1 \
-        OZONE_PLATFORM=x11 \
-        timeout 30s ./notes-app 2>&1 | tee /tmp/notes-app.log &
-        SMOKE_PID=$!
-        sleep 10
-        grep -q "startup: cef_initialize ok" /tmp/notes-app.log \
-          || (cat /tmp/notes-app.log && exit 1)
-        kill $SMOKE_PID $XVFB_PID 2>/dev/null || true
+      - name: Headless smoke with timeout (X11)
+        working-directory: jac/examples/notes-app/.jac/client/desktop
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 &
+          XVFB_PID=$!
+          DISPLAY=:99 \
+          FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
+          JAC_CEF_DISABLE_GPU=1 \
+          OZONE_PLATFORM=x11 \
+          timeout 30s ./notes-app 2>&1 | tee /tmp/notes-app.log &
+          SMOKE_PID=$!
+          sleep 10
+          grep -q "startup: cef_initialize ok" /tmp/notes-app.log \
+            || (cat /tmp/notes-app.log && exit 1)
+          kill $SMOKE_PID $XVFB_PID 2>/dev/null || true
 
-    - name: Upload logs on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: notes-app-logs
-        path: /tmp/notes-app.log
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notes-app-logs
+          path: /tmp/notes-app.log
 
   # Exercises the real `curl ... | bash` path daily: install.sh breakage is
   # usually caused by release/tag changes elsewhere, which the PR-time check in
@@ -166,27 +149,6 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
     uses: ./.github/workflows/_macos-native.yml
 
-  # The Intel-Mac leg left the release matrix: it is `manual` in
-  # build-binaries.yml (broken since #8805, ~25 min of critical path on the
-  # slowest runners, shipping nothing). This weekly artifact-only build is the
-  # leg's signal: the day #8805 is fixed shows up here, and a regression in
-  # the from-source LLVM slice or the 12.0 floor pin cannot sit unnoticed for
-  # weeks the way it once did inside the matrix. No tag, so nothing is
-  # uploaded and the post-build jobs stay skipped.
-  intel-mac-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '41 9 * * 1' }}
-    permissions:
-      contents: write
-    uses: ./.github/workflows/build-binaries.yml
-    with:
-      # Empty tag = build and smoke the artifact, attach it nowhere.
-      tag: ""
-      channel: release
-      only: macos-x86_64
-
-  # Real-app microservice e2e on kind. Two pod-base legs: `slim` = the plain
-  # python default; `official-image` = an image built from this checkout's
-  # binary via docker/jaclang.Dockerfile (baked-runtime path).
   k8s-real-e2e:
     name: microservice e2e (k8s, ${{ matrix.base }})
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
@@ -197,8 +159,6 @@ jobs:
       matrix:
         base: [slim, official-image]
     env:
-      JAC_NO_DEV_SOURCE: "1"
-      # Ship the jac built from this checkout to the pods via channel LOCAL.
       JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
     steps:
       - uses: actions/checkout@v5
@@ -313,7 +273,7 @@ jobs:
           CLUSTER_TYPE: kind
         run: |
           bash jac/jaclang/scale/scripts/k8s_microservice_real_e2e.sh \
-              jac/jaclang/scale/tests/fixtures/k8s_e2e
+              jac/tests/scale/fixtures/k8s_e2e
 
       # Same cluster, separate namespace: deploy examples/sdk-deploy through
       # the programmatic SDK (ScaleClient). official-image leg only.
@@ -321,7 +281,7 @@ jobs:
         if: matrix.base == 'official-image'
         env:
           CLUSTER_TYPE: kind
-        run: bash jac/jaclang/scale/tests/deploy/sdk_deploy_real_e2e.sh
+        run: bash jac/tests/scale/deploy/sdk_deploy_real_e2e.sh
 
       - name: Dump kubectl state on failure
         if: failure()

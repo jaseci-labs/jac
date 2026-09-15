@@ -1,6 +1,6 @@
 import from jaclang.compiler.expr_keys { type_tag_borrows }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E1315,
     E1401,
     E1402,
@@ -669,7 +669,7 @@ impl OwnershipCheckPass._emit_raises_diagnostics -> None {
     if self.nogc_prov is None {
         return;
     }
-    import from jaclang.compiler.frontend.diagnostics { E1407 }
+    import from jaclang.project.diagnostics { E1407 }
     for mc in self.ir_in.get_all_sub_nodes(ModuleCode) {
         for exc in sorted(self._local_raises(mc)) {
             reported = False;

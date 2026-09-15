@@ -15,17 +15,6 @@ def _read_version_from_toml(toml_path: Path) -> (str | None) {
 }
 
 impl resolve_cli_version -> str {
-    dev_source = os.environ.get('JAC_DEV_SOURCE');
-    if dev_source {
-        toml_path = Path(dev_source) / 'jac.toml';
-        if toml_path.exists() {
-            ver = _read_version_from_toml(toml_path);
-            if ver {
-                return ver;
-            }
-        }
-    }
-
     jac_file = jaclang.__file__;
     if jac_file {
         source_toml = Path(jac_file).parent.parent / 'jac.toml';

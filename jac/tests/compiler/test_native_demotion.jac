@@ -199,9 +199,7 @@ test "a docstring-only module is never decided native" {
         fh.write('"""pkg."""\n');
     }
     prog = JacProgram();
-    mod = prog.compile(
-        path, options=CompileOptions(no_cgen=True, force_target_program=True)
-    );
+    mod = prog.compile(path, options=CompileOptions(no_cgen=True));
     (ok, why) = native_default_verdict(mod);
     assert not ok , "an empty module passed the native verdict";
     assert "empty module" in why , why;

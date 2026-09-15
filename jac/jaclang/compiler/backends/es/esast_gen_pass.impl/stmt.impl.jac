@@ -368,7 +368,7 @@ def _raised_exc_identity(cause: (uni.Expr | None)) -> tuple[bool, (str | None)] 
         return (True, None);
     }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    name = shared.class_name;
+    name = ty.shared.class_name;
     return (True, name if JAC_TYPE_REGISTRY.is_exception(name) else None);
 }
 

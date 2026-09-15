@@ -1,6 +1,4 @@
-import from enum { StrEnum }
-
-enum AnalysisFact(StrEnum) {
+enum AnalysisFact: str {
     CFG_FALSE = 'CfgFalse',
     CFG_SUCC = 'CfgSucc',
     CFG_TRUE = 'CfgTrue',

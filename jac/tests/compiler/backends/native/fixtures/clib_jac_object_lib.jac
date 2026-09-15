@@ -13,6 +13,7 @@ import from c { def echo_imported_packet(value: ImportedPacket) -> ImportedPacke
 def:pub retain_imported_packet(value: ImportedPacket) -> ImportedPacket {
     return value;
 }
+
 def imported_roundtrip -> i64 {
     original = ImportedPacket(17);
     returned = echo_imported_packet(original);

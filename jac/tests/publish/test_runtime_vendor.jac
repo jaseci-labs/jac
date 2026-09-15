@@ -12,3 +12,22 @@ test "unresolvable extra seed fails loudly" {
     }
     assert "sqlalchemy_memory" in str(exc.value);
 }
+
+test "prepared runtime closure excludes optional compiler services" {
+    import json;
+    closure = build_runtime_closure([], native_sources=False);
+    assert "runtime/source_app.py" in closure;
+    assert "runtime/runtime.py" in closure;
+    assert "extensions.py" in closure;
+    compiler_paths = sorted(
+        path
+        for path in closure
+        if path.startswith("compiler/")
+    );
+    assert not compiler_paths , compiler_paths;
+    assert "meta_importer.py" not in closure;
+    manifest = json.loads(closure["runtime.json"]);
+    assert all(
+        not module["path"].startswith("compiler/") for module in manifest["modules"]
+    );
+}

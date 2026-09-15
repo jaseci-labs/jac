@@ -1,5 +1,6 @@
 """Test Jac cli module."""
 
+import from tests.support { jac_command, COMPILER_SITE }
 import io;
 import inspect;
 import json;
@@ -237,8 +238,8 @@ test "jac run with no filename and no resolvable entry errors cleanly" {
     # `jac run` with no file is now project-aware: it climbs to the nearest
     # jac.toml and dispatches on the project kind. JAC_ROOT's project declares
     # no entry-point, so this must fail with a clear message (not a crash).
-    env: dict[str, str] = dict(os.environ);
-    env["PYTHONPATH"] = JAC_ROOT;
+    env = dict(os.environ);
+    env["PYTHONPATH"] = COMPILER_SITE;
     result = subprocess.run(
         jac_command("run"),
         cwd=JAC_ROOT,
@@ -2383,7 +2384,7 @@ test "bare lt in jsx content is treated as text" {
 test "jac check reports errors for files inside jaclang source tree" {
     # Regression: the self-host redirect routed jaclang-internal files to
     # the self-host program, so errors were invisible to the caller's JacProgram.
-    # force_target_program=True (set by jac check) fixes this. The fixture
+    #  (set by jac check) fixes this. The fixture
     # is deliberately ill-typed so this test never depends on an incidental
     # compiler bug in a shared fixture.
     internal_fixture = os.path.join(

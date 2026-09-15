@@ -33,9 +33,7 @@ def _jac_enter(cwd: str, app_path: str, entrypoint: str) -> tuple[any, ...] {
 def _seed_dev_source(tmpdir: str, name: str) {
     import jaclang;
     src = str(Path(str(jaclang.__file__)).parent.parent);
-    (Path(tmpdir) / "jac.toml").write_text(
-        f'[project]\nname = "{name}"\n\n[dev]\njaclang_source = "{src}"\n'
-    );
+    (Path(tmpdir) / "jac.toml").write_text(f'[project]\nname = "{name}"\n');
 }
 
 

@@ -29,6 +29,7 @@ A class something IS dispatched through keeps its header and its refusal --
 that pair genuinely has no assignment satisfying both.
 """
 
+import from tests.support { jac_command }
 import contextlib;
 import io;
 import os;

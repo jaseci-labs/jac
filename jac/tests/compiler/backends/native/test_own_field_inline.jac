@@ -8,6 +8,7 @@ without a separate free. Managed modes keep pointer fields; program output
 stays byte-identical across all three gc modes.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,

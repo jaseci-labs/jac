@@ -4,6 +4,7 @@ iteration, scope exit -- while moves, returns, literals, and views
 never double-free. Behavior byte-identical across gc modes; the macOS
 leaks gate pins teardown (the deferred Valgrind-matrix stand-in)."""
 
+import from tests.support { jac_command }
 import os;
 import shutil;
 import subprocess;

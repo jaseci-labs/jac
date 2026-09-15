@@ -1,11 +1,12 @@
 import from jaclang.compiler.types.builtin_extensions { install_builtin_extensions }
 import os;
+import from contextlib { contextmanager }
 import from pathlib { Path }
 import type from jaclang.compiler.types.stubcat.reader { CatScope, StubCatalog }
 import from typing { cast }
 import from jaclang.compiler.types.ct_eval { CtEvaluator }
 import from jaclang.compiler.types.ct_value { CtValue }
-import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
+import from jaclang.project.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.frontend.unitree {
     literal_string_value,
     Ability,
@@ -110,6 +111,7 @@ import from jaclang.compiler.frontend.unitree {
     UniScopeNode,
     WhileStmt,
     WithStmt,
+    ExprAsItem,
     YieldExpr
 }
 import from jaclang.runtime.constants { EdgeDir }
@@ -199,7 +201,7 @@ import from jaclang.compiler.types.ts_decl_parser {
     ts_decl_binding_kind
 }
 
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     DiagnosticInfo,
     E1001,
     E1010,
@@ -260,6 +262,7 @@ import from jaclang.compiler.frontend.diagnostics {
 
 obj PrefetchedTypes {
     has none_type_class: ClassType | None = None,
+        union_type_class: ClassType | None = None,
         object_class: ClassType | None = None,
         type_class: ClassType | None = None,
         coroutine_class: ClassType | None = None,
@@ -391,6 +394,17 @@ walker TypeEvaluator {
         js_globals_module: Module postinit;
 
     def postinit -> None;
+    @contextmanager
+    def diagnostic_context(reporter: Transform | None) -> Iterator[None] {
+        previous = self._pass;
+        self._pass = reporter;
+        try {
+            yield ;
+        } finally {
+            self._pass = previous;
+        }
+    }
+
     def ct_demand(nd: Expr) -> (CtValue | None);
     def ct_site_error(
         nd: Expr, what: str, cv: (CtValue | None), allow_deferred: bool = True
@@ -547,6 +561,7 @@ walker TypeEvaluator {
         probe: bool = False
     ) -> AssignVerdict;
 
+    def get_type_of_context_item(item: ExprAsItem) -> TypeBase;
     def get_type_of_magic_method_call(
         obj_type: TypeBase,
         method_name: str,

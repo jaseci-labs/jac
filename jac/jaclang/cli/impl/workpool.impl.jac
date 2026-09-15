@@ -88,6 +88,9 @@ impl WorkPool._spawn(slot: int) -> dict[(str, any)] {
     (result_r, result_w) = os.pipe();
     pid = os.fork();
     if pid == 0 {
+        import atexit;
+
+        atexit._clear();
         try {
             os.close(dispatch_w);
             os.close(result_r);
@@ -103,6 +106,11 @@ impl WorkPool._spawn(slot: int) -> dict[(str, any)] {
                 } except OSError {}
             }
             self._worker_loop(dispatch_r, result_w);
+        } except BaseException {}
+        try {
+            atexit._run_exitfuncs();
+        } except BaseException {}
+        try {
             exit_hook = self.worker_exit;
             if exit_hook is not None {
                 exit_hook();

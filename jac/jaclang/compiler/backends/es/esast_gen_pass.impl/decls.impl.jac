@@ -1,5 +1,5 @@
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
-import from jaclang.compiler.frontend.diagnostics { E5097 }
+import from jaclang.project.diagnostics { E5097 }
 
 impl EsastGenPass.exit_has_var with uni.HasVar exit {
     here.gen.es_ast = None;
@@ -76,7 +76,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
         }
 
         if is_pub or route_role or here.codespace_dual {
-            name = here.name_ref.sym_name;
+            name = here.sym_name;
             self.client_manifest.exports.append(name);
             if (
                 isinstance(here.signature, uni.FuncSignature)
@@ -169,9 +169,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
         } else {
             if component_call_abi == 'props_passthrough' {
                 self.emit(
-                    W5015,
-                    node_override=value_params[0],
-                    component=here.name_ref.sym_name
+                    W5015, node_override=value_params[0], component=here.sym_name
                 );
             }
             for param in value_params {
@@ -199,9 +197,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
     block = self.sync_loc(
         es.BlockStatement(body=destructure_stmts + body_stmts), jac_node=here
     );
-    func_id = self.sync_loc(
-        es.Identifier(name=here.name_ref.sym_name), jac_node=here.name_ref
-    );
+    func_id = self.sync_loc(es.Identifier(name=here.sym_name), jac_node=here.name_ref);
     is_gen = ModuleFacts.ability_is_generator(here);
     if here.is_method {
         method_kind = 'method';
@@ -258,7 +254,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
         declarator = self.sync_loc(
             es.VariableDeclarator(
                 id=self.sync_loc(
-                    es.Identifier(name=here.name_ref.sym_name), jac_node=here.name_ref
+                    es.Identifier(name=here.sym_name), jac_node=here.name_ref
                 ),
                 `init=forward_call,
             ),
@@ -289,7 +285,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
                         self.sync_loc(
                             es.VariableDeclarator(
                                 id=self.sync_loc(
-                                    es.Identifier(name=here.name_ref.sym_name),
+                                    es.Identifier(name=here.sym_name),
                                     jac_node=here.name_ref
                                 ),
                                 `init=self.sync_loc(

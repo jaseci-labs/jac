@@ -9,6 +9,7 @@ The fixture-plus-expected-codes cases for this rule live in the shared
 table cannot express.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

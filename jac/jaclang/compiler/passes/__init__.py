@@ -2,7 +2,7 @@
 
 The classes exported here are the pass infrastructure (Transform/UniPass
 bases, diagnostics values) plus the bootstrap-critical analysis passes
-the jac0 tier compiles. Codegen passes and their shared bases live in
+the compiler image includes. Codegen passes and their shared bases live in
 jaclang.compiler.backends (common/, py/, es/, native/) and placement in
 jaclang.compiler.placement; re-exporting them here would make this
 package's init cyclic with the backends, which import pass bases from

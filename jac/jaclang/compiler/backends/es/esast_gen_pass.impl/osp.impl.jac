@@ -1,6 +1,6 @@
 impl EsastGenPass._osp_model -> OspModel {
     import from jaclang.compiler.passes.osp_analysis { get_osp_model }
-    _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
+    _root = self.ir_in;
     return get_osp_model(_root);
 }
 
@@ -26,7 +26,7 @@ impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict[str, any] | None) 
         "owner": owner.name.sym_name,
         "kind": kind,
         "is_entry": nd.signature.event.name == Tok.KW_ENTRY,
-        "name": nd.name_ref.sym_name
+        "name": nd.sym_name
     };
 }
 
@@ -71,9 +71,7 @@ impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict[str, any]) ->
     );
     nd.gen.es_ast = self.sync_loc(
         es.MethodDefinition(
-            key=self.sync_loc(
-                es.Identifier(name=nd.name_ref.sym_name), jac_node=nd.name_ref
-            ),
+            key=self.sync_loc(es.Identifier(name=nd.sym_name), jac_node=nd.name_ref),
             value=func_expr,
             kind='method',
             `static=False
@@ -154,7 +152,7 @@ impl EsastGenPass._arch_kind_by_name(name: str) -> (str | None) {
     if _local is not None {
         return _local;
     }
-    _mod = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
+    _mod = self.ir_in;
     _sym = _mod.lookup(name);
     if _sym is None {
         return None;
@@ -172,9 +170,7 @@ impl EsastGenPass._osp_var_arch -> dict[str, str] {
     bindings: dict[str, str] = {};
     kinds = self._osp_arch_kinds();
     if kinds {
-        scan_root = self.ir_in
-            if isinstance(self.ir_in, uni.Module)
-            else self.get_main_mod();
+        scan_root = self.ir_in;
         for asn in scan_root.get_all_sub_nodes(uni.Assignment) {
             if isinstance(asn.value, uni.FuncCall) {
                 head = self._ref_head_name(asn.value);
@@ -512,7 +508,7 @@ impl EsastGenPass._edge_tag_literal(
         }
     }
     if (_tag < 0) and hard {
-        import from jaclang.compiler.frontend.diagnostics { E5097 }
+        import from jaclang.project.diagnostics { E5097 }
         self.emit(
             E5097,
             node_override=nd,
@@ -523,7 +519,7 @@ impl EsastGenPass._edge_tag_literal(
 }
 
 impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression {
-    import from jaclang.compiler.frontend.diagnostics { E5097 }
+    import from jaclang.project.diagnostics { E5097 }
     fail = self.sync_loc(es.ArrayExpression(elements=[]), jac_node=nd);
     chain = nd.chain;
     if not chain {
@@ -646,7 +642,7 @@ impl EsastGenPass._build_osp_filter(
 impl EsastGenPass._build_osp_filter_pred(
     nd: uni.UniNode, filt: uni.FilterCompr
 ) -> (es.Expression | None) {
-    import from jaclang.compiler.frontend.diagnostics { E5097 }
+    import from jaclang.project.diagnostics { E5097 }
     parts: list[es.Expression] = [];
     if filt.f_type is not None {
         _ntag = self._edge_tag_literal(nd, filt.f_type, True);

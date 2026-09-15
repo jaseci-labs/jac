@@ -7,6 +7,7 @@ live after the append keep copy-in semantics; output is byte-identical
 across gc modes either way.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,

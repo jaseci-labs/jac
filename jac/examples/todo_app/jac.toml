@@ -36,6 +36,3 @@ title = "Todo App"
 width = 900
 height = 800
 min_width = 800
-
-[dev]
-jaclang_source = "../.."

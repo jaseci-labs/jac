@@ -1,5 +1,3 @@
-import from collections.abc { Callable }
-
 obj MTRuntime {
     has caller: Callable[(..., object)],
         args: dict[((int | str), object)],

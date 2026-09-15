@@ -9,9 +9,7 @@ def check_optional_temporaries(profile: str) {
     program = JacProgram();
     module = program.compile(
         str(Path(__file__).parent / "fixtures" / "rc_optional_temporaries.jac"),
-        options=CompileOptions(
-            force_codespace="native", force_target_program=True, memory_profile=profile
-        )
+        options=CompileOptions(force_codespace="native", memory_profile=profile)
     );
     assert not program.errors_had , [str(error) for error in program.errors_had];
     engine = module.gen.native_engine;

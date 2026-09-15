@@ -73,8 +73,6 @@ jobs:
   test-native-macos:
     needs: build-kit-macos
     runs-on: macos-latest
-    env:
-      JAC_NO_DEV_SOURCE: "1"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -94,8 +92,7 @@ jobs:
         # Pure-compute na modules that must agree on darwin; str/bytes guard
         # the libc-binding divergence (musl static vs libSystem).
         run: >-
-          jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
-          -f "shutil or path or textwrap or keyword or str or bytes"
+          jac test jac/tests/equivalence/test_prim_equivalence.jac -f "shutil or path or textwrap or keyword or str or bytes"
       - name: Provision managed Ruby, CocoaPods, and native Node
         env:
           JAC_TOOLCHAIN_USE_SYSTEM: "0"

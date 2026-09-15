@@ -44,7 +44,6 @@ def _aot_opts(rc_debug: bool) -> CompileOptions {
     return CompileOptions(
         aot_mode=True,
         default_codespace='native',
-        force_target_program=True,
         na_gc_mode='cycles',
         rc_debug_codegen=rc_debug
     );
@@ -100,7 +99,6 @@ test "rc debug trace gate is driven by the options object, not env" {
                         aot_mode=True,
                         skip_native_engine=True,
                         default_codespace='native',
-                        force_target_program=True,
                         na_gc_mode='cycles',
                         rc_debug_codegen=gate_on
                     )

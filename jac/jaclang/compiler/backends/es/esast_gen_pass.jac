@@ -6,7 +6,7 @@ import jaclang.compiler.frontend.unitree as uni;
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
 import from jaclang.compiler.types.types { TypeBase, ClassType }
-import from jaclang.compiler.backends.es.primitives_es { ESBuiltinEmitter }
+import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx, ESBuiltinEmitter }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel, OspSlot }
@@ -30,11 +30,10 @@ import from jaclang.project.modresolver {
     relative_js_specifier,
     resolve_relative_path
 }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E2025,
     E5010,
     E5011,
-    E5012,
     E5016,
     E5017,
     E5018,
@@ -245,6 +244,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
         component_export_names: set[str] = set(),
+        _component_call_abis: dict[uni.Ability, str] = {},
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
         match_seq: int = 0,
@@ -329,7 +329,6 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
 
-    def get_main_mod -> uni.Module;
     def _expr_from_node(
         nd: (uni.UniNode | None), `default: LiteralValue = None
     ) -> es.Expression;

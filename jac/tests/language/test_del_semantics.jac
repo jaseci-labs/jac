@@ -6,6 +6,7 @@ CPython and asserts Jac agrees, the dead-anchor rules, and the backend-parity
 checks.
 """
 
+import from tests.support { jac_command }
 import ctypes;
 import io;
 import os;

@@ -35,7 +35,7 @@ import from jaclang.compiler.frontend.constant {
     SymbolAccess,
     Tokens as Tok
 }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E5026,
     E5060,
     E5088,

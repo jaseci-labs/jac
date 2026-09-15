@@ -5,6 +5,7 @@ the parent, reductions combine at the join. Output byte-identical
 across gc modes, thread widths, and the Python backend (list views via
 the `_jac_chunks` runtime)."""
 
+import from tests.support { jac_command }
 import os;
 import re;
 import subprocess;

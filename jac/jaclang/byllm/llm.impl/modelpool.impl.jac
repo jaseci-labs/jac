@@ -128,7 +128,7 @@ impl ModelPool.model_call_with_stream(params: dict[str, any]) -> Iterable[object
             return chunks;
         }
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool {
-            return pool.submit(asyncio.run, _collect_stream()).result();
+            return iter(pool.submit(asyncio.run, _collect_stream()).result());
         }
     }
 
@@ -167,5 +167,5 @@ impl ModelPool.model_call_with_stream(params: dict[str, any]) -> Iterable[object
         }
         return _fallback_gen();
     }
-    return self._router.completion(stream=True, **params);
+    return cast(Iterator[object], self._router.completion(stream=True, **params));
 }

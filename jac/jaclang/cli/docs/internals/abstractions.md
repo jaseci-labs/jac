@@ -21,8 +21,8 @@ abstraction is implemented two different ways, that shows up here.
 All nine keywords flow through a single, unified pipeline: tokenized in
 `compiler/frontend/parser/tokens.jac`, parsed by `compiler/frontend/parser/impl/parser.impl.jac`
 into a small set of AST node types defined in `compiler/frontend/unitree.jac`, and
-implemented by `JacRuntimeInterface` in `runtime/runtime.jac`. Both the
-bootstrap compiler (`jac0.py`) and the full compiler share this front end.
+implemented by `JacRuntimeInterface` in `runtime/runtime.jac`. The pinned prior
+compiler builds the current compiler through the ordinary full pipeline.
 
 | Keyword | Token | AST node | Runtime |
 |---|---|---|---|
@@ -34,7 +34,7 @@ bootstrap compiler (`jac0.py`) and the full compiler share this front end.
 | `entry` | `KW_ENTRY` -- [tokens.jac:90](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L90) | `Ability` (in archetype) **or** module-level `with entry` block | `_jac_entry_funcs_` ClassVar; dispatched by `_execute_entries` -- [runtime.jac:239](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L239) |
 | `exit` | `KW_EXIT` -- [tokens.jac:91](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L91) | `Ability` | `_jac_exit_funcs_` ClassVar; `_execute_exits` -- [runtime.jac:249](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L249) |
 | `can` | `KW_CAN` -- [tokens.jac:50](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L50) | `Ability` -- [unitree.jac:688](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac#L688) | compiled to a plain Python method on the archetype class |
-| `has` | `KW_HAS` -- [tokens.jac:49](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L49) | `HasVar` -- [unitree.jac:781](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac#L781) | dataclass field; wrapped by `JacField` (jac0) or `_.field()` (full compiler) |
+| `has` | `KW_HAS` -- [tokens.jac:49](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L49) | `HasVar` -- [unitree.jac:781](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac#L781) | `ObjectField` metadata and initialization in `runtime/object_model.jac`, emitted through `jaclang.lib.field` |
 
 **Notes**
 

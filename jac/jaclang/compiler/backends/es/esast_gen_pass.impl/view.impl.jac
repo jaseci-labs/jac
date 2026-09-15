@@ -318,7 +318,9 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     body_stmts = self._collect_stmt_body(inner);
     body_stmts = self._prepend_hoisted(nd, body_stmts);
 
-    is_entry = nd.signature.event.name == Tok.KW_ENTRY;
+    signature = nd.signature;
+    assert isinstance(signature, uni.EventSignature);
+    is_entry = signature.event.name == Tok.KW_ENTRY;
     is_async = nd.is_async;
 
     deps_elements: list[es.Expression] = [];

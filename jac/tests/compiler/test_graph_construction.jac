@@ -4,6 +4,7 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
 import from jaclang.compiler.tools.unparse_pass { UnparsePass }
+import from jaclang.compiler.driver.program { JacProgram }
 
 test "graph keyword supports escaped identifiers" {
     (module, errors) = rd_parse(
@@ -150,15 +151,20 @@ test "client regeneration retains construction imports" {
     assert module.gen.js == first;
 }
 
-test "native construction runtime does not admit compiler internals" {
-    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+test "native construction runtime sharing does not include compiler internals" {
+    import from jaclang.compiler.frontend.codeinfo {
+        is_shared_runtime_module,
+        resolve_native_module
+    }
+    import from jaclang.project.modresolver { resolve_relative_path }
     import from tempfile { gettempdir }
     (_, runtime) = resolve_native_module(
         "jaclang.runtime.graph_fragment", gettempdir()
     );
     assert runtime is not None;
-    (_, compiler) = resolve_native_module("jaclang.cli.cli", gettempdir());
-    assert compiler is None;
+    assert is_shared_runtime_module(runtime);
+    compiler = resolve_relative_path("jaclang.cli.cli", gettempdir() + "/probe.jac");
+    assert not is_shared_runtime_module(compiler);
 }
 
 test "graph rejects suspension before backend lowering" {
@@ -193,4 +199,58 @@ test "graph expressions nested in block heads remain available" {
     );
     assert not errors;
     assert len(module.get_all_sub_nodes(uni.GraphExpr)) == 2;
+}
+
+test "nested bytecode compilation does not inherit the caller's analysis request" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import jaclang.compiler.driver.pass_driver as driver;
+    # Ensure the codec is available so unnecessary interface work is observable.
+    import jaclang.compiler.types.stubcat.modiface;
+    with TemporaryDirectory() as directory {
+        base_path = Path(directory);
+        toolchain = base_path / "toolchain";
+        toolchain.mkdir();
+        helper = toolchain / "helper.jac";
+        helper.write_text("def answer() -> int { return 42; }\n");
+        app = base_path / "main.jac";
+        app.write_text("def application() -> int { return 1; }\n");
+        internal = JacProgram();
+        compiler = JacCompiler();
+        internal._compiler = compiler;
+        program = JacProgram();
+        program._compiler = compiler;
+        loaded: list[any] = [];
+        original: any = driver.run_pass;
+        def load_helper(pass_cls: any, ir_in: any, prog: any, **kwargs: any) -> any {
+            if pass_cls.__name__ == "SymTabBuildPass"
+                and ir_in.loc.mod_path == str(app)
+                and not loaded {
+                assert compiler._reentrant_depth > 0;
+                loaded.append(
+                    compiler.get_bytecode(str(helper), target_program=internal)
+                );
+            }
+            return original(pass_cls, ir_in, prog, **kwargs);
+        }
+        with patch.object(driver, "run_pass", load_helper) {
+            program.compile(
+                str(app), options=CompileOptions(no_cgen=True, need_full_ast=True)
+            );
+        }
+        assert len(loaded) == 1 and loaded[0] is not None;
+        assert internal.analysis.cache_events.get("iface_encode", 0) == 0 , (
+            "the caller's type check forced interfaces into lazy compiler code generation"
+        );
+        assert sum(
+            context.analysis.cache_events.get("iface_encode", 0)
+            for context in [program] + list(program.contexts.values())
+        )
+            > 0 , "the outer application analysis lost its interface request";
+        assert compiler._closure_opts is None;
+        assert not program.errors_had;
+    }
 }

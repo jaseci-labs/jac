@@ -110,6 +110,34 @@ test "import of a natively-unlowerable module demotes and succeeds" {
     assert mod is not None , "demoted module must import cleanly";
 }
 
+test "JIT callers honor dependency demotions before publishing native calls" {
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "provider.jac").write_text(
+            'def bad_fmt(n: int) -> str { return "%03d" % n; }\n'
+                + 'def good(n: int) -> int { return n + 1; }\n'
+        );
+        caller = Path(directory) / "caller.jac";
+        caller.write_text(
+            'import from provider { bad_fmt, good }\n'
+                + 'def needs_python() -> str { return bad_fmt(7); }\n'
+                + 'def stays_native() -> int { return good(7); }\n'
+        );
+        prog = JacProgram();
+        mod = prog.compile(
+            file_path=str(caller),
+            options=CompileOptions(force_codespace="native", no_ir_cache=True)
+        );
+        assert not prog.errors_had , fmt_errors(prog);
+        assert mod.gen.native_layout is not None;
+        assert "needs_python" not in mod.gen.native_layout.functions , (
+            "a JIT caller must not publish a call to a demoted dependency"
+        );
+        assert "stays_native" in mod.gen.native_layout.functions;
+    }
+}
+
 test "check-path compile surfaces native codegen errors (check/run parity)" {
     src = write_module("gate_bad_check.jac", BAD_NA_SOURCE);
     prog = JacProgram();
@@ -117,10 +145,7 @@ test "check-path compile surfaces native codegen errors (check/run parity)" {
     prog.compile(
         file_path=src,
         options=CompileOptions(
-            no_cgen=True,
-            native_parity=True,
-            force_codespace="native",
-            force_target_program=True
+            no_cgen=True, native_parity=True, force_codespace="native",
         )
     );
     assert has_error_code(prog, "E5092") , (

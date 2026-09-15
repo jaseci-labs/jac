@@ -7,6 +7,7 @@ are handled properly.
 
 import ast as py_ast;
 import inspect;
+import marshal;
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -15,9 +16,29 @@ import from jaclang.compiler.tools.unparse_pass { unparse_module }
 import from jaclang.project.source { pascal_to_snake }
 import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.unitree { PythonModuleAst, Source }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
+
+def _assert_literal_values(python_source: str, jac_source: str) {
+    expected: dict[str, any] = {"__name__": "__main__"};
+    actual: dict[str, any] = {"__name__": "__main__"};
+    exec(python_source, expected);
+    program = JacProgram();
+    module = program.compile(
+        os.path.join(FIXTURES, "py2jac_literals.jac"),
+        use_str=jac_source,
+        options=CompileOptions(force_codespace="server", no_ir_cache=True)
+    );
+    assert module is not None and module.gen.py_bytecode , program.errors_had;
+    exec(marshal.loads(module.gen.py_bytecode), actual);
+    for (name, value) in expected.items() {
+        if not name.startswith("__") and isinstance(value, (str, bytes)) {
+            assert actual.get(name) == value , (name, actual.get(name), value);
+        }
+    }
+}
 
 test "synced to latest py ast" {
     # Python 3.14 moved the unparser to `_ast_unparse` and binds
@@ -89,9 +110,10 @@ test "fstring triple quotes" {
             )
         ).ir_out
     );
-    assert 'f"""Hello\n{name}"""' in code;
+    assert 'f"""Hello\\n{name}"""' in code;
     assert "f'''Hello\n{name}'''''''" not in code;
     assert 'f"""Hello\n{name}"""""""' not in code;
+    _assert_literal_values(file_source, code);
 }
 
 """Test that escape sequences are preserved when converting Python to Jac."""
@@ -117,7 +139,7 @@ test "py2jac escape sequences" {
     assert "\\n" in code and "\\t" in code;
 
     # F-strings, raw strings, triple-quoted
-    assert "f\"\\x1b[" in code or "f'\\x1b[" in code;
+    assert 'f"""\\u001b[' in code;
     assert 'r"\\x1b[31m' in code or "r'\\x1b[31m" in code;
     assert 'f"""Hello {name}' in code or "f'''Hello {name}" in code;
 
@@ -127,6 +149,7 @@ test "py2jac escape sequences" {
     assert "{{literal braces}}" in code;
     assert "# not a comment" in code;
     assert "\\x00" in code;
+    _assert_literal_values(file_source, code);
 }
 
 """`\\N{name}` is the one escape Jac cannot render, so converted code refuses."""

@@ -60,7 +60,6 @@ def compile_native(
     prog = JacProgram();
     opts = CompileOptions(
         force_codespace='native',
-        force_target_program=True,
         na_gc_mode=(gc_mode if gc_mode is not None else "cycles")
     );
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
@@ -175,11 +174,7 @@ def check_drop_parity(gc_mode: str | None) {
     (eng, _) = compile_native("rc_drop_hook.jac", gc_mode=gc_mode);
     ir = compile_native_ir(
         "rc_drop_hook.jac",
-        options=CompileOptions(
-            force_codespace="native",
-            force_target_program=True,
-            na_gc_mode=gc_mode or "cycles"
-        )
+        options=CompileOptions(force_codespace="native", na_gc_mode=gc_mode or "cycles")
     );
     body = fn_ir(ir, "__rc_release_Res");
     assert 'call' in body and 'Res.drop' in body , "managed release fn does not invoke the drop hook";

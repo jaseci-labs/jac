@@ -657,7 +657,8 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
         isinstance(src_alloca.type, ir.PointerType)
         and isinstance(src_alloca.pointee_type, ir.PointerType)
     )
-        and not _mv_desc_slot {
+        and not _mv_desc_slot
+        and self._opt_ptr_payload_of(src_alloca.pointee_type) is None {
         return False;
     }
     self.builder.store(ir.Constant(src_alloca.pointee_type, None), src_alloca);

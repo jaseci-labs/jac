@@ -21,6 +21,7 @@ What is pinned here:
     later-declared locals segfaults under allocation reuse otherwise).
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

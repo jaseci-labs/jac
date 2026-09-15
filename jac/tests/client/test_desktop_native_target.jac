@@ -274,7 +274,7 @@ test "desktop launch wires JAC_DESKTOP_DEPS from the project venv" {
     _saved = os.environ.get("JAC_DESKTOP_DEPS");
     _cwd = os.getcwd();
     try {
-        proj = Path(tmp);
+        proj = Path(tmp).resolve();
         (proj / "jac.toml").write_text(
             "[project]\nname = \"d\"\nversion = \"0.1.0\"\n"
         );
@@ -374,17 +374,11 @@ test "host bootstrap modules import + run from the fused runtime" {
     }
 }
 
-"""Editable worktree roots are auto-detected from __editable__.*.pth links."""
-test "dev launch detects editable worktree roots" {
-    import os;
+test "desktop build sources belong to the running compiler image" {
+    import jaclang;
     import from pathlib { Path }
-    import from jaclang.client.targets.desktop._dev_launch { _editable_roots_from_site }
-
-    roots = _editable_roots_from_site();
-    if (Path(os.environ.get("JAC_DESKTOP_JAC_SRC", "")) / "jaclang").exists() {
-        assert "JAC_DESKTOP_JAC_SRC" in roots , "editable jaclang root should be detected";
-    }
-    # Scale is folded into jaclang (jaclang.scale), so the editable jaclang root
-    # carries it; there is no separate JAC_DESKTOP_SCALE_SRC root to detect.
-    assert "JAC_DESKTOP_SCALE_SRC" not in roots , "no separate scale root (scale is part of jaclang)";
+    import from jaclang.client.targets.desktop._dev_launch { _compiler_roots }
+    roots = _compiler_roots();
+    assert roots
+        == {"JAC_DESKTOP_JAC_SRC": str(Path(jaclang.__file__).resolve().parent.parent)};
 }

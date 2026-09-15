@@ -1,3 +1,5 @@
+import from typing { Protocol as ModelProtocol, Literal as StatusLiteral }
+import from typing { TypeVar as RuntimeTypeVar }
 import fnmatch;
 import html;
 import inspect;
@@ -5,14 +7,12 @@ import json;
 import os;
 import sys;
 import types;
-import from collections { OrderedDict, deque }
-import from collections.abc { Callable, Coroutine, Iterable, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
-import from jaclang.runtime.object_model { field, make_object }
+import from jaclang.runtime.object_model { field }
 import from inspect { getfile }
 import from logging { getLogger }
-import from typing { TYPE_CHECKING, Literal, ParamSpec, Protocol, TypeAlias, TypeVar }
+import from typing { TYPE_CHECKING, ParamSpec, TypeAlias }
 import from uuid { UUID }
 import from jaclang.runtime.archetype {
     GenericEdge,
@@ -60,7 +60,6 @@ import type from jaclang.byllm.mtir { MTRuntime }
 import type from jaclang.cli.console { JacConsole as ConsoleImpl }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.driver.selfhost { SelfHostCache }
 import type from jaclang.client.client_bundle { ClientBundle, ClientBundleBuilder }
 import type from jaclang.runtime.context { ExecutionContext }
 import type from jaclang.server.server { JacAPIServer as JacServer }
@@ -68,7 +67,7 @@ import type from jaclang.server.identity.user_manager { UserManager }
 import type from jaclang.server.server { ModuleIntrospector, ServerExtension }
 
 glob logger = getLogger(__name__),
-     T = TypeVar('T'),
+     T = RuntimeTypeVar('T'),
      P = ParamSpec('P'),
      JsonValue: TypeAlias = None
          | str
@@ -77,7 +76,7 @@ glob logger = getLogger(__name__),
          | bool
          | `list['JsonValue']
          | `dict[(str, 'JsonValue')],
-     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)],
+     StatusCode: TypeAlias = StatusLiteral[(200, 201, 400, 401, 404, 500, 503)],
      _request_context: ContextVar[ExecutionContext | None] = ContextVar(
          'request_context', `default=None
      ),
@@ -194,12 +193,12 @@ class JacClassReferences {
     }
 }
 
-obj LLMModel(Protocol) {
+class LLMModel(ModelProtocol) {
     has call_params: dict[(str, object)];
 
-    def __call__(**kwargs: object) -> LLMModel;
-    def invoke(mt_run: MTRuntime) -> object;
-    async def ainvoke(mt_run: MTRuntime) -> object;
+    def __call__(self: LLMModel, **kwargs: object) -> LLMModel;
+    def invoke(self: LLMModel, mt_run: MTRuntime) -> object;
+    async def ainvoke(self: LLMModel, mt_run: MTRuntime) -> object;
 }
 
 class JacContext {
@@ -226,7 +225,6 @@ class JacPersistence {
     static def object_ref(`obj: Archetype) -> str;
     static def save(`obj: (Archetype | Anchor)) -> None;
     static def destroy(objs: any, strict: bool = False) -> None;
-    static def _destroy_anchors(objs: any, strict: bool) -> list[Anchor];
     static def peek_attr(`obj: any, name: str) -> any;
     static def peek_item(container: any, key: any) -> any;
     static def get_user_manager(base_path: str) -> UserManager;
@@ -313,7 +311,7 @@ class JacGraph {
         target: list[T], attr_val: tuple[(tuple[str, ...], tuple[any, ...])]
     ) -> list[T];
 
-    static def root -> Root;
+    static def `root -> Root;
     static def get_all_root -> list[Root];
     static def build_edge(
         is_undirected: bool,
@@ -524,7 +522,6 @@ class JacRuntime(JacRuntimeInterface) {
     with entry {
         compiler: (JacCompiler | None) = None;
         program: (JacProgram | None) = None;
-        selfhost: (SelfHostCache | None) = None;
         pool: ThreadPoolExecutor = ThreadPoolExecutor();
         exec_ctx: (ExecutionContext | None) = None;
         loaded_modules: dict[(str, types.ModuleType)] = {};
@@ -543,9 +540,6 @@ class JacRuntime(JacRuntimeInterface) {
 
     @classmethod
     def get_program(cls: any) -> JacProgram;
-
-    @classmethod
-    def get_selfhost(cls: any) -> SelfHostCache;
 
     static def get_base_path_dir -> (str | None);
     static def get_full_target_path -> (str | None);

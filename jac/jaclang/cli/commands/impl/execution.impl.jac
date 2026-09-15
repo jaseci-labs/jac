@@ -578,7 +578,7 @@ impl run_jab_image(
 }
 
 def _jab_native_bin(img_root: Path, entry_rel: str) -> (str | None) {
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.extensions { base_stem }
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
     try {
         import jaclang.compiler.backends.native.llvm.binding as llvm;
@@ -1003,7 +1003,7 @@ def _exec_file(
                 full_path = os.path.abspath(filename);
                 program = Jac.get_program();
                 _run_options = (
-                    _RunOpts(force_codespace='native', force_target_program=True)
+                    _RunOpts(force_codespace='native')
                         if _kind_forced or backend == "native"
                         else None
                 );
@@ -1047,9 +1047,7 @@ def _exec_file(
                     program.compile(
                         file_path=os.path.abspath(filename),
                         options=CompileOptions(
-                            force_codespace="server",
-                            default_codespace="server",
-                            force_target_program=True
+                            force_codespace="server", default_codespace="server",
                         )
                     );
                     if program.errors_had {

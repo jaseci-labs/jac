@@ -111,9 +111,7 @@ test "compr over or lowers, and its absent arm is falsy rather than a fault" {
     try {
         ir = prog.compile(
             file_path=os.path.join(FIXTURES, "compr_or_erased.jac"),
-            options=CompileOptions(
-                force_codespace='native', force_target_program=True, no_ir_cache=True
-            )
+            options=CompileOptions(force_codespace='native', no_ir_cache=True)
         );
     } finally {
         coverage = na_coverage_end();

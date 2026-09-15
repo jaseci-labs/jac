@@ -40,10 +40,6 @@ jobs:
       inputs.action == 'create-pr'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
-    env:
-      # Run the release scripts with the published compiler. The root jac.toml
-      # otherwise reroutes the installed binary to this checkout's jaclang.
-      JAC_NO_DEV_SOURCE: "1"
     permissions:
       contents: write
       pull-requests: write

@@ -72,9 +72,8 @@ identity (plus an erase.jac round-trip), and
 `tests/compiler/passes/test_ownership_regressions.jac` pins the
 checker-level fixes the suite originally surfaced.
 
-Do NOT add a `jac.toml` in this tree: a nested jac.toml becomes the
-project root, which disables the repo-root `[dev] jaclang_source` reroute
-and silently falls back to the jac binary's bundled (older) compiler.
+Use the freshly built binary or set `JAC_COMPILER_IMAGE` to the compiler
+image being measured. Project configuration does not select a compiler.
 
 ## Part 2: region kernels
 

@@ -21,7 +21,10 @@ impl SemanticAnalysisPass.enter_archetype with Archetype entry {
 }
 
 impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
-    if ((nd.arch_type.name != Tok.KW_CLASS) and isinstance(nd.body, Sequence)) {
+    if (
+        (nd.arch_type.name != Tok.KW_CLASS)
+        and isinstance(nd.body, runtime_abc.Sequence)
+    ) {
         found_default_init = False;
         for stmnt in nd.body {
             if not isinstance(stmnt, ArchHas) or stmnt.is_static {

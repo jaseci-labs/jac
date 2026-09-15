@@ -50,7 +50,7 @@ def _write_jac_toml(directory: str, name: str) {
     import jaclang;
     src = str(Path(jaclang.__file__).parent.parent);
     Path(os.path.join(directory, "jac.toml")).write_text(
-        f"[project]\nname = \"{name}\"\n\n[dev]\njaclang_source = \"{src}\"\n"
+        f"[project]\nname = \"{name}\"\n"
     );
 }
 

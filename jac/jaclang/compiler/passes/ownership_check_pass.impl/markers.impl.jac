@@ -1,4 +1,4 @@
-import from jaclang.compiler.frontend.diagnostics { E1309 }
+import from jaclang.project.diagnostics { E1309 }
 
 impl OwnershipCheckPass._emit_marker_diagnostics -> None {
     if not self.imm_decl {
@@ -62,7 +62,7 @@ impl OwnershipCheckPass._emit_imm_mutation(
 }
 
 impl OwnershipCheckPass._emit_place_intrinsic_diagnostics -> None {
-    import from jaclang.compiler.frontend.diagnostics { E1319 }
+    import from jaclang.project.diagnostics { E1319 }
     import from jaclang.compiler.types.types { ClassType, TypeBase, UnionType }
     for call in self.ir_in.get_all_sub_nodes(FuncCall) {
         if call.call_kind != "builtin"

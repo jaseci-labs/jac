@@ -29,18 +29,8 @@ def seal_copy_ignore(_dir: str, items: list[str]) -> list[str] {
 }
 
 def run_precompiler(src_dir: str, flags: list[str]) -> int {
-    import sys;
-    import subprocess;
-
-    code = (
-        "import _jac_finder as _jf; _jf.apply_dev_source_override(); _jf.install(); "
-        "import sys; sys.argv = ['jac', 'precompile', "
-        + repr(src_dir)
-        + "] + "
-        + repr(list(flags))
-        + "; from jaclang.cli.cli_boot import start_cli; start_cli()"
-    );
-    return subprocess.call([sys.executable, "-c", code]);
+    import from jaclang.cli.cli_boot { jac_command }
+    return subprocess.call(jac_command() + ["precompile", src_dir] + flags);
 }
 
 def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
@@ -141,7 +131,7 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
 
 def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     import os;
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.extensions { base_stem }
     import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
@@ -225,7 +215,7 @@ def make_sealed_image(
 ) -> (Path | None) {
     import shutil;
     import tempfile;
-    import from jaclang.jac0core { ext_registry }
+    import from jaclang { extensions as ext_registry }
 
     proj_root = config.project_root;
     if proj_root is None {
@@ -295,7 +285,7 @@ def make_sealed_image(
 
 def vendor_jab_deps(config: any, img: Path) -> bool {
     import from jaclang.project.providers { resolve_plan, get_python_provider }
-    import from jaclang.jac0core.sealed { python_tag }
+    import from jaclang.image { python_tag }
     import from jaclang.dist.jab_vendor {
         wheels_dir,
         download_wheels,

@@ -349,7 +349,7 @@ impl EsastGenPass.exit_compare_expr with uni.CompareExpr exit {
             }
             if _prim_result is not None {
                 if op_tok == Tok.KW_NIN {
-                    comparison = self.sync_loc(
+                    comparison: es.Expression = self.sync_loc(
                         es.UnaryExpression(
                             operator='!', prefix=True, argument=_prim_result
                         ),

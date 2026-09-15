@@ -4,6 +4,7 @@ under managed modes, rootless and derivation-bounded (item 2's checker
 rules) under the enforced headerless build. Behavior byte-identical
 across modes."""
 
+import from tests.support { jac_command }
 import os;
 import re;
 import subprocess;

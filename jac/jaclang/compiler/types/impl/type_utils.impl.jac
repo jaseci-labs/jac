@@ -272,8 +272,11 @@ impl types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool {
         return True;
     }
     if isinstance(a, UnionType) and isinstance(b, UnionType) {
-        a_types: list[TypeBase] = a.types or [];
-        b_types: list[TypeBase] = b.types or [];
+        if a.flags != b.flags {
+            return False;
+        }
+        a_types = a.types or [];
+        b_types = b.types or [];
         if len(a_types) != len(b_types) {
             return False;
         }
@@ -819,7 +822,7 @@ impl apply_solved_type_vars(
         new_types = [
             apply_solved_type_vars(t, solution, class_type, shadowed) for t in ty.types
         ];
-        return UnionType(types=new_types);
+        return UnionType(types=new_types, flags=ty.flags);
     }
 
     return ty;

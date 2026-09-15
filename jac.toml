@@ -19,23 +19,12 @@ Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://www.jaclang.org/docs"
 
-# Editable dev loop: reroute `import jaclang` to the in-repo source under jac/
-# so the `jac` binary runs your latest edits with no rebuild. Enabled here so
-# building from this repo always runs the in-tree compiler source; this skips
-# the binary's precompiled JIR bundle (the per-module cache is content-keyed, so
-# edits still self-invalidate). A one-time `zig build` is needed first, since
-# sitecustomize.py -- which reads this key -- ships inside the binary payload.
-# Comment this stanza out to fall back to the binary's bundled jaclang.
-# Set JAC_NO_DEV_SOURCE=1 to force it off for a single command.
+# Developer command concurrency. Compiler selection is explicit via JAC_COMPILER_IMAGE.
 [dev]
-jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
 
-# `jac test` worker count. The generic default is sized from MemAvailable
-# assuming ~2 GB per worker, which suits an ordinary project. This repo's
-# compiler suite is far heavier: workers running the native/LLVM tests were
-# measured at ~4.9 GB PSS average and 7.1 GB peak (they fork `jac build --native`
-# subprocesses), so the generic default over-subscribes here. Pin it.
-# JAC_TEST_JOBS overrides this; "0" or "1" runs everything in one process.
+# Workstation test concurrency; CI overrides this with JAC_TEST_JOBS=auto.
+# Automatic sizing budgets the configured recycling ceiling per worker (8 GB
+# by default). "0" runs in process; "1" uses one recyclable worker.
 test_jobs = "8"
 
 # `jac test` discovers the suite here (mirrors pytest's testpaths); relative to
@@ -47,20 +36,17 @@ test_jobs = "8"
 [test]
 directories = [
     "jac/tests",
-    "jac/jaclang/compiler/tests",
-    "jac/jaclang/byllm/tests",
-    "jac/jaclang/scale/tests",
 ]
 # The scale suite relies on per-file process isolation (servers, sockets,
 # module-level config); each of these files gets a dedicated worker.
-isolate = ["jac/jaclang/scale/tests/*"]
+isolate = ["jac/tests/scale/*"]
 # These share one shelf_db_path SQLite file, so they additionally run one at
 # a time after the parallel phase.
 serial = [
-    "jac/jaclang/scale/tests/data/test_gcs_storage.jac",
-    "jac/jaclang/scale/tests/server/test_firebase_auth_sso.jac",
-    "jac/jaclang/scale/tests/data/test_identity_password.jac",
-    "jac/jaclang/scale/tests/data/test_firebase_env.jac",
+    "jac/tests/scale/data/test_gcs_storage.jac",
+    "jac/tests/scale/server/test_firebase_auth_sso.jac",
+    "jac/tests/scale/data/test_identity_password.jac",
+    "jac/tests/scale/data/test_firebase_env.jac",
 ]
 
 # JacPython is a native-only library in checks, builds and cached imports.

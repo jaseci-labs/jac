@@ -37,6 +37,7 @@ obj ExecutionContext {
     has system_root: NodeAnchor { getter; }
     has user_root: NodeAnchor { getter; }
     has entry_node: NodeAnchor { getter; }
+    has is_user_context: bool { getter; }
 
     def _resolve_roots -> None;
     def _get_anchor(anchor_id: str) -> NodeAnchor;

@@ -59,11 +59,11 @@ test "precompiled modules carry their type interface on cold and cached builds" 
 }
 
 test "an installed precompiled interface resolves paths without rebuilding its source" {
-    import from jaclang.jac0core { sealed }
+    import from jaclang { image as sealed }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.types.types { FunctionType, ClassType }
     with TemporaryDirectory() as directory {
-        base_path = Path(directory);
+        base_path = Path(directory).resolve();
         package = _package(base_path / "build");
         source = package / "api.jac";
         (package / "model.jac").write_text("obj Box { has value: int; }\n");
@@ -101,7 +101,7 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             assert iface_entry is not None , "the installed interface could not be validated";
             module = registry._materialize(iface_entry);
             assert module is not None and module.stub_only;
-            assert module.loc.mod_path == path;
+            assert module.loc.mod_path == path , (module.loc.mod_path, path);
             assert not program.analysis.pass_runs , "installation rebuilt the dependency";
             evaluator = program.get_type_evaluator();
             function = evaluator.get_type_of_symbol(module.lookup("make"));
@@ -179,45 +179,75 @@ test "relocation changes path fields without rewriting diagnostic messages" {
     }
 }
 
-test "freezing bootstrap bytecode initializes and preserves its interface" {
+test "compiler dependency paths survive runtime extraction relocation" {
+    import tempfile;
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.jir as jir;
+    with tempfile.TemporaryDirectory() as directory {
+        directory = str(Path(directory).resolve());
+        first = Path(directory, "first", "jaclang");
+        second = Path(directory, "second", "jaclang");
+        for root_dir in (first, second) {
+            root_dir.mkdir(parents=True);
+            (root_dir / "builtins.pyi").write_text("value: int\n");
+        }
+        app_dir = str(Path(directory, "app"));
+        paths = jir.JirPaths(base_dir=app_dir);
+        with patch.object(jir, "_COMPILER_PACKAGE_DIR", str(first)) {
+            encoded = paths.encode(str(first / "builtins.pyi"), app_dir);
+            deps = jir.ct_deps_section([str(first / "builtins.pyi")], base=app_dir);
+            assert str(first) not in encoded;
+            assert str(first).encode() not in deps;
+            neighbor = str(first) + "_other/builtins.pyi";
+            assert paths.encode(neighbor, app_dir) == neighbor;
+        }
+        with patch.object(jir, "_COMPILER_PACKAGE_DIR", str(second)) {
+            assert paths.resolve(encoded) == str(second / "builtins.pyi");
+            assert paths.encode(str(second / "builtins.pyi"), app_dir) == encoded;
+            assert jir.ct_dep_text_fresh(deps.decode(), app_dir);
+            assert str(second)
+                in jir.absolutize_ct_deps_section(deps, app_dir).decode();
+            (second / "builtins.pyi").write_text("value: str\n");
+            assert not jir.ct_dep_text_fresh(deps.decode(), app_dir);
+        }
+    }
+}
+
+test "fresh publishing initializes and preserves the type interface" {
     import os;
     import subprocess;
     import sys;
-    # Finalization is a fresh process. A selfhost symbol-only compile does not
-    # initialize the interface codec implicitly, unlike an application compile.
+    import jaclang;
     script = """
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
-from jaclang.dist.precompile_bytecode import seal_bootstrap, _unit_program
-from jaclang.compiler.driver.compiler import JacCompiler
-from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.driver.selfhost import SelfHostCache
+sys.path.insert(0, sys.argv[1])
+from jaclang.dist.precompile_bytecode import precompile_unit
 from jaclang.compiler.driver.jir import SEC_IFACE, read_section_bytes
-from jaclang.jac0core import sealed
 with TemporaryDirectory() as directory:
-    package = Path(directory) / 'jaclang'
-    driver = package / 'compiler' / 'driver'
-    driver.mkdir(parents=True)
+    package = Path(directory) / 'library'
+    package.mkdir()
     (package / '__init__.jac').write_text('')
-    source = driver / 'example.jac'
+    (package / 'jac.toml').write_text('[project]\\nname = "library"\\n[placement]\\ndefault = "server"\\n')
+    source = package / 'example.jac'
     source.write_text('def answer() -> int { return 42; }\\n')
-    program = JacProgram()
-    program._compiler = JacCompiler(_selfhost=SelfHostCache(
-        _program=program, _jaclang_root=str(package)))
-    _unit_program.append(program)
-    out = package / '_precompiled' / sealed.python_tag()
-    with patch('jaclang.bootstrap_manifest.seed_abs_entries',
-               return_value=([], [str(source)])):
-        assert seal_bootstrap(package, out, False) == 0
-    data = (out / 'compiler' / 'driver' / 'example.jir').read_bytes()
-    assert read_section_bytes(data, SEC_IFACE) is not None, (
-        'fresh bootstrap sealing lost the dependency interface')
+    data = precompile_unit(str(source), str(package))
+    assert data is not None
+    assert read_section_bytes(data, SEC_IFACE) is not None
 """;
     env = dict(os.environ);
     env["JAC_STUBCAT_BUILDING"] = "1";
     result = subprocess.run(
-        [sys.executable, "-c", script],
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            script,
+            str(Path(jaclang.__file__).parent.parent)
+        ],
         env=env,
         capture_output=True,
         text=True,
@@ -226,30 +256,25 @@ with TemporaryDirectory() as directory:
     assert result.returncode == 0 , result.stdout + result.stderr;
 }
 
-test "selfhost sealing resolves conditional stub classes before application analysis" {
+test "publishing resolves conditional stub classes before application analysis" {
     import os;
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.compiler { JacCompiler }
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
     import from jaclang.compiler.types.stubcat.writer { module_of }
     import jaclang.dist.precompile_bytecode as precompile;
-    import jaclang.jac0core.stubcat_hook as hook;
+    import jaclang.compiler.types.stubcat.state as hook;
     package = jaclang_pkg_dir();
     compiler = JacCompiler();
     internal = JacProgram();
     internal._compiler = compiler;
-    compiler._selfhost = SelfHostCache(_program=internal);
     source = os.path.join(package, "compiler", "driver", "compile_options.jac");
     stub = os.path.join(package, "vendor", "typeshed", "stdlib", "types.pyi");
-    # A fresh finalizer has no active catalog. Symbol-only selfhost work
-    # must prepare its own stub authority before resolving interface xrefs.
-    with patch.object(precompile, "_unit_program", [internal]), patch.object(
-        hook, "active", return_value=None
-    ) {
+    # A fresh publisher must prepare its stub authority before resolving xrefs.
+    with patch.object(hook, "active", return_value=None) {
         with precompile.precompile_unit_context(
-            source, package, collect=False
+            source, package, collect=False, program=internal
         ) as program {
             shared = program.iface_registry().resolve_shared(
                 stub, "NoneType", "NoneType"
@@ -259,5 +284,95 @@ test "selfhost sealing resolves conditional stub classes before application anal
                 "sealing created an orphan class instead of a reusable interface reference"
             );
         }
+    }
+}
+
+test "bytecode completes a fresh symbol analysis without repeating its passes" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.program { JacProgram }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        source = str((package / "api.jac").resolve());
+        Path(source).write_text("def answer() -> int { return 42; }\n");
+        program = JacProgram();
+        options = CompileOptions(default_codespace="server", entry_point=source);
+        analyzed = program.compile(source, options=options.for_symbols());
+        before = dict(program.analysis.pass_runs);
+        code = program._get_compiler().get_bytecode(source, program);
+        assert code is not None;
+        assert program.find_module(source) is analyzed;
+        assert program.analysis.pass_runs.get("ASTValidationPass", 0)
+            == before.get("ASTValidationPass", 0);
+        program.release_compile_closure();
+    }
+}
+
+test "native lowering follows a symbol only analysis" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.compilation_context { compilation_scope }
+    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
+    import from jaclang.compiler.driver.program { JacProgram }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        source = str((package / "api.jac").resolve());
+        Path(source).write_text("def answer() -> int { return 42; }\n");
+        program = JacProgram();
+        options = CompileOptions(default_codespace="native", entry_point=source);
+        analyzed = program.compile(source, options=options.for_symbols());
+        assert not analyzed.codespace_inferred;
+        program.options = options;
+        task = ModuleCompilation(program._get_compiler(), program, source, options);
+        with compilation_scope(program.context_key, options) {
+            task.parse();
+        }
+        assert task.module is not analyzed;
+        assert task.module.codespace_inferred;
+        program.release_compile_closure();
+    }
+}
+
+test "sealed paths normalize symlink aliases before encoding" {
+    import from jaclang.compiler.driver.jir { JirPaths, PRECOMPILE_SENTINEL }
+    with TemporaryDirectory() as directory {
+        base = Path(directory).resolve();
+        package = _package(base);
+        source = package / "api.jac";
+        source.write_text("");
+        alias = base / "linked-library";
+        alias.symlink_to(package, target_is_directory=True);
+        paths = JirPaths(base_dir=str(alias));
+        encoded = paths.encode(str(alias / "api.jac"), str(package));
+        assert encoded == PRECOMPILE_SENTINEL + "/api.jac";
+        assert encoded == paths.encode(str(source), str(package));
+        assert Path(paths.resolve(encoded)).resolve() == source;
+    }
+}
+
+test "native lowering also completes modules with an individually pinned function" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.compilation_context { compilation_scope }
+    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
+    import from jaclang.compiler.driver.program { JacProgram }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        (package / "jac.toml").write_text(
+            '[project]\nname="library"\n[placement.pins]\n"api.one"="native"\n'
+        );
+        source = str((package / "api.jac").resolve());
+        Path(source).write_text(
+            "def one() -> int { return 1; }\ndef two() -> int { return 2; }\n"
+        );
+        program = JacProgram();
+        options = CompileOptions(default_codespace="native", entry_point=source);
+        analyzed = program.compile(source, options=options.for_symbols());
+        assert not analyzed.codespace_inferred;
+        program.options = options;
+        task = ModuleCompilation(program._get_compiler(), program, source, options);
+        with compilation_scope(program.context_key, options) {
+            task.parse();
+        }
+        assert task.module is not analyzed;
+        assert task.module.codespace_inferred;
+        program.release_compile_closure();
     }
 }

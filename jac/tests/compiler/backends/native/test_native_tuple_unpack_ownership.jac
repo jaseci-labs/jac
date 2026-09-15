@@ -29,9 +29,7 @@ glob FIXTURES = os.path.join(
 """Compile the ownership fixture natively and return the JIT engine."""
 def compile_fixture -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    opts = CompileOptions(
-        force_codespace='native', force_target_program=True, memory_profile="managed"
-    );
+    opts = CompileOptions(force_codespace='native', memory_profile="managed");
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, FIXTURE)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";

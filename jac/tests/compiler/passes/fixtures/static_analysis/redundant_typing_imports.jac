@@ -19,9 +19,6 @@ Must NOT fire:
   - aliased 'Callable as Cb' -- alias is intentional user choice, and the
     ambient set cannot provide the chosen local name
 
-W1103 itself survives only for bootstrap-compiled modules
-(jaclang/jac0core/), where jac0.py resolves names solely through real
-imports and the advisory is therefore not actionable.
 
 'Any' is not exercised here: importing it from typing is a hard error
 (E1122), covered by typing_any_refused.jac.

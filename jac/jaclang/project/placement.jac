@@ -1,6 +1,6 @@
 import fnmatch;
 import os;
-import from jaclang.jac0core.ext_registry { base_stem }
+import from jaclang.extensions { base_stem }
 
 glob VALID_SPACES: tuple[str, ...] = ('server', 'client', 'native');
 

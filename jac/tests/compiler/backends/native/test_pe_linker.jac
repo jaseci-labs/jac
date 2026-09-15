@@ -13,6 +13,7 @@ PE32+ image whose imports resolve to msvcrt.dll). Actually running the binary
 requires a Windows host (or WSL interop) and is not assumed here.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,

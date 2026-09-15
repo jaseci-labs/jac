@@ -4,7 +4,7 @@ import from jaclang.compiler.passes { UniPass }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.constant { TOKEN_MAP }
 import from jaclang.compiler.frontend.parser.tokens { KEYWORDS }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     W3001,
     W3002,
     W3003,

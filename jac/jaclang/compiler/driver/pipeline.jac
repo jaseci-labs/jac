@@ -1,8 +1,6 @@
 import os;
 import time;
-import from collections.abc { Callable }
 import type from threading { Event }
-import from contextvars { ContextVar }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -25,7 +23,6 @@ import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPas
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.placement.placement_solver { PlacementApplyPass }
-import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
 import from jaclang.compiler.driver.pipeline_types {
     UtilityProduct,
     AnalysisFact,
@@ -141,9 +138,7 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     program.hub.client_artifacts.pop(path, None);
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     import from jaclang.compiler.driver.jir { get_module_cache_path }
-    identity = ''
-        if program._get_compiler().selfhost.is_selfhost(program)
-        else program.context_key;
+    identity = program.context_key;
     with cache_scope(identity, program.options) {
         try {
             get_module_cache_path(path).unlink(missing_ok=True);
@@ -280,16 +275,6 @@ def compile_module(
 }
 
 def get_symtab_ir_sched -> list[type[Transform]] {
-    if not schedule_tier_reason() {
-        _tok = _ir_sched_loading.set(True);
-        try {
-            _import_all(SYMTAB_SCHED_DEPS);
-        } except ImportError as e {
-            fail_loud_on_compiler_source(e);
-        } finally {
-            _ir_sched_loading.reset(_tok);
-        }
-    }
     return validate_schedule(
         [
             AppContextPass,
@@ -304,100 +289,6 @@ def get_symtab_ir_sched -> list[type[Transform]] {
     );
 }
 
-glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', `default=False),
-     _codegen_sched_loading = ContextVar('jac_codegen_sched_loading', `default=False),
-     _analysis_sched_loading = ContextVar('jac_analysis_sched_loading', `default=False);
-
-glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
-     IR_SCHED_DEPS: tuple[str, ...] = (
-         'jaclang.compiler.symbol_utils',
-         'jaclang.compiler.expr_keys',
-         'jaclang.compiler.type_registry',
-         'jaclang.compiler.field_semantics',
-         'jaclang.compiler.intrinsic_registry',
-         'jaclang.compiler.types.type_evaluator',
-         'jaclang.compiler.types.stubcat.modiface',
-         'jaclang.compiler.passes.pyast_load_pass',
-         'jaclang.compiler.passes.layout_pass',
-         'jaclang.compiler.passes.cfg_build_pass',
-         'jaclang.compiler.passes.sem_def_match_pass',
-         'jaclang.compiler.passes.jsx_intrinsic_guard_pass',
-         'jaclang.compiler.passes.mtir_gen_pass',
-         'jaclang.compiler.passes.comptime_resolve_pass',
-         'jaclang.project.mobui_scope'
-     ),
-     ANALYSIS_SCHED_DEPS: tuple[str, ...] = (
-         'jaclang.compiler.field_semantics',
-         'jaclang.compiler.passes.type_checker_pass',
-         'jaclang.compiler.types.type_evaluator',
-         'jaclang.compiler.passes.pyast_load_pass',
-         'jaclang.compiler.passes.rc_facts_pass',
-         'jaclang.compiler.types.type_utils',
-         'jaclang.compiler.types.ts_decl_parser',
-         'jaclang.compiler.symbol_utils',
-         'jaclang.compiler.expr_keys',
-         'jaclang.compiler.type_registry',
-         'jaclang.compiler.driver.bccache',
-         'jaclang.compiler.frontend.codeinfo',
-         'jaclang.compiler.frontend.diagnostic_utils',
-         'jaclang.project.modresolver',
-         'jaclang.project.tomlio',
-         'jaclang.project.mobui_scope',
-         'jaclang.project.config',
-         'jaclang.compiler.passes.static_analysis_pass',
-         'jaclang.compiler.passes.access_check_pass',
-         'jaclang.compiler.passes.variant_agreement_pass',
-         'jaclang.compiler.passes.capability_check_pass',
-         'jaclang.compiler.passes.ownership_check_pass',
-         'jaclang.compiler.passes.region_infer_pass',
-         'jaclang.compiler.tools.jac_auto_lint_pass'
-     ),
-     CODEGEN_SCHED_DEPS: tuple[str, ...] = (
-         'jaclang.compiler.passes.rc_facts_pass',
-         'jaclang.compiler.backends.es',
-         'jaclang.compiler.passes.freeze_structure_pass'
-     ),
-     NATIVE_CODEGEN_DEPS: tuple[str, ...] = ('jaclang.compiler.backends.native', );
-
-def module_in_flight(names: tuple[str, ...]) -> str {
-    import sys;
-    for name in names {
-        spec = sys.modules.get(name)?.__spec__;
-        if spec is not None and getattr(spec, '_initializing', False) {
-            return name;
-        }
-    }
-    return '';
-}
-
-def _import_all(names: tuple[str, ...]) {
-    import importlib;
-    for name in names {
-        importlib.import_module(name);
-    }
-}
-
-def schedule_tier_reason -> str {
-    if _ir_sched_loading.get() {
-        return 'the ir-gen schedule was still loading';
-    }
-    dep = module_in_flight(IR_SCHED_DEPS);
-    if dep {
-        return f"'{dep}', a dependency of the ir-gen schedule, was mid-import";
-    }
-    return '';
-}
-
-def _codegen_tier_reason -> str {
-    if _codegen_sched_loading.get() {
-        return 'the codegen schedule was still loading';
-    }
-    dep = module_in_flight(CODEGEN_SCHED_DEPS + NATIVE_CODEGEN_DEPS);
-    if dep {
-        return f"'{dep}', a dependency of the codegen schedule, was mid-import";
-    }
-    return schedule_tier_reason();
-}
 
 def pass_requires(p: type[Transform]) -> tuple[AnalysisFact, ...] {
     return PASS_CONTRACTS.get(p.__name__, PassContract()).requires;
@@ -435,20 +326,6 @@ def validate_schedule(
 
 class TypeshedUnavailableError(RuntimeError) {}
 
-glob _native_sched_failure: dict[str, str] = {};
-
-def _note_native_schedule_failure(err: (BaseException | None)) {
-    if err is None {
-        _native_sched_failure.pop('reason', None);
-    } else {
-        _native_sched_failure['reason'] = f"{type(err).__name__}: {err}";
-    }
-}
-
-def native_schedule_failure -> str {
-    return _native_sched_failure.get('reason', '');
-}
-
 def get_boundary_analysis_sched -> list[type[Transform]] {
     return validate_schedule(
         [BoundaryFactsPass, BoundaryAnalysisPass, EndpointEffectPass],
@@ -456,67 +333,33 @@ def get_boundary_analysis_sched -> list[type[Transform]] {
     );
 }
 
-def get_bootstrap_ir_sched -> list[type[Transform]] {
-    return validate_schedule(
-        [
-            AppContextPass,
-            GraphLoweringPass,
-            ASTValidationPass,
-            AbsorbImportsPass,
-            SymTabBuildPass,
-            DeclImplMatchPass,
-            SemanticAnalysisPass
-        ],
-        origin='bootstrap-ir schedule'
-    );
-}
-
-def get_ir_gen_sched(
-    is_internal: bool = False, gen_mtir: bool = True
-) -> list[type[Transform]] {
-    if schedule_tier_reason() {
-        return get_bootstrap_ir_sched();
+def get_ir_gen_sched(gen_mtir: bool = True) -> list[type[Transform]] {
+    import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
+    import from jaclang.compiler.passes.sem_def_match_pass { SemDefMatchPass }
+    import from jaclang.compiler.passes.jsx_intrinsic_guard_pass {
+        JsxIntrinsicGuardPass
     }
-    _tok = _ir_sched_loading.set(True);
-    try {
-        _import_all(IR_SCHED_DEPS);
-        import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
-        import from jaclang.compiler.passes.sem_def_match_pass { SemDefMatchPass }
-        import from jaclang.compiler.passes.jsx_intrinsic_guard_pass {
-            JsxIntrinsicGuardPass
-        }
 
-        passes: list[type[Transform]] = [
-            AppContextPass,
-            GraphLoweringPass,
-            ASTValidationPass,
-            AbsorbImportsPass,
-            SymTabBuildPass,
-            DeclImplMatchPass,
-            SemanticAnalysisPass,
-            SemDefMatchPass,
-            CFGBuildPass
-        ];
-        if gen_mtir {
-            import from jaclang.compiler.passes.mtir_gen_pass { MTIRGenPass }
-            passes.append(MTIRGenPass);
-        }
-        passes.append(JsxIntrinsicGuardPass);
-        passes.append(PlacementApplyPass);
-        import from jaclang.compiler.passes.comptime_resolve_pass {
-            ComptimeResolvePass
-        }
-        passes.append(ComptimeResolvePass);
-        return validate_schedule(passes, origin='ir-gen schedule');
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        if is_internal {
-            return get_bootstrap_ir_sched();
-        }
-        raise;
-    } finally {
-        _ir_sched_loading.reset(_tok);
+    passes: list[type[Transform]] = [
+        AppContextPass,
+        GraphLoweringPass,
+        ASTValidationPass,
+        AbsorbImportsPass,
+        SymTabBuildPass,
+        DeclImplMatchPass,
+        SemanticAnalysisPass,
+        SemDefMatchPass,
+        CFGBuildPass
+    ];
+    if gen_mtir {
+        import from jaclang.compiler.passes.mtir_gen_pass { MTIRGenPass }
+        passes.append(MTIRGenPass);
     }
+    passes.append(JsxIntrinsicGuardPass);
+    passes.append(PlacementApplyPass);
+    import from jaclang.compiler.passes.comptime_resolve_pass { ComptimeResolvePass }
+    passes.append(ComptimeResolvePass);
+    return validate_schedule(passes, origin='ir-gen schedule');
 }
 
 def typeshed_stubs_available -> bool {
@@ -533,7 +376,7 @@ def typeshed_stubs_available -> bool {
 }
 
 def require_typeshed_stubs -> None {
-    import from jaclang.jac0core.stubcat_hook { active }
+    import from jaclang.compiler.types.stubcat.state { active }
     if active() is not None or typeshed_stubs_available() {
         return;
     }
@@ -547,49 +390,35 @@ def require_typeshed_stubs -> None {
 }
 
 def get_analysis_sched -> list[type[Transform]] {
-    if _analysis_sched_loading.get() or module_in_flight(ANALYSIS_SCHED_DEPS) {
-        return [];
-    }
     require_typeshed_stubs();
-    _tok = _analysis_sched_loading.set(True);
-    try {
-        _import_all(ANALYSIS_SCHED_DEPS);
-        import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-        import from jaclang.compiler.passes.static_analysis_pass { StaticAnalysisPass }
-        import from jaclang.compiler.passes.access_check_pass { AccessCheckPass }
-        import from jaclang.compiler.passes.variant_agreement_pass {
-            VariantAgreementPass
-        }
-        import from jaclang.compiler.passes.capability_check_pass {
-            ClientCapabilityCheckPass,
-            NativeCapabilityCheckPass,
-            PortabilityWarnPass
-        }
-        import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
-        import from jaclang.compiler.passes.region_infer_pass { RegionInferPass }
-        import from jaclang.compiler.tools.jac_auto_lint_pass { JacLintCheckPass }
-        return validate_schedule(
-            [
-                RegionInferPass,
-                VariantAgreementPass,
-                TypeCheckPass,
-                StaticAnalysisPass,
-                AccessCheckPass,
-                OwnershipCheckPass,
-                NativeCapabilityCheckPass,
-                ClientCapabilityCheckPass,
-                PortabilityWarnPass,
-                JacLintCheckPass
-            ],
-            preprovided={AnalysisFact.CFG_SUCC},
-            origin='analysis schedule'
-        );
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        raise;
-    } finally {
-        _analysis_sched_loading.reset(_tok);
+    import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+    import from jaclang.compiler.passes.static_analysis_pass { StaticAnalysisPass }
+    import from jaclang.compiler.passes.access_check_pass { AccessCheckPass }
+    import from jaclang.compiler.passes.variant_agreement_pass { VariantAgreementPass }
+    import from jaclang.compiler.passes.capability_check_pass {
+        ClientCapabilityCheckPass,
+        NativeCapabilityCheckPass,
+        PortabilityWarnPass
     }
+    import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
+    import from jaclang.compiler.passes.region_infer_pass { RegionInferPass }
+    import from jaclang.compiler.tools.jac_auto_lint_pass { JacLintCheckPass }
+    return validate_schedule(
+        [
+            RegionInferPass,
+            VariantAgreementPass,
+            TypeCheckPass,
+            StaticAnalysisPass,
+            AccessCheckPass,
+            OwnershipCheckPass,
+            NativeCapabilityCheckPass,
+            ClientCapabilityCheckPass,
+            PortabilityWarnPass,
+            JacLintCheckPass
+        ],
+        preprovided={AnalysisFact.CFG_SUCC},
+        origin='analysis schedule'
+    );
 }
 
 glob _native_env_memo: dict[str, tuple[bool, str]] = {};
@@ -599,30 +428,12 @@ def native_pipeline_available -> tuple[bool, str] {
     if cached is not None {
         return cached;
     }
-    if (
-        _analysis_sched_loading.get()
-        or _ir_sched_loading.get()
-        or _codegen_sched_loading.get()
-    ) {
-        return (True, '');
-    }
     reason = '';
     try {
         import from jaclang.compiler.backends.native.llvm { _find_shim }
         _find_shim();
-    } except ModuleNotFoundError {
-        reason = (
-            'native pipeline unavailable: LLVM shim (libjacllvm) '
-            + 'not found in this environment'
-        );
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        return (False, 'native pipeline undecided: the compiler is still initializing');
-    } except Exception {
-        reason = (
-            'native pipeline unavailable: LLVM shim (libjacllvm) '
-            + 'not found in this environment'
-        );
+    } except OSError as error {
+        reason = f"native pipeline unavailable: {error}";
     }
     verdict = (not reason, reason);
     _native_env_memo['verdict'] = verdict;
@@ -636,44 +447,22 @@ def _py_codegen_tail -> list[type[Transform]] {
 def get_py_code_gen(
     native: bool = True, provided: (set[AnalysisFact] | None) = None
 ) -> list[type[Transform]] {
-    if _codegen_tier_reason() {
-        return _py_codegen_tail();
-    }
-    _tok = _codegen_sched_loading.set(True);
-    try {
-        _import_all(CODEGEN_SCHED_DEPS);
-        import from jaclang.compiler.backends.es { EsastGenPass }
-        import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
+    import from jaclang.compiler.backends.es { EsastGenPass }
+    import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
 
-        passes: list[type[Transform]] = [RcFactsPass, EsastGenPass];
-        if native {
-            _import_all(NATIVE_CODEGEN_DEPS);
-            import from jaclang.compiler.backends.native {
-                NaIRGenPass,
-                NativeCompilePass
-            }
-            passes.extend([NaIRGenPass, NativeCompilePass]);
-            _note_native_schedule_failure(None);
-        }
-        passes.extend(_py_codegen_tail());
-        import from jaclang.compiler.passes.freeze_structure_pass {
-            FreezeStructurePass
-        }
-        passes.append(FreezeStructurePass);
-        return validate_schedule(
-            passes,
-            preprovided={AnalysisFact.CFG_SUCC} if provided is None else provided,
-            origin='codegen schedule'
-        );
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        if native {
-            _note_native_schedule_failure(e);
-        }
-        return _py_codegen_tail();
-    } finally {
-        _codegen_sched_loading.reset(_tok);
+    passes: list[type[Transform]] = [RcFactsPass, EsastGenPass];
+    if native {
+        import from jaclang.compiler.backends.native { NaIRGenPass, NativeCompilePass }
+        passes.extend([NaIRGenPass, NativeCompilePass]);
     }
+    passes.extend(_py_codegen_tail());
+    import from jaclang.compiler.passes.freeze_structure_pass { FreezeStructurePass }
+    passes.append(FreezeStructurePass);
+    return validate_schedule(
+        passes,
+        preprovided={AnalysisFact.CFG_SUCC} if provided is None else provided,
+        origin='codegen schedule'
+    );
 }
 
 def providers_of(passes: list[type[Transform]]) -> set[AnalysisFact] {
@@ -808,7 +597,7 @@ def compile_application(
     }
     import from jaclang.compiler.frontend.unitree { Import, ModulePath }
     import from jaclang.compiler.backends.py.artifact_imports { package_sources }
-    import from jaclang.jac0core.ext_registry { is_annex }
+    import from jaclang.extensions { is_annex }
     import from jaclang.project.app_kinds { kind_has_client }
     entry_path = os.path.realpath(entry_path);
     project_root = os.path.realpath(

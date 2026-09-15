@@ -1,0 +1,7 @@
+# Browser bridge declarations must retain their placement when the package is
+# installed outside the compiler checkout.
+[placement.pins]
+"auth_contract" = "client"
+"endpoint_cache" = "client"
+"client_react_core" = "client"
+"client_runtime_core" = "client"

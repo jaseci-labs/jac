@@ -216,7 +216,7 @@ impl HotReloader._dispatch_change(file_path: str, is_directory: bool = False) ->
         return;
     }
 
-    import from jaclang.jac0core.ext_registry { is_impl }
+    import from jaclang.extensions { is_impl }
     target_path = file_path;
     if is_impl(file_path) {
         base = discover_base_file(file_path);
@@ -693,7 +693,7 @@ impl HotReloader._recompile_client_code(
 }
 
 impl HotReloader._get_js_filename(file_path: str) -> str {
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.extensions { base_stem }
     path = Path(file_path);
 
     return base_stem(path.name) + ".js";
@@ -736,7 +736,7 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool, boo
 }
 
 impl HotReloader._path_to_module(file_path: str) -> str {
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.extensions { base_stem }
 
     path = Path(file_path);
     base = Path(self.base_path).resolve();

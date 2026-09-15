@@ -97,9 +97,11 @@ impl scratch_lease(base_path: str) -> ScratchLease {
         return ScratchLease(database=_scratch[0].database);
     }
     state = _scratch[0];
-    reset = state.base_path != base;
-    state.base_path = base;
-    return ScratchLease(database=state.database, reset=reset);
+    if state.base_path != base {
+        state.base_path = base;
+        state.reset = StoreReset();
+    }
+    return ScratchLease(database=state.database, reset=state.reset);
 }
 
 
@@ -161,7 +163,7 @@ impl runtime_for_base(
             kind=DbKind.SCRATCH if lease is not None else DbKind.PROJECT,
             retention_days=(0 if lease is not None else retention_days_for(base_path))
         ),
-        reset=lease is not None and lease.reset
+        reset=lease.reset if lease is not None else None
     );
 }
 
@@ -269,15 +271,9 @@ impl Session.postinit -> None {
                 conninfo=lease.runtime.conninfo(),
                 ensure_cb=lease.runtime.ensure,
                 promotions=promos,
-                auto_schema=True
+                auto_schema=True,
+                pending_reset=lease.reset
             );
-            if lease.reset {
-                if lease.runtime.is_running() {
-                    pgs.reset_data();
-                } else {
-                    pgs.pending_reset = True;
-                }
-            }
             self.store = pgs;
         }
     }

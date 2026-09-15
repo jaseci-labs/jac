@@ -28,6 +28,7 @@ on the undeclared `self.evaluator` field instead, which the handshake still
 owns.
 """
 
+import from tests.support { jac_command }
 import contextlib;
 import io;
 import os;

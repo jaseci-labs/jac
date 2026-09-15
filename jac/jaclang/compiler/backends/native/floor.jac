@@ -1,25 +1,23 @@
 def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
     import os;
     import from jaclang.runtime.graph_utils { triple_arch }
-    want = triple_arch(triple);
+    target_os = "macos"
+        if "darwin" in triple or "apple" in triple
+        else ("linux" if "linux" in triple else "");
+    if not target_os {
+        return None;
+    }
+    want = target_os + "-" + triple_arch(triple);
 
     python_build = os.path.join(pkg_root, ".python-build");
-    fallback: (str | None) = None;
-    for build_root in [
-        os.path.join(python_build, "cpython"),
-        os.path.join(python_build, "jacpython"),
-        python_build
-    ] {
+    for build_root in [os.path.join(python_build, "jacpython"), python_build] {
         if not os.path.isdir(build_root) {
             continue;
         }
         for d in sorted(os.listdir(build_root)) {
             libdir = os.path.join(build_root, d, "python", "build", "lib");
             if os.path.isdir(libdir) {
-                if fallback is None {
-                    fallback = libdir;
-                }
-                if want in d {
+                if d == want or d == want + ".host" {
                     return libdir;
                 }
             }
@@ -33,12 +31,12 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
         }
         for d in sorted(os.listdir(floor)) {
             cand = os.path.join(floor, d);
-            if os.path.isdir(cand) and (want in d) {
+            if os.path.isdir(cand) and d == want {
                 return cand;
             }
         }
     }
-    return fallback;
+    return None;
 }
 
 def floor_lib_dir(triple: str) -> (str | None) {

@@ -6,6 +6,7 @@ where nobody has imported jaclang yet, relying solely on
 importable without paying the full jaclang bootstrap up front.
 """
 
+import from tests.support { COMPILER_SITE }
 import os;
 import sys;
 import tempfile;
@@ -39,7 +40,7 @@ test "lazy finder loads a .jac submodule of a no-__init__ package" {
         );
 
         snippet = (
-            "import sys; sys.path.insert(0, "
+            f"import sys; sys.path.insert(0, {COMPILER_SITE!r}); sys.path.insert(0, "
             + repr(tmp_path)
             + ");"
             "import _jac_finder; _jac_finder.install();"
@@ -66,7 +67,7 @@ test "lazy finder loads a top-level .jac module" {
         );
 
         snippet = (
-            "import sys; sys.path.insert(0, "
+            f"import sys; sys.path.insert(0, {COMPILER_SITE!r}); sys.path.insert(0, "
             + repr(tmp_path)
             + ");"
             "import _jac_finder; _jac_finder.install();"
@@ -82,166 +83,30 @@ test "lazy finder loads a top-level .jac module" {
     }
 }
 
-"""Make a fake compiler source dir (contains a jaclang/ package dir)."""
-def _fake_source(stubs: bool = True) -> str {
-    src = tempfile.mkdtemp(prefix="jac-devsrc-");
-    os.makedirs(os.path.join(src, "jaclang"), exist_ok=True);
-    if stubs {
-        # What `zig build fetch-typeshed` leaves behind: the finder reroutes
-        # into a checkout only once its typeshed stdlib is materialized.
-        stdlib = os.path.join(src, "jaclang", "vendor", "typeshed", "stdlib");
-        os.makedirs(stdlib, exist_ok=True);
-        Path(os.path.join(stdlib, "builtins.pyi")).write_text("class object: ...\n");
-    }
-    return src;
-}
-
-"""Load the REPO's _jac_finder by path: the copy in sys.modules is the
-binary's materialized runtime file, not the tree under test."""
-def _load_finder -> any {
-    import importlib.util;
-    import from tests.support { JAC_ROOT }
-    finder_path = os.path.join(JAC_ROOT, "_jac_finder.py");
-    spec = importlib.util.spec_from_file_location(
-        "_jac_finder_under_test", finder_path
-    );
-    assert spec is not None;
-    mod = importlib.util.module_from_spec(spec);
-    loader = spec.loader;
-    assert loader is not None;
-    loader.exec_module(mod);
-    return mod;
-}
-
-"""Run apply_dev_source_override with baked/toml sources patched, restoring
-sys.path and env afterwards; returns the resulting sys.path[0]."""
-def _override_result(
-    baked: (str | None),
-    toml_src: (str | None),
-    no_dev_env: bool = False,
-    inherited: (str | None) = None
-) -> str {
-    _jac_finder = _load_finder();
+test "compiler selection rejects a source checkout" {
+    import _jac_finder;
     import from unittest.mock { patch }
-    saved_path = list(sys.path);
-    saved_dev = os.environ.get("JAC_DEV_SOURCE");
-    saved_pre = os.environ.get("JAC_NO_PRECOMPILE");
-    saved_no_dev = os.environ.get("JAC_NO_DEV_SOURCE");
-    try {
-        # CI's binary jobs export JAC_NO_DEV_SOURCE=1 globally, which would
-        # suppress the toml loop under test -- so the flag is controlled
-        # HERE, per call, never inherited from the environment. The same goes
-        # for JAC_DEV_SOURCE: a rerouted `jac test` exports it, and the finder
-        # now reads it as a parent's source, so each call sets it explicitly.
-        if no_dev_env {
-            os.environ["JAC_NO_DEV_SOURCE"] = "1";
-        } else {
-            os.environ.pop("JAC_NO_DEV_SOURCE", None);
-        }
-        if inherited is not None {
-            os.environ["JAC_DEV_SOURCE"] = inherited;
-        } else {
-            os.environ.pop("JAC_DEV_SOURCE", None);
-        }
-        with patch.object(_jac_finder, "_baked_source_dir", return_value=baked), patch.object(
-            _jac_finder, "_dev_source_from_toml", return_value=toml_src
-        ) {
-            _jac_finder.apply_dev_source_override();
-        }
-        return sys.path[0];
-    } finally {
-        sys.path[:] = saved_path;
-        if saved_dev is None {
-            os.environ.pop("JAC_DEV_SOURCE", None);
-        } else {
-            os.environ["JAC_DEV_SOURCE"] = saved_dev;
-        }
-        if saved_pre is None {
-            os.environ.pop("JAC_NO_PRECOMPILE", None);
-        }
-        if saved_no_dev is None {
-            os.environ.pop("JAC_NO_DEV_SOURCE", None);
-        } else {
-            os.environ["JAC_NO_DEV_SOURCE"] = saved_no_dev;
+    with tempfile.TemporaryDirectory() as directory {
+        (Path(directory) / "jaclang").mkdir();
+        with patch.dict(os.environ, {"JAC_COMPILER_IMAGE": directory}) {
+            with testraises(RuntimeError) {
+                _jac_finder.apply_compiler_image();
+            }
         }
     }
 }
 
-test "dev override prefers the repo's own toml stanza over a baked link" {
-    # A binary linked to checkout A, run inside checkout B whose jac.toml
-    # declares [dev] jaclang_source: B's own compiler must win -- that is
-    # the whole point of the per-repo dev stanza. The baked link is the
-    # fallback for directories with no stanza in scope.
-    baked = _fake_source();
-    toml_src = _fake_source();
-    try {
-        assert _override_result(baked, toml_src) == toml_src , "the nearest jac.toml [dev] stanza must beat the binary's baked link";
-        assert _override_result(baked, None) == baked , "with no toml stanza in scope, the baked link still applies";
-    } finally {
-        shutil.rmtree(baked, ignore_errors=True);
-        shutil.rmtree(toml_src, ignore_errors=True);
-    }
-}
-
-test "a child jac inherits its parent's dev source when no stanza is in scope" {
-    # A rerouted jac exports JAC_DEV_SOURCE; a child it spawns from any cwd (a
-    # nacompile into a temp dir) must stay on that compiler rather than fall
-    # back to the bundled copy. The repo's own stanza still wins, and
-    # JAC_NO_DEV_SOURCE switches the inherited loop off like the toml one.
-    parent_src = _fake_source();
-    baked = _fake_source();
-    toml_src = _fake_source();
-    try {
-        assert _override_result(None, None, inherited=parent_src) == parent_src , "an inherited JAC_DEV_SOURCE must reroute a child with no stanza in scope";
-        assert _override_result(baked, None, inherited=parent_src) == parent_src , "the parent's source must beat the baked link";
-        assert _override_result(baked, toml_src, inherited=parent_src) == toml_src , "the nearest jac.toml [dev] stanza must beat an inherited source";
-        assert _override_result(baked, None, no_dev_env=True, inherited=parent_src)
-            == baked , "JAC_NO_DEV_SOURCE must suppress the inherited loop, not the baked link";
-    } finally {
-        shutil.rmtree(parent_src, ignore_errors=True);
-        shutil.rmtree(baked, ignore_errors=True);
-        shutil.rmtree(toml_src, ignore_errors=True);
-    }
-}
-
-test "JAC_NO_DEV_SOURCE disables the toml loop but keeps a linked binary alive" {
-    baked = _fake_source();
-    toml_src = _fake_source();
-    try {
-        # A linked binary has no bundled jaclang: the baked path must apply
-        # even under JAC_NO_DEV_SOURCE, or `import jaclang` bricks.
-        assert _override_result(baked, toml_src, no_dev_env=True) == baked , "JAC_NO_DEV_SOURCE must suppress the toml loop, not the baked link";
-    } finally {
-        shutil.rmtree(baked, ignore_errors=True);
-        shutil.rmtree(toml_src, ignore_errors=True);
-    }
-}
-
-test "a bare checkout (no typeshed stubs) is refused as a dev source; a baked link never is" {
-    # A fresh clone carries jaclang/ but not the gitignored typeshed stdlib
-    # (zig build fetch-typeshed materializes it), and rerouting into it breaks
-    # the first compile with "Stub file not found at .../typing.pyi" -- a
-    # released binary run inside a repo whose jac.toml ships a [dev] stanza
-    # for its contributors. The toml and inherited loops refuse such a tree
-    # with a note naming the fix; the baked link still applies, because a
-    # linked binary has no bundled compiler to fall back on.
-    import io;
-    import from contextlib { redirect_stderr }
-    bare = _fake_source(stubs=False);
-    baked = _fake_source();
-    bare_baked = _fake_source(stubs=False);
-    try {
-        err = io.StringIO();
-        with redirect_stderr(err) {
-            assert _override_result(None, bare) != bare , "a checkout without typeshed stubs must not be rerouted into";
+test "compiler selection cannot replace an already loaded compiler" {
+    import _jac_finder;
+    import from unittest.mock { patch }
+    with tempfile.TemporaryDirectory() as directory {
+        manifest_dir = Path(directory) / "jaclang" / "_precompiled";
+        manifest_dir.mkdir(parents=True);
+        (manifest_dir / "MANIFEST.json").write_text("{}");
+        with patch.dict(os.environ, {"JAC_COMPILER_IMAGE": directory}) {
+            with testraises(RuntimeError) {
+                _jac_finder.apply_compiler_image();
+            }
         }
-        assert "typeshed" in err.getvalue() and "fetch-typeshed" in err.getvalue() , f"the refusal must say what is missing and how to fix it, got: {err.getvalue()!r}";
-        assert _override_result(baked, bare) == baked , "a refused stanza falls through to the baked link";
-        assert _override_result(None, None, inherited=bare) != bare , "an inherited source without stubs is refused the same way";
-        assert _override_result(bare_baked, None) == bare_baked , "a baked link is never refused: a linked binary has nothing else to run";
-    } finally {
-        shutil.rmtree(bare, ignore_errors=True);
-        shutil.rmtree(baked, ignore_errors=True);
-        shutil.rmtree(bare_baked, ignore_errors=True);
     }
 }

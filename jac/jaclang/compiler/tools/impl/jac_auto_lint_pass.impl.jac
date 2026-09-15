@@ -1837,7 +1837,7 @@ impl JacAutoLintPass._check_is_with_literal(nd: uni.CompareExpr) -> None {
 }
 
 impl JacAutoLintPass._check_filter_compare_tautology(nd: uni.CompareExpr) -> None {
-    import from jaclang.compiler.frontend.diagnostics { W3040 }
+    import from jaclang.project.diagnostics { W3040 }
     if self._is_suppressed(W3040) {
         return;
     }

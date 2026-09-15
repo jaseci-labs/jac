@@ -1,16 +1,16 @@
 import from importlib.machinery { ModuleSpec }
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import os;
 import sys;
 import from pathlib { Path }
-import from jaclang.jac0core.ext_registry {
+import from jaclang.extensions {
     MODULE_SUFFIXES,
     is_jac_namespace_package,
     language_of
 }
 
-glob _project_root_cache: dict[str, str | None] = {},
-     _import_base_stack: list[str] = [],
-     COMPILER_PACKAGE: str = 'jaclang';
+glob _project_root_cache: dict = {},
+     _import_base_stack: list = [];
 
 def push_import_base(base_dir: str) {
     _import_base_stack.append(base_dir);
@@ -41,29 +41,11 @@ def _finders_find_spec(name: str, search: (list[str] | None)) -> (ModuleSpec | N
 }
 
 def _find_spec_no_exec(target: str) -> (ModuleSpec | None) {
-    import from importlib.machinery { PathFinder }
     loaded_target = sys.modules.get(target);
     if loaded_target is not None {
         tspec = loaded_target?.__spec__;
         if isinstance(tspec, ModuleSpec) {
             return tspec;
-        }
-    }
-    for finder in `list(sys.meta_path) {
-        if finder is PathFinder or target.split('.')[0] in sys.modules {
-            continue;
-        }
-        fs = finder?.find_spec;
-        if fs is None {
-            continue;
-        }
-        try {
-            whole = fs(target, None, None);
-        } except (ImportError, AttributeError, ValueError, KeyError, TypeError) {
-            continue;
-        }
-        if isinstance(whole, ModuleSpec) {
-            return whole;
         }
     }
     parts = target.split('.');
@@ -212,7 +194,6 @@ def _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | No
 def _self_tree_candidate(
     base_dir: str, actual_parts: list[str]
 ) -> (tuple[(str, str)] | None) {
-    is_compiler_pkg = actual_parts[0] == COMPILER_PACKAGE;
     cur = os.path.abspath(base_dir);
     while True {
         parent = os.path.dirname(cur);
@@ -220,15 +201,13 @@ def _self_tree_candidate(
             return None;
         }
         if os.path.basename(cur) == actual_parts[0] {
-            if not is_compiler_pkg or os.path.isdir(os.path.join(cur, 'jac0core')) {
-                res = resolve_local_module(parent, actual_parts);
-                if res {
-                    return res;
-                }
-                res = _namespace_candidate(parent, actual_parts);
-                if res {
-                    return res;
-                }
+            res = resolve_local_module(parent, actual_parts);
+            if res {
+                return res;
+            }
+            res = _namespace_candidate(parent, actual_parts);
+            if res {
+                return res;
             }
         }
         cur = parent;
@@ -1006,17 +985,21 @@ def _in_typeshed_tree(path: str) -> bool {
     return "/vendor/typeshed/" in path.replace("\\", "/");
 }
 
+def _active_stub_catalog -> StubCatalog | None {
+    state = sys.modules.get("jaclang.compiler.types.stubcat.state");
+    lookup = state.__dict__.get("active") if state is not None else None;
+    return lookup() if lookup is not None else None;
+}
+
 def _stub_catalog_active -> bool {
-    import from jaclang.jac0core.stubcat_hook { active }
-    return active() is not None;
+    return _active_stub_catalog() is not None;
 }
 
 def _candidate_from_stub_catalog(parts: list[str]) -> (tuple[(str, str)] | None) {
     if not parts {
         return None;
     }
-    import from jaclang.jac0core.stubcat_hook { active }
-    catalog: any = active();
+    catalog = _active_stub_catalog();
     if catalog is None {
         return None;
     }

@@ -33,7 +33,6 @@ def compile_native(name: str) -> tuple[any, ...] {
         options=CompileOptions(
             aot_mode=True,
             force_codespace='native',
-            force_target_program=True,
             na_gc_mode='cycles',
             no_ir_cache=True,
             skip_native_engine=True

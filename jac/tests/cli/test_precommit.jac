@@ -197,6 +197,27 @@ test "precommit gates the commit on type errors" {
     assert rc != 0 , "a staged type error must fail the precommit gate";
 }
 
+test "precommit honors the repository check exclusions for diagnostic fixtures" {
+    import from jaclang.project { config as config_mod }
+    repo = make_repo();
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        (Path(repo) / "negative.jac").write_text(
+            "def f(x: int) -> str {\n    return x;\n}\n"
+        );
+        (Path(repo) / ".jacignore").write_text("negative.jac\n");
+        subprocess.run(["git", "add", "negative.jac", ".jacignore"], check=True);
+        config_mod._config = None;
+        rc = precommit(staged=True, verify=True);
+    } finally {
+        config_mod._config = None;
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert rc == 0;
+}
+
 test "staged fmt applies fixes and still gates the commit when fmt succeeds" {
     # Regression pin for issue #8536: `jac fmt` is changing to exit 0 after
     # successfully reformatting files (previously it exited 1 whenever

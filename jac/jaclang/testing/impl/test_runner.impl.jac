@@ -221,12 +221,12 @@ impl _under_fixtures(path: str) -> bool {
 }
 
 impl _is_named_test_file(filename: str) -> bool {
-    import from jaclang.jac0core.ext_registry { is_jac, is_test }
+    import from jaclang.extensions { is_jac, is_test }
     return (filename.startswith("test_") and is_jac(filename)) or is_test(filename);
 }
 
 impl _suite_source(filepath: str) -> str {
-    import from jaclang.jac0core.ext_registry { is_test }
+    import from jaclang.extensions { is_test }
     if is_test(os.path.basename(filepath)) {
         try {
             import from jaclang.compiler.driver.bccache { discover_base_file }
@@ -240,8 +240,8 @@ impl _suite_source(filepath: str) -> str {
 }
 
 impl _iter_candidate_files(start: str, ignore: (list[str] | None) = None) -> list[str] {
-    import from jaclang.jac0core.ext_registry { is_impl, is_jac }
-    ignored: list[str] = ignore or [];
+    import from jaclang.extensions { is_impl, is_jac }
+    ignored = ignore or [];
     found: list[str] = [];
     for (dirpath, dirnames, filenames) in os.walk(start, topdown=True) {
         dirnames[:] = [
@@ -269,9 +269,9 @@ impl discover(
     directory: (str | list[str]) = "",
     ignore: (list[str] | None) = None
 ) -> TestPlan {
-    import from jaclang.jac0core.ext_registry { is_jac }
-    targets: list[str] = paths or [];
-    ignored: list[str] = ignore or [];
+    import from jaclang.extensions { is_jac }
+    targets = paths or [];
+    ignored = ignore or [];
     explicit: set[str] = set();
     ordered: list[str] = [];
     seen: set[str] = set();
@@ -601,7 +601,7 @@ impl run_file(
     import time;
     import from jaclang.testing.test { JacTestCheck }
     import from jaclang.testing.cl_test_runner { module_is_client, run_cl_test_file }
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.extensions { base_stem }
     abs_path = os.path.abspath(filepath);
     outcomes: list[TestOutcome] = [];
     is_client = False;
@@ -1045,7 +1045,6 @@ impl run_tests(
     forced_serial = str(raw_jobs).strip() == "0";
     use_pool = hasattr(os, "fork")
         and not forced_serial
-        and ((workers > 1) or bool(iso_set) or bool(ser_set))
         and (len(plan.files) > 1 or bool(iso_set) or bool(ser_set));
     if not use_pool {
         _run_plan(
@@ -1102,16 +1101,22 @@ impl run_tests(
 
 impl resolve_jobs(requested: (str | int | None) = None) -> int {
     import from jaclang.cli.workpool { resolve_jobs as _resolve_pool_jobs }
-    return _resolve_pool_jobs(requested, env_var="JAC_TEST_JOBS");
+    return _resolve_pool_jobs(
+        requested,
+        env_var="JAC_TEST_JOBS",
+        worker_bytes=_test_rss_cap_mb() * 1024 * 1024
+    );
+}
+
+impl _test_rss_cap_mb -> int {
+    import from jaclang.cli.workpool { env_int }
+    return env_int("JAC_TEST_RECYCLE_MB", 8192);
 }
 
 impl _test_retire(served: int, rss_mb: int) -> bool {
     import from jaclang.cli.workpool { env_int }
     return _should_retire(
-        served,
-        env_int("JAC_TEST_RECYCLE", 25),
-        rss_mb,
-        env_int("JAC_TEST_RECYCLE_MB", 8192)
+        served, env_int("JAC_TEST_RECYCLE", 25), rss_mb, _test_rss_cap_mb()
     );
 }
 

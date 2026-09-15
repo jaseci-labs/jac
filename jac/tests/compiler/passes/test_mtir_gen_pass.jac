@@ -13,8 +13,7 @@ test "mtir gen basic" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert Jac.program is not None;
-    mtir_map = Jac.program.mtir_map;
+    mtir_map = prog.mtir_map;
     assert mtir_map , "MTIR map should not be empty";
     scopes = list(mtir_map.keys());
     assert len(scopes) > 0 , "Should have at least one MTIR entry";
@@ -24,8 +23,7 @@ test "mtir gen standalone function" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
     assert not prog.errors_had;
-    assert Jac.program is not None;
-    mtir_map = Jac.program.mtir_map;
+    mtir_map = prog.mtir_map;
     analyze_person_scope = None;
     for scope in mtir_map {
         if "analyze_person" in scope {
@@ -49,8 +47,7 @@ test "mtir gen method" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
     assert not prog.errors_had;
-    assert Jac.program is not None;
-    mtir_map = Jac.program.mtir_map;
+    mtir_map = prog.mtir_map;
     summarize_scope = None;
     for scope in mtir_map {
         if "summarize" in scope {
@@ -74,8 +71,7 @@ test "mtir gen complex return type" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
     assert not prog.errors_had;
-    assert Jac.program is not None;
-    mtir_map = Jac.program.mtir_map;
+    mtir_map = prog.mtir_map;
     create_team_scope = None;
     for scope in mtir_map {
         if "create_team" in scope {
@@ -98,8 +94,7 @@ test "mtir gen list return type" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
     assert not prog.errors_had;
-    assert Jac.program is not None;
-    mtir_map = Jac.program.mtir_map;
+    mtir_map = prog.mtir_map;
     find_people_scope = None;
     for scope in mtir_map {
         if "find_people" in scope {
@@ -120,8 +115,7 @@ test "mtir gen semstrings" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
     assert not prog.errors_had;
-    assert Jac.program is not None;
-    mtir_map = Jac.program.mtir_map;
+    mtir_map = prog.mtir_map;
     analyze_person_scope = None;
     for scope in mtir_map {
         if "analyze_person" in scope {
@@ -151,8 +145,7 @@ test "mtir gen class info extraction" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
     assert not prog.errors_had;
-    assert Jac.program is not None;
-    mtir_map = Jac.program.mtir_map;
+    mtir_map = prog.mtir_map;
     analyze_person_scope = None;
     for scope in mtir_map {
         if "analyze_person" in scope {
@@ -184,8 +177,7 @@ test "mtir gen all genai abilities captured" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
     assert not prog.errors_had;
-    assert Jac.program is not None;
-    mtir_map = Jac.program.mtir_map;
+    mtir_map = prog.mtir_map;
     expected_abilities = ["summarize", "analyze_person", "create_team", "find_people"];
     found_abilities: set = set();
     for scope in mtir_map {
@@ -198,4 +190,21 @@ test "mtir gen all genai abilities captured" {
     assert len(found_abilities) == len(expected_abilities) , f"Expected all GenAI abilities to be captured. Found: {found_abilities}, Expected: {set(
         expected_abilities
     )}";
+}
+
+test "MTIR belongs to the compilation program without a runtime program" {
+    import from unittest.mock { patch }
+    import from jaclang { JacRuntime }
+    with patch.object(JacRuntime, "program", None) {
+        first = JacProgram();
+        first.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
+        assert not first.errors_had;
+        assert first.mtir_map;
+        second = JacProgram();
+        second.compile(os.path.join(FIXTURES, "mtir_gen.jac"));
+        assert not second.errors_had;
+        assert second.mtir_map;
+        assert first.mtir_map is not second.mtir_map;
+        assert JacRuntime.program is None;
+    }
 }

@@ -21,15 +21,6 @@ def python_source(path: str, program: JacProgram) -> tuple[str, Module | None] {
         );
     }
     if module is None or not module.gen.py_ast {
-        import from jaclang.compiler.driver.source_failures {
-            module_scoped_failure_details,
-            bootstrap_tier_failure_details
-        }
-        details = module_scoped_failure_details(path, actual)
-            or bootstrap_tier_failure_details(path);
-        if details {
-            raise RuntimeError(details);
-        }
         raise RuntimeError(f'No Python source product for {path}');
     }
     return (str(module.gen.py), module);

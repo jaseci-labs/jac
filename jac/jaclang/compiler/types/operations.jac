@@ -17,11 +17,12 @@ import from .types {
     FunctionType,
     NeverType,
     TypeBase,
+    TypeFlags,
     TypeVarType,
     UnionType,
     UnknownType
 }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E1010,
     E1033,
     E1035,
@@ -355,11 +356,15 @@ def get_type_of_binary_operation(
             if is_annotation_type(evaluator, left_type)
                 and is_annotation_type(evaluator, right_type) {
                 return UnionType(
+                    flags=TypeFlags.Instantiable,
                     types=[
                         evaluator._convert_to_instance(left_type),
                         evaluator._convert_to_instance(right_type)
                     ]
                 );
+            }
+            if left_type.is_any_instance() or right_type.is_any_instance() {
+                return AnyType();
             }
         }
         (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];

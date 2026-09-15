@@ -6,7 +6,6 @@ import os;
 import from contextlib { suppress }
 
 glob logger: logging.Logger = logging.getLogger(__name__);
-import from enum { StrEnum }
 import from io { BytesIO }
 import from typing { IO, get_type_hints }
 
@@ -21,7 +20,7 @@ import from jaclang.byllm.mcp { McpTool }
 
 type MessageType = Message | LiteLLMMessage | dict[str, object];
 
-enum MessageRole(StrEnum) {
+enum MessageRole: str {
     SYSTEM = "system",
     USER = "user",
     ASSISTANT = "assistant",
@@ -113,7 +112,7 @@ obj StreamEvent {
         data: dict[str, any];
 }
 
-enum IterationAction(StrEnum) {
+enum IterationAction: str {
     CONTINUE = "continue",
     ABORT = "abort",
     ABORT_WITH_SUMMARY = "abort_with_summary"

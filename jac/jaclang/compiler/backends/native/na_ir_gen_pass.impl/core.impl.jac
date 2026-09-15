@@ -31,10 +31,13 @@ impl NaIRGenPass.postinit -> None {
     self.llvm_module.triple = _tm.triple;
 
     if _ni_src and _ni_opts.native_debug {
-        _ni_src_dir: str = _ni_os.path.dirname(_ni_os.path.abspath(_ni_src));
+        import from jaclang.compiler.driver.compilation_context { codegen_source_path }
+        _di_source = codegen_source_path(_ni_os.path.abspath(_ni_src));
+        _ni_src_dir: str = _ni_os.path.dirname(_di_source);
         try {
             self.di_file = self.llvm_module.add_debug_info(
-                "DIFile", {"filename": _ni_mod_name, "directory": _ni_src_dir}
+                "DIFile",
+                {"filename": _ni_os.path.basename(_di_source), "directory": _ni_src_dir}
             );
             self.di_cu = self.llvm_module.add_debug_info(
                 "DICompileUnit",
@@ -895,50 +898,10 @@ impl NaIRGenPass._walk_imported_module_abilities(
         }
     }
 
-    _wl_internal = False;
-    _wl_jac_internal = False;
-    if _imp_layout is None and imported_mod?.loc and imported_mod.loc.mod_path {
-        import os as _wl_os2;
-
-        _wl_abs = _wl_os2.path.abspath(imported_mod.loc.mod_path);
-        _wl_jac_internal = not self.prog.options.native_required_for(_wl_abs)
-            and imported_mod.decided_codespace != 'native'
-            and (_wl_os2.sep + "jaclang" + _wl_os2.sep) in _wl_abs
-            and (_wl_os2.sep + "na_stdlib" + _wl_os2.sep) not in _wl_abs;
-        if _wl_jac_internal {
-            try {
-                import from jaclang.jac0core { sealed as _wl_sealed }
-                _wl_internal = _wl_sealed._jaclang_image() is not None;
-            } except Exception {
-                _wl_internal = False;
-            }
-        }
-    }
     _imp_fn_unavail: (set | None) = None;
-    _imp_verdicts_wanted = (
-        with_fn_verdicts and _imp_layout is None and not _wl_internal
-    );
+    _imp_verdicts_wanted = with_fn_verdicts and _imp_layout is None;
     if _imp_verdicts_wanted {
         _imp_fn_unavail = self._imported_function_demotions(imported_mod);
-    }
-    if (
-        with_fn_verdicts
-        and _imp_layout is None
-        and _imp_fn_unavail is None
-        and _wl_jac_internal
-    ) {
-        _wl_all_fns: set = set();
-        for _wl_stmt in ModuleFacts.iter_context_stmts(imported_mod) {
-            if (
-                isinstance(_wl_stmt, uni.Ability)
-                and _wl_stmt.name_ref
-                and not _wl_stmt.type_params
-                and isinstance(_wl_stmt.signature, uni.FuncSignature)
-            ) {
-                _wl_all_fns.add(_wl_stmt.name_ref.sym_name);
-            }
-        }
-        _imp_fn_unavail = _wl_all_fns;
     }
     if (
         _imp_verdicts_wanted
@@ -1002,8 +965,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
                     _imp_layout is not None
                     and _im_full not in _imp_layout.methods
                     and not _imp_stmt.type_params
-                )
-                    or (_imp_layout is None and _wl_internal) {
+                ) {
                     self._native_skipped_methods.add(_im_full);
                 }
             }
@@ -1011,8 +973,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
 
         for (_ia_slot, _ia_var, _ia_acc) in archetype_accessors(_imp_arch) {
             _im_full = f"{_ia_name}.{_ia_slot}";
-            if (_imp_layout is not None and _im_full not in _imp_layout.methods)
-                or (_imp_layout is None and _wl_internal) {
+            if _imp_layout is not None and _im_full not in _imp_layout.methods {
                 self._native_skipped_methods.add(_im_full);
             }
         }
@@ -1275,77 +1236,15 @@ impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {
 impl NaIRGenPass._imported_function_demotions(
     imported_mod: uni.Module
 ) -> (set | None) {
-    import os as _fd_os;
-    if not (imported_mod?.loc and imported_mod.loc.mod_path) {
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_unit_demotions
+    }
+    if not imported_mod.loc.mod_path {
         return None;
     }
-    mod_path = imported_mod.loc.mod_path;
-    real_path = _fd_os.path.realpath(mod_path);
-    units = self.prog.scratch.na_dep_units;
-    `entry: any = None;
-    if real_path in units {
-        `entry = units[real_path];
-    } elif imported_mod.gen.llvm_ir is not None {
-        `entry = imported_mod;
-    } else {
-        import from jaclang.compiler.driver.compile_options {
-            CompileOptions as _FdOpts
-        }
-        _opts_src = self.prog?.options or _FdOpts();
-        import from jaclang.compiler.driver.jir {
-            native_ir_cache_suspended as _fd_suspended
-        }
-        if not (bool(getattr(_opts_src, "no_ir_cache", False)) or _fd_suspended()) {
-            try {
-                import from jaclang.compiler.backends.native.na_compile_pass {
-                    native_dep_cache_paths
-                }
-                (_fd_ir_p, _fd_meta_p) = native_dep_cache_paths(real_path, _opts_src);
-                if _fd_os.path.exists(_fd_ir_p) and _fd_os.path.exists(_fd_meta_p) {
-                    import json as _fd_json;
-                    with open(_fd_meta_p, "r") as _fd_mf {
-                        _fd_meta = _fd_json.loads(_fd_mf.read());
-                    }
-                    if _fd_meta.get("options_fingerprint")
-                        == _opts_src.codegen_fingerprint() {
-                        return set(_fd_meta.get("demoted_symbols") or []);
-                    }
-                }
-            } except Exception {}
-        }
-        if not bool(_opts_src.aot_mode)
-            or real_path in self.prog.scratch.na_dep_inflight
-            or not _fd_os.path.isfile(real_path) {
-            return None;
-        }
-        try {
-            `entry = self.prog.compile(
-                file_path=mod_path, options=_opts_src.clone_for_native_import()
-            );
-        } except Exception as _fd_exc {
-            `entry = f"{type(_fd_exc).__name__}: {_fd_exc}";
-        }
-        units[real_path] = `entry;
-    }
-
-    if `entry is None or isinstance(`entry, str) or `entry.gen.llvm_ir is None {
-        _fd_all: set = set();
-        for _fd_stmt in ModuleFacts.iter_context_stmts(imported_mod) {
-            if (
-                isinstance(_fd_stmt, uni.Ability)
-                and _fd_stmt.name_ref
-                and not _fd_stmt.type_params
-                and isinstance(_fd_stmt.signature, uni.FuncSignature)
-            ) {
-                _fd_all.add(_fd_stmt.name_ref.sym_name);
-            }
-        }
-        return _fd_all;
-    }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_demoted_ir_symbols
-    }
-    return set(native_demoted_ir_symbols(str(`entry.gen.llvm_ir)));
+    return native_unit_demotions(
+        self.prog, os.path.realpath(imported_mod.loc.mod_path), self.prog.options
+    );
 }
 
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {

@@ -10,7 +10,10 @@ Imported as `from tests.support`, which resolves identically under the single
 `jac` binary and a source checkout (same mechanism as `tests.fixtures_list`).
 """
 
+import from jaclang.cli.cli_boot { jac_command, compiler_python_command }
 import ctypes;
+import jaclang;
+import sys;
 
 import from pathlib { Path }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -20,40 +23,9 @@ import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine
 # `tests/`: the directory holding this file.
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
-     JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
+     JAC_ROOT: str = str(Path(__file__).resolve().parent.parent),
+     COMPILER_SITE: str = str(Path(jaclang.__file__).resolve().parent.parent);
 
-"""Select the parent's compiler, or an explicit checkout for comparative tests."""
-def compiler_python_command(
-    source: str, *args: str, compiler_root: str | None = None
-) -> list[str] {
-    import jaclang;
-    import sys;
-    package_root = str(Path(str(jaclang.__file__)).resolve().parent.parent)
-        if compiler_root is None
-        else str(Path(compiler_root).resolve());
-    if not (Path(package_root) / "jaclang" / "__init__.py").is_file() {
-        raise ValueError(f"No compiler package at {package_root}");
-    }
-    boot = (
-        "import sys\nsys.path.insert(0, "
-        + repr(package_root)
-        + ")\n"
-        + "sys.path.extend("
-        + repr(sys.path)
-        + ")\n"
-        + source
-    );
-    return [sys.executable, "-c", boot, *args];
-}
-
-"""Invoke the selected compiler's CLI, including from a checkout working directory."""
-def jac_command(*args: str, compiler_root: str | None = None) -> list[str] {
-    return compiler_python_command(
-        "import runpy\nrunpy.run_module('jaclang', run_name='__main__', alter_sys=True)",
-        *args,
-        compiler_root=compiler_root
-    );
-}
 
 """CompileOptions that force a fixture into the native codespace.
 
@@ -64,7 +36,7 @@ like the old suffix.
 """
 def native_force_opts -> CompileOptions {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    return CompileOptions(force_codespace='native', force_target_program=True);
+    return CompileOptions(force_codespace='native');
 }
 
 

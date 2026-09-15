@@ -15,10 +15,7 @@ test "native string and temporary roots balance across storage and calls" {
     }
     program = JacProgram();
     options = CompileOptions(
-        force_codespace="native",
-        force_target_program=True,
-        memory_profile="managed",
-        no_ir_cache=True
+        force_codespace="native", memory_profile="managed", no_ir_cache=True
     );
     mod = program.compile(
         os.path.join(

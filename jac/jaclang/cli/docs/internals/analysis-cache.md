@@ -179,13 +179,13 @@ real-AST derivation (a pinned identity contract; their frontend is the
 cheap phase) -- they participate in `SEC_DEPS` through their content key
 instead, so a stub edit still re-analyzes its importers.
 
-The compiler's own tree is an ordinary citizen of the cache. The selfhost
-program (the compiler compiling itself) hydrates and persists like any
-other program; the one bootstrap rule is readiness, not identity. While the
-interface codec's own modules (the type evaluator and the stubcat reader,
-writer and modiface) are not yet importable, or are mid-import, `eligible`
-answers no and those compiles run cold. The jac0 seed tier never goes
-through `compile()` and does not know the cache exists.
+Compiler source analysis uses the same cache infrastructure as application
+analysis. The compiler build explicitly requests full ASTs and disables IR
+cache reads; its artifact builder separately reuses validated compiled modules
+from `.compiler-build`. The producer executes its immutable image while target
+sources live in an isolated snapshot. There is no special self-host program or
+seed compilation path. Interface hydration still checks codec readiness and
+avoids modules already being built in the active analysis context.
 
 Interfaces are encoded only inside analysis-driven closures: the compile
 at the root of the closure (the outermost `compile()` call) must be a
@@ -199,7 +199,7 @@ the first `jac check`, LSP open or precompile analysis produces each
 interface once and every later consumer hydrates.
 
 Dependency rows exempt only modules inside the compiler digest roots
-(`is_compiler_tree_path`): every ENVKEY folds the compiler digest, so any
+(`is_compiler_source_path`): every ENVKEY folds the compiler digest, so any
 edit there invalidates every JIR wholesale and a row would be redundant.
 Non-root jaclang modules (cli, server, scale, byllm and friends) are mutable
 within a generation and carry rows like any other dependency. The registry

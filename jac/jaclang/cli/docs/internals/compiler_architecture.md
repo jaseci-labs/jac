@@ -145,9 +145,8 @@ Every codespace shares the **same front end**.
 - AST nodes are defined in [`compiler/frontend/unitree.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac)
   (generate a node-by-node catalogue with `jac tool autodoc_uninode`).
 
-The bootstrap compiler (`jac0.py`) and the full compiler share this front end
-verbatim -- see [Abstractions Inventory](abstractions.md) for the full keyword
-table.
+The pinned prior Jac compiler builds this front end through ordinary full
+compilation. See [Abstractions Inventory](abstractions.md) for the keyword table.
 
 ### The tree is a graph
 
@@ -186,13 +185,12 @@ that carries fields (`ScopePrimary.alias`, `TypeMemberOf.name`) is an
 `EdgeAnchor` in `edges`; a node that acquires persistence materializes its
 light edges into rows (`NodeAnchor.all_edges`).
 
-The compiler's source uses the language for all of it. Both lowerings
-recognize the simple hop (one origin, one direction, one edge class, no
-predicate, no node filter, no chain) and emit a direct adjacency read:
-jac0 emits `hop0`, the py backend emits `hop`, so `[self->:Kid:->]` is one
-dict lookup plus a copy, and `[self<-:Kid:<-][-1]` is `parent`. Anything
-richer goes through `refs0` / `refs` as before. `del` accepts an edge set:
-`del [edge self->:Kid:->];` lowers to `clear0` / `clear_edges`, which drops
+The compiler's source uses ordinary Jac spatial operations. The Python backend
+recognizes a simple hop (one origin, one direction, one edge class, no
+predicate, no node filter, no chain) and emits `hop`, a direct adjacency read.
+`[self->:Kid:->]` is one dict lookup plus a copy; `[self<-:Kid:<-][-1]`
+is `parent`. Richer queries use `refs`. `del` accepts an edge set:
+`del [edge self->:Kid:->];` lowers to `clear_edges`, which drops
 the set by class without materializing it (`set_kids`, `_role_set` and every
 slot setter are written that way). A `[edge ...]` query or `del` on a single
 light edge works on a view (`light_edge_view`).
@@ -650,20 +648,15 @@ apps stitch several boundaries together -- see
 
 ## Caching
 
-Every cached JIR carries an environment key that folds in a content digest of
-the whole compiler source tree, so any compiler edit recompiles every module.
-While iterating on the compiler itself, `JAC_COMPILER_DIGEST_PIN=<label>`
-freezes that digest to the label: only modules whose own source changed
-recompile. It is a developer knob that trusts codegen did not change; leave it
-unset for anything that must be correct.
-
-The compiler keeps two on-disk caches so the front end and back end can be
-skipped when nothing has changed.
+Every cached application JIR includes the running compiler image's content
+identity. Rebuilding the compiler creates a new identity; runtime cache keys do
+not rescan compiler sources or accept a developer override of that identity.
+Source and compile-time dependency checks also invalidate affected entries.
 
 | Cache | Location | Invalidated when |
 |-------|----------|------------------|
-| **Bootstrap** | `~/.cache/jac/jir/bootstrap/` | A `compiler/driver/` file or `jac0.py` changes |
-| **Module** | `~/.cache/jac/jir/modules/` | The full compiler's output format changes, or the source / its imports change |
+| **Compiler build** | `jac/.compiler-build/` | The producing compiler, build recipe, source layout/configuration, or a module's source/dependencies change |
+| **Application module** | `~/.cache/jac/jir/modules/` | The compiler image, output format, source, or compile-time dependencies change |
 
 Each cache entry is a **JIR file** (Jac IR) with named sections defined in
 [`compiler/driver/jir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/jir.jac):

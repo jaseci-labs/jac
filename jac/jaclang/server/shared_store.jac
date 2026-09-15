@@ -140,7 +140,6 @@ def shared_store -> (any | None) {
             } except Exception {}
         }
         store: (any | None) = None;
-        reset = False;
         stage = 'resolve';
         source = _url_source() if url else 'the embedded server';
         try {
@@ -160,9 +159,12 @@ def shared_store -> (any | None) {
                     lease = runtime_for_base(base, JacRuntime.get_full_target_path());
                     rt = lease.runtime;
                     store = PgStore(
-                        conninfo=rt.ensure(), ensure_cb=rt.ensure, promotions=promotions
+                        conninfo=rt.ensure(),
+                        ensure_cb=rt.ensure,
+                        promotions=promotions,
+                        auto_schema=True,
+                        pending_reset=lease.reset
                     );
-                    reset = lease.reset;
                 }
             }
             if store is None {
@@ -174,9 +176,6 @@ def shared_store -> (any | None) {
             store.rows('SELECT 1', {});
             stage = 'schema';
             store.ensure_schema_once(promotions);
-            if reset {
-                store.reset_data();
-            }
         } except Exception as e {
             if store is not None {
                 try {

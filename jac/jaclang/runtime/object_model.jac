@@ -108,11 +108,6 @@ def _is_class_var(annotation: object) -> bool {
 }
 
 def _install_init(cls: type, declared: list[ObjectField]) {
-    """Generate a real signature so ordinary Python binding stays authoritative.
-
-    Defaults are passed through a private namespace rather than interpolated
-    into source. Factories execute only when the caller omits that argument.
-    """;
     names = {f.name for f in declared};
     prefix = "_jac_";
     while any(name.startswith(prefix) for name in names) {
@@ -190,8 +185,31 @@ def _install_init(cls: type, declared: list[ObjectField]) {
     setattr(cls, "__init__", initializer);
 }
 
+def _install_custom_init(cls: type, declared: list[ObjectField]) {
+    import from functools { wraps }
+    initializer = cls.__dict__["__init__"];
+    factories = [
+        f
+        for f in declared
+        if f.default_factory is not None
+    ];
+    if not factories {
+        return;
+    }
+    @wraps(initializer)
+    def initialize(instance: object, *args: object, **kwargs: object) {
+        for f in factories {
+            factory = f.default_factory;
+            if factory is not None and not hasattr(instance, f.name) {
+                setattr(instance, f.name, factory());
+            }
+        }
+        return initializer(instance, *args, **kwargs);
+    }
+    setattr(cls, "__init__", initialize);
+}
+
 def make_object(cls: type) -> type {
-    """Install Jac's field contract without generating equality or hashing.""";
     declared: dict[str, ObjectField] = {};
     for base in reversed(cls.__mro__[1:]) {
         inherited: dict[str, ObjectField] = getattr(base, "__jac_fields__", {});
@@ -219,7 +237,9 @@ def make_object(cls: type) -> type {
         }
     }
     setattr(cls, "__jac_fields__", declared);
-    if annotations and "__init__" not in cls.__dict__ {
+    if "__init__" in cls.__dict__ {
+        _install_custom_init(cls, list(declared.values()));
+    } elif annotations {
         _install_init(cls, list(declared.values()));
     }
     if "__repr__" not in cls.__dict__ {

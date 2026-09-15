@@ -1,12 +1,11 @@
 import from datetime { datetime }
 import from uuid { UUID, uuid4 }
 import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.jac0core.plugin {
+import from jaclang.runtime.archetype {
     Archetype,
-    ArchetypeProtocol,
-    DSFunc,
-    AbsRootHook,
-    hookimpl
+    NodeArchetype,
+    EdgeArchetype,
+    WalkerArchetype
 }
 import math;
 import numpy as np;

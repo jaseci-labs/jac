@@ -2847,7 +2847,11 @@ impl NaIRGenPass._emit_isinstance_core(
     unresolved: list[str] = [];
     static_seen = False;
     static_hit = False;
-    source_type = params[0].type;
+    source = params[0];
+    if not isinstance(source, uni.Expr) {
+        return None;
+    }
+    source_type = source.type;
     source_members = source_type.types
         if isinstance(source_type, UnionType)
         else [source_type];

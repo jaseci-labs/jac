@@ -17,6 +17,7 @@ def read_end(value: Pattern) -> i64 {
 def present_end -> int {
     return int(read_end(Pattern(end=42)));
 }
+
 def absent_end -> int {
     return int(read_end(Pattern(end=None)));
 }

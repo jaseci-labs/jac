@@ -10,13 +10,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 
 test "JavaScript boundary types preserve provider scopes and aliases" {
     path = os.path.join(
-        JAC_ROOT,
-        "jaclang",
-        "scale",
-        "tests",
-        "fixtures",
-        "typed_boundary",
-        "browser.jac"
+        JAC_ROOT, "tests", "scale", "fixtures", "typed_boundary", "browser.jac"
     );
     prog = JacProgram();
     mod = prog.compile(path);

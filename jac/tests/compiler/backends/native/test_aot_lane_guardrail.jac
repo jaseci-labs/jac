@@ -13,6 +13,7 @@ and plays a game with it, so the AOT lane can never regress behind a green run
 lane again.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;
@@ -58,10 +59,7 @@ test "an AOT compile that lowers nothing names the module" {
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "aot_no_lowerable_code.jac"),
         options=CompileOptions(
-            aot_mode=True,
-            force_codespace='native',
-            force_target_program=True,
-            no_ir_cache=True
+            aot_mode=True, force_codespace='native', no_ir_cache=True
         )
     );
     assert ir.gen.llvm_ir is None , "the fixture is not supposed to lower";

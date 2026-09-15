@@ -51,7 +51,7 @@ by the Jac binding (resolution order: `JAC_LLVM_SHIM`, the payload's
   the host -- see `wasm_build.jac`), so it links the full archive set (~129 MB
   on Linux). A host-only pruned build is not viable while non-host targets are
   in use.
-- `--skip-precompile` (mkpayload) skips the JIR precompile for fast link
-  validation; shipping builds keep it for fast first-run startup.
+- `zig build jacllvm` builds the shim independently and installs it under
+  `zig-out/lib`. The compiler image consumes it as an explicit artifact.
 
 See issue #6925 for the llvmlite decoupling history.

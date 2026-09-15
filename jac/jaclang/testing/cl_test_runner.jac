@@ -7,8 +7,8 @@ glob _RESULT_SENTINEL: str = "__JAC_CL_TEST_RESULTS__",
      _NPM_STUB_FILE: str = "__jac_npm_stub.js",
      _SERVER_ENTRY_NAMES: tuple[str, ...] = ("server.jac", "main.jac"),
      _IMPORT_LINE = re.compile(r"^\s*import\b.*?;?\s*$", re.MULTILINE),
-     _IMPORT_FROM = re.compile(
-         r"import\s+(?P<clause>[^;]*?)\s+from\s+[\"'](?P<spec>[^\"']+)[\"']\s*;?"
+     _STATIC_IMPORT = re.compile(
+         r"\bimport\s+(?:(?P<clause>[^;\"']*?)\s+from\s+)?[\"'](?P<spec>[^\"']+)[\"']\s*;?"
      ),
      _NAMED_BINDING = re.compile(r"([A-Za-z_$][\w$]*)\s*(?:as\s+[A-Za-z_$][\w$]*)?"),
      _PRELUDE_TEMPLATE: str = """

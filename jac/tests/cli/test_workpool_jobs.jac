@@ -27,3 +27,64 @@ test "default_jobs sizes the pool by the per-worker ceiling" {
     # A ceiling the box cannot hold even once still yields one worker.
     assert default_jobs(worker_bytes=64 * GB, avail_bytes=16 * GB) == 1;
 }
+
+test "test workers use their configured recycling ceiling for auto sizing" {
+    import from unittest.mock { patch }
+    import jaclang.cli.workpool as workpool;
+    import jaclang.testing.test_runner as runner;
+    original = workpool.default_jobs;
+    def on_small_runner(worker_bytes: int = 0, avail_bytes: int = 0) -> int {
+        return original(worker_bytes=worker_bytes, avail_bytes=16 * GB);
+    }
+    with patch.object(os, "cpu_count", return_value=8), patch.object(
+        workpool, "default_jobs", side_effect=on_small_runner
+    ), patch.dict(
+        os.environ,
+        {
+            "JAC_TEST_JOBS": "auto",
+            "JAC_TEST_RECYCLE_MB": "8192",
+            "JAC_TEST_RECYCLE": "0"
+        }
+    ) {
+        assert runner.resolve_jobs() == 1;
+        assert not runner._test_retire(1, 8191);
+        assert runner._test_retire(1, 8192);
+        os.environ["JAC_TEST_RECYCLE_MB"] = "4096";
+        assert runner.resolve_jobs() == 2;
+        assert not runner._test_retire(1, 4095);
+        assert runner._test_retire(1, 4096);
+        assert runner.resolve_jobs(3) == 3;
+    }
+}
+
+test "one test worker recycles while explicit zero stays in process" {
+    import tempfile;
+    import from contextlib { chdir }
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import jaclang.testing.test_runner as runner;
+    if not hasattr(os, "fork") {
+        return;
+    }
+    with tempfile.TemporaryDirectory() as directory, chdir(directory), patch.dict(
+        os.environ, {"JAC_TEST_RECYCLE": "1", "JAC_TEST_RECYCLE_MB": "8192"}
+    ) {
+        for name in ["first", "second"] {
+            Path(f"test_{name}.jac").write_text(
+                'import os;\nimport from pathlib { Path }\n'
+                    + 'test "record pid" { Path("'
+                    + name
+                    + '.pid").write_text(str(os.getpid())); }\n'
+            );
+        }
+        assert runner.run_tests(paths=[directory], jobs=1) == 0;
+        pids = {int(Path(f"{name}.pid").read_text()) for name in ["first", "second"]};
+        assert len(pids) == 2 , "one-worker mode must replace retired workers";
+        assert os.getpid() not in pids , "one-worker mode must isolate test execution";
+        assert runner.run_tests(paths=[directory], jobs=0) == 0;
+        assert all(
+            int(Path(f"{name}.pid").read_text()) == os.getpid()
+            for name in ["first", "second"]
+        ) , "explicit zero must retain in-process execution";
+    }
+}

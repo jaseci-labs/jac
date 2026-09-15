@@ -138,6 +138,20 @@ def _rss_kb -> (int | None) {
     return None;
 }
 
+test "kernel reference transfer is independent of shared ctypes signatures" {
+    import ctypes;
+    import from unittest.mock { patch }
+    import from jaclang.compiler.native_compiler { ensure_loaded }
+    import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+    assert ensure_loaded() is not None;
+    with patch.object(ctypes.pythonapi.Py_DecRef, "argtypes", [ctypes.c_void_p]) {
+        (module, failed) = parse_woven(
+            "def answer -> int { return 42; }", "kernel_ctypes.jac", None, []
+        );
+        assert module is not None and not failed;
+    }
+}
+
 test "kernel materialization releases every borrowed input reference" {
     import ctypes;
     import from jaclang.compiler.native_compiler { ensure_loaded }
@@ -218,6 +232,39 @@ test "kernel parses retain no native memory once the tree is handed over" {
                 f"four kernel parses of unitree.jac grew RSS by {grown:.0f} MB; "
                 "the parse region is not being dropped at the end of jc_run"
             );
+        }
+    }
+}
+
+test "native kernel selection rejects missing explicit artifacts" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.native_compiler { _find_lib }
+    with patch.dict(
+        os.environ, {"JAC_COMPILER_LIB": "/missing/compiler-kernel.so"}, clear=True
+    ) {
+        with testraises(OSError) {
+            _find_lib();
+        }
+    }
+    with patch.dict(os.environ, {"JAC_COMPILER_LIB": "off"}, clear=True) {
+        assert _find_lib() is None;
+    }
+}
+
+test "native kernel selection requires its matching layout sidecar" {
+    import tempfile;
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.native_compiler { _find_lib }
+    with tempfile.TemporaryDirectory() as directory {
+        library = Path(directory) / "libjac_compiler.so";
+        library.write_bytes(b"not loaded by selection");
+        with patch.dict(os.environ, {"JAC_COMPILER_LIB": str(library)}, clear=True) {
+            with testraises(OSError) {
+                _find_lib();
+            }
+            Path(str(library) + ".layout.json").write_text("{}");
+            assert _find_lib() == str(library);
         }
     }
 }

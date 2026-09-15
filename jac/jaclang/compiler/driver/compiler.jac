@@ -45,13 +45,11 @@ import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPas
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.selfhost { SelfHostCache }
 import from jaclang.compiler.driver.pass_driver {
     build_diagnostic_policy,
     compile_progress,
     deliver_alerts,
-    run_pass,
-    setup_progress
+    run_pass
 }
 import from jaclang.compiler.driver.pipeline {
     run_utility,
@@ -64,18 +62,9 @@ import from jaclang.compiler.driver.pipeline {
     get_py_code_gen,
     get_symtab_ir_sched,
     native_pipeline_available,
-    native_schedule_failure,
     providers_of,
     pass_provides,
     validate_schedule
-}
-import from jaclang.compiler.driver.source_failures {
-    CompilerSourceError,
-    import_error_re_enters,
-    module_import_in_flight,
-    module_scoped_failure_details,
-    bootstrap_tier_failure_details,
-    note_compiler_source_failure
 }
 import from jaclang.compiler.driver.boundary_classify {
     ClientImportVerdict,
@@ -98,16 +87,13 @@ import from jaclang.compiler.driver.na_coverage {
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (100000, 50, 100);
 
 obj JacCompiler {
-    has _selfhost: (SelfHostCache | None) = None,
-        _reentrant_depth: int = 0,
+    has _reentrant_depth: int = 0,
         _closure_opts: (CompileOptions | None) = None,
         _stub_catalog: StubCatalog | None = None,
         _stub_catalog_tried: bool = False,
         stub_catalog_disabled: bool = False,
         _stub_trees_served: bool = False,
         unit_collect: bool = True;
-
-    has selfhost: SelfHostCache { getter; }
 
     def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;

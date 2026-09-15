@@ -4,10 +4,9 @@ import from types { ModuleType }
 import from typing { TYPE_CHECKING }
 import from jaclang.client.client_bundle { ClientBundleError }
 import from jaclang.client.asset_processor { AssetProcessor }
-import from jaclang.client.import_processor { ImportProcessor }
 import from jaclang.client.jac_to_js { JacToJSCompiler }
 import from jaclang.client.route_scanner { RouteScanner, resolve_route_exports }
-import from jaclang.jac0core.ext_registry { ANNEX_SUFFIXES }
+import from jaclang.extensions { ANNEX_SUFFIXES }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
 
 with entry {

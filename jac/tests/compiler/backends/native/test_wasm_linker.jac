@@ -11,6 +11,7 @@ supported relocation kind, the malloc/memcpy import surface, a data segment,
 and the indirect-call table.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,

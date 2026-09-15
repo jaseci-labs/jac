@@ -24,8 +24,7 @@ def _rss_mb() -> float:
 
 
 def kernel_bench(n: int = 8000) -> None:
-    from jaclang.lib.jaclib import Edge, Node, build_edge, connect
-    import jaclang.jac0core.osp0 as osp0
+    from jaclang.lib.jaclib import Edge, Node, connect, hop, refs
 
     @dataclass(eq=False)
     class N(Node):
@@ -47,7 +46,7 @@ def kernel_bench(n: int = 8000) -> None:
     t2 = time.perf_counter()
     for i in range(0, n, 7):
         hops += 1
-        osp0.refs0(nodes[i], 2, Body, False)
+        refs(hop(nodes[i], 2, Body, False))
     t3 = time.perf_counter()
     print(
         f"kernel n={n}: connect {(t1 - t0) / n * 1e6:.1f} us/edge, "

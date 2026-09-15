@@ -255,10 +255,7 @@ test "a verdict query's dep units do not outlive the compile that asked" {
     prog.compile(
         file_path=os.path.join(tmp, "other.jac"),
         options=CompileOptions(
-            force_codespace='native',
-            force_target_program=True,
-            no_ir_cache=True,
-            aot_mode=True
+            force_codespace='native', no_ir_cache=True, aot_mode=True
         )
     );
     stranded: list[str] = [];

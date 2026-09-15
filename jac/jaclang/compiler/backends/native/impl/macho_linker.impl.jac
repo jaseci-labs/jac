@@ -851,6 +851,38 @@ impl MachOLinker._resolve_crossrefs -> None {
 }
 
 
+impl MachOLinker._data_rebase_offsets(
+    data_sections: dict[str, tuple[int, int]],
+    segment_offset: int,
+    external_functions: list[str]
+) -> list[int] {
+    offsets: list[int] = [];
+    unsigned = ARM64_RELOC_UNSIGNED
+        if self.cpu_type == CPU_TYPE_ARM64
+        else X86_64_RELOC_UNSIGNED;
+    for rel in self.relocations {
+        section = data_sections.get(rel.target_sec);
+        if rel.rtype != unsigned or rel.length != 3 {
+            continue;
+        }
+        if section is None {
+            continue;
+        }
+        if rel.extern == 1 {
+            if rel.symbolnum >= len(self.symbols) {
+                continue;
+            }
+            sym = self.symbols[rel.symbolnum];
+            if (sym.n_type & N_TYPE_MASK) != N_SECT
+                and sym.name not in external_functions {
+                continue;
+            }
+        }
+        offsets.append(segment_offset + section[0] + rel.address);
+    }
+    return offsets;
+}
+
 impl MachOLinker.build_executable -> bytes {
     is_arm64 = self.cpu_type == CPU_TYPE_ARM64;
     page_size = 0x4000 if is_arm64 else 0x1000;
@@ -1137,39 +1169,12 @@ impl MachOLinker.build_executable -> bytes {
     }
     bind_info = bytes(bind_data);
 
-    rebase_offsets: list[int] = [];
-
     data_sec_seg_off = data_sec_foff - data_seg_foff
         if data_sec_foff > data_seg_foff
         else 0;
-    for rel in self.relocations {
-        is_unsigned = (is_arm64 and rel.rtype == ARM64_RELOC_UNSIGNED)
-            or (not is_arm64 and rel.rtype == X86_64_RELOC_UNSIGNED);
-        if is_unsigned and rel.target_sec in data_sections and rel.length == 3 {
-            if rel.extern == 1 {
-                sym = self.symbols[rel.symbolnum]
-                    if rel.symbolnum < len(self.symbols)
-                    else None;
-                if sym is not None
-                    and (
-                        (sym.n_type & N_TYPE_MASK) == N_SECT
-                        or sym.name in extern_func_syms
-                    ) {
-                    sec_info = data_sections.get(rel.target_sec);
-                    if sec_info is not None {
-                        rebase_offsets.append(
-                            data_sec_seg_off + sec_info[0] + rel.address
-                        );
-                    }
-                }
-            } elif rel.extern == 0 {
-                sec_info = data_sections.get(rel.target_sec);
-                if sec_info is not None {
-                    rebase_offsets.append(data_sec_seg_off + sec_info[0] + rel.address);
-                }
-            }
-        }
-    }
+    rebase_offsets = self._data_rebase_offsets(
+        data_sections, data_sec_seg_off, extern_func_syms
+    );
 
     for k in range(len(internal_got_idx)) {
         rebase_offsets.append((num_extern_got + k) * 8);
@@ -2108,38 +2113,13 @@ impl MachOLinker.build_shared_object -> bytes {
     }
     bind_info = bytes(bind_data);
 
-    rebase_offsets: list[int] = [];
     data_sec_seg_off = data_sec_foff - data_seg_foff
         if data_sec_foff > data_seg_foff
         else 0;
-    for rel in self.relocations {
-        is_unsigned = (is_arm64 and rel.rtype == ARM64_RELOC_UNSIGNED)
-            or (not is_arm64 and rel.rtype == X86_64_RELOC_UNSIGNED);
-        if is_unsigned and rel.target_sec in data_sections and rel.length == 3 {
-            if rel.extern == 1 {
-                sym = self.symbols[rel.symbolnum]
-                    if rel.symbolnum < len(self.symbols)
-                    else None;
-                if sym is not None
-                    and (
-                        (sym.n_type & N_TYPE_MASK) == N_SECT
-                        or sym.name in extern_func_syms
-                    ) {
-                    sec_info = data_sections.get(rel.target_sec);
-                    if sec_info is not None {
-                        rebase_offsets.append(
-                            data_sec_seg_off + sec_info[0] + rel.address
-                        );
-                    }
-                }
-            } elif rel.extern == 0 {
-                sec_info = data_sections.get(rel.target_sec);
-                if sec_info is not None {
-                    rebase_offsets.append(data_sec_seg_off + sec_info[0] + rel.address);
-                }
-            }
-        }
-    }
+    rebase_offsets = self._data_rebase_offsets(
+        data_sections, data_sec_seg_off, extern_func_syms
+    );
+
     for k in range(len(internal_got_idx)) {
         rebase_offsets.append((num_extern_got + k) * 8);
     }

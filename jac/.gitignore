@@ -77,6 +77,7 @@ zig-out/
 /dist/
 .pbs-build/
 .python-build/
+.toolchains/
 # Pinned bun fetched per target by the payload tool's fetch-bun subcommand
 # (jaclang/dist/payload/) and bundled into the payload (never committed). See
 # build.zig's fetch-bun step.
@@ -91,8 +92,9 @@ jaclang/vendor/typeshed/stdlib
 .llvm-build/
 # CI staging dir for a cache-restored prebuilt shim (setup-jac -Dshim-bin).
 .shim-build/
-# Persistent JIR precompile cache: mkpayload seeds site/_precompiled from it
-# and writes the refreshed tree back (see build.zig --precompiled-cache).
+# Incremental compiler-image modules, validated against source dependencies.
+.compiler-build/
+# Ignore caches left by builds before the compiler-image migration.
 .precompiled-build/
 # Persistent deps-layer frame cache: mkpayload reuses the payload's compressed
 # dependency layer across builds (see build.zig --layer-cache).

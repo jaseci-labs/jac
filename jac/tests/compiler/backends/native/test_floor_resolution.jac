@@ -13,6 +13,7 @@ dir so the resolution is covered without a real pbs build or a relocated jaclang
 
 import os;
 import tempfile;
+import from unittest.mock { patch }
 import from jaclang.compiler.backends.native.floor { resolve_floor_dir, floor_lib_dir }
 import from jaclang.cli.commands.native_build { _resolve_ca_bundle, _floor_ca_bundle }
 
@@ -102,7 +103,9 @@ test "CPython resolves its release archives and CA bundle on macOS and Linux" {
 
 test "no floor anywhere resolves to None (#6978 0.2)" {
     base = tempfile.mkdtemp();
-    got = resolve_floor_dir(base, "x86_64-unknown-linux-gnu");
+    with patch("jaclang.dist.fused_binary.bundled_floor_roots", return_value=[]) {
+        got = resolve_floor_dir(base, "x86_64-unknown-linux-gnu");
+    }
     assert got is None , f"expected None, got {got}";
 }
 
@@ -161,5 +164,40 @@ test "JAC_NATIVE_CA_BUNDLE overrides CA resolution (#6978 0.2)" {
         } else {
             os.environ["JAC_NATIVE_CA_BUNDLE"] = prev;
         }
+    }
+}
+
+test "selected compiler images locate the floor through the embedded interpreter" {
+    import sys;
+    import from pathlib { Path }
+    import from jaclang.dist.fused_binary { materialized_runtime_dir }
+    with tempfile.TemporaryDirectory() as directory {
+        runtime = Path(directory) / "runtime";
+        python_home = runtime / "python";
+        python_home.mkdir(parents=True);
+        (runtime / ".ok").touch();
+        with patch.object(sys, "base_prefix", str(python_home)) {
+            assert materialized_runtime_dir() == str(runtime);
+            (runtime / ".ok").unlink();
+            assert materialized_runtime_dir() is None;
+        }
+    }
+}
+
+test "floor selection rejects a different OS or development architecture" {
+    with tempfile.TemporaryDirectory() as base, patch(
+        "jaclang.dist.fused_binary.materialized_runtime_dir", return_value=None
+    ) {
+        _mk(
+            os.path.join(
+                base, ".python-build", "linux-x86_64", "python", "build", "lib"
+            )
+        );
+        assert resolve_floor_dir(base, "aarch64-unknown-linux-gnu") is None;
+        _mk(os.path.join(base, "python", "floor", "macos-aarch64"));
+        assert resolve_floor_dir(
+            _mk(os.path.join(base, "site")), "aarch64-unknown-linux-gnu"
+        )
+            is None;
     }
 }

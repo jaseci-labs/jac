@@ -10,6 +10,7 @@ drops fire only on ownership ops, so the engine's compensating
 releases (balanced by retains only under managed modes) never
 double-free."""
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

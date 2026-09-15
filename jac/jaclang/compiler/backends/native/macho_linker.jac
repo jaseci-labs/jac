@@ -64,6 +64,12 @@ obj MachOLinker {
 
     def _allocate_commons -> None;
     def _resolve_crossrefs -> None;
+    def _data_rebase_offsets(
+        data_sections: dict[str, tuple[int, int]],
+        segment_offset: int,
+        external_functions: list[str]
+    ) -> list[int];
+
     def build_executable -> bytes;
     def build_shared_object -> bytes;
 }

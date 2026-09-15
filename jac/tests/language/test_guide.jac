@@ -228,7 +228,7 @@ test "guide store maps diagnostic codes to guides" {
 
 test "every mapped diagnostic code resolves to a bundled guide" {
     import from jaclang.cli.guide_store { _CODE_GUIDE_MAP }
-    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+    import from jaclang.project.diagnostics { DIAGNOSTICS }
     assert _CODE_GUIDE_MAP , "the code-to-guide map is empty";
     for (code, name) in _CODE_GUIDE_MAP.items() {
         assert code in DIAGNOSTICS , f"{code} is mapped to '{name}' but is not a registered diagnostic";

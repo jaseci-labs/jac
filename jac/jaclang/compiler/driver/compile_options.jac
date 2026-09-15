@@ -28,7 +28,6 @@ obj CompileOptions {
         skip_native_engine: bool = False,
         no_ir_cache: bool = False,
         resolve_annex_parent: bool = False,
-        force_target_program: bool = False,
         aot_mode: bool = False,
         kernel_unit: bool = False,
         force_codespace: str = "",
@@ -52,6 +51,7 @@ obj CompileOptions {
         app_kind: str = "",
         target_app: str = "",
         entry_point: str = "",
+        source_prefix_map: dict[str, str] = field(default_factory=`dict),
         ui: str = "",
         project_root: (str | None) = None,
         native_module_walk_order: (str | None) = None,
@@ -120,6 +120,7 @@ obj CompileOptions {
     }
 
     def codegen_identity -> str {
+        import json;
         return ";".join(
             [
                 f"native_required={int(self.native_required)}",
@@ -134,7 +135,9 @@ obj CompileOptions {
                 f"opt={self.opt_level}",
                 f"app={self.target_app}",
                 f"app_kind={self.app_kind}",
-                f"kernel_unit={int(bool(self.kernel_unit))}"
+                f"kernel_unit={int(bool(self.kernel_unit))}",
+                "source_prefix_map="
+                    + json.dumps(self.source_prefix_map, sort_keys=True)
             ]
         );
     }
@@ -173,7 +176,6 @@ obj CompileOptions {
         result.iface_ok = not need_tree;
         result.need_full_ast = need_tree;
         result.native_parity = False;
-        result.force_target_program = False;
         return result;
     }
 
@@ -184,7 +186,6 @@ obj CompileOptions {
             native_require=list(self.native_require or []),
             aot_mode=True,
             default_codespace='native',
-            force_target_program=True,
             no_ir_cache=self.no_ir_cache,
             na_gc_mode=self.na_gc_mode,
             nogc_enforce_all=self.nogc_enforce_all,
@@ -203,7 +204,8 @@ obj CompileOptions {
             app_kind=self.app_kind,
             target_app=self.target_app,
             ui=self.ui,
-            project_root=self.project_root
+            project_root=self.project_root,
+            source_prefix_map=dict(self.source_prefix_map)
         );
     }
 

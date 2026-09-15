@@ -3,7 +3,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.client.bun_installer { get_bun }
-import from .react_jsdom_harness {
+import from .jsdom_harness {
     bun_install,
     compile_page,
     require_client_integration,

@@ -27,13 +27,11 @@ import from jaclang.compiler.driver.jir {
     SEC_DIAG,
     SEC_IFACE,
     SECTIONS_MAGIC,
-    compiler_source_digest,
     parse_header,
     read_section_bytes,
     read_sections,
     write_module_cache,
     write_precompiled_jir,
-    _manifest_compiler_digest
 }
 import from jaclang.compiler.types.stubcat.modiface { read_iface_hash }
 
@@ -72,9 +70,7 @@ def _project(dep_body: str = "") -> tuple[str, str] {
 }
 
 def _check_opts -> CompileOptions {
-    return CompileOptions(
-        no_cgen=True, native_parity=True, force_target_program=True, iface_ok=True
-    );
+    return CompileOptions(no_cgen=True, native_parity=True, iface_ok=True);
 }
 
 def _check(main: str) -> tuple[JacProgram, list[str]] {
@@ -126,6 +122,36 @@ test "a warm no-edit check replays diagnostics and runs zero passes" {
         f"warm no-edit check ran passes: {sorted(warm_prog.analysis.pass_runs)}"
     );
     assert warm_diags == cold_diags , "warm diagnostics diverge from cold";
+}
+
+test "shared imports retain dependency edges and diagnostics after a direct import is removed" {
+    import from unittest.mock { patch }
+    (main, dep) = _project("import from hidden { helper }\n" + DEP_V1);
+    hidden = Path(main).parent / "hidden.jac";
+    hidden.write_text(
+        'def helper -> int { """Misplaced documentation."""; return 1; }\n'
+    );
+    Path(main).write_text(
+        "import from hidden { helper }\nimport from depmod { f }\n"
+            + "def main -> int { return helper() + f(); }\n"
+    );
+    _check(main);
+    dep_data = _cache_path(dep, main).read_bytes();
+    deps = read_section_bytes(dep_data, SEC_DEPS);
+    assert deps is not None and str(hidden).encode() in deps;
+    _rewrite(main, MAIN_SRC);
+    (warm, warm_diags) = _check(main);
+    assert warm.analysis.cache_events.get("dep_hydrate", 0) >= 1;
+    assert sum(
+        1
+        for alert in warm.warnings_had
+        if alert.code is not None and alert.code.code == "W0060"
+    )
+        == 1;
+    with patch.dict(os.environ, {"JAC_REBUILD": "1"}) {
+        (_cold, cold_diags) = _check(main);
+    }
+    assert warm_diags == cold_diags;
 }
 
 test "dependency ingestion hydrates from the interface, not the source" {
@@ -296,25 +322,6 @@ test "verify mode accepts an honest cache and rejects a corrupted one" {
     }
 }
 
-test "the compiler digest manifest reproduces the full sweep exactly" {
-    pkg = tempfile.mkdtemp();
-    comp = Path(pkg) / "compiler";
-    comp.mkdir();
-    (comp / "a.jac").write_text("with entry { print(1); }\n");
-    (comp / "b.py").write_text("x = 1\n");
-    full = compiler_source_digest(pkg);
-    assert _manifest_compiler_digest(pkg) == full , "manifest digest diverged";
-    assert _manifest_compiler_digest(pkg) == full , "second (stat-only) run diverged";
-    import time;
-    (comp / "a.jac").write_text("with entry { print(2); }\n");
-    future = time.time() + 2.0;
-    os.utime(comp / "a.jac", (future, future));
-    changed = compiler_source_digest(pkg);
-    assert changed != full;
-    assert _manifest_compiler_digest(pkg) == changed , (
-        "manifest digest missed an edited file"
-    );
-}
 
 test "a typed third-party Python dependency is fingerprinted, never encoded as a target" {
     # A byllm fixture imports litellm, and the sealed in-package lane died
@@ -484,10 +491,29 @@ test "the interface-bytes memo outlives the compile closure" {
     assert events.get("iface_encode", 0) == 1 , f"the unchanged module was re-encoded after closure release (events: {events})";
 }
 
+test "reusing an encoded interface restores invalidation edges after closure release" {
+    (main, dep) = _project();
+    prog = _context(main);
+    mod = prog.compile(main, options=_check_opts());
+    reg = prog.iface_registry();
+    encodes = prog.analysis.cache_events.get("iface_encode", 0);
+    assert main in prog.transitive_dependents(dep);
+    prog.release_compile_closure();
+    assert not prog.transitive_dependents(dep);
+    reg.frame_push(main);
+    try {
+        assert reg.prepare_interface(main, mod);
+    } finally {
+        reg.frame_pop();
+    }
+    assert main in prog.transitive_dependents(dep);
+    assert prog.analysis.cache_events.get("iface_encode", 0) == encodes;
+}
+
 test "a validated disk interface seeds the encoding memo for tree consumers" {
     (main, dep) = _project();
-    _check(main);
-    prog = _context(main);
+    _check(dep);
+    prog = _context(dep);
     reg = prog.iface_registry();
     cached = reg.ensure(dep, compile_on_miss=False);
     assert cached is not None;
@@ -499,6 +525,20 @@ test "a validated disk interface seeds the encoding memo for tree consumers" {
         "a validated, unchanged interface was encoded again for a tree consumer"
     );
     assert reg.entries[dep].digest == cached.digest;
+}
+
+test "symbol-only cached interfaces are re-encoded after full analysis" {
+    (main, dep) = _project();
+    _check(main);
+    prog = _context(main);
+    reg = prog.iface_registry();
+    assert reg.ensure(dep, compile_on_miss=False) is not None;
+    encodes = prog.analysis.cache_events.get("iface_encode", 0);
+    options = _check_opts();
+    options.need_full_ast = True;
+    prog.compile(dep, options=options);
+    assert not prog.errors_had;
+    assert prog.analysis.cache_events.get("iface_encode", 0) > encodes;
 }
 
 glob NARROW_DEP: str = """
@@ -547,12 +587,7 @@ test "a tree-demanding closure does not disable hydration for later compiles" {
     (main, dep) = _project();
     _check(main);
     prog = JacProgram();
-    prog.compile(
-        main,
-        options=CompileOptions(
-            no_cgen=True, force_target_program=True, need_full_ast=True
-        )
-    );
+    prog.compile(main, options=CompileOptions(no_cgen=True, need_full_ast=True));
     assert prog.analysis.cache_events.get("dep_hydrate", 0) == 0 , "a tree-demanding closure must not hydrate its dependencies";
     prog.release_compile_closure();
     prog.load_dependency_module(dep);
@@ -609,10 +644,7 @@ test "an interface is identical however many twins of its module are reachable" 
         mod = prog.compile(
             target,
             options=CompileOptions(
-                no_cgen=True,
-                symtab_ir_only=True,
-                force_target_program=True,
-                need_full_ast=True
+                no_cgen=True, symtab_ir_only=True, need_full_ast=True
             )
         );
         payload = build_module_iface(mod, prog.get_type_evaluator(), pkg);
@@ -770,10 +802,7 @@ test "an interface that cannot place a class is not persisted" {
     }
     paths = _twin_project();
     prog = JacProgram();
-    prog.compile(
-        paths["provider"],
-        options=CompileOptions(no_cgen=True, force_target_program=True)
-    );
+    prog.compile(paths["provider"], options=CompileOptions(no_cgen=True));
     _class_scope(prog, paths["models"], "Cfg").parent_scope = None;
     provider = prog.mod.hub[paths["provider"]];
     refused = False;
@@ -817,7 +846,7 @@ test "a cross-reference into a stub is answered by the catalog" {
 test "a codegen compile records dependency rows but encodes no interface" {
     (main, dep) = _project();
     prog = JacProgram();
-    prog.compile(main, options=CompileOptions(force_target_program=True));
+    prog.compile(main, options=CompileOptions());
     data = _cache_path(main).read_bytes();
     assert read_section_bytes(data, SEC_DEPS) is not None , "no SEC_DEPS after codegen";
     assert read_section_bytes(data, SEC_IFACE) is None , (
@@ -834,4 +863,46 @@ test "a codegen compile records dependency rows but encodes no interface" {
     assert read_section_bytes(data, SEC_DEPS) is not None , (
         "the frontier merge dropped the dependency rows"
     );
+}
+
+
+test "interface serialization only analyzes types its caller needs" {
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp).resolve();
+        main = base / "main.jac";
+        leaf = base / "leaf.jac";
+        main.write_text(
+            "import from api { answer }\nwith entry { print(answer()); }\n"
+        );
+        (base / "api.jac").write_text(
+            "import type from unrelated { Unrelated }\n"
+            "def answer -> int { return 42; }\n"
+        );
+        (base / "unrelated.jac").write_text(
+            "import type from leaf { Leaf }\nobj Unrelated { has value: Leaf; }\n"
+        );
+        leaf.write_text("obj Leaf { has value: int; }\n");
+        (cold, _) = _check(str(main));
+        assert not cold.errors_had;
+        assert str(leaf) not in cold.mod.hub;
+        (warm, _) = _check(str(main));
+        assert not warm.errors_had;
+        assert not warm.analysis.pass_runs;
+        _rewrite(
+            str(main),
+            "import type from api { Unrelated }\n"
+            "def read(value: Unrelated) -> int { return value.value.value; }\n"
+        );
+        (demanded, _) = _check(str(main));
+        assert str(leaf) in demanded.mod.hub;
+        assert not demanded.errors_had;
+        (demanded_warm, _) = _check(str(main));
+        assert not demanded_warm.errors_had;
+        assert not demanded_warm.analysis.pass_runs;
+        _rewrite(str(leaf), "obj Leaf { has value: str; }\n");
+        (changed, _) = _check(str(main));
+        assert any(
+            "Cannot return str, expected int" in a.msg for a in changed.errors_had
+        ) , f"{[a.msg for a in changed.errors_had]} {changed.analysis.cache_events} {changed.analysis.pass_runs}";
+    }
 }

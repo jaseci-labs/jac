@@ -230,40 +230,6 @@ test "ambient-name imports are refused on the import line with E1125" {
     ]}";
 }
 
-test "bootstrap-compiled modules keep the ambient-import advisory" {
-    # jac0.py resolves names solely through real imports: for the modules it
-    # compiles (the seed-manifest set), an ambient-name import is load-bearing, so
-    # the escalation carves them out -- W1103 stays advisory there, E1125 never
-    # fires. The predicate is path-shaped; pin its boundary on both sides.
-    import from jaclang.compiler.passes.static_analysis_pass {
-        is_bootstrap_compiled_module
-    }
-    assert is_bootstrap_compiled_module("/repo/jac/jaclang/runtime/runtime.jac");
-    assert is_bootstrap_compiled_module(
-        "/repo/jac/jaclang/compiler/passes/uni_pass.jac"
-    );
-    assert is_bootstrap_compiled_module("C:\\repo\\jac\\jaclang\\runtime\\runtime.jac");
-    assert not is_bootstrap_compiled_module(
-        "/repo/jac/jaclang/compiler/passes/layout_pass.jac"
-    );
-    assert not is_bootstrap_compiled_module("/repo/apps/jac0core/module.jac");
-    assert not is_bootstrap_compiled_module("");
-
-    # A relative path names the same module. `jac check` receives one whenever
-    # it is handed a path relative to cwd -- which is what CI's scoped mode
-    # does, feeding it the entries of changed-jac.txt. Matching only the
-    # absolute spelling made the same file report E1125 relatively and nothing
-    # absolutely.
-    assert is_bootstrap_compiled_module("jaclang/runtime/runtime.jac");
-    assert is_bootstrap_compiled_module(
-        "jaclang/compiler/backends/py/jcir_gen_pass.jac"
-    );
-    assert is_bootstrap_compiled_module("jaclang\\runtime\\runtime.jac");
-    assert not is_bootstrap_compiled_module("jaclang/compiler/passes/layout_pass.jac");
-    assert not is_bootstrap_compiled_module("apps/jac0core/module.jac");
-    assert not is_bootstrap_compiled_module("myjaclang/jac0core/module.jac");
-}
-
 test "the ambient provider module keeps its typing imports" {
     # jaclang/runtime/builtin.jac is the runtime side of the ambient set,
     # and its own typing imports are its export surface: JcirGenPass routes

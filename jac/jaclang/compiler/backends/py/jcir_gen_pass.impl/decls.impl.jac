@@ -140,6 +140,19 @@ impl JcirGenPass.exit_archetype with Archetype exit {
         }
     }
     keywords = [self.val(k) for k in here.keywords] if here.keywords else [];
+    if any(
+        isinstance(member, Ability) and member.is_abstract for member in (inner or [])
+    )
+        and not any(
+            k.key is not None and k.key.sym_name == 'metaclass'
+            for k in (here.keywords or [])
+        ) {
+        keywords.append(
+            self.nod(
+                'keyword', ['arg', 'value'], ['metaclass', self.builtin_name('ABCMeta')]
+            )
+        );
+    }
     class_def = self.nod(
         'ClassDef',
         ['name', 'bases', 'keywords', 'body', 'decorator_list', 'type_params'],

@@ -25,7 +25,7 @@ jac --version
 ```bash
 minikube start --driver=docker
 minikube addons enable ingress
-cd jac/jaclang/scale/tests/fixtures/k8s_e2e
+cd jac/tests/scale/fixtures/k8s_e2e
 jac scale deploy web
 ```
 

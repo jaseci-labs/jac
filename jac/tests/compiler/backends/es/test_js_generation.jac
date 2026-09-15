@@ -3,6 +3,7 @@
 Migrated from test_js_generation.py to native Jac test format.
 """
 
+import from tests.support { jac_command }
 import json;
 import os;
 import shutil;
@@ -286,7 +287,7 @@ test "cli js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang.cli.cli", "tool", "jac2js", fixture_file_path],
+        jac_command() + ["tool", "jac2js", fixture_file_path],
         capture_output=True,
         text=True,
         env=env,
@@ -306,15 +307,7 @@ test "cl only js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang.cli.cli",
-            "tool",
-            "jac2js",
-            fixture_file_path,
-
-        ],
+        jac_command() + ["tool", "jac2js", fixture_file_path, ],
         capture_output=True,
         text=True,
         env=env,

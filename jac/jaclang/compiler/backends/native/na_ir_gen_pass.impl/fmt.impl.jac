@@ -20,7 +20,6 @@ def _load_native_fmt_kernel_module -> (uni.Module | None) {
                 aot_mode=True,
                 default_codespace='native',
                 force_codespace='native',
-                force_target_program=True
             )
         );
     } except Exception {

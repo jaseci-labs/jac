@@ -1,7 +1,7 @@
 import from pathlib { Path }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.passes.transform { Transform }
-import type from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
+import type from jaclang.project.diagnostics { DiagnosticInfo }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -36,7 +36,7 @@ import from jaclang.compiler.frontend.constant {
     Tokens as Tok,
     SymbolType
 }
-import from jaclang.compiler.frontend.diagnostics { E5082, E5084, W6006, W6007 }
+import from jaclang.project.diagnostics { E5082, E5084, W6006, W6007 }
 import from jaclang.compiler.driver.boundary_classify {
     ClientImportVerdict,
     classify_client_import_item,
@@ -772,7 +772,7 @@ def serverless_server_evidence(
 
 
 def report_serverless_kind_errors(reporter: any, mod: Module) {
-    import from jaclang.compiler.frontend.diagnostics { E5087 }
+    import from jaclang.project.diagnostics { E5087 }
     import from jaclang.compiler.placement.placement { project_kind_name }
     evidence = serverless_server_evidence(mod, reporter.prog);
     if not evidence {

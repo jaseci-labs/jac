@@ -1505,9 +1505,14 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
                 try {
                     import os as _os_di;
 
+                    import from jaclang.compiler.driver.compilation_context {
+                        codegen_source_path
+                    }
                     _mod_fn = _source_mod;
                     if not _mod_fn.endswith(".jac") {
                         _mod_fn = _mod_fn.replace(".", "/") + ".na.jac";
+                    } else {
+                        _mod_fn = codegen_source_path(_mod_fn);
                     }
                     _di_imp_file = self.llvm_module.add_debug_info(
                         "DIFile",

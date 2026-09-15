@@ -26,9 +26,7 @@ test "nullable Jac callbacks cannot become untyped C code addresses" {
             + "obj Handler { has callback: Callable[[i32], i32] | None; }\n"
             + "def invoke(handler: Handler) -> i32 { cb = handler.callback; "
             + "if cb is None { return 0; } return invoke_c(cb, 7); }\n",
-        options=CompileOptions(
-            aot_mode=True, native_required=True, force_target_program=True
-        )
+        options=CompileOptions(aot_mode=True, native_required=True)
     );
     assert any("function pointer" in str(error) for error in program.errors_had) , (
         "A nullable Jac callable must not be cast to an arbitrary C address"
@@ -44,9 +42,7 @@ test "C callback records have layout-compatible pointer fields" {
         use_str="import from c { obj Callbacks { has call: Callable[[i32], i32] = 0; } }\n"
             + "def signed(value: i32) -> i32 { return value; }\n"
             + "glob callbacks = Callbacks(call=signed);\n",
-        options=CompileOptions(
-            no_cgen=True, native_required=True, force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, native_required=True)
     );
     assert not program.errors_had , str(program.errors_had);
     assert not any(
@@ -69,7 +65,7 @@ test "C callback records accept addresses from dynamic symbol lookup" {
             + "def invoke_address(address: int, value: i32) -> i32 { "
             + "functions = Functions(); functions.absolute = address; "
             + "return functions.absolute(value); }\n",
-        options=CompileOptions(native_required=True, force_target_program=True)
+        options=CompileOptions(native_required=True)
     );
     assert not program.errors_had , str(program.errors_had);
     engine = module.gen.native_engine;
@@ -117,7 +113,7 @@ test "Callback records survive managed field and container cleanup" {
                 + "holders = [Holder(cb, cb)]; callbacks = [cb]; "
                 + "value = holders[0].callback.call(-7) + callbacks[0].call(7); "
                 + "holders.clear(); callbacks.clear(); return cb.call(value); }\n",
-            options=CompileOptions(native_required=True, force_target_program=True)
+            options=CompileOptions(native_required=True)
         );
         assert not program.errors_had , str(program.errors_had);
         function = get_func(module.gen.native_engine, "probe", ctypes.c_int32);

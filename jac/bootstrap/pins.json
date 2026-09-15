@@ -1,5 +1,14 @@
 {
-  "_comment": "Pinned LLVM inputs shared by Zig and the Jac payload tool. CPython and its dependency sources are pinned separately in bootstrap/python/sources.json.",
+  "_comment": "Pinned stage-0 Jac and LLVM inputs. CPython and its dependency sources are pinned separately in bootstrap/python/sources.json.",
+  "jac": {
+    "version": "0.37.14",
+    "release_base": "https://github.com/jaseci-labs/jac/releases/download",
+    "artifacts": {
+      "linux-x86_64": "de0876eb056962604865ccb17d66969b8a5dfc34e51bd8f177ae95cc004aad45",
+      "linux-aarch64": "9e5b2588c66362bb195812f1c33c7e22b75eefc43b9528202cde04562e53ed8e",
+      "macos-aarch64": "9517862d5bbc5ec88016f38854a6c7a4cef0089c1261fdac0f5859e0ba52b7d7"
+    }
+  },
   "llvm": {
     "_comment": "jaseci-labs/llvm-slice repackages the official LLVM release into a per-member, HTTP-range-fetchable zip at <slice_base>/v<version>/llvm-<version>-<triple>-{dev.zip,manifest.json}. `dirname` is the release's top-level dir (the -Dllvm-dir basename under .llvm-build); `triple`/`manifest_sha256`/`zip_size` drive the range fetch. `upstream` true = repackaged official upstream binaries; false = built from source by llvm-slice (externals like zlib/zstd/libxml2 OFF). On macOS that decides the whole shim link shape: upstream archives are ThinLTO bitcode that ld64 must lower via the slice's own libLTO.dylib and they reference zlib/zstd/libxml2, while a from-source slice is plain native Mach-O with no external deps. A `*-libcxx` triple is a libc++ build whose archives the shim must link with `zig c++ -target <floor>` rather than the host g++/libstdc++.",
     "version": "22.1.8",

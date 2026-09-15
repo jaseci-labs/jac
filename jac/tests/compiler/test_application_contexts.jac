@@ -18,6 +18,7 @@ test "sealed service contracts use the target module app identity" {
     import json;
     import from jaclang.server.endpoint_contract { check_endpoint_contract }
     with TemporaryDirectory() as td {
+        td = str(Path(td).resolve());
         entry_path = str(Path(td) / 'main.jac');
         service = str(Path(td) / 'service.jac');
         app = PreparedApplication(td, entry_path);
@@ -52,8 +53,9 @@ test "sealed service contracts use the target module app identity" {
 }
 
 test "a sealed entry loads without a package initializer" {
-    import jaclang.jac0core.sealed as sealed;
+    import jaclang.image as sealed;
     with TemporaryDirectory() as td {
+        td = str(Path(td).resolve());
         path = str(Path(td) / 'main.jac');
         Path(path).write_text('');
         helper_path = str(Path(td) / 'helper.jac');
@@ -98,6 +100,7 @@ test "a sealed entry loads without a package initializer" {
 
 test "prepared app imports cannot share mutable module state" {
     with TemporaryDirectory() as td {
+        td = str(Path(td).resolve());
         base = Path(td);
         helper = str(base / 'helper.jac');
         (base / 'helper.jac').write_text('');

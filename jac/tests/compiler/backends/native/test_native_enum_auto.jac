@@ -27,6 +27,7 @@ matched through its symbol, not its spelling: a module-local function called
 server lane answers what CPython answers.
 """
 
+import from tests.support { jac_command }
 import contextlib;
 import io;
 import os;

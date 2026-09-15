@@ -253,7 +253,7 @@ test "the sized names, widths and signedness are defined in one table only" {
     import from pathlib { Path }
     import jaclang;
     pkg = Path(jaclang.__file__).parent;
-    # The lexer and parser own the keyword spellings; the jac0core scalar
+    # The lexer and parser own the keyword spellings; the runtime scalar
     # table owns the types and the registry is built from it. Everything
     # else must query the registry (or, below the compiler, the table). The
     # runtime's `__all__` is an export manifest, not a type list: the parity

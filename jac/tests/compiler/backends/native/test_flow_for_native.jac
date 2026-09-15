@@ -17,6 +17,7 @@ fixture's two printing regions emit disjoint value sets, so a line that
 escaped its region would show up as a region mismatch.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

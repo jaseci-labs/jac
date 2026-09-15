@@ -10,7 +10,7 @@ import from jaclang.compiler.frontend.codeinfo {
     CodeGenTarget,
     install_native_static_init
 }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E5020,
     W5021,
     W5022,

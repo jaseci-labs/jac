@@ -14,7 +14,7 @@ import type from jaclang.client.compiler { ViteCompiler }
 def port_bind_error(port: int) -> Optional[str] {
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
     try {
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0);
         s.bind(("0.0.0.0", port));
         return None;
     } except OSError as e {
@@ -121,9 +121,9 @@ def ensure_watchdog_common(target_name: str) -> bool {
 }
 
 def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) -> any {
-    import sys;
+    import from jaclang.cli.cli_boot { jac_command }
     return subprocess.Popen(
-        [sys.executable, "-m", "jaclang"] + headless_start_args(str(entry_file), port),
+        jac_command() + headless_start_args(str(entry_file), port),
         cwd=str(project_dir),
         stdout=None,
         stderr=None
@@ -186,7 +186,7 @@ def dev_proxy_paths(
     project_dir: Path, entry_file: Path
 ) -> tuple[list[str], list[str]] {
     import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.extensions { base_stem }
     try {
         import from jaclang.runtime.prepared { prepared_manifest }
         if prepared_manifest(str(entry_file)) is None {

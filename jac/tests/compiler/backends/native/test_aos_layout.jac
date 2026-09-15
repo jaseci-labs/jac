@@ -6,6 +6,7 @@ modes keep pointer elements and the annotation erases, so output is
 byte-identical across gc modes. The macOS `leaks` gate pins the
 teardown exact (the deferred Valgrind-matrix stand-in)."""
 
+import from tests.support { jac_command }
 import os;
 import shutil;
 import subprocess;

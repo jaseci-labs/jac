@@ -10,7 +10,10 @@ For setup instructions and PR workflow, see the [Contributing](contributing.md) 
 
 Before you open any files, these five ideas will save you a lot of confusion:
 
-**Jac is written in Jac.** Most of the compiler and runtime are `.jac` files, not Python. A small bootstrap transpiler (`jac0.py`) is pure Python -- it compiles just enough of the compiler (the seed set declared in `jaclang/bootstrap_manifest.py`) so the full compiler can take over and compile itself. Once bootstrapped, the full compiler handles everything else. If you're wondering "how does a Jac compiler compile itself?" -- that's the answer.
+**Jac is written in Jac.** A checksum-pinned prior Jac executable compiles the
+current compiler into a complete stage-1 image. Stage 1 can rebuild that image
+as stage 2. The runtime loads compiled modules without compiling its own
+implementation from source.
 
 **Declaration and implementation are separate.** You'll see pairs like `foo.jac` (declarations/interfaces) and `foo.impl.jac` or `impl/foo.impl.jac` (implementations). This is a first-class Jac language feature, similar to header/source separation. When you're looking for where something is *defined*, check the `.jac` file; for how it *works*, check the `.impl.jac` file.
 
@@ -74,12 +77,14 @@ The most important files to know:
 - **`frontend/unitree.jac`** -- The unified AST that all backends share. If you're adding or changing syntax, you'll touch this.
 - **`driver/compiler.jac`** -- The pass pipeline orchestrator. It defines schedules like `get_ir_gen_sched()` and `get_py_code_gen()` that chain passes together. This is the authoritative source for pass ordering.
 - **`driver/jir.jac`** -- The JIR container: cached module bytecode plus typed sections (MTIR, placement, native objects, module interfaces, dependency hashes, diagnostics), keyed by source content and the running compiler's identity. Trees are never persisted; they are working state, re-derived per process -- what a module *exports* is persisted instead, as an interface section that dependency ingestion hydrates from (`driver/ifacecache.jac`).
-- **`frontend/diagnostics.jac`** -- Error and warning reporting infrastructure.
+- **`project/diagnostics.jac`** -- Shared diagnostic catalog for the compiler and client runtime.
 - **`project/modresolver.jac`** -- Shared project and module import resolution.
 - **`frontend/parser/`** -- The Lark grammar definition and lexer that parse Jac source into the initial AST.
 - **`passes/`** -- The shared analysis passes: AST validation, symbol table construction, declaration-implementation matching, semantic analysis, and more (see the pass ordering below).
 
-Which of these files the `jac0.py` bootstrap compiles is declared in `jaclang/bootstrap_manifest.py`, not by directory. A small `jac0core/` directory still exists, but it holds only the frozen pure-Python launcher boot modules (`sealed.py`, `cache_paths.py`, `ext_registry.py`, `cli_boot.py`) -- built binaries bake these paths in, so they cannot move.
+The native kernel and all ordinary compiler modules are explicit build
+artifacts. `image.py` owns their compiled-module loading
+contract; `bootstrap/compiler.jac` drives the build with the prior compiler.
 
 ### `compiler/` -- Multi-Target Compilation
 

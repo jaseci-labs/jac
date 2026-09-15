@@ -20,6 +20,7 @@ import os;
 import struct;
 import sys;
 import tempfile;
+import subprocess;
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
@@ -27,6 +28,76 @@ glob MACHO_TRIPLE = "arm64-apple-darwin",
      MACHO_TRIPLE_X86 = "x86_64-apple-darwin",
      LC_DYLD_INFO_ONLY = 0x80000022,
      MH_PIE = 0x200000;
+
+test "data pointers to external function stubs are rebased in executables and dylibs" {
+    for triple in [MACHO_TRIPLE, MACHO_TRIPLE_X86] {
+        ir = f'target triple = "{triple}"\n'
+            + 'declare i32 @getpid()\n'
+            + '@callback = global ptr @getpid\n'
+            + 'define i32 @jac_probe() {\n'
+            + ' %p = load volatile ptr, ptr @callback\n'
+            + ' %pid = call i32 %p()\n'
+            + ' ret i32 %pid\n}\n'
+            + 'define i32 @main() {\n'
+            + ' %pid = call i32 @jac_probe()\n'
+            + ' %bad = icmp sle i32 %pid, 0\n'
+            + ' %status = zext i1 %bad to i32\n'
+            + ' ret i32 %status\n}\n';
+        llvm.initialize_all_targets();
+        llvm.initialize_all_asmprinters();
+        module = llvm.parse_assembly(ir);
+        module.verify();
+        machine = llvm.Target.from_triple(triple).create_target_machine(
+            opt=0, reloc="pic", codemodel="small"
+        );
+        object_bytes = machine.emit_object(module);
+        for shared in [False, True] {
+            with tempfile.TemporaryDirectory() as work {
+                output = os.path.join(work, "probe.dylib" if shared else "probe");
+                assert MachOLinker.link(
+                    obj_bytes=object_bytes,
+                    output_path=output,
+                    shared=shared,
+                    export_symbols=["jac_probe"],
+                    symbol_lib_map={"getpid": "/usr/lib/libSystem.B.dylib"}
+                );
+                with open(output, "rb") as stream {
+                    image = stream.read();
+                }
+                offset = 32;
+                rebase_size = 0;
+                for _ in range(struct.unpack_from("<I", image, 16)[0]) {
+                    (command, size) = struct.unpack_from("<II", image, offset);
+                    if command == LC_DYLD_INFO_ONLY {
+                        rebase_size = struct.unpack_from("<I", image, offset + 12)[0];
+                    }
+                    offset += size;
+                }
+                assert rebase_size > 0 , "external function pointer has no slide fixup";
+                import platform;
+                if sys.platform == "darwin"
+                    and (
+                        (triple == MACHO_TRIPLE and platform.machine() == "arm64")
+                        or (
+                            triple == MACHO_TRIPLE_X86
+                            and platform.machine() == "x86_64"
+                        )
+                    ) {
+                    if shared {
+                        library = ctypes.CDLL(output);
+                        library.jac_probe.restype = ctypes.c_int;
+                        assert library.jac_probe() == os.getpid();
+                    } else {
+                        result = subprocess.run(
+                            [output], capture_output=True, timeout=20
+                        );
+                        assert result.returncode == 0 , result.stderr;
+                    }
+                }
+            }
+        }
+    }
+}
 
 
 """IR with one unmapped extern (PyDict_New) and one mapped one (malloc)."""
@@ -147,8 +218,8 @@ test "darwin host: the dylib loads and resolves CPython from the process" {
     lib.jac_probe.restype = ctypes.c_void_p;
     d = lib.jac_probe();
     assert d , "PyDict_New returned NULL through the linked dylib";
-    ctypes.pythonapi.Py_DecRef.argtypes = [ctypes.c_void_p];
-    ctypes.pythonapi.Py_DecRef(d);
+    release = ctypes.PYFUNCTYPE(None, ctypes.c_void_p)(("Py_DecRef", ctypes.pythonapi));
+    release(d);
 }
 
 

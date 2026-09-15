@@ -27,7 +27,7 @@ import from jaclang.compiler.passes.transform { Transform }
 import type from jaclang.compiler.types.types { TypeBase }
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
+import from jaclang.project.diagnostics { E5030, W5031, W5032 }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {

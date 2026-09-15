@@ -105,11 +105,7 @@ def _copy_site_into(dest: any) {
 
 """Scaffold the site into a temp project dir and install npm deps.
 
-The in-tree jac.toml carries ``[dev] jaclang_source = "../.."`` (the dev
-loop back to the checked-out compiler); relative to the temp copy that path
-resolves to nothing, and a stale stanza would silently drop the copy back to
-the binary's bundled jaclang. Rewrite it to the absolute checked-out tree so
-the scaffold builds with the compiler under test.
+The copied project uses the same compiled image as the test runner.
 
 Returns ``(project_dir, jac_cmd, env)``. Fails the test if ``jac install --npm``
 fails (bun/npm unavailable or a dependency cannot be resolved).
@@ -125,18 +121,6 @@ def _setup_site_project(temp_dir: any) -> tuple[any, ...] {
     assert os.path.isfile(social_graph) , (
         "core/social_graph.jac (the social_graph service app) missing after copy"
     );
-
-    toml_path = os.path.join(project_dir, "jac.toml");
-    with open(toml_path) as f {
-        toml_body = f.read();
-    }
-    with open(toml_path, "w") as f {
-        f.write(
-            toml_body.replace(
-                'jaclang_source = "../.."', f'jaclang_source = "{_jac_root()}"'
-            )
-        );
-    }
 
     jac_cmd = get_jac_command();
     env = get_env_with_bun();

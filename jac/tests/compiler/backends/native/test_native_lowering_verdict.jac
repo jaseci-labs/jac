@@ -82,8 +82,7 @@ test "native-only checking rejects a method that mixed compilation demotes" {
                 no_cgen=checking,
                 native_parity=checking,
                 aot_mode=not checking,
-                native_required=True,
-                force_target_program=True
+                native_required=True
             )
         );
         assert program.errors_had , "Native-only compilation accepted eval fallback";
@@ -148,8 +147,7 @@ test "native-only checks link providers outside the entry directory" {
                     no_cgen=checking,
                     native_parity=checking,
                     aot_mode=not checking,
-                    native_required=True,
-                    force_target_program=True
+                    native_required=True
                 )
             );
             assert not program.errors_had , str(program.errors_had);

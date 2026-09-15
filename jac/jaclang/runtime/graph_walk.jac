@@ -30,8 +30,7 @@ def access_gated -> bool {
     if jctx is None {
         return False;
     }
-    ur = jctx?.user_root;
-    return ur is not None and ur != jctx.system_root;
+    return jctx.is_user_context;
 }
 
 

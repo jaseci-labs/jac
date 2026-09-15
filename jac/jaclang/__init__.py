@@ -37,7 +37,7 @@ def _install_importer() -> None:
 # `import jaclang.compiler`, etc. keep working unchanged.
 def _load_jac_runtime() -> None:
     # The runtime does not require the compiler to be pre-imported (it loads via
-    # the jac0 bootstrap tier, not the full compiler), so we don't pull in
+    # its precompiled image), so we do not pull in
     # `jaclang.compiler` here -- doing so would re-introduce a heavy import on
     # the fast paths. `jaclang.compiler` stays available lazily via __getattr__.
     from jaclang.runtime.runtime import JacRuntime, JacRuntimeInterface
@@ -64,7 +64,7 @@ def __getattr__(name: str) -> object:
         _load_jac_runtime()
         return globals()[name]
     if name == "compiler":
-        import jaclang.compiler as _compiler
+        _compiler = import_module("jaclang.compiler")
 
         globals()["compiler"] = _compiler
         return _compiler

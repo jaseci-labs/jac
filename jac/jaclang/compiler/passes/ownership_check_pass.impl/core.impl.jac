@@ -1,4 +1,4 @@
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E1301,
     E1316,
     E1317,

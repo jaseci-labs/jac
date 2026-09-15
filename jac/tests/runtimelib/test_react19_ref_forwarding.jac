@@ -24,7 +24,7 @@ import from tempfile { TemporaryDirectory }
 import from jaclang.cli.shadcn.shadcn_handler { load_registry }
 import from jaclang.client.bun_installer { get_bun }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
-import from .react_jsdom_harness {
+import from .jsdom_harness {
     REACT_JSDOM_DEPS,
     bun_install,
     compile_page,

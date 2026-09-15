@@ -9,12 +9,8 @@ resolution across copies hands one program two identities for the same
 class, which surfaces as nonsense diagnostics of the shape "Cannot assign
 ServingApp to parameter of type ServingApp" (E1053).
 
-The one package exempt from this rule is the compiler's own: jaclang.* is
-whatever tree the running compiler was loaded from, because jac0core is
-compiled under the self-compile rules that `is_compiler_source_path`
-gates, and a second copy of it is a different compiler's source, not a
-module of this one. A checkout of jaclang checks itself through the
-`[dev] jaclang_source` reroute, never through a sealed binary.
+The same rule applies to compiler sources. A prior compiler can compile a new
+compiler tree without mixing the two packages' types.
 """
 
 import os;
@@ -22,7 +18,6 @@ import shutil;
 import sys;
 import tempfile;
 import importlib;
-import jaclang;
 import from pathlib { Path }
 import from jaclang.project.modresolver { resolve_relative_path }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -86,8 +81,7 @@ test "type check holds one identity per class across a self-import cycle" {
     def body(home_pkg: Path, shadow: str) {
         prog = JacProgram();
         prog.compile(
-            file_path=str(home_pkg / 'app.jac'),
-            options=CompileOptions(no_cgen=True, force_target_program=True)
+            file_path=str(home_pkg / 'app.jac'), options=CompileOptions(no_cgen=True)
         );
         errs = [str(e) for e in prog.errors_had];
         assert not errs , f"identity split across package copies: {errs}";
@@ -95,7 +89,7 @@ test "type check holds one identity per class across a self-import cycle" {
     _with_shadow_copy(body);
 }
 
-test "the compiler's own package stays with the running compiler" {
+test "compiler sources resolve their own package independently of the producer" {
     home = tempfile.mkdtemp();
     copy = Path(home) / 'jaclang' / 'server' / 'serving';
     copy.mkdir(parents=True);
@@ -108,8 +102,7 @@ test "the compiler's own package stays with the running compiler" {
         resolved = resolve_relative_path(
             'jaclang.server.serving.openapi', str(copy / 'app.jac')
         );
-        running = os.path.dirname(os.path.realpath(jaclang.__file__));
-        assert os.path.realpath(resolved).startswith(running + os.sep) , f"resolved into the foreign copy: {resolved}";
+        assert os.path.realpath(resolved) == str((copy / 'openapi.jac').resolve()) , f"resolved into the producing compiler: {resolved}";
     } finally {
         shutil.rmtree(home, ignore_errors=True);
     }
@@ -144,11 +137,7 @@ test "a directory without a marker resolves as the namespace package the runtime
     }
 }
 
-test "a marker-less package of the compiler's own tree stays with the running compiler" {
-    # jaclang/server/serving carries no __init__.jac; the package itself must
-    # still resolve into the running compiler's tree, never into a foreign
-    # copy, or the sealed binary compiles both and one class gets two
-    # identities (E1053 "Cannot assign RunPlan to parameter of type RunPlan").
+test "compiler namespace packages resolve in the target source tree" {
     home = tempfile.mkdtemp();
     copy = Path(home) / 'jaclang' / 'server' / 'serving';
     copy.mkdir(parents=True);
@@ -158,10 +147,30 @@ test "a marker-less package of the compiler's own tree stays with the running co
         resolved = resolve_relative_path(
             'jaclang.server.serving', str(copy / 'app.jac')
         );
-        running = os.path.dirname(os.path.realpath(jaclang.__file__));
-        assert os.path.realpath(resolved).startswith(running + os.sep) , f"resolved into the foreign copy: {resolved}";
+        assert os.path.realpath(resolved) == str(copy.resolve()) , f"resolved into the producing compiler: {resolved}";
         assert os.path.isdir(resolved) , f"a marker-less package resolves to its directory: {resolved}";
     } finally {
         shutil.rmtree(home, ignore_errors=True);
+    }
+}
+
+test "dotted spec lookup keeps a loaded parent's namespace search path" {
+    import from importlib.machinery { ModuleSpec }
+    import from types { ModuleType }
+    import from unittest.mock { patch, Mock }
+    import from jaclang.project.modresolver { _find_spec_no_exec }
+    parent = ModuleType("selected_parent");
+    parent.__path__ = ["/selected/parent"];
+    namespace = ModuleSpec("selected_parent.child", None, is_package=True);
+    namespace.submodule_search_locations = ["/selected/parent/child"];
+    finder = Mock();
+    finder.find_spec.return_value = namespace;
+    with patch.dict(sys.modules, {"selected_parent": parent}), patch.object(
+        sys, "meta_path", [finder]
+    ) {
+        assert _find_spec_no_exec("selected_parent.child") is namespace;
+        finder.find_spec.assert_called_once_with(
+            "selected_parent.child", ["/selected/parent"], None
+        );
     }
 }

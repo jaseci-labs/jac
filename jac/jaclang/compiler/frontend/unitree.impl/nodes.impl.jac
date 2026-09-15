@@ -1869,7 +1869,7 @@ impl UniScopeNode.update_expr_ctx_for_def(nd: AstSymbolNode) -> None {
 }
 
 impl UniScopeNode.__repr__ -> str {
-    out = f"{self.scope_name} {super().__repr__()}:\n";
+    out = f"{self.scope_name} {super.__repr__()}:\n";
     for (k, v) in self.names_in_scope.items() {
         out += f"    {k}: {v}\n";
     }
@@ -2339,7 +2339,7 @@ impl Import.is_jac.getter -> bool {
 }
 
 impl Import.__jac_detected.getter -> bool {
-    import from jaclang.jac0core.ext_registry { is_jac, INIT_FILES }
+    import from jaclang.extensions { is_jac, INIT_FILES }
     if self.from_loc {
         if is_jac(self.from_loc.resolve_relative_path()) {
             return True;

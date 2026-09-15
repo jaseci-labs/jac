@@ -17,10 +17,7 @@ test "string fields retain their schema while foreign pointers remain opaque" {
             file_path="materialization_fields.jac",
             use_str="import ast; obj Parent { has name: str; } obj Child(Parent) { has file_path: str; has foreign: ast.AST | None = None; } def make -> Child { return Child(name=\"name\", file_path=\"file.jac\"); }",
             options=CompileOptions(
-                force_codespace="native",
-                force_target_program=True,
-                skip_native_engine=True,
-                no_ir_cache=True
+                force_codespace="native", skip_native_engine=True, no_ir_cache=True
             )
         );
         assert not program.errors_had , str(program.errors_had);

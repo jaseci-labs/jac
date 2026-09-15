@@ -203,7 +203,7 @@ test "server: new with builtin types works end-to-end" {
 #  Diagnostic: E0012 should now point at `new(...)`, not `Reflect.construct`
 # ─────────────────────────────────────────────────────────────────────
 test "E0012 message mentions new(...) idiom" {
-    import from jaclang.compiler.frontend.diagnostics { E0012 }
+    import from jaclang.project.diagnostics { E0012 }
     msg = E0012.message_template;
     assert "new(" in msg , (
         "E0012 should recommend `new(target, ...args)`; current template: " + msg

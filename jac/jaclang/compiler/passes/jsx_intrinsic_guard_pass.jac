@@ -5,7 +5,7 @@ import from jaclang.compiler.frontend.unitree {
     Token,
     UniNode
 }
-import from jaclang.compiler.frontend.diagnostics { E1105 }
+import from jaclang.project.diagnostics { E1105 }
 import from jaclang.compiler.passes.uni_pass { UniPass }
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 import from jaclang.project.mobui_scope { mobui_module_exempt }

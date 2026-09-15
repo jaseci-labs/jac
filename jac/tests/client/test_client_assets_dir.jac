@@ -21,7 +21,7 @@ def _project(base: Path, assets_dir: str) {
 
 test "the assets directory defaults to the app base's assets" {
     with TemporaryDirectory() as tmp {
-        base = Path(tmp);
+        base = Path(tmp).resolve();
         _project(base, "");
         assert JacClientConfig(base).get_assets_dir() == base / "assets";
     }
@@ -30,7 +30,7 @@ test "the assets directory defaults to the app base's assets" {
 
 test "a configured assets directory resolves against the project base" {
     with TemporaryDirectory() as tmp {
-        base = Path(tmp);
+        base = Path(tmp).resolve();
         _project(base, "core/site/assets");
         assert JacClientConfig(base).get_assets_dir()
             == base / "core" / "site" / "assets";
@@ -40,7 +40,7 @@ test "a configured assets directory resolves against the project base" {
 
 test "static requests find shared assets from source, nested paths intact" {
     with TemporaryDirectory() as tmp {
-        base = Path(tmp);
+        base = Path(tmp).resolve();
         _project(base, "core/site/assets");
         shared = base / "core" / "site" / "assets";
         (shared / "media").mkdir(parents=True);

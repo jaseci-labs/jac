@@ -3,6 +3,7 @@
 Outgoing values expose a NUL-terminated C view. Incoming strings are copied
 into Jac-owned storage before temporary arguments or foreign owners expire."""
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

@@ -7,6 +7,7 @@ byte-identical output across gc modes. Deeper nesting, named inner
 bindings, and non-scalar inner elements stay fenced (E1406).
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,

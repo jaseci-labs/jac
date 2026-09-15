@@ -9,6 +9,7 @@ and `--memory nogc`, run the binary, and expect a clean exit (the fixture assert
 internally and prints OK).
 """
 
+import from tests.support { jac_command }
 import ctypes;
 import os;
 import subprocess;

@@ -18,16 +18,20 @@ def _shim_name -> str {
 
 def _find_shim -> str {
     import from jaclang.compiler.driver.compile_options { env_llvm_shim_override }
-    `override = env_llvm_shim_override();
-    if `override and (`override.strip().lower() in ("none", "off", "disabled")) {
+    shim_override = env_llvm_shim_override();
+    if shim_override
+        and (shim_override.strip().lower() in ("none", "off", "disabled")) {
         raise OSError(
             "LLVM shim disabled by JAC_LLVM_SHIM="
-                + `override
+                + shim_override
                 + "; the native pipeline is unavailable in this process."
         );
     }
-    if `override and os.path.isfile(`override) {
-        return `override;
+    if shim_override {
+        if not os.path.isfile(shim_override) {
+            raise OSError(f"JAC_LLVM_SHIM={shim_override} is not a file");
+        }
+        return shim_override;
     }
     shim = _shim_name();
 
@@ -37,27 +41,8 @@ def _find_shim -> str {
         return cand;
     }
 
-    for p in sys.path {
-        if not p {
-            continue;
-        }
-        alt = os.path.join(
-            p, 'jaclang', 'compiler', 'backends', 'native', 'llvm', shim
-        );
-        if os.path.isfile(alt) {
-            return alt;
-        }
-
-        legacy = os.path.join(
-            p, 'jaclang', 'compiler', 'passes', 'native', 'llvm', shim
-        );
-        if os.path.isfile(legacy) {
-            return legacy;
-        }
-    }
     raise OSError(
-        f"Could not locate the LLVM shim '{shim}'. Build it with "
-            + "`zig build jacllvm` (artifact in jac/zig-out/lib/) and copy it next to "
-            + "this package or set JAC_LLVM_SHIM; shipped binaries bundle it."
+        f"Compiler image is missing LLVM shim '{shim}'. Rebuild with "
+            + "`zig build compiler-image` or select a shim with JAC_LLVM_SHIM."
     );
 }

@@ -8,6 +8,7 @@ annotations; a returned owner stays on the heap. rc-stats reports the count
 as `promoted=N`.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,

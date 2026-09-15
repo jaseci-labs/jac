@@ -12,6 +12,7 @@ obj Owned {
 def:pub make_owned -> Owned {
     return Owned();
 }
+
 def:pub grow_owned(value: Owned) {
     for i in range(1024) {
         value.values.append(i);

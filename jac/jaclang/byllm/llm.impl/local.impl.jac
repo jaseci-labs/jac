@@ -91,9 +91,7 @@ impl LocalLLM.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
     return resp;
 }
 
-impl LocalLLM.model_call_with_stream(
-    params: dict[str, any]
-) -> Generator[object, None, None] {
+impl LocalLLM.model_call_with_stream(params: dict) -> Iterator[object] {
     engine = self._ensure_llama();
     call_params = filter_params(params);
     call_params["stream"] = True;

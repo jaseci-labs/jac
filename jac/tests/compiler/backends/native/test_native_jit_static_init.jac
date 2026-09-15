@@ -50,7 +50,6 @@ ir = prog.compile(
     file_path=sys.argv[1],
     options=CompileOptions(
         force_codespace='native',
-        force_target_program=True,
         no_ir_cache=True,
     ),
 )

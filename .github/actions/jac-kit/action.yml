@@ -1,11 +1,6 @@
 name: Get jac kit
-description: >
-  Download the kit artifact into the checkout (binary, typeshed stubs, vendored
-  musl/wasm runtimes land at their in-tree paths), put jac on PATH, and warm
-  its runtime cache. The kit is the binary built from this checkout
-  (build-kit); the job's JAC_NO_DEV_SOURCE decides whether it runs sealed
-  ("1") or through the [dev] reroute (""). upload-artifact strips the
-  executable bit; restore it.
+description: >-
+  Download the compiler built from this checkout, put jac on PATH, and verify its packaged runtime.
 inputs:
   name:
     description: Kit artifact name
@@ -24,26 +19,7 @@ runs:
         chmod +x "$GITHUB_WORKSPACE/jac/zig-out/bin/jac"
         echo "$GITHUB_WORKSPACE/jac/zig-out/bin" >> "$GITHUB_PATH"
 
-    # Reroute lanes only (job env JAC_NO_DEV_SOURCE other than "1"): one
-    # runtime cache for the whole job, outside $HOME, so test steps that
-    # re-home themselves (HOME="$(mktemp -d)") keep the warm reroute compile
-    # below instead of redoing it inside the first worker of every parallel
-    # pool. Named .cache because tests assert the global cache sits in a
-    # platform-style cache directory. Sealed lanes keep the default $HOME
-    # layout: their first use is a payload unpack, not a compile, and the
-    # native suite's memory envelope was measured under that layout.
-    - name: Pin the runtime cache for the reroute
-      shell: bash
-      run: |
-        if [ "${JAC_NO_DEV_SOURCE:-}" != "1" ]; then
-          echo "XDG_CACHE_HOME=$RUNNER_TEMP/.cache" >> "$GITHUB_ENV"
-        fi
-
-    # First use either unpacks the payload (sealed lanes, seconds) or compiles
-    # this checkout's compiler through the reroute (reroute lanes, ~200
-    # modules, about a minute). Pay it once here, serially. `jac --version` is not
-    # enough: it touches a tenth of the modules a real compile does.
-    - name: Warm the runtime cache
+    - name: Verify the packaged runtime
       shell: bash
       run: |
         set -euo pipefail

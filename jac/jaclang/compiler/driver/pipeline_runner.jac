@@ -6,7 +6,6 @@ import type from jaclang.compiler.driver.compiler { JacCompiler }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.project.source { read_file_with_encoding }
-import from jaclang.compiler.driver.source_failures { module_import_in_flight }
 
 obj ModuleCompilation {
     has compiler: JacCompiler,
@@ -26,12 +25,25 @@ obj ModuleCompilation {
     }
 
     def parse {
+        import from jaclang.compiler.driver.boundary_classify { _default_codespace_for }
+        import from jaclang.compiler.native_scope {
+            in_native_scope_path,
+            scope_lowering_active
+        }
         existing = self.program.mod.hub.get(os.path.realpath(self.path));
+        needs_native_lowering = not self.options.no_cgen
+            and not self.options.symtab_ir_only
+            and (
+                _default_codespace_for(self.program) == 'native'
+                or (scope_lowering_active() and in_native_scope_path(self.path))
+            )
+            and existing is not None
+            and not existing.codespace_inferred;
         if self.source is None
-            and not self.compiler.selfhost.is_selfhost(self.program)
             and existing is not None
             and not existing.stub_only
             and not existing.parse_failed
+            and not needs_native_lowering
             and self.program.is_hub_entry_fresh(os.path.realpath(self.path))
             and id(existing) in self.program.analysis.completed_passes {
             self.module = existing;
@@ -61,10 +73,7 @@ obj ModuleCompilation {
         if self.options.symtab_ir_only {
             _head_sched = get_symtab_ir_sched();
         } else {
-            _head_sched = get_ir_gen_sched(
-                is_internal=self.compiler.selfhost.is_selfhost(self.program),
-                gen_mtir=not self.options.no_cgen
-            );
+            _head_sched = get_ir_gen_sched(gen_mtir=not self.options.no_cgen);
         }
 
         self.full_head = AnalysisFact.CFG_SUCC in providers_of(_head_sched);
@@ -106,7 +115,7 @@ obj ModuleCompilation {
             or str(self.path).endswith('.py')
             or (self.module is not None and self.module.stub_only)
             or (self.module is not None and self.module.is_raised_from_py);
-        import from jaclang.jac0core.ext_registry { is_annex as _cc_is_annex }
+        import from jaclang.extensions { is_annex as _cc_is_annex }
         _annex_of_base = False;
         if _cc_is_annex(self.path) {
             import from jaclang.compiler.driver.bccache {
@@ -114,14 +123,7 @@ obj ModuleCompilation {
             }
             _annex_of_base = _cc_base_file(str(self.path)) is not None;
         }
-        _analyze = self.full_head
-            and not _is_decl_stub
-            and not _annex_of_base
-            and (
-                self.native
-                or not self.compiler.selfhost.is_selfhost(self.program)
-                or not module_import_in_flight(self.path)
-            );
+        _analyze = self.full_head and not _is_decl_stub and not _annex_of_base;
 
         if _analyze {
             if not self.program.analysis.analyses_run.provides(
@@ -217,9 +219,7 @@ obj ModuleCompilation {
             cb_paths: list[str] = [];
 
             cb_opts = CompileOptions(
-                no_cgen=True,
-                force_target_program=True,
-                cancel_token=self.options.cancel_token
+                no_cgen=True, cancel_token=self.options.cancel_token
             );
             cb_reg = self.program.iface_registry();
             while cb_worklist or cb_paths {
@@ -290,26 +290,29 @@ obj ModuleCompilation {
     }
 
     def interface {
-        import from jaclang.compiler.driver.jir { is_compiler_tree_path }
+        import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+        if self.program.analysis.product_running(CompilationProduct.INTERFACE) {
+            return;
+        }
         closure = self.compiler._closure_opts or self.options;
+        requested_symbols = closure.symtab_ir_only
+            and closure.iface_ok
+            and not closure.need_full_ast
+            and self.options.symtab_ir_only
+            and self.options.iface_ok
+            and not self.options.need_full_ast
+            and self.program.iface_registry().eligible(
+                self.compiler, self.path, self.options
+            );
         if not self.parse_failed
             and not self.blocked
             and self.source is None
             and (
                 (self.options.no_cgen and not self.options.symtab_ir_only)
-                or (
-                    closure.no_cgen
-                    and not closure.symtab_ir_only
-                    and not (
-                        self.compiler.selfhost.is_selfhost(self.program)
-                        and is_compiler_tree_path(self.path)
-                    )
-                )
+                or (closure.no_cgen and not closure.symtab_ir_only)
+                or requested_symbols
             ) {
-            import from jaclang.compiler.driver.pipeline {
-                require_product,
-                CompilationProduct
-            }
+            import from jaclang.compiler.driver.pipeline { require_product }
             require_product(self.program, self.module, CompilationProduct.INTERFACE);
         }
     }
@@ -445,7 +448,8 @@ def native_application(
     target: str = '',
     memory: str = '',
     debug: bool = False,
-    no_ir_cache: bool = False
+    no_ir_cache: bool = False,
+    source_prefix_map: dict[str, str] | None = None
 ) -> tuple[uni.Module, CompileOptions] {
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
@@ -457,11 +461,11 @@ def native_application(
         options = CompileOptions(
             aot_mode=True,
             default_codespace='native',
-            force_target_program=True,
             memory_profile=memory or None,
             native_target=target or None,
             native_debug=True if debug else None,
-            no_ir_cache=debug or no_ir_cache
+            no_ir_cache=debug or no_ir_cache,
+            source_prefix_map=dict(source_prefix_map or {})
         );
         module = program.compile(file_path=os.path.abspath(file_path), options=options);
         return (module, options);

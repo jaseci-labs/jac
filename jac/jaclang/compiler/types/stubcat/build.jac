@@ -142,11 +142,8 @@ def build_catalog(
     import from jaclang.compiler.driver.program { JacProgram }
     prog = JacProgram();
     import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
 
-    prog._compiler = JacCompiler(
-        stub_catalog_disabled=True, _selfhost=SelfHostCache(_program=prog)
-    );
+    prog._compiler = JacCompiler(stub_catalog_disabled=True);
     previous_building = os.environ.get(ENV_BUILDING);
     os.environ[ENV_BUILDING] = "1";
     try {

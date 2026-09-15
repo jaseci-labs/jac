@@ -358,7 +358,7 @@ test "a bundle promoted into the module cache carries its comptime deps" {
 
 def _native_compile(path: str) {
     prog = JacProgram();
-    prog.compile(path, options=CompileOptions(force_target_program=True));
+    prog.compile(path, options=CompileOptions());
     assert not prog.errors_had , (
         f"native compile of {path} failed: "
         f"{[a.pretty_print() for a in prog.errors_had]}"

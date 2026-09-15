@@ -6,6 +6,7 @@ so region opens stop being E1406 and the whole build-traverse-discard
 shape compiles headerless, byte-identical to the managed modes.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

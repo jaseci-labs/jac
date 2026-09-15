@@ -1,14 +1,21 @@
-import from jaclang.runtime.archetype { GenericEdge, Root }
-import from jaclang.runtime.archetype { ObjectSpatialFunction as DSFunc }
-import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.runtime.constructs { Archetype as Obj }
-import from jaclang.runtime.constructs { EdgeArchetype as Edge }
-import from jaclang.runtime.constructs { JsxElement }
-import from jaclang.runtime.constructs { NodeArchetype as Node }
-import from jaclang.runtime.constructs { WalkerArchetype as Walker }
-import from jaclang.runtime.graph_query { GraphQuery, QHop, QOrder, QPred }
-import from jaclang.runtime.runtime { JacRuntimeInterface }
-import from jaclang.runtime.object_model { field }
+import importlib;
+import type from jaclang.runtime.archetype {
+    GenericEdge,
+    Root,
+    ObjectSpatialFunction as DSFunc,
+    Archetype as Obj,
+    EdgeArchetype as Edge,
+    NodeArchetype as Node,
+    WalkerArchetype as Walker,
+    JsxElement
+}
+import type from jaclang.runtime.constants { EdgeDir }
+import type from jaclang.runtime.graph_query { GraphQuery, QHop, QOrder, QPred }
+import type from jaclang.runtime.runtime { JacRuntimeInterface }
+import type from jaclang.runtime.object_model { field }
+import type from jaclang.runtime.deletion { destroy, peek_attr, peek_item }
+import type from jaclang.runtime.function_metadata { impl_patch_filename }
+
 glob __all__ = [
          'GraphQuery',
          'QHop',
@@ -58,36 +65,37 @@ glob __all__ = [
          'thread_run',
          'thread_wait'
      ],
-     connect = JacRuntimeInterface.connect,
-     create_j_context = JacRuntimeInterface.create_j_context,
-     disconnect = JacRuntimeInterface.disconnect,
-     `disengage = JacRuntimeInterface.`disengage,
-     get_context = JacRuntimeInterface.get_context,
-     `root = JacRuntimeInterface.root,
-     `spawn = JacRuntimeInterface.`spawn,
-     `visit = JacRuntimeInterface.`visit,
-     arefs = JacRuntimeInterface.arefs,
-     assign_all = JacRuntimeInterface.assign_all,
-     build_edge = JacRuntimeInterface.build_edge,
-     by_operator = JacRuntimeInterface.by_operator,
-     call_llm = JacRuntimeInterface.call_llm,
-     acall_llm = JacRuntimeInterface.acall_llm,
-     destroy = JacRuntimeInterface.destroy,
-     peek_attr = JacRuntimeInterface.peek_attr,
-     peek_item = JacRuntimeInterface.peek_item,
-     filter_on = JacRuntimeInterface.filter_on,
-     get_mtir = JacRuntimeInterface.get_mtir,
-     impl_patch_filename = JacRuntimeInterface.impl_patch_filename,
-     jac_test = JacRuntimeInterface.jac_test,
-     jsx = JacRuntimeInterface.jsx,
-     log_report = JacRuntimeInterface.log_report,
-     refs = JacRuntimeInterface.refs,
-     hop = JacRuntimeInterface.hop,
-     clear_edges = JacRuntimeInterface.clear_edges,
-     safe_subscript = JacRuntimeInterface.safe_subscript,
-     `sem = JacRuntimeInterface.`sem,
-     on_entry = JacRuntimeInterface.on_entry,
-     on_exit = JacRuntimeInterface.on_exit,
-     set_trigger = JacRuntimeInterface.set_trigger,
-     thread_run = JacRuntimeInterface.thread_run,
-     thread_wait = JacRuntimeInterface.thread_wait;
+     _EXPORTS: dict[str, tuple[str, str]] = {
+         "destroy": ("..runtime.deletion", "destroy"),
+         "peek_attr": ("..runtime.deletion", "peek_attr"),
+         "peek_item": ("..runtime.deletion", "peek_item"),
+         "DSFunc": ("..runtime.archetype", "ObjectSpatialFunction"),
+         "Edge": ("..runtime.archetype", "EdgeArchetype"),
+         "EdgeDir": ("..runtime.constants", "EdgeDir"),
+         "GenericEdge": ("..runtime.archetype", "GenericEdge"),
+         "GraphQuery": ("..runtime.graph_query", "GraphQuery"),
+         "JacRuntimeInterface": ("..runtime.runtime", "JacRuntimeInterface"),
+         "JsxElement": ("..runtime.archetype", "JsxElement"),
+         "Node": ("..runtime.archetype", "NodeArchetype"),
+         "Obj": ("..runtime.archetype", "Archetype"),
+         "QHop": ("..runtime.graph_query", "QHop"),
+         "QOrder": ("..runtime.graph_query", "QOrder"),
+         "QPred": ("..runtime.graph_query", "QPred"),
+         "Root": ("..runtime.archetype", "Root"),
+         "Walker": ("..runtime.archetype", "WalkerArchetype"),
+         "field": ("..runtime.object_model", "field"),
+         "impl_patch_filename": ("..runtime.function_metadata", "impl_patch_filename"),
+
+     };
+
+def __getattr__(name: str) -> any {
+    owner = _EXPORTS.get(name);
+    if owner is not None {
+        return getattr(importlib.import_module(owner[0], __package__), owner[1]);
+    }
+    if name in __all__ {
+        import from jaclang.runtime.exports { runtime_function }
+        return runtime_function(name);
+    }
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}");
+}

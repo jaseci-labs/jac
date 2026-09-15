@@ -459,14 +459,10 @@ test "dev section parsing" {
     base = JacConfig.from_toml_str("\n[project]\nname = \"x\"\n");
     assert base.dev.test_jobs == "";
     assert base.dev.jobs == "";
-    assert base.dev.jaclang_source == "";
 
     # Explicit string values pass through.
     config_mod._config = None;
-    cfg = JacConfig.from_toml_str(
-        "\n[dev]\njaclang_source = \"jac\"\ntest_jobs = \"4\"\n"
-    );
-    assert cfg.dev.jaclang_source == "jac";
+    cfg = JacConfig.from_toml_str("\n[dev]\ntest_jobs = \"4\"\n");
     assert cfg.dev.test_jobs == "4";
 
     # A bare integer test_jobs is coerced to str so it flows into the runner's

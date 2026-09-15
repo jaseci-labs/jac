@@ -6,6 +6,7 @@ reference library, and the DT_RUNPATH/$ORIGIN entry in emitted dynamic
 executables.
 """
 
+import from tests.support { jac_command }
 import ctypes;
 import os;
 import shutil;

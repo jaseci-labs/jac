@@ -31,6 +31,7 @@ fix -- stop giving such a subclass a vtable slot it does not need -- and left
 it to its own change; the test pins the state so it cannot drift unnoticed.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import tempfile;

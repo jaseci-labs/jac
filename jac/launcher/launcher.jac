@@ -37,7 +37,7 @@ glob BOOT_SRC: str = (
          + "    sys.executable = _exe\n"
          + "    sys._base_executable = _exe\n"
          + "import _jac_finder as _jf\n"
-         + "_jf.apply_dev_source_override()\n"
+         + "_jf.apply_compiler_image()\n"
          + "_jf.install()\n"
          + "from jaclang.cli.cli_boot import start_cli\n"
          + "start_cli()\n"

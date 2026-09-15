@@ -1,11 +1,9 @@
 """One warm-compile measurement of a fixed corpus, printed as JSON rows.
 
-Run by `tests/compiler/test_compile_timing.jac` as a subprocess, once against
-the checkout under test and once against a snapshot of the pinned baseline ref.
-The probe lives outside both trees and is addressed by absolute path. The
-harness explicitly selects the compiler tree for each subprocess; the probe
-verifies that selection before measuring. The same file, byte for byte, drives
-both halves of the comparison and neither tree needs to carry a copy.
+Run by `tests/compiler/test_compile_timing.jac` as a subprocess against the
+current compiler image and an explicitly supplied baseline image. The probe is
+addressed by absolute path; `JAC_COMPILER_IMAGE` selects the compiler that
+measures the same corpus in each process.
 
 Corpus paths are resolved against the cwd and so name the sources of whichever
 tree is being measured. The schedule phases (parse, ir_gen, analysis, boundary,
@@ -82,9 +80,7 @@ def phase_row(src: str) -> dict[any, any] {
     errors += len(whole.errors_had);
     whole.release_compile_closure();
     checker = JacProgram();
-    check_opts = CompileOptions(
-        no_cgen=True, native_parity=True, force_target_program=True
-    );
+    check_opts = CompileOptions(no_cgen=True, native_parity=True);
     if hasattr(check_opts, "iface_ok") {
         check_opts.iface_ok = True;
     }

@@ -6,6 +6,7 @@ source + compiler fingerprint only, so artifacts poisoned across gc modes.
 Both paths must yield RC-free IR for a gc-none multi-module program.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -59,10 +60,8 @@ test "imported na modules inherit gc none: no RC in multi-module IR" {
 test "host-path multi-module gc none build passes assert-no-rc" {
     with tempfile.TemporaryDirectory() as tmp {
         `entry = _staged_entry(tmp);
-        src_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
         with open(os.path.join(tmp, "jac.toml"), "w") as f {
             f.write("[project]\nname = \"xmodgc\"\n\n[memory]\nprofile = \"nogc\"\n\n");
-            f.write(f"[dev]\njaclang_source = \"{src_root}\"\n");
         }
         out_bin = os.path.join(tmp, "xmod.bin");
         comp = subprocess.run(

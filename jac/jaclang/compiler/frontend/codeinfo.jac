@@ -1,5 +1,4 @@
 import hashlib;
-import from collections.abc { Sequence }
 import from contextvars { ContextVar }
 import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant {
@@ -199,7 +198,8 @@ def module_dotted_name(mod_path: str, mod_name: str = "") -> str {
 
 def native_module_key(path: str) -> str {
     import os;
-    rp = os.path.realpath(path);
+    import from jaclang.compiler.driver.compilation_context { codegen_source_path }
+    rp = codegen_source_path(os.path.realpath(path));
     base = os.path.basename(rp);
     dot = base.rfind(".");
     stem = base[0:dot] if dot > 0 else base;
@@ -572,21 +572,14 @@ def resolve_native_module(
         if local is not None {
             return (str(os.path.relpath(local, os.path.abspath(base_dir))), local);
         }
-        if path_name != clean {
-            search = os.path.abspath(base_dir);
-            while True {
-                cand = _inferred_native_path(
-                    _native_variant_path(os.path.join(search, path_name))
-                );
-                if cand is not None {
-                    rel = str(os.path.relpath(cand, os.path.abspath(base_dir)));
-                    return (rel, cand);
-                }
-                parent = os.path.dirname(search);
-                if parent == search {
-                    break;
-                }
-                search = parent;
+        import from jaclang.project.modresolver { resolve_relative_path }
+        resolved = resolve_relative_path(
+            module_name, os.path.join(base_dir, "__native_import__.jac")
+        );
+        if resolved.endswith(".jac") {
+            cand = _inferred_native_path(_native_variant_path(resolved[:-4]));
+            if cand is not None {
+                return (str(os.path.relpath(cand, os.path.abspath(base_dir))), cand);
             }
         }
     }

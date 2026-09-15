@@ -12,7 +12,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.frontend.constant { SymbolAccess }
-import from jaclang.compiler.frontend.diagnostics { E5105 }
+import from jaclang.project.diagnostics { E5105 }
 import type from jaclang.compiler.driver.program { JacProgram }
 
 glob VARIANT_SUFFIX: str = ".native.jac",

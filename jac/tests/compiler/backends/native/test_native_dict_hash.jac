@@ -9,6 +9,7 @@ densely freeing uninitialized key slots), then run the binary and expect
 a clean exit: the fixture asserts internally and prints OK.
 """
 
+import from tests.support { jac_command }
 import ctypes;
 import os;
 import subprocess;

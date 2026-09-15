@@ -8,6 +8,7 @@ needs scale's serve deps, so it gates on `dotenv` and skips (or fails under
 JAC_TEST_STRICT) instead of erroring where they are absent.
 """
 
+import from tests.support { COMPILER_SITE }
 import os;
 import subprocess;
 import sys;
@@ -25,7 +26,7 @@ def _spawn_jac(
     argv_repr = repr(["jac"] + argv);
     script = f"""
 import sys, runpy
-sys.path.insert(0, {JAC_ROOT!r})
+sys.path.insert(0, {COMPILER_SITE!r})
 sys.argv = {argv_repr}
 try:
     runpy.run_module('jaclang', run_name='__main__', alter_sys=True)
@@ -58,12 +59,8 @@ test "pth finder imports a .jac module without explicit jaclang import" {
             f.write('with entry { print("pth_import_ok"); }\n');
         }
         proc = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                f"import sys; sys.path.insert(0, {tmpdir!r}); import hello_pth",
-
-            ],
+            [sys.executable, "-c", "import hello_pth"],
+            cwd=tmpdir,
             capture_output=True,
             text=True,
             timeout=600,
@@ -114,7 +111,7 @@ test "scale server boots a project and serves the admin dashboard" {
         argv_repr = repr(["jac", "run", "--serve", "--port", str(port), "main.jac"]);
         boot = f"""
 import sys, runpy
-sys.path.insert(0, {JAC_ROOT!r})
+sys.path.insert(0, {COMPILER_SITE!r})
 sys.argv = {argv_repr}
 runpy.run_module('jaclang', run_name='__main__', alter_sys=True)
 """;

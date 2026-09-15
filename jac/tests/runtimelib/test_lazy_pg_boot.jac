@@ -17,6 +17,7 @@ tests pin the four invariants that make the image runnable as shipped:
 
 import os;
 import re;
+import traceback;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from uuid { UUID }
@@ -24,8 +25,9 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
 import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.data.pgembed { PgRuntime }
-import from jaclang.server.session { Session }
-import from jaclang.data.store { PgStore }
+import from jaclang.server.session { Session, RuntimeLease }
+import from unittest.mock { patch }
+import from jaclang.data.store { PgStore, Store, StoreReset }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures"),
      REPO_ROOT = Path(__file__).resolve().parents[3],
@@ -38,15 +40,18 @@ def _as_any(v: any) -> any {
 
 obj _BootProbe {
     has calls: list[str] = [],
+        traces: list[str] = [],
         _orig: any = None;
 
     def install {
         self._orig = PgRuntime.ensure;
         calls = self.calls;
+        traces = self.traces;
         orig = self._orig;
 
         def _probe(rt: any) -> any {
             calls.append(str(rt.database));
+            traces.append("".join(traceback.format_stack(limit=20)));
             return orig(rt);
         }
         PgRuntime.ensure = _as_any(_probe);
@@ -70,7 +75,8 @@ test "a stateless program never boots the embedded postgres" {
         assert rc == 0 , f"stateless_hello.jac exited {rc}";
         assert probe.calls == [] , (
             f"a program that touches no graph state booted embedded postgres "
-            f"{len(probe.calls)} time(s) (databases: {probe.calls})"
+            f"{len(probe.calls)} time(s) (databases: {probe.calls})\n"
+            + "\n".join(probe.traces)
         );
     } finally {
         probe.remove();
@@ -78,6 +84,72 @@ test "a stateless program never boots the embedded postgres" {
     }
 }
 
+
+test "compiler graph construction does not resolve persistent runtime roots" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.runtime.context { ExecutionContext }
+    with TemporaryDirectory() as directory {
+        context = ExecutionContext(base_path_dir=directory);
+        token = Jac.push_request_context(context);
+        try {
+            with patch.object(
+                PgRuntime,
+                "ensure",
+                side_effect=AssertionError("compiler opened database")
+            ) {
+                program = JacProgram();
+                assert program.mod is not None;
+                assert not context.is_user_context;
+                assert not ExecutionContext(_parent=context).is_user_context;
+            }
+        } finally {
+            Jac.reset_request_context(token);
+        }
+        context.close();
+    }
+}
+
+test "scratch reset stays deferred even when PostgreSQL is already running" {
+    with TemporaryDirectory() as directory {
+        lease = RuntimeLease(
+            runtime=PgRuntime(data_dir=directory, database="scratch_probe"),
+            reset=StoreReset()
+        );
+        with patch.dict(os.environ, {"JAC_DB_URL": ""}), patch(
+            "jaclang.server.session.runtime_for_base", return_value=lease
+        ), patch.object(PgRuntime, "is_running", return_value=True), patch.object(
+            PgStore, "reset_data", side_effect=AssertionError("eager scratch reset")
+        ) {
+            session = Session(base_path=directory);
+            try {
+                assert isinstance(session.store, PgStore);
+                assert session.store.pending_reset;
+            } finally {
+                session.close();
+            }
+        }
+    }
+}
+
+test "store consumers share one deferred reset and retry a failed reset" {
+    import from unittest.mock { Mock }
+    import from typing { cast }
+    reset = StoreReset();
+    first = Mock(spec=PgStore);
+    second = Mock(spec=PgStore);
+    first.reset_data.side_effect = [RuntimeError("reset unavailable"), None];
+    failed = False;
+    try {
+        reset.apply(cast(Store, first));
+    } except RuntimeError {
+        failed = True;
+    }
+    assert failed;
+    reset.apply(cast(Store, first));
+    reset.apply(cast(Store, second));
+    assert first.reset_data.call_count == 2;
+    second.reset_data.assert_not_called();
+}
 
 test "session construction is free and the first store read boots once" {
     probe = _BootProbe();

@@ -18,7 +18,7 @@ def run_test(
         run_cl_test_file,
         register_results_into_jactestcheck
     }
-    import from jaclang.jac0core.ext_registry { base_stem, is_annex }
+    import from jaclang.extensions { base_stem, is_annex }
     test_file = False;
     ret_count = 0;
     if filepath {

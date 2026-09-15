@@ -20,23 +20,23 @@ Core CI exercises it in a dedicated `test-solid-jsdom` job that sets that flag.
 
 import json;
 import os;
-import re;
 import shutil;
 import subprocess;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
-import from tests.runtimelib.react_jsdom_harness { write_runtime_support }
+import from tests.runtimelib.jsdom_harness {
+    compile_client,
+    compile_page as _compile_page,
+    rewrite_core_specifier as _rewrite_core_specifier,
+    wire_jac_runtime as _wire_jac_runtime,
+    write_runtime_support
+}
 import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
 import from jaclang.client.bun_installer { get_bun }
 import from jaclang.client.solid_entry { build_pages_solid_entry_script }
-import from jaclang.compiler.driver.pass_driver { run_pass }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures"),
      # Real npm deps. The solid-* / zod versions mirror the canonical Solid set in
@@ -795,42 +795,9 @@ def _require_client_integration {
 
 """Compile a `.jac` to JS with the Solid backend; type errors are non-fatal."""
 def _compile_solid(path: str) -> str {
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(path), no_cgen=True);
-    fatal = [
-        e
-        for e in prog.errors_had
-        if not issubclass(e.from_pass, TypeCheckPass)
-    ];
-    assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=SolidBackend());
-    return es_to_js(es_pass.ir_out.gen.es_ast);
+    return compile_client(path, SolidBackend());
 }
 
-"""Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""
-def _rewrite_core_specifier(runtime_js: str) -> str {
-    m = re.search(r"""["'](\.[^"']*client_runtime_core\.js)["']""", runtime_js);
-    if m {
-        return runtime_js.replace(m.group(1), "./client_runtime_core.js");
-    }
-    return runtime_js;
-}
-
-"""Rewrite every `@jac/runtime` specifier in emitted JS to the flat sibling the
-harness writes (`./jac_runtime.js`) -- mirrors how the bundler resolves the
-virtual `@jac/runtime` module."""
-def _wire_jac_runtime(js: str) -> str {
-    for q in ['"', "'"] {
-        js = js.replace(f"{q}@jac/runtime{q}", f"{q}./jac_runtime.js{q}");
-    }
-    return js;
-}
-
-"""Compile a page/layout `.jac`, prepend its `@jac/runtime` globals (the bare
-`__jacJsx`/`Link`/`Outlet` the compiler emits), and wire the runtime specifier."""
-def _compile_page(path: str, backend: any) -> str {
-    return _wire_jac_runtime(with_runtime_globals(_compile_solid(path), backend));
-}
 
 test "solid counter mounts and reacts in jsdom" {
     _require_client_integration();
@@ -864,7 +831,7 @@ test "solid counter mounts and reacts in jsdom" {
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
-        write_runtime_support(work, runtime_path);
+        write_runtime_support(work, runtime_path, backend);
         (work / "harness.mjs").write_text(_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -934,7 +901,7 @@ test "solid native control flow (<For>/<Show>) renders + reacts in jsdom (Branch
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
-        write_runtime_support(work, runtime_path);
+        write_runtime_support(work, runtime_path, backend);
         (work / "harness.mjs").write_text(_CONTROL_FLOW_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -1043,7 +1010,7 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
         (work / "manual_entry.src.jsx").write_text(manual_entry_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
-        write_runtime_support(work, runtime_path);
+        write_runtime_support(work, runtime_path, backend);
         (work / "harness.mjs").write_text(_ROUTING_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -1141,7 +1108,7 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
-        write_runtime_support(work, runtime_path);
+        write_runtime_support(work, runtime_path, backend);
         (work / "harness.mjs").write_text(_FORM_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -1223,7 +1190,7 @@ test "solid P2 jsdom matrix: dynamic prop, ref e2e, and callback prop" {
         (work / "callback.src.jsx").write_text(callback_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
-        write_runtime_support(work, runtime_path);
+        write_runtime_support(work, runtime_path, backend);
         (work / "harness.mjs").write_text(_P2_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
