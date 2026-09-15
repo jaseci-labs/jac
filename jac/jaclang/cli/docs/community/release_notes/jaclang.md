@@ -2,7 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.15 (Latest Release)
+## jaclang 0.37.16 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: `jac fix` no longer crashes while verifying placement markers**: Running `jac fix` on files that carry placement markers stopped with an import error when it checked where each marked element landed. It now finishes and reports the verified placements as before.
+- **Fix: Make JacPython opt-in**: Builds and default release binaries use stock CPython. Set `JACPYTHON=1` when building to select the native JacPython compiler. Stable and dev releases publish both variants with checksums; pass `--jacpython` to the installer to select the experimental variant.
+- **Fix: React Native state and authentication helpers**: Add the missing `useJacState` and `jacSetToken` exports so mobile apps can use Jac state and authentication helpers.
+
+## jaclang 0.37.15
 
 ### Breaking Changes
 
