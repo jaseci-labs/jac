@@ -7,6 +7,14 @@ obj Op {
         fn: Callable[([int], int)];
 }
 
+obj Cell[T] {
+    has value: T;
+
+    def get -> T {
+        return self.value;
+    }
+}
+
 def double(x: int) -> int {
     return x * 2;
 }
@@ -18,6 +26,12 @@ def negate(x: int) -> int {
 def call_one(x: int) -> int {
     o = Op(tag=1, fn=double);
     return o.fn(x);
+}
+
+def call_erased(x: int) -> int {
+    cell = Cell[Op](Op(tag=1, fn=double));
+    captured = cell.get();
+    return captured.fn(x);
 }
 
 def dispatch_all(x: int) -> int {

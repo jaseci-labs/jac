@@ -279,6 +279,8 @@ test "native callable struct field: indirect call through a field" {
     (eng, _) = compile_native("callable_field.jac");
     call_one = get_func(eng, "call_one", ctypes.c_int64, ctypes.c_int64);
     assert call_one(21) == 42;
+    call_erased = get_func(eng, "call_erased", ctypes.c_int64, ctypes.c_int64);
+    assert call_erased(21) == 42;
     dispatch_all = get_func(eng, "dispatch_all", ctypes.c_int64, ctypes.c_int64);
     # double(x) + negate(x): a list of {tag, fn} structs iterated and called.
     assert dispatch_all(10) == 10;
