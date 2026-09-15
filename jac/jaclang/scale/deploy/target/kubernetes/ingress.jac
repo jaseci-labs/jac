@@ -348,7 +348,7 @@ obj IngressDeployer {
         };
     }
 
-    def _domain_rules(http_block: dict, domain: str) -> list {
+    def _domain_rules(http_block: dict[str, any], domain: str) -> list[dict[str, any]] {
         return [{'host': domain, 'http': http_block}, {'http': http_block}];
     }
 
@@ -410,20 +410,20 @@ obj IngressDeployer {
         }
 
         if self.k8s_config.shared_ingress {
-            main_rules: list = [
+            main_rules: list[dict[str, any]] = [
                 {'host': self.k8s_config.domain, 'http': {'paths': paths}}
             ];
         } elif self.k8s_config.domain {
-            main_rules: list = self._domain_rules(
+            main_rules: list[dict[str, any]] = self._domain_rules(
                 {'paths': paths}, self.k8s_config.domain
             );
         } else {
-            main_rules: list = [{'http': {'paths': paths}}];
+            main_rules: list[dict[str, any]] = [{'http': {'paths': paths}}];
         }
 
         uses_nginx: bool = (not self.k8s_config.shared_ingress)
             or (self.k8s_config.shared_ingress_class == 'nginx');
-        ingress_annotations: dict = {};
+        ingress_annotations: dict[str, any] = {};
         if uses_nginx {
             ingress_annotations = {
                 'nginx.ingress.kubernetes.io/proxy-body-size': '0',
@@ -466,7 +466,10 @@ obj IngressDeployer {
         for (k, v) in self.k8s_config.shared_ingress_annotations.items() {
             ingress_annotations[str(k)] = str(v);
         }
-        main_spec: dict = {'ingressClassName': ingress_class, 'rules': main_rules};
+        main_spec: dict[str, any] = {
+            'ingressClassName': ingress_class,
+            'rules': main_rules
+        };
 
         cert_manager_managed = (
             'cert-manager.io/cluster-issuer'

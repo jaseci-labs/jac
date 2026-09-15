@@ -1,6 +1,6 @@
 import from pathlib { Path }
 
-impl run_shadcn_add(packages: list) -> int {
+impl run_shadcn_add(packages: list[str]) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.cli.console { console }
     import from jaclang.cli.shadcn.shadcn_handler { add_shadcn_components }
@@ -30,7 +30,7 @@ impl run_shadcn_add(packages: list) -> int {
     }
 }
 
-impl run_shadcn_remove(packages: list) -> int {
+impl run_shadcn_remove(packages: list[str]) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.cli.console { console }
     import from jaclang.cli.shadcn.shadcn_handler { remove_shadcn_components }
@@ -59,7 +59,7 @@ impl run_shadcn_remove(packages: list) -> int {
     }
 }
 
-impl stash_create_theme(overrides: dict) -> None {
+impl stash_create_theme(overrides: dict[str, str | None]) -> None {
     _PENDING_THEME.clear();
     _PENDING_THEME.update(overrides);
 }

@@ -19,7 +19,7 @@ import from jaclang.server.serving.datatypes { Headers }
 
 
 obj _StubResp {
-    has payload: dict,
+    has payload: dict[str, any],
         content_type: str = "application/json";
 
     has text: str { getter; }

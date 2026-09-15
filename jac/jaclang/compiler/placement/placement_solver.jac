@@ -111,7 +111,7 @@ def _native_deps_ok(
         scope_lowering_active
     }
     cap = effective_native_closure_cap();
-    edges: dict[str, list[str]] = {root_path: list(root_deps)};
+    edges: dict[str, list[str]] = {root_path: list[str](root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
         if len(edges) > cap {

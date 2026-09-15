@@ -84,8 +84,8 @@ def _make_project(tmp_path: Path) {
 
 
 """Env for a build/run that resolves ONLY from the local wheelhouse (no PyPI)."""
-def _offline_env(wheelhouse: Path) -> dict {
-    env = dict(os.environ);
+def _offline_env(wheelhouse: Path) -> dict[str, any] {
+    env: dict[str, str] = dict(os.environ);
     env["PIP_NO_INDEX"] = "1";
     env["PIP_FIND_LINKS"] = str(wheelhouse);
     env.pop("PIP_INDEX_URL", None);
@@ -120,7 +120,7 @@ test "jac build --fat vendors the dependency closure into the jab" {
 
         # The vendored wheels ride inside the tarball as `_vendor/wheels/*.whl`,
         # a sibling of `_precompiled/` so the sealed manifest is untouched.
-        names: list = [];
+        names: list[any] = [];
         with tarfile.open(fileobj=io.BytesIO(jab.read_bytes()), mode="r:*") as tf {
             names = tf.getnames();
         }
@@ -177,7 +177,7 @@ test "a fat jab runs offline with its vendored dependency" {
         shutil.copy(jab, shipped);
         shutil.rmtree(wheelhouse, ignore_errors=True);
 
-        run_env = dict(os.environ);
+        run_env: dict[str, str] = dict(os.environ);
         run_env["PIP_NO_INDEX"] = "1";
         os.chdir(elsewhere);
         runres = run(
@@ -197,7 +197,7 @@ test "a fat jab runs offline with its vendored dependency" {
 }
 
 
-def _pip_scripted(calls: list, args: list[str]) -> tuple[int, str] {
+def _pip_scripted(calls: list[any], args: list[str]) -> tuple[int, str] {
     calls.append(list(args));
     if args[0] == "download" {
         return (1, "ResolutionImpossible: no wheels for http-ece");
@@ -209,7 +209,7 @@ def _pip_scripted(calls: list, args: list[str]) -> tuple[int, str] {
 test "native vendoring builds sdist-only deps instead of refusing the closure" {
     import functools;
     import jaclang.dist.jab_vendor as jab_vendor;
-    calls: list = [];
+    calls: list[any] = [];
     saved = jab_vendor._pip;
     jab_vendor._pip = _as_any(functools.partial(_pip_scripted, calls));
     try {
@@ -230,7 +230,7 @@ test "native vendoring builds sdist-only deps instead of refusing the closure" {
 test "cross-target vendoring still refuses when wheels are missing" {
     import functools;
     import jaclang.dist.jab_vendor as jab_vendor;
-    calls: list = [];
+    calls: list[any] = [];
     saved = jab_vendor._pip;
     jab_vendor._pip = _as_any(functools.partial(_pip_scripted, calls));
     try {

@@ -12,7 +12,7 @@ def _served_by_image -> set[str] {
     if image is None {
         return set();
     }
-    native = image.manifest.get("native") or {};
+    native: any = image.manifest.get("native") or {};
     return set(native.get("modules") or []);
 }
 

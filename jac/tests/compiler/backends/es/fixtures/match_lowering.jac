@@ -37,7 +37,7 @@ def m_guard(n: int) -> str {
     }
 }
 
-def m_seq(xs: list) -> str {
+def m_seq(xs: list[any]) -> str {
     match xs {
         case [ 1 , 2 , 3 ]:
             return "exact";
@@ -54,7 +54,7 @@ def m_seq(xs: list) -> str {
     }
 }
 
-def m_map(d: dict) -> str {
+def m_map(d: dict[any, any]) -> str {
     match d {
         case { "kind" : "circle" , "r" : r }:
             return "circle:" + str(r);
@@ -113,7 +113,7 @@ def m_as(x: any) -> str {
     }
 }
 
-def m_rest(d: dict) -> str {
+def m_rest(d: dict[any, any]) -> str {
     match d {
         case { "a" : v , ** rest }:
             return "rest:" + str(v) + ":" + str(len(rest));
@@ -141,7 +141,7 @@ def m_singleton(x: any) -> str {
     }
 }
 
-def m_all -> dict {
+def m_all -> dict[any, any] {
     p0 = Point(x=0, y=0);
     py = Point(x=0, y=7);
     pv = Point(x=3, y=4);

@@ -288,7 +288,7 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i1 = ir.IntType(1);
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if not params or len(params) > 2 {
         return None;
     }

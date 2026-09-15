@@ -40,7 +40,7 @@ node Todo {
     has title: str, done: bool = False;
 }
 
-def:pub add_todo(title: str) -> dict {
+def:pub add_todo(title: str) -> dict[str, any] {
     todo = root ++> Todo(title=title);
     return {"id": jid(todo), "title": todo.title};
 }

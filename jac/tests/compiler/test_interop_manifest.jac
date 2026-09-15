@@ -59,7 +59,7 @@ test "unmappable ctypes wire type across na->sv is E5093" {
         {
             "jac.toml": ('[placement.pins]\n"main.crunch" = "native"\n'),
             "main.jac": (
-                "def py_helper(vals: list) -> int {\n"
+                "def py_helper(vals: list[int]) -> int {\n"
                 "    return len(vals);\n"
                 "}\n"
                 "def crunch -> int {\n"

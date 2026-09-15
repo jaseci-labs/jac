@@ -1011,7 +1011,7 @@ impl JacConfig.remove_dependency(
     return False;
 }
 
-impl _parse_persons(raw: list[any]) -> list[PersonConfig] {
+impl _parse_persons(raw: list[object]) -> list[PersonConfig] {
     result: list[PersonConfig] = [];
     for item in raw {
         if isinstance(item, dict) {
@@ -1595,7 +1595,7 @@ impl JacConfig.default_app.getter -> str {
     return self.project.default_app;
 }
 
-def _apply_build_section(cfg: JacConfig, data: dict) -> None {
+def _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
     if "build" not in data or not isinstance(data["build"], dict) {
         return;
     }
@@ -1630,7 +1630,7 @@ def _apply_build_section(cfg: JacConfig, data: dict) -> None {
     );
 }
 
-def _apply_memory_native_placement(cfg: JacConfig, data: dict) {
+def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
     import from jaclang.cli.console { console }
     for (_old, _new) in [("gc", "[memory] profile / enforce / exempt")] {
         if _old in data {

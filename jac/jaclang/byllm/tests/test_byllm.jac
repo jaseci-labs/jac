@@ -470,7 +470,7 @@ test "dispatch heals a misnamed finish argument and recovers an unusable one" {
 }
 
 test "response format requests always carry the json word" {
-    def _params(resp_type: type, tools: list) -> dict {
+    def _params(resp_type: type, tools: list[any]) -> dict[str, any] {
         model = Model(model_name="test-model");
         mt_run = mk_run(resp_type=resp_type, tools=tools, finish=False);
         return model.make_model_params(mt_run);
@@ -538,7 +538,9 @@ import from jaclang.byllm.exceptions {
 import from loguru { logger as _loguru_logger }
 
 test "provider errors map to byllm exceptions and log at ERROR regardless of debug" {
-    rows: list = [
+    # Rows carry byllm's classes; litellm's AuthenticationError and RateLimitError
+    # share those names, so matching by name would let an unmapped error through.
+    rows: list[any] = [
         (False, "AuthenticationError", AuthenticationError, "Invalid API key"),
         (True, "RateLimitError", RateLimitError, "Rate limit exceeded"),
         (False, "RateLimitError", RateLimitError, "quota exceeded"),
@@ -869,7 +871,7 @@ async def _stream_8932(llm: _byllm_llm_mod.BaseLLM, pace: float = 0.0) -> str {
 obj _EagerStream8932(_byllm_llm_mod.BaseLLM) {
     has build_s: float = 0.0;
 
-    override def model_call_with_stream(params: dict) -> object {
+    override def model_call_with_stream(params: dict[str, any]) -> object {
         time.sleep(self.build_s);
         return [_chunk_8932("eager "), _chunk_8932("list")];
     }
@@ -880,7 +882,7 @@ obj _EagerStream8932(_byllm_llm_mod.BaseLLM) {
 obj _LazyStream8932(_byllm_llm_mod.BaseLLM) {
     has produced: list[float] = [];
 
-    override def model_call_with_stream(params: dict) -> object {
+    override def model_call_with_stream(params: dict[str, any]) -> object {
         for word in ["one ", "two ", "three"] {
             self.produced.append(time.perf_counter());
             yield _chunk_8932(word);

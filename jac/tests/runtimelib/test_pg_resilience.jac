@@ -54,7 +54,7 @@ def _restartish(e: Exception) -> bool {
 }
 
 
-def _mk_store(td: str) -> tuple {
+def _mk_store(td: str) -> tuple[any, ...] {
     target = str(Path(td) / 'app.jac');
     rt = PgRuntime(
         data_dir=shared_pg_data_dir(),

@@ -1,4 +1,5 @@
 import from pathlib { Path }
+import type from jaclang.project.providers { EcosystemProvider }
 
 
 class JacClientPluginConfig {
@@ -82,7 +83,7 @@ class JacClientPluginConfig {
         };
     }
 
-    static def register_ecosystem_providers -> list {
+    static def register_ecosystem_providers -> list[EcosystemProvider] {
         import from jaclang.client.npm_provider { NpmProvider }
         return [NpmProvider()];
     }

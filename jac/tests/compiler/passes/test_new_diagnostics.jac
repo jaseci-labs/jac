@@ -38,7 +38,7 @@ glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures"
 # Helpers
 # ──────────────────────────────────────────────────────────────────
 """Compile a fixture with type checking and static analysis. Returns (program, module)."""
-def compile_and_check(fixture_name: str) -> tuple {
+def compile_and_check(fixture_name: str) -> tuple[any, ...] {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     path = os.path.join(NEW_DIAG_FIXTURES, fixture_name);
     program = JacProgram();
@@ -47,7 +47,7 @@ def compile_and_check(fixture_name: str) -> tuple {
 }
 
 """Compile a fixture without type checking. Returns (program, module)."""
-def compile_only(fixture_name: str) -> tuple {
+def compile_only(fixture_name: str) -> tuple[any, ...] {
     path = os.path.join(NEW_DIAG_FIXTURES, fixture_name);
     program = JacProgram();
     mod = program.compile(path);
@@ -66,7 +66,7 @@ def parse_with_prog(source: str) -> tuple[JacProgram, bool] {
 }
 
 """Parse source string, return (has_errors: bool, program: JacProgram)."""
-def parse_and_validate(source: str) -> tuple {
+def parse_and_validate(source: str) -> tuple[any, ...] {
     try {
         (module, had_error) = parse(source, "/tmp/test.jac");
         if had_error or module is None {
@@ -696,7 +696,7 @@ glob IMPLEMENTED_REJECT: set[str] = {
          "E0058_continue_no_loop"
      };
 
-def reject_test(name_snippet: tuple) {
+def reject_test(name_snippet: tuple[any, ...]) {
     (name, snippet) = name_snippet;
     if name not in IMPLEMENTED_REJECT {
         testskip(f"{name} not yet implemented");
@@ -706,7 +706,7 @@ def reject_test(name_snippet: tuple) {
     assert has_errors , f"Validation must reject '{name}': {snippet}";
 }
 
-def validate_reject_test(name_snippet: tuple) {
+def validate_reject_test(name_snippet: tuple[any, ...]) {
     (name, snippet) = name_snippet;
     if name not in IMPLEMENTED_VALIDATE {
         testskip(f"{name} not yet implemented");

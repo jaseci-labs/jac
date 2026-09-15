@@ -34,8 +34,8 @@ impl JcirGenPass.exit_jsx_element with JsxElement exit {
             }
         }
     } else {
-        dkeys: list = [];
-        dvalues: list = [];
+        dkeys: list[CgNode] = [];
+        dvalues: list[CgNode] = [];
         for attr in here.attributes {
             if isinstance(attr, JsxNormalAttribute) {
                 attr_tuple = self.val(attr);

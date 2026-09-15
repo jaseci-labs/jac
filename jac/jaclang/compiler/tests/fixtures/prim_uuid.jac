@@ -16,7 +16,7 @@ opts out.
 import uuid;
 
 
-def uuid_py -> dict {
+def uuid_py -> dict[any, any] {
     u = uuid.uuid4();
     s = str(u);
     var = s[19];
@@ -38,7 +38,7 @@ def uuid_py -> dict {
 }
 
 
-def uuid_cl -> dict {
+def uuid_cl -> dict[any, any] {
     return {};
 }
 

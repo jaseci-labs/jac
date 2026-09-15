@@ -30,8 +30,8 @@ class Instruction(NamedValue, _HasMetadata) {
         assert isinstance(flags, (`tuple, `list));
         self.opname = opname;
         self.operands = operands;
-        self.flags = `list(flags);
-        self.metadata = {};
+        self.flags: list[str] = `list(flags);
+        self.metadata: dict[str, any] = {};
     }
 
     @property
@@ -132,7 +132,7 @@ class CallInstr(Instruction) {
         self.tail = tail;
         self.fastmath = FastMathFlags(fastmath);
         self.attributes = CallInstrAttributes(attrs);
-        self.arg_attributes = {};
+        self.arg_attributes: dict[int, ArgumentAttributes] = {};
         if arg_attrs {
             for (idx, attrs) in arg_attrs.items() {
                 if not (0 <= idx < len(args)) {
@@ -671,7 +671,7 @@ class PhiInstr(Instruction) {
         self: PhiInstr, parent: any, typ: any, name: any, flags: any = ()
     ) -> object {
         super.init(parent, typ, "phi", (), name=name, flags=flags);
-        self.incomings = [];
+        self.incomings: list[tuple[Value, Block]] = [];
     }
 
     def descr(self: PhiInstr, buf: any) -> object {

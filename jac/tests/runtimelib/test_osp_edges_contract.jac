@@ -35,7 +35,7 @@ glob SCAN_ROOTS: list[str] = [
          "scale",
          "byllm"
      ],
-     SANCTIONED: dict[str, tuple] = {
+     SANCTIONED: dict[str, tuple[any, ...]] = {
          "runtime/graph_fragment.jac": (
              1,
              "adopts the recorded edge values of a construction fragment; "
@@ -149,8 +149,8 @@ edge RoundTripEdge {
     has w: int = 0;
 }
 
-def _transcript(origin: any) -> list {
-    out: list = [];
+def _transcript(origin: any) -> list[str] {
+    out: list[str] = [];
     for n in [origin-->] {
         if isinstance(n, RoundTripNode) {
             out.append(n.label);

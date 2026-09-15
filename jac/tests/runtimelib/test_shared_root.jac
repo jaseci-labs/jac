@@ -162,7 +162,7 @@ test "a cross-owner delete without a write grant no-ops with a warning" {
         client2.register_user("bob", "secret123");
         blocked = client2.post("/walker/clear_notes", json={});
         assert blocked.ok , "denied delete should still 200";
-        warnings = _as_any(blocked.data).get("warnings") or [];
+        warnings: any = _as_any(blocked.data).get("warnings") or [];
         assert len(warnings) > 0 , "denied delete surfaced no warning";
         assert any(["delete" in str(w) for w in warnings]) , "warning does not name the delete";
         readback = client2.post("/walker/read_notes", json={});
@@ -217,7 +217,7 @@ test "a reader's first touch of the commons writes nothing and warns nothing" {
         assert client2.login("alice", "secret123").ok;
         read = client2.post("/walker/read_notes", json={});
         assert read.ok;
-        warnings = _as_any(read.data).get("warnings") or [];
+        warnings: any = _as_any(read.data).get("warnings") or [];
         assert warnings == [] , (
             f"a reader's touch of the commons produced a denial: {warnings}"
         );

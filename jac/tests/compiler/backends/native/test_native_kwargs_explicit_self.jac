@@ -40,9 +40,9 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      FIXTURE = "kwargs_explicit_self.jac",
-     EXPECTED: tuple = ("3205", "7", "1121", "2104", "1105");
+     EXPECTED: tuple[str, ...] = ("3205", "7", "1121", "2104", "1105");
 
-def compile_native(fixture: str) -> tuple {
+def compile_native(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
@@ -64,7 +64,7 @@ def seam_report(fixture: str) -> str {
 }
 
 
-def sv_lines(fixture: str) -> list {
+def sv_lines(fixture: str) -> list[str] {
     proc = subprocess.run(
         jac_command("run", os.path.join(FIXTURES, fixture)),
         capture_output=True,
@@ -80,7 +80,7 @@ def sv_lines(fixture: str) -> list {
 }
 
 
-def na_lines(fixture: str) -> list {
+def na_lines(fixture: str) -> list[str] {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
         jac_command(

@@ -28,7 +28,7 @@ obj Diagnostic {
         return f"{self.severity}: {self.file}:{self.line}: {self.message}";
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "file": self.file,
             "line": self.line,
@@ -70,7 +70,7 @@ obj ContextSlice {
         return "\n".join(parts);
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "query": self.query,
             "target": self.target.to_dict() if self.target is not None else None,

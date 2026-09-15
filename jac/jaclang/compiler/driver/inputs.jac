@@ -51,11 +51,11 @@ obj InputManifest {
         return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True).encode('utf-8')).hexdigest();
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {'files': self.files, 'annexes': self.annexes};
     }
 
-    static def from_dict(data: dict) -> InputManifest {
+    static def from_dict(data: dict[str, any]) -> InputManifest {
         return InputManifest(
             {
                 str(path): str(value) if value is not None else None

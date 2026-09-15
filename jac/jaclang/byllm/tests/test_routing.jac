@@ -25,7 +25,7 @@ import from support_tests { RoutingLLM, prompt_text, routing_candidates, say }
 
 
 """A hub with one agent per (tag, edge priority) pair."""
-def build_hub(pairs: list) -> Hub {
+def build_hub(pairs: list[tuple[str, str]]) -> Hub {
     hub = root ++> Hub();
     for (tag, priority) in pairs {
         hub +>:Route(priority=priority):+> Agent(tag=tag);
@@ -36,7 +36,7 @@ def build_hub(pairs: list) -> Hub {
 
 test "the prompt renders each candidate's edge, so routing can choose by it" {
     llm = RoutingLLM(
-        pick=lambda (c: list, p: str) { [
+        pick=lambda (c: list[tuple[str, str]], p: str) { [
             x[0]
             for x in c
             if "priority='high'" in x[1]
@@ -71,7 +71,9 @@ test "an arbitrary node list is offered without a fabricated edge" {
     # have no edge to `here`, so the prompt must not invent one.
     # The model picks both, so `select=1` has to do the truncating: a picker
     # that returned one anyway would leave that path unexercised.
-    llm = RoutingLLM(pick=lambda (c: list, p: str) { [x[0] for x in c]; });
+    llm = RoutingLLM(
+        pick=lambda (c: list[tuple[str, str]], p: str) { [x[0] for x in c]; }
+    );
     rg.llm = llm;
     hub = root ++> Hub();
     loose = [Agent(tag="alpha"), Agent(tag="beta")];
@@ -94,7 +96,9 @@ test "candidates with identical field values stay distinct targets" {
     # Two candidates carrying the same field values must both be visited.
     # Their handles are what has to stay distinct: the router names candidates
     # by node type, so same-typed siblings collide unless it disambiguates.
-    llm = RoutingLLM(pick=lambda (c: list, p: str) { [x[0] for x in c]; });
+    llm = RoutingLLM(
+        pick=lambda (c: list[tuple[str, str]], p: str) { [x[0] for x in c]; }
+    );
     rg.llm = llm;
     hub = build_hub([("same", "low"), ("same", "low")]);
 
@@ -119,7 +123,7 @@ test "routing-only call params are stripped before the request goes out" {
     rg.llm = llm;
     hub = build_hub([("alpha", "low")]);
 
-    seen_params: list = [];
+    seen_params: list[any] = [];
     original = JacRuntime.call_llm;
 
     def capture(model: any, mt_run: any) -> any {
@@ -154,7 +158,7 @@ test "a routing call dispatches through the central call_llm entry" {
     rg.llm = llm;
     hub = build_hub([("a", "low")]);
 
-    calls: list = [];
+    calls: list[int] = [];
     original = JacRuntime.call_llm;
 
     def counting(model: any, mt_run: any) -> any {
@@ -186,7 +190,7 @@ test "a supervisor routes to the agent whose speciality matches the request" {
     Handles come from node type names, so `"poem" in prompt` is true for the
     math request too: PoemAgent is on the candidate list.
     """
-    def by_topic(candidates: list, prompt: str) -> list {
+    def by_topic(candidates: list[tuple[str, str]], prompt: str) -> list[str] {
         import re;
         m = re.search(r"user_input='([^']*)'", prompt);
         asked = m.group(1).lower() if m else "";
@@ -226,7 +230,7 @@ test "a streaming routing decision reaches the handler and still selects an edge
     # live token feed consumes it, while the structured choice still drives the
     # walker to the chosen successor.
     llm = RoutingLLM(
-        pick=lambda (c: list, p: str) { [
+        pick=lambda (c: list[tuple[str, str]], p: str) { [
             x[0]
             for x in c
             if "green" in x[1]

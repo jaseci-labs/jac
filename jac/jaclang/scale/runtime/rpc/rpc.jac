@@ -96,7 +96,10 @@ def _provider_url(app_name: str) -> str {
 
 
 def service_call(
-    module_name: str, func_name: str, args: dict, headers: dict[str, str] | None = None
+    module_name: str,
+    func_name: str,
+    args: dict[str, any],
+    headers: dict[str, str] | None = None
 ) -> any {
     import from jaclang.server { sv_client }
 
@@ -150,7 +153,7 @@ def service_call(
 def walker_call(
     module_name: str,
     walker_name: str,
-    args: dict,
+    args: dict[str, any],
     stub_cls: any = None,
     headers: dict[str, str] | None = None
 ) -> any {
@@ -227,7 +230,7 @@ def _unwrap_sv_envelope(data: any, module_name: str, func_name: str) -> any {
         }
         return result_envelope;
     }
-    err = (data.get("error") if isinstance(data, dict) else None) or {};
+    err: any = (data.get("error") if isinstance(data, dict) else None) or {};
     msg = err.get("message") if isinstance(err, dict) else str(err);
     raise RuntimeError(
         f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"

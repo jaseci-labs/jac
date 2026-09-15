@@ -43,7 +43,7 @@ import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     EXPECTED: tuple = (
+     EXPECTED: tuple[str, ...] = (
          "0",
          "1",
          "2",
@@ -60,7 +60,7 @@ glob FIXTURES = os.path.join(
      );
 
 """Inspect emitted IR before optimization; runtime parity uses the built binary."""
-def compile_native(fixture: str) -> tuple {
+def compile_native(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     options = native_force_opts();
     options.skip_native_engine = True;
@@ -70,7 +70,7 @@ def compile_native(fixture: str) -> tuple {
 }
 
 
-def sv_lines(fixture: str) -> list {
+def sv_lines(fixture: str) -> list[str] {
     proc = subprocess.run(
         jac_command("run", os.path.join(FIXTURES, fixture)),
         capture_output=True,
@@ -86,7 +86,7 @@ def sv_lines(fixture: str) -> list {
 }
 
 
-def na_lines(fixture: str) -> list {
+def na_lines(fixture: str) -> list[str] {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
         jac_command(

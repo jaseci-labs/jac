@@ -7,23 +7,23 @@ node Doc {
     has body: str = "original";
 }
 
-def whoami -> dict {
+def whoami -> dict[str, any] {
     return {"root": jid(root)};
 }
 
-def make_doc -> dict {
+def make_doc -> dict[str, any] {
     d = Doc();
     root ++> d;
     return {"id": jid(d)};
 }
 
-def share_read(id: str, to_root: str) -> dict {
+def share_read(id: str, to_root: str) -> dict[str, any] {
     o = jobj(id);
     Jac.allow_root(o as Doc, UUID(to_root), 'READ');
     return {"ok": True};
 }
 
-def write_doc(id: str, body: str) -> dict {
+def write_doc(id: str, body: str) -> dict[str, any] {
     o = jobj(id);
     if o is None {
         return {"found": False, "body_now": ""};
@@ -32,7 +32,7 @@ def write_doc(id: str, body: str) -> dict {
     return {"found": True, "body_now": (o as Doc).body};
 }
 
-def read_doc(id: str) -> dict {
+def read_doc(id: str) -> dict[str, any] {
     o = jobj(id);
     if o is None {
         return {"found": False, "body": ""};

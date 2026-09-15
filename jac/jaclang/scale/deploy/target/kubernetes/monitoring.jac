@@ -15,7 +15,7 @@ obj MonitoringDeployer {
     has k8s_config: KubernetesConfig,
         logger: (Logger | None) = None;
 
-    def ensure_service(core_v1: any, name: str, namespace: str, body: dict) {
+    def ensure_service(core_v1: any, name: str, namespace: str, body: dict[str, any]) {
         try {
             core_v1.read_namespaced_service(name=name, namespace=namespace);
         } except ApiException as e {

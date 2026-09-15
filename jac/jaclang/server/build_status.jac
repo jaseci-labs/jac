@@ -12,7 +12,7 @@ obj BuildMonitor {
     static has active: HotReloader | None = None;
 }
 
-def get_build_status -> dict {
+def get_build_status -> dict[str, any] {
     reloader = BuildMonitor.active;
     if not reloader {
         return {"status": BuildStatus.UNAVAILABLE.value, "diagnostics": []};

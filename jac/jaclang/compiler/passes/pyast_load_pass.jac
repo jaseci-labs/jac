@@ -269,5 +269,5 @@ walker PyastBuildPass(Transform) {
     def proc_type_var(nd: py_ast.TypeVar) {}
     def proc_type_var_tuple(nd: py_ast.TypeVarTuple) {}
     def convert_to_doc(string: String) -> None;
-    def aug_op_map(tok_dict: dict, op: Token) -> str;
+    def aug_op_map(tok_dict: dict[str, str], op: Token) -> str;
 }

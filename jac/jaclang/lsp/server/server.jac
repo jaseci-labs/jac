@@ -11,7 +11,7 @@ import from .engine { JacLangServer }
 
 import jaclang.lsp.protocol.types as lspt;
 
-def initialized(ls: JacLangServer, params: dict) {
+def initialized(ls: JacLangServer, params: dict[str, any]) {
     ls.start_indexing();
 }
 
@@ -51,7 +51,7 @@ def did_change_watched_files(
     ls.files_changed([file.uri for file in params.changes]);
 }
 
-def did_change_configuration(ls: JacLangServer, params: dict) {
+def did_change_configuration(ls: JacLangServer, params: dict[str, any]) {
     import os;
     import from jaclang.lsp.protocol { uris }
     directory = ls.workspace._root_path;

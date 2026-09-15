@@ -5,7 +5,8 @@ import os;
 import sys;
 import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
-import type from jaclang.compiler.passes.transform { PassResult }
+import type from jaclang.compiler.passes.transform { Alert, PassResult }
+import type from jaclang.compiler.frontend.parser.tokens { CommentData, SrcDiag }
 
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
@@ -18,7 +19,7 @@ glob CODE_INT: int = 1,
      CODE_OPTENUM: int = 9,
      CODE_NATDICT: int = 10;
 
-glob CLASS_MODULES: tuple = (
+glob CLASS_MODULES: tuple[str, ...] = (
          "jaclang.compiler.frontend.unitree",
          "jaclang.compiler.frontend.codeinfo",
          "jaclang.compiler.frontend.srcloc",
@@ -55,12 +56,12 @@ def _enum_class(name: str, owner: type) -> type | None {
 }
 
 
-def _enum_table(cls: any) -> (dict | None) {
+def _enum_table(cls: any) -> (dict[int, object] | None) {
     import enum as _enum;
     if not (isinstance(cls, `type) and issubclass(cls, _enum.Enum)) {
         return None;
     }
-    members: list = `list(cls);
+    members: list[_enum.Enum] = `list(cls);
     if not members {
         return None;
     }
@@ -77,8 +78,8 @@ class NativeCompiler {
         self.layout = json.loads(
             Path(lib_path + ".layout.json").read_text(encoding="utf-8")
         )["classes"];
-        self._keep = [];
-        self.classes = {};
+        self._keep: list[object] = [];
+        self.classes: dict[str, any] = {};
         self._value_rows: dict[str, int] = {};
         self._bind();
         self._register();
@@ -169,7 +170,7 @@ class NativeCompiler {
         return stable_osp_tag(name);
     }
 
-    def _field_annotations(self: NativeCompiler, cls: any) -> dict {
+    def _field_annotations(self: NativeCompiler, cls: any) -> dict[str, str] {
         import from jaclang.runtime.object_interop { fields }
         import from jaclang.runtime.object_model { MISSING }
         out = {};
@@ -258,7 +259,7 @@ class NativeCompiler {
         }
     }
 
-    def _register_value(self: NativeCompiler, schema: dict) -> int {
+    def _register_value(self: NativeCompiler, schema: dict[str, any]) -> int {
         key = json.dumps(schema, sort_keys=True);
         cached = self._value_rows.get(key);
         if cached is not None {
@@ -453,8 +454,10 @@ class NativeCompiler {
             if not (completed & pass_id) {
                 continue;
             }
-            errors = self._take(self.lib.jc_take_pass_alerts(pass_id, 0)) or [];
-            warnings = self._take(self.lib.jc_take_pass_alerts(pass_id, 1)) or [];
+            errors: list[Alert] = self._take(self.lib.jc_take_pass_alerts(pass_id, 0))
+                or [];
+            warnings: list[Alert] = self._take(self.lib.jc_take_pass_alerts(pass_id, 1))
+                or [];
             for alert in errors + warnings {
                 alert.from_pass = pass_cls;
                 if alert.code is not None {
@@ -485,15 +488,15 @@ class NativeCompiler {
         return self._take(self.lib.jc_take_module());
     }
 
-    def take_diags(self: NativeCompiler) -> list {
+    def take_diags(self: NativeCompiler) -> list[SrcDiag] {
         return self._take(self.lib.jc_take_diags()) or [];
     }
 
-    def take_lexdiags(self: NativeCompiler) -> list {
+    def take_lexdiags(self: NativeCompiler) -> list[SrcDiag] {
         return self._take(self.lib.jc_take_lexdiags()) or [];
     }
 
-    def take_comments(self: NativeCompiler) -> list {
+    def take_comments(self: NativeCompiler) -> list[CommentData] {
         return self._take(self.lib.jc_take_comments()) or [];
     }
 
@@ -511,8 +514,8 @@ class NativeCompiler {
 }
 
 
-glob _KERNEL_CELL: list = [],
-     _RESOLVED: list = [];
+glob _KERNEL_CELL: list[NativeCompiler] = [],
+     _RESOLVED: list[None] = [];
 
 
 def _lib_name -> str {

@@ -43,7 +43,7 @@ obj NewDerived(NewBase) {
     has y: int = 2;
 }
 
-def new_py -> dict {
+def new_py -> dict[any, any] {
     w = new(NewWidget, 5);
     p = new(NewPair, 3, 4);
     d = NewWidget(6);
@@ -65,7 +65,7 @@ def new_py -> dict {
     };
 }
 
-def new_cl -> dict {
+def new_cl -> dict[any, any] {
     return {};
 }
 

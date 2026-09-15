@@ -7,7 +7,13 @@ glob PY_STDLIB_BY_KIND: dict[str, (set[str] | None)] = {
          "desktop": set(),
          "js-package": set()
      },
-     CLIENT_KINDS: tuple = ("web-app", "web-static", "mobile", "desktop", "js-package");
+     CLIENT_KINDS: tuple[str, ...] = (
+         "web-app",
+         "web-static",
+         "mobile",
+         "desktop",
+         "js-package"
+     );
 
 def py_root_module(name: str) -> str {
     return name.split('.')[0] if name else name;

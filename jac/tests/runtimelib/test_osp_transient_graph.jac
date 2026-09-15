@@ -137,7 +137,7 @@ test "edge rows and the handle index agree after connect and detach" {
 # A'. Disconnect resolves an edge by handle rather than scanning every row.
 # ---------------------------------------------------------------------------
 def _detach(nodes: list[TNode]) -> float {
-    edges: list = [];
+    edges: list[any] = [];
     for nd in nodes {
         for e in [edge nd-->] {
             edges.append(e);
@@ -278,7 +278,7 @@ test "a transient hop never enters the query planner" {
     orig = _qp.resolve_query;
     orig_edges = _qp.resolve_query_edges;
 
-    def _refuse(mem: any, q: any) -> list {
+    def _refuse(mem: any, q: any) -> list[any] {
         raise AssertionError(
             "a rootless, storeless traversal entered the persistence query "
             "planner; the anchors are already in hand and there is no store "
@@ -310,7 +310,7 @@ test "a persisted hop still goes through the planner" {
         orig_ctx = JacRuntime.exec_ctx;
         import jaclang.data.query_planner as _qp;
         orig = _qp.resolve_query;
-        def _refuse(mem: any, q: any) -> list {
+        def _refuse(mem: any, q: any) -> list[any] {
             raise AssertionError("planner-was-reached");
         }
         try {
@@ -373,8 +373,8 @@ edge RtRel {
     has w: int = 0;
 }
 
-def _transcript(origin: any) -> list {
-    out: list = [];
+def _transcript(origin: any) -> list[str] {
+    out: list[str] = [];
     for n in [origin-->] {
         if isinstance(n, RtNode) {
             out.append(n.label);

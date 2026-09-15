@@ -22,11 +22,11 @@ node Other {
 
 # Two-bracket form: AtomTrailer(EdgeRefTrailer, FilterCompr)
 def get_todos -> list[Todo] {
-    return [root-->][?:Todo];            # Must infer as list[Todo], no error
+    return [root-->][?:Todo];  # Must infer as list[Todo], no error
 }
 
 def get_others -> list[Other] {
-    return [root-->][?:Other];           # Must infer as list[Other], no error
+    return [root-->][?:Other];  # Must infer as list[Other], no error
 }
 
 # Single-bracket form: EdgeRefTrailer with FilterCompr in chain
@@ -34,7 +34,7 @@ walker TodoGetter {
     has result: list[Todo] = [];
 
     can collect with entry {
-        result = [-->[?:Todo]];          # Must infer as list[Todo], no error
+        result = [-->[?:Todo]];  # Must infer as list[Todo], no error
     }
 }
 
@@ -42,14 +42,14 @@ walker OtherGetter {
     has result: list[Other] = [];
 
     can collect with entry {
-        result = [-->[?:Other]];         # Must infer as list[Other], no error
+        result = [-->[?:Other]];  # Must infer as list[Other], no error
     }
 }
 
 with entry {
     todos = [root-->][?:Todo];
-    ok1: list[Todo] = todos;             # Ok — exact match
-    ok2: list = todos;                   # Ok — broad list
-    bad1: str = todos;                   # Error: list[Todo] -> str
-    bad2: dict = todos;                  # Error: list[Todo] -> dict
+    ok1: list[Todo] = todos;  # Ok — exact match
+    ok2: list[any] = todos;  # Ok — broad list[any]
+    bad1: str = todos;  # Error: list[Todo] -> str
+    bad2: dict[any, any] = todos;  # Error: list[Todo] -> dict[any, any]
 }

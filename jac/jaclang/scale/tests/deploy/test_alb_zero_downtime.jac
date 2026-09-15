@@ -11,7 +11,7 @@ import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBu
 import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 
 glob READINESS_GATE_LABEL: str = "elbv2.k8s.aws/pod-readiness-gate-inject",
-     _shared: dict = {};
+     _shared: dict[str, any] = {};
 
 
 # One real k3s apiserver (testcontainers) shared by the whole file, torn down
@@ -92,7 +92,7 @@ def _deploy_through_apply(cfg: KubernetesConfig) {
 }
 
 
-def _live_api(kubeconfig: str) -> tuple {
+def _live_api(kubeconfig: str) -> tuple[any, ...] {
     import from kubernetes { client, config }
     api_client = config.new_client_from_config(config_file=kubeconfig);
     return (
@@ -103,14 +103,14 @@ def _live_api(kubeconfig: str) -> tuple {
 }
 
 
-def _live_namespace_labels(kubeconfig: str, namespace: str) -> dict {
+def _live_namespace_labels(kubeconfig: str, namespace: str) -> dict[str, any] {
     (core_v1, _, _) = _live_api(kubeconfig);
     ns: any = core_v1.read_namespace(name=namespace);
     return dict(ns.metadata.labels or {});
 }
 
 
-def _live_deployments(kubeconfig: str, namespace: str) -> list {
+def _live_deployments(kubeconfig: str, namespace: str) -> list[any] {
     (_, apps_v1, serializer) = _live_api(kubeconfig);
     return [
         serializer.sanitize_for_serialization(d)
@@ -119,7 +119,7 @@ def _live_deployments(kubeconfig: str, namespace: str) -> list {
 }
 
 
-def _drain_of(dep: dict) -> tuple {
+def _drain_of(dep: dict[str, any]) -> tuple[any, ...] {
     pod = dep["spec"]["template"]["spec"];
     sleep_cmd: str = str(
         pod["containers"][0]["lifecycle"]["preStop"]["exec"]["command"][-1]

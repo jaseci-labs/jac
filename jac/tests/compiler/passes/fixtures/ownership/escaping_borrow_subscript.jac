@@ -1,8 +1,10 @@
-obj Buffer { has n: int = 0; }
+obj Buffer {
+    has n: int = 0;
+}
 
 with entry {
     a: own Buffer = Buffer();
     v: &Buffer = &a;
-    slots: list = [Buffer()];
+    slots: list[any] = [Buffer()];
     slots[0] = v;
 }

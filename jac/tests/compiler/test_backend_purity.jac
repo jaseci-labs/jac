@@ -35,12 +35,12 @@ glob FORBIDDEN: dict[str, str] = {
      # EMPTY by design - the plan is complete. Adding an entry here means a
      # backend grew analysis that belongs in the central pipeline; that is
      # a regression to fix, not debt to record.
-     MIGRATION_DEBT: dict[tuple, int] = {},
+     MIGRATION_DEBT: dict[tuple[str, str], int] = {},
      # Reviewed permanent consumption: (relative-path, pattern) ->
      # (exact line count, rationale). These are NOT analysis duplication:
      # they are reads of central APIs or of the declaration surface itself,
      # at sites where the declaration IS the fact.
-     SANCTIONED: dict[tuple, tuple] = {
+     SANCTIONED: dict[tuple[str, str], tuple[int, str]] = {
          ("es/esast_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
              4,
              "return_type_is_jsx (#8314) reads the declared return annotation "
@@ -262,10 +262,10 @@ glob FORBIDDEN: dict[str, str] = {
      };
 
 """Count matching lines per (file, pattern) across both backends."""
-def scan_backends -> dict {
+def scan_backends -> dict[tuple[str, str], int] {
     passes_root = Path(jaclang.__file__).parent / "compiler" / "backends";
     compiled = {name: re.compile(pat) for (name, pat) in FORBIDDEN.items()};
-    counts: dict = {};
+    counts: dict[tuple[str, str], int] = {};
     for backend in ("es", "native") {
         for src in sorted((passes_root / backend).rglob("*.jac")) {
             if not src.is_file() {

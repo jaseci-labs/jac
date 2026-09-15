@@ -466,17 +466,17 @@ test "dispatch batch is callable and importable" {
 # Mock MTRuntime for make_model_params tests
 # ---------------------------------------------------------------------------
 obj _MockMTRun {
-    has call_params: dict = {},
-        tools: list = [],
+    has call_params: dict[str, any] = {},
+        tools: list[any] = [],
         stream: bool = False,
         mtir: any = None,
-        messages: list = [];
+        messages: list[any] = [];
 
-    def get_msg_list -> list {
+    def get_msg_list -> list[any] {
         return list(self.messages);
     }
 
-    def get_tool_list -> list {
+    def get_tool_list -> list[any] {
         if not self.tools {
             return [];
         }
@@ -832,7 +832,7 @@ test "concurrent callers do not observe each other's context" {
         _PROBE_VAR.set("mutated-by-tool");
         return _PROBE_VAR.get();
     }
-    def _one_caller(tag: str) -> list {
+    def _one_caller(tag: str) -> list[any] {
         token = _PROBE_VAR.set(tag);
         try {
             return [

@@ -7,7 +7,7 @@ are properly hydrated on the client side.
 node Project {
     has name: str,
         description: str = "",
-        members: list = [];
+        members: list[any] = [];
 }
 
 node Task {
@@ -52,8 +52,8 @@ walker get_project_tasks {
 
 
 def:pub app -> JsxElement {
-    has projects: list = [],
-        tasks: list = [];
+    has projects: list[any] = [],
+        tasks: list[any] = [];
 
     async can with entry {
         result = root spawn create_project(name="My Project", description="Test");

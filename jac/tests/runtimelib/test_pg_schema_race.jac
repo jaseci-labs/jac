@@ -36,7 +36,7 @@ glob _RACERS = 8,
      _CONCURRENT_CREATE_STATES = ['23505', '42P07', '42710'];
 
 
-def _fresh_db(td: str) -> tuple {
+def _fresh_db(td: str) -> tuple[any, ...] {
     # One database per temp dir: every round races against a virgin schema,
     # which is the only state in which the bug can fire.
     target = str(Path(td) / 'app.jac');

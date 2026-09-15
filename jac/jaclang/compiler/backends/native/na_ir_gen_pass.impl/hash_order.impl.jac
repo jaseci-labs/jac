@@ -24,7 +24,7 @@ impl NaIRGenPass._hash_order_alloc(b: ir.IRBuilder, capacity: ir.Value) -> ir.Va
 }
 
 impl NaIRGenPass._emit_hash_order_compact_fn(
-    name: str, container_type: ir.Type, layout: dict
+    name: str, container_type: ir.Type, layout: dict[str, any]
 ) -> ir.Function {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -75,7 +75,7 @@ impl NaIRGenPass._emit_hash_order_compact_fn(
 }
 
 impl NaIRGenPass._emit_hash_order_remove_fn(
-    name: str, container_type: ir.Type, layout: dict
+    name: str, container_type: ir.Type, layout: dict[str, any]
 ) -> ir.Function {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);

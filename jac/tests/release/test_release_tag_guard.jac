@@ -20,7 +20,7 @@ glob REPO_ROOT: Path = Path(__file__).resolve().parents[3],
 
 """A git environment isolated from the developer's own config and identity."""
 def git_env(home: str) -> dict[(str, str)] {
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["HOME"] = home;
     env["GIT_CONFIG_GLOBAL"] = os.path.join(home, "gitconfig-absent");
     env["GIT_CONFIG_SYSTEM"] = os.path.join(home, "gitconfig-absent");

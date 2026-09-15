@@ -29,8 +29,8 @@ import from plugin_host { PluginHost }
 
 """A mock plugin that records calls and returns configurable results."""
 obj MockPlugin(DesktopPlugin) {
-    has calls: list,
-        _responses: dict,
+    has calls: list[dict[str, any]],
+        _responses: dict[str, any],
         plugin_name: str = "mock";
 
     def init(name: str = "mock") {
@@ -41,11 +41,11 @@ obj MockPlugin(DesktopPlugin) {
         self._responses = {};
     }
 
-    def set_response(command: str, result: dict) {
+    def set_response(command: str, result: dict[str, any]) {
         self._responses[command] = result;
     }
 
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         self.calls.append({"command": command, "args": args});
         if command in self._responses {
             return self._responses[command];
@@ -62,7 +62,7 @@ a nested archetype inheriting an imported one fails to construct)."""
 obj FailPlugin(DesktopPlugin) {
     has plugin_name: str = "fail";
 
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         raise PluginError("FORBIDDEN", "Access denied");
     }
 }
@@ -72,7 +72,7 @@ obj FailPlugin(DesktopPlugin) {
 obj CrashPlugin(DesktopPlugin) {
     has plugin_name: str = "crash";
 
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         raise RuntimeError("boom");
     }
 }

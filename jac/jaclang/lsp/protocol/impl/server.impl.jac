@@ -795,11 +795,11 @@ impl LanguageServer._send_response(msg_id: any, result: any) -> None {
     self._write_message(body);
 }
 
-impl LanguageServer._write_message(body: dict) -> None {
+impl LanguageServer._write_message(body: dict[str, any]) -> None {
     self._write_content(encode_message(body));
 }
 
-impl encode_message(body: dict) -> bytes {
+impl encode_message(body: dict[str, any]) -> bytes {
     return json.dumps(body, ensure_ascii=False).encode('utf-8');
 }
 
@@ -817,7 +817,7 @@ impl LanguageServer._write_content(content: bytes) -> None {
     }
 }
 
-impl LanguageServer._read_message(stream: any) -> Optional[dict] {
+impl LanguageServer._read_message(stream: any) -> Optional[dict[str, any]] {
     content_length = -1;
     while True {
         line = stream.readline();
@@ -844,7 +844,7 @@ impl LanguageServer._read_message(stream: any) -> Optional[dict] {
     return json.loads(body.decode("utf-8"));
 }
 
-impl LanguageServer._handle_initialize(params: dict) -> dict {
+impl LanguageServer._handle_initialize(params: dict[str, any]) -> dict[str, any] {
     root_uri = params.get("rootUri") or params.get("rootPath");
     self._workspace = Workspace(root_uri=root_uri);
     capabilities = params.get('capabilities', {});
@@ -861,7 +861,7 @@ impl LanguageServer._handle_initialize(params: dict) -> dict {
     return {"capabilities": self._build_capabilities()};
 }
 
-impl LanguageServer._build_capabilities -> dict {
+impl LanguageServer._build_capabilities -> dict[str, any] {
     caps: dict[str, any] = {
         'positionEncoding': self.workspace._position_codec.encoding.value,
         "textDocumentSync": {

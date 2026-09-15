@@ -9,7 +9,7 @@ def error_response(
 ) -> JSONResponse {
     import from jaclang.scale.runtime.context.trace_ctx { get_current_trace }
 
-    err: dict = {"code": code, "message": message};
+    err: dict[str, any] = {"code": code, "message": message};
     if service {
         err["service"] = service;
     }
@@ -18,7 +18,7 @@ def error_response(
         err["trace_id"] = trace;
     }
 
-    body: dict = {"ok": False, "error": err, "meta": {"http_status": status}};
+    body: dict[str, any] = {"ok": False, "error": err, "meta": {"http_status": status}};
 
     headers: dict[str, str] = {};
     if retry_after_seconds is not None {

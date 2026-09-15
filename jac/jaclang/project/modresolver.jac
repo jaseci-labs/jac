@@ -13,7 +13,7 @@ import from jaclang.jac0core.ext_registry {
 glob _project_root_cache: ContextVar[dict[str, tuple[Path, Path] | None] | None] = ContextVar(
          'jac_project_roots', `default=None
      ),
-     _import_base_stack: list = [],
+     _import_base_stack: list[str] = [],
      COMPILER_PACKAGE: str = 'jaclang';
 
 def push_import_base(base_dir: str) {
@@ -579,8 +579,13 @@ def resolve_relative_path(
     return path;
 }
 
-glob NPM_RUNTIME_CONDITIONS: tuple = ('browser', 'module', 'import', 'default'),
-     NPM_TYPES_CONDITIONS: tuple = ('types', 'import', 'default'),
+glob NPM_RUNTIME_CONDITIONS: tuple[str, ...] = (
+         'browser',
+         'module',
+         'import',
+         'default'
+     ),
+     NPM_TYPES_CONDITIONS: tuple[str, ...] = ('types', 'import', 'default'),
      NPM_DTS_SUFFIXES: tuple[str, ...] = ('.d.ts', '.d.mts', '.d.cts');
 
 def _find_npm_package(
@@ -617,7 +622,7 @@ def _find_npm_package(
     return (pkg_dir, subpath, node_modules);
 }
 
-def _read_package_json(pkg_dir: str) -> dict {
+def _read_package_json(pkg_dir: str) -> dict[str, any] {
     import json;
     import from jaclang.project.source { read_file_with_encoding }
     pkg_json = os.path.join(pkg_dir, 'package.json');
@@ -633,7 +638,10 @@ def _read_package_json(pkg_dir: str) -> dict {
 }
 
 def _resolve_export_target(
-    target: object, conditions: tuple, pkg_dir: str, star_sub: (str | None) = None
+    target: object,
+    conditions: tuple[str, ...],
+    pkg_dir: str,
+    star_sub: (str | None) = None
 ) -> (str | None) {
     if isinstance(target, str) {
         rel = target;
@@ -669,7 +677,7 @@ def _resolve_export_target(
 }
 
 def _resolve_pkg_exports(
-    exports: object, subpath: str, conditions: tuple, pkg_dir: str
+    exports: object, subpath: str, conditions: tuple[str, ...], pkg_dir: str
 ) -> (str | None) {
     if isinstance(exports, dict) {
         has_subpath_keys = `any(k.startswith('.') for k in exports.keys());
@@ -910,7 +918,7 @@ def _npm_file_with_ext(candidate: str) -> (str | None) {
     return None;
 }
 
-def _npm_package_entry(pkg_dir: str, data: dict) -> (str | None) {
+def _npm_package_entry(pkg_dir: str, data: dict[str, any]) -> (str | None) {
     entries: list[str] = [];
     for key in ('module', 'main') {
         val = data.get(key);

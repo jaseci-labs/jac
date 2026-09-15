@@ -45,7 +45,7 @@ glob logger = logging.getLogger("jaclang.lsp.protocol.server"),
 def _to_camel_case(name: str) -> str;
 def _to_snake_case(name: str) -> str;
 def to_dict(`obj: any) -> any;
-def encode_message(body: dict) -> bytes;
+def encode_message(body: dict[str, any]) -> bytes;
 def from_dict(data: any, cls: any) -> any;
 
 enum ResponseErrorCode {

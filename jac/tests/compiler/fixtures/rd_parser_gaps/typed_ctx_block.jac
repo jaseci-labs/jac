@@ -5,12 +5,10 @@ node Item {
 }
 
 walker Collector {
-    has items: list = [];
+    has items: list[any] = [];
 
     can collect with Root entry {
         visit [-->];
-        -> Item {
-            self.items.append(here);
-        }
+        ->Item{self.items.append(here);}
     }
 }

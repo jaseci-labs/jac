@@ -261,7 +261,7 @@ impl Model._raise_mapped_provider_error(e: Exception) -> None {
     raise;
 }
 
-impl Model.model_call_no_stream(params: dict) -> dict {
+impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
     response: object;
     try {
         if self.http_client {
@@ -287,7 +287,7 @@ impl Model.model_call_no_stream(params: dict) -> dict {
     return response_dict(response);
 }
 
-impl Model.model_call_with_stream(params: dict) -> Iterable[object] {
+impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
     try {
@@ -321,8 +321,8 @@ impl Model.model_call_with_stream(params: dict) -> Iterable[object] {
 }
 
 impl Model.model_call_http(
-    url: str, token: str, payload: dict, ca_bundle: (str | bool | None)
-) -> dict {
+    url: str, token: str, payload: dict[str, any], ca_bundle: (str | bool | None)
+) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     client = httpx.Client(verify=ca_bundle or True, timeout=60.0);
@@ -332,7 +332,7 @@ impl Model.model_call_http(
     return response.json();
 }
 
-impl Model.model_call_no_stream_async(params: dict) -> dict {
+impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] {
     response: object;
     try {
         if self.http_client {
@@ -364,7 +364,9 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
     return response_dict(response);
 }
 
-impl Model.model_call_with_stream_async(params: dict) -> AsyncIterator[object] {
+impl Model.model_call_with_stream_async(
+    params: dict[str, any]
+) -> AsyncIterator[object] {
     response: object;
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
@@ -410,8 +412,8 @@ impl Model.model_call_with_stream_async(params: dict) -> AsyncIterator[object] {
 }
 
 impl Model.model_call_http_async(
-    url: str, token: str, payload: dict, ca_bundle: (str | bool | None)
-) -> dict {
+    url: str, token: str, payload: dict[str, any], ca_bundle: (str | bool | None)
+) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     client = httpx.AsyncClient(verify=ca_bundle or True, timeout=60.0);

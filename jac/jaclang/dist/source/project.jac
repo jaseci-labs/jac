@@ -42,11 +42,11 @@ def _write_application(
     project_root: Path,
     output: Path,
     sources: list[str]
-) -> dict {
+) -> dict[str, any] {
     directory = base / 'applications' / application.name;
     _copy_resources(project_root, directory, output);
-    modules: list[dict] = [];
-    record: dict = {
+    modules: list[dict[str, any]] = [];
+    record: dict[str, any] = {
         'name': application.name,
         'runner': 'jaclang.runtime.source_app',
         'namespace': application_namespace(application),
@@ -178,7 +178,7 @@ def export_project(
         base = Path(temporary) / 'project';
         base.mkdir();
         sources: list[str] = [];
-        records: list[dict] = [];
+        records: list[dict[str, any]] = [];
         if application is not None {
             records = [
                 _write_application(item, program, base, project_root, output, sources)

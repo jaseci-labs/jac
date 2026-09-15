@@ -13,12 +13,12 @@ def _fused_runtime_import_block -> str {
 def _host_boot_py(
     app_name: str,
     mode: str,
-    program: (dict | None) = None,
+    program: (dict[str, any] | None) = None,
     backend: str = "embedded",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: (dict | None) = None
+    plugin_configs: (dict[str, any] | None) = None
 ) -> str {
     config = {
         "app_name": app_name,
@@ -47,12 +47,12 @@ def _generate_host_source(
     width: int,
     height: int,
     app_name: str,
-    program: (dict | None) = None,
+    program: (dict[str, any] | None) = None,
     backend: str = "embedded",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: (dict | None) = None
+    plugin_configs: (dict[str, any] | None) = None
 ) -> str {
     boot_py = _host_boot_py(
         app_name,

@@ -63,11 +63,11 @@ def _dep_cache_files(tmp: str, dep_stem: str, ext: str) -> list[str] {
     return sorted(`glob.`glob(os.path.join(cache_dir, f"{dep_stem}.*.{ext}")));
 }
 
-glob _CACHE_ENV_KEYS: tuple = ("XDG_CACHE_HOME", "HOME", "LOCALAPPDATA");
+glob _CACHE_ENV_KEYS: tuple[str, ...] = ("XDG_CACHE_HOME", "HOME", "LOCALAPPDATA");
 
 """Scope the global cache roots into the test tempdir; return the saved env."""
-def _isolate_cache_env(tmp: str) -> dict {
-    saved: dict = {};
+def _isolate_cache_env(tmp: str) -> dict[str, any] {
+    saved: dict[str, any] = {};
     for k in _CACHE_ENV_KEYS {
         saved[k] = os.environ.get(k);
         os.environ[k] = os.path.join(tmp, "cache-root");
@@ -75,7 +75,7 @@ def _isolate_cache_env(tmp: str) -> dict {
     return saved;
 }
 
-def _restore_cache_env(saved: dict) {
+def _restore_cache_env(saved: dict[str, any]) {
     for (k, v) in saved.items() {
         if v is None {
             os.environ.pop(k, None);

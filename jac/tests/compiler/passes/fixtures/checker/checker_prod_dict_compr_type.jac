@@ -14,13 +14,13 @@ with entry {
 
     # Dict from enumeration — should infer dict[int, str] or similar
     d = {i: name for (i, name) in enumerate(names)};
-    ok1: dict = d;                          # Ok (broad dict)
-    bad1: str = d;                          # Error: dict -> str
-    bad2: list = d;                         # Error: dict -> list
+    ok1: dict[any, any] = d;  # Ok (broad dict[any, any])
+    bad1: str = d;  # Error: dict -> str
+    bad2: list[any] = d;  # Error: dict -> list[any]
 
     # Dict with explicit types
     words: list[str] = ["hello", "world"];
     d2 = {w: len(w) for w in words};
-    ok2: dict[str, int] = d2;              # Ok
-    bad3: dict[int, int] = d2;             # Error: dict[str,int] -> dict[int,int]
+    ok2: dict[str, int] = d2;  # Ok
+    bad3: dict[int, int] = d2;  # Error: dict[str,int] -> dict[int,int]
 }

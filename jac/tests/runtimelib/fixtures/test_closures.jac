@@ -13,7 +13,7 @@ def make_counter() -> any {
 }
 
 # Test 2: Closure returning getter/setter pair
-def create_signal_simple(initialValue: any) -> list {
+def create_signal_simple(initialValue: any) -> list[any] {
     value = initialValue;
 
     def readVal() -> any {
@@ -33,7 +33,7 @@ def make_adder(x: int) -> any {
 }
 
 # Test 4: Multiple closures sharing state
-def create_shared_counter() -> dict {
+def create_shared_counter() -> dict[str, any] {
     counter = 0;
 
     def increment() -> int {
@@ -54,7 +54,7 @@ def create_shared_counter() -> dict {
 }
 
 # Test entry point
-def test_all_closures() -> dict {
+def test_all_closures() -> dict[str, any] {
     # Test 1
     counter = make_counter();
     val1 = counter();

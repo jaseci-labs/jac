@@ -354,7 +354,7 @@ def select[T](values: list[object], kinds: type[T] | tuple[type[T], ...]) -> lis
 }
 obj Item { has value: int = 0; }
 obj DefaultItem(Item) {}
-def annotation_tuple(value: str) -> (str, dict | None) { return (value, None); }
+def annotation_tuple(value: str) -> (str, dict[any, any] | None) { return (value, None); }
 def class_tuple_key(table: dict[tuple[type[Item]], str]) -> str { return table[(Item,)]; }
 def class_names -> list[str] { return [cls.__name__ for cls in (Item, DefaultItem)]; }
 def materialize(value: type[Item] | Item | None) -> Item {

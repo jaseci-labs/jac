@@ -57,7 +57,7 @@ class _Handler(BaseHTTPRequestHandler) {
 
 """Generate a self-signed cert+key for `localhost` (SAN DNS:localhost,
 IP:127.0.0.1) into `d` via the `openssl` CLI. Returns (cert, key, ok)."""
-def _gen_cert(d: str) -> tuple {
+def _gen_cert(d: str) -> tuple[any, ...] {
     cert = os.path.join(d, "cert.pem");
     key = os.path.join(d, "key.pem");
     r = subprocess.run(
@@ -89,7 +89,7 @@ def _gen_cert(d: str) -> tuple {
 
 """Start a loopback HTTPS server (TLS via `cert`/`key`) on an ephemeral port in a
 daemon thread; return (server, port). The caller shuts it down."""
-def _start_tls_server(cert: str, key: str) -> tuple {
+def _start_tls_server(cert: str, key: str) -> tuple[any, ...] {
     sctx = pyssl.SSLContext(pyssl.PROTOCOL_TLS_SERVER);
     sctx.load_cert_chain(cert, key);
     httpd = HTTPServer(("127.0.0.1", 0), _Handler);

@@ -30,7 +30,10 @@ def capture_get(captured: io.StringIO) -> str {
 
 """Test different access validation."""
 def trigger_access_validation_test(
-    roots: list, nodes: list, give_access_to_full_graph: bool, via_all: bool = False
+    roots: list[any],
+    nodes: list[any],
+    give_access_to_full_graph: bool,
+    via_all: bool = False
 ) {
     captured = capture_start();
 
@@ -1068,7 +1071,7 @@ test "run persistent reuse" {
         import from jaclang.server.session { project_db_name, shared_pg_data_dir }
         import from jaclang.data.store { PgStore, TxnIsolation }
 
-        def _db_counts -> tuple {
+        def _db_counts -> tuple[any, ...] {
             rt = PgRuntime(
                 data_dir=shared_pg_data_dir(),
                 database=project_db_name(

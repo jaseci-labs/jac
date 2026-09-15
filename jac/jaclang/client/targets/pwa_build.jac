@@ -22,10 +22,10 @@ glob PWA_BANNER_STORAGE_KEY = "__jac_pwa_prefs__",
      PWA_IOS_MODAL_Z_INDEX = 10000,
      PWA_MS_PER_DAY = 86400000;
 
-def _load_pwa_context -> tuple[dict, str] {
+def _load_pwa_context -> tuple[dict[str, any], str] {
     config = get_config();
     project_name = "Jac App";
-    pwa_config: dict = {};
+    pwa_config: dict[str, any] = {};
 
     if config {
         if config.project and config.project.name {
@@ -39,7 +39,9 @@ def _load_pwa_context -> tuple[dict, str] {
     return (pwa_config, project_name);
 }
 
-def _get_default_manifest(project_name: str, pwa_config: dict) -> dict {
+def _get_default_manifest(
+    project_name: str, pwa_config: dict[str, any]
+) -> dict[str, any] {
     theme_color = pwa_config.get("theme_color", PWA_DEFAULT_THEME_COLOR);
     background_color = pwa_config.get("background_color", PWA_DEFAULT_BACKGROUND_COLOR);
 
@@ -150,7 +152,7 @@ def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
     }
 }
 
-def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) {
+def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict[str, any]) {
     manifest = _get_default_manifest(project_name, pwa_config);
 
     user_manifest = pwa_config.get("manifest", {});
@@ -237,7 +239,7 @@ self.addEventListener('fetch', (event) => {{
 ''';
 }
 
-def _generate_service_worker(dist_dir: Path, pwa_config: dict) {
+def _generate_service_worker(dist_dir: Path, pwa_config: dict[str, any]) {
     cache_name = pwa_config.get("cache_name", PWA_DEFAULT_CACHE_NAME);
     precache_files = _get_precache_files(dist_dir);
     sw_content = _build_service_worker_content(cache_name, precache_files);
@@ -349,7 +351,7 @@ def _build_banner_css(position: str) -> str {
           }}''';
 }
 
-def _build_pwa_install_banner_script(pwa_config: dict) -> str {
+def _build_pwa_install_banner_script(pwa_config: dict[str, any]) -> str {
     if not pwa_config.get("install_banner", True) {
         return "";
     }
@@ -502,7 +504,7 @@ def _build_pwa_install_banner_script(pwa_config: dict) -> str {
     </script>''';
 }
 
-def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
+def _update_html_for_pwa(dist_dir: Path, pwa_config: dict[str, any]) -> None {
     index_path = dist_dir / "index.html";
     if not index_path.exists() {
         console.warning("  index.html not found, skipping PWA HTML update");

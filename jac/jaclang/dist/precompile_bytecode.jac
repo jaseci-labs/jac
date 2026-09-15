@@ -1,5 +1,6 @@
 import type from jaclang.compiler.driver.program { JacProgram }
 import hashlib;
+import type from jaclang.compiler.driver.program { JacProgram }
 import json;
 import marshal;
 import os;
@@ -304,7 +305,7 @@ def placement_facts_map(package_dir: str, app: str = "") -> dict[str, list[str]]
     return out;
 }
 
-def _emit_unit_diagnostics(jac_path: str, programs: list) {
+def _emit_unit_diagnostics(jac_path: str, programs: list[JacProgram]) {
     import from jaclang.compiler.driver.source_failures {
         compiler_source_failure_details
     }

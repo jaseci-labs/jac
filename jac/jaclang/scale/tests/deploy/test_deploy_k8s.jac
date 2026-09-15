@@ -467,7 +467,7 @@ test "deploy with domain set renders host plus catch-all rules and stores domain
     assert mock_networking_v1.create_namespaced_ingress.called , "ingress should be created on first deploy";
     created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
 
-    rules: list = created_body["spec"]["rules"];
+    rules: list[any] = created_body["spec"]["rules"];
     assert len(rules) == 2 , "domain app must render a host rule plus a catch-all";
     assert rules[0].get("host") == "app.example.com" , "first rule must bind the domain host so redeploys keep the TLS cert served (#7707)";
     assert "host" not in rules[1] , "catch-all rule must keep the raw load-balancer hostname serving before DNS/TLS";
@@ -650,7 +650,7 @@ test "k8s safe slug normalizes names into valid k8s identifiers" {
 }
 
 """Resolve get_kubernetes_config() against a temp project with the given jac.toml."""
-def _k8s_config_for_toml(toml_content: str) -> dict {
+def _k8s_config_for_toml(toml_content: str) -> dict[str, any] {
     tmp_dir = Path(mkdtemp());
     (tmp_dir / "jac.toml").write_text(toml_content);
     # get_scale_config() caches a process-wide singleton; reset around the temp project.

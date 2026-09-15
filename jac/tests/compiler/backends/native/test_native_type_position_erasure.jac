@@ -59,7 +59,7 @@ def _opts -> CompileOptions {
 
 
 """Compile a fixture on the native pathway; return (program, module)."""
-def _compile_native(fixture: str) -> tuple {
+def _compile_native(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
     return (prog, ir, );

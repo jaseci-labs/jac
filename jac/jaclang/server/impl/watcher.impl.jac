@@ -131,7 +131,7 @@ impl JacFileWatcher._debounce_flush -> None {
     now = time.time();
     debounce_sec = float(self._debounce_ms) / 1000.0;
 
-    events_to_flush = [];
+    events_to_flush: list[FileChangeEvent] = [];
 
     with JacFileWatcher._events_lock {
         paths_to_remove = [];

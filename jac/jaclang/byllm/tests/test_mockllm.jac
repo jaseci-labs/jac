@@ -156,7 +156,7 @@ test "a tool call resolves by name against the tools the call offers" {
         ("offered, by name", "add-by-name", True),
         ("not offered", "secret", False)
     ] {
-        ran: list = [];
+        ran: list[str] = [];
         def add(a: int, b: int) -> int {
             ran.append("add");
             return a + b;

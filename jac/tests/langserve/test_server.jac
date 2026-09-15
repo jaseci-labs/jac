@@ -23,7 +23,7 @@ glob FIXTURE_DIR = os.path.join(
      PASSES_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures"
      ),
-     _active_servers: list = [];
+     _active_servers: list[any] = [];
 
 """Clear jac-compiled modules from sys.modules."""
 def _clear_jac_modules {
@@ -1000,7 +1000,7 @@ test "test_hover_types" {
         assert narrowing_file is not None;
         lsp.type_check_file(narrowing_file);
 
-        hover_cases: list[tuple] = [
+        hover_cases: list[tuple[any, ...]] = [
             (4, 9, "str", None),
             (8, 9, "list", None),
             (12, 9, "bool", None),
@@ -1217,7 +1217,7 @@ test "test_hover_lhs_assignment" {
         lsp.type_check_file(lhs_file);
 
         # (line, col, desc, expected, should_not_contain)
-        cases: list[tuple] = [
+        cases: list[tuple[any, ...]] = [
             (13, 5, "flat_narrow LHS x", "int", "None"),
             (14, 12, "flat_narrow read x", "int", "None"),
             (19, 5, "flat_to_none LHS x", "None", "int"),

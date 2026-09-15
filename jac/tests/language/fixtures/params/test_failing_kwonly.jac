@@ -11,13 +11,13 @@ def kwonly_with_defaults(*, req: int, opt: str = "default") -> str {
     return f"{req}-{opt}";
 }
 
-def mixed_kwonly(a: int, *, kw1: str, kw2: bool = False) -> dict {
+def mixed_kwonly(a: int, *, kw1: str, kw2: bool = False) -> dict[any, any] {
     return {"a": a, "kw1": kw1, "kw2": kw2};
 }
 
 def complex_kwonly(
     pos: int, /, reg: str, *args: float, kw_req: bool, kw_opt: int = 10, **kwargs: any
-) -> dict {
+) -> dict[any, any] {
     return {
         "pos": pos,
         "reg": reg,
@@ -32,7 +32,7 @@ def only_star_separator(*, x: int) -> int {
     return x * 2;
 }
 
-def nested_kwonly_issues(*, outer: dict, inner: list = []) -> int {
+def nested_kwonly_issues(*, outer: dict[any, any], inner: list[any] = []) -> int {
     return len(outer) + len(inner);
 }
 
@@ -172,7 +172,7 @@ def additional_kwonly_edge_cases {
         p6: str = "d6",
         p7: str = "d7",
         p8: str = "d8"
-    ) -> dict {
+    ) -> dict[any, any] {
         return {"sum": p1 + p2 + p3 + p4 + p5, "strings": [p6, p7, p8]};
     }
 
