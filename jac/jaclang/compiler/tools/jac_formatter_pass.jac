@@ -5,9 +5,9 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.diagnostics { W5050, E5051 }
 
 walker JacFormatPass {
-    has ctx: CompileContext;
-    has module: uni.Module;
-    has indent_size: int = 4,
+    has ctx: CompileContext,
+        module: uni.Module,
+        indent_size: int = 4,
         MAX_LINE_LENGTH: int = 88,
         _probe_cache: dict[tuple[int, int, int], bool] = {},
         _pending_suffixes: list[str] = [],

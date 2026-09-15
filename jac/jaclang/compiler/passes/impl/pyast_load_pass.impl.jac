@@ -2039,7 +2039,7 @@ impl PyastBuildPass.proc_interpolation(nd: py_ast.AST) -> UniNode {
 
 impl PyastBuildPass.proc_module(nd: py_ast.Module) -> Module {
     if not nd.body {
-        return Module.make_stub(inject_src=self.module.orig_src);
+        return Module.make_stub(inject_src=self.orig_src);
     }
     elements: list[UniNode] = [self.convert(i) for i in nd.body];
     elements[0] = elements[0].expr

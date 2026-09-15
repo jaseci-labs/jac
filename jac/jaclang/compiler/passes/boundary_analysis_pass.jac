@@ -61,9 +61,9 @@ walker BoundaryAnalysisPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
-    has prog: JacProgram;
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram;
     static has HOST_PASS: bool = True;
     has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = field(
         default_factory=`dict

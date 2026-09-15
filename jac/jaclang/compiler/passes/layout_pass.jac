@@ -625,8 +625,8 @@ obj LayoutRegistry {
 }
 
 walker LayoutPass {
-    has ctx: CompileContext;
-    has module: Module,
+    has ctx: CompileContext,
+        module: Module,
         registry: LayoutRegistry postinit,
         isinstance_targets: set[str] postinit;
 

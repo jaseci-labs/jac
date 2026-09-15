@@ -15,9 +15,9 @@ walker LocalCountPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
-    has seen: int = 0;
+    has ctx: CompileContext,
+        module: Module,
+        seen: int = 0;
 
     can enter_name with Name entry {
         self.seen = self.seen + 1;

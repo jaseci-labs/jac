@@ -43,8 +43,8 @@ glob PROBE_ERR = DiagnosticInfo(
 
 """A pass that emits and observes the program ledger mid-run."""
 walker ProbeEmitPass {
-    has ctx: CompileContext;
-    has module: uni.Module;
+    has ctx: CompileContext,
+        module: uni.Module;
     static has HOST_PASS: bool = True;
     has prog: JacProgram,
         mid_run_prog_errors: int = -1,
@@ -64,8 +64,8 @@ walker ProbeEmitPass {
 
 """A pass that dies through `CompileContext.ice` after recording one alert."""
 walker ProbeIcePass {
-    has ctx: CompileContext;
-    has module: uni.Module;
+    has ctx: CompileContext,
+        module: uni.Module;
 
     can run_walk with uni.Module entry {
         raise RuntimeError(self.ctx.ice("probe detonation"));

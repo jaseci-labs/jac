@@ -118,8 +118,8 @@ def loop_body_locals(body: (Sequence[UniNode] | None)) -> list[str] {
 }
 
 walker RcFactsPass {
-    has ctx: CompileContext;
-    has module: Module,
+    has ctx: CompileContext,
+        module: Module,
         _node_use: dict[int, set[SymId]] = {},
         _node_def: dict[int, set[SymId]] = {};
 

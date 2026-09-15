@@ -3,8 +3,8 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.codeinfo { NodeComments }
 
 walker CommentAttachPass {
-    has ctx: CompileContext;
-    has module: uni.Module;
+    has ctx: CompileContext,
+        module: uni.Module;
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;

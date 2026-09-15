@@ -66,9 +66,9 @@ walker JacAutoLintPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: uni.Module;
-    has prog: JacProgram,
+    has ctx: CompileContext,
+        module: uni.Module,
+        prog: JacProgram,
         lint_enabled: bool = True,
         report_only: bool = False,
         main_module: (uni.Module | None) = None,
@@ -78,7 +78,6 @@ walker JacAutoLintPass(TreeWalker) {
         _pending_setters: list[dict[str, str]] = [],
         _base_decl_cache: list[uni.Archetype] = [],
         _base_decls_loaded: bool = False;
-
     static has HOST_PASS: bool = True;
 
     def postinit -> None;

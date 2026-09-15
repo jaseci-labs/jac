@@ -14,8 +14,8 @@ walker UnparsePass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: uni.Module;
+    has ctx: CompileContext,
+        module: uni.Module;
 
     def _comma_sep(nodes: Sequence[uni.UniNode]) -> str;
     can unparse_prepare_exit with uni.UniNode exit;

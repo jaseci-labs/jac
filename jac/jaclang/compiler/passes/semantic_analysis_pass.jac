@@ -49,8 +49,8 @@ walker SemanticAnalysisPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
+    has ctx: CompileContext,
+        module: Module;
 
     can enter_archetype with Archetype entry;
     def _check_archetype(nd: Archetype) -> None;

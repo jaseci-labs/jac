@@ -87,8 +87,8 @@ def partition_native_capability_violations(
 ];
 
 walker PortabilityWarnPass {
-    has ctx: CompileContext;
-    has module: Module;
+    has ctx: CompileContext,
+        module: Module;
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
@@ -100,16 +100,16 @@ walker PortabilityWarnPass {
 }
 
 walker NativeCapabilityCheckPass {
-    has ctx: CompileContext;
-    has module: Module;
+    has ctx: CompileContext,
+        module: Module;
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }
 
 walker ClientCapabilityCheckPass {
-    has ctx: CompileContext;
-    has module: Module;
+    has ctx: CompileContext,
+        module: Module;
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;

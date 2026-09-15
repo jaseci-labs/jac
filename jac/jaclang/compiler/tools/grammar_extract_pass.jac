@@ -146,9 +146,9 @@ walker GrammarExtractPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: uni.Module;
-    has rules: list = [],
+    has ctx: CompileContext,
+        module: uni.Module,
+        rules: list = [],
         target_class: str = "Parser",
         diagnostics: list = [],
         _parse_impls: list = [],

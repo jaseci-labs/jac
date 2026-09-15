@@ -15,8 +15,8 @@ walker NormalizePass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: uni.Module;
+    has ctx: CompileContext,
+        module: uni.Module;
 
     can enter_sub_tag with uni.SubTag entry;
     can enter_module with uni.Module entry;

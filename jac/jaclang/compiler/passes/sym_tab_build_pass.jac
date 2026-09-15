@@ -111,9 +111,9 @@ walker SymTabBuildPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
-    has cur_sym_tab: list[UniScopeNode] = [];
+    has ctx: CompileContext,
+        module: Module,
+        cur_sym_tab: list[UniScopeNode] = [];
 
     can prepare with entry;
     def push_scope_and_link(key_node: UniScopeNode) -> None;

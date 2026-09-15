@@ -260,11 +260,10 @@ def is_ambient_provider_module(mod_path: str) -> bool {
 }
 
 walker StaticAnalysisPass {
-    has ctx: CompileContext;
-    has prog: JacProgram,
+    has ctx: CompileContext,
+        prog: JacProgram,
         module: Module,
         _checked_scopes: set[int] = set();
-
     static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;

@@ -35,9 +35,9 @@ walker EndpointEffectPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
-    has _is_writer: bool = False,
+    has ctx: CompileContext,
+        module: Module,
+        _is_writer: bool = False,
         _unknown: bool = False,
         _declared_reads: set[str] = field(default_factory=set),
         _declared_writes: set[str] = field(default_factory=set),

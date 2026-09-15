@@ -68,9 +68,9 @@ def native_verdict_blast_guard(
 ) -> str;
 
 walker NativeCompilePass {
-    has ctx: CompileContext;
-    has module: uni.Module;
-    has prog: JacProgram;
+    has ctx: CompileContext,
+        module: uni.Module,
+        prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     def postinit -> None;

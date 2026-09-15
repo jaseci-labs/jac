@@ -100,8 +100,8 @@ walker ASTValidationPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
+    has ctx: CompileContext,
+        module: Module;
 
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;

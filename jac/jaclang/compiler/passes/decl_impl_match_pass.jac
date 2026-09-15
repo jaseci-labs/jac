@@ -35,9 +35,9 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 
 walker DeclImplMatchPass {
-    has ctx: CompileContext;
-    has module: Module;
-    has _e2026_reported: set[int] = field(default_factory=`set);
+    has ctx: CompileContext,
+        module: Module,
+        _e2026_reported: set[int] = field(default_factory=`set);
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;

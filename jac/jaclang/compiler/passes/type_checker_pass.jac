@@ -154,9 +154,9 @@ walker TypeCheckPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
-    has prog: JacProgram,
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram,
         evaluator: TypeEvaluator postinit,
         _lambda_depth: int = 0;
 

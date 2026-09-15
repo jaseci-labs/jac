@@ -155,8 +155,8 @@ obj NativeFunctionState {
 }
 
 walker NaIRGenPass {
-    has ctx: CompileContext;
-    has prog: JacProgram;
+    has ctx: CompileContext,
+        prog: JacProgram;
     static has HOST_PASS: bool = True;
     has module: uni.Module,
         _llvm_module: (ir.Module | None) = None,

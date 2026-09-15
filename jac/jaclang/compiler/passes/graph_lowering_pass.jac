@@ -14,9 +14,9 @@ walker GraphLoweringPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: uni.Module;
-    has _serial: int = 0,
+    has ctx: CompileContext,
+        module: uni.Module,
+        _serial: int = 0,
         _names: set[str] = set(),
         _builder_type: str = "",
         _ports_type: str = "",

@@ -13,9 +13,9 @@ walker DocIRGenPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: uni.Module;
-    has _live_comment_ids: (set[int] | None) = None,
+    has ctx: CompileContext,
+        module: uni.Module,
+        _live_comment_ids: (set[int] | None) = None,
         _emitted_comment_ids: (set[int] | None) = None;
 
     def _comment_is_live(c: uni.CommentToken) -> bool;

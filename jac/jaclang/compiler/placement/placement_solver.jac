@@ -956,10 +956,9 @@ def demote_client_pulled_elements(
 }
 
 walker PlacementApplyPass {
-    has ctx: CompileContext;
-    has prog: JacProgram,
+    has ctx: CompileContext,
+        prog: JacProgram,
         module: uni.Module;
-
     static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;

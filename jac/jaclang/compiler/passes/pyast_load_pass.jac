@@ -122,8 +122,8 @@ glob PyPositioned: TypeAlias = py_ast.stmt
          | py_ast.GeneratorExp;
 
 walker PyastBuildPass {
-    has ctx: CompileContext;
-    has module: UniNode,
+    has ctx: CompileContext,
+        module: UniNode,
         mod_path: str postinit,
         orig_src: Source postinit,
         _source_lines: list[str] postinit,

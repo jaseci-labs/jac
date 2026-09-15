@@ -15,8 +15,8 @@ walker BaseAstGenPass[AstNodeT](TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: uni.Module;
+    has ctx: CompileContext,
+        module: uni.Module;
 
     def _merge_module_bodies(nd: uni.Module) -> list;
     def _init_child_passes(pass_class: type[ChildPassT]) -> list[ChildPassT];

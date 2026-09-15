@@ -4,9 +4,9 @@ import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.driver.program { JacProgram }
 
 walker AppContextPass {
-    has ctx: CompileContext;
-    has module: Module;
-    has prog: JacProgram;
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -16,9 +16,9 @@ walker AppContextPass {
 }
 
 walker AbsorbImportsPass {
-    has ctx: CompileContext;
-    has module: Module;
-    has prog: JacProgram;
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -27,9 +27,9 @@ walker AbsorbImportsPass {
 }
 
 walker BoundaryFactsPass {
-    has ctx: CompileContext;
-    has module: Module;
-    has prog: JacProgram;
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -38,9 +38,9 @@ walker BoundaryFactsPass {
 }
 
 walker NativeImportFactsPass {
-    has ctx: CompileContext;
-    has module: Module;
-    has prog: JacProgram;
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {

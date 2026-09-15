@@ -16,8 +16,8 @@ import from jaclang.compiler.frontend.unitree {
 }
 
 walker RegionInferPass {
-    has ctx: CompileContext;
-    has module: Module,
+    has ctx: CompileContext,
+        module: Module,
         _use_index: (dict[int, list[NameAtom]] | None) = None;
 
     can run_walk with Module entry;

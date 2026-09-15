@@ -64,8 +64,8 @@ walker CFGBuildPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
+    has ctx: CompileContext,
+        module: Module;
 
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
     def _link_sequential(body: Sequence[CodeBlockStmt]) -> None;
@@ -157,9 +157,9 @@ walker CoalesceBBPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
-    has basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
+    has ctx: CompileContext,
+        module: Module,
+        basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
         bb_counter: int = 0;
 
     can prepare with entry;

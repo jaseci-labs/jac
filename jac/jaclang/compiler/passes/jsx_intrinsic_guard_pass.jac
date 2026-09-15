@@ -38,9 +38,9 @@ walker JsxIntrinsicGuardPass(TreeWalker) {
         self.ctx.exit_node(here);
     }
 
-    has ctx: CompileContext;
-    has module: Module;
-    has _enforced_root: (str | None) = None,
+    has ctx: CompileContext,
+        module: Module,
+        _enforced_root: (str | None) = None,
         _exempt_paths: dict[str, bool] = {};
 
     can prepare with entry {

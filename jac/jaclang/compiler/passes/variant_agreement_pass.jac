@@ -24,10 +24,9 @@ def annotation_text(nd: (UniNode | None)) -> str;
 def public_surface(mod: Module) -> dict[str, tuple[str, str, UniNode]];
 
 walker VariantAgreementPass {
-    has ctx: CompileContext;
-    has prog: JacProgram,
+    has ctx: CompileContext,
+        prog: JacProgram,
         module: Module;
-
     static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;
