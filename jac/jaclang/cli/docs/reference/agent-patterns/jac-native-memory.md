@@ -157,7 +157,6 @@ Under `--memory nogc` an enforced module compiles **headerless**: owned payloads
 - `managed(x)` is the identity function on the Python backend; annotations there are checked, then erased.
 - `jac build --as native` does not take the gc flags; use file-level `jac build --native` for zero-RC builds.
 
-
 ## Evaluator lifetime contracts
 
 The accepted design and its current implementation status are documented in
