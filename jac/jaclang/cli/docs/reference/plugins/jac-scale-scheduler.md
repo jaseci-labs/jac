@@ -65,7 +65,7 @@ walker SyncInventory {
 | Argument | Type | Meaning |
 |----------|------|---------|
 | `trigger` | `ScheduleTrigger.STATIC` or `ScheduleTrigger.DYNAMIC` | `STATIC` starts running as soon as the server boots. `DYNAMIC` marks the target as schedulable through the `/jobs` REST API. |
-| `interval` | `float` | Seconds between runs. |
+| `interval` | `float` | Seconds between runs. Runs land on whole multiples of the interval counted from the Unix epoch in UTC, so every replica agrees on the same ticks and the first run comes within one interval of boot (`interval=3600` runs on the hour). |
 | `cron` | `str` | 5-field cron expression, evaluated in UTC. |
 | `date` | `str` | One-shot fire time. A bare `"YYYY-MM-DD HH:MM:SS"` is read in the **server's local timezone** here, not UTC. Append an offset, `"2026-12-31 09:00:00+00:00"`, to pin it. |
 
@@ -105,7 +105,7 @@ def year_end_cleanup -> None {
 
 Static tasks run as the system user. Use them for app-wide work such as cache warming, digests, and cleanup, not for per-user logic.
 
-Every server replica registers and fires its own copy of each static task, so when you run more than one replica the task executes once per replica per tick. Keep static work idempotent, or route per-tick work through a dynamic job, which takes a per-fire lease when a database is configured.
+With a database configured, each tick of a static task runs on exactly one replica: every replica computes the same ticks and claims each one in the database before running it, so a replica that boots, restarts, or is respawned later cannot run a tick that already ran. Claims are made per service, so two services sharing one database can each have a task with the same name. If a claim cannot be made because the database is unreachable, that tick is skipped rather than run on every replica, and the server logs one warning per task until claims succeed again. Without a database there is no coordination and every replica fires its own copy.
 
 ## Cron Expressions
 
@@ -202,6 +202,7 @@ A successful create returns `201` with the stored job:
     "is_walker": true,
     "created_at": "2026-07-30T06:55:00.583399+00:00",
     "status": "active",
+    "service": "main",
     "trigger": "interval",
     "interval": 60.0,
     "cron": null,
@@ -320,7 +321,7 @@ The list response is paginated and scoped to the caller:
 Where jobs live depends on the database connection, set as `url` under `[scale.database]` in `jac.toml` or via the `JAC_DB_URL` environment variable:
 
 - **No reachable database**: jobs are held in memory. Dynamic jobs disappear when the server restarts and exist only on the replica that accepted the `POST`. There is also no duplicate-run protection: a schedule registered on more than one replica fires on every one of them, so this mode is for a single local server, not for multi-replica deployments.
-- **Database configured** (provisioned automatically by `--scale` on Kubernetes): jobs are persisted to the document store under the `scheduled_jobs` collection, survive restarts, and are re-registered on boot. A per-fire lease ensures each dynamic job fires on only one replica per tick.
+- **Database configured** (provisioned automatically by `--scale` on Kubernetes): jobs are persisted to the document store under the `scheduled_jobs` collection, survive restarts, and are re-registered on boot. Each tick of a job is claimed in the database by exactly one replica, and a tick that cannot be claimed because the database is unreachable is skipped rather than run everywhere. A job is recorded with the `service` that created it, and each service restores, lists, and changes only its own jobs, so services that share a database never run each other's jobs. A job with no `service`, written by an earlier release, is restored only by a service that serves its target.
 
 Each execution updates the job record with run bookkeeping, visible via `GET /jobs/{job_id}`:
 

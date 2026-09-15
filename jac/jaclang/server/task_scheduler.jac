@@ -3,10 +3,14 @@ import time;
 import heapq;
 import datetime;
 import logging;
+import os;
 import from jaclang.runtime.builtin { ScheduleTrigger }
 
 glob _scheduler_instance: (Scheduler | None) = None,
      logger = logging.getLogger(__name__);
+
+def tick_of(when: datetime.datetime) -> int;
+def schedule_namespace(module_name: str) -> str;
 
 obj ScheduleSpec {
     has date: (str | None) = None,
@@ -31,7 +35,9 @@ obj Scheduler {
         _stop_event: (threading.Event | None) = None,
         _done_event: (threading.Event | None) = None,
         dynamic_handler: (Callable | None) = None,
-        lease: (Callable[[str, int], bool] | None) = None;
+        claim: (Callable[[str, int], bool] | None) = None,
+        namespace: str = "",
+        _failing_claims: set[str] = set();
 
     static def instance -> Scheduler;
     def register(
@@ -40,8 +46,7 @@ obj Scheduler {
 
     def start -> None;
     def start_if_pending -> None;
-    def _lease_ttl(spec: ScheduleSpec) -> int;
-    def _may_fire(task: ScheduledTask) -> bool;
+    def _may_fire(task: ScheduledTask, due: datetime.datetime) -> bool;
     def stop -> None;
     def `wait -> None;
     def has_pending -> bool;

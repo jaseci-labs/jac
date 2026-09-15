@@ -3,13 +3,14 @@
 #7947 made the deploy story multi-pod Postgres, but the scheduler kept
 single-pod semantics: every pod restored and fired every job, and job CRUD
 mutated only the local APScheduler. These tests stand up two in-process
-"pods" over one embedded Postgres and prove the per-fire lease admits one
-pod per tick, jobs-changed NOTIFY reaches the other pod, and (with
+"pods" over one embedded Postgres and prove each tick is claimed by one
+pod, jobs-changed NOTIFY reaches the other pod, and (with
 APScheduler installed) a due job fires exactly once while DELETE stops it
 on every pod without a restart.
 """
 
 import time;
+import datetime;
 import from tempfile { mkdtemp }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.data.store { PgStore }
@@ -20,6 +21,7 @@ import from jaclang.scale.scheduler.scheduler {
     PgJobStore,
     TriggerSpec
 }
+import from jaclang.server.task_scheduler { tick_of }
 
 glob _holder: dict[str, any] = {};
 
@@ -39,10 +41,37 @@ def _store -> (PgStore | None) {
 }
 
 
-def _pod(store: PgStore, collection: str) -> JacScaleScheduler {
+def _pod(store: PgStore, collection: str, service: str = "") -> JacScaleScheduler {
     sched = JacScaleScheduler();
-    sched._store = PgJobStore(store=store, _collection=collection);
+    sched._service = service;
+    sched._store = PgJobStore(store=store, _collection=collection, _service=service);
     return sched;
+}
+
+
+def _on_grid(when: datetime.datetime, seconds: int) -> datetime.datetime {
+    epoch = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc);
+    step = datetime.timedelta(seconds=seconds);
+    return epoch + step * ((when - epoch) // step);
+}
+
+
+obj _Introspector {
+    has _walkers: dict[str, any] = {},
+        _functions: dict[str, any] = {};
+}
+
+
+obj _Server {
+    has introspector: _Introspector,
+        module_name: str = "billing";
+}
+
+
+obj _UnreachableStore {
+    def kv_claim_tick(key: str, tick: int) -> bool {
+        raise ConnectionError("the database is restarting");
+    }
 }
 
 
@@ -80,7 +109,7 @@ test "job CRUD on one pod is visible to the other pod's store" {
 }
 
 
-test "per-fire lease admits exactly one pod per tick" {
+test "each tick of a job is claimed by exactly one pod" {
     sa = _store();
     if sa is None {
         return;
@@ -89,19 +118,143 @@ test "per-fire lease admits exactly one pod per tick" {
     if sb is None {
         return;
     }
-    pod_a = _pod(sa, 'mp_lease');
-    pod_b = _pod(sb, 'mp_lease');
-    spec = TriggerSpec(trigger='interval', interval=2.0);
+    pod_a = _pod(sa, 'mp_claim');
+    pod_b = _pod(sb, 'mp_claim');
+    spec = TriggerSpec(trigger='interval', interval=610.0);
+    tick = _on_grid(
+        datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc), 610
+    );
+    ms = datetime.timedelta(milliseconds=1);
 
-    admissions = [
-        pod_a._acquire_fire_lease('lease-job', spec),
-        pod_b._acquire_fire_lease('lease-job', spec)
+    first = [
+        pod_a._claim_fire('claim-job', spec, tick + 200 * ms),
+        pod_b._claim_fire('claim-job', spec, tick + 900 * ms)
     ];
-    assert sorted(admissions) == [False, True] , f"exactly one pod may win a tick, got {admissions}";
+    assert sorted(first) == [False, True] , f"one pod per tick, got {first}";
 
-    # After the lease TTL (interval * 0.8 -> 1s) the next tick is admittable.
-    time.sleep(1.2);
-    assert pod_b._acquire_fire_lease('lease-job', spec) is True;
+    # #9027: 303 s later, past the old 300 s lease, a respawned worker still
+    # inside the same tick used to fire it a second time.
+    stale = pod_a._claim_fire(
+        'claim-job', spec, tick + datetime.timedelta(seconds=303)
+    );
+    assert stale is False , "a tick that already ran must not run again";
+
+    nxt = tick + datetime.timedelta(seconds=610);
+    second = [
+        pod_b._claim_fire('claim-job', spec, nxt + 50 * ms),
+        pod_a._claim_fire('claim-job', spec, nxt + 400 * ms)
+    ];
+    assert sorted(second) == [False, True] , f"the next tick is claimable once, got {second}";
+}
+
+
+test "interval jobs scheduled apart share one phase" {
+    require_module("apscheduler");
+    import from apscheduler.triggers.interval { IntervalTrigger }
+    utc = datetime.timezone.utc;
+    spec = TriggerSpec(trigger='interval', interval=610.0);
+    boot_a = datetime.datetime(2026, 9, 15, 11, 33, 13, 500000, tzinfo=utc);
+    boot_b = boot_a + datetime.timedelta(seconds=305);
+    first_a = IntervalTrigger(
+        timezone=utc, **spec.apscheduler_kwargs()
+    ).get_next_fire_time(
+        None, boot_a
+    );
+    first_b = IntervalTrigger(
+        timezone=utc, **spec.apscheduler_kwargs()
+    ).get_next_fire_time(
+        None, boot_b
+    );
+    for fire in [first_a, first_b] {
+        assert tick_of(fire) % (610 * 1000000) == 0 , f"{fire} is off the shared grid";
+        assert spec.due_tick(fire) == tick_of(fire) , "a fire must claim its own tick";
+    }
+}
+
+
+test "a job whose tick cannot be claimed is skipped" {
+    # #9030: a failed lease check used to answer True, so a database outage
+    # ran the job on every worker of every pod at once.
+    pod = JacScaleScheduler();
+    pod._store = PgJobStore(store=_UnreachableStore(), _collection='mp_down');
+    spec = TriggerSpec(trigger='interval', interval=60.0);
+    now = datetime.datetime(2026, 9, 15, 12, 0, 5, tzinfo=datetime.timezone.utc);
+    assert pod._claim_fire('down-job', spec, now) is False;
+    assert pod._claim_fire('down-job', spec, now + datetime.timedelta(seconds=60))
+        is False;
+}
+
+
+test "services sharing a collection see only their own jobs" {
+    sa = _store();
+    if sa is None {
+        return;
+    }
+    orders = PgJobStore(store=sa, _collection='mp_scope', _service='orders');
+    billing = PgJobStore(store=sa, _collection='mp_scope', _service='billing');
+    mine = _job('scope-orders', 60.0);
+    mine['service'] = 'orders';
+    theirs = _job('scope-billing', 60.0);
+    theirs['service'] = 'billing';
+    orders.insert(mine);
+    billing.insert(theirs);
+    orders.insert(_job('scope-legacy', 60.0));
+
+    (seen, total) = orders.find_active();
+    ids = sorted([str(j['job_id']) for j in seen]);
+    assert ids == ['scope-legacy', 'scope-orders'] and total == 2 , (ids, total);
+    assert orders.find_active_one('scope-billing') is None;
+    assert orders.update('scope-billing', {'interval': 1.0}) is False;
+    assert orders.delete('scope-billing') is False;
+    assert billing.find_active_one('scope-billing') is not None;
+}
+
+
+test "restore leaves a job to the service that serves its target" {
+    require_module("apscheduler");
+    import from apscheduler.schedulers.background { BackgroundScheduler }
+    sa = _store();
+    if sa is None {
+        return;
+    }
+    pod = _pod(sa, 'mp_restore', 'billing');
+    engine = BackgroundScheduler(timezone=datetime.timezone.utc);
+    pod._apscheduler = engine;
+    pod._server = _Server(
+        introspector=_Introspector(_functions={'beat': lambda { None; }})
+    );
+    store = pod._store;
+    assert store is not None;
+
+    # #9028: this row's target lives in another service. It used to be
+    # restored here, win ticks, and record a failed run on each.
+    ghost = _job('ghost-1', 2.0);
+    ghost['name'] = 'GhostWalker';
+    ghost['is_walker'] = True;
+    legacy = _job('legacy-beat', 2.0);
+    legacy['name'] = 'beat';
+    foreign = _job('orders-beat', 2.0);
+    foreign['name'] = 'beat';
+    foreign['service'] = 'orders';
+    stamped = _job('billing-beat', 2.0);
+    stamped['name'] = 'beat';
+    stamped['service'] = 'billing';
+    for row in [ghost, legacy, foreign, stamped] {
+        store.insert(row);
+    }
+
+    pod.register_dynamic_tasks_from_db();
+    scheduled = sorted([str(j.id) for j in engine.get_jobs()]);
+    assert scheduled == ['billing-beat', 'legacy-beat'] , scheduled;
+
+    # An update to an unstamped row reaches every pod as a NOTIFY; only the
+    # service that serves its target may pick it up.
+    pod._on_jobs_changed('ghost-1');
+    after = sorted([str(j.id) for j in engine.get_jobs()]);
+    assert after == ['billing-beat', 'legacy-beat'] , after;
+    assert pod.update_job('ghost-1', TriggerSpec(trigger='interval', interval=4.0))
+        is not None;
+    assert 'ghost-1' not in [str(j.id) for j in engine.get_jobs()];
 }
 
 

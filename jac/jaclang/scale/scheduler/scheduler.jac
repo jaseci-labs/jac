@@ -10,7 +10,12 @@ import from jaclang.scale._optdeps.apscheduler {
     HAS_APSCHEDULER
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.task_scheduler { Scheduler, ScheduleTrigger }
+import from jaclang.server.task_scheduler {
+    Scheduler,
+    ScheduleTrigger,
+    schedule_namespace,
+    tick_of
+}
 import threading;
 import from jaclang.data.store { TxnIsolation }
 import from jaclang.server.shared_store { shared_store }
@@ -18,6 +23,9 @@ import from jaclang.server.shared_store { shared_store }
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',
      _memory_jobs_lock: threading.Lock = threading.Lock(),
+     _EPOCH: datetime.datetime = datetime.datetime(
+         1970, 1, 1, tzinfo=datetime.timezone.utc
+     ),
      logger = logging.getLogger(__name__);
 
 obj JobStore {
@@ -46,6 +54,7 @@ obj JobStore {
 obj PgJobStore(JobStore) {
     has store: any,
         _collection: str,
+        _service: str = "",
         _quota_store: any postinit,
         _quota_lock: threading.Lock postinit;
 
@@ -116,6 +125,7 @@ obj TriggerSpec {
     static def from_dict(d: dict[str, any]) -> TriggerSpec;
     def to_dict -> dict[str, any];
     def apscheduler_kwargs -> dict[str, any];
+    def due_tick(now: datetime.datetime) -> int;
 }
 
 obj JacScaleScheduler {
@@ -124,7 +134,9 @@ obj JacScaleScheduler {
         _store: JobStore | None = None,
         _server: any | None = None,
         _user_exists_cache: dict[str, float] postinit,
-        _user_exists_ttl: float = 30.0;
+        _user_exists_ttl: float = 30.0,
+        _service: str = "",
+        _failing_claims: set[str] = set();
 
     def postinit -> None;
     static def instance -> JacScaleScheduler;
@@ -149,7 +161,9 @@ obj JacScaleScheduler {
     ) -> (dict[str, any] | None);
 
     def delete_job(job_id: str, acting_as: str | None = None) -> bool;
-    def _acquire_fire_lease(job_id: str, spec: TriggerSpec) -> bool;
+    def _claim_fire(job_id: str, spec: TriggerSpec, now: datetime.datetime) -> bool;
+    def _target(name: str, is_walker: bool) -> any;
+    def _serves(job: dict) -> bool;
     def _notify_jobs_changed(job_id: str) -> None;
     def _start_jobs_listener -> None;
     def _on_jobs_changed(payload: str) -> None;
