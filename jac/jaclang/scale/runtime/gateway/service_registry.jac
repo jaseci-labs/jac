@@ -18,6 +18,7 @@ obj ServiceEntry {
         env: dict[str, str] = {},
         url: str = "",
         page_url: str = "",
+        host_override: str = "",
         pid: int | None = None,
         status: ServiceStatus = ServiceStatus.REGISTERED,
         last_health_check: datetime | None = None,
