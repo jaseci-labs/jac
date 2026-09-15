@@ -191,6 +191,13 @@ obj JacCompiler {
     ) -> None;
 
     def _release_compile_scratch(target_program: JacProgram) -> None;
+    def _compile_captured(
+        file_path: str,
+        target_program: JacProgram,
+        use_str: str | None,
+        options: CompileOptions
+    ) -> uni.Module;
+
     def compile(
         file_path: str,
         target_program: JacProgram,

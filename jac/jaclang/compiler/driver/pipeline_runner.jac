@@ -27,9 +27,9 @@ obj ModuleCompilation {
 
     def parse {
         existing = self.program.mod.hub.get(os.path.realpath(self.path));
-        if self.source is None
-            and not self.compiler.selfhost.is_selfhost(self.program)
+        if not self.compiler.selfhost.is_selfhost(self.program)
             and existing is not None
+            and (self.source is None or self.source == existing.source.code)
             and not existing.stub_only
             and not existing.parse_failed
             and self.program.is_hub_entry_fresh(os.path.realpath(self.path))
@@ -39,7 +39,7 @@ obj ModuleCompilation {
         }
         keep_str = self.source
             if self.source is not None
-            else read_file_with_encoding(self.path);
+            else self.program.source_store.read(self.path);
         errors_before = len(self.program.errors_had);
         self.module = self.compiler.parse_str(
             keep_str, self.path, self.program, cancel_token=self.options.cancel_token

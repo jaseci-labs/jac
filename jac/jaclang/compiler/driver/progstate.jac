@@ -1,7 +1,9 @@
+import type from jaclang.compiler.driver.inputs { InputManifest }
 import os;
 import sys;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
+import from jaclang.compiler.frontend.roles { MainRole }
 import from jaclang.compiler.passes.transform { Alert, PassResult }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
@@ -14,6 +16,7 @@ import from jaclang.compiler.driver.pipeline_types {
 obj ModuleHub {
     has mod: uni.ProgramModule,
         stamps: dict[str, float] = {},
+        inputs: dict[str, InputManifest] = {},
         artifacts: dict[str, any] = {},
         client_artifacts: dict[str, ClientArtifact] = {};
 
@@ -59,12 +62,42 @@ obj ModuleHub {
         if prev is None or prev is mod {
             return None;
         }
+        was_main = any(item is prev for item in [self.mod->:MainRole:->]);
+        self.detach(prev);
+        if was_main {
+            self.mod.main_mod = mod;
+            self.mod.add_kids_right([mod]);
+        }
         return prev;
     }
 
+    def detach(module: uni.Module) {
+        if any(item is module for item in [self.mod->:MainRole:->]) {
+            self.mod.main_mod = None;
+        }
+        self.mod.set_kids(
+            [
+                child
+                for child in self.mod.kid
+                if child is not module
+            ],
+            pos_update=False
+        );
+        del [edge module<-:ScopeChild:<-];
+        if self.mod.kid {
+            (first_tok, last_tok) = self.mod.resolve_tok_range();
+            self.mod.loc.update_token_range(first_tok, last_tok);
+        } else {
+            empty_tok = uni.EmptyToken();
+            self.mod.loc.update_token_range(empty_tok, empty_tok);
+        }
+    }
+
     def evict(resolved_path: str) {
-        if resolved_path in self.mod.hub {
-            self.mod.hub.pop(resolved_path);
+        self.inputs.pop(resolved_path, None);
+        previous = self.mod.hub.pop(resolved_path, None);
+        if previous is not None {
+            self.detach(previous);
         }
         if resolved_path in self.stamps {
             del self.stamps[resolved_path];
@@ -91,26 +124,14 @@ obj ModuleHub {
                 dropped.append(mod);
             }
         }
-        dropped_ids: set[int] = set(id(m) for m in dropped);
         prog_root = self.mod;
-        main = prog_root.main_mod;
-        if main is not None and id(main) in dropped_ids {
-            prog_root.main_mod = None;
-        }
-        prog_root.set_kids(
-            [
-                k
-                for k in prog_root.kid
-                if id(k) not in dropped_ids
-            ],
-            pos_update=False
-        );
         for mod in dropped {
-            del [edge mod<-:ScopeChild:<-];
+            self.detach(mod);
         }
         prog_root.hub.clear();
         prog_root.hub.update(retained_mods);
         self.stamps.clear();
+        self.inputs.clear();
         self.stamps.update(retained_stamps);
         self.client_artifacts.clear();
     }
@@ -118,11 +139,19 @@ obj ModuleHub {
 
 obj DepGraph {
     has dependents: dict[str, set[str]] = {},
+        dependencies: dict[str, set[str]] = {},
+        pending: dict[str, set[str]] = {},
         tracking: bool = False;
 
     def record(importer_path: str, target_path: str) -> None {
+        importer_path = os.path.realpath(importer_path);
+        target_path = os.path.realpath(target_path);
         if importer_path == target_path {
             return;
+        }
+        self.dependencies.setdefault(importer_path, set()).add(target_path);
+        if importer_path in self.pending {
+            self.pending[importer_path].add(target_path);
         }
         bucket = self.dependents.get(target_path);
         if bucket is None {
@@ -130,6 +159,28 @@ obj DepGraph {
             self.dependents[target_path] = bucket;
         }
         bucket.add(importer_path);
+    }
+
+    def begin(path: str) {
+        self.pending[os.path.realpath(path)] = set();
+    }
+
+    def finish(path: str, complete: bool) -> None {
+        path = os.path.realpath(path);
+        current = self.pending.pop(path, None);
+        if current is None or not complete {
+            return;
+        }
+        for target in self.dependencies.get(path, set()) - current {
+            bucket = self.dependents.get(target);
+            if bucket is not None {
+                bucket.discard(path);
+                if not bucket {
+                    del self.dependents[target];
+                }
+            }
+        }
+        self.dependencies[path] = current;
     }
 
     def record_module(mod: uni.Module) -> None {
@@ -166,10 +217,14 @@ obj DepGraph {
                 self.record(importer, target);
             }
         }
+        for dependency in mod.ct_file_deps {
+            self.record(importer, dependency);
+        }
     }
 
     def transitive_dependents(target_path: str) -> set[str] {
         out: set[str] = set();
+        target_path = os.path.realpath(target_path);
         frontier: list[str] = [target_path];
         while frontier {
             current = frontier.pop();
@@ -181,17 +236,28 @@ obj DepGraph {
                 frontier.append(importer);
             }
         }
+        out.discard(target_path);
         return out;
     }
 
     def forget(resolved_path: str) {
-        for bucket in self.dependents.values() {
-            bucket.discard(resolved_path);
+        resolved_path = os.path.realpath(resolved_path);
+        self.pending.pop(resolved_path, None);
+        for target in self.dependencies.pop(resolved_path, set()) {
+            bucket = self.dependents.get(target);
+            if bucket is not None {
+                bucket.discard(resolved_path);
+                if not bucket {
+                    del self.dependents[target];
+                }
+            }
         }
     }
 
     def clear {
         self.dependents.clear();
+        self.dependencies.clear();
+        self.pending.clear();
     }
 }
 
@@ -315,8 +381,15 @@ obj PendingPassResults {
         results: dict[str, PassResult];
 }
 
+obj NativeScanRecord {
+    has inputs: InputManifest,
+        server_reason: str,
+        dependencies: tuple[str, ...];
+}
+
 class AnalysisCaches {
-    has placement_summaries: dict[str, any],
+    has native_scans: dict[tuple[str, bool], NativeScanRecord],
+        placement_summaries: dict[str, any],
         placement_state: dict[str, any],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
@@ -330,6 +403,7 @@ class AnalysisCaches {
         cache_events: dict[str, int];
 
     def init(self: AnalysisCaches) {
+        self.native_scans = {};
         self.placement_summaries: dict[str, any] = {};
         self.placement_state: dict[str, any] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
@@ -361,6 +435,22 @@ class AnalysisCaches {
         self.completed_passes.pop(key, None);
         self.product_tasks.pop(key, None);
         self.task_owners.pop(key, None);
+    }
+
+    def forget_module(self: AnalysisCaches, module: uni.Module) {
+        self.early_passes.pop(id(module), None);
+        self.drop_tasks(id(module));
+    }
+
+    def release(self: AnalysisCaches) {
+        self.native_scans.clear();
+        self.analyses_run.clear();
+        self.placement_summaries.clear();
+        self.placement_state.clear();
+        self.early_passes.clear();
+        self.product_tasks.clear();
+        self.completed_passes.clear();
+        self.task_owners.clear();
     }
 
     def record_early(

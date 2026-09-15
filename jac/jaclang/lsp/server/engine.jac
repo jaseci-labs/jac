@@ -1,19 +1,16 @@
-import asyncio;
 import logging;
 import os;
-import sys;
-import time;
 import threading;
-import from collections { deque }
-import from concurrent.futures { Future }
 import from typing { Optional }
 
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.compiler.frontend.constant { SymbolType }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.cli.console { console }
-import from jaclang.compiler.driver.bccache { discover_base_file, discover_annex_files }
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact, CompilationProduct }
+import from jaclang.compiler.driver.bccache { discover_base_file }
+import from jaclang.compiler.tools.symbol_index {
+    definition_symbol as _definition_symbol
+}
 import from jaclang.lsp.server.utils { doc_of_sym, get_completion_items }
 import from jaclang.compiler.types.types {
     ClassType,
@@ -23,78 +20,72 @@ import from jaclang.compiler.types.types {
     TypeBase
 }
 import from jaclang.compiler.frontend.constant { TOKEN_MAP }
-import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
-import from jaclang.compiler.frontend.parser.tokens { TokenKind }
 import from jaclang.compiler.frontend.unitree { UniScopeNode }
 import from .sem_manager { SemTokManager }
 import from jaclang.lsp.protocol { uris }
-import from jaclang.lsp.protocol.server { LanguageServer }
+import from jaclang.lsp.protocol.server {
+    LanguageServer,
+    Request,
+    ResponseErrorCode,
+    WorkspaceSnapshot
+}
 
 import jaclang.lsp.protocol.types as lspt;
 import from . { utils }
 import from .module_manager { ModuleManager }
-import from .rwlock { ReadWriteLock }
+import from .scheduler { WorkQueue, WorkItem, WorkKind }
 
-glob LSP_SHARED_APP_LIMIT: int = 4;
+glob _QUERY_PRODUCTS: dict[str, CompilationProduct] = {
+    lspt.TEXT_DOCUMENT_DOCUMENT_SYMBOL: CompilationProduct.SYMBOLS,
+    lspt.TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL: CompilationProduct.SYMBOLS
+};
 
 def _uri_of(path: str) -> str;
 def _path_of(uri: str) -> str;
-def _merge_app_alerts(
-    collected: list[tuple[str, list, list]], app_count: int
-) -> tuple[list, list];
-
-obj Task {
-    has file_uri: str,
-        task_id: int postinit,
-        cancel_token: threading.Event postinit;
-
-    static has _task_id: int = 0;
-
-    def postinit -> None;
-}
-
 obj JacLangServer(LanguageServer) {
     has program: JacProgram postinit,
         sem_managers: dict[str, SemTokManager] = {},
         module_manager: ModuleManager postinit,
-        pipe: deque = deque(maxlen=1),
-        dirty_files: dict[str, bool] = {},
-        last_task: Task | None = None,
-        worker_future: Future | None postinit,
-        _state_lock: ReadWriteLock postinit,
-        _work_event: threading.Event = threading.Event(),
-        _idle_event: threading.Event postinit,
+        work: WorkQueue postinit,
+        worker: threading.Thread postinit,
+        _compiler_lock: threading.RLock postinit,
         _shutdown_called: bool = False,
-        _dep_edges_seeded: bool = False,
-        _debounce_timer: threading.Timer | None = None;
+        _index_paths: Iterator[str] | None = None,
+        _published_diagnostics: dict[str, list[lspt.Diagnostic]] = {};
 
     def postinit -> None;
     def dispatcher -> None;
 
-    has diagnostics: dict[str, list] { getter; }
-
-    def _clear_alerts_for_file(file_path: str) -> None;
-    def update_modules(
-        file_path: str,
-        build: uni.Module,
-        need: bool = True,
-        files: (list[str] | None) = None
-    ) -> None;
+    has diagnostics: dict[str, list[lspt.Diagnostic]] { getter; }
 
     def type_check_file(
-        file_uri: str, cancel_token: threading.Event | None = None
+        file_uri: str,
+        cancel_token: threading.Event | None = None,
+        product: CompilationProduct = CompilationProduct.ANALYSIS,
+        publish: bool = True
     ) -> bool;
 
     def type_check(file_uri: str) -> None;
-    def _do_type_check(file_uri: str) -> None;
-    def _fanout_dependents(file_uri: str) -> None;
+    def submit_request(request: Request) -> None;
+    def _sync_sources(
+        snapshot: WorkspaceSnapshot, changed_paths: set[str] | None = None
+    ) -> None;
+
+    def files_changed(uris: list[str]) -> None;
+    def start_indexing -> None;
+    def _scan_workspace(uri: str) -> None;
+    def _index_file(item: WorkItem) -> bool;
+    def get_workspace_symbols(query: str) -> list[lspt.SymbolInformation];
+    def _refresh_file(uri: str) -> None;
+    def _ensure_query(request: Request) -> None;
+    def _run_query(request: Request) -> None;
+    def _release_document(uri: str, deleted: bool = False) -> None;
     def get_token_at_position(
         file_path: str, position: lspt.Position
     ) -> Optional[uni.AstSymbolNode];
 
-    def debug(msg: str) -> None;
     def wait_till_idle_sync(file_uri: str) -> None;
-    async def get_completion(
+    def get_completion(
         file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
     ) -> lspt.CompletionList;
 
@@ -114,7 +105,6 @@ obj JacLangServer(LanguageServer) {
         file_path: str, line: int, col: int
     ) -> Optional[uni.UniScopeNode];
 
-    def _flush_completion_state(file_uri: str) -> None;
     def _position_in_string_or_comment(file_uri: str, line: int, col: int) -> bool;
     def rename_module(old_path: str, new_path: str) -> None;
     def close_module(uri: str) -> None;
@@ -143,7 +133,10 @@ obj JacLangServer(LanguageServer) {
         from_loc: uni.ModulePath, item_name: str
     ) -> Optional[lspt.Location];
 
-    def get_references(file_path: str, position: lspt.Position) -> list[lspt.Location];
+    def get_references(
+        file_path: str, position: lspt.Position, include_declaration: bool = True
+    ) -> list[lspt.Location];
+
     def rename_symbol(
         file_path: str, position: lspt.Position, new_name: str
     ) -> Optional[lspt.WorkspaceEdit];

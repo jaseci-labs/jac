@@ -1,5 +1,61 @@
 import os;
+import from contextvars { ContextVar }
 import type from jaclang.compiler.frontend.srcloc { Span }
+
+obj SourceAccess {
+    has read: Callable[[str], str],
+        annexes: Callable[[str], list[tuple[str, str]]] | None = None,
+        exists: Callable[[str], bool] | None = None,
+        read_bytes: Callable[[str], bytes] | None = None;
+}
+
+glob source_access: ContextVar[SourceAccess | None] = ContextVar(
+         'jac_source_access', `default=None
+     );
+
+def disk_annex_paths(path: str) -> list[str] {
+    import from jaclang.compiler.driver.bccache {
+        discover_annex_files,
+        discover_base_file
+    }
+    if not path.endswith('.jac') or discover_base_file(path) is not None {
+        return [];
+    }
+    return sorted(
+        set(discover_annex_files(path, '.impl.jac'))
+            | set(discover_annex_files(path, '.test.jac'))
+    );
+}
+
+def read_source_unit(path: str) -> tuple[str, list[tuple[str, str]]] {
+    access = source_access.get();
+    annexes = access.annexes(path)
+        if access is not None and access.annexes is not None
+        else [
+            (read_file_with_encoding(annex), annex) for annex in disk_annex_paths(path)
+        ];
+    return (read_file_with_encoding(path), annexes);
+}
+
+def iter_source_units(directory: str) -> Iterator[str] {
+    import from jaclang.jac0core.ext_registry { is_annex }
+    patterns = read_jacignore_patterns(directory);
+    excluded = {'__pycache__', 'venv', 'node_modules', 'build', 'dist'};
+    for (parent, directories, files) in os.walk(os.path.realpath(directory)) {
+        directories[:] = sorted(
+            name
+            for name in directories
+            if not name.startswith('.') and name not in excluded
+                and not path_matches_exclude(os.path.join(parent, name), patterns, directory)
+        );
+        for name in sorted(files) {
+            if name.endswith('.jac') and not is_annex(name)
+                and not path_matches_exclude(os.path.join(parent, name), patterns, directory) {
+                yield os.path.realpath(os.path.join(parent, name));
+            }
+        }
+    }
+}
 
 def pascal_to_snake(pascal_string: str) -> str {
     snake_string = '';
@@ -293,18 +349,12 @@ glob _JAC_TEXT_ENCODINGS = [
          'utf-16be'
      ];
 
-def read_file_with_encoding(file_path: str) -> str {
+def decode_source(data: bytes, file_path: str = '') -> str {
     for encoding in _JAC_TEXT_ENCODINGS {
         try {
-            with open(file_path, encoding=encoding) as f {
-                return f.read();
-            }
+            return data.decode(encoding).replace('\r\n', '\n').replace('\r', '\n');
         } except UnicodeError {
             continue;
-        } except Exception as e {
-            raise OSError(
-                f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
-            );
         }
     }
     raise OSError(
@@ -312,6 +362,43 @@ def read_file_with_encoding(file_path: str) -> str {
     );
 }
 
+
+def read_file_bytes(file_path: str) -> bytes {
+    access = source_access.get();
+    if access is not None {
+        if access.read_bytes is not None {
+            return access.read_bytes(file_path);
+        }
+        return access.read(file_path).encode('utf-8');
+    }
+    with open(file_path, 'rb') as source {
+        return source.read();
+    }
+}
+
+def read_file_with_encoding(file_path: str) -> str {
+    access = source_access.get();
+    if access is not None {
+        return access.read(file_path);
+    }
+    return decode_source(read_file_bytes(file_path), file_path);
+}
+
+def source_exists(file_path: str) -> bool {
+    access = source_access.get();
+    if access is None {
+        return os.path.isfile(file_path);
+    }
+    if access.exists is not None {
+        return access.exists(file_path);
+    }
+    try {
+        access.read(file_path);
+        return True;
+    } except OSError {
+        return False;
+    }
+}
 
 def _to_posix_path(raw_path: str) -> str {
     return raw_path.replace(os.sep, '/');
@@ -373,7 +460,7 @@ def normalize_exclude_patterns(patterns: list) -> list[str] {
 
 def read_jacignore_patterns(project_root: str) -> list[str] {
     ignore_file = os.path.join(project_root, JACIGNORE_FILENAME);
-    if not os.path.isfile(ignore_file) {
+    if not source_exists(ignore_file) {
         return [];
     }
     return normalize_exclude_patterns(

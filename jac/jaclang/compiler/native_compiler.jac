@@ -1,5 +1,6 @@
 import ctypes;
 import json;
+import from pathlib { Path }
 import os;
 import sys;
 import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
@@ -73,9 +74,9 @@ def _enum_table(cls: any) -> (dict | None) {
 class NativeCompiler {
     def init(self: NativeCompiler, lib_path: str) {
         self.lib = ctypes.PyDLL(lib_path);
-        with open(lib_path + ".layout.json") as f {
-            self.layout = json.load(f)["classes"];
-        }
+        self.layout = json.loads(
+            Path(lib_path + ".layout.json").read_text(encoding="utf-8")
+        )["classes"];
         self._keep = [];
         self.classes = {};
         self._value_rows: dict[str, int] = {};

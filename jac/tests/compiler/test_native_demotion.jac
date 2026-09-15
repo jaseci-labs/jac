@@ -202,7 +202,7 @@ test "a docstring-only module is never decided native" {
     mod = prog.compile(
         path, options=CompileOptions(no_cgen=True, force_target_program=True)
     );
-    (ok, why) = native_default_verdict(mod);
+    (ok, why) = native_default_verdict(mod, prog);
     assert not ok , "an empty module passed the native verdict";
     assert "empty module" in why , why;
 }

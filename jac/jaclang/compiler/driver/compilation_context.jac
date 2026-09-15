@@ -1,20 +1,48 @@
+import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import copy;
 import from pathlib { Path }
+import from threading { Event }
 import type from jaclang.project.workspace { AppSpec }
 import hashlib;
 import os;
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
-import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.driver.progstate { DepGraph }
 
-glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
+obj CompilationContext {
+    has deps: DepGraph,
+        program: JacProgram | None = None;
+}
+
+obj AnalysisCacheBudget {
+    has max_contexts: int = 8,
+        max_nodes: int = 100000;
+}
+
+glob _active_program: ContextVar[JacProgram | None] = ContextVar(
+         'jac_active_program', `default=None
+     ),
+     _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
      ),
      _cache_context: ContextVar[str] = ContextVar('jac_compilation_cache', `default='');
+
+def active_program -> JacProgram | None {
+    return _active_program.get();
+}
+
+@contextmanager
+def program_scope(program: JacProgram | None) -> Iterator[None] {
+    token = _active_program.set(program or _active_program.get());
+    try {
+        yield ;
+    } finally {
+        _active_program.reset(token);
+    }
+}
 
 @contextmanager
 def cache_scope(
@@ -32,63 +60,17 @@ def cache_scope(
 
 @contextmanager
 def compilation_scope(
-    identity: str, options: CompileOptions | None = None
+    identity: str, options: CompileOptions | None = None,
+    program: JacProgram | None = None
 ) -> Iterator[None] {
     import from jaclang.project.workspace { workspace_scope }
-    with cache_scope(identity, options), workspace_scope() {
+    with program_scope(program), cache_scope(identity, options), workspace_scope() {
         yield ;
     }
 }
 
 def cache_identity -> str {
     return _cache_context.get();
-}
-
-obj SourceUnit {
-    has syntax: Module,
-        failed: bool,
-        errors: list[Alert],
-        warnings: list[Alert];
-}
-
-obj SourceStore {
-    has units: dict[str, SourceUnit] = {},
-        revisions: dict[str, str] = {},
-        parses: int = 0,
-        hits: int = 0;
-
-    def parse(
-        source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
-    ) -> tuple[Module, bool] {
-        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
-        import from jaclang.compiler.driver.program { JacProgram }
-        key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
-        unit = self.units.get(key);
-        if unit is None {
-            diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
-            unit = SourceUnit(
-                syntax,
-                failed,
-                list(diagnostics.errors_had),
-                list(diagnostics.warnings_had)
-            );
-            previous = self.revisions.get(path);
-            if previous is not None {
-                self.units.pop(previous, None);
-            }
-            self.revisions[path] = key;
-            self.units[key] = unit;
-            self.parses += 1;
-        } else {
-            self.hits += 1;
-        }
-        syntax = copy.deepcopy(unit.syntax);
-        assert isinstance(syntax, Module);
-        program.errors_had.extend(unit.errors);
-        program.warnings_had.extend(unit.warnings);
-        return (syntax, unit.failed);
-    }
 }
 
 def bind_options(
@@ -100,9 +82,7 @@ def bind_options(
         bound.default_codespace = 'native';
         bound.force_codespace = 'native';
     }
-    new_entry = bool(
-        options.entry_point and options.entry_point != program.options.entry_point
-    );
+    new_entry = bool(options.entry_point);
     if not new_entry and not (bound.nogc_enforce_all or bound.memory_enforce) {
         bound.nogc_enforce_all = program.options.nogc_enforce_all;
         bound.memory_enforce = list(program.options.memory_enforce or []);
@@ -168,31 +148,68 @@ def context_identity(options: CompileOptions) -> str {
     ).hexdigest()[:20];
 }
 
+def analysis_options(
+    path: str,
+    program: JacProgram,
+    product: CompilationProduct = CompilationProduct.ANALYSIS,
+    cancel_token: Event | None = None,
+) -> list[CompileOptions] {
+    import from jaclang.project.workspace { workspace_for_path }
+    workspace = workspace_for_path(path);
+    declared = workspace.app_for_path(path) if workspace is not None else None;
+    apps = [declared]
+        if workspace is None or declared is not None
+        else list(workspace.apps.values()) or [None];
+    return [
+        bind_options(
+            path,
+            program,
+            CompileOptions(
+                no_cgen=True,
+                symtab_ir_only=product == CompilationProduct.SYMBOLS,
+                need_full_ast=True,
+                force_target_program=True,
+                cancel_token=cancel_token,
+                target_app=app.name if app is not None else '',
+                app_kind=app.kind if app is not None else '',
+                ui=app.ui if app is not None else '',
+                entry_point=app.`entry if app is not None else path,
+                project_root=workspace.project_root if workspace is not None else None
+            )
+        ) for app in apps
+    ];
+}
+
 def context_program(program: JacProgram, options: CompileOptions) -> JacProgram {
     import from jaclang.compiler.driver.program { JacProgram }
     context_root = program.context_root
         if program.context_root is not None
         else program;
     identity = context_identity(options);
-    if identity == program.context_key {
-        return program;
-    }
     existing = context_root.contexts.get(identity);
-    if existing is not None {
-        return existing;
+    if existing is not None and existing.program is not None {
+        del context_root.contexts[identity];
+        context_root.contexts[identity] = existing;
+        return existing.program;
     }
-    if not context_root.context_key {
+    if identity == program.context_key {
+        selected = program;
+    } elif not context_root.context_key {
         selected = context_root;
     } else {
         selected = JacProgram();
         selected.context_root = context_root;
         selected._compiler = context_root._get_compiler();
         selected.source_store = context_root.source_store;
+        selected.deps.tracking = context_root.deps.tracking;
         selected.options = options;
+    }
+    if existing is not None {
+        selected.deps = existing.deps;
     }
     selected.options = options;
     selected.context_key = identity;
-    context_root.contexts[identity] = selected;
+    context_root.contexts[identity] = CompilationContext(selected.deps, selected);
     return selected;
 }
 

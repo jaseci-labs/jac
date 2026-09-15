@@ -143,8 +143,8 @@ impl JacCompiler.get_bytecode(
         actual = context_program(actual, options);
     }
     with compilation_scope(
-        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
-    ) {
+        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options, actual
+    ), actual.source_store.capture() {
         return self._get_bytecode(full_target, actual);
     }
 }
@@ -728,10 +728,7 @@ impl JacCompiler.parse_str(
                 "'jac fix placement' to migrate the project."
             );
         }
-        import from jaclang.compiler.frontend.parser.frontend {
-            annex_sources,
-            parse_woven
-        }
+        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         codespace = '';
         import from jaclang.compiler.frontend.codeinfo {
             is_client_by_location as _cbl,
@@ -794,12 +791,15 @@ impl JacCompiler.parse_str(
                 source_str,
                 file_path,
                 target_program,
-                annex_sources(file_path),
+                target_program.source_store.annexes(file_path),
                 early_context=codespace or 'server'
             );
         } else {
-            (mod, had_error) = target_program.source_store.parse(
-                source_str, file_path, target_program, annex_sources(file_path)
+            (mod, had_error) = parse_woven(
+                source_str,
+                file_path,
+                target_program,
+                target_program.source_store.annexes(file_path)
             );
         }
         if (codespace == 'client') {
@@ -819,7 +819,7 @@ impl JacCompiler.parse_str(
         target_program.install_module(hub_key, mod);
         return mod;
     }
-    if target_program.mod.main.stub_only {
+    if target_program.mod.main_mod is None {
         old_hub = target_program.mod.hub;
         target_program.reset_module_root(uni.ProgramModule(main_mod=mod));
 
@@ -852,7 +852,7 @@ impl JacCompiler.parse_str(
             import from jaclang.compiler.placement.placement_solver {
                 native_default_verdict
             }
-            (_na_ok, _na_why) = native_default_verdict(mod);
+            (_na_ok, _na_why) = native_default_verdict(mod, target_program);
             if _na_ok {
                 _coerce_native_module(mod);
                 mod.codespace_inferred = True;
@@ -1254,6 +1254,34 @@ impl JacCompiler.compile(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compilation_context { program_scope }
+    import from jaclang.project.config { config_scope }
+    with program_scope(target_program), target_program.source_store.capture() as inputs, config_scope(Path(file_path).parent) {
+        module = self._compile_captured(file_path, target_program, use_str, options);
+        owner = target_program.module_owner(module);
+        if owner is not None {
+            manifest = inputs.manifest();
+            if use_str is not None {
+                import from jaclang.compiler.driver.inputs { content_digest }
+                manifest.files[JacProgram.hub_key(module.loc.mod_path)] = content_digest(use_str.encode('utf-8'));
+            }
+            unit_path = JacProgram.hub_key(module.loc.mod_path);
+            owner.hub.inputs[unit_path] = manifest;
+            for dependency in manifest.files {
+                owner.deps.record(unit_path, dependency);
+            }
+        }
+        return module;
+    }
+}
+
+impl JacCompiler._compile_captured(
+    file_path: str,
+    target_program: JacProgram,
+    use_str: str | None,
+    options: CompileOptions
+) -> uni.Module {
     import from jaclang.compiler.driver.compilation_context {
         bind_options,
         context_program
@@ -1274,7 +1302,7 @@ impl JacCompiler.compile(
     identity = ''
         if self.selfhost.is_selfhost(target_program)
         else target_program.context_key;
-    with compilation_scope(identity, options) {
+    with compilation_scope(identity, options, target_program) {
         import from jaclang.compiler.native_scope {
             activate_scope_lowering,
             deactivate_scope_lowering,
@@ -1591,6 +1619,11 @@ impl JacCompiler._compile_once(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
+    if use_str is None {
+        use_str = target_program.source_store.overrides.get(
+            os.path.realpath(file_path)
+        );
+    }
     import from jaclang.jac0core.ext_registry { is_annex }
     if (use_str is None and options.resolve_annex_parent and is_annex(file_path)) {
         import from jaclang.compiler.driver.bccache { discover_base_file }

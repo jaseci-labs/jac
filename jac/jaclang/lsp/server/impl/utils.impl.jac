@@ -18,9 +18,8 @@ impl add_unique_text_edit(
 impl find_dts_decl_range(dts_path: str, name: str) -> Optional[lspt.Range] {
     import re;
     try {
-        with open(dts_path, 'r', encoding='utf-8', errors='replace') as f {
-            src = f.read();
-        }
+        import from jaclang.project.source { read_file_with_encoding }
+        src = read_file_with_encoding(dts_path);
     } except OSError {
         return None;
     }
@@ -86,13 +85,16 @@ impl owner_sym(table: UniScopeNode) -> Optional[Symbol] {
     return None;
 }
 
-impl get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol] {
+impl get_symbols_for_outline(
+    nd: UniScopeNode, target_path: str | None = None
+) -> list[lspt.DocumentSymbol] {
+    path = target_path or nd.loc.mod_path;
     symbols = [];
     owner_syms = {owner_sym(tab) for tab in nd.kid_scope};
     for (key, item) in nd.names_in_scope.items() {
         if key in _BUILTIN_NAMES
             or item in owner_syms
-            or item.decl.loc.mod_path != nd.loc.mod_path {
+            or item.decl.loc.mod_path != path {
             continue;
         }
         pos = create_range(item.decl.loc);
@@ -108,9 +110,9 @@ impl get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol] {
     for sub_tab in [
         i
         for i in nd.kid_scope
-        if i.loc.mod_path == nd.loc.mod_path
+        if i.loc.mod_path == path
     ] {
-        sub_symbols = get_symbols_for_outline(sub_tab);
+        sub_symbols = get_symbols_for_outline(sub_tab, path);
         if isinstance(
             sub_tab,
             (

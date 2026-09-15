@@ -22,7 +22,9 @@ def position_within_node(n: uni.UniNode, line: int, character: int) -> bool;
 
 def find_index(sem_tokens: list[int], line: int, char: int) -> Optional[int];
 
-def get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol];
+def get_symbols_for_outline(
+    nd: UniScopeNode, target_path: str | None = None
+) -> list[lspt.DocumentSymbol];
 
 def owner_sym(table: UniScopeNode) -> Optional[Symbol];
 

@@ -1,153 +1,19 @@
 import os;
 import time;
-import json;
-import zlib;
-import jaclang.compiler.frontend.unitree as uni;
 import from pathlib { Path }
+import from jaclang.project.source { iter_source_units }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes { Alert }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-import from jaclang.compiler.driver.jir {
-    SEC_SYMINDEX,
-    SECTIONS_MAGIC,
-    HEADER_SIZE,
-    create_header,
-    parse_header,
-    write_sections,
-    read_sections,
-    get_module_cache_path
+import from jaclang.compiler.tools.symbol_index {
+    SourceRef,
+    SymbolInfo,
+    EntryPoint
 }
-import from jaclang.compiler.driver.bccache { discover_annex_files }
-import from jaclang.jac0core.ext_registry {
-    ANNEX_SUFFIXES,
-    ANNEX_FOLDER,
-    IMPL_SUFFIX,
-    is_annex
-}
-
-glob _SKIP_DIRS: set[str] = {
-         "__pycache__",
-         ".git",
-         ".venv",
-         "venv",
-         "node_modules",
-         "build",
-         "dist",
-         ".mypy_cache",
-         ".pytest_cache"
-     },
-     _ARCH_KIND: dict[str, str] = {
-         "node": "node",
-         "walker": "walker",
-         "edge": "edge",
-         "obj": "obj",
-         "class": "class",
-         "enum": "enum"
-     };
-
 
 def _real(path: str) -> str {
     try {
         return str(Path(path).resolve());
     } except Exception {
         return path;
-    }
-}
-
-
-obj SourceRef {
-    has file: str,
-        line: int,
-        col: int = 0,
-        role: str = "use",
-        snippet: str = "";
-
-    def render -> str {
-        loc = f"{self.file}:{self.line}";
-        return f"{loc}  {self.snippet}" if self.snippet else loc;
-    }
-
-    def to_dict -> dict {
-        return {
-            "file": self.file,
-            "line": self.line,
-            "col": self.col,
-            "role": self.role,
-            "snippet": self.snippet
-        };
-    }
-}
-
-
-obj SymbolInfo {
-    has name: str,
-        kind: str,
-        file: str,
-        line: int,
-        col: int = 0,
-        type_str: str = "",
-        doc: str = "",
-        signature: str = "",
-        fields: list[str] = [],
-        abilities: list[str] = [],
-        base_classes: list[str] = [],
-        is_genai: bool = False;
-
-    def render -> str {
-        head = f"{self.kind} {self.name}";
-        if self.signature {
-            head += self.signature;
-        } elif self.type_str {
-            head += f": {self.type_str}";
-        }
-        lines = [f"{head}    [{self.file}:{self.line}]"];
-        if self.base_classes {
-            lines.append("  extends: " + ", ".join(self.base_classes));
-        }
-        for f in self.fields {
-            lines.append(f"  has {f}");
-        }
-        for a in self.abilities {
-            lines.append(f"  def {a}");
-        }
-        if self.doc {
-            lines.append("  " + self.doc.strip().splitlines()[0]);
-        }
-        return "\n".join(lines);
-    }
-
-    def to_dict -> dict {
-        return {
-            "name": self.name,
-            "kind": self.kind,
-            "file": self.file,
-            "line": self.line,
-            "col": self.col,
-            "type_str": self.type_str,
-            "doc": self.doc,
-            "signature": self.signature,
-            "fields": self.fields,
-            "abilities": self.abilities,
-            "base_classes": self.base_classes,
-            "is_genai": self.is_genai
-        };
-    }
-
-    static def from_dict(d: dict) -> SymbolInfo {
-        return SymbolInfo(
-            name=str(d.get("name", "")),
-            kind=str(d.get("kind", "symbol")),
-            file=str(d.get("file", "")),
-            line=int(d.get("line", 0)),
-            col=int(d.get("col", 0)),
-            type_str=str(d.get("type_str", "")),
-            doc=str(d.get("doc", "")),
-            signature=str(d.get("signature", "")),
-            fields=list(d.get("fields", [])),
-            abilities=list(d.get("abilities", [])),
-            base_classes=list(d.get("base_classes", [])),
-            is_genai=bool(d.get("is_genai", False))
-        );
     }
 }
 
@@ -175,73 +41,6 @@ obj Diagnostic {
 
 def _diag_key(d: Diagnostic) -> str {
     return f"{_real(d.file)}:{d.line}:{d.severity}:{d.message}";
-}
-
-
-obj EntryPoint {
-    has walker_name: str,
-        ability: str,
-        node_type: str,
-        event: str,
-        file: str = "",
-        line: int = 0;
-
-    def render -> str {
-        return f"{self.walker_name}.{self.ability}  ({self.event} {self.node_type})  [{self.file}:{self.line}]";
-    }
-
-    def to_dict -> dict {
-        return {
-            "walker_name": self.walker_name,
-            "ability": self.ability,
-            "node_type": self.node_type,
-            "event": self.event,
-            "file": self.file,
-            "line": self.line
-        };
-    }
-
-    static def from_dict(d: dict) -> EntryPoint {
-        return EntryPoint(
-            walker_name=str(d.get("walker_name", "")),
-            ability=str(d.get("ability", "")),
-            node_type=str(d.get("node_type", "")),
-            event=str(d.get("event", "")),
-            file=str(d.get("file", "")),
-            line=int(d.get("line", 0))
-        );
-    }
-}
-
-
-def _combined_source_hash(file: str) -> int {
-    crc = 0;
-    try {
-        with open(file, 'rb') as f {
-            crc = zlib.crc32(f.read(), crc);
-        }
-    } except OSError as e {
-        _ = e;
-        return -1;
-    }
-    annexes: list[str] = [];
-    for suffix in ANNEX_SUFFIXES {
-        try {
-            annexes.extend(discover_annex_files(file, suffix));
-        } except Exception as e {
-            _ = e;
-        }
-    }
-    for annex in sorted(set(annexes)) {
-        try {
-            with open(annex, 'rb') as f {
-                crc = zlib.crc32(f.read(), crc);
-            }
-        } except OSError as e {
-            _ = e;
-        }
-    }
-    return crc & 0xFFFFFFFF;
 }
 
 
@@ -284,18 +83,14 @@ obj ContextSlice {
 
 obj CodeIntelligence {
     has proj_dir: str,
-        on_event: any = None;
+        on_event: Callable[[dict[str, str | int | float]], None] | None = None;
 
     def postinit {
         self._root_real: str = _real(self.proj_dir);
-        self.prog: JacProgram = JacProgram();
-
-        self.prog.deps.tracking = True;
+        self.prog: JacProgram = JacProgram.for_analysis();
         self._files: list[str] = [];
         self._file_set: set[str] = set();
-        self._compiled: dict[str, uni.Module] = {};
 
-        self._dir_sig: dict[str, float] = {};
         self._loaded: bool = False;
     }
 
@@ -303,12 +98,10 @@ obj CodeIntelligence {
         t0 = time.time();
         self._files = self._discover();
         self._file_set = {_real(f) for f in self._files};
-        self.prog.diags.clear();
-        self._compiled = {};
+        self.prog.release_compile_closure();
         for f in self._files {
             self._full_compile_one(f);
         }
-        self._dir_sig = self._dir_signature();
         self._loaded = True;
         self._emit("load", "", len(self._files), t0);
     }
@@ -339,69 +132,29 @@ obj CodeIntelligence {
             self.load();
             return;
         }
+        import from jaclang.compiler.driver.bccache { discover_base_file }
         t0 = time.time();
-        target = self._head_for(_real(file));
-        mode = "edit";
+        target = _real(discover_base_file(_real(file)) or file);
+        service = self.prog.analysis_service();
+        change = service.synchronize(self.prog.source_store.overrides, {target});
+        mode = 'edit';
         if not Path(target).exists() {
-            mode = "delete";
+            mode = 'delete';
             self._drop_file(target);
-            stale: set[str] = self.prog.transitive_dependents(target);
-        } else {
-            if target not in self._file_set {
-                mode = "create";
-                self._files.append(target);
-                self._file_set.add(target);
-                self._dir_sig = self._dir_signature();
-            }
-            stale = self.prog.transitive_dependents(target);
-            stale.add(target);
+            service.forget(target);
+        } elif target not in self._file_set {
+            mode = 'create';
+            self._files.append(target);
+            self._file_set.add(target);
         }
-        for p in stale {
-            try {
-                self.prog.invalidate_module(p);
-            } except Exception as e {
-                _ = e;
-            }
-        }
-
-        self.prog.errors_had[:] = self._keep_diagnostics(self.prog.errors_had, stale);
-        self.prog.warnings_had[:] = self._keep_diagnostics(
-            self.prog.warnings_had, stale
-        );
         recompiled = 0;
-        for p in stale {
-            if p in self._file_set {
-                self._full_compile_one(p);
+        for path in sorted(change.affected) {
+            if path in self._file_set {
+                self._full_compile_one(path);
                 recompiled += 1;
             }
         }
         self._emit(mode, target, recompiled, t0);
-    }
-
-    def _head_for(real: str) -> str {
-        p = Path(real);
-        head: (Path | None) = None;
-        name = p.name;
-
-        for asuf in ANNEX_SUFFIXES {
-            if name.endswith(asuf) {
-                head = p.with_name(name[:-len(asuf)] + ".jac");
-                break;
-            }
-        }
-
-        parent = p.parent;
-        impl_folder = ANNEX_FOLDER[IMPL_SUFFIX];
-        if parent.name.endswith(impl_folder) {
-            head = parent.with_name(parent.name[:-len(impl_folder)] + ".jac");
-        }
-        if head is not None {
-            candidate = _real(str(head));
-            if candidate in self._file_set {
-                return candidate;
-            }
-        }
-        return real;
     }
 
     def _drop_file(real: str) {
@@ -411,51 +164,17 @@ obj CodeIntelligence {
             if _real(f) != real
         ];
         self._file_set.discard(real);
-        if real in self._compiled {
-            self._compiled.pop(real);
-        }
-        self._dir_sig = self._dir_signature();
     }
 
     def _full_compile_one(file: str) {
+        service = self.prog.analysis_service();
         try {
-            import from jaclang.compiler.driver.compile_options { CompileOptions }
-            mod = self.prog.compile(
-                file_path=file, options=CompileOptions(no_cgen=True, need_full_ast=True)
-            );
-            if mod is not None and mod.loc {
-                self._compiled[_real(mod.loc.mod_path)] = mod;
+            if service.analyze(file) is None {
+                raise RuntimeError(f'Inputs changed while analyzing {file}');
             }
-        } except Exception as e {
-            _ = e;
+        } finally {
+            service.trim();
         }
-    }
-
-    def _dir_signature -> dict[str, float] {
-        dirs: set[str] = {self._root_real};
-        for f in self._files {
-            dirs.add(os.path.dirname(_real(f)));
-        }
-        sig: dict[str, float] = {};
-        for d in dirs {
-            try {
-                sig[d] = os.path.getmtime(d);
-            } except OSError as e {
-                _ = e;
-            }
-        }
-        return sig;
-    }
-
-    def _keep_diagnostics(alerts: list[Alert], stale: set[str]) -> list[Alert] {
-        out: list[Alert] = [];
-        for al in alerts {
-            loc = al.loc;
-            if loc is None or _real(loc.mod_path) not in stale {
-                out.append(al);
-            }
-        }
-        return out;
     }
 
     def _ensure {
@@ -474,210 +193,12 @@ obj CodeIntelligence {
     }
 
     def _discover -> list[str] {
-        found: list[str] = [];
-        base = Path(self._root_real);
-        if not base.exists() {
-            return found;
-        }
-        for p in sorted(base.rglob("*.jac")) {
-            if any([part in _SKIP_DIRS or part.startswith(".") for part in p.parts]) {
-                continue;
-            }
-            name = p.name;
-            if is_annex(name) {
-                continue;
-            }
-            found.append(str(p));
-        }
-        return found;
-    }
-
-    def _modules -> list[uni.Module] {
-        self._ensure();
-        return list(self._compiled.values());
-    }
-
-    def _collect_syms(scope: uni.UniScopeNode, out: list[uni.Symbol]) {
-        for sym in scope.names_in_scope.values() {
-            out.append(sym);
-        }
-        for bucket in scope.names_in_scope_overload.values() {
-            for sym in bucket {
-                out.append(sym);
-            }
-        }
-        for kid in scope.kid_scope {
-            self._collect_syms(kid, out);
-        }
-    }
-
-    def _all_syms -> list[uni.Symbol] {
-        out: list[uni.Symbol] = [];
-        for mod in self._modules() {
-            try {
-                self._collect_syms(mod.sym_tab, out);
-            } except Exception as e {
-                _ = e;
-            }
-        }
-        return out;
-    }
-
-    def _kind_of(owner: uni.UniNode) -> str {
-        if isinstance(owner, uni.Archetype) {
-            raw = "";
-            try {
-                raw = str(owner.arch_type.value);
-            } except Exception as e {
-                _ = e;
-            }
-            return _ARCH_KIND.get(raw, raw or "obj");
-        }
-        if isinstance(owner, uni.Enum) {
-            return "enum";
-        }
-        if isinstance(owner, uni.Ability) {
-            return "ability";
-        }
-        if isinstance(owner, uni.HasVar) {
-            return "field";
-        }
-        if isinstance(owner, uni.Module) {
-            return "module";
-        }
-        return "symbol";
-    }
-
-    def _expr_str(expr: uni.UniNode | None) -> str {
-        if expr is None {
-            return "";
-        }
-        try {
-            return str(unparse_node(expr)).strip();
-        } except Exception as e {
-            _ = e;
-            return "";
-        }
-    }
-
-    def _doc_of(owner: uni.UniNode) -> str {
-        try {
-            if isinstance(owner, uni.AstDocNode) {
-                doc = owner.doc;
-                if doc is not None and doc.value {
-                    return str(doc.value).strip().strip('"');
-                }
-            }
-        } except Exception as e {
-            _ = e;
-        }
-        return "";
-    }
-
-    def _info(sym: uni.Symbol) -> SymbolInfo | None {
-        decl = sym.decl;
-        if decl is None {
-            return None;
-        }
-        owner: uni.UniNode = decl;
-        try {
-            owner = decl.name_of;
-        } except Exception as e {
-            _ = e;
-        }
-        loc = decl.loc;
-        info = SymbolInfo(
-            name=sym.sym_name,
-            kind=self._kind_of(owner),
-            file=loc.mod_path if loc else "",
-            line=loc.first_line if loc else 0,
-            col=loc.col_start if loc else 0,
-            doc=self._doc_of(owner)
-        );
-        if isinstance(owner, uni.Archetype) {
-            self._fill_archetype(info, owner);
-        } elif isinstance(owner, uni.Ability) {
-            info.signature = self._expr_str(owner.signature);
-            info.is_genai = bool(getattr(owner, "is_genai_ability", False));
-        } elif isinstance(owner, uni.HasVar) {
-            info.type_str = self._expr_str(owner.type_tag.tag)
-                if owner.type_tag
-                else "";
-        } else {
-            try {
-                owner_type = owner?.type;
-                info.type_str = str(owner_type) if owner_type else "";
-            } except Exception as e {
-                _ = e;
-            }
-        }
-        return info;
-    }
-
-    def _fill_archetype(info: SymbolInfo, arch: uni.Archetype) {
-        try {
-            for v in arch.get_has_vars() {
-                vt = self._expr_str(v.type_tag.tag) if v.type_tag else "";
-                info.fields.append(
-                    f"{v.name.sym_name}: {vt}" if vt else v.name.sym_name
-                );
-            }
-        } except Exception as e {
-            _ = e;
-        }
-        try {
-            for m in arch.get_methods() {
-                mname = m.name_ref.sym_name if m.name_ref else "?";
-                tag = " by llm" if getattr(m, "is_genai_ability", False) else "";
-                info.abilities.append(mname + "()" + tag);
-            }
-        } except Exception as e {
-            _ = e;
-        }
-        try {
-            if arch.base_classes {
-                for b in arch.base_classes {
-                    info.base_classes.append(self._expr_str(b));
-                }
-            }
-        } except Exception as e {
-            _ = e;
-        }
-    }
-
-    def _resolve(name: str) -> list[uni.Symbol] {
-        hits: list[uni.Symbol] = [];
-        seen: set[str] = set();
-        for sym in self._all_syms() {
-            if sym.sym_name != name {
-                continue;
-            }
-            if getattr(sym, "imported", False) {
-                continue;
-            }
-            decl = sym.decl;
-            if decl is None or decl.loc is None {
-                continue;
-            }
-            key = f"{decl.loc.mod_path}:{decl.loc.first_line}";
-            if key in seen {
-                continue;
-            }
-            seen.add(key);
-            hits.append(sym);
-        }
-        return hits;
+        return sorted(iter_source_units(self._root_real));
     }
 
     def lookup(name: str) -> list[SymbolInfo] {
-        out: list[SymbolInfo] = [];
-        for sym in self._resolve(name) {
-            info = self._info(sym);
-            if info is not None {
-                out.append(info);
-            }
-        }
-        return out;
+        self._ensure();
+        return self.prog.analysis_service().index.lookup(name, self.prog.source_store);
     }
 
     def definition(name: str) -> SymbolInfo | None {
@@ -686,32 +207,8 @@ obj CodeIntelligence {
     }
 
     def references(name: str) -> list[SourceRef] {
-        out: list[SourceRef] = [];
-        seen: set[str] = set();
-        for sym in self._resolve(name) {
-            for (role, nodes) in [("def", sym.defn), ("use", sym.uses)] {
-                for nd in nodes {
-                    loc = nd.loc;
-                    if loc is None {
-                        continue;
-                    }
-                    key = f"{loc.mod_path}:{loc.first_line}:{loc.col_start}";
-                    if key in seen {
-                        continue;
-                    }
-                    seen.add(key);
-                    out.append(
-                        SourceRef(
-                            file=loc.mod_path,
-                            line=loc.first_line,
-                            col=loc.col_start,
-                            role=role
-                        )
-                    );
-                }
-            }
-        }
-        return out;
+        self._ensure();
+        return self.prog.analysis_service().index.references_named(name, self.prog.source_store);
     }
 
     def importers(name: str) -> list[str] {
@@ -725,103 +222,34 @@ obj CodeIntelligence {
     }
 
     def symbols(file: str = "") -> list[SymbolInfo] {
-        target = _real(file) if file else "";
-        out: list[SymbolInfo] = [];
-        for mod in self._modules() {
-            try {
-                if target and _real(mod.loc.mod_path) != target {
-                    continue;
-                }
-                for sym in mod.sym_tab.names_in_scope.values() {
-                    if getattr(sym, "imported", False) {
-                        continue;
-                    }
-                    info = self._info(sym);
-                    if info is not None {
-                        out.append(info);
-                    }
-                }
-            } except Exception as e {
-                _ = e;
-            }
-        }
-        return out;
+        self._ensure();
+        target = _real(file) if file else '';
+        found = {
+            key: info
+            for shard in self.prog.analysis_service().index.current_shards(self.prog.source_store)
+            for (key, info) in shard.definitions.items()
+            if info.workspace_visible and (not target or _real(info.file) == target)
+        };
+        return [found[key] for key in sorted(found)];
     }
 
     def archetypes(kind: str = "") -> list[SymbolInfo] {
-        out: list[SymbolInfo] = [];
-        for mod in self._modules() {
-            try {
-                for arch in mod.get_all_sub_nodes(uni.Archetype) {
-                    info = self._archetype_info(arch);
-                    if info is not None and (not kind or info.kind == kind) {
-                        out.append(info);
-                    }
-                }
-            } except Exception as e {
-                _ = e;
-            }
-        }
-        return out;
-    }
-
-    def _archetype_info(arch: uni.Archetype) -> SymbolInfo | None {
-        loc = arch.loc;
-        info = SymbolInfo(
-            name=arch.name.sym_name,
-            kind=self._kind_of(arch),
-            file=loc.mod_path if loc else "",
-            line=loc.first_line if loc else 0,
-            doc=self._doc_of(arch)
-        );
-        self._fill_archetype(info, arch);
-        return info;
+        return [info for info in self.symbols()
+            if info.kind in ('obj', 'class', 'node', 'edge', 'walker', 'enum')
+                and (not kind or info.kind == kind)];
     }
 
     def entry_points -> list[EntryPoint] {
-        out: list[EntryPoint] = [];
-        for mod in self._modules() {
-            out.extend(self._module_entry_points(mod));
-        }
-        return out;
-    }
-
-    def _module_entry_points(mod: uni.Module) -> list[EntryPoint] {
-        out: list[EntryPoint] = [];
-        try {
-            for arch in mod.get_all_sub_nodes(uni.Archetype) {
-                if self._kind_of(arch) != "walker" {
-                    continue;
-                }
-                for m in arch.get_methods() {
-                    sig = m.signature;
-                    if not isinstance(sig, uni.EventSignature) {
-                        continue;
-                    }
-                    node_type = self._expr_str(sig.arch_tag_info) or "any";
-                    event = "";
-                    try {
-                        event = str(sig.event.value);
-                    } except Exception as e {
-                        _ = e;
-                    }
-                    mloc = m.loc;
-                    out.append(
-                        EntryPoint(
-                            walker_name=arch.name.sym_name,
-                            ability=m.name_ref.sym_name if m.name_ref else "?",
-                            node_type=node_type,
-                            event=event,
-                            file=mloc.mod_path if mloc else "",
-                            line=mloc.first_line if mloc else 0
-                        )
-                    );
-                }
-            }
-        } except Exception as e {
-            _ = e;
-        }
-        return out;
+        self._ensure();
+        found = {
+            (
+                entry_point.file, entry_point.line,
+                entry_point.walker_name, entry_point.ability
+            ): entry_point
+            for shard in self.prog.analysis_service().index.current_shards(self.prog.source_store)
+            for entry_point in shard.entry_points
+        };
+        return [found[key] for key in sorted(found)];
     }
 
     def walkers_visiting(node_type: str) -> list[EntryPoint] {
@@ -846,8 +274,14 @@ obj CodeIntelligence {
         target = _real(file) if file else "";
         out: list[Diagnostic] = [];
         for (sev, alerts) in [
-            ("error", self.prog.errors_had),
-            ("warning", self.prog.warnings_had)
+            ("error", [
+                alert for record in self.prog.analysis_service().records.values()
+                for alert in record.errors
+            ]),
+            ("warning", [
+                alert for record in self.prog.analysis_service().records.values()
+                for alert in record.warnings
+            ])
         ] {
             for al in alerts {
                 loc = al.loc;

@@ -2,7 +2,6 @@ import fnmatch;
 import hashlib;
 import json;
 import os;
-import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from jaclang.project.modresolver { find_jac_project_root }
@@ -59,13 +58,16 @@ glob _ws_cache: dict[str, tuple[tuple, WorkspaceSpec]] = {},
 
 @contextmanager
 def workspace_scope -> Iterator[None] {
+    import from jaclang.project.modresolver { project_resolution_scope }
     if _resolution.get() is not None {
         yield ;
         return;
     }
     token = _resolution.set(WorkspaceResolution());
     try {
-        yield ;
+        with project_resolution_scope() {
+            yield ;
+        }
     } finally {
         _resolution.reset(token);
     }
