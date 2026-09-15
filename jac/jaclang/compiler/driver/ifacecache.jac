@@ -29,7 +29,7 @@ import from jaclang.compiler.driver.jir {
 glob SOURCE_DEP_PREFIX: str = "source:",
      DIAG_SCHEMA: int = 1,
      IFACE_RETAIN_CAP: int = 1024,
-     _SYMTAB_PROVIDES_MEMO: list = [];
+     _SYMTAB_PROVIDES_MEMO: list[set[AnalysisFact]] = [];
 
 obj IfaceCodec {
     has build_module_iface: any,
@@ -90,7 +90,7 @@ def _span_record(span: any) -> list[str | int | None] {
     ];
 }
 
-def _span_from_record(rec: list) -> any {
+def _span_from_record(rec: list[any]) -> any {
     import from jaclang.project.span { Span }
     return Span(
         mod_path=rec[0],
@@ -120,7 +120,7 @@ def _alert_record(alert: any) -> dict[str, any] {
     };
 }
 
-def _alert_from_record(rec: dict) -> any {
+def _alert_from_record(rec: dict[str, any]) -> any {
     import from jaclang.project.diagnostics { DIAGNOSTICS }
     import from jaclang.compiler.passes.transform { Alert, Transform }
     code_str: str = str(rec.get("code") or "");
@@ -159,7 +159,7 @@ obj EncodedInterface {
         section: bytes,
         digest: str,
         paths: JirPaths | None = None,
-        diagnostics: dict | None = None,
+        diagnostics: dict[str, any] | None = None,
         dependencies: dict[str, str] = {},
         profile_key: str = "";
 }
@@ -709,7 +709,7 @@ obj IfaceRegistry {
         return profiles;
     }
 
-    def _replay_records(prof: dict) {
+    def _replay_records(prof: dict[str, any]) {
         self.prog.diags.extend(
             [_alert_from_record(rec) for rec in (prof.get("errors") or [])],
             [_alert_from_record(rec) for rec in (prof.get("warnings") or [])]
@@ -718,10 +718,10 @@ obj IfaceRegistry {
 
     def _dependency_diagnostics(
         ent: IfaceEntry, profile_key: str
-    ) -> list[tuple[IfaceEntry, dict]] | None {
+    ) -> list[tuple[IfaceEntry, dict[str, any]]] | None {
         pending = list(self.direct_deps.get(ent.path, {}));
         visited = {ent.path};
-        profiles_to_replay: list[tuple[IfaceEntry, dict]] = [];
+        profiles_to_replay: list[tuple[IfaceEntry, dict[str, any]]] = [];
         while pending {
             path = pending.pop();
             if path in visited or is_stub_like_path(path) {
@@ -761,7 +761,9 @@ obj IfaceRegistry {
         return profiles_to_replay;
     }
 
-    def _replay_dependency_diagnostics(profiles: list[tuple[IfaceEntry, dict]]) {
+    def _replay_dependency_diagnostics(
+        profiles: list[tuple[IfaceEntry, dict[str, any]]]
+    ) {
         for (dependency, profile) in profiles {
             self._replay_records(profile);
             dependency.replayed_token = self.closure_token;
@@ -811,8 +813,8 @@ obj IfaceRegistry {
         if ent is None {
             return None;
         }
-        prof: (dict | None) = None;
-        dependency_profiles: list[tuple[IfaceEntry, dict]] = [];
+        prof: (dict[str, any] | None) = None;
+        dependency_profiles: list[tuple[IfaceEntry, dict[str, any]]] = [];
         if profile_key is not None {
             profiles = self._profiles_of(
                 ent.diags, ent.paths.resolve if ent.paths is not None else None
@@ -1042,7 +1044,9 @@ obj IfaceRegistry {
         return True;
     }
 
-    def _diagnostic_records(resolved: str, err_start: int, warn_start: int) -> dict {
+    def _diagnostic_records(
+        resolved: str, err_start: int, warn_start: int
+    ) -> dict[str, any] {
         errors = list(self.prog.errors_had[err_start:]);
         warnings = list(self.prog.warnings_had[warn_start:]);
         (owned_errors, owned_warnings) = self.prog.diags.owned_by(

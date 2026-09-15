@@ -235,7 +235,7 @@ obj DiagLedger {
 
     def extend(errors: Sequence[Alert], warnings: Sequence[Alert]) {
         import from jaclang.project.span { Span }
-        def span_key(span: Span) -> tuple {
+        def span_key(span: Span) -> tuple[str, int, int, int, int, int, int] {
             return (
                 span.mod_path,
                 span.first_line,
@@ -246,7 +246,16 @@ obj DiagLedger {
                 span.pos_end
             );
         }
-        def alert_key(alert: Alert) -> tuple {
+        def alert_key(
+            alert: Alert
+        ) -> tuple[
+            str,
+            str | None,
+            str,
+            tuple[str, int, int, int, int, int, int],
+            str | None,
+            tuple[tuple[str, tuple[str, int, int, int, int, int, int]], ...]
+        ] {
             return (
                 alert.owner,
                 alert.code.code if alert.code is not None else None,

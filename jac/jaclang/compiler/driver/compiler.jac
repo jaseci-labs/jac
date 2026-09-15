@@ -3,7 +3,6 @@ import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import ast as py_ast;
 import marshal;
 import os;
-import from collections.abc { Callable }
 import sys;
 import types;
 import from threading { Event }

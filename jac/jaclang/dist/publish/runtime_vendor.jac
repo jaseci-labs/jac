@@ -175,7 +175,7 @@ def build_runtime_closure(
     );
     processed: set[str] = {'jaclang'};
     program = JacProgram();
-    modules: list[dict] = [];
+    modules: list[dict[str, any]] = [];
     try {
         while pending {
             module = min(pending);
@@ -216,7 +216,7 @@ def build_runtime_closure(
                 }
                 continue;
             }
-            native: dict = {};
+            native: dict[str, any] = {};
             source = _compile_runtime_module(
                 pkg_root, path, program, native, native_sources
             );

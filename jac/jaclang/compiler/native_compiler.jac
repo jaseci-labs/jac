@@ -3,8 +3,10 @@ import json;
 import os;
 import sys;
 import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
+import from typing { cast as type_cast }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
-import type from jaclang.compiler.passes.transform { PassResult }
+import type from jaclang.compiler.passes.transform { Alert, PassResult }
+import type from jaclang.compiler.frontend.parser.tokens { CommentData, SrcDiag }
 import type from jaclang.compiler.frontend.unitree { Module }
 import type from jaclang.compiler.driver.program { JacProgram }
 
@@ -489,7 +491,7 @@ class NativeCompiler {
     }
 
     def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
-        import from jaclang.compiler.passes.transform { PassResult }
+        import from jaclang.compiler.passes.transform { Alert, PassResult }
         import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
         import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
         out: dict[str, PassResult] = {};
@@ -502,15 +504,25 @@ class NativeCompiler {
             if not (completed & pass_id) {
                 continue;
             }
-            errors: list[Alert] = self._take(self.lib.jc_take_pass_alerts(pass_id, 0))
-                or [];
-            warnings: list[Alert] = self._take(self.lib.jc_take_pass_alerts(pass_id, 1))
-                or [];
+            errors = type_cast(
+                list[Alert],
+                self._take_typed_list(self.lib.jc_take_pass_alerts(pass_id, 0), Alert)
+            );
+            warnings = type_cast(
+                list[Alert],
+                self._take_typed_list(self.lib.jc_take_pass_alerts(pass_id, 1), Alert)
+            );
             for alert in errors + warnings {
                 alert.from_pass = pass_cls;
                 if alert.code is not None {
                     import from jaclang.project.diagnostics { DIAGNOSTICS }
-                    alert.code = DIAGNOSTICS[alert.code.code];
+                    code = DIAGNOSTICS.get(alert.code.code);
+                    if code is None {
+                        raise ValueError(
+                            f"Native compiler returned unknown diagnostic {alert.code.code}"
+                        );
+                    }
+                    setattr(alert, "code", code);
                 }
             }
             out[pass_cls.__name__] = PassResult(
@@ -532,20 +544,44 @@ class NativeCompiler {
         return out;
     }
 
+    def _take_typed_list(self: NativeCompiler, ptr: any, item_type: type) -> list[any] {
+        items = self._take(ptr);
+        if items is None {
+            return [];
+        }
+        if not isinstance(items, list)
+            or any(not isinstance(item, item_type) for item in items) {
+            raise TypeError(
+                f"Native compiler returned invalid {item_type.__name__} records"
+            );
+        }
+        return items;
+    }
+
     def take_module(self: NativeCompiler) -> any {
         return self._take(self.lib.jc_take_module());
     }
 
     def take_diags(self: NativeCompiler) -> list[SrcDiag] {
-        return self._take(self.lib.jc_take_diags()) or [];
+        import from jaclang.compiler.frontend.parser.tokens { SrcDiag }
+        return type_cast(
+            list[SrcDiag], self._take_typed_list(self.lib.jc_take_diags(), SrcDiag)
+        );
     }
 
     def take_lexdiags(self: NativeCompiler) -> list[SrcDiag] {
-        return self._take(self.lib.jc_take_lexdiags()) or [];
+        import from jaclang.compiler.frontend.parser.tokens { SrcDiag }
+        return type_cast(
+            list[SrcDiag], self._take_typed_list(self.lib.jc_take_lexdiags(), SrcDiag)
+        );
     }
 
     def take_comments(self: NativeCompiler) -> list[CommentData] {
-        return self._take(self.lib.jc_take_comments()) or [];
+        import from jaclang.compiler.frontend.parser.tokens { CommentData }
+        return type_cast(
+            list[CommentData],
+            self._take_typed_list(self.lib.jc_take_comments(), CommentData)
+        );
     }
 
     def err_count(self: NativeCompiler) -> int {
@@ -606,8 +642,8 @@ obj NativeSyntax {
     }
 }
 
-glob _KERNEL_CELL: list = [],
-     _RESOLVED: list = [];
+glob _KERNEL_CELL: list[NativeCompiler] = [],
+     _RESOLVED: list[None] = [];
 
 
 def _lib_name -> str {

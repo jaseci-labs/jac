@@ -3,7 +3,6 @@ import marshal;
 import struct;
 import sys;
 import types;
-import from collections.abc { Callable }
 
 import from jaclang.compiler.backends.py.codegen_ir {
     CirContainer,

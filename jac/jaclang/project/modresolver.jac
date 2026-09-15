@@ -9,8 +9,8 @@ import from jaclang.extensions {
     language_of
 }
 
-glob _project_root_cache: dict = {},
-     _import_base_stack: list = [];
+glob _project_root_cache: dict[str, str | None] = {},
+     _import_base_stack: list[str] = [];
 
 def push_import_base(base_dir: str) {
     _import_base_stack.append(base_dir);

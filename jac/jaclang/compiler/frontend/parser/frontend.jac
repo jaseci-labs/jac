@@ -208,7 +208,10 @@ def parse_woven_snapshot(
 }
 
 def _python_parse_woven(
-    source_str: str, file_path: str, prog: JacProgram | None, annexes: list
+    source_str: str,
+    file_path: str,
+    prog: JacProgram | None,
+    annexes: list[tuple[str, str]]
 ) -> tuple[Module, bool] {
     (module, had_error) = parse(source_str, file_path, prog=prog);
     if had_error or not annexes {
