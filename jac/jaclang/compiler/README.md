@@ -104,6 +104,9 @@ participate in iteration and frame cleanup; optional field stores preserve
 the ownership of the whole incoming value.
 Member lookup uses the current native binding's layout after a name changes
 representation, while preserving a flow-narrowed subtype of that binding.
+The binding frame records which names actually changed storage representation.
+Initial bindings keep analysis's union narrowing and explicit cast semantics;
+an LLVM pointer's pointee alone does not identify the active union member.
 
 ## Native hash containers
 

@@ -133,6 +133,7 @@ obj NativeGeneratorState {
 
 obj NativeBindingState {
     has local_vars: dict[str, ir.Value],
+        retyped_vars: set[str],
         owned_temp_slots: set[str],
         param_vars: set[str],
         nogc_no_free_vars: set[str],
@@ -175,6 +176,7 @@ walker NaIRGenPass(Transform) {
         _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.Value] = {},
+        retyped_vars: set[str] = set(),
         owned_temp_slots: set[str] = set(),
         param_vars: set[str] = set(),
         _unlowered_locals: dict[str, set[str]] = {},

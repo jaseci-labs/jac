@@ -1,6 +1,7 @@
 impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
     state = NativeBindingState(
         local_vars=self.local_vars,
+        retyped_vars=self.retyped_vars,
         owned_temp_slots=self.owned_temp_slots,
         param_vars=self.param_vars,
         nogc_no_free_vars=self.nogc_no_free_vars,
@@ -11,6 +12,7 @@ impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
         closure_cell_handles=self.closure_cell_handles
     );
     self.local_vars = self.local_vars.copy() if inherit else {};
+    self.retyped_vars = self.retyped_vars.copy() if inherit else set();
     self.owned_temp_slots = self.owned_temp_slots.copy() if inherit else set();
     self.param_vars = self.param_vars.copy() if inherit else set();
     self.nogc_no_free_vars = self.nogc_no_free_vars.copy() if inherit else set();
@@ -34,6 +36,7 @@ impl NaIRGenPass._leave_bindings(
         self._emit_loop_iter_cleanup(locals);
     }
     self.local_vars = state.local_vars;
+    self.retyped_vars = state.retyped_vars;
     self.owned_temp_slots = state.owned_temp_slots;
     self.param_vars = state.param_vars;
     self.nogc_no_free_vars = state.nogc_no_free_vars;
@@ -56,6 +59,7 @@ impl NaIRGenPass._shadow_bindings(names: list[str], preserve: bool = False) -> N
             self.local_vars[previous] = slot;
         }
         for flags in [
+            self.retyped_vars,
             self.owned_temp_slots,
             self.param_vars,
             self.nogc_no_free_vars,
@@ -88,10 +92,15 @@ impl NaIRGenPass._bind_local_slot(name: str, slot: ir.Value) -> None {
     if previous is slot {
         return;
     }
+    retyped = name in self.retyped_vars
+        or (previous is not None and previous.pointee_type != slot.pointee_type);
     if previous is not None {
         self._shadow_bindings([name], preserve=True);
     }
     self.local_vars[name] = slot;
+    if retyped {
+        self.retyped_vars.add(name);
+    }
 }
 
 impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {

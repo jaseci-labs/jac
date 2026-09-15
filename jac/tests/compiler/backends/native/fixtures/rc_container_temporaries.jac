@@ -569,3 +569,36 @@ def returned_boxed_local_tuple -> int {
         + int(isinstance(pair[1], Item))
         + int(dropped == before);
 }
+
+obj LayoutLeft {
+    has value: int;
+}
+
+obj LayoutRight {
+    has kind: str;
+}
+
+def choose_layout(right: bool) -> LayoutLeft | LayoutRight {
+    if right {
+        return LayoutRight("right");
+    }
+    return LayoutLeft(4);
+}
+
+def narrowed_union_binding -> int {
+    item = choose_layout(True);
+    if isinstance(item, LayoutRight) {
+        return int(item.kind in ("right", "other"));
+    }
+    return 0;
+}
+
+def read_cast_layout(item: LayoutLeft) -> int {
+    narrowed = item as LayoutRight;
+    return len(narrowed.kind);
+}
+
+def explicit_cast_binding -> int {
+    item = LayoutRight("right");
+    return read_cast_layout(item as LayoutLeft);
+}

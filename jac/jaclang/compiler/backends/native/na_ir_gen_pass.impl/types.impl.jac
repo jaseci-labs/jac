@@ -404,7 +404,7 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
         }
         return self._self_arch;
     }
-    if isinstance(expr, uni.Name) {
+    if isinstance(expr, uni.Name) and expr.value in self.retyped_vars {
         slot = self.local_vars.get(expr.value);
         if slot is not None {
             storage = self._opt_payload_of(slot.pointee_type) or slot.pointee_type;
