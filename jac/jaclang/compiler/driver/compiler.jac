@@ -196,7 +196,8 @@ obj JacCompiler {
         file_path: str,
         target_program: JacProgram,
         use_str: str | None,
-        options: CompileOptions
+        options: CompileOptions,
+        caller_program: JacProgram
     ) -> uni.Module;
 
     def compile(

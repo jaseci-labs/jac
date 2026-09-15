@@ -379,9 +379,16 @@ def config_state -> ConfigState {
 }
 
 @contextmanager
-def config_scope(start_path: Path | None = None) -> Iterator[ConfigState] {
+def config_scope(
+    start_path: Path | None = None, inherit_explicit: bool = True
+) -> Iterator[ConfigState] {
     import from jaclang.project.modresolver { project_resolution_scope }
-    state = ConfigState(start_path=start_path);
+    parent = config_state();
+    state = ConfigState(
+        current=parent.current if inherit_explicit and parent.explicit else None,
+        start_path=start_path,
+        explicit=inherit_explicit and parent.explicit
+    );
     token = _scoped_state.set(state);
     try {
         with project_resolution_scope() {

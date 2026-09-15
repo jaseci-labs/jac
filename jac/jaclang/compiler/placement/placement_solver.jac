@@ -162,7 +162,9 @@ def native_default_path_ok(path: str) -> bool {
     return _native_deps_ok(ap, deps, program, hold_exempt=exempt);
 }
 
-def native_default_verdict(module: uni.Module, program: JacProgram) -> tuple[bool, str] {
+def native_default_verdict(
+    module: uni.Module, program: JacProgram
+) -> tuple[bool, str] {
     import from jaclang.compiler.driver.pipeline { native_pipeline_available }
     import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
 

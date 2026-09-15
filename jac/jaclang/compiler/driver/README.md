@@ -9,7 +9,10 @@ to a program. The LSP uses one worker for all compiler access.
   configuration, embedded file bytes and annex membership. `InputManifest` is the common freshness
   contract for live modules, interface artifacts and symbol-index shards. Nested
   read scopes record a dependency's own reads without inheriting its importer's
-  inputs. The compiler dependency graph records these reads and survives eviction.
+  inputs. Interface artifacts validate imported modules by their public interface
+  hashes; their raw-input manifest excludes those module sources and annexes, so
+  a dependency body edit does not invalidate every importer. The compiler
+  dependency graph records all reads and survives eviction.
   Compiler self-hosting uses its own source store and bytecode input scope, so
   editor overlays and compiler implementation reads stay with their owning program.
 - `analysis_service.jac` plans app contexts, requests compiler products, merges

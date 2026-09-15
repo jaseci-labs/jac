@@ -3,7 +3,11 @@ import type from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.unitree { Module }
 import json;
-import from jaclang.compiler.driver.inputs { InputManifest, content_digest, source_bytes }
+import from jaclang.compiler.driver.inputs {
+    InputManifest,
+    content_digest,
+    source_bytes
+}
 import from contextlib { contextmanager }
 import from collections.abc { Callable, Iterator }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
@@ -350,7 +354,7 @@ obj IfaceRegistry {
     def _entry_fresh(ent: IfaceEntry) -> bool {
         import from jaclang.compiler.driver.bccache { discover_annex_files }
         found = self._module_jir(ent.path);
-        if found is None or not self._inputs_match(found[0]) {
+        if found is None {
             return False;
         }
         try {
@@ -397,7 +401,7 @@ obj IfaceRegistry {
             if section is not None {
                 try {
                     self._iface_bytes[resolved] = EncodedInterface(
-                        self._input_key(resolved), section, digest, paths
+                        module_cache_key(resolved), section, digest, paths
                     );
                 } except OSError {}
             }
@@ -437,7 +441,9 @@ obj IfaceRegistry {
         }
     }
 
-    def serve(compiler: JacCompiler, resolved: str, options: CompileOptions) -> Module | None {
+    def serve(
+        compiler: JacCompiler, resolved: str, options: CompileOptions
+    ) -> Module | None {
         with self._compilation_scope() {
             return self._serve_in_context(compiler, resolved, options);
         }
@@ -479,30 +485,32 @@ obj IfaceRegistry {
     }
 
     def persist_after_compile(
-        resolved: str, mod: Module, options: CompileOptions, err_start: int, warn_start: int
+        resolved: str,
+        mod: Module,
+        options: CompileOptions,
+        err_start: int,
+        warn_start: int
     ) {
         with self._compilation_scope() {
             self._persist_in_context(resolved, mod, options, err_start, warn_start);
         }
     }
 
-    def _input_key(resolved: str) -> str {
-        snapshot = self.prog.source_store.snapshot;
-        return snapshot.manifest().digest() if snapshot is not None else module_cache_key(resolved);
-    }
-
     def _inputs_match(data: bytes) -> bool {
         encoded = read_section_bytes(data, SEC_INPUTS);
         if encoded is not None {
             try {
-                return InputManifest.from_dict(json.loads(encoded)).is_current(self.prog.source_store);
+                return InputManifest.from_dict(json.loads(encoded)).is_current(
+                    self.prog.source_store
+                );
             } except (ValueError, KeyError, TypeError) {
                 return False;
             }
         }
-        # Legacy artifacts have no input closure. Accept only a disk-equivalent view.
+
         return all(
-            content_digest(source.encode('utf-8')) == content_digest(source_bytes(path))
+            content_digest(source.encode('utf-8'))
+                == content_digest(source_bytes(path))
             for (path, source) in self.prog.source_store.overrides.items()
         );
     }
@@ -519,7 +527,9 @@ obj IfaceRegistry {
         } except Exception {}
         try {
             found = self.prog._get_compiler()._sealed_jir_data(resolved);
-            return found if found is not None and self._inputs_match(found[0]) else None;
+            return found
+                if found is not None and self._inputs_match(found[0])
+                else None;
         } except Exception {
             return None;
         }
@@ -755,7 +765,9 @@ obj IfaceRegistry {
         }
     }
 
-    def eligible(compiler: JacCompiler, resolved: str, options: CompileOptions) -> bool {
+    def eligible(
+        compiler: JacCompiler, resolved: str, options: CompileOptions
+    ) -> bool {
         if options.aot_mode
             or bool(options.force_codespace)
             or bool(options.default_codespace) {
@@ -774,7 +786,9 @@ obj IfaceRegistry {
         return iface_codec() is not None;
     }
 
-    def _serve_in_context(compiler: JacCompiler, resolved: str, options: CompileOptions) -> Module | None {
+    def _serve_in_context(
+        compiler: JacCompiler, resolved: str, options: CompileOptions
+    ) -> Module | None {
         if not options.iface_ok or options.need_full_ast or not self.ready() {
             return None;
         }
@@ -835,7 +849,9 @@ obj IfaceRegistry {
         return mod;
     }
 
-    def _serve_analysis(compiler: JacCompiler, resolved: str, options: CompileOptions) -> Module | None {
+    def _serve_analysis(
+        compiler: JacCompiler, resolved: str, options: CompileOptions
+    ) -> Module | None {
         err0 = len(self.prog.errors_had);
         warn0 = len(self.prog.warnings_had);
         codec = iface_codec();
@@ -951,7 +967,9 @@ obj IfaceRegistry {
         self._event("iface_cfg");
     }
 
-    def _encode_iface(codec: IfaceCodec, mod: Module, paths: JirPaths) -> (bytes | None) {
+    def _encode_iface(
+        codec: IfaceCodec, mod: Module, paths: JirPaths
+    ) -> (bytes | None) {
         import from jaclang.compiler.types.stubcat.modiface { IncoherentInterface }
         self._event("iface_encode");
         self._ensure_flow_graph(mod);
@@ -982,7 +1000,7 @@ obj IfaceRegistry {
         if codec is None {
             return False;
         }
-        key = self._input_key(resolved);
+        key = module_cache_key(resolved);
         memo = self._iface_bytes.get(resolved);
         if memo is not None and memo.module_key == key {
             return True;
@@ -1001,13 +1019,40 @@ obj IfaceRegistry {
     }
 
     def _persist_in_context(
-        resolved: str, mod: Module, options: CompileOptions, err_start: int, warn_start: int
+        resolved: str,
+        mod: Module,
+        options: CompileOptions,
+        err_start: int,
+        warn_start: int
     ) -> None {
         import json;
 
         snapshot = self.prog.source_store.snapshot;
-        inputs = snapshot.manifest() if snapshot is not None else None;
-        if inputs is None or not inputs.is_current() {
+        inputs: InputManifest | None = None;
+        if snapshot is not None {
+            inputs = snapshot.manifest();
+            if not inputs.is_current() {
+                return;
+            }
+            dependencies = snapshot.modules - {resolved};
+            module_inputs = set(dependencies);
+            for dependency in dependencies {
+                module_inputs.update(snapshot.annex_paths.get(dependency, []));
+            }
+            inputs = InputManifest(
+                {
+                    path: digest for (path, digest) in inputs.files.items()
+                    if path not in module_inputs
+                },
+                {
+                    path: paths for (path, paths) in inputs.annexes.items()
+                    if path not in dependencies
+                }
+            );
+        } elif any(
+            content_digest(source.encode('utf-8')) != content_digest(source_bytes(path))
+            for (path, source) in self.prog.source_store.overrides.items()
+        ) {
             return;
         }
 
@@ -1021,10 +1066,13 @@ obj IfaceRegistry {
         if codec is None {
             return;
         }
-        sections: dict[int, bytes] = {SEC_INPUTS: json.dumps(inputs.to_dict()).encode("utf-8")};
+        sections: dict[int, bytes] = {};
+        if inputs is not None {
+            sections[SEC_INPUTS] = json.dumps(inputs.to_dict()).encode('utf-8');
+        }
         modkey = "";
         try {
-            modkey = self._input_key(resolved);
+            modkey = module_cache_key(resolved);
         } except Exception {
             modkey = "";
         }
@@ -1168,12 +1216,15 @@ obj IfaceRegistry {
                 return None;
             }
             import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
-            carrier = self.prog.hub.artifacts.get(resolved);
+            module = self.prog.mod.hub.get(resolved);
+            carrier = module.gen
+                if module is not None
+                else self.prog.hub.artifacts.get(resolved);
             if carrier is None {
                 carrier = CodeGenTarget();
-                self.prog.hub.artifacts[resolved] = carrier;
             }
             carrier.interop_manifest = manifest;
+            self.prog.hub.artifacts[resolved] = carrier;
         }
         edges: list[str] = [];
         import from jaclang.compiler.driver.jir { read_dep_rows }

@@ -73,8 +73,8 @@ obj WorkQueue {
             deadline = time.monotonic() + (0.0 if immediate else self.debounce);
             self.epoch += 1;
             epoch = previous.epoch if previous is not None else self.epoch;
-            # A scan's descendants belong to the same completeness barrier.
-            if isinstance(self.active, WorkItem) and self.active.kind == WorkKind.SCAN {
+            if isinstance(self.active, WorkItem)
+                and self.active.kind == WorkKind.SCAN {
                 epoch = min(epoch, self.active.epoch);
             }
             self.pending[uri] = WorkItem(uri, kind, deadline, epoch);
@@ -124,8 +124,15 @@ obj WorkQueue {
                     self.requests.append(self.workspace_requests.popleft().request);
                 }
                 ready = min(
-                    (item for item in self.pending.values() if item.ready_at <= now),
-                    key=lambda (item: WorkItem) -> tuple[int, float] { return (item.epoch, item.ready_at); },
+                    (
+                        item
+                        for item in self.pending.values()
+                        if item.ready_at <= now
+                    ),
+                    key=lambda (item: WorkItem) -> tuple[int, float] { return (
+                        item.epoch,
+                        item.ready_at
+                    ); },
                     `default=None
                 );
                 self.background_turn = ready is not None
@@ -157,7 +164,9 @@ obj WorkQueue {
                 if not complete {
                     self.cancelled += 1;
                     if not self.stopped and item.uri not in self.pending {
-                        self.pending[item.uri] = WorkItem(item.uri, item.kind, epoch=item.epoch);
+                        self.pending[item.uri] = WorkItem(
+                            item.uri, item.kind, epoch=item.epoch
+                        );
                     }
                 } else {
                     self.completed += 1;

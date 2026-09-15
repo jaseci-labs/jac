@@ -36,9 +36,9 @@ import from .module_manager { ModuleManager }
 import from .scheduler { WorkQueue, WorkItem, WorkKind }
 
 glob _QUERY_PRODUCTS: dict[str, CompilationProduct] = {
-    lspt.TEXT_DOCUMENT_DOCUMENT_SYMBOL: CompilationProduct.SYMBOLS,
-    lspt.TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL: CompilationProduct.SYMBOLS
-};
+         lspt.TEXT_DOCUMENT_DOCUMENT_SYMBOL: CompilationProduct.SYMBOLS,
+         lspt.TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL: CompilationProduct.SYMBOLS
+     };
 
 def _uri_of(path: str) -> str;
 def _path_of(uri: str) -> str;

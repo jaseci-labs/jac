@@ -642,7 +642,8 @@ impl JacProgram.analysis_service(self: JacProgram) -> AnalysisService {
     service = owner_program._analysis_service;
     if service is None {
         import from jaclang.compiler.driver.analysis_service { AnalysisService }
-        service = AnalysisService(owner_program);
+        import from jaclang.compiler.tools.symbol_index { SymbolIndex }
+        service = AnalysisService(owner_program, SymbolIndex());
         owner_program._analysis_service = service;
     }
     return service;

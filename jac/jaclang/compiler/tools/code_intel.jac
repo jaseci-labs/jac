@@ -3,11 +3,7 @@ import time;
 import from pathlib { Path }
 import from jaclang.project.source { iter_source_units }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.tools.symbol_index {
-    SourceRef,
-    SymbolInfo,
-    EntryPoint
-}
+import from jaclang.compiler.tools.symbol_index { SourceRef, SymbolInfo, EntryPoint }
 
 def _real(path: str) -> str {
     try {
@@ -208,7 +204,9 @@ obj CodeIntelligence {
 
     def references(name: str) -> list[SourceRef] {
         self._ensure();
-        return self.prog.analysis_service().index.references_named(name, self.prog.source_store);
+        return self.prog.analysis_service().index.references_named(
+            name, self.prog.source_store
+        );
     }
 
     def importers(name: str) -> list[str] {
@@ -226,7 +224,9 @@ obj CodeIntelligence {
         target = _real(file) if file else '';
         found = {
             key: info
-            for shard in self.prog.analysis_service().index.current_shards(self.prog.source_store)
+            for shard in self.prog.analysis_service().index.current_shards(
+                self.prog.source_store
+            )
             for (key, info) in shard.definitions.items()
             if info.workspace_visible and (not target or _real(info.file) == target)
         };
@@ -234,20 +234,26 @@ obj CodeIntelligence {
     }
 
     def archetypes(kind: str = "") -> list[SymbolInfo] {
-        return [info for info in self.symbols()
+        return [
+            info
+            for info in self.symbols()
             if info.kind in ('obj', 'class', 'node', 'edge', 'walker', 'enum')
-                and (not kind or info.kind == kind)];
+                and (not kind or info.kind == kind)
+        ];
     }
 
     def entry_points -> list[EntryPoint] {
         self._ensure();
         found = {
             (
-                entry_point.file, entry_point.line,
-                entry_point.walker_name, entry_point.ability
+                entry_point.file,
+                entry_point.line,
+                entry_point.walker_name,
+                entry_point.ability
             ): entry_point
-            for shard in self.prog.analysis_service().index.current_shards(self.prog.source_store)
-            for entry_point in shard.entry_points
+            for shard in self.prog.analysis_service().index.current_shards(
+                self.prog.source_store
+            ) for entry_point in shard.entry_points
         };
         return [found[key] for key in sorted(found)];
     }
@@ -274,14 +280,20 @@ obj CodeIntelligence {
         target = _real(file) if file else "";
         out: list[Diagnostic] = [];
         for (sev, alerts) in [
-            ("error", [
-                alert for record in self.prog.analysis_service().records.values()
-                for alert in record.errors
-            ]),
-            ("warning", [
-                alert for record in self.prog.analysis_service().records.values()
-                for alert in record.warnings
-            ])
+            (
+                "error",
+                [
+                    alert for record in self.prog.analysis_service().records.values()
+                    for alert in record.errors
+                ]
+            ),
+            (
+                "warning",
+                [
+                    alert for record in self.prog.analysis_service().records.values()
+                    for alert in record.warnings
+                ]
+            )
         ] {
             for al in alerts {
                 loc = al.loc;

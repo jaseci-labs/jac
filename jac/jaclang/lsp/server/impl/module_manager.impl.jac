@@ -10,7 +10,9 @@ impl ModuleManager.update(
         manager = SemTokManager(ir=build, target_path=file);
         self.sem_managers[file] = manager;
         self.products[file] = DocumentProducts(
-            file_path, analysis, list(manager.sem_tokens),
+            file_path,
+            analysis,
+            list(manager.sem_tokens),
             get_symbols_for_outline(build.sym_tab, file)
         );
     }

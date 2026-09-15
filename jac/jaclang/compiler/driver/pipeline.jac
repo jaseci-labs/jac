@@ -865,11 +865,6 @@ def compile_application(
         }
         dependencies = package_sources(path, project_root);
         dependencies.update(context.iface_registry().direct_deps.get(path, {}));
-        dependencies.update(
-            dependency
-            for (dependency, importers) in context.deps.dependents.items()
-            if path in importers
-        );
         for statement in module.get_all_sub_nodes(Import) {
             if not statement.is_jac or statement.is_virtual_jac {
                 continue;

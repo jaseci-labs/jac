@@ -60,7 +60,8 @@ def cache_scope(
 
 @contextmanager
 def compilation_scope(
-    identity: str, options: CompileOptions | None = None,
+    identity: str,
+    options: CompileOptions | None = None,
     program: JacProgram | None = None
 ) -> Iterator[None] {
     import from jaclang.project.workspace { workspace_scope }

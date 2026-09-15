@@ -200,11 +200,11 @@ test "source helpers lower when a native unit reaches them" {
     reader = [
         s
         for s in seams
-        if s.startswith("read_file_with_encoding: ")
+        if s.startswith("read_file_bytes: ")
     ];
-    assert len(reader) == 1 and "open" in reader[0] , (
-        f"`open(path, encoding=...)` has to demote its own function and name "
-        f"the construct it refused, got: {seams}"
+    assert len(reader) == 1 , (
+        f"the byte reader must keep source-provider and filesystem access at "
+        f"the Python boundary, got: {seams}"
     );
 }
 

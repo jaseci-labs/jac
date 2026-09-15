@@ -185,18 +185,14 @@ def get_jir_cache_dir -> Path {
     return _root();
 }
 
-def compute_content_sha256(file_path: str) -> str {
-    h = hashlib.sha256();
-    with open(file_path, 'rb') as f {
-        while True {
-            chunk = f.read(8192);
-            if not chunk {
-                break;
-            }
-            h.update(chunk);
-        }
-    }
-    return h.hexdigest();
+def compute_content_sha256(
+    file_path: str, use_source_provider: bool = True
+) -> str {
+    import from jaclang.project.source { read_file_bytes }
+    data = read_file_bytes(file_path)
+        if use_source_provider
+        else Path(file_path).read_bytes();
+    return hashlib.sha256(data).hexdigest();
 }
 
 def _related_files(source_path: str) -> list[tuple[str, str]] {
@@ -209,6 +205,11 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     paths: set = set();
     paths |= set(discover_annex_files(str(src), '.impl.jac'));
     paths |= set(discover_annex_files(str(src), '.test.jac'));
+    import from jaclang.project.source { source_access }
+    access = source_access.get();
+    if access is not None and access.annexes is not None {
+        paths.update(path for (_source, path) in access.annexes(str(src)));
+    }
     style = discover_style_annex(str(src));
     if style is not None {
         paths.add(style);
@@ -327,7 +328,7 @@ def compiler_source_digest(pkg_dir: str) -> str {
         h.update(rel.encode());
         h.update(
             compute_content_sha256(
-                os.path.join(base, rel.replace("/", os.sep))
+                os.path.join(base, rel.replace("/", os.sep)), use_source_provider=False
             ).encode()
         );
     }
@@ -371,7 +372,7 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
         ) {
             sha = prev[2];
         } else {
-            sha = compute_content_sha256(full);
+            sha = compute_content_sha256(full, use_source_provider=False);
             changed = True;
         }
         new_entries[rel] = [st.st_mtime, st.st_size, sha];

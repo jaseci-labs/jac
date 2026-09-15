@@ -189,7 +189,6 @@ obj SymbolInfo {
 }
 
 
-
 def definition_symbol(sym: uni.Symbol, preserve_alias: bool = False) -> uni.Symbol {
     current = sym;
     seen: set[int] = set();
@@ -246,7 +245,9 @@ obj IndexShard {
                     'dependencies': self.dependencies,
                     'interface': self.interface,
                     'body_dependencies': sorted(self.body_dependencies),
-                    'entry_points': [entry_point.to_dict() for entry_point in self.entry_points],
+                    'entry_points': [
+                        entry_point.to_dict() for entry_point in self.entry_points
+                    ],
                     'definitions': {
                         key: info.to_dict() for (key, info) in self.definitions.items()
                     },
@@ -686,11 +687,12 @@ obj SymbolIndex {
     def references_named(name: str, store: SourceStore) -> list[SourceRef] {
         keys = {
             key for shard in self.current_shards(store)
-            for (key, info) in shard.definitions.items() if info.name == name
+            for (key, info) in shard.definitions.items()
+            if info.name == name
         };
         found = {
-            (ref.file, ref.line, ref.col): ref
-            for key in keys for ref in self.references_for(key, store)
+            (ref.file, ref.line, ref.col): ref for key in keys
+            for ref in self.references_for(key, store)
         };
         return [found[key] for key in sorted(found)];
     }

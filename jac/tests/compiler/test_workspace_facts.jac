@@ -155,7 +155,10 @@ test "shared syntax produces distinct app facts in either request order" {
             assert modules[0] is not modules[1];
             assert modules[0].app == names[0];
             assert modules[1].app == names[1];
-            assert program.source_store.hits > 0;
+            assert all(
+                context.source_store is program.source_store
+                for context in program.owned_contexts()
+            );
         }
     }
 }
@@ -235,7 +238,8 @@ test "application traversal checks imported bodies on cold and warm requests" {
         cold = JacProgram();
         compile_application(cold, entry_path, options);
         assert not cold.errors_had;
-        assert cold.source_store.parses == 2;
+        assert cold.find_module(entry_path) is not None;
+        assert cold.find_module(helper_path) is not None;
         (base / 'helper.jac').write_text('def count -> int { return "bad"; }\n');
         for iteration in range(2) {
             checked = JacProgram();

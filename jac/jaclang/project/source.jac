@@ -45,12 +45,18 @@ def iter_source_units(directory: str) -> Iterator[str] {
         directories[:] = sorted(
             name
             for name in directories
-            if not name.startswith('.') and name not in excluded
-                and not path_matches_exclude(os.path.join(parent, name), patterns, directory)
+            if not name.startswith('.')
+                and name not in excluded
+                and not path_matches_exclude(
+                    os.path.join(parent, name), patterns, directory
+                )
         );
         for name in sorted(files) {
-            if name.endswith('.jac') and not is_annex(name)
-                and not path_matches_exclude(os.path.join(parent, name), patterns, directory) {
+            if name.endswith('.jac')
+                and not is_annex(name)
+                and not path_matches_exclude(
+                    os.path.join(parent, name), patterns, directory
+                ) {
                 yield os.path.realpath(os.path.join(parent, name));
             }
         }

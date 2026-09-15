@@ -12,7 +12,7 @@ impl JacLangServer.postinit -> None {
     super.postinit();
     self.name = 'jac-lsp';
     self.version = 'v0.1';
-    # Compiler inputs include embedded data as well as source and configuration.
+
     self.watch_patterns = ['**/*'];
     self.program = JacProgram.for_analysis();
     self._compiler_lock = threading.RLock();
@@ -49,7 +49,9 @@ impl JacLangServer.submit_request(request: Request) -> None {
 impl JacLangServer._sync_sources(
     snapshot: WorkspaceSnapshot, changed_paths: set[str] | None = None
 ) -> None {
-    change = self.program.analysis_service().synchronize(snapshot.sources(), changed_paths);
+    change = self.program.analysis_service().synchronize(
+        snapshot.sources(), changed_paths
+    );
     producers = change.producers;
     affected = change.affected;
     open_units = {
@@ -149,7 +151,10 @@ impl JacLangServer.get_workspace_symbols(query: str) -> list[lspt.SymbolInformat
                     )
                 )
             )
-        ) for info in self.program.analysis_service().index.search(query, self.program.source_store)
+        )
+        for info in self.program.analysis_service().index.search(
+            query, self.program.source_store
+        )
     ];
 }
 
@@ -230,21 +235,28 @@ impl JacLangServer.type_check_file(
         }
         with self.workspace.lock {
             import from jaclang.compiler.driver.inputs { SourceStore }
-            if not result.record.inputs.is_current(SourceStore(self.workspace.snapshot(live=True).sources()))
+            if not result.record.inputs.is_current(
+                SourceStore(self.workspace.snapshot(live=True).sources())
+            )
                 or (cancel_token is not None and cancel_token.is_set()) {
                 self._sync_sources(self.workspace.snapshot(live=True), {path});
                 return False;
             }
             if publish {
-                self.module_manager.update(path, result.module, result.record, result.record.files);
+                self.module_manager.update(
+                    path, result.module, result.record, result.record.files
+                );
                 if product == CompilationProduct.ANALYSIS {
                     for file in result.record.files {
                         uri = _uri_of(file);
-                        file_diags = utils.gen_diagnostics(file, result.record.errors, result.record.warnings);
+                        file_diags = utils.gen_diagnostics(
+                            file, result.record.errors, result.record.warnings
+                        );
                         document = snapshot.documents.get(uri);
                         self._published_diagnostics[uri] = file_diags;
                         self.publish_diagnostics(
-                            uri, file_diags,
+                            uri,
+                            file_diags,
                             version=document.version if document is not None else None
                         );
                     }
@@ -364,7 +376,9 @@ impl JacLangServer.dispatcher -> None {
             with self._compiler_lock {
                 self.module_manager.trim();
             }
-            self.work.finish(item, complete=complete and not item.cancel_token.is_set());
+            self.work.finish(
+                item, complete=complete and not item.cancel_token.is_set()
+            );
         }
     }
 }

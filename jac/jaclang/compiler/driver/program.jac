@@ -20,7 +20,10 @@ import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.passes.transform { Transform }
-import type from jaclang.compiler.driver.compilation_context { CompilationContext, AnalysisCacheBudget }
+import type from jaclang.compiler.driver.compilation_context {
+    CompilationContext,
+    AnalysisCacheBudget
+}
 import type from jaclang.compiler.driver.inputs { SourceStore }
 
 class JacProgram {

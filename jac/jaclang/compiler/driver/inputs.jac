@@ -1,4 +1,3 @@
-# Captured inputs shared by compilation, indexing and editor queries.
 import os;
 import hashlib;
 import from pathlib { Path }
@@ -48,7 +47,9 @@ obj InputManifest {
 
     def digest -> str {
         import json;
-        return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True).encode('utf-8')).hexdigest();
+        return hashlib.sha256(
+            json.dumps(self.to_dict(), sort_keys=True).encode('utf-8')
+        ).hexdigest();
     }
 
     def to_dict -> dict[str, any] {
@@ -128,7 +129,9 @@ obj SourceSnapshot {
 
     def manifest -> InputManifest {
         reads = self.read_sets[-1] if self.read_sets else None;
-        paths = reads.files if reads is not None else self.disk.keys() | self.read_paths;
+        paths = reads.files
+            if reads is not None
+            else self.disk.keys() | self.read_paths;
         annexes = reads.annexes if reads is not None else self.annex_paths.keys();
         return InputManifest(
             {path: self.digest(path) for path in paths},
@@ -190,16 +193,13 @@ obj SourceStore {
     @contextmanager
     def capture -> Iterator[SourceSnapshot] {
         import from jaclang.project.source { SourceAccess, source_access }
-        if self.snapshot is not None {
-            with self.snapshot.scope() as captured {
-                yield captured;
-            }
-            return;
-        }
-        captured = SourceSnapshot(dict(self.overrides));
+        outermost = self.snapshot is None;
+        captured = self.snapshot or SourceSnapshot(dict(self.overrides));
         self.snapshot = captured;
         token = source_access.set(
-            SourceAccess(captured.read, self.annexes, captured.exists, captured.read_bytes)
+            SourceAccess(
+                captured.read, self.annexes, captured.exists, captured.read_bytes
+            )
         );
         try {
             with captured.scope() {
@@ -207,7 +207,9 @@ obj SourceStore {
             }
         } finally {
             source_access.reset(token);
-            self.snapshot = None;
+            if outermost {
+                self.snapshot = None;
+            }
         }
     }
 
@@ -264,7 +266,9 @@ obj SourceStore {
     }
 
     def annexes(path: str) -> list[tuple[str, str]] {
-        return [(self.read(candidate), candidate) for candidate in self.annex_paths(path)];
+        return [
+            (self.read(candidate), candidate) for candidate in self.annex_paths(path)
+        ];
     }
 
     def set_overrides(sources: dict[str, str]) -> set[str] {
@@ -277,11 +281,14 @@ obj SourceStore {
             if self.overrides.get(path) != current.get(path)
                 and content_digest(
                     self.overrides[path].encode('utf-8')
-                        if path in self.overrides else source_bytes(path)
-                ) != content_digest(
-                    current[path].encode('utf-8')
-                        if path in current else source_bytes(path)
+                        if path in self.overrides
+                        else source_bytes(path)
                 )
+                    != content_digest(
+                        current[path].encode('utf-8')
+                            if path in current
+                            else source_bytes(path)
+                    )
         };
         self.overrides = current;
         return changed;

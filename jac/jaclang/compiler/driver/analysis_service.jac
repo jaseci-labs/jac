@@ -1,6 +1,5 @@
 import from contextlib { contextmanager }
-# The program owns the analysis session, contexts, inputs and symbol index.
-# Clients borrow trees and retain compact projections after tree eviction.
+
 import from threading { Event }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import from jaclang.compiler.driver.bccache { discover_base_file }
@@ -19,12 +18,16 @@ import from jaclang.compiler.driver.compilation_context {
     context_identity,
     program_scope
 }
-import from jaclang.compiler.driver.inputs { InputManifest, SourceStore, SourceSnapshot }
+import from jaclang.compiler.driver.inputs {
+    InputManifest,
+    SourceStore,
+    SourceSnapshot
+}
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.progstate { DepGraph }
 import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.tools.symbol_index { IndexShard, SymbolIndex }
+import type from jaclang.compiler.tools.symbol_index { IndexShard, SymbolIndex }
 
 obj AnalysisRecord {
     has files: list[str],
@@ -38,7 +41,9 @@ obj AnalysisRecord {
     def changed_inputs(store: SourceStore) -> set[str] {
         manifests = [shard.inputs for shard in self.shards] or [self.inputs];
         with store.capture() {
-            return {path for manifest in manifests for path in manifest.changed_paths(store)};
+            return {
+                path for manifest in manifests for path in manifest.changed_paths(store)
+            };
         }
     }
 
@@ -128,13 +133,15 @@ def merge_app_alerts(
 
 obj AnalysisService {
     has program: JacProgram,
-        index: SymbolIndex = SymbolIndex(),
+        index: SymbolIndex,
         records: dict[str, AnalysisRecord] = {},
         budget: AnalysisCacheBudget = AnalysisCacheBudget();
 
     @contextmanager
     def scope(directory: Path) -> Iterator[SourceSnapshot] {
-        with program_scope(self.program), self.program.source_store.capture() as inputs, config_scope(directory) {
+        with program_scope(self.program), self.program.source_store.capture() as inputs, config_scope(
+            directory, inherit_explicit=False
+        ) {
             yield inputs;
         }
     }
@@ -195,7 +202,8 @@ obj AnalysisService {
                 context = self.program.contexts.get(contexts[-1]);
                 if context is not None and context.program is not None {
                     cached = context.program.mod.hub.get(path);
-                    if cached is not None and context.program.is_hub_entry_fresh(path)
+                    if cached is not None
+                        and context.program.is_hub_entry_fresh(path)
                         and (
                             product == CompilationProduct.SYMBOLS
                             or cached.parse_failed
@@ -224,17 +232,21 @@ obj AnalysisService {
                         }
                         return None;
                     }
-                    collected.append(AppDiagnostics(
-                        options.target_app,
-                        [
-                            alert for alert in self.program.errors_had
-                            if alert.loc.mod_path in files
-                        ],
-                        [
-                            alert for alert in self.program.warnings_had
-                            if alert.loc.mod_path in files
-                        ]
-                    ));
+                    collected.append(
+                        AppDiagnostics(
+                            options.target_app,
+                            [
+                                alert
+                                for alert in self.program.errors_had
+                                if alert.loc.mod_path in files
+                            ],
+                            [
+                                alert
+                                for alert in self.program.warnings_had
+                                if alert.loc.mod_path in files
+                            ]
+                        )
+                    );
                 }
                 shards: list[IndexShard] = [];
                 for build in builds {
@@ -258,8 +270,13 @@ obj AnalysisService {
                 self.program.errors_had.extend(errors);
                 self.program.warnings_had.extend(warnings);
                 record = AnalysisRecord(
-                    files, inputs.manifest(), tuple(shards), errors, warnings,
-                    product, contexts
+                    files,
+                    inputs.manifest(),
+                    tuple(shards),
+                    errors,
+                    warnings,
+                    product,
+                    contexts
                 );
                 self.records[path] = record;
                 return AnalysisResult(builds[-1], record);

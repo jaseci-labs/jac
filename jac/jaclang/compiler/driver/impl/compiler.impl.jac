@@ -143,7 +143,9 @@ impl JacCompiler.get_bytecode(
         actual = context_program(actual, options);
     }
     with compilation_scope(
-        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options, actual
+        '' if self.selfhost.is_selfhost(actual) else actual.context_key,
+        actual.options,
+        actual
     ), actual.source_store.capture() {
         return self._get_bytecode(full_target, actual);
     }
@@ -1255,16 +1257,37 @@ impl JacCompiler.compile(
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
     import from pathlib { Path }
+    import from jaclang.compiler.driver.compilation_context {
+        bind_options,
+        context_program
+    }
+    caller_program = target_program;
+    resolved_program = self.selfhost.resolve(file_path, target_program)
+        if not options.force_target_program
+        else target_program;
+    if not self.selfhost.is_selfhost(resolved_program) {
+        options = bind_options(file_path, resolved_program, options);
+        target_program = context_program(resolved_program, options);
+    } else {
+        target_program = resolved_program;
+    }
     import from jaclang.compiler.driver.compilation_context { program_scope }
     import from jaclang.project.config { config_scope }
-    with program_scope(target_program), target_program.source_store.capture() as inputs, config_scope(Path(file_path).parent) {
-        module = self._compile_captured(file_path, target_program, use_str, options);
+    with program_scope(target_program), target_program.source_store.capture() as inputs, config_scope(
+        Path(file_path).parent,
+        inherit_explicit=not self.selfhost.is_selfhost(target_program)
+    ) {
+        module = self._compile_captured(
+            file_path, target_program, use_str, options, caller_program
+        );
         owner = target_program.module_owner(module);
         if owner is not None {
             manifest = inputs.manifest();
             if use_str is not None {
                 import from jaclang.compiler.driver.inputs { content_digest }
-                manifest.files[JacProgram.hub_key(module.loc.mod_path)] = content_digest(use_str.encode('utf-8'));
+                manifest.files[JacProgram.hub_key(module.loc.mod_path)] = content_digest(
+                    use_str.encode('utf-8')
+                );
             }
             unit_path = JacProgram.hub_key(module.loc.mod_path);
             owner.hub.inputs[unit_path] = manifest;
@@ -1280,22 +1303,9 @@ impl JacCompiler._compile_captured(
     file_path: str,
     target_program: JacProgram,
     use_str: str | None,
-    options: CompileOptions
+    options: CompileOptions,
+    caller_program: JacProgram
 ) -> uni.Module {
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
-    caller_program = target_program;
-    resolved_program = self.selfhost.resolve(file_path, target_program)
-        if not options.force_target_program
-        else target_program;
-    if not self.selfhost.is_selfhost(resolved_program) {
-        options = bind_options(file_path, resolved_program, options);
-        target_program = context_program(resolved_program, options);
-    } else {
-        target_program = resolved_program;
-    }
     context_errors = len(target_program.errors_had);
     context_warnings = len(target_program.warnings_had);
     import from jaclang.compiler.driver.compilation_context { compilation_scope }
