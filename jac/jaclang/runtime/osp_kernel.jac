@@ -277,8 +277,11 @@ obj OspEngine {
     }
 
     def next_slot(
-        rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc
+        rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc,
+        run: bool = False
     ) -> (Slot | None) {
+        # Synchronous spawns execute a complete event band here. Async callers
+        # still receive one slot at a time so they can await its result.
         if scope.frames is None {
             scope.frames = [];
         }
@@ -297,6 +300,13 @@ obj OspEngine {
                     scope.sidx += 1;
                     if s.trig_tag == UNTYPED {
                         scope.cur_a = scope.wlk;
+                        if run {
+                            s.fn(scope.cur_a, scope.cur_b);
+                            if scope.disengaged or scope.skip_node or (not scope.next) {
+                                break;
+                            }
+                            continue;
+                        }
                         return s;
                     }
                 }
@@ -335,6 +345,48 @@ obj OspEngine {
                         scope.pending_fence = 0;
                     }
                     plan: Plan = f.plan;
+                    if run {
+                        for s in plan.w_entry {
+                            scope.cur_a = scope.wlk;
+                            scope.cur_b = f.loc;
+                            s.fn(scope.cur_a, scope.cur_b);
+                            if scope.disengaged {
+                                scope.stage = 3;
+                                return None;
+                            }
+                            if scope.skip_node { break; }
+                        }
+                        if not scope.skip_node {
+                            for s in plan.n_entry_u {
+                                scope.cur_a = f.loc;
+                                scope.cur_b = scope.wlk;
+                                s.fn(scope.cur_a, scope.cur_b);
+                                if scope.disengaged {
+                                    scope.stage = 3;
+                                    return None;
+                                }
+                                if scope.skip_node { break; }
+                            }
+                        }
+                        if not scope.skip_node {
+                            for s in plan.n_entry_t {
+                                scope.cur_a = f.loc;
+                                scope.cur_b = scope.wlk;
+                                s.fn(scope.cur_a, scope.cur_b);
+                                if scope.disengaged {
+                                    scope.stage = 3;
+                                    return None;
+                                }
+                                if scope.skip_node { break; }
+                            }
+                        }
+                        scope.skip_node = False;
+                        f.phase = 1;
+                        f.band = 0;
+                        f.idx = 0;
+                        f.budget = scope.pending_fence;
+                        continue;
+                    }
                     if f.band == 0 {
                         if f.idx > 0 and scope.skip_node {
                             f.idx = 0;
@@ -438,6 +490,49 @@ obj OspEngine {
                         continue;
                     }
                     plan: Plan = f.plan;
+                    if run {
+                        for s in plan.n_exit_t {
+                            scope.cur_a = f.loc;
+                            scope.cur_b = scope.wlk;
+                            s.fn(scope.cur_a, scope.cur_b);
+                            if scope.disengaged {
+                                scope.stage = 3;
+                                return None;
+                            }
+                            if scope.skip_node { break; }
+                        }
+                        if not scope.skip_node {
+                            for s in plan.n_exit_u {
+                                scope.cur_a = f.loc;
+                                scope.cur_b = scope.wlk;
+                                s.fn(scope.cur_a, scope.cur_b);
+                                if scope.disengaged {
+                                    scope.stage = 3;
+                                    return None;
+                                }
+                                if scope.skip_node { break; }
+                            }
+                        }
+                        if not scope.skip_node {
+                            for s in plan.w_exit {
+                                scope.cur_a = scope.wlk;
+                                scope.cur_b = f.loc;
+                                s.fn(scope.cur_a, scope.cur_b);
+                                if scope.disengaged {
+                                    scope.stage = 3;
+                                    return None;
+                                }
+                                if scope.skip_node { break; }
+                            }
+                        }
+                        scope.skip_node = False;
+                        frames.pop();
+                        if scope.fenced and (scope.pending_fence > 0) and frames {
+                            parent: Frame = frames[-1];
+                            parent.budget += scope.pending_fence;
+                        }
+                        continue;
+                    }
                     if f.band == 0 {
                         if f.idx > 0 and scope.skip_node {
                             f.idx = 0;
@@ -506,6 +601,13 @@ obj OspEngine {
                     if s.trig_tag == UNTYPED {
                         scope.cur_a = scope.wlk;
                         scope.cur_b = scope.path[-1];
+                        if run {
+                            s.fn(scope.cur_a, scope.cur_b);
+                            if scope.disengaged or scope.skip_node {
+                                break;
+                            }
+                            continue;
+                        }
                         return s;
                     }
                 }
@@ -522,13 +624,7 @@ obj OspEngine {
         scope = self.begin(wlk, starts);
         ok = False;
         try {
-            while True {
-                s = self.next_slot(rt, scope, wdesc);
-                if s is None {
-                    break;
-                }
-                s.fn(scope.cur_a, scope.cur_b);
-            }
+            self.next_slot(rt, scope, wdesc, run=True);
             ok = True;
         } finally {
             self.finish(scope, ok, rt);

@@ -15,6 +15,7 @@ import from jaclang.compiler.frontend.unitree {
     KWPair,
     ability_of_symbol,
     ImplDef,
+    Module,
     Name,
     SpecialVarRef,
     Symbol,
@@ -32,6 +33,35 @@ walker EndpointEffectPass(UniPass) {
         _assumptions: set[str] = field(default_factory=set),
         _touches: set[str] = field(default_factory=`set),
         _visited: set[int] = field(default_factory=set);
+
+    def transform(ir_in: Module) -> Module {
+        if type(self) is not EndpointEffectPass {
+            return super.transform(ir_in);
+        }
+        self.ir_out = ir_in;
+        self.before_pass();
+        pending: list[UniNode] = [ir_in];
+        while pending {
+            nd = pending.pop();
+            if self.is_canceled() {
+                break;
+            }
+            if nd.ct_pruned {
+                continue;
+            }
+            self.cur_node = nd;
+            if isinstance(nd, Ability) {
+                self.enter_ability(nd);
+            }
+            if isinstance(nd, Archetype) {
+                self.enter_archetype(nd);
+            }
+            pending.extend(reversed(nd.kid));
+        }
+        self.cur_node = ir_in;
+        self.after_pass();
+        return ir_in;
+    }
 
     def before_pass {
         self._is_writer = False;

@@ -65,6 +65,7 @@ walker BoundaryAnalysisPass(UniPass) {
         );
 
     def before_pass -> None;
+    def transform(ir_in: Module) -> Module;
     def _resolved_native_decl(name_node: (UniNode | None)) -> (Ability | None);
     def _signature_of_decl(
         decl: (Ability | None)

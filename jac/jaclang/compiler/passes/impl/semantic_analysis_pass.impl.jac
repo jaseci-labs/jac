@@ -1,3 +1,29 @@
+impl SemanticAnalysisPass.transform(ir_in: Module) -> Module {
+    if type(self) is not SemanticAnalysisPass {
+        return super.transform(ir_in);
+    }
+    self.ir_out = ir_in;
+    self.before_pass();
+    pending: list[UniNode] = [ir_in];
+    while pending {
+        nd = pending.pop();
+        if self.is_canceled() { break; }
+        if nd.ct_pruned { continue; }
+        self.cur_node = nd;
+        if isinstance(nd, Archetype) { self.enter_archetype(nd); }
+        if isinstance(nd, HasVar) { self.enter_has_var(nd); }
+        if isinstance(nd, ParamVar) { self.enter_param_var(nd); }
+        if isinstance(nd, Assignment) { self.enter_assignment(nd); }
+        if isinstance(nd, InForStmt) { self.enter_in_for_stmt(nd); }
+        if isinstance(nd, ExprAsItem) { self.enter_expr_as_item(nd); }
+        if isinstance(nd, InnerCompr) { self.enter_inner_compr(nd); }
+        pending.extend(reversed(nd.kid));
+    }
+    self.cur_node = ir_in;
+    self.after_pass();
+    return ir_in;
+}
+
 impl inform_from_walker(nd: UniNode) -> None {
     for i in nd.get_all_sub_nodes(VisitStmt)
         + nd.get_all_sub_nodes(DisengageStmt)

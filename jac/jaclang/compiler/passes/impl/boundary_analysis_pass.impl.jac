@@ -4,6 +4,41 @@ impl BoundaryAnalysisPass.before_pass -> None {
     self._imported_native_modules = {};
 }
 
+impl BoundaryAnalysisPass.transform(ir_in: Module) -> Module {
+    if type(self) is not BoundaryAnalysisPass {
+        return super.transform(ir_in);
+    }
+    self.ir_out = ir_in;
+    self.before_pass();
+    pending: list[UniNode] = [ir_in];
+    while pending {
+        nd = pending.pop();
+        if self.is_canceled() {
+            break;
+        }
+        if nd.ct_pruned {
+            continue;
+        }
+        self.cur_node = nd;
+        if isinstance(nd, Import) {
+            self.enter_import(nd);
+        }
+        if isinstance(nd, AtomTrailer) {
+            self.enter_atom_trailer(nd);
+        }
+        if isinstance(nd, Ability) {
+            self.enter_ability(nd);
+        }
+        if isinstance(nd, FuncCall) {
+            self.enter_func_call(nd);
+        }
+        pending.extend(reversed(nd.kid));
+    }
+    self.cur_node = ir_in;
+    self.after_pass();
+    return ir_in;
+}
+
 impl BoundaryAnalysisPass._resolved_native_decl(
     name_node: (UniNode | None)
 ) -> (Ability | None) {
@@ -824,7 +859,8 @@ impl BoundaryAnalysisPass.enter_ability with Ability entry {
 }
 
 impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
-    if isinstance(here.target, Name) and here.target.value == "bind_na_host" {
+    target = here.target;
+    if isinstance(target, Name) and target.value == "bind_na_host" {
         import from jaclang.compiler.passes.wasm_contract { check_host_call }
         import from jaclang.compiler.frontend.diagnostics { E5110 }
         try {
@@ -833,25 +869,25 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
             self.emit(E5110, node_override=here, details=str(e));
         }
     }
-    if (
-        isinstance(here.target, Name)
-        and here.target.sym is not None
-        and here.target.sym.decl is not None
-    ) {
-        _decl_ab = here.target.sym.decl.find_parent_of_type(Ability);
-        if (
-            _decl_ab is not None and _decl_ab.find_parent_of_type(Ability) is not None
-        ) {
-            return;
+    if isinstance(target, Name) {
+        target_sym = target.sym;
+        target_decl = target_sym.decl if target_sym is not None else None;
+        if target_decl is not None {
+            _decl_ab = target_decl.find_parent_of_type(Ability);
+            if (
+                _decl_ab is not None and _decl_ab.find_parent_of_type(Ability) is not None
+            ) {
+                return;
+            }
         }
     }
     func_name = None;
-    if isinstance(here.target, Name) {
-        func_name = here.target.value;
-    } elif isinstance(here.target, NameAtom) {
-        func_name = here.target.sym_name;
-    } elif isinstance(here.target, AtomTrailer) and here.target.is_attr {
-        base = here.target.target;
+    if isinstance(target, Name) {
+        func_name = target.value;
+    } elif isinstance(target, NameAtom) {
+        func_name = target.sym_name;
+    } elif isinstance(target, AtomTrailer) and target.is_attr {
+        base = target.target;
         base_name = None;
         if isinstance(base, Name) {
             base_name = base.value;
@@ -859,7 +895,7 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
             base_name = base.sym_name;
         }
         if base_name is not None and base_name in self._imported_native_modules {
-            right = here.target.right;
+            right = target.right;
             right_name: (str | None) = None;
             if isinstance(right, AstSymbolNode) {
                 right_name = right.sym_name;
@@ -876,7 +912,7 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
                 (mod_path, _ctx) = self._imported_native_modules[base_name];
                 _mfst = self.ir_in.gen.interop_manifest;
                 if right_name not in _mfst.bindings {
-                    _decl = self._resolved_native_decl(here.target.right);
+                    _decl = self._resolved_native_decl(right);
                     (_rt, _pts, _pns) = self._signature_of_decl(_decl);
                     _mfst.bindings[right_name] = InteropBinding(
                         name=right_name,
@@ -899,13 +935,16 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
     if not func_name {
         return;
     }
+    if func_name not in self._imported_native_funcs and func_name not in self._func_defs {
+        return;
+    }
     caller_ctx = self._get_context(here);
     manifest = self.ir_in.gen.interop_manifest;
     if (func_name in self._imported_native_funcs) {
         (source_module, import_ctx) = self._imported_native_funcs[func_name];
         if (caller_ctx == InteropContext.NATIVE or self._in_native_module()) {
             if (func_name not in manifest.bindings) {
-                _decl = self._resolved_native_decl(here.target);
+                _decl = self._resolved_native_decl(target);
                 (_rt, _pts, _pns) = self._signature_of_decl(_decl);
                 binding = InteropBinding(
                     name=func_name,

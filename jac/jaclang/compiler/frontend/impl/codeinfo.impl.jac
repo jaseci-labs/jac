@@ -88,6 +88,22 @@ impl InteropManifest.server_exports_to_server.getter -> list[InteropBinding] {
     ];
 }
 
+impl CodeGenTarget.py.getter -> str {
+    if self._py is None {
+        if self.py_ast {
+            import ast;
+            self._py = ast.unparse(self.py_ast[0]);
+        } else {
+            return '';
+        }
+    }
+    return self._py;
+}
+
+impl CodeGenTarget.py.setter(value: str) -> None {
+    self._py = value;
+}
+
 impl CodeGenTarget.doc_ir.getter -> Doc {
     if (self._doc_ir is None) {
         import jaclang.compiler.tools.doc_ir as doc;

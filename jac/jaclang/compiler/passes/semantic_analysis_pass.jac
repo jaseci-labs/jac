@@ -16,6 +16,7 @@ import from jaclang.compiler.frontend.unitree {
     ImplDef,
     InForStmt,
     InnerCompr,
+    Module,
     Name,
     ParamVar,
     SpecialVarRef,
@@ -38,6 +39,7 @@ import from jaclang.compiler.frontend.diagnostics {
 def inform_from_walker(nd: UniNode) -> None;
 
 walker SemanticAnalysisPass(UniPass) {
+    def transform(ir_in: Module) -> Module;
     can enter_archetype with Archetype entry;
     def _check_archetype(nd: Archetype) -> None;
     def _property_type_names(methods: list[Ability]) -> dict[str, str];

@@ -248,7 +248,7 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
     """
     if edge is not None and dir != 3 and not edges_only and not isinstance(origin, list):
         me = origin.__jac__
-        if not me.persistent and (
+        if not me._persistent and (
             not me.edges or (not me.mixed and _light_edge_types.get(edge))
         ):
             subs = _edge_subtypes.get(edge)
@@ -258,7 +258,7 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
                 if dir == 2:
                     d = me.out_light
                     lst = d.get(edge) if d else None
-                    return list(lst) if lst else []
+                    return lst.copy() if lst else []
                 d = me.in_light
                 lst = d.get(edge) if d else None
                 if not lst:
