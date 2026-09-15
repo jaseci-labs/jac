@@ -287,17 +287,22 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(root_node: UniNode) -> None {
         if is_identifier_slot(name_node) {
             continue;
         }
-        if name_node.sym_tab {
+        scope = name_node.sym_tab;
+        if scope {
             try {
-                name_node.sym_tab.use_lookup(name_node);
+                scope.use_lookup(name_node);
             } except ValueError {}
         }
     }
     for trailer_node in root_node.get_all_sub_nodes(AtomTrailer) {
         chain = trailer_node.as_attr_list;
-        if chain and chain[0].sym is None and trailer_node.sym_tab {
+        if chain and chain[0].sym is None {
+            scope = trailer_node.sym_tab;
+            if scope is None {
+                continue;
+            }
             try {
-                trailer_node.sym_tab.chain_use_lookup(chain);
+                scope.chain_use_lookup(chain);
             } except ValueError {}
         }
     }

@@ -65,6 +65,7 @@ walker BoundaryAnalysisPass(UniPass) {
         );
 
     def before_pass -> None;
+    def transform(ir_in: Module) -> Module;
     def _resolved_native_decl(name_node: (UniNode | None)) -> (Ability | None);
     def _signature_of_decl(
         decl: (Ability | None)
@@ -76,6 +77,7 @@ walker BoundaryAnalysisPass(UniPass) {
     def _native_source_module_of(mod: (Module | None)) -> (str | None);
     def _register_native_absorb(nd: Import) -> None;
     can enter_import with Import entry;
+    def _analyze_import(nd: Import) -> None;
     def _register_sv_import(
         nd: Import, module_name: str, caller_ctx: InteropContext
     ) -> None;
@@ -107,8 +109,11 @@ walker BoundaryAnalysisPass(UniPass) {
     ) -> (Archetype | Enum | None);
 
     can enter_atom_trailer with AtomTrailer entry;
+    def _analyze_atom_trailer(nd: AtomTrailer) -> None;
     can enter_ability with Ability entry;
+    def _analyze_ability(nd: Ability) -> None;
     can enter_func_call with FuncCall entry;
+    def _analyze_func_call(nd: FuncCall) -> None;
     def _extract_subscript_inner(expr: (UniNode | None)) -> str;
     def _extract_all_subscript_types(expr: (UniNode | None)) -> list[str];
     def _extract_all_type_names(expr: (UniNode | None)) -> list[str];
