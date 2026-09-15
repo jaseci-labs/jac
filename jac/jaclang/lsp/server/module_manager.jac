@@ -72,6 +72,21 @@ obj ModuleManager {
             and document_products.is_current(self.program.source_store);
     }
 
+    def changed_inputs(path: str) -> set[str] {
+        document_products = self.products.get(path);
+        if document_products is None {
+            return set();
+        }
+        manifests = [shard.inputs for shard in document_products.index_shards];
+        if not manifests and document_products.inputs is not None {
+            manifests.append(document_products.inputs);
+        }
+        return {
+            changed for manifest in manifests
+            for changed in manifest.changed_paths(self.program.source_store)
+        };
+    }
+
     def invalidate(path: str, retain_products: bool = False) {
         if retain_products {
             import from jaclang.lsp.server.utils { get_symbols_for_outline }

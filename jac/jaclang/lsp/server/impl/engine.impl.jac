@@ -248,8 +248,10 @@ impl JacLangServer._ensure_query(request: Request) -> None {
     if not isinstance(uri, str) {
         return;
     }
-    self._sync_sources(self.workspace.snapshot());
     path = discover_base_file(_path_of(uri)) or _path_of(uri);
+    self._sync_sources(
+        self.workspace.snapshot(), self.module_manager.changed_inputs(path)
+    );
     products = self.module_manager.products.get(_path_of(uri));
     if products is not None and not products.is_current(self.program.source_store) {
         self.module_manager.invalidate(products.unit_path);
@@ -291,15 +293,15 @@ impl JacLangServer.type_check_file(
         touched: set[str] = set();
         try {
             snapshot = self.workspace.snapshot();
-            self._sync_sources(snapshot);
+            fs_path = _path_of(file_uri);
+            main_path = discover_base_file(fs_path) or fs_path;
+            self._sync_sources(snapshot, self.module_manager.changed_inputs(main_path));
             import from pathlib { Path }
             import from jaclang.project.config { config_scope }
             with self.program.source_store.capture() as inputs {
                 touched = inputs.modules;
                 inputs.watch_configuration(_path_of(file_uri));
                 with config_scope(Path(_path_of(file_uri)).parent) {
-                    fs_path = _path_of(file_uri);
-                    main_path = discover_base_file(fs_path) or fs_path;
                     inputs.watch_configuration(main_path);
                     files_to_check = [main_path];
                     files_to_check.extend(

@@ -1,6 +1,5 @@
 import os;
 import hashlib;
-import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import type from jaclang.compiler.frontend.srcloc { Span }
 
@@ -10,23 +9,9 @@ obj SourceAccess {
         exists: Callable[[str], bool] | None = None;
 }
 
-glob _source_access: ContextVar[SourceAccess | None] = ContextVar(
+glob source_access: ContextVar[SourceAccess | None] = ContextVar(
          'jac_source_access', `default=None
      );
-
-@contextmanager
-def source_scope(
-    reader: Callable[[str], str],
-    annexes: Callable[[str], list[tuple[str, str]]] | None = None,
-    exists: Callable[[str], bool] | None = None
-) -> Iterator[None] {
-    token = _source_access.set(SourceAccess(reader, annexes, exists));
-    try {
-        yield ;
-    } finally {
-        _source_access.reset(token);
-    }
-}
 
 def disk_annex_paths(path: str) -> list[str] {
     import from jaclang.compiler.driver.bccache {
@@ -43,7 +28,7 @@ def disk_annex_paths(path: str) -> list[str] {
 }
 
 def read_source_unit(path: str) -> tuple[str, list[tuple[str, str]]] {
-    access = _source_access.get();
+    access = source_access.get();
     annexes = access.annexes(path)
         if access is not None and access.annexes is not None
         else [
@@ -384,7 +369,7 @@ def decode_source(data: bytes, file_path: str = '') -> str {
 
 
 def read_file_with_encoding(file_path: str) -> str {
-    access = _source_access.get();
+    access = source_access.get();
     if access is not None {
         return access.read(file_path);
     }
@@ -401,7 +386,7 @@ def read_file_with_encoding(file_path: str) -> str {
 }
 
 def source_exists(file_path: str) -> bool {
-    access = _source_access.get();
+    access = source_access.get();
     if access is None {
         return os.path.isfile(file_path);
     }

@@ -71,6 +71,10 @@ obj InputManifest {
         annexes: dict[str, list[str]];
 
     def is_current(store: SourceStore | None = None) -> bool {
+        return next(self.changed_paths(store), None) is None;
+    }
+
+    def changed_paths(store: SourceStore | None = None) -> Iterator[str] {
         for (path, digest) in self.files.items() {
             snapshot = store.snapshot if store is not None else None;
             actual = snapshot.digest(path)
@@ -81,7 +85,7 @@ obj InputManifest {
                         else source_bytes(path)
                 );
             if actual != digest {
-                return False;
+                yield path;
             }
         }
         discovery = store if store is not None else SourceStore();
@@ -93,10 +97,9 @@ obj InputManifest {
                 );
             }
             if actual_paths != paths {
-                return False;
+                yield path;
             }
         }
-        return True;
     }
 
     def to_dict -> dict {
@@ -217,18 +220,20 @@ obj SourceStore {
 
     @contextmanager
     def capture -> Iterator[SourceSnapshot] {
-        import from jaclang.project.source { source_scope }
+        import from jaclang.project.source { SourceAccess, source_access }
         if self.snapshot is not None {
             yield self.snapshot;
             return;
         }
         captured = SourceSnapshot(dict(self.overrides));
         self.snapshot = captured;
+        token = source_access.set(
+            SourceAccess(captured.read, self.annexes, captured.exists)
+        );
         try {
-            with source_scope(captured.read, self.annexes, captured.exists) {
-                yield captured;
-            }
+            yield captured;
         } finally {
+            source_access.reset(token);
             self.snapshot = None;
         }
     }
@@ -315,7 +320,7 @@ obj SourceStore {
         import from jaclang.compiler.frontend.parser.frontend { parse_woven }
 
         self.parses += 1;
-        return parse_woven(source, os.path.realpath(path), program, annexes);
+        return parse_woven(source, path, program, annexes);
     }
 }
 
