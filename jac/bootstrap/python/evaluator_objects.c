@@ -13,11 +13,14 @@
 #include "internal/pycore_pyerrors.h"
 #include "internal/pycore_typeobject.h"
 #include "internal/pycore_sysmodule.h"
+#include "internal/pycore_stackref.h"
 #include "internal/pycore_unicodeobject.h"
 
 _Static_assert(SPECIAL___ENTER__ == 0 && SPECIAL___EXIT__ == 1 &&
                SPECIAL___AENTER__ == 2 && SPECIAL___AEXIT__ == 3,
                "pinned special-method ABI");
+_Static_assert(sizeof(int) == sizeof(int32_t), "pinned evaluator integer ABI");
+_Static_assert(Py_CONSTANT_EMPTY_STR == 7 && Py_EQ == 2, "pinned object constant ABI");
 
 int32_t jacpy_object_has_iter(JacPyObjectRef value) {
     return Py_TYPE(value)->tp_iter != NULL;
@@ -55,7 +58,7 @@ JacPyObjectRef jacpy_eval_identifier(PyThreadState *tstate, int32_t identifier) 
     assert(identifier >= 0 && identifier < (int32_t)(sizeof(names) / sizeof(names[0])));
     return names[identifier];
 }
-JacPyObjectRef jacpy_code_local_name(JacPyObjectRef code, int32_t index) {
+JacPyObjectRef jacpy_code_local_name(JacPyObjectRef code, int64_t index) {
     return PyTuple_GET_ITEM(((PyCodeObject *)code)->co_localsplusnames, index);
 }
 int32_t jacpy_code_first_free(JacPyObjectRef code) {
@@ -167,3 +170,64 @@ JacPyObjectRef jacpy_unicode_format_four(const char *format, JacPyObjectRef a,
 int32_t jacpy_unicode_check(JacPyObjectRef value) { return PyUnicode_Check(value); }
 int32_t jacpy_anyset_check(JacPyObjectRef value) { return PyAnySet_Check(value); }
 int32_t jacpy_module_check(JacPyObjectRef value) { return PyModule_Check(value); }
+
+int64_t jacpy_exception_table_size(JacPyObjectRef code) {
+    return PyBytes_GET_SIZE(((PyCodeObject *)code)->co_exceptiontable);
+}
+int32_t jacpy_exception_table_byte(JacPyObjectRef code, int64_t offset) {
+    const unsigned char *bytes = (const unsigned char *)PyBytes_AS_STRING(
+        ((PyCodeObject *)code)->co_exceptiontable);
+    return bytes[offset];
+}
+/* Keep C int output slots and stack storage at the C ABI boundary. The search
+ * and varint decoding run in native Jac and allocate no cursor object.
+ */
+extern int32_t jacpy_exception_table_handler(PyObject *, int32_t,
+    int *, int *, int *, JacPyExceptionCursor *);
+int jacpy_get_exception_handler(PyCodeObject *code, int index,
+    int *level, int *handler, int *lasti) {
+    JacPyExceptionCursor cursor = {0};
+    return jacpy_exception_table_handler((PyObject *)code, index, level, handler, lasti, &cursor);
+}
+
+int64_t jacpy_code_argcount(JacPyObjectRef code) { return ((PyCodeObject *)code)->co_argcount; }
+int64_t jacpy_code_kwonlyargcount(JacPyObjectRef code) { return ((PyCodeObject *)code)->co_kwonlyargcount; }
+int64_t jacpy_code_posonlyargcount(JacPyObjectRef code) { return ((PyCodeObject *)code)->co_posonlyargcount; }
+int64_t jacpy_list_size(JacPyObjectRef list) { return PyList_GET_SIZE(list); }
+JacPyObjectRef jacpy_list_item(JacPyObjectRef list, int64_t index) { return PyList_GET_ITEM(list, index); }
+void jacpy_list_initialize_item(JacPyObjectRef list, int64_t index, JacPyObjectRef item) {
+    assert(PyList_GET_ITEM(list, index) == NULL);
+    PyList_SET_ITEM(list, index, item);
+}
+int32_t jacpy_list_delete_slice(JacPyObjectRef list, int64_t start, int64_t end) {
+    return PyList_SetSlice(list, start, end, NULL);
+}
+const char *jacpy_argument_text(int32_t kind) {
+    static const char *const words[] = {"", "s", "was", "were", "positional", "keyword-only"};
+    assert(kind >= 0 && kind < (int32_t)(sizeof(words) / sizeof(words[0])));
+    return words[kind];
+}
+void jacpy_format_missing_error(PyThreadState *tstate, JacPyObjectRef qualname,
+    int64_t count, const char *kind, const char *plural, JacPyObjectRef names) {
+    _PyErr_Format(tstate, PyExc_TypeError, "%U() missing %zd required %s argument%s: %U",
+                  qualname, (Py_ssize_t)count, kind, plural, names);
+}
+JacPyObjectRef jacpy_unicode_format_sizes(const char *format, int64_t first, int64_t second) {
+    return PyUnicode_FromFormat(format, (Py_ssize_t)first, (Py_ssize_t)second);
+}
+JacPyObjectRef jacpy_unicode_format_kwonly(const char *given_plural, int64_t count, const char *plural) {
+    return PyUnicode_FromFormat(" positional argument%s (and %zd keyword-only argument%s)",
+                               given_plural, (Py_ssize_t)count, plural);
+}
+void jacpy_format_positional_error(PyThreadState *tstate, JacPyObjectRef qualname,
+    JacPyObjectRef signature, const char *plural, int64_t given,
+    JacPyObjectRef keyword_signature, const char *verb) {
+    _PyErr_Format(tstate, PyExc_TypeError, "%U() takes %U positional argument%s but %zd%U %s given",
+                  qualname, signature, plural, (Py_ssize_t)given, keyword_signature, verb);
+}
+int32_t jacpy_stack_array_is_null(const void *array, int64_t index) {
+    return PyStackRef_IsNull(((const _PyStackRef *)array)[index]);
+}
+int32_t jacpy_stack_array_has_object(const void *array, int64_t index) {
+    return PyStackRef_AsPyObjectBorrow(((const _PyStackRef *)array)[index]) != NULL;
+}

@@ -47,6 +47,9 @@ and arithmetic calls; every callee needs a compatible external protocol, and
 the declared GIL/reentry effects must cover the body. The annotation does not
 convert Jac layouts to a C ABI. Do not use an empty `raises` set to omit Jac
 exception checks or replace ordinary Jac error handling with this contract.
+Returning a borrow of an owned dependent still requires that owner to survive:
+the parent's lifetime cannot replace the lifetime of a cursor destroyed on
+return. Transfer the owned cursor when its release obligation must escape.
 Only the resource's resolved destructor may discharge a dependent owner without
 repeating its `from` contract; its source owners remain live during cleanup.
 Do not treat every `own PyStackRef` as heap-safe: a `from frame` dependency still

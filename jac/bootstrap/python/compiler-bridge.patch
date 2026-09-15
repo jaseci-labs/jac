@@ -272,7 +272,7 @@
      {"builtins", NULL},
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -377,75 +377,44 @@
+@@ -377,75 +377,46 @@
 
  ##########################################################################
  # Parser
@@ -338,6 +338,8 @@
 +		Python/jac_evaluator_objects.o \
 +		Python/jac_evaluator_errors.o \
 +		Python/jac_evaluator_imports.o \
++		Python/jac_evaluator_exceptions.o \
++		Python/jac_evaluator_arguments.o \
 +		Python/jacpython.o \
  		Python/asdl.o \
 -		Python/assemble.o \
@@ -363,7 +365,7 @@
  		Python/gc_free_threading.o \
  		Python/gc_gil.o \
  		Python/getargs.o \
-@@ -461,9 +430,8 @@
+@@ -461,9 +432,8 @@
  		Python/index_pool.o \
  		Python/initconfig.o \
  		Python/interpconfig.o \
@@ -373,7 +375,7 @@
  		Python/jit.o \
  		Python/legacy_tracing.o \
  		Python/lock.o \
-@@ -491,9 +459,8 @@
+@@ -491,9 +461,8 @@
  		Python/bootstrap_hash.o \
  		Python/specialize.o \
  		Python/stackrefs.o \
@@ -383,7 +385,7 @@
  		Python/thread.o \
  		Python/traceback.o \
  		Python/tracemalloc.o \
-@@ -1360,11 +1327,11 @@
+@@ -1360,11 +1329,11 @@
  		$(srcdir)/Include/internal/pycore_import.h \
  		$(srcdir)/Include/internal/pycore_importdl.h \
  		$(srcdir)/Include/internal/pycore_index_pool.h \
@@ -397,7 +399,7 @@
  		$(srcdir)/Include/internal/pycore_interpframe.h \
  		$(srcdir)/Include/internal/pycore_interpframe_structs.h \
  		$(srcdir)/Include/internal/pycore_interpolation.h \
-@@ -1429,9 +1396,9 @@
+@@ -1429,9 +1398,9 @@
  		$(srcdir)/Include/internal/pycore_tracemalloc.h \
  		$(srcdir)/Include/internal/pycore_tstate.h \
  		$(srcdir)/Include/internal/pycore_tuple.h \
@@ -408,7 +410,7 @@
  		$(srcdir)/Include/internal/pycore_ucnhash.h \
  		$(srcdir)/Include/internal/pycore_unicodeobject.h \
  		$(srcdir)/Include/internal/pycore_unicodeobject_generated.h \
-@@ -1982,16 +1949,10 @@
+@@ -1982,16 +1951,10 @@
  	$(srcdir)/Tools/peg_generator/pegen/grammar_parser.py.new
 
  .PHONY: regen-pegen
@@ -427,7 +429,7 @@
  .PHONY: regen-ast
  regen-ast:
  	# Regenerate 3 files using Parser/asdl_c.py:
-@@ -2011,29 +1972,10 @@
+@@ -2011,29 +1974,10 @@
  	$(UPDATE_FILE) $(srcdir)/Python/Python-ast.c $(srcdir)/Python/Python-ast.c.new
 
  .PHONY: regen-token
@@ -459,7 +461,7 @@
  .PHONY: regen-keyword
  regen-keyword:
  	# Regenerate Lib/keyword.py from Grammar/python.gram and Grammar/Tokens
-@@ -2061,9 +2003,9 @@
+@@ -2061,9 +2005,9 @@
  		$(srcdir)/Lib/re/_constants.py \
  		$(srcdir)/Modules/_sre/sre_constants.h \
  		$(srcdir)/Modules/_sre/sre_targets.h
@@ -470,7 +472,7 @@
  Python/getplatform.o: $(srcdir)/Python/getplatform.c
  		$(CC) -c $(PY_CORE_CFLAGS) -DPLATFORM='"$(MACHDEP)"' -o $@ $(srcdir)/Python/getplatform.c
 
-@@ -2197,24 +2139,14 @@
+@@ -2197,24 +2141,14 @@
  	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/uop_metadata_generator.py -o \
  	    $(srcdir)/Include/internal/pycore_uop_metadata.h.new $(srcdir)/Python/bytecodes.c
  	$(UPDATE_FILE) $(srcdir)/Include/internal/pycore_uop_metadata.h $(srcdir)/Include/internal/pycore_uop_metadata.h.new
@@ -495,7 +497,7 @@
  Python/optimizer.o: \
  		$(srcdir)/Python/executor_cases.c.h \
  		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
-@@ -2813,14 +2745,14 @@
+@@ -2813,14 +2747,14 @@
  		echo "Applying app store compliance patch"; \
  		patch --force --reject-file "$(abs_builddir)/app-store-compliance.rej" --strip 2 --directory "$(DESTDIR)$(LIBDEST)" --input "$(abs_srcdir)/$(APP_STORE_COMPLIANCE_PATCH)" || true ; \
  	fi
@@ -512,7 +514,7 @@
  		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST)/site-packages -f \
  		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
 
-@@ -3419,4 +3351,14 @@
+@@ -3419,4 +3353,14 @@
  # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
  # Local Variables:
  # mode: makefile
@@ -526,10 +528,10 @@
 +Python/jac_evaluator_refs.o: $(srcdir)/Python/jac_evaluator_refs.c $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_genobject.h $(srcdir)/Include/internal/pycore_pyerrors.h
 +Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_audit.h $(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
-+Python/jac_evaluator_objects.o: $(srcdir)/Python/jac_evaluator_objects.c $(srcdir)/Python/evaluator_objects.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h
++Python/jac_evaluator_objects.o: $(srcdir)/Python/jac_evaluator_objects.c $(srcdir)/Python/evaluator_objects.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h
 --- a/Python/ceval.c
 +++ b/Python/ceval.c
-@@ -279,22 +279,28 @@
+@@ -279,26 +279,33 @@
  }
 
  #endif
@@ -562,8 +564,14 @@
                   _PyInterpreterFrame *frame,
                   _Py_CODEUNIT *instr);
 
- static int get_exception_handler(PyCodeObject *, int, int*, int*, int*);
-@@ -949,9 +955,10 @@
+-static int get_exception_handler(PyCodeObject *, int, int*, int*, int*);
++#define get_exception_handler jacpy_get_exception_handler
++extern int get_exception_handler(PyCodeObject *, int, int*, int*, int*);
+ static  _PyInterpreterFrame *
+ _PyEvalFramePushAndInit_Ex(PyThreadState *tstate, _PyStackRef func,
+     PyObject *locals, Py_ssize_t nargs, PyObject *callargs, PyObject *kwargs, _PyInterpreterFrame *previous);
+
+@@ -949,9 +956,10 @@
      return NULL;
  }
 
@@ -575,7 +583,317 @@
  PyObject *
  PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
  {
-@@ -1922,48 +1929,8 @@
+@@ -1381,299 +1389,18 @@
+ #elif defined(_MSC_VER) /* MS_WINDOWS */
+ #  pragma warning(pop)
+ #endif
+
+-static void
+-format_missing(PyThreadState *tstate, const char *kind,
+-               PyCodeObject *co, PyObject *names, PyObject *qualname)
+-{
+-    int err;
+-    Py_ssize_t len = PyList_GET_SIZE(names);
+-    PyObject *name_str, *comma, *tail, *tmp;
+-
+-    assert(PyList_CheckExact(names));
+-    assert(len >= 1);
+-    /* Deal with the joys of natural language. */
+-    switch (len) {
+-    case 1:
+-        name_str = PyList_GET_ITEM(names, 0);
+-        Py_INCREF(name_str);
+-        break;
+-    case 2:
+-        name_str = PyUnicode_FromFormat("%U and %U",
+-                                        PyList_GET_ITEM(names, len - 2),
+-                                        PyList_GET_ITEM(names, len - 1));
+-        break;
+-    default:
+-        tail = PyUnicode_FromFormat(", %U, and %U",
+-                                    PyList_GET_ITEM(names, len - 2),
+-                                    PyList_GET_ITEM(names, len - 1));
+-        if (tail == NULL)
+-            return;
+-        /* Chop off the last two objects in the list. This shouldn't actually
+-           fail, but we can't be too careful. */
+-        err = PyList_SetSlice(names, len - 2, len, NULL);
+-        if (err == -1) {
+-            Py_DECREF(tail);
+-            return;
+-        }
+-        /* Stitch everything up into a nice comma-separated list. */
+-        comma = PyUnicode_FromString(", ");
+-        if (comma == NULL) {
+-            Py_DECREF(tail);
+-            return;
+-        }
+-        tmp = PyUnicode_Join(comma, names);
+-        Py_DECREF(comma);
+-        if (tmp == NULL) {
+-            Py_DECREF(tail);
+-            return;
+-        }
+-        name_str = PyUnicode_Concat(tmp, tail);
+-        Py_DECREF(tmp);
+-        Py_DECREF(tail);
+-        break;
+-    }
+-    if (name_str == NULL)
+-        return;
+-    _PyErr_Format(tstate, PyExc_TypeError,
+-                  "%U() missing %zd required %s argument%s: %U",
+-                  qualname,
+-                  len,
+-                  kind,
+-                  len == 1 ? "" : "s",
+-                  name_str);
+-    Py_DECREF(name_str);
+-}
+-
+-static void
+-missing_arguments(PyThreadState *tstate, PyCodeObject *co,
+-                  Py_ssize_t missing, Py_ssize_t defcount,
+-                  _PyStackRef *localsplus, PyObject *qualname)
+-{
+-    Py_ssize_t i, j = 0;
+-    Py_ssize_t start, end;
+-    int positional = (defcount != -1);
+-    const char *kind = positional ? "positional" : "keyword-only";
+-    PyObject *missing_names;
+-
+-    /* Compute the names of the arguments that are missing. */
+-    missing_names = PyList_New(missing);
+-    if (missing_names == NULL)
+-        return;
+-    if (positional) {
+-        start = 0;
+-        end = co->co_argcount - defcount;
+-    }
+-    else {
+-        start = co->co_argcount;
+-        end = start + co->co_kwonlyargcount;
+-    }
+-    for (i = start; i < end; i++) {
+-        if (PyStackRef_IsNull(localsplus[i])) {
+-            PyObject *raw = PyTuple_GET_ITEM(co->co_localsplusnames, i);
+-            PyObject *name = PyObject_Repr(raw);
+-            if (name == NULL) {
+-                Py_DECREF(missing_names);
+-                return;
+-            }
+-            PyList_SET_ITEM(missing_names, j++, name);
+-        }
+-    }
+-    assert(j == missing);
+-    format_missing(tstate, kind, co, missing_names, qualname);
+-    Py_DECREF(missing_names);
+-}
+-
+-static void
+-too_many_positional(PyThreadState *tstate, PyCodeObject *co,
+-                    Py_ssize_t given, PyObject *defaults,
+-                    _PyStackRef *localsplus, PyObject *qualname)
+-{
+-    int plural;
+-    Py_ssize_t kwonly_given = 0;
+-    Py_ssize_t i;
+-    PyObject *sig, *kwonly_sig;
+-    Py_ssize_t co_argcount = co->co_argcount;
+-
+-    assert((co->co_flags & CO_VARARGS) == 0);
+-    /* Count missing keyword-only args. */
+-    for (i = co_argcount; i < co_argcount + co->co_kwonlyargcount; i++) {
+-        if (PyStackRef_AsPyObjectBorrow(localsplus[i]) != NULL) {
+-            kwonly_given++;
+-        }
+-    }
+-    Py_ssize_t defcount = defaults == NULL ? 0 : PyTuple_GET_SIZE(defaults);
+-    if (defcount) {
+-        Py_ssize_t atleast = co_argcount - defcount;
+-        plural = 1;
+-        sig = PyUnicode_FromFormat("from %zd to %zd", atleast, co_argcount);
+-    }
+-    else {
+-        plural = (co_argcount != 1);
+-        sig = PyUnicode_FromFormat("%zd", co_argcount);
+-    }
+-    if (sig == NULL)
+-        return;
+-    if (kwonly_given) {
+-        const char *format = " positional argument%s (and %zd keyword-only argument%s)";
+-        kwonly_sig = PyUnicode_FromFormat(format,
+-                                          given != 1 ? "s" : "",
+-                                          kwonly_given,
+-                                          kwonly_given != 1 ? "s" : "");
+-        if (kwonly_sig == NULL) {
+-            Py_DECREF(sig);
+-            return;
+-        }
+-    }
+-    else {
+-        /* This will not fail. */
+-        kwonly_sig = Py_GetConstant(Py_CONSTANT_EMPTY_STR);
+-        assert(kwonly_sig != NULL);
+-    }
+-    _PyErr_Format(tstate, PyExc_TypeError,
+-                  "%U() takes %U positional argument%s but %zd%U %s given",
+-                  qualname,
+-                  sig,
+-                  plural ? "s" : "",
+-                  given,
+-                  kwonly_sig,
+-                  given == 1 && !kwonly_given ? "was" : "were");
+-    Py_DECREF(sig);
+-    Py_DECREF(kwonly_sig);
+-}
+-
+-static int
+-positional_only_passed_as_keyword(PyThreadState *tstate, PyCodeObject *co,
+-                                  Py_ssize_t kwcount, PyObject* kwnames,
+-                                  PyObject *qualname)
+-{
+-    int posonly_conflicts = 0;
+-    PyObject* posonly_names = PyList_New(0);
+-    if (posonly_names == NULL) {
+-        goto fail;
+-    }
+-    for(int k=0; k < co->co_posonlyargcount; k++){
+-        PyObject* posonly_name = PyTuple_GET_ITEM(co->co_localsplusnames, k);
+-
+-        for (int k2=0; k2<kwcount; k2++){
+-            /* Compare the pointers first and fallback to PyObject_RichCompareBool*/
+-            PyObject* kwname = PyTuple_GET_ITEM(kwnames, k2);
+-            if (kwname == posonly_name){
+-                if(PyList_Append(posonly_names, kwname) != 0) {
+-                    goto fail;
+-                }
+-                posonly_conflicts++;
+-                continue;
+-            }
+-
+-            int cmp = PyObject_RichCompareBool(posonly_name, kwname, Py_EQ);
+-
+-            if ( cmp > 0) {
+-                if(PyList_Append(posonly_names, kwname) != 0) {
+-                    goto fail;
+-                }
+-                posonly_conflicts++;
+-            } else if (cmp < 0) {
+-                goto fail;
+-            }
+-
+-        }
+-    }
+-    if (posonly_conflicts) {
+-        PyObject* comma = PyUnicode_FromString(", ");
+-        if (comma == NULL) {
+-            goto fail;
+-        }
+-        PyObject* error_names = PyUnicode_Join(comma, posonly_names);
+-        Py_DECREF(comma);
+-        if (error_names == NULL) {
+-            goto fail;
+-        }
+-        _PyErr_Format(tstate, PyExc_TypeError,
+-                      "%U() got some positional-only arguments passed"
+-                      " as keyword arguments: '%U'",
+-                      qualname, error_names);
+-        Py_DECREF(error_names);
+-        goto fail;
+-    }
+-
+-    Py_DECREF(posonly_names);
+-    return 0;
+-
+-fail:
+-    Py_XDECREF(posonly_names);
+-    return 1;
+-
+-}
+-
+-
+-static inline unsigned char *
+-scan_back_to_entry_start(unsigned char *p) {
+-    for (; (p[0]&128) == 0; p--);
+-    return p;
+-}
+-
+-static inline unsigned char *
+-skip_to_next_entry(unsigned char *p, unsigned char *end) {
+-    while (p < end && ((p[0] & 128) == 0)) {
+-        p++;
+-    }
+-    return p;
+-}
+-
+-
+-#define MAX_LINEAR_SEARCH 40
+-
+-static Py_NO_INLINE int
+-get_exception_handler(PyCodeObject *code, int index, int *level, int *handler, int *lasti)
+-{
+-    unsigned char *start = (unsigned char *)PyBytes_AS_STRING(code->co_exceptiontable);
+-    unsigned char *end = start + PyBytes_GET_SIZE(code->co_exceptiontable);
+-    /* Invariants:
+-     * start_table == end_table OR
+-     * start_table points to a legal entry and end_table points
+-     * beyond the table or to a legal entry that is after index.
+-     */
+-    if (end - start > MAX_LINEAR_SEARCH) {
+-        int offset;
+-        parse_varint(start, &offset);
+-        if (offset > index) {
+-            return 0;
+-        }
+-        do {
+-            unsigned char * mid = start + ((end-start)>>1);
+-            mid = scan_back_to_entry_start(mid);
+-            parse_varint(mid, &offset);
+-            if (offset > index) {
+-                end = mid;
+-            }
+-            else {
+-                start = mid;
+-            }
+-
+-        } while (end - start > MAX_LINEAR_SEARCH);
+-    }
+-    unsigned char *scan = start;
+-    while (scan < end) {
+-        int start_offset, size;
+-        scan = parse_varint(scan, &start_offset);
+-        if (start_offset > index) {
+-            break;
+-        }
+-        scan = parse_varint(scan, &size);
+-        if (start_offset + size > index) {
+-            scan = parse_varint(scan, handler);
+-            int depth_and_lasti;
+-            parse_varint(scan, &depth_and_lasti);
+-            *level = depth_and_lasti >> 1;
+-            *lasti = depth_and_lasti & 1;
+-            return 1;
+-        }
+-        scan = skip_to_next_entry(scan, end);
+-    }
+-    return 0;
+-}
++
++#define missing_arguments jacpy_missing_arguments
++#define too_many_positional jacpy_too_many_positional
++#define positional_only_passed_as_keyword jacpy_positional_only_as_keyword
++extern void missing_arguments(PyThreadState *, PyCodeObject *, Py_ssize_t, Py_ssize_t,
++                              _PyStackRef *, PyObject *);
++extern void too_many_positional(PyThreadState *, PyCodeObject *, Py_ssize_t, PyObject *,
++                                _PyStackRef *, PyObject *);
++extern int positional_only_passed_as_keyword(PyThreadState *, PyCodeObject *, Py_ssize_t,
++                                            PyObject *, PyObject *);
+
+ static int
+ initialize_locals(PyThreadState *tstate, PyFunctionObject *func,
+     _PyStackRef *localsplus, _PyStackRef const *args,
+@@ -1922,48 +1649,8 @@
  fail_post_args:
      return -1;
  }
@@ -624,7 +942,7 @@
  _PyInterpreterFrame *
  _PyEvalFramePushAndInit(PyThreadState *tstate, _PyStackRef func,
                          PyObject *locals, _PyStackRef const* args,
-@@ -1978,9 +1945,9 @@
+@@ -1978,9 +1665,9 @@
      }
      _PyFrame_Initialize(tstate, frame, func, locals, code, 0, previous);
      if (initialize_locals(tstate, func_obj, frame->localsplus, args, argcount, kwnames)) {
@@ -635,7 +953,7 @@
      }
      return frame;
  fail:
-@@ -2183,110 +2150,8 @@
+@@ -2183,110 +1870,8 @@
      Py_DECREF(defaults);
      return res;
  }
@@ -746,7 +1064,7 @@
  /* Logic for matching an exception in an except* clause (too
     complicated for inlining).
  */
-@@ -2486,245 +2351,18 @@
+@@ -2486,245 +2071,14 @@
      Py_XDECREF(it);
      return 0;
  }
@@ -969,10 +1287,6 @@
 -    Py_XSETREF(tstate->async_gen_firstiter, Py_XNewRef(firstiter));
 -    return 0;
 -}
-+
-+
-+
-+
 
  PyObject *
  _PyEval_GetAsyncGenFirstiter(void)
@@ -996,7 +1310,7 @@
 
  PyObject *
  _PyEval_GetAsyncGenFinalizer(void)
-@@ -3036,484 +2674,16 @@
+@@ -3036,486 +2390,8 @@
      return result;
  }
 
@@ -1477,19 +1791,13 @@
 -        }
 -    }
 -}
-+
-+
-+
-+
-+
-+
-+
-+
-
-
+-
+-
  Py_ssize_t
  PyUnstable_Eval_RequestCodeExtraIndex(freefunc free)
-@@ -3555,47 +2725,8 @@
+ {
+     PyInterpreterState *interp = _PyInterpreterState_GET();
+@@ -3555,47 +2431,8 @@
 
  void Py_LeaveRecursiveCall(void)
  {
@@ -1537,7 +1845,7 @@
 
  void
  _PyEval_LoadGlobalStackRef(PyObject *globals, PyObject *builtins, PyObject *name, _PyStackRef *writeto)
-@@ -3636,90 +2767,7 @@
+@@ -3636,90 +2473,5 @@
          *writeto = PyStackRef_FromPyObjectSteal(res);
      }
  }
@@ -1598,8 +1906,8 @@
 -    }
 -    return value;
 -}
-
- /* Check if a 'cls' provides the given special method. */
+-
+-/* Check if a 'cls' provides the given special method. */
 -static inline int
 -type_has_special_method(PyTypeObject *cls, PyObject *name)
 -{

@@ -6,6 +6,10 @@
 #include "evaluator_refs.h"
 
 typedef void *JacPyLookupRef;
+typedef struct { int64_t offset; } JacPyExceptionCursor;
+int64_t jacpy_exception_table_size(JacPyObjectRef code);
+int32_t jacpy_exception_table_byte(JacPyObjectRef code, int64_t offset);
+int jacpy_get_exception_handler(PyCodeObject *code, int index, int *level, int *handler, int *lasti);
 void jacpy_lookup_close(JacPyLookupRef result);
 int32_t jacpy_lookup_state(JacPyLookupRef result);
 JacPyObjectRef jacpy_lookup_take(JacPyLookupRef result);
@@ -27,7 +31,7 @@ int32_t jacpy_cstring_is_null(const char *value);
 int32_t jacpy_object_is(JacPyObjectRef left, JacPyObjectRef right);
 int32_t jacpy_name_error_has_name(JacPyObjectRef exception);
 JacPyObjectRef jacpy_eval_identifier(PyThreadState *tstate, int32_t identifier);
-JacPyObjectRef jacpy_code_local_name(JacPyObjectRef code, int32_t index);
+JacPyObjectRef jacpy_code_local_name(JacPyObjectRef code, int64_t index);
 int32_t jacpy_code_first_free(JacPyObjectRef code);
 const char *jacpy_eval_error_format(int32_t kind);
 int32_t jacpy_type_has_await(JacPyObjectRef type);
@@ -53,4 +57,21 @@ JacPyObjectRef jacpy_unicode_format_four(const char *format, JacPyObjectRef a,
 int32_t jacpy_unicode_check(JacPyObjectRef value);
 int32_t jacpy_anyset_check(JacPyObjectRef value);
 int32_t jacpy_module_check(JacPyObjectRef value);
+int64_t jacpy_code_argcount(JacPyObjectRef code);
+int64_t jacpy_code_kwonlyargcount(JacPyObjectRef code);
+int64_t jacpy_code_posonlyargcount(JacPyObjectRef code);
+int64_t jacpy_list_size(JacPyObjectRef list);
+JacPyObjectRef jacpy_list_item(JacPyObjectRef list, int64_t index);
+void jacpy_list_initialize_item(JacPyObjectRef list, int64_t index, JacPyObjectRef item);
+int32_t jacpy_list_delete_slice(JacPyObjectRef list, int64_t start, int64_t end);
+const char *jacpy_argument_text(int32_t kind);
+void jacpy_format_missing_error(PyThreadState *tstate, JacPyObjectRef qualname,
+    int64_t count, const char *kind, const char *plural, JacPyObjectRef names);
+JacPyObjectRef jacpy_unicode_format_sizes(const char *format, int64_t first, int64_t second);
+JacPyObjectRef jacpy_unicode_format_kwonly(const char *given_plural, int64_t count, const char *plural);
+void jacpy_format_positional_error(PyThreadState *tstate, JacPyObjectRef qualname,
+    JacPyObjectRef signature, const char *plural, int64_t given,
+    JacPyObjectRef keyword_signature, const char *verb);
+int32_t jacpy_stack_array_is_null(const void *array, int64_t index);
+int32_t jacpy_stack_array_has_object(const void *array, int64_t index);
 #endif

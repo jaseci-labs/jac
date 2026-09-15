@@ -56,7 +56,7 @@ import from c {
     @foreign_call(requires=["gil"], errors="python", reentrant=True)
     def PyObject_SetAttr(value: &PyObjectRef, name: &PyObjectRef, attribute: &PyObjectRef) -> i32;
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
-    def jacpy_code_local_name(code: &PyObjectRef, index: i32) -> &PyObjectRef from code;
+    def jacpy_code_local_name(code: &PyObjectRef, index: i64) -> &PyObjectRef from code;
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
     def jacpy_code_first_free(code: &PyObjectRef) -> i32;
     @foreign_call(requires=["gil"], errors="none", reentrant=False)

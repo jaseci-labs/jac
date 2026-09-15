@@ -155,12 +155,12 @@ def jacpy_monitor_throw(tstate: &JacPyThreadState,
 @foreign_call(requires=["gil"], errors="none", reentrant=False)
 def PyThreadState_EnterTracing(tstate: &JacPyThreadState) {
     # CPython's precondition bounds the tracing nesting count to C int.
-    jacpy_tracing_set(tstate, wrapping_add(jacpy_tracing_get(tstate), 1));
+    jacpy_tracing_set(tstate, wrapping_add(jacpy_tracing_get(tstate), i32(1)));
 }
 
 @foreign_call(requires=["gil"], errors="none", reentrant=False)
 def PyThreadState_LeaveTracing(tstate: &JacPyThreadState) {
-    jacpy_tracing_set(tstate, wrapping_sub(jacpy_tracing_get(tstate), 1));
+    jacpy_tracing_set(tstate, wrapping_sub(jacpy_tracing_get(tstate), i32(1)));
 }
 
 @foreign_call(requires=["gil"], errors="python", reentrant=True)

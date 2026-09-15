@@ -151,6 +151,12 @@ emit_evaluator_unit("evaluator_errors", "evaluator_errors", [
 emit_evaluator_unit("evaluator_imports", "evaluator_imports", [
     "_PyEval_LoadName", "_PyEval_ImportName", "_PyEval_ImportFrom",
 ])
+emit_evaluator_unit("evaluator_exceptions", "evaluator_exceptions", [
+    "jacpy_exception_table_handler",
+])
+emit_evaluator_unit("evaluator_arguments", "evaluator_arguments", [
+    "jacpy_missing_arguments", "jacpy_too_many_positional", "jacpy_positional_only_as_keyword",
+])
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
     "jaclang/runtime/python/evaluator_lookup.jac",

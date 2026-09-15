@@ -13,6 +13,7 @@ const inputs = [_][]const u8{
     "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
     "bootstrap/python/evaluator_refs.c",   "bootstrap/python/evaluator_refs.h",
     "bootstrap/python/evaluator_frames.c", "bootstrap/python/evaluator_frames.h",
+    "bootstrap/python/evaluator_objects.c", "bootstrap/python/evaluator_objects.h",
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
@@ -164,7 +165,8 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
             std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c") or
             std.mem.endsWith(u8, path, "/object_api.c") or std.mem.endsWith(u8, path, "/binding_api.c") or
             std.mem.endsWith(u8, path, "/evaluator_refs.c") or std.mem.endsWith(u8, path, "/evaluator_refs.h") or
-            std.mem.endsWith(u8, path, "/evaluator_frames.c") or std.mem.endsWith(u8, path, "/evaluator_frames.h"))) continue;
+            std.mem.endsWith(u8, path, "/evaluator_frames.c") or std.mem.endsWith(u8, path, "/evaluator_frames.h") or
+            std.mem.endsWith(u8, path, "/evaluator_objects.c") or std.mem.endsWith(u8, path, "/evaluator_objects.h"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
@@ -400,7 +402,12 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
-    for ([_][]const u8{ "bootstrap/python/evaluator_refs.c", "bootstrap/python/evaluator_refs.h", "jaclang/native.pyi" }) |path| {
+    for ([_][]const u8{
+        "bootstrap/python/evaluator_refs.c", "bootstrap/python/evaluator_refs.h",
+        "bootstrap/python/evaluator_frames.c", "bootstrap/python/evaluator_frames.h",
+        "bootstrap/python/evaluator_objects.c", "bootstrap/python/evaluator_objects.h",
+        "jaclang/native.pyi",
+    }) |path| {
         const before_refs = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
         try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "changed reference ABI" });
         try std.testing.expect(!std.mem.eql(u8, &before_refs, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));

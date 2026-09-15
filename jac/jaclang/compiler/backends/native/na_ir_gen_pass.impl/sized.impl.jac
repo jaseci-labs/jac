@@ -372,6 +372,10 @@ impl NaIRGenPass._emit_checked_abs(val: ir.Value) -> ir.Value {
 }
 
 impl NaIRGenPass._emit_shift_count_check(count: ir.Value, width: int) -> None {
+    if isinstance(count, ir.Constant) and isinstance(count.constant, int)
+        and 0 <= count.constant < width {
+        return;
+    }
     bad = self.builder.icmp_unsigned(
         ">=", count, ir.Constant(count.type, width), name="shift.bad"
     );

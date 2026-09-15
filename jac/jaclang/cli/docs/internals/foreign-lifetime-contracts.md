@@ -30,6 +30,12 @@ owners remain live for the entire cleanup call. This exception belongs to the
 resolved destructor declaration, not another function with the same name. Other
 consuming calls must preserve the dependency in their parameter contracts.
 
+Borrowing a dependent owner also requires the owner itself to remain alive.
+For example, an `own Cursor from connection` cannot return `&cursor` under
+`&Cursor from connection` and then destroy the cursor. Returning the owned
+cursor transfers its release obligation and can preserve the connection
+dependency. A parent dependency does not extend a destroyed child's lifetime.
+
 Bodies are checked against their declared sources. Unknown, duplicate,
 self-referential, and cyclic sources are errors. A function cannot return a
 value depending on an owned parameter it destroys on return. Single-source
@@ -152,7 +158,8 @@ also do not justify LLVM immutability or exclusivity attributes.
 
 The evaluator sources include raise logic, active-frame cleanup, monitoring and
 tracing control, coroutine-origin and async-generator setters, error formatting,
-name lookup, and import handling using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
+name lookup, import handling, exception-table search, and argument-count
+diagnostics using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
 a dependent executable reference is closed before its thread frame is popped.
 The source changes in this review batch have not been built or tested.
 
@@ -168,6 +175,14 @@ container-element stability across reentry, and complete effect propagation
 through every storage/interface shape remain migration prerequisites. These
 design requirements must not be treated as implemented guarantees. The C opcode
 evaluator and tier-two executor remain in the candidate build.
+
+The full source migration is still unfinished. Remaining C algorithms include
+opcode dispatch and all enabled instruction families, tier-two execution,
+argument binding and frame setup, recursion handling, pattern matching,
+exception-group splitting, iterable unpacking, and remaining evaluation and
+frame-introspection APIs. Their source/object prerequisites remain active.
+Removing these entries from the build before replacing their implementations
+would not complete the migration.
 
 ## Validation before completing the migration
 

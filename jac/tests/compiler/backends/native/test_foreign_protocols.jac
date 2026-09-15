@@ -46,6 +46,18 @@ test "external error bodies retain checked arithmetic diagnostics" {
     );
 }
 
+test "constant bounded shifts need no Jac error machinery" {
+    compile_protocol(
+        '@foreign_call(errors="none", reentrant=False) '
+        'def probe(value: i64) -> i64 { return value >> 1; }'
+    );
+    compile_protocol(
+        '@foreign_call(errors="none", reentrant=False) '
+        'def probe(value: i64, count: i64) -> i64 { return value >> count; }',
+        "without an external error contract"
+    );
+}
+
 test "source raises inference does not authorize external error calls" {
     compile_protocol(
         'def unannotated(value: i64) -> i64 { return wrapping_add(value, 1); } '
@@ -96,5 +108,33 @@ test "resource cleanup participates in checked external protocols" {
         '@foreign_call(requires=["gil"], errors="none", reentrant=False) '
         'def probe(value: &PyObjectRef) { owner: own PyObjectRef = jacpy_ref_new(value); }',
         "can reenter through a call or cleanup"
+    );
+}
+
+test "a borrowed dependent owner cannot escape through its parent contract" {
+    compile_protocol(
+        '@foreign_resource(abi="pointer", empty=0, drop=close_cursor, '
+        'aliasing="shared", reentrant_drop=False) obj Cursor; '
+        'import from c { obj Connection; '
+        '@foreign_call(errors="none", reentrant=False) def close_cursor(cursor: own Cursor); '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def open_cursor(connection: &Connection) -> own Cursor from connection; } '
+        'def probe(connection: &Connection) -> &Cursor from connection { '
+        'cursor: own Cursor from connection = open_cursor(connection); return &cursor; }',
+        "returned value depends on an owner absent from the return contract"
+    );
+}
+
+test "transferring the dependent owner preserves its parent contract" {
+    compile_protocol(
+        '@foreign_resource(abi="pointer", empty=0, drop=close_cursor, '
+        'aliasing="shared", reentrant_drop=False) obj Cursor; '
+        'import from c { obj Connection; '
+        '@foreign_call(errors="none", reentrant=False) def close_cursor(cursor: own Cursor); '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def open_cursor(connection: &Connection) -> own Cursor from connection; } '
+        '@foreign_call(errors="none", reentrant=False) '
+        'def probe(connection: &Connection) -> own Cursor from connection { '
+        'cursor: own Cursor from connection = open_cursor(connection); return cursor; }'
     );
 }

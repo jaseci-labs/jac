@@ -217,7 +217,9 @@ impl OwnershipCheckPass._emit_lifetime_diagnostics -> None {
         for index in fn.return_sources {
             parameter = parameters[index].name;
             if isinstance(parameter, Name) and parameter.sym is not None {
-                allowed.add(self._name_sym_id(parameter));
+                source = self._name_sym_id(parameter);
+                allowed.add(source);
+                allowed.update(self._borrow_owners_of(source));
             }
         }
 
@@ -233,6 +235,12 @@ impl OwnershipCheckPass._emit_lifetime_diagnostics -> None {
         }
         for owner in owners {
             roots = self._borrow_owners_of(owner) or [owner];
+            # A dependency does not replace the lifetime of the release
+            # obligation itself. Borrowing an owned cursor still needs that
+            # cursor, even when the cursor also depends on a connection.
+            if owner in self.owned_decl and owner not in roots {
+                roots.insert(0, owner);
+            }
             if not all(source in allowed for source in roots) {
                 self.emit(
                     E1320,
