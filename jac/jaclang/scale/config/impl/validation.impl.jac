@@ -32,12 +32,56 @@ impl validate_scale_config(raw: dict[str, any] | None) -> list[str] {
     findings = validate_against_schema(raw, scale_schema_options(), "scale");
     if isinstance(raw, dict) {
         findings.extend(_declared_target_findings(raw));
+        findings.extend(_scheduler_bound_findings(raw));
     }
     return findings;
 }
 
 impl validate_app_scale_config(raw: dict[str, any] | None, app_name: str) -> list[str] {
     return validate_against_schema(raw, app_scale_schema(), f"apps.{app_name}.scale");
+}
+
+impl _scheduler_bound_findings(raw: dict[str, any]) -> list[str] {
+    cfg = raw.get("scheduler");
+    if not isinstance(cfg, dict) {
+        return [];
+    }
+    out: list[str] = [];
+    if "min_interval" in cfg {
+        ok = False;
+        given: any = cfg.get("min_interval");
+        try {
+            asked = float(given);
+            ok = asked == asked and asked > 0.0 and asked < float('inf');
+        } except Exception as e {
+            ok = False;
+        }
+        if not ok {
+            out.append(
+                f"jac.toml [scale.scheduler] min_interval "
+                f"{cfg.get('min_interval')!r} must be a finite number greater "
+                "than 0; the 1.0 second default is used instead"
+            );
+        }
+    }
+    if "max_jobs_per_user" in cfg {
+        ok = False;
+        asked_cap: any = cfg.get("max_jobs_per_user");
+        try {
+            wanted = int(asked_cap);
+            ok = wanted >= 0;
+        } except Exception as e {
+            ok = False;
+        }
+        if not ok {
+            out.append(
+                f"jac.toml [scale.scheduler] max_jobs_per_user "
+                f"{cfg.get('max_jobs_per_user')!r} must be 0 or more, where 0 "
+                "means unlimited; the default of 25 is used instead"
+            );
+        }
+    }
+    return out;
 }
 
 impl _declared_target_findings(raw: dict[str, any]) -> list[str] {

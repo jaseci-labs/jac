@@ -432,3 +432,29 @@ test "normalizer passes documented boot keys through" {
     assert normalized["colocate"] is False , normalized;
     assert "boot_health_timeout" not in normalized , normalized;
 }
+
+
+test "a scheduler bound that would disable the control is flagged" {
+    # #9032: min_interval = -1 silently turns the interval floor off, and a
+    # negative cap silently means unlimited even though only 0 is documented
+    # that way. Both must be reported rather than quietly accepted.
+    msgs = validate_scale_config({"scheduler": {"min_interval": -1}});
+    assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
+    assert "min_interval" in msgs[0] , msgs[0];
+    assert "greater than 0" in msgs[0] , msgs[0];
+
+    msgs = validate_scale_config({"scheduler": {"max_jobs_per_user": -1}});
+    assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
+    assert "max_jobs_per_user" in msgs[0] , msgs[0];
+
+    msgs = validate_scale_config({"scheduler": {"min_interval": "soon"}});
+    assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
+}
+
+
+test "valid scheduler bounds are accepted quietly" {
+    msgs = validate_scale_config(
+        {"scheduler": {"min_interval": 0.5, "max_jobs_per_user": 0}}
+    );
+    assert len(msgs) == 0 , f"expected no findings, got {msgs}";
+}
