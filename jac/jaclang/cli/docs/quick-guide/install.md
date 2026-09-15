@@ -24,6 +24,16 @@ Pass flags after `--` to customize the install:
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 0.34.1
 ```
 
+**Experimental JacPython compiler:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --jacpython
+```
+
+Releases with both variants default to stock CPython. `--jacpython` selects the
+binary containing the native JacPython compiler and can be combined with
+`--version`. The selected release must carry a `-jacpython` asset for your platform.
+
 **Uninstall:**
 
 ```bash
@@ -33,11 +43,12 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 | Flag | Description |
 |------|-------------|
 | `--version V` | Install a specific release version |
+| `--jacpython` | Select the experimental JacPython binary |
 | `--uninstall` | Remove Jac |
 
 ### Upgrading
 
-Re-run the install command to upgrade to the latest version. The installer replaces the binary in place.
+Re-run the install command to upgrade to the latest version. The installer replaces the binary in place. Include `--jacpython` on each install to keep that variant; omit it to return to the default binary.
 
 ---
 
