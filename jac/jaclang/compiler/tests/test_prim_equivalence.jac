@@ -6,6 +6,7 @@ import from jaclang.compiler.tests.xbackend_equiv {
     compile_fixture_to_js,
     run_js_function,
     compile_native,
+    compile_native_errors,
     get_func,
     compare_results
 }
@@ -634,6 +635,14 @@ glob STR_NA_GAPS: list[any] = [
              "hetero_na",
              ["na"]
          ),
+         (
+             "sort key str comparator",
+             "prim_sort_key.jac",
+             "sort_key_py",
+             "sort_key_cl",
+             "sort_key_na",
+             ["na"]
+         ),
 
      ];
 
@@ -679,6 +688,16 @@ test "bundled shutil" {
     run_with_both(
         "prim_shutil.jac", "shutil_py", "shutil_cl", "shutil_na", require=["na"]
     );
+}
+
+test "native sort never silently orders object-returning keys" {
+    # Node values lower to bare i8*, the same LLVM type as raw string
+    # data. The checker's call overloads reject a non-comparable key
+    # type, and the native sort gate (semantic return type -> E5092)
+    # independently refuses one before emitting comparisons (#9144).
+    errors = compile_native_errors("prim_sort_key_object.jac");
+    assert len(errors) > 0 , "object-returning sort key compiled silently";
+    assert ("No matching overload" in errors[0] or "E5092" in errors[0]) , errors;
 }
 
 test "native call resolves bundled stdlib signature, not typeshed (#7037)" {

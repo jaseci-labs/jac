@@ -1,3 +1,7 @@
+import from jaclang.compiler.frontend.diagnostics { E5092 }
+
+glob SORT_KEY_MSG: str = "comparison requires orderable key values (int, float, bool, str, bytes, tuple, list, or set)";
+
 impl NativeIntEmitter.emit_to_bytes(
     self: NativeIntEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -3213,39 +3217,60 @@ impl NativeListEmitter.emit_sort(
     ej = b.call(helpers["get"], [target, ji], name="sort.ej");
     ej1 = b.call(helpers["get"], [target, j1], name="sort.ej1");
 
-    (cj, cj1) = (ej, ej1);
+    cj: ir.Value = ej;
+    cj1: ir.Value = ej1;
     cmp_type = elem_type;
     if key_fn is not None {
         _kp_type = key_fn.args[0].type;
         cj = b.call(key_fn, [p._coerce_type(ej, _kp_type)], name="sort.kj");
         cj1 = b.call(key_fn, [p._coerce_type(ej1, _kp_type)], name="sort.kj1");
         cmp_type = key_fn.function_type.return_type;
-    }
-    if isinstance(cmp_type, ir.DoubleType) {
-        cmp_gt = b.fcmp_ordered(">", cj, cj1, name="sort.gt");
-        cmp_lt = b.fcmp_ordered("<", cj, cj1, name="sort.lt");
-    } elif isinstance(cmp_type, ir.PointerType) {
-        _i8p_cmp = ir.IntType(8).as_pointer();
-        cmp_result = p._call_str_cmp(
-            b,
-            b.bitcast(cj, _i8p_cmp, name="sort.cj.cast"),
-            b.bitcast(cj1, _i8p_cmp, name="sort.cj1.cast"),
-            name="sort.cmp"
-        );
-        cmp_gt = b.icmp_signed(
-            ">", cmp_result, ir.Constant(ir.IntType(32), 0), name="sort.gt"
-        );
-        cmp_lt = b.icmp_signed(
-            "<", cmp_result, ir.Constant(ir.IntType(32), 0), name="sort.lt"
-        );
-    } else {
-        cmp_gt = b.icmp_signed(">", cj, cj1, name="sort.gt");
-        cmp_lt = b.icmp_signed("<", cj, cj1, name="sort.lt");
+
+        if cj.type != cmp_type {
+            cmp_type = cj.type;
+        }
     }
 
+    cj = p._cast_to_list_elem(b, cj, cmp_type, "sort.cj");
+    cj1 = p._cast_to_list_elem(b, cj1, cmp_type, "sort.cj1");
+    _key_orderable = p._sort_key_orderable(
+        p._sort_key_return_type(_key_node) if key_fn is not None else None
+    );
+    if _key_orderable is False
+        or (_key_orderable is None and not p._sort_key_supported(cmp_type)) {
+        p.emit(E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG);
+        return None;
+    }
+    _cmp_float = isinstance(cmp_type, (ir.DoubleType, ir.FloatType));
+    _cmp_unsigned = key_fn is not None and p._sort_key_unsigned(_key_node);
+    if _cmp_float {
+        (cj, cj1) = p._promote_to_float(cj, cj1, unsigned=_cmp_unsigned);
+    }
+    _sort_errs = len(p.errors_had);
+    cmp_gt: (ir.Value | None) = p._emit_comparison(
+        Tok.GT, cj, cj1, _cmp_float, unsigned=_cmp_unsigned
+    );
+    cmp_lt: (ir.Value | None) = None;
+    if cmp_gt is not None and rev_i1 is not None {
+        cmp_lt = p._emit_comparison(
+            Tok.LT, cj, cj1, _cmp_float, unsigned=_cmp_unsigned
+        );
+    }
+    if cmp_gt is None or (rev_i1 is not None and cmp_lt is None) {
+        if key_fn is not None {
+            p._release_owned_operands(cj, cj1, op="sort_key");
+        }
+        if len(p.errors_had) == _sort_errs {
+            p.emit(E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG);
+        }
+        return None;
+    }
     needs_swap = cmp_gt
         if rev_i1 is None
         else b.select(rev_i1, cmp_lt, cmp_gt, name="sort.dir");
+    if key_fn is not None {
+        p._release_owned_operands(cj, cj1, op="sort_key");
+    }
     b.cbranch(needs_swap, swap_bb, no_swap);
 
     b.position_at_start(swap_bb);
