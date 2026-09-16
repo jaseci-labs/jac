@@ -94,20 +94,17 @@ impl TriggerSpec.apscheduler_kwargs -> dict[str, any] {
     return {'run_date': self.date};
 }
 
-impl TriggerSpec.due_tick(now: datetime.datetime) -> int {
-    if self.trigger == 'interval' and self.interval {
-        step = datetime.timedelta(seconds=float(self.interval));
-        if step > datetime.timedelta(0) {
-            return tick_of(_EPOCH + step * ((now - _EPOCH) // step));
-        }
-    }
-    if self.trigger == 'cron' {
-        return tick_of(now.replace(second=0, microsecond=0));
-    }
-    if self.trigger == 'date' and self.date {
-        return tick_of(datetime.datetime.fromisoformat(str(self.date)));
-    }
-    return tick_of(now);
+impl new_engine(pool_size: int, misfire_grace: int) -> any {
+    import from jaclang.scale.scheduler.fire_executor { FireTimeExecutor }
+    return BackgroundScheduler(
+        executors={'default': FireTimeExecutor(pool_size)},
+        job_defaults={
+            'coalesce': False,
+            'max_instances': 1,
+            'misfire_grace_time': misfire_grace
+        },
+        timezone=datetime.timezone.utc
+    );
 }
 
 def _doc_row(raw: any) -> dict[str, any] {
@@ -209,14 +206,15 @@ impl PgJobStore.find_active(
     limit: int | None = None,
     offset: int = 0,
     trigger: str | None = None,
-    created_by: str | None = None
+    created_by: str | None = None,
+    service: str | None = None
 ) -> tuple[list[dict[str, any]], int] {
-    conds: list[str] = [
-        "collection = :c",
-        "doc->>'status' = 'active'",
-        "COALESCE(doc->>'service', :svc) = :svc"
-    ];
-    params: dict[str, any] = {'c': self._collection, 'svc': self._service};
+    conds: list[str] = ["collection = :c", "doc->>'status' = 'active'"];
+    params: dict[str, any] = {'c': self._collection};
+    if service is not None {
+        conds.append("COALESCE(doc->>'service', :svc) = :svc");
+        params['svc'] = service;
+    }
     if trigger {
         conds.append("doc->>'trigger' = :t");
         params['t'] = trigger;
@@ -332,11 +330,15 @@ impl MemoryJobStore.find_active(
     limit: int | None = None,
     offset: int = 0,
     trigger: str | None = None,
-    created_by: str | None = None
+    created_by: str | None = None,
+    service: str | None = None
 ) -> tuple[list[dict[str, any]], int] {
     matches: list[dict[str, any]] = [];
     for j in self._jobs.values() {
         if j.get('status') != 'active' {
+            continue;
+        }
+        if service is not None and j.get('service', service) != service {
             continue;
         }
         if trigger is not None and j.get('trigger') != trigger {
@@ -488,18 +490,7 @@ impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> 
     if HAS_APSCHEDULER {
         pool_size = int(scheduler_cfg.get('thread_pool_size', 10));
         misfire = int(scheduler_cfg.get('misfire_grace_time', 60));
-        executors = {'default': ThreadPoolExecutor(pool_size)};
-        job_defaults = {
-            'coalesce': False,
-            'max_instances': 1,
-            'misfire_grace_time': misfire
-        };
-
-        self._apscheduler = BackgroundScheduler(
-            executors=executors,
-            job_defaults=job_defaults,
-            timezone=datetime.timezone.utc
-        );
+        self._apscheduler = new_engine(pool_size, misfire);
         logger.debug(
             f"APScheduler initialized (pool_size={pool_size}, misfire_grace={misfire}s, tz=UTC)"
         );
@@ -547,7 +538,7 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
     if self._apscheduler is None {
         return;
     }
-    (jobs, _total) = self._require_store().find_active();
+    (jobs, _total) = self._require_store().find_active(service=self._service);
     restored = 0;
     orphaned = 0;
     failed = 0;
@@ -681,7 +672,8 @@ impl JacScaleScheduler.list_jobs(
 }
 
 impl JacScaleScheduler.get_job(job_id: str) -> (dict[str, any] | None) {
-    return self._require_store().find_active_one(job_id);
+    job = self._require_store().find_active_one(job_id);
+    return job if job is not None and self._serves(job) else None;
 }
 
 impl JacScaleScheduler.update_job(
@@ -703,7 +695,7 @@ impl JacScaleScheduler.update_job(
     if not self._require_store().update(job_id, updates, where=where) {
         return None;
     }
-    if self._apscheduler is not None and self._serves(existing) {
+    if self._apscheduler is not None {
         self._schedule_apscheduler_job(
             job_id=job_id, name=name, spec=spec, user_id=user_id, is_walker=is_walker
         );
@@ -717,6 +709,9 @@ impl JacScaleScheduler.update_job(
 }
 
 impl JacScaleScheduler.delete_job(job_id: str, acting_as: str | None = None) -> bool {
+    if self.get_job(job_id) is None {
+        return False;
+    }
     where = {'created_by': acting_as} if acting_as is not None else None;
 
     result = self._require_store().delete(job_id, where=where);
@@ -826,7 +821,7 @@ impl JacScaleScheduler._target(name: str, is_walker: bool) -> any {
     return registry.get(name);
 }
 
-impl JacScaleScheduler._serves(job: dict) -> bool {
+impl JacScaleScheduler._serves(job: dict[str, any]) -> bool {
     if 'service' in job {
         return job.get('service') == self._service;
     }
@@ -838,15 +833,22 @@ impl JacScaleScheduler._serves(job: dict) -> bool {
 }
 
 impl JacScaleScheduler._claim_fire(
-    job_id: str, spec: TriggerSpec, now: datetime.datetime
+    job_id: str, scheduled_at: datetime.datetime | None
 ) -> bool {
     store = self._store;
     if not isinstance(store, PgJobStore) {
         return True;
     }
+    if scheduled_at is None {
+        logger.error(
+            f"job {job_id} ran without its scheduled time, so it cannot be "
+            "claimed; its engine must come from new_engine()"
+        );
+        return False;
+    }
     key = f"job:{job_id}";
     try {
-        won = bool(store.store.kv_claim_tick(key, spec.due_tick(now)));
+        won = bool(store.store.kv_claim_tick(key, tick_of(scheduled_at)));
     } except Exception as e {
         if key not in self._failing_claims {
             self._failing_claims.add(key);
@@ -934,11 +936,11 @@ impl JacScaleScheduler._schedule_apscheduler_job(
         raise RuntimeError("APScheduler is not initialized");
     }
 
-    def job_func {
-        if not self._claim_fire(
-            job_id, spec, datetime.datetime.now(datetime.timezone.utc)
-        ) {
-            logger.debug(f"job {job_id} already fired on another pod; skipping");
+    def job_func(scheduled_at: datetime.datetime | None = None) {
+        if not self._claim_fire(job_id, scheduled_at) {
+            logger.debug(
+                f"job {job_id} run at {scheduled_at} was claimed elsewhere; skipping"
+            );
             return;
         }
         if user_id != self._system_user_id and self._server is not None {

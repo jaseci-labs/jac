@@ -11,6 +11,8 @@ on every pod without a restart.
 
 import time;
 import datetime;
+import socket;
+import threading;
 import from tempfile { mkdtemp }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.data.store { PgStore }
@@ -19,7 +21,8 @@ import from jaclang.scale.scheduler.scheduler {
     JOBS_CHANGED_CHANNEL,
     JacScaleScheduler,
     PgJobStore,
-    TriggerSpec
+    TriggerSpec,
+    new_engine
 }
 import from jaclang.server.task_scheduler { tick_of }
 
@@ -68,10 +71,32 @@ obj _Server {
 }
 
 
-obj _UnreachableStore {
-    def kv_claim_tick(key: str, tick: int) -> bool {
-        raise ConnectionError("the database is restarting");
+def _unreachable_store -> PgStore {
+    import from jaclang.server.session { conninfo_from_url }
+    probe = socket.socket();
+    probe.bind(('127.0.0.1', 0));
+    port = probe.getsockname()[1];
+    probe.close();
+    return PgStore(
+        conninfo=conninfo_from_url(f"postgresql://jac:jac@127.0.0.1:{port}/jac")
+    );
+}
+
+
+def _wait_for_runs(engine: any, job_id: str, count: int) -> bool {
+    import from apscheduler.events { EVENT_JOB_ERROR, EVENT_JOB_EXECUTED }
+    seen: list[str] = [];
+    done = threading.Event();
+    def on_run(event: any) {
+        if event.job_id == job_id {
+            seen.append(job_id);
+            if len(seen) >= count {
+                done.set();
+            }
+        }
     }
+    engine.add_listener(on_run, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR);
+    return done.`wait(15.0);
 }
 
 
@@ -109,7 +134,7 @@ test "job CRUD on one pod is visible to the other pod's store" {
 }
 
 
-test "each tick of a job is claimed by exactly one pod" {
+test "each scheduled occurrence of a job is claimed by exactly one pod" {
     sa = _store();
     if sa is None {
         return;
@@ -120,31 +145,22 @@ test "each tick of a job is claimed by exactly one pod" {
     }
     pod_a = _pod(sa, 'mp_claim');
     pod_b = _pod(sb, 'mp_claim');
-    spec = TriggerSpec(trigger='interval', interval=610.0);
     tick = _on_grid(
         datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc), 610
     );
-    ms = datetime.timedelta(milliseconds=1);
-
     first = [
-        pod_a._claim_fire('claim-job', spec, tick + 200 * ms),
-        pod_b._claim_fire('claim-job', spec, tick + 900 * ms)
+        pod_a._claim_fire('claim-job', tick),
+        pod_b._claim_fire('claim-job', tick)
     ];
-    assert sorted(first) == [False, True] , f"one pod per tick, got {first}";
+    assert sorted(first) == [False, True] , f"one pod per occurrence, got {first}";
 
-    # #9027: 303 s later, past the old 300 s lease, a respawned worker still
-    # inside the same tick used to fire it a second time.
-    stale = pod_a._claim_fire(
-        'claim-job', spec, tick + datetime.timedelta(seconds=303)
-    );
-    assert stale is False , "a tick that already ran must not run again";
+    # #9027: a respawned worker re-running an occurrence that already ran.
+    assert pod_a._claim_fire('claim-job', tick) is False;
 
     nxt = tick + datetime.timedelta(seconds=610);
-    second = [
-        pod_b._claim_fire('claim-job', spec, nxt + 50 * ms),
-        pod_a._claim_fire('claim-job', spec, nxt + 400 * ms)
-    ];
-    assert sorted(second) == [False, True] , f"the next tick is claimable once, got {second}";
+    second = [pod_b._claim_fire('claim-job', nxt), pod_a._claim_fire('claim-job', nxt)];
+    assert sorted(second) == [False, True] , f"the next occurrence is claimable once, got {second}";
+    assert pod_b._claim_fire('claim-job', tick) is False , "claims only move forward";
 }
 
 
@@ -167,25 +183,108 @@ test "interval jobs scheduled apart share one phase" {
     );
     for fire in [first_a, first_b] {
         assert tick_of(fire) % (610 * 1000000) == 0 , f"{fire} is off the shared grid";
-        assert spec.due_tick(fire) == tick_of(fire) , "a fire must claim its own tick";
     }
 }
 
 
-test "a job whose tick cannot be claimed is skipped" {
+test "a job whose occurrence cannot be claimed is skipped" {
     # #9030: a failed lease check used to answer True, so a database outage
-    # ran the job on every worker of every pod at once.
+    # ran the job on every worker of every pod at once. Nothing listens on
+    # this port, so the real claim fails the way a restarting database does.
     pod = JacScaleScheduler();
-    pod._store = PgJobStore(store=_UnreachableStore(), _collection='mp_down');
-    spec = TriggerSpec(trigger='interval', interval=60.0);
-    now = datetime.datetime(2026, 9, 15, 12, 0, 5, tzinfo=datetime.timezone.utc);
-    assert pod._claim_fire('down-job', spec, now) is False;
-    assert pod._claim_fire('down-job', spec, now + datetime.timedelta(seconds=60))
-        is False;
+    pod._store = PgJobStore(store=_unreachable_store(), _collection='mp_down');
+    at = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    assert pod._claim_fire('down-job', at) is False;
+    assert pod._claim_fire('down-job', at + datetime.timedelta(seconds=60)) is False;
 }
 
 
-test "services sharing a collection see only their own jobs" {
+test "each run carries the time it was scheduled for" {
+    # APScheduler hands a job no arguments, so a run could only guess its
+    # occurrence from the clock. Catch-up runs make the difference visible:
+    # four missed minutes arrive together and must stay four occurrences.
+    require_module("apscheduler");
+    utc = datetime.timezone.utc;
+    engine = new_engine(2, 3600);
+    seen: list[datetime.datetime] = [];
+    def record(scheduled_at: datetime.datetime | None = None) {
+        if scheduled_at is not None {
+            seen.append(scheduled_at);
+        }
+    }
+    now = datetime.datetime.now(utc);
+    first = now.replace(second=0, microsecond=0) - datetime.timedelta(minutes=4);
+    step = datetime.timedelta(minutes=1);
+    engine.add_job(
+        record,
+        'interval',
+        id='fire-times',
+        minutes=1,
+        start_date=first,
+        next_run_time=first
+    );
+    engine.start();
+    try {
+        assert _wait_for_runs(engine, 'fire-times', 4) , seen;
+        assert seen[:4]
+            == [first, first + step, first + 2 * step, first + 3 * step] , seen;
+    } finally {
+        engine.shutdown(`wait=False);
+    }
+}
+
+
+test "a late run claims the occurrence it was scheduled for, not the current one" {
+    # A cron occurrence delivered late used to claim the minute it started in,
+    # which is not an occurrence at all, so it ran even though another pod had
+    # already run the real one.
+    require_module("apscheduler");
+    sa = _store();
+    if sa is None {
+        return;
+    }
+    sb = _store();
+    if sb is None {
+        return;
+    }
+    utc = datetime.timezone.utc;
+    top = datetime.datetime.now(utc).replace(minute=0, second=0, microsecond=0);
+    pod_a = _pod(sa, 'mp_late');
+    pod_b = _pod(sb, 'mp_late');
+    engine = new_engine(2, 7200);
+    pod_b._apscheduler = engine;
+    hourly = TriggerSpec(trigger='cron', cron='0 * * * *');
+    for job_id in ['ran-on-a', 'ran-nowhere'] {
+        row = _job(job_id, 0.0);
+        row.update({'trigger': 'cron', 'interval': None, 'cron': '0 * * * *'});
+        pod_b._require_store().insert(row);
+        pod_b._schedule_apscheduler_job(
+            job_id=job_id,
+            name='tick',
+            spec=hourly,
+            user_id='__system__',
+            is_walker=False
+        );
+        engine.modify_job(job_id, next_run_time=top);
+    }
+    assert pod_a._claim_fire('ran-on-a', top) is True;
+    engine.start();
+    try {
+        assert _wait_for_runs(engine, 'ran-on-a', 1);
+        assert _wait_for_runs(engine, 'ran-nowhere', 1);
+    } finally {
+        engine.shutdown(`wait=False);
+    }
+    store = pod_b._require_store();
+    skipped = store.find_active_one('ran-on-a');
+    ran = store.find_active_one('ran-nowhere');
+    assert skipped is not None and ran is not None;
+    assert int(skipped.get('run_count') or 0) == 0 , f"pod A already ran {top}: {skipped}";
+    assert int(ran.get('run_count') or 0) == 1 , f"the unclaimed occurrence must run once: {ran}";
+}
+
+
+test "services sharing a collection list every job but reach only their own" {
     sa = _store();
     if sa is None {
         return;
@@ -200,8 +299,15 @@ test "services sharing a collection see only their own jobs" {
     billing.insert(theirs);
     orders.insert(_job('scope-legacy', 60.0));
 
-    (seen, total) = orders.find_active();
-    ids = sorted([str(j['job_id']) for j in seen]);
+    # GET /jobs is a discovery route on the fleet gateway, which returns the
+    # first service's 200, so a listing has to cover every service.
+    (everyone, total_all) = orders.find_active();
+    listed = sorted([str(j['job_id']) for j in everyone]);
+    assert listed == ['scope-billing', 'scope-legacy', 'scope-orders']
+        and total_all == 3 , listed;
+
+    (scoped, total) = orders.find_active(service='orders');
+    ids = sorted([str(j['job_id']) for j in scoped]);
     assert ids == ['scope-legacy', 'scope-orders'] and total == 2 , (ids, total);
     assert orders.find_active_one('scope-billing') is None;
     assert orders.update('scope-billing', {'interval': 1.0}) is False;
@@ -212,13 +318,12 @@ test "services sharing a collection see only their own jobs" {
 
 test "restore leaves a job to the service that serves its target" {
     require_module("apscheduler");
-    import from apscheduler.schedulers.background { BackgroundScheduler }
     sa = _store();
     if sa is None {
         return;
     }
     pod = _pod(sa, 'mp_restore', 'billing');
-    engine = BackgroundScheduler(timezone=datetime.timezone.utc);
+    engine = new_engine(2, 60);
     pod._apscheduler = engine;
     pod._server = _Server(
         introspector=_Introspector(_functions={'beat': lambda { None; }})
@@ -252,9 +357,20 @@ test "restore leaves a job to the service that serves its target" {
     pod._on_jobs_changed('ghost-1');
     after = sorted([str(j.id) for j in engine.get_jobs()]);
     assert after == ['billing-beat', 'legacy-beat'] , after;
+    # A service answers only for jobs it can run, before changing anything:
+    # through the gateway, its 404 is what moves discovery on to the owner.
+    assert pod.get_job('ghost-1') is None;
+    assert pod.get_job('orders-beat') is None;
+    assert pod.get_job('legacy-beat') is not None;
     assert pod.update_job('ghost-1', TriggerSpec(trigger='interval', interval=4.0))
-        is not None;
+        is None;
+    untouched = store.find_active_one('ghost-1');
+    assert untouched is not None and float(untouched['interval']) == 2.0 , untouched;
+    assert pod.delete_job('ghost-1') is False;
+    assert store.find_active_one('ghost-1') is not None;
     assert 'ghost-1' not in [str(j.id) for j in engine.get_jobs()];
+    (listed, total) = pod.list_jobs();
+    assert total == 4 , [j['job_id'] for j in listed];
 }
 
 
@@ -292,8 +408,6 @@ test "jobs-changed NOTIFY from one pod reaches the other pod's listener" {
 
 test "two live pods fire a due job exactly once and DELETE stops both" {
     require_module("apscheduler");
-    import datetime as _dt;
-    import from apscheduler.schedulers.background { BackgroundScheduler }
     sa = _store();
     if sa is None {
         return;
@@ -304,8 +418,8 @@ test "two live pods fire a due job exactly once and DELETE stops both" {
     }
     pod_a = _pod(sa, 'mp_fire');
     pod_b = _pod(sb, 'mp_fire');
-    sched_a = BackgroundScheduler(timezone=_dt.timezone.utc);
-    sched_b = BackgroundScheduler(timezone=_dt.timezone.utc);
+    sched_a = new_engine(2, 60);
+    sched_b = new_engine(2, 60);
     pod_a._apscheduler = sched_a;
     pod_b._apscheduler = sched_b;
     pod_a._start_jobs_listener();

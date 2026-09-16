@@ -242,15 +242,11 @@ test "scheduler setup succeeds without apscheduler installed" {
         with unittest.mock.patch(
             "jaclang.scale.scheduler.scheduler.BackgroundScheduler", None
         ) {
-            with unittest.mock.patch(
-                "jaclang.scale.scheduler.scheduler.ThreadPoolExecutor", None
-            ) {
-                sched = JacScaleScheduler();
-                sched.setup(system_user_id="system-user-id");
-                assert sched._apscheduler is None , "APScheduler should be None when package is not installed";
-                sched.start();
-                sched.stop();
-            }
+            sched = JacScaleScheduler();
+            sched.setup(system_user_id="system-user-id");
+            assert sched._apscheduler is None , "APScheduler should be None when package is not installed";
+            sched.start();
+            sched.stop();
         }
     }
 }
@@ -264,25 +260,21 @@ test "scheduler create_job raises clear error without apscheduler" {
         with unittest.mock.patch(
             "jaclang.scale.scheduler.scheduler.BackgroundScheduler", None
         ) {
-            with unittest.mock.patch(
-                "jaclang.scale.scheduler.scheduler.ThreadPoolExecutor", None
-            ) {
-                sched = JacScaleScheduler();
-                sched.setup(system_user_id="system-user-id");
-                raised = False;
-                try {
-                    import from jaclang.scale.scheduler.scheduler { TriggerSpec }
-                    spec = TriggerSpec.validate(trigger="interval", interval=60.0);
-                    sched.create_job(
-                        name="test_walker", spec=spec, created_by="system-user-id"
-                    );
-                } except RuntimeError as e {
-                    raised = True;
-                    assert "scheduler" in str(e) , "Error message should name the scheduler capability";
-                    assert "jac-scale[" not in str(e);
-                }
-                assert raised , "Expected RuntimeError when creating job without APScheduler";
+            sched = JacScaleScheduler();
+            sched.setup(system_user_id="system-user-id");
+            raised = False;
+            try {
+                import from jaclang.scale.scheduler.scheduler { TriggerSpec }
+                spec = TriggerSpec.validate(trigger="interval", interval=60.0);
+                sched.create_job(
+                    name="test_walker", spec=spec, created_by="system-user-id"
+                );
+            } except RuntimeError as e {
+                raised = True;
+                assert "scheduler" in str(e) , "Error message should name the scheduler capability";
+                assert "jac-scale[" not in str(e);
             }
+            assert raised , "Expected RuntimeError when creating job without APScheduler";
         }
     }
 }

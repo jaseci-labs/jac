@@ -6,7 +6,6 @@ import from jaclang.comptime { fields, get_field }
 import from jaclang.scale._optdeps.apscheduler {
     BackgroundScheduler,
     CronTrigger,
-    ThreadPoolExecutor,
     HAS_APSCHEDULER
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -28,6 +27,8 @@ glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      ),
      logger = logging.getLogger(__name__);
 
+def new_engine(pool_size: int, misfire_grace: int) -> any;
+
 obj JobStore {
     def insert(job: dict[str, any]) -> str;
     def insert_within_quota(
@@ -38,7 +39,8 @@ obj JobStore {
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
-        created_by: str | None = None
+        created_by: str | None = None,
+        service: str | None = None
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
@@ -70,7 +72,8 @@ obj PgJobStore(JobStore) {
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
-        created_by: str | None = None
+        created_by: str | None = None,
+        service: str | None = None
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
@@ -96,7 +99,8 @@ obj MemoryJobStore(JobStore) {
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
-        created_by: str | None = None
+        created_by: str | None = None,
+        service: str | None = None
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
@@ -125,7 +129,6 @@ obj TriggerSpec {
     static def from_dict(d: dict[str, any]) -> TriggerSpec;
     def to_dict -> dict[str, any];
     def apscheduler_kwargs -> dict[str, any];
-    def due_tick(now: datetime.datetime) -> int;
 }
 
 obj JacScaleScheduler {
@@ -161,9 +164,9 @@ obj JacScaleScheduler {
     ) -> (dict[str, any] | None);
 
     def delete_job(job_id: str, acting_as: str | None = None) -> bool;
-    def _claim_fire(job_id: str, spec: TriggerSpec, now: datetime.datetime) -> bool;
+    def _claim_fire(job_id: str, scheduled_at: datetime.datetime | None) -> bool;
     def _target(name: str, is_walker: bool) -> any;
-    def _serves(job: dict) -> bool;
+    def _serves(job: dict[str, any]) -> bool;
     def _notify_jobs_changed(job_id: str) -> None;
     def _start_jobs_listener -> None;
     def _on_jobs_changed(payload: str) -> None;

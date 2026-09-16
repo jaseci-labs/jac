@@ -314,8 +314,10 @@ test "the served app registers its scheduled targets with the scheduler" {
 }
 
 
-def _ticks(sched: Scheduler, spec: ScheduleSpec, boot: datetime.datetime) -> list {
-    out: list = [];
+def _ticks(
+    sched: Scheduler, spec: ScheduleSpec, boot: datetime.datetime
+) -> list[datetime.datetime] {
+    out: list[datetime.datetime] = [];
     at: any = boot;
     for _ in range(4) {
         at = sched._compute_next_run(spec, at);
@@ -357,16 +359,19 @@ test "a worker recomputes inherited fire times when it starts" {
     sched._tasks[0].next_run = stale;
     sched.start();
     try {
-        refreshed = sched._tasks[0].next_run;
-        assert refreshed is not None;
-        assert refreshed > datetime.datetime.now(datetime.timezone.utc) , refreshed;
+        # The loop stamps last_run the moment it pops a task, so an inherited
+        # past fire time is caught whichever thread gets there first.
+        task = sched._tasks[0];
+        assert task.last_run is None , task.last_run;
+        assert task.next_run is not None;
+        assert task.next_run > datetime.datetime.now(datetime.timezone.utc) , task.next_run;
     } finally {
         sched.stop();
     }
 }
 
 
-def _shared_claims -> tuple {
+def _shared_claims -> tuple[Callable[[str, int], bool], dict[str, int]] {
     # Stands in for kv_claim_tick: a key admits a tick only above its last one.
     last: dict[str, int] = {};
     lock = threading.Lock();
