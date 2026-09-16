@@ -1,43 +1,7 @@
-import jaclang;
-
-def _read_version_from_toml(toml_path: Path) -> (str | None) {
-    try {
-        data = tomllib.loads(toml_path.read_text(encoding='utf-8'));
-        project = data.get('project', {});
-        if isinstance(project, dict) {
-            ver = project.get('version');
-            if isinstance(ver, str) and ver {
-                return ver;
-            }
-        }
-    } except Exception {}
-    return None;
-}
-
 impl resolve_cli_version -> str {
-    dev_source = os.environ.get('JAC_DEV_SOURCE');
-    if dev_source {
-        toml_path = Path(dev_source) / 'jac.toml';
-        if toml_path.exists() {
-            ver = _read_version_from_toml(toml_path);
-            if ver {
-                return ver;
-            }
-        }
-    }
+    import from jaclang.cli.version_info { resolve_cli_version as _resolve }
 
-    jac_file = jaclang.__file__;
-    if jac_file {
-        source_toml = Path(jac_file).parent.parent / 'jac.toml';
-        if source_toml.exists() {
-            ver = _read_version_from_toml(source_toml);
-            if ver {
-                return ver;
-            }
-        }
-    }
-
-    return pkg_version('jaclang');
+    return _resolve(os.environ.get('JAC_DEV_SOURCE'));
 }
 
 def _first_command_token(raw_argv: list[str]) -> (str | None) {
@@ -82,12 +46,9 @@ def _print_error(message: str) {
 }
 
 def _render_version_line -> str {
-    import from jaclang.cli.manifest_help { _color, _TITLE, _use_color }
+    import from jaclang.cli.version_info { render_version_line }
 
-    sys_info = f"{platform.system()} {platform.machine()}";
-    ver = resolve_cli_version();
-    use_color = _use_color();
-    return f"{_color('jac', _TITLE, use_color)} {ver}  ({sys_info})";
+    return render_version_line(resolve_cli_version());
 }
 
 impl handle_manifest_route(raw_argv: list[str]) -> None {

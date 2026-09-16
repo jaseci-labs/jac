@@ -102,6 +102,26 @@ def start_cli -> None {
         _handle_purge();
         return;
     }
+    raw = sys.argv[1:];
+    if raw in (['-V'], ['--version']) {
+        import from jaclang.cli.version_info {
+            render_version_line,
+            resolve_cli_version,
+            use_emoji
+        }
+        dev_source = os.environ.get('JAC_DEV_SOURCE');
+        if dev_source {
+            notice = (
+                f"🛠  jac dev mode — using compiler source at {dev_source}"
+                    if use_emoji()
+                    else f"[dev] jac dev mode - using compiler source at {dev_source}"
+            );
+            sys.stderr.write(notice + '\n');
+        }
+        line = render_version_line(resolve_cli_version(dev_source));
+        sys.stdout.write(line + '\n');
+        return;
+    }
 
     import from jaclang.cli.cli { start_cli as _start_cli }
     _start_cli();
