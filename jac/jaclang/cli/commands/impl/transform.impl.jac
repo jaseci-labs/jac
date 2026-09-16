@@ -17,7 +17,7 @@ impl py2jac(filename: str) -> int {
                 ast3.parse(file_source), orig_src=uni.Source(file_source, filename)
             ),
             JacProgram()
-        ).ir_out;
+        ).module;
         assert isinstance(converted, uni.Module);
         code = unparse_module(converted, requires_format=False);
         prog = JacProgram.jac_str_formatter(

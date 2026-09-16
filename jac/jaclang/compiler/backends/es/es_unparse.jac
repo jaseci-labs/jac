@@ -3,7 +3,7 @@ import from jaclang.compiler.backends.es { estree as es }
 obj JSCodeGenerator {
     def init(indent: str = '  ') -> None;
 
-    has indent_str: str = '  ',
+    has indent_str: str,
         indent_level: int = 0,
         _frames: list[list[tuple[es.Node, str, list[any]]]] = [],
         _root: list[tuple[es.Node, str, list[any]]] = [];

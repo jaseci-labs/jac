@@ -11,5 +11,17 @@ with entry {
     bad_bare = lambda (y) { -y; };
     bad_two = lambda (a, b) { a + b; };
 
-    _ = (ok_callback, ok_callable, ok_annot, ok_noargs, bad_bare, bad_two);
+    # A body that is more than its return is checked in place, so a bad call in
+    # it still reports (E1053) rather than being deferred and never revisited.
+    checked_inline = sorted(nums, key=lambda (x) { len(1); return x; });
+
+    _ = (
+        ok_callback,
+        ok_callable,
+        ok_annot,
+        ok_noargs,
+        bad_bare,
+        bad_two,
+        checked_inline
+    );
 }

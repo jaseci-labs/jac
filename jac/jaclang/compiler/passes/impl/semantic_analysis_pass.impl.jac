@@ -1,47 +1,3 @@
-impl SemanticAnalysisPass.transform(ir_in: Module) -> Module {
-    if type(self) is not SemanticAnalysisPass {
-        return super.transform(ir_in);
-    }
-    self.ir_out = ir_in;
-    self.before_pass();
-    pending: list[UniNode] = [ir_in];
-    while pending {
-        nd = pending.pop();
-        if self.is_canceled() {
-            break;
-        }
-        if nd.ct_pruned {
-            continue;
-        }
-        self.cur_node = nd;
-        if isinstance(nd, Archetype) {
-            self._analyze_archetype(nd);
-        }
-        if isinstance(nd, HasVar) {
-            self._analyze_has_var(nd);
-        }
-        if isinstance(nd, ParamVar) {
-            self._analyze_param_var(nd);
-        }
-        if isinstance(nd, Assignment) {
-            self._analyze_assignment(nd);
-        }
-        if isinstance(nd, InForStmt) {
-            self._analyze_in_for_stmt(nd);
-        }
-        if isinstance(nd, ExprAsItem) {
-            self._analyze_expr_as_item(nd);
-        }
-        if isinstance(nd, InnerCompr) {
-            self._analyze_inner_compr(nd);
-        }
-        pending.extend(reversed(nd.kid));
-    }
-    self.cur_node = ir_in;
-    self.after_pass();
-    return ir_in;
-}
-
 impl inform_from_walker(nd: UniNode) -> None {
     for i in nd.get_all_sub_nodes(VisitStmt)
         + nd.get_all_sub_nodes(DisengageStmt)
@@ -53,19 +9,15 @@ impl inform_from_walker(nd: UniNode) -> None {
 }
 
 impl SemanticAnalysisPass.enter_archetype with Archetype entry {
-    self._analyze_archetype(here);
-}
-
-impl SemanticAnalysisPass._analyze_archetype(nd: Archetype) -> None {
-    if (nd.arch_kind == "walker") {
-        inform_from_walker(nd);
-        for i in nd.get_all_sub_nodes(Ability) {
+    if (here.arch_kind == "walker") {
+        inform_from_walker(here);
+        for i in here.get_all_sub_nodes(Ability) {
             if isinstance(i.body, ImplDef) {
                 inform_from_walker(i.body);
             }
         }
     }
-    self._check_archetype(nd);
+    self._check_archetype(here);
 }
 
 impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
@@ -82,7 +34,7 @@ impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
                 if ((var.value is not None) or var.defer) {
                     found_default_init = True;
                 } elif found_default_init {
-                    self.emit(E2004, node_override=var.name, name=var.name.value);
+                    self.ctx.emit(E2004, node_override=var.name, name=var.name.value);
                     break;
                 }
             }
@@ -119,7 +71,7 @@ impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
             }
         }
         if ((len(post_init_vars) != 0) and (postinit_method is None)) {
-            self.emit(E2005, node_override=post_init_vars[0].name_spec);
+            self.ctx.emit(E2005, node_override=post_init_vars[0].name_spec);
         }
         arch_kind = nd.arch_type.value;
         methods = nd.get_methods();
@@ -138,9 +90,9 @@ impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
                 prop_dec = "";
                 if isinstance(dec, Name) {
                     if dec.sym_name == 'classmethod' {
-                        self.emit(W2006, node_override=dec, kind=arch_kind);
+                        self.ctx.emit(W2006, node_override=dec, kind=arch_kind);
                     } elif dec.sym_name == 'staticmethod' {
-                        self.emit(W2007, node_override=dec, kind=arch_kind);
+                        self.ctx.emit(W2007, node_override=dec, kind=arch_kind);
                     } elif dec.value == 'property' {
                         prop_dec = dec.value;
                     }
@@ -154,7 +106,7 @@ impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
                     prop_dec = f"{dec.target.value}.{dec.right.value}";
                 }
                 if prop_dec != "" {
-                    self.emit(
+                    self.ctx.emit(
                         W2029,
                         node_override=dec,
                         decorator=prop_dec,
@@ -191,64 +143,40 @@ impl SemanticAnalysisPass._update_ctx(nd: UniNode) -> None {
     } elif isinstance(nd, AstSymbolNode) {
         nd.sym_tab.update_expr_ctx_for_def(nd);
     } else {
-        self.emit(E2008, target=type(nd).__name__);
+        self.ctx.emit(E2008, target=type(nd).__name__);
     }
 }
 
 impl SemanticAnalysisPass.enter_has_var with HasVar entry {
-    self._analyze_has_var(here);
-}
-
-impl SemanticAnalysisPass._analyze_has_var(nd: HasVar) -> None {
-    if isinstance(nd.parent, ArchHas) {
-        nd.sym_tab.update_expr_ctx_for_def(nd);
+    if isinstance(here.parent, ArchHas) {
+        here.sym_tab.update_expr_ctx_for_def(here);
     } else {
-        self.ice('HasVar should be under ArchHas');
+        self.ctx.ice('HasVar should be under ArchHas');
     }
 }
 
 impl SemanticAnalysisPass.enter_param_var with ParamVar entry {
-    self._analyze_param_var(here);
-}
-
-impl SemanticAnalysisPass._analyze_param_var(nd: ParamVar) -> None {
-    nd.sym_tab.update_expr_ctx_for_def(nd);
+    here.sym_tab.update_expr_ctx_for_def(here);
 }
 
 impl SemanticAnalysisPass.enter_assignment with Assignment entry {
-    self._analyze_assignment(here);
-}
-
-impl SemanticAnalysisPass._analyze_assignment(nd: Assignment) -> None {
-    for target in nd.target {
+    for target in here.target {
         self._update_ctx(target);
     }
 }
 
 impl SemanticAnalysisPass.enter_in_for_stmt with InForStmt entry {
-    self._analyze_in_for_stmt(here);
-}
-
-impl SemanticAnalysisPass._analyze_in_for_stmt(nd: InForStmt) -> None {
-    self._update_ctx(nd.target);
+    self._update_ctx(here.target);
 }
 
 impl SemanticAnalysisPass.enter_expr_as_item with ExprAsItem entry {
-    self._analyze_expr_as_item(here);
-}
-
-impl SemanticAnalysisPass._analyze_expr_as_item(nd: ExprAsItem) -> None {
-    if nd.alias {
-        self._update_ctx(nd.alias);
+    if here.alias {
+        self._update_ctx(here.alias);
     }
 }
 
 impl SemanticAnalysisPass.enter_inner_compr with InnerCompr entry {
-    self._analyze_inner_compr(here);
-}
-
-impl SemanticAnalysisPass._analyze_inner_compr(nd: InnerCompr) -> None {
-    self._update_ctx(nd.target);
+    self._update_ctx(here.target);
 }
 
 impl SemanticAnalysisPass._change_atom_trailer_ctx(nd: AtomTrailer) -> None {

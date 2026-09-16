@@ -21,7 +21,6 @@ import from jaclang.byllm.exceptions {
 }
 import from jaclang.byllm.mcp { McpClient, McpTool }
 import from jaclang.byllm.types { Tool, Message, MessageRole }
-import dataclasses;
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.lib { MockLLM }
 import from support_tests {
@@ -271,11 +270,17 @@ test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
     }
 }
 
-glob _TestPerson = dataclasses.make_dataclass(
-         "Person", [("name", str), ("age", int)]
-     ),
-     _TestUnionField = dataclasses.make_dataclass("UnionField", [("value", str | int)]),
-     _TestFieldless = dataclasses.make_dataclass("Fieldless", []);
+obj _TestPerson {
+    has name: str,
+        age: int;
+}
+
+obj _TestUnionField {
+    has value: str | int;
+}
+
+obj _TestFieldless {}
+
 
 test "parse_response raises OutputConversionError with the raw output attached" {
     for (why, raw) in [
@@ -387,10 +392,11 @@ test "finish tool argument resolution heals recoverable shapes" {
     bare = Tool.make_finish_tool(str).parse_arguments("just the answer");
     assert bare == {"final_output": "just the answer"} , f"bare payload: got {bare}";
 
-    self_named = dataclasses.make_dataclass(
-        "_SelfNamed", [("final_output", str), ("score", int)]
-    );
-    parsed = Tool.make_finish_tool(self_named).parse_arguments(
+    obj SelfNamed {
+        has final_output: str,
+            score: int;
+    }
+    parsed = Tool.make_finish_tool(SelfNamed).parse_arguments(
         {"final_output": "ok", "score": 5}
     );
     assert parsed["final_output"].score == 5 , f"self-named flattened: got {parsed}";

@@ -278,7 +278,7 @@ impl _type_to_schema(
         return _function_to_schema(ty, title, info);
     }
     raise ConfigurationError(
-        f"Unsupported type for schema generation: {ty}. Only primitive types, dataclasses, and Union types are supported."
+        f"Unsupported type for schema generation: {ty}. Only primitive types, Jac objects, Python records, and Union types are supported."
     );
 }
 

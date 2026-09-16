@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -44,7 +45,6 @@ import from jaclang.runtime.semantic {
     type_to_str
 }
 
-import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 glob PRIMITIVE_TYPES: list[str] = [
@@ -61,13 +61,11 @@ glob PRIMITIVE_TYPES: list[str] = [
      ]
          + JAC_TYPE_REGISTRY.sized_scalar_names();
 
-walker MTIRGenPass(Transform) {
-    has ir_in: Module,
-        cancel_token: any = None,
+walker MTIRGenPass {
+    has ctx: CompileContext,
+        module: Module,
         _class_info_cache: dict[int, ClassInfo] = {};
 
-    def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _is_primitive_type(type_expr: Expr | None) -> bool;

@@ -124,7 +124,7 @@ import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.passes.context { Alert }
 import from jaclang.compiler.types.type_utils { compute_mro_linearization }
 import from jaclang.compiler.types.types {
     ClassDetailsShared,
@@ -745,11 +745,11 @@ test "bug_dstr1_docstring_before_local_declaration" {
     );
 }
 
-test "bug_dloc1_decorated_class_in_function_body" {
+test "bug_dloc1_decorated_object_in_function_body" {
     program = compile_and_check("checker_bug_decorated_local_class.jac");
 
     assert len(program.errors_had) == 0 , (
-        "Bug #DLOC-1: a decorated class inside a function body must parse "
+        "Bug #DLOC-1: a decorated object inside a function body must parse "
         "as an Archetype so the type checker recognises its constructor and "
         "fields. "
         f"Got errors: {[str(e) for e in program.errors_had]}"

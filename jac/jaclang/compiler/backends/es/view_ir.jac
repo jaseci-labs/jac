@@ -22,7 +22,7 @@ obj DynamicTag {
 
 obj StaticAttr {
     has name: str,
-        value: es.Expression,
+        value: es.Literal,
         jac_node: (uni.UniNode | None);
 }
 
@@ -71,27 +71,8 @@ obj SlotChild {
 
 obj IfChild {
     has `test: es.Expression,
-        consequent:
-            list[
-                TextChild
-                    | DynamicChild
-                    | ElementChild
-                    | SlotChild
-                    | IfChild
-                    | EachChild
-            ],
-        alternate:
-            (
-                list[
-                    TextChild
-                        | DynamicChild
-                        | ElementChild
-                        | SlotChild
-                        | IfChild
-                        | EachChild
-                ]
-                | None
-            ),
+        consequent: list[ViewChild],
+        alternate: (list[ViewChild] | None),
         js_fallback: es.Expression,
         jac_node: (uni.UniNode | None);
 }
@@ -100,15 +81,7 @@ obj EachChild {
     has items: es.Expression,
         item: str,
         key: (es.Expression | None),
-        body:
-            list[
-                TextChild
-                    | DynamicChild
-                    | ElementChild
-                    | SlotChild
-                    | IfChild
-                    | EachChild
-            ],
+        body: list[ViewChild],
         js_fallback: es.Expression,
         jac_node: (uni.UniNode | None);
 }
@@ -123,14 +96,6 @@ glob ViewChild = TextChild
 obj ViewElement {
     has tag: (HostTag | ComponentTag | FragmentTag | DynamicTag),
         attrs: list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr],
-        children:
-            list[
-                TextChild
-                    | DynamicChild
-                    | ElementChild
-                    | SlotChild
-                    | IfChild
-                    | EachChild
-            ],
+        children: list[ViewChild],
         jac_node: (uni.UniNode | None);
 }

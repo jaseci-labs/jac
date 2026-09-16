@@ -1,5 +1,7 @@
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
+    Module,
+    TreeWalker,
+    UniNode,
     Ability,
     Archetype,
     Assignment,
@@ -15,55 +17,37 @@ import from jaclang.compiler.frontend.unitree {
     KWPair,
     ability_of_symbol,
     ImplDef,
-    Module,
     Name,
     SpecialVarRef,
     Symbol,
-    Token,
-    UniNode
+    Token
 }
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.constant { SymbolType, Tokens as Tok }
-import from jaclang.compiler.passes.uni_pass { UniPass }
 
-walker EndpointEffectPass(UniPass) {
-    has _is_writer: bool = False,
-        _unknown: bool = False,
-        _declared_reads: set[str] = field(default_factory=set),
-        _declared_writes: set[str] = field(default_factory=set),
-        _assumptions: set[str] = field(default_factory=set),
-        _touches: set[str] = field(default_factory=`set),
-        _visited: set[int] = field(default_factory=set);
-
-    def transform(ir_in: Module) -> Module {
-        if type(self) is not EndpointEffectPass {
-            return super.transform(ir_in);
-        }
-        self.ir_out = ir_in;
-        self.before_pass();
-        pending: list[UniNode] = [ir_in];
-        while pending {
-            nd = pending.pop();
-            if self.is_canceled() {
-                break;
-            }
-            if nd.ct_pruned {
-                continue;
-            }
-            self.cur_node = nd;
-            if isinstance(nd, Ability) {
-                self._analyze_ability(nd);
-            }
-            if isinstance(nd, Archetype) {
-                self._analyze_archetype(nd);
-            }
-            pending.extend(reversed(nd.kid));
-        }
-        self.cur_node = ir_in;
-        self.after_pass();
-        return ir_in;
+walker EndpointEffectPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
     }
 
-    def before_pass {
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: Module,
+        _is_writer: bool = False,
+        _unknown: bool = False,
+        _declared_reads: set[str] = set(),
+        _declared_writes: set[str] = set(),
+        _assumptions: set[str] = set(),
+        _touches: set[str] = set(),
+        _visited: set[int] = set();
+
+    can prepare with entry {
+        if self.ctx.nested_depth {
+            return;
+        }
         self._is_writer = False;
         self._unknown = False;
         self._declared_reads.clear();
@@ -74,41 +58,33 @@ walker EndpointEffectPass(UniPass) {
     }
 
     can enter_ability with Ability entry {
-        self._analyze_ability(here);
-    }
-
-    def _analyze_ability(nd: Ability) {
         import from jaclang.compiler.frontend.codeinfo { endpoint_key }
         if (
-            not nd.is_method
-            and not nd.in_client_context()
-            and nd.access is not None
-            and nd.access.tag.name == Tok.KW_PUB
-            and isinstance(nd.name_ref, Name)
+            not here.is_method
+            and not here.in_client_context()
+            and here.access is not None
+            and here.access.tag.name == Tok.KW_PUB
+            and isinstance(here.name_ref, Name)
         ) {
-            self.ir_in.gen.interop_manifest.endpoint_effects[
-                endpoint_key(self.ir_in, "func", nd.name_ref.sym_name)
+            self.module.gen.interop_manifest.endpoint_effects[
+                endpoint_key(self.module, "func", here.name_ref.sym_name)
             ] = self._classify(
-                self._resolved_body(nd), "func", nd.name_ref.sym_name, nd
+                self._resolved_body(here), "func", here.name_ref.sym_name, here
             );
         }
     }
 
     can enter_archetype with Archetype entry {
-        self._analyze_archetype(here);
-    }
-
-    def _analyze_archetype(nd: Archetype) -> None {
         import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-        if nd.arch_kind != "walker" {
+        if here.arch_kind != "walker" {
             return;
         }
-        if not isinstance(nd.name, Name) {
+        if not isinstance(here.name, Name) {
             return;
         }
-        self.ir_in.gen.interop_manifest.endpoint_effects[
-            endpoint_key(self.ir_in, "walker", nd.name.sym_name)
-        ] = self._classify(self._resolved_body(nd), "walker", nd.name.sym_name);
+        self.module.gen.interop_manifest.endpoint_effects[
+            endpoint_key(self.module, "walker", here.name.sym_name)
+        ] = self._classify(self._resolved_body(here), "walker", here.name.sym_name);
     }
 
     def _classify(
@@ -137,7 +113,7 @@ walker EndpointEffectPass(UniPass) {
                 self._scan(nd);
             }
         }
-        result: dict[str, any] = endpoint_descriptor(self.ir_in, kind, name);
+        result: dict[str, any] = endpoint_descriptor(self.module, kind, name);
         result["reads"] = sorted(list(self._declared_reads))
             if declared is not None
             else ["*"];

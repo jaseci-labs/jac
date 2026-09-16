@@ -7,7 +7,7 @@ impl JacFormatPass.format_doc_ir(
     trailing_width: int = 0
 ) -> str {
     if (doc_node is None) {
-        doc_node = self.ir_in.gen.doc_ir;
+        doc_node = self.module.gen.doc_ir;
     }
     if (width_remaining is None) {
         width_remaining = self.MAX_LINE_LENGTH;
@@ -165,7 +165,7 @@ impl JacFormatPass.format_doc_ir(
             trailing_width=trailing_width
         );
     } else {
-        raise RuntimeError(self.ice(f"Unknown DocType: {type(doc_node)}"));
+        raise RuntimeError(self.ctx.ice(f"Unknown DocType: {type(doc_node)}"));
     }
 }
 
@@ -197,10 +197,10 @@ impl JacFormatPass._run_impl(ir_in: uni.Module) -> uni.Module {
                 if (len(c.value) > 50) {
                     preview += '...';
                 }
-                self.emit(W5050, node_override=c, preview=repr(preview));
+                self.ctx.emit(W5050, node_override=c, preview=repr(preview));
                 out += c.value + '\n';
             }
-            self.emit(E5051, count=len(missing));
+            self.ctx.emit(E5051, count=len(missing));
         }
     }
     ir_in.gen.jac = out;
@@ -274,7 +274,7 @@ impl JacFormatPass._probe_fits(
         } elif isinstance(cur, doc.LineSuffix) {
             continue;
         } else {
-            raise RuntimeError(self.ice(f"Unknown DocType in probe: {type(cur)}"));
+            raise RuntimeError(self.ctx.ice(f"Unknown DocType in probe: {type(cur)}"));
         }
     }
     self._probe_cache[cache_key] = True;
@@ -328,7 +328,7 @@ impl JacFormatPass._flat_first_line_width(
     return width + base;
 }
 
-impl JacFormatPass.pre_transform -> None {
+impl JacFormatPass.prepare with entry {
     self.indent_size = 4;
     self.MAX_LINE_LENGTH = 88;
     self._probe_cache = {};
@@ -337,14 +337,6 @@ impl JacFormatPass.pre_transform -> None {
     self._rendering_suffix = False;
 }
 
-impl JacFormatPass.transform(ir_in: uni.Module) -> uni.Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, uni.Module);
-    return out;
-}
-
 impl JacFormatPass.run_walk with uni.Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

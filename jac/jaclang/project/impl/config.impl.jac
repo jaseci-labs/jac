@@ -1,9 +1,10 @@
-impl interpolate_env_vars(value: str) -> str {
+impl interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> str {
     import os;
     import re;
     if not isinstance(value, str) {
         return value;
     }
+    source = os.environ if environ is None else environ;
 
     pattern = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}";
     def replace_env_var(`match: re.Match) -> str {
@@ -11,7 +12,7 @@ impl interpolate_env_vars(value: str) -> str {
         operator = `match.group(2);
         operand = `match.group(3) or "";
 
-        env_value = os.environ.get(var_name);
+        env_value = source.get(var_name);
 
         if env_value is not None {
             return env_value;
@@ -21,9 +22,11 @@ impl interpolate_env_vars(value: str) -> str {
             return operand;
         } elif operator == ":?" {
             raise ValueError(f"Environment variable {var_name} is required: {operand}");
-        } else {
-            raise ValueError(f"Environment variable {var_name} is not set");
         }
+        if not var_name.isidentifier() {
+            return `match.group(0);
+        }
+        raise ValueError(f"Environment variable {var_name} is not set");
     }
     return re.sub(pattern, replace_env_var, value);
 }

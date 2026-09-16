@@ -2052,6 +2052,25 @@ test "lambda_param_unresolved_requires_annotation" {
     ];
     assert len(e1119) == 3 , f"Expected 3 E1119, got {len(e1119)}:\n"
         + "\n---\n".join(e.pretty_print() for e in e1119);
+    # An unannotated lambda param is inferred from the call site, so the body
+    # cannot be checked until then: `_lambda_needs_context` raises the pass's
+    # lambda depth and the body is skipped, then seeding re-types it. Seeding
+    # only re-types the statement the value comes from, so `_lambda_value_body`
+    # limits that deferral to a body that IS one such statement. A larger body
+    # is checked in place instead; deferring it would drop the checks on its
+    # other statements entirely, which is what this assertion guards. (The
+    # rationale lives here because jaclang source is deslopped: jac.toml's
+    # `[check.lint]` selects `strip-comments`/`strip-docstrings`, and
+    # `*/tests/*` is the exclusion that lets a note like this survive.)
+    e1053 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1053"
+    ];
+    assert len(e1053) == 1 , f"Expected the inline len(1) to still report, got {len(
+        e1053
+    )}:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "ability_trigger_archetype" {

@@ -1,19 +1,19 @@
-"""`Jac field metadata` is a declaration a has-field default reads, not a value.
+"""`ObjectField` descriptors supply internal has-field initialization metadata.
 
-`field(default_factory=...)` says "construct an empty one of the declared
-type" and `field(default=...)` says "this literal". Both are answered at the
+`ObjectField(default_factory=...)` says "construct an empty one of the declared
+type" and `ObjectField(default=...)` says "this literal". Both are answered at the
 declaration site, so the call never has to exist at run time.
 """
 
-import from jaclang.runtime.object_model { field }
+import from jaclang.runtime.object_model { ObjectField }
 
 
 obj Bag {
-    has names: list[str] = field(default_factory=`list),
-        counts: dict[str, int] = field(default_factory=`dict),
-        seen: set[int] = field(default_factory=`set),
-        label: str = field(`default='bag'),
-        size: int = field(`default=7);
+    has names: list[str] = ObjectField(default_factory=`list),
+        counts: dict[str, int] = ObjectField(default_factory=`dict),
+        seen: set[int] = ObjectField(default_factory=`set),
+        label: str = ObjectField(`default='bag'),
+        size: int = ObjectField(`default=7);
 }
 
 

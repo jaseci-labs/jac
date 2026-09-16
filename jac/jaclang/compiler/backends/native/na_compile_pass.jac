@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
@@ -5,7 +6,7 @@ import type from jaclang.compiler.backends.native.llvm.binding {
     ValueRef
 }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes.transform { Transform }
+
 import from jaclang.compiler.frontend.codeinfo {
     CodeGenTarget,
     install_native_static_init
@@ -71,13 +72,14 @@ def native_verdict_blast_guard(
     prog: JacProgram, composed: int, aot_lane: bool = False
 ) -> str;
 
+walker NativeCompilePass {
+    has ctx: CompileContext,
+        module: uni.Module,
+        prog: JacProgram;
 
-walker NativeCompilePass(Transform) {
-    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
     def _compile_and_link_native_imports(

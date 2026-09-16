@@ -12,6 +12,7 @@ import tempfile;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.passes.execution { run_walker }
 
 def write_mods(mods: dict[str, str]) -> str {
     tmp = tempfile.mkdtemp(prefix="jac_interop_manifest_");
@@ -174,7 +175,7 @@ test "a call whose name lost its scope marks the endpoint unknown instead of cra
         new_callable=PropertyMock,
         side_effect=ValueError("No scope found")
     ) {
-        EndpointEffectPass(ir_in=mod);
+        run_walker(EndpointEffectPass, mod);
     }
     after = mod.gen.interop_manifest.endpoint_effects.get(key);
     assert after is not None and after["unknown"] , (

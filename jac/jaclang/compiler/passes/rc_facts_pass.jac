@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from typing { TypeAlias }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -45,7 +46,6 @@ import from jaclang.compiler.frontend.constant {
     SymbolStorage,
     is_borrow_kind
 }
-import from jaclang.compiler.passes.transform { Transform }
 
 glob SymId: TypeAlias = int;
 
@@ -117,14 +117,12 @@ def loop_body_locals(body: (Sequence[UniNode] | None)) -> list[str] {
     return out;
 }
 
-walker RcFactsPass(Transform) {
-    has ir_in: Module,
-        cancel_token: any = None,
+walker RcFactsPass {
+    has ctx: CompileContext,
+        module: Module,
         _node_use: dict[int, set[SymId]] = {},
         _node_def: dict[int, set[SymId]] = {};
 
-    def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _stamp_param_rebound(ir_in: Module) -> None;

@@ -8,7 +8,6 @@ import from jaclang.runtime.constructs { NodeArchetype as Node }
 import from jaclang.runtime.constructs { WalkerArchetype as Walker }
 import from jaclang.runtime.graph_query { GraphQuery, QHop, QOrder, QPred }
 import from jaclang.runtime.runtime { JacRuntimeInterface }
-import from jaclang.runtime.object_model { field }
 glob __all__ = [
          'GraphQuery',
          'QHop',
@@ -34,7 +33,6 @@ glob __all__ = [
          'impl_patch_filename',
          'jac_test',
          'jsx',
-         'field',
          'log_report',
          'refs',
          'hop',

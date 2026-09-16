@@ -266,7 +266,7 @@ curl -X POST http://localhost:8002/walker/TriggerGreet \
 ```
 
 ```json
-{"ok":true,"type":"response","data":{"result":{"_jac_type":"TriggerGreet","_jac_id":"...","_jac_archetype":"walker","reports":[],"who":"world"},"reports":["hello, world"]},"error":null,"meta":{"extra":{"http_status":200}}}
+{"ok":true,"type":"response","data":{"result":{"_jac_type":"TriggerGreet","_jac_id":"...","_jac_archetype":"walker","who":"world"},"reports":["hello, world"]},"error":null,"meta":{"extra":{"http_status":200}}}
 ```
 
 In fleet mode the provider log shows the cross-app hop: `POST /walker/Greet 200`. The consumer's `Greet(name=self.who)` reads exactly like a local construction; the compiler swaps it for a bridged spawn at compile time.

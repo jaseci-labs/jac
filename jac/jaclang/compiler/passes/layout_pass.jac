@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchHas,
@@ -23,7 +24,7 @@ import from jaclang.compiler.frontend.unitree {
     UnaryExpr,
     UniNode
 }
-import from jaclang.compiler.passes.transform { Transform }
+
 import type from jaclang.compiler.types.types { TypeBase }
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
@@ -623,14 +624,13 @@ obj LayoutRegistry {
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 
-walker LayoutPass(Transform) {
-    has ir_in: Module,
-        cancel_token: any = None,
+walker LayoutPass {
+    has ctx: CompileContext,
+        module: Module,
         registry: LayoutRegistry postinit,
         isinstance_targets: set[str] postinit;
 
     def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _collect_archetypes(module: Module) -> dict[str, Archetype];

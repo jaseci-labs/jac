@@ -1,6 +1,7 @@
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
+    Module,
+    TreeWalker,
+    UniNode,
     Ability,
     ArchHas,
     Archetype,
@@ -22,7 +23,6 @@ import from jaclang.compiler.frontend.unitree {
     KVPair,
     LambdaExpr,
     ListVal,
-    Module,
     ModuleItem,
     ModulePath,
     MultiString,
@@ -35,10 +35,11 @@ import from jaclang.compiler.frontend.unitree {
     Token,
     TupleVal,
     UnaryExpr,
-    UniNode,
     ability_of_symbol,
     resolved_decl_of
 }
+import from jaclang.compiler.passes.context { CompileContext }
+import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
     SymbolType,
@@ -49,23 +50,26 @@ import from jaclang.compiler.frontend.codeinfo {
     InteropBinding,
     InteropContext
 }
-import from jaclang.compiler.passes.uni_pass { UniPass }
 
-walker BoundaryAnalysisPass(UniPass) {
-    has prog: JacProgram;
+walker BoundaryAnalysisPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram;
+
     static has HOST_PASS: bool = True;
-    has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = field(
-        default_factory=`dict
-    ),
-        _imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = field(
-            default_factory=`dict
-        ),
-        _imported_native_modules: dict[(str, tuple[(str, InteropContext)])] = field(
-            default_factory=`dict
-        );
+    has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = {},
+        _imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = {},
+        _imported_native_modules: dict[(str, tuple[(str, InteropContext)])] = {};
 
-    def before_pass -> None;
-    def transform(ir_in: Module) -> Module;
+    can prepare with entry;
     def _resolved_native_decl(name_node: (UniNode | None)) -> (Ability | None);
     def _signature_of_decl(
         decl: (Ability | None)
@@ -77,7 +81,6 @@ walker BoundaryAnalysisPass(UniPass) {
     def _native_source_module_of(mod: (Module | None)) -> (str | None);
     def _register_native_absorb(nd: Import) -> None;
     can enter_import with Import entry;
-    def _analyze_import(nd: Import) -> None;
     def _register_sv_import(
         nd: Import, module_name: str, caller_ctx: InteropContext
     ) -> None;
@@ -109,11 +112,8 @@ walker BoundaryAnalysisPass(UniPass) {
     ) -> (Archetype | Enum | None);
 
     can enter_atom_trailer with AtomTrailer entry;
-    def _analyze_atom_trailer(nd: AtomTrailer) -> None;
     can enter_ability with Ability entry;
-    def _analyze_ability(nd: Ability) -> None;
     can enter_func_call with FuncCall entry;
-    def _analyze_func_call(nd: FuncCall) -> None;
     def _extract_subscript_inner(expr: (UniNode | None)) -> str;
     def _extract_all_subscript_types(expr: (UniNode | None)) -> list[str];
     def _extract_all_type_names(expr: (UniNode | None)) -> list[str];
@@ -122,6 +122,6 @@ walker BoundaryAnalysisPass(UniPass) {
     ) -> (BoundaryTypeInfo | None);
 
     def _literal_default(expr: (UniNode | None)) -> tuple[(bool, any)];
-    def after_pass -> None;
+    can finish with exit;
     def _record_access_levels(manifest: any) -> None;
 }

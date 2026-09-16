@@ -497,10 +497,34 @@ The Python AST is reconstructed from the container inside
 `JcirBytecodeGenPass` and dies there, so nothing downstream holds a handle
 back to the originating nodes.
 
-Archetype `has` fields become dataclass fields wrapped with
-`_.field(default=…)` or `_.field(factory=lambda: …)`. Walkers, nodes, and
+Archetype `has` fields use Jac object descriptors. Nonconstant defaults
+lower to internal `ObjectField(default_factory=lambda: …)` calls; constant
+defaults remain direct values. Walkers, nodes, and
 edges descend from the corresponding `Archetype` subclasses in
 [`runtime/archetype.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/archetype.jac).
+Jac-owned records use `obj` and ordinary `has` defaults such as
+`has items: list[int] = [];`. Deferred fields use `has ready: bool postinit;`
+and are assigned in `postinit`. Plain `class` retains Python class semantics.
+
+`make_object` is Python runtime implementation machinery, also used by the
+bootstrap compiler; it is not the declaration API for ordinary Jac records.
+`ObjectField` is internal construction and reflection metadata. Runtime code
+still uses explicit descriptors where it needs constructor exclusion,
+representation control, or keyword-only fields. These internal options do not
+establish a public Jac field-configuration API. Direct decorator tests cover
+this implementation boundary; language-facing tests use `obj`.
+`WalkerArchetype` is a runtime base marked `__jac_base__`, so the normal
+subclass-registration hook deliberately skips it. Its explicit `make_object`
+call installs inherited `reports` metadata without registering it as a user
+archetype. Its constructor exclusion and representation settings remain
+internal runtime contracts.
+
+`runtime/object_interop.jac` is the single direct Python-dataclasses adapter.
+Code accepting records from Python libraries uses its `is_record` and `fields`
+functions. Jac code should not create Python dataclasses or import their helpers;
+intentional compatibility records belong in Python fixtures. The native import
+rejection test retains a dataclasses import as test input, not an executed import.
+
 Builtins and language keywords ultimately resolve to methods on
 `JacRuntimeInterface` in [`runtime/runtime.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac).
 

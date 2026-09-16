@@ -76,27 +76,34 @@ walker ComptimeResolvePass(TypeCheckPass) {
 
     static has HOST_PASS: bool = True;
 
-    override def before_pass {
-        self._keep = comptime_reach(self.ir_in);
-        self._armed = bool(self._keep) and not self.ir_in.ct_resolved;
+    can prepare with entry {
+        if self.ctx.nested_depth {
+            return;
+        }
+        self._keep = comptime_reach(self.module);
+        self._armed = bool(self._keep) and not self.module.ct_resolved;
         if self._armed {
-            super.before_pass();
+            self._insert_builtin_symbols();
+            self._install_client_state_setters();
         }
     }
 
-    override def after_pass -> None {
+    can finish with exit {
+        if self.ctx.nested_depth {
+            return;
+        }
         if not self._armed {
             return;
         }
-        self.ir_in.ct_resolved = True;
+        self.module.ct_resolved = True;
     }
 
     can enter_walk with UniNode entry {
-        if self.is_canceled() or here.ct_pruned {
+        if self.ctx.is_canceled() or here.ct_pruned {
             osp_skip_rest();
             return;
         }
-        self.cur_node = here;
+        self.ctx.current_node = here;
         if not self._armed or id(here) not in self._keep {
             osp_skip_rest();
         }
@@ -107,8 +114,8 @@ walker ComptimeResolvePass(TypeCheckPass) {
             osp_skip_rest();
             return;
         }
-        self.cur_node = here;
-        if self.is_canceled() or not self._armed or id(here) not in self._keep {
+        self.ctx.current_node = here;
+        if self.ctx.is_canceled() or not self._armed or id(here) not in self._keep {
             osp_skip_rest();
         }
     }
