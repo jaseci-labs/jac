@@ -472,13 +472,7 @@ def _seed_from_summary(module: uni.Module, prog: any) -> int {
                 why = reason;
                 break;
             }
-            if cap == 'NPM'
-                and reason
-                    in (
-                        'string-path import',
-                        'virtual @jac import',
-                        'npm dependency'
-                    ) {
+            if cap == 'NPM' {
                 target_ctx = CodeContext.CLIENT;
                 ctx_label = 'client';
                 why = reason;
