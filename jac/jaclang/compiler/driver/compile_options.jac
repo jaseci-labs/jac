@@ -36,6 +36,8 @@ obj CompileOptions {
         memory_enforce: (list[str] | None) = None,
         memory_exempt: (list[str] | None) = None,
         native_threads: (int | None) = None,
+        walker_speculation: (str | None) = None,
+        walker_dependency_inspection: (bool | None) = None,
         rc_debug_codegen: (bool | None) = None,
         native_target: (str | None) = None,
         native_debug: (bool | None) = None,
@@ -100,6 +102,22 @@ obj CompileOptions {
         if self.native_threads is None {
             self.native_threads = native_cfg.threads if native_cfg else 4;
         }
+        if self.walker_speculation is None {
+            self.walker_speculation = native_cfg.walker_speculation
+                if native_cfg
+                else "off";
+        }
+        if self.walker_speculation not in ("auto", "off") {
+            raise ValueError("walker_speculation must be 'auto' or 'off'");
+        }
+        if self.walker_dependency_inspection is None {
+            self.walker_dependency_inspection = native_cfg.walker_dependency_inspection
+                if native_cfg
+                else True;
+        }
+        if not isinstance(self.walker_dependency_inspection, bool) {
+            raise ValueError("walker_dependency_inspection must be a boolean");
+        }
         if self.dump_ir_path is None {
             self.dump_ir_path = "";
         }
@@ -130,6 +148,22 @@ obj CompileOptions {
                 f"target={self.native_target}",
                 f"native_debug={int(bool(self.native_debug))}",
                 f"opt={self.opt_level}",
+                f"walker_speculation={int(
+                    self.aot_mode
+                        and self.na_gc_mode == 'rc'
+                        and self.walker_speculation == 'auto'
+                        and not self.rc_debug_codegen
+                )}",
+                f"native_threads={self.native_threads}",
+                f"walker_dependency_inspection={int(
+                    bool(
+                        self.walker_dependency_inspection
+                            and self.aot_mode
+                            and self.na_gc_mode == 'rc'
+                            and self.walker_speculation == 'auto'
+                            and not self.rc_debug_codegen
+                    )
+                )}",
                 f"app={self.target_app}",
                 f"app_kind={self.app_kind}",
                 f"kernel_unit={int(bool(self.kernel_unit))}"
@@ -193,6 +227,9 @@ obj CompileOptions {
             native_target=self.native_target,
             native_debug=self.native_debug,
             opt_level=self.opt_level,
+            walker_speculation=self.walker_speculation if self.aot_mode else "off",
+            walker_dependency_inspection=self.walker_dependency_inspection,
+            native_threads=self.native_threads,
             dump_ir_path=self.dump_ir_path,
             debug_ir=self.debug_ir,
             rc_stats=self.rc_stats,

@@ -6,6 +6,7 @@ glob OSP_CORE_PARTS: list[str] = [
      ],
      FMT_KERNEL_PARTS: list[str] = ["compiler/backends/common/fmt_kernel.jac"],
      REGION_KERNEL_PARTS: list[str] = ["runtime/region_native.jac"],
+     SPECULATION_KERNEL_PARTS: list[str] = ["runtime/walker_speculation_native.jac"],
      REGION_KERNEL_ABI: dict[str, tuple[bool, int]] = {
          "__jac_region_new": (True, 0),
          "__jac_region_alloc": (True, 2),

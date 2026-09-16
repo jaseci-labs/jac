@@ -442,6 +442,14 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             self._link_region_kernel(mod);
             _kernel_linked = True;
         }
+        if not _is_kernel_unit
+            and any(
+                fn.is_declaration and fn.name == "__jac_spec_register"
+                for fn in _mod_functions(mod)
+            ) {
+            self._link_speculation_kernel(mod);
+            _kernel_linked = True;
+        }
         module.gen.native_linked_ir = str(mod) if _kernel_linked else None;
 
         import os as _os;
@@ -1210,7 +1218,8 @@ impl NativeCompilePass._compile_and_link_native_imports(
 }
 
 glob _OSP_KERNEL_IR_CACHE: dict[str, str] = {},
-     _REGION_KERNEL_IR_CACHE: dict[str, str] = {};
+     _REGION_KERNEL_IR_CACHE: dict[str, str] = {},
+     _SPECULATION_KERNEL_IR_CACHE: dict[str, str] = {};
 
 def _kernel_unit_opts(
     gc_mode: str, enforce: bool, no_ir_cache: bool = False
@@ -1219,6 +1228,7 @@ def _kernel_unit_opts(
         no_ir_cache=no_ir_cache,
         aot_mode=True,
         kernel_unit=True,
+        walker_speculation="off",
         default_codespace='native',
         na_gc_mode=gc_mode,
         nogc_enforce_all=enforce,
@@ -1235,6 +1245,7 @@ def _kernel_unit_opts(
                 "E1313",
                 "E1314",
                 "E1315",
+                "E1316",
                 "E1401",
                 "E1402",
                 "E1403",
@@ -1285,14 +1296,19 @@ def _compile_kernel_unit_ir(
 }
 
 def _compile_osp_kernel_ir(
-    gc_mode: str = "cycles", enforce: bool = False, no_ir_cache: bool = False
+    gc_mode: str = "cycles",
+    enforce: bool = False,
+    no_ir_cache: bool = False,
+    speculate: bool = False,
+    inspect: bool = True
 ) -> (str | None) {
     import from jaclang.compiler.backends.common.kernel_units { osp_core_unit_path }
     variant = f"na_{gc_mode}_enf" if enforce else f"na_{gc_mode}";
+    opts = _kernel_unit_opts(gc_mode, enforce, no_ir_cache);
+    opts.walker_speculation = "auto" if speculate else "off";
+    opts.walker_dependency_inspection = inspect;
     return _compile_kernel_unit_ir(
-        osp_core_unit_path(variant),
-        _OSP_KERNEL_IR_CACHE,
-        _kernel_unit_opts(gc_mode, enforce, no_ir_cache)
+        osp_core_unit_path(variant), _OSP_KERNEL_IR_CACHE, opts
     );
 }
 
@@ -1311,8 +1327,9 @@ def _compile_region_kernel_ir(
 }
 
 def _rename_kernel_glob_init(ir_str: str, suffix: str) -> str {
+    import re;
     ir_str = ir_str.replace('@"__jac_glob_init"', f'@"__jac_glob_init_{suffix}"');
-    ir_str = ir_str.replace("@__jac_glob_init(", f"@__jac_glob_init_{suffix}(");
+    ir_str = re.sub(r"@__jac_glob_init\b", f"@__jac_glob_init_{suffix}", ir_str);
     return ir_str.replace(
         'name: "__jac_glob_init"', f'name: "__jac_glob_init_{suffix}"'
     );
@@ -1412,8 +1429,15 @@ impl NativeCompilePass._link_osp_kernel(main_mod: ModuleRef) -> None {
     _gc = str(getattr(self.prog?.options, "na_gc_mode", "cycles") or "cycles");
     _enf = bool(getattr(self.prog?.options, "nogc_enforce_all", False))
         or bool(getattr(self.module.gen, "nogc_enforced", False));
+    import from jaclang.compiler.backends.native.walker_speculation {
+        walker_speculation_enabled
+    }
     ir_str = _compile_osp_kernel_ir(
-        _gc, _enf and _gc == "none", self.prog.options.no_ir_cache
+        _gc,
+        _enf and _gc == "none",
+        self.prog.options.no_ir_cache,
+        walker_speculation_enabled(self.prog.options, str(main_mod.triple)),
+        self.prog.options.walker_dependency_inspection
     );
     if ir_str is None {
         self.ctx.emit(
@@ -1432,6 +1456,35 @@ impl NativeCompilePass._link_osp_kernel(main_mod: ModuleRef) -> None {
         main_mod.link_in(kmod);
     } except Exception as _e {
         self.ctx.emit(E5025, path=f"osp_core kernel unit (gc={_gc})", error=str(_e));
+    }
+}
+
+impl NativeCompilePass._link_speculation_kernel(main_mod: ModuleRef) -> None {
+    import from jaclang.compiler.backends.common.kernel_units {
+        kernel_unit_path,
+        SPECULATION_KERNEL_PARTS
+    }
+    opts = _kernel_unit_opts("rc", False, self.prog.options.no_ir_cache);
+    opts.native_target = self.prog.options.native_target;
+    ir_str = _compile_kernel_unit_ir(
+        kernel_unit_path("walker_speculation", SPECULATION_KERNEL_PARTS),
+        _SPECULATION_KERNEL_IR_CACHE,
+        opts
+    );
+    if ir_str is None {
+        self.ctx.emit(
+            E5025, path="walker speculation runtime", error="failed to compile runtime"
+        );
+        return;
+    }
+    try {
+        kmod = llvm.parse_assembly(
+            _rename_kernel_glob_init(ir_str, "walker_speculation")
+        );
+        kmod.verify();
+        main_mod.link_in(kmod);
+    } except Exception as error {
+        self.ctx.emit(E5025, path="walker speculation runtime", error=str(error));
     }
 }
 

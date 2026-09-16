@@ -261,6 +261,26 @@ impl NaIRGenPass._osp_build_slot(
             name="slot.fn"
         )
     );
+    import from jaclang.compiler.backends.native.walker_speculation {
+        walker_speculation_enabled
+    }
+    if walker_speculation_enabled(self.prog.options, str(self.llvm_module.triple))
+        and self.prog.options.walker_dependency_inspection {
+        inspect = self.llvm_module.globals.get("__jac_inspect_" + thunk.name);
+        if inspect is None {
+            inspect = ir.Function(
+                self.llvm_module,
+                thunk.function_type,
+                name="__jac_inspect_" + thunk.name
+            );
+        }
+        self.builder.store(
+            self.builder.ptrtoint(inspect, i64),
+            self.builder.gep(
+                slot, [ir.Constant(i32, 0), ir.Constant(i32, _idx["inspect"])]
+            )
+        );
+    }
     return slot;
 }
 
@@ -410,7 +430,15 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
     }
     self.builder.ret_void();
     out["on_complete"] = _ocf;
+    out["topology_epoch"] = self.func_symtab["osp_topology_epoch"];
     self._builder = _saved;
+    import from jaclang.compiler.backends.native.walker_speculation {
+        NativeWalkerSpeculation,
+        walker_speculation_enabled
+    }
+    if walker_speculation_enabled(self.prog.options, str(self.llvm_module.triple)) {
+        out.update(NativeWalkerSpeculation(self).callbacks());
+    }
     return out;
 }
 
@@ -507,7 +535,7 @@ impl NaIRGenPass._emit_osp_setup -> None {
     if _rt is not None {
         _rf = self.struct_field_types.get("OspRuntime", {});
         _ridx = self.struct_field_indices.get("OspRuntime", {});
-        for _fname in ["tag_of", "is_a", "node_desc", "on_complete"] {
+        for _fname in _cbs {
             _cb = self._coerce_type(_cbs[_fname], _rf[_fname]);
             self.builder.store(
                 _cb,
@@ -516,6 +544,28 @@ impl NaIRGenPass._emit_osp_setup -> None {
                     [ir.Constant(i32, 0), ir.Constant(i32, _ridx.get(_fname, 0))],
                     name=f"rt.{_fname}"
                 )
+            );
+        }
+        if "run_tasks" in _cbs {
+            _width = ir.Constant(
+                i64, min(64, max(1, self.prog.options.native_threads or 4))
+            );
+            self.builder.store(
+                _width,
+                self.builder.gep(
+                    _rt, [ir.Constant(i32, 0), ir.Constant(i32, _ridx["task_width"])]
+                )
+            );
+            _dep = self.builder.gep(
+                _rt,
+                [ir.Constant(i32, 0), ir.Constant(i32, _ridx["dependency_inspection"])]
+            );
+            self.builder.store(
+                ir.Constant(
+                    _dep.type.pointee,
+                    int(bool(self.prog.options.walker_dependency_inspection))
+                ),
+                _dep
             );
         }
         self.builder.store(_rt, self._osp_rt_global);

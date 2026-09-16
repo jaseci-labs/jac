@@ -1,4 +1,9 @@
-glob _isa: dict[int, set[int]] = {};
+glob _isa: dict[int, set[int]] = {},
+     _osp_topology_epoch: list[int] = [0];
+
+def osp_topology_epoch -> int {
+    return _osp_topology_epoch[0];
+}
 
 def osp_register_type(tag: int, bases: list[int]) -> int {
     anc: set[int] = set();
@@ -95,6 +100,7 @@ obj OspGraph {
     }
 
     def connect_light(src: int, tgt: int, tag: int, one_sided: bool) -> int {
+        _osp_topology_epoch[0] += 1;
         if src in self.dead or tgt in self.dead {
             return -1;
         }
@@ -118,6 +124,7 @@ obj OspGraph {
     }
 
     def light_remove_one(src: int, tgt: int, tag: int) -> bool {
+        _osp_topology_epoch[0] += 1;
         if src not in self.adj {
             return False;
         }
@@ -157,6 +164,7 @@ obj OspGraph {
     }
 
     def light_detach(h: int) -> int {
+        _osp_topology_epoch[0] += 1;
         if h not in self.adj {
             return 0;
         }
@@ -236,6 +244,7 @@ obj OspGraph {
     }
 
     def _row_retire(rid: int) {
+        _osp_topology_epoch[0] += 1;
         row: EdgeRow = self.rows[rid];
         if row.handle in self.row_of {
             del self.row_of[row.handle];
@@ -275,6 +284,7 @@ obj OspGraph {
         rgn_src: int,
         rgn_tgt: int
     ) -> int {
+        _osp_topology_epoch[0] += 1;
         if src in self.dead or tgt in self.dead {
             return -1;
         }
@@ -529,6 +539,7 @@ obj OspGraph {
     }
 
     def disconnect(eobj: int) -> bool {
+        _osp_topology_epoch[0] += 1;
         if eobj not in self.row_of {
             return False;
         }
@@ -694,6 +705,7 @@ obj OspGraph {
     }
 
     def node_destroy(h: int) -> int {
+        _osp_topology_epoch[0] += 1;
         if h in self.dead {
             return 0;
         }

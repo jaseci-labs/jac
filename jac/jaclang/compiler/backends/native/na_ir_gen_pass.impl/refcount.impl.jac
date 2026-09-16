@@ -4,6 +4,8 @@ glob _NOGC_OSP_ENGINE_STRUCTS: tuple[str, ...] = (
          "WalkerDesc",
          "NodeDesc",
          "WalkScope",
+         "OspTask",
+         "OspAccess",
          "OspRuntime",
          "Frame",
          "OspEngine",

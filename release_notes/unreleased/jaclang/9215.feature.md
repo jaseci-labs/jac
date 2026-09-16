@@ -1,0 +1,1 @@
+- **Opt-in native walker parallelism**: Native AOT programs using RC on 64-bit Linux can speculate across entry abilities, including ordinary visits and read-only graph queries, and commit effects in serial traversal order. Conflicts and unsupported effects fall back to serial execution. Disabled by default; set `[native] walker_speculation = "auto"` to enable it.

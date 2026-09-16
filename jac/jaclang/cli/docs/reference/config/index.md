@@ -455,7 +455,9 @@ How `jac build --native` emits code:
 target = ""               # "" or "host" (default), "wasm32", or an LLVM triple
 opt = 2                   # optimization level
 debug = false             # DWARF, unoptimized JIT path, and the RC trace machinery, together
-threads = 4               # `flow for` width; a built binary can override with JAC_THREADS
+threads = 4               # Native parallel work width
+walker_speculation = "off" # Default off; "auto" opts in
+walker_dependency_inspection = true # Inspect object accesses before running abilities
 require = []              # Module-name patterns whose native lowering must succeed
 ```
 
@@ -468,6 +470,69 @@ without executing it. The policy is included in analysis and code-generation
 cache identities.
 
 A built binary reads two environment variables at run time and no others: `JAC_GC=off` disables collection for leak debugging (collection is on by default under `managed`), and `JAC_THREADS` overrides the `flow for` width. Nothing at compile time reads the environment; `jac explain memory|placement|ir` replaces the old diagnostic variables.
+
+Walker speculation is disabled by default. Set `walker_speculation = "auto"`
+to enable speculative execution of complete entry abilities in Native AOT
+programs using RC on 64-bit Linux. Tasks compute against
+isolated state, then validate their reads and commit in the original traversal
+order. Conflicts cause serial re-execution at the original ability position.
+The setting participates in the native compilation cache identity.
+
+With speculation enabled, dependency inspection first determines the objects
+each entry ability may read or write. It follows Native graph queries, including
+multiple hops, directions, edge types and safe filters, and inspects helpers
+whose bodies are available. Object identity is the conflict granularity: a write
+conflicts with earlier reads and writes of that object; shared reads can run
+together. Unknown accesses retain the ordinary speculative validation and are
+not considered proof of independence.
+
+The scheduler previews every currently known entry call up to an exit or serial
+boundary. `threads` limits simultaneous bodies, not the preview length. It runs
+ready calls in batches and commits in traversal order. A completed later call
+can remain buffered across batches while an earlier dependency runs. After
+commits, pending calls are inspected again: changing a filter field or a field
+containing a node reference can change query targets even with fixed topology.
+Inspections never replay reports, visits or external I/O. Failed inspections
+leave execution to the existing validation and fallback mechanisms.
+
+Graph topology must remain fixed during dependency scheduling. Encountering a
+connection change or node removal discards uncommitted predictions and disables
+dependency inspection for the rest of that walker. Retired memory stays alive
+until retained predictions are discarded or committed. Set
+`walker_dependency_inspection = false` to compare against the original
+speculative scheduler; it has no effect when speculation is off. Both options
+propagate to Native imports and participate in compilation cache identities.
+
+Native diagnostic counters are available through C imports named
+`__jac_spec_get_inspections`, `__jac_spec_get_unknown`,
+`__jac_spec_get_deferrals`, `__jac_spec_get_attempts`,
+`__jac_spec_get_validation_failures`, `__jac_spec_get_inspection_steps` and
+`__jac_spec_get_inspection_ns`. They count checks, incomplete checks, dependency
+deferrals, speculative body attempts, rejected completed bodies, inspection
+work and inspection time respectively. Deferrals count each scheduling round;
+attempts exclude serial fallback. Counters accumulate for the process and do
+not print anything unless the program requests them.
+
+The repository's `scripts/walker_dependency_bench.jac` compares serial,
+original speculation and dependency scheduling over fixed-topology, two-hop
+queries with varying target sharing, query size and body cost. Inspection and
+speculative memory tracking add overhead, so fewer retries do not guarantee a
+shorter run time.
+
+Fields, lists, dictionaries, reports, read-only graph queries, and ordinary
+append-style `visit` are supported. Reporting does not create a dependency on
+other reports. Mutable reported objects keep their reference identity. Entry
+order, reverse exit order, repeated visits, `visit ... else`, `skip`, and
+`disengage` retain their serial behavior. Exit abilities execute serially.
+
+Graph changes, positional visits, nested spawns, and unknown external calls
+fall back before performing the unsupported operation. Programs with custom
+`drop` methods or explicit regions/raw memory operations use serial execution.
+Debug RC builds, other memory profiles, Python/JIT, and unsupported targets also
+execute serially. Tasks that exceed internal work or memory limits also retry
+serially. Set `walker_speculation = "off"` for
+serial comparison. Concurrent workers are capped at 64; dependency inspection
+does not impose a task preview window.
 
 ---
 

@@ -176,6 +176,15 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
         }
+        import from jaclang.compiler.backends.native.walker_speculation {
+            NativeWalkerSpeculation,
+            walker_speculation_enabled
+        }
+        if walker_speculation_enabled(
+            self.prog.options, str(self.llvm_module.triple)
+        ) {
+            NativeWalkerSpeculation(self).instrument();
+        }
         self.module.gen.llvm_ir = self.llvm_module;
 
         import os;

@@ -1,0 +1,833 @@
+{
+  "platform": "Linux-6.18.50-x86_64-with-glibc2.42",
+  "logical_cpus": 16,
+  "workers": 4,
+  "jobs": 16,
+  "rounds": 5,
+  "warmups": 1,
+  "source_sha256": "c2897e56c5fce9fb0de58472907a72f5bec004a0184356f51fd43ea77a172498",
+  "build": {
+    "backend": "native-aot",
+    "memory": "rc",
+    "opt": 2,
+    "libc": "host"
+  },
+  "cases": [
+    {
+      "groups": 16,
+      "query_size": 1,
+      "body_steps": 20000,
+      "samples_seconds": {
+        "serial": [
+          0.0017139179981313646,
+          0.001824988008593209,
+          0.0023982940037967637,
+          0.001827301995945163,
+          0.0018145089998142794
+        ],
+        "optimistic": [
+          0.006566011012182571,
+          0.007087399004376493,
+          0.007095563996699639,
+          0.0073495759861543775,
+          0.006102191997342743
+        ],
+        "dependencies": [
+          0.008942052998463623,
+          0.009632442001020536,
+          0.009761976994923316,
+          0.011829985000076704,
+          0.009582246013451368
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.001824988008593209,
+        "optimistic": 0.007087399004376493,
+        "dependencies": 0.009632442001020536
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 40,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 23725,
+          "inspection_ns": 1272944,
+          "peak": 4
+        },
+        "optimistic": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        1449310,
+        1301154,
+        1674786,
+        2795549,
+        1272944
+      ],
+      "median_inspection_ns": 1449310,
+      "checksum": "667486"
+    },
+    {
+      "groups": 16,
+      "query_size": 1,
+      "body_steps": 200000,
+      "samples_seconds": {
+        "serial": [
+          0.014655228005722165,
+          0.01520342699950561,
+          0.015310250004404224,
+          0.012702929001534358,
+          0.01396396900236141
+        ],
+        "optimistic": [
+          0.037837093012058176,
+          0.039931341001647525,
+          0.037763574000564404,
+          0.03396074799820781,
+          0.039561640995088965
+        ],
+        "dependencies": [
+          0.04012313499697484,
+          0.03874437199556269,
+          0.04062781100219581,
+          0.04533072200138122,
+          0.037082673006807454
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.014655228005722165,
+        "optimistic": 0.037837093012058176,
+        "dependencies": 0.04012313499697484
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 40,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 23725,
+          "inspection_ns": 1443105,
+          "peak": 4
+        },
+        "optimistic": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        2205069,
+        2261986,
+        1687326,
+        2077526,
+        1443105
+      ],
+      "median_inspection_ns": 2077526,
+      "checksum": "884969"
+    },
+    {
+      "groups": 16,
+      "query_size": 4,
+      "body_steps": 20000,
+      "samples_seconds": {
+        "serial": [
+          0.006437586998799816,
+          0.010281330993166193,
+          0.00815250699815806,
+          0.0058297470095567405,
+          0.005584632002864964
+        ],
+        "optimistic": [
+          0.019263470006990246,
+          0.020529457993688993,
+          0.019228092991397716,
+          0.01783528400119394,
+          0.019168109996826388
+        ],
+        "dependencies": [
+          0.022454416000982746,
+          0.02464962500380352,
+          0.022214882003027014,
+          0.022295614995528013,
+          0.021076215009088628
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.006437586998799816,
+        "optimistic": 0.019228092991397716,
+        "dependencies": 0.022295614995528013
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 40,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 36676,
+          "inspection_ns": 2380038,
+          "peak": 4
+        },
+        "optimistic": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        1737569,
+        2340488,
+        2645676,
+        1951785,
+        2380038
+      ],
+      "median_inspection_ns": 2340488,
+      "checksum": "427597"
+    },
+    {
+      "groups": 16,
+      "query_size": 4,
+      "body_steps": 200000,
+      "samples_seconds": {
+        "serial": [
+          0.05043391100480221,
+          0.050937765001435764,
+          0.04883332799363416,
+          0.04964181898685638,
+          0.048643567992257886
+        ],
+        "optimistic": [
+          0.09755832100927364,
+          0.10075618998962454,
+          0.10060494199569803,
+          0.10191102599492297,
+          0.09936576499603689
+        ],
+        "dependencies": [
+          0.10565389999828767,
+          0.1037360660120612,
+          0.09853312700579409,
+          0.11149576799653005,
+          0.10397765300876927
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.04964181898685638,
+        "optimistic": 0.10060494199569803,
+        "dependencies": 0.10397765300876927
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 40,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 36655,
+          "inspection_ns": 1775625,
+          "peak": 4
+        },
+        "optimistic": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        2575240,
+        2978363,
+        1731451,
+        2124216,
+        1775625
+      ],
+      "median_inspection_ns": 2124216,
+      "checksum": "156353"
+    },
+    {
+      "groups": 4,
+      "query_size": 1,
+      "body_steps": 20000,
+      "samples_seconds": {
+        "serial": [
+          0.0022693000064464286,
+          0.002626146000693552,
+          0.002003646004595794,
+          0.001901764000649564,
+          0.0023011800076346844
+        ],
+        "optimistic": [
+          0.006315627004369162,
+          0.00701413000933826,
+          0.008044993010116741,
+          0.006755820999387652,
+          0.007272229006048292
+        ],
+        "dependencies": [
+          0.009863759012660012,
+          0.00918037501105573,
+          0.009526399997412227,
+          0.010656751997885294,
+          0.009214678997523151
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.0022693000064464286,
+        "optimistic": 0.00701413000933826,
+        "dependencies": 0.009526399997412227
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 40,
+          "unknown": 0,
+          "deferrals": 24,
+          "inspection_steps": 27040,
+          "inspection_ns": 1557086,
+          "peak": 4
+        },
+        "optimistic": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        1822772,
+        1802987,
+        2008304,
+        2081789,
+        1557086
+      ],
+      "median_inspection_ns": 1822772,
+      "checksum": "898983"
+    },
+    {
+      "groups": 4,
+      "query_size": 1,
+      "body_steps": 200000,
+      "samples_seconds": {
+        "serial": [
+          0.012800133001292124,
+          0.013060857003438286,
+          0.012496617986471392,
+          0.013033846000325866,
+          0.013112054002704099
+        ],
+        "optimistic": [
+          0.029632776000653394,
+          0.0318752650055103,
+          0.029261032002978027,
+          0.029151245005778037,
+          0.028363642006297596
+        ],
+        "dependencies": [
+          0.0318544459878467,
+          0.03279178199591115,
+          0.030773257996770553,
+          0.03359808000095654,
+          0.03162287699524313
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.013033846000325866,
+        "optimistic": 0.029261032002978027,
+        "dependencies": 0.0318544459878467
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 40,
+          "unknown": 0,
+          "deferrals": 24,
+          "inspection_steps": 27040,
+          "inspection_ns": 1897573,
+          "peak": 4
+        },
+        "optimistic": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        1789420,
+        1714183,
+        2387973,
+        2590690,
+        1897573
+      ],
+      "median_inspection_ns": 1897573,
+      "checksum": "653596"
+    },
+    {
+      "groups": 4,
+      "query_size": 4,
+      "body_steps": 20000,
+      "samples_seconds": {
+        "serial": [
+          0.00545425400196109,
+          0.006928167000296526,
+          0.0057786690013017505,
+          0.005782355990959331,
+          0.006898070001625456
+        ],
+        "optimistic": [
+          0.013629965003929101,
+          0.014474716008407995,
+          0.014280357994721271,
+          0.014618508008425124,
+          0.014602819006540813
+        ],
+        "dependencies": [
+          0.019565491995308548,
+          0.018116716004442424,
+          0.018005004996666685,
+          0.01916926099511329,
+          0.017217934000655077
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.005782355990959331,
+        "optimistic": 0.014474716008407995,
+        "dependencies": 0.018116716004442424
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 40,
+          "unknown": 0,
+          "deferrals": 24,
+          "inspection_steps": 43330,
+          "inspection_ns": 1515847,
+          "peak": 4
+        },
+        "optimistic": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        1725450,
+        1737019,
+        1844396,
+        1836978,
+        1515847
+      ],
+      "median_inspection_ns": 1737019,
+      "checksum": "698321"
+    },
+    {
+      "groups": 4,
+      "query_size": 4,
+      "body_steps": 200000,
+      "samples_seconds": {
+        "serial": [
+          0.04866092000156641,
+          0.04886918498959858,
+          0.048089878007886,
+          0.04814459101180546,
+          0.04846660100156441
+        ],
+        "optimistic": [
+          0.09795377700356767,
+          0.09653392600012012,
+          0.09723156799736898,
+          0.11186384300526697,
+          0.09533376200124621
+        ],
+        "dependencies": [
+          0.1032108280051034,
+          0.10967403399990872,
+          0.0983083879982587,
+          0.11995310000202153,
+          0.10099427599925548
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.04846660100156441,
+        "optimistic": 0.09723156799736898,
+        "dependencies": 0.1032108280051034
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 40,
+          "unknown": 0,
+          "deferrals": 24,
+          "inspection_steps": 43330,
+          "inspection_ns": 1962438,
+          "peak": 4
+        },
+        "optimistic": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        2017253,
+        2039546,
+        1787501,
+        2516873,
+        1962438
+      ],
+      "median_inspection_ns": 2017253,
+      "checksum": "822568"
+    },
+    {
+      "groups": 1,
+      "query_size": 1,
+      "body_steps": 20000,
+      "samples_seconds": {
+        "serial": [
+          0.0018291260057594627,
+          0.0029292200051713735,
+          0.0025643580011092126,
+          0.002048050009761937,
+          0.0018090380035573617
+        ],
+        "optimistic": [
+          0.010037888991064392,
+          0.011260625993600115,
+          0.010293031999026425,
+          0.00996635400224477,
+          0.010610584009555168
+        ],
+        "dependencies": [
+          0.019723931996850297,
+          0.020470526011195034,
+          0.021425555009045638,
+          0.019070944996201433,
+          0.018240942008560523
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.002048050009761937,
+        "optimistic": 0.010293031999026425,
+        "dependencies": 0.019723931996850297
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 136,
+          "unknown": 0,
+          "deferrals": 120,
+          "inspection_steps": 97048,
+          "inspection_ns": 3872583,
+          "peak": 1
+        },
+        "optimistic": {
+          "attempts": 30,
+          "commits": 8,
+          "fallbacks": 8,
+          "validation_failures": 8,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        3968238,
+        5412831,
+        5658340,
+        4724704,
+        3872583
+      ],
+      "median_inspection_ns": 4724704,
+      "checksum": "478898"
+    },
+    {
+      "groups": 1,
+      "query_size": 1,
+      "body_steps": 200000,
+      "samples_seconds": {
+        "serial": [
+          0.01230260000738781,
+          0.01253800600534305,
+          0.012452313996618614,
+          0.01273667300119996,
+          0.013007515997742303
+        ],
+        "optimistic": [
+          0.06386975599161815,
+          0.0582724599953508,
+          0.061537366011179984,
+          0.055603551998501644,
+          0.06630847600172274
+        ],
+        "dependencies": [
+          0.0984662569971988,
+          0.09274938500311691,
+          0.08855864399811253,
+          0.09895768700516783,
+          0.09509037900716066
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.01253800600534305,
+        "optimistic": 0.061537366011179984,
+        "dependencies": 0.09509037900716066
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 136,
+          "unknown": 0,
+          "deferrals": 120,
+          "inspection_steps": 97048,
+          "inspection_ns": 7559789,
+          "peak": 1
+        },
+        "optimistic": {
+          "attempts": 30,
+          "commits": 8,
+          "fallbacks": 8,
+          "validation_failures": 8,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        4570919,
+        4468810,
+        5557585,
+        6138718,
+        7559789
+      ],
+      "median_inspection_ns": 5557585,
+      "checksum": "651034"
+    },
+    {
+      "groups": 1,
+      "query_size": 4,
+      "body_steps": 20000,
+      "samples_seconds": {
+        "serial": [
+          0.005234337004367262,
+          0.007082509997417219,
+          0.0064178600005107,
+          0.0059023429930675775,
+          0.0056551550078438595
+        ],
+        "optimistic": [
+          0.027592490005190484,
+          0.027590867000981234,
+          0.02885115500248503,
+          0.03100442398863379,
+          0.029797847993904725
+        ],
+        "dependencies": [
+          0.04164397300337441,
+          0.05198124000162352,
+          0.053562336004688405,
+          0.050514549991930835,
+          0.04424758600362111
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.0059023429930675775,
+        "optimistic": 0.02885115500248503,
+        "dependencies": 0.050514549991930835
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 136,
+          "unknown": 0,
+          "deferrals": 120,
+          "inspection_steps": 134863,
+          "inspection_ns": 4744394,
+          "peak": 1
+        },
+        "optimistic": {
+          "attempts": 30,
+          "commits": 8,
+          "fallbacks": 8,
+          "validation_failures": 8,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        4591743,
+        5806196,
+        4405995,
+        4642434,
+        4744394
+      ],
+      "median_inspection_ns": 4642434,
+      "checksum": "934125"
+    },
+    {
+      "groups": 1,
+      "query_size": 4,
+      "body_steps": 200000,
+      "samples_seconds": {
+        "serial": [
+          0.04939642199315131,
+          0.04945327900350094,
+          0.04913681899779476,
+          0.04854495699692052,
+          0.04935243699583225
+        ],
+        "optimistic": [
+          0.22054734200355597,
+          0.24262327699398156,
+          0.2570631849957863,
+          0.24857678399712313,
+          0.23227722899173386
+        ],
+        "dependencies": [
+          0.3307565040013287,
+          0.3180552470003022,
+          0.34181353900930844,
+          0.34684999100863934,
+          0.3179942650021985
+        ]
+      },
+      "median_seconds": {
+        "serial": 0.04935243699583225,
+        "optimistic": 0.24262327699398156,
+        "dependencies": 0.3307565040013287
+      },
+      "counters": {
+        "dependencies": {
+          "attempts": 16,
+          "commits": 16,
+          "fallbacks": 0,
+          "validation_failures": 0,
+          "inspections": 136,
+          "unknown": 0,
+          "deferrals": 120,
+          "inspection_steps": 134875,
+          "inspection_ns": 6581938,
+          "peak": 1
+        },
+        "optimistic": {
+          "attempts": 30,
+          "commits": 8,
+          "fallbacks": 8,
+          "validation_failures": 8,
+          "inspections": 0,
+          "unknown": 0,
+          "deferrals": 0,
+          "inspection_steps": 0,
+          "inspection_ns": 0,
+          "peak": 4
+        }
+      },
+      "inspection_samples_ns": [
+        7519123,
+        6047093,
+        7338127,
+        10626359,
+        6581938
+      ],
+      "median_inspection_ns": 7338127,
+      "checksum": "692869"
+    }
+  ]
+}
