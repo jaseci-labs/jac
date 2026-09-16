@@ -85,6 +85,39 @@ test "double format issue" {
     assert before == after;
 }
 
+test "format keeps section docstring above its import" {
+    prog = JacProgram();
+    mod = prog.compile(os.path.join(COMPILER_FIXTURES, "docstring_before_import.jac"));
+    assert len(prog.errors_had) == 0 , (
+        "docstring-before-import fixture must compile cleanly, got: "
+        + "".join([e.pretty_print() for e in prog.errors_had])
+    );
+
+    formatted = format_module(mod);
+    lines = formatted.split("\n");
+
+    found_doc_line = False;
+    for k in range(len(lines)) {
+        ln = lines[k];
+        if '"""Helpers for registration."""' in ln {
+            found_doc_line = True;
+            assert k + 1 < len(lines) , "section docstring is the last line";
+            nxt = lines[k + 1];
+            assert ("import from" in nxt) and ('"""' not in nxt) , (
+                "section docstring must sit on its own line directly above "
+                f"its import; got next line {nxt!r}"
+            );
+        }
+    }
+    assert found_doc_line , (
+        f"formatted output lost the section docstring; got {formatted!r}"
+    );
+
+    before = format_module(mod);
+    after = format_module(mod);
+    assert before == after;
+}
+
 test "multiline single tok" {
     mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "byllmissue.jac"));
     assert "2:5 - 4:8" in print_ast_tree(mypass);

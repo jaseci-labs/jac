@@ -3196,7 +3196,9 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
             TokenKind.TYP_TYPE,
             TokenKind.KW_GLOBAL,
             TokenKind.KW_COMPTIME,
-            TokenKind.KW_WITH
+            TokenKind.KW_WITH,
+            TokenKind.KW_IMPORT,
+            TokenKind.KW_INCLUDE
         ) {
         return self.parse_docstring_target();
     }
@@ -3430,6 +3432,11 @@ impl Parser.parse_docstring_target -> ElementStmt | None {
         doc_mc = self.parse_module_code();
         self._attach_doc(doc_mc, elem_doc);
         return doc_mc;
+    }
+    if self.check_any(TokenKind.KW_IMPORT, TokenKind.KW_INCLUDE) {
+        doc_import = self.parse_import_stmt();
+        self._attach_doc(doc_import, elem_doc);
+        return doc_import;
     }
     decorated = self._dispatch_decorated();
     if decorated is not None {
