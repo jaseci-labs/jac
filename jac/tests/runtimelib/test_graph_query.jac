@@ -201,3 +201,34 @@ test "single filtered hops and visits do not allocate a general query" {
         assert walked.seen == [0, 1, 2];
     }
 }
+
+
+walker EdgeHopProbe {
+    has seen: list[str] = [];
+
+    can nodes with QA entry {
+        self.seen.append(str(here.val));
+        visit:0: [edge here->:QLight:->];
+    }
+
+    can edges with QLight entry {
+        self.seen.append("edge");
+    }
+}
+
+test "edge visits include each destination after its edge" {
+    import from jaclang.runtime.runtime { JacRuntime }
+    a = QA();
+    b = QA(val=1);
+    c = QA(val=2);
+    a +>:QLight:+> b;
+    b +>:QLight:+> c;
+    for dir in [1, 2, 3] {
+        q = GraphQuery(b, hops=[QHop(dir=dir, `edge=QLight)], edges_only=True);
+        q.`visit();
+        assert JacRuntime.hop(b, dir, QLight, edges_only=True, from_visit=True)
+            == JacRuntime.refs(q);
+    }
+    walked = a spawn EdgeHopProbe();
+    assert walked.seen == ["0", "edge", "1", "edge", "2"];
+}

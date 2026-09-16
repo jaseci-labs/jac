@@ -1064,7 +1064,7 @@ impl JacGraph.hop(
     from_visit: bool = False
 ) -> list[any] {
     if not isinstance(origin, `list)
-        and (not edges_only or (nd is None and not preds)) {
+        and (not edges_only or (nd is None and not preds and not from_visit)) {
         anchor = origin.__jac__;
         found: (list[any] | None) = None;
         if (
