@@ -46,6 +46,12 @@ def lex_c(code: str, path: str = "<c-input>") -> CLexResult {
         if text[i:i + 2] == "/*" {
             begin = i; i += 2;
             while i < len(text) and text[i:i + 2] != "*/" {
+                # Phase three retains newlines even inside a replaced comment.
+                if text[i] == "\n" {
+                    result.tokens.append(CToken(kind="newline", text="\n", source=source,
+                        start=offsets[i], end=offsets[i + 1], line=lines[i], column=columns[i],
+                        end_line=lines[i + 1], end_column=columns[i + 1], space=True));
+                }
                 i += 1;
             }
             if i == len(text) {

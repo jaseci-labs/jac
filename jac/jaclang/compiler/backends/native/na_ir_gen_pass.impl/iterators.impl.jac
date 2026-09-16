@@ -745,9 +745,13 @@ impl NaIRGenPass._make_map_iter(
     i1 = ir.IntType(1);
     (up_val, up_name, up_type) = up;
     (ckind, cfn, cenv, fnty_env) = callee;
-    out_type = cfn.function_type.return_type
-        if ckind == "bare"
-        else fnty_env.return_type;
+    if ckind == "bare" {
+        assert isinstance(cfn, ir.Function);
+        out_type = cfn.function_type.return_type;
+    } else {
+        assert isinstance(fnty_env, ir.FunctionType);
+        out_type = fnty_env.return_type;
+    }
     uid = self._iter_uid;
     self._iter_uid = uid + 1;
     state_ptr_type = self.struct_types["MapIterState"].as_pointer();
@@ -777,6 +781,7 @@ impl NaIRGenPass._make_map_iter(
             state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="map.fn.slot"
         );
         fn_i64 = b.load(fn_slot, name="map.fn");
+        assert isinstance(fnty_env, ir.FunctionType);
         fnp = b.inttoptr(fn_i64, fnty_env.as_pointer(), name="map.fnp");
         env_slot = b.gep(
             state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="map.env.slot"
@@ -854,6 +859,7 @@ impl NaIRGenPass._make_filter_iter(
             state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="flt.fn.slot"
         );
         fn_i64 = b.load(fn_slot, name="flt.fn");
+        assert isinstance(fnty_env, ir.FunctionType);
         fnp = b.inttoptr(fn_i64, fnty_env.as_pointer(), name="flt.fnp");
         env_slot = b.gep(
             state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="flt.env.slot"
@@ -1285,6 +1291,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
 
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
     if is_tuple_target {
+        assert isinstance(nd.target, uni.TupleVal);
         targets = nd.target.values or [];
         if not isinstance(elem_type, ir.LiteralStructType)
             or len(targets) != len(elem_type.elements)
@@ -1311,6 +1318,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     yielded = self.builder.load(elem_slot, name="iterf.value");
 
     if is_tuple_target {
+        assert isinstance(nd.target, uni.TupleVal);
         if not self._codegen_tuple_unpack(nd.target.values, yielded, None) {
             return False;
         }

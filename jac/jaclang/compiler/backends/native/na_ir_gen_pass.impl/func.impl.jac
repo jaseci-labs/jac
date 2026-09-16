@@ -598,7 +598,9 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
     } finally {
         self._leave_function(state);
     }
-    desc = nd.description.lit_value if nd.description else "";
+    desc_value = nd.description.lit_value if nd.description else "";
+    desc = desc_value.decode("utf-8", errors="replace")
+        if isinstance(desc_value, bytes) else desc_value;
     self.native_tests.append((test_name, symbol, desc, line));
     self.has_native_code = True;
 
@@ -803,6 +805,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
     }
     _sib_by_name: dict[str, uni.Ability] = {};
     for s in sibs {
+        assert s.name_ref is not None;
         _sib_by_name[s.name_ref.sym_name] = s;
     }
     _cap_order: dict[uni.Ability, list[str]] = {};
@@ -866,8 +869,10 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
         }
     }
     for s in sibs {
+        assert s.name_ref is not None;
         _sname = s.name_ref.sym_name;
         _ssig = s.signature;
+        assert _ssig is None or isinstance(_ssig, uni.FuncSignature);
 
         _defer = False;
         _cap_types: dict[str, ir.Type] = {};

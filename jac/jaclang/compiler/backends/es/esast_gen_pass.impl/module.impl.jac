@@ -27,6 +27,14 @@ impl EsastGenPass.exit_module_code with uni.ModuleCode exit {
 }
 
 impl EsastGenPass.exit_global_vars with uni.GlobalVars exit {
+    if here.is_thread_local {
+        foreign = isinstance(here.parent, uni.Import) and here.parent.has_clib_decls;
+        if not foreign and here.code_context == CodeContext.CLIENT {
+            self.ctx.emit(E5034, node_override=here, details="thread_local globals require the native pathway");
+        }
+        here.gen.es_ast = [];
+        return;
+    }
     if here.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = here.access and (here.access.tag.name == Tok.KW_PUB);

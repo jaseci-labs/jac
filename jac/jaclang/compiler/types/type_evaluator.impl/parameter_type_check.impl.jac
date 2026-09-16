@@ -466,6 +466,11 @@ impl TypeEvaluator._validate_call_type(
         return TypeVarType(name=tvt_name, is_param_spec=False);
     }
     if (isinstance(caller_type, ClassType) and caller_type.is_instantiable_class()) {
+        if caller_type.is_opaque_struct() {
+            self.emit_diag(E5033, expr, name=caller_type.shared.class_name,
+                details="opaque structs cannot be constructed; use a pointer to externally provided storage");
+            return UnknownType(is_diagnosed=True);
+        }
         matched_method: FunctionType | None = None;
         sv_async_ctor = self._is_sv_async_call(expr);
 

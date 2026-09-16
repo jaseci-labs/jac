@@ -256,6 +256,8 @@ impl ClassDetailsShared.init(
     is_builtin_class: bool = False,
     is_from_stdlib_stub: bool = False,
     is_data_class: bool = False,
+    is_value_struct: bool = False,
+    is_opaque_struct: bool = False,
     is_namedtuple: bool = False,
     is_typeddict: bool = False,
     typeddict_fields: (dict[str, TypeBase] | None) = None,
@@ -271,6 +273,8 @@ impl ClassDetailsShared.init(
     self.is_builtin_class = is_builtin_class;
     self.is_from_stdlib_stub = is_from_stdlib_stub;
     self.is_data_class = is_data_class;
+    self.is_value_struct = is_value_struct;
+    self.is_opaque_struct = is_opaque_struct;
     self.is_namedtuple = is_namedtuple;
     self.is_typeddict = is_typeddict;
     self.is_root_class = is_root_class;
@@ -1006,6 +1010,38 @@ impl ClassType.is_typeddict -> bool {
     return self.shared.is_typeddict;
 }
 
+impl ClassType.is_value_struct -> bool {
+    return self.shared.is_value_struct;
+}
+
+impl ClassType.is_opaque_struct -> bool {
+    return self.shared.is_value_struct and self.shared.is_opaque_struct;
+}
+
+impl ClassType.has_native_value_storage -> bool {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    return (self.is_value_struct() and not self.is_opaque_struct()) or self.is_enum_class()
+        or self.is_builtin(["ptr", "array", "overlay", "packed", "aligned", "int", "float", "bool"]
+            + JAC_TYPE_REGISTRY.sized_scalar_names());
+}
+
+impl ClassType.fixed_array_length -> int | None {
+    return self.storage_extent() if self.is_builtin("array") else None;
+}
+
+impl ClassType.storage_extent -> int | None {
+    if not self.is_builtin(["array", "aligned"]) or len(self.private.type_args or []) != 2 {
+        return None;
+    }
+    length_type = self.private.type_args[1];
+    if not isinstance(length_type, ClassType) {
+        return None;
+    }
+    length = length_type.get_literal_value();
+    return length if isinstance(length, int) and not isinstance(length, bool)
+        and length >= 0 else None;
+}
+
 impl ClassType.is_enum_class -> bool {
     return self.shared.is_enum_class;
 }
@@ -1281,7 +1317,10 @@ impl TypeBase.mangle -> str {
     if isinstance(self, ClassType) {
         base = self._shared.class_name if self._shared is not None else "<unbound>";
         if self.private.type_args {
-            args = ",".join(arg.mangle() for arg in self.private.type_args);
+            length = self.storage_extent();
+            args = f"{self.private.type_args[0].mangle()},{length}"
+                if length is not None
+                else ",".join(arg.mangle() for arg in self.private.type_args);
             base = f"{base}[{args}]";
         }
         if self.is_instantiable() and not self.is_instance() {

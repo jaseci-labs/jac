@@ -28,7 +28,7 @@ import from jaclang.compiler.frontend.unitree {
 import type from jaclang.compiler.types.types { TypeBase }
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
+import from jaclang.compiler.frontend.diagnostics { E5030, E5033, W5031, W5032 }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
@@ -66,6 +66,7 @@ obj MethodSlot {
 obj ArchetypeLayout {
     has name: str,
         arch_type: str,
+        is_opaque: bool = False,
         decl_mod: str = "",
         parent_mods: list[str] = [],
         parents: list[str] = [],
@@ -82,6 +83,11 @@ obj ArchetypeLayout {
         vtable_ptr_slot: (int | None) = None,
         type_tag_slot: (int | None) = None,
         reports_slot: (int | None) = None;
+    # Declaration semantics, not an optimization inferred from field shape.
+    has is_value_struct: bool {
+        getter { return self.arch_type == "struct"; }
+    }
+
 }
 
 obj EnumMemberLayout {
@@ -646,6 +652,8 @@ walker LayoutPass {
     def _split_top_level(s: str, sep: str) -> list[str];
     def _build_vtable_layout(arch_name: str, arch_map: dict[str, Archetype]) -> None;
     def _validate_obj_fields(arch: Archetype, arch_map: dict[str, Archetype]) -> None;
+    def _validate_value_declaration(arch: Archetype) -> None;
+    def _value_storage_error(typ: TypeBase | None, path: set[int]) -> str | None;
     def _is_layout_compatible_semantic_type(typ: TypeBase | None) -> bool;
     def _is_layout_compatible_type(
         type_node: (UniNode | None), arch_map: dict[str, Archetype]

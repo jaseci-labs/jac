@@ -8,6 +8,9 @@ import from jaclang.runtime.scalars {
     shapes_widen_to
 }
 
+# Storage names must resolve before placement inference chooses a backend.
+glob NATIVE_STORAGE_BUILTINS: frozenset[str] = frozenset({"ptr", "array", "overlay", "packed", "aligned", "addr_of", "size_of", "align_of", "offset_of"});
+
 enum NumericKind {
     NotNumeric = "not_numeric",
     IntKind = "int_kind",
@@ -324,6 +327,7 @@ def _builtin_name_set -> frozenset[str] {
         "slice",
         "bytearray"
     };
+    names.update(NATIVE_STORAGE_BUILTINS);
     for sized in sized_scalar_names() {
         names.add(sized);
     }

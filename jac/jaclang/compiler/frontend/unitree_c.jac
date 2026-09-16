@@ -29,24 +29,76 @@ node CNode(UniNode) {
     }
 }
 
-node CTranslationUnit(CNode) {}
-node CPreprocessingUnit(CNode) {}
-node CDeclaration(CNode) {}
-node CTypeSpec(CNode) {}
-node CDeclarator(CNode) {}
-node CExpression(CNode) {}
-node CStatement(CNode) {}
+# Explicit forwarding constructors prevent derived nodes from receiving a
+# generated field-only initializer that drops kind/anchor/value.
+node CTranslationUnit(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+}
+node CPreprocessingUnit(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+}
+node CDeclaration(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+}
+node CTypeSpec(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+}
+node CDeclarator(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+}
+node CExpression(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+}
+node CStatement(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+}
 
 # Compile-time preprocessing operations retain inactive branches and tokens.
 # They are deliberately distinct from evaluated Jac comptime expressions.
 node CPreprocessorDirective(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+
     has active: bool = True;
 }
 
 node CPreprocessorText(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+
     has active: bool = True;
 }
 
 node CPreprocessorToken(CNode) {
+    def init(kind: str, anchor: Token, children: list[CNode] = [],
+             value: str = "", end: Token | None = None) {
+        CNode.init(self, kind, anchor, children, value, end);
+    }
+
     has leading_space: bool = False;
 }

@@ -2581,6 +2581,7 @@ impl Archetype.postinit -> None {
         name_spec=self.name,
         sym_category={
             Tok.KW_OBJECT.value: SymbolType.OBJECT_ARCH,
+            Tok.KW_STRUCT.value: SymbolType.OBJECT_ARCH,
             Tok.KW_NODE.value: SymbolType.NODE_ARCH,
             Tok.KW_EDGE.value: SymbolType.EDGE_ARCH,
             Tok.KW_WALKER.value: SymbolType.WALKER_ARCH
@@ -2614,6 +2615,11 @@ impl Archetype._get_impl_resolved_body -> list[UniNode] {
 impl Archetype.is_abstract.getter -> bool {
     body = self._get_impl_resolved_body();
     return `any((isinstance(i, Ability) and i.is_abstract) for i in body);
+}
+
+# Storage semantics are independent of the OSP archetype classification.
+impl Archetype.is_value_struct.getter -> bool {
+    return self.arch_type.name == Tok.KW_STRUCT.value;
 }
 
 impl Archetype.arch_kind.getter -> (str | None) {

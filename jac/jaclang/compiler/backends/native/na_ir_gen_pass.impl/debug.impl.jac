@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.native.llvm.ir.instructions { Instruction }
 import from jaclang.cli.console { console }
 import from jaclang.compiler.backends.native.llvm { binding as llvm }
 import os;
@@ -48,7 +49,7 @@ impl NaIRGenPass._finalize_di_locations(func: ir.Function, fallback_line: int) -
         );
         for _blk in func.blocks {
             for _instr in _blk.instructions {
-                if "dbg" not in getattr(_instr, "metadata", {}) {
+                if isinstance(_instr, Instruction) and "dbg" not in _instr.metadata {
                     _instr.set_metadata("dbg", _fb_loc);
                 }
             }

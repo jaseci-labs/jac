@@ -1384,6 +1384,9 @@ impl NaIRGenPass._rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value {
 }
 
 impl NaIRGenPass._emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None {
+    if isinstance(ptr.type, ir.PointerType) and self._elem_kind(ptr.type) == "raw" {
+        return;
+    }
     if self._gc_mode() == "none" {
         return;
     }
@@ -1451,6 +1454,9 @@ impl NaIRGenPass._nogc_drop_op_active(op: str) -> bool {
 impl NaIRGenPass._emit_rc_release_simple(
     ptr: ir.Value, op: str = "", loc: str = ""
 ) -> None {
+    if isinstance(ptr.type, ir.PointerType) and self._elem_kind(ptr.type) == "raw" {
+        return;
+    }
     _rls_owned = self._is_owned(ptr);
     if self._str_desc_ty is not None and ptr.type == self._str_desc_ty {
         ptr = self.builder.extract_value(ptr, 0, name="rc.desc.root");
@@ -1715,6 +1721,9 @@ impl NaIRGenPass._drop_hook_for(type_name: str) -> (ir.Function | None) {
 impl NaIRGenPass._nogc_drop_fn_for(
     ptr_ty: ir.PointerType, self_type: str = ""
 ) -> (ir.Function | None) {
+    if self._elem_kind(ptr_ty) == "raw" {
+        return None;
+    }
     _pname = getattr(ptr_ty.pointee, "name", "") or "";
     if _pname in self.struct_types or (_pname and _pname == self_type) {
         return self._emit_struct_drop_fn(_pname);
@@ -2211,6 +2220,9 @@ impl NaIRGenPass._nogc_elem_prep(
 }
 
 impl NaIRGenPass._nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool {
+    if isinstance(val.type, ir.PointerType) and self._elem_kind(val.type) == "raw" {
+        return True;
+    }
     if not isinstance(val.type, ir.PointerType) {
         return False;
     }
@@ -2240,6 +2252,9 @@ impl NaIRGenPass._nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> 
 }
 
 impl NaIRGenPass._nogc_free_scratch(val: ir.Value, op: str) -> None {
+    if isinstance(val.type, ir.PointerType) and self._elem_kind(val.type) == "raw" {
+        return;
+    }
     if op
         not in (
             "print_tmp",

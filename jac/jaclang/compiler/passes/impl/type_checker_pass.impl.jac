@@ -1,3 +1,18 @@
+impl TypeCheckPass._check_complete_storage(typ: TypeBase | None, site: UniNode) -> None {
+    if isinstance(typ, UnionType) {
+        for member in typ.types { self._check_complete_storage(member, site); }
+    } elif isinstance(typ, ClassType) {
+        if typ.is_opaque_struct() {
+            self.ctx.emit(E5033, node_override=site, name=typ.shared.class_name,
+                details="opaque structs have no known storage size; use a pointer");
+        } elif typ.is_builtin(["array", "aligned"]) and typ.private.type_args {
+            self._check_complete_storage(typ.private.type_args[0], site);
+        } elif typ.is_builtin(["overlay", "packed"]) {
+            for alternative in typ.private.type_args or [] { self._check_complete_storage(alternative, site); }
+        }
+    }
+}
+
 impl TypeCheckPass.exit_special_var_ref with SpecialVarRef exit {
     self.evaluator.get_type_of_expression(here);
 }
@@ -166,6 +181,9 @@ impl TypeCheckPass.enter_lambda_expr with LambdaExpr entry {
 }
 
 impl TypeCheckPass.exit_lambda_expr with LambdaExpr exit {
+    if here.signature and here.signature.return_type {
+        self._check_complete_storage(self.evaluator.get_type_of_expression(here.signature.return_type), here.signature.return_type);
+    }
     if _lambda_needs_context(here) {
         self._lambda_depth -= 1;
     }
@@ -214,6 +232,7 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
         return;
     }
     self.evaluator.get_type_of_expression(here);
+    self._check_complete_storage(here.type, here);
 
     here.call_kind = classify_call(here).value;
 
@@ -454,6 +473,9 @@ impl TypeCheckPass.exit_atom_trailer with AtomTrailer exit {
 }
 
 impl TypeCheckPass.exit_assignment with Assignment exit {
+    if here.type_tag and here.type_tag.tag {
+        self._check_complete_storage(self.evaluator.get_type_of_expression(here.type_tag.tag), here.type_tag.tag);
+    }
     if here.is_enum_stmt {
         return;
     }
@@ -896,6 +918,7 @@ impl TypeCheckPass.exit_ability with Ability exit {
         ret_ann_type = self.evaluator.get_type_of_expression(
             here.signature.return_type
         );
+        self._check_complete_storage(ret_ann_type, here.signature.return_type);
         self._check_bare_generic(here.signature.return_type, ret_ann_type);
         self._check_explicit_any(here.signature.return_type);
     }
@@ -1437,6 +1460,7 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
     if (sym := here.sym) {
         declared_type = self.evaluator.get_type_of_symbol(sym);
         here.type = declared_type;
+        self._check_complete_storage(declared_type, here);
 
         if (
             here.type_tag
@@ -1478,6 +1502,7 @@ impl TypeCheckPass.exit_has_var with HasVar exit {
     if (sym := here.sym) {
         declared_type = self.evaluator.get_type_of_symbol(sym);
         here.type = declared_type;
+        self._check_complete_storage(declared_type, here);
 
         if here.type_tag and here.type_tag.tag {
             self._check_bare_generic(here.type_tag.tag, declared_type);

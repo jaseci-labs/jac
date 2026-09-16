@@ -1,5 +1,6 @@
 import os;
 import math as _pymath;
+import struct as _pystruct;
 import platform as _platform;
 import sys;
 import from jaclang.compiler.frontend.unitree {
@@ -73,7 +74,7 @@ import from jaclang.compiler.frontend.constant {
     Tokens as Tok
 }
 import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
-import from jaclang.runtime.scalars { shape_of }
+import from jaclang.runtime.scalars { ScalarShape, shape_of, shape_literal_fits, shape_wrap }
 import from jaclang.compiler.types.ct_value {
     CT_DEFERRED,
     CtDeferred,
@@ -576,7 +577,9 @@ obj CtEvaluator {
         if pref is not None {
             typ = getattr(pref, f"{name}_class", None);
         }
-        return CtType(name=name, module="builtins", typ=typ);
+        shape = shape_of(name);
+        module = "jaclang.runtime.scalars" if shape is not None and shape.sized else "builtins";
+        return CtType(name=name, module=module, typ=typ);
     }
 
     def _eval_multistring(nd: MultiString) -> any {
@@ -739,12 +742,30 @@ obj CtEvaluator {
         return op.name if isinstance(op, Token) else "";
     }
 
+    def _scalar_shape_of(nd: Expr) -> ScalarShape | None {
+        import from jaclang.compiler.types.type_utils { primitive_type_name_of }
+        name = nd.coerce_to or primitive_type_name_of(nd.type);
+        return shape_of(name) if name is not None else None;
+    }
+
+    def _scalar_result(nd: Expr, value: any) -> any {
+        shape = self._scalar_shape_of(nd);
+        if shape is None or not shape.sized { return value; }
+        return self._construct(CtType(name=shape.name, module="jaclang.runtime.scalars"), [value], {});
+    }
+
     def _eval_binary(nd: BinaryExpr) -> any {
         opn = self._tok_name(nd.op);
         l = self.eval(nd.left);
         r = self.eval(nd.right);
+        shape = self._scalar_shape_of(nd);
+        if shape is not None and shape.sized and not shape.is_float
+            and opn in [Tok.LSHIFT.value, Tok.RSHIFT.value]
+            and (not isinstance(r, int) or r < 0 or r >= shape.width) {
+            raise CtError("sized integer shift count is out of range");
+        }
         op_text = nd.op.value if isinstance(nd.op, Token) else opn;
-        return self._binop_by_name(opn, l, r, display_name=op_text);
+        return self._scalar_result(nd, self._binop_by_name(opn, l, r, display_name=op_text));
     }
 
     def _cmp(opn: str, l: any, r: any) -> bool {
@@ -826,15 +847,19 @@ obj CtEvaluator {
         opn = self._tok_name(nd.op);
         v = self.eval(nd.operand);
         if opn == Tok.MINUS.value {
-            return -v;
+            return self._scalar_result(nd, -v);
         }
         if opn == Tok.PLUS.value {
-            return +v;
+            return self._scalar_result(nd, +v);
         }
         if opn == Tok.NOT.value {
             return not v;
         }
         if opn == Tok.BW_NOT.value {
+            shape = self._scalar_shape_of(nd);
+            if shape is not None and shape.sized and not shape.is_float and isinstance(v, int) {
+                return shape_wrap(shape, ~v);
+            }
             return ~v;
         }
         if nd.ownership != OwnershipKind.NONE or opn == Tok.BW_AND.value {
@@ -1783,6 +1808,13 @@ obj CtEvaluator {
             raise CtDeferredSignal();
         }
         if isinstance(recv, CtType) {
+            shape = shape_of(recv.name) if recv.module == "jaclang.runtime.scalars" else None;
+            if shape is not None and shape.sized and not shape.is_float and attr == "wrap" {
+                if kwargs or len(args) != 1 or not isinstance(args[0], int) {
+                    raise CtError(f"{recv.name}.wrap requires one integer argument");
+                }
+                return shape_wrap(shape, args[0]);
+            }
             m = self._find_method(self._class_type_of(recv), attr);
             if m is None {
                 raise CtError(f"{recv.name} has no method '{attr}'");
@@ -1852,6 +1884,25 @@ obj CtEvaluator {
     }
 
     def _construct(t: CtType, args: list[any], kwargs: dict[str, any]) -> any {
+        shape = shape_of(t.name) if t.module == "jaclang.runtime.scalars" else None;
+        if shape is not None and shape.sized {
+            if kwargs or len(args) > 1 or (args and not isinstance(args[0], (int, float))) {
+                raise CtError(f"{t.name} requires a numeric argument for constant construction");
+            }
+            if shape.is_float {
+                float_value = float(args[0]) if args else 0.0;
+                if not shape_literal_fits(shape, float_value) {
+                    raise CtError(f"constant {float_value} is outside the finite range of {t.name}");
+                }
+                return float(_pystruct.unpack(">f", _pystruct.pack(">f", float_value))[0])
+                    if shape.width == 32 else float_value;
+            }
+            value = int(args[0]) if args else 0;
+            if not shape_literal_fits(shape, value) {
+                raise CtError(f"constant {value} is outside the range of {t.name}");
+            }
+            return value;
+        }
         if t.module == "builtins" {
             if t.name in CT_PY_TYPES {
                 self.burn(5);

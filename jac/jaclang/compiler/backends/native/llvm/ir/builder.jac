@@ -546,13 +546,19 @@ class IRBuilder(object) {
             name = *ptr
         """
     def load(
-        self: IRBuilder, ptr: any, name: any = '', align: any = None, typ: any = None
+        self: IRBuilder, ptr: any, name: any = '', align: any = None, typ: any = None,
+        ordering: str | None = None, volatile: bool = False
     ) -> values.Value {
         if not isinstance(ptr.type, types.PointerType) {
             msg = "cannot load from value of type %s (%r): not a pointer";
             raise TypeError((msg % (ptr.type, str(ptr))));
         }
-        ld = instructions.LoadInstr(self.block, ptr, name, typ=typ);
+        if ordering is not None {
+            if ordering not in ["unordered", "monotonic", "acquire", "seq_cst"] or align is None {
+                raise ValueError("Atomic load requires a valid load ordering and explicit alignment");
+            }
+        }
+        ld = instructions.LoadInstr(self.block, ptr, name, typ=typ, ordering=ordering, volatile=volatile);
         ld.align = align;
         self._insert(ld);
         return ld;
@@ -563,7 +569,8 @@ class IRBuilder(object) {
             *ptr = name
         """
     def store(
-        self: IRBuilder, value: any, ptr: any, align: any = None
+        self: IRBuilder, value: any, ptr: any, align: any = None,
+        ordering: str | None = None, volatile: bool = False
     ) -> values.Value {
         if not isinstance(ptr.type, types.PointerType) {
             msg = "cannot store to value of type %s (%r): not a pointer";
@@ -574,7 +581,12 @@ class IRBuilder(object) {
                 ("cannot store %s to %s: mismatching types" % (value.type, ptr.type))
             );
         }
-        st = instructions.StoreInstr(self.block, value, ptr);
+        if ordering is not None {
+            if ordering not in ["unordered", "monotonic", "release", "seq_cst"] or align is None {
+                raise ValueError("Atomic store requires a valid store ordering and explicit alignment");
+            }
+        }
+        st = instructions.StoreInstr(self.block, value, ptr, ordering=ordering, volatile=volatile);
         st.align = align;
         self._insert(st);
         return st;
@@ -736,10 +748,28 @@ class IRBuilder(object) {
         return inst;
     }
 
+    def cmpxchg(self: IRBuilder, ptr: values.Value, expected: values.Value, desired: values.Value,
+        ordering: str, failure_ordering: str, name: str = "", weak: bool = False,
+        volatile: bool = False, align: int | None = None) -> values.Value {
+        if ordering not in ["monotonic", "acquire", "release", "acq_rel", "seq_cst"]
+            or failure_ordering not in ["monotonic", "acquire", "seq_cst"] {
+            raise ValueError("Invalid compare-exchange memory ordering");
+        }
+        if not isinstance(ptr.type, types.PointerType)
+            or (not ptr.type.is_opaque and ptr.type.pointee != expected.type) {
+            raise TypeError("Compare-exchange pointer must address the expected value type");
+        }
+        inst = instructions.CmpXchg(self.block, ptr, expected, desired, ordering, failure_ordering,
+            name=name, weak=weak, volatile=volatile, align=align);
+        self._insert(inst);
+        return inst;
+    }
+
     def atomic_rmw(
-        self: IRBuilder, op: any, ptr: any, val: any, ordering: any, name: any = ''
+        self: IRBuilder, op: any, ptr: any, val: any, ordering: any, name: any = '',
+        volatile: bool = False, align: int | None = None
     ) -> values.Value {
-        inst = instructions.AtomicRMW(self.block, op, ptr, val, ordering, name=name);
+        inst = instructions.AtomicRMW(self.block, op, ptr, val, ordering, name=name, volatile=volatile, align=align);
         self._insert(inst);
         return inst;
     }

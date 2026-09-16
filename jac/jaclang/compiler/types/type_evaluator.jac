@@ -250,6 +250,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E1129,
     E1131,
     E1134,
+    E1135,
+    E5033,
     E0049,
     E5094,
     W1050,
@@ -498,6 +500,9 @@ walker TypeEvaluator {
     def _extract_type_params(node_: Archetype) -> list[TypeVarType];
     def _type_var_from_param(node_: TypeParam) -> TypeVarType;
     def _extract_ct_params(node_: Archetype) -> (list[str] | None);
+    def _specialize_storage_type(
+        base_type: ClassType, arguments: list[Expr], site: Expr
+    ) -> TypeBase;
     def _ct_args_for_class(
         base_type: ClassType, slot_vals: list[Expr]
     ) -> (tuple[dict[str, any], set[int]] | None);

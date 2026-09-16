@@ -1800,10 +1800,12 @@ impl GlobalVars.init(
     codespace_dual: bool = False,
     assignments: Sequence[Assignment],
     is_frozen: bool,
+    is_thread_local: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
     self.codespace_dual = codespace_dual;
     self.is_frozen = is_frozen;
+    self.is_thread_local = is_thread_local;
     self._link(kid, {AccessRole: access, DocRole: doc, AssignmentsRole: assignments});
     self.postinit();
 }

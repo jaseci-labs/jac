@@ -246,6 +246,14 @@ impl JcirGenPass.exit_type_alias with TypeAlias exit {
 }
 
 impl JcirGenPass.exit_global_vars with GlobalVars exit {
+    if here.is_thread_local {
+        foreign = isinstance(here.parent, Import) and here.parent.has_clib_decls;
+        if not foreign and here.code_context != CodeContext.NATIVE {
+            self.ctx.emit(E5034, node_override=here, details="thread_local globals require the native pathway");
+        }
+        self.set_out(here, []);
+        return;
+    }
     assigns_ast = self._flatten_ast_list([self.outs(a) for a in here.assignments]);
     if here.doc {
         doc = self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc);

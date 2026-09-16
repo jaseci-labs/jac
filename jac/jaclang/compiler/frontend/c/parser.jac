@@ -1,5 +1,6 @@
 """C syntax to UniTree. C operations remain explicit pending semantic lowering."""
 import re;
+import from .declarators { declarator_name, derived_operators }
 import from .tokens { CToken, CDiagnostic }
 import from .preprocessor { CConfig, CPreprocessor, CPreprocessResult }
 import from jaclang.compiler.frontend.unitree_c {
@@ -47,13 +48,61 @@ obj CParser {
         for scope in reversed(self.scopes) { if name in scope { return scope[name]; } }
         return False;
     }
+    # GNU spellings are normalized at the specifier boundary; attributes retain
+    # their balanced token payload so lowering cannot silently discard ABI data.
+    def attribute -> CTypeSpec {
+        start = self.take(); spelling: list[str] = [start.text];
+        self.expect("("); spelling.append("("); depth = 1;
+        if start.text in ["asm", "__asm", "__asm__"] {
+            if self.current().kind != "string" { raise ValueError("Assembler symbol label requires a string literal"); }
+            symbol = self.primary(); self.expect(")");
+            return CTypeSpec("asm_label", start.as_unitree(), [symbol], end=self.ending().as_unitree());
+        }
+        names: list[CToken] = [];
+        arguments: list[list[CNode]] = [];
+        name_depth = 1 if start.text == "__declspec" else 2;
+        previous = "(";
+        while depth {
+            token = self.take(); spelling.append(token.text);
+            if token.kind == "identifier" and depth == name_depth
+                and (previous in ["(", ","] or start.text == "__declspec") {
+                names.append(token); arguments.append([]);
+                if token.text.strip("_") == "aligned" and self.peek() == "(" {
+                    first = self.pos; self.take();
+                    if self.peek() != ")" { arguments[-1].append(self.expression(3)); }
+                    self.expect(")");
+                    spelling.extend(part.text for part in self.tokens[first:self.pos]);
+                    previous = ")";
+                    continue;
+                }
+            } elif names and depth > name_depth
+                and not (depth == name_depth + 1 and token.text == ")") {
+                arguments[-1].append(CTypeSpec("attribute_token", token.as_unitree(), value=token.text));
+            }
+            if token.text == "(" { depth += 1; }
+            elif token.text == ")" { depth -= 1; }
+            previous = token.text;
+        }
+        attributes: list[CNode] = [CTypeSpec("attribute_name", token.as_unitree(), arguments[index],
+            value=token.text.strip("_")) for (index, token) in enumerate(names)];
+        return CTypeSpec("attribute", start.as_unitree(), attributes, value=" ".join(spelling), end=self.ending().as_unitree());
+    }
+
     def starts_type -> bool {
         return self.peek() in ["void", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
-            "_Bool", "_Complex", "_Imaginary", "const", "volatile", "restrict", "_Atomic", "struct", "union", "enum"] or self.is_typedef(self.peek());
+            "_Bool", "_Complex", "_Imaginary", "const", "volatile", "restrict", "_Atomic", "struct", "union", "enum",
+            "__const", "__const__", "__volatile", "__volatile__", "__restrict", "__restrict__",
+            "__attribute__", "__attribute", "__declspec", "__signed", "__signed__", "__int128", "_Float16", "_Float32", "_Float64", "_Float128", "_Float32x", "_Float64x", "_Float128x", "__auto_type", "__typeof", "__typeof__", "typeof"] or self.is_typedef(self.peek());
     }
     def starts_declaration -> bool {
+        if self.peek() == "__extension__" {
+            saved = self.pos;
+            while self.accept("__extension__") { }
+            declaration = self.starts_declaration(); self.pos = saved;
+            return declaration;
+        }
         return self.starts_type() or self.peek() in ["typedef", "extern", "static", "_Thread_local", "auto",
-            "register", "inline", "_Noreturn", "_Alignas", "_Static_assert"];
+            "register", "inline", "__thread", "_Noreturn", "_Alignas", "_Static_assert", "__inline", "__inline__", "__extension__", "__attribute__", "__attribute", "__declspec"];
     }
     def ending -> CToken { return self.tokens[max(0, self.pos - 1)]; }
 
@@ -90,7 +139,21 @@ obj CParser {
         scalar = ["void", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "_Bool", "_Complex", "_Imaginary"];
         while True {
             t = self.current(); text = t.text;
-            if text in storage {
+            aliases = {"__const": "const", "__const__": "const", "__volatile": "volatile", "__volatile__": "volatile",
+                "__restrict": "restrict", "__restrict__": "restrict", "__signed": "signed", "__signed__": "signed",
+                "__inline": "inline", "__inline__": "inline", "__thread": "_Thread_local"};
+            text = aliases.get(text, text);
+            if text in ["__attribute__", "__attribute", "__declspec"] {
+                parts.append(self.attribute());
+            } elif text == "__extension__" {
+                self.take(); parts.append(CTypeSpec("extension", t.as_unitree(), value=text));
+            } elif text in ["typeof", "__typeof", "__typeof__"] {
+                self.take(); self.expect("(");
+                operand = self.type_name() if self.starts_type() else self.expression();
+                self.expect(")"); parts.append(CTypeSpec("typeof", t.as_unitree(), [operand])); seen_type = True;
+            } elif text in ["__int128", "_Float16", "_Float32", "_Float64", "_Float128", "_Float32x", "_Float64x", "_Float128x", "__auto_type"] {
+                self.take(); parts.append(CTypeSpec("scalar", t.as_unitree(), value=text)); seen_type = True;
+            } elif text in storage {
                 if not allow_storage { break; }
                 self.take(); parts.append(CTypeSpec("storage", t.as_unitree(), value=text));
             } elif text in scalar {
@@ -111,12 +174,13 @@ obj CParser {
                 self.take(); parts.append(CTypeSpec("typedef_name", t.as_unitree(), value=text)); seen_type = True;
             } else { break; }
         }
-        if not seen_type { raise ValueError("Expected explicit C type specifier"); }
+        if not seen_type { raise ValueError("Expected explicit C type specifier, found '" + self.peek() + "'"); }
         return CTypeSpec("specifiers", start.as_unitree(), parts, end=self.ending().as_unitree());
     }
 
     def record_spec -> CTypeSpec {
-        start = self.take(); name = "";
+        start = self.take(); name = ""; attributes: list[CNode] = [];
+        while self.peek() in ["__attribute__", "__attribute", "__declspec"] { attributes.append(self.attribute()); }
         if self.current().kind == "identifier" { name = self.identifier().text; }
         members: list[CNode] = []; defined = self.accept("{");
         if defined {
@@ -131,6 +195,8 @@ obj CParser {
             }
             self.expect("}");
         } elif not name { raise ValueError("Anonymous record requires a definition"); }
+        while self.peek() in ["__attribute__", "__attribute", "__declspec"] { attributes.append(self.attribute()); }
+        members.extend(attributes);
         return CTypeSpec(start.text + ("_definition" if defined else "_reference"), start.as_unitree(), members, value=name, end=self.ending().as_unitree());
     }
 
@@ -138,7 +204,7 @@ obj CParser {
         start = self.current(); pointers: list[CNode] = [];
         while self.accept("*") {
             p = self.ending(); quals: list[CNode] = [];
-            while self.peek() in ["const", "volatile", "restrict", "_Atomic"] {
+            while self.peek() in ["const", "volatile", "restrict", "_Atomic", "__restrict", "__restrict__", "__const", "__const__", "__volatile", "__volatile__"] {
                 q = self.take(); quals.append(CTypeSpec("qualifier", q.as_unitree(), value=q.text));
             }
             pointers.append(CDeclarator("pointer", p.as_unitree(), quals));
@@ -159,7 +225,10 @@ obj CParser {
         } else { raise ValueError("Expected C declarator"); }
         while True {
             t = self.current();
-            if self.accept("[") {
+            if self.peek() in ["__attribute__", "__attribute", "__declspec", "__asm", "__asm__", "asm"] {
+                attribute = self.attribute();
+                direct = CDeclarator("attributed", t.as_unitree(), [direct, attribute]);
+            } elif self.accept("[") {
                 bounds: list[CNode] = [direct];
                 while self.peek() in ["static", "const", "volatile", "restrict"] {
                     q = self.take(); bounds.append(CTypeSpec("array_qualifier", q.as_unitree(), value=q.text));
@@ -178,7 +247,7 @@ obj CParser {
                             }
                             p = self.current(); spec = self.specs(); decl = self.declarator(True);
                             params.append(CDeclaration("parameter", p.as_unitree(), [spec, decl]));
-                            parameter_name = self.declarator_name(decl);
+                            parameter_name = declarator_name(decl);
                             if parameter_name { self.scopes[-1][parameter_name] = False; }
                             if not self.accept(",") { break; }
                         }
@@ -191,28 +260,9 @@ obj CParser {
         return CDeclarator("declarator", start.as_unitree(), pointers + [direct], end=self.ending().as_unitree());
     }
 
-    def declarator_name(nd: CNode) -> str {
-        if nd.kind == "name" { return nd.value; }
-        children = nd.operands;
-        if nd.kind == "declarator" { return self.declarator_name(children[-1]) if children else ""; }
-        if nd.kind in ["group", "array", "function"] { return self.declarator_name(children[0]); }
-        return "";
-    }
-
-    # Operators ordered from the declared identifier outward. This distinguishes
-    # a function returning a pointer from an object pointing to a function.
-    def derived_operators(nd: CNode) -> list[CNode] {
-        children = nd.operands;
-        if nd.kind == "declarator" {
-            return self.derived_operators(children[-1]) + list(reversed(children[:-1]));
-        }
-        if nd.kind == "group" { return self.derived_operators(children[0]); }
-        if nd.kind in ["array", "function"] { return self.derived_operators(children[0]) + [nd]; }
-        return [];
-    }
     def type_name -> CTypeSpec {
         start = self.current(); spec = self.specs(False); decl = self.declarator(True, False);
-        if self.declarator_name(decl) { raise ValueError("Identifier is not allowed in a type name"); }
+        if declarator_name(decl) { raise ValueError("Identifier is not allowed in a type name"); }
         return CTypeSpec("type_name", start.as_unitree(), [spec, decl], end=self.ending().as_unitree());
     }
 
@@ -231,13 +281,13 @@ obj CParser {
             anchor = self.current();
             if member and self.peek() == ":" { decl = CDeclarator("abstract", anchor.as_unitree()); }
             else { decl = self.declarator(); }
-            name = self.declarator_name(decl);
+            name = declarator_name(decl);
             if name and not member { self.scopes[-1][name] = is_typedef; }
             items: list[CNode] = [decl];
             if member and self.accept(":") { items.append(CExpression("bitfield_width", self.ending().as_unitree(), [self.expression(3)])); }
             if self.peek() == "{" and top and len(children) == 1 {
                 if is_typedef { raise ValueError("Typedef cannot have a function body"); }
-                operators = self.derived_operators(decl);
+                operators = derived_operators(decl);
                 if not operators or operators[0].kind != "function" {
                     raise ValueError("Function body requires a function declarator");
                 }
@@ -253,11 +303,11 @@ obj CParser {
         return CDeclaration("member_declaration" if member else "declaration", start.as_unitree(), children, end=self.ending().as_unitree());
     }
     def parameter_bindings(nd: CNode, bindings: dict[str, bool]) {
-        operators = self.derived_operators(nd);
+        operators = derived_operators(nd);
         if operators and operators[0].kind == "function" {
             for p in operators[0].operands[1:] {
                 if p.kind == "parameter" {
-                    name = self.declarator_name(p.operands[1]);
+                    name = declarator_name(p.operands[1]);
                     if name { bindings[name] = False; }
                 }
             }
@@ -288,6 +338,10 @@ obj CParser {
     def primary -> CExpression {
         t = self.take();
         if t.text == "(" {
+            if self.peek() == "{" {
+                block = self.compound(); self.expect(")");
+                return CExpression("statement_expression", t.as_unitree(), [block], end=self.ending().as_unitree());
+            }
             value = self.expression(); self.expect(")");
             return CExpression("parenthesized", t.as_unitree(), [value], end=self.ending().as_unitree());
         }
@@ -317,10 +371,23 @@ obj CParser {
 
     def unary -> CExpression {
         t = self.current();
+        if t.text == "__extension__" {
+            self.take(); return CExpression("extension", t.as_unitree(), [self.unary()]);
+        }
+        if t.text in ["__builtin_va_arg", "__builtin_offsetof", "__builtin_types_compatible_p"] {
+            self.take(); self.expect("("); arguments: list[CNode] = [];
+            if t.text == "__builtin_va_arg" {
+                arguments.append(self.expression(2)); self.expect(","); arguments.append(self.type_name());
+            } else {
+                arguments.append(self.type_name()); self.expect(",");
+                arguments.append(self.type_name() if t.text == "__builtin_types_compatible_p" else self.expression(2));
+            }
+            self.expect(")"); return CExpression("builtin", t.as_unitree(), arguments, value=t.text);
+        }
         if t.text in ["++", "--", "&", "*", "+", "-", "~", "!"] {
             self.take(); return CExpression("unary", t.as_unitree(), [self.unary()], value=t.text);
         }
-        if t.text in ["sizeof", "_Alignof"] {
+        if t.text in ["sizeof", "_Alignof", "__alignof", "__alignof__"] {
             self.take();
             if self.peek() == "(" {
                 saved = self.pos; self.take();
@@ -388,7 +455,11 @@ obj CParser {
         while True {
             t = self.current();
             if t.text == "?" and minimum <= 3 {
-                self.take(); yes = self.expression(); self.expect(":"); no = self.expression(3);
+                self.take();
+                if self.accept(":") {
+                    left = CExpression("conditional_omitted", t.as_unitree(), [left, self.expression(3)]); continue;
+                }
+                yes = self.expression(); self.expect(":"); no = self.expression(3);
                 left = CExpression("conditional", t.as_unitree(), [left, yes, no]); continue;
             }
             power = precedence.get(t.text, 0);
@@ -410,6 +481,17 @@ obj CParser {
     }
     def statement -> CStatement {
         t = self.current(); text = t.text;
+        if text in ["asm", "__asm", "__asm__"] {
+            self.take(); spelling: list[str] = [text];
+            while self.peek() in ["volatile", "__volatile", "__volatile__", "inline", "goto"] { spelling.append(self.take().text); }
+            self.expect("("); spelling.append("("); depth = 1;
+            while depth {
+                token = self.take(); spelling.append(token.text);
+                if token.text == "(" { depth += 1; }
+                elif token.text == ")" { depth -= 1; }
+            }
+            self.expect(";"); return CStatement("asm", t.as_unitree(), value=" ".join(spelling), end=self.ending().as_unitree());
+        }
         if text == "{" { return self.compound(); }
         if text == ";" { self.take(); return CStatement("empty", t.as_unitree()); }
         if text in ["if", "switch", "while"] {
@@ -437,13 +519,24 @@ obj CParser {
         }
         if text in ["return", "break", "continue", "goto"] {
             self.take(); values: list[CNode] = []; name = "";
-            if text == "goto" { name = self.identifier().text; }
+            if text == "goto" {
+                if self.accept("*") {
+                    values.append(self.expression()); self.expect(";");
+                    return CStatement("computed_goto", t.as_unitree(), values, end=self.ending().as_unitree());
+                }
+                name = self.identifier().text;
+            }
             elif text == "return" and self.peek() != ";" { values.append(self.expression()); }
             self.expect(";"); return CStatement(text, t.as_unitree(), values, value=name, end=self.ending().as_unitree());
         }
         if text in ["case", "default"] {
             self.take(); values: list[CNode] = [];
-            if text == "case" { values.append(self.expression(3)); }
+            if text == "case" {
+                values.append(self.expression(3));
+                if self.accept("...") {
+                    values.append(self.expression(3)); text = "case_range";
+                }
+            }
             self.expect(":"); values.append(self.statement()); return CStatement(text, t.as_unitree(), values);
         }
         if t.kind == "identifier" and self.pos + 1 < len(self.tokens) and self.tokens[self.pos + 1].text == ":" {
@@ -460,6 +553,7 @@ Includes use explicit configuration. No external compiler or shell is run.
 def parse_c(source: str, file_path: str = "<c-input>", config: CConfig | None = None) -> CParseResult {
     preprocessing = CPreprocessor(config or CConfig()).run(source, file_path);
     program = CPreprocessingUnit("preprocessing_unit", preprocessing.tokens[0].as_unitree(), preprocessing.operations);
-    parser = CParser(preprocessing.tokens, preprocessing_node=program); tree = parser.parse();
+    initial = {name: True for name in config.typedef_names} if config is not None else {};
+    parser = CParser(preprocessing.tokens, scopes=[initial], preprocessing_node=program); tree = parser.parse();
     return CParseResult(tree, preprocessing, preprocessing.diagnostics + parser.diagnostics);
 }

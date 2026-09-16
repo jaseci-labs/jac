@@ -13,7 +13,10 @@ obj CConfig {
         virtual_headers: dict[str, str] = {},
         intmax_width: int = 64,
         max_include_depth: int = 100,
-        max_expansions: int = 100000;
+        max_expansions: int = 100000,
+        # Target/compiler-provided typedefs and feature-query values are explicit.
+        typedef_names: list[str] = [],
+        features: dict[str, int] = {};
 }
 
 obj CMacro {
@@ -46,7 +49,8 @@ obj CPreprocessor {
         macros: dict[str, CMacro] = {},
         result: CPreprocessResult = CPreprocessResult(),
         once: set[str] = set(),
-        expansions: int = 0;
+        expansions: int = 0,
+        include_origins: dict[str, int] = {};
 
     def error(message: str, token: CToken) {
         self.result.diagnostics.append(CDiagnostic(message, token));
@@ -55,7 +59,7 @@ obj CPreprocessor {
     def run(code: str, path: str = "<c-input>") -> CPreprocessResult {
         # A preprocessor instance represents one translation unit.
         self.macros = {}; self.result = CPreprocessResult();
-        self.once = set(); self.expansions = 0;
+        self.once = set(); self.expansions = 0; self.include_origins = {};
         if self.config.intmax_width < 16 { raise ValueError("intmax_width must be at least 16"); }
         for (name, value) in self.config.defines.items() {
             scanned = lex_c(value, "<command-line>");
@@ -177,6 +181,23 @@ obj CPreprocessor {
                 output.append(t.copy(text=value, kind="number" if t.text == "__LINE__" else "string"));
                 i += 1; continue;
             }
+            if macro is None and t.text in ["__has_include", "__has_include_next"] {
+                if i + 1 >= len(pending) or pending[i + 1].text != "(" { output.append(t); i += 1; continue; }
+                (queries, after) = self.arguments(pending, i + 1);
+                if len(queries) != 1 { raise ValueError("Header query requires one header name"); }
+                (header, quoted) = self.header_name(queries[0]);
+                available = self.find_header(header, quoted, t.source.file_path, t.text == "__has_include_next") is not None;
+                output.append(t.copy(text=str(int(available)), kind="number"));
+                i = after; continue;
+            }
+            if macro is None and t.text in ["__has_builtin", "__has_attribute", "__has_feature", "__has_extension", "__has_c_attribute"] {
+                if i + 1 >= len(pending) or pending[i + 1].text != "(" { output.append(t); i += 1; continue; }
+                (queries, after) = self.arguments(pending, i + 1);
+                if len(queries) != 1 or not queries[0] { raise ValueError("Feature query requires one argument"); }
+                key = t.text + "(" + "".join(v.text for v in queries[0]) + ")";
+                output.append(t.copy(text=str(self.config.features.get(key, 0)), kind="number"));
+                i = after; continue;
+            }
             if macro is None or t.text in t.hidden { output.append(t); i += 1; continue; }
             end = i + 1; hidden = set(t.hidden);
             if macro.function_like {
@@ -206,6 +227,11 @@ obj CPreprocessor {
         return output;
     }
 
+    def is_defined(name: str) -> bool {
+        return name in self.macros or name in ["__FILE__", "__LINE__", "__has_include", "__has_include_next",
+            "__has_builtin", "__has_attribute", "__has_feature", "__has_extension", "__has_c_attribute"];
+    }
+
     def condition(tokens: list[CToken]) -> bool {
         rewritten: list[CToken] = []; i = 0;
         while i < len(tokens) {
@@ -214,7 +240,7 @@ obj CPreprocessor {
             i += 1; parens = i < len(tokens) and tokens[i].text == "(";
             if parens { i += 1; }
             if i >= len(tokens) or tokens[i].kind != "identifier" { raise ValueError("defined requires an identifier"); }
-            value = int(tokens[i].text in self.macros or tokens[i].text in ["__FILE__", "__LINE__"]); i += 1;
+            value = int(self.is_defined(tokens[i].text)); i += 1;
             if parens {
                 if i >= len(tokens) or tokens[i].text != ")" { raise ValueError("Expected ')' after defined"); }
                 i += 1;
@@ -229,13 +255,16 @@ obj CPreprocessor {
         name = tokens[0].text; i = 1;
         if name in ["defined", "__FILE__", "__LINE__"] { raise ValueError("Cannot redefine " + name); }
         function_like = i < len(tokens) and tokens[i].text == "(" and not tokens[i].space;
-        params: list[str] = []; variadic = False;
+        params: list[str] = []; variadic = False; variadic_name = "__VA_ARGS__";
         if function_like {
             i += 1;
             while i < len(tokens) and tokens[i].text != ")" {
                 t = tokens[i];
                 if t.text == "..." { variadic = True; i += 1; break; }
                 if t.kind != "identifier" or t.text in params or t.text == "__VA_ARGS__" { raise ValueError("Invalid macro parameter"); }
+                if i + 1 < len(tokens) and tokens[i + 1].text == "..." {
+                    variadic = True; variadic_name = t.text; i += 2; break;
+                }
                 params.append(t.text); i += 1;
                 if i < len(tokens) and tokens[i].text == "," {
                     i += 1;
@@ -246,6 +275,10 @@ obj CPreprocessor {
             i += 1;
         }
         replacement = tokens[i:];
+        if variadic_name != "__VA_ARGS__" {
+            replacement = [t.copy(text="__VA_ARGS__") if t.kind == "identifier" and t.text == variadic_name else t
+                for t in replacement];
+        }
         if replacement and (replacement[0].text == "##" or replacement[-1].text == "##") { raise ValueError("## at edge of macro replacement"); }
         for j in range(len(replacement)) {
             t = replacement[j];
@@ -263,13 +296,16 @@ obj CPreprocessor {
             old_body = [(t.text, t.space if j > 0 else False) for (j, t) in enumerate(old.replacement)];
             new_body = [(t.text, t.space if j > 0 else False) for (j, t) in enumerate(replacement)];
             if old.parameters != params or old.function_like != function_like or old.variadic != variadic or old_body != new_body {
-                raise ValueError("Incompatible redefinition of macro " + name);
+                # Retain the required diagnostic and continue with the new
+                # definition, as C compilers do for overlapping system headers.
+                self.result.diagnostics.append(CDiagnostic("Incompatible redefinition of macro " + name,
+                    tokens[0], severity="warning"));
             }
         }
         self.macros[name] = macro;
     }
 
-    def include_file(tokens: list[CToken], path: str, depth: int) -> list[CToken] {
+    def header_name(tokens: list[CToken]) -> tuple[str, bool] {
         # Header names inside angle brackets are not macro-expanded.
         expanded = tokens if tokens and (tokens[0].text == "<" or tokens[0].kind == "header") else self.expand(tokens);
         quoted = len(expanded) == 1 and expanded[0].kind == "string";
@@ -277,17 +313,38 @@ obj CPreprocessor {
         elif len(expanded) >= 3 and expanded[0].text == "<" and expanded[-1].text == ">" {
             name = "".join(t.text for t in expanded[1:-1]);
         } else { raise ValueError("#include requires a quoted or bracketed header name"); }
-        if name in self.config.virtual_headers {
-            return self.process(self.config.virtual_headers[name], name, depth + 1);
-        }
+        return (name, quoted);
+    }
+
+    def find_header(name: str, quoted: bool, path: str, next_header: bool = False) -> tuple[str, int] | None {
+        if not next_header and name in self.config.virtual_headers { return (name, -2); }
         paths = list(self.config.include_paths);
-        if quoted { paths.insert(0, os.path.dirname(os.path.abspath(path))); }
-        for directory in paths {
+        start_index = 0;
+        if next_header {
+            origin = self.include_origins.get(os.path.realpath(path));
+            if origin is None { raise ValueError("#include_next requires a header found through an include path"); }
+            start_index = origin + 1;
+        }
+        if quoted and not next_header { paths.insert(0, os.path.dirname(os.path.abspath(path))); }
+        for index in range(start_index, len(paths)) {
+            directory = paths[index];
             candidate = os.path.realpath(os.path.join(directory, name));
             if os.path.isfile(candidate) {
-                with open(candidate, encoding="utf-8") as stream { code = stream.read(); }
-                return self.process(code, candidate, depth + 1);
+                return (candidate, index - (1 if quoted and not next_header else 0));
             }
+        }
+        return None;
+    }
+
+    def include_file(tokens: list[CToken], path: str, depth: int, next_header: bool = False) -> list[CToken] {
+        (name, quoted) = self.header_name(tokens);
+        found = self.find_header(name, quoted, path, next_header);
+        if found is not None {
+            (candidate, origin) = found;
+            if origin == -2 { return self.process(self.config.virtual_headers[candidate], candidate, depth + 1); }
+            self.include_origins[candidate] = origin;
+            with open(candidate, encoding="utf-8") as stream { code = stream.read(); }
+            return self.process(code, candidate, depth + 1);
         }
         raise ValueError("Header not found in configured include paths: " + name);
     }
@@ -341,7 +398,7 @@ obj CPreprocessor {
                     selected = False;
                     if name in ["ifdef", "ifndef"] {
                         if len(args) != 1 or args[0].kind != "identifier" { raise ValueError("#" + name + " requires one identifier"); }
-                        selected = args[0].text in self.macros or args[0].text in ["__FILE__", "__LINE__"];
+                        selected = self.is_defined(args[0].text);
                         if name == "ifndef" { selected = not selected; }
                     } elif active { selected = self.condition(args); }
                     stack.append(CConditional(active, active and selected, active and selected));
@@ -367,7 +424,7 @@ obj CPreprocessor {
                         if len(args) != 1 or args[0].kind != "identifier" { raise ValueError("#undef requires one identifier"); }
                         if args[0].text in ["__FILE__", "__LINE__"] { raise ValueError("Cannot undefine builtin macro"); }
                         if args[0].text in self.macros { del self.macros[args[0].text]; }
-                    } elif name == "include" { output.extend(self.include_file(args, path, depth)); }
+                    } elif name in ["include", "include_next"] { output.extend(self.include_file(args, path, depth, name == "include_next")); }
                     elif name == "line" {
                         values = self.expand(args);
                         if not values or len(values) > 2 or not values[0].text.isdigit() {
@@ -388,6 +445,12 @@ obj CPreprocessor {
                         self.result.diagnostics.append(CDiagnostic("#warning " + " ".join(t.text for t in args), line[0], "warning"));
                     }
                     elif name == "pragma" and len(args) == 1 and args[0].text == "once" { self.once.add(path); }
+                    elif name == "pragma" {
+                        # Diagnostic controls have no C program semantics. Other
+                        # pragmas remain errors (pack/visibility/FP state matter).
+                        diagnostic = len(args) >= 2 and args[0].text in ["GCC", "clang"] and args[1].text in ["diagnostic", "system_header"];
+                        if not diagnostic { raise ValueError("Unsupported semantic #pragma: " + " ".join(t.text for t in args)); }
+                    }
                     elif name { raise ValueError("Unsupported active preprocessing directive: #" + name); }
                 }
             } except ValueError as error {

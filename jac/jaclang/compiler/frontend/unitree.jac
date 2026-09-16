@@ -767,7 +767,8 @@ node TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniS
 }
 
 node GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode, ArchBlockStmt, CodeBlockStmt) {
-    has is_frozen: bool;
+    has is_frozen: bool,
+        is_thread_local: bool;
     has assignments: Sequence[Assignment] { getter; }
 
     def init(
@@ -777,6 +778,7 @@ node GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode, ArchBlockStmt, Cod
         codespace_dual: bool = False,
         assignments: Sequence[Assignment],
         is_frozen: bool,
+        is_thread_local: bool = False,
         kid: Sequence[UniNode] = []
     ) -> None;
 
@@ -977,6 +979,7 @@ node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImpl
 
     has is_abstract: bool { getter; }
     has arch_kind: (str | None) { getter; }
+    has is_value_struct: bool { getter; }
 
     def get_has_vars -> list[HasVar];
     def get_methods -> list[Ability];

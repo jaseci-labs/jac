@@ -2182,7 +2182,7 @@ impl DocIRGenPass.exit_import with uni.Import exit {
                 parts.append(self.line());
             }
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
-            parts.pop();
+            if not here.has_clib_decls { parts.pop(); }
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             is_in_items = False;
@@ -2203,7 +2203,7 @@ impl DocIRGenPass.exit_import with uni.Import exit {
             parts.append(i.gen.doc_ir);
         } elif is_in_items {
             mod_items.append(i.gen.doc_ir);
-            mod_items.append(self.space());
+            mod_items.append(self.hard_line() if here.has_clib_decls else self.space());
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -2386,7 +2386,15 @@ impl DocIRGenPass.is_within(
     if not block {
         return False;
     }
+    if any(kid_node is item for item in block) {
+        return True;
+    }
     (start, end, kid) = (block[0].loc, block[-1].loc, kid_node.loc);
+    # Generated trees have no source interval. Equal placeholder coordinates
+    # must not classify a header expression or delimiter as a body statement.
+    if kid.pos_start == kid.pos_end {
+        return False;
+    }
     first = (
         (start.first_line < kid.first_line)
         or ((start.first_line == kid.first_line) and (start.col_start <= kid.col_start))

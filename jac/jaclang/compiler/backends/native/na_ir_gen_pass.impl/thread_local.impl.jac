@@ -28,15 +28,30 @@ impl NaIRGenPass._emit_tls_slot(
         return (get_fn, set_fn);
     }
 
-    key_gv = ir.GlobalVariable(self.llvm_module, i64, name=f"{slot_name}_key");
+    # An imported target header can provide a narrower pthread_key_t than the
+    # runtime's opaque fallback. Allocate and load that exact storage type.
+    key_type: ir.Type = i64;
+    for symbol in ["pthread_key_create", "pthread_getspecific", "pthread_setspecific"] {
+        declaration = self.llvm_module.globals.get(symbol);
+        if not isinstance(declaration, ir.Function) or not declaration.function_type.args { continue; }
+        candidate = declaration.function_type.args[0];
+        if symbol == "pthread_key_create" {
+            if not isinstance(candidate, ir.PointerType) { continue; }
+            candidate = candidate.pointee;
+        }
+        if isinstance(candidate, ir.IntType) and candidate.width in [16, 32, 64] {
+            key_type = candidate; break;
+        }
+    }
+    get_specific = self._get_or_declare_extern("pthread_getspecific", i8p, [key_type]);
+    key_create = self._get_or_declare_extern("pthread_key_create", i32, [i8p, i8p]);
+    set_specific = self._get_or_declare_extern("pthread_setspecific", i32, [key_type, i8p]);
+    key_gv = ir.GlobalVariable(self.llvm_module, key_type, name=f"{slot_name}_key");
     key_gv.linkage = "weak";
-    key_gv.initializer = ir.Constant(i64, 0);
+    key_gv.initializer = ir.Constant(key_type, 0);
     state_gv = ir.GlobalVariable(self.llvm_module, i64, name=f"{slot_name}_state");
     state_gv.linkage = "weak";
     state_gv.initializer = ir.Constant(i64, 0);
-    key_create = self._get_or_declare_extern("pthread_key_create", i32, [i8p, i8p]);
-    get_specific = self._get_or_declare_extern("pthread_getspecific", i8p, [i64]);
-    set_specific = self._get_or_declare_extern("pthread_setspecific", i32, [i64, i8p]);
 
     lock_gv = ir.GlobalVariable(self.llvm_module, i64, name=f"{slot_name}_lock");
     lock_gv.linkage = "weak";
@@ -86,10 +101,10 @@ impl NaIRGenPass._emit_tls_slot(
     ib.call(
         key_create,
         [
-            ib.bitcast(key_gv, i8p, name="tls.key.p"),
-            ib.bitcast(destructor, i8p)
+            ib.bitcast(key_gv, key_create.function_type.args[0], name="tls.key.p"),
+            ib.bitcast(destructor, key_create.function_type.args[1])
                 if destructor is not None
-                else ir.Constant(i8p, None)
+                else ir.Constant(key_create.function_type.args[1], None)
         ]
     );
     ib.atomic_rmw(
@@ -107,13 +122,21 @@ impl NaIRGenPass._emit_tls_slot(
     gb = ir.IRBuilder(get_fn.append_basic_block("entry"));
     gb.call(init_fn, []);
     _gk = gb.load(key_gv, name="tls.key");
+    get_key_type = get_specific.function_type.args[0];
+    if isinstance(_gk.type, ir.IntType) and isinstance(get_key_type, ir.IntType) and _gk.type != get_key_type {
+        _gk = gb.zext(_gk, get_key_type) if _gk.type.width < get_key_type.width else gb.trunc(_gk, get_key_type);
+    }
     _gp = gb.call(get_specific, [_gk], name="tls.v");
     gb.ret(gb.ptrtoint(_gp, i64, name="tls.i64"));
 
     sb = ir.IRBuilder(set_fn.append_basic_block("entry"));
     sb.call(init_fn, []);
     _sk = sb.load(key_gv, name="tls.key");
-    sb.call(set_specific, [_sk, sb.inttoptr(set_fn.args[0], i8p, name="tls.p")]);
+    set_key_type = set_specific.function_type.args[0];
+    if isinstance(_sk.type, ir.IntType) and isinstance(set_key_type, ir.IntType) and _sk.type != set_key_type {
+        _sk = sb.zext(_sk, set_key_type) if _sk.type.width < set_key_type.width else sb.trunc(_sk, set_key_type);
+    }
+    sb.call(set_specific, [_sk, sb.inttoptr(set_fn.args[0], set_specific.function_type.args[1], name="tls.p")]);
     sb.ret_void();
     return (get_fn, set_fn);
 }

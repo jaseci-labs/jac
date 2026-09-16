@@ -41,6 +41,7 @@ obj PPExpression {
         if "'" in value {
             body = value[value.index("'") + 1:-1];
             escapes = {"\\n": 10, "\\r": 13, "\\t": 9, "\\0": 0, "\\\\": 92, "\\'": 39};
+            escapes.update({"\\a": 7, "\\b": 8, "\\f": 12, "\\v": 11, "\\?": 63, '\\"': 34});
             if body in escapes { return PPValue(escapes[body]); }
             if len(body) == 1 { return PPValue(ord(body)); }
             if body.startswith("\\x") { return PPValue(int(body[2:], 16)); }

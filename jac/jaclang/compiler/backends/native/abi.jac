@@ -1,26 +1,97 @@
 import from jaclang.compiler.backends.native.llvm { ir }
 
-def struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
-    """Read identified struct offsets and sizes from LLVM's target ABI.""";
-    import from jaclang.compiler.backends.native.llvm { binding }
-    probe = ir.Module(name="layout", context=module.context);
-    probe.data_layout = module.data_layout;
-    for (name, struct) in module.context.identified_types.items() {
-        if not struct.is_opaque {
-            ir.GlobalVariable(probe, struct, name=name);
-        }
+"""Deferred composite storage, resolved after its component types are complete."""
+obj CompositeStorage {
+    has storage: ir.IdentifiedStructType,
+        components: list[ir.Type],
+        kind: str,
+        alignment: int = 0;
+}
+
+"""A concrete storage layout measured by the selected LLVM target."""
+obj StorageLayout {
+    has size: int,
+        alignment: int,
+        field_offsets: list[int] = [];
+}
+
+"""Whether LLVM can size this storage without following pointer pointees."""
+def is_sized_storage(typ: ir.Type, ancestors: set[int] | None = None) -> bool {
+    if isinstance(typ, (ir.IntType, ir.HalfType, ir.FloatType, ir.DoubleType, ir.PointerType)) { return True; }
+    path = ancestors or set();
+    if id(typ) in path { return False; }
+    path = path | {id(typ)};
+    if isinstance(typ, (ir.ArrayType, ir.VectorType)) {
+        return isinstance(typ.element, ir.Type) and is_sized_storage(typ.element, path);
     }
-    layouts: dict[str, tuple[list[int], int]] = {};
-    with binding.parse_assembly(str(probe)) as bound, binding.create_target_data(
-        str(module.data_layout)
-    ) as target_data {
+    if isinstance(typ, (ir.LiteralStructType, ir.IdentifiedStructType)) {
+        if typ.elements is None { return False; }
+        return all(isinstance(field, ir.Type) and is_sized_storage(field, path) for field in typ.elements);
+    }
+    return False;
+}
+
+"""Measure complete storage types without duplicating target size/alignment rules."""
+def storage_layouts(module: ir.Module, types: dict[str, ir.Type]) -> dict[str, StorageLayout] {
+    import from jaclang.compiler.backends.native.llvm { binding }
+    if not module.data_layout { raise ValueError("Storage layout requires an explicit target data layout"); }
+    if not types { return {}; }
+    probe = ir.Module(name="storage_layout", context=module.context);
+    probe.data_layout = module.data_layout;
+    probe.triple = module.triple;
+    for (name, typ) in types.items() {
+        if not is_sized_storage(typ) { raise ValueError("Storage type is incomplete or unsized: " + name); }
+        ir.GlobalVariable(probe, typ, name=name);
+    }
+    layouts: dict[str, StorageLayout] = {};
+    with binding.parse_assembly(str(probe)) as bound, binding.create_target_data(str(module.data_layout)) as target_data {
         for value in bound.global_variables {
-            count = len(module.context.identified_types[value.name].elements);
-            layouts[value.name] = target_data.get_global_struct_layout(value, count);
+            (size, alignment) = target_data.get_global_storage_layout(value);
+            typ = types[value.name];
+            offsets: list[int] = [];
+            if isinstance(typ, (ir.LiteralStructType, ir.IdentifiedStructType)) {
+                assert typ.elements is not None;
+                (offsets, _) = target_data.get_global_struct_layout(value, len(typ.elements));
+            }
+            layouts[value.name] = StorageLayout(size, alignment, offsets);
         }
     }
     return layouts;
 }
+
+"""Construct untagged overlapping storage with the alternatives' target alignment."""
+def overlapping_storage(module: ir.Module, alternatives: list[ir.Type]) -> ir.LiteralStructType {
+    if not alternatives { raise ValueError("Overlapping storage requires at least one alternative"); }
+    layouts = storage_layouts(module, {str(i): typ for (i, typ) in enumerate(alternatives)});
+    capacity = max(layout.size for layout in layouts.values());
+    # Zero-length fields impose the alternatives' ABI alignments without taking
+    # space. The enclosing LLVM struct supplies the final alignment padding.
+    fields: list[ir.Type] = [ir.ArrayType(typ, 0) for typ in alternatives];
+    fields.append(ir.ArrayType(ir.IntType(8), capacity));
+    return ir.LiteralStructType(fields);
+}
+
+"""Build aligned storage and verify the alignment against the target data layout."""
+def aligned_storage(module: ir.Module, element: ir.Type, alignment: int) -> ir.LiteralStructType {
+    if alignment <= 0 or (alignment & (alignment - 1)) != 0 or alignment > (1 << 29) {
+        raise ValueError("Unsupported storage alignment");
+    }
+    marker = ir.VectorType(ir.IntType(8), alignment);
+    layout = ir.LiteralStructType([element, ir.ArrayType(marker, 0)]);
+    measured = storage_layouts(module, {"element": element, "aligned": layout});
+    if measured["aligned"].alignment < alignment or measured["aligned"].field_offsets[0] != 0 {
+        raise ValueError("Target cannot represent the requested storage alignment");
+    }
+    return layout;
+}
+
+def struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
+    types: dict[str, ir.Type] = {name: typ for (name, typ) in module.context.identified_types.items()
+        if not typ.is_opaque};
+    layouts = storage_layouts(module, types);
+    return {name: (layout.field_offsets, layout.size) for (name, layout) in layouts.items()};
+}
+
 
 def scalar_layout(
     llt: (ir.Type | None)

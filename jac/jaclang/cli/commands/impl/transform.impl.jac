@@ -104,6 +104,12 @@ impl c2jac(args: list[str]) -> int {
     parser.add_argument("--abi", choices=["lp64", "llp64", "ilp32"], `default="lp64",
         help="C integer data model (default: lp64; does not select a Jac native target)");
     parser.add_argument("--unsigned-char", action="store_true", help="Treat plain C char as unsigned");
+    parser.add_argument("--enum-model", choices=["gnu", "int32"], `default="gnu",
+        help="Enum storage policy: GNU 32-bit signedness or signed int32 (default: gnu)");
+    parser.add_argument("--function-pointer-interop", action="store_true",
+        help="Allow implicit function-pointer/void-pointer conversions for targets with interchangeable pointer representations");
+    parser.add_argument("--select-source", action="append", `default=[], metavar="FILE", dest="source_paths",
+        help="Emit definitions owned by this file plus their dependencies from the input translation unit; may be repeated");
     try { options = parser.parse_args(args); }
     except SystemExit as error { return int(error.code or 0); }
     filename = str(options.filename); destination = str(options.output);
@@ -128,7 +134,9 @@ impl c2jac(args: list[str]) -> int {
         }
         result = emit_c(source, path,
             CConfig(include_paths=list(options.include_paths), defines=definitions),
-            CEmitConfig(abi=str(options.abi), char_signed=not bool(options.unsigned_char)));
+            CEmitConfig(abi=str(options.abi), char_signed=not bool(options.unsigned_char),
+                enum_model=str(options.enum_model), function_pointer_interop=bool(options.function_pointer_interop),
+                source_paths=[str(selected) for selected in options.source_paths]));
         for diagnostic in result.diagnostics { sys.stderr.write(diagnostic.pretty_print() + "\n"); }
         if not result.ok { return 1; }
         if destination == "-" { sys.stdout.write(result.source); }

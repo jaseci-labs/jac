@@ -669,6 +669,18 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
             }
 
+            if isinstance(base_type, ClassType) and base_type.is_builtin("ptr")
+                and base_type.is_class_instance() and base_type.private.type_args {
+                pointee = base_type.private.type_args[0];
+                needs_size = not expr.is_attr or (isinstance(expr.right, Name)
+                    and expr.right.value in ["load", "store", "offset", "__getitem__", "__setitem__"]);
+                if needs_size and isinstance(pointee, ClassType) and pointee.is_opaque_struct() {
+                    self.emit_diag(E5033, expr, name=pointee.shared.class_name,
+                        details="this pointer operation requires a complete pointee storage type");
+                    return UnknownType(is_diagnosed=True);
+                }
+            }
+
             if isinstance(base_type, TypeVarType) and base_type.is_self {
                 _sf_arch: Archetype | Enum | None = expr.find_parent_of_type(Archetype);
                 if _sf_arch is None {
@@ -715,6 +727,18 @@ impl TypeEvaluator._get_type_of_expression_core(
                 full_narrowed: TypeBase | None = None;
 
                 assert isinstance(expr.right, Name);
+                if isinstance(base_type, ClassType) and base_type.is_builtin("ptr")
+                    and expr.right.value == "call" {
+                    pointer_args = base_type.private.type_args or [];
+                    if base_type.is_class_instance() and len(pointer_args) == 1
+                        and isinstance(pointer_args[0], FunctionType) {
+                        expr.right.type = pointer_args[0].clone();
+                        return expr.right.type;
+                    }
+                    self.emit_diag(E1135, expr, name="ptr.call",
+                        details="call requires an instance pointing to a Callable signature");
+                    return UnknownType(is_diagnosed=True);
+                }
                 if isinstance(base_type, AnyType) {
                     expr.right.type = AnyType(is_foreign=base_type.is_foreign);
                     return expr.right.type;
@@ -1519,6 +1543,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                         type_args_vals = expr.right.slices[0].start;
                         slot_vals = self._annotation_args(type_args_vals);
                     }
+                    if base_type.is_builtin(["ptr", "array", "overlay", "packed", "aligned"]) {
+                        return self._specialize_storage_type(base_type, slot_vals, expr);
+                    }
                     ct_args = self._ct_args_for_class(base_type, slot_vals);
                     for (si, val) in enumerate(slot_vals) {
                         if ct_args is not None and si in ct_args[1] {
@@ -2100,7 +2127,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
 
-                if self._in_native_context()
+                import from jaclang.compiler.type_registry { NATIVE_STORAGE_BUILTINS }
+                if (self._in_native_context() or expr.value in NATIVE_STORAGE_BUILTINS)
                     and (symbol is None or symbol.parent_tab is self.builtins_module) {
                     na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
                     if na_sym is not None {
@@ -2338,8 +2366,12 @@ impl TypeEvaluator._widen_literal_for_declaration(ty: TypeBase) -> TypeBase {
             return self._convert_to_instance(self.prefetch.str_class);
         }
         if ty.private.type_args {
+            # A storage extent is part of its type, not an
+            # inferred value that can widen when assigned to a variable.
             widened_args = [
-                self._widen_literal_for_declaration(arg) for arg in ty.private.type_args
+                arg if ty.is_builtin(["array", "aligned"]) and index == 1
+                else self._widen_literal_for_declaration(arg)
+                for (index, arg) in enumerate(ty.private.type_args)
             ];
             changed = any(
                 new_arg is not old_arg

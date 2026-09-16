@@ -913,6 +913,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " not checked here, since another toolchain resolves it.",
          blocks_codegen=True
      ),
+     E1135 = _err(
+         "E1135", Category.TYPE, "Invalid native storage type '{name}': {details}",
+         blocks_codegen=True
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
@@ -1831,6 +1835,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5030",
          Category.CODEGEN,
          "Cannot compute C3 MRO for {name}: inconsistent hierarchy"
+     ),
+     E5033 = _err(
+         "E5033",
+         Category.CODEGEN,
+         "Invalid value struct '{name}': {details}",
+         blocks_codegen=True
+     ),
+     E5034 = _err(
+         "E5034",
+         Category.CODEGEN,
+         "Invalid thread-local storage: {details}",
+         blocks_codegen=True
      ),
      W5031 = _warn(
          "W5031",

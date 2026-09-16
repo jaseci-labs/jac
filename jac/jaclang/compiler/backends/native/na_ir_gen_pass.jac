@@ -1,3 +1,5 @@
+import from jaclang.compiler.backends.native.storage { RawPointerType }
+import from jaclang.compiler.backends.native.abi { CompositeStorage }
 import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
@@ -37,6 +39,8 @@ import from jaclang.compiler.frontend.constant {
     Tokens as Tok
 }
 import from jaclang.compiler.frontend.diagnostics {
+    E5033,
+    E5034,
     E5026,
     E5060,
     E5088,
@@ -64,6 +68,7 @@ import from jaclang.compiler.types.types {
     Parameter,
     TypeBase,
     UnionType,
+    ParameterCategory,
     FunctionType as SemanticFunctionType
 }
 import from jaclang.compiler.frontend.const_fold { fold_const }
@@ -156,6 +161,13 @@ obj NativeFunctionState {
             list[tuple[ir.Function, tuple[ir.Value, ir.Value, ir.Value]]];
 }
 
+obj NativeGlobalInitializer {
+    has name: str,
+        value: uni.Expr,
+        typ: ir.Type,
+        enum_constant: bool = False;
+}
+
 walker NaIRGenPass {
     has ctx: CompileContext,
         prog: JacProgram;
@@ -177,6 +189,8 @@ walker NaIRGenPass {
         drop_fn_registry: dict[str, ir.Function] = {},
         has_native_code: bool = False,
         native_tests: list[tuple[str, str, str, int]] = [],
+        pending_global_initializers: list[NativeGlobalInitializer] = [],
+        _global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [],
         _fmt_strings: dict[str, ir.GlobalVariable] = {},
         _interned_strs: dict[str, ir.GlobalVariable] = {},
         extern_funcs: dict[str, ir.Function] = {},
@@ -207,6 +221,7 @@ walker NaIRGenPass {
         _loop_coll_seq: int = 0,
         _str_count: int = 0,
         struct_types: dict[str, ir.IdentifiedStructType] = {},
+        composite_storage_types: dict[str, CompositeStorage] = {},
         struct_field_indices: dict[str, dict[str, int]] = {},
         struct_field_order: dict[str, list[str]] = {},
         struct_field_types: dict[str, dict[str, any]] = {},
@@ -568,6 +583,15 @@ walker NaIRGenPass {
         result_type: TypeBase | None
     ) -> (ir.Value | None);
 
+    def _codegen_array_constructor(nd: uni.FuncCall) -> ir.Value | None;
+    def _codegen_inline_storage_address(expr: uni.Expr) -> ir.Value | None;
+    def _storage_call(nd: uni.FuncCall) -> bool;
+    def _codegen_storage_call(nd: uni.FuncCall) -> ir.Value | None;
+    def _global_place(name: str) -> ir.Value;
+    def _codegen_atomic_storage_call(nd: uni.FuncCall, pointer_type: RawPointerType) -> ir.Value | None;
+    def _codegen_storage_measure(nd: uni.FuncCall) -> ir.Constant | None;
+    def _storage_integer(value: ir.Value, source: uni.Expr) -> ir.Value;
+    def _codegen_storage_index(expr: uni.Expr) -> ir.Value | None;
     def _codegen_sized_builtin_call(
         nd: uni.FuncCall, func_name: (str | None), call_kind: str
     ) -> (ir.Value | None);
@@ -1337,6 +1361,7 @@ walker NaIRGenPass {
     def _find_source_ability(mod_name: str, func_name: str) -> (uni.Ability | None);
     def _register_enums(module: uni.Module) -> None;
     def _register_globals(module: uni.Module) -> None;
+    def _finalize_global_initializers -> None;
     def _quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _glob_native_use_exists(target: uni.UniNode) -> bool;
     def _register_entry_globals(module: uni.Module) -> None;
@@ -1682,6 +1707,8 @@ walker NaIRGenPass {
 
     def _mro_of(arch_name: str) -> list[str];
     def _arch_layout(arch_name: str) -> (ArchetypeLayout | None);
+    def _arch_is_value(arch_name: str) -> bool;
+    def _arch_storage_type(arch_name: str) -> (ir.Type | None);
     def _arch_has_vtable(arch_name: str) -> bool;
     def _devirt_closed_world(arch_name: str) -> bool;
     def _hasvar_is_own(var: uni.UniNode) -> bool;
@@ -2153,6 +2180,7 @@ walker NaIRGenPass {
     def _apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value;
     def _unbox_narrowed_member(nd: uni.AtomTrailer, val: ir.Value) -> ir.Value;
     def _lower_function_signature(t: SemanticFunctionType) -> ir.FunctionType;
+    def _lower_c_function_signature(t: SemanticFunctionType) -> ir.FunctionType | None;
     def _lower_function_type_raw(t: SemanticFunctionType) -> ir.PointerType;
     def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _abi_sizeof(t: ir.Type) -> int;
@@ -2179,6 +2207,8 @@ walker NaIRGenPass {
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     def _lower_type(t: any) -> (ir.Type | None);
     def _unify_repr_lowering(reprs: list[ir.Type]) -> (ir.Type | None);
+    def _lower_composite_storage_type(t: ClassType) -> ir.Type | None;
+    def _resolve_composite_storage_types(required: bool = False) -> None;
     def _lower_class_type(t: ClassType) -> (ir.Type | None);
     def _lower_function_type(t: SemanticFunctionType) -> ir.PointerType;
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);

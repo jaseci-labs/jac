@@ -154,6 +154,8 @@ node ClassDetailsShared {
         is_builtin_class: bool = False,
         is_from_stdlib_stub: bool = False,
         is_data_class: bool = False,
+        is_value_struct: bool = False,
+        is_opaque_struct: bool = False,
         is_namedtuple: bool = False,
         is_typeddict: bool = False,
         is_root_class: bool = False,
@@ -204,6 +206,8 @@ node ClassDetailsShared {
         is_builtin_class: bool = False,
         is_from_stdlib_stub: bool = False,
         is_data_class: bool = False,
+        is_value_struct: bool = False,
+        is_opaque_struct: bool = False,
         is_namedtuple: bool = False,
         is_typeddict: bool = False,
         typeddict_fields: (dict[str, TypeBase] | None) = None,
@@ -274,6 +278,11 @@ node ClassType(TypeBase) {
     def is_namedtuple -> bool;
     def is_typeddict -> bool;
     def is_enum_class -> bool;
+    def is_value_struct -> bool;
+    def is_opaque_struct -> bool;
+    def fixed_array_length -> int | None;
+    def storage_extent -> int | None;
+    def has_native_value_storage -> bool;
     def is_edge_type -> bool;
     def is_node_type -> bool;
     def is_walker_type -> bool;

@@ -1,4 +1,13 @@
 impl EsastGenPass.exit_name with uni.Name exit {
+    if here.sym is not None and here.sym.decl is not None {
+        global_decl = here.sym.decl.find_parent_of_type(uni.GlobalVars);
+        context = here.find_parent_of_type(uni.ContextAwareNode);
+        if global_decl is not None and global_decl.is_thread_local
+            and here.find_parent_of_type(uni.GlobalVars) is not global_decl
+            and context is not None and context.code_context == CodeContext.CLIENT {
+            self.ctx.emit(E5034, node_override=here, details="access thread-local storage through a native function");
+        }
+    }
     if here.__class__ is not uni.Name {
         return;
     }

@@ -161,6 +161,7 @@ impl UnparsePass.exit_global_vars with uni.GlobalVars exit {
     if here.access {
         parts.append(here.access.gen.jac);
     }
+    if here.is_thread_local { parts.append("thread_local"); }
     parts.append(self._comma_sep(here.assignments));
     here.gen.jac = " ".join(parts);
 }
@@ -215,6 +216,17 @@ impl UnparsePass.exit_import with uni.Import exit {
     }
     if here.is_typed {
         parts.append("type");
+    }
+    if here.clib_decls {
+        if here.from_loc {
+            parts.append("from");
+            parts.append(here.from_loc.gen.jac);
+        }
+        declarations = " ".join([decl.gen.jac for decl in here.clib_decls]);
+        parts.append("{ " + declarations + " }");
+        if here.from_loc is None { parts.append(";"); }
+        here.gen.jac = " ".join(parts);
+        return;
     }
     items = self._comma_sep(here.items);
     if here.from_loc {
@@ -278,7 +290,9 @@ impl UnparsePass.exit_archetype with uni.Archetype exit {
             ": " + here.src_endpoint.gen.jac + " --> " + here.tgt_endpoint.gen.jac
         );
     }
-    if here.body {
+    if here.body is None and here.arch_type.value == "struct" {
+        parts.append(";");
+    } elif here.body {
         if isinstance(here.body, uni.ImplDef) {
             parts.append(";");
         } else {
@@ -1007,7 +1021,10 @@ impl UnparsePass.exit_index_slice with uni.IndexSlice exit {
         }
         result = result + ", ".join(slice_parts);
     } elif len(here.slices) == 1 and here.slices[0].start {
-        result = result + here.slices[0].start.gen.jac;
+        index = here.slices[0].start;
+        result = result + (self._comma_sep(index.values)
+            if isinstance(index, uni.TupleVal) and len(index.values) > 1
+            else index.gen.jac);
     }
     here.gen.jac = result + "]";
 }

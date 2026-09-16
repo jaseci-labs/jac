@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.native.llvm.ir.instructions { Instruction }
 impl NaIRGenPass._codegen_body(stmts: Sequence[uni.UniNode]) -> None {
     for stmt in stmts {
         if self.builder.block.is_terminated {
@@ -36,7 +37,7 @@ impl NaIRGenPass._codegen_body(stmts: Sequence[uni.UniNode]) -> None {
                     if len(_all_instrs) > _prev_count {
                         _new_instrs = _all_instrs[_prev_count:];
                         for _instr in _new_instrs {
-                            if "dbg" not in getattr(_instr, "metadata", {}) {
+                            if isinstance(_instr, Instruction) and "dbg" not in _instr.metadata {
                                 _instr.set_metadata("dbg", _di_loc);
                             }
                         }
@@ -1735,7 +1736,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             if isinstance(nd.target, (list, tuple))
             else [nd.target];
         while _unbound {
-            _t = _unbound.pop();
+            _t: uni.UniNode = _unbound.pop();
             if isinstance(_t, uni.Name) {
                 self._mark_local_unlowered(_t.value);
             } elif isinstance(_t, uni.TupleVal) {
@@ -1803,6 +1804,28 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
 
         if isinstance(target_expr, uni.AtomTrailer) and not target_expr.is_attr {
+            pointer_type = target_expr.target.type;
+            if isinstance(pointer_type, ClassType) and pointer_type.is_builtin(["ptr", "array"]) {
+                place = self._codegen_storage_index(target_expr);
+                if place is None {
+                    return;
+                }
+                if nd.aug_op is not None {
+                    current = self.builder.load(place, name="ptr.current");
+                    changed = self._apply_scalar_aug_op(current, value, nd.aug_op.value,
+                        nd.value, unsigned=self._is_unsigned_node(target_expr),
+                        checked=self._is_sized_node(target_expr));
+                    if changed is None {
+                        self.ctx.emit(E5092, node_override=target_expr,
+                            kind="native storage augmented assignment", name=nd.aug_op.value);
+                        return;
+                    }
+                    value = changed;
+                }
+                assert isinstance(place.type, ir.PointerType);
+                self.builder.store(self._coerce_type(value, place.type.pointee), place);
+                continue;
+            }
             _env_sub_t = target_expr.target;
             if (
                 isinstance(_env_sub_t, uni.AtomTrailer)
@@ -2562,7 +2585,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             and isinstance(target_expr, uni.NameAtom)
             and target_expr.sym is not None
             and target_expr.sym.storage == uni.SymbolStorage.MODULE_GLOBAL {
-            global_var = self.global_vars[var_name];
+            global_var = self._global_place(var_name);
+            assert isinstance(global_var.type, ir.PointerType);
+            global_storage_type = global_var.type.pointee;
             if nd.aug_op is not None {
                 aug_op_val = nd.aug_op.value;
                 current = self._str_norm(
@@ -2696,13 +2721,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 }
             }
-            coerced = self._coerce_type(value, global_var.value_type);
+            coerced = self._coerce_type(value, global_storage_type);
             _is_raw_int_ptr_g = getattr(coerced, 'opname', '') == 'inttoptr';
             if (
-                isinstance(global_var.value_type, ir.PointerType)
+                isinstance(global_storage_type, ir.PointerType)
                 or (
                     self._str_desc_ty is not None
-                    and global_var.value_type == self._str_desc_ty
+                    and global_storage_type == self._str_desc_ty
                 )
             )
                 and not _is_raw_int_ptr_g {
@@ -2721,7 +2746,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 _own_str_glob = (
                     self._nogc_headerless()
                     and self._str_desc_ty is not None
-                    and global_var.value_type == self._str_desc_ty
+                    and global_storage_type == self._str_desc_ty
                     and len(nd.target) == 1
                     and isinstance(nd.target[0], uni.Name)
                     and nd.target[0].sym is not None
@@ -2742,7 +2767,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     );
                     coerced = self.builder.insert_value(
                         self.builder.insert_value(
-                            ir.Constant(global_var.value_type, None),
+                            ir.Constant(global_storage_type, None),
                             _osg_new,
                             0,
                             name="own.glit.d0"
@@ -4046,7 +4071,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     for (_ri, _red) in enumerate(_reds) {
         _acc_slot = self.local_vars.get(_red[0]);
         if _acc_slot is None {
-            _acc_slot = self.global_vars[_red[0]];
+            _acc_slot = self._global_place(_red[0]);
         }
         _cur_slot = self.builder.alloca(i64, name=f"ffor.comb.{_red[0]}");
         self.builder.store(

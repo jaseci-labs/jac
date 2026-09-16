@@ -441,7 +441,7 @@ import_items ::=
     ) "}"
 
 archetype ::=
-    ("@" atomic_chain)* "async"? ("obj" | "node" | "edge" | "walker" | "class")
+    ("@" atomic_chain)* "async"? ("obj" | "struct" | "node" | "edge" | "walker" | "class")
     access_tag (NAME | KWESC_NAME) ("[" type_params "]")?
     ("(" (call_arg ("," call_arg)*)? ")")? (":" atomic_chain "-->" atomic_chain)?
     ("{" archetype_member* "}" | ";")
@@ -494,7 +494,7 @@ switch_stmt ::= "switch" expression "{" switch_case* "}"
 
 switch_case ::= ("default" | "case" pattern) ":" statement*
 
-global_var ::= "glob" access_tag global_var_assignment ("," global_var_assignment)* ";"
+global_var ::= "glob" access_tag "thread_local"? global_var_assignment ("," global_var_assignment)* ";"
 
 global_var_assignment ::=
     (NAME | KWESC_NAME) (":" ownership_prefix pipe)? ("=" expression ("=" expression)*)?

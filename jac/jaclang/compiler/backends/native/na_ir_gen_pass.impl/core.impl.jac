@@ -122,11 +122,11 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
 
     self._emit_rc_helpers();
 
+    # Foreign globals can use value records declared later in the module.
+    self._forward_declare_archetype_names(self.module);
     self._process_clib_imports(self.module);
 
     self._register_enums(self.module);
-
-    self._forward_declare_archetype_names(self.module);
 
     self._register_imported_struct_types();
     self._declare_pending_clib_abilities();
@@ -137,7 +137,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._register_archetypes(self.module);
     self._register_enum_methods(self.module, declare=False);
 
-    _entry_nodes: list[uni.UniNode] = [];
+    _entry_nodes: list[uni.ModuleCode] = [];
     for stmt in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE) {
         if (
             isinstance(stmt, uni.Ability)
@@ -166,6 +166,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     if _unclaimed {
         return self.module;
     }
+    self._finalize_global_initializers();
     self._codegen_entry(_entry_nodes);
     self._finalize_trace_lookup();
 
@@ -270,8 +271,13 @@ impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
     if isinstance(ty, ir.VoidType) {
         return "void";
     }
+    if isinstance(ty, RawPointerType) {
+        # An address is not a managed string or a managed instance, even when
+        # its LLVM pointee has the same spelling as one of those representations.
+        return "ptr";
+    }
     if isinstance(ty, ir.PointerType) {
-        if ty?.pointee {
+        if ty?.pointee is not None {
             if isinstance(ty.pointee, ir.IntType) and ty.pointee.width == 8 {
                 return "i8*";
             }
@@ -324,6 +330,8 @@ impl NaIRGenPass._export_native_layout -> None {
     layout = NativeModuleLayout(str_headerless=self._nogc_headerless());
 
     for (arch_name, field_indices) in self.struct_field_indices.items() {
+        arch_layout = self._arch_layout(arch_name);
+        if arch_layout is not None and arch_layout.is_opaque { continue; }
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
         field_enums = self.struct_field_enum_type.get(arch_name, {});
@@ -398,7 +406,8 @@ impl NaIRGenPass._export_native_layout -> None {
         ret_type = self._llvm_type_str(func.function_type.return_type);
         ret_struct: (str | None) = None;
         ret_tuple: (NativeTupleLayout | None) = None;
-        if isinstance(func.function_type.return_type, ir.PointerType) {
+        if isinstance(func.function_type.return_type, ir.PointerType)
+            and not isinstance(func.function_type.return_type, RawPointerType) {
             for (sn, st) in self.struct_types.items() {
                 if func.function_type.return_type.pointee == st {
                     ret_struct = sn;
@@ -474,7 +483,8 @@ impl NaIRGenPass._export_native_layout -> None {
         param_names = [a.name for a in func.args];
         ret_type = self._llvm_type_str(func.function_type.return_type);
         ret_struct: (str | None) = None;
-        if isinstance(func.function_type.return_type, ir.PointerType) {
+        if isinstance(func.function_type.return_type, ir.PointerType)
+            and not isinstance(func.function_type.return_type, RawPointerType) {
             for (sn, st) in self.struct_types.items() {
                 if func.function_type.return_type.pointee == st {
                     ret_struct = sn;
@@ -722,11 +732,11 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     imported_mods = self._permuted_walk_order(imported_mods);
 
     for (_, imported_mod) in imported_mods {
-        self._process_clib_imports(imported_mod);
+        self._walk_imported_module_type_names(imported_mod);
     }
 
     for (_, imported_mod) in imported_mods {
-        self._walk_imported_module_type_names(imported_mod);
+        self._process_clib_imports(imported_mod);
     }
 
     self._declare_pending_clib_abilities();
@@ -1173,8 +1183,19 @@ impl NaIRGenPass._register_imported_globals(
             else [(assign.target)];
         for target in targets {
             var_name = self._get_name(target);
-            if var_name is None or var_name in self.global_vars {
+            if var_name is None { continue; }
+            if var_name in self.global_vars {
+                if self.global_vars[var_name].thread_local != nd.is_thread_local {
+                    self.ctx.emit(E5034, node_override=assign, details="conflicting storage duration for " + var_name);
+                }
                 continue;
+            }
+            if nd.is_thread_local {
+                semantic_type = assign.type_tag.tag.type if assign.type_tag is not None else None;
+                if not isinstance(semantic_type, ClassType) or not semantic_type.has_native_value_storage() {
+                    self.ctx.emit(E5034, node_override=assign, details="imported thread-local storage requires an explicit unmanaged value type");
+                    continue;
+                }
             }
             var_type: ir.Type = ir.IntType(64);
             if assign.type_tag and assign.type_tag.tag {
@@ -1186,8 +1207,25 @@ impl NaIRGenPass._register_imported_globals(
                 }
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
             }
-            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
-            global_var.linkage = "external";
+            existing = self.llvm_module.globals.get(var_name);
+            if existing is not None {
+                if not isinstance(existing, ir.GlobalVariable) or existing.thread_local != nd.is_thread_local {
+                    self.ctx.emit(E5092, node_override=assign, kind="conflicting foreign global declaration", name=var_name);
+                    continue;
+                }
+                same_storage = existing.value_type == var_type;
+                pointer_storage = isinstance(existing.value_type, ir.PointerType) and isinstance(var_type, ir.PointerType)
+                    and existing.value_type.addrspace == var_type.addrspace;
+                if not same_storage and not pointer_storage {
+                    self.ctx.emit(E5092, node_override=assign, kind="incompatible foreign global storage type", name=var_name);
+                    continue;
+                }
+                global_var = existing;
+            } else {
+                global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
+                global_var.linkage = "external";
+                global_var.thread_local = nd.is_thread_local;
+            }
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
 
@@ -1460,7 +1498,29 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         self._clib_detect_vtable_structs();
 
         for decl in stmt.clib_decls {
-            if isinstance(decl, uni.Ability) {
+            if isinstance(decl, uni.GlobalVars) {
+                valid = True;
+                for assignment in decl.assignments {
+                    if assignment.value is not None or assignment.type_tag is None {
+                        self.ctx.emit(E5092, node_override=assignment,
+                            kind="foreign global declaration", name="glob",
+                            help_text="Declare a foreign global with an explicit type and no initializer.");
+                        valid = False;
+                    }
+                }
+                if not valid { continue; }
+                self._register_imported_globals(decl);
+                if _cur_lib is not None {
+                    for assignment in decl.assignments {
+                        for target in assignment.target {
+                            global_name = self._get_name(target);
+                            if global_name is not None {
+                                self._clib_symbol_lib[global_name] = _cur_lib;
+                            }
+                        }
+                    }
+                }
+            } elif isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
 
                 _is_empty_list = isinstance(decl.body, list) and not decl.body;

@@ -5,8 +5,15 @@ impl NaIRGenPass._elem_kind(elem_type: ir.Type) -> str {
     if self?.jacval_type and elem_type == self.jacval_type {
         return "jacval";
     }
+    if isinstance(elem_type, RawPointerType) {
+        return "raw";
+    }
     if isinstance(elem_type, ir.PointerType) {
         if isinstance(elem_type.pointee, ir.FunctionType) {
+            return "raw";
+        }
+        if isinstance(elem_type.pointee, ir.IdentifiedStructType)
+            and self._arch_is_value(elem_type.pointee.name) {
             return "raw";
         }
         return "rc_ptr";

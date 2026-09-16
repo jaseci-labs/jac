@@ -25,6 +25,7 @@ impl LayoutPass._run_impl(ir_in: Module) -> Module {
 
     for name in topo_order {
         if name in arch_map {
+            self._validate_value_declaration(arch_map[name]);
             layout = self._build_layout(arch_map[name]);
             self.registry.layouts[name] = layout;
             self.registry.local_names.append(name);
@@ -243,7 +244,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
     mro = reg.mro_order.get(aname, [aname]);
     parents = reg.class_parents.get(aname, []);
 
-    arch_type_str = arch.arch_kind or "object";
+    arch_type_str = "struct" if arch.is_value_struct else (arch.arch_kind or "object");
     is_osp = arch.arch_kind is not None;
 
     parents_set: set[str] = set();
@@ -259,7 +260,10 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
         or aname in parents_set
         or aname in self.isinstance_targets
     );
-    needs_vtable = bool(parents) or vtable_by_dispatch;
+    # Value records never gain hidden dispatch slots merely because their
+    # methods or an isinstance expression are encountered during traversal.
+    if arch.is_value_struct { vtable_by_dispatch = False; }
+    needs_vtable = not arch.is_value_struct and (bool(parents) or vtable_by_dispatch);
 
     fields: list[FieldInfo] = [];
     field_index: dict[str, int] = {};
@@ -383,6 +387,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
     return ArchetypeLayout(
         name=aname,
         arch_type=arch_type_str,
+        is_opaque=arch.is_value_struct and arch.body is None,
         decl_mod=(_lay_os.path.realpath(_decl_path) if _decl_path else ""),
         parent_mods=list(reg.parent_mods.get(aname, [])),
         parents=parents,
@@ -755,12 +760,90 @@ impl LayoutRegistry.is_primary_ancestor(child: str, ancestor: str) -> bool {
     return False;
 }
 
+# Value layout cannot depend on inheritance or late dynamic dispatch.
+impl LayoutPass._validate_value_declaration(arch: Archetype) -> None {
+    import from jaclang.compiler.types.types { ClassType }
+    if arch.is_value_struct and arch.base_classes {
+        self.ctx.emit(E5033, node_override=arch, name=arch.name.value,
+            details="inheritance is not permitted; embed a field instead");
+    }
+    if arch.is_value_struct and arch.is_abstract {
+        self.ctx.emit(E5033, node_override=arch, name=arch.name.value,
+            details="abstract methods require dynamic dispatch");
+    }
+    for base in arch.base_classes {
+        if isinstance(base, Expr) {
+            base_type = base.type;
+            if isinstance(base_type, ClassType) and base_type.is_value_struct() {
+                self.ctx.emit(E5033, node_override=base, name=base_type.shared.class_name,
+                    details="value structs cannot be subclassed");
+            }
+        }
+    }
+}
+
+impl LayoutPass._value_storage_error(typ: TypeBase | None, path: set[int]) -> str | None {
+    import from jaclang.compiler.types.types { ClassType }
+    if not isinstance(typ, ClassType) or typ._shared is None {
+        return "the field must have a concrete native storage type";
+    }
+    if typ.is_builtin(["overlay", "packed"]) {
+        if len(typ.private.type_args or []) != 2 { return "composite storage requires two component types"; }
+        for alternative in typ.private.type_args {
+            issue = self._value_storage_error(alternative, path);
+            if issue is not None { return issue; }
+        }
+        return None;
+    }
+    if typ.is_builtin("aligned") {
+        if len(typ.private.type_args or []) != 2 { return "aligned storage requires an element and alignment"; }
+        return self._value_storage_error(typ.private.type_args[0], path);
+    }
+    if typ.is_builtin("array") {
+        if typ.fixed_array_length() is None {
+            return "a fixed array requires an element type and a nonnegative constant length";
+        }
+        return self._value_storage_error(typ.private.type_args[0], path);
+    }
+    if typ.is_builtin("ptr") {
+        return None if len(typ.private.type_args or []) == 1
+            else "a raw pointer requires exactly one pointee type";
+    }
+    if typ.is_opaque_struct() {
+        return "opaque structs have no known storage size; use a pointer";
+    }
+    if not typ.is_value_struct() {
+        return None if typ.has_native_value_storage()
+            else "copying fields with managed references is not implemented for value structs";
+    }
+    identity = id(typ.shared);
+    if identity in path {
+        return "recursive inline storage has no finite size; use a pointer for the recursive field";
+    }
+    declaration = typ.shared.symbol_table;
+    if not isinstance(declaration, Archetype) {
+        return "the nested value struct's field declarations are unavailable";
+    }
+    nested_path = path | {identity};
+    for field in declaration.get_has_vars() {
+        owner = field.find_parent_of_type(ArchHas);
+        if field.accessors or (owner is not None and owner.is_static) {
+            continue;
+        }
+        issue = self._value_storage_error(field.type, nested_path);
+        if issue is not None {
+            return f"{typ.shared.class_name}.{field.name.value}: {issue}";
+        }
+    }
+    return None;
+}
+
 impl LayoutPass._validate_obj_fields(
     arch: Archetype, arch_map: dict[str, Archetype]
 ) -> None {
     if arch.arch_type {
         tok_name = arch.arch_type.name;
-        if tok_name != Tok.KW_OBJECT.value {
+        if tok_name not in [Tok.KW_OBJECT.value, Tok.KW_STRUCT.value] {
             return;
         }
     }
@@ -782,6 +865,14 @@ impl LayoutPass._validate_obj_fields(
             continue;
         }
         type_node = var.type_tag.tag;
+        if arch.is_value_struct {
+            issue = self._value_storage_error(var.type, set());
+            if issue is not None {
+                self.ctx.emit(E5033, node_override=var, name=aname,
+                    details=f"field '{fname}': {issue}");
+                continue;
+            }
+        }
         if not self._is_layout_compatible_semantic_type(var.type)
             and not self._is_layout_compatible_type(type_node, arch_map) {
             type_str = unparse_node(type_node) or str(type_node);
@@ -805,6 +896,9 @@ impl LayoutPass._is_layout_compatible_semantic_type(typ: TypeBase | None) -> boo
     }
     if not isinstance(typ, ClassType) or typ._shared is None {
         return False;
+    }
+    if typ.is_builtin(["ptr", "array", "overlay", "packed", "aligned"]) {
+        return self._value_storage_error(typ, set()) is None;
     }
     declaration = typ.shared.symbol_table;
     if isinstance(declaration, Archetype)
