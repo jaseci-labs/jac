@@ -13,18 +13,10 @@ glob logger = logging.getLogger(__name__),
          'embedded server would be per-replica and lost on restart. point the '
          'deploy at a database'
      ),
-     _DOCS_DDL = (
-         'CREATE TABLE IF NOT EXISTS jac_docs ('
-         'collection text NOT NULL, '
-         'id text NOT NULL, '
-         'doc jsonb NOT NULL, '
-         'PRIMARY KEY (collection, id))'
-     ),
      __all__ = [
          'scale_db_url',
          'shared_store',
          'shared_store_failure',
-         'open_docs_store',
          'NO_DATABASE_RESOLVED',
          'NO_DATABASE_IN_CLUSTER'
      ];
@@ -52,16 +44,6 @@ with entry {
     if hasattr(os, 'register_at_fork') {
         os.register_at_fork(after_in_child=_after_fork_in_child);
     }
-}
-
-
-def open_docs_store -> (any | None) {
-    store = shared_store();
-    if store is None {
-        return None;
-    }
-    store.rows(_DOCS_DDL, {});
-    return store;
 }
 
 

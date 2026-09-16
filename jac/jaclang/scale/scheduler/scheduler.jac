@@ -11,7 +11,7 @@ import from jaclang.scale._optdeps.apscheduler {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.server.task_scheduler { Scheduler, ScheduleTrigger }
-import from jaclang.server.shared_store { open_docs_store }
+import from jaclang.server.shared_store { shared_store }
 
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',

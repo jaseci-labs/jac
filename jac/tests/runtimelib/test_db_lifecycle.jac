@@ -483,15 +483,15 @@ test "db prune --empty reclaims pre-tracking databases that hold no data" {
     try {
         (with_data, data_db) = _project_database(cluster, "legacydata");
         (no_data, bare_db) = _project_database(cluster, "legacybare", app=BARE_APP);
-        # A store whose only content is a plugin's own table (jac-scale keeps
+        # A store whose only content is plugin rows (jac-scale keeps
         # identities and jobs in jac_docs) is not empty either.
         (plugin, plugin_db) = _project_database(cluster, "legacyplugin", app=BARE_APP);
         _exec_in(
             cluster,
             plugin_db,
-            "CREATE TABLE IF NOT EXISTS jac_docs (id text PRIMARY KEY)"
+            "INSERT INTO jac_docs (collection, id, doc) "
+            "VALUES ('users', 'user1', '{}')"
         );
-        _exec_in(cluster, plugin_db, "INSERT INTO jac_docs (id) VALUES ('user1')");
         # Databases created before owner tracking have no registry row at all.
         _exec(
             cluster,

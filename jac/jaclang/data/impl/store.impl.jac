@@ -83,6 +83,18 @@ glob OUTBOX_SCHEMA_SQL = [
         created_at  timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY (missing_id, kind)
     )
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS jac_docs (
+        collection text NOT NULL,
+        id         text NOT NULL,
+        doc        jsonb NOT NULL,
+        PRIMARY KEY (collection, id)
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS jac_docs_user_id_idx
+        ON jac_docs (collection, (doc->>'user_id'))
     """
      ]
          + OUTBOX_SCHEMA_SQL;

@@ -15,8 +15,8 @@ Pinned here:
               imported; the boot sequence applies the schema DDL exactly once
               per database;
   restart  -- a fresh store against an unchanged schema runs no DDL at all;
-  complete -- the base schema carries the outbox tables, so nothing has to
-              extend it later.
+  complete -- the base schema carries the outbox and docs tables, so
+              nothing has to extend it later.
 
 The boot sequence runs in a child interpreter so that `jaclang.server.outbox`
 is provably not imported before the first schema step, whichever suites ran
@@ -33,7 +33,7 @@ import from jaclang.server.session { shared_pg_data_dir, project_db_name }
 import from jaclang.data.store { ConnInfo, PgStore, SCHEMA_STAMP_KEY }
 
 glob PROMOTIONS: dict[str, list[str]] = {'Session': ['id'], 'Run': ['id']},
-     OUTBOX_TABLES = ['jac_outbox', 'jac_outbox_seen'],
+     PLUGIN_TABLES = ['jac_outbox', 'jac_outbox_seen', 'jac_docs'],
      # The two schema steps a server runs, in the order it runs them:
      # shared_store() ensures the schema, then the outbox worker derives its
      # store. Each DDL run and the stamp after each step are reported back.
@@ -174,7 +174,7 @@ test "a server boot applies the schema DDL once and a restart applies none" {
 }
 
 
-test "the base schema carries the outbox tables" {
+test "the base schema carries the outbox and docs tables" {
     with TemporaryDirectory() as td {
         (rt, info) = _fresh_db(td);
         store = PgStore(conninfo=info, ensure_cb=rt.ensure);
@@ -183,12 +183,13 @@ test "the base schema carries the outbox tables" {
             tables = _present_tables(store);
             missing = [
                 name
-                for name in OUTBOX_TABLES
+                for name in PLUGIN_TABLES
                 if name not in tables
             ];
             assert missing == [] , (
                 f"ensure_schema left {missing} uncreated: the store owns the"
-                ' outbox tables, nothing may extend the schema after the fact'
+                ' outbox and docs tables, nothing may extend the schema after'
+                ' the fact'
             );
         } finally {
             store.close();
