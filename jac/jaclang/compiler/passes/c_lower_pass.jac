@@ -1,42 +1,27 @@
-"""Emit ordinary Jac source for the supported scalar C subset.
-
-No partial module is returned on errors. Unsupported C semantics are diagnosed
-at their source node rather than approximated with managed Jac operations.
-"""
-import from .parser { CParser, CParseResult, parse_c }
-import from .preprocessor { CConfig }
-import from .tokens { CToken, CDiagnostic }
+"""C semantic lowering to standard Jac UniTree; no Jac source concatenation."""
+import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.frontend.c.parser { CParser, CParseResult }
+import from jaclang.compiler.frontend.c.semantics { CEmitConfig, CScalar, compatible, promote, common }
+import from jaclang.compiler.frontend.c.jac_ast { CJacAst }
+import from jaclang.compiler.frontend.c.tokens { CDiagnostic }
 import from jaclang.compiler.frontend.unitree_c { CNode }
+import from jaclang.compiler.frontend.srcloc { Span }
+import from jaclang.compiler.frontend.diagnostics { E0090, W0090, E2290 }
+import from jaclang.compiler.passes.context { Alert, PassResult, CompileContext }
 
-obj CEmitConfig {
-    has abi: str = "lp64",
-        char_signed: bool = True;
+obj CLowerResult(PassResult) {
+    has module: uni.Module | None = None,
+        origins: dict[int, Span] = {};
+    has ok: bool { getter { return not self.errors_had; } }
 }
 
-obj CEmitResult {
-    has source: str = "",
-        diagnostics: list[CDiagnostic] = [];
-    has ok: bool {
-        getter { return not any(d.severity == "error" for d in self.diagnostics); }
-    }
-}
-
-obj CScalar {
-    has width: int = 32,
-        signed: bool = True,
-        rank: int = 3,
-        category: str = "integer";
-    has jac: str {
-        getter {
-            if self.category == "void" { return "None"; }
-            if self.category == "bool" { return "bool"; }
-            return ("i" if self.signed else "u") + str(self.width);
-        }
-    }
+def frontend_alert(diagnostic: CDiagnostic, owner: type) -> Alert {
+    return Alert(msg=diagnostic.message, loc=Span.from_loc(diagnostic.token.as_unitree().loc),
+        from_pass=owner, code=E0090 if diagnostic.severity == "error" else W0090);
 }
 
 obj CValue {
-    has code: str,
+    has expr: uni.Expr,
         typ: CScalar,
         constant: bool = False;
 }
@@ -55,9 +40,11 @@ obj CFunction {
         definition: CNode | None = None;
 }
 
-obj CJacEmitter {
+obj CLowerPass {
     has config: CEmitConfig,
-        result: CEmitResult = CEmitResult(),
+        ast: CJacAst,
+        ctx: CompileContext,
+        result: CLowerResult = CLowerResult(),
         aliases: dict[str, CScalar] = {},
         emitted_aliases: set[str] = set(),
         globals: dict[str, CBinding] = {},
@@ -67,7 +54,7 @@ obj CJacEmitter {
         current: CNode | None = None,
         return_type: CScalar = CScalar(category="void"),
         # Each loop supplies the statements a continue must execute first.
-        continue_actions: list[list[str]] = [],
+        continue_actions: list[list[uni.CodeBlockStmt]] = [],
         helpers: dict[str, CScalar] = {};
 
     def fail(nd: CNode, message: str) {
@@ -75,16 +62,8 @@ obj CJacEmitter {
         raise ValueError(message);
     }
 
-    def diagnostic(nd: CNode, message: str) -> CDiagnostic {
-        (first, _) = nd.resolve_tok_range();
-        token = CToken(kind="emission", text=first.value, source=first.orig_src,
-            start=first.pos_start, end=first.pos_end, line=first.line_no,
-            column=first.c_start, end_line=first.end_line, end_column=first.c_end);
-        return CDiagnostic("c2jac: " + message, token);
-    }
-
-    def compatible(a: CScalar, b: CScalar) -> bool {
-        return a.width == b.width and a.signed == b.signed and a.rank == b.rank and a.category == b.category;
+    def report_error(nd: CNode, message: str) {
+        self.ctx.emit(E2290, node_override=nd, details=message);
     }
 
     def scalar(spec: CNode) -> CScalar {
@@ -173,11 +152,11 @@ obj CJacEmitter {
         if fn.name in self.globals or fn.name in self.aliases { self.fail(decl, "Conflicting ordinary identifier " + fn.name); }
         previous = self.functions.get(fn.name);
         if previous is not None {
-            if not self.compatible(previous.returns, fn.returns) or len(previous.parameters) != len(fn.parameters) {
+            if not compatible(previous.returns, fn.returns) or len(previous.parameters) != len(fn.parameters) {
                 self.fail(decl, "Conflicting function declarations for " + fn.name);
             }
             for i in range(len(fn.parameters)) {
-                if not self.compatible(previous.parameters[i], fn.parameters[i]) { self.fail(decl, "Conflicting parameter type for " + fn.name); }
+                if not compatible(previous.parameters[i], fn.parameters[i]) { self.fail(decl, "Conflicting parameter type for " + fn.name); }
             }
             if previous.definition is not None and definition is not None { self.fail(decl, "Duplicate function definition " + fn.name); }
             if definition is not None { previous.definition = definition; }
@@ -199,7 +178,7 @@ obj CJacEmitter {
                 if ops { self.fail(decl, "Only scalar typedefs can currently be emitted"); }
                 if name in self.functions or name in self.globals { self.fail(decl, "Conflicting typedef " + name); }
                 previous = self.aliases.get(name);
-                if previous is not None and not self.compatible(previous, typ) { self.fail(decl, "Conflicting typedef " + name); }
+                if previous is not None and not compatible(previous, typ) { self.fail(decl, "Conflicting typedef " + name); }
                 self.aliases[name] = typ;
             } elif ops and ops[0].kind == "function" {
                 if len(item.operands) > 1 { self.fail(item, "Function declaration cannot have an initializer"); }
@@ -213,24 +192,15 @@ obj CJacEmitter {
         }
     }
 
-    def promote(typ: CScalar) -> CScalar {
-        return CScalar() if typ.rank < 3 else typ;
-    }
-
-    def common(a: CScalar, b: CScalar) -> CScalar {
-        left = self.promote(a); right = self.promote(b);
-        if left.signed == right.signed { return left if left.rank >= right.rank else right; }
-        unsigned = right if left.signed else left; signed = left if left.signed else right;
-        if unsigned.rank >= signed.rank { return unsigned; }
-        if signed.width > unsigned.width { return signed; }
-        return CScalar(signed.width, False, signed.rank);
-    }
-
-    def converted(value: CValue, typ: CScalar) -> str {
-        if typ.category == "bool" { return "bool(" + value.code + ")"; }
+    def converted(value: CValue, typ: CScalar) -> uni.Expr {
+        if typ.category == "bool" { return self.ast.call("bool", [value.expr]); }
         if typ.category == "void" or value.typ.category == "void" { raise ValueError("A void expression cannot be converted to a value"); }
-        if self.compatible(value.typ, typ) { return value.code; }
-        return typ.jac + ".wrap(" + value.code + ")";
+        if compatible(value.typ, typ) { return value.expr; }
+        return self.ast.call(typ.jac + ".wrap", [value.expr]);
+    }
+
+    def zero(typ: CScalar) -> uni.Expr {
+        return self.ast.boolean(False) if typ.category == "bool" else self.ast.call(typ.jac, [self.ast.integer(0)]);
     }
 
     def binding(nd: CNode) -> CBinding {
@@ -261,43 +231,53 @@ obj CJacEmitter {
             for signed in candidates {
                 if number < (1 << (width - (1 if signed else 0))) {
                     typ = CScalar(width, signed, rank);
-                    return CValue(typ.jac + "(" + str(number) + ")", typ, True);
+                    return CValue(self.ast.call(typ.jac, [self.ast.integer(number)]), typ, True);
                 }
             }
         }
         self.fail(nd, "Integer literal exceeds the selected C data model");
-        return CValue("", CScalar());
+        return CValue(self.ast.integer(0), CScalar());
     }
 
     def binary(op: str, left: CValue, right: CValue, nd: CNode) -> CValue {
+        self.ast.origin = nd;
         if left.typ.category == "void" or right.typ.category == "void" { self.fail(nd, "Void operand in integer expression"); }
         constant = left.constant and right.constant;
         if op in ["&&", "||"] {
-            join = " and " if op == "&&" else " or ";
-            return CValue("i32(bool(" + left.code + ")" + join + "bool(" + right.code + "))", CScalar(), constant);
+            value = self.ast.binary("and" if op == "&&" else "or",
+                self.ast.call("bool", [left.expr]), self.ast.call("bool", [right.expr]));
+            return CValue(self.ast.call("i32", [value]), CScalar(), constant);
         }
-        typ = self.promote(left.typ) if op in ["<<", ">>"] else self.common(left.typ, right.typ);
+        typ = promote(left.typ) if op in ["<<", ">>"] else common(left.typ, right.typ);
         a = self.converted(left, typ);
-        b = self.converted(right, self.promote(right.typ) if op in ["<<", ">>"] else typ);
+        b = self.converted(right, promote(right.typ) if op in ["<<", ">>"] else typ);
         if op in ["==", "!=", "<", ">", "<=", ">="] {
-            return CValue("i32(" + a + " " + op + " " + b + ")", CScalar(), constant);
+            return CValue(self.ast.call("i32", [self.ast.binary(op, a, b)]), CScalar(), constant);
         }
         wrapping = {"+": "wrapping_add", "-": "wrapping_sub", "*": "wrapping_mul", "<<": "wrapping_shl"};
-        if not typ.signed and op in wrapping { code = wrapping[op] + "(" + a + ", " + b + ")"; }
+        expr: uni.Expr;
+        if not typ.signed and op in wrapping { expr = self.ast.call(wrapping[op], [a, b]); }
         elif op in ["/", "%"] and typ.signed {
             helper = "_c2jac_" + ("div_" if op == "/" else "rem_") + typ.jac;
             self.helpers[helper] = typ;
             if op == "%" { self.helpers["_c2jac_div_" + typ.jac] = typ; }
-            code = helper + "(" + a + ", " + b + ")";
-        } else { code = "(" + a + " " + ("//" if op == "/" else op) + " " + b + ")"; }
-        return CValue(code, typ, constant);
+            expr = self.ast.call(helper, [a, b]);
+        } else { expr = self.ast.binary("//" if op == "/" else op, a, b); }
+        return CValue(expr, typ, constant);
     }
 
     def expression(nd: CNode) -> CValue {
-        self.current = nd; children = nd.operands; kind = nd.kind;
+        value = self.lower_expression(nd);
+        self.ast.origin = nd;
+        self.ast.mark(value.expr);
+        return value;
+    }
+
+    def lower_expression(nd: CNode) -> CValue {
+        self.current = nd; self.ast.origin = nd; children = nd.operands; kind = nd.kind;
         if kind == "number" { return self.integer(nd); }
         if kind == "identifier" {
-            bound = self.binding(nd); return CValue(bound.name, bound.typ);
+            bound = self.binding(nd); return CValue(self.ast.name(bound.name), bound.typ);
         }
         if kind == "parenthesized" { return self.expression(children[0]); }
         if kind == "cast" {
@@ -311,18 +291,18 @@ obj CJacEmitter {
             if op not in ["+", "-", "~", "!"] { self.fail(nd, "Expression-valued " + op + " is not emitted yet"); }
             value = self.expression(children[0]);
             if value.typ.category == "void" { self.fail(nd, "Void operand in unary expression"); }
-            if op == "!" { return CValue("i32(not bool(" + value.code + "))", CScalar(), value.constant); }
-            typ = self.promote(value.typ); code = self.converted(value, typ);
-            if op == "-" and not typ.signed { code = "wrapping_neg(" + code + ")"; }
-            else { code = "(" + op + code + ")"; }
+            if op == "!" { return CValue(self.ast.call("i32", [self.ast.unary("not", self.ast.call("bool", [value.expr]))]), CScalar(), value.constant); }
+            typ = promote(value.typ); code = self.converted(value, typ);
+            if op == "-" and not typ.signed { code = self.ast.call("wrapping_neg", [code]); }
+            else { code = self.ast.unary(op, code); }
             return CValue(code, typ, value.constant);
         }
         if kind == "binary" { return self.binary(nd.value, self.expression(children[0]), self.expression(children[1]), nd); }
         if kind == "conditional" {
             condition = self.expression(children[0]); yes = self.expression(children[1]); no = self.expression(children[2]);
             if condition.typ.category == "void" or yes.typ.category == "void" or no.typ.category == "void" { self.fail(nd, "Void conditional expressions are not emitted yet"); }
-            typ = self.common(yes.typ, no.typ);
-            return CValue("(" + self.converted(yes, typ) + " if bool(" + condition.code + ") else " + self.converted(no, typ) + ")", typ, condition.constant and yes.constant and no.constant);
+            typ = common(yes.typ, no.typ);
+            return CValue(self.ast.conditional(self.ast.call("bool", [condition.expr]), self.converted(yes, typ), self.converted(no, typ)), typ, condition.constant and yes.constant and no.constant);
         }
         if kind == "call" {
             callee = children[0];
@@ -334,20 +314,20 @@ obj CJacEmitter {
             if fn is None or fn.definition is None { self.fail(callee, "External call requires a C library binding: " + callee.value); }
             assert fn is not None;
             if len(children) - 1 != len(fn.parameters) { self.fail(nd, "Incorrect argument count for " + callee.value); }
-            args: list[str] = [];
+            args: list[uni.Expr] = [];
             for i in range(len(fn.parameters)) { args.append(self.converted(self.expression(children[i + 1]), fn.parameters[i])); }
-            return CValue("c_" + fn.name + "(" + ", ".join(args) + ")", fn.returns);
+            return CValue(self.ast.call("c_" + fn.name, args), fn.returns);
         }
         if kind == "sizeof_type" {
             typ = self.variable(children[0].operands[0], children[0].operands[1]);
             size_type = CScalar(32 if self.config.abi == "ilp32" else 64, False, 3 if self.config.abi == "ilp32" else (4 if self.config.abi == "lp64" else 5));
-            return CValue(size_type.jac + "(" + str(typ.width // 8) + ")", size_type, True);
+            return CValue(self.ast.call(size_type.jac, [self.ast.integer(typ.width // 8)]), size_type, True);
         }
         self.fail(nd, "Expression '" + kind + "' requires further source lowering");
-        return CValue("", CScalar());
+        return CValue(self.ast.integer(0), CScalar());
     }
 
-    def effect(nd: CNode) -> list[str] {
+    def effect(nd: CNode) -> list[uni.CodeBlockStmt] {
         children = nd.operands;
         if nd.kind == "omitted" { return []; }
         if nd.kind == "parenthesized" { return self.effect(children[0]); }
@@ -357,12 +337,12 @@ obj CJacEmitter {
             if bound.readonly { self.fail(nd, "Assignment to const object"); }
             if nd.kind == "assignment" {
                 value = self.expression(children[1]);
-                if nd.value != "=" { value = self.binary(nd.value[:-1], CValue(bound.name, bound.typ), value, nd); }
-            } else { value = self.binary("+" if nd.value == "++" else "-", CValue(bound.name, bound.typ), CValue("i32(1)", CScalar(), True), nd); }
-            return [bound.name + " = " + self.converted(value, bound.typ) + ";"];
+                if nd.value != "=" { value = self.binary(nd.value[:-1], CValue(self.ast.name(bound.name), bound.typ), value, nd); }
+            } else { value = self.binary("+" if nd.value == "++" else "-", CValue(self.ast.name(bound.name), bound.typ), CValue(self.ast.call("i32", [self.ast.integer(1)]), CScalar(), True), nd); }
+            return [self.ast.assignment(bound.name, self.converted(value, bound.typ))];
         }
         value = self.expression(nd);
-        return [value.code + ";"];
+        return [self.ast.expression(value.expr)];
     }
 
     def fresh(name: str) -> str {
@@ -370,117 +350,122 @@ obj CJacEmitter {
         return "_c2jac_local_" + str(self.serial) + "_" + name;
     }
 
-    def local_declaration(nd: CNode) -> list[str] {
+    def local_declaration(nd: CNode) -> list[uni.CodeBlockStmt] {
         children = nd.operands; spec = children[0]; storage = self.storage(spec);
         if any(s != "auto" and s != "register" for s in storage) { self.fail(nd, "Local typedef/static/extern declarations require further lowering"); }
-        lines: list[str] = [];
+        lines: list[uni.CodeBlockStmt] = [];
         for item in children[1:] {
             parts = item.operands; decl = parts[0]; name = self.name_of(decl); typ = self.variable(spec, decl);
             if name in self.scopes[-1] { self.fail(decl, "Duplicate local declaration " + name); }
             binding = CBinding(self.fresh(name), typ, self.readonly(spec)); self.scopes[-1][name] = binding;
             # Reading an uninitialized C scalar has no defined value. Initializing
             # its Jac storage does not change defined executions of this subset.
-            value = self.converted(self.expression(parts[1]), typ) if len(parts) > 1 else ("False" if typ.category == "bool" else typ.jac + "(0)");
-            lines.append(binding.name + ": " + typ.jac + " = " + value + ";");
+            value = self.converted(self.expression(parts[1]), typ) if len(parts) > 1 else self.zero(typ);
+            lines.append(self.ast.assignment(binding.name, value, typ.jac));
         }
         return lines;
     }
 
-    def indent(lines: list[str]) -> list[str] { return ["    " + line for line in lines]; }
-
-    def body(nd: CNode) -> list[str] {
+    def body(nd: CNode) -> list[uni.CodeBlockStmt] {
         if nd.kind == "compound" {
-            self.scopes.append({}); lines: list[str] = [];
+            self.scopes.append({}); stmts: list[uni.CodeBlockStmt] = [];
             try {
                 for child in nd.operands {
-                    lines.extend(self.local_declaration(child) if child.kind == "declaration" else self.statement(child));
+                    self.ast.origin = child;
+                    stmts.extend(self.local_declaration(child) if child.kind == "declaration" else self.statement(child));
                 }
             } finally { self.scopes.pop(); }
-            return lines;
+            return stmts;
         }
         return self.statement(nd);
     }
 
-    def statement(nd: CNode) -> list[str] {
-        self.current = nd; children = nd.operands; kind = nd.kind;
+    def statement(nd: CNode) -> list[uni.CodeBlockStmt] {
+        self.current = nd; self.ast.origin = nd; children = nd.operands; kind = nd.kind;
         if kind == "empty" { return []; }
-        if kind == "compound" { return ["if True {"] + self.indent(self.body(nd)) + ["}"]; }
+        if kind == "compound" { return [self.ast.branch(self.ast.boolean(True), self.body(nd))]; }
         if kind == "expression" { return self.effect(children[0]); }
         if kind == "return" {
             if not children {
                 if self.return_type.category != "void" { self.fail(nd, "Non-void return needs a value"); }
-                return ["return;"];
+                return [self.ast.returned()];
             }
             if self.return_type.category == "void" { self.fail(nd, "Void function cannot return a scalar value"); }
-            return ["return " + self.converted(self.expression(children[0]), self.return_type) + ";"];
+            return [self.ast.returned(self.converted(self.expression(children[0]), self.return_type))];
         }
         if kind == "if" {
             condition = self.expression(children[0]);
             if condition.typ.category == "void" { self.fail(nd, "Void condition"); }
-            lines = ["if bool(" + condition.code + ") {"] + self.indent(self.body(children[1])) + ["}"];
-            if len(children) == 3 { lines.extend(["else {"] + self.indent(self.body(children[2])) + ["}"]); }
-            return lines;
+            body = self.body(children[1]);
+            alternative = self.body(children[2]) if len(children) == 3 else None;
+            self.ast.origin = nd;
+            return [self.ast.branch(self.ast.call("bool", [condition.expr]), body, alternative)];
         }
         if kind in ["while", "for", "do_while"] {
             self.scopes.append({});
             try {
-                initial: list[str] = []; step: list[str] = [];
+                initial: list[uni.CodeBlockStmt] = []; step: list[uni.CodeBlockStmt] = [];
                 if kind == "for" {
                     initial = self.local_declaration(children[0]) if children[0].kind == "declaration" else self.effect(children[0]);
-                    condition = CValue("True", CScalar(category="bool")) if children[1].kind == "omitted" else self.expression(children[1]);
+                    condition = CValue(self.ast.boolean(True), CScalar(category="bool")) if children[1].kind == "omitted" else self.expression(children[1]);
                     step = self.effect(children[2]); body_node = children[3];
                 } elif kind == "while" { condition = self.expression(children[0]); body_node = children[1]; }
                 else {
                     body_node = children[0]; condition = self.expression(children[1]);
-                    step = ["if not bool(" + condition.code + ") { break; }"];
+                    step = [self.ast.branch(self.ast.unary("not", self.ast.call("bool", [condition.expr])), [self.ast.control("break")])];
                 }
                 if condition.typ.category == "void" { self.fail(nd, "Void loop condition"); }
                 self.continue_actions.append(step);
-                try { body_lines = self.body(body_node); }
+                try { body_stmts = self.body(body_node); }
                 finally { self.continue_actions.pop(); }
-                head = "while True {" if kind == "do_while" else "while bool(" + condition.code + ") {";
-                return initial + [head] + self.indent(body_lines + step) + ["}"];
+                self.ast.origin = nd;
+                guard = self.ast.boolean(True) if kind == "do_while" else self.ast.call("bool", [condition.expr]);
+                return initial + [self.ast.loop(guard, body_stmts + step)];
             } finally { self.scopes.pop(); }
         }
         if kind in ["break", "continue"] {
             if not self.continue_actions { self.fail(nd, kind + " outside a supported loop"); }
-            return (self.continue_actions[-1] if kind == "continue" else []) + [kind + ";"];
+            # Each statement occurrence must own its own graph, including the
+            # for-step/do-condition copied into a continue path.
+            prefix = self.ast.clone_block(self.continue_actions[-1]) if kind == "continue" else [];
+            return prefix + [self.ast.control(kind)];
         }
         self.fail(nd, "Statement '" + kind + "' has no source lowering yet");
         return [];
     }
 
-    def function_source(nd: CNode) -> list[str] {
+    def function_node(nd: CNode) -> uni.Ability {
         parts = nd.operands; decl = parts[1]; fn = self.functions[self.name_of(decl)];
         parameters = self.operators(decl)[0].operands[1:];
         self.scopes = [{}]; self.return_type = fn.returns;
-        params: list[str] = [];
+        params: list[uni.ParamVar] = [];
         for i in range(len(fn.parameters)) {
             parameter = parameters[i]; name = self.name_of(parameter.operands[1]);
             if not name { self.fail(parameter, "Function definition requires named parameters"); }
             if name in self.scopes[0] { self.fail(parameter, "Duplicate parameter " + name); }
             binding = CBinding(self.fresh(name), fn.parameters[i], self.readonly(parameter.operands[0]));
-            self.scopes[0][name] = binding; params.append(binding.name + ": " + binding.typ.jac);
+            self.scopes[0][name] = binding; params.append(self.ast.parameter(binding.name, binding.typ.jac));
         }
         # The function's outermost block shares the parameter scope in C.
-        lines: list[str] = [];
+        lines: list[uni.CodeBlockStmt] = [];
         for child in parts[2].operands {
             lines.extend(self.local_declaration(child) if child.kind == "declaration" else self.statement(child));
         }
         if fn.returns.category != "void" and (not parts[2].operands or parts[2].operands[-1].kind != "return") {
-            lines.append("return " + ("False" if fn.returns.category == "bool" else fn.returns.jac + "(0)") + ";");
+            lines.append(self.ast.returned(self.zero(fn.returns)));
         }
-        return ["def c_" + fn.name + "(" + ", ".join(params) + ") -> " + fn.returns.jac + " {"] + self.indent(lines) + ["}", ""];
+        self.ast.origin = nd;
+        return self.ast.function("c_" + fn.name, params, fn.returns.jac, lines);
     }
 
-    def global_source(nd: CNode) -> list[str] {
-        parts = nd.operands; spec = parts[0]; lines: list[str] = [];
+    def global_nodes(nd: CNode) -> list[uni.ElementStmt] {
+        parts = nd.operands; spec = parts[0]; lines: list[uni.ElementStmt] = [];
         if "typedef" in self.storage(spec) {
             for item in parts[1:] {
                 name = self.name_of(item.operands[0]);
                 if name not in self.emitted_aliases {
                     self.emitted_aliases.add(name);
-                    lines.append("type c_" + name + " = " + self.aliases[name].jac + ";");
+                    lines.append(self.ast.alias("c_" + name, self.aliases[name].jac));
                 }
             }
             return lines;
@@ -494,61 +479,82 @@ obj CJacEmitter {
                 value = self.expression(children[1]);
                 if not value.constant { self.fail(item, "Global initializer must be a supported integer constant expression"); }
                 initializer = self.converted(value, typ);
-            } else { initializer = "False" if typ.category == "bool" else typ.jac + "(0)"; }
-            lines.append("glob " + binding.name + ": " + typ.jac + " = " + initializer + ";");
+            } else { initializer = self.zero(typ); }
+            lines.append(self.ast.global_var(binding.name, typ.jac, initializer));
         }
         return lines;
     }
 
-    def helper_source -> list[str] {
-        lines: list[str] = [];
+    def helper_nodes -> list[uni.ElementStmt] {
+        nodes: list[uni.ElementStmt] = [];
         for name in sorted(self.helpers) {
             typ = self.helpers[name].jac;
-            lines.append("def " + name + "(a: " + typ + ", b: " + typ + ") -> " + typ + " {");
-            if "_rem_" in name { lines.append("    return a - _c2jac_div_" + typ + "(a, b) * b;"); }
-            else {
-                lines.append("    q: " + typ + " = a // b;");
-                lines.append("    if ((a < 0) != (b < 0)) and ((a % b) != 0) { q = q + " + typ + "(1); }");
-                lines.append("    return q;");
+            params = [self.ast.parameter("a", typ), self.ast.parameter("b", typ)];
+            body: list[uni.CodeBlockStmt] = [];
+            if "_rem_" in name {
+                quotient = self.ast.call("_c2jac_div_" + typ, [self.ast.name("a"), self.ast.name("b")]);
+                product = self.ast.binary("*", quotient, self.ast.name("b"));
+                body.append(self.ast.returned(self.ast.binary("-", self.ast.name("a"), product)));
+            } else {
+                body.append(self.ast.assignment("q", self.ast.binary("//", self.ast.name("a"), self.ast.name("b")), typ));
+                negative_a = self.ast.binary("<", self.ast.name("a"), self.ast.integer(0));
+                negative_b = self.ast.binary("<", self.ast.name("b"), self.ast.integer(0));
+                opposite = self.ast.binary("!=", negative_a, negative_b);
+                remainder = self.ast.binary("%", self.ast.name("a"), self.ast.name("b"));
+                nonzero = self.ast.binary("!=", remainder, self.ast.integer(0));
+                correction = self.ast.binary("+", self.ast.name("q"), self.ast.call(typ, [self.ast.integer(1)]));
+                body.append(self.ast.branch(self.ast.binary("and", opposite, nonzero), [self.ast.assignment("q", correction)]));
+                body.append(self.ast.returned(self.ast.name("q")));
             }
-            lines.extend(["}", ""]);
+            nodes.append(self.ast.function(name, params, typ, body));
         }
-        return lines;
+        return nodes;
     }
 
-    def emit(parsed: CParseResult) -> CEmitResult {
-        self.result = CEmitResult(diagnostics=list(parsed.diagnostics));
+    def lower(parsed: CParseResult) -> CLowerResult {
+        self.result = CLowerResult();
+        self.ctx.errors_had = self.result.errors_had;
+        self.ctx.warnings_had = self.result.warnings_had;
         self.aliases = {}; self.emitted_aliases = set(); self.globals = {}; self.functions = {}; self.scopes = [];
         self.helpers = {}; self.serial = 0; self.continue_actions = [];
-        if self.config.abi not in ["lp64", "llp64", "ilp32"] {
-            self.result.diagnostics.append(self.diagnostic(parsed.tree, "Unknown ABI: " + self.config.abi)); return self.result;
+        for diagnostic in parsed.diagnostics {
+            alert = frontend_alert(diagnostic, CLowerPass);
+            if diagnostic.severity == "error" { self.result.errors_had.append(alert); }
+            else { self.result.warnings_had.append(alert); }
         }
-        if not parsed.ok { return self.result; }
-        declarations = [n for n in parsed.tree.operands if n.kind != "preprocessing_unit"];
-        for nd in declarations {
-            self.current = nd;
-            try { self.collect(nd); }
-            except ValueError as error { self.result.diagnostics.append(self.diagnostic(self.current or nd, str(error))); }
+        if self.config.abi not in ["lp64", "llp64", "ilp32"] {
+            self.report_error(parsed.tree, "Unknown ABI: " + self.config.abi); return self.result;
         }
         if not self.result.ok { return self.result; }
-        lines: list[str] = [];
+        declarations = [n for n in parsed.tree.operands if n.kind != "preprocessing_unit"];
         for nd in declarations {
-            self.current = nd;
-            try { lines.extend(self.function_source(nd) if nd.kind == "function_definition" else self.global_source(nd)); }
-            except ValueError as error { self.result.diagnostics.append(self.diagnostic(self.current or nd, str(error))); }
+            self.current = nd; self.ast.origin = nd;
+            try { self.collect(nd); }
+            except ValueError as error { self.report_error(self.current or nd, str(error)); }
+        }
+        if not self.result.ok { return self.result; }
+        body: list[uni.ElementStmt] = [];
+        for nd in declarations {
+            self.current = nd; self.ast.origin = nd;
+            try {
+                if nd.kind == "function_definition" { body.append(self.function_node(nd)); }
+                else { body.extend(self.global_nodes(nd)); }
+            } except ValueError as error { self.report_error(self.current or nd, str(error)); }
         }
         if self.result.ok {
-            header = ["# Generated by jac tool c2jac; C data model: " + self.config.abi + ".",
-                "# Global C names use the c_ prefix; preprocessing is already resolved.", ""];
-            self.result.source = "\n".join(header + self.helper_source() + lines).rstrip() + "\n";
+            self.ast.origin = parsed.tree;
+            self.result.module = self.ast.module(self.helper_nodes() + body);
+            self.result.origins = dict(self.ast.origins);
         }
         return self.result;
     }
 }
 
-"""Parse and emit without compiling, executing, or writing the generated Jac."""
-def emit_c(source: str, file_path: str = "<c-input>",
-           preprocess: CConfig | None = None, config: CEmitConfig | None = None) -> CEmitResult {
-    parsed = parse_c(source, file_path, preprocess);
-    return CJacEmitter(config or CEmitConfig()).emit(parsed);
+"""Lower C syntax to a standard Jac Module without printing or executing it."""
+def lower_c(parsed: CParseResult, config: CEmitConfig | None = None) -> CLowerResult {
+    eof = parsed.preprocessing.eof;
+    input_path = eof.source.file_path if eof is not None else parsed.tree.loc.mod_path;
+    source = uni.Source("", input_path + ".jac");
+    context = CompileContext(current_node=parsed.tree, from_pass=CLowerPass, pass_name="CLowerPass");
+    return CLowerPass(config=config or CEmitConfig(), ast=CJacAst(source, parsed.tree), ctx=context).lower(parsed);
 }

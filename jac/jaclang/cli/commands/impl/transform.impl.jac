@@ -90,7 +90,7 @@ impl c2jac(args: list[str]) -> int {
     import os;
     import sys;
     import tempfile;
-    import from jaclang.compiler.frontend.c.emitter { CEmitConfig, emit_c }
+    import from jaclang.compiler.tools.c2jac { CEmitConfig, emit_c }
     import from jaclang.compiler.frontend.c.preprocessor { CConfig }
 
     parser = argparse.ArgumentParser(prog="jac tool c2jac",
@@ -129,7 +129,7 @@ impl c2jac(args: list[str]) -> int {
         result = emit_c(source, path,
             CConfig(include_paths=list(options.include_paths), defines=definitions),
             CEmitConfig(abi=str(options.abi), char_signed=not bool(options.unsigned_char)));
-        for diagnostic in result.diagnostics { sys.stderr.write(str(diagnostic) + "\n"); }
+        for diagnostic in result.diagnostics { sys.stderr.write(diagnostic.pretty_print() + "\n"); }
         if not result.ok { return 1; }
         if destination == "-" { sys.stdout.write(result.source); }
         else {

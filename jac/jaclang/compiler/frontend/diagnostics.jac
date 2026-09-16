@@ -2185,3 +2185,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Client error could not be traced to Jac source: {message}",
          help="The dev loop kept the raw location it was given, but nothing under .jac/client/compiled claims it -- a browser extension, a dependency with no source map, or an artifact from a build that has since been replaced. Reload after a clean build if the location should be yours."
      );
+
+# C frontend diagnostics are adapted to the shared pass reporting boundary.
+glob E0090 = _err("E0090", Category.SYNTAX, "C frontend: {details}", blocks_codegen=True),
+     W0090 = _warn("W0090", Category.SYNTAX, "C frontend: {details}"),
+     E2290 = _err("E2290", Category.SEMANTIC, "C lowering: {details}", blocks_codegen=True);

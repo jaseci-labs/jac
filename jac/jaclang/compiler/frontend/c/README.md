@@ -77,10 +77,41 @@ output files are replaced atomically only after successful emission. The input
 file cannot also be the output, including through a symlink or hard link.
 Argument errors return 2, translation/I/O errors return 1, and success returns 0.
 
-The corresponding API is `emitter.emit_c(source, file_path, preprocess, config)`.
+The corresponding API is
+`jaclang.compiler.tools.c2jac.emit_c(source, file_path, preprocess, config)`.
 `preprocess` is a `CConfig`; `config` is a `CEmitConfig`. The result contains
-`source`, `diagnostics`, and `ok`. On any error, `source` is empty. Neither the
-API nor command compiles or executes the resulting Jac.
+`source`, `module`, `origins`, `diagnostics`, and `ok`, plus the shared
+`PassResult.errors_had` and `warnings_had`. Diagnostics are compiler `Alert`
+objects, rendered through the existing diagnostic formatter. On a lowering
+error, `source` is empty and no partial output module is returned. Neither the
+API nor command executes the resulting Jac.
+
+The conversion follows the existing compiler layers:
+
+```text
+frontend/c: scanning, preprocessing, C syntax, integer-model rules
+    -> passes/c_lower_pass: C semantics to standard Jac Module
+    -> tools/c2jac: shared unparse_module and formatting
+    -> cli/commands/transform: arguments and I/O
+```
+
+`passes.c_lower_pass.lower_c(parsed, config)` exposes the lowering result
+without source emission. The output contains ordinary `Ability`, `Assignment`,
+`FuncCall`, `IfStmt`, `WhileStmt`, and other existing UniTree nodes. Boolean
+and conditional operands use the existing `CfgExpr` wrappers. The frontend
+`jac_ast.jac` helpers construct these nodes directly; no intermediate Jac
+source is parsed to manufacture the output tree. C integer promotion and
+conversion rules live separately in `semantics.jac`. Source formatting and
+punctuation belong to the shared normalizer/unparser/formatter.
+
+Output tokens belong to a single generated source so the unparser's annex
+filter does not discard declarations originating in C headers. `origins`
+maps lowered node identities to original C `Span`s. Duplicated loop-step
+statements are detached graph copies, not multiply-parented AST nodes.
+Scanner/parser diagnostics remain frontend data until the lowering boundary,
+where they become shared alerts (`E0090`/`W0090`); unsupported lowering uses
+`E2290`. C syntax nodes remain a frontend representation. The executable
+output module does not contain those C-specific nodes.
 
 The emitter supports integer and `_Bool` scalar types, scalar typedefs,
 globals, function definitions/prototypes, direct calls to functions defined in
@@ -167,8 +198,8 @@ This is not an exhaustive C11 conformance claim. Important gaps include:
 - Lowering preprocessing operations into Jac's existing `comptime` evaluator.
   Today preprocessing executes in this frontend's dedicated token interpreter;
   retaining directive nodes does **not** make them existing Jac comptime nodes.
-- General C-to-Jac source emission beyond the scalar subset, lowering C nodes
-  into shared executable UniTree operations, and direct native-backend integration.
+- General C-to-Jac lowering beyond the scalar subset and direct `.c` input
+  integration with the normal compilation schedules.
 
 The next lowering boundary should consume the explicit C operations and either
 produce shared executable nodes or report a capability gap. It must not turn
@@ -187,5 +218,7 @@ repo=/path/to/j1
 cd /tmp
 JAC_NO_DEV_SOURCE=1 "$HOME/.local/bin/jac" check \
   "$repo/jac/jaclang/compiler/frontend/c/" \
-  "$repo/jac/jaclang/compiler/frontend/unitree_c.jac"
+  "$repo/jac/jaclang/compiler/frontend/unitree_c.jac" \
+  "$repo/jac/jaclang/compiler/passes/c_lower_pass.jac" \
+  "$repo/jac/jaclang/compiler/tools/c2jac.jac"
 ```

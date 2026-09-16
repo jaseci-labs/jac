@@ -23,9 +23,10 @@ this file is the map of the tree and the rules that keep it organized.
 
 The experimental [C frontend](frontend/c/README.md) preprocesses configured C
 sources and parses them into the C UniTree surface in `frontend/unitree_c.jac`.
-`jac tool c2jac` emits ordinary Jac source for its supported scalar subset.
-The C nodes are not yet part of the executable compilation schedules; general
-C semantic analysis, Jac comptime lowering, and direct backend integration remain.
+`jac tool c2jac` lowers its supported scalar subset to standard Jac UniTree via
+`passes/c_lower_pass.jac`, then emits source through the shared unparser. The C
+syntax nodes are not part of executable compilation schedules; general C
+semantic analysis, Jac comptime lowering, and direct `.c` input integration remain.
 
 The loose modules at this level are the native frontend kernel
 (`jc_unit`, `jc_materialize`, `native_compiler`, `native_scope`: the parser
