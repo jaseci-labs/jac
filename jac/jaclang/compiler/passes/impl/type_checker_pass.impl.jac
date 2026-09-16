@@ -143,10 +143,20 @@ impl TypeCheckPass.exit_filter_compr with FilterCompr exit {
     self.evaluator.get_type_of_expression(here);
 }
 
+def _lambda_value_body(nd: LambdaExpr) -> bool {
+    if isinstance(nd.body, Expr) or nd.tail_return_expr() is not None {
+        return True;
+    }
+    return isinstance(nd.body, list)
+        and len(nd.body) == 1
+        and isinstance(nd.body[0], ReturnStmt)
+        and nd.body[0].expr is not None;
+}
+
 def _lambda_needs_context(nd: LambdaExpr) -> bool {
     return nd.signature is not None
         and any(param.type_tag is None for param in nd.signature.get_parameters())
-        and (isinstance(nd.body, Expr) or nd.tail_return_expr() is not None);
+        and _lambda_value_body(nd);
 }
 
 impl TypeCheckPass.enter_lambda_expr with LambdaExpr entry {

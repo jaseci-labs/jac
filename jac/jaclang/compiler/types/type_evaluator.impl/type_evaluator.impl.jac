@@ -570,14 +570,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
 
                 if seeded_param {
-                    seed_body_expr: Expr | None = None;
+                    seed_body_node: UniNode | None = None;
                     if isinstance(expr.body, Expr) {
-                        seed_body_expr = expr.body;
+                        seed_body_node = expr.body;
+                    } elif isinstance(expr.body, list) and len(expr.body) == 1 {
+                        seed_body_node = expr.body[0];
                     } else {
-                        seed_body_expr = expr.tail_return_expr();
+                        seed_body_node = expr.tail_return_expr();
                     }
-                    if seed_body_expr is not None {
-                        self._invalidate_expr_type_cache(seed_body_expr);
+                    if seed_body_node is not None {
+                        self._invalidate_expr_type_cache(seed_body_node);
                     }
                 }
             }
