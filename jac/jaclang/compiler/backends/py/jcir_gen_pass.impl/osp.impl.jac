@@ -528,7 +528,7 @@ impl JcirGenPass._traversal_consumed_now(nd: EdgeRefTrailer) -> bool {
 }
 
 impl JcirGenPass._simple_hop(nd: EdgeRefTrailer) -> (list[CgNode] | None) {
-    if nd.is_async {
+    if nd.is_async or self._traversal_consumed_now(nd) {
         return None;
     }
     parent = nd.parent;
