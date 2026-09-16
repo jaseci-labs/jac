@@ -1,0 +1,42 @@
+{
+  "calibration": {
+    "run": "https://github.com/jaseci-labs/jac/actions/runs/35003506572",
+    "method": "Maximum / 0.9, rounded up to 0.1 seconds and whole MiB; only measured local-compute phases."
+  },
+  "jobs": {
+    "build-kit": {
+      "hermetic-smoke": {
+        "local": {
+          "wall_seconds": 11.0,
+          "max_rss_mib": 276
+        }
+      },
+      "program-smoke": {
+        "local": {
+          "wall_seconds": 5.8,
+          "max_rss_mib": 295
+        }
+      },
+      "test-runner-smoke": {
+        "local": {
+          "wall_seconds": 5.1,
+          "max_rss_mib": 276
+        }
+      }
+    },
+    "jac-check": {
+      "runtime-warmup": {
+        "restored": {
+          "wall_seconds": 4.6,
+          "max_rss_mib": 276
+        }
+      },
+      "check-repository": {
+        "restored": {
+          "wall_seconds": 1652.0,
+          "max_rss_mib": 6343
+        }
+      }
+    }
+  }
+}

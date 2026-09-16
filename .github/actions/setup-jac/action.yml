@@ -21,6 +21,10 @@ inputs:
       the shared jac-bin cache.
     required: false
     default: "false"
+outputs:
+  performance-cache-state:
+    description: Cache lookup results; matched keys distinguish prefix restores from misses.
+    value: ${{ steps.perf-context.outputs.state }}
 runs:
   using: composite
   steps:
@@ -228,6 +232,29 @@ runs:
         restore-keys: |
           zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
 
+    - name: Record build cache context
+      id: perf-context
+      shell: bash
+      env:
+        CACHE_STATE: >-
+          {
+          "cache": {"exact": "${{ steps.cache.outputs.cache-hit }}", "matched": "${{ steps.cache.outputs.cache-matched-key }}"},
+          "typeshed-cache": {"exact": "${{ steps.typeshed-cache.outputs.cache-hit }}", "matched": "${{ steps.typeshed-cache.outputs.cache-matched-key }}"},
+          "python-cache": {"exact": "${{ steps.python-cache.outputs.cache-hit }}", "matched": "${{ steps.python-cache.outputs.cache-matched-key }}"},
+          "shim-cache": {"exact": "${{ steps.shim-cache.outputs.cache-hit }}", "matched": "${{ steps.shim-cache.outputs.cache-matched-key }}"},
+          "llvm-cache": {"exact": "${{ steps.llvm-cache.outputs.cache-hit }}", "matched": "${{ steps.llvm-cache.outputs.cache-matched-key }}"},
+          "bun-cache": {"exact": "${{ steps.bun-cache.outputs.cache-hit }}", "matched": "${{ steps.bun-cache.outputs.cache-matched-key }}"},
+          "precompiled-cache": {"exact": "${{ steps.precompiled-cache.outputs.cache-hit }}", "matched": "${{ steps.precompiled-cache.outputs.cache-matched-key }}"},
+          "layers-cache": {"exact": "${{ steps.layers-cache.outputs.cache-hit }}", "matched": "${{ steps.layers-cache.outputs.cache-matched-key }}"},
+          "zig-pkgs-cache": {"exact": "${{ steps.zig-pkgs-cache.outputs.cache-hit }}", "matched": "${{ steps.zig-pkgs-cache.outputs.cache-matched-key }}"}
+          }
+      run: |
+        echo "state=$CACHE_STATE" >> "$GITHUB_OUTPUT"
+        if [ -n "${JAC_CI_MEASURE_DIR:-}" ]; then
+          mkdir -p "$JAC_CI_MEASURE_DIR"
+          printf '%s\n' "$CACHE_STATE" > "$JAC_CI_MEASURE_DIR/build-cache.json"
+        fi
+
     - name: Set up Zig 0.16.0
       if: steps.cache.outputs.cache-hit != 'true' || steps.typeshed-cache.outputs.cache-hit != 'true'
       uses: mlugg/setup-zig@v2
@@ -290,9 +317,11 @@ runs:
         set -o pipefail
         LOG="$(mktemp)"
         for attempt in 1 2 3; do
-          if zig build "${TARGET_ARG[@]}" "${PRE_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
+          if bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record "binary-build-attempt-$attempt" zig build "${TARGET_ARG[@]}" "${PRE_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
+            if [ -n "${JAC_CI_MEASURE_DIR:-}" ]; then cp "$LOG" "$JAC_CI_MEASURE_DIR/binary-build-attempt-$attempt.log"; fi
             exit 0
           fi
+          if [ -n "${JAC_CI_MEASURE_DIR:-}" ]; then cp "$LOG" "$JAC_CI_MEASURE_DIR/binary-build-attempt-$attempt.log"; fi
           if grep -qE 'Seal aborted|Seal incomplete|seal-finalize failed' "$LOG"; then
             echo "::error::zig build failed in the precompile step; that is deterministic, so it is not retried."
             exit 1

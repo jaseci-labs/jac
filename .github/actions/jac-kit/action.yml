@@ -49,6 +49,6 @@ runs:
         set -euo pipefail
         WORK="$(mktemp -d)"
         printf 'with entry { print(6*7); }\n' > "$WORK/warm.jac"
-        out="$(jac run "$WORK/warm.jac" 2>&1)" || { echo "$out"; exit 1; }
+        out="$(bash "$GITHUB_WORKSPACE/scripts/ci_measure.sh" record runtime-warmup jac run "$WORK/warm.jac" 2>&1)" || { echo "$out"; exit 1; }
         echo "$out" | tail -3
         echo "$out" | grep -q 42
