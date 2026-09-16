@@ -21,6 +21,11 @@ this file is the map of the tree and the rules that keep it organized.
 | `tools/` | Formatter, linter, unparser, normalizer, doc IR, grammar extraction, code intelligence | `frontend`, `passes` |
 | `tests/` | Cross-backend equivalence fixtures that ship with the package | |
 
+The experimental [C frontend](frontend/c/README.md) preprocesses configured C
+sources and parses them into the C UniTree surface in `frontend/unitree_c.jac`.
+It is a separate API, not yet part of the executable compilation schedules;
+C semantic analysis, Jac comptime lowering, and backend integration remain.
+
 The loose modules at this level are the native frontend kernel
 (`jc_unit`, `jc_materialize`, `native_compiler`, `native_scope`: the parser
 and its early analysis passes compiled natively and loaded as a shared library)
