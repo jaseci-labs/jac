@@ -998,15 +998,7 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> Import {
             and (isinstance(name.alias, Name) or (name.alias is None))
         ) {
             valid_names.append(
-                ModuleItem(
-                    name=name.expr,
-                    alias=name.alias or None,
-                    kid=[
-                        i
-                        for i in name.kid
-                        if i
-                    ]
-                )
+                ModuleItem(name=name.expr, alias=name.alias or None, kid=name.kid)
             );
         } else {
             raise RuntimeError(self.ctx.ice());

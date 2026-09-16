@@ -13,11 +13,7 @@ impl UniNode.postinit -> None {
 }
 
 impl UniNode.walk_kids with TreeWalker entry {
-    visit : 0 : [
-        k
-        for k in self.kid
-        if k and not k.ct_pruned
-    ];
+    visit:0: [self->:Kid:->[?:UniNode, ct_pruned==False]];
 }
 
 impl UniNode._attach(child: UniNode, role: type[Role]) -> None {

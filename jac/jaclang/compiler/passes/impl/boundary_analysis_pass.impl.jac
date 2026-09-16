@@ -738,11 +738,7 @@ impl BoundaryAnalysisPass._extract_walker_has_fields(
         if isinstance(item, HasVar) {
             has_vars = [item];
         } elif isinstance(item, ArchHas) {
-            has_vars = [
-                k
-                for k in item.kid
-                if isinstance(k, HasVar)
-            ];
+            has_vars = [item->:Kid:->[?:HasVar]];
         }
         for hv in has_vars {
             fname = hv.name.value;
@@ -1188,11 +1184,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                 if isinstance(item, HasVar) {
                     has_vars = [item];
                 } elif isinstance(item, ArchHas) {
-                    has_vars = [
-                        k
-                        for k in item.kid
-                        if isinstance(k, HasVar)
-                    ];
+                    has_vars = [item->:Kid:->[?:HasVar]];
                 }
                 for hv in has_vars {
                     field_name = hv.sym_name;

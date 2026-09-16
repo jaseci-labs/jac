@@ -1,4 +1,5 @@
 import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.scope_walk { ScopeWalker }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -259,11 +260,18 @@ def is_ambient_provider_module(mod_path: str) -> bool {
         and "runtime" in mod_path;
 }
 
+walker UnusedSymbolWalker(ScopeWalker) {
+    has analysis: StaticAnalysisPass;
+
+    can check_scope with UniScopeNode entry {
+        self.analysis._check_unused_symbols(here);
+    }
+}
+
 walker StaticAnalysisPass {
     has ctx: CompileContext,
         prog: JacProgram,
-        module: Module,
-        _checked_scopes: set[int] = set();
+        module: Module;
 
     static has HOST_PASS: bool = True;
 

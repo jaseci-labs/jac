@@ -1,4 +1,5 @@
 import textwrap;
+import from jaclang.compiler.frontend.roles { Kid }
 import from collections.abc { Sequence }
 import from jaclang.compiler.frontend.unitree {
     literal_string_value,

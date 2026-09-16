@@ -1,12 +1,9 @@
 impl StaticAnalysisPass._run_impl(ir_in: Module) -> Module {
-    _fresh: set[int] = set();
-    self._checked_scopes = _fresh;
-
     if self.module.is_raised_from_py {
         return ir_in;
     }
 
-    self._check_unused_symbols(self.module);
+    self.module spawn UnusedSymbolWalker(analysis=self);
     self._check_undefined_names(self.module);
     self._check_unreachable_code(self.module);
     self._check_semantic_patterns(self.module);
@@ -27,11 +24,6 @@ impl StaticAnalysisPass._check_placement_warnings(mod: Module) -> None {
 }
 
 impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
-    if id(scope) in self._checked_scopes {
-        return;
-    }
-    self._checked_scopes.add(id(scope));
-
     for (name, sym) in scope.names_in_scope.items() {
         if sym.imported {
             continue;
@@ -85,10 +77,6 @@ impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
         if len(sym.uses) == 0 {
             self.ctx.emit(W2003, node_override=sym.decl, name=name);
         }
-    }
-
-    for kid in scope.kid_scope {
-        self._check_unused_symbols(kid);
     }
 }
 

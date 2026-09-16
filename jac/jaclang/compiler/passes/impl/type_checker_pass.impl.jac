@@ -1316,11 +1316,9 @@ impl TypeCheckPass.exit_archetype with Archetype exit {
 impl TypeCheckPass.exit_enum with Enum exit {
     cls_type = self.evaluator.get_type_of_enum(here);
 
-    for child in here.kid {
-        if isinstance(child, Assignment) {
-            for target in child.target {
-                self.evaluator.get_type_of_expression(target);
-            }
+    for child in [here->:Kid:->[?:Assignment]] {
+        for target in child.target {
+            self.evaluator.get_type_of_expression(target);
         }
     }
     if (
