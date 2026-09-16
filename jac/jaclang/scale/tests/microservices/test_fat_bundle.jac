@@ -112,9 +112,21 @@ test "an sdist-only dep is built on the host and ships when its wheel fits the p
     require_network();
     target = WheelTarget(arch="aarch64", python_version="3.12", glibc=POD_GLIBC);
     with tempfile.TemporaryDirectory(prefix="jac-pod-sdist-") as tmp {
-        result = download_wheels(["http-ece==1.2.1"], Path(tmp), target=target);
+        saved_cache = os.environ.get("PIP_CACHE_DIR");
+        os.environ["PIP_CACHE_DIR"] = str(Path(tmp) / "pip-cache");
+        try {
+            result = download_wheels(
+                ["http-ece==1.2.1"], Path(tmp) / "wheels", target=target
+            );
+        } finally {
+            if saved_cache is None {
+                del os.environ["PIP_CACHE_DIR"];
+            } else {
+                os.environ["PIP_CACHE_DIR"] = saved_cache;
+            }
+        }
         assert result.ok , result.detail;
-        wheels = sorted([p.name for p in Path(tmp).`glob("*.whl")]);
+        wheels = sorted([p.name for p in (Path(tmp) / "wheels").`glob("*.whl")]);
     }
     assert "http_ece-1.2.1-py2.py3-none-any.whl" in wheels , wheels;
     crypto = [

@@ -22,6 +22,7 @@ import from jaclang.project.pyvenv {
     make_git_spec,
     make_pip_spec,
     pip_command,
+    pip_python,
     remove_venv_from_path,
     summarize_pip_failure,
     _bundled_runtime_python,
@@ -248,6 +249,21 @@ test "bundled runtime python is None outside standalone" {
     with patch.dict(os.environ, {}, clear=False) {
         os.environ.pop("JAC_STANDALONE", None);
         assert _bundled_runtime_python() is None;
+    }
+}
+
+test "pip runs on the bundled CPython in a sealed runtime, else sys.executable" {
+    with patch.dict(os.environ, {}, clear=False) {
+        os.environ.pop("JAC_STANDALONE", None);
+        assert pip_python() == sys.executable;
+    }
+    with patch(
+        "jaclang.project.pyvenv._bundled_runtime_python",
+        return_value="/fake/rt/python/bin/python3.14"
+    ) {
+        assert pip_python() == "/fake/rt/python/bin/python3.14";
+        assert pip_command(pip_python(), ["wheel"])
+            == ["/fake/rt/python/bin/python3.14", "-m", "pip", "wheel"];
     }
 }
 

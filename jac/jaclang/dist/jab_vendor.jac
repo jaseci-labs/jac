@@ -98,8 +98,9 @@ def has_vendored(img_root: Path) -> bool {
 
 
 def _pip(args: list[str]) -> tuple[int, str] {
+    import from jaclang.project.pyvenv { pip_command, pip_python }
     result = subprocess.run(
-        [sys.executable, "-m", "pip"] + args, capture_output=True, text=True
+        pip_command(pip_python(), args), capture_output=True, text=True
     );
     return (result.returncode, (result.stderr or result.stdout or "").strip());
 }

@@ -376,13 +376,13 @@ def missing_capability_dists(capability: str) -> list[str] {
 def ensure_global_capability(capability: str) -> bool {
     import importlib;
     import subprocess;
-    import sys;
+    import from jaclang.project.pyvenv { pip_command, pip_python }
     missing = missing_capability_dists(capability);
     if not missing {
         return get_capability(capability) is not None;
     }
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--quiet"] + missing,
+        pip_command(pip_python(), ["install", "--quiet"] + missing),
         capture_output=True,
         text=True
     );
