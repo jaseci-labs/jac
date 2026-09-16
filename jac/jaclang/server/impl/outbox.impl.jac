@@ -381,7 +381,6 @@ impl _store_for_request(writable: bool = True) -> OutboxStore {
     if primary is None {
         return _sqlite_store();
     }
-    _pg_worker_store(primary);
     if writable {
         _writable_txn(_current_memory(), primary);
     }

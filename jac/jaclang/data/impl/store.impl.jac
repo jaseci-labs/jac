@@ -1,4 +1,4 @@
-glob OUTBOX_SCHEMA_SQL = [
+glob OUTBOX_SCHEMA_SQL: list[str] = [
          """
     CREATE TABLE IF NOT EXISTS jac_outbox (
         id              TEXT PRIMARY KEY,
@@ -25,7 +25,7 @@ glob OUTBOX_SCHEMA_SQL = [
     )
     """
      ],
-     _SCHEMA_SQL = [
+     _SCHEMA_SQL: list[str] = [
          """
     CREATE TABLE IF NOT EXISTS anchors (
         id             uuid PRIMARY KEY,
