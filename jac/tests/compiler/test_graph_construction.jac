@@ -1,5 +1,7 @@
 """Graph construction syntax and shared lowering contracts."""
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
@@ -19,7 +21,7 @@ test "graph preserves its surface for syntax tools" {
         "with entry { f = graph { a ++> [b ++> c, d]; }; }", "graph_roundtrip.jac"
     );
     assert not errors;
-    UnparsePass(ir_in=module);
+    run_walker(UnparsePass, module=module);
     (again, errors2) = rd_parse(module.gen.jac, "graph_again.jac");
     assert not errors2;
     assert len(again.get_all_sub_nodes(uni.GraphExpr)) == 1;
@@ -52,8 +54,8 @@ test "graph lowers into existing control flow and captures connects" {
         "with entry { f = graph { a ++> [b ++> c, d]; }; }", "graph_lower.jac"
     );
     assert not errors;
-    lowered = GraphLoweringPass(ir_in=module);
-    assert not lowered.errors_had;
+    lowered = run_walker(GraphLoweringPass, module=module);
+    assert not lowered.ctx.errors_had;
     assert not module.get_all_sub_nodes(uni.GraphExpr);
     imports = module.get_all_sub_nodes(uni.Import);
     assert len(imports) == 1;
@@ -68,8 +70,8 @@ test "graph rejects unsupported directions with a source diagnostic" {
             "with entry { f = graph { a " + arrow + " b; }; }", "graph_direction.jac"
         );
         assert not errors;
-        lowered = GraphLoweringPass(ir_in=module);
-        assert any(e.code?.code == "E0084" for e in lowered.errors_had);
+        lowered = run_walker(GraphLoweringPass, module=module);
+        assert any(e.code?.code == "E0084" for e in lowered.ctx.errors_had);
     }
 }
 
@@ -79,7 +81,7 @@ test "generated construction imports inherit their enclosing codespace" {
         "def build { return graph { a ++> b; }; }", "graph_context.jac"
     );
     assert not errors;
-    GraphLoweringPass(ir_in=module);
+    run_walker(GraphLoweringPass, module=module);
     ability = module.get_all_sub_nodes(uni.Ability)[0];
     imp = module.get_all_sub_nodes(uni.Import)[0];
     for context in [CodeContext.CLIENT, CodeContext.NATIVE, CodeContext.SERVER] {
@@ -124,8 +126,8 @@ test "root projection does not capture membership" {
         "with entry { n = (graph { a ++> b; }).root; }", "graph_project.jac"
     );
     assert not errors;
-    lowered = GraphLoweringPass(ir_in=module);
-    assert not lowered.errors_had;
+    lowered = run_walker(GraphLoweringPass, module=module);
+    assert not lowered.ctx.errors_had;
     assert all(not op.capture_edges for op in module.get_all_sub_nodes(uni.ConnectOp));
 }
 
@@ -139,13 +141,13 @@ test "client regeneration retains construction imports" {
         use_str="import type from jaclang.runtime.graph_fragment { GraphFragment } node N { has value: int; } def build -> GraphFragment[N] { return graph { N(1) ++> N(2); }; }",
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
-    EsastGenPass(ir_in=module, prog=prog);
+    run_walker(EsastGenPass, module=module, prog=prog);
     first = module.gen.js;
     assert not prog.errors_had , [str(error) for error in prog.errors_had];
     assert "import { GraphBuilder" in first;
     module.gen.js = "";
     module.gen.es_ast = None;
-    EsastGenPass(ir_in=module, prog=prog);
+    run_walker(EsastGenPass, module=module, prog=prog);
     assert not prog.errors_had , [str(error) for error in prog.errors_had];
     assert module.gen.js == first;
 }
@@ -166,8 +168,8 @@ test "graph rejects suspension before backend lowering" {
         "async def build { f = graph { await child(); }; }", "graph_async.jac"
     );
     assert not errors;
-    lowered = GraphLoweringPass(ir_in=module);
-    assert any(e.code?.code == "E0085" for e in lowered.errors_had);
+    lowered = run_walker(GraphLoweringPass, module=module);
+    assert any(e.code?.code == "E0085" for e in lowered.ctx.errors_had);
 }
 
 test "graph is reserved in declarations" {

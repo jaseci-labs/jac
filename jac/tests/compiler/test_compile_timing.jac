@@ -78,7 +78,7 @@ entry block, which is the whole measurement.
 glob CORPUS: list[str] = [
          "jaclang/compiler/frontend/srcloc.jac",
          "jaclang/compiler/frontend/parser/tokens.jac",
-         "jaclang/compiler/passes/uni_pass.jac",
+         "jaclang/compiler/passes/sym_tab_build_pass.jac",
          "jaclang/compiler/frontend/constant.jac",
          "examples/chess/chess.jac"
      ];

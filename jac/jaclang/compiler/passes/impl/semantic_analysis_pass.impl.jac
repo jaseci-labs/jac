@@ -34,7 +34,7 @@ impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
                 if ((var.value is not None) or var.defer) {
                     found_default_init = True;
                 } elif found_default_init {
-                    self.emit(E2004, node_override=var.name, name=var.name.value);
+                    self.ctx.emit(E2004, node_override=var.name, name=var.name.value);
                     break;
                 }
             }
@@ -71,7 +71,7 @@ impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
             }
         }
         if ((len(post_init_vars) != 0) and (postinit_method is None)) {
-            self.emit(E2005, node_override=post_init_vars[0].name_spec);
+            self.ctx.emit(E2005, node_override=post_init_vars[0].name_spec);
         }
         arch_kind = nd.arch_type.value;
         methods = nd.get_methods();
@@ -90,9 +90,9 @@ impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
                 prop_dec = "";
                 if isinstance(dec, Name) {
                     if dec.sym_name == 'classmethod' {
-                        self.emit(W2006, node_override=dec, kind=arch_kind);
+                        self.ctx.emit(W2006, node_override=dec, kind=arch_kind);
                     } elif dec.sym_name == 'staticmethod' {
-                        self.emit(W2007, node_override=dec, kind=arch_kind);
+                        self.ctx.emit(W2007, node_override=dec, kind=arch_kind);
                     } elif dec.value == 'property' {
                         prop_dec = dec.value;
                     }
@@ -106,7 +106,7 @@ impl SemanticAnalysisPass._check_archetype(nd: Archetype) -> None {
                     prop_dec = f"{dec.target.value}.{dec.right.value}";
                 }
                 if prop_dec != "" {
-                    self.emit(
+                    self.ctx.emit(
                         W2029,
                         node_override=dec,
                         decorator=prop_dec,
@@ -143,7 +143,7 @@ impl SemanticAnalysisPass._update_ctx(nd: UniNode) -> None {
     } elif isinstance(nd, AstSymbolNode) {
         nd.sym_tab.update_expr_ctx_for_def(nd);
     } else {
-        self.emit(E2008, target=type(nd).__name__);
+        self.ctx.emit(E2008, target=type(nd).__name__);
     }
 }
 
@@ -151,7 +151,7 @@ impl SemanticAnalysisPass.enter_has_var with HasVar entry {
     if isinstance(here.parent, ArchHas) {
         here.sym_tab.update_expr_ctx_for_def(here);
     } else {
-        self.ice('HasVar should be under ArchHas');
+        self.ctx.ice('HasVar should be under ArchHas');
     }
 }
 

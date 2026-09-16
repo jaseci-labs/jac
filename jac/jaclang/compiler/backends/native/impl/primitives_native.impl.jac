@@ -3134,7 +3134,7 @@ impl NativeListEmitter.emit_sort(
         if k not in ("key", "reverse")
     ];
     if _unknown_kw {
-        p.emit(
+        p.ctx.emit(
             E5092,
             node_override=_key_node or _rev_node,
             kind="sort keyword argument",
@@ -3152,7 +3152,7 @@ impl NativeListEmitter.emit_sort(
             or _key_caps is not None
             or len(_key_val.args) != 1
         ) {
-            p.emit(
+            p.ctx.emit(
                 E5092,
                 node_override=_key_node,
                 kind="sort key",

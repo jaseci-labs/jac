@@ -1,5 +1,7 @@
 """Symbol table build pass tests – migrated from test_sym_tab_build_pass.py."""
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -130,9 +132,9 @@ Always = "always_available"
     source = uni.Source(code, "test_version.py");
     py_ast_node = py_ast.parse(code);
 
-    mod = PyastBuildPass(
-        ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source)
-    ).ir_out;
+    mod = run_walker(
+        PyastBuildPass, module=uni.PythonModuleAst(py_ast_node, orig_src=source)
+    ).module;
 
     run_pass(SymTabBuildPass, mod, prog);
 
@@ -169,9 +171,9 @@ if sys.version_info >= (3, 15):
     prog = JacProgram();
     source = uni.Source(code, "test_stub_module.py");
     py_ast_node = py_ast.parse(code);
-    mod = PyastBuildPass(
-        ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source)
-    ).ir_out;
+    mod = run_walker(
+        PyastBuildPass, module=uni.PythonModuleAst(py_ast_node, orig_src=source)
+    ).module;
     run_pass(SymTabBuildPass, mod, prog);
 
     assert collect_member_syms(mod, "MINYEAR") , "unguarded symbol should resolve";
@@ -207,9 +209,9 @@ class C:
     prog = JacProgram();
     source = uni.Source(code, "test_guarded_class.py");
     py_ast_node = py_ast.parse(code);
-    mod = PyastBuildPass(
-        ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source)
-    ).ir_out;
+    mod = run_walker(
+        PyastBuildPass, module=uni.PythonModuleAst(py_ast_node, orig_src=source)
+    ).module;
     run_pass(SymTabBuildPass, mod, prog);
 
     cls_sym = mod.lookup("C", deep=False);

@@ -2422,7 +2422,7 @@ class CodeGen:
         self._scan_needs(module.body)
         self._line("from __future__ import annotations")
         if self.needs_object_model_import:
-            self._line("from jaclang.runtime.object_model import make_object as _jac_make_object, field")
+            self._line("from jaclang.runtime.object_model import make_object as _jac_make_object, ObjectField")
         if self.needs_enum_import:
             self._line("import enum")
         if self.needs_typing_import:
@@ -2813,34 +2813,34 @@ class CodeGen:
                         )
                 continue
             if var.by_postinit:
-                self._line(f"{var.name}: {var.type_ann} = field(init=False)")
+                self._line(f"{var.name}: {var.type_ann} = ObjectField(init=False)")
             elif var.default:
                 d = var.default.strip()
                 d_norm = d.replace(" ", "")
                 if d == "[]":
                     self._line(
-                        f"{var.name}: {var.type_ann} = field(default_factory=list)"
+                        f"{var.name}: {var.type_ann} = ObjectField(default_factory=list)"
                     )
                 elif d_norm == "{}":
                     self._line(
-                        f"{var.name}: {var.type_ann} = field(default_factory=dict)"
+                        f"{var.name}: {var.type_ann} = ObjectField(default_factory=dict)"
                     )
                 elif d_norm in ("set()", "list()", "dict()", "frozenset()"):
                     self._line(
                         f"{var.name}: {var.type_ann} = "
-                        f"field(default_factory={d_norm[:-2]})"
+                        f"ObjectField(default_factory={d_norm[:-2]})"
                     )
                 elif (
                     d.endswith(")")
                     and not d.startswith("(")
-                    and not d.startswith("field(")
+                    and not d.startswith("ObjectField(")
                     and not d.startswith("ClassVar")
                 ):
                     # A call expression builds a fresh value per instance;
                     # a shared default would alias it across instances.
                     self._line(
                         f"{var.name}: {var.type_ann} = "
-                        f"field(default_factory=lambda: {var.default})"
+                        f"ObjectField(default_factory=lambda: {var.default})"
                     )
                 else:
                     self._line(f"{var.name}: {var.type_ann} = {var.default}")

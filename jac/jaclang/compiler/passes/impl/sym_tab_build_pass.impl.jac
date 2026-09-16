@@ -1,4 +1,7 @@
-impl SymTabBuildPass.before_pass -> None {
+impl SymTabBuildPass.prepare with entry {
+    if self.ctx.nested_depth {
+        return;
+    }
     self.cur_sym_tab = [];
 }
 
@@ -60,7 +63,7 @@ impl SymTabBuildPass.exit_global_vars with GlobalVars exit {
                 j.name_spec._sym_category = SymbolType.MOD_VAR;
                 j.sym_tab.def_insert(j, access_spec=here, single_decl='global var');
             } else {
-                self.ice('Expected name type for global vars');
+                self.ctx.ice('Expected name type for global vars');
             }
         }
     }
@@ -79,7 +82,7 @@ impl SymTabBuildPass.exit_assignment with Assignment exit {
             if isinstance(i, Name) {
                 scope = find_python_scope_node_of(i);
                 if scope is not None and i.sym_name in scope.implicit_rebinds {
-                    self.emit(E0064, node_override=i, name=i.sym_name);
+                    self.ctx.emit(E0064, node_override=i, name=i.sym_name);
                 }
             }
         }
@@ -241,7 +244,7 @@ impl SymTabBuildPass.enter_archetype with Archetype entry {
                     and (d.name_of.in_native_context() == nd_native)
                     and (d.name_of.in_client_context() == nd_client)
                 ) {
-                    self.emit(
+                    self.ctx.emit(
                         E0077,
                         node_override=here,
                         name=here.sym_name,

@@ -703,8 +703,8 @@ impl JacCompiler.parse_str(
             target_program,
             cancel_token=cancel_token
         );
-        had_error = len(py_ast_ret.errors_had) > 0;
-        converted = py_ast_ret.ir_out;
+        had_error = len(py_ast_ret.ctx.errors_had) > 0;
+        converted = py_ast_ret.module;
         assert isinstance(converted, uni.Module);
         mod = converted;
     } else {
@@ -1727,7 +1727,7 @@ impl JacCompiler.build(
 impl JacCompiler.run_schedule(
     mod: uni.Module,
     target_program: JacProgram,
-    passes: list[type[Transform]],
+    passes: list[type],
     cancel_token: (Event | None) = None
 ) -> None {
     import from jaclang.compiler.driver.pipeline { execute_passes }
@@ -1825,7 +1825,7 @@ impl JacCompiler._report_missing_native_ir(
     }
     import from jaclang.compiler.frontend.diagnostics { E5092 }
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-    import from jaclang.compiler.passes.transform { Alert }
+    import from jaclang.compiler.passes.context { Alert }
     reason = native_schedule_failure();
     if not reason {
         (_avail, _why) = native_pipeline_available();

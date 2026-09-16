@@ -118,47 +118,14 @@ impl DiagnosticPolicy._inline_suppressed(
     return diag.code in self._inline_cache[cache_key];
 }
 
-impl BaseTransform.postinit -> None {
-    completed = self.completed;
-    if completed is not None {
-        self.ir_out = self.ir_in;
-        self.errors_had.extend(completed.errors_had);
-        self.warnings_had.extend(completed.warnings_had);
-        self.time_taken = completed.time_taken;
-        self.completed = None;
-        return;
-    }
-    self.pre_transform();
-    self.ir_out = self.timed_transform(ir_in=self.ir_in);
-    self.post_transform();
-}
-
-impl BaseTransform.pre_transform -> None {}
-
-impl BaseTransform.post_transform -> None {}
-
-impl BaseTransform.log_info(msg: str) -> None {
-    import logging;
-    logging.getLogger(type(self).__name__).info(msg);
-}
-
-impl BaseTransform.is_canceled -> bool {
-    return self.cancel_requested;
-}
-
-impl Transform.postinit -> None {
-    self.cur_node = self.ir_in;
-    super.postinit();
-}
-
-impl Transform.emit(
+impl CompileContext.emit(
     diag: DiagnosticInfo,
     node_override: (UniNode | None) = None,
     related: (list[tuple[str, UniNode]] | None) = None,
     help_text: (str | None) = None,
     **kwargs: object
 ) -> bool {
-    loc = node_override.loc if node_override else self.cur_node.loc;
+    loc = node_override.loc if node_override else self.current_node.loc;
 
     if self.policy is not None and self.policy.is_suppressed(diag, loc) {
         return False;
@@ -176,7 +143,7 @@ impl Transform.emit(
     alrt = Alert(
         msg=msg,
         loc=loc.span(),
-        from_pass=type(self),
+        from_pass=self.from_pass,
         code=diag,
         related=related_locs,
         help_text=resolved_help
@@ -190,13 +157,51 @@ impl Transform.emit(
     return True;
 }
 
-impl Transform._is_suppressed(
+impl CompileContext._is_suppressed(
     diag: DiagnosticInfo, loc: CodeLocInfo | None = None
 ) -> bool {
     return self.policy is not None and self.policy.is_suppressed(diag, loc);
 }
 
-impl Transform.ice(msg: str = 'Something went horribly wrong!') -> str {
-    self.emit(E9001, pass_name=type(self).__name__, details=msg);
-    return f"Internal Compiler Error: Pass {type(self).__name__} - {msg}";
+impl CompileContext.ice(msg: str = 'Something went horribly wrong!') -> str {
+    self.emit(E9001, pass_name=self.pass_name, details=msg);
+    return f"Internal Compiler Error: Pass {self.pass_name} - {msg}";
+}
+
+impl CompileContext.log_info(msg: str) -> None {
+    import logging;
+    logging.getLogger(self.pass_name).info(msg);
+}
+
+impl CompileContext.enter_node(nd: UniNode) -> None {
+    import from jaclang.runtime.osp_kernel { osp_skip_rest }
+    if self.is_canceled() or nd.ct_pruned {
+        osp_skip_rest();
+        return;
+    }
+    self.current_node = nd;
+}
+
+impl CompileContext.exit_node(nd: UniNode) -> None {
+    import from jaclang.runtime.osp_kernel { osp_skip_rest }
+    if nd.ct_pruned {
+        osp_skip_rest();
+        return;
+    }
+    self.current_node = nd;
+    if self.is_canceled() {
+        osp_skip_rest();
+    }
+}
+
+impl CompileContext.walk_subtree(nd: UniNode, walk: Walker) -> None {
+    if self.is_canceled() or nd.ct_pruned {
+        return;
+    }
+    self.nested_depth += 1;
+    try {
+        nd spawn walk;
+    } finally {
+        self.nested_depth -= 1;
+    }
 }

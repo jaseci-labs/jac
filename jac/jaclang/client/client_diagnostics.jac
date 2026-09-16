@@ -1,4 +1,4 @@
-import type from jaclang.compiler.passes.transform { Alert }
+import type from jaclang.compiler.passes.context { Alert }
 
 enum DiagChannel { JAC = "jac", VITE = "vite", BROWSER = "browser", SERVER = "server" }
 

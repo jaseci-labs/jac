@@ -1,5 +1,7 @@
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
+    Module,
+    TreeWalker,
+    UniNode,
     Ability,
     Archetype,
     Assignment,
@@ -18,22 +20,34 @@ import from jaclang.compiler.frontend.unitree {
     Name,
     SpecialVarRef,
     Symbol,
-    Token,
-    UniNode
+    Token
 }
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.constant { SymbolType, Tokens as Tok }
-import from jaclang.compiler.passes.uni_pass { UniPass }
 
-walker EndpointEffectPass(UniPass) {
-    has _is_writer: bool = False,
+walker EndpointEffectPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: Module,
+        _is_writer: bool = False,
         _unknown: bool = False,
-        _declared_reads: set[str] = field(default_factory=set),
-        _declared_writes: set[str] = field(default_factory=set),
-        _assumptions: set[str] = field(default_factory=set),
-        _touches: set[str] = field(default_factory=`set),
-        _visited: set[int] = field(default_factory=set);
+        _declared_reads: set[str] = set(),
+        _declared_writes: set[str] = set(),
+        _assumptions: set[str] = set(),
+        _touches: set[str] = set(),
+        _visited: set[int] = set();
 
-    def before_pass {
+    can prepare with entry {
+        if self.ctx.nested_depth {
+            return;
+        }
         self._is_writer = False;
         self._unknown = False;
         self._declared_reads.clear();
@@ -52,8 +66,8 @@ walker EndpointEffectPass(UniPass) {
             and here.access.tag.name == Tok.KW_PUB
             and isinstance(here.name_ref, Name)
         ) {
-            self.ir_in.gen.interop_manifest.endpoint_effects[
-                endpoint_key(self.ir_in, "func", here.name_ref.sym_name)
+            self.module.gen.interop_manifest.endpoint_effects[
+                endpoint_key(self.module, "func", here.name_ref.sym_name)
             ] = self._classify(
                 self._resolved_body(here), "func", here.name_ref.sym_name, here
             );
@@ -68,8 +82,8 @@ walker EndpointEffectPass(UniPass) {
         if not isinstance(here.name, Name) {
             return;
         }
-        self.ir_in.gen.interop_manifest.endpoint_effects[
-            endpoint_key(self.ir_in, "walker", here.name.sym_name)
+        self.module.gen.interop_manifest.endpoint_effects[
+            endpoint_key(self.module, "walker", here.name.sym_name)
         ] = self._classify(self._resolved_body(here), "walker", here.name.sym_name);
     }
 
@@ -99,7 +113,7 @@ walker EndpointEffectPass(UniPass) {
                 self._scan(nd);
             }
         }
-        result: dict[str, any] = endpoint_descriptor(self.ir_in, kind, name);
+        result: dict[str, any] = endpoint_descriptor(self.module, kind, name);
         result["reads"] = sorted(list(self._declared_reads))
             if declared is not None
             else ["*"];

@@ -22,6 +22,7 @@ import from jaclang.scale.deploy.database.kubernetes_postgres {
     KubernetesPostgresProvider
 }
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
+import from jaclang.scale.models.deploy_context { DATABASE_URL_ENV }
 
 obj KubernetesTargetBase(DeploymentTarget) {
     has config: KubernetesConfig,
@@ -130,7 +131,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
             );
             self.env_list.append(
                 {
-                    'name': 'JAC_DB_URL',
+                    'name': DATABASE_URL_ENV,
                     'valueFrom': {
                         'secretKeyRef': {
                             'name': external_secret_name,
@@ -146,7 +147,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
         );
         self.env_list.append(
             {
-                'name': 'JAC_DB_URL',
+                'name': DATABASE_URL_ENV,
                 'valueFrom': {
                     'secretKeyRef': {
                         'name': pg_result['secret']['metadata']['name'],

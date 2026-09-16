@@ -1,4 +1,3 @@
-import time;
 import from jaclang.compiler.frontend.srcloc { CodeLocInfo, Span }
 import from jaclang.compiler.frontend.diagnostics {
     DiagnosticInfo,
@@ -12,7 +11,7 @@ import from jaclang.compiler.frontend.unitree { Source, UniNode }
 obj Alert {
     has msg: str,
         loc: Span,
-        from_pass: type[Transform],
+        from_pass: type,
         code: DiagnosticInfo | None = None,
         related: list[tuple[str, Span]] = [],
         help_text: str | None = None,
@@ -50,41 +49,19 @@ obj PassResult {
         time_taken: float = 0.0;
 }
 
-walker BaseTransform {
-    has ir_in: UniNode,
+obj CompileContext {
+    has current_node: UniNode,
+        from_pass: type,
+        pass_name: str,
         cancel_token: any = None,
         cancel_requested: bool = False,
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],
         time_taken: float = 0.0,
-        ir_out: UniNode postinit,
-        completed: (PassResult | None) = None;
+        nested_depth: int = 0,
+        policy: (DiagnosticPolicy | None) = None,
+        resources: any = None;
 
-    def postinit -> None;
-    def timed_transform(ir_in: UniNode) -> UniNode {
-        start_time = time.time();
-        ir_out = self.transform(ir_in=ir_in);
-        self.time_taken = time.time() - start_time;
-        return ir_out;
-    }
-
-    def pre_transform -> None;
-    def post_transform -> None;
-    def transform(ir_in: UniNode) -> UniNode {
-        return ir_in;
-    }
-
-    def log_info(msg: str) -> None;
-    def is_canceled -> bool;
-}
-
-walker Transform(BaseTransform) {
-    has cur_node: UniNode postinit,
-        policy: (DiagnosticPolicy | None) = None;
-
-    static has HOST_PASS: bool = False;
-
-    def postinit -> None;
     def emit(
         diag: DiagnosticInfo,
         node_override: (UniNode | None) = None,
@@ -95,4 +72,11 @@ walker Transform(BaseTransform) {
 
     def _is_suppressed(diag: DiagnosticInfo, loc: CodeLocInfo | None = None) -> bool;
     def ice(msg: str = 'Something went horribly wrong!') -> str;
+    def log_info(msg: str) -> None;
+    def walk_subtree(nd: UniNode, walk: Walker) -> None;
+    def enter_node(nd: UniNode) -> None;
+    def exit_node(nd: UniNode) -> None;
+    def is_canceled -> bool {
+        return self.cancel_requested;
+    }
 }

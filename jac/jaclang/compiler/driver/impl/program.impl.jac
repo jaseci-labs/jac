@@ -193,7 +193,7 @@ impl JacProgram.load_dependency_module(
                 UtilityProduct.PYTHON_AST,
                 uni.PythonModuleAst(py_ast.parse(src), orig_src=uni_source,),
                 self
-            ).ir_out;
+            ).module;
             assert isinstance(converted, uni.Module);
             mod = converted;
             mod.stub_only = True;
@@ -499,7 +499,7 @@ impl JacProgram.build(
 impl JacProgram.run_schedule(
     self: JacProgram,
     mod: uni.Module,
-    passes: list[type[Transform]],
+    passes: list[type],
     cancel_token: (Event | None) = None
 ) -> None {
     self._get_compiler().run_schedule(mod, self, passes, cancel_token);

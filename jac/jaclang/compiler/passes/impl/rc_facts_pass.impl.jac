@@ -1,7 +1,3 @@
-impl RcFactsPass.postinit -> None {
-    super.postinit();
-}
-
 impl RcFactsPass._run_impl(ir_in: Module) -> Module {
     self._stamp_param_rebound(ir_in);
     self._stamp_move_lowerable(ir_in);
@@ -526,16 +522,8 @@ impl RcFactsPass._solve_liveness(
     return solve_backward_gen_kill(cfg_nodes, self._node_use, self._node_def);
 }
 
-impl RcFactsPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl RcFactsPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }
 
 impl RcFactsPass._stamp_scope_cleanup(ir_in: Module) -> None {

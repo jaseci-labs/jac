@@ -250,7 +250,7 @@ impl EsastGenPass._lower_match_pattern(
                 return (None, no_binds, False);
             }
             if b {
-                self.emit(
+                self.ctx.emit(
                     E5018,
                     node_override=sub,
                     construct='binding in an or-pattern',
@@ -519,7 +519,7 @@ impl EsastGenPass._lower_match_pattern(
             if isinstance(pat.name, uni.AstSymbolNode)
             else None;
         if cls_name is None {
-            self.emit(
+            self.ctx.emit(
                 E5018,
                 node_override=pat,
                 construct='dotted class pattern',
@@ -541,7 +541,7 @@ impl EsastGenPass._lower_match_pattern(
         if arg_pats {
             order = self._match_arch_field_order(pat);
             if order is None or len(arg_pats) > len(order) {
-                self.emit(
+                self.ctx.emit(
                     E5018,
                     node_override=pat,
                     construct='positional class pattern with unresolvable field order',
@@ -557,7 +557,7 @@ impl EsastGenPass._lower_match_pattern(
         for kv in (list(pat.kw_patterns) if pat.kw_patterns else []) {
             fname = kv.key.sym_name if isinstance(kv.key, uni.AstSymbolNode) else None;
             if fname is None {
-                self.emit(
+                self.ctx.emit(
                     E5018,
                     node_override=kv,
                     construct='computed class-pattern field',
@@ -590,7 +590,7 @@ impl EsastGenPass._lower_match_pattern(
         }
         return (arch_cond, arch_binds, True);
     }
-    self.emit(
+    self.ctx.emit(
         E5018,
         node_override=pat,
         construct=pat.__class__.__name__,

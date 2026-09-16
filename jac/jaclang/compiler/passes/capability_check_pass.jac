@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchSpec,
@@ -36,7 +37,7 @@ import from jaclang.compiler.frontend.unitree {
     UniNode,
     YieldExpr
 }
-import from jaclang.compiler.passes.transform { Transform }
+
 import from jaclang.compiler.frontend.module_facts {
     ModuleFacts,
     client_capability_violations
@@ -85,12 +86,10 @@ def partition_native_capability_violations(
     )
 ];
 
-walker PortabilityWarnPass(Transform) {
-    has ir_in: Module,
-        cancel_token: any = None;
+walker PortabilityWarnPass {
+    has ctx: CompileContext,
+        module: Module;
 
-    def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _check_js_globals(mod: Module) -> None;
@@ -100,22 +99,18 @@ walker PortabilityWarnPass(Transform) {
     def _check_js_properties(mod: Module) -> None;
 }
 
-walker NativeCapabilityCheckPass(Transform) {
-    has ir_in: Module,
-        cancel_token: any = None;
+walker NativeCapabilityCheckPass {
+    has ctx: CompileContext,
+        module: Module;
 
-    def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }
 
-walker ClientCapabilityCheckPass(Transform) {
-    has ir_in: Module,
-        cancel_token: any = None;
+walker ClientCapabilityCheckPass {
+    has ctx: CompileContext,
+        module: Module;
 
-    def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }

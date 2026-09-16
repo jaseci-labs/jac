@@ -1,6 +1,6 @@
 """Diagnostics as data: passes accumulate, the driver delivers (epic #8201).
 
-`Transform.emit` used to reach through the `JacProgram` handle on every
+`CompileContext.emit` used to reach through the `JacProgram` handle on every
 diagnostic and read project config per emit, which made every pass body own
 an unwaivable Python seam. The redesigned flow is one-directional data:
 emission appends plain `Alert` objects to the pass-local `errors_had` /
@@ -10,9 +10,12 @@ pass body finishes -- applying suppression policy at that boundary. These
 tests pin the contract: accumulation never touches the program mid-pass,
 delivery preserves emission order, suppression is decided from the
 pre-resolved `DiagnosticPolicy` (emit-time when stamped, delivery-time
-always), and `Transform.ice` still records its E9001 before raising even
-though the constructor never returns.
+always), and `CompileContext.ice` still records its E9001 before raising even
+though walker execution raises.
 """
+
+import from jaclang.compiler.passes.execution { run_walker }
+import from jaclang.compiler.passes.context { CompileContext, DiagnosticPolicy }
 
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.pass_driver { deliver_alerts, run_pass }
@@ -22,8 +25,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1030,
     Severity
 }
-import from jaclang.compiler.passes { Transform }
-import from jaclang.compiler.passes.transform { DiagnosticPolicy }
+
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob PROBE_ERR = DiagnosticInfo(
@@ -40,7 +42,10 @@ glob PROBE_ERR = DiagnosticInfo(
      );
 
 """A pass that emits and observes the program ledger mid-run."""
-obj ProbeEmitPass(Transform) {
+walker ProbeEmitPass {
+    has ctx: CompileContext,
+        module: uni.Module;
+
     static has HOST_PASS: bool = True;
     has prog: JacProgram,
         mid_run_prog_errors: int = -1,
@@ -48,28 +53,29 @@ obj ProbeEmitPass(Transform) {
         mid_run_local_errors: int = -1,
         emit_results: list[bool] = [];
 
-    def transform(ir_in: uni.Module) -> uni.Module {
-        self.emit_results.append(self.emit(PROBE_ERR, tag="first"));
-        self.emit_results.append(self.emit(PROBE_WARN, tag="second"));
-        self.emit_results.append(self.emit(PROBE_ERR, tag="third"));
+    can run_walk with uni.Module entry {
+        self.emit_results.append(self.ctx.emit(PROBE_ERR, tag="first"));
+        self.emit_results.append(self.ctx.emit(PROBE_WARN, tag="second"));
+        self.emit_results.append(self.ctx.emit(PROBE_ERR, tag="third"));
         self.mid_run_prog_errors = len(self.prog.errors_had);
         self.mid_run_prog_warnings = len(self.prog.warnings_had);
-        self.mid_run_local_errors = len(self.errors_had);
-        return ir_in;
+        self.mid_run_local_errors = len(self.ctx.errors_had);
     }
 }
 
-"""A pass that dies through `Transform.ice` after recording one alert."""
-obj ProbeIcePass(Transform) {
-    def transform(ir_in: uni.Module) -> uni.Module {
-        raise RuntimeError(self.ice("probe detonation"));
+"""A pass that dies through `CompileContext.ice` after recording one alert."""
+walker ProbeIcePass {
+    has ctx: CompileContext,
+        module: uni.Module;
+
+    can run_walk with uni.Module entry {
+        raise RuntimeError(self.ctx.ice("probe detonation"));
     }
 }
 
 def _parse(prog: JacProgram, source: str) -> uni.Module {
     return prog.parse_str(source, "<alert_delivery_test>");
 }
-
 
 test "emission accumulates pass-locally and never touches the program mid-run" {
     prog = JacProgram();
@@ -90,7 +96,6 @@ test "emission accumulates pass-locally and never touches the program mid-run" {
     );
 }
 
-
 test "delivery lands alerts on the program in emission order" {
     prog = JacProgram();
     mod = _parse(prog, "with entry { x = 1; }");
@@ -108,7 +113,6 @@ test "delivery lands alerts on the program in emission order" {
     );
 }
 
-
 test "a policy stamped on the pass suppresses at emit time" {
     prog = JacProgram();
     mod = _parse(prog, "with entry { x = 1; }");
@@ -117,25 +121,26 @@ test "a policy stamped on the pass suppresses at emit time" {
     assert inst.emit_results == [False, True, False] , (
         f"suppressed emits must report False: {inst.emit_results}"
     );
-    assert not inst.errors_had , ("suppressed alerts must not accumulate on the pass");
+    assert not inst.ctx.errors_had , (
+        "suppressed alerts must not accumulate on the pass"
+    );
     assert not prog.errors_had , (
         f"suppressed alerts leaked into delivery: {[str(a) for a in prog.errors_had]}"
     );
     assert [a.msg for a in prog.warnings_had] == ["probe warning second"];
 }
 
-
 test "an unstamped pass accumulates everything and delivery suppresses" {
     prog = JacProgram();
     mod = _parse(prog, "with entry { x = 1; }");
-    inst = ProbeEmitPass(ir_in=mod, prog=prog);
-    assert len(inst.errors_had) == 2 , (
+    inst = run_walker(ProbeEmitPass, module=mod, prog=prog);
+    assert len(inst.ctx.errors_had) == 2 , (
         "a policy-free pass must accumulate every emission"
     );
-    assert not prog.errors_had , ("direct construction must not deliver by itself");
+    assert not prog.errors_had , ("standalone execution must not deliver by itself");
     deliver_alerts(
-        inst.errors_had,
-        inst.warnings_had,
+        inst.ctx.errors_had,
+        inst.ctx.warnings_had,
         prog,
         DiagnosticPolicy(suppress_codes=["E9901"])
     );
@@ -144,7 +149,6 @@ test "an unstamped pass accumulates everything and delivery suppresses" {
     );
     assert [a.msg for a in prog.warnings_had] == ["probe warning second"];
 }
-
 
 test "inline jac:ignore suppression holds through the policy object" {
     prog = JacProgram();
@@ -166,7 +170,6 @@ test "inline jac:ignore suppression holds through the policy object" {
     );
 }
 
-
 test "ice records its E9001 and still raises through the driver" {
     prog = JacProgram();
     mod = _parse(prog, "with entry { x = 1; }");
@@ -178,7 +181,7 @@ test "ice records its E9001 and still raises through the driver" {
         assert "ProbeIcePass" in str(e);
         assert "probe detonation" in str(e);
     }
-    assert blew_up , "Transform.ice must still raise";
+    assert blew_up , "CompileContext.ice must still raise";
     codes = [
         a.code.code
         for a in prog.errors_had

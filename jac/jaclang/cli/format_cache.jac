@@ -4,7 +4,6 @@ import os;
 import time;
 import from pathlib { Path }
 
-
 glob FORMAT_CACHE_SCHEMA_VERSION: str = "v1",
      _ENTRY_MARKER: bytes = b"JFMTCLEAN\n",
      PRUNE_SENTINEL: str = ".last-prune",
@@ -19,10 +18,10 @@ glob FORMAT_CACHE_SCHEMA_VERSION: str = "v1",
          "jaclang.compiler.tools.normalize_pass",
          "jaclang.compiler.tools.unparse_pass",
          "jaclang.compiler.tools.doc_ir",
-         "jaclang.compiler.passes.transform",
+         "jaclang.compiler.passes.context",
+         "jaclang.compiler.passes.execution",
 
      );
-
 
 def _stable_dump(value: any) -> str {
     if value is None or isinstance(value, (bool, int, float, str)) {
@@ -54,7 +53,6 @@ def _stable_dump(value: any) -> str {
     return _stable_dump(attrs);
 }
 
-
 def config_fingerprint(config: any, lintfix: bool) -> str {
     if config is None {
         return "none";
@@ -73,7 +71,6 @@ def config_fingerprint(config: any, lintfix: bool) -> str {
     return hashlib.sha256("\n".join(parts).encode()).hexdigest();
 }
 
-
 def canonical_logical_path(path: str, project_root: (str | None) = None) -> str {
     norm = os.path.normpath(path);
     if project_root {
@@ -87,7 +84,6 @@ def canonical_logical_path(path: str, project_root: (str | None) = None) -> str 
     return norm.replace(os.sep, "/");
 }
 
-
 def default_format_cache_dir(anchor: (Path | str)) -> Path {
     base = Path(anchor);
 
@@ -96,7 +92,6 @@ def default_format_cache_dir(anchor: (Path | str)) -> Path {
     }
     return base.resolve() / ".jac" / "cache";
 }
-
 
 def _module_source_bytes(modname: str) -> bytes {
     try {
@@ -137,7 +132,6 @@ def _module_source_bytes(modname: str) -> bytes {
     return b"\0".join(chunks);
 }
 
-
 def formatter_pipeline_revision -> str {
     h = hashlib.sha256();
     for modname in _FORMATTER_PIPELINE_MODULES {
@@ -149,16 +143,13 @@ def formatter_pipeline_revision -> str {
     return h.hexdigest()[:16];
 }
 
-
 def frame_unit(parts: list[bytes]) -> bytes {
     return b"".join([f"{len(p)}:".encode() + p for p in parts]);
 }
 
-
 def _frame(label: str, payload: bytes) -> bytes {
     return f"{label}:{len(payload)}:".encode() + payload;
 }
-
 
 obj FormatCache {
     has cache_dir: (Path | str | None),

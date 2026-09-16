@@ -1,7 +1,3 @@
-impl AccessCheckPass.postinit -> None {
-    super.postinit();
-}
-
 impl AccessCheckPass._run_impl(ir_in: Module) -> Module {
     self._enforce = ir_in.access_enforced;
     self._collect_bridged_imports(ir_in);
@@ -107,7 +103,7 @@ impl AccessCheckPass._check_use(use_node: AstSymbolNode, sym: Symbol) -> None {
         return;
     }
     if (sym.access == SymbolAccess.PRIVATE) {
-        self.emit(
+        self.ctx.emit(
             E2037 if self._enforce else W2037,
             node_override=use_node,
             name=sym.sym_name,
@@ -115,10 +111,10 @@ impl AccessCheckPass._check_use(use_node: AstSymbolNode, sym: Symbol) -> None {
         );
     } else {
         def_proj = def_tab.jac_project_root;
-        use_proj = self.ir_in.jac_project_root;
+        use_proj = self.module.jac_project_root;
         if (def_proj != use_proj) {
             project_name = os.path.basename(def_proj) if def_proj else "?";
-            self.emit(
+            self.ctx.emit(
                 E2038 if self._enforce else W2038,
                 node_override=use_node,
                 name=sym.sym_name,
@@ -151,13 +147,13 @@ impl AccessCheckPass._check_app_laws(
     use_node: AstSymbolNode, sym: Symbol, def_module: Module
 ) -> bool {
     (def_app, def_root) = self._module_app_facts(def_module);
-    if def_app is None or def_module is self.ir_in {
+    if def_app is None or def_module is self.module {
         return True;
     }
-    if def_root != self.ir_in.jac_project_root {
+    if def_root != self.module.jac_project_root {
         return True;
     }
-    use_app = self.ir_in.app or self.ir_in.name;
+    use_app = self.module.app or self.module.name;
     if def_app == use_app {
         return True;
     }
@@ -168,7 +164,7 @@ impl AccessCheckPass._check_app_laws(
     if def_path and os.path.normpath(def_path) in self._bridged_mods {
         return True;
     }
-    self.emit(
+    self.ctx.emit(
         E2039 if self._enforce else W2039,
         node_override=use_node,
         name=sym.sym_name,
@@ -184,7 +180,7 @@ impl AccessCheckPass._check_member(
     user = use_node.find_parent_of_type(Archetype);
     if (sym.access == SymbolAccess.PRIVATE) {
         if (user is not owner) {
-            self.emit(
+            self.ctx.emit(
                 E2034 if self._enforce else W2034,
                 node_override=use_node,
                 name=sym.sym_name,
@@ -195,7 +191,7 @@ impl AccessCheckPass._check_member(
         ok = (user is not None)
             and ((user is owner) or self._is_subclass_of(user, owner));
         if not ok {
-            self.emit(
+            self.ctx.emit(
                 E2035 if self._enforce else W2035,
                 node_override=use_node,
                 name=sym.sym_name,
@@ -256,14 +252,6 @@ impl AccessCheckPass._is_subclass_of(child: Archetype, ancestor: Archetype) -> b
     return False;
 }
 
-impl AccessCheckPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl AccessCheckPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

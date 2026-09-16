@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.types.builtin_extensions { install_builtin_extensions }
 import os;
 import from pathlib { Path }
@@ -146,7 +147,7 @@ import from jaclang.compiler.types.types {
     create_callable_type
 }
 import from jaclang.project.source { read_file_with_encoding }
-import from jaclang.compiler.passes.transform { Transform }
+
 import type from jaclang.compiler.driver.program { JacProgram }
 
 import from jaclang.compiler.types.operations {
@@ -363,7 +364,7 @@ walker TypeEvaluator {
         ct_eval: CtEvaluator postinit,
         ct_quiet: bool = False,
         prefetch: PrefetchedTypes postinit,
-        _pass: Transform | None = None,
+        _pass: CompileContext | None = None,
         _diagnostic_suppression_depth: int = 0,
         builtins_module: Module | None = None,
         _flow_node_type_cache: dict[tuple[int, int], TypeBase | None] = {},

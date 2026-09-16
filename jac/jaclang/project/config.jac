@@ -241,7 +241,7 @@ obj DevConfig {
         fmt_jobs: str = "";
 }
 
-def interpolate_env_vars(value: str) -> str;
+def interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> str;
 
 def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 

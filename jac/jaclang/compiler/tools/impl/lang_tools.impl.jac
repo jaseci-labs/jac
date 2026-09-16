@@ -76,7 +76,7 @@ impl AstTool.ir(args: list[str]) -> str {
                         parsed_ast, orig_src=uni.Source(file_source, file_name)
                     ),
                     prog
-                ).ir_out;
+                ).module;
                 assert isinstance(rep, uni.Module);
                 rep_src = unparse_module(rep);
                 console.print(rep_src);
@@ -153,7 +153,7 @@ impl AstTool.ir(args: list[str]) -> str {
 
             case 'docir':
                 return str(
-                    run_utility(UtilityProduct.DOC, ir_mod, prog).ir_out.gen.doc_ir
+                    run_utility(UtilityProduct.DOC, ir_mod, prog).module.gen.doc_ir
                 );
 
             case 'py':

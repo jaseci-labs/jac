@@ -14,7 +14,7 @@ import io;
 import os;
 import sys;
 import tempfile;
-import from dataclasses { fields }
+import from jaclang.runtime.object_interop { fields }
 import from pathlib { Path }
 
 import from jaclang { JacRuntime }

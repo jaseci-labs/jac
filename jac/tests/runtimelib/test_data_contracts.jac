@@ -26,11 +26,10 @@ test "external contracts decode Jac records with independent defaults" {
 }
 
 test "external contracts retain Python dataclass compatibility" {
-    import dataclasses;
-    Record = dataclasses.make_dataclass(
-        "PythonContractRecord",
-        [("name", str), ("items", list[int], dataclasses.field(default_factory=list))]
-    );
+    import from tests.compiler.fixtures.python_evaluator_workloads {
+        python_contract_record
+    }
+    Record = python_contract_record();
     first = decode_contract({"name": "first"}, Record);
     second = decode_contract({"name": "second"}, Record);
     assert type(first) is Record;

@@ -21,7 +21,7 @@ impl NaIRGenPass._clib_coerce_callback(
     val: ir.Value, c_fn_ty: ir.PointerType
 ) -> ir.Value {
     if self._closure_struct_of(val.type) is not None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             kind="expression",
             name="Jac closure passed as a C function pointer",
@@ -43,7 +43,7 @@ impl NaIRGenPass._clib_coerce_callback(
 
     native_address = val.type == ir.IntType(64);
     if not typed_pointer and not null_pointer and not native_address {
-        self.emit(
+        self.ctx.emit(
             E5092,
             kind="expression",
             name="erased value passed as a C function pointer",

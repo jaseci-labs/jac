@@ -276,6 +276,19 @@ obj KubernetesTarget(KubernetesTargetBase) {
             );
         }
 
+        self._emit("config", "start", "Checking the config the pods load");
+        try {
+            self._manifest_builder(app_config).check_pod_config(
+                app_config, self.k8s_config.python_image
+            );
+        } except Exception as e {
+            self._emit("config", "error", f"pod config check failed: {e}");
+            return DeploymentResult(
+                success=False, message=f"pod config check failed: {e}"
+            );
+        }
+        self._emit("config", "ok", "Pod config resolves");
+
         self._emit("provision", "start", "Provisioning backends");
         try {
             self._deploy_context = DatabaseProvisioner(
@@ -964,7 +977,13 @@ obj KubernetesTarget(KubernetesTargetBase) {
         self.k8s_config.python_image = resolve_pod_base_image(
             app_config.code_folder, self.k8s_config.python_image, probe=not self.dry_run
         );
-        builder = ManifestBuilder(
+        return self._manifest_builder(app_config).generate_manifests(
+            app_config, self.k8s_config.python_image
+        );
+    }
+
+    def _manifest_builder(app_config: AppConfig) -> ManifestBuilder {
+        return ManifestBuilder(
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._context_with_env(),
@@ -975,7 +994,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
             app_overrides=dict(self.app_overrides),
             dry_run=self.dry_run
         );
-        return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }
 
     def _context_with_env -> DeployContext {

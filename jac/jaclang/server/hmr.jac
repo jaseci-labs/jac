@@ -1,5 +1,5 @@
 import threading;
-import type from jaclang.compiler.passes.transform { Alert }
+import type from jaclang.compiler.passes.context { Alert }
 import type from jaclang.client.client_diagnostics { ClientDiagnostic }
 import from pathlib { Path }
 import type from jaclang.server.watcher { JacFileWatcher, FileChangeEvent, ChangeType }

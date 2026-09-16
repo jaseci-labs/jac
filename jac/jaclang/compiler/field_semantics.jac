@@ -35,13 +35,13 @@ def is_field_marker(nd: FuncCall) -> bool {
         if source is not None {
             decl = tgt.sym.decl;
             return isinstance(decl, AstSymbolNode)
-                and decl.sym_name == 'field'
+                and decl.sym_name == 'ObjectField'
                 and source.source.file_path.replace('\\', '/').endswith(
                     '/runtime/object_model.jac'
                 );
         }
     }
-    return erased_import_binds(nd, tgt.sym_name, 'field');
+    return erased_import_binds(nd, tgt.sym_name, 'ObjectField');
 }
 
 def field_marker_argument(nd: FuncCall, name: str) -> (Expr | None) {

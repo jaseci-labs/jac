@@ -34,7 +34,7 @@ def _full_pass_diags(source: str, path: str) -> list[str] {
     if m is None {
         return [];
     }
-    run_pass(JacAutoLintPass, m, p).ir_out;
+    run_pass(JacAutoLintPass, m, p).module;
     return _diag_keys(p);
 }
 
