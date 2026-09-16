@@ -24,7 +24,7 @@ walker Probe {
     has seen: list[str] = [];
 
     can start with Root entry {
-        visit [-->];
+        visit [-->[?:SecretNode, label=="secret"]];
     }
 
     can see with SecretNode entry {
@@ -53,7 +53,7 @@ def _mk_user_root(mem: any) -> any {
 def _three_transcripts(origin_arch: any, mem: any) -> tuple[any, ...] {
     bare = [
         n.label
-        for n in [origin_arch-->]
+        for n in [origin_arch-->[?:SecretNode, label=="secret"]]
         if isinstance(n, SecretNode)
     ];
     planned = [

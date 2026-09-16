@@ -46,6 +46,28 @@ test "lightweight filtered hops match the general traversal" {
                             n.archetype for n in walk_nodes(origin_anchors(q), q, False)
                         ];
                         assert JacRuntime.refs(q) == expected;
+                        if not bounded {
+                            for visit_mode in [False, True] {
+                                assert JacRuntime.hop(
+                                    a,
+                                    dir,
+                                    cls,
+                                    nd=nd_type,
+                                    preds=preds,
+                                    from_visit=visit_mode
+                                )
+                                    == expected;
+                                assert JacRuntime.hop(
+                                    [a],
+                                    dir,
+                                    cls,
+                                    nd=nd_type,
+                                    preds=preds,
+                                    from_visit=visit_mode
+                                )
+                                    == expected;
+                            }
+                        }
                         q.`visit();
                         assert JacRuntime.refs(q) == expected;
                     }
@@ -148,4 +170,34 @@ test "graphquery carries flags and is callable-free" {
     assert q.hops[0].`edge is QE;
     assert q.hops[0].preds[0].matches(2);
     assert "0:25" in q.repr();
+}
+
+
+walker FilteredHopProbe {
+    has seen: list[int] = [];
+
+    can traverse with QA entry {
+        self.seen.append(here.val);
+        visit:0: [here->:QLight:->[?:QA, val>=1]];
+    }
+}
+
+test "single filtered hops and visits do not allocate a general query" {
+    import from unittest.mock { patch }
+    a = QA();
+    b = QA(val=1);
+    c = QA(val=2);
+    a +>:QLight:+> b;
+    a +>:QLight:+> QB();
+    b +>:QLight:+> c;
+    with patch.object(
+        GraphQuery,
+        '__init__',
+        side_effect=AssertionError('a simple transient hop needs no general query')
+    ) {
+        assert [a->:QLight:->[?:QA, val>=1]] == [b];
+        assert [c<-:QLight:<-[?:QA, val>=1]] == [b];
+        walked = a spawn FilteredHopProbe();
+        assert walked.seen == [0, 1, 2];
+    }
 }
