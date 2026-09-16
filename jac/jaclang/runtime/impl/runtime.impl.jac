@@ -881,6 +881,59 @@ impl JacGraph.refs(
     slc: (slice | None) = None,
     lazy: bool = False
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {
+    if not isinstance(path, GraphQuery) {
+        path = GraphQuery(path, hops=[QHop(dir=EdgeDir.OUT.value)]);
+    }
+    if slc is not None and path.slc is None {
+        path.slc = slc;
+    }
+    if len(path.origin) == 1
+        and len(path.hops) == 1
+        and not path.edges_only
+        and not path.order {
+        query_hop = path.hops[0];
+        anchor = path.origin[0]?.__jac__;
+        if isinstance(anchor, NodeAnchor)
+            and not query_hop.epreds
+            and query_hop.only is None
+            and light_hop_answers(anchor, query_hop.`edge) {
+            found = light_hop(anchor, query_hop.dir, query_hop.`edge, False);
+            if query_hop.nd is not None {
+                node_types = query_hop.nd
+                    if isinstance(query_hop.nd, tuple)
+                    else (query_hop.nd, );
+                for cls in node_types {
+                    found = [
+                        nd
+                        for nd in found
+                        if isinstance(nd, cls)
+                    ];
+                }
+            }
+            for pred in query_hop.preds {
+                matches_pred = pred.matches;
+                if isinstance(pred.field, str) {
+                    field = pred.field;
+                    found = [
+                        nd
+                        for nd in found
+                        if matches_pred(getattr(nd, field, None))
+                    ];
+                } else {
+                    import from jaclang.runtime.graph_walk { pred_subject }
+                    found = [
+                        nd
+                        for nd in found
+                        if matches_pred(pred_subject(nd, pred))
+                    ];
+                }
+            }
+            if path.limit is not None {
+                return found[path.offset:path.offset + path.limit];
+            }
+            return found[path.slc] if path.slc is not None else found;
+        }
+    }
     import from jaclang.runtime.graph_walk {
         access_gated,
         has_persistent_origin,
@@ -888,12 +941,6 @@ impl JacGraph.refs(
         origin_anchors,
         walk_edges,
         walk_nodes
-    }
-    if not isinstance(path, GraphQuery) {
-        path = GraphQuery(path, hops=[QHop(dir=EdgeDir.OUT.value)]);
-    }
-    if slc is not None and path.slc is None {
-        path.slc = slc;
     }
     origins = origin_anchors(path);
     ctx = JacRuntimeInterface.peek_context();

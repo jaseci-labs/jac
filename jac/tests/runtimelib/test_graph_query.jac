@@ -13,6 +13,55 @@ edge QE {
     has weight: int = 0;
 }
 
+edge QLight {}
+
+edge QLightSub(QLight) {}
+
+
+test "lightweight filtered hops match the general traversal" {
+    import from jaclang.runtime.runtime { JacRuntime }
+    import from jaclang.runtime.graph_walk { origin_anchors, walk_nodes }
+
+    a = QA();
+    b = QA(val=1);
+    c = QA(val=2);
+    d = QB(tag="other");
+    a +>:QLight:+> b;
+    a +>:QLightSub:+> b;
+    a +>:QLightSub:+> c;
+    a +>:QLight:+> d;
+    c +>:QLight:+> a;
+    a +>:QLight:+> a;
+    for dir in [1, 2, 3] {
+        for cls in [None, QLight, QLightSub] {
+            for nd_type in [None, QA, (QA, QB)] {
+                for preds in [[], [QPred(field="val", op=">=", value=1)]] {
+                    for bounded in [False, True] {
+                        q = GraphQuery(
+                            a,
+                            hops=[QHop(dir=dir, `edge=cls, nd=nd_type, preds=preds)],
+                            slc=slice(1, 3) if bounded else None
+                        );
+                        expected = [
+                            n.archetype for n in walk_nodes(origin_anchors(q), q, False)
+                        ];
+                        assert JacRuntime.refs(q) == expected;
+                        q.`visit();
+                        assert JacRuntime.refs(q) == expected;
+                    }
+                }
+            }
+        }
+    }
+    limited = GraphQuery(
+        a,
+        hops=[QHop(dir=2, nd=QA, preds=[QPred(field="val", op=">", value=0)])],
+        limit=1,
+        offset=1
+    );
+    assert JacRuntime.refs(limited) == [c];
+}
+
 
 test "qpred validates ops and scalar values" {
     ok = QPred(field="val", op="==", value=2);
