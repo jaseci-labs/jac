@@ -8,8 +8,9 @@ parser. Include directories and predefined macros are explicit inputs.
 This is an initial frontend, **not a complete C compiler or CPython migration
 pipeline**. `CParseResult.ok` reports preprocessing and syntax diagnostics. It
 does not establish C type correctness, ABI compatibility, or executability.
-The C nodes are not accepted by the existing native backend. No `.c` CLI routing
-has been enabled.
+The C nodes are not accepted directly by the existing native backend. The
+`jac tool c2jac` command emits ordinary Jac source for the supported scalar
+subset; it does not enable `.c` inputs in the normal compilation schedules.
 
 ```jac
 import from jaclang.compiler.frontend.c.parser { parse_c }
@@ -61,6 +62,62 @@ Literal spellings and operator identities remain C spellings: implicit casts,
 integer promotions, pointer arithmetic, assignment values, and signed overflow
 must be resolved by a C semantic pass before lowering.
 
+## Jac source emission and CLI
+
+```sh
+jac tool c2jac input.c -o output.jac
+jac tool c2jac input.c -I include -I vendor/include -D FEATURE=1 --abi lp64
+jac tool c2jac - --abi llp64 --unsigned-char < input.c > output.jac
+jac tool c2jac --help
+```
+
+Output defaults to stdout; diagnostics go to stderr. `-I` and `-D` can be
+repeated, and `-D NAME` means `NAME=1`. `-` reads stdin or selects stdout. Named
+output files are replaced atomically only after successful emission. The input
+file cannot also be the output, including through a symlink or hard link.
+Argument errors return 2, translation/I/O errors return 1, and success returns 0.
+
+The corresponding API is `emitter.emit_c(source, file_path, preprocess, config)`.
+`preprocess` is a `CConfig`; `config` is a `CEmitConfig`. The result contains
+`source`, `diagnostics`, and `ok`. On any error, `source` is empty. Neither the
+API nor command compiles or executes the resulting Jac.
+
+The emitter supports integer and `_Bool` scalar types, scalar typedefs,
+globals, function definitions/prototypes, direct calls to functions defined in
+the same translation unit, scoped locals, casts, arithmetic/comparisons,
+short-circuit and conditional expressions, `sizeof` of supported scalar types,
+assignments/increments as statements, and `if`, `while`, `do`, and `for` loops.
+Loop lowering preserves the increment/condition behavior of `continue`.
+Unused function prototypes do not produce Jac declarations.
+
+C names at module scope acquire a `c_` prefix (`add` becomes `c_add`). Local
+names receive unique identifiers so C block shadowing remains distinct in Jac.
+`main` becomes `c_main`; no automatic entry block is emitted. Scalar typedefs
+are emitted as Jac type aliases, with their resolved types used in signatures.
+
+`--abi` selects LP64 (default), LLP64, or ILP32 integer widths and ranks. These
+models assume 8-bit bytes, 16-bit shorts, 32-bit ints, 64-bit long longs,
+two's-complement narrowing, and arithmetic signed right shift. Plain `char` is
+signed unless `--unsigned-char` is supplied. This option does not configure a
+native compiler target or supply platform/compiler predefined macros.
+
+Integer promotions and usual arithmetic conversions are explicit. Unsigned
+arithmetic uses Jac wrapping builtins; integer narrowing uses `.wrap`.
+Signed division and remainder use generated helpers to retain C's truncation
+toward zero. Signed arithmetic uses Jac's checked fixed-width operations;
+executions with C undefined arithmetic behavior need not reproduce a C binary.
+Uninitialized scalar local storage and scalar fallthrough return values are
+zeroed; this is not a claim to diagnose all undefined C executions.
+
+Pointers, arrays, records, floating-point and character/string literals,
+external calls/objects, local static storage/typedefs, switch/goto,
+expression-valued assignments/increments, and other unimplemented forms are
+diagnosed rather than emitted as placeholders. Emission resolves preprocessing
+for one configuration; it does not yet reconstruct macros as Jac comptime
+declarations or preserve a C ABI. Source locations for unsupported constructs
+refer back to the C input. This is a conservative initial source-emission
+surface, not the complete semantic pass needed for CPython.
+
 ## Implemented surface
 
 The scanner handles trigraphs, line splicing, comments, digraphs,
@@ -110,8 +167,8 @@ This is not an exhaustive C11 conformance claim. Important gaps include:
 - Lowering preprocessing operations into Jac's existing `comptime` evaluator.
   Today preprocessing executes in this frontend's dedicated token interpreter;
   retaining directive nodes does **not** make them existing Jac comptime nodes.
-- Lowering C nodes into shared executable UniTree operations, Jac source
-  emission, and native-backend/CLI integration.
+- General C-to-Jac source emission beyond the scalar subset, lowering C nodes
+  into shared executable UniTree operations, and direct native-backend integration.
 
 The next lowering boundary should consume the explicit C operations and either
 produce shared executable nodes or report a capability gap. It must not turn

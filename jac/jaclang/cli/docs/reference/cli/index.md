@@ -1748,6 +1748,7 @@ jac tool <name> [args ...]
 |------|-------------|
 | `jac2py <file>` | Convert Jac code to Python |
 | `py2jac <file>` | Convert Python code to Jac |
+| `c2jac <file> [-o OUT] [-I DIR] [-D NAME=VALUE] [--abi lp64\|llp64\|ilp32] [--unsigned-char]` | Emit Jac source for supported scalar C; unsupported constructs are errors |
 | `jac2js <file>` | Convert Jac code to JavaScript (used for client frontend compilation) |
 | `grammar [--lark] [-o OUT]` | Extract and print the Jac grammar (EBNF, or `--lark` for Lark format) |
 | `ir [ast\|sym\|py] <file>` | Inspect compiler IR: AST, symbol table, or generated Python |
@@ -1758,6 +1759,7 @@ jac tool <name> [args ...]
 # Source transforms
 jac tool jac2py main.jac
 jac tool py2jac script.py
+jac tool c2jac input.c -I include -D FEATURE=1 -o output.jac
 jac tool jac2js app.jac
 
 # Grammar

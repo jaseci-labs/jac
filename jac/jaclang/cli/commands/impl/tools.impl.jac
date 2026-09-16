@@ -5,8 +5,9 @@ import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 impl tool(tool: str, args: list[str] = []) -> int {
     import importlib;
     import from jaclang.compiler.tools.lang_tools { AstTool }
-    if tool in ("jac2py", "py2jac", "jac2js") {
+    if tool in ("jac2py", "py2jac", "jac2js", "c2jac") {
         _transform = importlib.import_module("jaclang.cli.commands.transform");
+        if tool == "c2jac" { return _transform.c2jac(args); }
         if not args {
             console.error(f"Usage: jac tool {tool} <file>");
             return 1;
