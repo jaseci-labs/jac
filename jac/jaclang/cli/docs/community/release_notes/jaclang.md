@@ -2,7 +2,23 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.17 (Latest Release)
+## jaclang 0.37.18 (Latest Release)
+
+### Breaking Changes
+
+- **Breaking: `dict`, `list` and `tuple` now require type arguments**: writing them bare used to be a warning and quietly behaved as if you had written `any` for the element types. It is now an error. This also applies to a bare generic nested inside another, so `list[dict]` and `dict[str, list]` are reported as well. Name the element types (`dict[str, int]`, `list[Item]`), or say explicitly that the values are heterogeneous with `dict[str, any]`. Note that `dict[any]` is not a substitute, since `dict` takes both a key and a value type. Other generics keep the existing warning rather than the error, including `set`, `frozenset` and generic classes used without type arguments. Both `jac check` and `jac run` stop on a bare `dict`, `list` or `tuple`. To migrate gradually, add `suppress = ["E1036"]` under `[check]` in your `jac.toml` and remove it once the annotations are named.
+- **Breaking: `data.result.reports` is gone from walker responses**: the executed walker in `data.result` no longer carries a `reports` copy of `data.reports`. A client that read the report list through `result.reports` (the tree's own `cl_fullstack/test_echo.jac` did) must read `data.reports`; generated clients already do.
+- **Breaking: `jac scale deploy` fails when `jac.toml` reads environment variables the pods will not have**: The deploy, including `--dry-run`, now stops before anything reaches the cluster when the shipped `jac.toml`, its active profile or `jac.local.toml` references a variable only the deploy host sets, and lists every such setting at once. A project that deployed until now with a bare `${VAR}` exported only on the host will fail; supply the variable through `[scale.secrets]` or the app's env, or write it as `${VAR:-default}`.
+- **Breaking: Simplify Jac object field declarations**: Jac-owned records use `obj` and ordinary `has` defaults. The redundant `field` helper and its Jac library export are removed. `make_object` remains Python runtime implementation machinery, with `ObjectField` as internal construction and reflection metadata. The unused `compare` and `metadata` descriptor options are removed.
+- Jac-owned records and MockLLM reflection consistently use the Jac object model. Direct Python dataclass imports are confined to `runtime/object_interop.jac`; Python compatibility fixtures retain coverage across that boundary.
+
+### Bug Fixes
+
+- **Fix: static JSX attribute values are checked where they are created**: the web compiler now reports a malformed static attribute value at the point it is built, instead of quietly wrapping it in an expression. No change to the generated JavaScript.
+- **Fix: a walker response serialises its report list once**: `data.result` repeated `data.reports` through the walker's `reports` attribute, so every list response shipped twice, and a walker that reported itself recursed until `maximum recursion depth exceeded`. In `api_mode` the serializer leaves that attribute out of a walker's attribute walk; the walker's `has` fields, `_jac_type`, `_jac_id` and `_jac_archetype` are unchanged. The embedded gateway's walker proxy, which read reports out of the copy, forwards the provider's `{result, reports}` payload instead of wrapping the walker under `result`. `sv_client.hydrate_walker_envelope` and `sv_client.function_result` are the one pair of envelope decoders the core runtime and jac-scale share (the scale RPC layer's private copies are gone), a remote spawn with no boundary contract is refused before either transport (HTTP or jac-scale) calls the provider, and `BridgeError` is now a `RuntimeError`, so `except RuntimeError` handlers around bridged calls keep working.
+- **Fix: an unannotated lambda parameter now infers when the body is a single `return`**: `sorted(rows, key=lambda (d) { return d["n"]; })` was rejected with `E1054: No matching overload found`, while the same lambda written `{ d["n"]; }` type-checked. The rule that decides whether a lambda's body waits for its parameter types only recognised a bare expression body, so a body written with an explicit `return` was checked while the parameter was still `Unknown`, and it was never re-checked once the parameter was inferred. Both halves of that rule now treat a lone explicit `return` like an implicit one, which also clears the `E1053` and `E1055` this produced for bodies such as `{ return len(s); }` and `{ return x * 2 - 1; }`. Bodies with more than one statement are unchanged: they are still checked in place, so the calls in them keep their diagnostics.
+
+## jaclang 0.37.17
 
 ### Breaking Changes
 
