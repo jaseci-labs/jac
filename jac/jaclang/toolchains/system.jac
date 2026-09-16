@@ -79,9 +79,7 @@ def ensure_linux_desktop {
     import from jaclang.toolchains.host { host_platform }
     host = host_platform();
     if not host.startswith("linux-") {
-        raise RuntimeError(
-            f"The current desktop native build backend supports Linux hosts, not {host}."
-        );
+        raise RuntimeError(f"WebKitGTK provisioning needs a Linux host, not {host}.");
     }
     if desktop_system_ready() {
         return;
