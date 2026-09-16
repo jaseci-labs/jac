@@ -888,10 +888,18 @@ impl NaIRGenPass._codegen_compare_link(
             _left_node = _left_node.expr;
         }
         if left.type == self.jacval_type and isinstance(_right_node, uni.Null) {
-            return self._jacval_is_none(left, _none_negate);
+            result = self._jacval_is_none(left, _none_negate);
+            if release_operands {
+                self._release_owned_operands(left, right, op="cmp_boxed_none");
+            }
+            return result;
         }
         if right.type == self.jacval_type and isinstance(_left_node, uni.Null) {
-            return self._jacval_is_none(right, _none_negate);
+            result = self._jacval_is_none(right, _none_negate);
+            if release_operands {
+                self._release_owned_operands(left, right, op="cmp_boxed_none");
+            }
+            return result;
         }
     }
 
@@ -917,7 +925,11 @@ impl NaIRGenPass._codegen_compare_link(
                 ir.Constant(ir.IntType(8), 0),
                 name="opt.cmp.none"
             );
-            return self.builder.zext(_ocmp, ir.IntType(64), name="opt.cmp.i64");
+            result = self.builder.zext(_ocmp, ir.IntType(64), name="opt.cmp.i64");
+            if release_operands {
+                self._release_owned_operands(left, right, op="cmp_optional_none");
+            }
+            return result;
         }
     }
 
@@ -938,10 +950,13 @@ impl NaIRGenPass._codegen_compare_link(
             name="is.jv.pv.eq"
         );
         _jv_same = self.builder.and_(_jv_tag_eq, _jv_pv_eq, name="is.jv.same");
-        if op == Tok.KW_ISN {
-            return self.builder.not_(_jv_same, name="is.jv.diff");
+        result = self.builder.not_(_jv_same, name="is.jv.diff")
+            if op == Tok.KW_ISN
+            else _jv_same;
+        if release_operands {
+            self._release_owned_operands(left, right, op="cmp_boxed_identity");
         }
-        return _jv_same;
+        return result;
     }
 
     if op == Tok.KW_IN or op == Tok.KW_NIN {

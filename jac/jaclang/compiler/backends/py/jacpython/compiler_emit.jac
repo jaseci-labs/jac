@@ -309,6 +309,7 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     comp_handler,
 }
 import from jaclang.compiler.frontend.python.compiler_symtable {
+    sym_child_at,
     sym_block,
     sym_dict_get,
     sym_flag_set,
@@ -408,34 +409,49 @@ def inline_storage_names(
     if owner is None {
         owner = block;
     }
-    occupied = sym_block_tuple_names(owner.symbols, SCOPE_FREE)
-        + owner.class_free_names;
-    if not cells_only {
-        if owner.block_type == "function" {
-            occupied.extend(sym_block_tuple_names(owner.symbols, SCOPE_LOCAL));
+    # Membership does not require sorting. Compute the owner's occupied names
+    # once, and share the output/set through the entire inlined subtree.
+    occupied = set(owner.class_free_names);
+    for (name, flags) in owner.symbols.items() {
+        scope = sym_scope_of(flags);
+        if scope == SCOPE_FREE
+            or (
+                not cells_only
+                and owner.block_type == "function"
+                and scope == SCOPE_LOCAL
+            ) {
+            occupied.add(name);
         }
     }
     names: list[str] = [];
+    seen: set[str] = set();
+    collect_inline_storage_names(block, cells_only, occupied, seen, names);
+    return names;
+}
+
+def collect_inline_storage_names(
+    block: sym_block,
+    cells_only: bool,
+    occupied: set[str],
+    seen: set[str],
+    names: list[str]
+) {
     for child in block.children {
         if child.inlined {
             for (name, alias) in child.inline_aliases.items() {
                 if alias not in occupied
-                    and alias not in names
+                    and alias not in seen
                     and (
                         not cells_only
                         or sym_scope_of(child.symbols[name]) == SCOPE_CELL
                     ) {
+                    seen.add(alias);
                     names.append(alias);
                 }
             }
-            for name in inline_storage_names(child, cells_only, owner) {
-                if name not in names {
-                    names.append(name);
-                }
-            }
+            collect_inline_storage_names(child, cells_only, occupied, seen, names);
         }
     }
-    return names;
 }
 
 def fast_varnames_from_sym(block: sym_block) -> list[str] {
@@ -446,31 +462,24 @@ def fast_varnames_from_sym(block: sym_block) -> list[str] {
             out.append(block.varnames[pi]);
             pi = pi + 1;
         }
+        seen = set(out);
         li = 0;
         while li < len(block.local_varnames) {
             name = block.local_varnames[li];
             flags = sym_dict_get(block.symbols, name, 0);
-            if sym_scope_of(flags) == SCOPE_LOCAL {
-                found = False;
-                fi = 0;
-                while fi < len(out) {
-                    if out[fi] == name {
-                        found = True;
-                    }
-                    fi = fi + 1;
-                }
-                if not found {
-                    out.append(name);
-                }
+            if sym_scope_of(flags) == SCOPE_LOCAL and name not in seen {
+                seen.add(name);
+                out.append(name);
             }
             li = li + 1;
         }
-        return out
-            + [
-                name
-                for name in inline_storage_names(block)
-                if name not in out
-            ];
+        for name in inline_storage_names(block) {
+            if name not in seen {
+                seen.add(name);
+                out.append(name);
+            }
+        }
+        return out;
     }
     names = sym_sorted_names(block.symbols);
     out: list[str] = [];
@@ -492,11 +501,12 @@ def fast_varnames_from_sym(block: sym_block) -> list[str] {
 
 def cellvars_from_sym(block: sym_block) -> list[str] {
     names = sym_block_tuple_names(block.symbols, SCOPE_CELL);
+    seen = set(names);
     return names
         + [
             name
             for name in inline_storage_names(block, True)
-            if name not in names
+            if name not in seen
         ];
 }
 
@@ -1180,19 +1190,7 @@ def emit_make_function_with_closure(
 def sym_function_child_at(
     parent: sym_block, fn_name: str, lineno: int, col_offset: int
 ) -> sym_block | None {
-    ci = 0;
-    while ci < len(parent.children) {
-        ch = parent.children[ci];
-        if ch.block_type == "function"
-            and ch.annotation_kind != "an annotation"
-            and ch.name == fn_name
-            and ch.lineno == lineno
-            and ch.col_offset == col_offset {
-            return ch;
-        }
-        ci = ci + 1;
-    }
-    return None;
+    return sym_child_at(parent, "function", fn_name, lineno, col_offset);
 }
 
 def unit_fail(u: unverified_cfg, kind: str, message: str) {

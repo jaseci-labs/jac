@@ -139,6 +139,13 @@ obj sym_block {
         directive_lineno: dict[str, int] = {},
         directive_col: dict[str, int] = {},
         children: list[sym_block] = [],
+        # Built lazily after symbol analysis, when the child list is final.
+        # Store positions rather than adding owning references to the graph.
+        children_indexed: bool = False,
+        child_positions: dict[tuple[str, str, int, int], int] = {},
+        child_names: dict[tuple[str, str], int] = {},
+        annotation_positions: dict[int, int] = {},
+        type_parameter_positions: dict[int, int] = {},
         type_parameter_key: int = 0,
         function_annotation_key: int = 0,
         annotation_scope: sym_block | None = None,
@@ -146,6 +153,53 @@ obj sym_block {
         generic_parameters: bool = False,
         annotation_kind: str = "",
         mangled_names: set[str] | None = None;
+}
+
+# Code generation consumes a frozen symbol tree. Preserve the first match of
+# the former scans, including repeated names and synthetic annotation scopes.
+def sym_index_children(parent: sym_block) {
+    if parent.children_indexed {
+        return;
+    }
+    for (index, child) in enumerate(parent.children) {
+        if child.block_type == "class"
+            or (
+                child.block_type == "function"
+                and child.annotation_kind != "an annotation"
+            ) {
+            key = (child.block_type, child.name, child.lineno, child.col_offset);
+            if key not in parent.child_positions {
+                parent.child_positions[key] = index;
+            }
+            name_key = (child.block_type, child.name);
+            if name_key not in parent.child_names {
+                parent.child_names[name_key] = index;
+            }
+        }
+        if child.function_annotation_key != 0
+            and child.function_annotation_key not in parent.annotation_positions {
+            parent.annotation_positions[child.function_annotation_key] = index;
+        }
+        if child.type_parameter_key != 0
+            and child.type_parameter_key not in parent.type_parameter_positions {
+            parent.type_parameter_positions[child.type_parameter_key] = index;
+        }
+    }
+    parent.children_indexed = True;
+}
+
+def sym_child_at(
+    parent: sym_block, kind: str, name: str, lineno: int, col_offset: int
+) -> sym_block | None {
+    sym_index_children(parent);
+    index = parent.child_positions.get((kind, name, lineno, col_offset), -1);
+    return parent.children[index] if index >= 0 else None;
+}
+
+def sym_child_named(parent: sym_block, kind: str, name: str) -> sym_block | None {
+    sym_index_children(parent);
+    index = parent.child_names.get((kind, name), -1);
+    return parent.children[index] if index >= 0 else None;
 }
 
 obj symtable_result {
