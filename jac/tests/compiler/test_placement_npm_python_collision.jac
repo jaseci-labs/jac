@@ -19,6 +19,10 @@ import jaclang.compiler.frontend.unitree as uni;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.placement.placement { collect_placement_rows }
+import from jaclang.compiler.placement.placement_pins {
+    classify_bare_import,
+    in_client_npm_world
+}
 
 glob STDLIB_SERVER_APP = (
          "import from argparse { ArgumentParser }\n"
@@ -193,6 +197,38 @@ test "an undeclared installed package with no python counterpart is still npm" {
         assert stamps["from:widget_kit"] == "client" , stamps;
         notes = _evidence(prog, proj, "from:widget_kit");
         assert any(n.startswith("NPM:") and "node_modules" in n for n in notes) , f"--placements must name the installed-package rule: {notes}";
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "classify_bare_import orders the universe and names each rule" {
+    tmp = tempfile.mkdtemp(prefix="jac_npm_collision_");
+    try {
+        proj = _write_project(
+            tmp,
+            {
+                "main.jac": "def:pub app -> JsxElement { return <div/>; }\n",
+                "helpers.jac": "def helper -> int { return 1; }\n"
+            }
+        );
+        for name in ["helpers", "argparse", "widget_kit"] {
+            _install_pkg(proj, name);
+        }
+        main = str(proj / "main.jac");
+        assert classify_bare_import("helpers", main).world == "jac" , "a local jac module wins over the installed package";
+        assert in_client_npm_world("helpers", main) , "membership still sees the installed package (W1105)";
+        framework = classify_bare_import("react", main);
+        assert framework.world == "npm" and "framework package" in framework.rule , framework.rule;
+        shadowed = classify_bare_import("argparse", main);
+        assert shadowed.world == "py" and "undeclared npm package" in shadowed.rule , shadowed.rule;
+        assert shadowed.path != "" , "the python resolution is reported";
+        installed = classify_bare_import("widget_kit", main);
+        assert installed.world == "npm" and "node_modules" in installed.rule , installed.rule;
+        ghost = classify_bare_import("ghost_pkg", main);
+        assert ghost.world == "py" and ghost.path == "" , (ghost.world, ghost.path);
+        assert not in_client_npm_world("ghost_pkg", main);
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }
