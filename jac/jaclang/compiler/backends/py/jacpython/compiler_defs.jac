@@ -85,6 +85,9 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     unverified_cfg,
 }
 import from jaclang.compiler.frontend.python.compiler_symtable {
+    sym_child_at,
+    sym_child_named,
+    sym_index_children,
     sym_block,
     sym_dict_get,
     sym_scope_of,
@@ -151,47 +154,16 @@ import from jaclang.compiler.backends.py.jacpython.compiler_annotations {
 def sym_class_child_at(
     parent: sym_block, class_name: str, lineno: int, col_offset: int
 ) -> sym_block | None {
-    ci = 0;
-    while ci < len(parent.children) {
-        ch = parent.children[ci];
-        if ch.block_type == "class"
-            and ch.name == class_name
-            and ch.lineno == lineno
-            and ch.col_offset == col_offset {
-            return ch;
-        }
-        ci = ci + 1;
-    }
-    return None;
+    return sym_child_at(parent, "class", class_name, lineno, col_offset);
 }
 
 def sym_class_child(parent: sym_block, class_name: str) -> sym_block | None {
-    ci = 0;
-    while ci < len(parent.children) {
-        ch = parent.children[ci];
-        if ch.block_type == "class" and ch.name == class_name {
-            return ch;
-        }
-        ci = ci + 1;
-    }
-    return None;
+    return sym_child_named(parent, "class", class_name);
 }
-
 
 def sym_function_child(parent: sym_block, fn_name: str) -> sym_block | None {
-    ci = 0;
-    while ci < len(parent.children) {
-        ch = parent.children[ci];
-        if ch.block_type == "function"
-            and ch.annotation_kind != "an annotation"
-            and ch.name == fn_name {
-            return ch;
-        }
-        ci = ci + 1;
-    }
-    return None;
+    return sym_child_named(parent, "function", fn_name);
 }
-
 
 # CPython's import prefix keeps int 0 in co_consts even though level uses
 # LOAD_SMALL_INT (same dead-small-int slot as literal folding).
@@ -833,11 +805,10 @@ def emit_definition_annotations(
     }
     scope: sym_block | None = None;
     if g.sym_top is not None {
-        for child in g.sym_top.children {
-            if child.function_annotation_key == id(fd) {
-                scope = child;
-                break;
-            }
+        sym_index_children(g.sym_top);
+        index = g.sym_top.annotation_positions.get(id(fd), -1);
+        if index >= 0 {
+            scope = g.sym_top.children[index];
         }
     }
     if scope is None {
@@ -1229,11 +1200,10 @@ def emit_type_parameter_expr(
     key = id(tp) * 2 + int(is_default);
     scope: sym_block | None = None;
     if g.sym_top is not None {
-        for child in g.sym_top.children {
-            if child.type_parameter_key == key {
-                scope = child;
-                break;
-            }
+        sym_index_children(g.sym_top);
+        index = g.sym_top.type_parameter_positions.get(key, -1);
+        if index >= 0 {
+            scope = g.sym_top.children[index];
         }
     }
     if scope is None {
