@@ -219,7 +219,7 @@ def boot(config_json: str) -> HostContext {
         host.setup_cef();
     }
 
-    entry_file = resolve_program(program, app_dir);
+    entry_file = resolve_program(program, app_dir) if backend == EMBEDDED else "";
     store = SessionStore(os.path.join(data_dir, ".jac", "desktop", "session.json"));
     (runtime, port, stop) = serve_program(
         entry_file,

@@ -142,3 +142,38 @@ test "[desktop] backend is embedded by default, a URL when remote, nothing else"
         shutil.rmtree(d, ignore_errors=True);
     }
 }
+
+
+test "remote desktop staging needs no local program in build or dev" {
+    import from jaclang.client.targets.desktop.desktop_build { stage_program }
+    import from unittest.mock { patch }
+    import jaclang.dist.seal as seal;
+    d = _workspace();
+    try {
+        base = Path(d);
+        assets = base / "shell" / "assets";
+        assets.mkdir();
+        (assets / "logo.svg").write_text("<svg>desktop</svg>");
+        with patch.object(
+            seal,
+            "build_jab",
+            side_effect=AssertionError("remote desktops must not seal a local app")
+        ) {
+            for dist in [None, base / "dist"] {
+                assert stage_program(
+                    base / "shell" / "main.jac",
+                    base,
+                    base / "out",
+                    "https://example.invalid",
+                    dist
+                )
+                    == {};
+            }
+        }
+        assert (base / "out" / "dist" / "assets" / "logo.svg").read_text()
+            == "<svg>desktop</svg>";
+    } finally {
+        set_config(None);
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}

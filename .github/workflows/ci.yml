@@ -1076,7 +1076,7 @@ jobs:
         run: |
           OUT=.jac/client/desktop/desktop
           test -x $OUT/jaclang || { echo "::error::no desktop binary"; exit 1; }
-          test -f $OUT/app.jab || { echo "::error::no sealed app image beside the binary"; exit 1; }
+          test ! -f $OUT/app.jab || { echo "::error::remote desktop ships an unnecessary local app image"; exit 1; }
           test -f $OUT/dist/index.html || { echo "::error::no client bundle beside the binary"; exit 1; }
           test ! -d $OUT/sv || { echo "::error::loose sources shipped; the image is the program"; exit 1; }
           grep -q "https://jaclang.org" $OUT/dist/client.*.js \
