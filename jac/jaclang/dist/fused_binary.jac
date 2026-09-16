@@ -76,8 +76,26 @@ def graft_runtime(self_path: str, host_path: str) -> bool {
 }
 
 
-def materialized_runtime_dir(path: str = "") -> (str | None) {
+"""Where the fused launcher materializes runtimes, in the order it prefers
+them: $XDG_CACHE_HOME or ~/.cache on every OS (the launcher's own rule, see
+`fused.materialize.cache_root`), the platform cache dir where that differs
+(macOS), then the TMPDIR fallback the launcher takes when neither is writable."""
+def runtime_cache_roots -> list[str] {
     import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+    base = os.environ.get("XDG_CACHE_HOME", "")
+        or os.path.join(os.path.expanduser("~"), ".cache");
+    roots = [os.path.join(base, "jac", "rt")];
+    platform_root = str(get_jir_cache_dir().parent / "rt");
+    if platform_root not in roots {
+        roots.append(platform_root);
+    }
+    tmp = os.environ.get("TMPDIR", "") or "/tmp";
+    roots.append(os.path.join(tmp, f"jac-cache-{os.getuid()}", "rt"));
+    return roots;
+}
+
+
+def materialized_runtime_dir(path: str = "") -> (str | None) {
     exe = path
         or os.environ.get("JAC_EXECUTABLE", "")
         or os.path.realpath(sys.executable);
@@ -106,10 +124,7 @@ def materialized_runtime_dir(path: str = "") -> (str | None) {
         return None;
     }
     key = rt_key(t.hash16(), exe);
-    roots = [str(get_jir_cache_dir().parent / "rt")];
-    tmp = os.environ.get("TMPDIR", "") or "/tmp";
-    roots.append(os.path.join(tmp, f"jac-cache-{os.getuid()}", "rt"));
-    for r in roots {
+    for r in runtime_cache_roots() {
         cand = os.path.join(r, key);
         if os.path.isfile(os.path.join(cand, ".ok")) {
             return cand;

@@ -294,10 +294,13 @@ def serving_app_for(config: any, entry_file: Path, backend: str) -> str {
 }
 
 
+"""Seal the app image into `image_dir` (the directory the host reads beside
+itself) and describe the program the host boots; a dev build with no client
+bundle boots the entry from source instead."""
 def stage_program(
     entry_file: Path,
     project_dir: Path,
-    output_dir: Path,
+    image_dir: Path,
     backend: str,
     dist_dir: (Path | None)
 ) -> dict[str, str] {
@@ -321,6 +324,6 @@ def stage_program(
             ),
         style="muted"
     );
-    build_jab(config, output_dir / "app.jab", app=app, bake_client=False);
+    build_jab(config, image_dir / "app.jab", app=app, bake_client=False);
     return {"jab": "app.jab"};
 }

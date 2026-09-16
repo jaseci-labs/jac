@@ -2,3 +2,4 @@
 .build/
 libwebview.so
 .webkit_module
+libwebview.dylib

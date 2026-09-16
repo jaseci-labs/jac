@@ -134,6 +134,10 @@ def _desktop_config_schema -> PluginConfigSchema {
                 "com.myapp", "Reverse-domain identifier (com.example.myapp)"
             ),
             "version": schema_str_option("1.0.0", "Desktop app version"),
+            "icon": schema_str_option(
+                "",
+                "App icon for packaged builds, a .icns or .png path relative to the project; the macOS bundle carries it"
+            ),
             "engine": schema_str_option(
                 "native",
                 "Desktop engine: 'native' (OS webview) or 'cef' (Chromium Embedded Framework)"

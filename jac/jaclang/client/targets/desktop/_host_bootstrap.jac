@@ -18,10 +18,12 @@ def _host_boot_py(
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: (dict[str, any] | None) = None
+    plugin_configs: (dict[str, any] | None) = None,
+    identifier: str = ""
 ) -> str {
     config = {
         "app_name": app_name,
+        "identifier": identifier,
         "mode": mode,
         "program": dict(program or {}),
         "backend": backend or "embedded",
@@ -52,7 +54,8 @@ def _generate_host_source(
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: (dict[str, any] | None) = None
+    plugin_configs: (dict[str, any] | None) = None,
+    identifier: str = ""
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -62,7 +65,8 @@ def _generate_host_source(
         dispatch_timeout_s,
         dispatch_max_queue,
         dispatch_debug,
-        plugin_configs
+        plugin_configs,
+        identifier
     );
 
     bootstrap_js = (

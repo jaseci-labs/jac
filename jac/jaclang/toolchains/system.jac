@@ -106,6 +106,50 @@ def ensure_linux_desktop {
 }
 
 
+"""macOS desktop builds need the Xcode Command Line Tools: clang++ and the
+WebKit framework it ships. Nothing is installed on the user's behalf."""
+def ensure_mac_desktop {
+    if mac_desktop_ready() {
+        return;
+    }
+    raise RuntimeError(
+        "The desktop target needs the Xcode Command Line Tools (clang++ and the "
+        "WebKit SDK). Run `xcode-select --install`, then retry."
+    );
+}
+
+
+def mac_desktop_ready -> bool {
+    selector = shutil.which("xcode-select");
+    if not selector
+        or subprocess.run([selector, "-p"], capture_output=True).returncode != 0 {
+        return False;
+    }
+    return bool(shutil.which("clang++"));
+}
+
+
+"""Provision what the native desktop build needs on this host and return the
+host's platform tag. Linux builds against WebKitGTK, installing the system
+packages on demand; macOS builds against the WebKit framework of the Command
+Line Tools; any other host is refused by name, since it has no webview backend."""
+def ensure_desktop_host -> str {
+    import from jaclang.toolchains.host { host_platform }
+    host = host_platform();
+    if host.startswith("linux-") {
+        ensure_linux_desktop();
+    } elif host.startswith("mac-") {
+        ensure_mac_desktop();
+    } else {
+        raise RuntimeError(
+            "Desktop apps build on Linux (WebKitGTK) and macOS (WKWebView); "
+            f"{host} has no native webview backend yet."
+        );
+    }
+    return host;
+}
+
+
 def ensure_patchelf -> str {
     found = shutil.which("patchelf");
     if found {

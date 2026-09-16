@@ -3,7 +3,9 @@ import sys;
 import json;
 import hashlib;
 import importlib;
+import platform;
 import from pathlib { Path }
+import from jaclang.client.targets.desktop.app_layout { AppLayout }
 
 
 glob PLUGIN_BOOTSTRAP_MODULES: list[str] = [
@@ -22,10 +24,11 @@ obj HostContext {
         dev_port: int = 0,
         host: any = None,
         runtime: any = None,
+        library_dir: str = "",
         _stop: any = None;
 
     def setup_webview(wv_handle: int) {
-        self.host.setup(wv_handle);
+        self.host.setup(wv_handle, self.library_dir);
     }
 
     def shutdown {
@@ -56,11 +59,31 @@ def preferred_port(app_name: str) -> int {
 }
 
 
-def _app_root -> str {
+"""The running host binary. Linux answers through /proc; elsewhere the fused
+bringup exported JAC_EXECUTABLE before the interpreter started. argv[0] is
+empty under the embedded interpreter, so it is only a last resort."""
+def host_executable -> str {
     if os.path.isfile("/proc/self/exe") {
-        return os.path.dirname(os.path.realpath("/proc/self/exe"));
+        return os.path.realpath("/proc/self/exe");
     }
-    return os.path.dirname(os.path.abspath(sys.argv[0]));
+    exe = os.environ.get("JAC_EXECUTABLE", "");
+    if exe and os.path.isfile(exe) {
+        return os.path.realpath(exe);
+    }
+    return os.path.abspath(sys.argv[0]);
+}
+
+
+"""Where the app keeps its graph and session when JAC_DATA_PATH is unset. A
+macOS app lives in a bundle that must stay read-only, so its state goes under
+Application Support; elsewhere it stays beside the app, as it always has."""
+def default_data_dir(system: str, identifier: str, app_name: str, app_dir: str) -> str {
+    if system == "Darwin" {
+        return os.path.join(
+            os.path.expanduser("~/Library/Application Support"), identifier or app_name
+        );
+    }
+    return app_dir;
 }
 
 
@@ -208,15 +231,18 @@ def boot(config_json: str) -> HostContext {
     program = (cfg.get("program") or {}) as dict[str, any];
     backend = str(cfg.get("backend") or EMBEDDED);
     plugin_configs = (cfg.get("plugins") or {}) as dict[str, any];
+    identifier = str(cfg.get("identifier") or "");
 
-    app_dir = str(cfg.get("app_dir") or "") or _app_root();
-    data_dir = str(os.environ.get("JAC_DATA_PATH", app_dir));
+    layout = AppLayout.from_executable(Path(host_executable()));
+    app_dir = str(cfg.get("app_dir") or "") or str(layout.resources);
+    data_dir = str(os.environ.get("JAC_DATA_PATH", ""))
+        or default_data_dir(platform.system(), identifier, app_name, app_dir);
 
     _apply_extra_deps();
 
     host = _bootstrap_plugin_host(plugin_configs);
     if mode == "cef" {
-        host.setup_cef();
+        host.setup_cef(str(layout.library_dir()));
     }
 
     entry_file = resolve_program(program, app_dir);
@@ -231,7 +257,13 @@ def boot(config_json: str) -> HostContext {
         store
     );
 
-    ctx = HostContext(host=host, runtime=runtime, port=port, _stop=stop);
+    ctx = HostContext(
+        host=host,
+        runtime=runtime,
+        port=port,
+        library_dir=str(layout.library_dir()),
+        _stop=stop
+    );
     try {
         ctx.dev_port = int(os.environ.get("JAC_DESKTOP_DEV_PORT", "0") or "0");
     } except (TypeError, ValueError) {
