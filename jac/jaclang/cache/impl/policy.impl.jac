@@ -62,6 +62,20 @@ impl Policy.matches(name: str) -> bool {
     return False;
 }
 
+impl Policy.is_kept(rel: str, name: str, keep: set[str]) -> bool {
+    if rel in keep or name in keep {
+        return True;
+    }
+    if self.keep_match == "fragment" {
+        for key in keep {
+            if key and key in name {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 impl touch(path: Path | str) -> None {
     try {
         os.utime(str(path), None);
@@ -266,7 +280,7 @@ impl sweep_dir(
     doomed: list[Path] = [];
     for item in entries_at(base, policy) {
         rel = _rel(base, item);
-        if rel in kept_names or item.name in kept_names {
+        if policy.is_kept(rel, item.name, kept_names) {
             result.kept += 1;
             continue;
         }

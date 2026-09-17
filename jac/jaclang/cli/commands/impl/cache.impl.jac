@@ -18,6 +18,27 @@ def _parse_action(action: str) -> (CacheAction | None) {
 }
 
 
+def _live_keys -> dict[str, set[str]] {
+    live: dict[str, set[str]] = {};
+    try {
+        import from jaclang.dist.fused_binary { running_runtime_key }
+        key = running_runtime_key();
+        if key {
+            live["rt"] = {key};
+        }
+    } except Exception {}
+    try {
+        import from jaclang.compiler.driver.jir { compiler_generation }
+        live["jir-modules"] = {compiler_generation()};
+    } except Exception {}
+    try {
+        import from jaclang.compiler.backends.common.kernel_units { live_unit_digests }
+        live["jir-kernel-units"] = live_unit_digests();
+    } except Exception {}
+    return live;
+}
+
+
 def _cache_status -> int {
     console.print(f"cache root: {cache_home()}");
     rows: list[list[str]] = [];
@@ -55,7 +76,7 @@ def _cache_status -> int {
 def _cache_gc(dry_run: bool) -> int {
     verb = "would reclaim" if dry_run else "reclaimed";
     total = 0;
-    for result in gc(dry_run=dry_run) {
+    for result in gc(dry_run=dry_run, live=_live_keys()) {
         if not result.removed and not result.errors {
             continue;
         }
@@ -82,7 +103,7 @@ def _cache_gc(dry_run: bool) -> int {
 def _cache_purge(bucket_name: str, dry_run: bool) -> int {
     names = [bucket_name] if bucket_name else None;
     try {
-        result = purge(names, dry_run=dry_run);
+        result = purge(names, dry_run=dry_run, live=_live_keys());
     } except KeyError as e {
         console.error(str(e.args[0]) if e.args else str(e));
         return 1;

@@ -121,18 +121,28 @@ def _atomic_write(path: str, text: str) {
     os.replace(tmp, path);
 }
 
+def live_unit_digests -> set[str] {
+    import hashlib;
+    digests: set[str] = set();
+    for parts in [OSP_CORE_PARTS, FMT_KERNEL_PARTS, REGION_KERNEL_PARTS] {
+        digests.add(hashlib.sha256(unit_source(parts).encode()).hexdigest()[:16]);
+    }
+    return digests;
+}
+
+def retire_stale_units(force: bool = False) -> bool {
+    import from jaclang.cache.registry { maybe_sweep }
+    return maybe_sweep("jir-kernel-units", keep=live_unit_digests(), force=force);
+}
+
 def kernel_unit_path(name: str, parts: list[str]) -> str {
     import hashlib;
-    import from jaclang.cache.policy { touch }
-    import from jaclang.cache.registry { maybe_sweep }
     source = unit_source(parts);
     digest = hashlib.sha256(source.encode()).hexdigest()[:16];
     path = os.path.join(_units_dir(), f"{name}.{digest}.jac");
-    if os.path.exists(path) {
-        touch(path);
-    } else {
+    if not os.path.exists(path) {
         _atomic_write(path, source);
-        maybe_sweep("jir-kernel-units");
+        retire_stale_units();
     }
     return path;
 }
@@ -176,17 +186,13 @@ def unit_artifact_path(unit_path: str, kind: str, fingerprint: str) -> str {
 }
 
 def load_unit_artifact(unit_path: str, kind: str, fingerprint: str) -> (str | None) {
-    import from jaclang.cache.policy { touch }
-    path = unit_artifact_path(unit_path, kind, fingerprint);
     try {
-        with open(path, "r") as f {
-            text = f.read();
+        with open(unit_artifact_path(unit_path, kind, fingerprint), "r") as f {
+            return f.read();
         }
     } except Exception {
         return None;
     }
-    touch(path);
-    return text;
 }
 
 def store_unit_artifact(unit_path: str, kind: str, fingerprint: str, text: str) {

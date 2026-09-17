@@ -70,26 +70,16 @@ impl external_buckets -> list[Bucket] {
     ];
 }
 
-impl live_keys(name: str) -> set[str] {
-    keys: set[str] = set();
-    try {
-        if name == "rt" {
-            import from jaclang.dist.fused_binary { running_runtime_key }
-            key = running_runtime_key();
-            if key {
-                keys.add(key);
-            }
-        } elif name == "jir-modules" {
-            import from jaclang.compiler.driver.jir { compiler_generation }
-            keys.add(compiler_generation());
-        }
-    } except Exception {}
-    return keys;
+impl maybe_sweep(name: str, keep: set[str] | None = None, force: bool = False) -> bool {
+    b = bucket(name);
+    return maybe_sweep_dir(b.path(), b.policy, keep=keep, force=force);
 }
 
-impl maybe_sweep(name: str) -> bool {
-    b = bucket(name);
-    return maybe_sweep_dir(b.path(), b.policy, keep=live_keys(name));
+def _live_for(live: dict[str, set[str]] | None, name: str) -> set[str] {
+    if live is None {
+        return set();
+    }
+    return live.get(name) or set();
 }
 
 impl status -> list[BucketStatus] {
@@ -174,7 +164,9 @@ def _retired_dirs -> list[Path] {
     ];
 }
 
-impl gc(dry_run: bool = False) -> list[SweepReport] {
+impl gc(
+    dry_run: bool = False, live: dict[str, set[str]] | None = None
+) -> list[SweepReport] {
     reports: list[SweepReport] = [];
     for b in managed_buckets() {
         p = b.path();
@@ -183,7 +175,11 @@ impl gc(dry_run: bool = False) -> list[SweepReport] {
         }
         reports.append(
             sweep_dir(
-                p, b.policy, keep=live_keys(b.name), dry_run=dry_run, bucket=b.name
+                p,
+                b.policy,
+                keep=_live_for(live, b.name),
+                dry_run=dry_run,
+                bucket=b.name
             )
         );
         if not dry_run and (p / SWEEP_SENTINEL).exists() {
@@ -202,19 +198,18 @@ impl gc(dry_run: bool = False) -> list[SweepReport] {
     return reports;
 }
 
-def _purge_bucket(b: Bucket, dry_run: bool, result: PurgeReport) {
+def _purge_bucket(b: Bucket, keep: set[str], dry_run: bool, result: PurgeReport) {
     p = b.path();
     if not p.is_dir() {
         return;
     }
-    keep = live_keys(b.name);
     if not keep and b.policy.pattern == "*" and b.policy.depth == 1 {
         _reclaim_into(result, p, b.name, dry_run);
         return;
     }
     for item in entries_at(p, b.policy) {
         rel = item.relative_to(p).as_posix();
-        if rel in keep or item.name in keep {
+        if b.policy.is_kept(rel, item.name, keep) {
             result.kept.append(f"{b.name}/{rel}");
             continue;
         }
@@ -222,7 +217,11 @@ def _purge_bucket(b: Bucket, dry_run: bool, result: PurgeReport) {
     }
 }
 
-impl purge(names: list[str] | None = None, dry_run: bool = False) -> PurgeReport {
+impl purge(
+    names: list[str] | None = None,
+    dry_run: bool = False,
+    live: dict[str, set[str]] | None = None
+) -> PurgeReport {
     targets = managed_buckets() if names is None else [bucket(n) for n in names];
     for b in targets {
         if b.is_external() {
@@ -233,7 +232,7 @@ impl purge(names: list[str] | None = None, dry_run: bool = False) -> PurgeReport
     }
     result = PurgeReport();
     for b in targets {
-        _purge_bucket(b, dry_run, result);
+        _purge_bucket(b, _live_for(live, b.name), dry_run, result);
     }
     if names is None {
         for p in _retired_dirs() {

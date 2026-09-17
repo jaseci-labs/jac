@@ -71,7 +71,7 @@ glob RETIRED: tuple[str, ...] = (
          Bucket(
              name="jir-kernel-units",
              relpath="jir/kernel_units",
-             policy=Policy(ttl_days=14.0),
+             policy=Policy(ttl_days=14.0, keep_match="fragment"),
              summary="native kernel unit sources and their compiled artifacts"
          ),
          Bucket(
@@ -157,14 +157,18 @@ def family_root(prefix: str) -> Path;
 def managed_buckets -> list[Bucket];
 def external_buckets -> list[Bucket];
 
-def live_keys(name: str) -> set[str];
-
-def maybe_sweep(name: str) -> bool;
+def maybe_sweep(name: str, keep: set[str] | None = None, force: bool = False) -> bool;
 
 def status -> list[BucketStatus];
 
 def unmanaged -> list[tuple[str, int]];
 
-def gc(dry_run: bool = False) -> list[SweepReport];
+def gc(
+    dry_run: bool = False, live: dict[str, set[str]] | None = None
+) -> list[SweepReport];
 
-def purge(names: list[str] | None = None, dry_run: bool = False) -> PurgeReport;
+def purge(
+    names: list[str] | None = None,
+    dry_run: bool = False,
+    live: dict[str, set[str]] | None = None
+) -> PurgeReport;

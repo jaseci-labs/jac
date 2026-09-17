@@ -20,9 +20,11 @@ obj Policy {
         depth: int = 1,
         pattern: str = "*",
         markers: list[str] = [],
-        ttl_env: str = "";
+        ttl_env: str = "",
+        keep_match: str = "name";
 
     def ttl_seconds -> float;
+    def is_kept(rel: str, name: str, keep: set[str]) -> bool;
     def describe -> str;
     def matches(name: str) -> bool;
 }
