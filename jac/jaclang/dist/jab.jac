@@ -6,7 +6,7 @@ import shutil;
 import tarfile;
 
 import from pathlib { Path }
-import from jaclang.jac0core.cache_paths { get_app_cache_dir }
+import from jaclang.cache.registry { bucket, maybe_sweep }
 import from jaclang.jac0core.sealed {
     MANIFEST_NAME,
     register_image,
@@ -28,9 +28,15 @@ def materialize_jab_bytes(data: bytes) -> Path {
     return _materialize_jab_data(data, "<app image>");
 }
 
+def _mark_used(dest: Path) {
+    try {
+        (dest / ".used").touch();
+    } except OSError {}
+}
+
 def _materialize_jab_data(data: bytes, label: str) -> Path {
     digest = hashlib.sha256(data).hexdigest();
-    dest = get_app_cache_dir() / digest[:20];
+    dest = bucket("apps").path() / digest[:20];
     manifest_path = dest / "_precompiled" / MANIFEST_NAME;
     if not manifest_path.is_file() {
         tmp = dest.with_suffix(f".{os.getpid()}.tmp");
@@ -48,7 +54,9 @@ def _materialize_jab_data(data: bytes, label: str) -> Path {
         } finally {
             shutil.rmtree(tmp, ignore_errors=True);
         }
+        maybe_sweep("apps");
     }
+    _mark_used(dest);
     bundle_dir = str(dest / "_precompiled");
     if image_for_bundle_dir(bundle_dir) is None
         and register_image(bundle_dir) is None {

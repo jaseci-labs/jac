@@ -7,6 +7,33 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### `jac purge` is removed; `jac cache` owns the machine-wide cache (#9246)
+
+`jac purge` is gone. It removed exactly `~/.cache/jac/jir` plus two
+directories that no longer existed, and never reached the fused-binary
+runtimes, app images, toolchains, model weights or release binaries that made
+up most of the cache. Typing it now prints the replacement and exits:
+
+| Old | New |
+|---|---|
+| `jac purge` | `jac cache purge` (every managed bucket) or `jac cache purge --bucket jir-modules` (just the compiled modules) |
+| `rm -rf ~/.cache/jac` by hand | `jac cache status` to see what is there, `jac cache gc` to reclaim what has expired, `jac cache purge` to clear it |
+
+The cache root rule is now one rule everywhere: `JAC_CACHE_HOME` (which
+until now only the embedded Postgres cluster read), else `XDG_CACHE_HOME/jac`
+(now honored on macOS and Windows too when set), else the platform default.
+Every bucket has a retention policy, `JAC_CACHE_TTL_DAYS` overrides all of
+them at once, and the root carries a standard `CACHEDIR.TAG`.
+
+A fused `jac` binary's extracted runtime is keyed by the payload's content
+hash alone, no longer by payload plus executable path, so one payload
+materializes once however many locations it runs from. Runtimes unused for
+30 days are reclaimed at the next launch; the first run after upgrading
+extracts once more into the new key, and the old `<hash>-<pathhash>` directories
+age out on the same schedule (or go at once with `jac cache purge --bucket rt`).
+
+---
+
 ### Apps use entry modules and compilation contexts (#9088)
 
 Every explicit `[apps.<name>]` table now requires `kind` and `entry-point`.

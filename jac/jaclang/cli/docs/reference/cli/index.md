@@ -32,7 +32,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Manage byLLM local models | `jac model` |
 | Use Jac from an AI assistant | `jac guide` · `jac mcp` |
 | Convert between Python, Jac, and JS | `jac tool py2jac` · `jac tool jac2py` · `jac tool jac2js` |
-| Clean caches / artifacts | `jac clean` |
+| Clean caches / artifacts | `jac clean` (project) · `jac cache` (machine-wide) |
 
 ---
 
@@ -66,6 +66,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac lsp` | Language server |
 | `jac setup` | One-time setup of an app's client (`jac setup [app]`) |
 | `jac db` | Manage the project's Postgres store (embedded or external): status, inspect, sql, serve, stop, fetch |
+| `jac cache` | Inspect and reclaim the machine-wide jac cache: `status`, `gc` (`--dry-run`), `purge` (`--bucket <name>`) |
 
 ---
 
@@ -88,6 +89,7 @@ The CLI cleanup in #7255 folded these former top-level commands into their homes
 | `jac start` | [`jac run --serve`](#jac-run) (`--port`, `--faux`, `--takeover` ride along) |
 | `jac dev` | [`jac run --dev`](#jac-run) |
 | `jac start --scale` | [`jac scale deploy`](#jac-scale-deploy) (with `--target`, `--enable-tls`, `--dry-run`, `--show-yaml`) |
+| `jac purge` | [`jac cache purge`](#jac-cache) (`jac cache status` first to see what is there; `jac cache gc` to reclaim only what has expired) |
 
 ## Version Info
 
@@ -1539,7 +1541,63 @@ jac clean --data --cache
 jac clean --all --force
 ```
 
-> **💡 Troubleshooting Tip:** If you encounter unexpected syntax errors, "NodeAnchor is not a valid reference" errors, or other strange behavior after modifying your code, try clearing the project cache with `jac clean --cache` (removes `.jac/cache/`). If that doesn't help -- for example after upgrading Jaseci packages -- also remove the global per-user cache with `rm -rf ~/.cache/jac`. Stale bytecode can cause issues when source files change.
+> **💡 Troubleshooting Tip:** If you encounter unexpected syntax errors, "NodeAnchor is not a valid reference" errors, or other strange behavior after modifying your code, try clearing the project cache with `jac clean --cache` (removes `.jac/cache/`). If that doesn't help -- for example after upgrading Jaseci packages -- also clear the machine-wide cache with [`jac cache purge`](#jac-cache). Stale bytecode can cause issues when source files change.
+
+---
+
+### jac cache
+
+Inspect and reclaim the **machine-wide** jac cache: the compiled modules and bootstrap bytecode every project shares, the extracted runtimes of fused `jac` binaries, materialized app images, downloaded toolchains, byLLM model weights, and the embedded Postgres cluster. (`jac clean` is the project-local `.jac/` directory; this is everything else.)
+
+```bash
+jac cache [-h] [action] [-b BUCKET] [-n]
+```
+
+| Argument / Option | Description | Default |
+|--------|-------------|---------|
+| `action` | `status`, `gc` or `purge` | `status` |
+| `-b, --bucket` | With `purge`: only this bucket (`status` lists the names) | all managed buckets |
+| `-n, --dry-run` | With `gc` or `purge`: report what would be removed without removing it | `False` |
+
+The cache root is `~/.cache/jac` on Linux, `~/Library/Caches/jac` on macOS and `%LOCALAPPDATA%\jac\cache` on Windows; `JAC_CACHE_HOME` relocates it, and a set `XDG_CACHE_HOME` is honored on every platform. It carries a standard `CACHEDIR.TAG`, so backup tools that respect the marker skip it.
+
+Every bucket has a **retention policy**:
+
+| Bucket | Holds | Policy |
+|---|---|---|
+| `rt` | fused-binary runtimes, one per payload hash | unused 30 days |
+| `jir-modules` | compiled modules, one generation per compiler digest | unused 14 days (`JAC_CACHE_GENERATION_TTL_DAYS`) |
+| `jir-bootstrap` | bootstrap-tier bytecode | unused 14 days, at most 4000 entries |
+| `jir-stubcat`, `jir-kernel-units`, `jir-digests` | stub catalogs, native kernel units, per-checkout compiler digests | unused 14 days |
+| `apps` | materialized `.jab` images | unused 30 days |
+| `scale-binaries` | pinned release binaries for deploys | unused 30 days |
+| `toolchains-downloads` | verified toolchain archives | unused 14 days |
+| `toolchains-installed`, `toolchains-build` | installed toolchains and builds | unused 90 days |
+| `models` | byLLM model weights | pinned: never collected, `purge` removes it |
+| `pg`, `toolchains-gradle`, `toolchains-android-sdk` | the Postgres cluster, Gradle's home, the Android SDK | external: reported only (`jac db prune` manages the cluster) |
+
+"Unused" is measured from the last time jac touched the entry, not from when it was written. `JAC_CACHE_TTL_DAYS` overrides every age above at once (`0` turns the age sweep off). Each bucket also sweeps itself opportunistically when jac writes to it, at most once per process and once per day, so the cache stays bounded without anyone running `gc`.
+
+**Examples:**
+
+```bash
+# Every bucket with its path, entry count, size and policy
+jac cache status
+
+# Run every retention policy now and report the bytes reclaimed
+jac cache gc
+
+# Show what gc would remove
+jac cache gc --dry-run
+
+# Remove every managed bucket (keeps the runtime this jac is running on; never touches pg/)
+jac cache purge
+
+# Remove one bucket
+jac cache purge --bucket jir-modules
+```
+
+`purge` refuses external buckets: the Postgres cluster is `jac db`'s (`jac db prune`), and Gradle and the Android SDK are their own tools'.
 
 ---
 

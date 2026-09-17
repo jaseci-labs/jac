@@ -682,12 +682,26 @@ recompile. It is a developer knob that trusts codegen did not change; leave it
 unset for anything that must be correct.
 
 The compiler keeps two on-disk caches so the front end and back end can be
-skipped when nothing has changed.
+skipped when nothing has changed. Both are buckets of the machine-wide jac
+cache (`~/.cache/jac` on Linux; `jac cache status` prints the root and every
+bucket), whose root, `CACHEDIR.TAG` marker and retention policies are owned
+by `jaclang.cache`. The pre-bootstrap Python module
+`jaclang/jac0core/cache_paths.py` holds the root rule itself, because the
+bootstrap tier imports it before any `.jac` module can be compiled.
 
-| Cache | Location | Invalidated when |
-|-------|----------|------------------|
-| **Bootstrap** | `~/.cache/jac/jir/bootstrap/` | A `compiler/driver/` file or `jac0.py` changes |
-| **Module** | `~/.cache/jac/jir/modules/` | The full compiler's output format changes, or the source / its imports change |
+| Cache | Bucket | Invalidated when | Reclaimed when |
+|-------|--------|------------------|----------------|
+| **Bootstrap** | `jir-bootstrap` (`<cache>/jir/bootstrap/`) | A `compiler/driver/` file or `jac0.py` changes | An entry goes unused for 14 days |
+| **Module** | `jir-modules` (`<cache>/jir/modules/<generation>/`) | The full compiler's output format changes, or the source / its imports change | A generation goes unused for 14 days (`JAC_CACHE_GENERATION_TTL_DAYS`) |
+
+Every compiler digest (one per checkout) names a **generation** directory, so
+several checkouts sharing one binary keep disjoint slots; the live generation
+is held by identity, never by age. The stub catalog (`jir-stubcat`), the
+native kernel units (`jir-kernel-units`) and the per-checkout compiler digests
+(`jir-digests`) are further buckets under `jir/` with the same 14-day
+last-use policy. Sweeps run opportunistically from each bucket's write path,
+at most once per process and once per day; `jac cache gc` runs them on
+demand.
 
 Each cache entry is a **JIR file** (Jac IR) with named sections defined in
 [`compiler/driver/jir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/jir.jac):
@@ -719,14 +733,17 @@ Hydration is always on; `JAC_REBUILD` recomputes and rewrites the cache, and
 `JAC_IFACE_VERIFY=1` recomputes everything served from cache and fails on
 any divergence. See [The analysis cache](analysis-cache.md) for the design.
 
-When debugging compiler changes, clear the relevant cache:
+When debugging compiler changes, clear the relevant bucket:
 
 ```bash
-# Bootstrap or core compiler change
-rm -rf ~/.cache/jac/jir/
+# Just the compiled modules
+jac cache purge --bucket jir-modules
 
-# Or just user modules
-rm -rf ~/.cache/jac/jir/modules/
+# The bootstrap tier too
+jac cache purge --bucket jir-bootstrap
+
+# Everything jac manages (fused runtimes, app images, toolchains included)
+jac cache purge
 ```
 
 ---

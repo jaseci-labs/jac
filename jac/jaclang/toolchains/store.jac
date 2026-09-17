@@ -12,7 +12,8 @@ import from http.client { HTTPResponse }
 import from urllib.request { Request, urlopen }
 import from urllib.parse { urlsplit }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+import from jaclang.cache.policy { touch }
+import from jaclang.cache.registry { bucket, family_root, maybe_sweep }
 
 obj Artifact {
     has name: str,
@@ -41,10 +42,7 @@ obj Artifact {
 }
 
 def cache_root -> Path {
-    custom = os.environ.get("JAC_TOOLCHAIN_DIR", "");
-    return Path(custom).expanduser().resolve()
-        if custom
-        else get_jir_cache_dir().parent / "toolchains";
+    return family_root("toolchains");
 }
 
 def offline -> bool {
@@ -115,9 +113,9 @@ def file_digest(path: Path, algorithm: str = "sha256") -> str {
 
 def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
     artifact.key();
+    own_bucket = destination is None;
     if destination is None {
-        destination = cache_root()
-            / "downloads"
+        destination = bucket("toolchains-downloads").path()
             / f"{artifact.algorithm}-{artifact.digest}";
     }
     with InstallLock(destination.with_suffix(".lock")) {
@@ -126,6 +124,7 @@ def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
             console.print(
                 f"Using cached {artifact.name} {artifact.version}", style="muted"
             );
+            touch(destination);
             return destination;
         }
         if offline() {
@@ -191,6 +190,9 @@ def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
                     f"Verified {artifact.name}: {format_size(received)}",
                     style="success"
                 );
+                if own_bucket {
+                    maybe_sweep("toolchains-downloads");
+                }
                 return destination;
             } except Exception {
                 part.unlink(missing_ok=True);
@@ -243,7 +245,7 @@ def extract(archive: Path, destination: Path) {
 
 def install(artifact: Artifact, required: str) -> Path {
     key = artifact.key();
-    destination = cache_root() / "installed" / key;
+    destination = bucket("toolchains-installed").path() / key;
     if Path(required).is_absolute() or ".." in Path(required).parts {
         raise ValueError("Installation marker must be a relative path");
     }
@@ -254,6 +256,7 @@ def install(artifact: Artifact, required: str) -> Path {
                 f"Using {artifact.name} {artifact.version} at {destination}",
                 style="muted"
             );
+            touch(destination / ".jac-install.json");
             return destination;
         }
         archive = fetch(artifact);
@@ -288,6 +291,7 @@ def install(artifact: Artifact, required: str) -> Path {
             staged.replace(destination);
         }
         console.print(f"Ready: {artifact.name} {artifact.version}", style="success");
+        maybe_sweep("toolchains-installed");
     }
     return destination;
 }
