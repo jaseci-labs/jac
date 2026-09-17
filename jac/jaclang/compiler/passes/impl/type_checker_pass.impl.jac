@@ -1839,7 +1839,7 @@ impl TypeCheckPass._check_comptime_only_use(nd: Name) -> None {
     if not is_ct_import and not is_ct_def {
         return;
     }
-    if in_type_position(nd) {
+    if in_type_position(nd, include_subscripts=False) {
         return;
     }
     if self._in_comptime_context(nd) or self.evaluator.ct_quiet {

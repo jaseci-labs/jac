@@ -493,7 +493,7 @@ def _report_client_bare_import_uses(reporter: any, mod: Module, stmt: UniNode) {
         if _shadows_bare_import(nm) {
             continue;
         }
-        if in_type_position(nm) {
+        if in_type_position(nm, include_subscripts=False) {
             continue;
         }
         (item, imp) = hit;
@@ -625,7 +625,7 @@ def client_value_ref_targets(
             if (isinstance(par, KWPair) and par.key is nm) {
                 continue;
             }
-            if in_type_position(nm) {
+            if in_type_position(nm, include_subscripts=False) {
                 continue;
             }
             sym = nm.sym;
@@ -697,7 +697,7 @@ def _import_used_as_value(mod: Module, imp: Import) -> bool {
             if (isinstance(par, AtomTrailer) and par.is_attr and par.right is nm) {
                 continue;
             }
-            if in_type_position(nm) {
+            if in_type_position(nm, include_subscripts=False) {
                 continue;
             }
             return True;

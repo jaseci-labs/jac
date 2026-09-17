@@ -176,7 +176,7 @@ impl base_expr_is_erased(base: UniNode) -> bool {
 }
 
 impl name_erased_natively(name_nd: UniNode) -> bool {
-    if in_type_position(name_nd) {
+    if in_type_position(name_nd, include_subscripts=False) {
         return True;
     }
     for _decl in [

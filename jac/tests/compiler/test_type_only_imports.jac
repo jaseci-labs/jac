@@ -424,11 +424,7 @@ test "type uses of an import-type binding are accepted in a server module" {
     }
 }
 
-glob GRAPH_SRC: str = (
-         "node Pt {\n"
-         "    has x: int = 0;\n"
-         "}\n"
-     ),
+glob GRAPH_SRC: str = "node Pt {\n" "    has x: int = 0;\n" "}\n",
      GRAPH_TYPE_USES_SRC: str = (
          "import type from .graph { Pt }\n\n"
          "edge Link: Pt --> Pt {}\n\n"

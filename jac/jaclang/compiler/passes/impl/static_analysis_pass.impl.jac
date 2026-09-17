@@ -202,7 +202,7 @@ impl StaticAnalysisPass._osp_shape_position(name_nd: Name) -> (str | None) {
 }
 
 impl StaticAnalysisPass._native_type_position(name_nd: Name) -> (str | None) {
-    if not in_type_position(name_nd) {
+    if not in_type_position(name_nd, include_subscripts=False) {
         return None;
     }
     imp = name_nd.find_parent_of_type(Import);
@@ -210,7 +210,7 @@ impl StaticAnalysisPass._native_type_position(name_nd: Name) -> (str | None) {
         return "C library declaration type position";
     }
     if name_nd.in_native_context() {
-        return "native type annotation position";
+        return "native type position";
     }
     return None;
 }

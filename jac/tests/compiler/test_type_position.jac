@@ -1,12 +1,13 @@
 """One authority answers "is this name a type, or a value?".
 
 A name in a type position is a message to the checker: nothing loads it, calls
-it, or reads an attribute off it at run time. Four separate passes need that
-answer -- the type checker (E1132, a type-only import used as a value), the
-native capability gate (E5090, a Python module a native unit would have to
-import at run time), static analysis (E2018, an unresolved name in a native
-type position), and the client import gates (E5082/E5084, a server-only or
-Python-only binding the browser would have to resolve).
+it, or reads an attribute off it at run time. Five separate passes need that
+answer -- the type checker (E1132, a type-only import used as a value; E0033, a
+comptime import used at run time), the native capability gate (E5090, a Python
+module a native unit would have to import at run time), static analysis (E2018,
+an unresolved name in a native type position), and the client import gates
+(E5082/E5084, a server-only or Python-only binding the browser would have to
+resolve).
 
 Each of those passes used to carry its own answer, and each was missing a
 different part of the language: an `as` cast, a `type` alias, a generic
@@ -22,7 +23,9 @@ import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.frontend.unitree { Name, in_type_position }
 import from tests.support { TESTS_DIR }
 
-glob PROBE_PATH = os.path.join(TESTS_DIR, "compiler", "fixtures", "type_position_probe.jac");
+glob PROBE_PATH = os.path.join(
+         TESTS_DIR, "compiler", "fixtures", "type_position_probe.jac"
+     );
 
 """Parse `src` without binding: the predicate reads shape, not symbols."""
 def _parse(src: str) -> any {
@@ -41,7 +44,7 @@ def _names(src: str, value: str) -> list[Name] {
 }
 
 """Assert every mention of `value` in `src` reads as a type."""
-def _all_type_position(src: str, value: str, count: int) -> None {
+def _all_type_position(src: str, value: str, count: int) {
     found = _names(src, value);
     assert len(found) == count , (
         f"expected {count} mentions of {value!r}, found {len(found)} in {src!r}"
@@ -55,7 +58,7 @@ def _all_type_position(src: str, value: str, count: int) -> None {
 }
 
 """Assert every mention of `value` in `src` reads as a value."""
-def _all_value_position(src: str, value: str, count: int) -> None {
+def _all_value_position(src: str, value: str, count: int) {
     found = _names(src, value);
     assert len(found) == count , (
         f"expected {count} mentions of {value!r}, found {len(found)} in {src!r}"
@@ -87,7 +90,9 @@ test "a return type is a type position" {
 }
 
 test "an `as` cast names a type, not a value" {
-    _all_type_position("def widen(p: any) -> int {\n    q = p as Pt;\n    return 0;\n}\n", "Pt", 1);
+    _all_type_position(
+        "def widen(p: any) -> int {\n    q = p as Pt;\n    return 0;\n}\n", "Pt", 1
+    );
 }
 
 test "a `type` alias right-hand side is a type position" {
@@ -96,7 +101,9 @@ test "a `type` alias right-hand side is a type position" {
 }
 
 test "a generic parameter bound and its default are type positions" {
-    _all_type_position("def pick[T: Pt = Pt](v: T) -> T {\n    return v;\n}\n", "Pt", 2);
+    _all_type_position(
+        "def pick[T: Pt = Pt](v: T) -> T {\n    return v;\n}\n", "Pt", 2
+    );
 }
 
 test "an edge declaration's endpoints are type positions" {
@@ -105,7 +112,9 @@ test "an edge declaration's endpoints are type positions" {
 }
 
 test "a generic argument inside an annotation is a type position" {
-    _all_type_position("def take(xs: list[Pt]) -> dict[str, Pt] {\n    return {};\n}\n", "Pt", 2);
+    _all_type_position(
+        "def take(xs: list[Pt]) -> dict[str, Pt] {\n    return {};\n}\n", "Pt", 2
+    );
 }
 
 test "a deeply nested annotation is a type position at any depth" {
@@ -141,4 +150,32 @@ test "a connect operator's edge type is a run-time use" {
     _all_value_position(
         "def link(a: any, b: any) -> None {\n    a +>:Pt:+> b;\n}\n", "Pt", 1
     );
+}
+
+test "a subscript index is a run-time use when subscripts are excluded" {
+    nm = _names("def take(xs: any) -> int {\n    return xs[Idx];\n}\n", "Idx")[0];
+    assert in_type_position(nm) , (
+        "a subscript argument reads as a type by default: that is what a "
+        "generic argument is"
+    );
+    assert not in_type_position(nm, include_subscripts=False) , (
+        "a subscript alone does not make a name a type -- `xs[Idx]` reads "
+        "`Idx` at run time, and the passes that gate a run-time binding on "
+        "this predicate must keep seeing it"
+    );
+}
+
+test "a generic argument inside an annotation survives excluding subscripts" {
+    for src in [
+        "def take(xs: dict[str, list[Pt]]) -> int {\n    return 0;\n}\n",
+        "def make -> list[Pt] {\n    return [];\n}\n",
+        "def widen(raw: any) -> int {\n    v = raw as list[Pt];\n    return 0;\n}\n",
+        "type Alias = dict[str, Pt];\n"
+    ] {
+        nm = _names(src, "Pt")[0];
+        assert in_type_position(nm, include_subscripts=False) , (
+            f"the annotation, return type, cast or alias above the subscript "
+            f"is what makes {src!r} a type position"
+        );
+    }
 }
