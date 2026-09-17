@@ -11,7 +11,7 @@ import from unittest.mock { MagicMock, patch }
 import from http.server { ThreadingHTTPServer }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
-import from jaclang.server.server { JacAPIServer }
+import from jaclang.server.server { JacAPIServer, ServerExtension }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -328,5 +328,40 @@ test "api server construction is socket-free and builds a serving app" {
         app = srv.build_app();
         assert isinstance(app, ServingApp);
         assert app.router.all_endpoints() , "built app has no endpoints";
+    }
+}
+
+# --- Worker exit hooks ---
+obj _ExitHookFails(ServerExtension) {
+    def register(server: JacAPIServer) {}
+    def on_worker_exit(server: JacAPIServer, pid: int) {
+        raise RuntimeError(f"cleanup failed for worker {pid}");
+    }
+}
+
+obj _ExitHookRecords(ServerExtension) {
+    has seen: list[int] = [];
+
+    def register(server: JacAPIServer) {}
+    def on_worker_exit(server: JacAPIServer, pid: int) {
+        self.seen.append(pid);
+    }
+}
+
+"""The supervisor reports every reaped worker through the server, so one
+extension whose cleanup raises must neither escape into the supervisor loop nor
+keep the extensions after it from hearing about the exit."""
+test "a worker exit hook that raises leaves the supervisor and other extensions intact" {
+    with TemporaryDirectory() as tmpdir {
+        Jac.set_base_path(tmpdir);
+        recorder = _ExitHookRecords();
+        srv = JacAPIServer(
+            module_name="exit_hooks",
+            port=0,
+            base_path=tmpdir,
+            extensions=[_ExitHookFails(), recorder]
+        );
+        srv._on_worker_exit(4242);
+        assert recorder.seen == [4242];
     }
 }

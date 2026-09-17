@@ -1649,7 +1649,13 @@ impl JacAPIServer._worker_main(
 
 impl JacAPIServer._on_worker_exit(pid: int) -> None {
     for ext in (self.extensions or []) {
-        ext.on_worker_exit(self, pid);
+        try {
+            ext.on_worker_exit(self, pid);
+        } except Exception {
+            logger.exception(
+                f"{type(ext).__name__}.on_worker_exit failed for worker pid {pid}"
+            );
+        }
     }
 }
 
