@@ -66,7 +66,54 @@ impl Scheduler._may_fire(task: ScheduledTask) -> bool {
     }
 }
 
-impl Scheduler.stop -> None {
+impl Scheduler._still_running(task: ScheduledTask) -> bool {
+    with self._flight_lock {
+        flight = self._in_flight.get(id(task));
+    }
+    if flight is not None and flight[1].is_alive() {
+        if task.name not in self._overlapping {
+            self._overlapping.add(task.name);
+            logger.warning(
+                f"'{task.name}' is still running from an earlier tick; skipping its "
+                "ticks until that run finishes"
+            );
+        }
+        return True;
+    }
+    if task.name in self._overlapping {
+        self._overlapping.discard(task.name);
+        logger.info(f"'{task.name}' finished its long run; its ticks run again");
+    }
+    return False;
+}
+
+impl Scheduler._launch(task: ScheduledTask) -> None {
+    thread = threading.Thread(
+        target=self._run_tracked,
+        args=(task, ),
+        daemon=True,
+        name=f"jac-schedule-{task.name}"
+    );
+    with self._flight_lock {
+        self._in_flight[id(task)] = (task.name, thread);
+    }
+    thread.start();
+}
+
+impl Scheduler._run_tracked(task: ScheduledTask) -> None {
+    try {
+        self._execute(task);
+    } finally {
+        with self._flight_lock {
+            flight = self._in_flight.get(id(task));
+            if flight is not None and flight[1] is threading.current_thread() {
+                del self._in_flight[id(task)];
+            }
+        }
+    }
+}
+
+impl Scheduler.stop(timeout: float = 0.0) -> None {
     self._running = False;
     if self._stop_event is not None {
         self._stop_event.set();
@@ -76,6 +123,33 @@ impl Scheduler.stop -> None {
     }
     if self._thread is not None and self._thread.is_alive() {
         self._thread.join(timeout=5);
+    }
+    with self._flight_lock {
+        running = [
+            flight
+            for flight in self._in_flight.values()
+            if flight[1].is_alive()
+        ];
+    }
+    if not running or timeout <= 0 {
+        return;
+    }
+    deadline = time.monotonic() + timeout;
+    for (_name, thread) in running {
+        thread.join(timeout=max(0.0, deadline - time.monotonic()));
+    }
+    left = sorted(
+        [
+            name
+            for (name, thread) in running
+            if thread.is_alive()
+        ]
+    );
+    if left {
+        logger.warning(
+            f"scheduled task(s) {', '.join(left)} still running after the "
+            f"{timeout:.1f}s drain budget; the worker exits without them"
+        );
     }
 }
 
@@ -128,10 +202,13 @@ impl Scheduler._run_loop -> None {
         heapq.heappop(heap);
         now = datetime.datetime.now(datetime.timezone.utc);
         task.last_run = now;
-        if self._may_fire(task) {
-            threading.Thread(target=self._execute, args=(task, ), daemon=True).start();
-        } else {
-            logger.debug(f"'{task.name}' fired elsewhere this tick; skipping");
+        draining = self.drain is not None and self.drain.draining;
+        if not draining and not self._still_running(task) {
+            if self._may_fire(task) {
+                self._launch(task);
+            } else {
+                logger.debug(f"'{task.name}' fired elsewhere this tick; skipping");
+            }
         }
         new_next = self._compute_next_run(task.spec, now);
         task.next_run = new_next;

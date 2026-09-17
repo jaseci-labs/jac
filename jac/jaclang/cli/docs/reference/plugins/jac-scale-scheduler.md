@@ -357,6 +357,7 @@ shutdown_timeout = 10
 ## Behavior Notes
 
 - Cron fields, dynamic job triggers, and stored timestamps are all UTC. The one exception is a bare `date` string on `@schedule`, which is read in the server's local timezone; pin an offset there.
-- A job never overlaps itself. If a run is still going when the next fire time arrives, the new run waits (`max_instances=1`).
+- Neither a static task nor a dynamic job overlaps itself. If a run is still going when the next fire time arrives, that fire is skipped, not queued: a static task logs one warning until the run finishes and leaves the tick unclaimed so another replica can take it, and a dynamic job is skipped by APScheduler (`max_instances=1`).
+- When a server shuts down it stops starting static runs as soon as it begins draining, and waits for the runs already going within what is left of `[serve.timeouts] drain` after in-flight requests. A run still going when that budget is spent is cut off, and the log names it. Dynamic jobs are waited on for `shutdown_timeout`.
 - Missed fires within `misfire_grace_time` execute once on recovery; older misses are dropped rather than replayed in a burst.
 - Keep scheduled work idempotent where possible. Interval and cron jobs will run many times, and a restart near a fire time can produce a make-up run.

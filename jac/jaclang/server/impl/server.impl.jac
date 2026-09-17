@@ -1082,6 +1082,7 @@ impl JacAPIServer.postinit -> None {
     );
     self.scheduler = Scheduler.instance();
     self.drain = DrainState(timeout=self.settings.timeouts.drain);
+    self.scheduler.drain = self.drain;
     if self.extensions is None {
         self.extensions = list(Jac.get_server_extensions());
     }
@@ -1542,7 +1543,7 @@ impl JacAPIServer.serve_background(
     );
     def _stop {
         stop_transport();
-        self.scheduler.stop();
+        self.scheduler.stop(timeout=self.drain.remaining());
         stop_worker();
     }
     return _stop;
@@ -1626,7 +1627,7 @@ impl JacAPIServer._worker_main(
     try {
         return serving.run(on_ready=_ready, port_retries=port_retries);
     } finally {
-        self.scheduler.stop();
+        self.scheduler.stop(timeout=self.drain.remaining());
         stop_worker();
     }
 }
