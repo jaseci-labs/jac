@@ -95,6 +95,9 @@ impl Scheduler._launch(task: ScheduledTask) -> None {
         name=f"jac-schedule-{task.name}"
     );
     with self._flight_lock {
+        if not self._running {
+            return;
+        }
         self._in_flight[id(task)] = (task.name, thread);
     }
     thread.start();
@@ -113,8 +116,12 @@ impl Scheduler._run_tracked(task: ScheduledTask) -> None {
     }
 }
 
-impl Scheduler.stop(timeout: float = 0.0) -> None {
-    self._running = False;
+impl Scheduler.stop(timeout: (float | None) = None) -> None {
+    budget = max(0.0, timeout) if timeout is not None else None;
+    deadline = time.monotonic() + (budget if budget is not None else 5.0);
+    with self._flight_lock {
+        self._running = False;
+    }
     if self._stop_event is not None {
         self._stop_event.set();
     }
@@ -122,7 +129,7 @@ impl Scheduler.stop(timeout: float = 0.0) -> None {
         self._done_event.set();
     }
     if self._thread is not None and self._thread.is_alive() {
-        self._thread.join(timeout=5);
+        self._thread.join(timeout=max(0.0, deadline - time.monotonic()));
     }
     with self._flight_lock {
         running = [
@@ -131,10 +138,9 @@ impl Scheduler.stop(timeout: float = 0.0) -> None {
             if flight[1].is_alive()
         ];
     }
-    if not running or timeout <= 0 {
+    if not running or budget is None {
         return;
     }
-    deadline = time.monotonic() + timeout;
     for (_name, thread) in running {
         thread.join(timeout=max(0.0, deadline - time.monotonic()));
     }
@@ -147,8 +153,8 @@ impl Scheduler.stop(timeout: float = 0.0) -> None {
     );
     if left {
         logger.warning(
-            f"scheduled task(s) {', '.join(left)} still running after the "
-            f"{timeout:.1f}s drain budget; the worker exits without them"
+            f"scheduled task(s) {', '.join(left)} still running when the "
+            f"{budget:.1f}s drain budget ran out; the worker exits without them"
         );
     }
 }

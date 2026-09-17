@@ -50,7 +50,7 @@ obj Scheduler {
     def _still_running(task: ScheduledTask) -> bool;
     def _launch(task: ScheduledTask) -> None;
     def _run_tracked(task: ScheduledTask) -> None;
-    def stop(timeout: float = 0.0) -> None;
+    def stop(timeout: (float | None) = None) -> None;
     def `wait -> None;
     def has_pending -> bool;
     def _run_loop -> None;
