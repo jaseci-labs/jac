@@ -131,8 +131,10 @@ def _runtime_dir_for_key(key: str) -> (str | None) {
         return None;
     }
     roots = [str(bucket("rt").path())];
-    tmp = os.environ.get("TMPDIR", "") or "/tmp";
-    roots.append(os.path.join(tmp, f"jac-cache-{os.getuid()}", "rt"));
+    if os.name == "posix" {
+        tmp = os.environ.get("TMPDIR", "") or "/tmp";
+        roots.append(os.path.join(tmp, f"jac-cache-{os.getuid()}", "rt"));
+    }
     for r in roots {
         cand = os.path.join(r, key);
         if os.path.isfile(os.path.join(cand, ".ok")) {

@@ -13,6 +13,20 @@ enum Retention(StrEnum) {
     EXTERNAL = "external"
 }
 
+enum EntryKind(StrEnum) {
+    STORED = "stored",
+    TEMPORARY = "temporary",
+    METADATA = "metadata",
+    UNKNOWN = "unknown"
+}
+
+enum KeepMatch(StrEnum) { NAME = "name", FRAGMENT = "fragment" }
+
+obj CacheEntry {
+    has path: Path,
+        kind: EntryKind;
+}
+
 obj Policy {
     has retention: Retention = Retention.LAST_USE,
         ttl_days: float = 14.0,
@@ -21,7 +35,8 @@ obj Policy {
         pattern: str = "*",
         markers: list[str] = [],
         ttl_env: str = "",
-        keep_match: str = "name";
+        keep_match: KeepMatch = KeepMatch.NAME,
+        temp_patterns: list[str] = ["*.tmp.*", "*.tmp"];
 
     def ttl_seconds -> float;
     def is_kept(rel: str, name: str, keep: set[str]) -> bool;
@@ -46,7 +61,11 @@ def dir_size(path: Path | str) -> int;
 
 def format_bytes(size: int) -> str;
 
-def entries_at(base: Path | str, policy: Policy) -> list[Path];
+def scan_entries(
+    base: Path | str, policy: Policy, exclude: set[str] | None = None
+) -> list[CacheEntry];
+
+def temporary_in_use(path: Path) -> bool;
 
 def last_use(item: Path, policy: Policy) -> float;
 

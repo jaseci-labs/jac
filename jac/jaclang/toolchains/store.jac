@@ -134,7 +134,7 @@ def fetch(
         if not allowed_url(artifact.url) {
             raise ValueError("Toolchain downloads require HTTPS");
         }
-        part = destination.with_suffix(".part");
+        part = destination.with_name(f"{destination.name}.tmp.{os.getpid()}");
         for attempt in range(3) {
             console.print(
                 f"Downloading {artifact.name} {artifact.version} ({artifact.platform})"
@@ -257,7 +257,7 @@ def install(artifact: Artifact, required: str) -> Path {
         archive = fetch(artifact);
         destination.parent.mkdir(parents=True, exist_ok=True);
         with tempfile.TemporaryDirectory(
-            prefix=".install-", dir=destination.parent
+            prefix=f".tmp.{os.getpid()}.", dir=destination.parent
         ) as tmp {
             staged = Path(tmp) / "payload";
             console.print(

@@ -17,11 +17,14 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import from unittest.mock { patch }
-import from jaclang.jac0core.cache_paths {
-    get_cache_home,
-    get_jir_cache_dir
+import from tests.support { cache_env }
+import from jaclang.jac0core.cache_paths { get_cache_home, get_jir_cache_dir }
+import from jaclang.cache.home {
+    CACHEDIR_TAG,
+    CACHEDIR_TAG_TEXT,
+    cache_home,
+    ensure_root
 }
-import from jaclang.cache.home { CACHEDIR_TAG, cache_home, ensure_root }
 import from jaclang.cache.policy {
     Policy,
     Retention,
@@ -37,7 +40,8 @@ import from jaclang.cache.registry {
     gc,
     managed_buckets,
     purge,
-    status
+    status,
+    unmanaged
 }
 
 glob DAY: float = 86400.0,
@@ -68,7 +72,7 @@ def backdate(path: Path, seconds_ago: float) {
 """A fresh private cache root, exported as JAC_CACHE_HOME for the block."""
 def private_root -> tuple[Path, dict[str, str]] {
     base = Path(tempfile.mkdtemp(prefix="jac-cache-test-"));
-    return (base, {"JAC_CACHE_HOME": str(base), "XDG_CACHE_HOME": str(base / "xdg")});
+    return (base, cache_env(base));
 }
 
 def entry_dir(base: Path, name: str, age: float, marker: str = "") -> Path {
@@ -124,16 +128,22 @@ test "every pre-bootstrap path derives from the one root" {
     }
 }
 
-test "ensure_root creates the root and stamps CACHEDIR.TAG" {
+test "only disposable buckets are tagged and an old Jac root tag is retired" {
     (base, env) = private_root();
-    shutil.rmtree(base);
+    (base / CACHEDIR_TAG).write_text(CACHEDIR_TAG_TEXT);
+    pg = entry_dir(base, "pg/main", 0.0);
     with patch.dict(os.environ, env) {
         assert ensure_root() == base;
+        assert not (base / CACHEDIR_TAG).exists();
+        rt = bucket("rt").ensure();
+        assert (rt / CACHEDIR_TAG).read_text() == CACHEDIR_TAG_TEXT;
+        bucket("pg").ensure();
+        assert not (base / "pg" / CACHEDIR_TAG).exists();
+        assert pg.exists();
+        (base / CACHEDIR_TAG).write_text("user backup policy");
+        ensure_root();
+        assert (base / CACHEDIR_TAG).read_text() == "user backup policy";
     }
-    tag = base / CACHEDIR_TAG;
-    assert tag.is_file() , "the standard backup opt-out marker must exist";
-    text = tag.read_text();
-    assert text.startswith("Signature: 8a477f597d28d172789f06886806bc55") , "CACHEDIR.TAG must carry the standard signature line";
 }
 
 test "the registry names every bucket the tree writes, each with a policy" {
@@ -234,7 +244,7 @@ test "sweep_dir walks to the declared depth and prunes emptied parents" {
     backdate(lock, 100.0 * DAY);
     result = sweep_dir(base, policy);
     assert not stale.exists();
-    assert not (base / "ndk").exists() , "an emptied parent directory must be pruned";
+    assert lock.exists() , "lock inodes must survive collection so existing waiters remain synchronized";
     assert live.exists();
     assert result.removed == ["ndk/26/linux-x64-abcd"];
 }
@@ -409,5 +419,95 @@ test "purge removes managed buckets and refuses external ones" {
         result = purge(None);
         assert not models.exists() , "a full purge clears pinned buckets too";
         assert pg.exists() , "a full purge still leaves external buckets alone";
+    }
+}
+
+
+test "inspection and purge include staging while unknown JIR content remains visible" {
+    (base, env) = private_root();
+    with patch.dict(os.environ, env) {
+        install = entry_dir(
+            base, "toolchains/installed/demo/v1/.install-abandoned", 120.0 * DAY
+        );
+        runtime = entry_dir(base, "rt/abc.tmp.abandoned", 120.0 * DAY);
+        unknown = entry_dir(base, "jir/unregistered", 120.0 * DAY);
+        rows = {r.name: r for r in status()};
+        assert rows["toolchains-installed"].size_bytes == 1024;
+        assert rows["rt"].size_bytes == 1024;
+        assert rows["jir-digests"].size_bytes == 0;
+        assert unmanaged() == [("jir/unregistered", 1024)];
+        dry = purge(dry_run=True);
+        assert dry.reclaimed_bytes == 2048;
+        assert install.exists() and runtime.exists();
+        result = purge();
+        assert result.reclaimed_bytes == 2048;
+        assert not install.exists() and not runtime.exists();
+        assert unknown.exists();
+    }
+}
+
+test "nested staging uses the orphan TTL and never follows symlinks" {
+    (base, env) = private_root();
+    with patch.dict(os.environ, env) {
+        parent = bucket("toolchains-installed").path();
+        old = entry_dir(parent, "demo/v1/.install-old", TMP_TTL_SECONDS + 60.0);
+        fresh = entry_dir(parent, "demo/v1/.install-fresh", 60.0);
+        active = entry_dir(parent, f"demo/v1/.tmp.{os.getpid()}.active", 120.0 * DAY);
+        outside = entry_dir(base, "outside", 120.0 * DAY);
+        link = parent / "linked";
+        try {
+            link.symlink_to(outside, target_is_directory=True);
+        } except OSError {
+            pass;
+        }
+        gc();
+        assert not old.exists();
+        assert fresh.exists() and active.exists();
+        assert (outside / "blob").is_file();
+        purge(["toolchains-installed"]);
+        assert active.exists() , "purge must not delete staging owned by a live writer";
+        assert not fresh.exists();
+    }
+}
+
+test "retired toolchains honor custom roots and never remove an active bucket root" {
+    (base, env) = private_root();
+    with tempfile.TemporaryDirectory() as custom {
+        env["JAC_TOOLCHAIN_DIR"] = custom;
+        old = entry_dir(Path(custom), "llvm-cbe", 0.0);
+        default_old = entry_dir(base, "toolchains/cocoapods", 0.0);
+        with patch.dict(os.environ, env) {
+            extra = dict(unmanaged());
+            assert str(old) in extra;
+            gc(dry_run=True);
+            assert old.exists() and default_old.exists();
+            gc();
+            assert not old.exists() and not default_old.exists();
+        }
+        env["JAC_TOOLCHAIN_DIR"] = str(base / "toolchains/llvm-cbe");
+        with patch.dict(os.environ, env) {
+            active = entry_dir(
+                bucket("toolchains-installed").path(), "demo/v1/platform", 0.0
+            );
+            gc();
+            assert active.exists();
+        }
+    }
+}
+
+test "private test environments override every inherited cache family" {
+    with tempfile.TemporaryDirectory() as tmp {
+        inherited = {
+            "JAC_CACHE_HOME": "/unrelated",
+            "JAC_TOOLCHAIN_DIR": "/unrelated-tools"
+        };
+        with patch.dict(os.environ, inherited) {
+            with patch.dict(os.environ, cache_env(tmp)) {
+                for b in BUCKETS {
+                    assert b.path().is_relative_to(Path(tmp).resolve());
+                }
+            }
+            assert os.environ["JAC_CACHE_HOME"] == "/unrelated";
+        }
     }
 }

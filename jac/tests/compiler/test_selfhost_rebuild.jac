@@ -18,6 +18,7 @@ import resource;
 import subprocess;
 import sys;
 import tempfile;
+import from tests.support { cache_env }
 import jaclang;
 
 glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__))),
@@ -59,7 +60,7 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
     }
     env: dict[str, str] = dict(os.environ);
     env["HOME"] = work;
-    env["XDG_CACHE_HOME"] = os.path.join(work, "cache");
+    env.update(cache_env(os.path.join(work, "cache")));
     env["LOCALAPPDATA"] = os.path.join(work, "cache");
     for knob in [
         "JAC_NO_DEV_SOURCE",

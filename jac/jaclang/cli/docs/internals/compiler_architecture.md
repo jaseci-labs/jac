@@ -684,7 +684,7 @@ unset for anything that must be correct.
 The compiler keeps two on-disk caches so the front end and back end can be
 skipped when nothing has changed. Both are buckets of the machine-wide jac
 cache (`~/.cache/jac` on Linux; `jac cache status` prints the root and every
-bucket), whose root, `CACHEDIR.TAG` marker and retention policies are owned
+bucket), whose root, per-bucket `CACHEDIR.TAG` markers and retention policies are owned
 by `jaclang.cache`. The pre-bootstrap Python module
 `jaclang/jac0core/cache_paths.py` holds the root rule itself, because the
 bootstrap tier imports it before any `.jac` module can be compiled.

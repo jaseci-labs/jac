@@ -22,6 +22,18 @@ glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
 
+"""Environment overrides isolating every machine-wide cache family."""
+def cache_env(cache_dir: Path | str) -> dict[str, str] {
+    base = Path(cache_dir).resolve();
+    return {
+        "JAC_CACHE_HOME": str(base),
+        "XDG_CACHE_HOME": str(base.parent / "xdg"),
+        "JAC_TOOLCHAIN_DIR": str(base / "toolchains"),
+        "JAC_MODELS_DIR": str(base / "models"),
+        "JAC_SCALE_CACHE_DIR": str(base / "scale-binaries")
+    };
+}
+
 """Select the parent's compiler, or an explicit checkout for comparative tests."""
 def compiler_python_command(
     source: str, *args: str, compiler_root: str | None = None

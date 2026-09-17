@@ -67,7 +67,9 @@ def ensure_c_backend -> Path {
         ).strip();
         archive = fetch(C_BACKEND);
         directory.parent.mkdir(parents=True, exist_ok=True);
-        with tempfile.TemporaryDirectory(dir=directory.parent) as temporary {
+        with tempfile.TemporaryDirectory(
+            prefix=f".tmp.{os.getpid()}.", dir=directory.parent
+        ) as temporary {
             staging = Path(temporary);
             extract(archive, staging / 'source');
             source = next((staging / 'source').iterdir());
