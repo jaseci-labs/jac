@@ -12,6 +12,7 @@ import contextlib;
 import io;
 import os;
 import subprocess;
+import sys;
 import tempfile;
 import time;
 import from pathlib { Path }
@@ -117,4 +118,53 @@ test "an unknown action is refused" {
     (base, env) = private_env();
     (rc, out) = run_cache(env, action="frobnicate");
     assert rc != 0;
+}
+
+"""The upgrade window: a launcher built before the rekey runs the new Python
+code from a runtime it extracted under the legacy `<hash>-<pathhash>` key,
+which carries no `.used` marker and is not what the recomputed payload key
+names. The runtime the interpreter actually lives in (the parent of
+`sys.prefix`, carrying `.ok`) must survive purge and gc regardless, and so
+must the entry the recomputed key names."""
+test "purge and gc keep the runtime the interpreter runs from, whatever key it was extracted under" {
+    import from jaclang.dist.fused_binary {
+        materialized_runtime_dir,
+        running_runtime_entries,
+        running_runtime_key
+    }
+    (base, env) = private_env();
+    legacy = seed_entry(
+        base, "rt/0123456789abcdef-89abcdef01234567", 400.0, ".ok"
+    );
+    (legacy / "python").mkdir();
+    expired = seed_entry(base, "rt/fedcba9876543210", 400.0);
+    recomputed = running_runtime_key();
+    rekeyed = seed_entry(base, f"rt/{recomputed}", 400.0) if recomputed else None;
+    env["JAC_CACHE_TTL_DAYS"] = "0.001";
+    with patch.object(sys, "prefix", str(legacy / "python")) {
+        with patch.dict(os.environ, env) {
+            assert materialized_runtime_dir() == str(legacy) , "the running runtime is where the interpreter lives, not where the recomputed key points";
+            live = running_runtime_entries();
+        }
+        assert legacy.name in live , f"the legacy-keyed runtime is not protected: {live}";
+        if recomputed {
+            assert recomputed in live , "the recomputed key must stay protected too";
+        }
+        (rc, out) = run_cache(env, action="gc");
+        assert rc == 0 , out;
+        assert legacy.exists() , "gc reclaimed the runtime this interpreter runs from";
+        assert not expired.exists() , "gc left an expired sibling behind";
+        if rekeyed is not None {
+            assert rekeyed.exists() , "gc reclaimed the recomputed-key runtime";
+        }
+        (rc, out) = run_cache(env, action="purge", bucket="rt", dry_run=True);
+        assert rc == 0 , out;
+        assert legacy.name not in out , "a dry-run purge lists the running runtime for removal";
+        (rc, out) = run_cache(env, action="purge", bucket="rt");
+        assert rc == 0 , out;
+        assert legacy.exists() , "purge removed the runtime this interpreter runs from";
+        if rekeyed is not None {
+            assert rekeyed.exists() , "purge removed the recomputed-key runtime";
+        }
+    }
 }
