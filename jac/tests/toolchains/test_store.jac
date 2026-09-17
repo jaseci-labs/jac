@@ -9,7 +9,6 @@ import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch, MagicMock }
 import from jaclang.toolchains.store {
     Artifact,
-    cache_root,
     extract,
     fetch,
     install,

@@ -12,7 +12,7 @@ import from http.client { HTTPResponse }
 import from urllib.request { Request, urlopen }
 import from urllib.parse { urlsplit }
 import from jaclang.cli.console { console }
-import from jaclang.cache.registry { bucket, family_root, maybe_sweep }
+import from jaclang.cache.registry { bucket, maybe_sweep }
 
 obj Artifact {
     has name: str,
@@ -38,10 +38,6 @@ obj Artifact {
         }
         return f"{self.name}/{self.version}/{self.platform}-{self.digest[:16]}";
     }
-}
-
-def cache_root -> Path {
-    return family_root("toolchains");
 }
 
 def offline -> bool {

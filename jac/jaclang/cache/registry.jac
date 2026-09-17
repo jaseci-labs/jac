@@ -155,8 +155,6 @@ glob RETIRED: tuple[str, ...] = (
 
 def bucket(name: str) -> Bucket;
 
-def family_root(prefix: str) -> Path;
-
 def managed_buckets -> list[Bucket];
 def external_buckets -> list[Bucket];
 

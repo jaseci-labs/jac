@@ -26,19 +26,6 @@ impl Bucket.path -> Path {
     return custom / rest if rest else custom;
 }
 
-impl family_root(prefix: str) -> Path {
-    for b in BUCKETS {
-        if b.root_prefix == prefix {
-            custom = _override_root(b.root_env);
-            if custom is not None {
-                return custom;
-            }
-            break;
-        }
-    }
-    return cache_home() / prefix;
-}
-
 impl Bucket.is_external -> bool {
     return self.policy.retention == Retention.EXTERNAL;
 }

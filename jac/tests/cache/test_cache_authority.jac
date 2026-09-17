@@ -18,7 +18,6 @@ import time;
 import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.jac0core.cache_paths {
-    get_app_cache_dir,
     get_cache_home,
     get_jir_cache_dir
 }
@@ -119,7 +118,6 @@ test "every pre-bootstrap path derives from the one root" {
     (base, env) = private_root();
     with patch.dict(os.environ, env) {
         assert get_jir_cache_dir() == base / "jir";
-        assert get_app_cache_dir() == base / "apps";
         assert bucket("jir-modules").path() == base / "jir" / "modules";
         assert bucket("apps").path() == base / "apps";
         assert bucket("rt").path() == base / "rt";
