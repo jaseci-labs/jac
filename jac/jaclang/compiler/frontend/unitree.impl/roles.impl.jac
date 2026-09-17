@@ -1,3 +1,8 @@
+"""Role-edge accessors for Unitree.
+
+Pure per-role getters/setters backed by the TokRole/ChildRole edge graph.
+Future split: roles/modules.jac, stmts.jac, exprs.jac.
+"""
 import from collections.abc { Sequence }
 
 import from jaclang.compiler.frontend.roles {
