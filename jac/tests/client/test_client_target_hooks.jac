@@ -132,7 +132,7 @@ test "ensure_ready on the base target consults requires_setup" {
     assert target.requires_setup == False;
     calls: list[str] = [];
 
-    def _fake_setup(project_dir: Path) -> None {
+    def _fake_setup(project_dir: Path) {
         calls.append(f"setup:{project_dir}");
     }
 
@@ -171,7 +171,7 @@ test "web, static and desktop ensure_ready are no-ops" {
             assert target.requires_setup == False , f"{name} needs no setup step";
             calls: list[str] = [];
 
-            def _fake_setup(project_dir: Path) -> None {
+            def _fake_setup(project_dir: Path) {
                 calls.append(name);
             }
             with unittest.mock.patch.object(target, "setup", _fake_setup) {
@@ -191,15 +191,15 @@ test "the client dispatcher calls ensure_ready before build, dev and start" {
     build_section = content.split("def run_client_build(")[1].split(
         "def run_client_start("
     )[0];
-    start_section = content.split("def run_client_start(")[1].split(
-        "def get_config"
-    )[0];
+    start_section = content.split("def run_client_start(")[1].split("def get_config")[
+        0
+    ];
     for (label, section, dispatch) in [
         ("build", build_section, "target.build("),
         ("start", start_section, "target.dev("),
         ("start", start_section, "target.start(")
     ] {
-        ready_idx = section.find("target.ensure_ready(project_dir)");
+        ready_idx = section.find("target.ensure_ready(project_dir");
         dispatch_idx = section.find(dispatch);
         assert ready_idx >= 0 , f"run_client_{label} must call target.ensure_ready";
         assert dispatch_idx >= 0 , f"run_client_{label} must call {dispatch}";

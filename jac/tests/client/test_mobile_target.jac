@@ -186,13 +186,11 @@ def _run_with_mobile_stubs(target: any, calls: list[str], action: any) -> str {
         calls.append(f"scaffold:{rn_dir}");
         rn_dir.mkdir(parents=True, exist_ok=True);
         (rn_dir / "package.json").write_text('{"name": "stub"}\n', encoding="utf-8");
-        (rn_dir / "app.json").write_text(
-            '{"expo": {"extra": {}}}\n', encoding="utf-8"
-        );
+        (rn_dir / "app.json").write_text('{"expo": {"extra": {}}}\n', encoding="utf-8");
         return True;
     }
 
-    def _fake_deps(rn_dir: Path) -> None {
+    def _fake_deps(rn_dir: Path) {
         calls.append(f"deps:{rn_dir}");
     }
 
@@ -269,12 +267,10 @@ test "mobile dev provisions a missing scaffold and proceeds" {
             rn_dir = resolve_rn_project_dir(project_dir);
             assert not (rn_dir / "package.json").exists();
             calls: list[str] = [];
-
             def _dev {
                 target.dev(project_dir / "main.jac", project_dir);
             }
             msg = _run_with_mobile_stubs(target, calls, _dev);
-
             assert msg == "stop after ensure_ready" , (
                 f"dev must provision and continue into the pipeline, got: {msg!r}"
             );
@@ -309,12 +305,10 @@ test "mobile dev refreshes native deps on an existing scaffold" {
             (rn_dir / "package.json").write_text('{"name": "existing"}\n');
             (rn_dir / "app.json").write_text('{"expo": {"extra": {}}}\n');
             calls: list[str] = [];
-
             def _dev {
                 target.dev(project_dir / "main.jac", project_dir);
             }
             msg = _run_with_mobile_stubs(target, calls, _dev);
-
             assert msg == "stop after ensure_ready" , msg;
             assert calls == [f"deps:{rn_dir}", "compile"] , (
                 f"an existing scaffold is kept; only deps are synced; got {calls}"
@@ -344,12 +338,10 @@ test "mobile dev under JAC_OFFLINE refuses to provision a missing scaffold" {
             target = target_for_kind("mobile", project_dir);
             rn_dir = resolve_rn_project_dir(project_dir);
             calls: list[str] = [];
-
             def _dev {
                 target.dev(project_dir / "main.jac", project_dir);
             }
             msg = _run_with_mobile_stubs(target, calls, _dev);
-
             assert "jac setup <app>" in msg , (
                 f"offline with no scaffold must name the exact command: {msg!r}"
             );
@@ -379,12 +371,10 @@ test "mobile build provisions a missing scaffold before compiling" {
             target = target_for_kind("mobile", project_dir);
             rn_dir = resolve_rn_project_dir(project_dir);
             calls: list[str] = [];
-
             def _build {
                 target.build(project_dir / "main.jac", project_dir, platform="android");
             }
             msg = _run_with_mobile_stubs(target, calls, _build);
-
             assert msg == "stop after ensure_ready" , msg;
             assert calls == [f"scaffold:{rn_dir}", f"deps:{rn_dir}", "compile"] , calls;
         }
@@ -411,14 +401,12 @@ test "explicit setup and lazy ensure_ready share one provisioning path" {
             target = target_for_kind("mobile", project_dir);
             rn_dir = resolve_rn_project_dir(project_dir);
             calls: list[str] = [];
-
             def _setup {
                 target.setup(project_dir);
             }
             msg = _run_with_mobile_stubs(target, calls, _setup);
             assert msg == "" , f"setup must complete without compiling: {msg!r}";
             assert calls == [f"scaffold:{rn_dir}", f"deps:{rn_dir}"] , calls;
-
             # Second pass: ensure_ready on a provisioned project only syncs
             # deps; it never rewrites a present scaffold.
             def _ready {
@@ -1625,9 +1613,7 @@ test "run_manifest_install skips bun install while the stamp is current" {
             (project_dir / "package.json").write_text(
                 '{"dependencies": {"expo": "1.0.0"}}\n', encoding="utf-8"
             );
-            with unittest.mock.patch(
-                "subprocess.run", side_effect=_fake_run
-            ), unittest.mock.patch(
+            with unittest.mock.patch("subprocess.run", side_effect=_fake_run), unittest.mock.patch(
                 "jaclang.client.targets.node_tooling_common.get_bun",
                 side_effect=_fake_get_bun
             ) {

@@ -15,12 +15,15 @@ jac run studio             # build (if needed), then launch the native window
 jac run --dev studio       # HMR: Vite on 127.0.0.1 + recompile on .jac saves
 ```
 
-There is **no `jac setup desktop` step** - the native host is generated at build time. Run the built binary directly with `(cd .jac/client/desktop && ./<app>)`.
+There is **no `jac setup desktop` step** - the native host is generated at build time, and the desktop target's readiness hook (`ensure_ready`) is a no-op. Run the built binary directly with `(cd .jac/client/desktop && ./<app>)`.
 
-Jac provisions the native webview wrapper and its build dependencies automatically.
-Use `jac setup --toolchain desktop` to prepare them ahead of time. Linux system
-libraries require administrator access; downloads and generated native libraries
-live in the managed toolchain cache.
+Jac provisions the native webview wrapper and its build dependencies automatically
+on the first `jac run` / `jac build`, narrating each step. Use
+`jac setup --toolchain desktop` to prepare them ahead of time (CI images, offline
+prep). Linux system libraries install through the package manager with `sudo`
+(`sudo -n` when there is no TTY, so an unattended run stops with the command to
+run instead of hanging); downloads and generated native libraries live in the
+managed toolchain cache.
 
 ## Configuration - `[desktop]` in `jac.toml`
 

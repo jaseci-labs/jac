@@ -1677,8 +1677,8 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac build --as client [app]` | Build only the app's client bundle |
 | `jac build desktop_app` | Build a desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac build mobile --platform android` | Build a mobile app (`android`, `ios`, or `web` for a browser bundle) |
-| `jac setup mobile` | One-time setup of the `mobile` app's client (the Expo scaffold at `.jac/mobile-rn/`) |
-| `jac setup [app]` | One-time setup of an app's client; for a web app with `[client.pwa]`, the `pwa_icons/` directory |
+| `jac setup mobile` | Provision the `mobile` app's client ahead of time (the Expo scaffold at `.jac/mobile-rn/`; `jac run` / `jac build` do this on first use) |
+| `jac setup [app]` | Provision an app's client ahead of time; for a web app with `[client.pwa]`, the `pwa_icons/` directory |
 | `jac install --npm <pkg>` | Add npm package |
 | `jac install --npm --dev <pkg>` | Add npm dev dependency |
 | `jac install --npm` | Install all npm dependencies from jac.toml |
@@ -1798,7 +1798,7 @@ a web app (no API server).
 
 ### jac setup
 
-One-time initialization of an app's client.
+Provision an app's client ahead of time. It is optional: `jac run`, `jac run --dev` and `jac build` ask the client target for readiness first (`ensure_ready`) and provision whatever is missing on first use, narrating each step. `jac setup` runs the same sequence explicitly, for CI images, offline preparation, or anyone who wants the tools in place before the first run.
 
 ```bash
 jac setup [app]
@@ -1808,7 +1808,7 @@ jac setup [app]
 |--------|-------------|
 | `app` | An app name from `[apps]`. Omit to set up the default app |
 
-What setup does follows the app's kind: a `mobile` app gets its Expo/Metro scaffold at `.jac/mobile-rn/`; a `web-app` with a `[client.pwa]` table gets a `pwa_icons/` directory with placeholder icons; `desktop` apps need no setup.
+What setup does follows the app's kind: a `mobile` app gets its Expo/Metro scaffold at `.jac/mobile-rn/` and its packages installed; a `web-app` with a `[client.pwa]` table gets a `pwa_icons/` directory with placeholder icons; `desktop` apps need no setup. Under `JAC_OFFLINE=1` a run cannot provision, so a missing mobile scaffold or stale packages stop with `jac setup <app>` as the hint.
 
 **Examples:**
 
@@ -1904,13 +1904,12 @@ platform = "android"      # optional default for `jac run mobile` / `jac build m
 
 The kind is an **app** property: it turns on the `@jac/mobui` host-tag guard for every module the app claims (its directory, or its entry file for a file-rooted app) and nothing outside it, so a workspace can hold a mobile app next to an HTML-based web app over the same shared `core/`.
 
-**Setup & Build:**
+**Run & Build:**
 
 ```bash
-# 1. One-time setup (scaffolds the Expo/Metro project at .jac/mobile-rn/)
-jac setup mobile
-
-# 2. Development: Fast Refresh on device/emulator
+# 1. Development: Fast Refresh on device/emulator. The first run scaffolds the
+#    Expo/Metro project at .jac/mobile-rn/ and installs its packages (narrated
+#    as a one-time setup); `jac setup mobile` does the same ahead of time.
 jac run --dev mobile
 # Metro serves both platforms; pick the device in the Expo CLI
 # (press `a` for Android, `i` for iOS simulator) or scan the QR in Expo Go.
@@ -1918,13 +1917,13 @@ jac run --dev mobile
 # The same UI in a browser, through react-native-web
 jac run --dev --platform web mobile
 
-# 3. Build for Android
+# 2. Build for Android (provisions the scaffold too if this is the first native run)
 jac build mobile --platform android
 
-# 4. Build for iOS (macOS only; non-macOS points at EAS Build)
+# 3. Build for iOS (macOS only; non-macOS points at EAS Build)
 jac build mobile --platform ios
 
-# 5. Build the browser bundle (dist/mobile/ under `jac build --all --platform web`)
+# 4. Build the browser bundle (dist/mobile/ under `jac build --all --platform web`)
 jac build mobile --platform web
 
 # Build for the app's platform, then install + launch on a device/simulator
@@ -1962,7 +1961,7 @@ Packages only the Expo project needs go under `[dependencies.npm.native]`; `jac 
 
 **Notes:**
 
-- `jac setup mobile` scaffolds the Expo project at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). `jac build` runs the scaffold itself when it is missing.
+- The Expo project lives at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). The first native `jac run` / `jac run --dev` / `jac build` scaffolds it and installs its packages (narrated as a one-time setup); later runs re-sync the packages only when the manifest or lockfile changed, and `--platform web` never touches it. `jac setup mobile` provisions the same ahead of time; under `JAC_OFFLINE=1` a missing scaffold stops with that hint.
 - Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit.
 - `jac run <app>` without `--dev` picks its platform from `--platform` (which sets `JAC_MOBILE_PLATFORM` for the run), else `[apps.<name>] platform`, else `[client.react_native].default_platform`, else `android`.
 - iOS device builds and App Store archives require Xcode signing. On non-macOS hosts, `--platform ios` errors out and points at EAS Build.

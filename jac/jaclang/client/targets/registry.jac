@@ -19,6 +19,10 @@ class ClientTarget {
         output_dir: Optional[Path] = None;
 
     def setup(self: ClientTarget, project_dir: Path) -> None abst;
+    def ensure_ready(
+        self: ClientTarget, project_dir: Path, platform: Optional[str] = None
+    ) -> None;
+
     def build(
         self: ClientTarget,
         entry_file: Path,

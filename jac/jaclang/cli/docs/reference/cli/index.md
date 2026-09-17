@@ -17,7 +17,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Run the live hot-reload dev loop | `jac run --dev` |
 | Deploy to Kubernetes | `jac scale deploy` · `jac scale status` · `jac scale destroy` |
 | Create a new project | `jac create` |
-| Set up / build a client (web, desktop, mobile) | `jac setup [app]` · `jac build [app]` (`--as client` builds only the client bundle) |
+| Build a client (web, desktop, mobile) | `jac build [app]` (`--as client` builds only the client bundle; a mobile app's Expo scaffold is provisioned on first use) · `jac setup [app]` provisions ahead of time |
 | Compile a native binary or C-ABI shared library | `jac build <file> --native` (`--lib`, `--memory`, `--target-triple`, `--debug`) |
 | Build one distributable artifact (.jab, wheel, npm, source) | `jac build --as {jab,wheel,npm,source,…}` |
 | Add, remove, or update dependencies | `jac install <pkg>` · `jac remove` · `jac update` |
@@ -64,7 +64,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac tool` | Language tools & source transforms (`jac2py`, `py2jac`, `jac2js`, `grammar`, IR, AST) |
 | `jac guide` | Show curated Jac reference guides |
 | `jac lsp` | Language server |
-| `jac setup` | One-time setup of an app's client (`jac setup [app]`) |
+| `jac setup` | Provision an app's client ahead of time (`jac setup [app]`); run and build do it on first use |
 | `jac db` | Manage the project's Postgres store (embedded or external): status, inspect, sql, serve, stop, fetch |
 
 ---
@@ -1906,7 +1906,7 @@ jac build --as client web
 
 ### jac setup
 
-One-time initialization of an app's client.
+Provision an app's client ahead of time. It is optional: `jac run`, `jac run --dev` and `jac build` check the client target's readiness first and provision whatever is missing on first use, narrating each step. `jac setup` runs the same sequence explicitly, for CI images, offline preparation, or anyone who wants the tools in place before the first run.
 
 ```bash
 jac setup [app]
@@ -1915,8 +1915,10 @@ jac setup [app]
 | Option | Description |
 |--------|-------------|
 | `app` | An app name from `[apps]`. Omit to set up the default app |
+| `--toolchain <name>` | Provision build tools without a project: `android`, `ios`, `desktop`, `cef` |
+| `--platform <name>` | Also provision the app's build platform toolchain: `android` or `ios` |
 
-What it does depends on the app's kind: a `mobile` app gets its Expo/Metro scaffold at `.jac/mobile-rn/` (with `[dependencies.npm.native]` merged in); a `web-app` with a `[client.pwa]` table gets a `pwa_icons/` directory with placeholder icons; `desktop` apps need no setup (the native host is generated at build time).
+What it does depends on the app's kind: a `mobile` app gets its Expo/Metro scaffold at `.jac/mobile-rn/` (with `[dependencies.npm.native]` merged in) and its packages installed; a `web-app` with a `[client.pwa]` table gets a `pwa_icons/` directory with placeholder icons; `desktop` apps need no setup (the native host is generated at build time). Under `JAC_OFFLINE=1` a run cannot provision, so a missing mobile scaffold or stale packages stop with `jac setup <app>` as the hint.
 
 **Examples:**
 

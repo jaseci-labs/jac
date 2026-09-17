@@ -55,7 +55,7 @@ test "desktop ensure_ready is a no-op" {
     assert target.requires_setup == False;
     calls: list[str] = [];
 
-    def _fake_setup(project_dir: Path) -> None {
+    def _fake_setup(project_dir: Path) {
         calls.append("setup");
     }
 
