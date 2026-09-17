@@ -294,7 +294,7 @@ impl NaIRGenPass._codegen_bound_args(
                 if _tup_ptr and _tv is not None and self._is_owned(_tv) {
                     self._emit_rc_release_simple(_tv, op="spread_tuple", loc="");
                 }
-            } elif _is_list_sp {
+            } elif _is_list_sp and _tv is not None {
                 positional.append(("spread.list.val", _tv));
             } else {
                 _unpack_names.append(param.op.value);
@@ -343,6 +343,7 @@ impl NaIRGenPass._codegen_bound_args(
                 );
                 continue;
             }
+            assert isinstance(p, uni.Expr);
             v = self._codegen_expr(p);
             if v is not None {
                 args.append(v);
@@ -370,6 +371,8 @@ impl NaIRGenPass._codegen_bound_args(
     _has_pack = (callee_sig.varargs is not None) or (callee_sig.kwargs is not None);
     if _has_pack and func.function_type.var_arg {
         _has_pack = False;
+        # C ellipsis describes trailing operands, not a physical pack argument.
+        sig_params = [p for p in sig_params if not p.is_vararg and not p.is_kwargs];
     }
     _sig_is_callees = (self_offset - _self_skip + len(callee_sig.get_parameters()))
         == len(func.args);
@@ -430,7 +433,7 @@ impl NaIRGenPass._codegen_bound_args(
             expected_type = func.args[slot].type
                 if slot < len(func.args)
                 else ir.IntType(64);
-            chosen: (uni.Expr | None) = None;
+            chosen: (uni.Expr | tuple[str, ir.Value] | None) = None;
             if pix < len(positional) {
                 chosen = positional[pix];
             } elif sp.name.sym_name in kw_map {
@@ -442,6 +445,7 @@ impl NaIRGenPass._codegen_bound_args(
                     chosen = None;
                 }
             }
+            val: ir.Value | None = None;
             if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
                 val = chosen[1];
             } elif isinstance(chosen, tuple)
@@ -480,6 +484,7 @@ impl NaIRGenPass._codegen_bound_args(
                 and _extra_p[0] == "spread.list.val" {
                 continue;
             }
+            assert isinstance(_extra_p, uni.Expr);
             v = self._codegen_expr(_extra_p);
             if v is not None {
                 args.append(v);
@@ -807,9 +812,11 @@ impl NaIRGenPass._codegen_varargs_list(
             }
             continue;
         }
+        v: ir.Value | None = None;
         if isinstance(e, tuple) and e and e[0] == "spread.val" {
             v = e[1];
         } else {
+            assert isinstance(e, uni.Expr);
             v = self._codegen_expr(e);
             if v is None {
                 self.ctx.emit(
@@ -897,6 +904,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
     for _entry in (order or []) {
         (_kind, _payload) = _entry;
         if _kind == "lit" {
+            assert isinstance(_payload, str);
             kname: str = _payload;
             if kname not in leftover {
                 continue;
@@ -933,6 +941,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
             continue;
         }
         _seen_spread = True;
+        assert isinstance(_payload, uni.Expr);
         sp_expr = _payload;
         sv = self._codegen_expr(sp_expr);
         if sv is None {
@@ -1108,8 +1117,31 @@ impl NaIRGenPass._coerce_narrowed_arg(
 }
 
 impl NaIRGenPass._codegen_receiver(nd: (uni.UniNode | None)) -> (ir.Value | None) {
-    _rv = self._codegen_expr(nd);
-    return self._opt_unwrap_attr(_rv) if _rv is not None else None;
+    type_name = self._struct_name_of(nd) if nd is not None else None;
+    is_value = type_name is not None and self._arch_is_value(type_name);
+    if is_value and isinstance(nd, uni.Expr) and type_name is not None {
+        place = self._codegen_place_ptr(nd, allow_inline=True);
+        if place is not None {
+            storage = self.struct_types.get(type_name);
+            if isinstance(place.type, ir.PointerType)
+                and place.type.pointee == storage {
+                return place;
+            }
+            if storage is not None and isinstance(place.type, ir.PointerType)
+                and place.type.pointee == storage.as_pointer() {
+                return self.builder.load(place, name="value.self");
+            }
+        }
+    }
+    value = self._codegen_expr(nd);
+    if value is None {
+        return None;
+    }
+    value = self._opt_unwrap_attr(value);
+    if is_value and type_name is not None {
+        return self._narrow_receiver_ptr(value, type_name);
+    }
+    return value;
 }
 
 impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None {
@@ -1452,6 +1484,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_expr(default_expr) if default_expr is not None else None;
     }
 
+    if self._storage_call(nd) {
+        return self._codegen_storage_call(nd);
+    }
     _call_kind = nd.call_kind or "";
 
     _sized_call = self._codegen_sized_builtin_call(
@@ -1645,6 +1680,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 }
                 if arg_val is not None {
                     _len_result: (ir.Value | None) = None;
+                    if isinstance(arg_val.type, ir.ArrayType) {
+                        _len_result = ir.Constant(ir.IntType(64), arg_val.type.count);
+                    }
 
                     if self._str_desc_ty is not None
                         and arg_val.type == self._str_desc_ty {
@@ -2847,7 +2885,11 @@ impl NaIRGenPass._emit_isinstance_core(
     unresolved: list[str] = [];
     static_seen = False;
     static_hit = False;
-    source_type = params[0].type;
+    source_expr = params[0];
+    if isinstance(source_expr, uni.KWPair) {
+        return None;
+    }
+    source_type = source_expr.type;
     source_members = source_type.types
         if isinstance(source_type, UnionType)
         else [source_type];
@@ -3682,7 +3724,8 @@ impl NaIRGenPass._codegen_callable_value(
         );
     }
     for (name, slot) in captures {
-        coerced.append(self.builder.load(slot, name=f"cap.{name}"));
+        expected = signature.args[len(coerced)];
+        coerced.append(slot if expected == slot.type else self.builder.load(slot, name=f"cap.{name}"));
     }
     result = self.builder.call(value, coerced, name="icall");
     for arg in args {

@@ -23,6 +23,9 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
         }
         if t.bound is not None {
             bound = self._lower_type(t.bound);
+            if isinstance(bound, RawPointerType) {
+                return bound;
+            }
             if isinstance(bound, ir.PointerType) {
                 return ir.IntType(8).as_pointer();
             }
@@ -61,6 +64,9 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
                 _mr = self._lower_type(_m);
                 if self._str_desc_ty is not None and _mr == self._str_desc_ty {
                     _mr = ir.IntType(8).as_pointer();
+                }
+                if _mr is None {
+                    return None;
                 }
                 _mreprs.append(_mr);
             }
@@ -762,6 +768,41 @@ impl NaIRGenPass._lower_view_container(t: any) -> (ir.Type | None) {
 
 impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     cname = t.shared.class_name;
+    if t.is_builtin(["overlay", "packed", "aligned"]) { return self._lower_composite_storage_type(t); }
+    if t.is_builtin("array") {
+        length = t.fixed_array_length();
+        if length is None {
+            return None;
+        }
+        element_type = t.private.type_args[0];
+        if not isinstance(element_type, ClassType) or not element_type.has_native_value_storage() {
+            return None;
+        }
+        element = self._lower_type(element_type);
+        if element is None or isinstance(element, ir.VoidType) {
+            return None;
+        }
+        return ir.ArrayType(element, length);
+    }
+    if t.is_builtin("ptr") {
+        arguments = t.private.type_args or [];
+        if len(arguments) != 1 {
+            return None;
+        }
+        pointee_type = arguments[0];
+        if isinstance(pointee_type, SemanticFunctionType) {
+            signature = self._lower_c_function_signature(pointee_type);
+            return RawPointerType(signature) if signature is not None else None;
+        }
+        if not isinstance(pointee_type, ClassType) or not (pointee_type.has_native_value_storage() or pointee_type.is_opaque_struct()) {
+            return None;
+        }
+        pointee = self._lower_type(pointee_type);
+        if pointee is None or isinstance(pointee, ir.VoidType) {
+            return None;
+        }
+        return RawPointerType(pointee);
+    }
     if t.is_builtin("Node") or t.is_builtin("Edge") or t.is_builtin("Walker") {
         return ir.IntType(8).as_pointer();
     }
@@ -797,7 +838,7 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
         return _enum_ty;
     }
     if cname in self.struct_types {
-        return self.struct_types[cname].as_pointer();
+        return self._arch_storage_type(cname);
     }
     type_args: list[TypeBase] = t.private.type_args or [];
 
@@ -906,6 +947,32 @@ impl NaIRGenPass._lower_function_type(t: SemanticFunctionType) -> ir.PointerType
 
 impl NaIRGenPass._lower_function_type_raw(t: SemanticFunctionType) -> ir.PointerType {
     return self._lower_function_signature(t).as_pointer();
+}
+
+impl NaIRGenPass._lower_c_function_signature(t: SemanticFunctionType) -> ir.FunctionType | None {
+    params: list[ir.Type] = [];
+    semantic_types: list[TypeBase] = [];
+    for parameter in t.parameters or [] {
+        if parameter.category != ParameterCategory.Positional or parameter.param_type is None {
+            return None;
+        }
+        semantic_types.append(parameter.param_type);
+    }
+    if t.return_type is None { return None; }
+    semantic_types.append(t.return_type);
+    for (index, typ) in enumerate(semantic_types) {
+        lowered = self._lower_type(typ);
+        is_return = index == len(semantic_types) - 1;
+        if isinstance(lowered, ir.VoidType) and is_return { params.append(lowered); continue; }
+        # Aggregate C ABI classification and narrow integer extension attributes
+        # must be handled explicitly; never substitute i64 for an unknown type.
+        if isinstance(lowered, ir.IntType) and lowered.width >= 32 {
+            params.append(lowered);
+        } elif isinstance(lowered, (ir.FloatType, ir.DoubleType, RawPointerType)) {
+            params.append(lowered);
+        } else { return None; }
+    }
+    return ir.FunctionType(params[-1], params[:-1]);
 }
 
 impl NaIRGenPass._lower_function_signature(t: SemanticFunctionType) -> ir.FunctionType {
@@ -2106,6 +2173,10 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
     if val.type == target_type {
         return val;
     }
+    if isinstance(val.type, ir.PointerType) and isinstance(target_type, ir.PointerType)
+        and (isinstance(val.type, RawPointerType) or isinstance(target_type, RawPointerType)) {
+        return self.builder.bitcast(val, target_type, name="ptr.cast");
+    }
 
     if isinstance(val.type, ir.PointerType)
         and isinstance(target_type, ir.PointerType) {
@@ -2449,7 +2520,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             return self.builder.load(val, name="struct.unbox");
         }
 
-        if isinstance(target_type, ir.IntType) and val.type?.pointee {
+        if isinstance(target_type, ir.IntType) and val.type?.pointee is not None {
             for (sname, abi_type) in self.clib_struct_abi_types.items() {
                 if val.type.pointee == self.struct_types.get(sname)
                     and abi_type == target_type {
@@ -2504,7 +2575,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             return typed_ptr;
         }
 
-        if isinstance(val.type, ir.IntType) and target_type?.pointee {
+        if isinstance(val.type, ir.IntType) and target_type?.pointee is not None {
             for (sname, abi_type) in self.clib_struct_abi_types.items() {
                 if target_type.pointee == self.struct_types.get(sname)
                     and abi_type == val.type {
@@ -4670,7 +4741,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
         if isinstance(_decl_of, uni.Archetype) {
             _decl_anm = _decl_of.name.value if _decl_of.name else None;
             if _decl_anm is not None and _decl_anm in self.struct_types {
-                return self.struct_types[_decl_anm].as_pointer();
+                return self._arch_storage_type(_decl_anm);
             }
         }
         if isinstance(_decl_of, uni.TypeParam)
@@ -4682,7 +4753,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
             _orig = _item.name.value if isinstance(_item.name, uni.Name) else None;
             if _orig is not None and _orig != _nm {
                 if _orig in self.struct_types {
-                    return self.struct_types[_orig].as_pointer();
+                    return self._arch_storage_type(_orig);
                 }
                 _by_name = self._lower_type_by_name(_orig);
                 if _by_name is not None {
@@ -4710,7 +4781,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                     }
                 }
                 if _orig in self.struct_types {
-                    return self.struct_types[_orig].as_pointer();
+                    return self._arch_storage_type(_orig);
                 }
                 if _orig in self.enum_types {
                     return self.enum_types[_orig];
@@ -4724,7 +4795,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
         return self.enum_types[_nm];
     }
     if _nm is not None and _nm_struct and not _nm_enum {
-        return self.struct_types[_nm].as_pointer();
+        return self._arch_storage_type(_nm);
     }
     if _nm == "bytes" {
         return self._get_bytes_struct_type().as_pointer();

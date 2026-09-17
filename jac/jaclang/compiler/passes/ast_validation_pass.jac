@@ -56,6 +56,7 @@ import keyword;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 
 import from jaclang.compiler.frontend.diagnostics {
+    E5034,
     E0010,
     E0020,
     E0023,

@@ -185,6 +185,7 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.TYP_F64: Tok.TYP_F64.value,
          TokenKind.KW_ABSTRACT: Tok.KW_ABSTRACT.value,
          TokenKind.KW_OBJECT: Tok.KW_OBJECT.value,
+         TokenKind.KW_STRUCT: Tok.KW_STRUCT.value,
          TokenKind.KW_CLASS: Tok.KW_CLASS.value,
          TokenKind.KW_ENUM: Tok.KW_ENUM.value,
          TokenKind.KW_NODE: Tok.KW_NODE.value,
@@ -398,6 +399,7 @@ obj Parser {
     def at_end -> bool;
     def check(kind: TokenKind) -> bool;
     def check_any(*kinds: TokenKind) -> bool;
+    def is_struct_declaration -> bool;
     def check_peek(kind: TokenKind) -> bool;
     def check_peek_any(*kinds: TokenKind) -> bool;
     def check_name -> bool;

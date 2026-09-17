@@ -30,6 +30,7 @@ import from jaclang.project.modresolver {
     resolve_relative_path
 }
 import from jaclang.compiler.frontend.diagnostics {
+    E5034,
     E2025,
     E5010,
     E5011,

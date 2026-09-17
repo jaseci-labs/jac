@@ -105,6 +105,13 @@ def create_target_data(layout: str) -> TargetData {
     Use :func:`create_target_data` to create instances.
     """
 class TargetData(ffi.ObjectRef) {
+    def get_global_storage_layout(
+        self: TargetData, value: ValueRef
+    ) -> tuple[int, int] {
+        typ = ffi.lib.LLVMPY_GlobalGetValueType(value);
+        return (int(self.get_abi_size(typ)), int(self.get_abi_alignment(typ)));
+    }
+
     def get_global_struct_layout(
         self: TargetData, value: ValueRef, field_count: int
     ) -> tuple[list[int], int] {

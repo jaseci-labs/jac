@@ -352,6 +352,12 @@ impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
+    value_node: uni.UniNode = nd;
+    while isinstance(value_node.parent, uni.AtomUnit) and value_node.parent.value is value_node {
+        value_node = value_node.parent;
+    }
+    invocation = value_node.parent;
+    immediate = isinstance(invocation, uni.FuncCall) and invocation.target is value_node;
     sig = nd.signature;
     param_types: list[ir.Type] = [];
     param_names: list[str] = [];
@@ -387,8 +393,15 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     for fv_name in free_var_names {
         if fv_name in self.local_vars {
             alloca = self.local_vars[fv_name];
-            val = self.builder.load(alloca, name=f"cap.{fv_name}");
-            captures.append((fv_name, val, val.type));
+            if immediate {
+                # A directly invoked lambda cannot outlive this frame. Borrow
+                # the captured storage so addr_of and indirect writes retain
+                # the identity of the enclosing variable.
+                captures.append((fv_name, alloca, alloca.type));
+            } else {
+                val = self.builder.load(alloca, name=f"cap.{fv_name}");
+                captures.append((fv_name, val, val.type));
+            }
         }
     }
 
@@ -413,9 +426,13 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     state = self._enter_function(anon_fn);
     try {
         for (i, arg) in enumerate(anon_fn.args) {
-            alloca = self._entry_alloca(arg.type, all_param_names[i]);
-            self.builder.store(arg, alloca);
-            self.local_vars[all_param_names[i]] = alloca;
+            if immediate and i >= len(param_types) {
+                self.local_vars[all_param_names[i]] = arg;
+            } else {
+                alloca = self._entry_alloca(arg.type, all_param_names[i]);
+                self.builder.store(arg, alloca);
+                self.local_vars[all_param_names[i]] = alloca;
+            }
             self.param_vars.add(all_param_names[i]);
         }
 
@@ -475,7 +492,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     }
 
     if captures {
-        _all_cells = True;
+        _all_cells = not immediate;
         for (cap_name, _cap_val, _cap_type) in captures {
             if cap_name not in self.closure_cell_handles {
                 _all_cells = False;
@@ -535,6 +552,13 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
         value = self.builder.load(alloca, name=var_name);
+        value_name = self._struct_name_of(nd);
+        if value_name is not None and self._arch_is_value(value_name) {
+            storage = self.struct_types.get(value_name);
+            if storage is not None and value.type == storage.as_pointer() {
+                return self.builder.load(value, name=f"{var_name}.value");
+            }
+        }
 
         if self._type_key_of(nd) == "str"
             and isinstance(value.type, ir.PointerType)
@@ -550,7 +574,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     }
 
     if var_name in self.global_vars {
-        global_var = self.global_vars[var_name];
+        global_var = self._global_place(var_name);
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
@@ -1820,6 +1844,12 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
+    if not nd.is_attr and isinstance(nd.target.type, ClassType)
+        and nd.target.type.is_builtin(["ptr", "array"]) and nd.target.type.is_class_instance() {
+        place = self._codegen_storage_index(nd);
+        return self.builder.load(place, name="ptr.index") if place is not None else None;
+    }
+
     if isinstance(nd.right, uni.FilterCompr) {
         return self._codegen_chained_filter(nd);
     }
@@ -2015,7 +2045,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 and right_name in self.global_vars
             ) {
                 return self.builder.load(
-                    self.global_vars[right_name], name=f"modglob.{right_name}"
+                    self._global_place(right_name), name=f"modglob.{right_name}"
                 );
             }
 
@@ -2096,7 +2126,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
 
         if right_name is not None {
             _property_parts = self._receiver_union_parts(nd);
-            obj_val = self._codegen_expr(nd.target);
+            obj_val = self._codegen_receiver(nd.target);
             if obj_val is None {
                 return None;
             }

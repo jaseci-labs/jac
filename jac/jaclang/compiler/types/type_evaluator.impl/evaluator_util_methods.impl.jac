@@ -1186,6 +1186,59 @@ impl TypeEvaluator._set_module_item_symbol_and_type(
     return sym_type;
 }
 
+impl TypeEvaluator._specialize_storage_type(
+    base_type: ClassType, arguments: list[Expr], site: Expr
+) -> TypeBase {
+    name = base_type.shared.class_name;
+    count = 1 if name == "ptr" else 2;
+    if len(arguments) != count {
+        self.emit_diag(E1135, site, name=name,
+            details=f"expected {count} arguments, received {len(arguments)}");
+        return UnknownType(is_diagnosed=True);
+    }
+    element = self._type_from_union_annotation_arg(arguments[0]);
+    if name == "ptr" {
+        return base_type.specialize_generics([element]);
+    }
+    if name in ["overlay", "packed"] {
+        alternatives = [element, self._type_from_union_annotation_arg(arguments[1])];
+        for alternative in alternatives {
+            if not isinstance(alternative, ClassType) or not alternative.has_native_value_storage() {
+                self.emit_diag(E1135, site, name=name,
+                    details="components must have complete unmanaged value storage");
+                return UnknownType(is_diagnosed=True);
+            }
+        }
+        return base_type.specialize_generics(alternatives);
+    }
+    if isinstance(element, ClassType) and element.is_opaque_struct() {
+        self.emit_diag(E5033, arguments[0], name=element.shared.class_name,
+            details="fixed arrays require elements with a known storage size");
+        return UnknownType(is_diagnosed=True);
+    }
+    constant = self.ct_demand(arguments[1]);
+    self.ct_site_error(arguments[1], "fixed array length", constant);
+    if constant is None {
+        return UnknownType(is_diagnosed=True);
+    }
+    length = constant.v;
+    if not isinstance(length, int) or isinstance(length, bool) or length < 0 {
+        self.emit_diag(E1135, arguments[1], name=name,
+            details="the length must be a nonnegative compile-time integer");
+        return UnknownType(is_diagnosed=True);
+    }
+    if name == "aligned" and (length == 0 or (length & (length - 1)) != 0
+        or not isinstance(element, ClassType) or not element.has_native_value_storage()) {
+        self.emit_diag(E1135, site, name=name,
+            details="alignment must be a positive power of two and the element must have unmanaged value storage");
+        return UnknownType(is_diagnosed=True);
+    }
+    integer = self.prefetch.int_class;
+    assert integer is not None;
+    length_type = integer.clone_as_instance().clone_with_literal(length);
+    return base_type.specialize_generics([element, length_type]);
+}
+
 impl TypeEvaluator._ct_args_for_class(
     base_type: ClassType, slot_vals: list[Expr]
 ) -> (tuple[dict[str, any], set[int]] | None) {

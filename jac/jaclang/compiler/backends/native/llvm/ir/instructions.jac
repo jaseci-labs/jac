@@ -524,7 +524,8 @@ class CastInstr(Instruction) {
 
 class LoadInstr(Instruction) {
     def init(
-        self: LoadInstr, parent: any, ptr: any, name: any = '', typ: any = None
+        self: LoadInstr, parent: any, ptr: any, name: any = '', typ: any = None,
+        ordering: str | None = None, volatile: bool = False
     ) -> object {
         if (typ is None) {
             if isinstance(ptr, AllocaInstr) {
@@ -537,6 +538,8 @@ class LoadInstr(Instruction) {
         }
         super.init(parent, typ, "load", [ptr], name=name);
         self.align = None;
+        self.ordering = ordering;
+        self.volatile = volatile;
     }
 
     def descr(self: LoadInstr, buf: any) -> object {
@@ -547,21 +550,27 @@ class LoadInstr(Instruction) {
             align = '';
         }
         buf.append(
-            "load {0}, {1} {2}{3}{4}\n".format(
+            "load {5}{6}{0}, {1} {2}{7}{3}{4}\n".format(
                 self.type,
                 val.type,
                 val.get_reference(),
                 align,
-                self._stringify_metadata(leading_comma=True)
+                self._stringify_metadata(leading_comma=True),
+                "atomic " if self.ordering is not None else "",
+                "volatile " if self.volatile else "",
+                " " + self.ordering if self.ordering is not None else ""
             )
         );
     }
 }
 
 class StoreInstr(Instruction) {
-    def init(self: StoreInstr, parent: any, val: any, ptr: any) -> object {
+    def init(self: StoreInstr, parent: any, val: any, ptr: any,
+        ordering: str | None = None, volatile: bool = False) -> object {
         super.init(parent, types.VoidType(), "store", [val, ptr]);
         self.align = None;
+        self.ordering = ordering;
+        self.volatile = volatile;
     }
 
     def descr(self: StoreInstr, buf: any) -> object {
@@ -572,13 +581,16 @@ class StoreInstr(Instruction) {
             align = '';
         }
         buf.append(
-            "store {0} {1}, {2} {3}{4}{5}\n".format(
+            "store {6}{7}{0} {1}, {2} {3}{8}{4}{5}\n".format(
                 val.type,
                 val.get_reference(),
                 ptr.type,
                 ptr.get_reference(),
                 align,
-                self._stringify_metadata(leading_comma=True)
+                self._stringify_metadata(leading_comma=True),
+                "atomic " if self.ordering is not None else "",
+                "volatile " if self.volatile else "",
+                " " + self.ordering if self.ordering is not None else ""
             )
         );
     }
@@ -817,6 +829,31 @@ class InlineAsm(object) {
     }
 }
 
+class CmpXchg(Instruction) {
+    def init(self: CmpXchg, parent: Block, ptr: Value, expected: Value, desired: Value,
+        ordering: str, failure_ordering: str, name: str = "", weak: bool = False,
+        volatile: bool = False, align: int | None = None) -> object {
+        if expected.type != desired.type { raise ValueError("cmpxchg operand types must match"); }
+        result = types.LiteralStructType([expected.type, types.IntType(1)]);
+        super.init(parent, result, "cmpxchg", [ptr, expected, desired], name=name);
+        self.ordering = ordering;
+        self.failure_ordering = failure_ordering;
+        self.weak = weak;
+        self.volatile = volatile;
+        self.align = align;
+    }
+
+    def descr(self: CmpXchg, buf: list[str]) -> object {
+        (ptr, expected, desired) = self.operands;
+        flags = ("weak " if self.weak else "") + ("volatile " if self.volatile else "");
+        alignment = ", align " + str(self.align) if self.align is not None else "";
+        buf.append("cmpxchg {0}{1} {2}, {3} {4}, {5} {6} {7} {8}{9}{10}\n".format(
+            flags, ptr.type, ptr.get_reference(), expected.type, expected.get_reference(),
+            desired.type, desired.get_reference(), self.ordering, self.failure_ordering,
+            alignment, self._stringify_metadata(leading_comma=True)));
+    }
+}
+
 class AtomicRMW(Instruction) {
     def init(
         self: AtomicRMW,
@@ -825,16 +862,20 @@ class AtomicRMW(Instruction) {
         ptr: any,
         val: any,
         ordering: any,
-        name: any
+        name: any,
+        volatile: bool = False,
+        align: int | None = None
     ) -> object {
         super.init(parent, val.type, "atomicrmw", (ptr, val), name=name);
         self.operation = op;
         self.ordering = ordering;
+        self.volatile = volatile;
+        self.align = align;
     }
 
     def descr(self: AtomicRMW, buf: any) -> object {
         (ptr, val) = self.operands;
-        fmt = "atomicrmw {op} {ptrty} {ptr}, {valty} {val} {ordering} " "{metadata}\n";
+        fmt = "atomicrmw {volatile}{op} {ptrty} {ptr}, {valty} {val} {ordering}{align}{metadata}\n";
         buf.append(
             fmt.format(
                 op=self.operation,
@@ -843,6 +884,8 @@ class AtomicRMW(Instruction) {
                 valty=val.type,
                 val=val.get_reference(),
                 ordering=self.ordering,
+                volatile="volatile " if self.volatile else "",
+                align=", align " + str(self.align) if self.align is not None else "",
                 metadata=self._stringify_metadata(leading_comma=True)
             )
         );

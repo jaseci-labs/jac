@@ -33,6 +33,15 @@ impl NaIRGenPass._glob_native_use_exists(target: uni.UniNode) -> bool {
     return False;
 }
 
+impl NaIRGenPass._global_place(name: str) -> ir.Value {
+    storage = self.global_vars[name];
+    declared = self.global_var_types.get(name);
+    if declared is not None and storage.value_type != declared {
+        return storage.bitcast(declared.as_pointer());
+    }
+    return storage;
+}
+
 impl NaIRGenPass._register_globals(module: uni.Module) -> None {
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if isinstance(stmt, uni.GlobalVars) {
@@ -164,6 +173,14 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 continue;
             }
 
+            global_var.thread_local = nd.is_thread_local;
+            if nd.is_thread_local {
+                semantic_type = target.type if isinstance(target, uni.Expr) else None;
+                if not isinstance(semantic_type, ClassType) or not semantic_type.has_native_value_storage() {
+                    self.ctx.emit(E5034, node_override=assign, details="native thread-local globals require unmanaged value storage");
+                    continue;
+                }
+            }
             _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
             if _is_priv {
                 global_var.linkage = "internal";
@@ -178,14 +195,7 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 }
             }
 
-            const_init = self._codegen_const_expr(assign.value, var_type)
-                if assign.value is not None
-                else None;
-            if const_init is not None {
-                global_var.initializer = const_init;
-            } else {
-                global_var.initializer = ir.Constant(var_type, None);
-            }
+            global_var.initializer = ir.Constant(var_type, None);
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
 
@@ -194,14 +204,32 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 else "(current module)";
             self.has_native_code = True;
 
-            if assign.value is not None and const_init is None {
-                if not self?._global_init_nodes {
-                    self._global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [];
-                }
-                self._global_init_nodes.append((var_name, assign.value, var_type));
+            if assign.value is not None {
+                self.pending_global_initializers.append(NativeGlobalInitializer(var_name, assign.value, var_type));
             }
         }
     }
+}
+
+impl NaIRGenPass._finalize_global_initializers -> None {
+    # Register names and storage before interpreting initializers. Layout queries
+    # and addresses may refer to records or globals declared later in the module.
+    for initializer in self.pending_global_initializers {
+        value = self._codegen_const_expr(initializer.value, initializer.typ);
+        if value is None and initializer.enum_constant {
+            value = self._class_const_enum_init(initializer.value, initializer.typ);
+        }
+        variable = self.global_vars[initializer.name];
+        if value is not None {
+            variable.initializer = value;
+        } elif variable.thread_local {
+            self.ctx.emit(E5034, node_override=initializer.value,
+                details="thread-local initialization must be a native constant, not module initialization code");
+        } else {
+            self._global_init_nodes.append((initializer.name, initializer.value, initializer.typ));
+        }
+    }
+    self.pending_global_initializers = [];
 }
 
 impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None) {
@@ -245,6 +273,49 @@ impl NaIRGenPass._codegen_const_expr(
     if self?.jacval_type and target_type == self.jacval_type {
         return None;
     }
+    if isinstance(target_type, ir.ArrayType) and isinstance(nd, uni.FuncCall)
+        and isinstance(nd.target.type, ClassType) and nd.target.type.is_builtin("array")
+        and nd.target.type.is_instantiable_class() {
+        arguments = list(nd.params or []);
+        if not arguments { return ir.Constant(target_type, None); }
+        if len(arguments) != 1 or not isinstance(arguments[0], (uni.ListVal, uni.TupleVal)) {
+            return None;
+        }
+        items = list(arguments[0].values or []);
+        if len(items) > target_type.count { return None; }
+        constants: list[ir.Constant] = [];
+        for item in items {
+            element = self._codegen_const_expr(item, target_type.element);
+            if element is None { return None; }
+            constants.append(element);
+        }
+        constants.extend(ir.Constant(target_type.element, None)
+            for index in range(target_type.count - len(constants)));
+        return ir.Constant(target_type, constants);
+    }
+    if isinstance(nd, uni.FuncCall) and isinstance(nd.target.type, ClassType)
+        and nd.target.type.is_builtin("aligned") and nd.target.type.is_instantiable_class()
+        and self._storage_call(nd) and isinstance(target_type, ir.IdentifiedStructType) {
+        self._resolve_composite_storage_types(required=True);
+        if target_type.elements is None or len(nd.params or []) != 1 or not isinstance(nd.params[0], uni.Expr) { return None; }
+        element = self._codegen_const_expr(nd.params[0], target_type.elements[0]);
+        if element is None { return None; }
+        return ir.Constant(target_type, [element] + [ir.Constant(typ, None) for typ in target_type.elements[1:]]);
+    }
+    if isinstance(nd, uni.FuncCall) and not nd.params
+        and isinstance(nd.target.type, ClassType)
+        and nd.target.type.is_builtin(["overlay", "packed"])
+        and nd.target.type.is_instantiable_class() and self._storage_call(nd) {
+        return ir.Constant(target_type, None);
+    }
+    if isinstance(nd, uni.FuncCall) and isinstance(nd.target, uni.Name)
+        and nd.target.value in ["size_of", "align_of", "offset_of"] and self._storage_call(nd) {
+        measured = self._codegen_storage_measure(nd);
+        if measured is not None and isinstance(target_type, ir.IntType) {
+            return ir.Constant(target_type, measured.constant);
+        }
+        return None;
+    }
     if (
         isinstance(nd, uni.TupleVal)
         and not nd.values
@@ -253,6 +324,14 @@ impl NaIRGenPass._codegen_const_expr(
         and not target_type.pointee.elements
     ) {
         return ir.Constant(target_type, None);
+    }
+    if isinstance(target_type, RawPointerType) and isinstance(nd, uni.FuncCall)
+        and not nd.params and isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr
+        and self._get_name(nd.target.right) == "null" {
+        owner_type = nd.target.target.type;
+        if isinstance(owner_type, ClassType) and owner_type.is_builtin("ptr") and owner_type.is_instantiable_class() {
+            return ir.Constant(target_type, None);
+        }
     }
     cv = nd.ct_value if isinstance(nd, uni.Expr) else None;
     if cv is not None and not cv.is_deferred and isinstance(cv.v, (bool, int, float)) {

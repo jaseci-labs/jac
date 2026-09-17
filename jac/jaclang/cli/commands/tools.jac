@@ -19,6 +19,7 @@ comptime SPEC_TOOL: CommandSpec = CommandSpec(
          ],
          examples=[
              ("jac tool list_tools", "List all available AST tools"),
+             ("jac tool c2jac input.c -o output.jac", "Translate supported C into Jac source"),
              ("jac tool <tool_name> [args...]", "Run a specific tool"),
 
          ],

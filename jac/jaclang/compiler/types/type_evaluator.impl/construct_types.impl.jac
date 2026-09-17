@@ -681,6 +681,8 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
                 is_builtin_class=is_builtin_class,
                 is_from_stdlib_stub=is_from_stdlib_stub,
                 is_data_class=is_data_class,
+                is_value_struct=node_.is_value_struct,
+                is_opaque_struct=node_.is_value_struct and node_.body is None,
                 is_namedtuple=is_namedtuple,
                 is_typeddict=is_typeddict,
                 is_enum_class=is_enum_class,
@@ -820,6 +822,9 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
     }
     if type_expr is not None {
         declared = self.get_type_of_expression(type_expr);
+        if isinstance(declared, ClassType) and declared.is_builtin(["ptr", "array", "overlay", "packed", "aligned", "NoneType", "None"]) {
+            return self._convert_to_instance(declared);
+        }
         if isinstance(declared, ClassType) and not declared.is_builtin() {
             scope = declared.shared.symbol_table;
             if isinstance(scope, Archetype) {

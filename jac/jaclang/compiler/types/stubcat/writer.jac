@@ -50,6 +50,7 @@ import from jaclang.compiler.types.stubcat.format {
     ARCH_ENUM,
     ARCH_NONE,
     ARCH_OBJ,
+    ARCH_STRUCT,
     HEADER_SIZE,
     Header,
     LIT_BOOL,
@@ -69,6 +70,8 @@ import from jaclang.compiler.types.stubcat.format {
     SC_OTHER,
     SH_BUILTIN,
     SH_DATACLASS,
+    SH_VALUE_STRUCT,
+    SH_OPAQUE_STRUCT,
     SH_ENUM,
     SH_NAMEDTUPLE,
     SH_ROOT,
@@ -1003,7 +1006,7 @@ obj CatalogWriter {
             kind = SC_MODULE;
         } elif isinstance(scope, Archetype) {
             kind = SC_CLASS;
-            arch_kind = ARCH_CLASS if scope.arch_type.name == "KW_CLASS" else ARCH_OBJ;
+            arch_kind = ARCH_STRUCT if scope.is_value_struct else (ARCH_CLASS if scope.arch_type.name == "KW_CLASS" else ARCH_OBJ);
             owner = scope.name_spec.sym;
         } elif isinstance(scope, Enum) {
             kind = SC_CLASS;
@@ -1382,6 +1385,8 @@ obj CatalogWriter {
         if sh.is_from_stdlib_stub {
             bits |= SH_STDLIB;
         }
+        if sh.is_value_struct { bits |= SH_VALUE_STRUCT; }
+        if sh.is_opaque_struct { bits |= SH_OPAQUE_STRUCT; }
         if sh.is_data_class {
             bits |= SH_DATACLASS;
         }

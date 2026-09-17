@@ -320,6 +320,12 @@ impl ASTValidationPass.enter_ctrl_stmt with CtrlStmt entry {
 }
 
 impl ASTValidationPass.enter_global_vars with GlobalVars entry {
+    if here.is_thread_local and (here.is_frozen or here.codespace_dual) {
+        self.ctx.emit(E5034, node_override=here, details="thread-local storage cannot be comptime or shared between codespaces");
+    }
+    if isinstance(here.parent, Import) and here.parent.has_clib_decls {
+        return;
+    }
     valid_parents = (Module, );
     if here.is_frozen and isinstance(here.parent, Archetype) {
         return;

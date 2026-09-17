@@ -70,6 +70,11 @@ Emitted by the parser and lexer during source code parsing.
 
 ### Keyword Restrictions
 
+The C frontend uses `E0090` and `W0090` for source-located preprocessing and
+parsing diagnostics. Its lowering pass uses `E2290` when a C construct cannot
+be represented by the supported Jac conversion subset. These diagnostics
+are reported by `jac tool c2jac`; errors prevent output-file replacement.
+
 | Code | Message |
 |------|---------|
 | `E0010` | '{keyword}' is not supported in Jac |

@@ -397,6 +397,7 @@ class Tokens(StrEnum) {
         TYP_F64 = 'TYP_F64';
         KW_ABSTRACT = 'KW_ABSTRACT';
         KW_OBJECT = 'KW_OBJECT';
+        KW_STRUCT = 'KW_STRUCT';
         KW_CLASS = 'KW_CLASS';
         KW_COMPTIME = 'KW_COMPTIME';
         KW_ENUM = 'KW_ENUM';
@@ -686,6 +687,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_NIN': 'not in',
          'KW_NODE': 'node',
          'KW_OBJECT': 'obj',
+         'KW_STRUCT': 'struct',
          'KW_OR': '|',
          'KW_OVERRIDE': 'override',
          'KW_AWAITING': 'awaiting',

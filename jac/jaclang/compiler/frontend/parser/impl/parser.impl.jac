@@ -42,8 +42,20 @@ impl Parser.check(kind: TokenKind) -> bool {
     return self.current().kind == kind;
 }
 
+# A contextual keyword preserves imports and uses of Python's struct module.
+impl Parser.is_struct_declaration -> bool {
+    if self.current().kind != TokenKind.NAME or self.current().value != "struct" {
+        return False;
+    }
+    if self.peek().kind in [TokenKind.NAME, TokenKind.KWESC_NAME] { return True; }
+    if self.peek().kind == TokenKind.COLON and self.pos + 2 < self._tokens_len {
+        return self.tokens[self.pos + 2].kind in [TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT];
+    }
+    return False;
+}
+
 impl Parser.check_any(*kinds: TokenKind) -> bool {
-    return self.current().kind in kinds;
+    return self.current().kind in kinds or (TokenKind.KW_STRUCT in kinds and self.is_struct_declaration());
 }
 
 impl Parser.check_peek(kind: TokenKind) -> bool {
@@ -74,6 +86,10 @@ impl Parser.match_any(*kinds: TokenKind) -> LexToken | None {
 }
 
 impl Parser.expect_any(*kinds: TokenKind) -> LexToken {
+    if TokenKind.KW_STRUCT in kinds and self.is_struct_declaration() {
+        token = self.advance(); token.kind = TokenKind.KW_STRUCT;
+        return token;
+    }
     if self.current().kind in kinds {
         return self.advance();
     }
@@ -383,6 +399,7 @@ impl Parser.synchronize{
             TokenKind.KW_DEF,
             TokenKind.KW_CAN,
             TokenKind.KW_OBJECT,
+            TokenKind.KW_STRUCT,
             TokenKind.KW_NODE,
             TokenKind.KW_EDGE,
             TokenKind.KW_WALKER,
@@ -1798,6 +1815,7 @@ impl Parser.parse_special_ref -> Expr | None {
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
         TokenKind.KW_OBJECT,
+        TokenKind.KW_STRUCT,
         TokenKind.KW_CLASS,
         TokenKind.KW_ENUM
     ) {
@@ -1806,6 +1824,7 @@ impl Parser.parse_special_ref -> Expr | None {
             TokenKind.KW_EDGE,
             TokenKind.KW_WALKER,
             TokenKind.KW_OBJECT,
+            TokenKind.KW_STRUCT,
             TokenKind.KW_CLASS,
             TokenKind.KW_ENUM
         );
@@ -1889,6 +1908,7 @@ impl Parser.parse_atom -> Expr {
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
         TokenKind.KW_OBJECT,
+        TokenKind.KW_STRUCT,
         TokenKind.KW_CLASS,
         TokenKind.KW_ENUM
     ) {
@@ -3124,6 +3144,7 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
                     TokenKind.KW_DEF,
                     TokenKind.KW_CAN,
                     TokenKind.KW_OBJECT,
+                    TokenKind.KW_STRUCT,
                     TokenKind.KW_CLASS,
                     TokenKind.KW_ENUM,
                     TokenKind.KW_NODE,
@@ -3163,6 +3184,7 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
     }
     if self.check_any(
         TokenKind.KW_OBJECT,
+        TokenKind.KW_STRUCT,
         TokenKind.KW_NODE,
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
@@ -3187,6 +3209,7 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
             TokenKind.KW_ASYNC,
             TokenKind.DECOR_OP,
             TokenKind.KW_OBJECT,
+            TokenKind.KW_STRUCT,
             TokenKind.KW_NODE,
             TokenKind.KW_EDGE,
             TokenKind.KW_WALKER,
@@ -3769,6 +3792,7 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
             TokenKind.KW_ASYNC,
             TokenKind.DECOR_OP,
             TokenKind.KW_OBJECT,
+            TokenKind.KW_STRUCT,
             TokenKind.KW_NODE,
             TokenKind.KW_EDGE,
             TokenKind.KW_WALKER,
@@ -3800,6 +3824,7 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
 
     if self.check_any(
         TokenKind.KW_OBJECT,
+        TokenKind.KW_STRUCT,
         TokenKind.KW_NODE,
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
@@ -5179,6 +5204,7 @@ impl Parser.parse_import_items(
         TokenKind.KW_DEF,
         TokenKind.KW_CAN,
         TokenKind.KW_OBJECT,
+        TokenKind.KW_STRUCT,
         TokenKind.KW_CLASS,
         TokenKind.KW_ENUM,
         TokenKind.KW_ASYNC,
@@ -5254,6 +5280,7 @@ impl Parser.parse_archetype -> Archetype {
     }
     arch_tok = self.expect_any(
         TokenKind.KW_OBJECT,
+        TokenKind.KW_STRUCT,
         TokenKind.KW_NODE,
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
@@ -5495,6 +5522,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     }
     if self.check_any(
         TokenKind.KW_OBJECT,
+        TokenKind.KW_STRUCT,
         TokenKind.KW_NODE,
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
@@ -6474,6 +6502,11 @@ impl Parser.parse_switch_case -> SwitchCase {
 impl Parser.parse_global_var -> GlobalVars {
     glob_kw_uni = self.consume_uni(TokenKind.KW_GLOBAL);
     access = self.parse_access_tag();
+    thread_token: Token | None = None;
+    if self.current().kind == TokenKind.NAME and self.current().value == "thread_local"
+        and self.peek().kind in [TokenKind.NAME, TokenKind.KWESC_NAME] {
+        thread_token = self.make_uni_token(self.advance());
+    }
 
     assignments: list[Assignment] = [];
     glob_comma_unis: list[Token] = [];
@@ -6488,6 +6521,7 @@ impl Parser.parse_global_var -> GlobalVars {
         kid.append(access);
     }
 
+    if thread_token is not None { kid.append(thread_token); }
     for (i, a) in enumerate(assignments) {
         if i > 0 {
             kid.append(glob_comma_unis[i - 1]);
@@ -6509,7 +6543,7 @@ impl Parser.parse_global_var -> GlobalVars {
         )
     );
     return GlobalVars(
-        access=access, assignments=assignments, is_frozen=False, kid=kid, doc=None
+        access=access, assignments=assignments, is_frozen=False, is_thread_local=thread_token is not None, kid=kid, doc=None
     );
 }
 

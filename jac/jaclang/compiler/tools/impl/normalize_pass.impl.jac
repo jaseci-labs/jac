@@ -105,6 +105,9 @@ impl NormalizePass.enter_global_vars with uni.GlobalVars entry {
     if here.access {
         new_kid.append(here.access);
     }
+    if here.is_thread_local {
+        new_kid.append(here.gen_token(Tok.NAME, "thread_local"));
+    }
     for i in range(len(here.assignments)) {
         new_kid.append(here.assignments[i]);
         if i < len(here.assignments) - 1 {
@@ -186,6 +189,18 @@ impl NormalizePass.enter_import with uni.Import entry {
     }
     if here.is_typed {
         new_kid.append(here.gen_token(Tok.TYP_TYPE));
+    }
+    if here.clib_decls {
+        if here.from_loc {
+            new_kid.append(here.gen_token(Tok.KW_FROM));
+            new_kid.append(here.from_loc);
+        }
+        new_kid.append(here.gen_token(Tok.LBRACE));
+        new_kid.extend(here.clib_decls);
+        new_kid.append(here.gen_token(Tok.RBRACE));
+        if here.from_loc is None { new_kid.append(here.gen_token(Tok.SEMI)); }
+        here.set_kids(nodes=new_kid);
+        return;
     }
     if here.from_loc {
         new_kid.append(here.gen_token(Tok.KW_FROM));
@@ -283,7 +298,9 @@ impl NormalizePass.enter_archetype with uni.Archetype entry {
         }
         new_kid.append(here.gen_token(Tok.RPAREN));
     }
-    if here.body {
+    if here.body is None and here.arch_type.value == "struct" {
+        new_kid.append(here.gen_token(Tok.SEMI));
+    } elif here.body {
         if isinstance(here.body, uni.ImplDef) {
             new_kid.append(here.gen_token(Tok.SEMI));
         } else {

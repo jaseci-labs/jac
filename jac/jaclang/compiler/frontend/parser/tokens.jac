@@ -34,6 +34,7 @@ enum TokenKind {
     TYP_F64 = "f64",
     KW_ABSTRACT = "abst",
     KW_OBJECT = "obj",
+    KW_STRUCT = "struct",
     KW_CLASS = "class",
     KW_ENUM = "enum",
     KW_NODE = "node",

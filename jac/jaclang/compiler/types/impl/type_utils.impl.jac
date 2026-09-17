@@ -702,6 +702,7 @@ impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
         or normalized_path.endswith("stdlib/typing.pyi")
         or normalized_path.endswith("stdlib/_typeshed/__init__.pyi")
         or normalized_path.endswith("/jac_builtins.pyi")
+        or normalized_path.endswith("/na_builtins.pyi")
     ) {
         flags.is_builtin_stub = True;
     }

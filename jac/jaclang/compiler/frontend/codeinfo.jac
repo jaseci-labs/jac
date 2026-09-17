@@ -94,7 +94,7 @@ obj NativeFieldInfo {
         is_func_ptr: bool = False,
         func_param_types: (list[str] | None) = None,
         func_ret_type: (str | None) = None,
-        elem_keys: (list[str] | None) = None,
+        elem_keys: (list[str | None] | None) = None,
         foreign: bool = False;
 }
 
@@ -125,7 +125,7 @@ obj NativeFuncLayout {
         ret_struct_name: (str | None) = None,
         ret_tuple_layout: (NativeTupleLayout | None) = None,
         ret_enum_type: (str | None) = None,
-        ret_elem_keys: (list[str] | None) = None;
+        ret_elem_keys: (list[str | None] | None) = None;
 }
 
 obj NativeTestLayout {

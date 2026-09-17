@@ -67,7 +67,7 @@ import from jaclang.compiler.passes.context { CompileContext }
 
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
+import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109, E5033 }
 import from jaclang.compiler.types.ct_value { CT_DEFERRED, CtValue }
 import from jaclang.compiler.types.types {
     AnyType,
@@ -222,6 +222,7 @@ walker TypeCheckPass(TreeWalker) {
     can exit_sub_tag with SubTag exit;
     def _eval_unpacking_names(container: Expr) -> None;
     def _body_always_returns(body: list[CodeBlockStmt]) -> bool;
+    def _check_complete_storage(typ: TypeBase | None, site: UniNode) -> None;
     def _check_bare_generic(
         ann_node: UniNode,
         ty: object,

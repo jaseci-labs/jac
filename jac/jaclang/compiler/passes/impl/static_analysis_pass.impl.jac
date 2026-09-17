@@ -103,7 +103,9 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
             continue;
         }
 
-        if name_nd.value in BUILTIN_NAMES or name_nd.value in ("self", "super") {
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+        if name_nd.value in BUILTIN_NAMES or JAC_TYPE_REGISTRY.is_builtin(name_nd.value)
+            or name_nd.value in ("self", "super") {
             continue;
         }
 
