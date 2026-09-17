@@ -17,6 +17,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
     TypeFlags,
+    PropertyCallbacks,
     PropertyDefinition,
     jacpy_binding_typeof,
     jacpy_binding_owner,
@@ -537,7 +538,10 @@ glob:priv dialect_type = TypeDefinition(
          ),
          [
              PropertyDefinition(
-                 option_names[i], dialect_option, u64(i), doc=option_names[i]
+                 option_names[i],
+                 PropertyCallbacks(read=dialect_option),
+                 u64(i),
+                 doc=option_names[i]
              ) for i in range(8)
          ]
      ),
@@ -559,8 +563,16 @@ glob:priv dialect_type = TypeDefinition(
              dealloc=reader_deallocate
          ),
          [
-             PropertyDefinition("line_num", reader_line, doc="Source line number"),
-             PropertyDefinition("dialect", reader_dialect, doc="Parsing dialect")
+             PropertyDefinition(
+                 "line_num",
+                 PropertyCallbacks(read=reader_line),
+                 doc="Source line number"
+             ),
+             PropertyDefinition(
+                 "dialect",
+                 PropertyCallbacks(read=reader_dialect),
+                 doc="Parsing dialect"
+             )
          ]
      ),
      writer_type = TypeDefinition(
@@ -589,7 +601,13 @@ glob:priv dialect_type = TypeDefinition(
          TypeHooks(
              clear=writer_clear, traverse=writer_traverse, dealloc=writer_deallocate
          ),
-         [PropertyDefinition("dialect", writer_dialect, doc="Writing dialect")]
+         [
+             PropertyDefinition(
+                 "dialect",
+                 PropertyCallbacks(read=writer_dialect),
+                 doc="Writing dialect"
+             )
+         ]
      );
 
 def:priv execute(module: u64) -> i32 {

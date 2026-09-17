@@ -15,6 +15,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeHooks,
     TypeFlags,
     TypeSlot,
+    PropertyCallbacks,
     PropertyDefinition,
     jacpy_binding_typeof,
     jacpy_binding_owner,
@@ -1089,8 +1090,8 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
              release_buffer=release_buffer
          ),
          [
-             PropertyDefinition("typecode", typecode),
-             PropertyDefinition("itemsize", itemsize)
+             PropertyDefinition("typecode", PropertyCallbacks(read=typecode)),
+             PropertyDefinition("itemsize", PropertyCallbacks(read=itemsize))
          ],
          unhashable=True
      );

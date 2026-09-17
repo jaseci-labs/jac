@@ -135,3 +135,11 @@ test "Callback records survive managed field and container cleanup" {
         storage.close();
     }
 }
+
+test "Python property registration lowers with C ABI callbacks" {
+    import from pathlib { Path }
+    import from tests.support { JAC_ROOT, compile_native_ir }
+    bindings = Path(JAC_ROOT) / "jaclang" / "runtime" / "python" / "bindings";
+    module = compile_native_ir("type.jac", fixture_dir=str(bindings));
+    assert module.gen.llvm_ir is not None;
+}

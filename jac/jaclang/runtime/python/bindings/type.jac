@@ -74,11 +74,17 @@ import from c {
     ) -> i64;
 }
 
+import from c {
+    obj PropertyCallbacks {
+        has read: Callable[[u64, u64], u64] = 0,
+            write: Callable[[u64, u64, u64], i32] = 0;
+    }
+}
+
 obj PropertyDefinition {
     has name: str,
-        read: Callable[[u64, u64], u64],
+        callbacks: PropertyCallbacks,
         context: u64 = 0,
-        write: Callable[[u64, u64, u64], i32] = 0,
         doc: str = "";
 }
 
@@ -121,8 +127,8 @@ obj TypeDefinition {
                 self.handle,
                 i64(index),
                 property.name,
-                property.read,
-                property.write,
+                property.callbacks.read,
+                property.callbacks.write,
                 property.context,
                 property.doc
             )
