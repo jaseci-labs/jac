@@ -62,8 +62,13 @@ test "na host boots the fused runtime (no display)" {
         env: dict[str, str] = dict(os.environ);
         env.pop("SSL_CERT_FILE", None);
         env.pop("SSL_CERT_DIR", None);
+        # The host materializes its runtime into a private cache root, never
+        # the user's: one payload extraction per test run, removed with tmp.
+        cache_root = out_dir / "cache";
+        env["XDG_CACHE_HOME"] = str(cache_root);
+        env.pop("JAC_CACHE_HOME", None);
         run = subprocess.run(
-            [str(binary)], cwd=tmp, env=env, capture_output=True, text=True, timeout=120
+            [str(binary)], cwd=tmp, env=env, capture_output=True, text=True, timeout=600
         );
         assert run.returncode == 0 , (
             f"engine-boot binary exited {run.returncode}\n"
@@ -73,6 +78,7 @@ test "na host boots the fused runtime (no display)" {
             f"fused-runtime boot marker missing\n"
             f"stdout:\n{run.stdout}\nstderr:\n{run.stderr}"
         );
+        assert (cache_root / "jac" / "rt").is_dir() , "the host must materialize under XDG_CACHE_HOME";
         custom_ca = out_dir / "custom-ca.pem";
         shutil.copy2(Path(sys.prefix) / "floor" / "cacert.pem", custom_ca);
         env["SSL_CERT_FILE"] = str(custom_ca);
