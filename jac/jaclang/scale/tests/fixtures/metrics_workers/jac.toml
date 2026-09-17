@@ -1,0 +1,16 @@
+[project]
+name = "metrics-workers"
+version = "1.0.0"
+description = "Fixture for Prometheus metrics served by more than one worker"
+
+[serve.workers]
+count = 2
+
+[serve.timeouts]
+drain = 1.0
+close = 1.0
+
+[scale.monitoring]
+enabled = true
+namespace = "metrics_workers"
+prometheus_admin_password = "scrape-secret"

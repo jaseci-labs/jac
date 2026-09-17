@@ -214,6 +214,10 @@ obj MetricsExtension(ServerExtension) {
         );
         logger.info(f"Prometheus metrics enabled at {endpoint} (admin-only)");
     }
+
+    def on_worker_exit(server: JacAPIServer, pid: int) {
+        server.metrics.worker_exited(pid);
+    }
 }
 
 

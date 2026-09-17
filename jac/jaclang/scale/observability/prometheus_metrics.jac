@@ -73,7 +73,8 @@ obj PrometheusMetricsCollector(MetricsCollector) {
                 "jac_info",
                 "Jac runtime version information",
                 ["version"],
-                registry=self._registry
+                registry=self._registry,
+                multiprocess_mode="max"
             );
             self._jac_info.labels(version=version).set(1);
         } except Exception as e {
@@ -112,7 +113,8 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         self._active_requests = Gauge(
             f"{self._namespace}_http_requests_in_progress",
             "Number of HTTP requests currently being processed",
-            registry=self._registry
+            registry=self._registry,
+            multiprocess_mode="livesum"
         );
 
         if self._include_walker_metrics {
@@ -128,7 +130,8 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         self._ws_connections_active = Gauge(
             f"{self._namespace}_ws_connections_active",
             "Active WebSocket connections",
-            registry=self._registry
+            registry=self._registry,
+            multiprocess_mode="livesum"
         );
 
         self._ws_broadcasts_total = Counter(
@@ -199,6 +202,15 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             ).observe(
                 duration_seconds
             );
+        }
+    }
+
+    def worker_exited(pid: int) {
+        import os;
+        directory = os.environ.get('PROMETHEUS_MULTIPROC_DIR');
+        if self._enabled and directory {
+            import from prometheus_client.multiprocess { mark_process_dead }
+            mark_process_dead(pid, directory);
         }
     }
 
