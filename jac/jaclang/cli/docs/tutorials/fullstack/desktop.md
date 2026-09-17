@@ -80,7 +80,7 @@ The output lands in `.jac/client/desktop/`. On Linux:
 .jac/client/desktop/
   my-app             # the native binary
   my-app-launch.sh   # launcher that wires in the project venv
-  app.jab            # the sealed app image the host serves
+  app.jab            # the sealed app image the host serves (embedded backend)
   dist/              # the served cl bundle
   libwebview.so      # the WebKitGTK wrapper (resolved via $ORIGIN)
 ```
@@ -96,7 +96,7 @@ treat it as an app:
       Info.plist              # from [desktop] name, identifier and version
       MacOS/my-app            # the native binary
       MacOS/libwebview.dylib  # the WKWebView wrapper (resolved via @loader_path)
-      Resources/app.jab
+      Resources/app.jab       # embedded backend only
       Resources/dist/
       Resources/AppIcon.icns  # when [desktop] icon is set
 ```

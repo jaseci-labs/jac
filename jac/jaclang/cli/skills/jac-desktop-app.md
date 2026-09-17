@@ -99,7 +99,7 @@ Linux ships a flat directory:
 .jac/client/desktop/
   my-app             # the native binary
   my-app-launch.sh   # launcher that wires in the project venv
-  app.jab            # the sealed app image the host serves
+  app.jab            # the sealed app image the host serves (embedded backend only)
   dist/              # the served cl bundle
   libwebview.so      # WebKitGTK wrapper (resolved via $ORIGIN runpath)
 ```

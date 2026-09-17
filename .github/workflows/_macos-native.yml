@@ -135,8 +135,9 @@ jobs:
           APP=$OUT/jaclang.app
           test -x "$APP/Contents/MacOS/jaclang" || { echo "::error::no executable in the bundle"; exit 1; }
           test -f "$APP/Contents/MacOS/libwebview.dylib" || { echo "::error::libwebview.dylib is not beside the executable"; exit 1; }
-          test -f "$APP/Contents/Resources/app.jab" || { echo "::error::no sealed app image in the bundle"; exit 1; }
+          test ! -f "$APP/Contents/Resources/app.jab" || { echo "::error::remote desktop ships an unnecessary local app image"; exit 1; }
           test -f "$APP/Contents/Resources/dist/index.html" || { echo "::error::no client bundle in the bundle"; exit 1; }
+          test ! -d "$APP/Contents/Resources/sv" || { echo "::error::loose sources shipped; the image is the program"; exit 1; }
           test -x "$OUT/jaclang-launch.sh" || { echo "::error::no launcher beside the bundle"; exit 1; }
           plutil -lint "$APP/Contents/Info.plist"
           [ "$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist")" = "org.jaclang.desktop" ] \
