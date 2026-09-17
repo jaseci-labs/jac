@@ -59,13 +59,18 @@ def _project_database -> str {
 
 
 def _runtime_for(data_dir: str, tcp: bool = False, port: int = 5432) -> any {
+    import from jaclang.data.dbcatalog { DbKind }
     import from jaclang.data.pgembed { PgRuntime }
+    import from jaclang.server.session { scratch_owner_pid }
+    owner = scratch_owner_pid();
     return PgRuntime(
         data_dir=data_dir,
         tcp=tcp,
         port=port,
         database=_project_database(),
-        owner_path=str(Path.cwd())
+        owner_path=str(Path.cwd()),
+        kind=DbKind.SCRATCH if owner else DbKind.PROJECT,
+        owner_pid=owner
     );
 }
 
@@ -209,12 +214,12 @@ def _db_list(data_dir: str) -> int {
     }
     console.print("");
     console.print(
-        f"{'NAME':<40} {'SIZE':>10}  {'KIND':<8} {'STATE':<13} {'LAST USED':<20} OWNER"
+        f"{'NAME':<40} {'SIZE':>10}  {'KIND':<8} {'STATE':<24} {'LAST USED':<20} OWNER"
     );
     for rec in records {
         console.print(
             f"{rec.database:<40} {_human_size(rec.size_bytes):>10}  "
-            f"{(rec.kind or '-'):<8} {rec.state():<13} "
+            f"{(rec.kind or '-'):<8} {rec.state():<24} "
             f"{(rec.last_used_at[:19] or '-'):<20} {rec.owner_path or '-'}"
         );
     }
@@ -234,7 +239,7 @@ def _prune_candidates(
                 out.append(
                     PruneCandidate(
                         record=rec,
-                        reason=f"scratch store, {rec.dead_scratch_reason()}",
+                        reason=rec.reclaim_reason(),
                         force=rec.pid_confirmed_dead()
                     )
                 );
@@ -242,9 +247,7 @@ def _prune_candidates(
             continue;
         }
         if rec.is_orphaned() {
-            out.append(
-                PruneCandidate(record=rec, reason=f"owner {rec.owner_path} is gone")
-            );
+            out.append(PruneCandidate(record=rec, reason=rec.reclaim_reason()));
             continue;
         }
         if empty and not rec.owner_path and holds_no_data(info, rec.database) {
@@ -262,18 +265,21 @@ def _db_prune(data_dir: str, yes: bool, empty: bool) -> int {
         return 0;
     }
     import from jaclang.data.dbcatalog {
-        condemn_stale_scratch,
+        condemn_abandoned,
         connect_admin,
         drop_database,
         drop_if_still_dead,
-        list_databases
+        list_databases,
+        pardon_recovered
     }
     rt = _catalog_runtime(data_dir);
     conn: any = connect_admin(rt.ensure());
     try {
         records = list_databases(conn);
+        by_name = {rec.database: rec for rec in records};
         candidates = _prune_candidates(rt, records, empty);
-        marked = condemn_stale_scratch(conn, records) if yes else [];
+        marked = condemn_abandoned(conn, records) if yes else [];
+        pardoned = pardon_recovered(conn, records) if yes else [];
         unattributed = len(
             [
                 rec
@@ -282,17 +288,17 @@ def _db_prune(data_dir: str, yes: bool, empty: bool) -> int {
             ]
         );
         console.print(f"data dir : {data_dir}");
-        if not candidates and not marked {
+        if not candidates and not marked and not pardoned {
             console.print("nothing to prune");
         }
-        for name in marked {
+        for name in pardoned {
             console.print(
-                f"marked {name}: its heartbeat stopped, so a later prune will "
-                "reclaim it if it is still silent and unused by then"
+                f"unmarked {name}: its owner {by_name[name].owner_path} is back"
             );
         }
         reclaim = 0;
         dropped = 0;
+        gone_names: set[str] = set();
         for cand in candidates {
             rec = cand.record;
             reclaim += rec.size_bytes;
@@ -310,6 +316,7 @@ def _db_prune(data_dir: str, yes: bool, empty: bool) -> int {
             );
             if gone {
                 dropped += 1;
+                gone_names.add(rec.database);
                 console.print(
                     f"dropped {rec.database} ({_human_size(rec.size_bytes)}): "
                     f"{cand.reason}"
@@ -318,6 +325,11 @@ def _db_prune(data_dir: str, yes: bool, empty: bool) -> int {
                 console.warning(
                     f"could not drop {rec.database}; it may still be in use"
                 );
+            }
+        }
+        for name in marked {
+            if name not in gone_names {
+                console.print(f"marked {name}: {by_name[name].condemn_reason()}");
             }
         }
         if candidates and not yes {

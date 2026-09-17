@@ -960,7 +960,7 @@ Local model cache: /home/you/.cache/jac/models
 
 The `jac db` command group manages the project's Postgres store -- a database inside the embedded cluster the runtime provisions automatically, or the external database `JAC_DB_URL` / `[scale.database].url` points at.
 
-The embedded cluster is **shared by the whole machine**, not per project: one PostgreSQL instance lives at `$JAC_CACHE_HOME/pg/main` (default `~/.cache/jac/pg/main`) and holds one database per project, named `jac_<project>_<digest of the project's absolute path>`. Two projects therefore share a server but never a database, and moving or deleting a project directory leaves its database behind (`jac db list` shows it as `orphaned`; `jac db prune` reclaims it).
+The embedded cluster is **shared by the whole machine**, not per project: one PostgreSQL instance lives at `$JAC_CACHE_HOME/pg/main` (default `~/.cache/jac/pg/main`) and holds one database per project, named `jac_<project>_<digest of the project's absolute path>`. Two projects therefore share a server but never a database, and moving or deleting a project directory leaves its database behind (`jac db list` shows it as `orphaned`; `jac db prune -y` reclaims it on the spot, and the cluster's start-time sweep reclaims it on its own once the directory has been gone for a day, see [Retention](#retention)).
 
 For the architectural background (fingerprints, drift detection, quarantine philosophy, alias decorator), see [Persistence & Schema Migration](../persistence.md).
 
@@ -1003,13 +1003,13 @@ jac db list
 data dir : /home/you/.cache/jac/pg/main
 databases: 3 (23.1 MB)
 
-NAME                              SIZE  KIND     STATE         LAST USED            OWNER
-jac_myapp_1a2b3c4d              7.9 MB  project  live          2026-08-12 21:14:03  /home/you/myapp
-jac_scratch_3142_9f1c           7.7 MB  scratch  dead scratch  2026-08-12 20:02:55  /tmp/jac-test-base-x1y2
-jac_oldapp_5e6f7a8b             7.6 MB  project  orphaned      2026-07-30 11:48:12  /home/you/deleted-app
+NAME                              SIZE  KIND     STATE                    LAST USED            OWNER
+jac_myapp_1a2b3c4d              7.9 MB  project  live                     2026-08-12 21:14:03  /home/you/myapp
+jac_scratch_3142_9f1c           7.7 MB  scratch  dead scratch             2026-08-12 20:02:55  /tmp/jac-test-base-x1y2
+jac_oldapp_5e6f7a8b             7.6 MB  project  orphaned, reclaim in 21h 2026-07-30 11:48:12  /home/you/deleted-app
 ```
 
-The states are `live` (the owning directory still exists), `orphaned` (it does not), `scratch` / `silent scratch` / `dead scratch` (a throwaway store for internal work, see below), and `unattributed` (no owner recorded, e.g. created before the runtime tracked owners). Listing never creates a database, so it is safe to run for a look around.
+The states are `live` (the owning directory still exists), `orphaned` (it does not; a suffix says where the start-time sweep is with it: nothing yet, `reclaim in 21h`, `reclaimable`, or `in use` when something is still connected, see [Retention](#retention)), `scratch` / `silent scratch` / `dead scratch` (a throwaway store for internal work, see below), and `unattributed` (no owner recorded, e.g. created before the runtime tracked owners). Listing never creates a database, so it is safe to run for a look around.
 
 ### jac db prune
 
@@ -1021,7 +1021,7 @@ jac db prune -y          # drop it
 jac db prune --empty -y  # also drop unattributed databases that hold no data
 ```
 
-Candidates are scratch databases whose owning process is gone, and project databases whose recorded owning path has been deleted. "Gone" means one of two things: the recorded pid is checkable from here and no longer exists, or an earlier prune already found the database silent and unused and it still is (see [Scratch stores](#scratch-stores)), which is why reclaiming a scratch database left by another host takes two runs of prune rather than one. Databases with no recorded owner at all (created before the runtime recorded owners, or by tooling that opened the cluster directly) cannot be attributed; they are reported and left alone. `--empty` additionally considers those, but only the ones holding nothing beyond the system root, so an old cluster full of empty test-worker databases can be reclaimed without risking anyone's data.
+Candidates are scratch databases whose owning process is gone, and project databases whose recorded owning path has been deleted. "Gone" means one of two things: the recorded pid is checkable from here and no longer exists, or an earlier prune already found the database silent and unused and it still is (see [Scratch stores](#scratch-stores)), which is why reclaiming a scratch database left by another host takes two runs of prune rather than one. An orphaned project database is reported with the same state the start-time sweep acts on (whether it has been marked, and how long until the sweep reclaims it), and `-y` drops it on the spot: the sweep's grace protects against automatic loss, not against an operator who has read the report. `-y` also records the marks the sweep uses and clears the ones whose directory is back, so a prune and a cluster start never disagree about where a database stands. Databases with no recorded owner at all (created before the runtime recorded owners, or by tooling that opened the cluster directly) cannot be attributed; they are reported and left alone. `--empty` additionally considers those, but only the ones holding nothing beyond the system root, so an old cluster full of empty test-worker databases can be reclaimed without risking anyone's data.
 
 ### jac db drop
 
@@ -1035,7 +1035,14 @@ Only `jac_*` databases can be dropped, and a database another process is connect
 
 ### Retention
 
-By default the runtime never deletes a project database: it is created on first contact and stays until you drop it. A cluster start always reaps scratch databases whose owning process is gone, and, if you opt in, sweeps stale project databases too:
+By default the runtime never deletes a project database whose directory exists: it is created on first contact and stays until you drop it. A cluster start always reaps scratch databases whose owning process is gone, and project databases whose owning directory is gone, in two phases so that a directory that is moved and moved back, or briefly unmounted, is never mistaken for a deleted project:
+
+1. The first start to find a database's directory missing **marks** it (`jac db list` shows `orphaned, reclaim in 24h`).
+2. A later start **drops** it once the mark is older than the grace period and nothing is connected to it. The grace is 24 hours by default; `JAC_DB_ORPHAN_GRACE_HOURS` overrides it, and `0` means the first start after the one that marked it.
+
+A directory that comes back before then clears the mark, so the clock starts over if it goes missing again. The sweep runs when the embedded cluster starts, not on every `jac run` (the cluster stays up between runs), and it spends at most 20 seconds dropping per start, leaving the rest for the next one, so a large backlog never stalls a start; `jac db prune -y` reclaims a backlog in one go. Each start logs one line per thing it did: databases marked, unmarked, reclaimed, or left for later.
+
+If you opt in, a start also sweeps stale project databases whose directory still exists:
 
 ```toml
 [database]
@@ -1046,7 +1053,9 @@ With `retention_days` set (or `JAC_DB_RETENTION_DAYS` in the environment), start
 
 ### Scratch stores
 
-Work that keeps nothing across invocations should not leave a database behind. A process launched with `JAC_DB_SCRATCH=1` opens a single scratch database (`jac_scratch_<pid>_<nonce>`) instead of one per project path, and drops it when the process exits. The test runner and the deploy seal / vendor steps use this, which is why running tests or deploying no longer grows the cluster.
+Work that keeps nothing across invocations should not leave a database behind. A process launched with `JAC_DB_SCRATCH=1` opens a single scratch database (`jac_scratch_<pid>_<nonce>`) instead of one per project path, and drops it when the process exits. The test runner uses this for the fresh base it hands every test file, and the deploy seal / vendor steps use it for their staging runs.
+
+A process can instead own everything its descendants create. With `JAC_DB_SCRATCH_OWNER=<pid>` in the environment, every project database a process opens is recorded as a scratch-kind database owned by that pid, under its normal project name: the data still survives from one child process to the next, two directories still get two databases, and the whole set is dropped when the owner exits or reaped by the next scratch reap once the owner's pid is gone. The test runner exports its own pid this way before it forks its workers, so a `jac run`, `jac serve` or `jac test` a test spawns, and a base a test opens in-process without marking it scratch, no longer leaves a permanent database keyed to a temp directory behind. A test that needs to observe a real project database removes `JAC_DB_SCRATCH_OWNER` from its child's environment, the way the database lifecycle tests do.
 
 A process that dies without running its exit handler (a `SIGKILL`, an OOM, a container that is replaced) cannot drop its own scratch database, so the next scratch store to open reclaims it. Deciding that its owner is really gone takes more than the recorded pid, which is only meaningful on the host that recorded it. While a scratch database is open its registry record is heartbeated once a minute, and a record is reclaimed only when one of these holds:
 
