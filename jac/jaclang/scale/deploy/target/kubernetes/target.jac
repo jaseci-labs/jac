@@ -8,6 +8,7 @@ import from jaclang.scale.models.deployment_result { DeploymentResult }
 import from jaclang.scale.models.deploy_context { DeployContext }
 import from jaclang.scale._optdeps.kubernetes { client, ApiException }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+    apply_k8s_resource,
     ensure_namespace_exists,
     create_k8s_secret,
     delete_if_exists,
@@ -1338,35 +1339,9 @@ obj KubernetesTarget(KubernetesTargetBase) {
             role_name: str = role["metadata"]["name"];
             binding_name: str = binding["metadata"]["name"];
 
-            try {
-                rbac_v1.read_namespaced_role(name=role_name, namespace=namespace);
-                rbac_v1.replace_namespaced_role(
-                    name=role_name, namespace=namespace, body=role
-                );
-            } except ApiException as e {
-                if e.status == 404 {
-                    rbac_v1.create_namespaced_role(namespace=namespace, body=role);
-                } else {
-                    raise;
-                }
-            }
+            apply_k8s_resource(rbac_v1, "Role", role_name, role, namespace=namespace);
 
-            try {
-                rbac_v1.read_namespaced_role_binding(
-                    name=binding_name, namespace=namespace
-                );
-                rbac_v1.replace_namespaced_role_binding(
-                    name=binding_name, namespace=namespace, body=binding
-                );
-            } except ApiException as e {
-                if e.status == 404 {
-                    rbac_v1.create_namespaced_role_binding(
-                        namespace=namespace, body=binding
-                    );
-                } else {
-                    raise;
-                }
-            }
+            apply_k8s_resource(rbac_v1, "RoleBinding", binding_name, binding, namespace=namespace);
 
             if self.logger {
                 subj = binding["subjects"][0]["name"];
@@ -1849,15 +1824,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             );
             service_items: list[any] = services.items;
             for svc in service_items {
-                try {
-                    core_v1.delete_namespaced_service(
-                        name=svc.metadata.name, namespace=namespace
-                    );
-                } except ApiException as e {
-                    if e.status != 404 {
-                        raise;
-                    }
-                }
+                delete_if_exists(core_v1.delete_namespaced_service, svc.metadata.name, namespace, "Service");
             }
         } except ApiException as e {
             if e.status != 404 {

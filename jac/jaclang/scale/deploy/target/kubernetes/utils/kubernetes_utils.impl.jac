@@ -456,9 +456,45 @@ impl delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str
 ) -> None {
     try {
-        delete_func(name, namespace);
+        # cluster-scoped resources (empty namespace) take no namespace arg;
+        if namespace {
+            delete_func(name, namespace);
+        } else {
+            delete_func(name);
+        }
     } except ApiException as e {
         if (e.status == 404) {} else {
+            raise;
+        }
+    }
+}
+
+impl apply_k8s_resource(
+    api: any,
+    kind: str,
+    name: str,
+    body: dict[str, any],
+    namespace: (str | None) = None,
+    replace: bool = True
+) -> None {
+    # kubectl-apply semantics for the python k8s client: read the resource,
+    # replace its manifest when present, create it on 404. `kind` is the API
+    # method stem ("config_map", "cluster_role", ...); namespaced resources
+    # pass `namespace`, cluster-scoped leave it None. `replace=False` makes
+    # this create-only for resources k8s forbids updating in place (services,
+    # PVCs, service accounts).
+    stem = ("namespaced_" + kind) if namespace else kind;
+    read = getattr(api, "read_" + stem);
+    ns_kw: dict[str, any] = {"namespace": namespace} if namespace else {};
+    try {
+        read(name=name, **ns_kw);
+        if replace {
+            getattr(api, "replace_" + stem)(name=name, body=body, **ns_kw);
+        }
+    } except ApiException as e {
+        if e.status == 404 {
+            getattr(api, "create_" + stem)(body=body, **ns_kw);
+        } else {
             raise;
         }
     }

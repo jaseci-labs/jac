@@ -6,6 +6,7 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 }
 import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+    apply_k8s_resource,
     delete_if_exists,
     delete_k8s_secret
 }
@@ -16,15 +17,7 @@ obj MonitoringDeployer {
         logger: (Logger | None) = None;
 
     def ensure_service(core_v1: any, name: str, namespace: str, body: dict[str, any]) {
-        try {
-            core_v1.read_namespaced_service(name=name, namespace=namespace);
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service(namespace=namespace, body=body);
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "Service", name, body, namespace=namespace, replace=False);
     }
 
     def _deploy_prometheus(
@@ -101,24 +94,7 @@ obj MonitoringDeployer {
             },
             'data': {'prometheus.yml': scrape_config}
         };
-        try {
-            core_v1.read_namespaced_config_map(
-                name=f"{prometheus_name}-config", namespace=namespace
-            );
-            core_v1.replace_namespaced_config_map(
-                name=f"{prometheus_name}-config",
-                namespace=namespace,
-                body=prometheus_configmap
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_config_map(
-                    namespace=namespace, body=prometheus_configmap
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ConfigMap", f"{prometheus_name}-config", prometheus_configmap, namespace=namespace);
 
         scrape_secret_name = f"{prometheus_name}-scrape-secret";
         scrape_secret = {
@@ -132,22 +108,7 @@ obj MonitoringDeployer {
             'type': 'Opaque',
             'stringData': {'password': self.k8s_config.prometheus_admin_password}
         };
-        try {
-            core_v1.read_namespaced_secret(
-                name=scrape_secret_name, namespace=namespace
-            );
-            core_v1.replace_namespaced_secret(
-                name=scrape_secret_name, namespace=namespace, body=scrape_secret
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_secret(
-                    namespace=namespace, body=scrape_secret
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "Secret", scrape_secret_name, scrape_secret, namespace=namespace);
 
         prometheus_sa_name = f"{prometheus_name}-sa";
 
@@ -161,19 +122,7 @@ obj MonitoringDeployer {
             },
             'automountServiceAccountToken': True
         };
-        try {
-            core_v1.read_namespaced_service_account(
-                name=prometheus_sa_name, namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service_account(
-                    namespace=namespace, body=prometheus_sa
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ServiceAccount", prometheus_sa_name, prometheus_sa, namespace=namespace, replace=False);
 
         prometheus_cluster_role_name = f"{namespace}-{prometheus_name}";
         prometheus_rbac_v1 = client.RbacAuthorizationV1Api();
@@ -200,18 +149,7 @@ obj MonitoringDeployer {
                 {'nonResourceURLs': ['/metrics', '/metrics/cadvisor'], 'verbs': ['get']}
             ]
         };
-        try {
-            prometheus_rbac_v1.read_cluster_role(name=prometheus_cluster_role_name);
-            prometheus_rbac_v1.replace_cluster_role(
-                name=prometheus_cluster_role_name, body=prometheus_cluster_role
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                prometheus_rbac_v1.create_cluster_role(body=prometheus_cluster_role);
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(prometheus_rbac_v1, "ClusterRole", prometheus_cluster_role_name, prometheus_cluster_role);
         prometheus_crb = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
             'kind': 'ClusterRoleBinding',
@@ -232,20 +170,7 @@ obj MonitoringDeployer {
                 }
             ]
         };
-        try {
-            prometheus_rbac_v1.read_cluster_role_binding(
-                name=prometheus_cluster_role_name
-            );
-            prometheus_rbac_v1.replace_cluster_role_binding(
-                name=prometheus_cluster_role_name, body=prometheus_crb
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                prometheus_rbac_v1.create_cluster_role_binding(body=prometheus_crb);
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(prometheus_rbac_v1, "ClusterRoleBinding", prometheus_cluster_role_name, prometheus_crb);
 
         prometheus_deployment = {
             'apiVersion': 'apps/v1',
@@ -379,19 +304,7 @@ obj MonitoringDeployer {
                 'labels': {'app': ksm_name, 'managed': 'jac-scale'}
             }
         };
-        try {
-            core_v1.read_namespaced_service_account(
-                name=ksm_sa_name, namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service_account(
-                    namespace=namespace, body=sa_body
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ServiceAccount", ksm_sa_name, sa_body, namespace=namespace, replace=False);
 
         cluster_role_body = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
@@ -451,15 +364,7 @@ obj MonitoringDeployer {
                 }
             ]
         };
-        try {
-            rbac_v1.read_cluster_role(name=cluster_role_name);
-        } except ApiException as e {
-            if e.status == 404 {
-                rbac_v1.create_cluster_role(body=cluster_role_body);
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(rbac_v1, "ClusterRole", cluster_role_name, cluster_role_body, replace=False);
 
         crb_body = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
@@ -477,15 +382,7 @@ obj MonitoringDeployer {
                 {'kind': 'ServiceAccount', 'name': ksm_sa_name, 'namespace': namespace}
             ]
         };
-        try {
-            rbac_v1.read_cluster_role_binding(name=cluster_role_binding_name);
-        } except ApiException as e {
-            if e.status == 404 {
-                rbac_v1.create_cluster_role_binding(body=crb_body);
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(rbac_v1, "ClusterRoleBinding", cluster_role_binding_name, crb_body, replace=False);
 
         ksm_deployment = {
             'apiVersion': 'apps/v1',
@@ -537,17 +434,7 @@ obj MonitoringDeployer {
                 }
             }
         };
-        try {
-            apps_v1.read_namespaced_deployment(name=ksm_name, namespace=namespace);
-        } except ApiException as e {
-            if e.status == 404 {
-                apps_v1.create_namespaced_deployment(
-                    namespace=namespace, body=ksm_deployment
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(apps_v1, "Deployment", ksm_name, ksm_deployment, namespace=namespace, replace=False);
 
         ksm_service = {
             'apiVersion': 'v1',
@@ -638,17 +525,7 @@ obj MonitoringDeployer {
                 }
             }
         };
-        try {
-            apps_v1.read_namespaced_daemon_set(name=ne_name, namespace=namespace);
-        } except ApiException as e {
-            if e.status == 404 {
-                apps_v1.create_namespaced_daemon_set(
-                    namespace=namespace, body=ne_daemonset
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(apps_v1, "DaemonSet", ne_name, ne_daemonset, namespace=namespace, replace=False);
 
         ne_service = {
             'apiVersion': 'v1',
@@ -697,19 +574,7 @@ obj MonitoringDeployer {
                 'GF_SECURITY_ADMIN_PASSWORD': self.k8s_config.prometheus_admin_password
             }
         };
-        try {
-            core_v1.read_namespaced_secret(
-                name=grafana_secret_name, namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_secret(
-                    namespace=namespace, body=grafana_secret
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "Secret", grafana_secret_name, grafana_secret, namespace=namespace, replace=False);
 
         prometheus_url = f"http://{prometheus_name}-service:9090";
         loki_name = f"{app_name}-loki";
@@ -773,24 +638,7 @@ obj MonitoringDeployer {
             },
             'data': {'datasource.yaml': datasource_yaml}
         };
-        try {
-            core_v1.read_namespaced_config_map(
-                name=f"{grafana_name}-datasources", namespace=namespace
-            );
-            core_v1.replace_namespaced_config_map(
-                name=f"{grafana_name}-datasources",
-                namespace=namespace,
-                body=grafana_ds_configmap
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_config_map(
-                    namespace=namespace, body=grafana_ds_configmap
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ConfigMap", f"{grafana_name}-datasources", grafana_ds_configmap, namespace=namespace);
 
         dashboard_provider_yaml = (
             "apiVersion: 1\n"
@@ -814,24 +662,7 @@ obj MonitoringDeployer {
             },
             'data': {'provider.yaml': dashboard_provider_yaml}
         };
-        try {
-            core_v1.read_namespaced_config_map(
-                name=f"{grafana_name}-dashboard-provider", namespace=namespace
-            );
-            core_v1.replace_namespaced_config_map(
-                name=f"{grafana_name}-dashboard-provider",
-                namespace=namespace,
-                body=grafana_provider_configmap
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_config_map(
-                    namespace=namespace, body=grafana_provider_configmap
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ConfigMap", f"{grafana_name}-dashboard-provider", grafana_provider_configmap, namespace=namespace);
 
         pfx = re.sub(r'[^a-zA-Z0-9]', '_', namespace);
         pfx = re.sub(r'_+', '_', pfx).strip('_');
@@ -1160,24 +991,7 @@ obj MonitoringDeployer {
             },
             'data': dashboard_data
         };
-        try {
-            core_v1.read_namespaced_config_map(
-                name=f"{grafana_name}-dashboard", namespace=namespace
-            );
-            core_v1.replace_namespaced_config_map(
-                name=f"{grafana_name}-dashboard",
-                namespace=namespace,
-                body=grafana_dashboard_configmap
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_config_map(
-                    namespace=namespace, body=grafana_dashboard_configmap
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ConfigMap", f"{grafana_name}-dashboard", grafana_dashboard_configmap, namespace=namespace);
 
         grafana_sa_name = f"{grafana_name}-sa";
         grafana_sa = {
@@ -1190,19 +1004,7 @@ obj MonitoringDeployer {
             },
             'automountServiceAccountToken': False
         };
-        try {
-            core_v1.read_namespaced_service_account(
-                name=grafana_sa_name, namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service_account(
-                    namespace=namespace, body=grafana_sa
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ServiceAccount", grafana_sa_name, grafana_sa, namespace=namespace, replace=False);
 
         grafana_deployment = {
             'apiVersion': 'apps/v1',
@@ -1376,22 +1178,7 @@ obj MonitoringDeployer {
             },
             'data': {'tempo.yaml': tempo_config_yaml}
         };
-        try {
-            core_v1.read_namespaced_config_map(
-                name=f"{tempo_name}-config", namespace=namespace
-            );
-            core_v1.replace_namespaced_config_map(
-                name=f"{tempo_name}-config", namespace=namespace, body=tempo_configmap
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_config_map(
-                    namespace=namespace, body=tempo_configmap
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ConfigMap", f"{tempo_name}-config", tempo_configmap, namespace=namespace);
 
         tempo_sa = {
             'apiVersion': 'v1',
@@ -1403,19 +1190,7 @@ obj MonitoringDeployer {
             },
             'automountServiceAccountToken': False
         };
-        try {
-            core_v1.read_namespaced_service_account(
-                name=tempo_sa_name, namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service_account(
-                    namespace=namespace, body=tempo_sa
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ServiceAccount", tempo_sa_name, tempo_sa, namespace=namespace, replace=False);
 
         tempo_deployment = {
             'apiVersion': 'apps/v1',
@@ -1582,22 +1357,7 @@ obj MonitoringDeployer {
             },
             'data': {'loki.yaml': loki_config_yaml}
         };
-        try {
-            core_v1.read_namespaced_config_map(
-                name=f"{loki_name}-config", namespace=namespace
-            );
-            core_v1.replace_namespaced_config_map(
-                name=f"{loki_name}-config", namespace=namespace, body=loki_configmap
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_config_map(
-                    namespace=namespace, body=loki_configmap
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ConfigMap", f"{loki_name}-config", loki_configmap, namespace=namespace);
 
         loki_sa = {
             'apiVersion': 'v1',
@@ -1609,19 +1369,7 @@ obj MonitoringDeployer {
             },
             'automountServiceAccountToken': False
         };
-        try {
-            core_v1.read_namespaced_service_account(
-                name=loki_sa_name, namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service_account(
-                    namespace=namespace, body=loki_sa
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ServiceAccount", loki_sa_name, loki_sa, namespace=namespace, replace=False);
 
         loki_deployment = {
             'apiVersion': 'apps/v1',
@@ -1878,22 +1626,7 @@ obj MonitoringDeployer {
             },
             'data': {'config.alloy': alloy_config_river}
         };
-        try {
-            core_v1.read_namespaced_config_map(
-                name=f"{alloy_name}-config", namespace=namespace
-            );
-            core_v1.replace_namespaced_config_map(
-                name=f"{alloy_name}-config", namespace=namespace, body=alloy_configmap
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_config_map(
-                    namespace=namespace, body=alloy_configmap
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ConfigMap", f"{alloy_name}-config", alloy_configmap, namespace=namespace);
 
         alloy_sa = {
             'apiVersion': 'v1',
@@ -1904,19 +1637,7 @@ obj MonitoringDeployer {
                 'labels': {'app': alloy_name, 'managed': 'jac-scale'}
             }
         };
-        try {
-            core_v1.read_namespaced_service_account(
-                name=alloy_sa_name, namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service_account(
-                    namespace=namespace, body=alloy_sa
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(core_v1, "ServiceAccount", alloy_sa_name, alloy_sa, namespace=namespace, replace=False);
 
         cluster_role_body = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
@@ -1940,15 +1661,7 @@ obj MonitoringDeployer {
                 }
             ]
         };
-        try {
-            rbac_v1.read_cluster_role(name=cluster_role_name);
-        } except ApiException as e {
-            if e.status == 404 {
-                rbac_v1.create_cluster_role(body=cluster_role_body);
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(rbac_v1, "ClusterRole", cluster_role_name, cluster_role_body, replace=False);
 
         crb_body = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
@@ -1970,15 +1683,7 @@ obj MonitoringDeployer {
                 }
             ]
         };
-        try {
-            rbac_v1.read_cluster_role_binding(name=cluster_role_binding_name);
-        } except ApiException as e {
-            if e.status == 404 {
-                rbac_v1.create_cluster_role_binding(body=crb_body);
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(rbac_v1, "ClusterRoleBinding", cluster_role_binding_name, crb_body, replace=False);
 
         alloy_ports = [{'containerPort': 12345, 'name': 'http'}];
         if self.k8s_config.tracing_enabled {
@@ -2057,17 +1762,7 @@ obj MonitoringDeployer {
                 }
             }
         };
-        try {
-            apps_v1.read_namespaced_daemon_set(name=alloy_name, namespace=namespace);
-        } except ApiException as e {
-            if e.status == 404 {
-                apps_v1.create_namespaced_daemon_set(
-                    namespace=namespace, body=alloy_daemonset
-                );
-            } else {
-                raise;
-            }
-        }
+        apply_k8s_resource(apps_v1, "DaemonSet", alloy_name, alloy_daemonset, namespace=namespace, replace=False);
 
         if self.k8s_config.tracing_enabled {
             alloy_service = {
@@ -2164,25 +1859,9 @@ obj MonitoringDeployer {
             namespace,
             'Service'
         );
-        try {
-            core_v1.delete_namespaced_config_map(
-                name=f"{prometheus_name}-config", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(core_v1.delete_namespaced_config_map, f"{prometheus_name}-config", namespace, "ConfigMap");
         delete_k8s_secret(core_v1, namespace, f"{prometheus_name}-scrape-secret");
-        try {
-            core_v1.delete_namespaced_service_account(
-                name=f"{prometheus_name}-sa", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(core_v1.delete_namespaced_service_account, f"{prometheus_name}-sa", namespace, "ServiceAccount");
 
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, ksm_name, namespace, 'Deployment'
@@ -2193,54 +1872,16 @@ obj MonitoringDeployer {
             namespace,
             'Service'
         );
-        try {
-            core_v1.delete_namespaced_service_account(
-                name=f"{ksm_name}-sa", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(core_v1.delete_namespaced_service_account, f"{ksm_name}-sa", namespace, "ServiceAccount");
 
         rbac_v1 = client.RbacAuthorizationV1Api();
-        try {
-            rbac_v1.delete_cluster_role(name=cluster_role_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
-        try {
-            rbac_v1.delete_cluster_role_binding(name=cluster_role_binding_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(rbac_v1.delete_cluster_role, cluster_role_name, "", "ClusterRole");
+        delete_if_exists(rbac_v1.delete_cluster_role_binding, cluster_role_binding_name, "", "ClusterRoleBinding");
 
-        try {
-            rbac_v1.delete_cluster_role(name=prometheus_cluster_role_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
-        try {
-            rbac_v1.delete_cluster_role_binding(name=prometheus_cluster_role_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(rbac_v1.delete_cluster_role, prometheus_cluster_role_name, "", "ClusterRole");
+        delete_if_exists(rbac_v1.delete_cluster_role_binding, prometheus_cluster_role_name, "", "ClusterRoleBinding");
 
-        try {
-            apps_v1.delete_namespaced_daemon_set(name=ne_name, namespace=namespace);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(apps_v1.delete_namespaced_daemon_set, ne_name, namespace, "DaemonSet");
         delete_if_exists(
             core_v1.delete_namespaced_service,
             f"{ne_name}-service",
@@ -2257,50 +1898,12 @@ obj MonitoringDeployer {
             namespace,
             'Service'
         );
-        try {
-            core_v1.delete_namespaced_config_map(
-                name=f"{loki_name}-config", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
-        try {
-            core_v1.delete_namespaced_service_account(
-                name=f"{loki_name}-sa", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(core_v1.delete_namespaced_config_map, f"{loki_name}-config", namespace, "ConfigMap");
+        delete_if_exists(core_v1.delete_namespaced_service_account, f"{loki_name}-sa", namespace, "ServiceAccount");
 
-        try {
-            apps_v1.delete_namespaced_daemon_set(name=alloy_name, namespace=namespace);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
-        try {
-            core_v1.delete_namespaced_config_map(
-                name=f"{alloy_name}-config", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
-        try {
-            core_v1.delete_namespaced_service_account(
-                name=f"{alloy_name}-sa", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(apps_v1.delete_namespaced_daemon_set, alloy_name, namespace, "DaemonSet");
+        delete_if_exists(core_v1.delete_namespaced_config_map, f"{alloy_name}-config", namespace, "ConfigMap");
+        delete_if_exists(core_v1.delete_namespaced_service_account, f"{alloy_name}-sa", namespace, "ServiceAccount");
 
         delete_if_exists(
             core_v1.delete_namespaced_service,
@@ -2309,20 +1912,8 @@ obj MonitoringDeployer {
             'Service'
         );
         alloy_cr_name = f"{namespace}-{alloy_name}";
-        try {
-            rbac_v1.delete_cluster_role(name=alloy_cr_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
-        try {
-            rbac_v1.delete_cluster_role_binding(name=alloy_cr_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(rbac_v1.delete_cluster_role, alloy_cr_name, "", "ClusterRole");
+        delete_if_exists(rbac_v1.delete_cluster_role_binding, alloy_cr_name, "", "ClusterRoleBinding");
 
         tempo_name = f"{app_name}-tempo";
         delete_if_exists(
@@ -2334,24 +1925,8 @@ obj MonitoringDeployer {
             namespace,
             'Service'
         );
-        try {
-            core_v1.delete_namespaced_config_map(
-                name=f"{tempo_name}-config", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
-        try {
-            core_v1.delete_namespaced_service_account(
-                name=f"{tempo_name}-sa", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
+        delete_if_exists(core_v1.delete_namespaced_config_map, f"{tempo_name}-config", namespace, "ConfigMap");
+        delete_if_exists(core_v1.delete_namespaced_service_account, f"{tempo_name}-sa", namespace, "ServiceAccount");
 
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, grafana_name, namespace, 'Deployment'
@@ -2367,13 +1942,7 @@ obj MonitoringDeployer {
             f"{grafana_name}-dashboard-provider",
             f"{grafana_name}-dashboard"
         ] {
-            try {
-                core_v1.delete_namespaced_config_map(name=cm_name, namespace=namespace);
-            } except ApiException as e {
-                if e.status != 404 {
-                    raise;
-                }
-            }
+            delete_if_exists(core_v1.delete_namespaced_config_map, cm_name, namespace, "ConfigMap");
         }
         delete_k8s_secret(core_v1, namespace, f"{grafana_name}-secret");
         delete_if_exists(
