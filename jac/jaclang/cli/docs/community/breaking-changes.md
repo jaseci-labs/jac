@@ -32,6 +32,13 @@ materializes once however many locations it runs from. Runtimes unused for
 extracts once more into the new key, and the old `<hash>-<pathhash>` directories
 age out on the same schedule (or go at once with `jac cache purge --bucket rt`).
 
+Two toolchain trees moved into managed buckets so `jac cache` can reclaim
+them: the LLVM C backend build now lives under `toolchains/build/llvm-cbe/`
+and the CocoaPods home under `toolchains/installed/cocoapods/`. The old
+`toolchains/llvm-cbe/` and `toolchains/cocoapods/` directories are retired;
+`jac cache gc` removes them, and the next `jac build` that needs the tool
+rebuilds or reinstalls it once.
+
 ---
 
 ### Apps use entry modules and compilation contexts (#9088)

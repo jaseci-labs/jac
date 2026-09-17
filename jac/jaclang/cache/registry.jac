@@ -11,6 +11,7 @@ obj Bucket {
 
     def path -> Path;
     def is_external -> bool;
+    def note_hit(item: Path) -> None;
 }
 
 obj BucketStatus {
@@ -36,7 +37,9 @@ glob RETIRED: tuple[str, ...] = (
          "timing",
          "timing-baseline",
          "bytecode",
-         "bootstrap"
+         "bootstrap",
+         "toolchains/llvm-cbe",
+         "toolchains/cocoapods"
      ),
      GENERATION_PATTERN: str = "[0-9a-f]" * 16,
      BUCKETS: list[Bucket] = [

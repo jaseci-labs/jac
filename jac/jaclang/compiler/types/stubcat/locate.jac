@@ -178,8 +178,9 @@ def _find_catalog -> StubCatalog | None {
     }
     dev = dev_catalog_path(pkg);
     if os.path.isfile(dev) {
-        import from jaclang.cache.policy { touch }
-        touch(dev);
+        import from pathlib { Path }
+        import from jaclang.cache.registry { bucket }
+        bucket("jir-stubcat").note_hit(Path(dev));
         return _open_file(dev, pkg);
     }
     return None;

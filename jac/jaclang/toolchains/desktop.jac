@@ -9,10 +9,12 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.toolchains.store {
     Artifact,
-    cache_root,
+    build_slot,
     fetch,
     file_digest,
-    InstallLock
+    InstallLock,
+    publish_build_slot,
+    slot_ready
 }
 import from jaclang.toolchains.host { host_platform, run_step, shared_library_name }
 import from jaclang.toolchains.system { ensure_desktop_host, webkit_module }
@@ -40,13 +42,9 @@ def source_workspace(source: Path, name: str) -> Path {
         digest.update(path.name.encode());
         digest.update(path.read_bytes());
     }
-    destination = cache_root()
-        / "build"
-        / name
-        / host_platform()
-        / digest.hexdigest()[:20];
+    destination = build_slot(name, host_platform(), digest.hexdigest()[:20]);
     with InstallLock(destination.with_suffix(".lock")) {
-        if not (destination / ".ready").exists() {
+        if not slot_ready(destination) {
             destination.parent.mkdir(parents=True, exist_ok=True);
             with tempfile.TemporaryDirectory(dir=destination.parent) as tmp {
                 staged = Path(tmp) / "source";
@@ -54,8 +52,7 @@ def source_workspace(source: Path, name: str) -> Path {
                 for path in files {
                     shutil.copy2(path, staged / path.name);
                 }
-                (staged / ".ready").touch();
-                staged.replace(destination);
+                publish_build_slot(staged, destination);
             }
         }
     }

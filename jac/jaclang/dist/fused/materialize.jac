@@ -17,7 +17,7 @@ import from .trailer {
     region_start,
     rt_key
 }
-import from ._libc { read_at, getuid, listdir }
+import from ._libc { read_at, getuid, listdir, write_file }
 import from .report { die, say }
 import from _cache_platform { platform_cache_home }
 
@@ -97,20 +97,13 @@ def:pub stubcat_for_path(exe_path: str) -> Overlay | None {
     return peek_stubcat(exe_path, total);
 }
 
-def write_marker(path: str, data: bytes) {
-    with open(path, "wb") as f {
-        f.write(data);
-    }
-}
-
 def dir_writable(path: str) -> bool {
     os.makedirs(path, exist_ok=True);
     if not os.path.isdir(path) {
         return False;
     }
     probe = path + "/.jac-write-probe";
-    write_marker(probe, b"");
-    if not os.path.isfile(probe) {
+    if not write_file(probe, b"") {
         return False;
     }
     os.remove(probe);
@@ -120,7 +113,7 @@ def dir_writable(path: str) -> bool {
 def stamp_cachedir_tag(base: str) {
     tag = base + "/" + CACHEDIR_TAG;
     if not os.path.isfile(tag) {
-        write_marker(tag, CACHEDIR_TAG_TEXT);
+        write_file(tag, CACHEDIR_TAG_TEXT);
     }
 }
 
@@ -147,7 +140,7 @@ def:pub cache_root -> str {
     if tmp == "" {
         tmp = "/tmp";
     }
-    fallback: str = f"{tmp}/jac-cache-{getuid()}";
+    fallback: str = f"{tmp}/jac-cache-{int(getuid())}";
     if not dir_writable(fallback) {
         die("no writable cache directory (set JAC_CACHE_HOME or TMPDIR)");
         return "";
@@ -217,7 +210,10 @@ def:pub extract_payload(zbuf: bytes, rt: str) {
     tf = tarfile.open(fileobj=ZstdFile(BytesIO(zbuf)), mode="r|");
     tf.extractall(tmp);
     tf.close();
-    write_marker(tmp + "/.ok", b"");
+    if not write_file(tmp + "/.ok", b"") {
+        shutil.rmtree(tmp, ignore_errors=True);
+        die(f"could not mark the extracted runtime complete ({tmp}/.ok)");
+    }
     os.makedirs(os.path.dirname(rt), exist_ok=True);
     os.rename(tmp, rt);
     if os.path.isdir(tmp) {
@@ -229,7 +225,7 @@ def:pub extract_payload(zbuf: bytes, rt: str) {
 }
 
 def:pub mark_used(rt: str) {
-    write_marker(rt + "/" + USED_MARKER, b"");
+    write_file(rt + "/" + USED_MARKER, b"");
 }
 
 def:pub runtime_ttl_seconds -> float {
@@ -262,7 +258,9 @@ def:pub sweep_runtimes(cache_dir: str, keep_key: str) {
         and now - os.path.getmtime(sentinel) < SWEEP_INTERVAL_SECONDS {
         return;
     }
-    write_marker(sentinel, b"");
+    if not write_file(sentinel, b"") {
+        return;
+    }
     ttl = runtime_ttl_seconds();
     for name in listdir(rtdir) {
         if name == keep_key or name.startswith(".") {

@@ -76,11 +76,13 @@ def _cache_status -> int {
 def _cache_gc(dry_run: bool) -> int {
     verb = "would reclaim" if dry_run else "reclaimed";
     total = 0;
+    failed = 0;
     for result in gc(dry_run=dry_run, live=_live_keys()) {
         if not result.removed and not result.errors {
             continue;
         }
         total += result.reclaimed_bytes;
+        failed += len(result.errors);
         console.print(
             f"{result.bucket}: {verb} {format_bytes(result.reclaimed_bytes)} "
             f"({len(result.removed)} entries)"
@@ -96,6 +98,10 @@ def _cache_gc(dry_run: bool) -> int {
         }
     }
     console.print(f"{verb} {format_bytes(total)} in total");
+    if failed {
+        console.error(f"{failed} entries could not be removed");
+        return 1;
+    }
     return 0;
 }
 
@@ -122,7 +128,11 @@ def _cache_purge(bucket_name: str, dry_run: bool) -> int {
         console.warning(err);
     }
     console.print(f"{verb} {format_bytes(result.reclaimed_bytes)}");
-    return 1 if result.errors and not result.removed else 0;
+    if result.errors {
+        console.error(f"{len(result.errors)} entries could not be removed");
+        return 1;
+    }
+    return 0;
 }
 
 

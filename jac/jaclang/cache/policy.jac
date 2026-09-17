@@ -27,6 +27,7 @@ obj Policy {
     def is_kept(rel: str, name: str, keep: set[str]) -> bool;
     def describe -> str;
     def matches(name: str) -> bool;
+    def note_hit(item: Path) -> None;
 }
 
 obj SweepReport {

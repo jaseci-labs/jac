@@ -12,7 +12,6 @@ import from http.client { HTTPResponse }
 import from urllib.request { Request, urlopen }
 import from urllib.parse { urlsplit }
 import from jaclang.cli.console { console }
-import from jaclang.cache.policy { touch }
 import from jaclang.cache.registry { bucket, family_root, maybe_sweep }
 
 obj Artifact {
@@ -111,12 +110,16 @@ def file_digest(path: Path, algorithm: str = "sha256") -> str {
     return digest.hexdigest();
 }
 
-def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
+def fetch(
+    artifact: Artifact,
+    destination: Path | None = None,
+    bucket_name: str = "toolchains-downloads"
+) -> Path {
     artifact.key();
-    own_bucket = destination is None;
     if destination is None {
         destination = bucket("toolchains-downloads").path()
             / f"{artifact.algorithm}-{artifact.digest}";
+        bucket_name = "toolchains-downloads";
     }
     with InstallLock(destination.with_suffix(".lock")) {
         if destination.is_file()
@@ -124,7 +127,7 @@ def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
             console.print(
                 f"Using cached {artifact.name} {artifact.version}", style="muted"
             );
-            touch(destination);
+            bucket(bucket_name).note_hit(destination);
             return destination;
         }
         if offline() {
@@ -190,9 +193,7 @@ def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
                     f"Verified {artifact.name}: {format_size(received)}",
                     style="success"
                 );
-                if own_bucket {
-                    maybe_sweep("toolchains-downloads");
-                }
+                maybe_sweep(bucket_name);
                 return destination;
             } except Exception {
                 part.unlink(missing_ok=True);
@@ -250,13 +251,11 @@ def install(artifact: Artifact, required: str) -> Path {
         raise ValueError("Installation marker must be a relative path");
     }
     with InstallLock(destination.with_suffix(".lock")) {
-        if (destination / ".jac-install.json").is_file()
-            and (destination / required).exists() {
+        if (destination / required).exists() and slot_installed(destination) {
             console.print(
                 f"Using {artifact.name} {artifact.version} at {destination}",
                 style="muted"
             );
-            touch(destination / ".jac-install.json");
             return destination;
         }
         archive = fetch(artifact);
@@ -272,7 +271,7 @@ def install(artifact: Artifact, required: str) -> Path {
             if not (staged / required).exists() {
                 raise RuntimeError(f"{artifact.name} archive is missing {required}");
             }
-            (staged / ".jac-install.json").write_text(
+            (staged / _marker("toolchains-installed")).write_text(
                 json.dumps(
                     {
                         "name": artifact.name,
@@ -294,6 +293,49 @@ def install(artifact: Artifact, required: str) -> Path {
         maybe_sweep("toolchains-installed");
     }
     return destination;
+}
+
+def _marker(bucket_name: str) -> str {
+    return bucket(bucket_name).policy.markers[0];
+}
+
+def build_slot(name: str, host: str, digest: str) -> Path {
+    return bucket("toolchains-build").path() / name / host / digest;
+}
+
+def slot_ready(slot: Path) -> bool {
+    if not (slot / _marker("toolchains-build")).is_file() {
+        return False;
+    }
+    bucket("toolchains-build").note_hit(slot);
+    return True;
+}
+
+def publish_build_slot(staged: Path, slot: Path) {
+    (staged / _marker("toolchains-build")).touch();
+    slot.parent.mkdir(parents=True, exist_ok=True);
+    if slot.exists() {
+        shutil.rmtree(slot);
+    }
+    staged.replace(slot);
+    maybe_sweep("toolchains-build");
+}
+
+def install_slot(name: str, version: str, platform: str) -> Path {
+    return bucket("toolchains-installed").path() / name / version / platform;
+}
+
+def slot_installed(slot: Path) -> bool {
+    if not (slot / _marker("toolchains-installed")).is_file() {
+        return False;
+    }
+    bucket("toolchains-installed").note_hit(slot);
+    return True;
+}
+
+def publish_install_slot(slot: Path, meta: dict[str, str]) {
+    (slot / _marker("toolchains-installed")).write_text(json.dumps(meta, indent=2));
+    maybe_sweep("toolchains-installed");
 }
 
 

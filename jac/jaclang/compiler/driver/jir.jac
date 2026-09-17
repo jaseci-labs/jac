@@ -372,8 +372,7 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
         changed = True;
     }
     digest = f"{len(rels)}:{h.hexdigest()}";
-    import from jaclang.cache.policy { touch }
-    import from jaclang.cache.registry { maybe_sweep }
+    import from jaclang.cache.registry { bucket, maybe_sweep }
     if changed or digest != stored_digest {
         try {
             manifest_path.parent.mkdir(parents=True, exist_ok=True);
@@ -383,7 +382,7 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
             maybe_sweep("jir-digests");
         } except Exception {}
     } else {
-        touch(manifest_path);
+        bucket("jir-digests").note_hit(manifest_path);
     }
     return digest;
 }
@@ -833,9 +832,9 @@ def _touch_generation(cache_dir: Path) {
         return;
     }
     _TOUCHED_GENERATIONS.add(key);
-    import from jaclang.cache.policy { touch }
+    import from jaclang.cache.registry { bucket }
     if cache_dir.is_dir() {
-        touch(cache_dir);
+        bucket("jir-modules").note_hit(cache_dir);
     }
 }
 

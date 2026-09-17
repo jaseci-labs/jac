@@ -82,6 +82,13 @@ impl touch(path: Path | str) -> None {
     } except OSError {}
 }
 
+impl Policy.note_hit(item: Path) -> None {
+    target = item / self.markers[0] if self.markers and item.is_dir() else item;
+    try {
+        target.touch();
+    } except OSError {}
+}
+
 impl dir_size(path: Path | str) -> int {
     p = Path(path);
     try {

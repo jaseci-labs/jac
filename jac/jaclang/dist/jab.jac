@@ -28,12 +28,6 @@ def materialize_jab_bytes(data: bytes) -> Path {
     return _materialize_jab_data(data, "<app image>");
 }
 
-def _mark_used(dest: Path) {
-    try {
-        (dest / ".used").touch();
-    } except OSError {}
-}
-
 def _materialize_jab_data(data: bytes, label: str) -> Path {
     digest = hashlib.sha256(data).hexdigest();
     dest = bucket("apps").path() / digest[:20];
@@ -56,7 +50,7 @@ def _materialize_jab_data(data: bytes, label: str) -> Path {
         }
         maybe_sweep("apps");
     }
-    _mark_used(dest);
+    bucket("apps").note_hit(dest);
     bundle_dir = str(dest / "_precompiled");
     if image_for_bundle_dir(bundle_dir) is None
         and register_image(bundle_dir) is None {

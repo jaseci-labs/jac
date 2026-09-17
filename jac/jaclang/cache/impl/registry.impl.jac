@@ -43,6 +43,10 @@ impl Bucket.is_external -> bool {
     return self.policy.retention == Retention.EXTERNAL;
 }
 
+impl Bucket.note_hit(item: Path) -> None {
+    self.policy.note_hit(item);
+}
+
 impl bucket(name: str) -> Bucket {
     for b in BUCKETS {
         if b.name == name {
@@ -201,10 +205,6 @@ impl gc(
 def _purge_bucket(b: Bucket, keep: set[str], dry_run: bool, result: PurgeReport) {
     p = b.path();
     if not p.is_dir() {
-        return;
-    }
-    if not keep and b.policy.pattern == "*" and b.policy.depth == 1 {
-        _reclaim_into(result, p, b.name, dry_run);
         return;
     }
     for item in entries_at(p, b.policy) {
