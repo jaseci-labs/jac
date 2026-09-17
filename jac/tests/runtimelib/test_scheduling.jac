@@ -5,7 +5,14 @@ import threading;
 import time;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.server.task_scheduler { Scheduler, ScheduleSpec, ScheduledTask }
+import logging;
+import from jaclang.server.task_scheduler {
+    CronSchedule,
+    Scheduler,
+    ScheduleSpec,
+    ScheduledTask,
+    schedule_problems
+}
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -29,10 +36,16 @@ test "task registration and scheduler lifecycle" {
     sched.register("past_task", lambda { None; }, ScheduleSpec(date=past), False);
     assert len(sched._tasks) == 1;
 
-    # Invalid date is skipped
-    sched.register(
-        "bad_date", lambda { None; }, ScheduleSpec(date="not-a-date"), False
-    );
+    # A malformed date is a spec error, not a silent skip
+    refused = False;
+    try {
+        sched.register(
+            "bad_date", lambda { None; }, ScheduleSpec(date="not-a-date"), False
+        );
+    } except ValueError as e {
+        refused = "bad_date" in str(e);
+    }
+    assert refused;
     assert len(sched._tasks) == 1;
 
     # Multiple task types
@@ -66,54 +79,63 @@ test "task registration and scheduler lifecycle" {
     assert s1 is s2;
 }
 
-test "cron field matching and next run computation" {
-    sched = fresh_scheduler();
+test "cron fields parse into the values they select" {
+    cron = CronSchedule.parse("*/15 9-11 1,15 * 0-4");
+    assert cron.minutes == {0, 15, 30, 45} , cron.minutes;
+    assert cron.hours == {9, 10, 11} , cron.hours;
+    assert cron.days == {1, 15} , cron.days;
+    assert cron.months == set(range(1, 13)) , cron.months;
+    assert cron.weekdays == {0, 1, 2, 3, 4} , cron.weekdays;
+    assert CronSchedule.parse("* * */2 * *").days == set(range(1, 32, 2));
 
-    # Wildcard
-    assert sched._cron_field_matches("*", 0, 0, 59);
-    assert sched._cron_field_matches("*", 31, 1, 31);
-
-    # Exact
-    assert sched._cron_field_matches("5", 5, 0, 59);
-    assert not sched._cron_field_matches("5", 6, 0, 59);
-
-    # Step
-    assert sched._cron_field_matches("*/15", 0, 0, 59);
-    assert sched._cron_field_matches("*/15", 15, 0, 59);
-    assert sched._cron_field_matches("*/15", 30, 0, 59);
-    assert not sched._cron_field_matches("*/15", 7, 0, 59);
-
-    # Range
-    assert sched._cron_field_matches("1-5", 3, 1, 31);
-    assert not sched._cron_field_matches("1-5", 6, 1, 31);
-
-    # Comma-separated
-    assert sched._cron_field_matches("1,15,30", 15, 0, 59);
-    assert not sched._cron_field_matches("1,15,30", 10, 0, 59);
-
-    # Invalid values
-    assert not sched._cron_field_matches("abc", 5, 0, 59);
-    assert not sched._cron_field_matches("*/abc", 5, 0, 59);
-    assert not sched._cron_field_matches("a-b", 5, 0, 59);
-
-    # Cron next-run
     now = datetime.datetime(2026, 1, 1, 12, 0, 0);
-    assert sched._parse_cron_next("* * * * *", now)
+    assert CronSchedule.parse("* * * * *").next_after(now)
         == datetime.datetime(2026, 1, 1, 12, 1, 0);
-    assert sched._parse_cron_next("30 * * * *", now)
+    assert CronSchedule.parse("30 * * * *").next_after(now)
         == datetime.datetime(2026, 1, 1, 12, 30, 0);
-    now2 = datetime.datetime(2026, 1, 1, 8, 0, 0);
-    assert sched._parse_cron_next("0 9 * * *", now2)
+    assert CronSchedule.parse("0 9 * * *").next_after(
+        datetime.datetime(2026, 1, 1, 8, 0)
+    )
         == datetime.datetime(2026, 1, 1, 9, 0, 0);
+    assert CronSchedule.parse("0 3 * * 0").next_after(now)
+        == datetime.datetime(2026, 1, 5, 3, 0, 0) , "weekday 0 is Monday";
+}
 
-    # Invalid field count raises ValueError
-    raised = False;
-    try {
-        sched._parse_cron_next("* * *", datetime.datetime.now());
-    } except ValueError {
-        raised = True;
+
+test "a cron that fires rarely is found however far away its next run is" {
+    # #9031: the old engine scanned 366 days of minutes and raised past that,
+    # so a valid Feb 29 schedule crashed boot in a year with no Feb 29 ahead.
+    now = datetime.datetime(2026, 9, 17, 10, 0, tzinfo=datetime.timezone.utc);
+    leap = CronSchedule.parse("0 0 29 2 *").next_after(now);
+    assert leap
+        == datetime.datetime(2028, 2, 29, 0, 0, tzinfo=datetime.timezone.utc) , leap;
+}
+
+
+test "a cron the engine cannot honour is refused with the field it got wrong" {
+    cases = {
+        "* * *": "needs 5 fields",
+        "60 * * * *": "minute value 60 is outside 0-59",
+        "* 24 * * *": "hour value 24 is outside 0-23",
+        "* * 0 * *": "day value 0 is outside 1-31",
+        "* * * 13 *": "month value 13 is outside 1-12",
+        "* * * * 7": "weekday value 7 is outside 0-6",
+        "*/0 * * * *": "minute value 0",
+        "5-1 * * * *": "runs backwards",
+        "abc * * * *": "'abc'",
+        "1-5/2 * * * *": "'5/2'",
+        "0 0 30 2 *": "never fires",
+        "0 0 31 4,6,9,11 *": "never fires"
+    };
+    for (expr, expected) in cases.items() {
+        message = "";
+        try {
+            CronSchedule.parse(expr);
+        } except ValueError as e {
+            message = str(e);
+        }
+        assert expected in message , f"{expr!r}: {message!r}";
     }
-    assert raised;
 }
 
 test "compute next run and schedule decorator" {
@@ -286,6 +308,96 @@ test "the served app registers its scheduled targets with the scheduler" {
                     names
                 )}";
             }
+        } finally {
+            client.close();
+        }
+    }
+}
+
+class _Records(logging.Handler) {
+    def init(self: _Records) {
+        super.__init__();
+        self.messages: list[str] = [];
+    }
+
+    def emit(self: _Records, record: logging.LogRecord) {
+        self.messages.append(f"{record.levelname} {record.getMessage()}");
+    }
+}
+
+
+test "every @schedule spec the issue lists is refused or warned about by name" {
+    # #9031: each of these was accepted, and ran as a busy loop, starved
+    # other tasks, was dropped without a word, or crashed boot.
+    import from jaclang.runtime.builtin { ScheduleTrigger }
+    refused = {
+        "spin": (ScheduleSpec(interval=0), "positive number of seconds"),
+        "negative": (ScheduleSpec(interval=-5), "positive number of seconds"),
+        "nan": (ScheduleSpec(interval=float("nan")), "positive number of seconds"),
+        "flag": (ScheduleSpec(interval=True), "positive number of seconds"),
+        "empty": (ScheduleSpec(), "needs one of interval, cron or date"),
+        "both": (ScheduleSpec(interval=2, cron="* * * * *"), "not interval and cron"),
+        "bad_cron": (ScheduleSpec(cron="60 * * * *"), "outside 0-59"),
+        "bad_date": (ScheduleSpec(date="tomorrow"), "not an ISO date-time"),
+        "dynamic_timed": (
+            ScheduleSpec(trigger=ScheduleTrigger.DYNAMIC, interval=5),
+            "DYNAMIC schedule takes no interval"
+        )
+    };
+    for (name, (spec, expected)) in refused.items() {
+        problems = schedule_problems(spec);
+        assert len(problems) == 1 and expected in problems[0] , f"{name}: {problems}";
+    }
+    for spec in [
+        ScheduleSpec(interval=0.3),
+        ScheduleSpec(cron="0 0 29 2 *"),
+        ScheduleSpec(date="2020-01-01 00:00:00"),
+        ScheduleSpec(trigger=ScheduleTrigger.DYNAMIC)
+    ] {
+        assert schedule_problems(spec) == [] , spec;
+    }
+
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    log.addHandler(records);
+    try {
+        sched = fresh_scheduler();
+        sched.register(
+            "expired", lambda { None; }, ScheduleSpec(date="2020-01-01 00:00:00"), False
+        );
+    } finally {
+        log.removeHandler(records);
+    }
+    assert sched._tasks == [];
+    assert any("'expired'" in m and "already passed" in m for m in records.messages) , records.messages;
+}
+
+
+test "the served app refuses to start on a bad @schedule, naming every target" {
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.server.settings { ServeConfigError }
+    import from jaclang.testing.testing { JacTestClient }
+    with TemporaryDirectory() as tmpdir {
+        client = JacTestClient.from_file(
+            str(Path(FIXTURES) / "bad_schedules.jac"), base_path=tmpdir
+        );
+        try {
+            server: any = client.server;
+            server.introspector.load();
+            message = "";
+            try {
+                server._validate_or_raise();
+            } except ServeConfigError as e {
+                message = str(e);
+            }
+            for expected in [
+                "@schedule on 'spin': interval must be a positive number of seconds, got 0",
+                "@schedule on 'bad_minute': cron '60 * * * *': minute value 60 is outside 0-59",
+                "@schedule on 'SpinWalker': takes one of interval, cron or date, not interval and cron"
+            ] {
+                assert expected in message , message;
+            }
+            assert "good_one" not in message , message;
         } finally {
             client.close();
         }

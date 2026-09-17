@@ -3,16 +3,53 @@ import time;
 import heapq;
 import datetime;
 import logging;
+import math;
 import from jaclang.runtime.builtin { ScheduleTrigger }
 
 glob _scheduler_instance: (Scheduler | None) = None,
-     logger = logging.getLogger(__name__);
+     logger = logging.getLogger(__name__),
+     CRON_FIELDS: list[tuple[str, int, int]] = [
+         ("minute", 0, 59),
+         ("hour", 0, 23),
+         ("day", 1, 31),
+         ("month", 1, 12),
+         ("weekday", 0, 6)
+     ],
+     MONTH_DAYS: dict[int, int] = {
+         1: 31,
+         2: 29,
+         3: 31,
+         4: 30,
+         5: 31,
+         6: 30,
+         7: 31,
+         8: 31,
+         9: 30,
+         10: 31,
+         11: 30,
+         12: 31
+     };
+
+def schedule_problems(spec: ScheduleSpec) -> list[str];
+def _cron_values(expr: str, text: str, label: str, lo: int, hi: int) -> set[int];
+def _cron_number(expr: str, text: str, label: str, lo: int, hi: int) -> int;
 
 obj ScheduleSpec {
     has date: (str | None) = None,
         interval: (float | None) = None,
         cron: (str | None) = None,
         trigger: ScheduleTrigger = ScheduleTrigger.STATIC;
+}
+
+obj CronSchedule {
+    has minutes: set[int],
+        hours: set[int],
+        days: set[int],
+        months: set[int],
+        weekdays: set[int];
+
+    static def parse(expr: str) -> CronSchedule;
+    def next_after(now: datetime.datetime) -> datetime.datetime;
 }
 
 obj ScheduledTask {
@@ -30,7 +67,6 @@ obj Scheduler {
         _running: bool = False,
         _stop_event: (threading.Event | None) = None,
         _done_event: (threading.Event | None) = None,
-        dynamic_handler: (Callable | None) = None,
         lease: (Callable[[str, int], bool] | None) = None;
 
     static def instance -> Scheduler;
@@ -54,11 +90,6 @@ obj Scheduler {
     def _compute_date(
         date_str: str, now: datetime.datetime
     ) -> (datetime.datetime | None);
-
-    def _parse_cron_next(cron: str, now: datetime.datetime) -> datetime.datetime;
-    def _cron_field_matches(
-        field: str, value: int, min_val: int, max_val: int
-    ) -> bool;
 
     def _execute(task: ScheduledTask) -> None;
 }

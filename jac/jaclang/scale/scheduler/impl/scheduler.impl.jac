@@ -336,11 +336,6 @@ impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> 
     self._system_user_id = system_user_id;
     self._server = server;
 
-    def _dynamic_handler(task: any) {
-        self._execute_task(task.name, self._system_user_id, task.is_walker);
-    }
-    Scheduler.instance().dynamic_handler = _dynamic_handler;
-
     scheduler_cfg = get_scale_config().get_scheduler_config();
     collection = scheduler_cfg.get('collection', 'scheduled_jobs');
     store: any = None;
