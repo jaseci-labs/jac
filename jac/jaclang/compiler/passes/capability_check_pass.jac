@@ -30,15 +30,14 @@ import from jaclang.compiler.frontend.unitree {
     ParamVar,
     PyInlineCode,
     String,
-    SubTag,
     Token,
     UnaryExpr,
     TupleVal,
     ListVal,
     UniNode,
-    YieldExpr
+    YieldExpr,
+    in_type_position
 }
-
 import from jaclang.compiler.frontend.module_facts {
     ModuleFacts,
     client_capability_violations
@@ -66,7 +65,7 @@ def node_within(name_nd: UniNode, top: (UniNode | None)) -> bool;
 
 def base_expr_is_erased(base: UniNode) -> bool;
 
-def name_in_type_position(name_nd: UniNode) -> bool;
+def name_erased_natively(name_nd: UniNode) -> bool;
 
 def static_fstring_spec_text(spec: UniNode) -> (str | None);
 

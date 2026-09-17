@@ -202,23 +202,7 @@ impl StaticAnalysisPass._osp_shape_position(name_nd: Name) -> (str | None) {
 }
 
 impl StaticAnalysisPass._native_type_position(name_nd: Name) -> (str | None) {
-    cur: UniNode = name_nd;
-    parent = cur.parent;
-    in_type_pos = False;
-
-    for _ in range(8) {
-        if parent is None {
-            break;
-        }
-        if isinstance(parent, SubTag)
-            or (isinstance(parent, FuncSignature) and parent.return_type is cur) {
-            in_type_pos = True;
-            break;
-        }
-        cur = parent;
-        parent = cur.parent;
-    }
-    if not in_type_pos {
+    if not in_type_position(name_nd) {
         return None;
     }
     imp = name_nd.find_parent_of_type(Import);
