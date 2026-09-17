@@ -140,6 +140,7 @@ impl scan_entries(
     excluded = exclude if exclude is not None else set();
     for step in range(policy.depth) {
         last = step == policy.depth - 1;
+        temp_patterns = ["*.tmp.*", "*.tmp"] + (policy.temp_patterns if last else []);
         next_level: list[Path] = [];
         for parent in level {
             try {
@@ -153,7 +154,7 @@ impl scan_entries(
                 }
                 name = child.name;
                 temporary = any(
-                    [fnmatch.fnmatchcase(name, pat) for pat in policy.temp_patterns]
+                    [fnmatch.fnmatchcase(name, pat) for pat in temp_patterns]
                 );
                 if temporary {
                     found.append(CacheEntry(child, EntryKind.TEMPORARY));

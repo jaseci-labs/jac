@@ -452,7 +452,16 @@ test "nested staging uses the orphan TTL and never follows symlinks" {
         parent = bucket("toolchains-installed").path();
         old = entry_dir(parent, "demo/v1/.install-old", TMP_TTL_SECONDS + 60.0);
         fresh = entry_dir(parent, "demo/v1/.install-fresh", 60.0);
+        old_build = entry_dir(
+            bucket("toolchains-build").path(),
+            "demo/linux/tmpdeadbeef",
+            TMP_TTL_SECONDS + 60.0
+        );
+        named_tool = entry_dir(
+            parent, ".install-tool/v1/platform", 0.0, ".jac-install.json"
+        );
         active = entry_dir(parent, f"demo/v1/.tmp.{os.getpid()}.active", 120.0 * DAY);
+        backdate(parent / ".install-tool", TMP_TTL_SECONDS + 60.0);
         outside = entry_dir(base, "outside", 120.0 * DAY);
         link = parent / "linked";
         try {
@@ -461,6 +470,8 @@ test "nested staging uses the orphan TTL and never follows symlinks" {
         gc();
         assert not old.exists();
         assert fresh.exists() and active.exists();
+        assert not old_build.exists();
+        assert named_tool.exists();
         assert (outside / "blob").is_file();
         purge(["toolchains-installed"]);
         assert active.exists() , "purge must not delete staging owned by a live writer";

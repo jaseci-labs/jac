@@ -36,7 +36,7 @@ obj Policy {
         markers: list[str] = [],
         ttl_env: str = "",
         keep_match: KeepMatch = KeepMatch.NAME,
-        temp_patterns: list[str] = ["*.tmp.*", "*.tmp"];
+        temp_patterns: list[str] = [];
 
     def ttl_seconds -> float;
     def is_kept(rel: str, name: str, keep: set[str]) -> bool;
