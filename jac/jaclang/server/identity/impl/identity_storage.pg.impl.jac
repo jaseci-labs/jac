@@ -20,8 +20,13 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     )
     """,
          """
-    CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
-        ON identity_lookups (user_id)
+    DO $$
+    BEGIN
+        IF to_regclass('idx_identity_lookups_user') IS NULL THEN
+            CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
+                ON identity_lookups (user_id);
+        END IF;
+    END $$
     """
      ],
      _PG_ACCOUNT_LOOKUP_TABLES: list[str] = ['identity_lookups', 'sso_lookups'];
@@ -31,20 +36,26 @@ def _pg_account_fk_ddl(table: str) -> str {
     return f"""
     DO $$
     BEGIN
-        LOCK TABLE {table} IN SHARE ROW EXCLUSIVE MODE;
         IF NOT EXISTS (
             SELECT 1 FROM pg_constraint
             WHERE conrelid = CAST('{table}' AS regclass)
               AND conname = '{table}_user_id_fkey'
         ) THEN
-            DELETE FROM {table} lk
-            WHERE NOT EXISTS (
-                SELECT 1 FROM identity_users u WHERE u.user_id = lk.user_id
-            );
-            ALTER TABLE {table}
-                ADD CONSTRAINT {table}_user_id_fkey
-                FOREIGN KEY (user_id) REFERENCES identity_users (user_id)
-                ON DELETE CASCADE;
+            LOCK TABLE {table} IN SHARE ROW EXCLUSIVE MODE;
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conrelid = CAST('{table}' AS regclass)
+                  AND conname = '{table}_user_id_fkey'
+            ) THEN
+                DELETE FROM {table} lk
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM identity_users u WHERE u.user_id = lk.user_id
+                );
+                ALTER TABLE {table}
+                    ADD CONSTRAINT {table}_user_id_fkey
+                    FOREIGN KEY (user_id) REFERENCES identity_users (user_id)
+                    ON DELETE CASCADE;
+            END IF;
         END IF;
     END $$
     """;

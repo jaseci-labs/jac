@@ -211,7 +211,7 @@ test "a rename keeps an identity that lands while the rename waits for the row" 
         tag = uuid.uuid4().hex[:8];
         addr = f"race_{tag}@example.com";
         user_id = str(users.create_user(addr, 'pw12345')['user_id']);
-        outcome: dict = {};
+        outcome: dict[str, any] = {};
 
         def _rename {
             outcome['renamed'] = users.rename_username(user_id, f"raced_{tag}");
@@ -298,7 +298,7 @@ test "an account deleted while a claim is in flight leaves nothing behind" {
         tag = uuid.uuid4().hex[:8];
         addr = f"gone_{tag}@example.com";
         user_id = str(users.create_user(f"gone_{tag}", 'pw12345')['user_id']);
-        outcome: dict = {};
+        outcome: dict[str, any] = {};
 
         def _attach {
             outcome['added'] = users.add_identity(user_id, _email_identity(addr));
@@ -378,4 +378,41 @@ test "an existing database gains the account foreign key and drops orphaned look
     assert not storage._claim_lookup('later@example.com', 'ghost');
     again = PgIdentityStorage(store=store);
     assert again.identity_taken('ghost@example.com');
+}
+
+
+test "booting against an upgraded database does not wait for in-flight writes" {
+    (test_dir, users) = _manager();
+    storage = users._identity_storage;
+    conn = storage.store._side();
+    try {
+        tag = uuid.uuid4().hex[:8];
+        user_id = str(users.create_user(f"busy_{tag}", 'pw12345')['user_id']);
+        outcome: dict[str, any] = {};
+
+        def _boot {
+            PgIdentityStorage(store=storage.store);
+            outcome['booted'] = True;
+        }
+        conn.run('BEGIN');
+        conn.run(
+            'INSERT INTO identity_lookups (value_normalized, user_id) VALUES (:v, :u)',
+            v=f"busy_{tag}@example.com",
+            u=user_id
+        );
+        conn.run(
+            'INSERT INTO sso_lookups (provider, external_id, user_id) VALUES (:p, :e, :u)',
+            p='github',
+            e=f"busy_{tag}",
+            u=user_id
+        );
+        booter = threading.Thread(target=_boot, daemon=True);
+        booter.start();
+        booter.join(10);
+        assert not booter.is_alive() , 'the boot waited for the open transaction';
+        assert outcome.get('booted') is True , outcome;
+    } finally {
+        conn.run('ROLLBACK');
+        shutil.rmtree(test_dir, ignore_errors=True);
+    }
 }
