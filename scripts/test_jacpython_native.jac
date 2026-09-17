@@ -98,6 +98,7 @@ def main -> int {
             "runtime/python/compiler_integer.jac",
             "runtime/python/opcode_meta.jac",
             "runtime/python/capi.jac",
+            "runtime/python/constant_keys.jac",
             "runtime/python/constant_output.jac",
             "compiler/frontend/python/syntax_error.jac"
         ] {

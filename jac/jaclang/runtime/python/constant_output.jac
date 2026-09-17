@@ -15,7 +15,7 @@ import from jaclang.runtime.python.objects {
     PyCode
 }
 import from jaclang.runtime.python.compiler_integer { PyBigInt }
-import from jaclang.compiler.backends.py.jacpython.constant_keys { constant_key }
+import from jaclang.runtime.python.constant_keys { constant_key }
 import from jaclang.runtime.python.opcode_meta {
     CO_OPTIMIZED,
     CO_FAST_HIDDEN,
