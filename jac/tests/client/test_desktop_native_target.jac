@@ -41,6 +41,35 @@ test "register_targets registers the desktop target" {
     assert registry.get("native-desktop") is None;
 }
 
+"""The desktop target provisions its webview host inline at build time, so the
+universal readiness hook is a no-op here: `requires_setup` is off and
+`ensure_ready` never reaches `setup()` (itself an explicit no-op)."""
+test "desktop ensure_ready is a no-op" {
+    import tempfile;
+    import unittest.mock;
+    import from pathlib { Path }
+    import from jaclang.client.targets.registry { get_target_registry }
+
+    target = get_target_registry().get("desktop");
+    assert target is not None;
+    assert target.requires_setup == False;
+    calls: list[str] = [];
+
+    def _fake_setup(project_dir: Path) -> None {
+        calls.append("setup");
+    }
+
+    with tempfile.TemporaryDirectory() as d {
+        with unittest.mock.patch.object(target, "setup", _fake_setup) {
+            target.ensure_ready(Path(d));
+        }
+        assert calls == [] , "desktop needs no setup step; ensure_ready must not call it";
+        # And the real setup() is itself an explicit no-op: nothing is written.
+        target.setup(Path(d));
+        assert list(Path(d).iterdir()) == [] , "desktop setup writes nothing";
+    }
+}
+
 """DesktopTarget.engine() reads `[desktop] engine` and dispatches on it: the
 default is the native webview, and `engine = "cef"` selects the CEF shell.
 The two shells are helper modules, not targets of their own."""
