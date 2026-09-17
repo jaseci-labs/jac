@@ -10,7 +10,6 @@ glob TEST_ADMIN_PASSWORD: str = "test-admin-bootstrap";
 # Hash throwaway fixture credentials at minimum scrypt cost so it does not dominate test time.
 with entry {
     os.environ.setdefault('JAC_SERVE_AUTH_PASSWORD_HASH_COST', '10');
-    os.environ.setdefault('JAC_ADMIN_ENABLED', 'true');
     os.environ.setdefault('JAC_ADMIN_PASSWORD', TEST_ADMIN_PASSWORD);
 }
 

@@ -384,6 +384,10 @@ impl UserManager.is_admin(user_id: str) -> bool {
     return self.get_user_role(user_id) == 'admin';
 }
 
+impl UserManager.has_admin_access(user_id: str) -> bool {
+    return self.is_admin(user_id) and not self.requires_password_reset(user_id);
+}
+
 impl UserManager.requires_password_reset(user_id: str) -> bool {
     user = self._identity_storage.get_user_by_id(user_id);
     if not user {
@@ -456,42 +460,26 @@ impl UserManager.delete_user(user_id: str) -> dict[str, str] {
 impl UserManager.bootstrap_admin_user(
     admin_username: str, bootstrap_password: str, require_password_reset: bool = True
 ) -> dict[str, str] {
+    password = bootstrap_password or PLACEHOLDER_ADMIN_PASSWORD;
+    require_reset = require_password_reset or password == PLACEHOLDER_ADMIN_PASSWORD;
     existing = self.find_user_by_identity(admin_username);
     if existing {
         return self._adopt_bootstrap_admin(
-            admin_username,
-            str(existing.get('user_id', '')),
-            bootstrap_password,
-            require_password_reset
+            admin_username, str(existing.get('user_id', '')), password, require_reset
         );
     }
 
-    refusal = self._bootstrap_password_refusal(admin_username, bootstrap_password);
-    if refusal {
-        return {'error': f"refusing to provision '{admin_username}': {refusal}"};
-    }
-
-    result = self.create_internal_user(admin_username, bootstrap_password);
+    result = self.create_internal_user(admin_username, password);
     if 'error' in result {
         return result;
     }
     user_id = result.get('user_id', '');
     self.set_user_role(user_id, 'admin');
-    self.set_requires_password_reset(user_id, require_password_reset);
-
-    if require_password_reset {
-        logger.warning(
-            f"Admin user '{admin_username}' created with the configured bootstrap "
-            "password. It must be rotated on first login before the account can "
-            "use any admin endpoint."
-        );
-    } else {
-        logger.warning(
-            f"Admin user '{admin_username}' created with the configured bootstrap "
-            "password and require_password_reset = false, so it is usable "
-            "immediately. Rotate it promptly."
-        );
-    }
+    self.set_requires_password_reset(user_id, require_reset);
+    logger.warning(
+        f"Admin user '{admin_username}' created "
+        f"{self._bootstrap_notice(password, require_reset)}"
+    );
     return {
         'message': 'Admin user created successfully',
         'username': admin_username,
@@ -499,34 +487,51 @@ impl UserManager.bootstrap_admin_user(
     };
 }
 
-impl UserManager._bootstrap_password_refusal(
-    admin_username: str, bootstrap_password: str
-) -> str | None {
-    if not bootstrap_password {
-        return f"no bootstrap password is configured for '{admin_username}'";
-    }
+impl UserManager._bootstrap_notice(
+    bootstrap_password: str, require_reset: bool
+) -> str {
     if bootstrap_password == PLACEHOLDER_ADMIN_PASSWORD {
         return (
-            f"the bootstrap password configured for '{admin_username}' is the "
-            f"placeholder '{PLACEHOLDER_ADMIN_PASSWORD}'"
+            f"with the placeholder password '{PLACEHOLDER_ADMIN_PASSWORD}' because "
+            "no bootstrap password is configured. It must be rotated before the "
+            "account can use any admin surface."
         );
     }
-    return None;
+    if require_reset {
+        return (
+            "with the configured bootstrap password. It must be rotated before the "
+            "account can use any admin surface."
+        );
+    }
+    return (
+        "with the configured bootstrap password and require_password_reset = "
+        "false, so it is usable immediately. Rotate it promptly."
+    );
+}
+
+impl UserManager._awaits_bootstrap_password(admin_username: str, user_id: str) -> bool {
+    storage = self._identity_storage;
+    if not storage.has_password(user_id) {
+        return self.requires_password_reset(user_id);
+    }
+    return storage.authenticate(admin_username, PLACEHOLDER_ADMIN_PASSWORD) is not None;
 }
 
 impl UserManager._adopt_bootstrap_admin(
-    admin_username: str,
-    user_id: str,
-    bootstrap_password: str,
-    require_password_reset: bool
+    admin_username: str, user_id: str, bootstrap_password: str, require_reset: bool
 ) -> dict[str, str] {
     storage = self._identity_storage;
-    rotation = (
-        " and must be rotated on first login." if require_password_reset else "."
-    );
     if self.get_user_role(user_id) != 'admin' {
-        if not bootstrap_password
-            or storage.authenticate(admin_username, bootstrap_password) is None {
+        if bootstrap_password == PLACEHOLDER_ADMIN_PASSWORD {
+            return {
+                'error': (
+                    f"refusing to promote the existing account '{admin_username}' "
+                    "to admin with the placeholder password: configure that "
+                    "account's own password as the bootstrap password"
+                )
+            };
+        }
+        if storage.authenticate(admin_username, bootstrap_password) is None {
             return {
                 'error': (
                     f"refusing to promote the existing account '{admin_username}' "
@@ -536,10 +541,10 @@ impl UserManager._adopt_bootstrap_admin(
             };
         }
         self.set_user_role(user_id, 'admin');
-        self.set_requires_password_reset(user_id, require_password_reset);
+        self.set_requires_password_reset(user_id, require_reset);
         logger.warning(
-            f"Existing user '{admin_username}' promoted to admin with the "
-            f"configured bootstrap password{rotation}"
+            f"Existing user '{admin_username}' promoted to admin "
+            f"{self._bootstrap_notice(bootstrap_password, require_reset)}"
         );
         return {
             'message': 'Admin user already exists',
@@ -547,35 +552,36 @@ impl UserManager._adopt_bootstrap_admin(
             'user_id': user_id
         };
     }
-    if storage.authenticate(admin_username, PLACEHOLDER_ADMIN_PASSWORD) is None {
+    if not self._awaits_bootstrap_password(admin_username, user_id) {
         return {
             'message': 'Admin user already exists',
             'username': admin_username,
             'user_id': user_id
         };
     }
-    refusal = self._bootstrap_password_refusal(admin_username, bootstrap_password);
-    if refusal {
-        return {
-            'error': (
-                f"the existing admin '{admin_username}' still carries the "
-                f"placeholder password '{PLACEHOLDER_ADMIN_PASSWORD}' and {refusal}, "
-                "so it cannot be replaced"
-            )
-        };
-    }
     storage.reset_password(user_id, bootstrap_password);
-    self.set_requires_password_reset(user_id, require_password_reset);
+    self.set_requires_password_reset(user_id, require_reset);
     logger.warning(
-        f"Admin user '{admin_username}' still carried the placeholder password "
-        f"'{PLACEHOLDER_ADMIN_PASSWORD}'; it was replaced with the configured "
-        f"bootstrap password{rotation}"
+        f"Admin user '{admin_username}' had no password of its own yet, so it now "
+        f"signs in {self._bootstrap_notice(bootstrap_password, require_reset)}"
     );
     return {
         'message': 'Admin user adopted',
         'username': admin_username,
         'user_id': user_id
     };
+}
+
+impl UserManager.retire_placeholder_password(user_id: str) -> bool {
+    username = self.get_username(user_id);
+    storage = self._identity_storage;
+    if not username
+        or storage.authenticate(username, PLACEHOLDER_ADMIN_PASSWORD) is None {
+        return False;
+    }
+    storage.revoke_password(user_id);
+    self.set_requires_password_reset(user_id, True);
+    return True;
 }
 
 impl UserManager.create_user_as_admin(

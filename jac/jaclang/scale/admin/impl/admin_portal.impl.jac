@@ -19,7 +19,11 @@ import from jaclang.server.serving.endpoint {
     ParameterType
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.identity.user_manager { UserRole, UserManager }
+import from jaclang.server.identity.user_manager {
+    PLACEHOLDER_ADMIN_PASSWORD,
+    UserRole,
+    UserManager
+}
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.runtime.constants { Constants as Con }
 
@@ -35,29 +39,39 @@ impl JacAPIServerAdmin._require_user_manager -> UserManager {
     return manager;
 }
 
-impl JacAPIServerAdmin._warn_dormant_admin(admin_username: str) -> None {
+impl JacAPIServerAdmin._secure_dormant_admin(admin_username: str) -> None {
     manager = self.user_manager;
     if manager is None {
         return;
     }
     try {
         existing = manager.find_user_by_identity(admin_username);
-        dormant = existing is not None
-            and manager.is_admin(str(existing.get('user_id', '')));
+        user_id = str(existing.get('user_id', '')) if existing is not None else '';
+        if not user_id or not manager.is_admin(user_id) {
+            return;
+        }
+        retired = manager.retire_placeholder_password(user_id);
     } except Exception as e {
-        logger.debug(
-            f"Skipped the dormant admin check for '{admin_username}': the identity "
-            f"store is not reachable yet ({type(e).__name__}: {e})"
+        logger.warning(
+            f"Could not check the admin account '{admin_username}' for the "
+            "placeholder password because the identity store is not reachable "
+            f"({type(e).__name__}: {e}). The check runs again on the next start."
         );
         return;
     }
-    if not dormant {
+    if retired {
+        logger.warning(
+            f"Admin account '{admin_username}' still carried the placeholder password "
+            f"'{PLACEHOLDER_ADMIN_PASSWORD}' while the admin portal is disabled, so "
+            "that password was revoked and the account cannot sign in. Enabling the "
+            "portal gives it a bootstrap password again."
+        );
         return;
     }
     logger.warning(
         f"Admin account '{admin_username}' exists in the identity store but the "
-        "admin portal is disabled, so it cannot log in. Set [scale.admin] "
-        "enabled = true or JAC_ADMIN_ENABLED=true to serve /admin again."
+        "admin portal is disabled, so /admin is not served. Set [scale.admin] "
+        "default_password or enabled = true to serve it again."
     );
 }
 
@@ -65,10 +79,10 @@ impl JacAPIServerAdmin.register_admin_endpoints -> bool {
     admin_config = get_scale_config().get_admin_config();
     if not admin_config.get('enabled', False) {
         logger.info(
-            "Admin portal is disabled. Set [scale.admin] enabled = true in "
-            "jac.toml to serve it."
+            "Admin portal is disabled. Set [scale.admin] default_password (or "
+            "JAC_ADMIN_PASSWORD) or enabled = true in jac.toml to serve it."
         );
-        self._warn_dormant_admin(str(admin_config.get('username', 'admin')));
+        self._secure_dormant_admin(str(admin_config.get('username', 'admin')));
         return False;
     }
 
@@ -589,13 +603,7 @@ impl JacAPIServerAdmin.validate_admin_token(Authorization: str | None) -> (str |
     }
     token = Authorization[7:];
     user_id = self._require_user_manager().validate_jwt_token(token);
-    if not user_id {
-        return None;
-    }
-    if not self._require_user_manager().is_admin(user_id) {
-        return None;
-    }
-    if self._require_user_manager().requires_password_reset(user_id) {
+    if not user_id or not self._require_user_manager().has_admin_access(user_id) {
         return None;
     }
     return user_id;

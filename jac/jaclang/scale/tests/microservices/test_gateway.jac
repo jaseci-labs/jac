@@ -1119,9 +1119,7 @@ test "admin redirect via testclient" {
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin</html>");
 
-    with patch.dict(
-        os.environ, {"JAC_ADMIN_ENABLED": "true", "JAC_ADMIN_PASSWORD": "gw-test-pass"}
-    ) {
+    with patch.dict(os.environ, {"JAC_ADMIN_PASSWORD": "gw-test-pass"}) {
         reset_scale_config();
         try {
             reg = ServiceRegistry();
@@ -1148,9 +1146,7 @@ test "admin index served at /admin/" {
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin Dashboard</html>");
 
-    with patch.dict(
-        os.environ, {"JAC_ADMIN_ENABLED": "true", "JAC_ADMIN_PASSWORD": "gw-test-pass"}
-    ) {
+    with patch.dict(os.environ, {"JAC_ADMIN_PASSWORD": "gw-test-pass"}) {
         reset_scale_config();
         try {
             reg = ServiceRegistry();

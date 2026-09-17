@@ -75,7 +75,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'k8s_metrics_enabled': True
         },
         'admin': {
-            'enabled': False,
+            'enabled': None,
             'username': 'admin',
             'email': 'admin@localhost',
             'default_password': None,
@@ -618,13 +618,13 @@ impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     admin_config = config.get('admin', {});
 
-    enabled: bool = resolve_admin_enabled(bool(admin_config.get('enabled', False)));
-
-    password: str | None = admin_config.get('default_password', None);
-    password_env: str | None = os.environ.get('JAC_ADMIN_PASSWORD');
-    if password_env {
-        password = password_env;
-    }
+    password: str | None = os.environ.get('JAC_ADMIN_PASSWORD')
+        or admin_config.get('default_password')
+        or None;
+    configured_enabled: bool | None = admin_config.get('enabled');
+    enabled: bool = resolve_admin_enabled(
+        bool(password) if configured_enabled is None else bool(configured_enabled)
+    );
 
     return {
         'enabled': enabled,

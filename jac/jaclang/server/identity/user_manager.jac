@@ -91,6 +91,7 @@ obj UserManager {
     def get_user_role(user_id: str) -> str | None;
     def set_user_role(user_id: str, role: str) -> dict[str, str];
     def is_admin(user_id: str) -> bool;
+    def has_admin_access(user_id: str) -> bool;
     def requires_password_reset(user_id: str) -> bool;
     def set_requires_password_reset(
         user_id: str, requires_reset: bool
@@ -104,17 +105,13 @@ obj UserManager {
         require_password_reset: bool = True
     ) -> dict[str, str];
 
-    def _bootstrap_password_refusal(
-        admin_username: str, bootstrap_password: str
-    ) -> str | None;
-
+    def _bootstrap_notice(bootstrap_password: str, require_reset: bool) -> str;
+    def _awaits_bootstrap_password(admin_username: str, user_id: str) -> bool;
     def _adopt_bootstrap_admin(
-        admin_username: str,
-        user_id: str,
-        bootstrap_password: str,
-        require_password_reset: bool
+        admin_username: str, user_id: str, bootstrap_password: str, require_reset: bool
     ) -> dict[str, str];
 
+    def retire_placeholder_password(user_id: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def delete_user(user_id: str) -> dict[str, str];
     def create_user_as_admin(

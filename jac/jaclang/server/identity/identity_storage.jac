@@ -62,6 +62,8 @@ obj IdentityStorage {
     ) -> dict[str, str];
 
     def reset_password(user_id: str, new_password: str) -> dict[str, str];
+    def has_password(user_id: str) -> bool;
+    def revoke_password(user_id: str) -> bool;
     def expire_legacy_credentials(user_id: (str | None) = None) -> list[str];
     def get_root_id(user_id: str) -> str | None;
     def get_username(user_id: str) -> str | None;

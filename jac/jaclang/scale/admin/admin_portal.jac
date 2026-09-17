@@ -24,7 +24,7 @@ obj JacAPIServerAdmin {
         _metrics: (MetricsCollector | None) = None;
 
     def _require_user_manager -> UserManager;
-    def _warn_dormant_admin(admin_username: str) -> None;
+    def _secure_dormant_admin(admin_username: str) -> None;
     def register_admin_endpoints -> bool;
     def bootstrap_admin -> bool;
     def admin_login(username: str, password: str) -> TransportResponse;

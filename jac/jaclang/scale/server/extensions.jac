@@ -160,7 +160,7 @@ obj MetricsExtension(ServerExtension) {
             authorization = request.headers.get('Authorization') or '';
             if authorization.startswith('Bearer ') {
                 user_id = users.validate_jwt_token(authorization[7:]);
-                return bool(user_id) and users.is_admin(str(user_id));
+                return bool(user_id) and users.has_admin_access(str(user_id));
             }
             if authorization.startswith('Basic ') and scrape_password {
                 try {

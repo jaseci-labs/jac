@@ -2,7 +2,7 @@ import asyncio;
 import logging;
 import from jaclang.data.pgwire { PgWireError }
 import from jaclang.runtime.builtin { ScheduleTrigger }
-import from jaclang.server.identity.user_manager { SYSTEM_USER, UserRole }
+import from jaclang.server.identity.user_manager { SYSTEM_USER }
 import from jaclang.server.middleware { require_user }
 import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.server.serving.datatypes { Request }
@@ -88,17 +88,13 @@ obj JobsExtension(ServerExtension) {
         }
         server.add_shutdown_hook(_shutdown);
 
-        def _is_admin(user_id: str) -> bool {
-            return users.get_user_role(user_id) == UserRole.ADMIN.value;
-        }
-
         def _ensure_authorized(
             job: (dict | None), user_id: str
         ) -> (TransportResponse | None) {
             if job is None {
                 return _fail('NOT_FOUND', 'Job not found', 404);
             }
-            if job.get('created_by') == user_id or _is_admin(user_id) {
+            if job.get('created_by') == user_id or users.has_admin_access(user_id) {
                 return None;
             }
             return _fail('NOT_FOUND', 'Job not found', 404);
@@ -171,7 +167,7 @@ obj JobsExtension(ServerExtension) {
             }
             try {
                 creator = params.get('created_by')
-                    if _is_admin(str(user_id))
+                    if users.has_admin_access(str(user_id))
                     else str(user_id);
                 (page, total) = JacScaleScheduler.instance().list_jobs(
                     limit=limit,
@@ -225,7 +221,9 @@ obj JobsExtension(ServerExtension) {
                 return spec_err or _fail('INVALID_REQUEST', 'Invalid schedule', 400);
             }
             try {
-                acting_as = None if _is_admin(str(user_id)) else str(user_id);
+                acting_as = None
+                    if users.has_admin_access(str(user_id))
+                    else str(user_id);
                 updated = JacScaleScheduler.instance().update_job(
                     job_id=job_id, spec=spec, acting_as=acting_as
                 );
@@ -246,7 +244,9 @@ obj JobsExtension(ServerExtension) {
                 return auth_err;
             }
             try {
-                acting_as = None if _is_admin(str(user_id)) else str(user_id);
+                acting_as = None
+                    if users.has_admin_access(str(user_id))
+                    else str(user_id);
                 if not JacScaleScheduler.instance().delete_job(
                     job_id, acting_as=acting_as
                 ) {
