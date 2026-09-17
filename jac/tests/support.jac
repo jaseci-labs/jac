@@ -24,14 +24,15 @@ glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
 
 """Environment overrides isolating every machine-wide cache family."""
 def cache_env(cache_dir: Path | str) -> dict[str, str] {
+    import from jaclang.cache.registry { BUCKETS }
     base = Path(cache_dir).resolve();
-    return {
-        "JAC_CACHE_HOME": str(base),
-        "XDG_CACHE_HOME": str(base),
-        "JAC_TOOLCHAIN_DIR": str(base / "toolchains"),
-        "JAC_MODELS_DIR": str(base / "models"),
-        "JAC_SCALE_CACHE_DIR": str(base / "scale-binaries")
-    };
+    env = {"JAC_CACHE_HOME": str(base), "XDG_CACHE_HOME": str(base)};
+    for b in BUCKETS {
+        if b.root_env {
+            env[b.root_env] = str(base / b.root_prefix);
+        }
+    }
+    return env;
 }
 
 """Select the parent's compiler, or an explicit checkout for comparative tests."""

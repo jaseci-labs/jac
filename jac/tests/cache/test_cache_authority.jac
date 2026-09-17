@@ -510,7 +510,9 @@ test "private test environments override every inherited cache family" {
     with tempfile.TemporaryDirectory() as tmp {
         inherited = {
             "JAC_CACHE_HOME": "/unrelated",
-            "JAC_TOOLCHAIN_DIR": "/unrelated-tools"
+            "JAC_TOOLCHAIN_DIR": "/unrelated-tools",
+            "JAC_MODELS_DIR": "/unrelated-models",
+            "JAC_SCALE_CACHE_DIR": "/unrelated-binaries"
         };
         with patch.dict(os.environ, inherited) {
             with patch.dict(os.environ, cache_env(tmp)) {
