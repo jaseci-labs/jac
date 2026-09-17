@@ -680,6 +680,15 @@ impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
     };
 }
 
+impl ModuleIntrospector.find_target(name: str) -> any {
+    if not self._walkers and not self._functions {
+        self.load();
+    } else {
+        self._check_module_freshness();
+    }
+    return self._walkers.get(name) or self._functions.get(name);
+}
+
 impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., any)]] {
     if not self._client_functions {
         self.load();
@@ -1289,6 +1298,10 @@ impl JacAPIServer.get_functions -> dict[str, Callable[(..., any)]] {
 
 impl JacAPIServer.get_walkers -> dict[str, type[WalkerArchetype]] {
     return self.introspector.get_walkers();
+}
+
+impl JacAPIServer.find_target(name: str) -> any {
+    return self.introspector.find_target(name);
 }
 
 impl JacAPIServer.print_endpoint_docs -> None {
