@@ -168,12 +168,15 @@ impl PgJobStore.insert_within_quota(
         try {
             conn.rows(
                 'SELECT pg_advisory_xact_lock(hashtext(:k))',
-                {'k': f'jac_sched_quota:{self._collection}:{created_by}'}
+                {
+                    'k': f'jac_sched_quota:{self._collection}:{self._service}:{created_by}'
+                }
             );
             held = conn.rows(
                 "SELECT count(*) FROM jac_docs WHERE collection = :c "
-                "AND doc->>'status' = 'active' AND doc->>'created_by' = :u",
-                {'c': self._collection, 'u': created_by}
+                "AND doc->>'status' = 'active' AND doc->>'created_by' = :u "
+                "AND COALESCE(doc->>'service', :svc) = :svc",
+                {'c': self._collection, 'u': created_by, 'svc': self._service}
             );
             if held and int(held[0][0]) >= max_active {
                 conn.rollback();
@@ -308,9 +311,12 @@ impl MemoryJobStore.insert_within_quota(
 ) -> bool {
     with _memory_jobs_lock {
         if max_active > 0 {
+            service = job.get('service', '');
             held = 0;
             for j in self._jobs.values() {
-                if j.get('status') == 'active' and j.get('created_by') == created_by {
+                if j.get('status') == 'active'
+                    and j.get('created_by') == created_by
+                    and j.get('service', service) == service {
                     held = held + 1;
                 }
             }
