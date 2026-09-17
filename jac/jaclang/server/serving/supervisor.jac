@@ -3,11 +3,13 @@ import mmap;
 import os;
 import random;
 import select;
+import shutil;
 import signal;
 import struct;
 import sys;
 import tempfile;
 import time;
+import from contextlib { contextmanager }
 import from jaclang.server.net { PORT_RETRY_LIMIT, bind_listener }
 import from jaclang.server.serving.server { EXIT_OK, EXIT_RECYCLE }
 import from jaclang.server.settings { ServeSettings }
@@ -18,6 +20,23 @@ glob logger: logging.Logger = logging.getLogger(__name__),
      BOOT_FAILURE_LIMIT: int = 3,
      RESTART_BACKOFF_CAP: float = 30.0,
      METRICS_DIR_ENV: str = 'PROMETHEUS_MULTIPROC_DIR';
+
+
+@contextmanager
+def worker_metrics_dir(settings: ServeSettings) -> Iterator[None] {
+    if not settings.workers.multi_process() or os.environ.get(METRICS_DIR_ENV) {
+        yield ;
+        return;
+    }
+    path = tempfile.mkdtemp(prefix='jac-metrics-');
+    os.environ[METRICS_DIR_ENV] = path;
+    try {
+        yield ;
+    } finally {
+        os.environ.pop(METRICS_DIR_ENV, None);
+        shutil.rmtree(path, ignore_errors=True);
+    }
+}
 
 
 obj WorkerHandle {
@@ -46,14 +65,14 @@ obj WorkerSupervisor {
     has settings: ServeSettings,
         worker_main: Callable[[WorkerHandle], int],
         on_ready: (Callable[[int], None] | None) = None,
+        on_worker_exit: (Callable[[int], None] | None) = None,
         listener: any = None,
         bound_port: int = 0,
         slots: list[WorkerSlot] = [],
         _beats: any = None,
         _cells: int = 0,
         _stopping: bool = False,
-        _reload_requested: bool = False,
-        _metrics_dir: str = '';
+        _reload_requested: bool = False;
 
     def _write_beat(cell: int) {
         self._beats[cell * 8:cell * 8 + 8] = struct.pack('d', time.monotonic());
@@ -219,6 +238,9 @@ obj WorkerSupervisor {
                     slot.pid = 0;
                     self._close_ready_fd(slot);
                     exited.append((slot, code));
+                    if self.on_worker_exit is not None {
+                        self.on_worker_exit(pid);
+                    }
                 }
             }
         }
@@ -399,10 +421,6 @@ obj WorkerSupervisor {
         self.bound_port = self.listener.getsockname()[1];
         self._cells = count * 2;
         self._beats = mmap.mmap(-1, 8 * self._cells);
-        if not os.environ.get(METRICS_DIR_ENV) {
-            self._metrics_dir = tempfile.mkdtemp(prefix='jac-metrics-');
-            os.environ[METRICS_DIR_ENV] = self._metrics_dir;
-        }
         self._install_signal_handlers();
         self.slots = [WorkerSlot(index=i, cell=i) for i in range(count)];
         for slot in self.slots {
@@ -437,11 +455,6 @@ obj WorkerSupervisor {
             try {
                 self.listener.close();
             } except Exception {}
-            if self._metrics_dir {
-                import shutil;
-                shutil.rmtree(self._metrics_dir, ignore_errors=True);
-                os.environ.pop(METRICS_DIR_ENV, None);
-            }
         }
         if any(s.boot_failures >= BOOT_FAILURE_LIMIT for s in self.slots) {
             return 1;

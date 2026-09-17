@@ -21,6 +21,7 @@ class MetricsCollector {
     def record_ws_connection_closed(self: MetricsCollector) -> None;
     def record_ws_broadcast(self: MetricsCollector) -> None;
     def record_read_tier_retry(self: MetricsCollector, unit_key: str) -> None;
+    def worker_exited(self: MetricsCollector, pid: int) -> None;
     def get_endpoint_handler(self: MetricsCollector) -> Callable[..., any];
     def expose(self: MetricsCollector) -> bytes;
     def is_enabled(self: MetricsCollector) -> bool;
@@ -49,6 +50,7 @@ class NoOpMetricsCollector(MetricsCollector) {
     def record_ws_connection_closed(self: NoOpMetricsCollector) {}
     def record_ws_broadcast(self: NoOpMetricsCollector) {}
     def record_read_tier_retry(self: NoOpMetricsCollector, unit_key: str) {}
+    def worker_exited(self: NoOpMetricsCollector, pid: int) {}
     def get_endpoint_handler(self: NoOpMetricsCollector) -> Callable[..., any] {
         def noop {}
         return noop;

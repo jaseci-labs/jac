@@ -143,18 +143,25 @@ def main(manifest_path: str, name: str = '', argv: list[str] | None = None) -> i
     previous_argv = sys.argv;
     sys.argv = [application.entry, *arguments];
     try {
-        module = initialize_application(application, config, served);
-        context.mem.unit_exit();
         if not server_enabled {
+            initialize_application(application, config, served);
+            context.mem.unit_exit();
             return 0;
         }
         import from jaclang.server.settings { ServeSettings }
-        import from jaclang.server.server { JacAPIServer }
+        import from jaclang.server.serving.supervisor { worker_metrics_dir }
         settings = ServeSettings.load(application.root, overrides);
-        server = JacAPIServer(
-            module_name=module.__name__, base_path=application.root, settings=settings
-        );
-        return server.start(no_client=not application.client_enabled);
+        with worker_metrics_dir(settings) {
+            module = initialize_application(application, config, served);
+            context.mem.unit_exit();
+            import from jaclang.server.server { JacAPIServer }
+            server = JacAPIServer(
+                module_name=module.__name__,
+                base_path=application.root,
+                settings=settings
+            );
+            return server.start(no_client=not application.client_enabled);
+        }
     } finally {
         sys.argv = previous_argv;
         context.close();
