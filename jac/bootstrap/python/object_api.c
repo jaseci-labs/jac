@@ -5,6 +5,11 @@
 #include <errno.h>
 #include <stdint.h>
 
+/* libpython is built with hidden visibility, so only marked symbols reach a
+ * native library that dlopens into this runtime. These entry points ARE that
+ * boundary -- a separately built native unit calls them -- so export them. */
+#pragma GCC visibility push(default)
+
 #define OBJECT(h) ((PyObject *)(uintptr_t)(h))
 #define HANDLE(p) ((uint64_t)(uintptr_t)(p))
 
@@ -649,3 +654,4 @@ int64_t jacpy_warn(const char *category, const char *message, int64_t stacklevel
 }
 uint64_t jacpy_builtins(void) { return HANDLE(Py_NewRef(PyEval_GetBuiltins())); }
 int64_t jacpy_type_subtype(uint64_t type, uint64_t base) { return PyType_IsSubtype((PyTypeObject *)OBJECT(type), (PyTypeObject *)OBJECT(base)); }
+#pragma GCC visibility pop

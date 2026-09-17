@@ -11,6 +11,12 @@
 #include "internal/pycore_pystate.h"
 #include "internal/pycore_code.h"
 
+/* libpython is built with hidden visibility, so only marked symbols reach a
+ * native library that dlopens into this runtime. These entry points ARE that
+ * boundary -- a separately built native unit calls them -- so export them. */
+#pragma GCC visibility push(default)
+
+
 /* Exception identity belongs to the retained runtime, not the caller's
  * mutable builtins dictionary. Shared by compiler and extension boundaries. */
 PyObject *jacpy_exception_type(const char *name) {
@@ -478,3 +484,4 @@ void jacpy_raise_error(const char *kind, const char *message, int64_t size) {
 /* Initialize Jac native module storage before CPython starts importing. */
 extern void __jac_shared_init(void);
 __attribute__((constructor)) static void jacpy_initialize(void) { __jac_shared_init(); }
+#pragma GCC visibility pop
