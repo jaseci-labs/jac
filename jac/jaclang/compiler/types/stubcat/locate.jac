@@ -101,10 +101,8 @@ def bundled_catalog_path(pkg_dir: str) -> str {
 }
 
 def dev_catalog_path(pkg_dir: str) -> str {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
-    return os.path.join(
-        str(get_jir_cache_dir()), "stubcat", catalog_key(pkg_dir) + ".bin"
-    );
+    import from jaclang.cache.registry { bucket }
+    return str(bucket("jir-stubcat").path() / (catalog_key(pkg_dir) + ".bin"));
 }
 
 def _open_file(path: str, pkg_dir: str) -> StubCatalog | None {
@@ -180,6 +178,9 @@ def _find_catalog -> StubCatalog | None {
     }
     dev = dev_catalog_path(pkg);
     if os.path.isfile(dev) {
+        import from pathlib { Path }
+        import from jaclang.cache.registry { bucket }
+        bucket("jir-stubcat").note_hit(Path(dev));
         return _open_file(dev, pkg);
     }
     return None;
@@ -220,6 +221,8 @@ def ensure_catalog -> StubCatalog | None {
     }
     dev = dev_catalog_path(pkg);
     _build_dev_catalog(dev, pkg);
+    import from jaclang.cache.registry { maybe_sweep }
+    maybe_sweep("jir-stubcat");
     cat = _publish(_open_file(dev, pkg));
     if cat is None {
         raise StubCatalogUnavailable(

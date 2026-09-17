@@ -40,7 +40,9 @@ def _err_response(e: Exception) -> TransportResponse {
 }
 
 
-def _build_spec(body: dict) -> tuple[(TriggerSpec | None), (TransportResponse | None)] {
+def _build_spec(
+    body: dict[str, any]
+) -> tuple[(TriggerSpec | None), (TransportResponse | None)] {
     trigger = body.get('trigger', '');
     if not trigger {
         return (None, _fail('INVALID_REQUEST', 'Field "trigger" is required', 400));
@@ -64,6 +66,7 @@ obj JobsExtension(ServerExtension) {
     def register(server: JacAPIServer) {
         users = server.user_manager;
         scheduler_cfg = get_scale_config().get_scheduler_config();
+        job_cap = int(scheduler_cfg['max_jobs_per_user']);
         system_user = users.find_user_by_identity(SYSTEM_USER);
         system_user_id = str(system_user.get('user_id', SYSTEM_USER))
             if system_user
@@ -89,7 +92,7 @@ obj JobsExtension(ServerExtension) {
         server.add_shutdown_hook(_shutdown);
 
         def _ensure_authorized(
-            job: (dict | None), user_id: str
+            job: (dict[str, any] | None), user_id: str
         ) -> (TransportResponse | None) {
             if job is None {
                 return _fail('NOT_FOUND', 'Job not found', 404);
@@ -113,8 +116,7 @@ obj JobsExtension(ServerExtension) {
             if spec is None {
                 return spec_err or _fail('INVALID_REQUEST', 'Invalid schedule', 400);
             }
-            target: any = server.get_walkers().get(name)
-                or server.get_functions().get(name);
+            target: any = server.find_target(name);
             if target is None {
                 return _fail(
                     'NOT_FOUND', f'Walker or function "{name}" not found', 404
@@ -139,10 +141,19 @@ obj JobsExtension(ServerExtension) {
                     400
                 );
             }
+            cap = 0 if users.has_admin_access(str(user_id)) else job_cap;
             try {
                 job = JacScaleScheduler.instance().create_job(
-                    name=name, spec=spec, created_by=str(user_id)
+                    name=name, spec=spec, created_by=str(user_id), max_active=cap
                 );
+                if job is None {
+                    return _fail(
+                        'QUOTA_EXCEEDED',
+                        f'already at the {cap}-job limit; delete one or raise '
+                        '[scale.scheduler] max_jobs_per_user',
+                        429
+                    );
+                }
                 return TransportResponse.success(
                     data=job, meta=Meta(extra={'http_status': 201})
                 );

@@ -21,6 +21,7 @@ import shutil;
 import tempfile;
 import urllib.request;
 import from pathlib { Path }
+import from unittest.mock { patch }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { JacConfig, set_config }
 import from jaclang.client.targets.desktop.native { host_boot }
@@ -74,7 +75,7 @@ def _get(url: str) -> tuple[int, str] {
 }
 
 
-def _post(url: str, body: dict) -> tuple[int, str] {
+def _post(url: str, body: dict[str, any]) -> tuple[int, str] {
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -91,7 +92,7 @@ def _post(url: str, body: dict) -> tuple[int, str] {
 }
 
 
-def _config(app_dir: str, program: dict, backend: str = "embedded") -> str {
+def _config(app_dir: str, program: dict[str, any], backend: str = "embedded") -> str {
     return json.dumps(
         {
             "app_name": "hostapp",
@@ -161,18 +162,37 @@ test "boot serves a source entry in dev and a remote backend serves no program" 
         assert code == 200 and "hello dev" in body , (code, body);
         ctx.shutdown();
 
-        ctx = host_boot.boot(
-            _config(
-                app_dir,
-                {"entry": os.path.join(proj, "main.jac")},
-                backend="https://example.invalid"
-            )
-        );
+        assets = Path(app_dir) / "dist" / "assets";
+        assets.mkdir();
+        (assets / "logo.svg").write_text("<svg>desktop</svg>");
+        import jaclang.compiler.driver.application as application;
+        import from jaclang.server.server { ModuleIntrospector }
+        with patch.object(
+            application,
+            "prepare_application",
+            side_effect=AssertionError("remote desktops must not prepare local code")
+        ), patch.object(
+            ModuleIntrospector,
+            "load",
+            side_effect=AssertionError("remote desktops must not import local code")
+        ), patch.object(
+            host_boot,
+            "resolve_program",
+            side_effect=AssertionError("remote desktops need no local program")
+        ) {
+            ctx = host_boot.boot(
+                _config(app_dir, {}, backend="https://example.invalid")
+            );
+        }
         origin = f"http://127.0.0.1:{ctx.port}";
         (code, body) = _get(f"{origin}/__jac/health");
         assert code == 200 , (code, body);
         (code, body) = _get(f"{origin}/");
         assert code == 200 and "hostapp" in body , (code, body);
+        (code, body) = _get(f"{origin}/any/client/route");
+        assert code == 200 and "hostapp" in body , (code, body);
+        (code, body) = _get(f"{origin}/static/assets/logo.svg");
+        assert code == 200 and body == "<svg>desktop</svg>" , (code, body);
         (code, body) = _post(f"{origin}/walker/greet", {"name": "x"});
         assert code in (404, 405) , (
             f"a remote backend runs no program locally; the bundle calls the remote: {code} {body}"

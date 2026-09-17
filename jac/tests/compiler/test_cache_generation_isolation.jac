@@ -163,3 +163,32 @@ test "JacPython sources participate in the producing compiler identity" {
         }
     }
 }
+
+test "compiler identity excludes applications tests and generated artifacts" {
+    import from jaclang.compiler.driver.jir { compiler_source_digest }
+    with tempfile.TemporaryDirectory() as pkg {
+        src = Path(pkg) / "compiler/pass.jac";
+        src.parent.mkdir(parents=True);
+        src.write_text("def f -> int { return 1; }\n");
+        before = compiler_source_digest(pkg);
+        for rel in (
+            "scale/app.jac",
+            "byllm/app.jac",
+            "compiler/tests/fixture.jac",
+            "compiler/pass.test.jac",
+            "runtime/test/fixture.py",
+            "compiler/.generated/input.py",
+            "compiler/libjacllvm.so"
+        ) {
+            unrelated = Path(pkg) / rel;
+            unrelated.parent.mkdir(parents=True, exist_ok=True);
+            unrelated.write_text("unrelated");
+            assert compiler_source_digest(pkg) == before , rel;
+        }
+        src.rename(src.with_name("renamed.jac"));
+        renamed = compiler_source_digest(pkg);
+        assert renamed != before;
+        src.with_name("renamed.jac").unlink();
+        assert compiler_source_digest(pkg) != renamed;
+    }
+}

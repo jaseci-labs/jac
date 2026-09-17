@@ -7,16 +7,11 @@ import threading;
 import time;
 import uuid;
 import from collections { OrderedDict }
-import from jaclang.data.store {
-    PgStore,
-    Store,
-    TxnIsolation,
-    register_schema_extension
-}
+import from jaclang.data.store { OUTBOX_SCHEMA_SQL, PgStore, Store, TxnIsolation }
 import from jaclang.server.bridge { BridgeRejected }
 
 obj DeliveryReceipt {
-    static def _from_wire(payload: dict) -> DeliveryReceipt {
+    static def _from_wire(payload: dict[str, any]) -> DeliveryReceipt {
         return DeliveryReceipt();
     }
 }
@@ -70,43 +65,11 @@ glob logger = logging.getLogger(__name__),
          'DELIVERED_TTL_S'
      ];
 
-glob _SCHEMA_SQL = [
-         """
-    CREATE TABLE IF NOT EXISTS jac_outbox (
-        id              TEXT PRIMARY KEY,
-        app             TEXT NOT NULL,
-        walker          TEXT NOT NULL,
-        kwargs          TEXT NOT NULL,
-        idempotency_key TEXT NOT NULL UNIQUE,
-        attempts        INTEGER NOT NULL DEFAULT 0,
-        created_at      DOUBLE PRECISION NOT NULL,
-        status          TEXT NOT NULL,
-        last_error      TEXT NOT NULL DEFAULT '',
-        next_attempt_at DOUBLE PRECISION NOT NULL DEFAULT 0
-    )
-    """,
-         """
-    CREATE INDEX IF NOT EXISTS idx_jac_outbox_due
-        ON jac_outbox (status, next_attempt_at)
-    """,
-         """
-    CREATE TABLE IF NOT EXISTS jac_outbox_seen (
-        idempotency_key TEXT PRIMARY KEY,
-        result          TEXT NOT NULL DEFAULT '',
-        expires_at      DOUBLE PRECISION NOT NULL
-    )
-    """
-     ];
-
-with entry {
-    register_schema_extension("outbox", _SCHEMA_SQL);
-}
-
 obj OutboxEntry {
     has id: str,
         app: str,
         `walker: str,
-        kwargs: dict,
+        kwargs: dict[str, any],
         idempotency_key: str,
         attempts: int = 0,
         created_at: float = 0.0,
@@ -132,8 +95,8 @@ obj OutboxStore {
 
 
 obj SqlOutboxStore(OutboxStore) {
-    def _exec(sql: str, params: dict) -> list[tuple] abst;
-    def _exec_count(sql: str, params: dict) -> int abst;
+    def _exec(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] abst;
+    def _exec_count(sql: str, params: dict[str, any]) -> int abst;
     def ensure_tables -> None abst;
     def put(item: OutboxEntry) -> None;
     def get_by_key(key: str) -> (OutboxEntry | None);
@@ -151,8 +114,8 @@ obj SqlOutboxStore(OutboxStore) {
 obj PgOutboxStore(SqlOutboxStore) {
     has store: PgStore;
 
-    def _exec(sql: str, params: dict) -> list[tuple];
-    def _exec_count(sql: str, params: dict) -> int;
+    def _exec(sql: str, params: dict[str, any]) -> list[tuple[any, ...]];
+    def _exec_count(sql: str, params: dict[str, any]) -> int;
     def ensure_tables -> None;
     def close -> None;
 }
@@ -164,8 +127,8 @@ obj SqliteOutboxStore(SqlOutboxStore) {
         _lock: threading.RLock = threading.RLock();
 
     def postinit -> None;
-    def _exec(sql: str, params: dict) -> list[tuple];
-    def _exec_count(sql: str, params: dict) -> int;
+    def _exec(sql: str, params: dict[str, any]) -> list[tuple[any, ...]];
+    def _exec_count(sql: str, params: dict[str, any]) -> int;
     def ensure_tables -> None;
     def close -> None;
 }
@@ -175,7 +138,6 @@ obj OutboxState {
     has explicit: (OutboxStore | None) = None,
         worker_store: (OutboxStore | None) = None,
         sqlite_store: (SqliteOutboxStore | None) = None,
-        schema_ready: set[str] = set(),
         worker: (threading.Thread | None) = None,
         stop_event: (threading.Event | None) = None,
         lock: threading.RLock = threading.RLock(),
@@ -186,13 +148,16 @@ obj OutboxState {
 glob _state: OutboxState = OutboxState();
 
 
-def canonical_kwargs(kwargs: dict) -> str;
-def default_idempotency_key(app: str, `walker: str, kwargs: dict) -> str;
+def canonical_kwargs(kwargs: dict[str, any]) -> str;
+def default_idempotency_key(app: str, `walker: str, kwargs: dict[str, any]) -> str;
 def backoff_seconds(attempts: int) -> float;
 def outbox_db_path -> str;
 def use_store(store: (OutboxStore | None)) -> None;
 
-def enqueue(app: str, `walker: str, kwargs: dict, idempotency_key: str = "") -> str;
+def enqueue(
+    app: str, `walker: str, kwargs: dict[str, any], idempotency_key: str = ""
+) -> str;
+
 def deliver_pending(max_attempts: int = DEFAULT_MAX_ATTEMPTS) -> int;
 def prune(delivered_ttl_s: float = DELIVERED_TTL_S) -> int;
 def purge_dead(older_than_s: float = 0.0) -> int;
@@ -213,12 +178,12 @@ def scoped_idempotency_key(raw: str, username: str, app: str, target: str) -> st
 def replay_cached(key: str) -> any;
 def remember_response(key: str, response: any) -> any;
 
-def _row_to_entry(row: tuple) -> OutboxEntry;
+def _row_to_entry(row: tuple[any, ...]) -> OutboxEntry;
 def _current_memory -> any;
 def _primary_pg_store -> (PgStore | None);
 def _writable_txn(mem: any, store: Store) -> None;
 def _derive_worker_store(primary: PgStore) -> PgOutboxStore;
-def _ensure_pg_schema(primary: PgStore) -> None;
+def _pg_worker_store(primary: PgStore) -> PgOutboxStore;
 def _sqlite_store -> SqliteOutboxStore;
 def _store_for_request(writable: bool = True) -> OutboxStore;
 def _store_for_worker -> OutboxStore;

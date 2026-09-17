@@ -38,6 +38,10 @@ impl EsastGenPass.exit_match_stmt with uni.MatchStmt exit {
     self.match_seq += 1;
     subj_name = f"__jac_match_subj_{self.match_seq}";
     flag_name = f"__jac_matched_{self.match_seq}";
+    break_label = self._match_break_labels.get(id(here));
+    if break_label is None {
+        break_label = '';
+    }
     stmts: list[es.Statement] = [];
     stmts.append(
         self.sync_loc(
@@ -135,6 +139,21 @@ impl EsastGenPass.exit_match_stmt with uni.MatchStmt exit {
                 jac_node=mcase
             );
         }
+        if break_label != '' {
+            inner = [
+                self.sync_loc(
+                    es.LabeledStatement(
+                        label=self.sync_loc(
+                            es.Identifier(name=break_label), jac_node=mcase
+                        ),
+                        body=self.sync_loc(
+                            es.BlockStatement(body=inner), jac_node=mcase
+                        )
+                    ),
+                    jac_node=mcase
+                )
+            ];
+        }
         stmts.append(
             self.sync_loc(
                 es.IfStatement(
@@ -147,6 +166,7 @@ impl EsastGenPass.exit_match_stmt with uni.MatchStmt exit {
             )
         );
     }
+    self._match_break_labels.pop(id(here), None);
     here.gen.es_ast = stmts;
 }
 
@@ -250,7 +270,7 @@ impl EsastGenPass._lower_match_pattern(
                 return (None, no_binds, False);
             }
             if b {
-                self.emit(
+                self.ctx.emit(
                     E5018,
                     node_override=sub,
                     construct='binding in an or-pattern',
@@ -519,7 +539,7 @@ impl EsastGenPass._lower_match_pattern(
             if isinstance(pat.name, uni.AstSymbolNode)
             else None;
         if cls_name is None {
-            self.emit(
+            self.ctx.emit(
                 E5018,
                 node_override=pat,
                 construct='dotted class pattern',
@@ -536,12 +556,12 @@ impl EsastGenPass._lower_match_pattern(
             )
         ];
         arch_binds: list[es.Statement] = [];
-        pairs: list = [];
+        pairs: list[tuple[str, uni.MatchPattern]] = [];
         arg_pats = list(pat.arg_patterns) if pat.arg_patterns else [];
         if arg_pats {
             order = self._match_arch_field_order(pat);
             if order is None or len(arg_pats) > len(order) {
-                self.emit(
+                self.ctx.emit(
                     E5018,
                     node_override=pat,
                     construct='positional class pattern with unresolvable field order',
@@ -557,7 +577,7 @@ impl EsastGenPass._lower_match_pattern(
         for kv in (list(pat.kw_patterns) if pat.kw_patterns else []) {
             fname = kv.key.sym_name if isinstance(kv.key, uni.AstSymbolNode) else None;
             if fname is None {
-                self.emit(
+                self.ctx.emit(
                     E5018,
                     node_override=kv,
                     construct='computed class-pattern field',
@@ -590,7 +610,7 @@ impl EsastGenPass._lower_match_pattern(
         }
         return (arch_cond, arch_binds, True);
     }
-    self.emit(
+    self.ctx.emit(
         E5018,
         node_override=pat,
         construct=pat.__class__.__name__,

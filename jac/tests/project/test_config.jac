@@ -113,6 +113,33 @@ test "interpolate multiple env vars" {
     del os.environ["PORT"];
 }
 
+test "interpolate against a given environment instead of the process one" {
+    os.environ["JAC_PROCESS_ONLY"] = "from-process";
+    environ = {"POD_VAR": "from-pod"};
+    cases = [
+        ("${POD_VAR}", "from-pod"),
+        ("${JAC_PROCESS_ONLY:-fallback}", "fallback"),
+        ("echo ${1}", "echo ${1}"),
+        ("${JAC_PROCESS_ONLY}", "Environment variable JAC_PROCESS_ONLY is not set"),
+        (
+            "${JAC_PROCESS_ONLY:?pods need it}",
+            "JAC_PROCESS_ONLY is required: pods need it"
+        )
+    ];
+    try {
+        for (value, expected) in cases {
+            try {
+                got = interpolate_env_vars(value, environ);
+            } except ValueError as e {
+                got = str(e);
+            }
+            assert expected in got , f"{value}: expected {expected!r}, got {got!r}";
+        }
+    } finally {
+        del os.environ["JAC_PROCESS_ONLY"];
+    }
+}
+
 test "interpolate non string passthrough" {
     config_mod._config = None;
     assert interpolate_env_vars(_as_any(123)) == 123;

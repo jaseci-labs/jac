@@ -114,7 +114,7 @@ def _compile_runtime_module(
     pkg_root: Path,
     path: Path,
     prog: JacProgram,
-    native: dict | None = None,
+    native: dict[str, any] | None = None,
     native_sources: bool = True
 ) -> str {
     if path.suffix == ".py" {
@@ -188,7 +188,7 @@ def build_runtime_closure(
     );
     processed: set[str] = {'jaclang'};
     program = JacProgram();
-    modules: list[dict] = [];
+    modules: list[dict[str, any]] = [];
     while pending {
         module = min(pending);
         pending.remove(module);
@@ -217,18 +217,19 @@ def build_runtime_closure(
                 continue;
             }
             (parent, _, name) = module.rpartition('.');
-            exports = _declared_literal(sources[parent], '_LAZY_EXPORTS')
+            declared = _declared_literal(sources[parent], '_LAZY_EXPORTS')
                 if parent in sources
-                else {};
-            if not isinstance(exports, dict) {
-                exports = {};
+                else None;
+            exports: dict[str, str] = {};
+            if isinstance(declared, dict) {
+                exports = declared;
             }
             if name in exports {
                 pending.add(exports[name]);
             }
             continue;
         }
-        native: dict = {};
+        native: dict[str, any] = {};
         source = _compile_runtime_module(
             pkg_root, path, program, native, native_sources
         );

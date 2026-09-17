@@ -3,7 +3,7 @@ import from jaclang.compiler.frontend.diagnostics { E1308, E1313 }
 impl OwnershipCheckPass._flow_for_stmts -> list[InForStmt] {
     import from jaclang.compiler.frontend.constant { Tokens as Tok }
     out: list[InForStmt] = [];
-    for lp in self.ir_in.get_all_sub_nodes(InForStmt) {
+    for lp in self.module.get_all_sub_nodes(InForStmt) {
         for k in lp.kid {
             if isinstance(k, Token) and k.name == Tok.KW_FLOW {
                 out.append(lp);
@@ -53,7 +53,7 @@ impl OwnershipCheckPass._flow_reduce_shape(asgn: Assignment, sid: SymId) -> str 
             return "";
         }
     }
-    _params = fc.params or [];
+    _params: Sequence[any] = fc.params or [];
     if len(_params) != 2 {
         return "";
     }
@@ -188,7 +188,7 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
     for lp in _flows {
         _coll = lp.collection;
         if not (isinstance(_coll, UnaryExpr) and is_borrow_kind(_coll.ownership)) {
-            self.emit(
+            self.ctx.emit(
                 E1313,
                 node_override=_coll,
                 name="a non-lent collection (iterate `&xs` or `&mut xs`)"
@@ -209,7 +209,7 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
         }
         for inner in lp.get_all_sub_nodes(InForStmt) {
             if id(inner) in _flow_ids {
-                self.emit(E1313, node_override=inner, name="a nested `flow for`");
+                self.ctx.emit(E1313, node_override=inner, name="a nested `flow for`");
             }
         }
         _licensed = self._collect_flow_reductions(lp);
@@ -224,15 +224,15 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
             );
             for sub in _subs {
                 if isinstance(sub, ReturnStmt) {
-                    self.emit(
+                    self.ctx.emit(
                         E1313, node_override=sub, name="a `return` in the loop body"
                     );
                 } elif isinstance(sub, DisengageStmt) {
-                    self.emit(
+                    self.ctx.emit(
                         E1313, node_override=sub, name="`disengage` in the loop body"
                     );
                 } elif isinstance(sub, YieldExpr) {
-                    self.emit(
+                    self.ctx.emit(
                         E1313, node_override=sub, name="a `yield` in the loop body"
                     );
                 } elif isinstance(sub, CtrlStmt)
@@ -244,7 +244,7 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
                         _enc = _enc.parent;
                     }
                     if _enc is lp {
-                        self.emit(
+                        self.ctx.emit(
                             E1313,
                             node_override=sub,
                             name="a `break` out of the loop body"
@@ -298,7 +298,7 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
                     }
                 }
                 _flagged.add(sid);
-                self.emit(E1308, node_override=nm, name=nm.sym_name);
+                self.ctx.emit(E1308, node_override=nm, name=nm.sym_name);
             }
         }
     }
@@ -365,12 +365,12 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
                 if owner is not None {
                     borrow_id = self._borrow_sym_of(nm);
                     related = self._owner_decl_related(borrow_id, owner);
-                    self.emit(E1308, node_override=nm, name=owner, related=related);
+                    self.ctx.emit(E1308, node_override=nm, name=owner, related=related);
                 } else {
-                    self.emit(E1308, node_override=nm, name=nm.sym_name);
+                    self.ctx.emit(E1308, node_override=nm, name=nm.sym_name);
                 }
             } else {
-                self.emit(E1308, node_override=nm, name=nm.sym_name);
+                self.ctx.emit(E1308, node_override=nm, name=nm.sym_name);
             }
             break;
         }
@@ -460,7 +460,9 @@ impl OwnershipCheckPass._is_deep_immutable_scalar(nm: Name) -> bool {
     return _mangled in ("int", "float", "bool", "str", "bytes");
 }
 
-impl OwnershipCheckPass._chunks_shape_of(expr: Expr | None) -> (tuple | None) {
+impl OwnershipCheckPass._chunks_shape_of(
+    expr: Expr | None
+) -> (tuple[Expr, Expr] | None) {
     if not isinstance(expr, FuncCall) {
         return None;
     }
@@ -493,7 +495,7 @@ impl OwnershipCheckPass._chunks_shape_of(expr: Expr | None) -> (tuple | None) {
 impl OwnershipCheckPass._emit_chunk_view_diagnostics -> None {
     _licensed: set[int] = set();
     _chunk_vars: dict[SymId, InForStmt] = {};
-    for st in self.ir_in.get_all_sub_nodes(InForStmt) {
+    for st in self.module.get_all_sub_nodes(InForStmt) {
         coll = st.collection;
         if isinstance(coll, UnaryExpr)
             and is_borrow_kind(coll.ownership)
@@ -505,9 +507,9 @@ impl OwnershipCheckPass._emit_chunk_view_diagnostics -> None {
             }
         }
     }
-    for fc in self.ir_in.get_all_sub_nodes(FuncCall) {
+    for fc in self.module.get_all_sub_nodes(FuncCall) {
         if self._chunks_shape_of(fc) is not None and id(fc) not in _licensed {
-            self.emit(
+            self.ctx.emit(
                 E1313,
                 node_override=fc,
                 name="`chunks()` outside a lent `for` collection"
@@ -532,7 +534,7 @@ impl OwnershipCheckPass._emit_chunk_view_diagnostics -> None {
                         "sort",
                         "reverse"
                     ) {
-                self.emit(
+                self.ctx.emit(
                     E1313,
                     node_override=_p,
                     name=f"structural mutation of a chunk view"

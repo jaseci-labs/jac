@@ -11,7 +11,6 @@ impl cfg_dot_from_file(file_name: str) -> str {
     return dot;
 }
 
-
 impl CoalesceBBPass.printgraph_cfg -> str {
     bb_tails: dict[int, (UniCFGNode | None)] = {};
     bb_heads: dict[int, (UniCFGNode | None)] = {};
@@ -167,13 +166,9 @@ impl CoalesceBBPass._node_label(nd: UniNode) -> str {
     }
     if isinstance(nd, Ability) {
         kw: str = 'can';
-        for c in nd.kid {
-            if isinstance(c, Token) {
-                if c.name == Tok.KW_DEF or c.name == Tok.KW_CAN {
-                    kw = str(c.value);
-                    break;
-                }
-            }
+        keywords = [nd->:Kid:->[?:Token, name in (Tok.KW_DEF, Tok.KW_CAN)]];
+        if keywords {
+            kw = str(keywords[0].value);
         }
         if nd.name_ref and nd.signature {
             return kw + ' ' + unparse_node(nd.name_ref) + unparse_node(nd.signature);
@@ -249,12 +244,13 @@ impl CoalesceBBPass.get_bb(nd: UniCFGNode) -> list[UniCFGNode] {
     return bb_list;
 }
 
-impl CoalesceBBPass.before_pass -> None {
+impl CoalesceBBPass.prepare with entry {
+    if self.ctx.nested_depth {
+        return;
+    }
     self.basic_blocks = {};
     self.bb_counter = 0;
 }
-
-impl CFGBuildPass.before_pass -> None {}
 
 impl CFGBuildPass.link_bbs(source: UniCFGNode, target: UniCFGNode) -> None {
     if source and target {

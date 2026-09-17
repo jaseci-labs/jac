@@ -12,7 +12,7 @@ from GenAI abilities, including:
 # Mock LLM object for testing - doesn't need to be a real LLM
 # The MTIR pass only cares about the structure, not execution
 obj MockLLM {
-    def __call__(**kwargs: dict) -> MockLLM {
+    def __call__(**kwargs: dict[any, any]) -> MockLLM {
         return self;
     }
 }

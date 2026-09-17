@@ -306,7 +306,7 @@ test "browser navigation to a client route gets the SPA index (history fallback)
 }
 
 """Serve `payload` as JSON on every GET; returns (server, port)."""
-def _serve_fragment(payload: dict) -> tuple {
+def _serve_fragment(payload: dict[str, any]) -> tuple[any, ...] {
     import http.server;
     import json;
     import threading;
@@ -1278,9 +1278,9 @@ test "gateway drain does not burn metrics labels on 503d requests" {
 
 
 obj _FakeScaleConfig {
-    has _cors: dict = {};
+    has _cors: dict[str, any] = {};
 
-    def get_gateway_config -> dict {
+    def get_gateway_config -> dict[str, any] {
         return {
             "gateway_port": 8000,
             "gateway_host": "0.0.0.0",
@@ -1290,11 +1290,11 @@ obj _FakeScaleConfig {
         };
     }
 
-    def get_monitoring_config -> dict {
+    def get_monitoring_config -> dict[str, any] {
         return {"namespace": "jaclang_scale", "histogram_buckets": None};
     }
 
-    def get_events_config -> dict {
+    def get_events_config -> dict[str, any] {
         return {"enabled": False};
     }
 
@@ -1304,7 +1304,7 @@ obj _FakeScaleConfig {
 }
 
 
-def _with_cors_config(cfg: dict, fn: any) -> any {
+def _with_cors_config(cfg: dict[str, any], fn: any) -> any {
     import jaclang.scale.config.config_loader as config_loader;
     orig = config_loader.get_scale_config;
     fake = _FakeScaleConfig(_cors=cfg);
@@ -1598,7 +1598,9 @@ def _read_request(conn: any) -> bytes {
 }
 
 
-def _start_backend(hits: dict, routes: dict, port: int = 0) -> tuple {
+def _start_backend(
+    hits: dict[str, any], routes: dict[str, any], port: int = 0
+) -> tuple[any, ...] {
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
     srv.bind(("127.0.0.1", port));
@@ -1639,7 +1641,7 @@ def _stop_backend(srv: any) {
 }
 
 
-def _spec(paths: list[str]) -> tuple {
+def _spec(paths: list[str]) -> tuple[any, ...] {
     import json;
     return (200, json.dumps({"paths": {p: {"post": {}} for p in paths}}));
 }
@@ -1657,7 +1659,7 @@ def _entry(name: str, prefix: str, port: int) -> ServiceEntry {
 }
 
 
-def _gateway(entries: list) -> tuple {
+def _gateway(entries: list[any]) -> tuple[any, ...] {
     reg = ServiceRegistry();
     for e in entries {
         reg.register(e);
@@ -1670,8 +1672,8 @@ def _gateway(entries: list) -> tuple {
 
 
 test "walker POST with a learned owner is forwarded only to the owner" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {});
     (srv_b, port_b) = _start_backend(
         hits_b, {"POST /walker/create_user": (200, '{"ok": true}')}
@@ -1697,8 +1699,8 @@ test "walker POST with a learned owner is forwarded only to the owner" {
 
 
 test "cold gateway learns walker ownership from openapi before forwarding" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": _spec([])});
     (srv_b, port_b) = _start_backend(
         hits_b,
@@ -1726,8 +1728,8 @@ test "cold gateway learns walker ownership from openapi before forwarding" {
 
 
 test "a walker no learned service declares is 404'd without delivering the body" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": _spec([])});
     (srv_b, port_b) = _start_backend(
         hits_b, {"GET /openapi.json": _spec(["/walker/other"])}
@@ -1756,8 +1758,8 @@ test "a walker no learned service declares is 404'd without delivering the body"
 
 
 test "an unsafe miss probes only the services whose routes are unknown" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": _spec([])});
     (srv_b, port_b) = _start_backend(hits_b, {});
     try {
@@ -1781,8 +1783,8 @@ test "an unsafe miss probes only the services whose routes are unknown" {
 
 
 test "a fleet that publishes no specs keeps walker discovery by probing" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {});
     (srv_b, port_b) = _start_backend(
         hits_b, {"POST /walker/create_user": (200, '{"ok": true}')}
@@ -1806,8 +1808,8 @@ test "a fleet that publishes no specs keeps walker discovery by probing" {
 
 
 test "identity fallthrough POST is delivered exactly once" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {});
     (srv_b, port_b) = _start_backend(hits_b, {});
     try {
@@ -1833,8 +1835,8 @@ test "identity fallthrough POST is delivered exactly once" {
 
 
 test "replicated auth families are delivered once and never learned" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     spec = _spec(["/api-key/create", "/sso/firebase/token", "/graph/data"]);
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": spec});
     (srv_b, port_b) = _start_backend(hits_b, {"GET /openapi.json": spec});
@@ -1864,8 +1866,8 @@ test "replicated auth families are delivered once and never learned" {
 
 
 test "POST /jobs cross-service discovery is preserved" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {});
     (srv_b, port_b) = _start_backend(hits_b, {"POST /jobs": (200, '{"job_id": "j1"}')});
     try {
@@ -1885,8 +1887,8 @@ test "POST /jobs cross-service discovery is preserved" {
 
 
 test "GET /cl page discovery across services is preserved" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {});
     (srv_b, port_b) = _start_backend(
         hits_b, {"GET /cl/dashboard": (200, '{"page": "dashboard"}')}
@@ -1908,8 +1910,8 @@ test "GET /cl page discovery across services is preserved" {
 
 
 test "a GET walker with a learned owner goes straight to the owner" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {});
     (srv_b, port_b) = _start_backend(
         hits_b, {"GET /walker/list_items": (200, '{"items": []}')}
@@ -1935,7 +1937,7 @@ test "a GET walker with a learned owner goes straight to the owner" {
 
 
 test "stale learned owner is forgotten and the path is re-resolved" {
-    hits_a: dict = {};
+    hits_a: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {});
     try {
         (gw, client) = _gateway([_entry("svc_a", "/api/a", port_a)]);
@@ -1953,8 +1955,8 @@ test "stale learned owner is forgotten and the path is re-resolved" {
 
 
 test "a service registered after the first crawl is learned on the next miss" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": _spec([])});
     (srv_b, port_b) = _start_backend(
         hits_b,
@@ -1988,8 +1990,8 @@ test "a service registered after the first crawl is learned on the next miss" {
 
 
 test "a service that was unreachable at the first crawl is learned once it answers" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": _spec([])});
     port_b = get_free_port();
     srv_b = None;
@@ -2029,8 +2031,8 @@ test "a service that was unreachable at the first crawl is learned once it answe
 
 
 test "a walker added to an already-learned service waits for the refresh window" {
-    hits_b: dict = {};
-    routes_b: dict = {"GET /openapi.json": _spec(["/walker/old"])};
+    hits_b: dict[str, any] = {};
+    routes_b: dict[str, any] = {"GET /openapi.json": _spec(["/walker/old"])};
     (srv_b, port_b) = _start_backend(hits_b, routes_b);
     try {
         (gw, client) = _gateway([_entry("svc_b", "/api/b", port_b)]);
@@ -2080,8 +2082,8 @@ def gw_route_table_for_poison_test -> any {
 
 
 test "a learned owner that stops accepting traffic 503s instead of re-delivering" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(
         hits_a, {"GET /openapi.json": _spec(["/walker/charge"])}
     );
@@ -2109,8 +2111,8 @@ test "a learned owner that stops accepting traffic 503s instead of re-delivering
 
 
 test "a replicated family prefers a healthy service over one still starting" {
-    hits_a: dict = {};
-    hits_b: dict = {};
+    hits_a: dict[str, any] = {};
+    hits_b: dict[str, any] = {};
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": _spec([])});
     (srv_b, port_b) = _start_backend(hits_b, {"GET /openapi.json": _spec([])});
     try {

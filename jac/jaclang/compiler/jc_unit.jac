@@ -1,3 +1,5 @@
+import time;
+import from jaclang.compiler.passes.context { CompileContext }
 import from c { def PyList_New(n: int) -> int;  }
 import from c { def PyList_SetItem(l: int, i: int, v: int) -> int;  }
 import from c { def Py_DecRef(o: int) -> int;  }
@@ -13,13 +15,12 @@ import from jaclang.compiler.jc_materialize {
 
 import from jaclang.compiler.frontend.parser.parser { parse_program }
 import from jaclang.compiler.frontend.parser.tokens { SrcDiag, CommentData }
-import from jaclang.compiler.frontend.unitree { GraphExpr, Module, UniNode }
+import from jaclang.compiler.frontend.unitree { GraphExpr, Module, UniNode, Import }
 import from jaclang.compiler.frontend.roles { AccessorsRole, BodyRole, SpecRole }
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.frontend.unitree { Import }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.passes.context { Alert }
 
 obj JcState {
     has p_errs: int = 0,
@@ -183,7 +184,17 @@ def _finish_unit(
         } elif _JC.early_context == 3 {
             mod.set_code_context(CodeContext.NATIVE);
         }
-        validation = ASTValidationPass(ir_in=mod);
+        validation = ASTValidationPass(
+            module=mod,
+            ctx=CompileContext(
+                current_node=mod,
+                from_pass=ASTValidationPass,
+                pass_name="ASTValidationPass"
+            )
+        );
+        started = time.time();
+        mod spawn validation;
+        validation.ctx.time_taken = time.time() - started;
         _JC.completed = 1;
         has_absorb = False;
         for imp in mod.get_all_sub_nodes(Import) {
@@ -194,7 +205,17 @@ def _finish_unit(
         }
 
         if not has_absorb {
-            symbols = SymTabBuildPass(ir_in=mod);
+            symbols = SymTabBuildPass(
+                module=mod,
+                ctx=CompileContext(
+                    current_node=mod,
+                    from_pass=SymTabBuildPass,
+                    pass_name="SymTabBuildPass"
+                )
+            );
+            started = time.time();
+            mod spawn symbols;
+            symbols.ctx.time_taken = time.time() - started;
             _JC.completed = 3;
         }
     }
@@ -203,14 +224,14 @@ def _finish_unit(
         return status;
     }
     if validation is not None {
-        _JC.validation_time = validation.time_taken;
-        _JC.validation_errors_h = _mz_list(validation.errors_had, _alert_tag());
-        _JC.validation_warnings_h = _mz_list(validation.warnings_had, _alert_tag());
+        _JC.validation_time = validation.ctx.time_taken;
+        _JC.validation_errors_h = _mz_list(validation.ctx.errors_had, _alert_tag());
+        _JC.validation_warnings_h = _mz_list(validation.ctx.warnings_had, _alert_tag());
     }
     if symbols is not None {
-        _JC.symbols_time = symbols.time_taken;
-        _JC.symbols_errors_h = _mz_list(symbols.errors_had, _alert_tag());
-        _JC.symbols_warnings_h = _mz_list(symbols.warnings_had, _alert_tag());
+        _JC.symbols_time = symbols.ctx.time_taken;
+        _JC.symbols_errors_h = _mz_list(symbols.ctx.errors_had, _alert_tag());
+        _JC.symbols_warnings_h = _mz_list(symbols.ctx.warnings_had, _alert_tag());
     }
     jc_mz_dispose();
     return 0;
@@ -285,7 +306,7 @@ def:pub jc_lex_errs -> int {
     return _JC.lex_errs;
 }
 
-def _mz_list(items: list, hint: int) -> int {
+def _mz_list(items: list[any], hint: int) -> int {
     out = PyList_New(len(items));
     i = 0;
     for it in items {

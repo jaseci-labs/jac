@@ -56,7 +56,7 @@ def compile_react(path: str) -> str {
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
     es_pass = run_pass(EsastGenPass, ir, prog, backend=ReactBackend());
-    return es_to_js(es_pass.ir_out.gen.es_ast);
+    return es_to_js(es_pass.module.gen.es_ast);
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""
@@ -134,7 +134,7 @@ def bun_install(bun: str, work: Path, name: str, deps: (dict[str, str] | None) =
 """Run `work/harness.mjs` once, with `args` appended, and assert it exited 0.
 
 Prefers a real `node` when present; falls back to `bun run`."""
-def run_harness(bun: str, work: Path, args: list, label: str) {
+def run_harness(bun: str, work: Path, args: list[any], label: str) {
     node_bin = shutil.which("node");
     if node_bin {
         cmd = [node_bin, str(work / "harness.mjs")] + args;

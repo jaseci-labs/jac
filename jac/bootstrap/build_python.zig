@@ -16,6 +16,7 @@ const inputs = [_][]const u8{
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
 const Mode = enum { host, jacpython };
+const native_toolchain_inputs = [_][]const u8{ "build.zig", "build.zig.zon", "bootstrap/pins.json" };
 
 fn parseMode(args: []const []const u8) !Mode {
     if (args.len == 5) return .jacpython;
@@ -174,9 +175,19 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
             hash.update(path);
             hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .limited(1024)));
         }
+        // prepare_native emits through the LLVM shim. Prefix-restored runtime
+        // trees must reject changes to that toolchain even when Jac is unchanged.
+        for (native_toolchain_inputs) |path| {
+            hash.update(path);
+            hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .unlimited));
+        }
+        try hashNativeSources(io, a, root, &hash);
         const package_path = try std.fs.path.join(a, &.{ root, "jaclang" });
         var package = try Io.Dir.cwd().openDir(io, package_path, .{ .iterate = true });
         defer package.close(io);
+        const compiler_inputs = try package.readFileAlloc(io, "compiler_inputs.txt", a, .limited(16 * 1024));
+        hash.update("compiler_inputs.txt");
+        hash.update(compiler_inputs);
         var walker = try package.walkSelectively(a);
         defer walker.deinit();
         var paths: std.ArrayList([]const u8) = .empty;
@@ -185,9 +196,11 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
                 if (!std.mem.startsWith(u8, entry.basename, ".") and
                     !std.mem.eql(u8, entry.basename, "node_modules") and
                     !std.mem.eql(u8, entry.basename, "__pycache__") and
+                    !std.mem.eql(u8, entry.basename, "tests") and
+                    !std.mem.eql(u8, entry.basename, "test") and
                     !std.mem.eql(u8, entry.basename, "vendor")) try walker.enter(io, entry);
             } else if (entry.kind == .file and (std.mem.endsWith(u8, entry.path, ".jac") or std.mem.endsWith(u8, entry.path, ".py"))) {
-                try paths.append(a, try a.dupe(u8, entry.path));
+                if (compilerInput(compiler_inputs, entry.path)) try paths.append(a, try a.dupe(u8, entry.path));
             }
         }
         std.mem.sort([]const u8, paths.items, {}, struct {
@@ -204,6 +217,47 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
     var digest: [32]u8 = undefined;
     hash.final(&digest);
     return std.fmt.bytesToHex(digest, .lower);
+}
+
+fn hashNativeSources(io: Io, a: std.mem.Allocator, root: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
+    var dir = try Io.Dir.cwd().openDir(io, try std.fs.path.join(a, &.{ root, "native" }), .{ .iterate = true });
+    defer dir.close(io);
+    var walker = try dir.walkSelectively(a);
+    defer walker.deinit();
+    var paths: std.ArrayList([]const u8) = .empty;
+    while (try walker.next(io)) |entry| {
+        if (entry.kind == .directory) {
+            if (!std.mem.startsWith(u8, entry.basename, ".")) try walker.enter(io, entry);
+        } else if (entry.kind == .file and (std.mem.endsWith(u8, entry.path, ".cpp") or
+            std.mem.endsWith(u8, entry.path, ".h") or std.mem.endsWith(u8, entry.path, ".hpp")))
+        {
+            try paths.append(a, try a.dupe(u8, entry.path));
+        }
+    }
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn less(_: void, left: []const u8, right: []const u8) bool {
+            return std.mem.lessThan(u8, left, right);
+        }
+    }.less);
+    for (paths.items) |path| {
+        hash.update("native/");
+        hash.update(path);
+        hash.update(try dir.readFileAlloc(io, path, a, .unlimited));
+    }
+}
+
+// Same source boundary as jir.compiler_source_files. A change to an app,
+// example, or test cannot change the compiler object produced by prepare_native.
+fn compilerInput(manifest: []const u8, path: []const u8) bool {
+    if (std.mem.indexOf(u8, path, ".test.") != null) return false;
+    var lines = std.mem.splitScalar(u8, manifest, '\n');
+    while (lines.next()) |raw| {
+        const entry = std.mem.trim(u8, raw, " \r\t");
+        if (entry.len == 0 or entry[0] == '#') continue;
+        if (std.mem.eql(u8, path, entry) or
+            (std.mem.startsWith(u8, path, entry) and path.len > entry.len and path[entry.len] == '/')) return true;
+    }
+    return false;
 }
 
 // Only the build-time host retains the C compiler. Every shipped runtime
@@ -374,6 +428,10 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
         if (std.fs.path.dirname(path)) |parent| try tmp.dir.createDirPath(io, parent);
         try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
     }
+    for (native_toolchain_inputs) |path| {
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
+    }
+    try tmp.dir.createDirPath(io, "native");
     try tmp.dir.createDirPath(io, "jaclang/vendor/typeshed");
     for ([_][]const u8{ "PIN", "TARBALL_SHA256" }) |name| {
         try tmp.dir.writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name }), .data = "pin" });
@@ -381,6 +439,7 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     try tmp.dir.createDirPath(io, "host");
     try tmp.dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "host-key" });
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "compiler.jac\ncompiler\nruntime\n" });
     const root = try tmp.dir.realPathFileAlloc(io, ".", a);
     const host = try std.fs.path.join(a, &.{ root, "host" });
     const before_host = try buildKey(io, a, hostPlatform(), root, host, .host);
@@ -391,6 +450,21 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     try std.testing.expect(!std.mem.eql(u8, &before_runtime, &changed_runtime));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/vendor/generated.py", .data = "materialized vendor data" });
+    try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
+    try tmp.dir.writeFile(io, .{ .sub_path = "native/shim.cpp", .data = "changed emitter" });
+    try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+    try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
+    try tmp.dir.deleteFile(io, "native/shim.cpp");
+    for ([_][]const u8{ "scale/server.jac", "compiler/tests/example.jac", "compiler/example.test.jac", "runtime/test/fixture.py", "compiler/.generated/source.py" }) |rel| {
+        const path = try std.fs.path.join(a, &.{ "jaclang", rel });
+        try tmp.dir.createDirPath(io, std.fs.path.dirname(path).?);
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "unrelated source" });
+        try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
+    }
+    try tmp.dir.createDirPath(io, "jaclang/runtime/python");
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "new runtime input" });
+    try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+    try tmp.dir.deleteFile(io, "jaclang/runtime/python/eval.jac");
     try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));

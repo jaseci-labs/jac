@@ -48,7 +48,7 @@ glob _EXCLUDE_FILES: set[str] = {
          "id_ecdsa",
          "id_ed25519"
      };
-glob _EXCLUDE_SUFFIXES: tuple = (
+glob _EXCLUDE_SUFFIXES: tuple[str, ...] = (
          ".pem",
          ".key",
          ".crt",
@@ -445,6 +445,31 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
     }
     out.extend(pending);
     return "\n".join(out) + "\n";
+}
+
+
+def unresolved_toml_references(text: str, environ: dict[str, str]) -> list[str] {
+    import from jaclang.project.config { interpolate_env_vars }
+    found: list[str] = [];
+    def collect(item: any, path: str) {
+        if isinstance(item, dict) {
+            for (key, value) in item.items() {
+                collect(value, f"{path}.{key}" if path else str(key));
+            }
+        } elif isinstance(item, list) {
+            for (i, element) in enumerate(item) {
+                collect(element, f"{path}[{i}]");
+            }
+        } elif isinstance(item, str) {
+            try {
+                interpolate_env_vars(item, environ);
+            } except ValueError as e {
+                found.append(f"{path}: {e}");
+            }
+        }
+    }
+    collect(tomllib.loads(text), "");
+    return found;
 }
 
 

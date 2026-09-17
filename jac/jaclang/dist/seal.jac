@@ -4,9 +4,10 @@ import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import type from jaclang.project.apps { AppConfig }
 
 
-def seal_copy_ignore(_dir: str, items: list) -> list {
+def seal_copy_ignore(_dir: str, items: list[str]) -> list[str] {
     drop = [
         "__pycache__",
         "node_modules",
@@ -66,7 +67,7 @@ def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
     return None;
 }
 
-def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
+def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] | None) {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.compiler.driver.application { prepare_application }
     import from jaclang.project.config { get_config_for_path }
@@ -74,7 +75,7 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
     import from jaclang.server.assembly { service_apps }
     try {
         config = get_config_for_path(proj_root);
-        services = [];
+        services: list[AppConfig] = [];
         if config is not None {
             selected = config.app_for_path(str(entry_file.resolve()));
             if selected is not None
@@ -191,7 +192,7 @@ def bake_serve_payloads(
         json.dumps(sm, sort_keys=True, indent=1) + "\n", encoding="utf-8"
     );
 
-    client_meta = sm.get('client', {}) or {};
+    client_meta: any = sm.get('client', {}) or {};
     if not bake_client
         or not (client_meta.get('has_client') or client_meta.get('exports')) {
         return True;
@@ -240,7 +241,7 @@ def make_sealed_image(
         } except ValueError {}
     }
 
-    def copy_ignore(d: str, items: list) -> list {
+    def copy_ignore(d: str, items: list[str]) -> list[str] {
         skipped = seal_copy_ignore(d, items);
         if out_names and Path(d).resolve() == Path(proj_root).resolve() {
             skipped = list(

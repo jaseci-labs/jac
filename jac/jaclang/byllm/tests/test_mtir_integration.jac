@@ -14,7 +14,7 @@ import io;
 import os;
 import sys;
 import tempfile;
-import from dataclasses { fields }
+import from jaclang.runtime.object_interop { fields }
 import from pathlib { Path }
 
 import from jaclang { JacRuntime }
@@ -274,7 +274,7 @@ test "mtir roundtrip via jir cache" {
     test_file = tmp_path / "test.jac";
     test_file.write_text("glob x = 1;\n");
 
-    test_mtir_map: dict = {
+    test_mtir_map: dict[str, any] = {
         "test.func1": FunctionInfo(
             name="func1",
             semstr="Test function one.",

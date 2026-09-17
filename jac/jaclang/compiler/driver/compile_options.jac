@@ -1,6 +1,4 @@
-import from jaclang.runtime.object_model { field }
-
-glob _config_probe: dict = {"active": False};
+glob _config_probe: dict[str, bool] = {"active": False};
 
 def _project_config -> any {
     if _config_probe["active"] {
@@ -47,7 +45,7 @@ obj CompileOptions {
         rc_stats: (bool | None) = None,
         nogc_debug: (bool | None) = None,
         na_debug: (bool | None) = None,
-        suppress_codes: list[str] = field(default_factory=`list),
+        suppress_codes: list[str] = [],
         default_codespace: str = "",
         app_kind: str = "",
         target_app: str = "",

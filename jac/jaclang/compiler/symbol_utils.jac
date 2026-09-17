@@ -1,6 +1,6 @@
 import from pathlib { Path }
 import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.passes.transform { Transform }
+
 import type from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -29,7 +29,8 @@ import from jaclang.compiler.frontend.unitree {
     Symbol,
     Token,
     UniNode,
-    UniScopeNode
+    UniScopeNode,
+    ability_of_symbol
 }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
@@ -43,7 +44,6 @@ import from jaclang.compiler.driver.boundary_classify {
     is_client_boundary_import,
     symbol_linked_source_module
 }
-import from jaclang.compiler.frontend.unitree { ability_of_symbol }
 import from jaclang.compiler.expr_keys {
     classify_condition_key,
     collect_assigned_symbols,
@@ -102,7 +102,7 @@ def erased_identity_call_arg(nd: FuncCall) -> (Expr | None) {
     if not isinstance(tgt, Name) or tgt.sym_name not in NATIVE_ERASED_IDENTITY_CALLS {
         return None;
     }
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if len(params) != 2
         or not isinstance(params[0], Expr)
         or not isinstance(params[1], Expr) {
@@ -134,7 +134,6 @@ def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol |
     }
     return None;
 }
-
 
 def imported_module_name(expr: Expr) -> str | None {
     import from jaclang.compiler.types.types { ModuleType }
@@ -369,13 +368,13 @@ def decl_has_access(source_mod: Module, item: ModuleItem) -> bool {
 }
 
 def _already_reported(
-    program: JacProgram, reporter: Transform, diag: DiagnosticInfo, nd: UniNode
+    program: JacProgram, reporter: any, diag: DiagnosticInfo, nd: UniNode
 ) -> bool {
     for pool in (
         program.errors_had,
         program.warnings_had,
-        reporter.errors_had,
-        reporter.warnings_had
+        reporter.ctx.errors_had,
+        reporter.ctx.warnings_had
     ) {
         for e in pool {
             if (
@@ -405,9 +404,8 @@ def report_dead_client_import(reporter: any, nd: Import, item: ModuleItem) -> No
     if _already_reported(reporter.prog, reporter, E5082, item) {
         return;
     }
-    reporter.emit(E5082, node_override=item, name=name, module=module_name);
+    reporter.ctx.emit(E5082, node_override=item, name=name, module=module_name);
 }
-
 
 def report_client_bare_import_uses(reporter: any, mod: Module) {
     for stmt in mod.body {
@@ -438,8 +436,8 @@ def _in_annotation_position(nm: Name, stop: UniNode) -> bool {
     return False;
 }
 
-def _bare_py_import_bindings(mod: Module) -> dict[str, tuple] {
-    out: dict[str, tuple] = {};
+def _bare_py_import_bindings(mod: Module) -> dict[str, tuple[ModuleItem, Import]] {
+    out: dict[str, tuple[ModuleItem, Import]] = {};
     for imp in mod.get_all_sub_nodes(Import) {
         if imp.is_service_import or imp.is_typed {
             continue;
@@ -470,7 +468,6 @@ def _bare_py_import_bindings(mod: Module) -> dict[str, tuple] {
     return out;
 }
 
-
 def _shadows_bare_import(nm: Name) -> bool {
     sym = nm.sym;
     if sym is None or sym.decl is None {
@@ -496,7 +493,6 @@ def _shadows_bare_import(nm: Name) -> bool {
     }
     return False;
 }
-
 
 def _report_client_bare_import_uses(reporter: any, mod: Module, stmt: UniNode) {
     bindings = _bare_py_import_bindings(mod);
@@ -527,7 +523,7 @@ def _report_client_bare_import_uses(reporter: any, mod: Module, stmt: UniNode) {
         note_unbound_client_name(reporter, nm.sym_name);
         already = _already_reported(reporter.prog, reporter, E5084, item);
         if not already {
-            reporter.emit(
+            reporter.ctx.emit(
                 E5084, node_override=item, name=item_name, module=module_name
             );
         }
@@ -556,7 +552,7 @@ def report_placement_warnings(reporter: any, mod: Module) {
             es = ps.elements[idx] if idx < len(ps.elements) else None;
             gname = es.name if es is not None else 'glob';
             if not _already_reported(reporter.prog, reporter, W6006, stmt) {
-                reporter.emit(W6006, node_override=stmt, name=gname);
+                reporter.ctx.emit(W6006, node_override=stmt, name=gname);
             }
         }
         if stmt.code_context == CodeContext.CLIENT and not stmt.codespace_dual {
@@ -568,11 +564,10 @@ def report_placement_warnings(reporter: any, mod: Module) {
             continue;
         }
         if not _already_reported(reporter.prog, reporter, W6007, nm) {
-            reporter.emit(W6007, node_override=nm, name=element_display_name(top));
+            reporter.ctx.emit(W6007, node_override=nm, name=element_display_name(top));
         }
     }
 }
-
 
 def element_display_name(top: UniNode) -> str {
     if isinstance(top, Ability) and isinstance(top.name_ref, Name) {
@@ -593,7 +588,6 @@ def element_display_name(top: UniNode) -> str {
     return 'element';
 }
 
-
 def _client_emitted_top(stmt: UniNode, extra_bound: set[str]) -> bool {
     if not isinstance(stmt, ContextAwareNode) {
         return False;
@@ -608,7 +602,6 @@ def _client_emitted_top(stmt: UniNode, extra_bound: set[str]) -> bool {
     );
 }
 
-
 def _module_top_element(mod: Module, nd: UniNode) -> (UniNode | None) {
     cur: (UniNode | None) = nd;
     while (cur is not None and cur.parent is not mod) {
@@ -616,7 +609,6 @@ def _module_top_element(mod: Module, nd: UniNode) -> (UniNode | None) {
     }
     return cur;
 }
-
 
 def client_bridged_endpoint(mod: Module, top: UniNode) -> bool {
     import from jaclang.compiler.placement.placement { project_has_server }
@@ -630,13 +622,12 @@ def client_bridged_endpoint(mod: Module, top: UniNode) -> bool {
     );
 }
 
-
 def client_value_ref_targets(
     mod: Module, extra_bound: (set[str] | None) = None
 ) -> list[tuple[Name, UniNode]] {
     bound = extra_bound if extra_bound is not None else set();
     out: list[tuple[Name, UniNode]] = [];
-    seen: set[tuple] = set();
+    seen: set[tuple[int, int, int]] = set();
     for stmt in mod.body {
         if not _client_emitted_top(stmt, bound) {
             continue;
@@ -707,7 +698,6 @@ def _import_bound_names(imp: Import) -> set[str] {
     return names;
 }
 
-
 def _import_used_as_value(mod: Module, imp: Import) -> bool {
     names = _import_bound_names(imp);
     if not names {
@@ -733,7 +723,6 @@ def _import_used_as_value(mod: Module, imp: Import) -> bool {
     }
     return False;
 }
-
 
 def serverless_server_evidence(
     mod: Module, prog: any
@@ -770,7 +759,6 @@ def serverless_server_evidence(
     return out;
 }
 
-
 def report_serverless_kind_errors(reporter: any, mod: Module) {
     import from jaclang.compiler.frontend.diagnostics { E5087 }
     import from jaclang.compiler.placement.placement { project_kind_name }
@@ -782,7 +770,7 @@ def report_serverless_kind_errors(reporter: any, mod: Module) {
     for (name, reason, stmt) in evidence {
         already = _already_reported(reporter.prog, reporter, E5087, stmt);
         if not already {
-            reporter.emit(
+            reporter.ctx.emit(
                 E5087, node_override=stmt, kind=kind, name=name, reason=reason
             );
         }

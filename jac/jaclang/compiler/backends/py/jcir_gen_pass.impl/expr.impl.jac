@@ -43,7 +43,7 @@ impl JcirGenPass.exit_assignment with Assignment exit {
         value = self.call_node(self.name_load('auto'), [], []);
     } elif not here.type_tag {
         raise RuntimeError(
-            self.ice('assignment has no value, no enum default and no type tag')
+            self.ctx.ice('assignment has no value, no enum default and no type tag')
         );
     }
     targets_ast = [self.val(t) for t in here.target];
@@ -258,10 +258,10 @@ impl JcirGenPass.exit_binary_expr with BinaryExpr exit {
     }
 }
 
-impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list {
+impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
     if not isinstance(nd.op, Token) {
         raise RuntimeError(
-            self.ice('translate_jac_bin_op reached a non-token operator')
+            self.ctx.ice('translate_jac_bin_op reached a non-token operator')
         );
     }
     if (nd.op.name in [Tok.PIPE_FWD, Tok.A_PIPE_FWD]) {
@@ -312,9 +312,9 @@ impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list {
             )
         ];
     } elif ((nd.op.name == Tok.PIPE_FWD) and isinstance(nd.right, TupleVal)) {
-        self.emit(E5006);
+        self.ctx.emit(E5006);
     } else {
-        self.emit(E5007, op=str(nd.op.value));
+        self.ctx.emit(E5007, op=str(nd.op.value));
     }
     return [];
 }
@@ -414,7 +414,7 @@ impl JcirGenPass.exit_lambda_expr with LambdaExpr exit {
     }
     if not isinstance(here.body, Expr) {
         raise RuntimeError(
-            self.ice('lambda statement body fell past the FunctionDef path')
+            self.ctx.ice('lambda statement body fell past the FunctionDef path')
         );
     }
     self._emit_lambda_expr_body(here, here.body);
@@ -508,7 +508,7 @@ impl JcirGenPass.exit_unary_expr with UnaryExpr exit {
     } elif (here.op.name in [Tok.STAR_POW]) {
         self.set_out(here, self.outs(here.operand));
     } else {
-        raise RuntimeError(self.ice("Unknown Unary operator " + here.op.value));
+        raise RuntimeError(self.ctx.ice("Unknown Unary operator " + here.op.value));
     }
 }
 
@@ -529,8 +529,10 @@ impl JcirGenPass.exit_if_else_expr with IfElseExpr exit {
     );
 }
 
-impl JcirGenPass._multi_string_pieces(str_seq: Sequence[UniNode]) -> list {
-    pieces: list[any] = [];
+impl JcirGenPass._multi_string_pieces(
+    str_seq: Sequence[UniNode]
+) -> list[str | bytes | CgNode] {
+    pieces: list[str | bytes | CgNode] = [];
     for i in str_seq {
         if isinstance(i, String) {
             pieces.append(i.lit_value);
@@ -546,7 +548,7 @@ impl JcirGenPass._multi_string_pieces(str_seq: Sequence[UniNode]) -> list {
         } elif (isinstance(i, Token) and (i.name in [Tok.LBRACE, Tok.RBRACE])) {
             continue;
         } else {
-            raise RuntimeError(self.ice('Multi string made of something weird.'));
+            raise RuntimeError(self.ctx.ice('Multi string made of something weird.'));
         }
     }
     return pieces;
@@ -558,7 +560,7 @@ impl JcirGenPass.exit_multi_string with MultiString exit {
         self.set_out(here, self.outs(lone));
         return;
     }
-    combined_multi: list = [];
+    combined_multi: list[str | bytes | CgNode] = [];
     for item in self._multi_string_pieces(here.strings) {
         if (
             combined_multi
@@ -594,7 +596,7 @@ impl JcirGenPass.exit_multi_string with MultiString exit {
             }
         }
         if not folded {
-            merged.append(v);
+            merged.append(v if isinstance(v, CgNode) else self.const_of(v));
         }
     }
     if not merged {
@@ -874,7 +876,7 @@ impl JcirGenPass.exit_name with Name exit {
         return;
     }
     if here.expr_ctx == ExprCtx.LOAD
-        and id(here) in self.ir_in.own_move_sites
+        and id(here) in self.module.own_move_sites
         and here.sym is not None
         and here.sym.storage in (SymbolStorage.LOCAL, SymbolStorage.PARAM) {
         self.set_out(here, [self._name_take_expr(self._py_name(here))]);

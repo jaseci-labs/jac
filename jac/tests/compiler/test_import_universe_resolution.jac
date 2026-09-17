@@ -68,7 +68,7 @@ def _install_pkg(proj: Path, name: str, with_types: bool = True) {
     }
 }
 
-def _compile(proj: Path) -> tuple {
+def _compile(proj: Path) -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(str(proj / "main.jac"));
     errs = [

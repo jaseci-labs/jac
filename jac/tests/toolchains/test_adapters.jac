@@ -120,3 +120,91 @@ test "desktop package installation does not require system patchelf" {
         }
     }
 }
+
+
+test "shared libraries are named for the host" {
+    import from jaclang.toolchains.host { shared_library_name }
+    with patch("jaclang.toolchains.host.platform.system", return_value="Darwin") {
+        assert shared_library_name("webview") == "libwebview.dylib";
+    }
+    with patch("jaclang.toolchains.host.platform.system", return_value="Linux") {
+        assert shared_library_name("webview") == "libwebview.so";
+    }
+    with patch("jaclang.toolchains.host.platform.system", return_value="Windows") {
+        assert shared_library_name("webview") == "webview.dll";
+    }
+}
+
+
+test "the macOS webview build links WebKit from the Command Line Tools" {
+    import from jaclang.toolchains.desktop {
+        mac_webview_build,
+        MACOS_DESKTOP_MIN_VERSION,
+        WEBVIEW_HEADER
+    }
+    build = mac_webview_build("15.6", "arm64");
+    command = build.command(Path("/tmp/webview.cc"), Path("/tmp/libwebview.dylib"));
+    assert command[0] == "clang++";
+    assert build.library == "libwebview.dylib";
+    assert "-DWEBVIEW_BUILD_SHARED" in command;
+    assert "-mmacosx-version-min=" + MACOS_DESKTOP_MIN_VERSION in command;
+    assert command[command.index("-install_name") + 1]
+        == "@loader_path/libwebview.dylib";
+    assert command[-2:] == ["-framework", "WebKit"];
+    assert command.index("/tmp/webview.cc") < command.index("-o");
+    assert build.identity.startswith(WEBVIEW_HEADER.digest);
+    assert "15.6" in build.identity and "arm64" in build.identity;
+    assert build.webkit_module == "";
+}
+
+
+test "the Linux webview build keeps pkg-config libraries after the source" {
+    import from jaclang.toolchains.desktop { linux_webview_build }
+    build = linux_webview_build(
+        "webkit2gtk-4.1", "2.44.0", ["-lgtk-3", "-lwebkit2gtk-4.1"]
+    );
+    command = build.command(Path("/tmp/webview.cc"), Path("/tmp/libwebview.so"));
+    assert command[0] == "g++";
+    assert build.library == "libwebview.so";
+    assert command.index("-o") < command.index("-lgtk-3");
+    assert build.webkit_module == "webkit2gtk-4.1";
+    assert "webkit2gtk-4.1-2.44.0" in build.identity;
+}
+
+
+test "desktop hosts without a webview backend are refused by name" {
+    import from jaclang.toolchains.system { ensure_desktop_host }
+    with patch("jaclang.toolchains.host.host_platform", return_value="windows-x64") {
+        failed = "";
+        try {
+            ensure_desktop_host();
+        } except RuntimeError as error {
+            failed = str(error);
+        }
+        assert "windows-x64" in failed and "WKWebView" in failed;
+    }
+}
+
+
+test "macOS desktop provisioning needs only the Command Line Tools" {
+    import from jaclang.toolchains.system { ensure_desktop_host }
+    with patch("jaclang.toolchains.host.host_platform", return_value="mac-aarch64") {
+        with patch("jaclang.toolchains.system.mac_desktop_ready", return_value=False) {
+            failed = "";
+            try {
+                ensure_desktop_host();
+            } except RuntimeError as error {
+                failed = str(error);
+            }
+            assert "xcode-select --install" in failed;
+        }
+        with patch("jaclang.toolchains.system.mac_desktop_ready", return_value=True) {
+            with patch(
+                "jaclang.toolchains.system.install_linux_packages"
+            ) as installer {
+                assert ensure_desktop_host() == "mac-aarch64";
+                installer.assert_not_called();
+            }
+        }
+    }
+}

@@ -1,4 +1,6 @@
 """Accessor-backed fields use JavaScript properties rather than storage slots."""
+
+import from jaclang.compiler.passes.execution { run_walker }
 import json;
 import subprocess;
 import from jaclang.compiler.driver.program { JacProgram }
@@ -32,7 +34,7 @@ def probe -> list[int] {
 """,
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
-    EsastGenPass(ir_in=module, prog=program);
+    run_walker(EsastGenPass, module=module, prog=program);
     assert not program.errors_had , "\n".join(
         str(error) for error in program.errors_had
     );
@@ -69,7 +71,7 @@ def probe -> list[int] {
 """,
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
-    EsastGenPass(ir_in=module, prog=program);
+    run_walker(EsastGenPass, module=module, prog=program);
     assert not program.errors_had , "\n".join(
         str(error) for error in program.errors_had
     );

@@ -7,9 +7,9 @@ import from ..utils.api { getErrorMessage }
 
 glob:pub AuthContext = createContext(None);
 
-async def _jsonBody(resp: Response) -> dict {
+async def _jsonBody(resp: Response) -> dict[str, any] {
     body = await resp.json();
-    return body as dict;
+    return body as dict[str, any];
 }
 
 def:pub AuthProvider(children: any) -> JsxElement {
@@ -42,7 +42,7 @@ def:pub AuthProvider(children: any) -> JsxElement {
         isLoading = False;
     }
 
-    async def login(username: str, password: str) -> dict {
+    async def login(username: str, password: str) -> dict[str, any] {
         try {
             resp = await fetch(
                 baseUrl + "/admin/login",
@@ -75,7 +75,7 @@ def:pub AuthProvider(children: any) -> JsxElement {
         }
     }
 
-    async def resetPassword(currentPwd: str, newPwd: str) -> dict {
+    async def resetPassword(currentPwd: str, newPwd: str) -> dict[str, any] {
         try {
             resp = await fetch(
                 baseUrl + "/admin/reset-password",
@@ -143,6 +143,6 @@ def:pub AuthProvider(children: any) -> JsxElement {
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
-def:pub useAuth -> dict {
+def:pub useAuth -> dict[str, any] {
     return useContext(AuthContext);
 }

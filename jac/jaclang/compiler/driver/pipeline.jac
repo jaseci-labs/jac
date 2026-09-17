@@ -23,7 +23,7 @@ import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
 import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
 import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-import from jaclang.compiler.passes.transform { Transform }
+
 import from jaclang.compiler.placement.placement_solver { PlacementApplyPass }
 import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
 import from jaclang.compiler.driver.pipeline_types {
@@ -94,7 +94,7 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
          'VariantAgreementPass': PassContract((), (AnalysisFact.VARIANT_AGREEMENT, ))
      };
 
-def product_pipeline(product: CompilationProduct) -> list[type[Transform]] {
+def product_pipeline(product: CompilationProduct) -> list[type] {
     if product == CompilationProduct.SYMBOLS {
         return get_symtab_ir_sched();
     }
@@ -150,7 +150,6 @@ def invalidate_client_product(program: JacProgram, module: Module) {
         } except OSError {}
     }
 }
-
 
 def require_product(
     program: JacProgram, module: Module, product: CompilationProduct
@@ -279,7 +278,7 @@ def compile_module(
     return task.module;
 }
 
-def get_symtab_ir_sched -> list[type[Transform]] {
+def get_symtab_ir_sched -> list[type] {
     if not schedule_tier_reason() {
         _tok = _ir_sched_loading.set(True);
         try {
@@ -308,8 +307,8 @@ glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', `default=False),
      _codegen_sched_loading = ContextVar('jac_codegen_sched_loading', `default=False),
      _analysis_sched_loading = ContextVar('jac_analysis_sched_loading', `default=False);
 
-glob SYMTAB_SCHED_DEPS: tuple = ('jaclang.compiler.symbol_utils', ),
-     IR_SCHED_DEPS: tuple = (
+glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
+     IR_SCHED_DEPS: tuple[str, ...] = (
          'jaclang.compiler.symbol_utils',
          'jaclang.compiler.expr_keys',
          'jaclang.compiler.type_registry',
@@ -326,7 +325,7 @@ glob SYMTAB_SCHED_DEPS: tuple = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.passes.comptime_resolve_pass',
          'jaclang.project.mobui_scope'
      ),
-     ANALYSIS_SCHED_DEPS: tuple = (
+     ANALYSIS_SCHED_DEPS: tuple[str, ...] = (
          'jaclang.compiler.field_semantics',
          'jaclang.compiler.passes.type_checker_pass',
          'jaclang.compiler.types.type_evaluator',
@@ -352,14 +351,14 @@ glob SYMTAB_SCHED_DEPS: tuple = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.passes.region_infer_pass',
          'jaclang.compiler.tools.jac_auto_lint_pass'
      ),
-     CODEGEN_SCHED_DEPS: tuple = (
+     CODEGEN_SCHED_DEPS: tuple[str, ...] = (
          'jaclang.compiler.passes.rc_facts_pass',
          'jaclang.compiler.backends.es',
          'jaclang.compiler.passes.freeze_structure_pass'
      ),
-     NATIVE_CODEGEN_DEPS: tuple = ('jaclang.compiler.backends.native', );
+     NATIVE_CODEGEN_DEPS: tuple[str, ...] = ('jaclang.compiler.backends.native', );
 
-def module_in_flight(names: tuple) -> str {
+def module_in_flight(names: tuple[str, ...]) -> str {
     import sys;
     for name in names {
         spec = sys.modules.get(name)?.__spec__;
@@ -370,7 +369,7 @@ def module_in_flight(names: tuple) -> str {
     return '';
 }
 
-def _import_all(names: tuple) {
+def _import_all(names: tuple[str, ...]) {
     import importlib;
     for name in names {
         importlib.import_module(name);
@@ -399,19 +398,19 @@ def _codegen_tier_reason -> str {
     return schedule_tier_reason();
 }
 
-def pass_requires(p: type[Transform]) -> tuple[AnalysisFact, ...] {
+def pass_requires(p: type) -> tuple[AnalysisFact, ...] {
     return PASS_CONTRACTS.get(p.__name__, PassContract()).requires;
 }
 
-def pass_provides(p: type[Transform]) -> tuple[AnalysisFact, ...] {
+def pass_provides(p: type) -> tuple[AnalysisFact, ...] {
     return PASS_CONTRACTS.get(p.__name__, PassContract()).provides;
 }
 
 def validate_schedule(
-    passes: list[type[Transform]],
+    passes: list[type],
     preprovided: (set[AnalysisFact] | None) = None,
     origin: str = 'schedule'
-) -> list[type[Transform]] {
+) -> list[type] {
     provided: set[AnalysisFact] = set(preprovided)
         if preprovided is not None
         else set();
@@ -449,14 +448,14 @@ def native_schedule_failure -> str {
     return _native_sched_failure.get('reason', '');
 }
 
-def get_boundary_analysis_sched -> list[type[Transform]] {
+def get_boundary_analysis_sched -> list[type] {
     return validate_schedule(
         [BoundaryFactsPass, BoundaryAnalysisPass, EndpointEffectPass],
         origin='boundary-analysis schedule'
     );
 }
 
-def get_bootstrap_ir_sched -> list[type[Transform]] {
+def get_bootstrap_ir_sched -> list[type] {
     return validate_schedule(
         [
             AppContextPass,
@@ -471,9 +470,7 @@ def get_bootstrap_ir_sched -> list[type[Transform]] {
     );
 }
 
-def get_ir_gen_sched(
-    is_internal: bool = False, gen_mtir: bool = True
-) -> list[type[Transform]] {
+def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[type] {
     if schedule_tier_reason() {
         return get_bootstrap_ir_sched();
     }
@@ -486,7 +483,7 @@ def get_ir_gen_sched(
             JsxIntrinsicGuardPass
         }
 
-        passes: list[type[Transform]] = [
+        passes: list[type] = [
             AppContextPass,
             GraphLoweringPass,
             ASTValidationPass,
@@ -546,7 +543,7 @@ def require_typeshed_stubs -> None {
     );
 }
 
-def get_analysis_sched -> list[type[Transform]] {
+def get_analysis_sched -> list[type] {
     if _analysis_sched_loading.get() or module_in_flight(ANALYSIS_SCHED_DEPS) {
         return [];
     }
@@ -629,13 +626,13 @@ def native_pipeline_available -> tuple[bool, str] {
     return verdict;
 }
 
-def _py_codegen_tail -> list[type[Transform]] {
+def _py_codegen_tail -> list[type] {
     return [NativeImportFactsPass, JcirGenPass, JcirBytecodeGenPass];
 }
 
 def get_py_code_gen(
     native: bool = True, provided: (set[AnalysisFact] | None) = None
-) -> list[type[Transform]] {
+) -> list[type] {
     if _codegen_tier_reason() {
         return _py_codegen_tail();
     }
@@ -645,7 +642,7 @@ def get_py_code_gen(
         import from jaclang.compiler.backends.es { EsastGenPass }
         import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
 
-        passes: list[type[Transform]] = [RcFactsPass, EsastGenPass];
+        passes: list[type] = [RcFactsPass, EsastGenPass];
         if native {
             _import_all(NATIVE_CODEGEN_DEPS);
             import from jaclang.compiler.backends.native {
@@ -676,7 +673,7 @@ def get_py_code_gen(
     }
 }
 
-def providers_of(passes: list[type[Transform]]) -> set[AnalysisFact] {
+def providers_of(passes: list[type]) -> set[AnalysisFact] {
     out: set[AnalysisFact] = set();
     for p in passes {
         for tag in pass_provides(p) {
@@ -686,7 +683,7 @@ def providers_of(passes: list[type[Transform]]) -> set[AnalysisFact] {
     return out;
 }
 
-def get_format_sched(auto_lint: bool = False) -> list[type[Transform]] {
+def get_format_sched(auto_lint: bool = False) -> list[type] {
     import from jaclang.compiler.tools.comment_attach_pass { CommentAttachPass }
     import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.tools.jac_auto_lint_pass { JacAutoLintPass }
@@ -702,7 +699,7 @@ def get_format_sched(auto_lint: bool = False) -> list[type[Transform]] {
     );
 }
 
-def get_lint_sched -> list[type[Transform]] {
+def get_lint_sched -> list[type] {
     import from jaclang.compiler.tools.jac_auto_lint_pass { JacLintCheckPass }
     return validate_schedule([JacLintCheckPass], origin='lint schedule');
 }
@@ -712,11 +709,10 @@ def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
     return wasm_artifact(program, path, exports);
 }
 
-
 def execute_passes(
     program: JacProgram,
     module: Module,
-    passes: list[type[Transform]],
+    passes: list[type],
     cancel_token: Event | None = None
 ) -> Module {
     import from jaclang.compiler.driver.pass_driver {
@@ -741,7 +737,7 @@ def execute_passes(
         }
         module = run_pass(
             step, module, program, cancel_token=cancel_token, policy=policy
-        ).ir_out;
+        ).module;
         provided.update(pass_provides(step));
         if cancel_token is None or not cancel_token.is_set() {
             completed.add(step.__name__);
@@ -750,15 +746,14 @@ def execute_passes(
     return module;
 }
 
-
 def run_utility(
     product: UtilityProduct,
     ir: any,
     program: JacProgram,
     cancel_token: Event | None = None
-) -> Transform {
+) -> any {
     import from jaclang.compiler.driver.pass_driver { run_pass }
-    step: type[Transform];
+    step: type;
     if product == UtilityProduct.PYTHON_AST {
         import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
         step = PyastBuildPass;
@@ -795,7 +790,6 @@ def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | Non
     }
     return (artifact.manifest.page_export, artifact.manifest.layout_export);
 }
-
 
 def compile_application(
     program: JacProgram, entry_path: str, options: CompileOptions

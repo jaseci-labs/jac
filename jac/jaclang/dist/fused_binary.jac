@@ -76,11 +76,7 @@ def graft_runtime(self_path: str, host_path: str) -> bool {
 }
 
 
-def materialized_runtime_dir(path: str = "") -> (str | None) {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
-    exe = path
-        or os.environ.get("JAC_EXECUTABLE", "")
-        or os.path.realpath(sys.executable);
+def runtime_trailer(exe: str) -> (Trailer | None) {
     if not os.path.isfile(exe) {
         return None;
     }
@@ -101,12 +97,49 @@ def materialized_runtime_dir(path: str = "") -> (str | None) {
             tail = f.read(TRAILER_LEN);
         }
     }
-    t = parse_trailer(tail, MAGIC);
-    if t is None {
+    return parse_trailer(tail, MAGIC);
+}
+
+
+def running_executable -> str {
+    return os.environ.get("JAC_EXECUTABLE", "") or os.path.realpath(sys.executable);
+}
+
+
+def running_runtime_key(path: str = "") -> str {
+    t = runtime_trailer(path or running_executable());
+    return rt_key(t.hash16()) if t is not None else "";
+}
+
+
+def interpreter_runtime_dir -> (str | None) {
+    try {
+        cand = Path(sys.prefix).resolve().parent;
+    } except OSError {
         return None;
     }
-    key = rt_key(t.hash16(), exe);
-    roots = [str(get_jir_cache_dir().parent / "rt")];
+    if (cand / ".ok").is_file() and (cand / "python").is_dir() {
+        return str(cand);
+    }
+    return None;
+}
+
+
+def _runtime_dir_for_key(key: str) -> (str | None) {
+    import from jaclang.cache.registry { bucket }
+    if not key {
+        return None;
+    }
+    roots = [str(bucket("rt").path())];
+    legacy = os.path.join(
+        os.environ.get("XDG_CACHE_HOME", "")
+            or os.path.join(os.path.expanduser("~"), ".cache"),
+        "jac",
+        "rt"
+    );
+    if legacy not in roots {
+        roots.append(legacy);
+    }
     tmp = os.environ.get("TMPDIR", "") or "/tmp";
     roots.append(os.path.join(tmp, f"jac-cache-{os.getuid()}", "rt"));
     for r in roots {
@@ -116,6 +149,31 @@ def materialized_runtime_dir(path: str = "") -> (str | None) {
         }
     }
     return None;
+}
+
+
+def materialized_runtime_dir(path: str = "") -> (str | None) {
+    if not path {
+        here = interpreter_runtime_dir();
+        if here is not None {
+            return here;
+        }
+    }
+    return _runtime_dir_for_key(running_runtime_key(path));
+}
+
+
+def running_runtime_entries -> set[str] {
+    names: set[str] = set();
+    here = interpreter_runtime_dir();
+    if here is not None {
+        names.add(os.path.basename(here));
+    }
+    key = running_runtime_key();
+    if key {
+        names.add(key);
+    }
+    return names;
 }
 
 

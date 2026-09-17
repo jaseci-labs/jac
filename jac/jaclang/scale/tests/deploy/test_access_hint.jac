@@ -9,7 +9,7 @@ import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.runtime.fleet { fleet_of }
 
 
-def _builder(gateway: dict, project_dir: str) -> ManifestBuilder {
+def _builder(gateway: dict[str, any], project_dir: str) -> ManifestBuilder {
     return ManifestBuilder(
         k8s_config=KubernetesConfig(
             app_name="shop", namespace="shop-ns", bundle_storage_class="standard"
@@ -23,7 +23,7 @@ def _builder(gateway: dict, project_dir: str) -> ManifestBuilder {
 }
 
 
-def _bundle(gateway: dict) -> dict {
+def _bundle(gateway: dict[str, any]) -> dict[str, any] {
     with tempfile.TemporaryDirectory() as project {
         with open(os.path.join(project, "main.jac"), "w") as f {
             f.write("with entry {}\n");

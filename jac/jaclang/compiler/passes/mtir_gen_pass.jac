@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -44,7 +45,6 @@ import from jaclang.runtime.semantic {
     type_to_str
 }
 
-import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 glob PRIMITIVE_TYPES: list[str] = [
@@ -61,20 +61,18 @@ glob PRIMITIVE_TYPES: list[str] = [
      ]
          + JAC_TYPE_REGISTRY.sized_scalar_names();
 
-walker MTIRGenPass(Transform) {
-    has ir_in: Module,
-        cancel_token: any = None,
+walker MTIRGenPass {
+    has ctx: CompileContext,
+        module: Module,
         _class_info_cache: dict[int, ClassInfo] = {};
 
-    def postinit -> None;
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _is_primitive_type(type_expr: Expr | None) -> bool;
     def _doc_text(doc: String | None) -> str | None;
     def _parse_type_expr(
         type_expr: Expr | None, scope: UniScopeNode
-    ) -> ClassInfo | EnumInfo | str | tuple | None;
+    ) -> ClassInfo | EnumInfo | str | tuple[object, ...] | None;
 
     def _extract_type_symbol(
         type_expr: Expr | None, scope: UniScopeNode
@@ -96,6 +94,9 @@ walker MTIRGenPass(Transform) {
         type_expr: Expr, scope: UniScopeNode
     ) -> Archetype | None;
 
-    def _traversal_candidate_archetypes(expr: Expr, scope: UniScopeNode) -> tuple;
+    def _traversal_candidate_archetypes(
+        expr: Expr, scope: UniScopeNode
+    ) -> tuple[list[Archetype], bool];
+
     def _register_archetype_light(nd: Archetype) -> None;
 }

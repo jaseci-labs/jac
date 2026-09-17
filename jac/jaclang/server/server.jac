@@ -72,15 +72,24 @@ obj ExecutionManager {
         metrics: any = None;
 
     async def execute_function(
-        func: Callable[(..., any)], args: dict[(str, any)], username: str
+        func: Callable[(..., any)],
+        args: dict[(str, any)],
+        username: str,
+        serialize_result: bool = True
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_sync(
-        func: Callable[(..., any)], args: dict[(str, any)], username: str
+        func: Callable[(..., any)],
+        args: dict[(str, any)],
+        username: str,
+        serialize_result: bool = True
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_async(
-        func: Callable[(..., any)], args: dict[(str, any)], username: str
+        func: Callable[(..., any)],
+        args: dict[(str, any)],
+        username: str,
+        serialize_result: bool = True
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker(
@@ -100,7 +109,7 @@ obj ExecutionManager {
     ) -> list[JsonValue] | Generator | AsyncGenerator;
 
     async def _finalize_call_response(
-        call_state: CallState, result: any
+        call_state: CallState, result: any, serialize_result: bool = True
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 }
 
@@ -136,6 +145,7 @@ obj ModuleIntrospector {
     def _check_module_freshness -> None;
     def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
+    def find_target(name: str) -> any;
     def get_client_functions -> dict[str, Callable[(..., any)]];
     def resolve_root_app(configured: str = "") -> str;
     def introspect_callable(func: Callable[(..., any)]) -> dict[str, any];
@@ -212,6 +222,7 @@ obj JacAPIServer(EndpointHost) {
 
     def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
+    def find_target(name: str) -> any;
     def print_endpoint_docs -> None;
     def _ensure_sv_siblings -> None;
     def _ensure_client_bundle -> None;

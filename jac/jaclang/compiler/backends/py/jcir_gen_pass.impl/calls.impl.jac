@@ -18,7 +18,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
     }
     ct_slots = self._ct_ctor_slots(here);
     if ct_slots is not None {
-        kws: list = [];
+        kws: list[CgNode] = [];
         for pair in ct_slots {
             pname: str = pair[0];
             pexpr: UniNode = pair[1];
@@ -54,7 +54,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
                 ]
             );
         } else {
-            self.emit(E5008);
+            self.ctx.emit(E5008);
         }
     } elif isinstance(here.right, FilterCompr) {
         if self._is_edge_ref_target(here.target) {
@@ -231,7 +231,7 @@ impl JcirGenPass.exit_atom_unit with AtomUnit exit {
     self.set_out(here, self.outs(here.value));
 }
 
-impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[(list, list)] {
+impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[list[CgNode], list[CgNode]] {
     args: list[CgNode] = [];
     keywords: list[CgNode] = [];
     if nd.params {
@@ -245,7 +245,7 @@ impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[(list, list)] {
             } elif (isinstance(x, KWPair) and self.val(x).cls == 'keyword') {
                 keywords.append(self.val(x));
             } else {
-                raise RuntimeError(self.ice('Invalid Parameter'));
+                raise RuntimeError(self.ctx.ice('Invalid Parameter'));
             }
         }
     }
@@ -256,7 +256,7 @@ impl JcirGenPass.exit_func_call with FuncCall exit {
     self._exit_func_call_impl(here);
 }
 
-impl JcirGenPass._place_parts(arg: UniNode) -> (tuple | None) {
+impl JcirGenPass._place_parts(arg: UniNode) -> (tuple[str, any, any] | None) {
     place = arg;
     if isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership) {
         place = arg.operand;
@@ -299,7 +299,7 @@ impl JcirGenPass._name_take_expr(owner: str) -> CgNode {
 }
 
 impl JcirGenPass._lower_take(nd: FuncCall) -> (CgNode | None) {
-    params = list(nd.params or []);
+    params: list[Expr | KWPair] = list(nd.params or []);
     if len(params) != 1 or isinstance(params[0], KWPair) {
         return None;
     }
@@ -320,7 +320,7 @@ impl JcirGenPass._lower_take(nd: FuncCall) -> (CgNode | None) {
 }
 
 impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
-    params = list(nd.params or []);
+    params: list[Expr | KWPair] = list(nd.params or []);
     if len(params) != 2 or any([isinstance(p, KWPair) for p in params]) {
         return None;
     }

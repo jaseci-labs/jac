@@ -156,6 +156,10 @@ test "native runtime emits dependencies for bare imports" {
             (js, exports) = compiler.compile_runtime_utils(
                 compiler.NATIVE_RUNTIME_FILE
             );
+            for name in ["useJacState", "jacSetToken"] {
+                assert name in exports , f"Native runtime is missing {name}";
+                assert f"function {name}(" in js , f"Missing implementation: {name}";
+            }
             assert "html_tag_map.js" in js;
             assert (
                 project / "compiled" / "targets" / "react_native" / "html_tag_map.js"

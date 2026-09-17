@@ -2,7 +2,7 @@
 
 walker W {
     can run with entry {
-        params: dict = {"id": "abc"};
+        params: dict[str, str] = {"id": "abc"};
         print(params.id);
     }
 }

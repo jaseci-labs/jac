@@ -347,8 +347,8 @@ impl JacCompiler._load_native_from_cache(
         }
         gen = CodeGenTarget();
         gen.native_engine = engine;
-        py_func_table: dict = {};
-        callbacks_list: list = [];
+        py_func_table: dict[str, Callable[..., object]] = {};
+        callbacks_list: list[object] = [];
         gen.interop_py_funcs = py_func_table;
         gen._interop_callbacks = callbacks_list;
         if cached_interop {
@@ -420,8 +420,8 @@ impl JacCompiler._load_native_from_bitcode(
     }
     gen = CodeGenTarget();
     gen.native_engine = engine;
-    py_func_table: dict = {};
-    callbacks_list: list = [];
+    py_func_table: dict[str, Callable[..., object]] = {};
+    callbacks_list: list[object] = [];
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
     if cached_interop {
@@ -618,12 +618,12 @@ impl JacCompiler._get_precompiled_jir_bytecode(
     return None;
 }
 
-impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
+impl JacCompiler._build_interop_dict(result: uni.Module) -> dict[str, any] {
     manifest = result.gen.interop_manifest;
     if manifest is None {
         return {};
     }
-    interop_data: dict = {'bindings': {}};
+    interop_data: dict[str, any] = {'bindings': {}};
     for (name, binding) in manifest.bindings.items() {
         interop_data['bindings'][name] = {
             'name': binding.name,
@@ -703,8 +703,8 @@ impl JacCompiler.parse_str(
             target_program,
             cancel_token=cancel_token
         );
-        had_error = len(py_ast_ret.errors_had) > 0;
-        converted = py_ast_ret.ir_out;
+        had_error = len(py_ast_ret.ctx.errors_had) > 0;
+        converted = py_ast_ret.module;
         assert isinstance(converted, uni.Module);
         mod = converted;
     } else {
@@ -1314,7 +1314,7 @@ impl JacCompiler.compile(
             if _depth_prev == 0 {
                 self._closure_opts = options;
             }
-            _gc_prev: (tuple | None) = None;
+            _gc_prev: (tuple[int, int, int] | None) = None;
             if _depth_prev == 0 and not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
                 import gc;
                 _gc_prev = gc.get_threshold();
@@ -1727,7 +1727,7 @@ impl JacCompiler.build(
 impl JacCompiler.run_schedule(
     mod: uni.Module,
     target_program: JacProgram,
-    passes: list[type[Transform]],
+    passes: list[type],
     cancel_token: (Event | None) = None
 ) -> None {
     import from jaclang.compiler.driver.pipeline { execute_passes }
@@ -1825,7 +1825,7 @@ impl JacCompiler._report_missing_native_ir(
     }
     import from jaclang.compiler.frontend.diagnostics { E5092 }
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-    import from jaclang.compiler.passes.transform { Alert }
+    import from jaclang.compiler.passes.context { Alert }
     reason = native_schedule_failure();
     if not reason {
         (_avail, _why) = native_pipeline_available();

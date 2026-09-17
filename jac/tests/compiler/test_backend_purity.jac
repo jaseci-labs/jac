@@ -35,12 +35,12 @@ glob FORBIDDEN: dict[str, str] = {
      # EMPTY by design - the plan is complete. Adding an entry here means a
      # backend grew analysis that belongs in the central pipeline; that is
      # a regression to fix, not debt to record.
-     MIGRATION_DEBT: dict[tuple, int] = {},
+     MIGRATION_DEBT: dict[tuple[str, str], int] = {},
      # Reviewed permanent consumption: (relative-path, pattern) ->
      # (exact line count, rationale). These are NOT analysis duplication:
      # they are reads of central APIs or of the declaration surface itself,
      # at sites where the declaration IS the fact.
-     SANCTIONED: dict[tuple, tuple] = {
+     SANCTIONED: dict[tuple[str, str], tuple[int, str]] = {
          ("es/esast_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
              4,
              "return_type_is_jsx (#8314) reads the declared return annotation "
@@ -171,8 +171,8 @@ glob FORBIDDEN: dict[str, str] = {
              "(#7418): call_kind is stamped authoritatively by the required "
              "inference schedule. Plus erased_identity_call_arg (#8223) "
              "and the is_erased_field_marker pair (#8201), declaration-"
-             "surface reads on the same terms: whether `cast` or `field` "
-             "here is the erasable `typing.cast` / `dataclasses.field` is "
+             "surface reads on the same terms: whether `cast` or `ObjectField` "
+             "here is the erasable `typing.cast` / `jaclang.runtime.object_model.ObjectField` is "
              "answered by the module's own import list and by the call's "
              "own position in a `has` declaration, facts that are "
              "themselves the declaration and live on no analysis product. "
@@ -262,10 +262,10 @@ glob FORBIDDEN: dict[str, str] = {
      };
 
 """Count matching lines per (file, pattern) across both backends."""
-def scan_backends -> dict {
+def scan_backends -> dict[tuple[str, str], int] {
     passes_root = Path(jaclang.__file__).parent / "compiler" / "backends";
     compiled = {name: re.compile(pat) for (name, pat) in FORBIDDEN.items()};
-    counts: dict = {};
+    counts: dict[tuple[str, str], int] = {};
     for backend in ("es", "native") {
         for src in sorted((passes_root / backend).rglob("*.jac")) {
             if not src.is_file() {

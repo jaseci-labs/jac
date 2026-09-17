@@ -1,12 +1,12 @@
-import from dataclasses { dataclass }
+def identity(cls: type) -> type {
+    return cls;
+}
 
-def test_local_dataclass() -> None {
-    @dataclass
-    class MyResult {
-        with entry {
-            is_match: bool = False;
+def test_local_object {
+    @identity
+    obj MyResult {
+        has is_match: bool = False,
             value: (str | None) = None;
-        }
     }
 
     result = MyResult();

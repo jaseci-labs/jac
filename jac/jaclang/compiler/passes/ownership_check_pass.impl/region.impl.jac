@@ -42,7 +42,7 @@ impl OwnershipCheckPass._partition_sugar_reason(call: FuncCall) -> str {
 }
 
 impl OwnershipCheckPass._process_partition_sugar -> None {
-    for call in self.ir_in.get_all_sub_nodes(FuncCall) {
+    for call in self.module.get_all_sub_nodes(FuncCall) {
         _tr = call.target;
         if not (
             isinstance(_tr, AtomTrailer)
@@ -60,7 +60,7 @@ impl OwnershipCheckPass._process_partition_sugar -> None {
         }
         reason = self._partition_sugar_reason(call);
         if reason != "" {
-            self.emit(E1314, node_override=call, name=reason);
+            self.ctx.emit(E1314, node_override=call, name=reason);
             continue;
         }
         _ps_asgn = call.parent;
@@ -86,10 +86,16 @@ impl OwnershipCheckPass._process_partition_sugar -> None {
     }
 }
 
-glob _REGION_SCALARS: tuple = ("int", "float", "bool", "None", "NoneType");
+glob _REGION_SCALARS: tuple[str, ...] = (
+         "int",
+         "float",
+         "bool",
+         "None",
+         "NoneType"
+     );
 
 impl OwnershipCheckPass._has_region_blocks -> bool {
-    return bool(self.ir_in.get_all_sub_nodes(OpenStmt));
+    return bool(self.module.get_all_sub_nodes(OpenStmt));
 }
 
 impl OwnershipCheckPass._place_of(nd: Expr | None) -> (Name | None) {
@@ -266,7 +272,7 @@ impl OwnershipCheckPass._emit_post_seal_diagnostics(region: OpenStmt) -> None {
                 if isinstance(bx3.op, ConnectOp)
                     and bx3 is not _seal_site
                     and self._seal_connect_handle(bx3) is not None {
-                    self.emit(
+                    self.ctx.emit(
                         E1307,
                         node_override=bx3,
                         name="connect",
@@ -280,7 +286,7 @@ impl OwnershipCheckPass._emit_post_seal_diagnostics(region: OpenStmt) -> None {
         }
         for fc in s3.get_all_sub_nodes(FuncCall) {
             if self._seal_arch_ctor(fc) {
-                self.emit(
+                self.ctx.emit(
                     E1307,
                     node_override=fc,
                     name=fc.target.sym_name
@@ -294,7 +300,7 @@ impl OwnershipCheckPass._emit_post_seal_diagnostics(region: OpenStmt) -> None {
         }
         for bx2 in s3.get_all_sub_nodes(BinaryExpr) {
             if isinstance(bx2.op, ConnectOp) {
-                self.emit(
+                self.ctx.emit(
                     E1307,
                     node_override=bx2,
                     name="connect",
@@ -306,7 +312,7 @@ impl OwnershipCheckPass._emit_post_seal_diagnostics(region: OpenStmt) -> None {
 }
 
 impl OwnershipCheckPass._emit_region_escape(nm: Name, region: OpenStmt) -> None {
-    self.emit(
+    self.ctx.emit(
         E1307,
         node_override=nm,
         name=nm.sym_name,
@@ -388,7 +394,7 @@ impl OwnershipCheckPass._call_borrows_handle(expr: Expr | None, hsid: SymId) -> 
 }
 
 impl OwnershipCheckPass._stamp_region_borrows -> None {
-    regions = self.ir_in.get_all_sub_nodes(OpenStmt);
+    regions = self.module.get_all_sub_nodes(OpenStmt);
     if not regions {
         return;
     }
@@ -526,7 +532,7 @@ impl OwnershipCheckPass._region_call_result_rooted(
 }
 
 impl OwnershipCheckPass._emit_region_call_escape(call: Expr, region: OpenStmt) -> None {
-    self.emit(
+    self.ctx.emit(
         E1307,
         node_override=call,
         name="call result",
@@ -535,7 +541,7 @@ impl OwnershipCheckPass._emit_region_call_escape(call: Expr, region: OpenStmt) -
 }
 
 impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
-    regions = self.ir_in.get_all_sub_nodes(OpenStmt);
+    regions = self.module.get_all_sub_nodes(OpenStmt);
     if not regions {
         return;
     }
@@ -544,7 +550,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
     for region in regions {
         if not region.body {
             _w_nm = self._open_handle_name(region);
-            self.emit(
+            self.ctx.emit(
                 W1310,
                 node_override=region,
                 name=_w_nm.sym_name if _w_nm is not None else "Region()"
@@ -580,7 +586,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
                 key = (id(region), id(ret));
                 if key not in seen {
                     seen.add(key);
-                    self.emit(
+                    self.ctx.emit(
                         E1307,
                         node_override=ret.expr,
                         name="return value",

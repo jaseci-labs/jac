@@ -1,8 +1,9 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
-import from jaclang.compiler.passes.transform { Transform }
+
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.placement.placement_work { PlacementWork }
 import from jaclang.compiler.placement.placement {
@@ -14,7 +15,11 @@ import from jaclang.compiler.placement.placement {
     summarize_module
 }
 
-glob _na_scan_memo: dict[tuple, tuple] = {},
+glob _na_scan_memo:
+         dict[
+             tuple[str, bool],
+             tuple[tuple[tuple[str, int, int], ...], str, list[str]]
+         ] = {},
      _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
@@ -53,7 +58,7 @@ def _native_dep_scan(
     files = [path]
         + discover_annex_files(path, '.impl.jac')
         + discover_annex_files(path, '.test.jac');
-    fresh_parts: list[tuple] = [];
+    fresh_parts: list[tuple[str, int, int]] = [];
     for f in files {
         try {
             st = os.stat(f);
@@ -110,7 +115,7 @@ def _native_deps_ok(
         scope_lowering_active
     }
     cap = effective_native_closure_cap();
-    edges: dict[str, list[str]] = {root_path: list(root_deps)};
+    edges: dict[str, list[str]] = {root_path: list[str](root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
         if len(edges) > cap {
@@ -415,7 +420,6 @@ def _closure_pullable(
     return True;
 }
 
-
 def _module_externally_pinned(mod_path: str) -> bool {
     import from jaclang.compiler.placement.placement_pins { config_module_pin }
     return config_module_pin(mod_path) != '';
@@ -468,13 +472,7 @@ def _seed_from_summary(module: uni.Module, prog: any) -> int {
                 why = reason;
                 break;
             }
-            if cap == 'NPM'
-                and reason
-                    in (
-                        'string-path import',
-                        'virtual @jac import',
-                        'npm dependency'
-                    ) {
+            if cap == 'NPM' {
                 target_ctx = CodeContext.CLIENT;
                 ctx_label = 'client';
                 why = reason;
@@ -702,7 +700,7 @@ def solve_module_placement(
 def _emit_solver_warning(
     prog: any, diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: any
 ) {
-    import from jaclang.compiler.passes.transform { Alert }
+    import from jaclang.compiler.passes.context { Alert }
     for w in prog.warnings_had {
         if (
             w.code is diag
@@ -955,21 +953,15 @@ def demote_client_pulled_elements(
     return True;
 }
 
-walker PlacementApplyPass(Transform) {
-    has prog: JacProgram,
-        ir_in: uni.Module,
-        cancel_token: any = None;
+walker PlacementApplyPass {
+    has ctx: CompileContext,
+        prog: JacProgram,
+        module: uni.Module;
 
     static has HOST_PASS: bool = True;
 
-    def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
-}
-
-impl PlacementApplyPass.postinit -> None {
-    super.postinit();
 }
 
 impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
@@ -982,14 +974,6 @@ impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
     return ir_in;
 }
 
-impl PlacementApplyPass.transform(ir_in: uni.Module) -> uni.Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, uni.Module);
-    return out;
-}
-
 impl PlacementApplyPass.run_walk with uni.Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

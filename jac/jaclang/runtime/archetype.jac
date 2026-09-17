@@ -1,5 +1,11 @@
 import from collections.abc { Callable }
-import from jaclang.runtime.object_model { asdict, field, fields, is_jac_object }
+import from jaclang.runtime.object_model {
+    asdict,
+    ObjectField,
+    fields,
+    is_jac_object,
+    make_object
+}
 import from functools { cached_property }
 import from inspect { _empty, signature }
 import from logging { getLogger }
@@ -19,7 +25,7 @@ glob _NO_TRIGGER = object(),
      _subclass_hook_lock = Lock();
 
 glob _light_edge_types: dict[type, bool] = {},
-     _edge_subtypes: dict[type, tuple] = {},
+     _edge_subtypes: dict[type, tuple[type, ...]] = {},
      _tracked_classes: dict[type, type] = {};
 
 enum AccessLevel { NO_ACCESS = -1, READ = 0, CONNECT = 1, WRITE = 2 }
@@ -31,7 +37,7 @@ def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
     if isinstance(val, str) {
         val = val.upper();
     }
-    _map: dict = {
+    _map: dict[int | str, AccessLevel] = {
         -1: AccessLevel.NO_ACCESS,
         0: AccessLevel.READ,
         1: AccessLevel.CONNECT,
@@ -45,15 +51,15 @@ def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
 }
 
 obj Access {
-    has anchors: dict[(str, AccessLevel)] = field(default_factory=`dict);
+    has anchors: dict[(str, AccessLevel)] = {};
 
     def check(anchor: str) -> (AccessLevel | None);
 }
 
 obj Permission {
     has all: AccessLevel = AccessLevel.NO_ACCESS,
-        roots: Access = field(default_factory=Access),
-        groups: Access = field(default_factory=Access);
+        roots: Access = Access(),
+        groups: Access = Access();
 }
 
 obj PermissionDenied {
@@ -98,12 +104,12 @@ obj AnchorReport {
 
 obj Anchor {
     has archetype: Archetype,
-        id: (UUID | None) = field(`init=False, `default=None),
-        `root: (UUID | None) = field(`init=False, `default=None),
-        access: (Permission | None) = field(`init=False, `default=None),
-        _persistent: bool = field(`init=False, `default=False),
-        destroyed: bool = field(`init=False, `default=False),
-        hash: int = field(`init=False, `default=0);
+        id: (UUID | None) = ObjectField(`init=False, `default=None),
+        `root: (UUID | None) = ObjectField(`init=False, `default=None),
+        access: (Permission | None) = ObjectField(`init=False, `default=None),
+        _persistent: bool = ObjectField(`init=False, `default=False),
+        destroyed: bool = ObjectField(`init=False, `default=False),
+        hash: int = ObjectField(`init=False, `default=0);
 
     has persistent: bool { getter; setter(persistent: bool); }
 
@@ -124,10 +130,14 @@ obj Anchor {
 obj NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
-        version: int = field(`init=False, `default=0),
-        out_light: (dict[type, list] | None) = field(`init=False, `default=None),
-        in_light: (dict[type, list] | None) = field(`init=False, `default=None),
-        mixed: bool = field(`init=False, `default=False);
+        version: int = ObjectField(`init=False, `default=0),
+        out_light: (dict[type, list[any]] | None) = ObjectField(
+            `init=False, `default=None
+        ),
+        in_light: (dict[type, list[any]] | None) = ObjectField(
+            `init=False, `default=None
+        ),
+        mixed: bool = ObjectField(`init=False, `default=False);
 
     def __getstate__ -> dict[(str, object)];
     def __getattr__(name: str) -> object;
@@ -145,7 +155,7 @@ obj EdgeAnchor(Anchor) {
         source: NodeAnchor,
         target: NodeAnchor,
         is_undirected: bool,
-        light: bool = field(`init=False, `default=False);
+        light: bool = ObjectField(`init=False, `default=False);
 
     def is_populated -> bool;
     def __getstate__ -> dict[(str, object)];
@@ -154,9 +164,9 @@ obj EdgeAnchor(Anchor) {
 
 obj WalkerAnchor(Anchor) {
     has archetype: WalkerArchetype,
-        path: list[(NodeAnchor | EdgeAnchor)] = field(default_factory=`list),
-        next: list[(NodeAnchor | EdgeAnchor)] = field(default_factory=`list),
-        ignores: list[NodeAnchor] = field(default_factory=`list),
+        path: list[(NodeAnchor | EdgeAnchor)] = [],
+        next: list[(NodeAnchor | EdgeAnchor)] = [],
+        ignores: list[NodeAnchor] = [],
         disengaged: bool = False;
 }
 
@@ -243,8 +253,11 @@ class EdgeArchetype(Archetype) {
     }
 }
 
+@make_object
 class WalkerArchetype(Archetype) {
-    has reports: list[any] = field(default_factory=`list);
+    has reports: list[any] = ObjectField(
+        default_factory=`list, `init=False, repr=False
+    );
 
     with entry {
         __jac_async__: ClassVar[bool] = False;
@@ -300,7 +313,7 @@ obj ObjectSpatialFunction {
 obj JsxElement {
     has tag: object,
         `props: dict[(str, object)],
-        children: list;
+        children: list[any];
 }
 
 
@@ -320,12 +333,12 @@ def is_light_edge_type(cls: type) -> bool {
     return light;
 }
 
-def edge_subtypes(cls: type) -> tuple {
+def edge_subtypes(cls: type) -> tuple[type, ...] {
     known = _edge_subtypes.get(cls);
     if known is not None {
         return known;
     }
-    out: list = [cls];
+    out: list[type] = [cls];
     i = 0;
     while i < len(out) {
         for sub in out[i].__subclasses__() {
@@ -340,8 +353,8 @@ def edge_subtypes(cls: type) -> tuple {
     return result;
 }
 
-def _deref(lst: list) -> list {
-    out: list = [];
+def _deref(lst: list[any]) -> list[any] {
+    out: list[any] = [];
     for r in lst {
         a = r();
         if a is not None {
@@ -384,7 +397,7 @@ def light_connect(src: NodeAnchor, cls: type, tgt: NodeAnchor) {
     }
 }
 
-def _drop_entry(d: (dict | None), cls: type, key: any) -> bool {
+def _drop_entry(d: (dict[type, list[any]] | None), cls: type, key: any) -> bool {
     if d is None {
         return False;
     }
@@ -453,9 +466,9 @@ def light_clear_matching(
     return hit;
 }
 
-def _collect_light(d: dict, cls: (type | None)) -> list {
+def _collect_light(d: dict[type, list[any]], cls: (type | None)) -> list[any] {
     if cls is None {
-        out: list = [];
+        out: list[any] = [];
         for lst in d.values() {
             out.extend(lst);
         }
@@ -466,7 +479,7 @@ def _collect_light(d: dict, cls: (type | None)) -> list {
         lst = d.get(cls);
         return lst if lst is not None else [];
     }
-    found: list = [];
+    found: list[any] = [];
     if len(subs) <= len(d) {
         for sub in subs {
             lst = d.get(sub);
@@ -484,21 +497,21 @@ def _collect_light(d: dict, cls: (type | None)) -> list {
     return found;
 }
 
-def light_out(anchor: NodeAnchor, cls: (type | None)) -> list {
+def light_out(anchor: NodeAnchor, cls: (type | None)) -> list[any] {
     d = anchor.out_light;
     return _collect_light(d, cls) if d else [];
 }
 
-def light_in(anchor: NodeAnchor, cls: (type | None)) -> list {
+def light_in(anchor: NodeAnchor, cls: (type | None)) -> list[any] {
     d = anchor.in_light;
     return _deref(_collect_light(d, cls)) if d else [];
 }
 
 def light_hop(
     anchor: NodeAnchor, dir: int, cls: (type | None), edges_only: bool
-) -> list {
+) -> list[any] {
     if edges_only {
-        out: list = [];
+        out: list[any] = [];
         if dir != 1 {
             for ea in light_edge_views(anchor, cls, True) {
                 out.append(ea.archetype);
@@ -522,7 +535,7 @@ def light_hop(
             lst = d.get(cls) if d else None;
             return _deref(lst) if lst else [];
         }
-        found: list = [];
+        found: list[any] = [];
         d = anchor.out_light;
         lst = d.get(cls) if d else None;
         if lst {
@@ -631,7 +644,9 @@ def _untracked_new(cls: type[Archetype]) -> Archetype {
     return object.__new__(cls);
 }
 
-def _tracked_reduce_ex(self: any, protocol: int) -> tuple {
+def _tracked_reduce_ex(
+    self: any, protocol: int
+) -> tuple[Callable, tuple[type], dict[str, any]] {
     return (_untracked_new, (untracked_class(`type(self)), ), self.__dict__);
 }
 

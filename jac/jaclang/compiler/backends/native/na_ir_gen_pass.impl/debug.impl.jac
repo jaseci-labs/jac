@@ -56,7 +56,7 @@ impl NaIRGenPass._finalize_di_locations(func: ir.Function, fallback_line: int) -
     } except Exception {}
 }
 
-impl NaIRGenPass.post_transform -> None {
+impl NaIRGenPass.finish with exit {
     if not self.has_native_code {
         return;
     }
@@ -99,7 +99,7 @@ impl NaIRGenPass.post_transform -> None {
 
     if self.prog.options.debug_ir {
         import from jaclang.compiler.driver.jir { get_native_cache_dir }
-        src_path = self.ir_in.loc.mod_path;
+        src_path = self.module.loc.mod_path;
         if src_path {
             stem = os.path.splitext(os.path.basename(src_path))[0];
             ir_dir = str(get_native_cache_dir(src_path));

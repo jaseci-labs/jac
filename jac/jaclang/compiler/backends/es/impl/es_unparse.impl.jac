@@ -222,7 +222,7 @@ impl template_element_raw(text: str) -> str {
 }
 
 impl JSCodeGenerator.gen_template_element(nd: es.TemplateElement) -> str {
-    value = nd.value or {};
+    value: dict[str, str] = nd.value or {};
     raw = value.get('raw');
     if raw is not None {
         return raw;
@@ -571,6 +571,10 @@ impl JSCodeGenerator.gen_break_statement(nd: es.BreakStatement) -> str {
     return f"{self.indent()}break;";
 }
 
+impl JSCodeGenerator.gen_labeled_statement(nd: es.LabeledStatement) -> str {
+    return f"{self.indent()}{self.generate(nd.label)}: {self.generate(nd.body)}";
+}
+
 impl JSCodeGenerator.gen_for_of_statement(nd: es.ForOfStatement) -> str {
     await_str = 'await ' if nd.await_ else '';
     if isinstance(nd.left, es.VariableDeclaration) {
@@ -664,7 +668,7 @@ impl JSCodeGenerator.generate(nd: (es.Node | None)) -> str {
     if method is None {
         return f"/* Unsupported node type: {nd.type} */";
     }
-    kids: list[tuple[es.Node, str, list]] = [];
+    kids: list[tuple[es.Node, str, list[any]]] = [];
     self._frames.append(kids);
     try {
         result = method(nd);
@@ -682,7 +686,7 @@ impl JSCodeGenerator.generate(nd: (es.Node | None)) -> str {
 impl JSCodeGenerator.build_segments(code: str) -> list[tuple[int, int, int, int, str]] {
     line_starts = _line_starts(code);
     found: dict[tuple[int, int], tuple[int, int, str]] = {};
-    pending: list[tuple[tuple[es.Node, str, list], int, any]] = [
+    pending: list[tuple[tuple[es.Node, str, list[any]], int, any]] = [
         (`entry, 0, None) for `entry in self._root
     ];
     while pending {

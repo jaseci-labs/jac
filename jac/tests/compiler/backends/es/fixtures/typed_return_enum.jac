@@ -26,7 +26,7 @@ def:pub get_tasks_by_priority(priority: str) -> list[Task] {
 import from .typed_return_enum { create_task, get_tasks_by_priority }
 
 def:pub app -> JsxElement {
-    has tasks: list = [];
+    has tasks: list[any] = [];
 
     async def addHighPriority(title: str) -> None {
         task = await create_task(title, "high");

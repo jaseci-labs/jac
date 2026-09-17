@@ -33,7 +33,8 @@ impl EsastGenPass.exit_global_vars with uni.GlobalVars exit {
         if is_pub or here.codespace_dual {
             for assignment in here.assignments {
                 for target in assignment.target {
-                    if (sym_name := target?.sym_name) {
+                    if isinstance(target, (uni.NameAtom, uni.AstSymbolNode))
+                        and (sym_name := target.sym_name) {
                         self.client_manifest.globals.append(sym_name);
                         if (
                             assignment.value
@@ -256,10 +257,10 @@ impl EsastGenPass.exit_module with uni.Module exit {
 }
 
 impl EsastGenPass.get_main_mod -> uni.Module {
-    main_mod_path = self.ir_in.annexable_by or self.ir_in.loc.mod_path;
+    main_mod_path = self.module.annexable_by or self.module.loc.mod_path;
     mod = self.prog.mod.hub.get(main_mod_path);
     if not isinstance(mod, uni.Module) {
-        self.emit(E5012);
+        self.ctx.emit(E5012);
         raise RuntimeError(f"Missing main module: {main_mod_path}");
     }
     return mod;

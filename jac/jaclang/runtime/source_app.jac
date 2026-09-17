@@ -20,7 +20,7 @@ def artifact_path(base: Path, relative: str) -> Path {
     return path;
 }
 
-def _load_application(record: dict, base: Path) -> PreparedApplication {
+def _load_application(record: dict[str, any], base: Path) -> PreparedApplication {
     directory = artifact_path(base, record['root']);
     entry_path = artifact_path(directory, record['entry']);
     application = PreparedApplication(
@@ -116,7 +116,10 @@ def main(manifest_path: str, name: str = '', argv: list[str] | None = None) -> i
     served = config.resolve_app(application.name);
     server_enabled = kind_has_server(config.resolved_kind(served));
     arguments = list(sys.argv[1:] if argv is None else argv);
-    overrides: dict = {'dev': False, 'no_client': not application.client_enabled};
+    overrides: dict[str, bool | str | int] = {
+        'dev': False,
+        'no_client': not application.client_enabled
+    };
     if server_enabled {
         parser = argparse.ArgumentParser(description='Run the exported server');
         parser.add_argument('--host', `default='');

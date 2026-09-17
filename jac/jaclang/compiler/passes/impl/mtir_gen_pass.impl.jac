@@ -14,10 +14,6 @@ import from jaclang.runtime.semantic {
     type_to_str
 }
 
-impl MTIRGenPass.postinit -> None {
-    super.postinit();
-}
-
 impl MTIRGenPass._run_impl(ir_in: Module) -> Module {
     for nd in ir_in.get_all_sub_nodes(Ability) {
         self._process_ability(nd);
@@ -48,7 +44,7 @@ impl MTIRGenPass._doc_text(doc: String | None) -> str | None {
 
 impl MTIRGenPass._parse_type_expr(
     type_expr: Expr | None, scope: UniScopeNode
-) -> ClassInfo | EnumInfo | str | tuple | None {
+) -> ClassInfo | EnumInfo | str | tuple[object, ...] | None {
     if type_expr is None {
         return None;
     }
@@ -137,7 +133,7 @@ impl MTIRGenPass._extract_type_symbol(
 impl MTIRGenPass._extract_enum_info(symbol: Symbol) -> EnumInfo {
     decl = symbol.decl;
     if not isinstance(decl.name_of, Enum) {
-        raise RuntimeError(self.ice(f"Symbol {symbol} is not an Enum."));
+        raise RuntimeError(self.ctx.ice(f"Symbol {symbol} is not an Enum."));
     }
     enum_node = decl.name_of;
     members: list[FieldInfo] = [];
@@ -164,7 +160,7 @@ impl MTIRGenPass._extract_enum_info(symbol: Symbol) -> EnumInfo {
                                 type_info = "bool";
                             } else {
                                 raise RuntimeError(
-                                    self.ice(
+                                    self.ctx.ice(
                                         f"Enum member '{member_name}' has invalid value type: {type(
                                             enum_stmt.value
                                         ).__name__}. "
@@ -255,7 +251,7 @@ impl MTIRGenPass._extract_class_info(symbol: Symbol) -> ClassInfo | None {
     fields: list[FieldInfo] = [];
     for var in arch_node.get_has_vars() {
         type_annotation = var.type_tag.tag if var.type_tag else None;
-        parsed_type: (ClassInfo | EnumInfo | str | tuple | None) = self._parse_type_expr(
+        parsed_type: (ClassInfo | EnumInfo | str | tuple[object, ...] | None) = self._parse_type_expr(
             type_annotation, arch_node
         );
         parsed_expr = parsed_type;
@@ -304,7 +300,7 @@ impl MTIRGenPass._extract_function_info(nd: Ability) -> FunctionInfo {
             parameters.append(param_info);
         }
     }
-    return_type: str | ClassInfo | EnumInfo | tuple | None = None;
+    return_type: str | ClassInfo | EnumInfo | tuple[object, ...] | None = None;
     if nd.signature and isinstance(nd.signature, FuncSignature) {
         return_type_annotation = nd.signature.return_type;
         parsed_return = self._parse_type_expr(return_type_annotation, nd);
@@ -474,7 +470,7 @@ impl MTIRGenPass._process_ability(nd: Ability) -> None {
 }
 
 impl MTIRGenPass._collect_routing_archetypes(ir_in: Module) -> list[Archetype] {
-    scoped: dict = {};
+    scoped: dict[int, Archetype] = {};
     widen_all = False;
     saw_routing = False;
     for vs in ir_in.get_all_sub_nodes(VisitStmt) {
@@ -543,7 +539,7 @@ impl MTIRGenPass._archetype_of_type_expr(
 
 impl MTIRGenPass._traversal_candidate_archetypes(
     expr: Expr, scope: UniScopeNode
-) -> tuple {
+) -> tuple[list[Archetype], bool] {
     cands: list[Archetype] = [];
     bare = False;
     if not isinstance(expr, EdgeRefTrailer) {
@@ -617,14 +613,6 @@ impl MTIRGenPass._register_archetype_light(nd: Archetype) -> None {
     Jac.add_mtir_to_map(self._get_scope_str(nd), class_info);
 }
 
-impl MTIRGenPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl MTIRGenPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

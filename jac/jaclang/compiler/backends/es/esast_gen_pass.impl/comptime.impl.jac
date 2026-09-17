@@ -49,7 +49,7 @@ impl EsastGenPass._comptime_only_names -> set[str] {
         return cached;
     }
     names: set[str] = set();
-    for imp in self.ir_in.get_all_sub_nodes(uni.Import) {
+    for imp in self.module.get_all_sub_nodes(uni.Import) {
         if not imp.is_comptime {
             continue;
         }
@@ -71,7 +71,7 @@ impl EsastGenPass._comptime_only_names -> set[str] {
             }
         }
     }
-    for ab in self.ir_in.get_all_sub_nodes(uni.Ability) {
+    for ab in self.module.get_all_sub_nodes(uni.Ability) {
         if ab.is_comptime and ab.name_ref is not None {
             names.add(ab.name_ref.sym_name);
         }

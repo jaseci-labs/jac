@@ -16,7 +16,7 @@ node N {
 }
 
 walker Stop {
-    has seen: list = [];
+    has seen: list[any] = [];
 
     can step with N entry {
         self.seen.append(here.val);

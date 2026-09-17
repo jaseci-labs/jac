@@ -1,6 +1,6 @@
 """Builtin functions used inside an untyped client function."""
 
-def summarize(xs: list) -> dict {
+def summarize(xs: list[any]) -> dict[any, any] {
     return {
         "sorted": sorted(xs),
         "total": sum(xs),
@@ -10,11 +10,11 @@ def summarize(xs: list) -> dict {
     };
 }
 
-def numeric(n: int) -> dict {
+def numeric(n: int) -> dict[any, any] {
     return {"abs": abs(0 - n), "round": round(3.14159, 2)};
 }
 
-def combined(a: list, b: list) -> list {
+def combined(a: list[any], b: list[any]) -> list[any] {
     m = min(a);
     x = max(a);
     pairs = zip(a, b);
@@ -25,7 +25,7 @@ def str_len(s: str) -> int {
     return len(s);
 }
 
-def min_max_by_key(items: list) -> list {
+def min_max_by_key(items: list[any]) -> list[any] {
     return [min(items, key=str_len), max(items, key=str_len)];
 }
 
@@ -33,10 +33,10 @@ def min_of_empty -> int {
     return min([]);
 }
 
-def min_of_spread(xs: list) -> int {
+def min_of_spread(xs: list[any]) -> int {
     return min(*xs);
 }
 
-def min_max_varargs(a: int, b: int, c: int) -> list {
+def min_max_varargs(a: int, b: int, c: int) -> list[int] {
     return [min(a, b, c), max(a, b, c)];
 }

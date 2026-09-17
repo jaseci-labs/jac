@@ -1,10 +1,10 @@
 impl EsastGenPass._osp_model -> OspModel {
     import from jaclang.compiler.passes.osp_analysis { get_osp_model }
-    _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
+    _root = self.module if isinstance(self.module, uni.Module) else self.get_main_mod();
     return get_osp_model(_root);
 }
 
-impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
+impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict[str, any] | None) {
     if not isinstance(nd.signature, uni.EventSignature) {
         return None;
     }
@@ -44,7 +44,7 @@ impl EsastGenPass._osp_const_decl(
     );
 }
 
-impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
+impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict[str, any]) -> None {
     assert nd.name_ref is not None;
     self.needs_jac_runtime = True;
     is_walker = osp["kind"] == "walker";
@@ -154,7 +154,7 @@ impl EsastGenPass._arch_kind_by_name(name: str) -> (str | None) {
     if _local is not None {
         return _local;
     }
-    _mod = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
+    _mod = self.module if isinstance(self.module, uni.Module) else self.get_main_mod();
     _sym = _mod.lookup(name);
     if _sym is None {
         return None;
@@ -172,8 +172,8 @@ impl EsastGenPass._osp_var_arch -> dict[str, str] {
     bindings: dict[str, str] = {};
     kinds = self._osp_arch_kinds();
     if kinds {
-        scan_root = self.ir_in
-            if isinstance(self.ir_in, uni.Module)
+        scan_root = self.module
+            if isinstance(self.module, uni.Module)
             else self.get_main_mod();
         for asn in scan_root.get_all_sub_nodes(uni.Assignment) {
             if isinstance(asn.value, uni.FuncCall) {
@@ -329,8 +329,8 @@ impl EsastGenPass._build_osp_setup_js -> str {
     arch_kinds = self._osp_arch_kinds();
     tags = _model.tags;
 
-    entry_by_owner: dict[str, list] = {};
-    exit_by_owner: dict[str, list] = {};
+    entry_by_owner: dict[str, list[OspSlot]] = {};
+    exit_by_owner: dict[str, list[OspSlot]] = {};
     for slot in _model.local_slots() {
         bucket = entry_by_owner if slot.is_entry else exit_by_owner;
         if slot.owner not in bucket {
@@ -366,7 +366,7 @@ impl EsastGenPass._build_osp_setup_js -> str {
     return "\n".join(lines);
 }
 
-impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
+impl EsastGenPass._osp_slots_js(slots: list[OspSlot], tags: dict[str, int]) -> str {
     parts: list[str] = [];
     for slot in slots {
         fn = "(o, x) => o." + slot.ability + "(x)";
@@ -513,7 +513,7 @@ impl EsastGenPass._edge_tag_literal(
     }
     if (_tag < 0) and hard {
         import from jaclang.compiler.frontend.diagnostics { E5097 }
-        self.emit(
+        self.ctx.emit(
             E5097,
             node_override=nd,
             kind=f"a graph reference with unresolved archetype '{_etname}'"
@@ -527,7 +527,7 @@ impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression {
     fail = self.sync_loc(es.ArrayExpression(elements=[]), jac_node=nd);
     chain = nd.chain;
     if not chain {
-        self.emit(E5097, node_override=nd, kind="an empty edge reference");
+        self.ctx.emit(E5097, node_override=nd, kind="an empty edge reference");
         return fail;
     }
     self.needs_osp_graph = True;
@@ -546,7 +546,7 @@ impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression {
         _idx = 1;
     }
     if (_idx >= len(chain)) or (not isinstance(chain[_idx], uni.EdgeOpRef)) {
-        self.emit(E5097, node_override=nd, kind="this edge reference shape");
+        self.ctx.emit(E5097, node_override=nd, kind="this edge reference shape");
         return fail;
     }
     cur: (es.Expression | None) = None;
@@ -605,7 +605,7 @@ impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression {
         cur = result;
     }
     if (cur is None) or (_idx != len(chain)) {
-        self.emit(E5097, node_override=nd, kind="this edge reference shape");
+        self.ctx.emit(E5097, node_override=nd, kind="this edge reference shape");
         return fail;
     }
     return cur;
@@ -688,7 +688,7 @@ impl EsastGenPass._build_osp_filter_pred(
     }
     for cmp in filt.compares {
         if not isinstance(cmp, uni.CompareExpr) {
-            self.emit(
+            self.ctx.emit(
                 E5097,
                 node_override=cmp,
                 kind="a graph filter outside 'name <op> value' form"
@@ -708,7 +708,7 @@ impl EsastGenPass._build_osp_filter_pred(
             }
         }
         if (_js_op is None) or (not isinstance(_lhs, uni.Name)) {
-            self.emit(
+            self.ctx.emit(
                 E5097,
                 node_override=nd,
                 kind="a graph filter outside 'name <op> value' form"
@@ -807,7 +807,7 @@ impl EsastGenPass._build_osp_graph_call(
         }
     }
     if co.conn_assign is not None {
-        props: list = [];
+        props: list[es.Property] = [];
         for kw in co.conn_assign.assigns {
             if kw.key is None {
                 continue;
@@ -987,7 +987,7 @@ impl EsastGenPass._prepare_spawn_call(
     left_walker = self._resolve_spawn_walker(nd.left, left_expr);
     right_walker = self._resolve_spawn_walker(nd.right, right_expr);
     if (left_walker and right_walker) {
-        self.emit(W5013, node_override=nd);
+        self.ctx.emit(W5013, node_override=nd);
         target = self._resolve_spawn_target(nd.left, left_expr);
         return SpawnCallParts(`walker=right_walker, target=target);
     }
@@ -999,7 +999,7 @@ impl EsastGenPass._prepare_spawn_call(
         target = self._resolve_spawn_target(nd.left, left_expr);
         return SpawnCallParts(`walker=right_walker, target=target);
     }
-    self.emit(E5010, node_override=nd);
+    self.ctx.emit(E5010, node_override=nd);
     return None;
 }
 
@@ -1061,12 +1061,12 @@ impl EsastGenPass._build_spawn_arg_object(
     ordered_fields = collect_field_names(walker_symbol, Tok.KW_WALKER.value);
 
     field_type_map: dict[str, str] = {};
-    type_scope = self.ir_in.loc.mod_path;
+    type_scope = self.module.loc.mod_path;
     if walker_symbol {
         arch = symbol_owner_archetype(walker_symbol);
         if arch {
             type_scope = (
-                arch.find_parent_of_type(uni.Module) or self.ir_in
+                arch.find_parent_of_type(uni.Module) or self.module
             ).loc.mod_path;
             for field in arch.get_has_vars() {
                 if field.type_tag and field.type_tag.tag {
@@ -1077,8 +1077,8 @@ impl EsastGenPass._build_spawn_arg_object(
             }
         }
     }
-    boundary_types = self.ir_in.gen.interop_manifest.boundary_types_for(type_scope)
-        if self.ir_in.gen.interop_manifest
+    boundary_types = self.module.gen.interop_manifest.boundary_types_for(type_scope)
+        if self.module.gen.interop_manifest
         else {};
     properties: list[(es.Property | es.SpreadElement)] = [];
     positional_index = 0;
@@ -1130,7 +1130,7 @@ impl EsastGenPass._build_spawn_arg_object(
             if (positional_index < len(ordered_fields))
             else f"arg{positional_index}";
         if (positional_index >= len(ordered_fields)) {
-            self.emit(W5014, node_override=param);
+            self.ctx.emit(W5014, node_override=param);
         }
         positional_index += 1;
         key_expr = self.sync_loc(es.Literal(value=key_name), jac_node=param);

@@ -294,7 +294,7 @@ def _seed_filler(store: PgStore, count: int) -> int {
 def _rows_examined(plan: any) -> int {
     doc: any = json.loads(plan) if isinstance(plan, str) else plan;
     total = 0.0;
-    stack: list[dict] = [doc[0]["Plan"]];
+    stack: list[dict[str, any]] = [doc[0]["Plan"]];
     while stack {
         nd = stack.pop();
         seen = 0.0;

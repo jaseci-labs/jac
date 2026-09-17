@@ -5,13 +5,12 @@ The def version runs on the Python backend; the cl def version compiles to JS
 and exercises the _jac.* runtime calls.
 """
 
-
 # =============================================================================
 # int namespace: mod, bit_length, bit_count
 # (to_bytes/from_bytes skipped — bytes are not JSON-serializable)
 # =============================================================================
 
-def jac_rt_int_py() -> dict {
+def jac_rt_int_py() -> dict[any, any] {
     # mod — Python semantics: result sign matches divisor
     a: int = -7;
     b: int = 3;
@@ -53,7 +52,7 @@ def jac_rt_int_py() -> dict {
     };
 }
 
-def jac_rt_int_cl() -> dict {
+def jac_rt_int_cl() -> dict[any, any] {
     a: int = -7;
     b: int = 3;
     mod_np: int = a % b;
@@ -97,7 +96,7 @@ def jac_rt_int_cl() -> dict {
 # (hex/fromhex skipped — JS toString(16) differs from Python float.hex())
 # =============================================================================
 
-def jac_rt_float_py() -> dict {
+def jac_rt_float_py() -> dict[any, any] {
     # mod — Python semantics for floats
     fa: float = -7.5;
     fb: float = 2.0;
@@ -117,7 +116,7 @@ def jac_rt_float_py() -> dict {
     return {"fmod1": fmod1, "ratio_half": [r0, r1], "ratio_quarter": [r2_0, r2_1]};
 }
 
-def jac_rt_float_cl() -> dict {
+def jac_rt_float_cl() -> dict[any, any] {
     fa: float = -7.5;
     fb: float = 2.0;
     fmod1: float = fa % fb;
@@ -141,7 +140,7 @@ def jac_rt_float_cl() -> dict {
 # (format_map skipped — dict argument handling differs)
 # =============================================================================
 
-def jac_rt_str_py() -> dict {
+def jac_rt_str_py() -> dict[any, any] {
     s: str = "hello world";
 
     # Case conversion
@@ -181,15 +180,15 @@ def jac_rt_str_py() -> dict {
     no_pre_miss: str = "test_file.py".removeprefix("foo_");
 
     # Split
-    parts: list = s.split(" ");
-    parts_max: list = "a.b.c.d".split(".", 2);
-    rparts: list = "a.b.c.d".rsplit(".", 2);
+    parts: list[any] = s.split(" ");
+    parts_max: list[any] = "a.b.c.d".split(".", 2);
+    rparts: list[any] = "a.b.c.d".rsplit(".", 2);
 
     # Partition
     part = s.partition(" ");
-    part_list: list = [part[0], part[1], part[2]];
+    part_list: list[any] = [part[0], part[1], part[2]];
     rpart = s.rpartition(" ");
-    rpart_list: list = [rpart[0], rpart[1], rpart[2]];
+    rpart_list: list[any] = [rpart[0], rpart[1], rpart[2]];
 
     # Format
     fmt: str = "Hello {}!".format("Jac");
@@ -247,7 +246,7 @@ def jac_rt_str_py() -> dict {
     };
 }
 
-def jac_rt_str_cl() -> dict {
+def jac_rt_str_cl() -> dict[any, any] {
     s: str = "hello world";
 
     cap: str = s.capitalize();
@@ -280,15 +279,15 @@ def jac_rt_str_cl() -> dict {
     no_suf: str = "test_file.py".removesuffix(".py");
     no_pre_miss: str = "test_file.py".removeprefix("foo_");
 
-    parts: list = s.split(" ");
-    parts_max: list = "a.b.c.d".split(".", 2);
-    rparts: list = "a.b.c.d".rsplit(".", 2);
-    lines: list = "a\nb\nc".splitlines();
+    parts: list[any] = s.split(" ");
+    parts_max: list[any] = "a.b.c.d".split(".", 2);
+    rparts: list[any] = "a.b.c.d".rsplit(".", 2);
+    lines: list[any] = "a\nb\nc".splitlines();
 
     part = s.partition(" ");
-    part_list: list = [part[0], part[1], part[2]];
+    part_list: list[any] = [part[0], part[1], part[2]];
     rpart = s.rpartition(" ");
-    rpart_list: list = [rpart[0], rpart[1], rpart[2]];
+    rpart_list: list[any] = [rpart[0], rpart[1], rpart[2]];
 
     fmt: str = "Hello {}!".format("Jac");
     fmt_idx: str = "{0} + {1} = {0}{1}".format("a", "b");
@@ -347,19 +346,19 @@ def jac_rt_str_cl() -> dict {
 # list namespace: sort, count, remove, index, repeat, comparisons, imul
 # =============================================================================
 
-def jac_rt_list_py() -> dict {
+def jac_rt_list_py() -> dict[any, any] {
     # sort with key
-    nums: list = [3, 1, 4, 1, 5, 9, 2, 6];
+    nums: list[any] = [3, 1, 4, 1, 5, 9, 2, 6];
     nums.sort(key=lambda (x) { -x; });
 
     # count
-    items: list = [1, 2, 2, 3, 3, 3];
+    items: list[any] = [1, 2, 2, 3, 3, 3];
     cnt_2: int = items.count(2);
     cnt_3: int = items.count(3);
     cnt_0: int = items.count(99);
 
     # remove
-    removable: list = [10, 20, 30, 20];
+    removable: list[any] = [10, 20, 30, 20];
     removable.remove(20);
 
     # index
@@ -367,14 +366,14 @@ def jac_rt_list_py() -> dict {
     idx_start: int = items.index(3, 4);
 
     # repeat via *
-    base: list = [1, 2];
-    repeated: list = base * 3;
+    base: list[any] = [1, 2];
+    repeated: list[any] = base * 3;
 
     # comparisons
-    a: list = [1, 2, 3];
-    b: list = [1, 2, 3];
-    c: list = [1, 2, 4];
-    d: list = [1, 2];
+    a: list[any] = [1, 2, 3];
+    b: list[any] = [1, 2, 3];
+    c: list[any] = [1, 2, 4];
+    d: list[any] = [1, 2];
     eq_t: bool = a == b;
     eq_f: bool = a == c;
     lt_t: bool = a < c;
@@ -386,7 +385,7 @@ def jac_rt_list_py() -> dict {
     lt_len: bool = d < a;
 
     # imul
-    grow: list = [1, 2];
+    grow: list[any] = [1, 2];
     grow *= 3;
 
     return {
@@ -411,28 +410,28 @@ def jac_rt_list_py() -> dict {
     };
 }
 
-def jac_rt_list_cl() -> dict {
-    nums: list = [3, 1, 4, 1, 5, 9, 2, 6];
+def jac_rt_list_cl() -> dict[any, any] {
+    nums: list[any] = [3, 1, 4, 1, 5, 9, 2, 6];
     nums.sort(key=lambda (x) { -x; });
 
-    items: list = [1, 2, 2, 3, 3, 3];
+    items: list[any] = [1, 2, 2, 3, 3, 3];
     cnt_2: int = items.count(2);
     cnt_3: int = items.count(3);
     cnt_0: int = items.count(99);
 
-    removable: list = [10, 20, 30, 20];
+    removable: list[any] = [10, 20, 30, 20];
     removable.remove(20);
 
     idx: int = items.index(3);
     idx_start: int = items.index(3, 4);
 
-    base: list = [1, 2];
-    repeated: list = base * 3;
+    base: list[any] = [1, 2];
+    repeated: list[any] = base * 3;
 
-    a: list = [1, 2, 3];
-    b: list = [1, 2, 3];
-    c: list = [1, 2, 4];
-    d: list = [1, 2];
+    a: list[any] = [1, 2, 3];
+    b: list[any] = [1, 2, 3];
+    c: list[any] = [1, 2, 4];
+    d: list[any] = [1, 2];
     eq_t: bool = a == b;
     eq_f: bool = a == c;
     lt_t: bool = a < c;
@@ -443,7 +442,7 @@ def jac_rt_list_cl() -> dict {
     ge_t: bool = c >= a;
     lt_len: bool = d < a;
 
-    grow: list = [1, 2];
+    grow: list[any] = [1, 2];
     grow *= 3;
 
     return {
@@ -472,31 +471,31 @@ def jac_rt_list_cl() -> dict {
 # dict namespace: pop, popitem, setdefault, clear, fromkeys, eq
 # =============================================================================
 
-def jac_rt_dict_py() -> dict {
+def jac_rt_dict_py() -> dict[any, any] {
     # pop
-    d: dict = {"a": 1, "b": 2, "c": 3};
+    d: dict[any, any] = {"a": 1, "b": 2, "c": 3};
     popped: int = d.pop("b");
     pop_default: int = d.pop("z", -1);
 
     # popitem (LIFO — removes last inserted key)
-    d2: dict = {"x": 10, "y": 20, "z": 30};
+    d2: dict[any, any] = {"x": 10, "y": 20, "z": 30};
     item = d2.popitem();
     popitem_key: str = item[0];
     popitem_val: int = item[1];
 
     # setdefault
-    d3: dict = {"a": 1};
+    d3: dict[any, any] = {"a": 1};
     sd_existing: int = d3.setdefault("a", 99);
     sd_new = d3.setdefault("b", 42);
 
     # clear
-    d4: dict = {"x": 1, "y": 2};
+    d4: dict[any, any] = {"x": 1, "y": 2};
     d4.clear();
 
     # eq
-    da: dict = {"a": 1, "b": 2};
-    db: dict = {"b": 2, "a": 1};
-    dc: dict = {"a": 1, "b": 3};
+    da: dict[any, any] = {"a": 1, "b": 2};
+    db: dict[any, any] = {"b": 2, "a": 1};
+    dc: dict[any, any] = {"a": 1, "b": 3};
     eq_t: bool = da == db;
     eq_f: bool = da == dc;
 
@@ -515,26 +514,26 @@ def jac_rt_dict_py() -> dict {
     };
 }
 
-def jac_rt_dict_cl() -> dict {
-    d: dict = {"a": 1, "b": 2, "c": 3};
+def jac_rt_dict_cl() -> dict[any, any] {
+    d: dict[any, any] = {"a": 1, "b": 2, "c": 3};
     popped: int = d.pop("b");
     pop_default: int = d.pop("z", -1);
 
-    d2: dict = {"x": 10, "y": 20, "z": 30};
+    d2: dict[any, any] = {"x": 10, "y": 20, "z": 30};
     item = d2.popitem();
     popitem_key: str = item[0];
     popitem_val: int = item[1];
 
-    d3: dict = {"a": 1};
+    d3: dict[any, any] = {"a": 1};
     sd_existing: int = d3.setdefault("a", 99);
     sd_new = d3.setdefault("b", 42);
 
-    d4: dict = {"x": 1, "y": 2};
+    d4: dict[any, any] = {"x": 1, "y": 2};
     d4.clear();
 
-    da: dict = {"a": 1, "b": 2};
-    db: dict = {"b": 2, "a": 1};
-    dc: dict = {"a": 1, "b": 3};
+    da: dict[any, any] = {"a": 1, "b": 2};
+    db: dict[any, any] = {"b": 2, "a": 1};
+    dc: dict[any, any] = {"a": 1, "b": 3};
     eq_t: bool = da == db;
     eq_f: bool = da == dc;
 
@@ -560,31 +559,31 @@ def jac_rt_dict_cl() -> dict {
 # (results converted to sorted lists for JSON serialization)
 # =============================================================================
 
-def jac_rt_set_py() -> dict {
+def jac_rt_set_py() -> dict[any, any] {
     # remove
     s1: set = {1, 2, 3, 4};
     s1.remove(3);
-    after_remove: list = sorted(list(s1));
+    after_remove: list[any] = sorted(list(s1));
 
     # update
     s2: set = {1, 2};
     s2.update({3, 4});
-    after_update: list = sorted(list(s2));
+    after_update: list[any] = sorted(list(s2));
 
     # intersection_update
     s3: set = {1, 2, 3, 4};
     s3.intersection_update({2, 4, 6});
-    after_isect: list = sorted(list(s3));
+    after_isect: list[any] = sorted(list(s3));
 
     # difference_update
     s4: set = {1, 2, 3, 4};
     s4.difference_update({2, 4});
-    after_diff: list = sorted(list(s4));
+    after_diff: list[any] = sorted(list(s4));
 
     # symmetric_difference_update
     s5: set = {1, 2, 3};
     s5.symmetric_difference_update({2, 3, 4});
-    after_symdiff: list = sorted(list(s5));
+    after_symdiff: list[any] = sorted(list(s5));
 
     # subset/superset
     small: set = {1, 2};
@@ -610,26 +609,26 @@ def jac_rt_set_py() -> dict {
     };
 }
 
-def jac_rt_set_cl() -> dict {
+def jac_rt_set_cl() -> dict[any, any] {
     s1: set = {1, 2, 3, 4};
     s1.remove(3);
-    after_remove: list = sorted(list(s1));
+    after_remove: list[any] = sorted(list(s1));
 
     s2: set = {1, 2};
     s2.update({3, 4});
-    after_update: list = sorted(list(s2));
+    after_update: list[any] = sorted(list(s2));
 
     s3: set = {1, 2, 3, 4};
     s3.intersection_update({2, 4, 6});
-    after_isect: list = sorted(list(s3));
+    after_isect: list[any] = sorted(list(s3));
 
     s4: set = {1, 2, 3, 4};
     s4.difference_update({2, 4});
-    after_diff: list = sorted(list(s4));
+    after_diff: list[any] = sorted(list(s4));
 
     s5: set = {1, 2, 3};
     s5.symmetric_difference_update({2, 3, 4});
-    after_symdiff: list = sorted(list(s5));
+    after_symdiff: list[any] = sorted(list(s5));
 
     small: set = {1, 2};
     big: set = {1, 2, 3};
@@ -658,22 +657,22 @@ def jac_rt_set_cl() -> dict {
 # tuple namespace: count, index, repeat, comparisons
 # =============================================================================
 
-def jac_rt_tuple_py() -> dict {
-    t: tuple = (1, 2, 3, 2, 1);
+def jac_rt_tuple_py() -> dict[any, any] {
+    t: tuple[any, ...] = (1, 2, 3, 2, 1);
 
     # count / index
     cnt: int = t.count(2);
     idx: int = t.index(3);
 
     # repeat via *
-    t2: tuple = (1, 2);
-    repeated: list = list(t2 * 3);
+    t2: tuple[any, ...] = (1, 2);
+    repeated: list[any] = list(t2 * 3);
 
     # comparisons
-    a: tuple = (1, 2, 3);
-    b: tuple = (1, 2, 3);
-    c: tuple = (1, 2, 4);
-    d: tuple = (1, 2);
+    a: tuple[any, ...] = (1, 2, 3);
+    b: tuple[any, ...] = (1, 2, 3);
+    c: tuple[any, ...] = (1, 2, 4);
+    d: tuple[any, ...] = (1, 2);
     eq_t: bool = a == b;
     eq_f: bool = a == c;
     lt_t: bool = a < c;
@@ -696,19 +695,19 @@ def jac_rt_tuple_py() -> dict {
     };
 }
 
-def jac_rt_tuple_cl() -> dict {
-    t: tuple = (1, 2, 3, 2, 1);
+def jac_rt_tuple_cl() -> dict[any, any] {
+    t: tuple[any, ...] = (1, 2, 3, 2, 1);
 
     cnt: int = t.count(2);
     idx: int = t.index(3);
 
-    t2: tuple = (1, 2);
-    repeated: list = list(t2 * 3);
+    t2: tuple[any, ...] = (1, 2);
+    repeated: list[any] = list(t2 * 3);
 
-    a: tuple = (1, 2, 3);
-    b: tuple = (1, 2, 3);
-    c: tuple = (1, 2, 4);
-    d: tuple = (1, 2);
+    a: tuple[any, ...] = (1, 2, 3);
+    b: tuple[any, ...] = (1, 2, 3);
+    c: tuple[any, ...] = (1, 2, 4);
+    d: tuple[any, ...] = (1, 2);
     eq_t: bool = a == b;
     eq_f: bool = a == c;
     lt_t: bool = a < c;
@@ -738,7 +737,7 @@ def jac_rt_tuple_cl() -> dict {
 # (vars/dir/open/issubclass/next/complex skipped — not cross-backend testable)
 # =============================================================================
 
-def jac_rt_builtin_py() -> dict {
+def jac_rt_builtin_py() -> dict[any, any] {
     # round
     r1: int = round(3.7);
     r2: float = round(3.14159, 2);
@@ -748,38 +747,40 @@ def jac_rt_builtin_py() -> dict {
     s_start: int = sum([1, 2, 3], 10);
 
     # sorted (basic, reverse, key)
-    srt: list = sorted([3, 1, 4, 1, 5]);
-    srt_key: list = sorted(["banana", "apple", "kiwi"], key=lambda (x) { len(x); });
+    srt: list[any] = sorted([3, 1, 4, 1, 5]);
+    srt_key: list[any] = sorted(
+        ["banana", "apple", "kiwi"], key=lambda (x) { len(x); }
+    );
 
     # enumerate — use loop to convert tuples to lists
-    raw_enum: list = list(enumerate(["a", "b", "c"]));
-    enum_result: list = [];
+    raw_enum: list[any] = list(enumerate(["a", "b", "c"]));
+    enum_result: list[any] = [];
     for pair in raw_enum {
         enum_result.append([pair[0], pair[1]]);
     }
-    raw_enum2: list = list(enumerate(["x", "y"], 5));
-    enum_start: list = [];
+    raw_enum2: list[any] = list(enumerate(["x", "y"], 5));
+    enum_start: list[any] = [];
     for pair in raw_enum2 {
         enum_start.append([pair[0], pair[1]]);
     }
 
     # zip — use loop to convert tuples to lists
-    raw_zip: list = list(zip([1, 2, 3], ["a", "b", "c"]));
-    zip_result: list = [];
+    raw_zip: list[any] = list(zip([1, 2, 3], ["a", "b", "c"]));
+    zip_result: list[any] = [];
     for pair in raw_zip {
         zip_result.append([pair[0], pair[1]]);
     }
-    raw_zip2: list = list(zip([1, 2], ["a", "b", "c"]));
-    zip_uneven: list = [];
+    raw_zip2: list[any] = list(zip([1, 2], ["a", "b", "c"]));
+    zip_uneven: list[any] = [];
     for pair in raw_zip2 {
         zip_uneven.append([pair[0], pair[1]]);
     }
 
     # map
-    map_result: list = list(map(lambda (x) { x * 2; }, [1, 2, 3, 4]));
+    map_result: list[any] = list(map(lambda (x) { x * 2; }, [1, 2, 3, 4]));
 
     # filter
-    filter_result: list = list(filter(lambda (x) { x > 2; }, [1, 2, 3, 4, 5]));
+    filter_result: list[any] = list(filter(lambda (x) { x > 2; }, [1, 2, 3, 4, 5]));
 
     # pow
     pow_basic: int = pow(2, 10);
@@ -803,41 +804,43 @@ def jac_rt_builtin_py() -> dict {
     };
 }
 
-def jac_rt_builtin_cl() -> dict {
+def jac_rt_builtin_cl() -> dict[any, any] {
     r1: int = round(3.7);
     r2: float = round(3.14159, 2);
 
     s: int = sum([1, 2, 3, 4, 5]);
     s_start: int = sum([1, 2, 3], 10);
 
-    srt: list = sorted([3, 1, 4, 1, 5]);
-    srt_key: list = sorted(["banana", "apple", "kiwi"], key=lambda (x) { len(x); });
+    srt: list[any] = sorted([3, 1, 4, 1, 5]);
+    srt_key: list[any] = sorted(
+        ["banana", "apple", "kiwi"], key=lambda (x) { len(x); }
+    );
 
-    raw_enum: list = list(enumerate(["a", "b", "c"]));
-    enum_result: list = [];
+    raw_enum: list[any] = list(enumerate(["a", "b", "c"]));
+    enum_result: list[any] = [];
     for pair in raw_enum {
         enum_result.append([pair[0], pair[1]]);
     }
-    raw_enum2: list = list(enumerate(["x", "y"], 5));
-    enum_start: list = [];
+    raw_enum2: list[any] = list(enumerate(["x", "y"], 5));
+    enum_start: list[any] = [];
     for pair in raw_enum2 {
         enum_start.append([pair[0], pair[1]]);
     }
 
-    raw_zip: list = list(zip([1, 2, 3], ["a", "b", "c"]));
-    zip_result: list = [];
+    raw_zip: list[any] = list(zip([1, 2, 3], ["a", "b", "c"]));
+    zip_result: list[any] = [];
     for pair in raw_zip {
         zip_result.append([pair[0], pair[1]]);
     }
-    raw_zip2: list = list(zip([1, 2], ["a", "b", "c"]));
-    zip_uneven: list = [];
+    raw_zip2: list[any] = list(zip([1, 2], ["a", "b", "c"]));
+    zip_uneven: list[any] = [];
     for pair in raw_zip2 {
         zip_uneven.append([pair[0], pair[1]]);
     }
 
-    map_result: list = list(map(lambda (x) { x * 2; }, [1, 2, 3, 4]));
+    map_result: list[any] = list(map(lambda (x) { x * 2; }, [1, 2, 3, 4]));
 
-    filter_result: list = list(filter(lambda (x) { x > 2; }, [1, 2, 3, 4, 5]));
+    filter_result: list[any] = list(filter(lambda (x) { x > 2; }, [1, 2, 3, 4, 5]));
 
     pow_basic: int = pow(2, 10);
     pow_mod: int = pow(2, 10, 100);

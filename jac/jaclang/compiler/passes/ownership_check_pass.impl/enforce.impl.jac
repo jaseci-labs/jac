@@ -32,7 +32,7 @@ glob _NOGC_ALIASING_BUILTINS: dict[str, str] = {
      };
 
 impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
-    _mp = str(self.ir_in.loc.mod_path or "") if self.ir_in?.loc else "";
+    _mp = str(self.module.loc.mod_path or "") if self.module?.loc else "";
     if _mp {
         import os as _os;
         import jaclang as _jl;
@@ -45,8 +45,8 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
     if opts is not None and getattr(opts, "nogc_enforce_all", False) {
         return "enforced by the nogc profile";
     }
-    _pats = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
-    _grand = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
+    _pats: list[str] = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
+    _grand: list[str] = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
     if not _pats {
         try {
             import from jaclang.project { get_config }
@@ -63,7 +63,7 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
         return None;
     }
     import fnmatch;
-    _mod = self.ir_in.name;
+    _mod = self.module.name;
     for _pat in _grand {
         if fnmatch.fnmatchcase(_mod, _pat) {
             return None;
@@ -79,8 +79,8 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
 
 impl OwnershipCheckPass._nogc_setup -> None {
     self.nogc_prov = self._nogc_resolve_provenance();
-    self.ir_in.gen.nogc_enforced = self.nogc_prov is not None;
-    self.ir_in.gen.nogc_provenance = self.nogc_prov or '';
+    self.module.gen.nogc_enforced = self.nogc_prov is not None;
+    self.module.gen.nogc_provenance = self.nogc_prov or '';
     if self.nogc_prov is not None {
         self._nogc_infer_locals();
         self._stamp_view_borrows();
@@ -133,7 +133,7 @@ impl OwnershipCheckPass._nogc_local_shape(nm: Name) -> str {
     if _mangled in ("any", "Unknown", "") {
         return "any";
     }
-    for _arch in self.ir_in.get_all_sub_nodes(Archetype) {
+    for _arch in self.module.get_all_sub_nodes(Archetype) {
         if _arch.name.value == _mangled
             and _arch.arch_type.name in (Tok.KW_NODE, Tok.KW_EDGE, Tok.KW_WALKER) {
             return "osp";
@@ -552,7 +552,7 @@ impl OwnershipCheckPass._nogc_expr_type_is_heap(expr: Expr | None) -> bool {
     if _m in _NOGC_SCALARS or _m in ("any", "Unknown", "") {
         return False;
     }
-    for _arch in self.ir_in.get_all_sub_nodes(Archetype) {
+    for _arch in self.module.get_all_sub_nodes(Archetype) {
         if _arch.name.value == _m
             and _arch.arch_type.name in (Tok.KW_NODE, Tok.KW_EDGE, Tok.KW_WALKER) {
             return False;
@@ -625,8 +625,8 @@ impl OwnershipCheckPass._nogc_module_enforced(mod_name: str) -> bool {
     if opts is not None and opts.nogc_enforced_for(mod_name) {
         return True;
     }
-    _pats = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
-    _grand = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
+    _pats: list[str] = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
+    _grand: list[str] = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
     if not _pats {
         try {
             import from jaclang.project { get_config }
@@ -670,7 +670,7 @@ impl OwnershipCheckPass._emit_raises_diagnostics -> None {
         return;
     }
     import from jaclang.compiler.frontend.diagnostics { E1407 }
-    for mc in self.ir_in.get_all_sub_nodes(ModuleCode) {
+    for mc in self.module.get_all_sub_nodes(ModuleCode) {
         for exc in sorted(self._local_raises(mc)) {
             reported = False;
             for call in mc.get_all_sub_nodes(FuncCall) {
@@ -687,7 +687,7 @@ impl OwnershipCheckPass._emit_raises_diagnostics -> None {
                 cname = callee.name_ref.sym_name
                     if callee.name_ref is not None
                     else "call";
-                self.emit(E1407, node_override=call, name=cname, exc=exc);
+                self.ctx.emit(E1407, node_override=call, name=cname, exc=exc);
                 reported = True;
                 break;
             }
@@ -695,7 +695,7 @@ impl OwnershipCheckPass._emit_raises_diagnostics -> None {
                 for rs in mc.get_all_sub_nodes(RaiseStmt) {
                     if self._raise_type_name(rs) == exc
                         and not self._handled_by_enclosing_try(rs, exc, mc) {
-                        self.emit(E1407, node_override=rs, name="raise", exc=exc);
+                        self.ctx.emit(E1407, node_override=rs, name="raise", exc=exc);
                         break;
                     }
                 }
@@ -771,7 +771,7 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
             and isinstance(_a.target, Name)
             and _a.target.sym_name == "managed" {
             if _hl_c {
-                _m_params = list(_a.params or []);
+                _m_params: list[Expr] = list(_a.params or []);
                 _m_arg = _m_params[0] if _m_params else None;
                 _m_value = _m_arg.value if isinstance(_m_arg, KWPair) else _m_arg;
                 _m_root = self._place_of(_m_value);
@@ -781,7 +781,7 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
                         _m_root.sym.ownership == OwnershipKind.OWN
                         or self._nogc_local_shape(_m_root) == "heap"
                     ) {
-                    self.emit(
+                    self.ctx.emit(
                         E1406,
                         node_override=_a,
                         name="'managed()' on a heap value re-enters the reference-counted world, which a nogc build does not have",
@@ -805,7 +805,7 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
     }
 
     if _callee_root.sym_name in _NOGC_ALIASING_BUILTINS {
-        self.emit(
+        self.ctx.emit(
             E1406, node_override=call, name=_callee_root.sym_name, provenance=prov
         );
         return;
@@ -814,7 +814,7 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
     if isinstance(call.target, AtomTrailer)
         and _callee_root.sym is not None
         and _callee_root.sym.storage == SymbolStorage.MODULE_GLOBAL {
-        self.emit(
+        self.ctx.emit(
             E1402, node_override=call, name=_heap_args[0].sym_name, provenance=prov
         );
         return;
@@ -838,10 +838,10 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
         for _dn in _defn_nodes {
             _decl_mod = _dn.find_parent_of_type(Module);
             if _decl_mod is not None
-                and _decl_mod is not self.ir_in
+                and _decl_mod is not self.module
                 and str(_decl_mod.loc.mod_path).endswith(".jac")
                 and not self._nogc_module_enforced(_decl_mod.name) {
-                self.emit(
+                self.ctx.emit(
                     E1403,
                     node_override=call,
                     name=_heap_args[0].sym_name,
@@ -862,7 +862,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
     _opts = self.prog?.options;
     _headerless = getattr(_opts, "na_gc_mode", "cycles") == "none" if _opts else False;
     if _headerless {
-        for _lv in self.ir_in.get_all_sub_nodes(ListVal) {
+        for _lv in self.module.get_all_sub_nodes(ListVal) {
             if _lv.find_parent_of_type(SubTag) is not None
                 or _lv.find_parent_of_type(FuncSignature) is not None {
                 continue;
@@ -882,7 +882,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 }
                 if self._nogc_local_shape_expr_heap(_le) {
                     (_lmsg, _lhelp) = self._nogc_elem_fixit(_le, "a list literal", "");
-                    self.emit(
+                    self.ctx.emit(
                         E1406,
                         node_override=_lv,
                         name=_lmsg,
@@ -893,7 +893,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 }
             }
         }
-        for _sv in self.ir_in.get_all_sub_nodes(SetVal) {
+        for _sv in self.module.get_all_sub_nodes(SetVal) {
             if _sv.find_parent_of_type(SubTag) is not None
                 or _sv.find_parent_of_type(FuncSignature) is not None {
                 continue;
@@ -910,7 +910,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                             " in a list or a dict."
                         );
                     }
-                    self.emit(
+                    self.ctx.emit(
                         E1406,
                         node_override=_sv,
                         name=_smsg,
@@ -921,7 +921,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 }
             }
         }
-        for _dv in self.ir_in.get_all_sub_nodes(DictVal) {
+        for _dv in self.module.get_all_sub_nodes(DictVal) {
             if _dv.find_parent_of_type(SubTag) is not None
                 or _dv.find_parent_of_type(FuncSignature) is not None {
                 continue;
@@ -943,7 +943,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                         "a dict literal as a key" if _key_bad else "a dict literal",
                         ""
                     );
-                    self.emit(
+                    self.ctx.emit(
                         E1406,
                         node_override=_dv,
                         name=_dmsg,
@@ -954,7 +954,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 }
             }
         }
-        for _mc in self.ir_in.get_all_sub_nodes(FuncCall) {
+        for _mc in self.module.get_all_sub_nodes(FuncCall) {
             _grow = self._nogc_container_grow_method(_mc);
             if _grow is None {
                 continue;
@@ -986,7 +986,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                         (_gmsg, _ghelp) = self._nogc_elem_fixit(
                             _gav, f"'{_recv_text}'", f"{_recv_text}.{_grow}"
                         );
-                        self.emit(
+                        self.ctx.emit(
                             E1406,
                             node_override=_mc,
                             name=_gmsg,
@@ -1009,7 +1009,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                     (_gmsg, _ghelp) = self._nogc_elem_fixit(
                         _gav, f"'{_recv_text}'", f"{_recv_text}.{_grow}"
                     );
-                    self.emit(
+                    self.ctx.emit(
                         E1406,
                         node_override=_mc,
                         name=_gmsg,
@@ -1020,7 +1020,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 }
             }
         }
-        for _gv in self.ir_in.get_all_sub_nodes(GlobalVars) {
+        for _gv in self.module.get_all_sub_nodes(GlobalVars) {
             for _ga in _gv.get_all_sub_nodes(Assignment) {
                 if _ga.type_tag is not None
                     and _ga.type_tag.ownership == OwnershipKind.OWN {
@@ -1029,7 +1029,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 for _gt in _ga.target {
                     if isinstance(_gt, Name)
                         and self._nogc_local_shape(_gt) == "heap" {
-                        self.emit(
+                        self.ctx.emit(
                             E1406,
                             node_override=_gt,
                             name=f"module global '{_gt.sym_name}' would hold heap storage for the program's lifetime, which the owned world cannot free",
@@ -1057,7 +1057,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
         }
         _shape = self._nogc_tag_shape(param.type_tag);
         if _shape == "heap" {
-            self.emit(
+            self.ctx.emit(
                 E1401,
                 node_override=_nm,
                 position="parameter",
@@ -1065,7 +1065,9 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 provenance=_prov
             );
         } elif _shape in ("any", "unknown") {
-            self.emit(E1404, node_override=_nm, name=_nm.sym_name, provenance=_prov);
+            self.ctx.emit(
+                E1404, node_override=_nm, name=_nm.sym_name, provenance=_prov
+            );
         }
     }
 
@@ -1082,7 +1084,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
             and _tgt.find_parent_of_type(UniEnum) is None {
             _shape = self._nogc_local_shape(_tgt);
             if _shape == "heap" {
-                self.emit(
+                self.ctx.emit(
                     E1401,
                     node_override=_tgt,
                     position="local",
@@ -1119,7 +1121,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                             if _val_root is not None and _val_root.sym is not None
                             else _root.sym_name
                     );
-                    self.emit(
+                    self.ctx.emit(
                         E1402, node_override=_tgt, name=_val_name, provenance=_prov
                     );
                 }
@@ -1134,7 +1136,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 (_imsg, _ihelp) = self._nogc_elem_fixit(
                     nd.value, f"'{self._nogc_place_text(_tgt.target)}'", ""
                 );
-                self.emit(
+                self.ctx.emit(
                     E1406,
                     node_override=_tgt,
                     name=_imsg,
@@ -1145,11 +1147,11 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
         }
     }
 
-    for call in self.ir_in.get_all_sub_nodes(FuncCall) {
+    for call in self.module.get_all_sub_nodes(FuncCall) {
         self._nogc_check_call(call, _prov);
     }
 
-    for _lam in self.ir_in.get_all_sub_nodes(LambdaExpr) {
+    for _lam in self.module.get_all_sub_nodes(LambdaExpr) {
         for _nm in _lam.get_all_sub_nodes(Name) {
             if _nm.sym is None {
                 continue;
@@ -1159,7 +1161,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 _decl = _nm.sym.decl;
                 if _decl is not None
                     and _decl.find_parent_of_type(LambdaExpr) is not _lam {
-                    self.emit(
+                    self.ctx.emit(
                         E1405, node_override=_nm, name=_nm.sym_name, provenance=_prov
                     );
                     break;
@@ -1371,7 +1373,7 @@ impl OwnershipCheckPass._stamp_arch_view_bindings -> None {
         self.arch_view_syms.add(_sid);
         _tgt.sym.is_view = True;
     }
-    for _mc in self.ir_in.get_all_sub_nodes(FuncCall) {
+    for _mc in self.module.get_all_sub_nodes(FuncCall) {
         _grow = self._nogc_container_grow_method(_mc);
         if _grow is None or not isinstance(_mc.target, AtomTrailer) {
             continue;
@@ -1506,7 +1508,7 @@ impl OwnershipCheckPass._stamp_view_borrows -> None {
     }
 
     _seen: set[int] = set();
-    for _ab in self.ir_in.get_all_sub_nodes(Ability) {
+    for _ab in self.module.get_all_sub_nodes(Ability) {
         self._stamp_view_call_results(_ab, _seen);
         _all_params = [
             p
@@ -1544,7 +1546,7 @@ impl OwnershipCheckPass._stamp_view_borrows -> None {
             }
             if _root_nm == "self" {
                 if _cands {
-                    self.emit(
+                    self.ctx.emit(
                         E1315,
                         node_override=ret,
                         name=f"a view return with `self` and"
@@ -1572,12 +1574,12 @@ impl OwnershipCheckPass._stamp_view_borrows -> None {
             if isinstance(ret.expr, Name) {
                 continue;
             }
-            self.emit(
+            self.ctx.emit(
                 E1315, node_override=ret, name=f"returning a view of '{_root_nm}'"
             );
         }
     }
-    self._stamp_view_call_results(self.ir_in, _seen);
+    self._stamp_view_call_results(self.module, _seen);
 }
 
 impl OwnershipCheckPass._stamp_view_call_results(
@@ -1588,7 +1590,7 @@ impl OwnershipCheckPass._stamp_view_call_results(
             continue;
         }
         _encl = nd.find_parent_of_type(Ability);
-        if scope is self.ir_in {
+        if scope is self.module {
             if _encl is not None {
                 continue;
             }
@@ -1633,7 +1635,7 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
         if nd.type_tag is not None
             and nd.type_tag.ownership == OwnershipKind.OWN
             and self._is_view_expr(nd.value) {
-            self.emit(E1315, node_override=nd, name="an `own` binding of a view");
+            self.ctx.emit(E1315, node_override=nd, name="an `own` binding of a view");
         }
         if len(nd.target) == 1 and nd.aug_op is None {
             _gt = nd.target[0];
@@ -1643,7 +1645,7 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
                 and _gt.sym.decl is not None
                 and _gt.sym.decl.find_parent_of_type(GlobalVars) is not None
                 and self._is_view_expr(nd.value) {
-                self.emit(
+                self.ctx.emit(
                     E1315,
                     node_override=nd,
                     name=f"storing a view into module global '{_gt.sym_name}'"
@@ -1654,7 +1656,7 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
             if isinstance(_t2, AtomTrailer)
                 and not isinstance(nd.value, Name)
                 and self._is_view_expr(nd.value) {
-                self.emit(
+                self.ctx.emit(
                     E1315,
                     node_override=nd.value,
                     name="storing a view into a field or element"
@@ -1663,7 +1665,7 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
             }
         }
     }
-    for _mc in self.ir_in.get_all_sub_nodes(FuncCall) {
+    for _mc in self.module.get_all_sub_nodes(FuncCall) {
         _grow = self._nogc_container_grow_method(_mc);
         if _grow is None {
             continue;
@@ -1679,7 +1681,7 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
         for _garg in self._call_params(_mc) {
             _gav = _garg.value if isinstance(_garg, KWPair) else _garg;
             if self._view_of_expr(_gav) is not None {
-                self.emit(
+                self.ctx.emit(
                     E1315,
                     node_override=_gav,
                     name=f"storing a view into a container ({_grow}())"
@@ -1687,38 +1689,38 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
             }
         }
     }
-    for _lv in self.ir_in.get_all_sub_nodes(ListVal) {
+    for _lv in self.module.get_all_sub_nodes(ListVal) {
         if _lv.find_parent_of_type(IndexSlice) is not None {
             continue;
         }
         for _e in (_lv.values or []) {
             if self._view_of_expr(_e) is not None {
-                self.emit(
+                self.ctx.emit(
                     E1315, node_override=_e, name="a view in a container literal"
                 );
             }
         }
     }
-    for _sv in self.ir_in.get_all_sub_nodes(SetVal) {
+    for _sv in self.module.get_all_sub_nodes(SetVal) {
         if _sv.find_parent_of_type(IndexSlice) is not None {
             continue;
         }
         for _e in (_sv.values or []) {
             if self._view_of_expr(_e) is not None {
-                self.emit(
+                self.ctx.emit(
                     E1315, node_override=_e, name="a view in a container literal"
                 );
             }
         }
     }
-    for _dv in self.ir_in.get_all_sub_nodes(DictVal) {
+    for _dv in self.module.get_all_sub_nodes(DictVal) {
         if _dv.find_parent_of_type(IndexSlice) is not None {
             continue;
         }
         for _kv in (_dv.kv_pairs or []) {
             for _e in (_kv.key, _kv.value) {
                 if self._view_of_expr(_e) is not None {
-                    self.emit(
+                    self.ctx.emit(
                         E1315, node_override=_e, name="a view in a container literal"
                     );
                 }

@@ -31,6 +31,9 @@ impl EsastGenPass.exit_func_signature with uni.FuncSignature exit {
 }
 
 impl EsastGenPass.exit_ability with uni.Ability exit {
+    if self._loop_label_savepoints {
+        self._loop_label_stack = self._loop_label_savepoints.pop();
+    }
     if self._view_stack {
         self._view_stack.pop();
     }
@@ -168,7 +171,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
             ];
         } else {
             if component_call_abi == 'props_passthrough' {
-                self.emit(
+                self.ctx.emit(
                     W5015,
                     node_override=value_params[0],
                     component=here.name_ref.sym_name
@@ -216,7 +219,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
             } elif here.accessor_kind == 'setter' {
                 method_kind = 'set';
             } else {
-                self.emit(E5097, node_override=here, kind='property deleters');
+                self.ctx.emit(E5097, node_override=here, kind='property deleters');
                 return;
             }
         }
@@ -324,6 +327,9 @@ impl EsastGenPass.enter_ability with uni.Ability entry {
     if isinstance(here.body, uni.ImplDef) and (here.body not in here.kid) {
         here.add_kids_right([here.body], pos_update=False, parent_update=True);
     }
+
+    self._loop_label_savepoints.append(self._loop_label_stack);
+    self._loop_label_stack = [];
 
     self._view_stack.append(None);
     self.reactive_vars_stack.append(self.reactive_vars);

@@ -1,23 +1,16 @@
-impl StaticAnalysisPass.postinit -> None {
-    super.postinit();
-}
-
 impl StaticAnalysisPass._run_impl(ir_in: Module) -> Module {
-    _fresh: set[int] = set();
-    self._checked_scopes = _fresh;
-
-    if self.ir_in.is_raised_from_py {
+    if self.module.is_raised_from_py {
         return ir_in;
     }
 
-    self._check_unused_symbols(self.ir_in);
-    self._check_undefined_names(self.ir_in);
-    self._check_unreachable_code(self.ir_in);
-    self._check_semantic_patterns(self.ir_in);
-    self._check_typing_import_refusals(self.ir_in);
-    self._check_redundant_imports(self.ir_in);
-    self._check_client_imports(self.ir_in);
-    self._check_placement_warnings(self.ir_in);
+    self.module spawn UnusedSymbolWalker(analysis=self);
+    self._check_undefined_names(self.module);
+    self._check_unreachable_code(self.module);
+    self._check_semantic_patterns(self.module);
+    self._check_typing_import_refusals(self.module);
+    self._check_redundant_imports(self.module);
+    self._check_client_imports(self.module);
+    self._check_placement_warnings(self.module);
     return ir_in;
 }
 
@@ -31,11 +24,6 @@ impl StaticAnalysisPass._check_placement_warnings(mod: Module) -> None {
 }
 
 impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
-    if id(scope) in self._checked_scopes {
-        return;
-    }
-    self._checked_scopes.add(id(scope));
-
     for (name, sym) in scope.names_in_scope.items() {
         if sym.imported {
             continue;
@@ -87,12 +75,8 @@ impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
         }
 
         if len(sym.uses) == 0 {
-            self.emit(W2003, node_override=sym.decl, name=name);
+            self.ctx.emit(W2003, node_override=sym.decl, name=name);
         }
-    }
-
-    for kid in scope.kid_scope {
-        self._check_unused_symbols(kid);
     }
 }
 
@@ -131,7 +115,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
         if not name_nd.is_kwesc {
             native_position = self._native_type_position(name_nd);
             if native_position is not None {
-                self.emit(
+                self.ctx.emit(
                     E2018,
                     node_override=name_nd,
                     name=name_nd.value,
@@ -159,7 +143,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
         if not name_nd.is_kwesc {
             position = self._osp_shape_position(name_nd);
             if position is not None {
-                self.emit(
+                self.ctx.emit(
                     E2018, node_override=name_nd, name=name_nd.value, position=position
                 );
                 continue;
@@ -171,10 +155,9 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
         if suggestion is not None {
             hint = f"Jac uses Python-style literals -- did you mean `{suggestion}`?";
         }
-        self.emit(W2001, node_override=name_nd, name=name_nd.value, help_text=hint);
+        self.ctx.emit(W2001, node_override=name_nd, name=name_nd.value, help_text=hint);
     }
 }
-
 
 impl StaticAnalysisPass._literal_case_suggestion(name: str) -> (str | None) {
     return {
@@ -187,7 +170,6 @@ impl StaticAnalysisPass._literal_case_suggestion(name: str) -> (str | None) {
         name
     );
 }
-
 
 impl StaticAnalysisPass._osp_shape_position(name_nd: Name) -> (str | None) {
     cur: UniNode = name_nd;
@@ -277,7 +259,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: Module) -> None {
                 if isinstance(stmt, Semi) {
                     continue;
                 }
-                self.emit(W2002, node_override=stmt);
+                self.ctx.emit(W2002, node_override=stmt);
                 break;
             }
             if isinstance(stmt, (ReturnStmt, RaiseStmt)) {
@@ -295,9 +277,9 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
         if nd.op is not None and isinstance(nd.op, Token) {
             if nd.op.value in ("/", "//", "%") {
                 if isinstance(nd.right, Int) and nd.right.value == "0" {
-                    self.emit(W2070, node_override=nd);
+                    self.ctx.emit(W2070, node_override=nd);
                 } elif isinstance(nd.right, Float) and nd.right.value == "0.0" {
-                    self.emit(W2070, node_override=nd);
+                    self.ctx.emit(W2070, node_override=nd);
                 }
             }
         }
@@ -309,7 +291,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
                 right = nd.rights[i] if i < len(nd.rights) else None;
                 left = nd.left if i == 0 else (nd.rights[i - 1] if i > 0 else None);
                 if isinstance(right, Null) or isinstance(left, Null) {
-                    self.emit(W2058, node_override=nd);
+                    self.ctx.emit(W2058, node_override=nd);
                 }
             }
         }
@@ -323,7 +305,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
             target = nd.target[0];
             if isinstance(target, Name) and isinstance(nd.value, Name) {
                 if target.value == nd.value.value {
-                    self.emit(W2063, node_override=nd, name=target.value);
+                    self.ctx.emit(W2063, node_override=nd, name=target.value);
                 }
             }
         }
@@ -338,7 +320,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
             }
         }
         if not has_expr {
-            self.emit(W2074, node_override=nd);
+            self.ctx.emit(W2074, node_override=nd);
         }
     }
 
@@ -352,7 +334,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
                     }
                     left = nd.left if i == 0 else nd.rights[i - 1];
                     if expr_primitive_name(left) == "bool" {
-                        self.emit(W2075, node_override=nd);
+                        self.ctx.emit(W2075, node_override=nd);
                     }
                 }
             }
@@ -362,7 +344,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
     for nd in mod.get_all_sub_nodes(typ=FinallyStmt) {
         for stmt in nd.body {
             if isinstance(stmt, ReturnStmt) {
-                self.emit(E2055, node_override=stmt);
+                self.ctx.emit(E2055, node_override=stmt);
             }
         }
     }
@@ -400,7 +382,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
             parent = parent.parent;
         }
         if not in_walker {
-            self.emit(E2083, node_override=nd);
+            self.ctx.emit(E2083, node_override=nd);
         }
     }
 
@@ -432,13 +414,13 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
             parent = parent.parent;
         }
         if not in_async {
-            self.emit(E2085, node_override=nd);
+            self.ctx.emit(E2085, node_override=nd);
         }
     }
 
     for nd in mod.get_all_sub_nodes(typ=Archetype) {
         if nd.src_endpoint is not None and nd.arch_kind != "edge" {
-            self.emit(
+            self.ctx.emit(
                 E2027,
                 node_override=nd.src_endpoint,
                 arch_type=(nd.arch_kind or nd.arch_type.value),
@@ -483,15 +465,15 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             if isinstance(resolved, str) and resolved.endswith('.jac') {
                 import from jaclang.compiler.frontend.diagnostics { W1105 }
                 import from jaclang.compiler.placement.placement_pins {
-                    is_client_npm_import
+                    in_client_npm_world
                 }
                 spec = nd.from_loc.dot_path_str;
-                if is_client_npm_import(spec, nd.loc.mod_path or '') {
-                    self.emit(W1105, node_override=nd.from_loc, name=spec);
+                if in_client_npm_world(spec, nd.loc.mod_path or '') {
+                    self.ctx.emit(W1105, node_override=nd.from_loc, name=spec);
                 }
             }
         }
-        string_specs: list = [];
+        string_specs: list[tuple[str, ModulePath]] = [];
         if (nd.from_loc is not None and nd.from_loc.string_path_value is not None) {
             string_specs.append((nd.from_loc.string_path_value, nd.from_loc));
         } elif nd.from_loc is None {
@@ -511,16 +493,16 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             import from jaclang.compiler.frontend.diagnostics { W1106 }
             import from jaclang.project.modresolver { is_path_alias_import }
             import from jaclang.compiler.placement.placement_pins {
-                is_client_npm_import
+                in_client_npm_world
             }
             mod_path = nd.loc.mod_path or '';
             sibling_file = os.path.join(os.path.dirname(mod_path), spv);
             if (
-                not is_client_npm_import(spv, mod_path)
+                not in_client_npm_world(spv, mod_path)
                 and not is_path_alias_import(spv, mod_path)
                 and not os.path.isfile(sibling_file)
             ) {
-                self.emit(W1106, node_override=spv_node, name=spv);
+                self.ctx.emit(W1106, node_override=spv_node, name=spv);
             }
         }
         if not is_client_boundary_import(nd) {
@@ -561,12 +543,12 @@ impl StaticAnalysisPass._check_typing_import_refusals(mod: Module) -> None {
             }
             nm = item.name.value;
             if nm == "Any" {
-                self.emit(E1122, node_override=item.name);
+                self.ctx.emit(E1122, node_override=item.name);
                 continue;
             }
             remedy = DEPRECATED_TYPING_ALIASES.get(nm);
             if remedy is not None {
-                self.emit(E1123, node_override=item.name, name=nm, remedy=remedy);
+                self.ctx.emit(E1123, node_override=item.name, name=nm, remedy=remedy);
             }
         }
     }
@@ -612,11 +594,11 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
             nm = item.name.value;
             if nm in ambient {
                 if advisory_only {
-                    self.emit(
+                    self.ctx.emit(
                         W1103, node_override=item.name, name=nm, module=from_mod_name
                     );
                 } else {
-                    self.emit(
+                    self.ctx.emit(
                         E1125, node_override=item.name, name=nm, module=from_mod_name
                     );
                 }
@@ -625,14 +607,6 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
     }
 }
 
-impl StaticAnalysisPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl StaticAnalysisPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

@@ -1,3 +1,18 @@
+def _configure_litellm {
+    import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
+    logging.getLogger("httpx").setLevel(logging.WARNING);
+    if HAS_LITELLM {
+        if not _litellm_config.get("debug", False) {
+            _disable_debugging();
+        }
+        litellm.drop_params = _litellm_config.get("drop_params", True);
+        litellm.include_cost_in_streaming_usage = _litellm_config.get(
+            "include_cost_in_streaming_usage", True
+        );
+    }
+}
+
+
 impl Model.postinit -> None {
     self.proxy = bool(self.config.get("proxy", _model_config.get("proxy", False)));
     self.http_client = bool(
@@ -22,17 +37,7 @@ impl Model.postinit -> None {
         );
     }
     if not self._mock_delegate and not self._local_delegate {
-        import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
-        logging.getLogger("httpx").setLevel(logging.WARNING);
-        if HAS_LITELLM {
-            if not _litellm_config.get("debug", False) {
-                _disable_debugging();
-            }
-            litellm.drop_params = _litellm_config.get("drop_params", True);
-            litellm.include_cost_in_streaming_usage = _litellm_config.get(
-                "include_cost_in_streaming_usage", True
-            );
-        }
+        _configure_litellm();
 
         native_override = self.config.get(
             "native_tools", _model_config.get("native_tools")
@@ -256,7 +261,7 @@ impl Model._raise_mapped_provider_error(e: Exception) -> None {
     raise;
 }
 
-impl Model.model_call_no_stream(params: dict) -> dict {
+impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
     response: object;
     try {
         if self.http_client {
@@ -282,7 +287,7 @@ impl Model.model_call_no_stream(params: dict) -> dict {
     return response_dict(response);
 }
 
-impl Model.model_call_with_stream(params: dict) -> Iterable[object] {
+impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
     try {
@@ -316,8 +321,8 @@ impl Model.model_call_with_stream(params: dict) -> Iterable[object] {
 }
 
 impl Model.model_call_http(
-    url: str, token: str, payload: dict, ca_bundle: (str | bool | None)
-) -> dict {
+    url: str, token: str, payload: dict[str, any], ca_bundle: (str | bool | None)
+) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     client = httpx.Client(verify=ca_bundle or True, timeout=60.0);
@@ -327,7 +332,7 @@ impl Model.model_call_http(
     return response.json();
 }
 
-impl Model.model_call_no_stream_async(params: dict) -> dict {
+impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] {
     response: object;
     try {
         if self.http_client {
@@ -359,7 +364,9 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
     return response_dict(response);
 }
 
-impl Model.model_call_with_stream_async(params: dict) -> AsyncIterator[object] {
+impl Model.model_call_with_stream_async(
+    params: dict[str, any]
+) -> AsyncIterator[object] {
     response: object;
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
@@ -405,8 +412,8 @@ impl Model.model_call_with_stream_async(params: dict) -> AsyncIterator[object] {
 }
 
 impl Model.model_call_http_async(
-    url: str, token: str, payload: dict, ca_bundle: (str | bool | None)
-) -> dict {
+    url: str, token: str, payload: dict[str, any], ca_bundle: (str | bool | None)
+) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     client = httpx.AsyncClient(verify=ca_bundle or True, timeout=60.0);

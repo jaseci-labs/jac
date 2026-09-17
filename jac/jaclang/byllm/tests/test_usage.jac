@@ -8,9 +8,10 @@ telemetry field. All three share the same recording machinery.
 """
 
 import asyncio;
+import contextlib;
+import io;
 import unittest.mock;
 import types;
-import dataclasses;
 import litellm;
 import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.lib { Model, MockLLM }
@@ -35,10 +36,12 @@ glob MODEL = "gpt-4o-mini",
          "dispatch_streaming_with_tools",
          "dispatch_streaming",
          "adispatch_streaming"
-     ],
-     _Person = dataclasses.make_dataclass(
-         "UsageTestsPerson", [("name", str), ("age", int)]
-     );
+     ];
+
+obj _Person {
+    has name: str,
+        age: int;
+}
 
 
 def step_a -> str {
@@ -53,7 +56,7 @@ def finish_tool(final_output: str) -> str {
 
 # Mimics litellm's CustomStreamWrapper: a real .logging_obj, iterable.
 class _FakeStreamResp {
-    def init(self: _FakeStreamResp, chunks: list, logging_obj: object) {
+    def init(self: _FakeStreamResp, chunks: list[any], logging_obj: object) {
         self.chunks = chunks;
         self.logging_obj = logging_obj;
     }
@@ -65,8 +68,8 @@ class _FakeStreamResp {
 
 
 def _response(
-    usage: dict | None = None, model: str = MODEL, content: str = "hi"
-) -> dict {
+    usage: dict[str, any] | None = None, model: str = MODEL, content: str = "hi"
+) -> dict[str, any] {
     return {
         "model": model,
         "choices": [
@@ -81,7 +84,7 @@ def _response(
 
 
 def _mt(
-    resp_type: type = str, stream: bool = False, tools: list | None = None
+    resp_type: type = str, stream: bool = False, tools: list[any] | None = None
 ) -> MTRuntime {
     return MTRuntime(
         messages=[
@@ -99,7 +102,7 @@ def _mt(
 
 # A typed by-model() env whose fake response calls finish_tool - shared by
 # the call_kind tagging cases and usage_step's recovery test.
-def _finish_env(arguments: str, usage: dict) -> tuple {
+def _finish_env(arguments: str, usage: dict[str, any]) -> tuple[any, ...] {
     model = Model(model_name="test-model");
     mt_run = _mt(resp_type=_Person, tools=[Tool.make_finish_tool(_Person)]);
     fake_fn = types.SimpleNamespace(name="finish_tool", arguments=arguments);
@@ -118,7 +121,7 @@ def _finish_env(arguments: str, usage: dict) -> tuple {
 }
 
 
-def _with_callback(cb: Callable, fn: Callable) -> object {
+def _with_callback(cb: Callable[[dict[str, any]], None], fn: Callable) -> object {
     original = _agent_callbacks.copy();
     _agent_callbacks.clear();
     register_agent_callback(cb);
@@ -133,9 +136,9 @@ def _with_callback(cb: Callable, fn: Callable) -> object {
 
 def _assert_tokens_via_callback(
     label: str, fn: Callable, expected_requests: int, expected_total_tokens: int
-) -> tuple {
-    captured: list = [];
-    def cb(record: dict) {
+) -> tuple[any, ...] {
+    captured: list[dict[str, any]] = [];
+    def cb(record: dict[str, any]) {
         captured.append(record);
     }
     result = _with_callback(cb, fn);
@@ -159,7 +162,7 @@ def _assert_tokens_via_callback(
 # Uses litellm's real `completion_cost`, not a stub - a mocked one would stay
 # green even if `_attach_call_cost` silently computed nothing.
 
-def _usage_from(path: str, response: dict | None = None) -> any {
+def _usage_from(path: str, response: dict[str, any] | None = None) -> any {
     resp = response if response is not None else _response();
     llm = Model(model_name=resp["model"]);
     mt = _mt();
@@ -170,14 +173,14 @@ def _usage_from(path: str, response: dict | None = None) -> any {
         ),
         types.SimpleNamespace(usage=litellm.Usage(**TOKENS), choices=[])
     ];
-    _call = lambda (params: dict) { return resp; };
-    _stream = lambda (params: dict) { return chunks; };
-    _rebuild = lambda (seen: list, logging_obj: object = None) { return resp; };
+    _call = lambda (params: dict[str, any]) { return resp; };
+    _stream = lambda (params: dict[str, any]) { return chunks; };
+    _rebuild = lambda (seen: list[any], logging_obj: object = None) { return resp; };
 
-    async def _acall(params: dict) -> dict {
+    async def _acall(params: dict[str, any]) -> dict[str, any] {
         return resp;
     }
-    async def _astream(params: dict) -> any {
+    async def _astream(params: dict[str, any]) -> any {
         async def _aiter -> any {
             for item in chunks {
                 yield item;
@@ -199,7 +202,7 @@ def _usage_from(path: str, response: dict | None = None) -> any {
         }
     }
     if path == "dispatch_streaming_with_tools" {
-        out: list = [];
+        out: list[any] = [];
         with unittest.mock.patch.object(llm, "model_call_with_stream", _stream), unittest.mock.patch.object(
             _byllm_llm_mod.litellm, "stream_chunk_builder", _rebuild
         ) {
@@ -241,7 +244,7 @@ test "every dispatch path reports the cost litellm computes for the call" {
             f"{path} reported {cost}, litellm computes {expected}"
         );
         if not isinstance(usage, dict) {
-            dumped: dict = usage.model_dump();
+            dumped: dict[str, any] = usage.model_dump();
             assert "cost" in dumped , (
                 f"{path} set cost but model_dump() dropped it, so would the aggregate"
             );
@@ -253,12 +256,24 @@ test "every dispatch path reports the cost litellm computes for the call" {
 test "cost is omitted rather than guessed when it cannot be computed" {
     for (label, resp) in [
         ("unpriceable model", _response(model=UNPRICEABLE)),
+        (
+            "model litellm cannot map to a provider",
+            _response(model="acme-internal-llm")
+        ),
         ("response with no usage data", _response(usage={}))
     ] {
-        usage = _usage_from("dispatch_no_streaming", resp);
+        printed = io.StringIO();
+        with contextlib.redirect_stdout(printed) {
+            usage = _usage_from("dispatch_no_streaming", resp);
+        }
         assert _cost_of(usage) is None , (
             f"{label} reported cost={_cost_of(usage)}; unknown must stay distinct "
             "from free"
+        );
+        # The failed lookup is expected and swallowed, so litellm's
+        # provider-list hint for it is noise on every call.
+        assert "Provider List" not in printed.getvalue() , (
+            f"{label}: the cost lookup printed {printed.getvalue()!r}"
         );
         if resp["usage"] {
             assert usage["prompt_tokens"] == TOKENS["prompt_tokens"] , (
@@ -328,15 +343,17 @@ test "dispatch_streaming_with_tools forwards the stream's logging_obj and attrib
         choices=[types.SimpleNamespace(delta=types.SimpleNamespace(content="hi"))]
     );
     stream_resp = _FakeStreamResp(chunks=[fake_chunk], logging_obj=fake_logging_obj);
-    seen_logging_obj: list = [];
-    def _rebuild(seen: list, logging_obj: object = None) -> dict {
+    seen_logging_obj: list[any] = [];
+    def _rebuild(seen: list[any], logging_obj: object = None) -> dict[str, any] {
         seen_logging_obj.append(logging_obj);
         return _response(model="actual-served-model");
     }
 
-    out: list = [];
+    out: list[any] = [];
     with unittest.mock.patch.object(
-        llm, "model_call_with_stream", lambda (params: dict) { return stream_resp; }
+        llm,
+        "model_call_with_stream",
+        lambda (params: dict[str, any]) { return stream_resp; }
     ), unittest.mock.patch.object(
         _byllm_llm_mod.litellm, "stream_chunk_builder", _rebuild
     ) {
@@ -358,8 +375,8 @@ test "_rebuild_stream_chunks only forwards logging_obj when the cached support f
     # The flag is fixed at import, so branch coverage patches it directly
     # rather than swapping stream_chunk_builder's own signature.
     fake_logging_obj = object();
-    seen: list = [];
-    def _fake_builder(chunks: list, logging_obj: object = None) -> dict {
+    seen: list[any] = [];
+    def _fake_builder(chunks: list[any], logging_obj: object = None) -> dict[str, any] {
         seen.append(logging_obj);
         return {"n": len(chunks)};
     }
@@ -420,7 +437,7 @@ test "_stream_chunk_builder_accepts_logging_obj degrades to False and logs on an
 
 test "_usage_to_dict logs rather than silently swallowing a serialization failure" {
     class _Unserializable {
-        def model_dump(self: _Unserializable) -> dict {
+        def model_dump(self: _Unserializable) -> dict[str, any] {
             raise RuntimeError("boom");
         }
     }
@@ -473,7 +490,7 @@ test "streaming records attribute the actual serving model and carry finish_reas
     with unittest.mock.patch.object(
         llm,
         "model_call_with_stream",
-        lambda (params: dict) { return [content_chunk, usage_chunk]; }
+        lambda (params: dict[str, any]) { return [content_chunk, usage_chunk]; }
     ) {
         list(llm.dispatch_streaming(mt));
     }
@@ -512,7 +529,7 @@ test "usage is recorded on mt_run, isolated per invocation, sync and async alike
         llm.dispatch_no_streaming(mt_sync);
     }
 
-    async def _fake(params: dict) -> dict {
+    async def _fake(params: dict[str, any]) -> dict[str, any] {
         return _response(
             {"prompt_tokens": 20, "completion_tokens": 2, "total_tokens": 22}
         );
@@ -578,7 +595,7 @@ test "tokens telemetry is populated via register_agent_callback for every invoca
     # Async, no tools - the branch BaseLLM.ainvoke dispatches directly rather
     # than delegating to the already-telemetered sync Model.invoke.
     llm_async = Model(model_name="test-model");
-    async def _fake_async(params: dict) -> dict {
+    async def _fake_async(params: dict[str, any]) -> dict[str, any] {
         return _response(
             {"prompt_tokens": 12, "completion_tokens": 2, "total_tokens": 14},
             content="async-ok"
@@ -607,7 +624,7 @@ def _restream_case -> MTRuntime {
     );
     mt_run.stream = True;
 
-    def _fake_stream(params: dict) -> object {
+    def _fake_stream(params: dict[str, any]) -> object {
         return [
             types.SimpleNamespace(
                 usage=None,
@@ -668,21 +685,17 @@ def _compaction_case -> MTRuntime {
     ];
     messages = [sys_msg, user_msg] + round1 + round1 + round1;
 
-    # MockLLM's usage-injection tuple only recognizes tool-call outputs, and
-    # the summariser returns a plain string, so use a real Model instead.
-    summariser = Model(model_name="test-model");
+    summariser = MockLLM(
+        model_name="test-model",
+        outputs=[
+            (
+                "a summary",
+                {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
+            )
+        ]
+    );
     parent_mt = _mt();
-
-    with unittest.mock.patch.object(
-        summariser,
-        "model_call_no_stream",
-        return_value=_response(
-            {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220},
-            content="a summary"
-        )
-    ) {
-        _byllm_llm_mod._default_compact(messages, 1, summariser, parent_mt);
-    }
+    _byllm_llm_mod._default_compact(messages, 1, summariser, parent_mt);
     return parent_mt;
 }
 
@@ -707,7 +720,7 @@ test "byLLM's own follow-up calls get a call_kind distinct from react_iteration"
 
 
 test "usage StreamEvent always terminates a logging=True stream, even with no usage data" {
-    llm = MockLLM(model_name="mockllm", config={"outputs": ["hello there"]});
+    llm = MockLLM(outputs=["hello there"]);
 
     def my_task(q: str) -> str by llm(stream=True, logging=True);
 
@@ -792,31 +805,28 @@ test "cache token fields are normalized onto every recorded call, regardless of 
 
 test "usage_step fires once per underlying call, scoped to that call's own usage" {
     llm = MockLLM(
-        model_name="mockllm",
-        config={
-            "outputs": [
-                (
-                    MockToolCall(tool=step_a, args={}),
-                    {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
-                ),
-                (
-                    MockToolCall(tool=finish_tool, args={"final_output": "done"}),
-                    {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
-                ),
-                # A str-returning finish_tool call always triggers a
-                # final_answer_restream - the 3rd underlying call.
-                (
-                    "done",
-                    {"prompt_tokens": 300, "completion_tokens": 30, "total_tokens": 330}
-                )
-            ]
-        }
+        outputs=[
+            (
+                MockToolCall(tool=step_a, args={}),
+                {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
+            ),
+            (
+                MockToolCall(tool=finish_tool, args={"final_output": "done"}),
+                {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
+            ),
+            # A str-returning finish_tool call always triggers a
+            # final_answer_restream - the 3rd underlying call.
+            (
+                "done",
+                {"prompt_tokens": 300, "completion_tokens": 30, "total_tokens": 330}
+            )
+        ]
     );
 
     def task(q: str) -> str by llm(tools=[step_a], stream=True, logging=True);
 
-    usage_steps: list = [];
-    final_usage: dict | None = None;
+    usage_steps: list[any] = [];
+    final_usage: dict[str, any] | None = None;
     events = list(task("go"));
     for event in events {
         if event.event_type == "usage_step" {
@@ -877,7 +887,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
     ];
 
     def fake_dispatch_streaming_with_tools(
-        mt: MTRuntime, out: list
+        mt: MTRuntime, out: list[any]
     ) -> Generator[str, None, None] {
         response = responses.pop(0);
         _byllm_llm_mod._record_usage(mt, response.usage, "test-model");
@@ -888,7 +898,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
     }
 
     def fake_maybe_compact(
-        mt: MTRuntime, usage: object, just_compacted: bool, cp: dict
+        mt: MTRuntime, usage: object, just_compacted: bool, cp: dict[str, any]
     ) -> bool {
         if len(mt._usage_history) == 1 {
             mt._usage_history.append(
@@ -912,7 +922,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
 
     mt_run = _mt(stream=True, tools=[Tool(func=step_a), Tool.make_finish_tool(str)]);
 
-    usage_steps: list = [];
+    usage_steps: list[any] = [];
     with unittest.mock.patch.object(
         model, "dispatch_streaming_with_tools", fake_dispatch_streaming_with_tools
     ), unittest.mock.patch.object(model, "_maybe_compact", fake_maybe_compact), unittest.mock.patch.object(
@@ -950,7 +960,7 @@ test "usage_step fires for the recovery call" {
     mt_run.stream = True;
 
     def fake_dispatch_streaming_with_tools(
-        mt: MTRuntime, out: list
+        mt: MTRuntime, out: list[any]
     ) -> Generator[str, None, None] {
         raise OutputConversionError("forced for test");
         for _tok in [] {
@@ -964,7 +974,7 @@ test "usage_step fires for the recovery call" {
         }
     }
 
-    usage_steps: list = [];
+    usage_steps: list[any] = [];
     with unittest.mock.patch.object(
         model, "dispatch_streaming_with_tools", fake_dispatch_streaming_with_tools
     ), unittest.mock.patch.object(
@@ -988,20 +998,17 @@ test "usage_step fires for the recovery call" {
 
 test "usage_step does not fire for the no-tools branch" {
     llm = MockLLM(
-        model_name="mockllm",
-        config={
-            "outputs": [
-                (
-                    "hello there",
-                    {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}
-                )
-            ]
-        }
+        outputs=[
+            (
+                "hello there",
+                {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}
+            )
+        ]
     );
 
     def task(q: str) -> str by llm(stream=True, logging=True);
 
-    event_types: list = [];
+    event_types: list[any] = [];
     events = list(task("go"));
     for event in events {
         event_types.append(event.event_type);
@@ -1033,20 +1040,17 @@ test "_usage_history_total_cost sums real cost across recorded calls" {
 
 test "on_iteration's IterationContext exposes real cumulative total_cost" {
     llm = MockLLM(
-        model_name="mockllm",
-        config={
-            "outputs": [
-                (
-                    MockToolCall(tool=step_a, args={}),
-                    {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
-                ),
-                (
-                    MockToolCall(tool=finish_tool, args={"final_output": "done"}),
-                    {"prompt_tokens": 50, "completion_tokens": 5, "total_tokens": 55}
-                ),
-                "done"
-            ]
-        }
+        outputs=[
+            (
+                MockToolCall(tool=step_a, args={}),
+                {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
+            ),
+            (
+                MockToolCall(tool=finish_tool, args={"final_output": "done"}),
+                {"prompt_tokens": 50, "completion_tokens": 5, "total_tokens": 55}
+            ),
+            "done"
+        ]
     );
 
     seen_contexts: list[IterationContext] = [];
@@ -1076,21 +1080,18 @@ test "on_iteration's IterationContext exposes real cumulative total_cost" {
 
 test "llm_timing no longer duplicates token counts now that usage_step exists" {
     llm = MockLLM(
-        model_name="mockllm",
-        config={
-            "outputs": [
-                (
-                    MockToolCall(tool=finish_tool, args={"final_output": "done"}),
-                    {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
-                ),
-                "done"
-            ]
-        }
+        outputs=[
+            (
+                MockToolCall(tool=finish_tool, args={"final_output": "done"}),
+                {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
+            ),
+            "done"
+        ]
     );
 
     def task(q: str) -> str by llm(tools=[step_a], stream=True, logging=True);
 
-    timing_events: list = [];
+    timing_events: list[any] = [];
     events = list(task("go"));
     for event in events {
         if event.event_type == "llm_timing" {

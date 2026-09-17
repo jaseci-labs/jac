@@ -1105,7 +1105,7 @@ test "recovering through reset_password_by_user_id clears a pending reset only o
 
 test "a pending-reset admin has no admin power over jobs or metrics until it rotates" {
     import from jaclang.scale.scheduler.scheduler { PgJobStore }
-    import from jaclang.server.shared_store { open_docs_store }
+    import from jaclang.server.shared_store { shared_store }
 
     project_dir = _write_project("[scale.monitoring]\nenabled = true\n");
     reset_scale_config();
@@ -1117,7 +1117,7 @@ test "a pending-reset admin has no admin power over jobs or metrics until it rot
         );
         job_id = f"job-{uuid.uuid4().hex[:8]}";
         PgJobStore(
-            store=open_docs_store(),
+            store=shared_store(),
             _collection=get_scale_config().get_scheduler_config()["collection"]
         ).insert(
             {

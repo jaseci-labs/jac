@@ -14,13 +14,13 @@ glob MPath: any = motion.path,
          "M496,160 C580,182 650,235 756,235",
 
      ],
-     _INS: list[dict] = [
+     _INS: list[dict[str, any]] = [
          {"y": 52, "label": "PyPI"},
          {"y": 137, "label": "npm"},
          {"y": 222, "label": "C ABI"},
 
      ],
-     _OUTS: list[dict] = [
+     _OUTS: list[dict[str, any]] = [
          {"y": 52, "label": "Python bytecode"},
          {"y": 137, "label": "JavaScript"},
          {"y": 222, "label": "native · wasm"},

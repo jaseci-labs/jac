@@ -41,7 +41,7 @@ impl OwnershipCheckPass._emit_marker_diagnostics -> None {
         }
     }
 
-    for region in self.ir_in.get_all_sub_nodes(OpenStmt) {
+    for region in self.module.get_all_sub_nodes(OpenStmt) {
         hnm = self._open_handle_name(region);
         if hnm is None {
             continue;
@@ -58,23 +58,23 @@ impl OwnershipCheckPass._emit_imm_mutation(
 ) -> None {
     name = decl.sym_name if decl is not None else "";
     related = [(f"`imm` '{name}' declared here", decl)] if decl is not None else None;
-    self.emit(E1309, node_override=site, name=name, related=related);
+    self.ctx.emit(E1309, node_override=site, name=name, related=related);
 }
 
 impl OwnershipCheckPass._emit_place_intrinsic_diagnostics -> None {
     import from jaclang.compiler.frontend.diagnostics { E1319 }
     import from jaclang.compiler.types.types { ClassType, TypeBase, UnionType }
-    for call in self.ir_in.get_all_sub_nodes(FuncCall) {
+    for call in self.module.get_all_sub_nodes(FuncCall) {
         if call.call_kind != "builtin"
             or not isinstance(call.target, Name)
             or call.target.sym_name not in ("take", "swap") {
             continue;
         }
         operation = call.target.sym_name;
-        params = list(call.params or []);
+        params: list[Expr | KWPair] = list(call.params or []);
         if len(params) != (1 if operation == "take" else 2)
             or any([isinstance(p, KWPair) for p in params]) {
-            self.emit(
+            self.ctx.emit(
                 E1319,
                 node_override=call,
                 operation=operation,
@@ -86,7 +86,7 @@ impl OwnershipCheckPass._emit_place_intrinsic_diagnostics -> None {
         for param in params {
             place = param.operand if isinstance(param, UnaryExpr) else param;
             if operation == "take" and isinstance(param, UnaryExpr) {
-                self.emit(
+                self.ctx.emit(
                     E1319,
                     node_override=param,
                     operation=operation,
@@ -99,7 +99,7 @@ impl OwnershipCheckPass._emit_place_intrinsic_diagnostics -> None {
                     isinstance(param, UnaryExpr)
                     and param.ownership == OwnershipKind.MUT_BORROW
                 ) {
-                self.emit(
+                self.ctx.emit(
                     E1319,
                     node_override=param,
                     operation=operation,
@@ -115,7 +115,7 @@ impl OwnershipCheckPass._emit_place_intrinsic_diagnostics -> None {
                     and isinstance(place.right, Name)
                 )
             ) {
-                self.emit(
+                self.ctx.emit(
                     E1319,
                     node_override=param,
                     operation=operation,
@@ -148,7 +148,7 @@ impl OwnershipCheckPass._emit_place_intrinsic_diagnostics -> None {
                         ]
                     )
                 ) {
-                self.emit(
+                self.ctx.emit(
                     E1319,
                     node_override=param,
                     operation=operation,
@@ -159,7 +159,7 @@ impl OwnershipCheckPass._emit_place_intrinsic_diagnostics -> None {
         if operation == "swap"
             and len(types) == 2
             and types[0].mangle() != types[1].mangle() {
-            self.emit(
+            self.ctx.emit(
                 E1319,
                 node_override=call,
                 operation=operation,

@@ -45,7 +45,7 @@ def config_module_pin(source_path: str) -> str {
 }
 
 
-glob _na_demotion_memo: dict[str, tuple] = {},
+glob _na_demotion_memo: dict[str, tuple[int, int] | None] = {},
      _na_demotion_code: dict[str, str] = {},
      _na_demotion_probed: set[str] = set();
 
@@ -60,7 +60,7 @@ def _demotion_sidecar(path: str) -> (str | None) {
 }
 
 
-def _file_key(path: str) -> (tuple | None) {
+def _file_key(path: str) -> (tuple[int, int] | None) {
     try {
         st = os.stat(path);
         return (st.st_mtime_ns, st.st_size);
@@ -70,7 +70,7 @@ def _file_key(path: str) -> (tuple | None) {
 }
 
 
-def _load_demotion(path: str) -> (tuple | None) {
+def _load_demotion(path: str) -> (tuple[int, int] | None) {
     sidecar = _demotion_sidecar(path);
     if sidecar is None {
         return None;
@@ -266,17 +266,75 @@ glob _FRAMEWORK_PACKAGES: dict[str, set[str]] = {
      };
 
 
-def is_client_npm_import(spec: str, source_path: str) -> bool {
+obj BareImportVerdict {
+    has world: str = 'py',
+        rule: str = 'python import',
+        path: str = '';
+}
+
+
+def _declared_npm_rule(spec: str, source_path: str) -> str {
+    import from jaclang.project.modresolver { npm_package_root }
+    pkg_root = npm_package_root(spec);
+    if pkg_root in npm_dependency_names(source_path) {
+        return 'npm dependency ([dependencies.npm])';
+    }
+    fw = client_framework(source_path);
+    if pkg_root in _FRAMEWORK_PACKAGES.get(fw, set()) {
+        return f"npm dependency ({fw} framework package)";
+    }
+    return '';
+}
+
+
+def _installed_npm_rule(spec: str, source_path: str) -> str {
+    import from jaclang.project.modresolver { has_client_npm_package }
+    if has_client_npm_package(spec, source_path) {
+        return 'npm dependency (installed under .jac/client/node_modules)';
+    }
+    return '';
+}
+
+
+def in_client_npm_world(spec: str, source_path: str) -> bool {
     if not spec {
         return False;
     }
-    import from jaclang.project.modresolver { npm_package_root, has_client_npm_package }
-    pkg_root = npm_package_root(spec);
-    if pkg_root in npm_dependency_names(source_path) {
-        return True;
+    return bool(
+        _declared_npm_rule(spec, source_path) or _installed_npm_rule(spec, source_path)
+    );
+}
+
+
+def classify_bare_import(spec: str, source_path: str) -> BareImportVerdict {
+    if not spec {
+        return BareImportVerdict();
     }
-    if pkg_root in _FRAMEWORK_PACKAGES.get(client_framework(source_path), set()) {
-        return True;
+    import from jaclang.project.modresolver { resolve_module }
+    path = '';
+    lang = '';
+    try {
+        (path, lang) = resolve_module(spec, source_path);
+    } except Exception {
+        path = '';
     }
-    return has_client_npm_package(spec, source_path);
+    found = bool(path) and os.path.isfile(path);
+    if found and lang == 'jac' {
+        return BareImportVerdict(world='jac', rule='jac module', path=path);
+    }
+    declared = _declared_npm_rule(spec, source_path);
+    if declared {
+        return BareImportVerdict(world='npm', rule=declared);
+    }
+    installed = _installed_npm_rule(spec, source_path);
+    if found and lang in ('py', 'pyi') {
+        rule = 'python import (python module shadows the undeclared npm package)'
+            if installed
+            else 'python import';
+        return BareImportVerdict(world='py', rule=rule, path=path);
+    }
+    if installed {
+        return BareImportVerdict(world='npm', rule=installed);
+    }
+    return BareImportVerdict(path=path if found else '');
 }

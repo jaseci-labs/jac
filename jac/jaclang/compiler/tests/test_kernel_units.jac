@@ -12,24 +12,16 @@ store of the bytes already at a key leaves the file alone rather than
 rewriting it under whatever other process is watching.
 """
 
-import glob;
 import os;
 import jaclang.compiler.backends.es.jac_runtime_js as _rtjs;
 import jaclang.compiler.backends.native.na_compile_pass as _nacp;
 import from jaclang.compiler.backends.common.kernel_units {
     OSP_CORE_PARTS,
+    es_pass_fingerprint,
     osp_core_unit_path,
     store_unit_artifact,
     unit_artifact_path,
     unit_source
-}
-
-def _sole_artifact(unit_path: str, kind: str) -> str {
-    units_dir = os.path.dirname(unit_path);
-    stem = os.path.splitext(os.path.basename(unit_path))[0];
-    hits = sorted(`glob.`glob(os.path.join(units_dir, f"{stem}.*.{kind}")));
-    assert len(hits) == 1 , f"expected one {stem} {kind} artifact, got {hits}";
-    return hits[0];
 }
 
 test "unit path is stable and carries the exact concatenated sources" {
@@ -79,28 +71,34 @@ test "an artifact store leaves another compiler generation's artifact alone" {
     os.remove(mine);
 }
 
-test "a superseded generation's artifacts retire once they go untouched" {
+test "a superseded generation's units and artifacts retire once they go untouched" {
     import time;
-    import from jaclang.compiler.backends.common.kernel_units { _RETIRED_UNITS }
+    import from jaclang.compiler.backends.common.kernel_units { retire_stale_units }
     unit = osp_core_unit_path('cl');
     units_dir = os.path.dirname(unit);
     aged = os.path.join(
         units_dir, "osp_core_cl.0123456789abcdef.feedfacefeedface.canary"
     );
+    aged_unit = os.path.join(units_dir, "osp_core_cl.0123456789abcdef.jac");
     recent = os.path.join(
         units_dir, "osp_core_cl.fedcba9876543210.cafebabecafebabe.canary"
     );
-    for stray in [aged, recent] {
+    for stray in [aged, aged_unit, recent] {
         with open(stray, "w") as f {
             f.write("; superseded\n");
         }
     }
     old_stamp = time.time() - (40.0 * 86400.0);
     os.utime(aged, (old_stamp, old_stamp));
-    _RETIRED_UNITS.discard("osp_core_cl");
-    osp_core_unit_path('cl');
+    os.utime(aged_unit, (old_stamp, old_stamp));
+    # The live unit is kept by its digest, never by its age.
+    os.utime(unit, (old_stamp, old_stamp));
+    assert retire_stale_units(force=True) , "the retirement sweep did not run";
     assert not os.path.exists(aged) , (
         "an untouched superseded artifact was not retired"
+    );
+    assert not os.path.exists(aged_unit) , (
+        "an untouched superseded unit source was not retired"
     );
     assert os.path.exists(recent) , (
         "a superseded artifact still in use was retired too eagerly"
@@ -165,7 +163,7 @@ test "client kernel JS is deterministic and the rebuild is a warm artifact read"
     for nm in driver_names {
         assert nm in js1 , f"kernel JS lost the driver-referenced name {nm}";
     }
-    art = _sole_artifact(osp_core_unit_path('cl'), "mjs");
+    art = unit_artifact_path(osp_core_unit_path('cl'), "mjs", es_pass_fingerprint());
     mtime1 = os.path.getmtime(art);
     _rtjs._OSP_CORE_JS_CACHE.clear();
     js2 = _rtjs.build_osp_core_js();
@@ -179,7 +177,13 @@ test "native kernel IR is deterministic and the rebuild is a warm artifact read"
     _nacp._OSP_KERNEL_IR_CACHE.clear();
     ir1 = _nacp._compile_osp_kernel_ir("cycles", False);
     assert ir1 is not None , "kernel IR build failed";
-    art = _sole_artifact(osp_core_unit_path('na_cycles'), "ll");
+    art = unit_artifact_path(
+        osp_core_unit_path('na_cycles'),
+        "ll",
+        _nacp.native_compiler_fingerprint(
+            _nacp._kernel_unit_opts("cycles", False, False)
+        )
+    );
     mtime1 = os.path.getmtime(art);
     _nacp._OSP_KERNEL_IR_CACHE.clear();
     ir2 = _nacp._compile_osp_kernel_ir("cycles", False);

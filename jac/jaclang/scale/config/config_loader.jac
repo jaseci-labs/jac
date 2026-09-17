@@ -7,7 +7,7 @@ import from jaclang.scale.config.firebase_env {
 }
 import os;
 
-glob APP_SCALE_KEYS: tuple = (
+glob APP_SCALE_KEYS: tuple[str, ...] = (
          "rpc_timeout",
          "http_forward_timeout",
          "replicas",
@@ -25,7 +25,7 @@ glob APP_SCALE_KEYS: tuple = (
          "workers",
          "threads"
      ),
-     GATEWAY_POD_KEYS: tuple = (
+     GATEWAY_POD_KEYS: tuple[str, ...] = (
          "replicas",
          "cpu_request",
          "cpu_limit",
@@ -36,7 +36,7 @@ glob APP_SCALE_KEYS: tuple = (
          "pdb",
          "deployment_overlay"
      ),
-     GATEWAY_BOOT_KEYS: tuple = (
+     GATEWAY_BOOT_KEYS: tuple[str, ...] = (
          "boot_health_timeout",
          "boot_max_wait",
          "health_monitor_interval",
@@ -47,6 +47,7 @@ class JacScaleConfig(PluginConfigBase) {
     override def get_plugin_name(self: JacScaleConfig) -> str;
     override def get_default_config(self: JacScaleConfig) -> dict[str, any];
     override def get_config_schema(self: JacScaleConfig) -> dict[str, any];
+    override def get_app_config_schema(self: JacScaleConfig) -> dict[str, any];
     override def get_config_strict_env(self: JacScaleConfig) -> str;
     def get_sso_config(self: JacScaleConfig) -> dict[str, any];
     def get_database_config(self: JacScaleConfig) -> dict[str, any];
@@ -80,7 +81,10 @@ glob _scale_config_instance: JacScaleConfig | None = None,
 
 def sanitize_prometheus_namespace(name: str) -> str;
 def _resolve_prometheus_namespace(configured: str | None, k8s_namespace: str) -> str;
-def _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float;
+def _ws_positive(
+    ws_config: dict[str, any], key: str, fallback: (int | float)
+) -> float;
+
 def get_scale_config(project_dir: Path | None = None) -> JacScaleConfig;
 def peek_scale_config -> JacScaleConfig | None;
 def reset_scale_config -> None;

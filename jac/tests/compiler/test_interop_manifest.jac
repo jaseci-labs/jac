@@ -12,6 +12,7 @@ import tempfile;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.passes.execution { run_walker }
 
 def write_mods(mods: dict[str, str]) -> str {
     tmp = tempfile.mkdtemp(prefix="jac_interop_manifest_");
@@ -59,7 +60,7 @@ test "unmappable ctypes wire type across na->sv is E5093" {
         {
             "jac.toml": ('[placement.pins]\n"main.crunch" = "native"\n'),
             "main.jac": (
-                "def py_helper(vals: list) -> int {\n"
+                "def py_helper(vals: list[int]) -> int {\n"
                 "    return len(vals);\n"
                 "}\n"
                 "def crunch -> int {\n"
@@ -133,5 +134,51 @@ test "endpoint effects are recorded by the dedicated effect pass" {
     );
     assert reader is not None and not reader["writes"] , (
         f"read_only must classify as non-writer; got {effects}"
+    );
+}
+
+test "a call whose name lost its scope marks the endpoint unknown instead of crashing" {
+    import from unittest.mock { PropertyMock, patch }
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
+    tmp = write_mods(
+        {
+            "main.jac": (
+                "def helper -> int {\n"
+                "    return 1;\n"
+                "}\n"
+                "def:pub caller -> int {\n"
+                "    return helper();\n"
+                "}\n"
+            )
+        }
+    );
+    prog = JacProgram();
+    mod = prog.compile(os.path.join(tmp, "main.jac"));
+    key = endpoint_key(mod, "func", "caller");
+    before = mod.gen.interop_manifest.endpoint_effects.get(key);
+    assert before is not None and not before["unknown"] , (
+        f"caller resolves helper, so it starts out known; got {before}"
+    );
+    targets: list[uni.Name] = [];
+    for call in mod.get_all_sub_nodes(uni.FuncCall) {
+        target = call.target;
+        if isinstance(target, uni.Name) and target.sym_name == "helper" {
+            targets.append(target);
+        }
+    }
+    assert len(targets) == 1 , f"expected one helper() call, got {len(targets)}";
+    targets[0].sym = None;
+    with patch.object(
+        uni.Name,
+        "sym_tab",
+        new_callable=PropertyMock,
+        side_effect=ValueError("No scope found")
+    ) {
+        run_walker(EndpointEffectPass, mod);
+    }
+    after = mod.gen.interop_manifest.endpoint_effects.get(key);
+    assert after is not None and after["unknown"] , (
+        f"a callee that cannot be resolved must mark the endpoint unknown; got {after}"
     );
 }

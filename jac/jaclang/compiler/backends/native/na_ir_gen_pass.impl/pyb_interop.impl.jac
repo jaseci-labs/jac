@@ -1,6 +1,6 @@
 glob _PYB_BRIDGE_MODULE: str = "jaclang.runtime.interop_bridge";
 
-impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple | None) {
+impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
     """The first Python-side base on `arch_name`'s MRO, as (name, path).
 
     A base counts as Python-side when its symbol resolves to a jac
@@ -39,7 +39,7 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple | None) {
     if arch.arch_kind is not None or self._arch_is_osp_name(arch_name) {
         return None;
     }
-    _own_path = os.path.realpath(self.ir_in.loc.mod_path) if self.ir_in?.loc else "";
+    _own_path = os.path.realpath(self.module.loc.mod_path) if self.module?.loc else "";
     for base_expr in (arch.base_classes or []) {
         if isinstance(base_expr, uni.AtomTrailer)
             and isinstance(base_expr.right, uni.IndexSlice) {
@@ -107,7 +107,7 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
         return None;
     }
     seen: set = {arch_name};
-    queue: list = list(arch.base_classes or []);
+    queue: list[uni.Expr] = list(arch.base_classes or []);
     while queue {
         base_expr = queue.pop(0);
         if isinstance(base_expr, uni.AtomTrailer)
@@ -163,7 +163,7 @@ impl NaIRGenPass._pyb_native_override_owner(arch_name: str, meth: str) -> (str |
 
 impl NaIRGenPass._pyb_shadowed_dispatch(
     arch_name: str, method_name: str
-) -> (tuple | None) {
+) -> (tuple[str, str, str] | None) {
     """`(base, dispatched, owner)` when a shadow call would run the wrong body.
 
     The bridge builds the shadow as `type(name, (base,), {})` -- the
@@ -187,7 +187,7 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
         return None;
     }
     seen: set = {arch_name};
-    queue: list = list(arch.base_classes or []);
+    queue: list[uni.Expr] = list(arch.base_classes or []);
     while queue {
         base_expr = queue.pop(0);
         if isinstance(base_expr, uni.AtomTrailer)
@@ -791,8 +791,8 @@ impl NaIRGenPass._pyb_from_py(
 }
 
 impl NaIRGenPass._pyb_build_args(
-    params: list, skip_kwargs: bool = False
-) -> (tuple | None) {
+    params: list[uni.Expr | uni.KWPair], skip_kwargs: bool = False
+) -> (tuple[ir.Value, ir.Value | None] | None) {
     """Marshal call params into (PyTuple handle, PyDict handle | None).
 
     Returns None when any argument's type cannot cross the boundary;
@@ -800,8 +800,8 @@ impl NaIRGenPass._pyb_build_args(
     """;
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    pos: list = [];
-    kwp: list = [];
+    pos: list[uni.Expr] = [];
+    kwp: list[any] = [];
     for p in (params or []) {
         if isinstance(p, uni.KWPair) {
             if p.key is None {
@@ -815,7 +815,7 @@ impl NaIRGenPass._pyb_build_args(
     if skip_kwargs and kwp {
         return None;
     }
-    marshalled: list = [];
+    marshalled: list[ir.Value] = [];
     for p in pos {
         v = self._codegen_expr(p);
         if v is None {
@@ -827,7 +827,7 @@ impl NaIRGenPass._pyb_build_args(
         }
         marshalled.append(o);
     }
-    kw_pairs: list = [];
+    kw_pairs: list[tuple[str, ir.Value]] = [];
     for p in kwp {
         v = self._codegen_expr(p.value);
         if v is None {
@@ -885,7 +885,7 @@ impl NaIRGenPass._codegen_pyb_field_load(
     self.builder.call(self._pyb_helper("drop"), [shadow]);
     val = self._pyb_from_py(o, tk);
     if val is None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="inherited field read",
@@ -912,7 +912,7 @@ impl NaIRGenPass._codegen_pyb_field_assign(
     o = self._pyb_to_py(target, value);
     if o is None {
         tk = self._type_key_of(target);
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=target,
             kind="inherited field assignment",
@@ -950,7 +950,7 @@ impl NaIRGenPass._codegen_pyb_method_call(
     _shadowed = self._pyb_shadowed_dispatch(type_name, method_name);
     if _shadowed is not None {
         (_sh_base, _sh_disp, _sh_owner) = _shadowed;
-        self.emit(
+        self.ctx.emit(
             E5089,
             node_override=nd,
             cls=_sh_owner,
@@ -972,7 +972,7 @@ impl NaIRGenPass._codegen_pyb_method_call(
     obj_val = self._opt_unwrap_attr(obj_val);
     built = self._pyb_build_args(nd.params or []);
     if built is None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="inherited method call",
@@ -995,7 +995,7 @@ impl NaIRGenPass._codegen_pyb_method_call(
     self.builder.call(self._pyb_helper("drop"), [shadow]);
     ret = self._pyb_from_py(r, self._pyb_ret_key(nd));
     if ret is None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="inherited method call",
@@ -1030,7 +1030,7 @@ impl NaIRGenPass._codegen_pyb_super_call(
     }
     built = self._pyb_build_args(nd.params or []);
     if built is None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="call",
@@ -1065,7 +1065,7 @@ impl NaIRGenPass._codegen_pyb_super_call(
     r = self._pyb_bridge_call("_pyb_super_call", [shadow, anchor, mt, t, kw]);
     ret = self._pyb_from_py(r, self._pyb_ret_key(nd));
     if ret is None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="call",
@@ -1084,8 +1084,8 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
     nd: (uni.FuncCall | uni.Name),
     type_name: str,
     obj_ptr: ir.Value,
-    params: list,
-    native_fields: dict
+    params: list[uni.Expr | uni.KWPair],
+    native_fields: dict[str, int]
 ) -> bool {
     i64 = ir.IntType(64);
     pb = self._pyb_base_of(type_name);
@@ -1108,7 +1108,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
     if not suppress {
         shadow_owner = self._pyb_shadow_postinit_owner(type_name);
         if shadow_owner is not None {
-            self.emit(E5088, node_override=nd, cls=type_name, owner=shadow_owner);
+            self.ctx.emit(E5088, node_override=nd, cls=type_name, owner=shadow_owner);
             return False;
         }
     }
@@ -1124,7 +1124,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
         v = self._codegen_expr(param.value);
         o = self._pyb_to_py(param.value, v) if v is not None else None;
         if o is None {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=nd,
                 kind="constructor argument",
@@ -1139,7 +1139,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
         }
         self.builder.call(self._pyb_helper("dict_set"), [kwd, self._pyb_cstr(kn), o]);
     }
-    args: list = [
+    args: list[ir.Value] = [
         self.builder.call(
             self._pyb_helper("from_cstr"), [self._pyb_cstr(bpath)], name="pyb.ctor.path"
         ),

@@ -101,7 +101,7 @@ test "prepared app imports cannot share mutable module state" {
         base = Path(td);
         helper = str(base / 'helper.jac');
         (base / 'helper.jac').write_text('');
-        applications = [];
+        applications: list[PreparedApplication] = [];
         names = [];
         try {
             for name in ['a', 'b'] {

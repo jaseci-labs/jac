@@ -5,7 +5,9 @@ import tempfile;
 import from pathlib { Path }
 
 """Create a minimal jac.toml file for PWA testing."""
-def _create_jac_toml_with_pwa(temp_dir: str, pwa_config: dict | None = None) -> str {
+def _create_jac_toml_with_pwa(
+    temp_dir: str, pwa_config: dict[str, any] | None = None
+) -> str {
     pwa_section = "";
     if pwa_config is not None {
         pwa_lines = ["[client.pwa]"];

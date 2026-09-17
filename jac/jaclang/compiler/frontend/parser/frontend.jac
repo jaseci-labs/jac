@@ -4,7 +4,7 @@ import from .lexer { Lexer }
 import from .parser { Parser, parse_expression as _parse_expression }
 import from .tokens { CommentData, SrcDiag }
 import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.passes.context { Alert }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.srcloc { Span }
 import from jaclang.compiler.frontend.unitree { CommentToken, Expr, Module, Source }
@@ -43,7 +43,6 @@ def parse_diags(
     return (parser.error_count > 0 or lex_errs > 0, parser.diags, lex_diags, );
 }
 
-
 def parse(
     source: str, file_path: str = "<input>", prog: (JacProgram | None) = None
 ) -> tuple[Module, bool] {
@@ -68,7 +67,6 @@ def parse_expression(
     }
     return (expression, had_error);
 }
-
 
 def _finish_parse(
     module: Module,
@@ -131,9 +129,9 @@ def _native_parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list,
+    annexes: list[tuple[str, str]],
     early_context: str = ""
-) -> (tuple | None) {
+) -> (tuple[Module, bool] | None) {
     import jaclang.compiler.native_compiler as _jc;
     kernel = _jc.ensure_loaded();
     if kernel is None {
@@ -171,9 +169,9 @@ def parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list,
+    annexes: list[tuple[str, str]],
     early_context: str = ""
-) -> tuple {
+) -> tuple[any, bool] {
     nat = _native_parse_woven(source_str, file_path, prog, annexes, early_context);
     if nat is not None {
         return nat;
@@ -203,7 +201,7 @@ def annex_sources(file_path: str) -> list[tuple[str, str]] {
         if discover_base_file(file_path) is not None {
             return [];
         }
-        paths = [
+        paths: list[str] = [
             *discover_annex_files(file_path, ".impl.jac"),
             *discover_annex_files(file_path, ".test.jac")
         ];

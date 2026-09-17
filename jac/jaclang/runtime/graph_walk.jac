@@ -27,11 +27,15 @@ glob __all__ = [
 def access_gated -> bool {
     import from jaclang.runtime.runtime { JacRuntimeInterface }
     jctx = JacRuntimeInterface.peek_context();
+
+    while jctx is not None and jctx._system_root is None {
+        jctx = jctx._parent;
+    }
     if jctx is None {
         return False;
     }
-    ur = jctx?.user_root;
-    return ur is not None and ur != jctx.system_root;
+    ur = jctx._user_root;
+    return ur is not None and ur != jctx._system_root;
 }
 
 
@@ -287,7 +291,7 @@ def walk_edges(origins: list[Anchor], q: GraphQuery, gated: bool) -> list[Anchor
         return [];
     }
     edges: list[Anchor] = [];
-    node_of: dict = {};
+    node_of: dict[object, any] = {};
     seen: set = set();
     for (a, e) in walk(origins, q, len(q.hops), gated) {
         if e is None {

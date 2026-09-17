@@ -107,7 +107,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
     }
 
     rc_ok = (not is_value) or not self._nogc_headerless();
-    pending_old: list = [];
+    pending_old: list[ir.Value] = [];
     for (i, target) in enumerate(targets) {
         if i >= len(struct_type.elements) {
             break;
@@ -223,8 +223,10 @@ impl NaIRGenPass._rc_slot_ref(val: ir.Value) -> (ir.Value | None) {
     return None;
 }
 
-impl NaIRGenPass._tuple_managed_fields(struct_type: ir.LiteralStructType) -> list {
-    out: list = [];
+impl NaIRGenPass._tuple_managed_fields(
+    struct_type: ir.LiteralStructType
+) -> list[tuple[int, bool]] {
+    out: list[tuple[int, bool]] = [];
     for (i, ety) in enumerate(struct_type.elements) {
         if self?.jacval_type and ety == self.jacval_type {
             continue;
@@ -339,7 +341,9 @@ impl NaIRGenPass._codegen_tuple_index(
     return self.builder.load(elem_ptr, name=f"tuple.idx.{idx}");
 }
 
-impl NaIRGenPass._variadic_tuple_seq_type(type_args: list) -> (ir.Type | None) {
+impl NaIRGenPass._variadic_tuple_seq_type(
+    type_args: list[TypeBase]
+) -> (ir.Type | None) {
     """The native shape of a tuple annotation that withholds its arity.
 
     `tuple[T, ...]` describes any number of `T`, and a native tuple carries its
@@ -529,7 +533,7 @@ impl NaIRGenPass._tuple_iter_seq(
     self._emit_list_helpers(spec, store_type);
     helpers = self.list_helpers[spec];
 
-    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{expr.loc.first_line
+    _loc = f"{os.path.basename(self.module.loc.mod_path)}:{expr.loc.first_line
         if expr is not None and expr.loc
         else 0}";
     seq = self._rc_call_with_ctx(

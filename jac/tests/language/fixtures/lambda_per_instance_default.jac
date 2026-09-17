@@ -2,11 +2,11 @@
 give each instance its own fresh list, never a class-level shared default.
 
 The lambda helper hoists to the enclosing scope and the field uses a plain
-``field(default_factory=lambda: <expr>)`` so the factory re-runs on every instantiation.
+``ObjectField(default_factory=lambda: <expr>)`` so the factory re-runs on every instantiation.
 """
 
 obj B {
-    has cbs: list = [
+    has cbs: list[any] = [
         lambda (x: int) -> int {
             a = x + 1;
             a

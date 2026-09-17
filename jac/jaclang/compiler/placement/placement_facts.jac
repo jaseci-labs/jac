@@ -5,8 +5,13 @@ glob SPACE_SERVER: str = 'server',
      SPACE_CLIENT: str = 'client',
      SPACE_NATIVE: str = 'native';
 
-glob TOOLCHAIN_NATIVE_ONLY_REL: tuple = ("runtime", "na_stdlib"),
-     TOOLCHAIN_MIXED_NATIVE_REL: tuple = ("client", "targets", "desktop", "native");
+glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
+     TOOLCHAIN_MIXED_NATIVE_REL: tuple[str, ...] = (
+         "client",
+         "targets",
+         "desktop",
+         "native"
+     );
 
 
 def project_root_of(source_path: str) -> (str | None) {
@@ -151,7 +156,7 @@ def sealed_spaces_for(source_path: str) -> (set[str] | None) {
     } except Exception {
         return None;
     }
-    placement = manifest.get("placement") or {};
+    placement: any = manifest.get("placement") or {};
     rel = os.path.relpath(ap, d).replace(os.sep, "/");
     spaces = placement.get(rel);
     if spaces is None {

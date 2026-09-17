@@ -7,7 +7,7 @@ impl mcp_cmd(
 ) -> int {
     import from jaclang.project.config { get_config }
     jac_cfg = get_config();
-    mcp_cfg: dict = {};
+    mcp_cfg: dict[str, any] = {};
     if jac_cfg {
         mcp_cfg = jac_cfg.get_plugin_config("mcp");
     }

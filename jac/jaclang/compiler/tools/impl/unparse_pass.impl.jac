@@ -19,8 +19,8 @@ impl UnparsePass._comma_sep(nodes: Sequence[uni.UniNode]) -> str {
 }
 
 impl UnparsePass.unparse_prepare_exit with uni.UniNode exit {
-    for attr in vars(here).values() {
-        if isinstance(attr, uni.Token) and not attr.gen.jac {
+    for attr in [here->:Role:->[?:uni.Token]] {
+        if not attr.gen.jac {
             attr.gen.jac = attr.value;
         }
     }
@@ -52,8 +52,7 @@ impl UnparsePass.exit_name with uni.Name exit {
         return;
     }
     prefix = "`" if here.is_kwesc else "";
-    suffix = ",\n" if here.is_enum_stmt else "";
-    here.gen.jac = prefix + here.value + suffix;
+    here.gen.jac = prefix + here.value;
 }
 
 impl UnparsePass.exit_string with uni.String exit {
@@ -98,7 +97,7 @@ impl UnparsePass.exit_special_var_ref with uni.SpecialVarRef exit {
 }
 
 impl UnparsePass.exit_module with uni.Module exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.doc {
         parts.append(here.doc.gen.jac);
     }
@@ -123,7 +122,7 @@ impl UnparsePass.exit_sub_tag with uni.SubTag exit {
 }
 
 impl UnparsePass.exit_type_param with uni.TypeParam exit {
-    parts: list = [("comptime " if here.is_comptime else "") + here.name.gen.jac];
+    parts: list[str] = [("comptime " if here.is_comptime else "") + here.name.gen.jac];
     if here.bound {
         parts.append(": " + here.bound.gen.jac);
     }
@@ -134,7 +133,7 @@ impl UnparsePass.exit_type_param with uni.TypeParam exit {
 }
 
 impl UnparsePass.exit_type_alias with uni.TypeAlias exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.doc {
         parts.append(here.doc.gen.jac);
     }
@@ -153,7 +152,7 @@ impl UnparsePass.exit_type_alias with uni.TypeAlias exit {
 }
 
 impl UnparsePass.exit_global_vars with uni.GlobalVars exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.doc {
         parts.append(here.doc.gen.jac);
     }
@@ -166,7 +165,7 @@ impl UnparsePass.exit_global_vars with uni.GlobalVars exit {
 }
 
 impl UnparsePass.exit_test with uni.Test exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.doc {
         parts.append(here.doc.gen.jac);
     }
@@ -186,7 +185,7 @@ impl UnparsePass.exit_test with uni.Test exit {
 }
 
 impl UnparsePass.exit_module_code with uni.ModuleCode exit {
-    parts: list = ["with entry"];
+    parts: list[str] = ["with entry"];
     if here.name {
         parts.append(":");
         parts.append(here.name.gen.jac);
@@ -201,7 +200,7 @@ impl UnparsePass.exit_py_inline_code with uni.PyInlineCode exit {
 }
 
 impl UnparsePass.exit_import with uni.Import exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.doc {
         parts.append(here.doc.gen.jac);
     }
@@ -245,7 +244,7 @@ impl UnparsePass.exit_module_item with uni.ModuleItem exit {
 }
 
 impl UnparsePass.exit_archetype with uni.Archetype exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.doc {
         parts.append(here.doc.gen.jac);
         if not isinstance(here.parent, (uni.Module, uni.Archetype, uni.Enum)) {
@@ -292,7 +291,7 @@ impl UnparsePass.exit_archetype with uni.Archetype exit {
 }
 
 impl UnparsePass.exit_impl_def with uni.ImplDef exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.doc {
         parts.append(here.doc.gen.jac);
     }
@@ -325,7 +324,7 @@ impl UnparsePass.exit_sem_def with uni.SemDef exit {
 }
 
 impl UnparsePass.exit_enum with uni.Enum exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.decorators {
         decs = " @".join([d.gen.jac for d in here.decorators]);
         parts.append("@" + decs);
@@ -357,7 +356,7 @@ impl UnparsePass.exit_enum with uni.Enum exit {
 }
 
 impl UnparsePass.exit_ability with uni.Ability exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.doc {
         parts.append(here.doc.gen.jac);
         if not isinstance(here.parent, (uni.Module, uni.Archetype, uni.Enum)) {
@@ -420,7 +419,7 @@ impl UnparsePass.exit_ability with uni.Ability exit {
 }
 
 impl UnparsePass.exit_func_signature with uni.FuncSignature exit {
-    param_parts: list = [];
+    param_parts: list[str] = [];
     if here.posonly_params {
         for prm in here.posonly_params {
             param_parts.append(prm.gen.jac);
@@ -450,7 +449,7 @@ impl UnparsePass.exit_func_signature with uni.FuncSignature exit {
 }
 
 impl UnparsePass.exit_event_signature with uni.EventSignature exit {
-    parts: list = ["with"];
+    parts: list[str] = ["with"];
     if here.arch_tag_info {
         parts.append(here.arch_tag_info.gen.jac);
     }
@@ -474,7 +473,7 @@ impl UnparsePass.exit_param_var with uni.ParamVar exit {
 }
 
 impl UnparsePass.exit_arch_has with uni.ArchHas exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.access {
         parts.append(here.access.gen.jac);
     }
@@ -499,7 +498,7 @@ impl UnparsePass.exit_has_var with uni.HasVar exit {
 }
 
 impl UnparsePass.exit_typed_ctx_block with uni.TypedCtxBlock exit {
-    parts: list = [":"];
+    parts: list[str] = [":"];
     if here.type_ctx {
         parts.append(here.type_ctx.gen.jac);
     }
@@ -568,7 +567,7 @@ impl UnparsePass.exit_try_stmt with uni.TryStmt exit {
 }
 
 impl UnparsePass.exit_except with uni.Except exit {
-    parts: list = ["except"];
+    parts: list[str] = ["except"];
     if here.ex_type {
         parts.append(here.ex_type.gen.jac);
         if here.name {
@@ -587,7 +586,7 @@ impl UnparsePass.exit_finally_stmt with uni.FinallyStmt exit {
 }
 
 impl UnparsePass.exit_iter_for_stmt with uni.IterForStmt exit {
-    parts: list = ["async for" if here.is_async else "for"];
+    parts: list[str] = ["async for" if here.is_async else "for"];
     parts.append(here.iter.gen.jac);
     if here.condition {
         parts.append("while");
@@ -606,7 +605,7 @@ impl UnparsePass.exit_iter_for_stmt with uni.IterForStmt exit {
 }
 
 impl UnparsePass.exit_in_for_stmt with uni.InForStmt exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.is_comptime {
         parts.append("comptime");
     }
@@ -640,7 +639,7 @@ impl UnparsePass.exit_forever_stmt with uni.ForeverStmt exit {
 }
 
 impl UnparsePass.exit_with_stmt with uni.WithStmt exit {
-    parts: list = ["with"];
+    parts: list[str] = ["with"];
     if here.is_async {
         parts.append("async");
     }
@@ -661,7 +660,7 @@ impl UnparsePass.exit_expr_as_item with uni.ExprAsItem exit {
 }
 
 impl UnparsePass.exit_raise_stmt with uni.RaiseStmt exit {
-    parts: list = ["raise"];
+    parts: list[str] = ["raise"];
     if here.cause {
         parts.append(here.cause.gen.jac);
     }
@@ -673,7 +672,7 @@ impl UnparsePass.exit_raise_stmt with uni.RaiseStmt exit {
 }
 
 impl UnparsePass.exit_assert_stmt with uni.AssertStmt exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.is_comptime {
         parts.append("comptime");
     }
@@ -702,7 +701,7 @@ impl UnparsePass.exit_return_stmt with uni.ReturnStmt exit {
         here.gen.jac = here.expr.gen.jac;
         return;
     }
-    parts: list = ["return"];
+    parts: list[str] = ["return"];
     if here.expr {
         parts.append(here.expr.gen.jac);
     }
@@ -711,15 +710,16 @@ impl UnparsePass.exit_return_stmt with uni.ReturnStmt exit {
 }
 
 impl UnparsePass.exit_visit_stmt with uni.VisitStmt exit {
-    parts: list = ["visit"];
-    if here.insert_loc {
-        parts.append(here.insert_loc.gen.jac);
+    parts: list[str] = ["visit"];
+    if here.insert_loc is not None {
+        parts[0] += ":" + here.insert_loc.gen.jac + ":";
     }
     parts.append(here.target.gen.jac);
     if here.else_body {
         parts.append(here.else_body.gen.jac);
+    } else {
+        parts.append(";");
     }
-    parts.append(";");
     here.gen.jac = " ".join(parts);
 }
 
@@ -736,7 +736,7 @@ impl UnparsePass.exit_cast_expr with uni.CastExpr exit {
 }
 
 impl UnparsePass.exit_assignment with uni.Assignment exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.is_comptime and not isinstance(here.parent, uni.GlobalVars) {
         parts.append("comptime");
     }
@@ -756,18 +756,19 @@ impl UnparsePass.exit_assignment with uni.Assignment exit {
     }
     result = " ".join(parts);
 
-    if not here.is_enum_stmt
-        and not (
-            isinstance(here.parent, uni.IterForStmt)
-            and (here == here.parent.iter or here == here.parent.count_by)
-        ) {
+    if here.is_enum_stmt {
+        result += ",";
+    } elif not (
+        isinstance(here.parent, uni.IterForStmt)
+        and (here == here.parent.iter or here == here.parent.count_by)
+    ) {
         result = result + ";";
     }
     here.gen.jac = result;
 }
 
 impl UnparsePass.exit_concurrent_expr with uni.ConcurrentExpr exit {
-    parts: list = [];
+    parts: list[str] = [];
     if isinstance(here.tok, uni.Token) and here.tok.value {
         parts.append(here.tok.gen.jac);
     }
@@ -797,7 +798,7 @@ impl UnparsePass.exit_bool_expr with uni.BoolExpr exit {
 }
 
 impl UnparsePass.exit_lambda_expr with uni.LambdaExpr exit {
-    parts: list = ["lambda"];
+    parts: list[str] = ["lambda"];
     if here.signature {
         parts.append(here.signature.gen.jac);
     }
@@ -831,7 +832,7 @@ impl UnparsePass.exit_multi_string with uni.MultiString exit {
 }
 
 impl UnparsePass.exit_f_string with uni.FString exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.start is not None {
         parts.append(here.start.gen.jac);
     }
@@ -893,7 +894,7 @@ impl UnparsePass.exit_k_w_pair with uni.KWPair exit {
 }
 
 impl UnparsePass.exit_inner_compr with uni.InnerCompr exit {
-    parts: list = ["for"];
+    parts: list[str] = ["for"];
     if here.is_async {
         parts.append("async");
     }
@@ -959,7 +960,7 @@ impl UnparsePass.exit_graph_expr with uni.GraphExpr exit {
 }
 
 impl UnparsePass.exit_yield_expr with uni.YieldExpr exit {
-    parts: list = ["yield"];
+    parts: list[str] = ["yield"];
     if here.with_from {
         parts.append("from");
     }
@@ -990,7 +991,7 @@ impl UnparsePass.exit_func_call with uni.FuncCall exit {
 impl UnparsePass.exit_index_slice with uni.IndexSlice exit {
     result = "[";
     if here.is_range {
-        slice_parts: list = [];
+        slice_parts: list[str] = [];
         for s in here.slices {
             part = "";
             if s.start {
@@ -1127,7 +1128,7 @@ impl UnparsePass.exit_match_stmt with uni.MatchStmt exit {
 }
 
 impl UnparsePass.exit_match_case with uni.MatchCase exit {
-    parts: list = ["case", here.pattern.gen.jac];
+    parts: list[str] = ["case", here.pattern.gen.jac];
     if here.guard {
         parts.append("if");
         parts.append(here.guard.gen.jac);
@@ -1204,7 +1205,7 @@ impl UnparsePass.exit_match_star with uni.MatchStar exit {
 }
 
 impl UnparsePass.exit_match_arch with uni.MatchArch exit {
-    parts: list = [];
+    parts: list[str] = [];
     if here.arg_patterns {
         parts.extend([a.gen.jac for a in here.arg_patterns]);
     }

@@ -70,7 +70,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
         here.gen.es_ast = None;
         return;
     }
-    emit_items: list = list(here.items);
+    emit_items: list[uni.ModuleItem | uni.ModulePath] = list(here.items);
     if (here.from_loc and here.items) {
         resolved_path = here.from_loc.resolve_relative_path();
         partition = self._partition_client_import_items(here);
@@ -95,7 +95,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
             and not import_path.startswith('.')
             and not is_jac_runtime {
             js_import_path = relative_js_specifier(
-                resolved_path, self.ir_in.loc.mod_path or here.loc.mod_path
+                resolved_path, self.module.loc.mod_path or here.loc.mod_path
             );
         } else {
             js_import_path = convert_to_js_import_path(import_path);
@@ -121,7 +121,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
         import_path = import_key;
         if resolved_path.endswith('.jac') and not import_path.startswith('.') {
             js_import_path = relative_js_specifier(
-                resolved_path, self.ir_in.loc.mod_path or here.loc.mod_path
+                resolved_path, self.module.loc.mod_path or here.loc.mod_path
             );
         } else {
             js_import_path = convert_to_js_import_path(import_path);
@@ -193,7 +193,10 @@ impl EsastGenPass.exit_import with uni.Import exit {
 
 impl EsastGenPass._partition_client_import_items(
     nd: uni.Import
-) -> (tuple[list, list] | None) {
+) -> (
+    tuple[list[uni.ModuleItem | uni.ModulePath], list[uni.ModuleItem | uni.ModulePath]]
+    | None
+) {
     import from jaclang.compiler.symbol_utils {
         ClientImportVerdict,
         classify_client_import_item,
@@ -212,12 +215,12 @@ impl EsastGenPass._partition_client_import_items(
     if source_mod is None {
         return ([], list(nd.items)) if pinned_server else None;
     }
-    kept: list = [];
-    bridged: list = [];
+    kept: list[uni.ModuleItem | uni.ModulePath] = [];
+    bridged: list[uni.ModuleItem | uni.ModulePath] = [];
     for item in nd.items {
         if isinstance(item, uni.ModuleItem) {
             local_name = item.alias.sym_name if item.alias else item.name.value;
-            binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
+            binding = self.module.gen.interop_manifest.bindings.get(local_name);
             if binding is not None and binding.kind == 'type' {
                 bridged.append(item);
                 continue;
@@ -249,9 +252,9 @@ impl EsastGenPass._partition_client_import_items(
 }
 
 impl EsastGenPass._generate_sv_import_stubs(
-    nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+    nd: uni.Import, items: (Sequence[uni.ModuleItem | uni.ModulePath] | None) = None
 ) -> None {
-    manifest = self.ir_in.gen.interop_manifest;
+    manifest = self.module.gen.interop_manifest;
     stubs: list[es.Statement] = [];
     for item in (items if items is not None else nd.items) {
         if not isinstance(item, uni.ModuleItem)
@@ -270,7 +273,7 @@ impl EsastGenPass._generate_sv_import_stubs(
             continue;
         }
         boundary_types = manifest.boundary_types_for(
-            binding.type_scope if binding is not None else self.ir_in.loc.mod_path
+            binding.type_scope if binding is not None else self.module.loc.mod_path
         );
         param_names: list[str] = [];
         param_type_map: dict[str, str] = {};
@@ -387,14 +390,14 @@ impl EsastGenPass._generate_sv_import_stubs(
 
 impl EsastGenPass._is_client_native_import(nd: uni.Import) -> bool {
     import from jaclang.compiler.driver.boundary_classify { import_binds_client_native }
-    return import_binds_client_native(nd, self.ir_in.gen.interop_manifest);
+    return import_binds_client_native(nd, self.module.gen.interop_manifest);
 }
 
 impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import json;
-    contracts: dict = {};
-    host_imports: dict = {};
+    contracts: dict[str, dict[str, any]] = {};
+    host_imports: dict[str, any] = {};
     assert nd.from_loc is not None;
     resolved_path = nd.from_loc.resolve_relative_path();
     stem = native_wasm_stem(resolved_path);
@@ -436,12 +439,12 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
         }
         export_name = item.name.sym_name;
         local_name = item.alias.sym_name if item.alias else export_name;
-        binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
+        binding = self.module.gen.interop_manifest.bindings.get(local_name);
         if binding is None or not binding.native_contract {
             raise ValueError(f"Missing native contract for '{export_name}'");
         }
         contracts[export_name] = binding.native_contract;
-        host_imports = self.ir_in.gen.interop_manifest.native_host_imports[stem];
+        host_imports = self.module.gen.interop_manifest.native_host_imports[stem];
         props.append(
             self.sync_loc(
                 es.AssignmentProperty(
@@ -504,7 +507,7 @@ impl EsastGenPass._sv_import_item_is_type(
         return True;
     }
     local_name = item.alias.sym_name if item.alias else item.name.value;
-    binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
+    binding = self.module.gen.interop_manifest.bindings.get(local_name);
     return binding is not None and binding.kind == 'type';
 }
 
@@ -515,7 +518,7 @@ impl EsastGenPass.exit_sub_tag with uni.SubTag exit {
 }
 
 impl EsastGenPass._import_item_named(name: str) -> (uni.ModuleItem | None) {
-    for imp in self.ir_in.get_all_sub_nodes(uni.Import) {
+    for imp in self.module.get_all_sub_nodes(uni.Import) {
         if imp.from_loc is None {
             continue;
         }
@@ -548,7 +551,7 @@ impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
 
     import re;
     referenced: set[str] = set();
-    pending: list[any] = [value_body];
+    pending: list[object] = [value_body];
     while pending {
         value = pending.pop();
         if isinstance(value, (es.Identifier, es.JsxIdentifier)) {

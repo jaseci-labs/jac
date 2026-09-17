@@ -1,4 +1,8 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
+    Module,
+    TreeWalker,
+    UniNode,
     Ability,
     ArchHas,
     Archetype,
@@ -33,7 +37,6 @@ import from jaclang.compiler.frontend.unitree {
     LambdaExpr,
     ListVal,
     Literal,
-    Module,
     ModuleCode,
     ModuleItem,
     ModulePath,
@@ -52,7 +55,6 @@ import from jaclang.compiler.frontend.unitree {
     UnaryExpr,
     TupleVal,
     TypeAlias,
-    UniNode,
     VisitStmt,
     in_type_position,
     type_only_import_of,
@@ -62,7 +64,8 @@ import from jaclang.compiler.frontend.unitree {
     WithStmt,
     YieldExpr
 }
-import from jaclang.compiler.passes.uni_pass { UniPass }
+import from jaclang.compiler.passes.context { CompileContext }
+
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
@@ -78,6 +81,7 @@ import from jaclang.compiler.types.types {
     UnknownType
 }
 import from jaclang.compiler.types.type_utils {
+    BARE_GENERIC_REQUIRED,
     PropertyWriteKind,
     get_declared_generator_return_type,
     get_generator_yield_type,
@@ -129,6 +133,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1132,
     E5095,
     E1133,
+    E1036,
     W1036,
     W1037,
     W1052,
@@ -137,25 +142,34 @@ import from jaclang.compiler.frontend.diagnostics {
     E2015
 }
 
-
 glob FW_INTERVAL_OPS: dict[str, str] = {
          "PLUS": "+",
          "MINUS": "-",
          "STAR_MUL": "*"
      };
 
-walker TypeCheckPass(UniPass) {
-    has prog: JacProgram,
+walker TypeCheckPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram,
         evaluator: TypeEvaluator postinit,
         _lambda_depth: int = 0;
 
     def postinit -> None;
+    can initialize with entry;
 
     static has HOST_PASS: bool = True;
 
-    def transform(ir_in: Module) -> Module;
-    def before_pass -> None;
-    def after_pass -> None;
+    can prepare with entry;
+    can finish with exit;
     def _stamp_fixed_width -> None;
     def _provably_in_range(nd: Expr, name: str) -> bool;
     def _insert_builtin_symbols -> None;
@@ -209,7 +223,20 @@ walker TypeCheckPass(UniPass) {
     can exit_sub_tag with SubTag exit;
     def _eval_unpacking_names(container: Expr) -> None;
     def _body_always_returns(body: list[CodeBlockStmt]) -> bool;
-    def _check_bare_generic(ann_node: UniNode, ty: object) -> None;
+    def _check_bare_generic(
+        ann_node: UniNode,
+        ty: object,
+        shape: (UniNode | None) = None,
+        nested: bool = False
+    ) -> None;
+
+    def _written_type_args(
+        shape: (UniNode | None), ty: ClassType
+    ) -> (list[Expr] | None);
+
+    def _index_args(index: IndexSlice) -> list[Expr];
+    def _union_leaves(shape: (UniNode | None)) -> list[UniNode];
+    def _names_union_form(target: Expr) -> bool;
     def _check_explicit_any(ann_node: UniNode) -> None;
     def _check_walker_reports_shape(nd: HasVar, declared_type: object) -> None;
     def _enclosing_walker_report_elem_type(nd: UniNode) -> (TypeBase | None);

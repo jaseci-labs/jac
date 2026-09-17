@@ -1,12 +1,12 @@
 """print(bool) renders True/False on every backend (#7922)."""
 
-def pbool_py -> dict {
+def pbool_py -> dict[any, any] {
     flag: bool = True;
     print(flag, False);
     return {"ok": 1};
 }
 
-def pbool_cl -> dict {
+def pbool_cl -> dict[any, any] {
     # No print here: the ES harness parses this function's stdout as JSON,
     # so console output would corrupt the comparison channel. The bool
     # rendering under test is the native path.

@@ -1,4 +1,4 @@
-impl PyastBuildPass.aug_op_map(tok_dict: dict, op: Token) -> str {
+impl PyastBuildPass.aug_op_map(tok_dict: dict[str, str], op: Token) -> str {
     op.value += '=';
     for (_key, value) in tok_dict.items() {
         if (value == op.value) {
@@ -6,6 +6,11 @@ impl PyastBuildPass.aug_op_map(tok_dict: dict, op: Token) -> str {
         }
     }
     return _key;
+}
+
+impl PyastBuildPass.is_canceled -> bool {
+    return self.ctx.cancel_requested
+        or (self.ctx.cancel_token is not None and self.ctx.cancel_token.is_set());
 }
 
 impl PyastBuildPass.convert_to_doc(string: String) -> None {
@@ -34,7 +39,7 @@ impl PyastBuildPass.proc_withitem(nd: py_ast.withitem) -> ExprAsItem {
         }
         return ExprAsItem(expr=context_expr, alias=optional_vars or None, kid=kid);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -58,7 +63,7 @@ impl PyastBuildPass.proc_match_case(nd: py_ast.match_case) -> MatchCase {
         kid.extend(valid);
         return MatchCase(pattern=pattern, guard=guard, body=valid, kid=kid);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -71,7 +76,7 @@ impl PyastBuildPass.proc_keyword(nd: py_ast.keyword) -> KWPair {
     if isinstance(value, Expr) {
         return KWPair(key=arg, value=value, kid=[arg, value] if arg else [value]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -102,7 +107,7 @@ impl PyastBuildPass.proc_comprehension(nd: py_ast.comprehension) -> InnerCompr {
             kid=kid
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -237,11 +242,14 @@ impl PyastBuildPass.operator(tok: Tok, value: str) -> Token {
 }
 
 impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> FuncSignature {
-    def _apply_kind(params: list, kind: ParamKind) -> list {
+    def _apply_kind(params: list[UniNode], kind: ParamKind) -> list[ParamVar] {
+        typed: list[ParamVar] = [];
         for param in params {
-            cast(ParamVar, param).param_kind = kind;
+            param_var = cast(ParamVar, param);
+            param_var.param_kind = kind;
+            typed.append(param_var);
         }
-        return params;
+        return typed;
     }
     posonlyargs = _apply_kind(
         [self.convert(arg) for arg in nd.posonlyargs], ParamKind.POSONLY
@@ -343,7 +351,7 @@ impl PyastBuildPass.proc_arg(nd: py_ast.arg) -> ParamVar {
         else self.name_node(nd, 'Any');
     self.in_type_annotation = False;
     if not isinstance(ann_expr, Expr) {
-        raise RuntimeError(self.ice('Expected annotation to be an expression'));
+        raise RuntimeError(self.ctx.ice('Expected annotation to be an expression'));
     }
     annot = SubTag[Expr](tag=ann_expr, kid=[ann_expr]);
     paramvar = ParamVar(
@@ -365,7 +373,7 @@ impl PyastBuildPass.proc_yield_from(nd: py_ast.YieldFrom) -> YieldExpr {
     if isinstance(value, Expr) {
         return YieldExpr(expr=value, with_from=True, kid=[value]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -378,7 +386,7 @@ impl PyastBuildPass.proc_yield(nd: py_ast.Yield) -> YieldExpr {
             expr=None, with_from=False, kid=[self.operator(Tok.KW_YIELD, 'yield')]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -391,7 +399,7 @@ impl PyastBuildPass.proc_tuple(nd: py_ast.Tuple) -> TupleVal {
             if isinstance(i, (Expr, KWPair))
         ];
         if (len(elts) != len(valid_elts)) {
-            raise RuntimeError(self.ice('Length mismatch in tuple elts'));
+            raise RuntimeError(self.ctx.ice('Length mismatch in tuple elts'));
         }
         kid = elts;
     } else {
@@ -415,7 +423,7 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> TryStmt {
         if isinstance(i, CodeBlockStmt)
     ];
     if (len(valid) != len(body)) {
-        raise RuntimeError(self.ice('Length mismatch in try body'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in try body'));
     }
     valid_body = valid;
     kid: list[UniNode] = [*valid_body];
@@ -427,7 +435,7 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> TryStmt {
             if isinstance(i, Except)
         ];
         if (len(handlers) != len(valid_handlers)) {
-            raise RuntimeError(self.ice('Length mismatch in try handlers'));
+            raise RuntimeError(self.ctx.ice('Length mismatch in try handlers'));
         }
         excepts = valid_handlers;
         kid.extend(valid_handlers);
@@ -444,7 +452,7 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> TryStmt {
             if isinstance(i, CodeBlockStmt)
         ];
         if (len(orelse) != len(valid_orelse)) {
-            raise RuntimeError(self.ice('Length mismatch in try orelse'));
+            raise RuntimeError(self.ctx.ice('Length mismatch in try orelse'));
         }
         else_body = valid_orelse;
         elsestmt = ElseStmt(body=valid_orelse, kid=valid_orelse);
@@ -460,7 +468,7 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> TryStmt {
             if isinstance(i, CodeBlockStmt)
         ];
         if (len(finalbody) != len(valid_finalbody)) {
-            raise RuntimeError(self.ice('Length mismatch in try finalbody'));
+            raise RuntimeError(self.ctx.ice('Length mismatch in try finalbody'));
         }
         finally_stmt_obj: (FinallyStmt | None) = (
             fin_append := FinallyStmt(body=valid_finalbody, kid=valid_finalbody)
@@ -495,7 +503,7 @@ impl PyastBuildPass.proc_subscript(nd: py_ast.Subscript) -> AtomTrailer {
         slices: list[Slice] = [];
         for index_slice in slice.values {
             if not isinstance(index_slice, IndexSlice) {
-                raise RuntimeError(self.ice());
+                raise RuntimeError(self.ctx.ice());
             }
             slices.append(index_slice.slices[0]);
         }
@@ -510,7 +518,7 @@ impl PyastBuildPass.proc_subscript(nd: py_ast.Subscript) -> AtomTrailer {
             kid=[value, slice]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -520,7 +528,7 @@ impl PyastBuildPass.proc_starred(nd: py_ast.Starred) -> UnaryExpr {
     if isinstance(value, Expr) {
         return UnaryExpr(operand=value, op=star_tok, kid=[value, star_tok]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -544,7 +552,7 @@ impl PyastBuildPass.proc_slice(nd: py_ast.Slice) -> IndexSlice {
         slice_node = Slice(start=lower, stop=upper, step=step, kid=valid_kid);
         return IndexSlice(slices=[slice_node], is_range=True, kid=[slice_node]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -559,12 +567,12 @@ impl PyastBuildPass._proc_compr(
         if isinstance(gen, InnerCompr)
     ];
     if (len(generators) != len(valid)) {
-        raise RuntimeError(self.ice('Length mismatch in list comp generators'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in list comp generators'));
     }
     if isinstance(elt, Expr) {
         return compr_cls(out_expr=elt, compr=valid, kid=[elt, *valid]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -581,7 +589,7 @@ impl PyastBuildPass.proc_set(nd: py_ast.Set) -> SetVal {
             if isinstance(i, Expr)
         ];
         if (len(valid) != len(elts)) {
-            raise RuntimeError(self.ice('Length mismatch in set body'));
+            raise RuntimeError(self.ctx.ice('Length mismatch in set body'));
         }
         kid: list[UniNode] = [*valid];
     } else {
@@ -632,7 +640,7 @@ impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> AtomUnit {
             kid=[self.operator(Tok.LPAREN, '('), expr, self.operator(Tok.RPAREN, ')')]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -652,7 +660,7 @@ impl PyastBuildPass.proc_match_value(nd: py_ast.MatchValue) -> MatchValue {
     if isinstance(value, Expr) {
         return MatchValue(value=value, kid=[value]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -678,7 +686,7 @@ impl PyastBuildPass.proc_match_singleton(nd: py_ast.MatchSingleton) -> MatchSing
     if isinstance(value, (Bool, Null)) {
         return MatchSingleton(value=value, kid=[value]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -692,7 +700,7 @@ impl PyastBuildPass.proc_match_sequence(nd: py_ast.MatchSequence) -> MatchSequen
     if (len(patterns) == len(valid)) {
         return MatchSequence(values=valid, kid=valid);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -764,7 +772,7 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> MatchArch {
             kid.extend(valid_patterns);
             patterns_list = valid_patterns;
         } else {
-            raise RuntimeError(self.ice());
+            raise RuntimeError(self.ctx.ice());
         }
     } else {
         patterns_list = None;
@@ -823,7 +831,7 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> MatchArch {
             name=cls, arg_patterns=patterns_list, kw_patterns=kw_patterns_list, kid=kid
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -852,7 +860,7 @@ impl PyastBuildPass.proc_match(nd: py_ast.Match) -> MatchStmt {
     if isinstance(subject, Expr) {
         return MatchStmt(target=subject, cases=valid, kid=[subject, *valid]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -868,7 +876,7 @@ impl PyastBuildPass.proc_list(nd: py_ast.List) -> ListVal {
         if isinstance(elt, Expr)
     ];
     if (len(valid_elts) != len(elts)) {
-        raise RuntimeError(self.ice('Length mismatch in list elements'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in list elements'));
     }
     l_square = self.operator(Tok.LSQUARE, '[');
     r_square = self.operator(Tok.RSQUARE, ']');
@@ -884,7 +892,7 @@ impl PyastBuildPass.proc_lambda(nd: py_ast.Lambda) -> LambdaExpr {
         body_stmt = ExprStmt(expr=body, in_fstring=False, kid=[body]);
         return LambdaExpr(signature=args, body=[body_stmt], kid=[args, body_stmt]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -923,7 +931,7 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> MultiString {
                 valid.append(converted);
             }
         } else {
-            raise RuntimeError(self.ice('Invalid node in joined str'));
+            raise RuntimeError(self.ctx.ice('Invalid node in joined str'));
         }
     }
     if fstr_match {
@@ -990,23 +998,15 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> Import {
             and (isinstance(name.alias, Name) or (name.alias is None))
         ) {
             valid_names.append(
-                ModuleItem(
-                    name=name.expr,
-                    alias=name.alias or None,
-                    kid=[
-                        i
-                        for i in name.kid
-                        if i
-                    ]
-                )
+                ModuleItem(name=name.expr, alias=name.alias or None, kid=name.kid)
             );
         } else {
-            raise RuntimeError(self.ice());
+            raise RuntimeError(self.ctx.ice());
         }
     }
     items = valid_names;
     if not items {
-        raise RuntimeError(self.ice('No valid names in import from'));
+        raise RuntimeError(self.ctx.ice('No valid names in import from'));
     }
     pytag = SubTag[Name](tag=lang, kid=[lang]);
     if ((len(nd.names) == 1) and (nd.names[0].name == '*')) {
@@ -1027,7 +1027,7 @@ impl PyastBuildPass.proc_import(nd: py_ast.Import) -> Import {
         if isinstance(name, ExprAsItem)
     ];
     if (len(valid_names) != len(names)) {
-        self.emit(E5041);
+        self.ctx.emit(E5041);
     }
     paths = [];
     for name in valid_names {
@@ -1049,7 +1049,7 @@ impl PyastBuildPass.proc_import(nd: py_ast.Import) -> Import {
                 ModulePath(path=segments, level=0, alias=name.alias, kid=seg_kid)
             );
         } else {
-            raise RuntimeError(self.ice());
+            raise RuntimeError(self.ctx.ice());
         }
     }
     ret = Import(from_loc=None, items=paths, is_absorb=False, kid=paths);
@@ -1073,7 +1073,7 @@ impl PyastBuildPass.proc_if_exp(nd: py_ast.IfExp) -> IfElseExpr {
             kid=[val_cfg, cond_cfg, else_cfg]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1133,7 +1133,7 @@ impl PyastBuildPass.proc_formatted_value(nd: py_ast.FormattedValue) -> Formatted
             format_part=value, conversion=nd.conversion, format_spec=fmt_spec, kid=kid
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
     return ret;
 }
@@ -1143,7 +1143,7 @@ impl PyastBuildPass.proc_expr(nd: py_ast.Expr) -> ExprStmt {
     if isinstance(value, Expr) {
         return ExprStmt(expr=value, in_fstring=False, kid=[value]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1163,7 +1163,7 @@ impl PyastBuildPass.proc_except_handler(nd: py_ast.ExceptHandler) -> Except {
         if isinstance(i, CodeBlockStmt)
     ];
     if (len(valid) != len(body)) {
-        raise RuntimeError(self.ice('Length mismatch in except handler body'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in except handler body'));
     }
     kid = [
         item
@@ -1173,7 +1173,7 @@ impl PyastBuildPass.proc_except_handler(nd: py_ast.ExceptHandler) -> Except {
     if (isinstance(type, Expr) and (isinstance(name, Name) or not name)) {
         return Except(ex_type=type, name=name, body=valid, kid=kid);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1183,7 +1183,7 @@ impl PyastBuildPass.proc_dict_comp(nd: py_ast.DictComp) -> DictCompr {
     if (isinstance(key, Expr) and isinstance(value, Expr)) {
         kv_pair = KVPair(key=key, value=value, kid=[key, value]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
     generators = [self.convert(i) for i in nd.generators];
     valid = [
@@ -1192,7 +1192,7 @@ impl PyastBuildPass.proc_dict_comp(nd: py_ast.DictComp) -> DictCompr {
         if isinstance(i, InnerCompr)
     ];
     if (len(valid) != len(generators)) {
-        raise RuntimeError(self.ice('Length mismatch in dict compr generators'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in dict compr generators'));
     }
     return DictCompr(kv_pair=kv_pair, compr=valid, kid=[kv_pair, *valid]);
 }
@@ -1297,7 +1297,7 @@ impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> Literal {
             pos_end=0
         );
     } else {
-        raise RuntimeError(self.ice('Invalid type for constant'));
+        raise RuntimeError(self.ctx.ice('Invalid type for constant'));
     }
 }
 
@@ -1329,7 +1329,7 @@ impl PyastBuildPass.proc_compare(nd: py_ast.Compare) -> AtomUnit {
             kid=[self.operator(Tok.RPAREN, '('), expr, self.operator(Tok.LPAREN, ')')]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1352,7 +1352,7 @@ impl PyastBuildPass.proc_call(nd: py_ast.Call) -> FuncCall {
     if isinstance(func, Expr) {
         return FuncCall(target=func, params=params_in, genai_call=None, kid=kids);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1387,7 +1387,7 @@ impl PyastBuildPass.proc_bool_op(nd: py_ast.BoolOp) -> AtomUnit {
             kid=[self.operator(Tok.RPAREN, '('), expr, self.operator(Tok.LPAREN, ')')]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1397,7 +1397,7 @@ impl PyastBuildPass.proc_unary_op(nd: py_ast.UnaryOp) -> UnaryExpr {
     if (isinstance(op, Token) and isinstance(operand, Expr)) {
         return UnaryExpr(op=op, operand=operand, kid=[op, operand]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1423,7 +1423,7 @@ impl PyastBuildPass.proc_bin_op(nd: py_ast.BinOp) -> (AtomUnit | BinaryExpr) {
             kid=[self.operator(Tok.RPAREN, '('), value, self.operator(Tok.LPAREN, ')')]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1432,7 +1432,7 @@ impl PyastBuildPass.proc_await(nd: py_ast.Await) -> AwaitExpr {
     if isinstance(value, Expr) {
         return AwaitExpr(target=value, kid=[value]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1462,7 +1462,7 @@ impl PyastBuildPass.proc_attribute(nd: py_ast.Attribute) -> AtomTrailer {
             kid=[value, attribute]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1476,7 +1476,7 @@ impl PyastBuildPass.proc_assert(nd: py_ast.Assert) -> AssertStmt {
         }
         return AssertStmt(condition=`test, error_msg=msg, kid=kid);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1507,7 +1507,7 @@ impl PyastBuildPass.proc_raise(nd: py_ast.Raise) -> RaiseStmt {
             return RaiseStmt(cause=cause, from_target=exc, kid=kid);
         }
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1519,7 +1519,7 @@ impl PyastBuildPass.proc_async_with(nd: py_ast.AsyncWith) -> WithStmt {
         if isinstance(item, ExprAsItem)
     ];
     if (len(valid_items) != len(items)) {
-        raise RuntimeError(self.ice('Length mismatch in with items'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in with items'));
     }
     body = [self.convert(stmt) for stmt in nd.body];
     valid_body = [
@@ -1528,7 +1528,7 @@ impl PyastBuildPass.proc_async_with(nd: py_ast.AsyncWith) -> WithStmt {
         if isinstance(stmt, CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
-        raise RuntimeError(self.ice('Length mismatch in async for body'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in async for body'));
     }
     return WithStmt(
         is_async=True,
@@ -1546,7 +1546,7 @@ impl PyastBuildPass.proc_with(nd: py_ast.With) -> WithStmt {
         if isinstance(item, ExprAsItem)
     ];
     if (len(valid_items) != len(items)) {
-        raise RuntimeError(self.ice('Length mismatch in with items'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in with items'));
     }
     body = [self.convert(stmt) for stmt in nd.body];
     valid_body = [
@@ -1555,7 +1555,7 @@ impl PyastBuildPass.proc_with(nd: py_ast.With) -> WithStmt {
         if isinstance(stmt, CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
-        raise RuntimeError(self.ice('Length mismatch in async for body'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in async for body'));
     }
     return WithStmt(
         is_async=False,
@@ -1574,7 +1574,7 @@ impl PyastBuildPass.proc_if(nd: py_ast.If) -> IfStmt {
         if isinstance(stmt, CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
-        self.emit(E5042);
+        self.ctx.emit(E5042);
     }
     body2 = valid_body;
     orelse = [self.convert(stmt) for stmt in nd.orelse];
@@ -1605,11 +1605,10 @@ impl PyastBuildPass.proc_if(nd: py_ast.If) -> IfStmt {
         }
         ret = IfStmt(condition=`test, body=body2, else_body=else_body, kid=kid);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
     return ret;
 }
-
 
 impl PyastBuildPass.proc_while(nd: py_ast.While) -> WhileStmt {
     `test = self.convert(nd.`test);
@@ -1620,7 +1619,7 @@ impl PyastBuildPass.proc_while(nd: py_ast.While) -> WhileStmt {
         if isinstance(stmt, CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
-        raise RuntimeError(self.ice('Length mismatch in while body'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in while body'));
     }
     orelse = [self.convert(i) for i in nd.orelse];
     val_orelse = [
@@ -1629,7 +1628,7 @@ impl PyastBuildPass.proc_while(nd: py_ast.While) -> WhileStmt {
         if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_orelse) != len(orelse)) {
-        raise RuntimeError(self.ice('Length mismatch in for orelse'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in for orelse'));
     }
     fin_orelse = ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
     if isinstance(`test, Expr) {
@@ -1640,7 +1639,7 @@ impl PyastBuildPass.proc_while(nd: py_ast.While) -> WhileStmt {
             kid=[`test, *valid_body]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1654,7 +1653,7 @@ impl PyastBuildPass.proc_async_for(nd: py_ast.AsyncFor) -> InForStmt {
         if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_body) != len(body)) {
-        raise RuntimeError(self.ice('Length mismatch in for body'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in for body'));
     }
     valid_body = val_body;
     orelse = [self.convert(i) for i in nd.orelse];
@@ -1664,7 +1663,7 @@ impl PyastBuildPass.proc_async_for(nd: py_ast.AsyncFor) -> InForStmt {
         if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_orelse) != len(orelse)) {
-        raise RuntimeError(self.ice('Length mismatch in for orelse'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in for orelse'));
     }
     fin_orelse = ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
     if (isinstance(target, Expr) and isinstance(iter, Expr)) {
@@ -1679,7 +1678,7 @@ impl PyastBuildPass.proc_async_for(nd: py_ast.AsyncFor) -> InForStmt {
                 else [target, iter, *valid_body]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1693,7 +1692,7 @@ impl PyastBuildPass.proc_for(nd: py_ast.For) -> InForStmt {
         if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_body) != len(body)) {
-        raise RuntimeError(self.ice('Length mismatch in for body'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in for body'));
     }
     valid_body = val_body;
     orelse = [self.convert(i) for i in nd.orelse];
@@ -1703,7 +1702,7 @@ impl PyastBuildPass.proc_for(nd: py_ast.For) -> InForStmt {
         if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_orelse) != len(orelse)) {
-        raise RuntimeError(self.ice('Length mismatch in for orelse'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in for orelse'));
     }
     fin_orelse = ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
     if (isinstance(target, Expr) and isinstance(iter, Expr)) {
@@ -1718,7 +1717,7 @@ impl PyastBuildPass.proc_for(nd: py_ast.For) -> InForStmt {
                 else [target, iter, *valid_body]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1730,7 +1729,7 @@ impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> Assignment {
     if isinstance(annotation, Expr) {
         annotation_subtag = SubTag[Expr](tag=annotation, kid=[annotation]);
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
     value = self.convert(nd.value) if nd.value else None;
     if (
@@ -1751,7 +1750,7 @@ impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> Assignment {
             kid=kid
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1775,7 +1774,7 @@ impl PyastBuildPass.proc_aug_assign(nd: py_ast.AugAssign) -> Assignment {
             kid=[target, op, value]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1788,14 +1787,14 @@ impl PyastBuildPass.proc_assign(nd: py_ast.Assign) -> Assignment {
         if isinstance(target, Expr)
     ];
     if not (len(valid) == len(targets)) {
-        raise RuntimeError(self.ice('Length mismatch in assignment targets'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in assignment targets'));
     }
     if isinstance(value, Expr) {
         return Assignment(
             target=valid, value=value, type_tag=None, mutable=False, kid=[*valid, value]
         );
     } else {
-        raise RuntimeError(self.ice());
+        raise RuntimeError(self.ctx.ice());
     }
 }
 
@@ -1807,7 +1806,7 @@ impl PyastBuildPass.proc_delete(nd: py_ast.Delete) -> DeleteStmt {
         if isinstance(expr, Expr)
     ];
     if (not len(valid_exprs) or (len(valid_exprs) != len(exprs))) {
-        raise RuntimeError(self.ice('Length mismatch in delete targets'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in delete targets'));
     }
     return DeleteStmt(targets=valid_exprs, kid=[*valid_exprs]);
 }
@@ -1819,7 +1818,7 @@ impl PyastBuildPass.proc_return(nd: py_ast.Return) -> (ReturnStmt | None) {
     } elif (value and isinstance(value, Expr)) {
         return ReturnStmt(expr=value, kid=[value]);
     } else {
-        raise RuntimeError(self.ice('Invalid return value'));
+        raise RuntimeError(self.ctx.ice('Invalid return value'));
     }
 }
 
@@ -1896,10 +1895,10 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (Archetype | Enum) {
         if isinstance(i, Expr)
     ];
     if (len(decorators) != len(converted_decorators_list)) {
-        raise RuntimeError(self.ice('Length mismatch in decorators on class'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in decorators on class'));
     }
     valid_decorators = decorators or None;
-    kid: list = [];
+    kid: list[UniNode] = [];
     if valid_decorators {
         kid.extend(valid_decorators);
     }
@@ -1941,7 +1940,7 @@ impl PyastBuildPass.proc_function_def(
         if isinstance(i, CodeBlockStmt)
     ];
     if (len(valid) != len(body)) {
-        raise RuntimeError(self.ice('Length mismatch in function body'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in function body'));
     }
     doc: (String | None) = None;
     if (
@@ -1963,7 +1962,7 @@ impl PyastBuildPass.proc_function_def(
         if isinstance(i, Expr)
     ];
     if (len(valid_dec) != len(decorators)) {
-        raise RuntimeError(self.ice('Length mismatch in decorators on function'));
+        raise RuntimeError(self.ctx.ice('Length mismatch in decorators on function'));
     }
     valid_decorators = valid_dec or None;
     res = self.convert(nd.args);
@@ -1992,7 +1991,7 @@ impl PyastBuildPass.proc_function_def(
         }
     }
     if not sig {
-        raise RuntimeError(self.ice('Function signature not found'));
+        raise RuntimeError(self.ctx.ice('Function signature not found'));
     }
     kid = [];
     if doc {
@@ -2023,19 +2022,19 @@ impl PyastBuildPass.proc_function_def(
 
 impl PyastBuildPass.proc_template_str(nd: py_ast.AST) -> UniNode {
     raise RuntimeError(
-        self.ice("Python 3.14 t-strings (PEP 750) are not supported in Jac")
+        self.ctx.ice("Python 3.14 t-strings (PEP 750) are not supported in Jac")
     );
 }
 
 impl PyastBuildPass.proc_interpolation(nd: py_ast.AST) -> UniNode {
     raise RuntimeError(
-        self.ice("Python 3.14 t-string interpolations are not supported in Jac")
+        self.ctx.ice("Python 3.14 t-string interpolations are not supported in Jac")
     );
 }
 
 impl PyastBuildPass.proc_module(nd: py_ast.Module) -> Module {
     if not nd.body {
-        return Module.make_stub(inject_src=self.ir_in.orig_src);
+        return Module.make_stub(inject_src=self.orig_src);
     }
     elements: list[UniNode] = [self.convert(i) for i in nd.body];
     elements[0] = elements[0].expr
@@ -2096,17 +2095,10 @@ impl PyastBuildPass.extract_with_entry(
 impl PyastBuildPass._run_impl(ir_in: PythonModuleAst) -> Module {
     py_mod = ir_in.ast;
     if not isinstance(py_mod, py_ast.Module) {
-        raise RuntimeError(self.ice('Expected a Python module AST root'));
+        raise RuntimeError(self.ctx.ice('Expected a Python module AST root'));
     }
-    self.ir_out: Module = self.proc_module(py_mod);
-    return self.ir_out;
-}
-
-impl PyastBuildPass.is_canceled -> bool {
-    if self.cancel_requested {
-        return True;
-    }
-    return (self.cancel_token is not None) and self.cancel_token.is_set();
+    self.module = self.proc_module(py_mod);
+    return self.module;
 }
 
 impl PyastBuildPass.convert(nd: py_ast.AST) -> UniNode {
@@ -2117,13 +2109,13 @@ impl PyastBuildPass.convert(nd: py_ast.AST) -> UniNode {
     if hasattr(self, f"proc_{pascal_to_snake(type(nd).__name__)}") {
         ret = getattr(self, f"proc_{pascal_to_snake(type(nd).__name__)}")(nd);
     } else {
-        raise RuntimeError(self.ice(f"Unknown node type {type(nd).__name__}"));
+        raise RuntimeError(self.ctx.ice(f"Unknown node type {type(nd).__name__}"));
     }
     return ret;
 }
 
 impl PyastBuildPass.nu(nd: T) -> T {
-    self.cur_node = nd;
+    self.ctx.current_node = nd;
     return nd;
 }
 
@@ -2151,14 +2143,13 @@ impl PyastBuildPass.name_node(
 }
 
 impl PyastBuildPass.postinit -> None {
-    self.mod_path = self.ir_in.loc.mod_path;
-    self.orig_src = self.ir_in.loc.orig_src;
+    self.mod_path = self.module.loc.mod_path;
+    self.orig_src = self.module.loc.orig_src;
 
     self._source_lines = self.orig_src.code.splitlines(keepends=True);
     self.in_type_annotation = False;
     self.in_match_pattern = False;
     self.in_fstring_expr = False;
-    super.postinit();
 }
 
 impl PyastBuildPass._get_source_segment(nd: py_ast.AST) -> (str | None) {
@@ -2245,13 +2236,6 @@ impl PyastBuildPass._strip_string_continuations(seg: str) -> str {
     return ''.join(out);
 }
 
-impl PyastBuildPass.transform(ir_in: PythonModuleAst) -> Module {
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl PyastBuildPass.run_walk with PythonModuleAst entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

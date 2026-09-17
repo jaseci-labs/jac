@@ -30,7 +30,7 @@ obj QOrder {
 obj QHop {
     has dir: int,
         `edge: (type | None) = None,
-        nd: (type | tuple | None) = None,
+        nd: (type | tuple[type, ...] | None) = None,
         epreds: list[QPred] = [],
         preds: list[QPred] = [],
         only: any = None;
@@ -44,7 +44,7 @@ obj QHop {
 
 
 obj GraphQuery {
-    has origin: list,
+    has origin: list[any],
         hops: list[QHop] = [],
         edges_only: bool = False,
         from_visit: bool = False,
@@ -71,4 +71,38 @@ obj GraphQuery {
     ) -> GraphQuery;
 
     def repr -> str;
+}
+
+
+def filter_query_nodes(
+    nodes: list[any], nd: (type | tuple[type, ...] | None), preds: list[QPred]
+) -> list[any] {
+    if nd is not None {
+        node_types = nd if isinstance(nd, tuple) else (nd, );
+        for cls in node_types {
+            nodes = [
+                node
+                for node in nodes
+                if isinstance(node, cls)
+            ];
+        }
+    }
+    for pred in preds {
+        matches_pred = pred.matches;
+        field = pred.field;
+        if isinstance(field, str) {
+            nodes = [
+                node
+                for node in nodes
+                if matches_pred(getattr(node, field, None))
+            ];
+        } else {
+            nodes = [
+                node
+                for node in nodes
+                if matches_pred(tuple(getattr(node, name, None) for name in field))
+            ];
+        }
+    }
+    return nodes;
 }

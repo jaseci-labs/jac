@@ -54,6 +54,8 @@ jobs:
               - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
+              - 'scripts/ci_cache_keys.sh'
+              - 'scripts/test_ci_cache_keys.sh'
             scale:
               - 'jac/jaclang/scale/**'
             byllm:
@@ -63,7 +65,7 @@ jobs:
             pack_smoke:
               - 'scripts/ci_perf.jac'
               - 'scripts/ci_perf.test.jac'
-              - '.github/pack-smoke-budgets.json'
+              - '.github/pack-smoke-perf.json'
             docs:
               - 'jac/jaclang/cli/docs/**'
               - 'jac/jaclang/cli/skills/**'
@@ -100,6 +102,7 @@ jobs:
               - 'jac/jaclang/cli/commands/precompile.jac'
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
+              - 'scripts/ci_cache_keys.sh'
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
@@ -124,6 +127,8 @@ jobs:
       # if-no-files-found blind to it because the other paths matched.
       - name: Materialize typeshed + vendored runtimes
         working-directory: jac
+        env:
+          JACPYTHON: "1"
         run: |
           zig build fetch-typeshed --summary all
           zig build vendor-musl --summary all
@@ -220,6 +225,10 @@ jobs:
           submodules: true
           fetch-depth: 0
 
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
       # On PRs, scope fmt to .jac files changed vs the merge-base. `jac check`
       # is deliberately NOT scoped: a type error is a property of the whole
       # program, so a scoped run answers a different question than the push
@@ -266,9 +275,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
           restore-keys: |
-            jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
+            jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
 
       - uses: ./.github/actions/jac-kit
 
@@ -393,7 +402,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
         if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
@@ -944,6 +953,8 @@ jobs:
       - name: Bootstrap unit tests (zig build test)
         working-directory: jac
         run: zig build test --summary all
+      - name: Cache key mutation tests
+        run: bash scripts/test_ci_cache_keys.sh
 
   # The CEF dispatch build + export/runpath/deps audit lives in the suite
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
@@ -952,10 +963,15 @@ jobs:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    # actions: read lets the performance report list main's runs and download
+    # their pack-smoke-performance artifacts for the wall-time comparison.
+    permissions:
+      contents: read
+      actions: read
     env:
       JAC_NO_DEV_SOURCE: "1"
       JAC_CI_PERF: ${{ github.workspace }}/scripts/ci_perf.jac
-      JAC_CI_BUDGETS: ${{ github.workspace }}/.github/pack-smoke-budgets.json
+      JAC_CI_PERF_POLICY: ${{ github.workspace }}/.github/pack-smoke-perf.json
     steps:
       - uses: actions/checkout@v5
         with:
@@ -980,7 +996,7 @@ jobs:
       # second time.
       - name: Verify cold start of the sealed binary
         run: |
-          jac purge
+          jac cache purge
           timeout 5 jac --version
 
       # The guide surface, plugin integration (pth finder / CLI dispatch /
@@ -1036,10 +1052,10 @@ jobs:
       - name: Type check the site
         working-directory: site
         run: |
-          budget=$(jq -er '."site-check".wall_seconds' "$JAC_CI_BUDGETS")
+          hang=$(jq -er '.phases."site-check".hang_seconds' "$JAC_CI_PERF_POLICY")
           LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/site-check.time.json" \
             -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
-            timeout --kill-after=5s "${budget}s" jac check
+            timeout --kill-after=5s "${hang}s" jac check
 
       # The site ships as a desktop app too (apps.desktop, backend jaclang.org):
       # the native engine needs WebKitGTK + a C toolchain to build libwebview,
@@ -1066,17 +1082,17 @@ jobs:
       - name: Build the desktop app
         working-directory: site
         run: |
-          budget=$(jq -er '."desktop-build".wall_seconds' "$JAC_CI_BUDGETS")
+          hang=$(jq -er '.phases."desktop-build".hang_seconds' "$JAC_CI_PERF_POLICY")
           LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/desktop-build.time.json" \
             -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
-            timeout --kill-after=5s "${budget}s" jac build desktop
+            timeout --kill-after=5s "${hang}s" jac build desktop
 
       - name: Desktop artifact audit
         working-directory: site
         run: |
           OUT=.jac/client/desktop/desktop
           test -x $OUT/jaclang || { echo "::error::no desktop binary"; exit 1; }
-          test -f $OUT/app.jab || { echo "::error::no sealed app image beside the binary"; exit 1; }
+          test ! -f $OUT/app.jab || { echo "::error::remote desktop ships an unnecessary local app image"; exit 1; }
           test -f $OUT/dist/index.html || { echo "::error::no client bundle beside the binary"; exit 1; }
           test ! -d $OUT/sv || { echo "::error::loose sources shipped; the image is the program"; exit 1; }
           grep -q "https://jaclang.org" $OUT/dist/client.*.js \
@@ -1139,8 +1155,9 @@ jobs:
             exit 1
           fi
 
-      # Cold runner budget: embedded-postgres bootstrap plus the site's own
-      # compile and client bundle all happen before the port answers.
+      # Cold runner: embedded-postgres bootstrap plus the site's own compile
+      # and client bundle all happen before the port answers. This step's
+      # timeout is the hang ceiling; the elapsed time is compared with main.
       - name: Wait for site server to be ready
         timeout-minutes: 3
         run: |
@@ -1256,10 +1273,10 @@ jobs:
       - name: Build the production artifact
         working-directory: site
         run: |
-          budget=$(jq -er '."production-build".wall_seconds' "$JAC_CI_BUDGETS")
+          hang=$(jq -er '.phases."production-build".hang_seconds' "$JAC_CI_PERF_POLICY")
           LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/production-build.time.json" \
             -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
-            timeout --kill-after=5s "${budget}s" jac build --output dist
+            timeout --kill-after=5s "${hang}s" jac build --output dist
 
       - name: Serve the production artifact outside the source project
         working-directory: ${{ runner.temp }}
@@ -1389,9 +1406,14 @@ jobs:
           path: /tmp/site-server.log
           retention-days: 7
 
-      - name: Report performance budgets
-        timeout-minutes: 2
+      # Wall time is compared with the median of main's last runs and only
+      # annotated; exit status, the hang ceilings and peak RSS are the gates.
+      # See .github/pack-smoke-performance.md.
+      - name: Report performance against main
+        timeout-minutes: 3
         if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: jac run "$JAC_CI_PERF"
 
       - name: Upload performance measurements
@@ -1578,6 +1600,7 @@ jobs:
       - test-scale-k8s
       - test-native-aarch64
       - test-bootstrap
+      - test-launcher-jac
       - test-jac-pack-smoke
       - test-jac-pack-eject
       - installer-test

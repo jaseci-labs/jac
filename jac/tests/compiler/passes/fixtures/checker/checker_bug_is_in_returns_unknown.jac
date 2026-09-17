@@ -23,7 +23,7 @@ with entry {
     r4: str = a is not b;  # <-- Should be Error
 
     # 'in' should produce bool
-    items: list = [1, 2, 3];
+    items: list[int] = [1, 2, 3];
     r5: bool = 1 in items;  # <-- Should be Ok
     r6: str = 1 in items;  # <-- Should be Error
 

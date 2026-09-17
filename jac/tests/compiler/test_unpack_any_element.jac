@@ -1,23 +1,13 @@
 """Unpacking an `Any` element binds `Any`, not `Unknown`.
 
-PEP 484 treats a bare `tuple` as `tuple[Any, ...]` and a bare `list` as
-`list[Any]`, so iterating one yields `Any` -- and unpacking `Any` binds
-`Any` to every target. Jac agreed on the first half but not the second:
-`_extract_tuple_element_type` returned None for anything that was not a
-`ClassType`, `Any` included, so each destructured target fell through to
-`Unknown`. Because `Unknown` is not assignable, every *use* of such a
-target then errored.
+Iterating a generic left unparameterized yields `Any`, and unpacking `Any`
+should bind `Any` to every target. Jac agreed on the first half but not the
+second: `_extract_tuple_element_type` returned None for anything that was
+not a `ClassType`, `Any` included, so each destructured target fell through
+to `Unknown`, and every *use* of such a target then errored (E1053/E1055).
 
-    glob BARE: tuple = (("a", int),);
-    for (nm, ty) in BARE {          # nm and ty were both Unknown
-        out += nm + takes_type(ty); # E1055 on nm, E1053 on ty
-    }
-
-The tell was that the non-destructured form had always been fine --
-`for ty in BARE { takes_type(ty) }` binds `Any` and checks clean. Only the
-unpacking step dropped it, which is why this surfaced the moment a constant
-table in `placement.jac` grew from a tuple of classes to a tuple of
-(name, class) pairs.
+The fixture spells its containers `tuple[any, any]` / `list[any]`, since bare
+`tuple`/`list` annotations are now an error; they reach the same unpacking path.
 
 The follow-up that #8039 flagged and left open -- unpacking a value whose
 *declared* annotation is `any` (`pair: any; (nm, ty) = pair;`) raising E1020
@@ -48,7 +38,7 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "fixtures");
 
 """Type-check a fixture and return its errors, each prefixed by its code."""
-def check_errors(fixture: str) -> list {
+def check_errors(fixture: str) -> list[str] {
     prog = JacProgram();
     prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)),
@@ -59,7 +49,7 @@ def check_errors(fixture: str) -> list {
     ];
 }
 
-test "unpacking elements of a bare tuple or list type-checks clean" {
+test "unpacking elements of an Any-erased container type-checks clean" {
     errs = check_errors("unpack_any_element.jac");
     assert not errs , f"expected no type errors, got {errs}";
 }
@@ -82,13 +72,13 @@ test "unpacking an explicitly `any`-annotated value is not E1020" {
     assert "E1020" not in joined , f"explicit `any` reported non-iterable: {errs}";
 }
 
-test "unpacking through a bare-generic chain binds Any, not Unknown" {
+test "unpacking through an any-valued chain binds Any, not Unknown" {
     errs = check_errors("unpack_any_element.jac");
-    # `ctx: dict` indexed twice yields builtin `Any`; each destructured target
+    # `ctx: dict[str, any]` indexed twice yields builtin `Any`; each target
     # must bind `Any` so `takes_type(ty)` stays clean. This is the compiler's
     # own `_gc["slots"][-1]` shape from na_ir_gen_pass closures.
     joined = " ".join(errs);
-    assert "E1020" not in joined , f"bare-generic chain unpack errored: {errs}";
+    assert "E1020" not in joined , f"any-valued chain unpack errored: {errs}";
     assert "E1053" not in joined , f"Unknown leaked out of the chain: {errs}";
 }
 

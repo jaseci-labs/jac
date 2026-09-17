@@ -9,7 +9,7 @@ identically, so the returned strings compare equal across sv / cl / na.
 
 # Shared escape-sequence literals, expressed once per backend body so the only
 # variable under test is how each emitter lowers the *same* source token.
-def escapes_py() -> dict {
+def escapes_py() -> dict[any, any] {
     return {
         "newline": "x\ny",
         "tab": "a\tb",
@@ -25,7 +25,7 @@ def escapes_py() -> dict {
     };
 }
 
-def escapes_cl() -> dict {
+def escapes_cl() -> dict[any, any] {
     return {
         "newline": "x\ny",
         "tab": "a\tb",

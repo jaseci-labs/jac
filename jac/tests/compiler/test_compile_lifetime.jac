@@ -12,6 +12,8 @@ so a long-lived process (the test pool's fork workers, a language server)
 carries every AST and every LLVM IR object it ever built.
 """
 
+import from jaclang.compiler.passes.context { CompileContext }
+
 import gc;
 import os;
 import weakref;
@@ -20,7 +22,7 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.passes.transform { Transform }
+
 import from unittest.mock { patch }
 
 glob VIRTUAL_PATH: str = os.path.join(
@@ -52,7 +54,7 @@ def compile_once -> JacProgram {
 }
 
 test "a compiled program is released once its owner drops it" {
-    holder: list = [compile_once()];
+    holder: list[any] = [compile_once()];
     ref = weakref.ref(holder[0]);
     holder.clear();
     gc.collect();
@@ -78,11 +80,17 @@ test "failed checker phases restore the enclosing diagnostic context" {
     mod = prog.mod.main_mod;
     assert mod is not None;
     evaluator = prog.get_type_evaluator();
-    enclosing = Transform(ir_in=mod);
+    enclosing = CompileContext(
+        current_node=mod, from_pass=TypeCheckPass, pass_name="TypeCheckPass"
+    );
     evaluator._pass = enclosing;
     evaluator.ct_quiet = True;
     try {
-        for phase in ["_insert_builtin_symbols", "traverse", "_stamp_fixed_width"] {
+        for phase in [
+            "_insert_builtin_symbols",
+            "_install_client_state_setters",
+            "_stamp_fixed_width"
+        ] {
             failed = False;
             with patch.object(
                 TypeCheckPass, phase, side_effect=RuntimeError("phase failure")

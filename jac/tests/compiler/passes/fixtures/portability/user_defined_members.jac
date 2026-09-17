@@ -27,7 +27,7 @@ def use_config -> int {
 }
 
 def genuine_slop -> int {
-    items: list = [1];
+    items: list[any] = [1];
     items.push(2);
     return items.length;
 }

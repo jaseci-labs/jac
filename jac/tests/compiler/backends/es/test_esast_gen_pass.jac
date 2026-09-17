@@ -80,7 +80,7 @@ def walk_es_nodes(nd: es.Node) -> list[es.Node] {
 }
 
 """Return compile errors that are not non-fatal TypeCheckPass diagnostics."""
-def _fatal_errors(prog: JacProgram) -> list {
+def _fatal_errors(prog: JacProgram) -> list[any] {
     import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
     return [
         e
@@ -112,7 +112,7 @@ def compile_to_esast(filename: str) -> es.Program {
     );
 
     es_pass = run_pass(EsastGenPass, ir, prog);
-    es_ir = es_pass.ir_out;
+    es_ir = es_pass.module;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
     assert isinstance(es_ir.gen.es_ast, es.Program);
@@ -130,7 +130,7 @@ def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program 
     );
 
     es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
-    es_ir = es_pass.ir_out;
+    es_ir = es_pass.module;
 
     assert isinstance(es_ir.gen.es_ast, es.Program);
     return es_ir.gen.es_ast;
@@ -1311,7 +1311,7 @@ test "augmented reactive assignments do not double-apply the lhs" {
 }
 
 """Diagnostic code strings carried by a list of alerts."""
-def _codes_of(alerts: list) -> list[str] {
+def _codes_of(alerts: list[any]) -> list[str] {
     return [
         a.code.code
         for a in alerts
@@ -1327,7 +1327,7 @@ def compile_fixture_reporting(filename: str) -> JacProgram {
 }
 
 """Run the ES pass with a backend and hand back the program's alerts."""
-def codegen_alerts(filename: str, backend: object) -> list {
+def codegen_alerts(filename: str, backend: object) -> list[any] {
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path(filename), no_cgen=True);
     run_pass(EsastGenPass, ir, prog, backend=backend);

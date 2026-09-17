@@ -8,7 +8,7 @@ import from jaclang.scale.config.config_loader {
     normalize_gateway_config
 }
 import from jaclang.scale.runtime.fleet { FleetSpec, fleet_from_config, solo_fleet }
-import from jaclang.scale.models.deploy_context { DeployContext }
+import from jaclang.scale.models.deploy_context { DATABASE_URL_ENV, DeployContext }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -23,7 +23,7 @@ glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _CLIENT_BUILD_ATTEMPTS: int = 3,
      _CLIENT_BUILD_RETRY_PAUSE_S: int = 3,
      _DEP_INSTALL_TIMEOUT_S: int = 900,
-     _TRANSIENT_CLIENT_BUILD_MARKERS: tuple = (
+     _TRANSIENT_CLIENT_BUILD_MARKERS: tuple[str, ...] = (
          "dependency installation failed",
          "failed to install dependencies",
          "bun install failed",
@@ -37,7 +37,7 @@ glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
          "network request failed",
 
      ),
-     _VITE_BUILD_ENV_FILES: tuple = (
+     _VITE_BUILD_ENV_FILES: tuple[str, ...] = (
          ".env",
          ".env.local",
          ".env.production",
@@ -173,7 +173,7 @@ def pdb_spec(
 }
 
 
-def _is_named_list(items: list) -> bool {
+def _is_named_list(items: list[object]) -> bool {
     if not items {
         return False;
     }
@@ -203,7 +203,7 @@ def merge_manifest_overlay(base: any, overlay: any) -> any {
         and _is_named_list(overlay)
     ) {
         overlay_by_name = {item["name"]: item for item in overlay};
-        merged_list: list = [];
+        merged_list: list[any] = [];
         for item in base {
             item_name = item["name"];
             if item_name in overlay_by_name {
@@ -689,7 +689,139 @@ obj ManifestBuilder {
                 );
             }
         }
+        self._check_pod_config_resolves(deployments, user_secret);
         return bundle;
+    }
+
+    def check_pod_config(app_config: AppConfig, image: str) {
+        self.project_dir = self.project_dir or app_config.code_folder;
+        pod_specs = self.generate_service_pod_specs(app_config, image);
+        deployments = {
+            svc_name: self._build_deployment_manifest(svc_name, pod_spec)
+            for (svc_name, pod_spec) in pod_specs.items()
+        };
+        self._check_pod_config_resolves(
+            deployments, self._build_user_secret_manifest()
+        );
+    }
+
+    def _check_pod_config_resolves(
+        deployments: dict[str, dict[str, any]], user_secret: dict[str, any] | None
+    ) {
+        import from pathlib { Path }
+        import from jaclang.scale.injector.bundle {
+            nested_sanitized_tomls,
+            sanitized_jac_toml,
+            source_filter_for,
+            unresolved_toml_references
+        }
+        base = Path(self.project_dir);
+        base_toml = sanitized_jac_toml(base);
+        if base_toml is None {
+            return;
+        }
+        nested = nested_sanitized_tomls(base);
+        excluded = source_filter_for(base);
+        secret_keys = set(dict(dict(user_secret or {}).get("stringData", {})).keys());
+        affected: dict[str, list[str]] = {};
+        for (svc_name, deployment) in deployments.items() {
+            container = deployment["spec"]["template"]["spec"]["containers"][0];
+            environ = self._pod_environ(container, secret_keys);
+            if environ is None {
+                continue;
+            }
+            tomls = self._pod_tomls(base, excluded, "jac.toml", base_toml, environ);
+            nearest = self._nearest_nested_toml(nested, environ.get("JAC_SV_FILE", ""));
+            if nearest {
+                tomls.update(
+                    self._pod_tomls(base, excluded, nearest, nested[nearest], environ)
+                );
+            }
+            for (rel, text) in tomls.items() {
+                for problem in unresolved_toml_references(text, environ) {
+                    affected.setdefault(f"{rel}: {problem}", []).append(svc_name);
+                }
+            }
+        }
+        if not affected {
+            return;
+        }
+        lines: list[str] = [];
+        for (problem, pods) in affected.items() {
+            scope = "every pod" if len(pods) == len(deployments) else ", ".join(pods);
+            lines.append(f"  {problem} ({scope})");
+        }
+        raise ValueError(
+            "jac.toml reads environment variables the deployed pods will not have, "
+            "so these settings cannot resolve at boot:\n"
+                + "\n".join(lines)
+                + "\nSupply each one through [scale.secrets] or the app's env, or give "
+                "it a ${VAR:-default}."
+        );
+    }
+
+    def _pod_environ(
+        container: dict[str, any], secret_keys: set[str]
+    ) -> dict[str, str] | None {
+        environ: dict[str, str] = {
+            name: ""
+            for name in (
+                "HOSTNAME",
+                "KUBERNETES_SERVICE_HOST",
+                "KUBERNETES_SERVICE_PORT"
+            )
+        };
+        for `entry in container.get("env", []) or [] {
+            environ[str(`entry.get("name"))] = str(`entry.get("value", ""));
+        }
+        for source in container.get("envFrom", []) or [] {
+            if dict(source.get("secretRef") or {}).get("name")
+                != self._user_secret_name() {
+                return None;
+            }
+            for key in secret_keys {
+                environ.setdefault(key, "");
+            }
+        }
+        if self.k8s_config.database_enabled() {
+            environ.setdefault(DATABASE_URL_ENV, "");
+        }
+        return environ;
+    }
+
+    def _pod_tomls(
+        base: any, excluded: any, toml_rel: str, toml_text: str, environ: dict[str, str]
+    ) -> dict[str, str] {
+        import tomllib;
+        import from pathlib { Path, PurePosixPath }
+        environment = dict(tomllib.loads(toml_text).get("environment", {}) or {});
+        profile = environ.get("JAC_PROFILE", "").strip()
+            or str(environment.get("default_profile", "") or "").strip();
+        names = [f"jac.{profile}.toml"] if profile else [];
+        names.append("jac.local.toml");
+        folder = PurePosixPath(toml_rel).parent;
+        tomls = {toml_rel: toml_text};
+        for name in names {
+            rel = (folder / name).as_posix();
+            path = Path(base) / rel;
+            if path.is_file() and not excluded.excludes(Path(rel)) {
+                tomls[rel] = path.read_text(encoding="utf-8");
+            }
+        }
+        return tomls;
+    }
+
+    def _nearest_nested_toml(nested: dict[str, str], sv_file: str) -> str {
+        import from pathlib { PurePosixPath }
+        nearest = "";
+        for rel in nested {
+            if sv_file
+                and PurePosixPath(sv_file).is_relative_to(PurePosixPath(rel).parent)
+                and len(rel) > len(nearest) {
+                nearest = rel;
+            }
+        }
+        return nearest;
     }
 
     def generate_service_pod_specs(
@@ -1005,7 +1137,8 @@ obj ManifestBuilder {
 
     def _owner_labels -> dict[str, str] {
         return {
-            str(k): str(v) for (k, v) in dict(self.k8s_config.labels or {}).items()
+            str(k): str(v)
+            for (k, v) in dict[str, any](self.k8s_config.labels or {}).items()
         };
     }
 
@@ -1038,7 +1171,7 @@ obj ManifestBuilder {
             env.append({"name": "JAC_SV_FILE", "value": svc_file});
         }
 
-        trace_cfg: dict = dict(self._gateway_cfg().get("tracing", {}));
+        trace_cfg: dict[str, any] = dict(self._gateway_cfg().get("tracing", {}));
         if trace_cfg.get("enabled", False) {
             env.append(
                 {

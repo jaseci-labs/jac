@@ -1,10 +1,22 @@
+import from jaclang.compiler.frontend.unitree { TreeWalker }
+import from jaclang.compiler.frontend.roles { Kid }
+import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.tools.doc_ir as doc;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { Tokens as Tok, is_mut_kind }
-import from jaclang.compiler.passes { UniPass }
 
-walker DocIRGenPass(UniPass) {
-    has _live_comment_ids: (set[int] | None) = None,
+walker DocIRGenPass(TreeWalker) {
+    can enter_walk with uni.UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with uni.UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: uni.Module,
+        _live_comment_ids: (set[int] | None) = None,
         _emitted_comment_ids: (set[int] | None) = None;
 
     def _comment_is_live(c: uni.CommentToken) -> bool;
@@ -45,7 +57,10 @@ walker DocIRGenPass(UniPass) {
     def _child_docs(nd: uni.UniNode) -> list[doc.DocType];
     def _assign_group_concat(nd: uni.UniNode) -> None;
     def _assign_space_group(nd: uni.UniNode) -> None;
-    def _assign_operator_chain(nd: uni.UniNode, operands: list, ops: list) -> None;
+    def _assign_operator_chain(
+        nd: uni.UniNode, operands: list[uni.UniNode], ops: list[uni.UniNode]
+    ) -> None;
+
     def _assign_semi_stmt_doc_ir(nd: uni.UniNode) -> None;
     def _assign_compr_doc_ir(nd: uni.UniNode) -> None;
     def _assign_else_doc_ir(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;

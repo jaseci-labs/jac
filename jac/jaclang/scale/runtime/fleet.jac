@@ -1,4 +1,5 @@
 import os;
+import type from jaclang.project.apps { AppConfig }
 import json;
 import logging;
 import from pathlib { Path }
@@ -8,7 +9,7 @@ import from jaclang.scale.runtime.routing { guard_route_prefix }
 glob logger = logging.getLogger(__name__),
      FLEET_ENV: str = "JAC_SV_FLEET",
      ROOT_PREFIX: str = "/",
-     SERVICE_KINDS: tuple = ("service", "service-mesh");
+     SERVICE_KINDS: tuple[str, ...] = ("service", "service-mesh");
 
 
 obj FleetMember {
@@ -296,7 +297,10 @@ def _compiled_app_edges(
 
 
 def consumer_provider_edges(
-    config: any, project_root: str, apps: list, entries: dict[str, str] | None = None
+    config: any,
+    project_root: str,
+    apps: list[AppConfig],
+    entries: dict[str, str] | None = None
 ) -> list[tuple[str, str]] {
     names: set[str] = {a.name for a in apps};
     edges: list[tuple[str, str]] = [];
@@ -365,7 +369,7 @@ def _build_fleet(
     config: any,
     project_root: str,
     served: any,
-    services: list,
+    services: list[AppConfig],
     entries: dict[str, str],
     relative_to: str
 ) -> FleetSpec {
@@ -405,7 +409,7 @@ def _build_fleet(
 }
 
 
-def service_apps_of(config: any, served: any) -> list {
+def service_apps_of(config: any, served: any) -> list[AppConfig] {
     return [
         a
         for a in config.serving_apps()
@@ -427,14 +431,14 @@ def fleet_from_config(
 
 
 def fleet_from_plans(
-    config: any, project_root: str, served: any, members: list
+    config: any, project_root: str, served: any, members: list[any]
 ) -> FleetSpec {
     served_app = config.resolve_app(served.app);
     entries: dict[str, str] = {};
     if served.entry_path {
         entries[served_app.name] = served.entry_path;
     }
-    services: list = [];
+    services: list[AppConfig] = [];
     for plan in members {
         app = config.app(plan.app);
         if app is None {

@@ -4,6 +4,8 @@ Ensures all Jaclang Python source files can be parsed via PyastBuildPass
 and that the generated Jac code can be re-parsed by the Jac parser.
 """
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import ast as py_ast;
 import os;
 import from pathlib { Path }
@@ -20,11 +22,12 @@ import from tests.fixtures_list { JACLANG_PYTHON_FILES }
 def pyfile_parse_test(rel_path: str) {
     filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
     source = Path(filename).read_text();
-    py_module = PyastBuildPass(
-        ir_in=ast.PythonModuleAst(
+    py_module = run_walker(
+        PyastBuildPass,
+        module=ast.PythonModuleAst(
             py_ast.parse(source), orig_src=ast.Source(source, filename)
         )
-    ).ir_out;
+    ).module;
 
     assert isinstance(py_module, ast.Module);
     unparsed = unparse_module(py_module, requires_format=False);

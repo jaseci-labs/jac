@@ -222,7 +222,7 @@ def _utils_source -> str {
     return _UTILS_CONTENT;
 }
 
-def normalize_shadcn_config(raw: (dict | None)) -> dict[str, str] {
+def normalize_shadcn_config(raw: (dict[str, any] | None)) -> dict[str, str] {
     cfg: dict[str, str] = {};
     cfg.update(_DEFAULTS);
     if raw {
@@ -235,7 +235,7 @@ def normalize_shadcn_config(raw: (dict | None)) -> dict[str, str] {
     return cfg;
 }
 
-def load_themes -> list {
+def load_themes -> list[dict[str, any]] {
     registry_dir: Path = _registry_dir();
     themes_path = registry_dir / "themes.json";
     if themes_path.is_file() {
@@ -255,7 +255,7 @@ def find_theme(name: str) -> any {
     return None;
 }
 
-def resolve_css_vars(shadcn_config: dict) -> dict {
+def resolve_css_vars(shadcn_config: dict[str, str]) -> dict[str, dict[str, str]] {
     base_color = find_theme(shadcn_config.get("baseColor", "neutral"));
     theme = find_theme(shadcn_config.get("theme", "neutral"));
 
@@ -266,11 +266,11 @@ def resolve_css_vars(shadcn_config: dict) -> dict {
     base_css = base_color.get("cssVars", {});
     theme_css = theme.get("cssVars", {});
 
-    light_vars: dict = {};
+    light_vars: dict[str, str] = {};
     light_vars.update(base_css.get("light", {}));
     light_vars.update(theme_css.get("light", {}));
 
-    dark_vars: dict = {};
+    dark_vars: dict[str, str] = {};
     dark_vars.update(base_css.get("dark", {}));
     dark_vars.update(theme_css.get("dark", {}));
 
@@ -305,7 +305,7 @@ def resolve_css_vars(shadcn_config: dict) -> dict {
     return {"light": light_vars, "dark": dark_vars};
 }
 
-def generate_global_css(font_value: str, css_vars: dict) -> str {
+def generate_global_css(font_value: str, css_vars: dict[str, dict[str, str]]) -> str {
     font_info = FONT_DATA.get(font_value, FONT_DATA["figtree"]);
     font_family = font_info["family"];
     font_npm = font_info["npm"];
@@ -313,7 +313,7 @@ def generate_global_css(font_value: str, css_vars: dict) -> str {
     light_vars = css_vars.get("light", {});
     dark_vars = css_vars.get("dark", {});
 
-    lines: list = [
+    lines: list[str] = [
         '@import "tailwindcss";',
         '@import "tw-animate-css";',
         '@import "' + font_npm + '";',
@@ -369,7 +369,7 @@ def generate_global_css(font_value: str, css_vars: dict) -> str {
 }
 
 def generate_starter_main_jac -> str {
-    lines: list = [
+    lines: list[str] = [
         'import from ".components.ui.button" { Button }',
         'import from ".components.ui.card" {',
         '    Card, CardHeader, CardTitle, CardDescription, CardContent',
@@ -395,15 +395,15 @@ def generate_starter_main_jac -> str {
     return "\n".join(lines);
 }
 
-def _render_shadcn_block(shadcn_config: dict) -> str {
-    lines: list = ["[jac-shadcn]"];
+def _render_shadcn_block(shadcn_config: dict[str, str]) -> str {
+    lines: list[str] = ["[jac-shadcn]"];
     for key in _SHADCN_KEYS {
         lines.append(key + ' = "' + str(shadcn_config.get(key, _DEFAULTS[key])) + '"');
     }
     return "\n".join(lines);
 }
 
-def set_shadcn_section(toml_path: any, shadcn_config: dict) {
+def set_shadcn_section(toml_path: any, shadcn_config: dict[str, str]) {
     path = Path(str(toml_path));
     content = path.read_text() if path.exists() else "";
     block = _render_shadcn_block(shadcn_config);
@@ -426,7 +426,7 @@ def _toml_key(key: str) -> str {
     return key if re.`match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
 }
 
-def _patch_npm_deps(toml_path: any, npm_deps: dict) -> None {
+def _patch_npm_deps(toml_path: any, npm_deps: dict[str, str]) -> None {
     if not npm_deps {
         return;
     }
@@ -463,7 +463,7 @@ def _ensure_vite_tailwind(toml_path: any) -> None {
     path.write_text(content.rstrip() + "\n\n" + block);
 }
 
-def _install_component(ui_dir: any, name: str, style: str) -> list {
+def _install_component(ui_dir: any, name: str, style: str) -> list[str] {
     comp = resolve_single_component(name, style);
     if not comp or "error" in comp {
         return [];
@@ -485,7 +485,7 @@ def materialize_themed_starter(
     ui_dir = pr / "components" / "ui";
     ui_dir.mkdir(parents=True, exist_ok=True);
 
-    npm_deps: dict = {
+    npm_deps: dict[str, str] = {
         "tailwindcss": "^4.1.17",
         "@tailwindcss/vite": "^4.1.17",
         "clsx": "^2.1.1",
@@ -547,7 +547,7 @@ def _theme_app_root(config: any, project_root: Path) -> Path {
     return Path(app.entry_path(str(project_root))).parent;
 }
 
-def retheme_project(config: any, overrides: dict) -> bool {
+def retheme_project(config: any, overrides: dict[str, str | None]) -> bool {
     if config is None or config.project_root is None {
         console.error(
             "No jac.toml found", hint="Run this inside a jac-shadcn project."
@@ -610,8 +610,10 @@ def retheme_project(config: any, overrides: dict) -> bool {
     if new_style != old_style {
         restyled = 0;
         ui_dir = app_root / "components" / "ui";
-        components_meta: dict = load_registry().get("components", {});
-        stem_to_key: dict = {};
+        components_meta: dict[str, dict[str, any]] = load_registry().get(
+            "components", {}
+        );
+        stem_to_key: dict[str, str] = {};
         for key in components_meta {
             reg_file = str(components_meta[key].get("file", str(key) + ".jac"));
             reg_stem = reg_file.replace(".jac", "").replace("-", "_");

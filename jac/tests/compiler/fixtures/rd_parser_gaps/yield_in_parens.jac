@@ -1,6 +1,6 @@
 """Test yield expression inside parentheses."""
 
-def gen(items: list) -> int {
+def gen(items: list[any]) -> int {
     for item in items {
         (yield item);
     }

@@ -11,6 +11,9 @@ impl Serializer._serialize_attrs(
     ref_mode: bool = False,
     _seen: (tuple[set, set] | None) = None
 ) -> dict[str, object] {
+    omitted: set[str] = (
+        {'reports'} if api_mode and isinstance(`obj, WalkerArchetype) else set()
+    );
     result = {
         a: Serializer._serialize_value(
             getattr(`obj, a),
@@ -21,7 +24,9 @@ impl Serializer._serialize_attrs(
             Serializer._declared_of(`obj, a)
         )
         for a in dir(`obj)
-        if not a.startswith('_') and not callable(getattr(`obj, a, None))
+        if not a.startswith('_')
+            and a not in omitted
+            and not callable(getattr(`obj, a, None))
     };
 
     if include_type and not api_mode {
@@ -374,7 +379,7 @@ impl Serializer.deserialize_api(
     }
     tag = value.get('_jac_type_id', value.get('_jac_type'));
     cls = boundary_types.get(tag, target) if isinstance(tag, str) else target;
-    decoded = {
+    decoded: dict[str, object] = {
         k: Serializer.deserialize_api(v, boundary_types) for (k, v) in value.items()
     };
     if cls is None {
@@ -447,7 +452,9 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
     Serializer._aliases[old_name] = new_name;
 }
 
-impl Serializer.repair(data: dict[str, object], cls: type) -> tuple {
+impl Serializer.repair(
+    data: dict[str, object], cls: type
+) -> tuple[dict[str, object], list[str]] {
     import from jaclang.data.schema_rules { apply_rules, merged_rules_for, repair_mode }
     mode = repair_mode();
     if mode == 'off' {
@@ -481,7 +488,7 @@ impl Serializer.repair(data: dict[str, object], cls: type) -> tuple {
     return (repaired, steps);
 }
 
-impl Serializer.coerce(val: object, target_type: object) -> tuple {
+impl Serializer.coerce(val: object, target_type: object) -> tuple[object, bool] {
     if target_type is None or isinstance(target_type, str) {
         return (val, False);
     }
@@ -603,7 +610,7 @@ impl Serializer.fingerprint(cls: type) -> str {
             field_pairs.append([f.name, str(f.type)]);
         }
     }
-    field_pairs.sort(key=lambda (p: list) { p[0]; });
+    field_pairs.sort(key=lambda (p: list[str]) { p[0]; });
     payload = {'module': cls.__module__, 'name': cls.__name__, 'fields': field_pairs};
     encoded = _json_dumps(payload, sort_keys=True, `default=str).encode('utf-8');
     return sha256(encoded).hexdigest()[:FINGERPRINT_LENGTH];
@@ -1086,7 +1093,7 @@ impl Serializer._deserialize_archetype(
         arch: object = cls.__new__(cls);
         field_types = get_field_types(cls);
         known = set(field_types.keys());
-        attic: dict = {};
+        attic: dict[str, any] = {};
 
         stored_attic = data.get(ATTIC_KEY);
         if isinstance(stored_attic, dict) {

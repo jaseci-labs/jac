@@ -6,6 +6,29 @@ import jaclang.compiler.backends.common.kernel_units as units;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 
+test "alternating kernel targets and compilers retain their own artifacts" {
+    import tempfile;
+    import from pathlib { Path }
+    import jaclang.compiler.driver.jir as jir;
+    with tempfile.TemporaryDirectory() as tmp, patch.object(
+        units, "_units_dir", return_value=tmp
+    ), patch.object(
+        jir, "running_compiler_digest", return_value="compiler-a"
+    ) as compiler {
+        source = str(Path(tmp) / "unit.jac");
+        Path(source).write_text("def f -> int { return 1; }\n");
+        units.store_unit_artifact(source, "ll", "target-a", "first IR");
+        units.store_unit_artifact(source, "ll", "target-b", "second IR");
+        assert units.load_unit_artifact(source, "ll", "target-a") == "first IR";
+        assert units.load_unit_artifact(source, "ll", "target-b") == "second IR";
+        compiler.return_value = "compiler-b";
+        assert units.load_unit_artifact(source, "ll", "target-a") is None;
+        units.store_unit_artifact(source, "ll", "target-a", "new compiler IR");
+        compiler.return_value = "compiler-a";
+        assert units.load_unit_artifact(source, "ll", "target-a") == "first IR";
+    }
+}
+
 test "kernel cache respects compiler identity and explicit fresh compilation" {
     cache: dict[str, str] = {};
     with patch.object(

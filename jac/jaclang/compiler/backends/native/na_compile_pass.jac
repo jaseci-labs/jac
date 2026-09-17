@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
@@ -5,7 +6,7 @@ import type from jaclang.compiler.backends.native.llvm.binding {
     ValueRef
 }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes.transform { Transform }
+
 import from jaclang.compiler.frontend.codeinfo {
     CodeGenTarget,
     install_native_static_init
@@ -36,10 +37,10 @@ obj DepClibMeta {
         ct_deps: str = "",
         options_fingerprint: str = "",
         unverified_live_calls: dict[str, list[str]] = {},
-        coverage: dict = {};
+        coverage: dict[str, any] = {};
 
-    def to_meta -> dict;
-    static def from_meta(meta: dict) -> DepClibMeta;
+    def to_meta -> dict[str, any];
+    static def from_meta(meta: dict[str, any]) -> DepClibMeta;
     def propagate_to(gen: CodeGenTarget) -> None;
 }
 
@@ -49,13 +50,18 @@ def native_demoted_ir_symbols(llvm_ir_text: str) -> list[str];
 def require_native_ir(llvm_ir_text: str) -> None;
 def native_linked_ir_text(module: uni.Module) -> str;
 def native_ir_live_externs(llvm_ir_text: str) -> set[str];
-def native_prune_live_record(pending: dict, declared: set[str]) -> dict[str, set[str]];
+def native_prune_live_record(
+    pending: dict[str, list[str]] | dict[str, set[str]], declared: set[str]
+) -> dict[str, set[str]];
+
 def native_unit_demotions(
     prog: JacProgram, real_path: str, options: CompileOptions
 ) -> (set[str] | None);
 
 def native_live_call_conflicts(
-    prog: JacProgram, pending: dict, options: CompileOptions
+    prog: JacProgram,
+    pending: dict[str, list[str]] | dict[str, set[str]],
+    options: CompileOptions
 ) -> dict[str, set[str]];
 
 glob NATIVE_VERDICT_TAINT_BOUND: int = 2048,
@@ -66,13 +72,14 @@ def native_verdict_blast_guard(
     prog: JacProgram, composed: int, aot_lane: bool = False
 ) -> str;
 
+walker NativeCompilePass {
+    has ctx: CompileContext,
+        module: uni.Module,
+        prog: JacProgram;
 
-walker NativeCompilePass(Transform) {
-    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
     def _compile_and_link_native_imports(

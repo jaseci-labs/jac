@@ -11,61 +11,93 @@ import from jaclang.scale._optdeps.apscheduler {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.server.task_scheduler { Scheduler, ScheduleTrigger }
-import from jaclang.server.shared_store { open_docs_store }
+import threading;
+import from jaclang.data.store { TxnIsolation }
+import from jaclang.server.shared_store { shared_store }
 
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',
+     _memory_jobs_lock: threading.Lock = threading.Lock(),
      logger = logging.getLogger(__name__);
 
 obj JobStore {
-    def insert(job: dict) -> str;
+    def insert(job: dict[str, any]) -> str;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
         created_by: str | None = None
-    ) -> tuple[list[dict], int];
+    ) -> tuple[list[dict[str, any]], int];
 
-    def find_active_one(job_id: str) -> dict | None;
-    def update(job_id: str, updates: dict, where: dict | None = None) -> bool;
-    def delete(job_id: str, where: dict | None = None) -> bool;
+    def find_active_one(job_id: str) -> dict[str, any] | None;
+    def update(
+        job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
+    ) -> bool;
+
+    def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj PgJobStore(JobStore) {
     has store: any,
-        _collection: str;
+        _collection: str,
+        _quota_store: any postinit,
+        _quota_lock: threading.Lock postinit;
 
-    def insert(job: dict) -> str;
+    def postinit -> None;
+    def insert(job: dict[str, any]) -> str;
+    def _write(on: any, job: dict[str, any]) -> str;
+    def _quota_connection -> any;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
         created_by: str | None = None
-    ) -> tuple[list[dict], int];
+    ) -> tuple[list[dict[str, any]], int];
 
-    def find_active_one(job_id: str) -> dict | None;
-    def update(job_id: str, updates: dict, where: dict | None = None) -> bool;
-    def delete(job_id: str, where: dict | None = None) -> bool;
+    def find_active_one(job_id: str) -> dict[str, any] | None;
+    def update(
+        job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
+    ) -> bool;
+
+    def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj MemoryJobStore(JobStore) {
-    has _jobs: dict[str, dict] postinit;
+    has _jobs: dict[str, dict[str, any]] postinit;
 
     def postinit -> None;
-    def insert(job: dict) -> str;
+    def insert(job: dict[str, any]) -> str;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
         created_by: str | None = None
-    ) -> tuple[list[dict], int];
+    ) -> tuple[list[dict[str, any]], int];
 
-    def find_active_one(job_id: str) -> dict | None;
-    def update(job_id: str, updates: dict, where: dict | None = None) -> bool;
-    def delete(job_id: str, where: dict | None = None) -> bool;
+    def find_active_one(job_id: str) -> dict[str, any] | None;
+    def update(
+        job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
+    ) -> bool;
+
+    def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj TriggerSpec {
@@ -81,9 +113,9 @@ obj TriggerSpec {
         date: str | None = None
     ) -> TriggerSpec;
 
-    static def from_dict(d: dict) -> TriggerSpec;
-    def to_dict -> dict;
-    def apscheduler_kwargs -> dict;
+    static def from_dict(d: dict[str, any]) -> TriggerSpec;
+    def to_dict -> dict[str, any];
+    def apscheduler_kwargs -> dict[str, any];
 }
 
 obj JacScaleScheduler {
@@ -100,18 +132,21 @@ obj JacScaleScheduler {
     def start -> None;
     def stop(drain: bool = False) -> None;
     def register_dynamic_tasks_from_db -> None;
-    def create_job(name: str, spec: TriggerSpec, created_by: str) -> dict;
+    def create_job(
+        name: str, spec: TriggerSpec, created_by: str, max_active: int = 0
+    ) -> dict[str, any] | None;
+
     def list_jobs(
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
         created_by: str | None = None
-    ) -> tuple[list[dict], int];
+    ) -> tuple[list[dict[str, any]], int];
 
-    def get_job(job_id: str) -> (dict | None);
+    def get_job(job_id: str) -> (dict[str, any] | None);
     def update_job(
         job_id: str, spec: TriggerSpec, acting_as: str | None = None
-    ) -> (dict | None);
+    ) -> (dict[str, any] | None);
 
     def delete_job(job_id: str, acting_as: str | None = None) -> bool;
     def _acquire_fire_lease(job_id: str, spec: TriggerSpec) -> bool;

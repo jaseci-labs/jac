@@ -1,11 +1,23 @@
+import from jaclang.compiler.frontend.unitree { TreeWalker, Tok, EmptyToken, Token }
+import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes { UniPass }
+
 import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.frontend.unitree { Tok, EmptyToken, Token }
 import from jaclang.compiler.frontend.roles { BodyRole, ItemsRole }
 
-walker NormalizePass(UniPass) {
+walker NormalizePass(TreeWalker) {
+    can enter_walk with uni.UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with uni.UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: uni.Module;
+
     can enter_sub_tag with uni.SubTag entry;
     can enter_module with uni.Module entry;
     can enter_type_param with uni.TypeParam entry;

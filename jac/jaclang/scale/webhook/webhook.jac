@@ -12,7 +12,7 @@ import from jaclang.server.serving.authcrypt {
 import from datetime { UTC, datetime, timedelta }
 import from jaclang.server.transport { TransportResponse, Meta }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.shared_store { open_docs_store }
+import from jaclang.server.shared_store { shared_store }
 
 glob logger = logging.getLogger(__name__);
 
@@ -28,12 +28,14 @@ obj WebhookUtils {
     static def extract_signature(header_value: str) -> str;
 }
 
-def rate_window_ok(state: dict, key: str, limit_per_minute: int) -> bool;
+def rate_window_ok(
+    state: dict[str, list[int]], key: str, limit_per_minute: int
+) -> bool;
 
 
 def _create_api_key_db -> any | None {
     try {
-        return open_docs_store();
+        return shared_store();
     } except Exception as e {
         logger.warning(f"webhook api-key store unavailable: {e}");
         return None;
@@ -42,12 +44,11 @@ def _create_api_key_db -> any | None {
 
 obj ApiKeyManager {
     has _db: any | None = _create_api_key_db(),
-        _inmemory_store: dict = {},
+        _inmemory_store: dict[str, any] = {},
         _collection: str = 'webhook_api_keys',
-        _rate_window: dict = {};
+        _rate_window: dict[str, list[int]] = {};
 
     def postinit -> None;
-    def _ensure_indexes -> None;
     def create_api_key(
         user_id: str,
         name: str,
@@ -57,7 +58,7 @@ obj ApiKeyManager {
 
     def list_api_keys(user_id: str) -> TransportResponse;
     def revoke_api_key(user_id: str, api_key_id: str) -> TransportResponse;
-    def _get_key_doc(api_key_id: str) -> dict | None;
-    def resolve_key(api_key: str) -> dict | None;
+    def _get_key_doc(api_key_id: str) -> dict[str, any] | None;
+    def resolve_key(api_key: str) -> dict[str, any] | None;
     def check_rate_limit(api_key_id: str, limit_per_minute: int) -> bool;
 }

@@ -1,5 +1,7 @@
 """JavaScript primitive conversions retain callable rather than constructor semantics."""
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -16,7 +18,7 @@ def compile_client(source: str) -> str {
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
     run_pass(TypeCheckPass, module, program);
-    EsastGenPass(ir_in=module, prog=program);
+    run_walker(EsastGenPass, module=module, prog=program);
     assert not program.errors_had , "\n".join(
         str(error) for error in program.errors_had
     );
@@ -63,8 +65,8 @@ def boolean_value(value: any) -> bool { return Boolean(value) as bool; }
 def boolean_alias(value: any) -> bool { convert = Boolean; return convert(value); }
 def number_value(value: any) -> float { convert = Number; return convert(value); }
 def string_value(value: any) -> str { convert = String; return convert(value); }
-def defaults -> list { return [Boolean(), Number(), String()]; }
-def helpers -> list {
+def defaults -> list[bool | float | str] { return [Boolean(), Number(), String()]; }
+def helpers -> list[bool | float | str] {
     numeric = Number;
     text = String;
     return [numeric.isInteger(2), numeric.isFinite(0), numeric.parseInt("12", 10),

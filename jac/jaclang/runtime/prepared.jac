@@ -2,27 +2,26 @@ import hashlib;
 import os;
 import types;
 import from jaclang.jac0core.ext_registry { base_stem }
-import from jaclang.runtime.object_model { field }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.client.compiler { ViteCompiler }
 
 obj PreparedApplication {
     has `root: str,
         `entry: str,
-        code: dict[str, types.CodeType] = field(default_factory=`dict),
-        manifests: dict[str, dict] = field(default_factory=`dict),
-        semantic: dict[str, dict[str, Info]] = field(default_factory=`dict),
-        origins: dict[str, str] = field(default_factory=`dict),
+        code: dict[str, types.CodeType] = {},
+        manifests: dict[str, dict[str, any]] = {},
+        semantic: dict[str, dict[str, Info]] = {},
+        origins: dict[str, str] = {},
         name: str = '',
         namespace: str = '',
         scope_imports: bool = True,
         client_compiler: ViteCompiler | None = None,
         client_enabled: bool = False,
-        native: dict[str, tuple] = field(default_factory=`dict),
-        services: tuple = (),
+        native: dict[str, tuple[object | None, dict[str, object] | None]] = {},
+        services: tuple[str, ...] = (),
         dev: bool = True,
         client_dist: str = "",
-        applications: list[PreparedApplication] = field(default_factory=list);
+        applications: list[PreparedApplication] = [];
 }
 
 glob _applications: dict[str, PreparedApplication] = {};
@@ -67,7 +66,7 @@ def prepared_code(path: str) -> (types.CodeType | None) {
     return application.code.get(os.path.realpath(path)) if application else None;
 }
 
-def prepared_manifest(path: str) -> (dict | None) {
+def prepared_manifest(path: str) -> (dict[str, any] | None) {
     application = application_for(path);
     return application.manifests.get(os.path.realpath(path)) if application else None;
 }
@@ -271,7 +270,7 @@ def entry_alias(fullname: str) -> tuple[str, str] | None {
     return None;
 }
 
-def module_builtins(application: PreparedApplication, source: str) -> dict {
+def module_builtins(application: PreparedApplication, source: str) -> dict[str, any] {
     import builtins;
     import importlib;
     if not application.scope_imports {

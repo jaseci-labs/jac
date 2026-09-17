@@ -12,7 +12,7 @@ glob FIXTURES = os.path.join(
      );
 
 
-def aot_native_errors(name: str) -> list {
+def aot_native_errors(name: str) -> list[any] {
     prog = JacProgram();
     prog.compile(
         file_path=os.path.join(FIXTURES, name),

@@ -1,7 +1,7 @@
 import platform;
 import from pathlib { Path }
 import from uuid { UUID }
-import type from jaclang.runtime.constructs { NodeArchetype }
+import type from jaclang.runtime.constructs { EdgeArchetype, NodeArchetype }
 
 def collect_node_connections(
     current_node: NodeArchetype, visited_nodes: set, connections: set, edge_ids: set
@@ -13,9 +13,9 @@ def traverse_graph(
     depth: int,
     edge_type: list[str],
     traverse: bool,
-    connections: list,
+    connections: list[tuple[NodeArchetype, NodeArchetype, EdgeArchetype]],
     node_depths: dict[(NodeArchetype, int)],
-    visited_nodes: list,
+    visited_nodes: list[NodeArchetype],
     queue: list[tuple[NodeArchetype, int]],
     bfs: bool,
     dfs: Callable,

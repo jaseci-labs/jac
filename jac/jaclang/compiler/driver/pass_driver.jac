@@ -1,13 +1,14 @@
+import from jaclang.compiler.passes.execution { run_walker }
 import atexit;
 import os;
 import sys;
 import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
-import from jaclang.compiler.passes.transform { Alert, DiagnosticPolicy }
+import from jaclang.compiler.passes.context { Alert, DiagnosticPolicy }
 import from jaclang.compiler.driver.program { JacProgram }
 
 def diagnostic_policy_for(
-    config: any, extra_suppress_tokens: (list | None) = None
+    config: any, extra_suppress_tokens: (list[str] | None) = None
 ) -> DiagnosticPolicy {
     import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
     tokens: list[str] = [];
@@ -130,8 +131,8 @@ def run_pass(
     **kwargs: any
 ) -> any {
     pol = policy if policy is not None else build_diagnostic_policy(prog);
-    errors: list = [];
-    warnings: list = [];
+    errors: list[Alert] = [];
+    warnings: list[Alert] = [];
     inst: any = None;
     if getattr(pass_cls, 'HOST_PASS', False) {
         kwargs['prog'] = prog;
@@ -163,8 +164,9 @@ def run_pass(
         kwargs['completed'] = completed;
     }
     try {
-        inst = pass_cls(
-            ir_in=ir_in,
+        inst = run_walker(
+            pass_cls,
+            module=ir_in,
             cancel_token=cancel_token,
             cancel_requested=bool(cancel_token is not None and cancel_token.is_set()),
             policy=pol,
@@ -173,7 +175,9 @@ def run_pass(
             **kwargs
         );
     } finally {
-        eff = inst.policy if (inst is not None and inst.policy is not None) else pol;
+        eff = inst.ctx.policy
+            if (inst is not None and inst.ctx.policy is not None)
+            else pol;
         deliver_alerts(errors, warnings, prog, eff);
         try {
             ledger = prog.analysis;
@@ -181,7 +185,7 @@ def run_pass(
             ledger.pass_runs[pass_name] = ledger.pass_runs.get(pass_name, 0) + 1;
             if inst is not None {
                 ledger.pass_time[pass_name] = (
-                    ledger.pass_time.get(pass_name, 0.0) + inst.time_taken
+                    ledger.pass_time.get(pass_name, 0.0) + inst.ctx.time_taken
                 );
             }
         } except Exception {}

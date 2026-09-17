@@ -2,6 +2,10 @@ import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.placement.placement_pins {
+    BareImportVerdict,
+    classify_bare_import
+}
 import from jaclang.project.workspace { AppSpec, app_for_path, workspace_for_path }
 
 def _coerce_module(module: uni.Module, context: CodeContext) {
@@ -92,23 +96,23 @@ def is_server_anchored_module(module: (uni.Module | None)) -> bool {
         if imp.has_clib_decls or imp.is_virtual_jac or imp.has_string_path {
             continue;
         }
-        if imp.from_loc is None {
-            return True;
-        }
-        resolved = imp.from_loc.resolve_relative_path();
-        if not isinstance(resolved, str) or not resolved.endswith('.jac') {
-            import from jaclang.compiler.placement.placement_pins {
-                is_client_npm_import
-            }
-            if is_client_npm_import(
-                imp.from_loc.dot_path_str, module.loc.mod_path or ''
-            ) {
-                continue;
-            }
+        if classify_import(imp).world == 'py' {
             return True;
         }
     }
     return False;
+}
+
+def classify_import(imp: uni.Import) -> BareImportVerdict {
+    if imp.from_loc is None {
+        return BareImportVerdict();
+    }
+    if imp.is_jac {
+        return BareImportVerdict(
+            world='jac', rule='jac module', path=imp.from_loc.resolve_relative_path()
+        );
+    }
+    return classify_bare_import(imp.from_loc.dot_path_str, imp.loc.mod_path or '');
 }
 
 def module_own_native_anchor(module: (uni.Module | None)) -> bool {

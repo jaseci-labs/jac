@@ -233,7 +233,7 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         b.store(ir.Constant(i8, 8), tag_ptr);
         b.store(ir.Constant(i64, 0), payload_ptr);
     } else {
-        self.emit(E5092, kind="expression", name=f"`any` box of {value.type}");
+        self.ctx.emit(E5092, kind="expression", name=f"`any` box of {value.type}");
         b.store(ir.Constant(i8, 0), tag_ptr);
         b.store(ir.Constant(i64, 0), payload_ptr);
     }
@@ -266,7 +266,7 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
 
-    self.emit(E5092, kind="expression", name=f"`any` unbox to {target_type}");
+    self.ctx.emit(E5092, kind="expression", name=f"`any` unbox to {target_type}");
     return ir.Constant(target_type, None);
 }
 
@@ -315,7 +315,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         if (_dk_args is not None and len(_dk_args) >= 2)
         else None;
     if _k_store is not None and self?.jacval_type and _k_store == self.jacval_type {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="expression",
@@ -366,14 +366,14 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             and isinstance(semantic_val_type.pointee, ir.LiteralStructType)
         else None;
 
-    _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _dict_new_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     dict_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_dict_new_loc, name="dict.new"
     );
     self._nogc_stamp_elem_drops(dict_val, self._nogc_type_arg_mangles(nd));
-    _dinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _dinit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
 
@@ -459,7 +459,7 @@ impl NaIRGenPass._codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None) {
                 return None;
             }
             if other.type != result.type {
-                self.emit(
+                self.ctx.emit(
                     E5092,
                     node_override=pair.value,
                     kind="expression",
@@ -560,7 +560,7 @@ impl NaIRGenPass._codegen_dict_set(
     key_val = self._coerce_type(key_val, key_type);
     value = self._coerce_type(value, val_type);
     _dset_ctx_loc = getattr(
-        _orig_value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
+        _orig_value, 'jac_loc', f"{os.path.basename(self.module.loc.mod_path)}:0"
     );
     (_set_fn, _kh) = self._static_key_op(helpers, "set", key_node);
     _set_args = [target_val, key_val, value];

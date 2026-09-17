@@ -1,14 +1,19 @@
 import hashlib;
 import importlib;
 import os;
-import time;
 import from pathlib { Path }
-
+import from jaclang.cache.policy {
+    DAY_SECONDS,
+    Policy,
+    SWEEP_INTERVAL_SECONDS,
+    SWEEP_SENTINEL,
+    maybe_sweep_dir
+}
 
 glob FORMAT_CACHE_SCHEMA_VERSION: str = "v1",
      _ENTRY_MARKER: bytes = b"JFMTCLEAN\n",
-     PRUNE_SENTINEL: str = ".last-prune",
-     PRUNE_INTERVAL_SECONDS: float = 86400.0,
+     PRUNE_SENTINEL: str = SWEEP_SENTINEL,
+     PRUNE_INTERVAL_SECONDS: float = SWEEP_INTERVAL_SECONDS,
      ENTRY_TTL_SECONDS: float = 2592000.0,
      MAX_ENTRIES: int = 20000,
      _FORMATTER_PIPELINE_MODULES: tuple[str, ...] = (
@@ -19,10 +24,10 @@ glob FORMAT_CACHE_SCHEMA_VERSION: str = "v1",
          "jaclang.compiler.tools.normalize_pass",
          "jaclang.compiler.tools.unparse_pass",
          "jaclang.compiler.tools.doc_ir",
-         "jaclang.compiler.passes.transform",
+         "jaclang.compiler.passes.context",
+         "jaclang.compiler.passes.execution",
 
      );
-
 
 def _stable_dump(value: any) -> str {
     if value is None or isinstance(value, (bool, int, float, str)) {
@@ -36,7 +41,7 @@ def _stable_dump(value: any) -> str {
         return "{" + ",".join([f"{kv[0]}:{kv[1]}" for kv in items]) + "}";
     }
 
-    attrs: dict = {};
+    attrs: dict[str, any] = {};
     for name in dir(value) {
         if name.startswith("_") {
             continue;
@@ -53,7 +58,6 @@ def _stable_dump(value: any) -> str {
     }
     return _stable_dump(attrs);
 }
-
 
 def config_fingerprint(config: any, lintfix: bool) -> str {
     if config is None {
@@ -73,7 +77,6 @@ def config_fingerprint(config: any, lintfix: bool) -> str {
     return hashlib.sha256("\n".join(parts).encode()).hexdigest();
 }
 
-
 def canonical_logical_path(path: str, project_root: (str | None) = None) -> str {
     norm = os.path.normpath(path);
     if project_root {
@@ -87,7 +90,6 @@ def canonical_logical_path(path: str, project_root: (str | None) = None) -> str 
     return norm.replace(os.sep, "/");
 }
 
-
 def default_format_cache_dir(anchor: (Path | str)) -> Path {
     base = Path(anchor);
 
@@ -96,7 +98,6 @@ def default_format_cache_dir(anchor: (Path | str)) -> Path {
     }
     return base.resolve() / ".jac" / "cache";
 }
-
 
 def _module_source_bytes(modname: str) -> bytes {
     try {
@@ -137,7 +138,6 @@ def _module_source_bytes(modname: str) -> bytes {
     return b"\0".join(chunks);
 }
 
-
 def formatter_pipeline_revision -> str {
     h = hashlib.sha256();
     for modname in _FORMATTER_PIPELINE_MODULES {
@@ -149,16 +149,13 @@ def formatter_pipeline_revision -> str {
     return h.hexdigest()[:16];
 }
 
-
 def frame_unit(parts: list[bytes]) -> bytes {
     return b"".join([f"{len(p)}:".encode() + p for p in parts]);
 }
 
-
 def _frame(label: str, payload: bytes) -> bytes {
     return f"{label}:{len(payload)}:".encode() + payload;
 }
-
 
 obj FormatCache {
     has cache_dir: (Path | str | None),
@@ -248,66 +245,14 @@ obj FormatCache {
         if self.cache_root is None {
             return;
         }
-        sentinel = self.cache_root / PRUNE_SENTINEL;
-        now = time.time();
-        try {
-            if now - sentinel.stat().st_mtime < self.prune_interval {
-                return;
-            }
-        } except OSError {}
-        try {
-            sentinel.touch();
-        } except OSError {
-            return;
-        }
-        self._prune(now);
-    }
-
-    def _prune(now: float) {
-        if self.cache_root is None {
-            return;
-        }
-        try {
-            candidates = list(self.cache_root.iterdir());
-        } except OSError {
-            return;
-        }
-        live: list[tuple[float, Path]] = [];
-        for p in candidates {
-            name = p.name;
-            if name == PRUNE_SENTINEL {
-                continue;
-            }
-            try {
-                if not p.is_file() {
-                    continue;
-                }
-                mtime = p.stat().st_mtime;
-                if name.startswith(".") {
-                    if now - mtime > self.prune_interval {
-                        p.unlink();
-                    }
-                    continue;
-                }
-                if now - mtime > self.entry_ttl {
-                    p.unlink();
-                    continue;
-                }
-                live.append((mtime, p));
-            } except OSError {
-                continue;
-            }
-        }
-        overflow = len(live) - self.max_entries;
-        if overflow > 0 {
-            live.sort();
-            for item in live[:overflow] {
-                try {
-                    item[1].unlink();
-                } except OSError {
-                    continue;
-                }
-            }
-        }
+        policy = Policy(
+            ttl_days=self.entry_ttl / DAY_SECONDS, max_entries=self.max_entries
+        );
+        maybe_sweep_dir(
+            self.cache_root,
+            policy,
+            once_per_process=False,
+            interval=self.prune_interval
+        );
     }
 }

@@ -226,6 +226,7 @@ Emitted by the type checker and type evaluator.
 | `E1033` | Member "{member}" not found on type "{type}" |
 | `E1034` | Cannot perform assignment comprehension on type "{type}" |
 | `E1035` | Type "{src}" is not assignable to type "{dest}" |
+| `E1036` | Generic type "{type}" requires explicit type arguments |
 
 ### Subscript / Await
 
@@ -379,7 +380,7 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac b
 
 | Code | Message |
 |------|---------|
-| `W1036` | Generic type "{type}" used without type arguments, defaulting to "{type}[Any]"; consider adding explicit type arguments |
+| `W1036` | Generic type "{type}" used without type arguments, defaulting to "{type}[any]"; consider adding explicit type arguments |
 | `W1037` | Explicit 'any' type annotation disables type checking here; consider a more specific type |
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |
@@ -623,7 +624,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 
 `E5082` fires when a plain client import references a server symbol that does not bridge: server `def:pub` endpoints bridge automatically over RPC, so the fix is to make the symbol a `def:pub` endpoint, pin it (or its module) `"client"` via `[placement.pins]`, or move it into client code.
 
-`E5084` is the bare-import sibling. A bare name resolves across the module universe -- local Jac module first, then Python, then the client npm world (jac.toml `[dependencies.npm]`, the active framework's own packages, and whatever is installed under `.jac/client/node_modules`), so `import from react { useRef }` works unquoted. When the name resolves to none of those client-reachable worlds, placement pins the import server-side, the bundle never binds the symbol, and the page would fail at runtime with a ReferenceError -- so client use fails the build instead. Install or declare the package in `[dependencies.npm]` (or quote the module to pin the npm form), or keep the use server-side behind a `def:pub` endpoint. Annotation-only uses do not fire it, since ES output erases type annotations; imports whose uses are all server-side prune silently as before.
+`E5084` is the bare-import sibling. A bare name resolves across the module universe in a fixed order -- a local Jac module first, then a name declared in jac.toml `[dependencies.npm]` or owned by the active framework (`react`, `react-dom`, ...), then a Python module the importing file can import, and only then whatever is merely installed under `.jac/client/node_modules` -- so `import from react { useRef }` works unquoted, while a transitive npm package that shares a name with a Python module (`dotenv`, `argparse`) never captures that import. When the name resolves to none of the client-reachable worlds, placement pins the import server-side, the bundle never binds the symbol, and the page would fail at runtime with a ReferenceError -- so client use fails the build instead. Install or declare the package in `[dependencies.npm]` (or quote the module to pin the npm form), or keep the use server-side behind a `def:pub` endpoint. Annotation-only uses do not fire it, since ES output erases type annotations; imports whose uses are all server-side prune silently as before.
 
 `E5086` covers the same failure for a *module's own* declarations rather than its imports. The bundle carries what is placed in the client codespace, plus `def:pub` endpoints, which are bound to a generated client-side forwarder that calls them over RPC. Anything else named by client code -- a function pinned `"server"` via `[placement.pins]`, a glob kept server-side -- would emit as a bare identifier that resolves to nothing. That is a guaranteed `ReferenceError` at module load, so it fails the build at the seam that produces the artifact. Give the element client presence (drop the pin, or make it `def:pub`), or keep the use out of client code.
 

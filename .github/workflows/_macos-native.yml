@@ -45,6 +45,8 @@ jobs:
 
       - name: Materialize typeshed + wasm libc floor
         working-directory: jac
+        env:
+          JACPYTHON: "1"
         run: |
           zig build fetch-typeshed --summary all
           zig build vendor-wasm-libc --summary all
@@ -100,3 +102,78 @@ jobs:
         env:
           JAC_TOOLCHAIN_USE_SYSTEM: "0"
         run: jac setup --toolchain ios
+
+  # The desktop target on its second host. ci.yml smokes the same quickstart
+  # scaffold under Xvfb with WebKitGTK; this is the WKWebView twin: the host
+  # must build as an application bundle, announce its loopback origin, serve
+  # the client bundle there, and answer no walker locally because the site's
+  # backend is remote. macOS runners keep a logged-in window server, so the
+  # window actually opens.
+  desktop-macos:
+    needs: build-kit-macos
+    runs-on: macos-latest
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: ./.github/actions/jac-kit
+        with:
+          name: jac-kit-macos
+
+      - name: Scaffold the site (jac create --awesome; pulls npm deps)
+        run: jac create site --awesome
+
+      - name: Build the desktop app (WKWebView bundle)
+        working-directory: site
+        run: jac build desktop
+
+      - name: Desktop artifact audit
+        working-directory: site
+        run: |
+          set -euo pipefail
+          OUT=.jac/client/desktop/desktop
+          APP=$OUT/jaclang.app
+          test -x "$APP/Contents/MacOS/jaclang" || { echo "::error::no executable in the bundle"; exit 1; }
+          test -f "$APP/Contents/MacOS/libwebview.dylib" || { echo "::error::libwebview.dylib is not beside the executable"; exit 1; }
+          test ! -f "$APP/Contents/Resources/app.jab" || { echo "::error::remote desktop ships an unnecessary local app image"; exit 1; }
+          test -f "$APP/Contents/Resources/dist/index.html" || { echo "::error::no client bundle in the bundle"; exit 1; }
+          test ! -d "$APP/Contents/Resources/sv" || { echo "::error::loose sources shipped; the image is the program"; exit 1; }
+          test -x "$OUT/jaclang-launch.sh" || { echo "::error::no launcher beside the bundle"; exit 1; }
+          plutil -lint "$APP/Contents/Info.plist"
+          [ "$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist")" = "org.jaclang.desktop" ] \
+            || { echo "::error::Info.plist does not carry the [desktop] identifier"; exit 1; }
+          otool -L "$APP/Contents/MacOS/jaclang" | grep -q "@loader_path/libwebview.dylib" \
+            || { echo "::error::the host does not load libwebview beside itself"; exit 1; }
+          grep -q "https://jaclang.org" "$APP"/Contents/Resources/dist/client.*.js \
+            || { echo "::error::the bundle does not carry its remote backend"; exit 1; }
+
+      - name: Desktop smoke (WKWebView)
+        working-directory: site/.jac/client/desktop/desktop
+        run: |
+          LOG="$RUNNER_TEMP/site-desktop.log"
+          ./jaclang-launch.sh > "$LOG" 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 110); do
+            grep -q "JAC_DESKTOP_SERVING" "$LOG" && break
+            if ! kill -0 $APP_PID 2>/dev/null; then echo "::error::desktop app exited early"; cat "$LOG"; exit 1; fi
+            sleep 5
+          done
+          ORIGIN=$(grep -o "JAC_DESKTOP_SERVING http://[^ ]*" "$LOG" | head -1 | cut -d' ' -f2)
+          test -n "$ORIGIN" || { echo "::error::the desktop host never announced its origin"; cat "$LOG"; exit 1; }
+          curl -fsS "${ORIGIN}__jac/health" | grep -q '"ok": true' || { echo "::error::broker health failed"; exit 1; }
+          curl -fsS "$ORIGIN" | grep -q "The Jac Programming Language" || { echo "::error::the site index did not load"; exit 1; }
+          curl -fsS "${ORIGIN}static/assets/jac-logo.svg" | grep -q "<svg" || { echo "::error::the shared site assets are not served by the desktop host"; exit 1; }
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${ORIGIN}walker/doc_page" -H 'Content-Type: application/json' -d '{}')
+          [ "$code" = "404" ] || [ "$code" = "405" ] || { echo "::error::a remote-backend desktop app served a walker locally ($code)"; exit 1; }
+          kill $APP_PID 2>/dev/null || true
+          echo "desktop app serves the site on $ORIGIN"
+
+      - name: Upload desktop logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-desktop-logs-macos
+          path: ${{ runner.temp }}/site-desktop.log
+          if-no-files-found: ignore

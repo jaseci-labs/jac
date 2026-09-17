@@ -117,7 +117,7 @@ impl EsastGenPass._is_service_bridge_import(nd: uni.Import) -> bool {
         classify_cross_app_import
     }
     return (
-        classify_cross_app_import(nd, self.ir_in.gen.interop_manifest)
+        classify_cross_app_import(nd, self.module.gen.interop_manifest)
         == CrossAppKind.SERVICE_BRIDGE
     );
 }
@@ -167,7 +167,7 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
             return ability_node;
         }
 
-        manifest = self.ir_in.gen.interop_manifest;
+        manifest = self.module.gen.interop_manifest;
         binding = manifest.bindings.get(nd.target.sym_name) if manifest else None;
         if binding and isinstance(binding.ast_node, uni.Ability) {
             return binding.ast_node;
@@ -623,13 +623,13 @@ impl EsastGenPass._resolve_call_arg_slots(
             kw_name = str(kw_key.value);
         }
         if not kw_name {
-            self.emit(
+            self.ctx.emit(
                 E5099, node_override=nd, func=func_name, shape=type(kw_key).__name__
             );
             continue;
         }
         if kw_name in seen_names {
-            self.emit(E5080, node_override=nd, name=kw_name, func=func_name);
+            self.ctx.emit(E5080, node_override=nd, name=kw_name, func=func_name);
         }
         seen_names.add(kw_name);
         assert kw.value is not None;
@@ -818,12 +818,12 @@ impl EsastGenPass._try_lower_server_rpc_call(
         ability_node
     );
     inline_ret_type: str = self._extract_return_type(
-        ability_node, func_name, self.ir_in.gen.interop_manifest
+        ability_node, func_name, self.module.gen.interop_manifest
     );
-    inline_boundary = self.ir_in.gen.interop_manifest.boundary_types_for(
-        (ability_node.find_parent_of_type(uni.Module) or self.ir_in).loc.mod_path
+    inline_boundary = self.module.gen.interop_manifest.boundary_types_for(
+        (ability_node.find_parent_of_type(uni.Module) or self.module).loc.mod_path
     )
-        if self.ir_in.gen.interop_manifest
+        if self.module.gen.interop_manifest
         else {};
     (spread_arg, spread_read_source) = self._make_kwargs_spread_context(props, nd);
     use_kwargs_temp = spread_read_source is not None;
@@ -882,7 +882,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
             )
         ]
     );
-    manifest = self.ir_in.gen.interop_manifest;
+    manifest = self.module.gen.interop_manifest;
     binding = manifest.bindings.get(func_name) if manifest else None;
     if binding and binding.provider_app {
         for (key, value) in [
@@ -935,7 +935,7 @@ impl EsastGenPass._warn_rpc_callable_params(
                 and _p.type_tag.tag is not None
                 and re.search(r"\bCallable\b", unparse_node(_p.type_tag.tag))
             ) {
-                self.emit(
+                self.ctx.emit(
                     W6005, node_override=at, func=func_name, param=_p.name.sym_name
                 );
             }
@@ -959,14 +959,14 @@ impl EsastGenPass._build_server_forwarder(
     ability_node: uni.Ability, func_name: str, jac_node: uni.UniNode
 ) -> es.FunctionDeclaration {
     self._warn_rpc_callable_params(ability_node, func_name, jac_node);
-    boundary = self.ir_in.gen.interop_manifest.boundary_types_for(
-        (ability_node.find_parent_of_type(uni.Module) or self.ir_in).loc.mod_path
+    boundary = self.module.gen.interop_manifest.boundary_types_for(
+        (ability_node.find_parent_of_type(uni.Module) or self.module).loc.mod_path
     )
-        if self.ir_in.gen.interop_manifest
+        if self.module.gen.interop_manifest
         else {};
     param_types = self._param_type_map_from_ability(ability_node);
     ret_type = self._extract_return_type(
-        ability_node, func_name, self.ir_in.gen.interop_manifest
+        ability_node, func_name, self.module.gen.interop_manifest
     );
     params: list[es.Pattern] = [];
     props: list[(es.Property | es.SpreadElement)] = [];
@@ -1010,7 +1010,7 @@ impl EsastGenPass._build_server_forwarder(
     ret_label = self._forwarder_ret_label(ability_node);
     if ret_label {
         import from jaclang.compiler.frontend.diagnostics { W6009 }
-        self.emit(W6009, node_override=jac_node, name=func_name, ret=ret_label);
+        self.ctx.emit(W6009, node_override=jac_node, name=func_name, ret=ret_label);
     }
     return self.sync_loc(
         es.FunctionDeclaration(
@@ -1051,7 +1051,7 @@ impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] 
             continue;
         }
         self._unbound_reported.add(ref_name.sym_name);
-        self.emit(E5086, node_override=ref_name, name=ref_name.sym_name);
+        self.ctx.emit(E5086, node_override=ref_name, name=ref_name.sym_name);
     }
     return forwarders;
 }
@@ -1278,7 +1278,7 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                     _result = _emit_fn(_ctx, _args_strs);
                 }
             } except Exception as _emit_err {
-                self.emit(
+                self.ctx.emit(
                     E5016, node_override=here, name=_builtin_name, error=str(_emit_err)
                 );
                 return;

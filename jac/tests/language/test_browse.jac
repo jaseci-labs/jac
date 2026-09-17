@@ -145,17 +145,17 @@ def _serve_with_ping(srv: socket.socket, make_reply: any) {
 }
 
 
-def _reply_small(req: dict) -> dict {
+def _reply_small(req: dict[str, any]) -> dict[str, any] {
     return {"id": req["id"], "result": {"value": 42}};
 }
 
 
-def _reply_large(req: dict) -> dict {
+def _reply_large(req: dict[str, any]) -> dict[str, any] {
     return {"id": req["id"], "result": {"value": "x" * 300, "echo": req["params"]}};
 }
 
 
-def _reply_error(req: dict) -> dict {
+def _reply_error(req: dict[str, any]) -> dict[str, any] {
     return {"id": req["id"], "error": {"code": -32000, "message": "boom"}};
 }
 
@@ -505,7 +505,7 @@ def _serve_script(srv: socket.socket, handler: any) {
 
 
 """Reply to Runtime.enable with its result plus replayed console/log events."""
-def _console_replay_handler(req: dict) -> list {
+def _console_replay_handler(req: dict[str, any]) -> list[any] {
     if req["method"] == "Runtime.enable" {
         return [
             {"id": req["id"], "result": {}},
@@ -548,10 +548,10 @@ test "CDP.drain_events collects event frames stashed around calls" {
 # ---------------------------------------------------------------------------
 # Actionability: scroll-into-view + viewport/hit checks (issue #6597, gap 1)
 # ---------------------------------------------------------------------------
-glob _FN_DECLS: list = [];
+glob _FN_DECLS: list[any] = [];
 
 
-def _actionability_replies(req: dict, state: dict) -> list {
+def _actionability_replies(req: dict[str, any], state: dict[str, any]) -> list[any] {
     if req["method"] == "Runtime.evaluate" {
         return [{"id": req["id"], "result": {"result": {"objectId": "node-1"}}}];
     }
@@ -563,14 +563,14 @@ def _actionability_replies(req: dict, state: dict) -> list {
 }
 
 
-def _onscreen_handler(req: dict) -> list {
+def _onscreen_handler(req: dict[str, any]) -> list[any] {
     return _actionability_replies(
         req, {"ok": True, "x": 100.0, "y": 200.0, "hitOk": True, "hit": "input#below"}
     );
 }
 
 
-def _offscreen_handler(req: dict) -> list {
+def _offscreen_handler(req: dict[str, any]) -> list[any] {
     return _actionability_replies(
         req,
         {"ok": False, "reason": "point (437,-1680) is outside the 1280x720 viewport"}
@@ -578,7 +578,7 @@ def _offscreen_handler(req: dict) -> list {
 }
 
 
-def _intercepted_handler(req: dict) -> list {
+def _intercepted_handler(req: dict[str, any]) -> list[any] {
     return _actionability_replies(
         req, {"ok": True, "x": 50.0, "y": 60.0, "hitOk": False, "hit": "div#overlay"}
     );

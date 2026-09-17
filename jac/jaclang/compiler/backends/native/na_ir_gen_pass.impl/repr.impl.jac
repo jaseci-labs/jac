@@ -62,14 +62,14 @@ impl NaIRGenPass._repr_call_elem_fn(elem_fn: ir.Function, elem: ir.Value) -> ir.
     return self._mark_owned(res);
 }
 
-impl NaIRGenPass._repr_elem_spec_of_key(elem_key: str) -> (tuple | None) {
+impl NaIRGenPass._repr_elem_spec_of_key(elem_key: str) -> (tuple[str, ir.Type] | None) {
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     _parts = self._split_type_args(elem_key, "|");
     if len(_parts) == 2 and ("NoneType" in _parts or "None" in _parts) {
         return ("jacval", self.jacval_type) if self?.jacval_type else None;
     }
-    if len(_parts) > 1 or elem_key == "any" {
+    if len(_parts) > 1 or elem_key in ("any", "Any") {
         return ("jacval", self.jacval_type) if self?.jacval_type else None;
     }
     if elem_key in ("int", "bool") {
@@ -123,7 +123,7 @@ impl NaIRGenPass._repr_fn_for_type_key(type_key: str) -> (ir.Function | None) {
         if fn is None {
             fn = self._repr_jacval_fn();
         }
-    } elif type_key == "any" {
+    } elif type_key in ("any", "Any") {
         fn = self._repr_jacval_fn();
     } elif type_key == "int" {
         fn = self._repr_leaf_fn("int");
@@ -632,8 +632,8 @@ impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
     if not _fkeys or _fkeys == [""] {
         return None;
     }
-    _ffns: list = [];
-    _ftys: list = [];
+    _ffns: list[ir.Function] = [];
+    _ftys: list[ir.Type] = [];
     for fk in _fkeys {
         _f = self._repr_fn_for_type_key(fk);
         if _f is None {

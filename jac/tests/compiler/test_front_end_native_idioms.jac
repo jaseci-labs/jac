@@ -13,6 +13,8 @@ front end -- they are the object-spatial runtime and the driver -- so their
 closure and are deliberately untouched.
 """
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import os;
 import types;
 import jaclang.compiler.frontend.helpers as helpers_mod;
@@ -345,11 +347,12 @@ test "version-condition comparisons match the operator table they replaced" {
     "if sys.version_info >= (99, 0):\n    g = 1\n"
     "if sys.platform == 'linux':\n    h = 1\n";
     prog = JacProgram();
-    mod = PyastBuildPass(
-        ir_in=PythonModuleAst(
+    mod = run_walker(
+        PyastBuildPass,
+        module=PythonModuleAst(
             py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
         )
-    ).ir_out;
+    ).module;
     got = [
         evaluate_version_condition(nd.condition)
         for nd in mod.get_all_sub_nodes(typ=IfStmt)

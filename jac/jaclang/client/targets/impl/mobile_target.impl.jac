@@ -60,14 +60,37 @@ import from jaclang.client.targets.client_dev_common {
     terminate_dev_processes
 }
 
-impl MobileTarget.setup(project_dir: Path) -> None {
-    import from jaclang.client.targets.react_native.common { normalize_rn_platform }
+impl MobileTarget.ensure_ready(
+    project_dir: Path, platform: Optional[str] = None
+) -> None {
+    import time;
+    import from jaclang.toolchains.store { offline }
 
+    if (platform or "").strip().lower() == "web" {
+        return;
+    }
     rn_dir = resolve_rn_project_dir(project_dir);
+    if (rn_dir / "package.json").exists() {
+        ensure_native_deps_installed(rn_dir);
+        return;
+    }
+    if offline() {
+        raise RuntimeError(
+            f"React Native scaffold not found at {rn_dir} and JAC_OFFLINE is set; "
+            "provisioning it needs the network. Run `jac setup <app>` online first."
+        );
+    }
+    t0 = time.monotonic();
     console.print(
-        f"\n📱 Setting up React Native target (Expo) at {rn_dir}", style="bold"
+        f"\n📱 First run: performing one-time mobile setup (Expo scaffold at {rn_dir})...",
+        style="bold"
     );
+    console.print("  (`jac setup <app>` provisions this ahead of time)", style="muted");
+    self._provision(project_dir, rn_dir);
+    console.success(f"One-time mobile setup complete ({time.monotonic() - t0:.1f}s).");
+}
 
+impl MobileTarget._provision(project_dir: Path, rn_dir: Path) -> None {
     write_expo_scaffold(
         rn_dir,
         project_dir,
@@ -75,9 +98,15 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         app_slug=DEFAULT_APP_SLUG,
         app_id=DEFAULT_APP_ID
     );
-
     ensure_native_deps_installed(rn_dir);
+}
 
+impl MobileTarget.setup(project_dir: Path) -> None {
+    rn_dir = resolve_rn_project_dir(project_dir);
+    console.print(
+        f"\n📱 Setting up React Native target (Expo) at {rn_dir}", style="bold"
+    );
+    self._provision(project_dir, rn_dir);
     console.success("Mobile (React Native) setup complete.");
     console.print("\nNext steps:", style="bold");
     console.print(
@@ -147,12 +176,7 @@ impl MobileTarget.build(
         );
     }
 
-    if not (rn_dir / "package.json").exists() {
-        console.print("  Scaffold not found — running setup first...", style="muted");
-        self.setup(project_dir);
-    }
-
-    ensure_native_deps_installed(rn_dir);
+    self.ensure_ready(project_dir, platform=plat);
     (_, compiled_dir) = self._compile_native_jac_modules(entry_file);
 
     js_sources = read_user_js_sources(compiled_dir);
@@ -228,13 +252,8 @@ impl MobileTarget.build(
 impl MobileTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
+    self.ensure_ready(project_dir);
     rn_dir = resolve_rn_project_dir(project_dir);
-    if not (rn_dir / "package.json").exists() {
-        raise RuntimeError(
-            "React Native scaffold not found. Run `jac setup <app>` "
-            "before `jac run --dev <app>`."
-        );
-    }
 
     requested_api = api_port if api_port > 0 else port;
     requested_metro = resolve_metro_port();
@@ -345,8 +364,8 @@ impl MobileTarget._compile_native_jac_modules(entry_file: Path) -> tuple[(any, P
     compiled_dir = jac_compiler.compiled_dir;
     if compiled_dir is None {
         raise RuntimeError(
-            "JacClientCompiler.compiled_dir is None; project config likely "
-            "missing. Run `jac setup <app>` first."
+            "JacClientCompiler.compiled_dir is None; no jac.toml project config "
+            "was found. Run from the project root (`jac create` makes one)."
         );
     }
     compiled_dir.mkdir(parents=True, exist_ok=True);

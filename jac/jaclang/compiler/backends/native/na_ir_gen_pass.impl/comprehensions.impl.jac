@@ -81,7 +81,7 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
         return None;
     }
 
-    _lcompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _lcompr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     list_val = self._rc_call_with_ctx(
@@ -182,7 +182,7 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         return None;
     }
 
-    _dcompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _dcompr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     dict_val = self._rc_call_with_ctx(
@@ -271,7 +271,7 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
         return None;
     }
 
-    _scompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _scompr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     set_val = self._rc_call_with_ctx(
@@ -285,7 +285,6 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
 
     return set_val;
 }
-
 
 impl NaIRGenPass._emit_compr_element(
     kind: str,
@@ -375,10 +374,10 @@ impl NaIRGenPass._emit_compr_element(
             if isinstance(_compr_loc_raw, str) {
                 _compr_loc = _compr_loc_raw;
             } elif _compr_loc_raw is not None {
-                _compr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{_compr_loc_raw.first_line}";
+                _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{_compr_loc_raw.first_line}";
             }
             if not _compr_loc {
-                _compr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:0";
+                _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:0";
             }
             self._rc_call_with_ctx(
                 helpers["append"], [acc, val], op="compr_elem", loc=_compr_loc
@@ -395,7 +394,7 @@ impl NaIRGenPass._emit_compr_element(
 }
 
 impl NaIRGenPass._codegen_compr_walk(
-    comprs: list,
+    comprs: list[uni.InnerCompr],
     idx: int,
     kind: str,
     acc: ir.Value,
@@ -416,7 +415,7 @@ impl NaIRGenPass._codegen_compr_walk(
 }
 
 impl NaIRGenPass._codegen_compr_walk_body(
-    comprs: list,
+    comprs: list[uni.InnerCompr],
     idx: int,
     kind: str,
     acc: ir.Value,
@@ -427,7 +426,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
     inner = comprs[idx];
     loop_target = inner.target;
     collection = inner.collection;
-    conditionals = inner.conditional or [];
+    conditionals: list[uni.Expr] = inner.conditional or [];
 
     if isinstance(collection, uni.FuncCall) {
         call_name = self._get_name(collection.target);
@@ -475,7 +474,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
         _coll_want = coll_helpers["len"].function_type.args[0];
         if coll_val.type != _coll_want {
             if self._spec_from_container_ptr(coll_val.type) is None {
-                self.emit(
+                self.ctx.emit(
                     E5092,
                     node_override=collection,
                     kind="expression",
@@ -562,7 +561,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
 
     if unpack_target is not None {
         if not self._codegen_tuple_unpack(unpack_target.values, elem_val, None) {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=unpack_target,
                 kind="comprehension target",
@@ -616,21 +615,21 @@ impl NaIRGenPass._codegen_compr_walk_body(
     self.builder.position_at_end(end_bb);
 
     if isinstance(coll_val.type, ir.PointerType) and self._is_owned(coll_val) {
-        _coll_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:0";
+        _coll_loc = f"{os.path.basename(self.module.loc.mod_path)}:0";
         self._emit_rc_release_simple(coll_val, op="compr_coll", loc=_coll_loc);
     }
 }
 
 impl NaIRGenPass._codegen_compr_range_walk(
     inner: uni.InnerCompr,
-    comprs: list,
+    comprs: list[uni.InnerCompr],
     idx: int,
     kind: str,
     acc: ir.Value,
     key_expr: uni.UniNode,
     val_expr: (uni.UniNode | None),
     spec: str,
-    conditionals: list
+    conditionals: list[uni.Expr]
 ) -> None {
     collection = inner.collection;
     loop_target = inner.target;
@@ -641,7 +640,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     if not isinstance(collection, uni.FuncCall) {
         return;
     }
-    params = collection.params or [];
+    params: Sequence[any] = collection.params or [];
     start_val: (ir.Value | None) = None;
     stop_val: (ir.Value | None) = None;
     if len(params) == 1 {

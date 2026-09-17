@@ -7,7 +7,7 @@ opts out (returns {}) — this roadmap targets sv↔na congruence.
 
 import math;
 
-def math_py() -> dict {
+def math_py() -> dict[any, any] {
     return {
         # constants
         "pi": math.pi,
@@ -68,7 +68,7 @@ def math_py() -> dict {
     };
 }
 
-def math_cl() -> dict {
+def math_cl() -> dict[any, any] {
     return {};
 }
 

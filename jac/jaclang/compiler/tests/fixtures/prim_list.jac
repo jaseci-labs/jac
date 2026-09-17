@@ -4,46 +4,46 @@ Cross-backend equivalence fixture.
 """
 
 # --- List methods and operators ---
-def list_py() -> dict {
+def list_py() -> dict[any, any] {
     # methods
-    a1: list = [1, 2, 3];
+    a1: list[any] = [1, 2, 3];
     a1.append(4);
 
-    a2: list = [1, 2];
+    a2: list[any] = [1, 2];
     a2.extend([3, 4, 5]);
 
-    a3: list = [1, 3, 4];
+    a3: list[any] = [1, 3, 4];
     a3.insert(1, 2);
 
-    a4: list = [10, 20, 30];
+    a4: list[any] = [10, 20, 30];
     popped_last: int = a4.pop();
 
-    a5: list = [10, 20, 30];
+    a5: list[any] = [10, 20, 30];
     popped_first: int = a5.pop(0);
 
-    a6: list = [1, 2, 3];
+    a6: list[any] = [1, 2, 3];
     a6.clear();
 
-    a7: list = [10, 20, 30, 20];
+    a7: list[any] = [10, 20, 30, 20];
     idx: int = a7.index(20);
 
-    a8: list = [3, 1, 2];
+    a8: list[any] = [3, 1, 2];
     a8.reverse();
 
-    a9: list = [1, 2, 3];
-    a9_copy: list = a9.copy();
+    a9: list[any] = [1, 2, 3];
+    a9_copy: list[any] = a9.copy();
 
-    a: list = [10, 20, 30];
+    a: list[any] = [10, 20, 30];
     a.append(40);
     append_len: int = len(a);
     append_last: int = a[3];
 
-    b: list = [10, 20, 30];
+    b: list[any] = [10, 20, 30];
     get_val: int = b[1];
     b[1] = 99;
     set_val: int = b[1];
 
-    c: list = [];
+    c: list[any] = [];
     c.append(1);
     c.append(2);
     c.append(3);
@@ -51,24 +51,24 @@ def list_py() -> dict {
     c.append(5);
     multi_len: int = len(c);
 
-    d: list = [10, 20, 30];
+    d: list[any] = [10, 20, 30];
     pop_val: int = d.pop();
     pop_len: int = len(d);
 
-    e: list = [10, 20, 30];
+    e: list[any] = [10, 20, 30];
     e.clear();
     clear_len: int = len(e);
 
-    f: list = [10, 20, 30, 20];
+    f: list[any] = [10, 20, 30, 20];
     index_found: int = f.index(20);
 
-    g: list = [10, 20, 30];
+    g: list[any] = [10, 20, 30];
     g.reverse();
     rev_first: int = g[0];
     rev_last: int = g[2];
 
-    h: list = [10, 20, 30];
-    h2: list = h.copy();
+    h: list[any] = [10, 20, 30];
+    h2: list[any] = h.copy();
     copy_len: int = len(h2);
     copy_first: int = h2[0];
 
@@ -122,7 +122,7 @@ def list_py() -> dict {
     op_c: list[int] = op_a + op_b;
 
     # containers: += (iadd)
-    iadd_c: list = [10, 20];
+    iadd_c: list[any] = [10, 20];
     iadd_c += [30, 40];
 
     # list slicing
@@ -252,33 +252,33 @@ def list_py() -> dict {
     };
 }
 
-def list_cl() -> dict {
-    a1: list = [1, 2, 3];
+def list_cl() -> dict[any, any] {
+    a1: list[any] = [1, 2, 3];
     a1.append(4);
 
-    a2: list = [1, 2];
+    a2: list[any] = [1, 2];
     a2.extend([3, 4, 5]);
 
-    a3: list = [1, 3, 4];
+    a3: list[any] = [1, 3, 4];
     a3.insert(1, 2);
 
-    a4: list = [10, 20, 30];
+    a4: list[any] = [10, 20, 30];
     popped_last: int = a4.pop();
 
-    a5: list = [10, 20, 30];
+    a5: list[any] = [10, 20, 30];
     popped_first: int = a5.pop(0);
 
-    a6: list = [1, 2, 3];
+    a6: list[any] = [1, 2, 3];
     a6.clear();
 
-    a7: list = [10, 20, 30, 20];
+    a7: list[any] = [10, 20, 30, 20];
     idx: int = a7.index(20);
 
-    a8: list = [3, 1, 2];
+    a8: list[any] = [3, 1, 2];
     a8.reverse();
 
-    a9: list = [1, 2, 3];
-    a9_copy: list = a9.copy();
+    a9: list[any] = [1, 2, 3];
+    a9_copy: list[any] = a9.copy();
 
     nums: list[int] = [5, 3, 8, 1, 4, 2, 7, 6];
     nums.sort();
@@ -323,7 +323,7 @@ def list_cl() -> dict {
     op_b: list[int] = [4, 5, 6];
     op_c: list[int] = op_a + op_b;
 
-    iadd_c: list = [10, 20];
+    iadd_c: list[any] = [10, 20];
     iadd_c += [30, 40];
 
     return {

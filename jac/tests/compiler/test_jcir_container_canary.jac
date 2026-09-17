@@ -31,6 +31,8 @@ The corpus is the one the cutover requirements name: comments,
 diagnostics, string-named tests, and circular includes.
 """
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import ast as pyast;
 import marshal;
 import types;
@@ -42,7 +44,7 @@ import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.driver.program { JacProgram }
 
 """Compile once, returning the pyast tree, the shim tree and the bytes."""
-def emit_both(src: str, path: str) -> tuple {
+def emit_both(src: str, path: str) -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(
         use_str=src,
@@ -56,7 +58,7 @@ def emit_both(src: str, path: str) -> tuple {
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
-    blob = JcirGenPass(ir_in=mod).ir_bytes();
+    blob = run_walker(JcirGenPass, module=mod).ir_bytes();
     (mods, diags) = transcribe(blob);
     assert len(mods) == 1 , f"{path}: container carried {len(mods)} modules";
     return (ref_tree, mods[0][1], blob, diags, );
@@ -68,7 +70,7 @@ def emit_bytes(src: str, path: str) -> bytes {
     return blob;
 }
 
-glob _CODE_FIELDS: tuple = (
+glob _CODE_FIELDS: tuple[any, ...] = (
          "co_name",
          "co_qualname",
          "co_filename",
@@ -174,14 +176,13 @@ with entry {
 }
 """;
 
-glob CORPUS: tuple = (
+glob CORPUS: tuple[any, ...] = (
          ("comments", COMMENTS_SRC, "canary_comments.jac", ),
          ("string-named tests", TESTS_SRC, "canary_tests.jac", ),
          ("diagnostics", DIAG_SRC, "canary_diags.jac", ),
          ("circular include a", CIRCULAR_A, "circular_a.jac", ),
          ("circular include b", CIRCULAR_B, "circular_b.jac", )
      );
-
 
 test "container bytes are byte stable across emissions" {
     for (label, src, path) in CORPUS {
@@ -196,7 +197,6 @@ test "container bytes are byte stable across emissions" {
         );
     }
 }
-
 
 test "the container round trip reproduces the pyast tree exactly" {
     for (label, src, path) in CORPUS {
@@ -219,7 +219,6 @@ test "the container round trip reproduces the pyast tree exactly" {
     }
 }
 
-
 test "code objects agree field by field, never by marshal bytes" {
     for (label, src, path) in CORPUS {
         (ref_tree, got_tree, _blob, _diags) = emit_both(src, path);
@@ -232,7 +231,6 @@ test "code objects agree field by field, never by marshal bytes" {
         );
     }
 }
-
 
 test "marshal bytes are not the parity token this canary uses" {
     (ref_tree, got_tree, _blob, _diags) = emit_both(
@@ -252,7 +250,6 @@ test "marshal bytes are not the parity token this canary uses" {
     );
 }
 
-
 test "the container carries its module path and string table" {
     for (label, src, path) in CORPUS {
         blob = emit_bytes(src, path);
@@ -270,7 +267,6 @@ test "the container carries its module path and string table" {
         );
     }
 }
-
 
 test "diagnostics cross the container with text severity and span" {
     import from jaclang.compiler.backends.py.codegen_ir {
@@ -318,7 +314,6 @@ test "diagnostics cross the container with text severity and span" {
         );
     }
 }
-
 
 test "an emitted container decodes to the same bytes it was written from" {
     for (label, src, path) in CORPUS {

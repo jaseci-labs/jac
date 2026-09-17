@@ -4,7 +4,6 @@ impl NaIRGenPass._int_width_of(val: ir.Value) -> int {
     return ty.width;
 }
 
-
 import from jaclang.runtime.scalars { range_of, shape_of, wrap_value }
 
 glob OVERFLOW_MSG: str = "integer overflow",
@@ -217,9 +216,9 @@ impl NaIRGenPass._emit_wrap_to(
 
 impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
     dst = self._scalar_shape_named(name);
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if dst is None or len(params) != 1 {
-        self.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
+        self.ctx.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
         return None;
     }
     arg = params[0];
@@ -237,7 +236,7 @@ impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value |
     }
     if src is None
         or not isinstance(val.type, (ir.IntType, ir.FloatType, ir.DoubleType)) {
-        self.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
+        self.ctx.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
         return None;
     }
     if dst.is_float {
@@ -251,9 +250,9 @@ impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value |
 
 impl NaIRGenPass._codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
     dst = self._scalar_shape_named(name);
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if dst is None or dst.is_float or len(params) != 1 {
-        self.emit(E5092, node_override=nd, kind="fixed-width wrap", name=name);
+        self.ctx.emit(E5092, node_override=nd, kind="fixed-width wrap", name=name);
         return None;
     }
     arg = params[0];
@@ -290,12 +289,12 @@ impl NaIRGenPass._codegen_type_name_str(name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
-    params = nd.params or [];
-    vals: list = [];
+    params: Sequence[any] = nd.params or [];
+    vals: list[ir.Value] = [];
     for p in params {
         v = self._codegen_expr(p);
         if v is None or not isinstance(v.type, ir.IntType) {
-            self.emit(E5092, node_override=nd, kind="wrapping builtin", name=name);
+            self.ctx.emit(E5092, node_override=nd, kind="wrapping builtin", name=name);
             return None;
         }
         vals.append(v);
@@ -304,7 +303,7 @@ impl NaIRGenPass._codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | N
         return self.builder.sub(ir.Constant(vals[0].type, 0), vals[0], name="wneg");
     }
     if len(vals) != 2 or vals[0].type != vals[1].type {
-        self.emit(E5092, node_override=nd, kind="wrapping builtin", name=name);
+        self.ctx.emit(E5092, node_override=nd, kind="wrapping builtin", name=name);
         return None;
     }
     (a, b) = (vals[0], vals[1]);
@@ -323,7 +322,7 @@ impl NaIRGenPass._codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | N
         );
         return self.builder.shl(a, count, name="wshl");
     }
-    self.emit(E5092, node_override=nd, kind="wrapping builtin", name=name);
+    self.ctx.emit(E5092, node_override=nd, kind="wrapping builtin", name=name);
     return None;
 }
 

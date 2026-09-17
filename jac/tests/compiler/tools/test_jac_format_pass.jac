@@ -93,8 +93,38 @@ test "simple walk fmt" {
     compare_files(os.path.join(FIXTURES, "simple_walk_fmt.jac"));
 }
 
+test "visit insertion position compact fmt" {
+    source = "walker Walk { can step with Root entry { "
+        + "visit : 0 : [-->]; visit : -1 : [-->] else { disengage; } "
+        + "visit : 1 + 2 : [-->]; visit [-->]; } }";
+    formatted = JacProgram.jac_str_formatter(
+        source_str=source, file_path="<test>.jac"
+    ).mod.main.gen.jac;
+    assert "visit:0: [-->];" in formatted;
+    assert "visit:-1: [-->] else {" in formatted;
+    assert "visit:1 + 2: [-->];" in formatted;
+    assert "visit [-->];" in formatted;
+    assert JacProgram.jac_str_formatter(
+        source_str=formatted, file_path="<test>.jac"
+    ).mod.main.gen.jac
+        == formatted;
+}
+
 test "tagbreak" {
     compare_files(os.path.join(FIXTURES, "tagbreak.jac"));
+}
+
+test "graph filter membership keeps keyword spacing" {
+    source = 'node Item { has name: str; }\n\nwith entry {\n'
+        + 'items = [root-->[?:Item, name in ("a", "b")]];\n}\n';
+    formatted = JacProgram.jac_str_formatter(
+        source_str=source, file_path="<test>.jac"
+    ).mod.main.gen.jac;
+    assert "name in " in formatted , formatted;
+    second = JacProgram.jac_str_formatter(
+        source_str=formatted, file_path="<test>.jac"
+    ).mod.main.gen.jac;
+    assert second == formatted , repr(formatted) + "\n" + repr(second);
 }
 
 test "connect op compact fmt" {

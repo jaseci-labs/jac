@@ -1,6 +1,9 @@
+import from jaclang.compiler.frontend.unitree { TreeWalker }
+import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.tools.reactive_use_walk { ReactiveUseWalker }
 import keyword;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes { UniPass }
+
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.constant { TOKEN_MAP }
 import from jaclang.compiler.frontend.parser.tokens { KEYWORDS }
@@ -37,6 +40,7 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.roles {
+    Kid,
     AssignmentsRole,
     BodyRole,
     ConditionRole,
@@ -55,8 +59,18 @@ import from jaclang.compiler.frontend.roles {
     VarsRole
 }
 
-walker JacAutoLintPass(UniPass) {
-    has prog: JacProgram,
+walker JacAutoLintPass(TreeWalker) {
+    can enter_walk with uni.UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with uni.UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: uni.Module,
+        prog: JacProgram,
         lint_enabled: bool = True,
         report_only: bool = False,
         main_module: (uni.Module | None) = None,
@@ -77,11 +91,14 @@ walker JacAutoLintPass(UniPass) {
     def entry_written_names(module: uni.Module) -> set[str];
     def is_module_level_construct(stmt: uni.UniNode) -> bool;
     def create_glob_from_assignment(assignment: uni.Assignment) -> uni.GlobalVars;
-    def create_entry_block(stmts: list) -> uni.ModuleCode;
+    def create_entry_block(stmts: list[uni.CodeBlockStmt]) -> uni.ModuleCode;
     def can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> bool;
     def can_combine_glob(glob1: uni.GlobalVars, glob2: uni.GlobalVars) -> bool;
-    def combine_consecutive_has(body: list) -> list;
-    def combine_consecutive_glob(body: list) -> list;
+    def combine_consecutive_has(body: list[uni.UniNode]) -> list[uni.UniNode];
+    def combine_consecutive_glob(
+        body: list[uni.ElementStmt | uni.String | uni.EmptyToken]
+    ) -> list[uni.ElementStmt | uni.String | uni.EmptyToken];
+
     def _combine_has_in_node(nd: uni.Archetype | uni.Enum | uni.Ability) -> None;
     can enter_archetype with uni.Archetype entry;
     can enter_enum with uni.Enum entry;
@@ -114,7 +131,10 @@ walker JacAutoLintPass(UniPass) {
         attr_name: str
     ) -> bool;
 
-    def _collect_atom_trailers(uni_node: uni.UniNode, results: list) -> None;
+    def _collect_atom_trailers(
+        uni_node: uni.UniNode, results: list[uni.AtomTrailer]
+    ) -> None;
+
     def _expr_to_key(expr: uni.Expr) -> (str | None);
     def _exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool;
     def _convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool;
@@ -136,7 +156,7 @@ walker JacAutoLintPass(UniPass) {
 
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;
-    def _check_unnecessary_pass(body: list) -> None;
+    def _check_unnecessary_pass(body: list[uni.UniNode]) -> None;
     def _check_unnecessary_else_after_return(nd: uni.IfStmt) -> None;
     def _check_nested_if_to_elif(nd: uni.ElseStmt) -> None;
     def _check_return_bool_simplification(nd: uni.IfStmt) -> None;
@@ -153,7 +173,7 @@ walker JacAutoLintPass(UniPass) {
         name: str
     ) -> None;
 
-    def _body_has_return_stmt(body: list) -> bool;
+    def _body_has_return_stmt(body: list[uni.UniNode]) -> bool;
     can exit_if_stmt with uni.IfStmt exit;
     can enter_else_stmt with uni.ElseStmt entry;
     can exit_compare_expr with uni.CompareExpr exit;
@@ -182,13 +202,6 @@ walker JacAutoLintPass(UniPass) {
     def _collect_doc_nodes(`node: uni.UniNode, results: list[uni.AstDocNode]) -> None;
     def _check_stale_has_read(ability_node: uni.Ability) -> None;
     def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];
-    def _walk_for_has_uses(
-        nd: uni.UniNode,
-        reactive: set[str],
-        writes: list[tuple[int, int, str]],
-        reads: list[tuple[int, int, str, uni.Name]]
-    ) -> None;
-
     def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;
     def _detect_map_lambda_jsx(
         nd: uni.FuncCall
@@ -203,7 +216,10 @@ walker JacAutoLintPass(UniPass) {
     def _property_role_of_ability(ab: uni.Ability) -> str;
     def _make_accessor_from_ability(src: uni.Ability, kind: str) -> uni.Ability;
     def _build_property_has(
-        ref_node: uni.UniNode, prop_name: str, type_expr: uni.Expr, accessors: list
+        ref_node: uni.UniNode,
+        prop_name: str,
+        type_expr: uni.Expr,
+        accessors: list[uni.Ability]
     ) -> uni.ArchHas;
 
     def _property_impl_roles(

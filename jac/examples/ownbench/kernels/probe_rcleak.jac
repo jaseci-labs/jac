@@ -2,7 +2,7 @@ import sys;
 import time;
 
 obj Box {
-    has v: list = [],
+    has v: list[int] = [],
         w: str = "";
 }
 
@@ -42,7 +42,7 @@ def mode_tuple(n: int) -> int {
 }
 
 def mode_slice_concat(n: int) -> int {
-    q: list = [1, 2];
+    q: list[int] = [1, 2];
     i = 0;
     acc = 0;
     while i < n {

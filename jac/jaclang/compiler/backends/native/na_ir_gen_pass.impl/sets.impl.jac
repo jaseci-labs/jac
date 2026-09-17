@@ -94,7 +94,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     if _decl_elem is not None
         and self?.jacval_type
         and _decl_elem == self.jacval_type {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="expression",
@@ -106,13 +106,13 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
 
     _first_spread = self._spread_operand(nd.values[0]);
     first_val: (ir.Value | None) = None;
-    _first_src_info: (dict | None) = None;
+    _first_src_info: (dict[str, any] | None) = None;
     if _first_spread is not None {
         _first_src_info = self._container_src_info(
             self._str_norm_optional(self._codegen_expr(_first_spread))
         );
         if _first_src_info is None {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=nd.values[0],
                 kind="expression",
@@ -140,7 +140,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         }
         _spread_elem = self._spread_elem_storage(_first_src_info, _first_spread);
         if _spread_elem is None {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=nd.values[0],
                 kind="expression",
@@ -161,14 +161,14 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     self._emit_set_helpers(elem_type_name, elem_type, elem_size);
     helpers = self.set_helpers[elem_type_name];
 
-    _set_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _set_new_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     set_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_set_new_loc, name="set.new"
     );
     self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd));
-    _sinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _sinit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
 
@@ -206,7 +206,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
                 self._str_norm_optional(self._codegen_expr(_spread_op))
             );
             if _src_info is None {
-                self.emit(
+                self.ctx.emit(
                     E5092,
                     node_override=nd.values[i],
                     kind="expression",
@@ -235,7 +235,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         }
         val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         if val is None {
-            self.emit(
+            self.ctx.emit(
                 E5092,
                 node_override=nd.values[i],
                 kind="expression",

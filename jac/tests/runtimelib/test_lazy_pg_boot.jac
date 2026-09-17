@@ -79,6 +79,44 @@ test "a stateless program never boots the embedded postgres" {
 }
 
 
+node TransientQueryNode {}
+
+
+test "transient queries leave context roots unresolved" {
+    import from jaclang.runtime.context { ExecutionContext }
+    import from jaclang.runtime.graph_query { GraphQuery, QHop }
+
+    probe = _BootProbe();
+    orig_ctx = Jac.exec_ctx;
+    probe.install();
+    try {
+        with TemporaryDirectory() as td {
+            parent = ExecutionContext(
+                base_path_dir=td, full_target_path=str(Path(td) / "app.jac")
+            );
+            try {
+                for ctx in [parent, ExecutionContext(_parent=parent)] {
+                    Jac.exec_ctx = ctx;
+                    assert Jac.refs(
+                        GraphQuery(TransientQueryNode(), hops=[QHop(dir=2)])
+                    )
+                        == [];
+                    assert ctx._system_root is None;
+                    assert ctx._user_root is None;
+                }
+                assert probe.calls == [];
+            } finally {
+                Jac.exec_ctx = orig_ctx;
+                parent.close();
+            }
+        }
+    } finally {
+        Jac.exec_ctx = orig_ctx;
+        probe.remove();
+    }
+}
+
+
 test "session construction is free and the first store read boots once" {
     probe = _BootProbe();
     probe.install();
@@ -243,7 +281,7 @@ test "first-use schema DDL runs once per database, even from many threads" {
 obj _FirstUseStore(PgStore) {
     has ddl_runs: int = 0;
 
-    def _run(sql: str, params: dict) -> list {
+    def _run(sql: str, params: dict[str, any]) -> list[any] {
         self._ensure_ready();
         return [("170000", )];
     }
@@ -266,7 +304,7 @@ test "the schema gate readies the store instead of deadlocking on first use" {
         ),
         auto_schema=True
     );
-    outcome: list = [];
+    outcome: list[any] = [];
 
     def first_use {
         store.ensure_schema_once({});

@@ -55,7 +55,7 @@ def header_param_name(header: str) -> str {
 
 obj WebhookExtension(ServerExtension) {
     has manager: (ApiKeyManager | None) = None,
-        _scheme_rate: dict = {},
+        _scheme_rate: dict[str, list[int]] = {},
         _system_user_id: str = '';
 
     def api_keys -> ApiKeyManager {

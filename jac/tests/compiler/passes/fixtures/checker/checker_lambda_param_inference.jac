@@ -18,6 +18,11 @@ with entry {
     dict_arith = sorted(rows, key=lambda (d) { d["n"] + 1; });
     by_upper = sorted(words, key=lambda (s) { s.upper(); });
 
+    # An explicit `return` body seeds exactly like an implicit one.
+    ret_subscript = sorted(rows, key=lambda (d) { return d["n"]; });
+    ret_call = sorted(words, key=lambda (s) { return len(s); });
+    ret_arith = sorted(nums, key=lambda (x) { return x * 2 - 1; });
+
     print(
         by_key,
         descending,
@@ -28,6 +33,9 @@ with entry {
         arithmetic,
         with_capture,
         dict_arith,
-        by_upper
+        by_upper,
+        ret_subscript,
+        ret_call,
+        ret_arith
     );
 }

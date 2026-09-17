@@ -58,7 +58,7 @@ glob FIXTURES = os.path.join(
          "sem_token_rank"
      ],
      PICKS = [0, 1, 2, 3],
-     _ENG: list = [];
+     _ENG: list[any] = [];
 
 
 """Compile the fixture natively once and return the JIT engine."""

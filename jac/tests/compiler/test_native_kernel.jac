@@ -78,8 +78,8 @@ with entry {
 }
 """;
 
-def _profile(nd: any) -> list {
-    out: list = [];
+def _profile(nd: any) -> list[any] {
+    out: list[any] = [];
     stack = [nd];
     while stack {
         cur = stack.pop();

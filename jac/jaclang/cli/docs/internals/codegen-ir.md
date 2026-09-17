@@ -351,7 +351,7 @@ performed by the shim because it intrinsically requires CPython.
 | Scope directives (`Global`/`Nonlocal`, sorted) | IR emission | |
 | Semstr decorators (`_get_sem_decorator`), `jac_test` decorators, `impl_patch_filename` decoration | IR emission | decorator `Call` nodes with `Constant` operands; the `is_test(mod_path)` predicate moves producer-side |
 | Enum lowering (`Enum`/`IntEnum`/`StrEnum` choice, `auto()` values) | IR emission | |
-| Has-var lowering (`field(init=False)`, `field(factory=lambda: ...)`, constant fast path) | IR emission | see fidelity note 2 |
+| Has-var lowering (`ObjectField(init=False)`, `ObjectField(default_factory=lambda: ...)`, constant fast path) | IR emission | see fidelity note 2 |
 | `PyInlineCode` (`::py::` blocks) | shim transcription | `OP_PARSE_SPLICE` with the jac first_line as offset; `textwrap.dedent` is a producer-side string op |
 | Native interop stubs, sv-to-sv stubs, boundary stub classes, native test shims, registration map | shim transcription | producer builds the Python source text from the interop manifest (sealed-side data); shim parses via `OP_PARSE_SPLICE` with offset 0 |
 | `compile()` + `marshal.dumps` (all of pybc_gen) | shim transcription | end of the same crossing |
@@ -372,7 +372,7 @@ assumed away.
    nodes with string constants: fully IR-encodable. The decision inputs
    (impl file paths, the `is_test` predicate from `ext_registry`) are
    producer-side facts.
-2. **Has-var `field()` wrapping.** Resolved in the phase 1 emitter, and
+2. **Has-var `ObjectField()` wrapping.** Resolved in the phase 1 emitter, and
    more directly than predicted: the emitter's recipe tree preserves the
    predicate exactly. The constant-vs-factory choice becomes "is the
    value's recipe a `Constant` node", which is the same decision
@@ -395,7 +395,7 @@ assumed away.
    emits nothing dirty-field-related; that tracking lives at runtime in
    the `track_writes` hook installed when an anchor becomes persistent.
    The adjacent codegen behaviors are the
-   `field()` wrappers (note 2) and `__jac_async__` class markers, both
+   `ObjectField()` wrappers (note 2) and `__jac_async__` class markers, both
    ordinary IR emission. Nothing crosses.
 6. **Module docstrings.** `nd.doc` becomes the first `Expr(Constant)`
    before the preamble; the ordering decision is the producer's and the

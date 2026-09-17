@@ -21,12 +21,7 @@ import from jaclang.scale.scheduler.scheduler {
     TriggerSpec
 }
 
-glob _holder: dict = {},
-     _DOCS_DDL = (
-         'CREATE TABLE IF NOT EXISTS jac_docs ('
-         'collection text NOT NULL, id text NOT NULL, doc jsonb NOT NULL, '
-         'PRIMARY KEY (collection, id))'
-     );
+glob _holder: dict[str, any] = {};
 
 
 def _store -> (PgStore | None) {
@@ -36,7 +31,6 @@ def _store -> (PgStore | None) {
         }
         store = PgStore(conninfo=_holder['rt'].ensure());
         store.ensure_schema({});
-        store.rows(_DOCS_DDL, {});
         return store;
     } except Exception as e {
         print(f"[skip] embedded postgres unavailable: {e}");
@@ -52,7 +46,7 @@ def _pod(store: PgStore, collection: str) -> JacScaleScheduler {
 }
 
 
-def _job(job_id: str, interval: float) -> dict {
+def _job(job_id: str, interval: float) -> dict[str, any] {
     return {
         'job_id': job_id,
         'name': 'tick',

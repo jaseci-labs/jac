@@ -2,6 +2,12 @@ def _utc_now_iso -> str {
     return datetime.datetime.now(datetime.timezone.utc).isoformat();
 }
 
+
+def _min_interval -> float {
+    return float(get_scale_config().get_scheduler_config()['min_interval']);
+}
+
+
 impl TriggerSpec.validate(
     trigger: str,
     interval: float | None = None,
@@ -18,6 +24,13 @@ impl TriggerSpec.validate(
         }
         if float(interval) <= 0 {
             raise ValueError("interval must be > 0 seconds");
+        }
+        floor = _min_interval();
+        if float(interval) < floor {
+            raise ValueError(
+                f"interval must be at least {floor} seconds; "
+                "raise [scale.scheduler] min_interval to allow a shorter one"
+            );
         }
     } elif trigger == 'cron' {
         if not cron {
@@ -42,7 +55,7 @@ impl TriggerSpec.validate(
     return TriggerSpec(trigger=trigger, interval=interval, cron=cron, date=date);
 }
 
-impl TriggerSpec.from_dict(d: dict) -> TriggerSpec {
+impl TriggerSpec.from_dict(d: dict[str, any]) -> TriggerSpec {
     kw: dict[str, any] = {'trigger': d.get('trigger', 'interval')};
     comptime for f in fields(TriggerSpec) {
         comptime if f.name != 'trigger' {
@@ -52,7 +65,7 @@ impl TriggerSpec.from_dict(d: dict) -> TriggerSpec {
     return TriggerSpec(**kw);
 }
 
-impl TriggerSpec.to_dict -> dict {
+impl TriggerSpec.to_dict -> dict[str, any] {
     out: dict[str, any] = {};
     comptime for f in fields(TriggerSpec) {
         out[f.name] = get_field(self, f.name);
@@ -60,7 +73,7 @@ impl TriggerSpec.to_dict -> dict {
     return out;
 }
 
-impl TriggerSpec.apscheduler_kwargs -> dict {
+impl TriggerSpec.apscheduler_kwargs -> dict[str, any] {
     if self.trigger == 'interval' {
         if self.interval is None {
             raise ValueError("interval (seconds) required for trigger='interval'");
@@ -81,7 +94,7 @@ impl TriggerSpec.apscheduler_kwargs -> dict {
     return {'run_date': self.date};
 }
 
-def _doc_row(raw: any) -> dict {
+def _doc_row(raw: any) -> dict[str, any] {
     return raw if isinstance(raw, dict) else json.loads(str(raw));
 }
 
@@ -95,7 +108,7 @@ def _fire_lease_ttl(spec: TriggerSpec) -> int {
     return 300;
 }
 
-def _where_sql(where: dict | None, params: dict) -> str {
+def _where_sql(where: dict[str, any] | None, params: dict[str, any]) -> str {
     sql = '';
     n = 0;
     for (k, v) in (where or {}).items() {
@@ -107,10 +120,15 @@ def _where_sql(where: dict | None, params: dict) -> str {
     return sql;
 }
 
-impl PgJobStore.insert(job: dict) -> str {
+impl PgJobStore.postinit -> None {
+    self._quota_store = None;
+    self._quota_lock = threading.Lock();
+}
+
+impl PgJobStore._write(on: any, job: dict[str, any]) -> str {
     d = dict(job);
     job_id = str(d['job_id']);
-    self.store.rows(
+    on.rows(
         'INSERT INTO jac_docs (collection, id, doc) '
         'VALUES (:c, :i, CAST(:d AS jsonb)) '
         'ON CONFLICT (collection, id) DO UPDATE SET doc = EXCLUDED.doc',
@@ -119,12 +137,74 @@ impl PgJobStore.insert(job: dict) -> str {
     return job_id;
 }
 
+impl PgJobStore.insert(job: dict[str, any]) -> str {
+    return self._write(self.store, job);
+}
+
+impl PgJobStore._quota_connection -> any {
+    if self._quota_store is None {
+        import from jaclang.data.store { PgStore }
+        shared: any = self.store;
+        self._quota_store = PgStore(
+            conninfo=shared.conninfo, ensure_cb=shared.ensure_cb
+        );
+    }
+    return self._quota_store;
+}
+
+impl PgJobStore.insert_within_quota(
+    job: dict[str, any], created_by: str, max_active: int
+) -> bool {
+    if max_active <= 0 {
+        self.insert(job);
+        return True;
+    }
+    with self._quota_lock {
+        conn = self._quota_connection();
+        conn.begin(TxnIsolation.READ_COMMITTED);
+        try {
+            conn.rows(
+                'SELECT pg_advisory_xact_lock(hashtext(:k))',
+                {'k': f'jac_sched_quota:{self._collection}:{created_by}'}
+            );
+            held = conn.rows(
+                "SELECT count(*) FROM jac_docs WHERE collection = :c "
+                "AND doc->>'status' = 'active' AND doc->>'created_by' = :u",
+                {'c': self._collection, 'u': created_by}
+            );
+            if held and int(held[0][0]) >= max_active {
+                conn.rollback();
+                return False;
+            }
+            self._write(conn, job);
+            conn.commit();
+            return True;
+        } except Exception as e {
+            try {
+                conn.rollback();
+            } except Exception as cleanup {
+                logger.warning(f"quota transaction rollback failed: {cleanup}");
+            }
+            raise e;
+        }
+    }
+}
+
+impl PgJobStore.close -> None {
+    with self._quota_lock {
+        if self._quota_store is not None {
+            self._quota_store.close();
+            self._quota_store = None;
+        }
+    }
+}
+
 impl PgJobStore.find_active(
     limit: int | None = None,
     offset: int = 0,
     trigger: str | None = None,
     created_by: str | None = None
-) -> tuple[list[dict], int] {
+) -> tuple[list[dict[str, any]], int] {
     conds: list[str] = ["collection = :c", "doc->>'status' = 'active'"];
     params: dict[str, any] = {'c': self._collection};
     if trigger {
@@ -152,7 +232,7 @@ impl PgJobStore.find_active(
     return ([_doc_row(r[0]) for r in rows], total);
 }
 
-impl PgJobStore.find_active_one(job_id: str) -> dict | None {
+impl PgJobStore.find_active_one(job_id: str) -> dict[str, any] | None {
     rows = self.store.rows(
         "SELECT doc FROM jac_docs WHERE collection = :c AND id = :i "
         "AND doc->>'status' = 'active'",
@@ -161,7 +241,9 @@ impl PgJobStore.find_active_one(job_id: str) -> dict | None {
     return _doc_row(rows[0][0]) if rows else None;
 }
 
-impl PgJobStore.update(job_id: str, updates: dict, where: dict | None = None) -> bool {
+impl PgJobStore.update(
+    job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
+) -> bool {
     params: dict[str, any] = {
         'c': self._collection,
         'i': job_id,
@@ -176,7 +258,7 @@ impl PgJobStore.update(job_id: str, updates: dict, where: dict | None = None) ->
     return len(rows) > 0;
 }
 
-impl PgJobStore.delete(job_id: str, where: dict | None = None) -> bool {
+impl PgJobStore.delete(job_id: str, where: dict[str, any] | None = None) -> bool {
     params: dict[str, any] = {'c': self._collection, 'i': job_id};
     cond = _where_sql(where, params);
     rows = self.store.rows(
@@ -204,19 +286,42 @@ impl MemoryJobStore.postinit -> None {
     self._jobs = {};
 }
 
-impl MemoryJobStore.insert(job: dict) -> str {
+impl MemoryJobStore.insert(job: dict[str, any]) -> str {
     job_id = str(job['job_id']);
     self._jobs[job_id] = dict(job);
     return job_id;
 }
+
+impl MemoryJobStore.insert_within_quota(
+    job: dict[str, any], created_by: str, max_active: int
+) -> bool {
+    with _memory_jobs_lock {
+        if max_active > 0 {
+            held = 0;
+            for j in self._jobs.values() {
+                if j.get('status') == 'active' and j.get('created_by') == created_by {
+                    held = held + 1;
+                }
+            }
+            if held >= max_active {
+                return False;
+            }
+        }
+        job_id = str(job['job_id']);
+        self._jobs[job_id] = dict(job);
+        return True;
+    }
+}
+
+impl MemoryJobStore.close -> None {}
 
 impl MemoryJobStore.find_active(
     limit: int | None = None,
     offset: int = 0,
     trigger: str | None = None,
     created_by: str | None = None
-) -> tuple[list[dict], int] {
-    matches: list[dict] = [];
+) -> tuple[list[dict[str, any]], int] {
+    matches: list[dict[str, any]] = [];
     for j in self._jobs.values() {
         if j.get('status') != 'active' {
             continue;
@@ -234,7 +339,7 @@ impl MemoryJobStore.find_active(
     return (matches[offset:end], total);
 }
 
-impl MemoryJobStore.find_active_one(job_id: str) -> dict | None {
+impl MemoryJobStore.find_active_one(job_id: str) -> dict[str, any] | None {
     job = self._jobs.get(job_id);
     if job and job.get('status') == 'active' {
         return job;
@@ -243,7 +348,7 @@ impl MemoryJobStore.find_active_one(job_id: str) -> dict | None {
 }
 
 impl MemoryJobStore.update(
-    job_id: str, updates: dict, where: dict | None = None
+    job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
 ) -> bool {
     job = self._jobs.get(job_id);
     if job is None {
@@ -260,7 +365,7 @@ impl MemoryJobStore.update(
     return True;
 }
 
-impl MemoryJobStore.delete(job_id: str, where: dict | None = None) -> bool {
+impl MemoryJobStore.delete(job_id: str, where: dict[str, any] | None = None) -> bool {
     job = self._jobs.get(job_id);
     if job is None {
         return False;
@@ -341,9 +446,12 @@ impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> 
 
     scheduler_cfg = get_scale_config().get_scheduler_config();
     collection = scheduler_cfg.get('collection', 'scheduled_jobs');
+    if self._store is not None {
+        self._store.close();
+    }
     store: any = None;
     try {
-        store = open_docs_store();
+        store = shared_store();
     } except Exception as e {
         logger.warning(f"scheduler job store unavailable: {e}");
     }
@@ -414,6 +522,9 @@ impl JacScaleScheduler.stop(drain: bool = False) -> None {
     } except Exception as e {
         logger.debug(f"Error stopping base Scheduler: {e}");
     }
+    if self._store is not None {
+        self._store.close();
+    }
 }
 
 impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
@@ -475,8 +586,8 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
 }
 
 impl JacScaleScheduler.create_job(
-    name: str, spec: TriggerSpec, created_by: str
-) -> dict {
+    name: str, spec: TriggerSpec, created_by: str, max_active: int = 0
+) -> dict[str, any] | None {
     if self._apscheduler is None {
         raise RuntimeError(
             "APScheduler is not available — enable the 'scheduler' capability and run 'jac install'."
@@ -489,7 +600,7 @@ impl JacScaleScheduler.create_job(
     introspector = self._server.introspector if self._server else None;
     is_walker = name in (introspector._walkers or {}) if introspector else False;
 
-    job_data: dict = {
+    job_data: dict[str, any] = {
         'job_id': job_id,
         'name': name,
         'created_by': created_by,
@@ -500,7 +611,10 @@ impl JacScaleScheduler.create_job(
     job_data.update(spec.to_dict());
 
     store = self._require_store();
-    persisted_id = store.insert(job_data);
+    if not store.insert_within_quota(job_data, created_by, max_active) {
+        return None;
+    }
+    persisted_id = job_id;
     job_data['job_id'] = persisted_id;
 
     try {
@@ -533,19 +647,19 @@ impl JacScaleScheduler.list_jobs(
     offset: int = 0,
     trigger: str | None = None,
     created_by: str | None = None
-) -> tuple[list[dict], int] {
+) -> tuple[list[dict[str, any]], int] {
     return self._require_store().find_active(
         limit=limit, offset=offset, trigger=trigger, created_by=created_by
     );
 }
 
-impl JacScaleScheduler.get_job(job_id: str) -> (dict | None) {
+impl JacScaleScheduler.get_job(job_id: str) -> (dict[str, any] | None) {
     return self._require_store().find_active_one(job_id);
 }
 
 impl JacScaleScheduler.update_job(
     job_id: str, spec: TriggerSpec, acting_as: str | None = None
-) -> (dict | None) {
+) -> (dict[str, any] | None) {
     existing = self.get_job(job_id);
     if existing is None {
         return None;
@@ -793,11 +907,16 @@ impl JacScaleScheduler._schedule_apscheduler_job(
         self._execute_task(name, user_id, is_walker, job_id=job_id);
     }
 
+    kwargs = spec.apscheduler_kwargs();
+    floor = _min_interval();
+    if spec.trigger == 'interval' and float(kwargs.get('seconds') or 0.0) < floor {
+        logger.warning(
+            f"job {job_id} asks for {kwargs.get('seconds')}s; clamped to the "
+            f"{floor}s floor from [scale.scheduler] min_interval"
+        );
+        kwargs['seconds'] = floor;
+    }
     self._apscheduler.add_job(
-        job_func,
-        spec.trigger,
-        id=job_id,
-        replace_existing=True,
-        **spec.apscheduler_kwargs()
+        job_func, spec.trigger, id=job_id, replace_existing=True, **kwargs
     );
 }

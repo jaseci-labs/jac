@@ -3,10 +3,10 @@ import from jaclang.compiler.backends.es { estree as es }
 obj JSCodeGenerator {
     def init(indent: str = '  ') -> None;
 
-    has indent_str: str = '  ',
+    has indent_str: str,
         indent_level: int = 0,
-        _frames: list[list[tuple[es.Node, str, list]]] = [],
-        _root: list[tuple[es.Node, str, list]] = [];
+        _frames: list[list[tuple[es.Node, str, list[any]]]] = [],
+        _root: list[tuple[es.Node, str, list[any]]] = [];
 
     def indent -> str;
     def build_segments(code: str) -> list[tuple[int, int, int, int, str]];
@@ -21,6 +21,7 @@ obj JSCodeGenerator {
     def gen_for_of_statement(nd: es.ForOfStatement) -> str;
     def gen_break_statement(nd: es.BreakStatement) -> str;
     def gen_continue_statement(nd: es.ContinueStatement) -> str;
+    def gen_labeled_statement(nd: es.LabeledStatement) -> str;
     def gen_throw_statement(nd: es.ThrowStatement) -> str;
     def gen_try_statement(nd: es.TryStatement) -> str;
     def gen_catch_clause(nd: es.CatchClause) -> str;

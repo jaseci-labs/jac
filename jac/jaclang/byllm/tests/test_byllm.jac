@@ -21,12 +21,10 @@ import from jaclang.byllm.exceptions {
 }
 import from jaclang.byllm.mcp { McpClient, McpTool }
 import from jaclang.byllm.types { Tool, Message, MessageRole }
-import dataclasses;
 import from jaclang { JacRuntimeInterface as Jac }
+import from jaclang.byllm.lib { MockLLM }
 import from support_tests {
-    FakeLLM,
     scripted,
-    typed,
     finish,
     mk_run,
     say,
@@ -47,7 +45,7 @@ def _as_any(v: any) -> any {
 
 
 test "the deprecated method= parameter still runs and warns once" {
-    llm = FakeLLM(replies=[say("test output")]);
+    llm = MockLLM(outputs=[say("test output")]);
 
     def simple_tool -> str {
         return "tool ran";
@@ -272,11 +270,17 @@ test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
     }
 }
 
-glob _TestPerson = dataclasses.make_dataclass(
-         "Person", [("name", str), ("age", int)]
-     ),
-     _TestUnionField = dataclasses.make_dataclass("UnionField", [("value", str | int)]),
-     _TestFieldless = dataclasses.make_dataclass("Fieldless", []);
+obj _TestPerson {
+    has name: str,
+        age: int;
+}
+
+obj _TestUnionField {
+    has value: str | int;
+}
+
+obj _TestFieldless {}
+
 
 test "parse_response raises OutputConversionError with the raw output attached" {
     for (why, raw) in [
@@ -388,10 +392,11 @@ test "finish tool argument resolution heals recoverable shapes" {
     bare = Tool.make_finish_tool(str).parse_arguments("just the answer");
     assert bare == {"final_output": "just the answer"} , f"bare payload: got {bare}";
 
-    self_named = dataclasses.make_dataclass(
-        "_SelfNamed", [("final_output", str), ("score", int)]
-    );
-    parsed = Tool.make_finish_tool(self_named).parse_arguments(
+    obj SelfNamed {
+        has final_output: str,
+            score: int;
+    }
+    parsed = Tool.make_finish_tool(SelfNamed).parse_arguments(
         {"final_output": "ok", "score": 5}
     );
     assert parsed["final_output"].score == 5 , f"self-named flattened: got {parsed}";
@@ -445,8 +450,8 @@ test "dispatch heals a misnamed finish argument and recovers an unusable one" {
         ("sync unusable", _UNUSABLE_FINISH, False, False),
         ("async unusable", _UNUSABLE_FINISH, True, False)
     ] {
-        llm = FakeLLM(
-            model_name="test-model", replies=[tool_call("finish_tool", arguments)]
+        llm = MockLLM(
+            model_name="test-model", outputs=[tool_call("finish_tool", arguments)]
         );
         mt_run = mk_run(resp_type=_TestPerson, finish=True);
         result: any = None;
@@ -471,7 +476,7 @@ test "dispatch heals a misnamed finish argument and recovers an unusable one" {
 }
 
 test "response format requests always carry the json word" {
-    def _params(resp_type: type, tools: list) -> dict {
+    def _params(resp_type: type, tools: list[any]) -> dict[str, any] {
         model = Model(model_name="test-model");
         mt_run = mk_run(resp_type=resp_type, tools=tools, finish=False);
         return model.make_model_params(mt_run);
@@ -539,7 +544,9 @@ import from jaclang.byllm.exceptions {
 import from loguru { logger as _loguru_logger }
 
 test "provider errors map to byllm exceptions and log at ERROR regardless of debug" {
-    rows: list = [
+    # Rows carry byllm's classes; litellm's AuthenticationError and RateLimitError
+    # share those names, so matching by name would let an unmapped error through.
+    rows: list[any] = [
         (False, "AuthenticationError", AuthenticationError, "Invalid API key"),
         (True, "RateLimitError", RateLimitError, "Rate limit exceeded"),
         (False, "RateLimitError", RateLimitError, "quota exceeded"),
@@ -733,7 +740,7 @@ test "_stream_final_answer keeps the tools array intact" {
         return y;
     }
 
-    llm = FakeLLM(model_name="anthropic/claude-test", replies=[say("Done.")]);
+    llm = MockLLM(model_name="anthropic/claude-test", outputs=[say("Done.")]);
     mt_run = mk_run(tools=[tool_a, tool_b], stream=True);
     expected = [t.get_name() for t in mt_run.tools];
 
@@ -753,9 +760,9 @@ test "finish_tool exit sends an identical tools payload on the narration call" {
         return f"found: {query}";
     }
 
-    llm = FakeLLM(
+    llm = MockLLM(
         model_name="anthropic/claude-test",
-        replies=[finish("Fixed it."), say("Fixed it.")]
+        outputs=[finish("Fixed it."), say("Fixed it.")]
     );
     mt_run = mk_run(tools=[search_files], stream=True);
 
@@ -783,9 +790,9 @@ test "forced answer and recovery force finish_tool, keep the tools array, and he
         ("unusable", _UNUSABLE_FINISH, None)
     ] {
         expect_typed = expected_name is not None;
-        llm = FakeLLM(
+        llm = MockLLM(
             model_name="anthropic/claude-test",
-            replies=[tool_call("finish_tool", arguments)]
+            outputs=[tool_call("finish_tool", arguments)]
         );
         mt_run = mk_run(resp_type=_TestPerson, tools=[extra_tool]);
         expected = [t.get_name() for t in mt_run.tools];
@@ -802,9 +809,9 @@ test "forced answer and recovery force finish_tool, keep the tools array, and he
             assert not isinstance(out, _TestPerson) , f"force {why}: expected degradation, got: {out}";
         }
 
-        llm = FakeLLM(
+        llm = MockLLM(
             model_name="anthropic/claude-test",
-            replies=[tool_call("finish_tool", arguments)]
+            outputs=[tool_call("finish_tool", arguments)]
         );
         mt_run = mk_run(resp_type=_TestPerson, tools=[extra_tool]);
         recovery = llm._attempt_recovery(mt_run);
@@ -870,7 +877,7 @@ async def _stream_8932(llm: _byllm_llm_mod.BaseLLM, pace: float = 0.0) -> str {
 obj _EagerStream8932(_byllm_llm_mod.BaseLLM) {
     has build_s: float = 0.0;
 
-    override def model_call_with_stream(params: dict) -> object {
+    override def model_call_with_stream(params: dict[str, any]) -> object {
         time.sleep(self.build_s);
         return [_chunk_8932("eager "), _chunk_8932("list")];
     }
@@ -881,7 +888,7 @@ obj _EagerStream8932(_byllm_llm_mod.BaseLLM) {
 obj _LazyStream8932(_byllm_llm_mod.BaseLLM) {
     has produced: list[float] = [];
 
-    override def model_call_with_stream(params: dict) -> object {
+    override def model_call_with_stream(params: dict[str, any]) -> object {
         for word in ["one ", "two ", "three"] {
             self.produced.append(time.perf_counter());
             yield _chunk_8932(word);
@@ -913,7 +920,7 @@ test "async streaming delivers every provider shape" {
     cases: list[tuple[str, _byllm_llm_mod.BaseLLM, str]] = [
         (
             "subclass inheriting the base method",
-            FakeLLM(model_name="fake-8932", replies=[say("hello world")]),
+            MockLLM(model_name="fake-8932", outputs=[say("hello world")]),
             "hello world"
         ),
         (

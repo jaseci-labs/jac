@@ -685,7 +685,15 @@ impl EsastGenPass.exit_atom_unit with uni.AtomUnit exit {
     }
 }
 
+impl EsastGenPass.enter_lambda_expr with uni.LambdaExpr entry {
+    self._loop_label_savepoints.append(self._loop_label_stack);
+    self._loop_label_stack = [];
+}
+
 impl EsastGenPass.exit_lambda_expr with uni.LambdaExpr exit {
+    if self._loop_label_savepoints {
+        self._loop_label_stack = self._loop_label_savepoints.pop();
+    }
     params: list[es.Pattern] = [];
     if isinstance(here.signature, uni.FuncSignature) {
         for param in here.signature.get_parameters() {

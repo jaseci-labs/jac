@@ -26,7 +26,7 @@ impl NaIRGenPass._glob_native_use_exists(target: uni.UniNode) -> bool {
         if _m is None {
             continue;
         }
-        if _m is self.ir_in or _m.decided_codespace == 'native' {
+        if _m is self.module or _m.decided_codespace == 'native' {
             return True;
         }
     }
@@ -42,7 +42,7 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
-    candidates: dict = {};
+    candidates: dict[str, ir.Type] = {};
     dropped: set = set();
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if not isinstance(stmt, uni.ModuleCode) {
@@ -151,11 +151,11 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                     self.llvm_module, var_type, name=var_name
                 );
             } except Exception as _dup_err {
-                _cur_path = self.ir_in.loc.mod_path
-                    if self.ir_in?.loc
+                _cur_path = self.module.loc.mod_path
+                    if self.module?.loc
                     else "(current module)";
                 _origin = self._global_origins.get(var_name, "(imported module)");
-                self.emit(
+                self.ctx.emit(
                     E5026,
                     symbol=var_name,
                     existing_module=_origin,
@@ -172,9 +172,9 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
 
             _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
-            if _is_pub and self.ir_in?.gen and var_name.isidentifier() {
-                if var_name not in self.ir_in.gen._exported_symbols {
-                    self.ir_in.gen._exported_symbols.append(var_name);
+            if _is_pub and self.module?.gen and var_name.isidentifier() {
+                if var_name not in self.module.gen._exported_symbols {
+                    self.module.gen._exported_symbols.append(var_name);
                 }
             }
 
@@ -189,14 +189,14 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
 
-            self._global_origins[var_name] = self.ir_in.loc.mod_path
-                if self.ir_in?.loc
+            self._global_origins[var_name] = self.module.loc.mod_path
+                if self.module?.loc
                 else "(current module)";
             self.has_native_code = True;
 
             if assign.value is not None and const_init is None {
                 if not self?._global_init_nodes {
-                    self._global_init_nodes: list = [];
+                    self._global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [];
                 }
                 self._global_init_nodes.append((var_name, assign.value, var_type));
             }

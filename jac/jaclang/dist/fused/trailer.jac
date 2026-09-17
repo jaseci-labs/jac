@@ -3,7 +3,7 @@ glob MAGIC: bytes = b"JACBIN01",
      MAGIC_LEN: int = 8,
      HASH_LEN: int = 64,
      TRAILER_LEN: int = 80,
-     RT_KEY_LEN: int = 33,
+     RT_KEY_LEN: int = 16,
      REGION_MAGIC: bytes = b"JSCATRG1",
      REGION_DESC_LEN: int = 32,
      REGION_ALIGN: int = 16384;
@@ -60,15 +60,6 @@ def:pub region_start(end: int, payload_len: int) -> int {
     return start if start >= 0 else -1;
 }
 
-def:pub rt_key(hash16: str, exe_path: str) -> str {
-    import hashlib;
-    path_hex = hashlib.sha256(exe_path.encode()).hexdigest();
-    return hash16 + "-" + path_hex[0:16];
-}
-
-def:pub rt_key_pathhash(name: str) -> str {
-    if len(name) != RT_KEY_LEN or name[16] != "-" {
-        return "";
-    }
-    return name[17:RT_KEY_LEN];
+def:pub rt_key(hash16: str) -> str {
+    return hash16[0:RT_KEY_LEN];
 }

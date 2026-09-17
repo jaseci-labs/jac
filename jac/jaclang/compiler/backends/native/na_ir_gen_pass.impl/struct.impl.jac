@@ -1,5 +1,5 @@
 impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | None) {
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if not params {
         return None;
     }
@@ -16,7 +16,7 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         }
     }
     if fmt is None {
-        self.emit(
+        self.ctx.emit(
             E5092, node_override=nd, kind="struct format", name="non-literal format"
         );
         return None;
@@ -44,7 +44,7 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     };
     signed_codes = {"b", "h", "i", "l", "q", "n"};
     float_sizes = {"f": 4, "d": 8};
-    fields: list = [];
+    fields: list[tuple[str, int, bool]] = [];
     total = 0;
     i = 0;
     count_str = "";
@@ -82,7 +82,7 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         i = i + 1;
     }
     if not parse_ok {
-        self.emit(E5092, node_override=nd, kind="struct format code", name=fmt);
+        self.ctx.emit(E5092, node_override=nd, kind="struct format code", name=fmt);
         return None;
     }
     i64 = ir.IntType(64);
@@ -102,7 +102,11 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
 }
 
 impl NaIRGenPass._emit_struct_pack(
-    nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    nd: uni.FuncCall,
+    params: Sequence[uni.Expr | uni.KWPair],
+    fields: list[tuple[str, int, bool]],
+    total: int,
+    little: bool
 ) -> (ir.Value | None) {
     b = self.builder;
     i8 = ir.IntType(8);
@@ -119,7 +123,7 @@ impl NaIRGenPass._emit_struct_pack(
         ]
     );
     if len(params) - 1 != _expected {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="struct.pack argument count",
@@ -127,7 +131,7 @@ impl NaIRGenPass._emit_struct_pack(
         );
         return None;
     }
-    arg_vals: list = [];
+    arg_vals: list[ir.Value] = [];
     for p in params[1:] {
         v = self._codegen_expr(p);
         if v is not None {
@@ -176,7 +180,11 @@ impl NaIRGenPass._emit_struct_pack(
 }
 
 impl NaIRGenPass._emit_struct_unpack(
-    nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    nd: uni.FuncCall,
+    params: Sequence[uni.Expr | uni.KWPair],
+    fields: list[tuple[str, int, bool]],
+    total: int,
+    little: bool
 ) -> (ir.Value | None) {
     if len(params) < 2 {
         return None;
@@ -189,7 +197,7 @@ impl NaIRGenPass._emit_struct_unpack(
     f64 = ir.DoubleType();
     data_val = self._codegen_expr(params[1]);
     if data_val is None or not self._is_bytes_value(data_val) {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="struct.unpack buffer",
@@ -207,8 +215,8 @@ impl NaIRGenPass._emit_struct_unpack(
     );
     data = self._bytes_data_ptr(data_val);
 
-    values: list = [];
-    elem_types: list = [];
+    values: list[ir.Value] = [];
+    elem_types: list[ir.Type] = [];
     off = 0;
     for (kind, sz, signed) in fields {
         if kind == "pad" {

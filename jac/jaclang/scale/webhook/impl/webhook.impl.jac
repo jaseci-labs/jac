@@ -74,13 +74,7 @@ impl WebhookUtils.extract_signature(header_value: str) -> str {
 }
 
 impl ApiKeyManager.postinit -> None {
-    if self._db is not None {
-        try {
-            self._ensure_indexes();
-        } except Exception as e {
-            logger.warning(f"webhook_api_keys index setup skipped: {e}");
-        }
-    } else {
+    if self._db is None {
         logger.warning(
             "Webhook API keys are stored in memory (no database available). "
             "Keys and revocations are NOT durable: every restart invalidates "
@@ -88,18 +82,6 @@ impl ApiKeyManager.postinit -> None {
             "production webhook use."
         );
     }
-}
-
-impl ApiKeyManager._ensure_indexes -> None {
-    db = self._db;
-    if db is None {
-        return;
-    }
-    db.rows(
-        'CREATE INDEX IF NOT EXISTS jac_docs_user_id_idx ON jac_docs '
-        "(collection, (doc->>'user_id'))",
-        {}
-    );
 }
 
 impl ApiKeyManager.create_api_key(
@@ -156,7 +138,7 @@ impl ApiKeyManager.create_api_key(
     );
 }
 
-def _key_summary(api_key_id: str, doc: dict) -> dict {
+def _key_summary(api_key_id: str, doc: dict[str, any]) -> dict[str, any] {
     return {
         'api_key_id': api_key_id,
         'name': doc.get('name', ''),
@@ -223,8 +205,8 @@ impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportRes
     );
 }
 
-impl ApiKeyManager._get_key_doc(api_key_id: str) -> dict | None {
-    doc: dict | None = None;
+impl ApiKeyManager._get_key_doc(api_key_id: str) -> dict[str, any] | None {
+    doc: dict[str, any] | None = None;
     if self._db is not None {
         rows = self._db.rows(
             'SELECT doc FROM jac_docs WHERE collection = :c AND id = :i',
@@ -244,7 +226,7 @@ impl ApiKeyManager._get_key_doc(api_key_id: str) -> dict | None {
     return doc;
 }
 
-impl ApiKeyManager.resolve_key(api_key: str) -> dict | None {
+impl ApiKeyManager.resolve_key(api_key: str) -> dict[str, any] | None {
     key_info = WebhookUtils.validate_api_key(api_key);
     if not key_info {
         return None;
@@ -256,7 +238,9 @@ impl ApiKeyManager.resolve_key(api_key: str) -> dict | None {
     return key_doc;
 }
 
-impl rate_window_ok(state: dict, key: str, limit_per_minute: int) -> bool {
+impl rate_window_ok(
+    state: dict[str, list[int]], key: str, limit_per_minute: int
+) -> bool {
     if limit_per_minute <= 0 {
         return True;
     }

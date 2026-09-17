@@ -61,7 +61,7 @@ def _reload_signal(project_dir: str) -> Path {
 
 """Build a project holding a client entry and one native module, and return
 (base_path, native_module_path, hot_reloader, fake_compiler)."""
-def _make_reloader(tmp: str, succeeds: bool = True) -> tuple {
+def _make_reloader(tmp: str, succeeds: bool = True) -> tuple[any, ...] {
     Path(os.path.join(tmp, "jac.toml")).write_text(
         '[project]\nname = "wasmproj"\n', encoding="utf-8"
     );

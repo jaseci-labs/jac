@@ -9,7 +9,7 @@ def write_native_product(
     shared: bool = True,
     memory: str = '',
     emit_source: bool = True
-) -> dict {
+) -> dict[str, any] {
     import from jaclang.compiler.backends.native.entry_points {
         inject_main,
         validate_native_application

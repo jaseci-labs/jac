@@ -1,25 +1,35 @@
+import from jaclang.compiler.frontend.unitree { TreeWalker }
+import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0084, E0085 }
-import from jaclang.compiler.passes.uni_pass { UniPass }
 
-walker GraphLoweringPass(UniPass) {
-    has _serial: int = 0,
+walker GraphLoweringPass(TreeWalker) {
+    can enter_walk with uni.UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with uni.UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: uni.Module,
+        _serial: int = 0,
         _names: set[str] = set(),
         _builder_type: str = "",
         _ports_type: str = "",
         _capture: bool = True;
 
-    def transform(ir_in: uni.Module) -> uni.Module {
-        if not ir_in.get_all_sub_nodes(uni.GraphExpr) {
-            return ir_in;
+    can prepare with entry {
+        if not self.module.get_all_sub_nodes(uni.GraphExpr) {
+            disengage;
         }
-        return UniPass.transform(self, ir_in);
-    }
-
-    def before_pass {
-        self._names = {n.value for n in self.ir_in.get_all_sub_nodes(uni.Name)};
+        if self.ctx.nested_depth {
+            return;
+        }
+        self._names = {n.value for n in self.module.get_all_sub_nodes(uni.Name)};
     }
 
     def runtime_import(at: uni.GraphExpr) -> uni.Import {
@@ -151,7 +161,7 @@ walker GraphLoweringPass(UniPass) {
         }
         if isinstance(expr, uni.BinaryExpr) and isinstance(expr.op, uni.ConnectOp) {
             if expr.op.edge_dir != EdgeDir.OUT {
-                self.emit(E0084, node_override=expr.op);
+                self.ctx.emit(E0084, node_override=expr.op);
             }
             left = self.lower(expr.left, builder, body);
             right = self.lower(expr.right, builder, body);
@@ -196,12 +206,12 @@ walker GraphLoweringPass(UniPass) {
     can exit_graph_expr with uni.GraphExpr exit {
         for nd in here.flatten() {
             if isinstance(nd, (uni.AwaitExpr, uni.YieldExpr)) {
-                self.emit(E0085, node_override=nd);
+                self.ctx.emit(E0085, node_override=nd);
             }
         }
         for generator in here.get_all_sub_nodes(uni.InnerCompr) {
             if generator.is_async {
-                self.emit(E0085, node_override=generator);
+                self.ctx.emit(E0085, node_override=generator);
             }
         }
         projection: uni.UniNode = here;

@@ -36,7 +36,7 @@ def compile_to_esast(filename: str) -> es.Program {
         f"Compilation errors in {filename}: " + str([str(e) for e in prog.errors_had])
     );
     es_pass = run_pass(EsastGenPass, ir, prog);
-    return es_pass.ir_out.gen.es_ast;
+    return es_pass.module.gen.es_ast;
 }
 
 """Compile a fixture, returning the JacProgram so diagnostics can be inspected."""
@@ -154,7 +154,7 @@ test "rec 9: a .style.css annex is auto-scoped and rewrites JSX className refs" 
         "Compilation errors: " + str([str(e) for e in prog.errors_had])
     );
     es_pass = run_pass(EsastGenPass, ir, prog);
-    mod = es_pass.ir_out;
+    mod = es_pass.module;
     js_code = es_to_js(mod.gen.es_ast);
 
     # Declared class names are hashed to `card-<8 hex>` and the bare form

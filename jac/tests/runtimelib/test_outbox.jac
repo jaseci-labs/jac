@@ -52,14 +52,18 @@ def _entry(store: any, key: str) -> OutboxEntry {
 
 
 obj _Recorder {
-    has calls: list[dict] = [],
+    has calls: list[dict[str, any]] = [],
         fail_with: (Exception | None) = None;
 }
 
 
 def _fake_spawn(recorder: _Recorder) -> any {
     async def fake_spawn(
-        app: str, `walker: str, kwargs: dict, stub_cls: any, idempotency_key: str = ""
+        app: str,
+        `walker: str,
+        kwargs: dict[str, any],
+        stub_cls: any,
+        idempotency_key: str = ""
     ) -> any {
         recorder.calls.append(
             {
@@ -87,7 +91,7 @@ def _make_due(store: SqliteOutboxStore, key: str) {
 
 
 obj _StubResp {
-    has payload: dict;
+    has payload: dict[str, any];
 
     def json -> any {
         return self.payload;
@@ -97,7 +101,7 @@ obj _StubResp {
 
 obj _StubClient {
     has paths: list[str] = [],
-        headers_seen: list[dict] = [];
+        headers_seen: list[dict[str, any]] = [];
 
     def post(path: str, json: any = None, headers: any = None) -> _StubResp {
         self.paths.append(path);
@@ -541,7 +545,7 @@ obj _RecordingPg(PgStore) {
         commits: int = 0,
         _txn: bool = False;
 
-    def rows(sql: str, params: dict) -> list[tuple] {
+    def rows(sql: str, params: dict[str, any]) -> list[tuple[any, ...]] {
         self.sql.append(" ".join(sql.split()));
         return [];
     }
@@ -622,6 +626,48 @@ test "remember runs on the worker connection, enqueue in the request transaction
                 for q in side.sql
                 if "INSERT INTO jac_outbox (" in q
             ];
+        }
+    } finally {
+        use_store(None);
+    }
+}
+
+
+test "a request never derives the worker's side store; the worker does, once" {
+    primary = _RecordingPg(conninfo=ConnInfo(host="primary.invalid"));
+    side = _RecordingPg(conninfo=ConnInfo(host="side.invalid"));
+    mem = _FakeMemory(store=primary);
+    use_store(None);
+    derived: list[any] = [];
+
+    def _mem -> any {
+        return mem;
+    }
+
+    def _side(primary_store: any) -> any {
+        derived.append(primary_store);
+        return PgOutboxStore(store=side);
+    }
+    mem_patch: any = unittest.mock.patch.object(outbox_mod, "_current_memory", _mem);
+    derive_patch: any = unittest.mock.patch.object(
+        outbox_mod, "_derive_worker_store", _side
+    );
+    try {
+        with mem_patch, derive_patch {
+            enqueue("scoring", "Greet", {"name": "ada"});
+            assert derived == [] , (
+                "a request derived the worker's side store: the request path"
+                " must only touch the caller's own connection"
+            );
+            assert outbox_mod._state.worker_store is None;
+            worker = outbox_mod._store_for_worker();
+            assert derived == [primary];
+            assert isinstance(worker, PgOutboxStore);
+            assert worker.store is side;
+            assert outbox_mod._store_for_worker() is worker;
+            assert derived == [primary] , (
+                "the worker's side store must be derived once and cached"
+            );
         }
     } finally {
         use_store(None);

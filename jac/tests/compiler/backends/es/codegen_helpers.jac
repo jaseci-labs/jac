@@ -6,7 +6,7 @@ import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.estree { Node as EsNode }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.passes.context { Alert }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 
@@ -50,7 +50,7 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     );
 
     es_pass = run_pass(EsastGenPass, ir, prog);
-    es_ir = es_pass.ir_out;
+    es_ir = es_pass.module;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
     es_ast = es_ir.gen.es_ast;

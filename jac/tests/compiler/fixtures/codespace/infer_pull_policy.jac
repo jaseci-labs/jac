@@ -5,11 +5,11 @@ auto-share stub with literal has-defaults materialized."""
 
 import from "clsx" { clsx }
 
-glob:pub TOKENS: dict = {bg: "#000"};
+glob:pub TOKENS: dict[any, any] = {bg: "#000"};
 
 obj Panel {
     has width: int = 640,
-        tags: list = [];
+        tags: list[any] = [];
 }
 
 node Task {

@@ -149,7 +149,7 @@ obj LanguageServerTestHelper {
         );
     }
 
-    def get_diagnostics -> list {
+    def get_diagnostics -> list[any] {
         return self.ls.diagnostics.get(self.test_file.uri, []);
     }
 

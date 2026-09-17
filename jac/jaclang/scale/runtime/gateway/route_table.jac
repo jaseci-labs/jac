@@ -59,7 +59,9 @@ async def learn_service_routes(
     if not due {
         return 0;
     }
-    due.sort(key=lambda (pair: tuple) { 0 if pair[1].is_root else 1; });
+    due.sort(
+        key=lambda (pair: tuple[str, ServiceEntry]) { 0 if pair[1].is_root else 1; }
+    );
     answers: dict[str, SpecFetch] = {};
 
     async def ask(name: str, service_entry: ServiceEntry) {
