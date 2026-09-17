@@ -30,17 +30,6 @@ def _fail(code: str, message: str, status: int) -> TransportResponse {
 }
 
 
-def _job_cap -> int {
-    try {
-        return int(
-            get_scale_config().get_scheduler_config().get('max_jobs_per_user', 25)
-        );
-    } except Exception {
-        return 25;
-    }
-}
-
-
 def _err_response(e: Exception) -> TransportResponse {
     if isinstance(e, (PgWireError, OSError)) {
         logger.error(f"Storage failure on /jobs: {type(e).__name__}: {e}");
@@ -77,6 +66,7 @@ obj JobsExtension(ServerExtension) {
     def register(server: JacAPIServer) {
         users = server.user_manager;
         scheduler_cfg = get_scale_config().get_scheduler_config();
+        job_cap = int(scheduler_cfg['max_jobs_per_user']);
         system_user = users.find_user_by_identity(SYSTEM_USER);
         system_user_id = str(system_user.get('user_id', SYSTEM_USER))
             if system_user
@@ -155,7 +145,7 @@ obj JobsExtension(ServerExtension) {
                     400
                 );
             }
-            cap = 0 if _is_admin(str(user_id)) else _job_cap();
+            cap = 0 if _is_admin(str(user_id)) else job_cap;
             try {
                 job = JacScaleScheduler.instance().create_job(
                     name=name, spec=spec, created_by=str(user_id), max_active=cap

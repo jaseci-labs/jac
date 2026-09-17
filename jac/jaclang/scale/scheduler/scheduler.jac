@@ -22,7 +22,10 @@ glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
 
 obj JobStore {
     def insert(job: dict[str, any]) -> str;
-    def insert_within_quota(job: dict[str, any], created_by: str, max_active: int) -> bool;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -37,14 +40,23 @@ obj JobStore {
 
     def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj PgJobStore(JobStore) {
     has store: any,
-        _collection: str;
+        _collection: str,
+        _quota_store: any postinit,
+        _quota_lock: threading.Lock postinit;
 
+    def postinit -> None;
     def insert(job: dict[str, any]) -> str;
-    def insert_within_quota(job: dict[str, any], created_by: str, max_active: int) -> bool;
+    def _write(on: any, job: dict[str, any]) -> str;
+    def _quota_connection -> any;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -59,6 +71,7 @@ obj PgJobStore(JobStore) {
 
     def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj MemoryJobStore(JobStore) {
@@ -66,7 +79,10 @@ obj MemoryJobStore(JobStore) {
 
     def postinit -> None;
     def insert(job: dict[str, any]) -> str;
-    def insert_within_quota(job: dict[str, any], created_by: str, max_active: int) -> bool;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -81,6 +97,7 @@ obj MemoryJobStore(JobStore) {
 
     def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj TriggerSpec {

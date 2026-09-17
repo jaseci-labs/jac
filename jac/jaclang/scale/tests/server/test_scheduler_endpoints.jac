@@ -4,9 +4,15 @@ raise since #7947 removed Mongo, so every storage failure fell through to the
 generic 500 SCHEDULER_ERROR and the 503 path was unreachable.
 """
 
+import shutil;
+import tempfile;
+import from pathlib { Path }
 import from jaclang.data.pgwire { PgWireError }
+import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
 import from jaclang.scale.server.jobs_ext { _err_response }
 import from jaclang.scale.scheduler.scheduler { MemoryJobStore, TriggerSpec }
+import from jaclang.scale.tests.scale_test_client { ScaleTestClient }
+import from jaclang.testing.requires { require_module }
 
 
 test "pg wire failure maps to 503 storage unavailable" {
@@ -111,4 +117,44 @@ test "a cap of zero means unlimited" {
     }
     (rows, total) = store.find_active(created_by="ana");
     assert total == 5 , total;
+}
+
+
+test "POST /jobs schedules a DYNAMIC target, then refuses the account past its cap" {
+    # #9025 was a 404 for every DYNAMIC target, and nothing drove the handler:
+    # restoring the old get_walkers lookup kept every test green. This goes
+    # through the served route, on the job store the app really uses.
+    require_module("apscheduler");
+    fixtures = Path(__file__).parent.parent / "fixtures";
+    base = tempfile.mkdtemp(prefix="jac-jobs-cap-");
+    for f in fixtures.iterdir() {
+        if f.is_file() {
+            shutil.copy2(f, Path(base) / f.name);
+        }
+    }
+    toml = Path(base) / "jac.toml";
+    toml.write_text(toml.read_text() + "\n[scale.scheduler]\nmax_jobs_per_user = 1\n");
+    reset_scale_config();
+    get_scale_config(project_dir=Path(base));
+    client = ScaleTestClient.from_file(str(fixtures / "test_api.jac"), base_path=base);
+    try {
+        token = client.register_and_login("jobs-cap-user", "password123");
+        headers = {"Authorization": f"Bearer {token}"};
+        body = {
+            "walker_or_function": "DynamicScheduledWalker",
+            "trigger": "interval",
+            "interval": 60
+        };
+        first = client.post("/jobs", json=body, headers=headers);
+        assert first.status_code == 201 , first.text;
+        assert first.json()["data"]["name"] == "DynamicScheduledWalker" , first.text;
+
+        second = client.post("/jobs", json=body, headers=headers);
+        assert second.status_code == 429 , second.text;
+        assert second.json()["error"]["code"] == "QUOTA_EXCEEDED" , second.text;
+    } finally {
+        client.close();
+        reset_scale_config();
+        shutil.rmtree(base, ignore_errors=True);
+    }
 }

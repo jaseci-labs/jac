@@ -4,13 +4,7 @@ def _utc_now_iso -> str {
 
 
 def _min_interval -> float {
-    try {
-        return float(
-            get_scale_config().get_scheduler_config().get('min_interval', 1.0)
-        );
-    } except Exception {
-        return 1.0;
-    }
+    return float(get_scale_config().get_scheduler_config()['min_interval']);
 }
 
 
@@ -126,10 +120,15 @@ def _where_sql(where: dict[str, any] | None, params: dict[str, any]) -> str {
     return sql;
 }
 
-impl PgJobStore.insert(job: dict[str, any]) -> str {
+impl PgJobStore.postinit -> None {
+    self._quota_store = None;
+    self._quota_lock = threading.Lock();
+}
+
+impl PgJobStore._write(on: any, job: dict[str, any]) -> str {
     d = dict(job);
     job_id = str(d['job_id']);
-    self.store.rows(
+    on.rows(
         'INSERT INTO jac_docs (collection, id, doc) '
         'VALUES (:c, :i, CAST(:d AS jsonb)) '
         'ON CONFLICT (collection, id) DO UPDATE SET doc = EXCLUDED.doc',
@@ -138,56 +137,65 @@ impl PgJobStore.insert(job: dict[str, any]) -> str {
     return job_id;
 }
 
+impl PgJobStore.insert(job: dict[str, any]) -> str {
+    return self._write(self.store, job);
+}
+
+impl PgJobStore._quota_connection -> any {
+    if self._quota_store is None {
+        import from jaclang.data.store { PgStore }
+        shared: any = self.store;
+        self._quota_store = PgStore(
+            conninfo=shared.conninfo, ensure_cb=shared.ensure_cb
+        );
+    }
+    return self._quota_store;
+}
+
 impl PgJobStore.insert_within_quota(
-    job: dict, created_by: str, max_active: int
+    job: dict[str, any], created_by: str, max_active: int
 ) -> bool {
     if max_active <= 0 {
         self.insert(job);
         return True;
     }
-    store = self.store;
-    nested = bool(store.in_txn());
-    if not nested {
-        store.begin(TxnIsolation.READ_COMMITTED);
-    }
-    try {
-        store.rows(
-            'SELECT pg_advisory_xact_lock(hashtext(:k))',
-            {'k': f'jac_sched_quota:{self._collection}:{created_by}'}
-        );
-        held = store.rows(
-            "SELECT count(*) FROM jac_docs WHERE collection = :c "
-            "AND doc->>'status' = 'active' AND doc->>'created_by' = :u",
-            {'c': self._collection, 'u': created_by}
-        );
-        if held and int(held[0][0]) >= max_active {
-            if not nested {
-                store.rollback();
+    with self._quota_lock {
+        conn = self._quota_connection();
+        conn.begin(TxnIsolation.READ_COMMITTED);
+        try {
+            conn.rows(
+                'SELECT pg_advisory_xact_lock(hashtext(:k))',
+                {'k': f'jac_sched_quota:{self._collection}:{created_by}'}
+            );
+            held = conn.rows(
+                "SELECT count(*) FROM jac_docs WHERE collection = :c "
+                "AND doc->>'status' = 'active' AND doc->>'created_by' = :u",
+                {'c': self._collection, 'u': created_by}
+            );
+            if held and int(held[0][0]) >= max_active {
+                conn.rollback();
+                return False;
             }
-            return False;
-        }
-        d = dict(job);
-        store.rows(
-            'INSERT INTO jac_docs (collection, id, doc) '
-            'VALUES (:c, :i, CAST(:d AS jsonb)) '
-            'ON CONFLICT (collection, id) DO UPDATE SET doc = EXCLUDED.doc',
-            {
-                'c': self._collection,
-                'i': str(d['job_id']),
-                'd': json.dumps(d, `default=str)
-            }
-        );
-        if not nested {
-            store.commit();
-        }
-        return True;
-    } except Exception as e {
-        if not nested {
+            self._write(conn, job);
+            conn.commit();
+            return True;
+        } except Exception as e {
             try {
-                store.rollback();
-            } except Exception as ignored {}
+                conn.rollback();
+            } except Exception as cleanup {
+                logger.warning(f"quota transaction rollback failed: {cleanup}");
+            }
+            raise e;
         }
-        raise e;
+    }
+}
+
+impl PgJobStore.close -> None {
+    with self._quota_lock {
+        if self._quota_store is not None {
+            self._quota_store.close();
+            self._quota_store = None;
+        }
     }
 }
 
@@ -285,7 +293,7 @@ impl MemoryJobStore.insert(job: dict[str, any]) -> str {
 }
 
 impl MemoryJobStore.insert_within_quota(
-    job: dict, created_by: str, max_active: int
+    job: dict[str, any], created_by: str, max_active: int
 ) -> bool {
     with _memory_jobs_lock {
         if max_active > 0 {
@@ -304,6 +312,8 @@ impl MemoryJobStore.insert_within_quota(
         return True;
     }
 }
+
+impl MemoryJobStore.close -> None {}
 
 impl MemoryJobStore.find_active(
     limit: int | None = None,
@@ -436,6 +446,9 @@ impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> 
 
     scheduler_cfg = get_scale_config().get_scheduler_config();
     collection = scheduler_cfg.get('collection', 'scheduled_jobs');
+    if self._store is not None {
+        self._store.close();
+    }
     store: any = None;
     try {
         store = shared_store();
@@ -508,6 +521,9 @@ impl JacScaleScheduler.stop(drain: bool = False) -> None {
         Scheduler.instance().stop();
     } except Exception as e {
         logger.debug(f"Error stopping base Scheduler: {e}");
+    }
+    if self._store is not None {
+        self._store.close();
     }
 }
 
