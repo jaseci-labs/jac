@@ -457,9 +457,7 @@ test "nested staging uses the orphan TTL and never follows symlinks" {
         link = parent / "linked";
         try {
             link.symlink_to(outside, target_is_directory=True);
-        } except OSError {
-            pass;
-        }
+        } except OSError {}
         gc();
         assert not old.exists();
         assert fresh.exists() and active.exists();

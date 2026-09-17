@@ -17,8 +17,7 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import from unittest.mock { patch }
-import from tests.support { cache_env }
-import from tests.support { jac_command }
+import from tests.support { cache_env, jac_command }
 import from jaclang.cli.commands.cache { cache }
 import from jaclang.cache.registry { BUCKETS, bucket }
 
