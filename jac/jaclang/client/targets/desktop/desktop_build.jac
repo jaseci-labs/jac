@@ -309,7 +309,7 @@ def stage_program(
             assets = client_assets_dir(config, project_dir, str(entry_file));
             if assets.is_dir() {
                 shutil.copytree(
-                    assets, output_dir / "dist" / "assets", dirs_exist_ok=True
+                    assets, image_dir / "dist" / "assets", dirs_exist_ok=True
                 );
             }
         }

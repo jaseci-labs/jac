@@ -22,7 +22,9 @@ glob _TOML: str = (
 
 
 def _workspace -> str {
-    d = tempfile.mkdtemp(prefix="jac_desktop_ws_");
+    # Canonical from the start: macOS mounts its temp dir behind /private, and
+    # the target resolves project paths canonically.
+    d = os.path.realpath(tempfile.mkdtemp(prefix="jac_desktop_ws_"));
     for app in ("web", "shell", "kiosk") {
         os.makedirs(os.path.join(d, app), exist_ok=True);
         with open(os.path.join(d, app, "main.jac"), "w") as f {
@@ -89,7 +91,7 @@ test "each desktop app builds under its own client dir" {
 
 test "a single-app project keeps .jac/client/desktop" {
     import from jaclang.client.targets.desktop.desktop_target { DesktopTarget }
-    d = tempfile.mkdtemp(prefix="jac_desktop_single_");
+    d = os.path.realpath(tempfile.mkdtemp(prefix="jac_desktop_single_"));
     try {
         with open(os.path.join(d, "jac.toml"), "w") as f {
             f.write("[project]\nname = \"solo\"\nkind = \"desktop\"\n");
