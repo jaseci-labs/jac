@@ -743,6 +743,7 @@ walker NaIRGenPass {
     ) -> tuple[str, ir.IdentifiedStructType, ir.FunctionType];
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
+    def _callable_signature_of(val_type: ir.Type) -> (ir.FunctionType | None);
     def _closure_cell_struct(slot_type: ir.Type) -> str;
     def _emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Value;
     def _emit_closure_thunk(
@@ -1701,6 +1702,18 @@ walker NaIRGenPass {
     def _emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _compute_osp_model(archetypes: list[uni.Archetype]) -> None;
+    def _osp_static_edge_name(expr: uni.UniNode) -> (str | None);
+    def _osp_edge_class_name(expr: uni.UniNode) -> (str | None);
+    def _osp_edge_descriptor(expr: uni.UniNode, nd: uni.UniNode) -> (ir.Value | None);
+    def _osp_edge_tag(
+        expr: (uni.UniNode | None),
+        nd: uni.UniNode,
+        descriptor: (ir.Value | None) = None
+    ) -> (ir.Value | None);
+
+    def _osp_edge_factory(name: str) -> ir.Function;
+    def _emit_osp_edge_factories -> None;
+    def _osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value;
     def _osp_active -> bool;
     def _xmod_osp_help(names: list[str | None]) -> (str | None);
     def _register_osp_kernel_module -> None;
@@ -2388,6 +2401,7 @@ walker NaIRGenPass {
     def _nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value];
     def _emit_finalizers(loop_depth: int = 0) -> bool;
     def _emit_err_check(callee: (uni.Ability | None)) -> None;
+    def _emit_pending_error_check -> None;
     def _emit_err_propagate(loc: str = "") -> None;
     def _codegen_raise_slot(payload: ir.Value, type_id: int, msg: ir.Value) -> None;
     def _codegen_try_slot(nd: uni.TryStmt) -> None;

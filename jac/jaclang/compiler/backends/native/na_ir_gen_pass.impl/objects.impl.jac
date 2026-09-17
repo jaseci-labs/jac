@@ -262,6 +262,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
 
     self._generate_inherited_method_wrappers();
+    self._emit_osp_edge_factories();
 }
 
 impl NaIRGenPass._constructor_slots -> tuple[str, ...] {
@@ -1796,7 +1797,6 @@ impl NaIRGenPass._codegen_instantiation(
     type_name_override: (str | None) = None,
     ctor_params: (list[uni.Expr | uni.KWPair] | None) = None
 ) -> (ir.Value | None) {
-    _is_call = isinstance(nd, uni.FuncCall);
     type_name = type_name_override
         if type_name_override is not None
         else self._get_name(nd.target if isinstance(nd, uni.FuncCall) else nd);
@@ -2223,7 +2223,7 @@ impl NaIRGenPass._codegen_instantiation(
     }
     if init_fn is not None {
         init_args: list[ir.Value] = [obj_ptr];
-        init_sig = self._arch_init_sig_of(_init_owner) if _is_call else None;
+        init_sig = self._arch_init_sig_of(_init_owner);
         if init_sig is not None {
             _init_pos: list[uni.Expr] = [];
             _init_kw: dict[str, uni.Expr] = {};
@@ -2600,6 +2600,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         and method_name in self.struct_field_types[_fld_struct]
     ) {
         _fld_ty = self.struct_field_types[_fld_struct][method_name];
+        if self._closure_struct_of(_fld_ty) is not None {
+            callable_value = self._codegen_expr(trailer);
+            if callable_value is not None {
+                return self._codegen_callable_value(nd, callable_value, []);
+            }
+            return None;
+        }
         if (
             isinstance(_fld_ty, ir.PointerType)
             and isinstance(_fld_ty.pointee, ir.FunctionType)

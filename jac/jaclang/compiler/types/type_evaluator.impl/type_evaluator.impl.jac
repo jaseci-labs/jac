@@ -1885,6 +1885,11 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case UnaryExpr():
             if isinstance(expr.op, Token) {
+                if expr.op.name == Tok.STAR_MUL {
+                    iterable = self.get_type_of_expression(expr.operand);
+                    element = self._get_iterable_element_type(iterable, expr.operand);
+                    return element if element is not None else UnknownType();
+                }
                 if expr.op.name == Tok.BW_AND {
                     _ref_t = self.get_type_of_expression(expr.operand);
                     if (
@@ -1971,6 +1976,7 @@ impl TypeEvaluator._get_type_of_expression_core(
             if expr.f_type {
                 filter_type = self.get_type_of_expression(expr.f_type);
                 if isinstance(filter_type, ClassType) {
+                    filter_type = self._get_type_for_member_lookup(filter_type);
                     for cmp in expr.compares {
                         self._bind_filter_compare(cmp, filter_type);
                         self.get_type_of_expression(cmp);
@@ -2214,29 +2220,26 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if isinstance(chain_item, FilterCompr) and chain_item.f_type {
                         ft = self.get_type_of_expression(chain_item.f_type);
                         if isinstance(ft, ClassType) {
+                            ft = self._get_type_for_member_lookup(ft);
                             element_type = self._convert_to_instance(ft);
                         }
                     } elif (
                         isinstance(chain_item, EdgeOpRef)
-                        and expr.edges_only
                         and chain_item.filter_cond is not None
                         and chain_item.filter_cond.f_type is not None
                     ) {
                         ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
-                        if isinstance(ft, ClassType) and ft.is_edge_type() {
-                            element_type = self._convert_to_instance(ft);
+                        if isinstance(ft, ClassType) {
+                            ft = self._get_type_for_member_lookup(ft);
                         }
-                    } elif (
-                        isinstance(chain_item, EdgeOpRef)
-                        and not expr.edges_only
-                        and chain_item.filter_cond is not None
-                        and chain_item.filter_cond.f_type is not None
-                    ) {
-                        ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
                         if isinstance(ft, ClassType) and ft.is_edge_type() {
-                            ep = self._edge_endpoint_type(ft, chain_item.edge_dir);
-                            if ep is not None {
-                                element_type = self._convert_to_instance(ep);
+                            if expr.edges_only {
+                                element_type = self._convert_to_instance(ft);
+                            } else {
+                                ep = self._edge_endpoint_type(ft, chain_item.edge_dir);
+                                if ep is not None {
+                                    element_type = self._convert_to_instance(ep);
+                                }
                             }
                         }
                     }

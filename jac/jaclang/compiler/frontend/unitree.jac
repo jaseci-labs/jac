@@ -177,8 +177,8 @@ node UniNode {
     def freeze_structure -> None;
     def thaw_structure -> None;
     def structure_thawed -> StructureThaw;
-    def _attach(child: UniNode, role: type[Role]) -> None;
-    def _role_clear(role: type[Role]) -> None;
+    def _attach(child: UniNode, role: type[Edge]) -> None;
+    def _role_clear(role: type[Edge]) -> None;
     def _as_node_list(value: any) -> list[UniNode];
     def _children -> list[UniNode];
     def _role_shaped(role: type[Role], found: list[UniNode]) -> any;

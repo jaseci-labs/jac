@@ -1200,12 +1200,6 @@ impl NaIRGenPass._tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStruct
 impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
     _ptb = var?.type;
     if _ptb is not None {
-        try {
-            import from jaclang.compiler.types.types { FunctionType as _FieldFnType }
-            if isinstance(_ptb, _FieldFnType) {
-                return self._lower_function_type_raw(_ptb);
-            }
-        } except ImportError {}
         lowered = self._lower_type(_ptb);
         if lowered is not None {
             if self._str_desc_ty is not None and lowered == self._str_desc_ty {
@@ -4597,7 +4591,10 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                         _fpl = self._lower_untyped_annotation(_fp);
                         _fnparams.append(_fpl if _fpl is not None else ir.IntType(64));
                     }
-                    return ir.FunctionType(_fnret, _fnparams).as_pointer();
+                    (_, closure_type, _) = self._closure_sig_struct(
+                        ir.FunctionType(_fnret, _fnparams)
+                    );
+                    return closure_type.as_pointer();
                 }
             }
             return None;

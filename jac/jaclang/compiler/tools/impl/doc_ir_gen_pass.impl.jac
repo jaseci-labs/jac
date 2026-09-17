@@ -112,33 +112,27 @@ impl DocIRGenPass.exit_jsx_element_name with uni.JsxElementName exit {
 }
 
 impl DocIRGenPass.exit_jsx_element with uni.JsxElement exit {
-    has_tokens = any(isinstance(kid, uni.Token) for kid in [here->:Kid:->]);
+    kids = [here->:Kid:->];
+    has_tokens = any(isinstance(kid, uni.Token) for kid in kids);
     if has_tokens {
-        first_child = [here->:Kid:->][0] if [here->:Kid:->] else None;
+        first_child = kids[0] if kids else None;
         if (
             isinstance(first_child, uni.Token)
             and (first_child.name == Tok.JSX_CLOSE_START)
         ) {
-            here.gen.doc_ir = self.group(
-                self.concat([kid.gen.doc_ir for kid in [here->:Kid:->]])
-            );
+            here.gen.doc_ir = self.group(self.concat([kid.gen.doc_ir for kid in kids]));
             return;
         }
-        start_token = [here->:Kid:->][0]
-            if ([here->:Kid:->] and isinstance([here->:Kid:->][0], uni.Token))
-            else None;
-        end_token = [here->:Kid:->][-1]
-            if ([here->:Kid:->] and isinstance([here->:Kid:->][-1], uni.Token))
-            else None;
-        if (not start_token or not end_token) {
-            here.gen.doc_ir = self.group(
-                self.concat([kid.gen.doc_ir for kid in [here->:Kid:->]])
-            );
+        start_token = first_child;
+        end_token = kids[-1] if kids else None;
+        if not isinstance(start_token, uni.Token)
+            or not isinstance(end_token, uni.Token) {
+            here.gen.doc_ir = self.group(self.concat([kid.gen.doc_ir for kid in kids]));
             return;
         }
         name_kids = [
             kid
-            for kid in [here->:Kid:->]
+            for kid in kids
             if isinstance(kid, uni.JsxElementName)
         ];
         name_node = name_kids[0] if name_kids else None;
@@ -147,7 +141,7 @@ impl DocIRGenPass.exit_jsx_element with uni.JsxElement exit {
         if name_node {
             parts.append(name_node.gen.doc_ir);
         } elif not here.is_fragment {
-            for k in [here->:Kid:->][1:] {
+            for k in kids[1:] {
                 if (
                     isinstance(k, uni.JsxNormalAttribute)
                     or isinstance(k, uni.JsxSpreadAttribute)
@@ -179,7 +173,7 @@ impl DocIRGenPass.exit_jsx_element with uni.JsxElement exit {
         is_self_closing = end_token.name == Tok.JSX_SELF_CLOSE;
         open_end_tok: (uni.Token | None) = None;
         close_start_idx = -1;
-        for (_ki, _kn) in enumerate([here->:Kid:->]) {
+        for (_ki, _kn) in enumerate(kids) {
             if not isinstance(_kn, uni.Token) {
                 continue;
             }
@@ -243,7 +237,7 @@ impl DocIRGenPass.exit_jsx_element with uni.JsxElement exit {
             parts.append(self.if_break(self.concat([]), self.space()));
             parts.append(end_token.gen.doc_ir);
         } elif close_start_idx > 0 {
-            for _ck in [here->:Kid:->][close_start_idx:] {
+            for _ck in kids[close_start_idx:] {
                 parts.append(_ck.gen.doc_ir);
             }
         } else {
@@ -252,14 +246,12 @@ impl DocIRGenPass.exit_jsx_element with uni.JsxElement exit {
         here.gen.doc_ir = self.group(self.concat(parts), ast_node=here);
         return;
     }
-    if not [here->:Kid:->] {
+    if not kids {
         here.gen.doc_ir = self.group(self.concat([]));
         return;
     }
-    opening_doc = [here->:Kid:->][0].gen.doc_ir;
-    closing_doc = [here->:Kid:->][-1].gen.doc_ir
-        if (len([here->:Kid:->]) > 1)
-        else self.concat([]);
+    opening_doc = kids[0].gen.doc_ir;
+    closing_doc = kids[-1].gen.doc_ir if (len(kids) > 1) else self.concat([]);
     children: Sequence[uni.UniNode] = here.children or [];
     child_parts = self.jsx_mixed_child_parts(children);
     inline_child_types = (uni.JsxText, uni.JsxExpression);

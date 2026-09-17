@@ -1455,8 +1455,9 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
 
 impl TypeCheckPass.exit_has_var with HasVar exit {
     import from jaclang.compiler.field_semantics { field_initialization }
-    if (here.defer and [here->:Kid:->] and isinstance([here->:Kid:->][-1], Name)) {
-        postinit_nd: Name = [here->:Kid:->][-1];
+    kids = [here->:Kid:->];
+    postinit_nd = kids[-1] if kids else None;
+    if here.defer and isinstance(postinit_nd, Name) {
         if postinit_nd.sym is None {
             arch = here.parent.parent if isinstance(here.parent, ArchHas) else None;
             if isinstance(arch, Archetype) {

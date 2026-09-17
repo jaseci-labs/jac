@@ -40,6 +40,35 @@ def osp_is_a(tag: int, base: int) -> bool {
     return False;
 }
 
+"""Native edge metadata shares the graph's registered type identity.
+
+Factories use the compiler's ordinary constructor path, including defaults,
+postinit and region allocation. A zero result means construction without
+arguments is unavailable; it is never a graph handle.
+"""
+obj EdgeTypeDesc {
+    has tag: int,
+        factory: Callable[([], int)];
+}
+
+glob _edge_types: dict[str, EdgeTypeDesc] = {};
+
+def osp_register_edge_type(name: str, tag: int, factory: Callable[([], int)]) {
+    _edge_types[name] = EdgeTypeDesc(tag=tag, factory=factory);
+}
+
+def osp_edge_type(name: str) -> EdgeTypeDesc {
+    desc = _edge_types.get(name);
+    if desc is None {
+        raise TypeError("graph operation requires a registered edge type");
+    }
+    return desc;
+}
+
+def osp_new_edge(desc: EdgeTypeDesc) -> int {
+    return desc.factory();
+}
+
 obj EdgeRow {
     has src: int,
         tgt: int,

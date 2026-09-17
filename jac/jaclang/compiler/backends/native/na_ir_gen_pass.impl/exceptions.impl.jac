@@ -680,7 +680,14 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
 }
 
 impl NaIRGenPass._emit_err_check(callee: (uni.Ability | None)) -> None {
-    if callee is None or not self._slot_lowering_active() {
+    if callee is not None {
+        self._emit_pending_error_check();
+    }
+}
+
+"""Propagate errors after generated native calls without a source declaration."""
+impl NaIRGenPass._emit_pending_error_check -> None {
+    if not self._slot_lowering_active() {
         return;
     }
     if self._builder is None or self.builder.block.is_terminated {

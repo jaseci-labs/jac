@@ -3536,7 +3536,10 @@ impl NativeDictEmitter.emit_get(
     b = get_builder(p);
     i64 = ir.IntType(64);
     key = p._coerce_type(args[0], helpers["key_type"]);
-    found_i1 = b.call(helpers["contains"], [target, key], name="dget.found");
+    value_slot = b.call(helpers["lookup"], [target, key], name="dget.slot");
+    found_i1 = b.icmp_unsigned(
+        "!=", value_slot, ir.Constant(value_slot.type, None), name="dget.found"
+    );
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="dget.yes");
     notfound_bb = func.append_basic_block(name="dget.no");
@@ -3549,7 +3552,7 @@ impl NativeDictEmitter.emit_get(
     result_type = p._jac_optional_type(val_type) if wrap_optional else val_type;
 
     b.position_at_start(found_bb);
-    val: ir.Value = b.call(helpers["get"], [target, key], name="dget.val");
+    val: ir.Value = b.load(value_slot, name="dget.val");
     if wrap_optional {
         _tagged = b.insert_value(
             ir.Constant(result_type, None),
