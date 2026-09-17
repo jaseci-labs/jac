@@ -75,9 +75,11 @@ unless the PR really is slower.
 The report lists the last main pushes of the CI workflow through the GitHub API
 (the job holds `actions: read`), downloads each run's `pack-smoke-performance`
 artifact, and takes a phase's wall time only when that phase completed (exit
-status 0). It stops after the configured number of runs and needs at least three
-samples per phase to compare. The runs and samples used are written to
-`baseline.json` inside the artifact.
+status 0). Each phase keeps reading older runs until it has the configured
+number of samples or the listing (three times that many runs) is exhausted, so a
+run where one phase failed still serves the others. A phase needs at least three
+samples to compare. The runs and samples used are written to `baseline.json`
+inside the artifact.
 
 A baseline that cannot be fetched is reported as unavailable and never fails the
 job: the gates do not depend on it. Artifacts expire after 30 days, so the

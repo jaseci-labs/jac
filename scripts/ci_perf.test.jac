@@ -383,7 +383,7 @@ def archive(records: dict[str, dict[str, object]]) -> bytes {
     return buffer.getvalue();
 }
 
-test "the baseline takes wall times only from completed phases of main runs" {
+test "each phase fills from completed main runs until it has enough samples" {
     phases = [
         Phase(name="probe", measure="command", hang_seconds=5.0, max_rss_mib=1.0),
         Phase(name="ready", measure="readiness")
@@ -422,10 +422,15 @@ test "the baseline takes wall times only from completed phases of main runs" {
     };
     client = GitHub(repository="o/r", transport=fake.respond);
     baseline = fetch_baseline(client, BaselinePolicy(runs=3), phases, skip_run="1");
-    assert fake.downloads == [20, 40, 60];
-    assert baseline.samples == {"probe": [60.0, 62.0], "ready": [10.0, 12.0]};
-    assert baseline.median("probe") is None;
-    assert "3 main pushes of ci.yml (runs 6 to 2)" in baseline.note;
+    assert fake.downloads == [20, 40, 60, 70, 80];
+    assert baseline.samples == {"probe": [60.0, 62.0, 64.0], "ready": [10.0, 12.0]};
+    assert baseline.median("probe") == 62.0;
+    assert baseline.median("ready") is None;
+    assert "4 main pushes of ci.yml (runs 7 to 2; samples: probe 3, ready 2)"
+        in baseline.note;
+    fake.downloads = [];
+    full = fetch_baseline(client, BaselinePolicy(runs=3), phases, skip_run="1");
+    assert full.samples["probe"] == [60.0, 62.0, 64.0];
     empty = fetch_baseline(
         GitHub(repository="o/r", transport=FakeTransport().respond),
         BaselinePolicy(runs=3),

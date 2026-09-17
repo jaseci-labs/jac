@@ -247,7 +247,12 @@ obj GitHub {
     }
 }
 
-"""Take each phase's wall time from the newest main runs whose phase completed."""
+"""Fill each phase with wall times from the newest main runs where that phase completed.
+
+A run where one phase failed still serves the others, and a phase keeps
+reading older runs until it has the configured number of samples or the
+listing runs out, so a bad week on main cannot silence a comparison.
+"""
 def fetch_baseline(
     client: GitHub,
     policy: BaselinePolicy,
@@ -266,7 +271,12 @@ def fetch_baseline(
         )
     );
     for run in listing["workflow_runs"] {
-        if len(used) >= policy.runs {
+        short = [
+            name
+            for (name, values) in samples.items()
+            if len(values) < policy.runs
+        ];
+        if not short {
             break;
         }
         run_id = str(run["id"]);
@@ -295,9 +305,9 @@ def fetch_baseline(
             )
         );
         taken = False;
-        for phase in phases {
+        for name in short {
             try {
-                record = json.loads(archive.read(f"{phase.name}.json"));
+                record = json.loads(archive.read(f"{name}.json"));
             } except KeyError {
                 continue;
             }
@@ -306,7 +316,7 @@ def fetch_baseline(
             }
             wall = clean_samples([record.get("wall_seconds")]);
             if wall {
-                samples[phase.name].extend(wall);
+                samples[name].extend(wall);
                 taken = True;
             }
         }
@@ -321,10 +331,11 @@ def fetch_baseline(
             f"{ARTIFACT_NAME} artifact yet"
         );
     }
+    counts = ", ".join(f"{name} {len(values)}" for (name, values) in samples.items());
     return Baseline(
         samples=samples,
-        note=f"median of the last {len(used)} {policy.branch} pushes of "
-        f"{policy.workflow} (runs {used[-1]} to {used[0]})"
+        note=f"median per phase over the last {len(used)} {policy.branch} pushes of "
+        f"{policy.workflow} (runs {used[-1]} to {used[0]}; samples: {counts})"
     );
 }
 
