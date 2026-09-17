@@ -13,11 +13,7 @@ impl UniNode.postinit -> None {
 }
 
 impl UniNode.walk_kids with TreeWalker entry {
-    visit : 0 : [
-        k
-        for k in self.kid
-        if k and not k.ct_pruned
-    ];
+    visit:0: [self->:Kid:->[?:UniNode, ct_pruned==False]];
 }
 
 impl UniNode._attach(child: UniNode, role: type[Role]) -> None {
@@ -1083,21 +1079,23 @@ impl UniNode._sub_node_tab.getter -> dict[(type, list[UniNode])] {
 }
 
 impl UniNode._construct_sub_node_tab -> None {
-    for i in self.kid {
-        if not i or i.ct_pruned {
+    pending = self.kid;
+    ordered: list[UniNode] = [];
+    while pending {
+        nd = pending.pop();
+        if not nd or nd.ct_pruned {
             continue;
         }
-        for (k, v) in i._sub_node_tab.items() {
-            if (k in self.__sub_node_tab) {
-                self.__sub_node_tab[k].extend(v);
-            } else {
-                self.__sub_node_tab[k] = `list(v);
-            }
-        }
-        if (`type(i) in self.__sub_node_tab) {
-            self.__sub_node_tab[`type(i)].append(i);
+        ordered.append(nd);
+        pending.extend(nd.kid);
+    }
+
+    for nd in reversed(ordered) {
+        kind = type(nd);
+        if kind in self.__sub_node_tab {
+            self.__sub_node_tab[kind].append(nd);
         } else {
-            self.__sub_node_tab[`type(i)] = [i];
+            self.__sub_node_tab[kind] = [nd];
         }
     }
 }
@@ -1580,14 +1578,18 @@ impl UniScopeNode.names_in_scope_overload.getter -> dict[(str, list[Symbol])] {
 impl UniScopeNode.lookup(
     name: str, deep: bool = True, incl_inner_scope: bool = False
 ) -> (Symbol | None) {
-    if (name in self.names_in_scope) {
-        return self.names_in_scope[name];
+    local = self.names_in_scope.get(name);
+    if local is not None {
+        return local;
     }
-    if (
-        (deep and self.parent_scope)
-        and (sym := self.parent_scope.lookup(name, deep, incl_inner_scope))
-    ) {
-        return sym;
+    if deep {
+        parent = self.parent_scope;
+        if parent is not None {
+            sym = parent.lookup(name, deep, incl_inner_scope);
+            if sym is not None {
+                return sym;
+            }
+        }
     }
     if incl_inner_scope {
         for kid in self.kid_scope {
@@ -1603,10 +1605,12 @@ impl UniScopeNode.lookup(
     impl_def: ImplDef | None = (
         self if isinstance(self, ImplDef) else self.find_parent_of_type(ImplDef)
     );
-    if (impl_def and impl_def.decl_link and impl_def.decl_link.sym_tab) {
-        return impl_def.decl_link.sym_tab.lookup(
-            name, deep=True, incl_inner_scope=False
-        );
+    decl = impl_def.decl_link if impl_def else None;
+    if decl is not None {
+        decl_scope = decl.sym_tab;
+        if decl_scope is not None {
+            return decl_scope.lookup(name, deep=True, incl_inner_scope=False);
+        }
     }
     return None;
 }
@@ -1802,8 +1806,9 @@ impl UniScopeNode.chain_def_insert(node_list: list[AstSymbolNode]) -> None {
 impl UniScopeNode.use_lookup(
     nd: AstSymbolNode, sym_table: (UniScopeNode | None) = None
 ) -> (Symbol | None) {
-    if nd.sym {
-        return nd.sym;
+    existing = nd.sym;
+    if existing {
+        return existing;
     }
     if not sym_table {
         sym_table = nd.sym_tab;

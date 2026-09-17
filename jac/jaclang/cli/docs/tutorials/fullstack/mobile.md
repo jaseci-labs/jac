@@ -51,7 +51,7 @@ Styling is `style={{...}}` objects over a flexbox subset -- no CSS files, no `cl
 
 ---
 
-## One-Time Setup
+## Declare the App
 
 Declare the app in `jac.toml` -- `jac create --app mobile --kind mobile` writes this (and `jac create myapp --kind mobile` writes the single-app form, `[project] kind = "mobile"`):
 
@@ -62,13 +62,15 @@ entry-point = "mobile.main"
 platform = "android"      # optional default for `jac run mobile` / `jac build mobile`
 ```
 
-The kind turns on the `@jac/mobui` host-tag guard for every module under `mobile/` -- and only there, so a web app in the same workspace keeps its HTML. Then, from the project root:
+The kind turns on the `@jac/mobui` host-tag guard for every module under `mobile/` -- and only there, so a web app in the same workspace keeps its HTML. That is all the setup there is: the first `jac run --dev mobile` (or `jac run mobile` / `jac build mobile --platform android`) scaffolds an Expo/Metro project at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; it lives under the centralized `.jac` build root, so it stays out of the source tree), merges `[dependencies.npm.native]` into its `package.json` and installs the packages, narrating each step as a one-time setup. Later runs re-sync the packages only when the manifest or lockfile changed.
+
+To provision ahead of time (a CI image, an offline laptop), run the same sequence explicitly:
 
 ```bash
 jac setup mobile
 ```
 
-This scaffolds an Expo/Metro project at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; it lives under the centralized `.jac` build root, so it stays out of the source tree), merges `[dependencies.npm.native]` into its `package.json`, installs the packages, and prints next steps.
+Under `JAC_OFFLINE=1` a run cannot provision, so a missing scaffold stops with that command as the hint.
 
 ---
 

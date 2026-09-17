@@ -1538,10 +1538,7 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
     if has_params {
         return;
     }
-    has_parens = any(
-        isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN)
-        for kid in sig.kid
-    );
+    has_parens = bool([sig->:Kid:->[?:uni.Token, name in (Tok.LPAREN, Tok.RPAREN)]]);
     if not has_parens {
         return;
     }
@@ -1882,8 +1879,9 @@ impl JacAutoLintPass._check_stale_has_read(ability_node: uni.Ability) -> None {
     }
     writes: list[tuple[int, int, str]] = [];
     reads: list[tuple[int, int, str, uni.Name]] = [];
+    collector = ReactiveUseWalker(reactive=reactive, writes=writes, reads=reads);
     for stmt in body {
-        self._walk_for_has_uses(stmt, reactive, writes, reads);
+        stmt spawn collector;
     }
     if not writes or not reads {
         return;
@@ -1936,44 +1934,6 @@ impl JacAutoLintPass._collect_reactive_has_names(
         container = container.parent;
     }
     return names;
-}
-
-impl JacAutoLintPass._walk_for_has_uses(
-    nd: uni.UniNode,
-    reactive: set[str],
-    writes: list[tuple[int, int, str]],
-    reads: list[tuple[int, int, str, uni.Name]]
-) -> None {
-    import from jaclang.compiler.frontend.constant { ExprCtx }
-    if isinstance(nd, (uni.LambdaExpr, uni.Ability, uni.Archetype)) {
-        return;
-    }
-    if isinstance(nd, uni.Assignment) {
-        if (
-            len(nd.target) == 1
-            and isinstance(nd.target[0], uni.Name)
-            and nd.target[0].sym_name in reactive
-        ) {
-            tgt = nd.target[0];
-            writes.append((tgt.loc.first_line, tgt.loc.col_start, tgt.sym_name));
-        }
-        if nd.value {
-            self._walk_for_has_uses(nd.value, reactive, writes, reads);
-        }
-        return;
-    }
-    if isinstance(nd, uni.Name) {
-        if nd.value in reactive and nd.expr_ctx == ExprCtx.LOAD {
-            parent = nd.parent;
-            if not (isinstance(parent, uni.AtomTrailer) and parent.is_attr) {
-                reads.append((nd.loc.first_line, nd.loc.col_start, nd.value, nd));
-            }
-        }
-        return;
-    }
-    for kid in nd.kid {
-        self._walk_for_has_uses(kid, reactive, writes, reads);
-    }
 }
 
 impl JacAutoLintPass._check_mutable_default(nd: uni.ParamVar) -> None {

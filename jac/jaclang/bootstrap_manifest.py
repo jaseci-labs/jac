@@ -23,6 +23,14 @@ from __future__ import annotations
 
 import os
 
+# Data, not compiler code: the Zig bootstrap and CI read this same manifest
+# before a Jac compiler exists. Include the manifest itself in source digests.
+with open(os.path.join(os.path.dirname(__file__), "compiler_inputs.txt")) as _inputs:
+    COMPILER_DIGEST_ROOTS: tuple[str, ...] = tuple(
+        line.strip() for line in _inputs
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+
 # JacPython now implements the running interpreter's compiler APIs. Its sources
 # participate in the producing compiler identity and the sealed release image.
 SOURCE_ONLY_PATHS: tuple[str, ...] = ()

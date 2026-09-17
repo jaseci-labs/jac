@@ -592,9 +592,10 @@ Everything crossing a marshalled boundary is **JSON** (for `cl↔sv` and the
   A function declared `@restspec(envelope=False, produces=...)` skips this
   wrapper: its return value is written to the body verbatim under the
   declared content type, for callers that are not Jac clients (a
-  `curl | bash` installer, `robots.txt`, a feed). Serialisation still runs,
-  so the body is text; error paths keep the envelope. Walkers always keep it,
-  having no single value to project. See
+  `curl | bash` installer, `robots.txt`, a feed, a file download). The
+  execution manager leaves the return value unserialised on this path, so a
+  `bytes` return reaches the wire as those bytes; error paths keep the
+  envelope. Walkers always keep it, having no single value to project. See
   [jac-scale HTTP](../reference/plugins/jac-scale-http.md#raw-response-bodies).
 
 ### C-ABI wire format (`na`)

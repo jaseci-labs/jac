@@ -166,13 +166,9 @@ impl CoalesceBBPass._node_label(nd: UniNode) -> str {
     }
     if isinstance(nd, Ability) {
         kw: str = 'can';
-        for c in nd.kid {
-            if isinstance(c, Token) {
-                if c.name == Tok.KW_DEF or c.name == Tok.KW_CAN {
-                    kw = str(c.value);
-                    break;
-                }
-            }
+        keywords = [nd->:Kid:->[?:Token, name in (Tok.KW_DEF, Tok.KW_CAN)]];
+        if keywords {
+            kw = str(keywords[0].value);
         }
         if nd.name_ref and nd.signature {
             return kw + ' ' + unparse_node(nd.name_ref) + unparse_node(nd.signature);

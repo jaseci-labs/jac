@@ -7,6 +7,7 @@ import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes { Alert }
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.passes.scope_walk { ScopeWalker }
 import from jaclang.compiler.driver.jir {
     SEC_SYMINDEX,
     SECTIONS_MAGIC,
@@ -23,6 +24,17 @@ import from jaclang.jac0core.ext_registry {
     ANNEX_FOLDER,
     IMPL_SUFFIX,
     is_annex
+}
+
+walker SymbolCollector(ScopeWalker) {
+    has symbols: list[uni.Symbol] = [];
+
+    can collect_scope with uni.UniScopeNode entry {
+        self.symbols.extend(here.names_in_scope.values());
+        for bucket in here.names_in_scope_overload.values() {
+            self.symbols.extend(bucket);
+        }
+    }
 }
 
 glob _SKIP_DIRS: set[str] = {
@@ -498,17 +510,7 @@ obj CodeIntelligence {
     }
 
     def _collect_syms(scope: uni.UniScopeNode, out: list[uni.Symbol]) {
-        for sym in scope.names_in_scope.values() {
-            out.append(sym);
-        }
-        for bucket in scope.names_in_scope_overload.values() {
-            for sym in bucket {
-                out.append(sym);
-            }
-        }
-        for kid in scope.kid_scope {
-            self._collect_syms(kid, out);
-        }
+        scope spawn SymbolCollector(symbols=out);
     }
 
     def _all_syms -> list[uni.Symbol] {

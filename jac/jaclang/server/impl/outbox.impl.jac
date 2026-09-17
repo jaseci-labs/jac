@@ -46,7 +46,6 @@ impl use_store(store: (OutboxStore | None)) -> None {
         _state.explicit = store;
         _state.worker_store = None;
         _state.sqlite_store = None;
-        _state.schema_ready = set();
         _state.seen_lru = OrderedDict();
         if cached_sqlite is not None and cached_sqlite is not store {
             cached_sqlite.close();
@@ -76,7 +75,7 @@ impl _row_to_entry(row: tuple[any, ...]) -> OutboxEntry {
 
 
 impl SqliteOutboxStore.ensure_tables -> None {
-    for stmt in _SCHEMA_SQL {
+    for stmt in OUTBOX_SCHEMA_SQL {
         self._exec(stmt, {});
     }
 }
@@ -350,22 +349,15 @@ impl _derive_worker_store(primary: PgStore) -> PgOutboxStore {
 }
 
 
-impl _ensure_pg_schema(primary: PgStore) -> None {
-    marker = primary.conninfo.dsn();
-    if marker in _state.schema_ready {
-        return;
-    }
+impl _pg_worker_store(primary: PgStore) -> PgOutboxStore {
     with _state.lock {
-        if marker in _state.schema_ready {
-            return;
-        }
         current = _state.worker_store;
         if isinstance(current, PgOutboxStore) {
-            current.ensure_tables();
-        } else {
-            _state.worker_store = _derive_worker_store(primary);
+            return current;
         }
-        _state.schema_ready.add(marker);
+        derived = _derive_worker_store(primary);
+        _state.worker_store = derived;
+        return derived;
     }
 }
 
@@ -389,7 +381,6 @@ impl _store_for_request(writable: bool = True) -> OutboxStore {
     if primary is None {
         return _sqlite_store();
     }
-    _ensure_pg_schema(primary);
     if writable {
         _writable_txn(_current_memory(), primary);
     }
@@ -404,7 +395,7 @@ impl _store_for_worker -> OutboxStore {
     }
     primary = _primary_pg_store();
     if primary is not None {
-        _ensure_pg_schema(primary);
+        return _pg_worker_store(primary);
     }
     with _state.lock {
         cached = _state.worker_store;

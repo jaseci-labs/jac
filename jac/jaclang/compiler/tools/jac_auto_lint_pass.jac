@@ -1,5 +1,6 @@
 import from jaclang.compiler.frontend.unitree { TreeWalker }
 import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.tools.reactive_use_walk { ReactiveUseWalker }
 import keyword;
 import jaclang.compiler.frontend.unitree as uni;
 
@@ -39,6 +40,7 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.roles {
+    Kid,
     AssignmentsRole,
     BodyRole,
     ConditionRole,
@@ -200,13 +202,6 @@ walker JacAutoLintPass(TreeWalker) {
     def _collect_doc_nodes(`node: uni.UniNode, results: list[uni.AstDocNode]) -> None;
     def _check_stale_has_read(ability_node: uni.Ability) -> None;
     def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];
-    def _walk_for_has_uses(
-        nd: uni.UniNode,
-        reactive: set[str],
-        writes: list[tuple[int, int, str]],
-        reads: list[tuple[int, int, str, uni.Name]]
-    ) -> None;
-
     def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;
     def _detect_map_lambda_jsx(
         nd: uni.FuncCall

@@ -664,6 +664,32 @@ test "raw body json-encodes non-str returns without the envelope" {
     }
 }
 
+test "raw body sends bytes verbatim, not their repr (#9234)" {
+    # Serializer has no bytes case, so a result serialized before the raw-body
+    # branch sees it arrives as the repr string instead of the bytes.
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/bytes");
+        assert r.status_code == 200 , r.text;
+        assert r.content == b"PK\x03\x04\x00\xffRAW" , str(r.content);
+        assert len(r.content) == 9 , str(len(r.content));
+        assert r.headers["content-type"].startswith("application/octet-stream");
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body sends a bytearray verbatim (#9234)" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/bytearray");
+        assert r.status_code == 200 , r.text;
+        assert r.content == b"\x00\x01\x02" , str(r.content);
+    } finally {
+        client.close();
+    }
+}
+
 test "envelope remains the default" {
     client = make_client("restspec_fixtures.jac");
     try {

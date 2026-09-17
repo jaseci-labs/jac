@@ -72,15 +72,24 @@ obj ExecutionManager {
         metrics: any = None;
 
     async def execute_function(
-        func: Callable[(..., any)], args: dict[(str, any)], username: str
+        func: Callable[(..., any)],
+        args: dict[(str, any)],
+        username: str,
+        serialize_result: bool = True
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_sync(
-        func: Callable[(..., any)], args: dict[(str, any)], username: str
+        func: Callable[(..., any)],
+        args: dict[(str, any)],
+        username: str,
+        serialize_result: bool = True
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_async(
-        func: Callable[(..., any)], args: dict[(str, any)], username: str
+        func: Callable[(..., any)],
+        args: dict[(str, any)],
+        username: str,
+        serialize_result: bool = True
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker(
@@ -100,7 +109,7 @@ obj ExecutionManager {
     ) -> list[JsonValue] | Generator | AsyncGenerator;
 
     async def _finalize_call_response(
-        call_state: CallState, result: any
+        call_state: CallState, result: any, serialize_result: bool = True
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 }
 

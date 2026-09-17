@@ -154,7 +154,7 @@ def _occ_policy -> tuple[str, int, int] {
 }
 
 impl ExecutionManager._finalize_call_response(
-    call_state: CallState, result: any
+    call_state: CallState, result: any, serialize_result: bool = True
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
@@ -167,7 +167,9 @@ impl ExecutionManager._finalize_call_response(
     }
 
     envelope: dict[str, object] = {
-        'result': Serializer.serialize(result, api_mode=True),
+        'result': Serializer.serialize(result, api_mode=True)
+            if serialize_result
+            else result,
         'reports': Serializer.serialize(reports, api_mode=True)
     };
     ctx = Jac.get_context();
@@ -278,18 +280,26 @@ async def _run_function_with_occ(
 }
 
 impl ExecutionManager.execute_function(
-    func: Callable[(..., any)], args: dict[(str, any)], username: str
+    func: Callable[(..., any)],
+    args: dict[(str, any)],
+    username: str,
+    serialize_result: bool = True
 ) -> dict[str, JsonValue] {
     import inspect;
 
     if inspect.iscoroutinefunction(func) {
-        return await self.execute_function_async(func, args, username);
+        return await self.execute_function_async(
+            func, args, username, serialize_result
+        );
     }
-    return await self.execute_function_sync(func, args, username);
+    return await self.execute_function_sync(func, args, username, serialize_result);
 }
 
 impl ExecutionManager.execute_function_sync(
-    func: Callable[(..., any)], args: dict[(str, any)], username: str
+    func: Callable[(..., any)],
+    args: dict[(str, any)],
+    username: str,
+    serialize_result: bool = True
 ) -> dict[str, JsonValue] {
     async def run_attempt(
         call_state: CallState, _ctx: ExecutionContext
@@ -299,7 +309,7 @@ impl ExecutionManager.execute_function_sync(
         if iscoroutine(result) {
             result = await result;
         }
-        return await self._finalize_call_response(call_state, result);
+        return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
         self, args, username, run_attempt, unit_key=_unit_key_for(func)
@@ -307,13 +317,16 @@ impl ExecutionManager.execute_function_sync(
 }
 
 impl ExecutionManager.execute_function_async(
-    func: Callable[(..., any)], args: dict[(str, any)], username: str
+    func: Callable[(..., any)],
+    args: dict[(str, any)],
+    username: str,
+    serialize_result: bool = True
 ) -> dict[str, JsonValue] {
     async def run_attempt(
         call_state: CallState, _ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
         result = await func(**args);
-        return await self._finalize_call_response(call_state, result);
+        return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
         self, args, username, run_attempt, unit_key=_unit_key_for(func)
@@ -1125,7 +1138,9 @@ impl JacAPIServer.build_app -> ServingApp {
     import from jaclang.server.serving.openapi { register_docs_endpoints }
     import from jaclang.project.config { JacConfig }
     settings = self.resolved_settings();
-    self.introspector.load();
+    if not settings.static_only {
+        self.introspector.load();
+    }
     self.introspector.dev_mode = settings.dev;
     app = ServingApp(
         title=f"{self.module_name} API",
@@ -1376,6 +1391,9 @@ impl JacAPIServer._ensure_internal_users -> None {
 }
 
 impl JacAPIServer._register_scheduled_tasks -> None {
+    if self.resolved_settings().static_only {
+        return;
+    }
     import from jaclang.server.identity.user_manager { SYSTEM_USER }
     import from jaclang.server.task_scheduler { ScheduleSpec }
     _self = self;
@@ -1477,14 +1495,18 @@ impl JacAPIServer._prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings
     settings = self.resolved_settings();
     settings.dev = dev;
     settings.no_client = no_client;
-    self.introspector.load();
+    if not settings.static_only {
+        self.introspector.load();
+    }
     self._validate_or_raise();
     configure_access_logging(
         enabled=settings.access_log.enabled,
         format=settings.access_log.format,
         suppress_health_checks=settings.access_log.suppress_health_checks
     );
-    self._ensure_sv_siblings();
+    if not settings.static_only {
+        self._ensure_sv_siblings();
+    }
     self._ensure_internal_users();
     self._ensure_client_bundle();
     self.build_app();

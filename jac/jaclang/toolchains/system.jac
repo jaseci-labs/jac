@@ -79,9 +79,7 @@ def ensure_linux_desktop {
     import from jaclang.toolchains.host { host_platform }
     host = host_platform();
     if not host.startswith("linux-") {
-        raise RuntimeError(
-            f"The current desktop native build backend supports Linux hosts, not {host}."
-        );
+        raise RuntimeError(f"WebKitGTK provisioning needs a Linux host, not {host}.");
     }
     if desktop_system_ready() {
         return;
@@ -103,6 +101,44 @@ def ensure_linux_desktop {
             "Desktop dependencies remain unavailable after package installation."
         );
     }
+}
+
+
+def ensure_mac_desktop {
+    if mac_desktop_ready() {
+        return;
+    }
+    raise RuntimeError(
+        "The desktop target needs the Xcode Command Line Tools (clang++ and the "
+        "WebKit SDK). Run `xcode-select --install`, then retry."
+    );
+}
+
+
+def mac_desktop_ready -> bool {
+    selector = shutil.which("xcode-select");
+    if not selector
+        or subprocess.run([selector, "-p"], capture_output=True).returncode != 0 {
+        return False;
+    }
+    return bool(shutil.which("clang++"));
+}
+
+
+def ensure_desktop_host -> str {
+    import from jaclang.toolchains.host { host_platform }
+    host = host_platform();
+    if host.startswith("linux-") {
+        ensure_linux_desktop();
+    } elif host.startswith("mac-") {
+        ensure_mac_desktop();
+    } else {
+        raise RuntimeError(
+            "Desktop apps build on Linux (WebKitGTK) and macOS (WKWebView); "
+            f"{host} has no native webview backend yet."
+        );
+    }
+    return host;
 }
 
 

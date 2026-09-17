@@ -1,12 +1,9 @@
 impl StaticAnalysisPass._run_impl(ir_in: Module) -> Module {
-    _fresh: set[int] = set();
-    self._checked_scopes = _fresh;
-
     if self.module.is_raised_from_py {
         return ir_in;
     }
 
-    self._check_unused_symbols(self.module);
+    self.module spawn UnusedSymbolWalker(analysis=self);
     self._check_undefined_names(self.module);
     self._check_unreachable_code(self.module);
     self._check_semantic_patterns(self.module);
@@ -27,11 +24,6 @@ impl StaticAnalysisPass._check_placement_warnings(mod: Module) -> None {
 }
 
 impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
-    if id(scope) in self._checked_scopes {
-        return;
-    }
-    self._checked_scopes.add(id(scope));
-
     for (name, sym) in scope.names_in_scope.items() {
         if sym.imported {
             continue;
@@ -85,10 +77,6 @@ impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
         if len(sym.uses) == 0 {
             self.ctx.emit(W2003, node_override=sym.decl, name=name);
         }
-    }
-
-    for kid in scope.kid_scope {
-        self._check_unused_symbols(kid);
     }
 }
 
@@ -477,10 +465,10 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             if isinstance(resolved, str) and resolved.endswith('.jac') {
                 import from jaclang.compiler.frontend.diagnostics { W1105 }
                 import from jaclang.compiler.placement.placement_pins {
-                    is_client_npm_import
+                    in_client_npm_world
                 }
                 spec = nd.from_loc.dot_path_str;
-                if is_client_npm_import(spec, nd.loc.mod_path or '') {
+                if in_client_npm_world(spec, nd.loc.mod_path or '') {
                     self.ctx.emit(W1105, node_override=nd.from_loc, name=spec);
                 }
             }
@@ -505,12 +493,12 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             import from jaclang.compiler.frontend.diagnostics { W1106 }
             import from jaclang.project.modresolver { is_path_alias_import }
             import from jaclang.compiler.placement.placement_pins {
-                is_client_npm_import
+                in_client_npm_world
             }
             mod_path = nd.loc.mod_path or '';
             sibling_file = os.path.join(os.path.dirname(mod_path), spv);
             if (
-                not is_client_npm_import(spv, mod_path)
+                not in_client_npm_world(spv, mod_path)
                 and not is_path_alias_import(spv, mod_path)
                 and not os.path.isfile(sibling_file)
             ) {

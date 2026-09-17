@@ -5,7 +5,7 @@ import struct;
 import sys;
 import zlib;
 import from pathlib { Path }
-import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
+import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS, COMPILER_DIGEST_ROOTS }
 
 glob MAGIC = b"JIR\x00",
      FORMAT_VERSION: int = 26,
@@ -264,25 +264,16 @@ def _module_codespace_mode(source_path: str) -> str {
     }
 }
 
-glob COMPILER_DIGEST_ROOTS: tuple[str, ...] = (
-         "jac0.py",
-         "bootstrap_manifest.py",
-         "meta_importer.py",
-         "jac0core",
-         "compiler",
-         "runtime",
-         "lib",
-         "cli/cli_boot.jac",
-         "project",
-         "dist/precompile_bytecode.jac"
-     ),
-     COMPILER_DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".py"),
+glob COMPILER_DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".py"),
      COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__"),
      COMPILER_DIGEST_SKIP: tuple[str, ...] = ();
 
 def compiler_source_files(pkg_dir: str) -> list[str] {
     base = str(Path(pkg_dir));
     rels: list[str] = [];
+    if os.path.isfile(os.path.join(base, "compiler_inputs.txt")) {
+        rels.append("compiler_inputs.txt");
+    }
     for `entry in COMPILER_DIGEST_ROOTS {
         target = os.path.join(base, `entry.replace("/", os.sep));
         if os.path.isfile(target) {

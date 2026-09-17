@@ -1,6 +1,7 @@
 node Item {
     has name: str,
-        weight: int = 0;
+        weight: int = 0,
+        ct_pruned: bool = False;
 }
 
 edge Part {
@@ -47,6 +48,15 @@ def run -> tuple[int, list[str], int, int, int, int, int] {
     top = build();
     w = top spawn Sum();
     parts = [top->:Part:->];
+    assert [top->:Part:->[?:Item, ct_pruned==False]] == parts;
+    parts[1].ct_pruned = True;
+    assert [top->:Part:->[?:Item, ct_pruned==False]] == [parts[0]];
+    assert [top->:Part:->[?:Item, weight>=2, ct_pruned!=True]] == [parts[0]];
+    assert parts[?:Item, ct_pruned==True] == [parts[1]];
+    top +>:Link:+> parts[0];
+    top +>:Link:+> parts[1];
+    assert [top->:Link:->[?:Item, ct_pruned==False]] == [parts[0]];
+    del [edge top->:Link:->];
     back = [parts[0]<-:Part:<-];
     edges = [edge top->:Part:->];
     plain = [top-->];
