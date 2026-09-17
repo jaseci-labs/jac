@@ -177,6 +177,102 @@ test "artifact identity includes content and rejects unsafe names" {
     }
 }
 
+"""A cache hit is a use: the entry's marker moves forward so the bucket's
+last-use policy keeps a download, an install or a build that is in daily use.
+One mechanism (`Bucket.note_hit`), reached from every hit path."""
+test "a cache hit refreshes the entry's last-use marker" {
+    import time;
+    import from jaclang.toolchains.store {
+        build_slot,
+        install_slot,
+        publish_build_slot,
+        publish_install_slot,
+        slot_installed,
+        slot_ready
+    }
+    old = time.time() - 40.0 * 86400.0;
+    with TemporaryDirectory() as tmp {
+        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "0"}) {
+            slot = build_slot("probe", "linux-x64", "abcdef0123456789ab");
+            staged = Path(tmp) / "staged";
+            staged.mkdir();
+            (staged / "out").write_text("built");
+            publish_build_slot(staged, slot);
+            ready = slot / ".ready";
+            assert ready.is_file();
+            os.utime(ready, (old, old));
+            assert slot_ready(slot);
+            assert ready.stat().st_mtime > old + 86400.0 , "a build hit must refresh the ready marker";
+            home = install_slot("gemhome", "1.0", "linux-x64-ruby3");
+            home.mkdir(parents=True);
+            publish_install_slot(home, {"name": "gemhome"});
+            marker = home / ".jac-install.json";
+            os.utime(marker, (old, old));
+            assert slot_installed(home);
+            assert marker.stat().st_mtime > old + 86400.0 , "an in-place install hit must refresh its marker";
+            data = archive_bytes();
+            artifact = sample_artifact(data);
+            with patch(
+                "jaclang.toolchains.store.urlopen", return_value=response_for(data)
+            ) {
+                destination = install(artifact, "bin/tool");
+                download = fetch(artifact);
+            }
+            os.utime(destination / ".jac-install.json", (old, old));
+            os.utime(download, (old, old));
+            with patch.dict(os.environ, {"JAC_OFFLINE": "1"}) {
+                assert install(artifact, "bin/tool") == destination;
+                assert fetch(artifact) == download;
+            }
+            assert (destination / ".jac-install.json").stat().st_mtime
+                > old + 86400.0 , "an archive install hit must refresh its marker";
+            assert download.stat().st_mtime > old + 86400.0 , "a download hit must refresh the file";
+        }
+    }
+}
+
+"""No toolchain writer composes a cache path of its own: every destination is
+a bucket the registry knows, so `jac cache` can report and reclaim it and the
+next writer cannot escape either."""
+test "every toolchain destination resolves inside a managed bucket" {
+    import jaclang.toolchains as toolchains_pkg;
+    import from jaclang.cache.registry { BUCKETS, bucket }
+    import from jaclang.toolchains.store { build_slot, install_slot }
+    with TemporaryDirectory() as tmp {
+        with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp}) {
+            managed = [
+                str(b.path())
+                for b in BUCKETS
+                if b.relpath.startswith("toolchains/")
+            ];
+            destinations = [
+                build_slot("llvm-cbe", "linux-x64", "rev-abcdef0123456789"),
+                install_slot("cocoapods", "1.16.2", "linux-x64-ruby3"),
+                bucket("toolchains-downloads").path() / "sha256-abc",
+                bucket("toolchains-gradle").path(),
+                bucket("toolchains-android-sdk").path() / "linux-x64"
+            ];
+            for dest in destinations {
+                assert any(
+                    str(dest).startswith(owner + os.sep) or str(dest) == owner
+                    for owner in managed
+                ) , f"{dest} is outside every managed bucket";
+            }
+        }
+    }
+    pkg = Path(str(toolchains_pkg.__file__)).parent;
+    for src in sorted(pkg.`glob("*.jac")) {
+        if src.name == "store.jac" {
+            continue;
+        }
+        text = src.read_text();
+        assert "cache_root(" not in text and "family_root(" not in text , (
+            f"{src.name} composes its own cache path; use the store's slot "
+            f"helpers or a registry bucket"
+        );
+    }
+}
+
 test "partial downloads retry from an empty temporary file" {
     with TemporaryDirectory() as tmp {
         with patch.dict(os.environ, {"JAC_TOOLCHAIN_DIR": tmp, "JAC_OFFLINE": "0"}) {

@@ -187,3 +187,55 @@ test "the launcher reclaims runtimes unused past the TTL and stale temp extracti
     assert (live / ".ok").is_file() , "the running payload must never be reclaimed";
     assert sentinel.is_file() , "the sweep must leave its throttle sentinel";
 }
+
+"""A marker the launcher cannot refresh (a read-only cache, a chmod-ed file)
+costs an earlier reclaim, never the boot: the bootstrap has no file write
+that can raise before CPython exists."""
+test "boot survives a last-use marker it cannot refresh" {
+    if os.name != "posix" or os.geteuid() == 0 {
+        return;
+    }
+    st = prepared();
+    marker = st["explicit"] / "rt" / st["key"] / ".used";
+    assert marker.is_file();
+    backdate(marker, 3.0 * DAY);
+    stamp = marker.stat().st_mtime;
+    os.chmod(marker, 0o444);
+    try {
+        run = run_launcher(st["one"], st["env"], str(st["tmp"]));
+    } finally {
+        os.chmod(marker, 0o644);
+    }
+    assert run.returncode == 0 , f"a read-only marker aborted the boot (exit {run.returncode}):\n{run.stderr}";
+    assert "Uncaught" not in run.stderr , run.stderr;
+    assert marker.stat().st_mtime == stamp , "the marker cannot have been refreshed; the boot must simply carry on";
+}
+
+"""The temp-dir fallback the resolver was designed around: a cache root the
+user cannot write must not abort the boot, it must send the runtime to
+`$TMPDIR/jac-cache-<uid>` (a probe write that raises instead of answering
+False defeated it on main)."""
+test "an unwritable cache root falls back to the temp dir" {
+    if os.name != "posix" or os.geteuid() == 0 {
+        return;
+    }
+    st = prepared();
+    tmp = Path(tempfile.mkdtemp(prefix="jac-fused-ro-"));
+    xdg = tmp / "xdg";
+    (xdg / "jac").mkdir(parents=True);
+    os.chmod(xdg / "jac", 0o555);
+    tmpdir = tmp / "tmpdir";
+    tmpdir.mkdir();
+    env = launcher_env(tmp / "unused", xdg);
+    env["JAC_CACHE_HOME"] = "";
+    env["TMPDIR"] = str(tmpdir);
+    try {
+        run = run_launcher(st["one"], env, str(tmp));
+    } finally {
+        os.chmod(xdg / "jac", 0o755);
+    }
+    assert run.returncode == 0 , f"an unwritable root aborted the boot (exit {run.returncode}):\n{run.stderr}";
+    fallback = tmpdir / f"jac-cache-{os.getuid()}" / "rt" / st["key"];
+    assert (fallback / ".ok").is_file() , f"the runtime did not land in the temp-dir fallback:\n{run.stderr}";
+    assert not (xdg / "jac" / "rt").exists() , "nothing may be written under the unwritable root";
+}

@@ -167,3 +167,60 @@ test "purge and gc keep the runtime the interpreter runs from, whatever key it w
         }
     }
 }
+
+"""An entry whose contents cannot be unlinked (a read-only subdirectory)."""
+def stuck_entry(base: Path, rel: str, age_days: float) -> Path {
+    d = seed_entry(base, rel, age_days);
+    inner = d / "inner";
+    inner.mkdir();
+    (inner / "file").write_bytes(b"x");
+    os.chmod(inner, 0o555);
+    # Adding `inner` refreshed the entry's mtime; age it again.
+    t = time.time() - age_days * DAY;
+    os.utime(d / ".used", (t, t));
+    os.utime(d, (t, t));
+    return d;
+}
+
+def release(stuck: Path) {
+    os.chmod(stuck / "inner", 0o755);
+}
+
+"""The explicit command answers for what it could not do: a removal that
+fails must leave a nonzero exit while everything else is still reclaimed and
+reported. (Opportunistic sweeps on write paths stay silent by design.)"""
+test "cache gc exits nonzero when a removal fails and still reclaims the rest" {
+    if os.name != "posix" or os.geteuid() == 0 {
+        return;
+    }
+    (base, env) = private_env();
+    stuck = stuck_entry(base, "rt/0123456789abcdef", 60.0);
+    gone = seed_entry(base, "rt/fedcba9876543210", 60.0);
+    try {
+        (rc, out) = run_cache(env, action="gc");
+    } finally {
+        release(stuck);
+    }
+    assert rc != 0 , f"gc reported success with a removal error:\n{out}";
+    assert not gone.exists() , "the deletable sibling must still be reclaimed";
+    assert stuck.exists();
+    assert "fedcba9876543210" in out , "what was removed must still be reported";
+}
+
+test "cache purge exits nonzero when a removal fails and still reports what it removed" {
+    if os.name != "posix" or os.geteuid() == 0 {
+        return;
+    }
+    (base, env) = private_env();
+    stuck = stuck_entry(base, "apps/" + "a" * 20, 0.0);
+    gone = seed_entry(base, "apps/" + "b" * 20, 0.0);
+    try {
+        (rc, out) = run_cache(env, action="purge", bucket="apps");
+    } finally {
+        release(stuck);
+    }
+    assert rc != 0 , f"purge reported success with a removal error:\n{out}";
+    assert not gone.exists() , "the deletable sibling must still be removed";
+    assert stuck.exists();
+    assert "b" * 20 in out , "what was removed must still be reported";
+}
