@@ -74,13 +74,7 @@ impl WebhookUtils.extract_signature(header_value: str) -> str {
 }
 
 impl ApiKeyManager.postinit -> None {
-    if self._db is not None {
-        try {
-            self._ensure_indexes();
-        } except Exception as e {
-            logger.warning(f"webhook_api_keys index setup skipped: {e}");
-        }
-    } else {
+    if self._db is None {
         logger.warning(
             "Webhook API keys are stored in memory (no database available). "
             "Keys and revocations are NOT durable: every restart invalidates "
@@ -88,18 +82,6 @@ impl ApiKeyManager.postinit -> None {
             "production webhook use."
         );
     }
-}
-
-impl ApiKeyManager._ensure_indexes -> None {
-    db = self._db;
-    if db is None {
-        return;
-    }
-    db.rows(
-        'CREATE INDEX IF NOT EXISTS jac_docs_user_id_idx ON jac_docs '
-        "(collection, (doc->>'user_id'))",
-        {}
-    );
 }
 
 impl ApiKeyManager.create_api_key(

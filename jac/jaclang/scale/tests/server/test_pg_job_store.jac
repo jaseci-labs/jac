@@ -18,12 +18,7 @@ import from jaclang.data.store { PgStore }
 import from jaclang.scale.scheduler.scheduler { PgJobStore }
 import from jaclang.scale.webhook.webhook { ApiKeyManager }
 
-glob _holder: dict[str, any] = {},
-     _DOCS_DDL = (
-         'CREATE TABLE IF NOT EXISTS jac_docs ('
-         'collection text NOT NULL, id text NOT NULL, doc jsonb NOT NULL, '
-         'PRIMARY KEY (collection, id))'
-     );
+glob _holder: dict[str, any] = {};
 
 
 def _store -> (PgStore | None) {
@@ -32,7 +27,7 @@ def _store -> (PgStore | None) {
             _holder['rt'] = PgRuntime(data_dir=mkdtemp(prefix='jacjs_') + '/data');
         }
         store = PgStore(conninfo=_holder['rt'].ensure());
-        store.rows(_DOCS_DDL, {});
+        store.ensure_schema({});
         return store;
     } except Exception as e {
         print(f"[skip] embedded postgres unavailable: {e}");

@@ -24,7 +24,7 @@ walker Probe {
     has seen: list[str] = [];
 
     can start with Root entry {
-        visit [-->];
+        visit [-->[?:SecretNode, label=="secret"]];
     }
 
     can see with SecretNode entry {
@@ -53,7 +53,7 @@ def _mk_user_root(mem: any) -> any {
 def _three_transcripts(origin_arch: any, mem: any) -> tuple[any, ...] {
     bare = [
         n.label
-        for n in [origin_arch-->]
+        for n in [origin_arch-->[?:SecretNode, label=="secret"]]
         if isinstance(n, SecretNode)
     ];
     planned = [
@@ -97,6 +97,16 @@ test "bare refs, planner queries, and walker visits filter identically" {
             assert bare_b == [] , f"bare [-->] leaked A-private node to B: {bare_b}";
             assert plan_b == [] , f"planner query leaked A-private node to B: {plan_b}";
             assert walk_b == [] , f"walker visit leaked A-private node to B: {walk_b}";
+
+            child = ExecutionContext(_parent=ctx);
+            JacRuntime.exec_ctx = child;
+            try {
+                assert _three_transcripts(rb_arch, ctx.mem) == ([], [], []) , (
+                    "an unresolved child context must inherit its parent's ACL"
+                );
+            } finally {
+                JacRuntime.exec_ctx = ctx;
+            }
 
             ctx.set_user_root(str(ra.id));
             (bare_a, plan_a, walk_a) = _three_transcripts(rb_arch, ctx.mem);

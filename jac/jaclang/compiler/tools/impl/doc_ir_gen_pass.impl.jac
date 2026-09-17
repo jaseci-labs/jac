@@ -353,18 +353,10 @@ impl DocIRGenPass.exit_name with uni.Name exit {
         return;
     }
     name_text = f"`{here.value}" if here.is_kwesc else here.value;
-    by_kids = [
-        k
-        for k in here.kid
-        if (isinstance(k, uni.Token) and (k.name == Tok.KW_BY))
-    ];
+    by_kids = [here->:Kid:->[?:uni.Token, name==Tok.KW_BY]];
     by_kid = by_kids[0] if by_kids else None;
     if by_kid is not None {
-        semi_kids = [
-            k
-            for k in here.kid
-            if isinstance(k, uni.Semi)
-        ];
+        semi_kids = [here->:Kid:->[?:uni.Semi]];
         semi_kid = semi_kids[0] if semi_kids else None;
         parts: list[doc.DocType] = [
             by_kid.gen.doc_ir,
@@ -833,6 +825,9 @@ impl DocIRGenPass.exit_filter_compr with uni.FilterCompr exit {
     for i in here.kid {
         if isinstance(i, uni.Token) and i.name == Tok.COMMA {
             parts.append(doc.Text(", "));
+        } elif isinstance(i, uni.CompareExpr)
+            and any(op.value in ("in", "not in", "is", "is not") for op in i.ops) {
+            parts.append(i.gen.doc_ir);
         } else {
             parts.append(self.remove_all_spaces(i.gen.doc_ir));
         }
@@ -905,8 +900,14 @@ impl DocIRGenPass.exit_connect_op with uni.ConnectOp exit {
 
 impl DocIRGenPass.exit_visit_stmt with uni.VisitStmt exit {
     parts: list[doc.DocType] = [];
-    for i in here.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
+    for (idx, i) in enumerate(here.kid) {
+        if (isinstance(i, uni.Token) and (i.name == Tok.COLON)) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            if idx != 1 {
+                parts.append(self.space());
+            }
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());

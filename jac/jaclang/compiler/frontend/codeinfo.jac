@@ -760,7 +760,7 @@ obj NodeComments {
 }
 
 obj CodeGenTarget {
-    has py: str = '',
+    has _py: (str | None) = None,
         jac: str = '',
         _doc_ir: (Doc | None) = None,
         js: str = '',
@@ -790,6 +790,7 @@ obj CodeGenTarget {
         _exported_symbols: list[str] = [],
         doc_comments: (NodeComments | None) = None;
 
+    has py: str { getter; setter(value: str); }
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }

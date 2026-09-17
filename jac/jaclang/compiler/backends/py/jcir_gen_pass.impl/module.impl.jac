@@ -465,11 +465,7 @@ impl JcirGenPass.exit_import with Import exit {
             )
         );
     } elif not here.from_loc {
-        mod_paths = [
-            k
-            for k in here.kid
-            if isinstance(k, ModulePath)
-        ];
+        mod_paths = [here->:Kid:->[?:ModulePath]];
         names_list = [x for p in mod_paths for x in self.outs(p)]
             if mod_paths
             else [x for item in here.items for x in self.outs(item)];

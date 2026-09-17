@@ -182,7 +182,11 @@ def _application_sources(package_dir: str, app: str) -> list[str] | None {
             options = bind_options(
                 application.entry,
                 program,
-                CompileOptions(entry_point=application.entry, project_root=package_dir)
+                CompileOptions(
+                    entry_point=application.entry,
+                    project_root=package_dir,
+                    no_cgen=True
+                )
             );
             compile_application(program, application.entry, options);
         }

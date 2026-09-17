@@ -952,7 +952,8 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
             j += 1
         inner = tokens[i + 1 : j]
         if len(inner) >= 2 and inner[0].value == "?" and inner[1].type == TT.COLON:
-            type_tokens = inner[2:]
+            filter_parts = _split_top(inner[2:], TT.COMMA)
+            type_tokens = filter_parts[0]
             if not type_tokens or any(
                 t.type != (TT.NAME if n % 2 == 0 else TT.DOT)
                 for n, t in enumerate(type_tokens)
@@ -965,13 +966,30 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
             names = {t.value for t in tokens if t.type == TT.NAME}
             while item in names:
                 item += "_"
+            predicates: list[Token] = []
+            for part in filter_parts[1:]:
+                if (
+                    len(part) < 3
+                    or part[0].type != TT.NAME
+                    or part[1].type != TT.OP
+                    or part[1].value not in ("==", "!=", "<", "<=", ">", ">=")
+                ):
+                    raise ParseError(
+                        f"line {tok.line}: seed node predicates require `name op value`"
+                    )
+                predicates.extend([
+                    _tok(TT.NAME, "and", tok), _tok(TT.LPAREN, "(", tok),
+                    _tok(TT.NAME, item, tok), _tok(TT.DOT, ".", tok),
+                    *part, _tok(TT.RPAREN, ")", tok),
+                ])
             out.extend([
                 _tok(TT.LBRACKET, "[", tok), _tok(TT.NAME, item, tok),
                 _tok(TT.NAME, "for", tok), _tok(TT.NAME, item, tok),
                 _tok(TT.NAME, "in", tok), *origin, _tok(TT.NAME, "if", tok),
                 _tok(TT.NAME, "isinstance", tok), _tok(TT.LPAREN, "(", tok),
                 _tok(TT.NAME, item, tok), _tok(TT.COMMA, ",", tok), *type_tokens,
-                _tok(TT.RPAREN, ")", tok), _tok(TT.RBRACKET, "]", tok),
+                _tok(TT.RPAREN, ")", tok), *predicates,
+                _tok(TT.RBRACKET, "]", tok),
             ])
             i = j + 1
             continue
@@ -1012,6 +1030,27 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
                 raise ParseError(
                     f"line {tok.line}: only plain typed hops are admitted in the seed subset"
                 )
+            if (
+                not edges_only and len(trailing) >= 4
+                and trailing[0].type == TT.LBRACKET
+                and trailing[1].value == "?"
+                and trailing[2].type == TT.COLON
+                and trailing[-1].type == TT.RBRACKET
+            ):
+                # Apply the same node filter used by `items[?:T, field == value]`
+                # after the hop, preserving the adjacency's child order.
+                cur = _osp_call(
+                    "refs0" if flt else "hop0",
+                    [
+                        cur,
+                        [_tok(TT.NUMBER, str(direction), tok)],
+                        [_tok(TT.NAME, etype or "None", tok)],
+                        [_tok(TT.NAME, "False", tok)],
+                    ] + ([_lower_preds(flt, tok)] if flt else []),
+                    tok,
+                )
+                cur = _lower_edge_refs(cur + trailing)
+                continue
             for tt_ in trailing:
                 if tt_.type == TT.OP and tt_.value.startswith("?"):
                     raise ParseError(

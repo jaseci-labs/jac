@@ -194,7 +194,9 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
         server.introspector = MagicMock(spec=ModuleIntrospector);
         server.module = SimpleNamespace(__file__=str(Path(img_root) / "main.jac"));
         server.introspector.resolve_root_app.return_value = "app";
-        server.resolved_settings.return_value = SimpleNamespace(client_dist="");
+        server.resolved_settings.return_value = SimpleNamespace(
+            client_dist="", static_only=False
+        );
         with patch("jaclang.server.endpoints.pages.get_config", return_value=None), patch(
             "jaclang.server.endpoints.pages.Jac.get_context",
             return_value=SimpleNamespace(base_path_dir=str(unrelated))

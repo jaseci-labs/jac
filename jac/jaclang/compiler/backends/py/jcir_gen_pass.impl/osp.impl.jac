@@ -528,13 +528,10 @@ impl JcirGenPass._traversal_consumed_now(nd: EdgeRefTrailer) -> bool {
 }
 
 impl JcirGenPass._simple_hop(nd: EdgeRefTrailer) -> (list[CgNode] | None) {
-    if nd.is_async {
+    if nd.is_async or self._traversal_consumed_now(nd) {
         return None;
     }
     parent = nd.parent;
-    if isinstance(parent, VisitStmt) {
-        return None;
-    }
     if isinstance(parent, AtomTrailer)
         and parent.target is nd
         and isinstance(parent.right, (FilterCompr, IndexSlice)) {
@@ -549,6 +546,13 @@ impl JcirGenPass._simple_hop(nd: EdgeRefTrailer) -> (list[CgNode] | None) {
         return None;
     }
     chain = nd.chain;
+    if isinstance(chain[-1], FilterCompr) {
+        if nd.edges_only
+            or any(self._order_name_of(x) is not None for x in chain[-1].compares) {
+            return None;
+        }
+        chain = chain[:-1];
+    }
     if len(chain) == 2
         and not isinstance(chain[0], EdgeOpRef)
         and isinstance(chain[1], EdgeOpRef) {
@@ -574,13 +578,24 @@ impl JcirGenPass._simple_hop(nd: EdgeRefTrailer) -> (list[CgNode] | None) {
 impl JcirGenPass.exit_edge_ref_trailer with EdgeRefTrailer exit {
     simple = self._simple_hop(here);
     if simple is not None {
+        kws: list[CgNode] = [];
+        if isinstance(here.chain[-1], FilterCompr) {
+            kws.extend(self._query_filter_kws(here.chain[-1], 'nd', 'preds'));
+        }
+        if isinstance(here.parent, VisitStmt) {
+            kws.append(
+                self.nod(
+                    'keyword', ['arg', 'value'], ['from_visit', self.const_of(True)]
+                )
+            );
+        }
         self.set_out(
             here,
             [
                 self.call_node(
                     self.jaclib_obj('hop'),
                     [*simple, self.const_of(here.edges_only)],
-                    []
+                    kws
                 )
             ]
         );

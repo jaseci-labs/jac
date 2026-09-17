@@ -7,6 +7,11 @@ impl JacScaleConfig.get_config_schema(self: JacScaleConfig) -> dict[str, any] {
     return {"section": "scale", "options": scale_schema_options()};
 }
 
+impl JacScaleConfig.get_app_config_schema(self: JacScaleConfig) -> dict[str, any] {
+    import from jaclang.scale.config.plugin_config { app_scale_schema }
+    return {"section": "scale", "options": app_scale_schema()};
+}
+
 impl JacScaleConfig.get_config_strict_env(self: JacScaleConfig) -> str {
     import from jaclang.scale.config.validation { STRICT_ENV }
     return STRICT_ENV;

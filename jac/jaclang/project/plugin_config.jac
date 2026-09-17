@@ -15,8 +15,12 @@ obj PluginConfigBase {
     def get_plugin_name -> str abst;
     def get_default_config -> dict[str, any] abst;
     def get_config_schema -> dict[str, any];
+    def get_app_config_schema -> dict[str, any];
     def get_config_strict_env -> str;
-    def _validate_declared_keys(raw: dict[str, any]) -> None;
+    def _validate_layer(
+        raw: dict[str, any] | None, schema: dict[str, any], section: str
+    ) -> None;
+
     def load -> dict[str, any];
     def get_jac_config -> JacConfig;
     def effective_jac_config -> JacConfig;

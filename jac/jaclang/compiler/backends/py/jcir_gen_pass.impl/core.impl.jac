@@ -1,10 +1,10 @@
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl JcirGenPass._get_builtin_names -> set[str] {
-    return set(JCIR_BUILTIN_NAMES);
+    return self._builtin_names;
 }
 
 impl JcirGenPass._get_ambient_typing_names -> set[str] {
-    return set(JCIR_AMBIENT_TYPING_NAMES);
+    return self._ambient_typing_names;
 }
 
 impl JcirGenPass.postinit -> None {
@@ -14,6 +14,8 @@ impl JcirGenPass.postinit -> None {
     _typing: set[str] = set();
     self.jaclib_imports = _jaclib;
     self._runtime_aliases = {};
+    self._builtin_names = set(JCIR_BUILTIN_NAMES);
+    self._ambient_typing_names = set(JCIR_AMBIENT_TYPING_NAMES);
     self._reserved_names = {nd.sym_name for nd in self.module.get_all_sub_nodes(Name)};
     self.builtin_imports = _builtins;
     self.sized_imports = _sized;
@@ -182,21 +184,14 @@ impl JcirGenPass.nod(
 ) -> CgNode {
     src = jac_node if jac_node is not None else self.ctx.current_node;
     loc = src.loc;
-    l2 = loc.last_line
-        if (loc.last_line and (loc.last_line > loc.first_line))
-        else loc.first_line;
-    c2 = loc.col_end
-        if (loc.col_end and (loc.col_end > loc.col_start))
-        else loc.col_start;
+    l1 = loc.first_line;
+    c1 = loc.col_start;
+    last_line = loc.last_line;
+    col_end = loc.col_end;
+    l2 = last_line if (last_line and last_line > l1) else l1;
+    c2 = col_end if (col_end and col_end > c1) else c1;
     return CgNode(
-        cls=cls_name,
-        keys=keys,
-        vals=vals,
-        l1=loc.first_line,
-        c1=loc.col_start,
-        l2=l2,
-        c2=c2,
-        jac_src=src
+        cls=cls_name, keys=keys, vals=vals, l1=l1, c1=c1, l2=l2, c2=c2, jac_src=src
     );
 }
 
@@ -218,10 +213,8 @@ impl JcirGenPass.call_node(
 }
 
 impl JcirGenPass.outs(nd: UniNode) -> list[CgItem] {
-    if nd in self._sink {
-        return self._sink[nd];
-    }
-    return [];
+    got = self._sink.get(nd);
+    return got if got is not None else [];
 }
 
 impl JcirGenPass.set_out(nd: UniNode, items: list[CgItem]) -> None {
@@ -229,7 +222,7 @@ impl JcirGenPass.set_out(nd: UniNode, items: list[CgItem]) -> None {
 }
 
 impl JcirGenPass.val(nd: UniNode) -> CgNode {
-    got: list[CgItem] = self._sink[nd] if nd in self._sink else [];
+    got: (list[CgItem] | None) = self._sink.get(nd);
     if not got {
         loc = nd.loc;
         raise RuntimeError(

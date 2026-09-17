@@ -27,11 +27,15 @@ glob __all__ = [
 def access_gated -> bool {
     import from jaclang.runtime.runtime { JacRuntimeInterface }
     jctx = JacRuntimeInterface.peek_context();
+
+    while jctx is not None and jctx._system_root is None {
+        jctx = jctx._parent;
+    }
     if jctx is None {
         return False;
     }
-    ur = jctx?.user_root;
-    return ur is not None and ur != jctx.system_root;
+    ur = jctx._user_root;
+    return ur is not None and ur != jctx._system_root;
 }
 
 

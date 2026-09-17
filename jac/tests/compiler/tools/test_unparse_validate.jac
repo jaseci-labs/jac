@@ -11,9 +11,66 @@ import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.tools.jac_formatter_pass { format_module }
-import from jaclang.compiler.tools.unparse_pass { unparse_module, unparse_node }
+import from jaclang.compiler.tools.unparse_pass {
+    UnparsePass,
+    unparse_module,
+    unparse_node
+}
+import from jaclang.compiler.passes.execution { run_walker }
+import from jaclang.compiler.frontend.parser.frontend { parse }
 
 glob LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
+
+test "raw enum unparse roundtrip" {
+    for src in [
+        "enum Color { RED=0, GREEN=1, BLUE }",
+        "enum Color: int { RED=0, GREEN=1 }",
+        "enum Color; impl Color { RED=0, GREEN=1 }"
+    ] {
+        (mod, failed) = parse(src, "enum_roundtrip.jac");
+        assert not failed;
+        first = unparse_module(mod, requires_format=False);
+        assert "RED = 0," in first , first;
+        (again, failed_again) = parse(first, "enum_roundtrip.jac");
+        assert not failed_again , first;
+        assert first == unparse_module(again, requires_format=False);
+    }
+}
+
+test "unparse prepares role-only tokens" {
+    (mod, failed) = parse("with entry { x = 1 + 2; }", "role_token.jac");
+    assert not failed;
+    expr = mod.get_all_sub_nodes(uni.BinaryExpr)[0];
+    expr.set_kids(
+        [
+            kid
+            for kid in expr.kid
+            if kid is not expr.op
+        ]
+    );
+    assert not expr.op.gen.jac;
+    run_walker(UnparsePass, module=mod);
+    assert expr.gen.jac == "1 + 2" , expr.gen.jac;
+}
+
+test "visit insertion position unparse roundtrip" {
+    src = "import math, os; "
+        + "walker Walk { can step with Root entry { "
+        + "visit:0: [-->]; visit:-1: [-->] else { disengage; } "
+        + "visit:1 + 2: [-->]; visit [-->]; } }";
+    prog = JacProgram();
+    mod = prog.compile(use_str=src, file_path="visit_roundtrip.jac");
+    assert not prog.errors_had;
+    first = unparse_module(mod, requires_format=False);
+    assert "visit:0:" in first;
+    assert "visit:-1:" in first.replace(" ", "");
+    assert "visit:1 + 2:" in first;
+    assert "visit [" in first;
+    reparsed = JacProgram();
+    second_mod = reparsed.compile(use_str=first, file_path="visit_roundtrip.jac");
+    assert not reparsed.errors_had , first + "\n" + str(reparsed.errors_had);
+    assert first == unparse_module(second_mod, requires_format=False);
+}
 
 test "double unparse" {
     code_gen_pure = JacProgram().compile(os.path.join(LANG_FIXTURES, "circle.jac"));

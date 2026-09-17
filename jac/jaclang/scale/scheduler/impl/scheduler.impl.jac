@@ -345,7 +345,7 @@ impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> 
     collection = scheduler_cfg.get('collection', 'scheduled_jobs');
     store: any = None;
     try {
-        store = open_docs_store();
+        store = shared_store();
     } except Exception as e {
         logger.warning(f"scheduler job store unavailable: {e}");
     }

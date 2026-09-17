@@ -1125,7 +1125,9 @@ impl JacAPIServer.build_app -> ServingApp {
     import from jaclang.server.serving.openapi { register_docs_endpoints }
     import from jaclang.project.config { JacConfig }
     settings = self.resolved_settings();
-    self.introspector.load();
+    if not settings.static_only {
+        self.introspector.load();
+    }
     self.introspector.dev_mode = settings.dev;
     app = ServingApp(
         title=f"{self.module_name} API",
@@ -1376,6 +1378,9 @@ impl JacAPIServer._ensure_internal_users -> None {
 }
 
 impl JacAPIServer._register_scheduled_tasks -> None {
+    if self.resolved_settings().static_only {
+        return;
+    }
     import from jaclang.server.identity.user_manager { SYSTEM_USER }
     import from jaclang.server.task_scheduler { ScheduleSpec }
     _self = self;
@@ -1477,14 +1482,18 @@ impl JacAPIServer._prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings
     settings = self.resolved_settings();
     settings.dev = dev;
     settings.no_client = no_client;
-    self.introspector.load();
+    if not settings.static_only {
+        self.introspector.load();
+    }
     self._validate_or_raise();
     configure_access_logging(
         enabled=settings.access_log.enabled,
         format=settings.access_log.format,
         suppress_health_checks=settings.access_log.suppress_health_checks
     );
-    self._ensure_sv_siblings();
+    if not settings.static_only {
+        self._ensure_sv_siblings();
+    }
     self._ensure_internal_users();
     self._ensure_client_bundle();
     self.build_app();

@@ -13,6 +13,77 @@ edge QE {
     has weight: int = 0;
 }
 
+edge QLight {}
+
+edge QLightSub(QLight) {}
+
+
+test "lightweight filtered hops match the general traversal" {
+    import from jaclang.runtime.runtime { JacRuntime }
+    import from jaclang.runtime.graph_walk { origin_anchors, walk_nodes }
+
+    a = QA();
+    b = QA(val=1);
+    c = QA(val=2);
+    d = QB(tag="other");
+    a +>:QLight:+> b;
+    a +>:QLightSub:+> b;
+    a +>:QLightSub:+> c;
+    a +>:QLight:+> d;
+    c +>:QLight:+> a;
+    a +>:QLight:+> a;
+    for dir in [1, 2, 3] {
+        for cls in [None, QLight, QLightSub] {
+            for nd_type in [None, QA, (QA, QB)] {
+                for preds in [[], [QPred(field="val", op=">=", value=1)]] {
+                    for bounded in [False, True] {
+                        q = GraphQuery(
+                            a,
+                            hops=[QHop(dir=dir, `edge=cls, nd=nd_type, preds=preds)],
+                            slc=slice(1, 3) if bounded else None
+                        );
+                        expected = [
+                            n.archetype for n in walk_nodes(origin_anchors(q), q, False)
+                        ];
+                        assert JacRuntime.refs(q) == expected;
+                        if not bounded {
+                            for visit_mode in [False, True] {
+                                assert JacRuntime.hop(
+                                    a,
+                                    dir,
+                                    cls,
+                                    nd=nd_type,
+                                    preds=preds,
+                                    from_visit=visit_mode
+                                )
+                                    == expected;
+                                assert JacRuntime.hop(
+                                    [a],
+                                    dir,
+                                    cls,
+                                    nd=nd_type,
+                                    preds=preds,
+                                    from_visit=visit_mode
+                                )
+                                    == expected;
+                            }
+                        }
+                        q.`visit();
+                        assert JacRuntime.refs(q) == expected;
+                    }
+                }
+            }
+        }
+    }
+    limited = GraphQuery(
+        a,
+        hops=[QHop(dir=2, nd=QA, preds=[QPred(field="val", op=">", value=0)])],
+        limit=1,
+        offset=1
+    );
+    assert JacRuntime.refs(limited) == [c];
+}
+
 
 test "qpred validates ops and scalar values" {
     ok = QPred(field="val", op="==", value=2);
@@ -99,4 +170,65 @@ test "graphquery carries flags and is callable-free" {
     assert q.hops[0].`edge is QE;
     assert q.hops[0].preds[0].matches(2);
     assert "0:25" in q.repr();
+}
+
+
+walker FilteredHopProbe {
+    has seen: list[int] = [];
+
+    can traverse with QA entry {
+        self.seen.append(here.val);
+        visit:0: [here->:QLight:->[?:QA, val>=1]];
+    }
+}
+
+test "single filtered hops and visits do not allocate a general query" {
+    import from unittest.mock { patch }
+    a = QA();
+    b = QA(val=1);
+    c = QA(val=2);
+    a +>:QLight:+> b;
+    a +>:QLight:+> QB();
+    b +>:QLight:+> c;
+    with patch.object(
+        GraphQuery,
+        '__init__',
+        side_effect=AssertionError('a simple transient hop needs no general query')
+    ) {
+        assert [a->:QLight:->[?:QA, val>=1]] == [b];
+        assert [c<-:QLight:<-[?:QA, val>=1]] == [b];
+        walked = a spawn FilteredHopProbe();
+        assert walked.seen == [0, 1, 2];
+    }
+}
+
+
+walker EdgeHopProbe {
+    has seen: list[str] = [];
+
+    can nodes with QA entry {
+        self.seen.append(str(here.val));
+        visit:0: [edge here->:QLight:->];
+    }
+
+    can edges with QLight entry {
+        self.seen.append("edge");
+    }
+}
+
+test "edge visits include each destination after its edge" {
+    import from jaclang.runtime.runtime { JacRuntime }
+    a = QA();
+    b = QA(val=1);
+    c = QA(val=2);
+    a +>:QLight:+> b;
+    b +>:QLight:+> c;
+    for dir in [1, 2, 3] {
+        q = GraphQuery(b, hops=[QHop(dir=dir, `edge=QLight)], edges_only=True);
+        q.`visit();
+        assert JacRuntime.hop(b, dir, QLight, edges_only=True, from_visit=True)
+            == JacRuntime.refs(q);
+    }
+    walked = a spawn EdgeHopProbe();
+    assert walked.seen == ["0", "edge", "1", "edge", "2"];
 }

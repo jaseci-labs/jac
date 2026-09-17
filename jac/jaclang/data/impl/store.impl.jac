@@ -1,4 +1,31 @@
-glob _SCHEMA_SQL = [
+glob OUTBOX_SCHEMA_SQL: list[str] = [
+         """
+    CREATE TABLE IF NOT EXISTS jac_outbox (
+        id              TEXT PRIMARY KEY,
+        app             TEXT NOT NULL,
+        walker          TEXT NOT NULL,
+        kwargs          TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        attempts        INTEGER NOT NULL DEFAULT 0,
+        created_at      DOUBLE PRECISION NOT NULL,
+        status          TEXT NOT NULL,
+        last_error      TEXT NOT NULL DEFAULT '',
+        next_attempt_at DOUBLE PRECISION NOT NULL DEFAULT 0
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_jac_outbox_due
+        ON jac_outbox (status, next_attempt_at)
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS jac_outbox_seen (
+        idempotency_key TEXT PRIMARY KEY,
+        result          TEXT NOT NULL DEFAULT '',
+        expires_at      DOUBLE PRECISION NOT NULL
+    )
+    """
+     ],
+     _SCHEMA_SQL: list[str] = [
          """
     CREATE TABLE IF NOT EXISTS anchors (
         id             uuid PRIMARY KEY,
@@ -56,8 +83,21 @@ glob _SCHEMA_SQL = [
         created_at  timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY (missing_id, kind)
     )
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS jac_docs (
+        collection text NOT NULL,
+        id         text NOT NULL,
+        doc        jsonb NOT NULL,
+        PRIMARY KEY (collection, id)
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS jac_docs_user_id_idx
+        ON jac_docs (collection, (doc->>'user_id'))
     """
-     ];
+     ]
+         + OUTBOX_SCHEMA_SQL;
 
 
 impl ConnInfo.dsn -> str {
@@ -505,16 +545,15 @@ impl PgStore.ensure_schema(promotions: dict[str, list[str]]) -> None {
 impl PgStore.ensure_schema_once(promotions: dict[str, list[str]]) -> None {
     self._ensure_ready();
     ns = _store_ns(self.conninfo);
-    key = _schema_extension_key();
-    if _schema_ready.get(ns) == key {
+    if ns in _schema_ready {
         return;
     }
     with _schema_gate {
-        if _schema_ready.get(ns) == key {
+        if ns in _schema_ready {
             return;
         }
         self.ensure_schema(promotions);
-        _schema_ready[ns] = key;
+        _schema_ready.add(ns);
     }
 }
 
@@ -632,11 +671,6 @@ impl PgStore._apply_schema_ddl -> None {
         }
         self._apply_promotions();
         self._property_graph_ddl();
-        for name in sorted(_schema_extensions) {
-            for stmt in _schema_extensions[name] {
-                self._run(stmt, {});
-            }
-        }
     } finally {
         self._run('SET lock_timeout = DEFAULT', {});
     }
@@ -660,12 +694,6 @@ impl PgStore._schema_fingerprint -> str {
     }
     for col in sorted(self._promotion_columns()) {
         h.update(str(col).encode());
-    }
-    for name in sorted(_schema_extensions) {
-        h.update(name.encode());
-        for stmt in _schema_extensions[name] {
-            h.update(stmt.encode());
-        }
     }
     return f"{SCHEMA_VERSION}:{h.hexdigest()[:24]}";
 }

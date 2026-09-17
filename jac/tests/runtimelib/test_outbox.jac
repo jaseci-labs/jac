@@ -633,6 +633,48 @@ test "remember runs on the worker connection, enqueue in the request transaction
 }
 
 
+test "a request never derives the worker's side store; the worker does, once" {
+    primary = _RecordingPg(conninfo=ConnInfo(host="primary.invalid"));
+    side = _RecordingPg(conninfo=ConnInfo(host="side.invalid"));
+    mem = _FakeMemory(store=primary);
+    use_store(None);
+    derived: list[any] = [];
+
+    def _mem -> any {
+        return mem;
+    }
+
+    def _side(primary_store: any) -> any {
+        derived.append(primary_store);
+        return PgOutboxStore(store=side);
+    }
+    mem_patch: any = unittest.mock.patch.object(outbox_mod, "_current_memory", _mem);
+    derive_patch: any = unittest.mock.patch.object(
+        outbox_mod, "_derive_worker_store", _side
+    );
+    try {
+        with mem_patch, derive_patch {
+            enqueue("scoring", "Greet", {"name": "ada"});
+            assert derived == [] , (
+                "a request derived the worker's side store: the request path"
+                " must only touch the caller's own connection"
+            );
+            assert outbox_mod._state.worker_store is None;
+            worker = outbox_mod._store_for_worker();
+            assert derived == [primary];
+            assert isinstance(worker, PgOutboxStore);
+            assert worker.store is side;
+            assert outbox_mod._store_for_worker() is worker;
+            assert derived == [primary] , (
+                "the worker's side store must be derived once and cached"
+            );
+        }
+    } finally {
+        use_store(None);
+    }
+}
+
+
 test "start_worker_if_bridging arms the worker only for a bridging consumer" {
     with TemporaryDirectory() as tmp {
         store = SqliteOutboxStore(path=os.path.join(tmp, "outbox.sqlite"));

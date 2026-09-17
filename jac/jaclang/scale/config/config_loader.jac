@@ -47,6 +47,7 @@ class JacScaleConfig(PluginConfigBase) {
     override def get_plugin_name(self: JacScaleConfig) -> str;
     override def get_default_config(self: JacScaleConfig) -> dict[str, any];
     override def get_config_schema(self: JacScaleConfig) -> dict[str, any];
+    override def get_app_config_schema(self: JacScaleConfig) -> dict[str, any];
     override def get_config_strict_env(self: JacScaleConfig) -> str;
     def get_sso_config(self: JacScaleConfig) -> dict[str, any];
     def get_database_config(self: JacScaleConfig) -> dict[str, any];

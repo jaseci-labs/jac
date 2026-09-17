@@ -3,7 +3,7 @@ import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.frontend.unitree as uni;
 
 import from jaclang.compiler.frontend.constant { OwnershipKind, is_mut_kind }
-import from jaclang.compiler.frontend.roles { BodyRole }
+import from jaclang.compiler.frontend.roles { BodyRole, Role }
 
 walker UnparsePass(TreeWalker) {
     can enter_walk with uni.UniNode entry {
