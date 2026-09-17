@@ -112,9 +112,21 @@ def running_runtime_key(path: str = "") -> str {
 }
 
 
-def materialized_runtime_dir(path: str = "") -> (str | None) {
+def interpreter_runtime_dir -> (str | None) {
+    try {
+        cand = Path(sys.prefix).resolve().parent;
+    } except OSError {
+        return None;
+    }
+    if (cand / ".ok").is_file() and (cand / "python").is_dir() {
+        return str(cand);
+    }
+    return None;
+}
+
+
+def _runtime_dir_for_key(key: str) -> (str | None) {
     import from jaclang.cache.registry { bucket }
-    key = running_runtime_key(path);
     if not key {
         return None;
     }
@@ -128,6 +140,31 @@ def materialized_runtime_dir(path: str = "") -> (str | None) {
         }
     }
     return None;
+}
+
+
+def materialized_runtime_dir(path: str = "") -> (str | None) {
+    if not path {
+        here = interpreter_runtime_dir();
+        if here is not None {
+            return here;
+        }
+    }
+    return _runtime_dir_for_key(running_runtime_key(path));
+}
+
+
+def running_runtime_entries -> set[str] {
+    names: set[str] = set();
+    here = interpreter_runtime_dir();
+    if here is not None {
+        names.add(os.path.basename(here));
+    }
+    key = running_runtime_key();
+    if key {
+        names.add(key);
+    }
+    return names;
 }
 
 

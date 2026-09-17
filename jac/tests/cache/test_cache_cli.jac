@@ -133,9 +133,7 @@ test "purge and gc keep the runtime the interpreter runs from, whatever key it w
         running_runtime_key
     }
     (base, env) = private_env();
-    legacy = seed_entry(
-        base, "rt/0123456789abcdef-89abcdef01234567", 400.0, ".ok"
-    );
+    legacy = seed_entry(base, "rt/0123456789abcdef-89abcdef01234567", 400.0, ".ok");
     (legacy / "python").mkdir();
     expired = seed_entry(base, "rt/fedcba9876543210", 400.0);
     recomputed = running_runtime_key();
@@ -159,7 +157,8 @@ test "purge and gc keep the runtime the interpreter runs from, whatever key it w
         }
         (rc, out) = run_cache(env, action="purge", bucket="rt", dry_run=True);
         assert rc == 0 , out;
-        assert legacy.name not in out , "a dry-run purge lists the running runtime for removal";
+        assert f"would remove rt/{legacy.name}" not in out , f"a dry-run purge lists the running runtime for removal:\n{out}";
+        assert f"kept rt/{legacy.name}" in out , f"a dry-run purge must report the running runtime as kept:\n{out}";
         (rc, out) = run_cache(env, action="purge", bucket="rt");
         assert rc == 0 , out;
         assert legacy.exists() , "purge removed the runtime this interpreter runs from";

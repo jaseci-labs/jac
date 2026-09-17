@@ -21,10 +21,10 @@ def _parse_action(action: str) -> (CacheAction | None) {
 def _live_keys -> dict[str, set[str]] {
     live: dict[str, set[str]] = {};
     try {
-        import from jaclang.dist.fused_binary { running_runtime_key }
-        key = running_runtime_key();
-        if key {
-            live["rt"] = {key};
+        import from jaclang.dist.fused_binary { running_runtime_entries }
+        entries = running_runtime_entries();
+        if entries {
+            live["rt"] = entries;
         }
     } except Exception {}
     try {
