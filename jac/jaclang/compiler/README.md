@@ -95,11 +95,15 @@ callback. Literal edge classes retain constant-tag lookup; dynamic filters use
 the same subtype matching as literal filters.
 Dynamic connections resolve one descriptor and reuse its tag and constructor;
 the registry lookup also validates that the class is a registered edge type.
+An unbounded class value uses `Edge` as its layout bound; its runtime class
+identity still determines the registered descriptor.
 
 Constructor callbacks use ordinary object construction, including inherited
 defaults, initialization, and region allocation. Types that require arguments
 remain usable for filtering; connecting through their bare class raises an
-error. Predicate fields and edge-ref element types come from the declared class
+error. A factory result of zero signals that construction without arguments
+is unavailable, rather than representing a graph handle. Generated calls
+propagate pending errors even when there is no source declaration for the callee. Predicate fields and edge-ref element types come from the declared class
 bound. Keep these semantics in the type evaluator, native lowering, and graph
 runtime so callers such as `UniNode` can use ordinary graph operations without
 maintaining lists of concrete edge classes.
@@ -114,6 +118,18 @@ runtime boundary, so indexing, iteration, and spreads share normal list lowering
 child traversals typed without a wrapper property. Its endpoint annotations
 use a type-only import; the seed compiler erases these
 annotations, so they introduce no runtime import cycle.
+
+## Delete-target validation
+
+`DeleteStmt.invalid_target` classifies one target's invalid syntax using
+`DeleteTargetError`: literals, empty target lists, null-safe access, and
+unpacking. It unwraps parentheses; callers recurse into nonempty target lists.
+AST validation owns the corresponding diagnostic messages. Type checking uses
+the same classification to skip the graph-destruction check on invalid syntax,
+while continuing to check valid value targets. For example, `del *ints()` gets
+an unpacking error, while `del ints()` gets a graph-type error when `ints()`
+returns `list[int]`. Improving expression inference must not introduce a second,
+dependent diagnostic for an already-invalid delete target.
 
 ## Packaged interfaces and compilation lifetimes
 

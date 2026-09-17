@@ -1988,7 +1988,7 @@ impl TypeCheckPass.exit_delete_stmt with DeleteStmt exit {
     }
     for leaf in here.leaf_targets() {
         if DeleteStmt.is_location(leaf)
-            or isinstance(leaf, (Literal, MultiString, FString)) {
+            or DeleteStmt.invalid_target(leaf) is not None {
             continue;
         }
         leaf_type = self.evaluator.get_type_of_expression(leaf);

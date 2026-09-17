@@ -40,12 +40,6 @@ def osp_is_a(tag: int, base: int) -> bool {
     return False;
 }
 
-"""Native edge metadata shares the graph's registered type identity.
-
-Factories use the compiler's ordinary constructor path, including defaults,
-postinit and region allocation. A zero result means construction without
-arguments is unavailable; it is never a graph handle.
-"""
 obj EdgeTypeDesc {
     has tag: int,
         factory: Callable[([], int)];

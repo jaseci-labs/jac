@@ -1,9 +1,3 @@
-"""Lower edge class values through the graph's type registry.
-
-Native class values already carry canonical class-name identity. Literal
-classes keep their constant-tag fast path; parameters, aliases and computed
-class values use the same identity to resolve registered edge metadata.
-"""
 impl NaIRGenPass._osp_static_edge_name(expr: uni.UniNode) -> (str | None) {
     while isinstance(expr, uni.AtomUnit) {
         expr = expr.value;
@@ -18,10 +12,6 @@ impl NaIRGenPass._osp_static_edge_name(expr: uni.UniNode) -> (str | None) {
     return name if model is not None and model.arch_kind.get(name) == "edge" else None;
 }
 
-"""Return a class value's declared bound, using Edge for unbounded type values.
-
-The bound supplies layout facts for predicates; the value supplies runtime identity.
-"""
 impl NaIRGenPass._osp_edge_class_name(expr: uni.UniNode) -> (str | None) {
     while isinstance(expr, uni.AtomUnit) {
         expr = expr.value;

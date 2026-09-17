@@ -2305,6 +2305,29 @@ impl DeleteStmt.unwrap_target(target: Expr) -> Expr {
 }
 
 
+impl DeleteStmt.invalid_target(target: UniNode) -> (DeleteTargetError | None) {
+    inner = target;
+    while isinstance(inner, AtomUnit) {
+        inner = inner.value;
+    }
+    if isinstance(inner, (TupleVal, ListVal)) and len(inner.values) == 0 {
+        return DeleteTargetError.EMPTY_TARGET_LIST;
+    }
+    if isinstance(inner, AtomTrailer) and inner.is_null_ok {
+        return DeleteTargetError.NULL_SAFE_ACCESS;
+    }
+    if isinstance(inner, UnaryExpr)
+        and isinstance(inner.op, Token)
+        and inner.op.name in (Tok.STAR_MUL, Tok.STAR_POW) {
+        return DeleteTargetError.UNPACKED_TARGET;
+    }
+    if isinstance(inner, (Literal, MultiString, FString)) {
+        return DeleteTargetError.LITERAL;
+    }
+    return None;
+}
+
+
 impl DeleteStmt.is_location(target: Expr) -> bool {
     inner = DeleteStmt.unwrap_target(target);
     if isinstance(inner, Name) {

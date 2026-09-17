@@ -1193,7 +1193,6 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     return self._osp_typed_refs(_cur, nd);
 }
 
-"""Restore typed reference storage after the graph's integer-handle ABI."""
 impl NaIRGenPass._osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value {
     elem = self._list_elem_llvm_of(nd);
     if isinstance(elem, ir.PointerType) {
