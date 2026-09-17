@@ -63,12 +63,29 @@ impl schedule_problems(spec: ScheduleSpec) -> list[str] {
     }
     if spec.interval is not None {
         raw: any = spec.interval;
-        usable = not isinstance(raw, bool)
-            and isinstance(raw, (int, float))
-            and math.isfinite(float(raw))
-            and datetime.timedelta(seconds=float(raw)) > datetime.timedelta(0);
-        if not usable {
+        seconds = 0.0;
+        if not isinstance(raw, bool) and isinstance(raw, (int, float)) {
+            try {
+                seconds = float(raw);
+            } except OverflowError {
+                return [f"interval {raw!r} seconds is too long to schedule"];
+            }
+        }
+        if not (math.isfinite(seconds) and seconds > 0.0) {
             return [f"interval must be a positive number of seconds, got {raw!r}"];
+        }
+        try {
+            if datetime.timedelta(seconds=seconds) <= datetime.timedelta(0) {
+                return [
+                    f"interval must be at least a microsecond, got {raw!r} seconds"
+                ];
+            }
+            next_interval_run(seconds, datetime.datetime.now(datetime.timezone.utc));
+        } except OverflowError {
+            return [
+                f"interval {raw!r} seconds is too long to schedule: its next run "
+                "falls outside the dates the scheduler can represent"
+            ];
         }
     }
     if spec.cron is not None {
@@ -89,6 +106,10 @@ impl schedule_problems(spec: ScheduleSpec) -> list[str] {
         }
     }
     return [];
+}
+
+impl next_interval_run(seconds: float, now: datetime.datetime) -> datetime.datetime {
+    return now + datetime.timedelta(seconds=seconds);
 }
 
 impl CronSchedule.parse(expr: str) -> CronSchedule {
@@ -327,7 +348,7 @@ impl Scheduler._compute_next_run(
         return self._compute_date(spec.date, now);
     }
     if spec.interval is not None {
-        return now + datetime.timedelta(seconds=spec.interval);
+        return next_interval_run(float(spec.interval), now);
     }
     if spec.cron is not None {
         return CronSchedule.parse(str(spec.cron)).next_after(now);

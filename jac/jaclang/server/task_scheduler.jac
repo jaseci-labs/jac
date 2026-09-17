@@ -31,6 +31,7 @@ glob _scheduler_instance: (Scheduler | None) = None,
      };
 
 def schedule_problems(spec: ScheduleSpec) -> list[str];
+def next_interval_run(seconds: float, now: datetime.datetime) -> datetime.datetime;
 def _cron_values(expr: str, text: str, label: str, lo: int, hi: int) -> set[int];
 def _cron_number(expr: str, text: str, label: str, lo: int, hi: int) -> int;
 

@@ -373,6 +373,20 @@ test "every @schedule spec the issue lists is refused or warned about by name" {
 }
 
 
+test "an interval too long to schedule is a spec problem, not a crash" {
+    # timedelta overflows past about 8.6e13 seconds, and a shorter interval can
+    # still put its next run beyond year 9999; either used to escape as an
+    # OverflowError from boot validation instead of naming the target.
+    for raw in [1e300, 10 ** 400, 8e13] {
+        problems = schedule_problems(ScheduleSpec(interval=raw));
+        assert len(problems) == 1 and "too long" in problems[0] , f"{raw!r}: {problems}";
+    }
+    assert schedule_problems(ScheduleSpec(interval=86400 * 365 * 100)) == [];
+    tiny = schedule_problems(ScheduleSpec(interval=1e-7));
+    assert len(tiny) == 1 and "at least a microsecond" in tiny[0] , tiny;
+}
+
+
 test "the served app refuses to start on a bad @schedule, naming every target" {
     import from tempfile { TemporaryDirectory }
     import from jaclang.server.settings { ServeConfigError }
@@ -393,7 +407,8 @@ test "the served app refuses to start on a bad @schedule, naming every target" {
             for expected in [
                 "@schedule on 'spin': interval must be a positive number of seconds, got 0",
                 "@schedule on 'bad_minute': cron '60 * * * *': minute value 60 is outside 0-59",
-                "@schedule on 'SpinWalker': takes one of interval, cron or date, not interval and cron"
+                "@schedule on 'SpinWalker': takes one of interval, cron or date, not interval and cron",
+                "@schedule on 'huge': interval 1e+300 seconds is too long"
             ] {
                 assert expected in message , message;
             }

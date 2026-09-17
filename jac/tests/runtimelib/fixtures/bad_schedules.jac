@@ -11,5 +11,8 @@ walker SpinWalker {
     can act with Root entry {}
 }
 
+@schedule(interval=1e300)
+def huge {}
+
 @schedule(interval=60)
 def good_one {}
