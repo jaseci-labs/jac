@@ -27,7 +27,7 @@ def cache_env(cache_dir: Path | str) -> dict[str, str] {
     base = Path(cache_dir).resolve();
     return {
         "JAC_CACHE_HOME": str(base),
-        "XDG_CACHE_HOME": str(base.parent / "xdg"),
+        "XDG_CACHE_HOME": str(base),
         "JAC_TOOLCHAIN_DIR": str(base / "toolchains"),
         "JAC_MODELS_DIR": str(base / "models"),
         "JAC_SCALE_CACHE_DIR": str(base / "scale-binaries")

@@ -162,8 +162,6 @@ def _probe_env(cache: str, tree_dir: str) -> dict[str, str] {
     env["JAC_DEV_SOURCE"] = os.path.abspath(tree_dir);
     env["JAC_NO_PRECOMPILE"] = "1";
     env.update(cache_env(cache));
-    # The pinned pre-authority compiler still reads XDG_CACHE_HOME.
-    env["XDG_CACHE_HOME"] = cache;
     return env;
 }
 

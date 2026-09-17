@@ -16,6 +16,7 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
+import from tests.support { cache_env }
 import from jaclang.client.targets.desktop.desktop_build {
     _jac_bin,
     _stage_fused_runtime,
@@ -65,8 +66,7 @@ test "na host boots the fused runtime (no display)" {
         # The host materializes its runtime into a private cache root, never
         # the user's: one payload extraction per test run, removed with tmp.
         cache_root = out_dir / "cache";
-        env["XDG_CACHE_HOME"] = str(cache_root);
-        env.pop("JAC_CACHE_HOME", None);
+        env.update(cache_env(cache_root));
         run = subprocess.run(
             [str(binary)], cwd=tmp, env=env, capture_output=True, text=True, timeout=600
         );
@@ -78,7 +78,7 @@ test "na host boots the fused runtime (no display)" {
             f"fused-runtime boot marker missing\n"
             f"stdout:\n{run.stdout}\nstderr:\n{run.stderr}"
         );
-        assert (cache_root / "jac" / "rt").is_dir() , "the host must materialize under XDG_CACHE_HOME";
+        assert (cache_root / "rt").is_dir() , "the host must materialize under its private cache root";
         custom_ca = out_dir / "custom-ca.pem";
         shutil.copy2(Path(sys.prefix) / "floor" / "cacert.pem", custom_ca);
         env["SSL_CERT_FILE"] = str(custom_ca);
