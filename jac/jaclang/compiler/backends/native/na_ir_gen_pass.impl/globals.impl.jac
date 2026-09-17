@@ -195,9 +195,6 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             self.has_native_code = True;
 
             if assign.value is not None and const_init is None {
-                if not self?._global_init_nodes {
-                    self._global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [];
-                }
                 self._global_init_nodes.append((var_name, assign.value, var_type));
             }
         }

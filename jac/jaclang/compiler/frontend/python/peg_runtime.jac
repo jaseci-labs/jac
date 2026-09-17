@@ -62,16 +62,6 @@ obj peg_token {
         memo_head: peg_memo | None = None;
 }
 
-obj peg_keyword_entry {
-    has spelling: str,
-        tok_type: int;
-}
-
-obj peg_memo_hit {
-    has hit: bool = False,
-        result: object | None = None;
-}
-
 # ---------------- parser state ----------------
 obj peg_parser {
     has tok: tok_state,
@@ -82,8 +72,9 @@ obj peg_parser {
         tokens: list[peg_token] = [],
         source_lines: list[bytes] = [],
         mark: int = 0,
-        keyword_lists: list[list[peg_keyword_entry]] = [],
+        keywords: dict[str, int] = {},
         soft_keywords: list[str] = [],
+        lexer_failure: peg_memo = peg_memo(rule_type=-1, end_mark=0),
         call_invalid_rules: bool = False,
         error_indicator: bool = False,
         error: tok_diag | None = None,
@@ -115,37 +106,15 @@ def peg_token_loc(tok: peg_token) -> tok_loc {
 }
 
 def _keyword_type_for(p: peg_parser, spelling: str) -> int {
-    n = len(spelling);
-    if n >= len(p.keyword_lists) {
-        return NAME;
-    }
-    entries = p.keyword_lists[n];
-    i = 0;
-    while i < len(entries) {
-        e = entries[i];
-        if e.spelling == spelling {
-            return e.tok_type;
-        }
-        i = i + 1;
-    }
-    return NAME;
-}
-
-def _is_soft_keyword(p: peg_parser, spelling: str) -> bool {
-    i = 0;
-    while i < len(p.soft_keywords) {
-        if p.soft_keywords[i] == spelling {
-            return True;
-        }
-        i = i + 1;
-    }
-    return False;
+    return p.keywords.get(spelling, NAME);
 }
 
 def peg_parser_from_source(
     source: str,
     filename: str,
     exec_input: bool,
+    keywords: dict[str, int],
+    soft_keywords: list[str],
     flags: int = 0,
     feature_version: int = 14
 ) -> peg_parser {
@@ -156,16 +125,10 @@ def peg_parser_from_source(
         filename=filename,
         flags=flags,
         initial_flags=flags,
-        feature_version=feature_version
+        feature_version=feature_version,
+        keywords=keywords,
+        soft_keywords=soft_keywords
     );
-}
-
-def peg_set_keywords(p: peg_parser, lists: list[list[peg_keyword_entry]]) {
-    p.keyword_lists = lists;
-}
-
-def peg_set_soft_keywords(p: peg_parser, words: list[str]) {
-    p.soft_keywords = words;
 }
 
 def peg_mark(p: peg_parser) -> int {
@@ -251,20 +214,22 @@ def peg_peek_type(p: peg_parser) -> int {
     return p.tokens[p.mark].tok_type;
 }
 
-def peg_check_memo(p: peg_parser, rule_type: int) -> peg_memo_hit {
+# The memoized entry for `rule_type` at the current token, or None when the rule
+# must run. A terminal lexer error answers with a result-less entry because it
+# cannot seed a left-recursive rule.
+def peg_check_memo(p: peg_parser, rule_type: int) -> peg_memo | None {
     if not peg_ensure_token(p) {
-        # A terminal lexer error cannot seed a left-recursive rule.
-        return peg_memo_hit(hit=True);
+        return p.lexer_failure;
     }
     head = p.tokens[p.mark].memo_head;
     while head is not None {
         if head.rule_type == rule_type {
             p.mark = head.end_mark;
-            return peg_memo_hit(hit=True, result=head.result);
+            return head;
         }
         head = head.next;
     }
-    return peg_memo_hit(hit=False);
+    return None;
 }
 
 def peg_insert_memo(
@@ -348,7 +313,7 @@ def peg_expect_soft_keyword(p: peg_parser, spelling: str) -> peg_token | None {
     if t.spelling != spelling {
         return None;
     }
-    if not _is_soft_keyword(p, spelling) {
+    if spelling not in p.soft_keywords {
         return None;
     }
     p.mark = p.mark + 1;

@@ -14,6 +14,10 @@ impl NaIRGenPass._elem_kind(elem_type: ir.Type) -> str {
     return "raw";
 }
 
+impl NaIRGenPass._is_reference_type(ty: ir.Type) -> bool {
+    return self._elem_kind(ty) != "raw" or self._opt_ptr_payload_of(ty) is not None;
+}
+
 impl NaIRGenPass._container_layout_dense(data_types: list[ir.Type]) -> dict[str, any] {
     _fields = [(_i + 2, _dt) for (_i, _dt) in enumerate(data_types)];
     return {
@@ -1126,13 +1130,13 @@ impl NaIRGenPass._tuple_box_release_fn(
             b.branch(rel_bb);
         }
         b = ir.IRBuilder(rel_bb);
-        for (idx, is_opt) in fields {
+        for idx in fields {
             fptr = b.gep(
                 release_fn.args[0],
                 [ir.Constant(i32, 0), ir.Constant(i32, idx)],
                 name=f"tup.f{idx}.p"
             );
-            if is_opt {
+            if self._opt_ptr_payload_of(struct_type.elements[idx]) is not None {
                 fptr = b.gep(
                     fptr,
                     [ir.Constant(i32, 0), ir.Constant(i32, 1)],
@@ -1190,17 +1194,16 @@ impl NaIRGenPass._tuple_box_trace_fn(
     b = ir.IRBuilder(entry_bb);
     _vis = b.bitcast(trace_fn.args[1], visitor_ptype, name="vis.fn");
     _obj = b.bitcast(trace_fn.args[0], struct_type.as_pointer(), name="obj.typed");
-    for (idx, is_opt) in fields {
+    for idx in fields {
         fptr = b.gep(
             _obj, [ir.Constant(i32, 0), ir.Constant(i32, idx)], name=f"tr.f{idx}.p"
         );
-        if is_opt {
+        if self._opt_ptr_payload_of(struct_type.elements[idx]) is not None {
             fptr = b.gep(
                 fptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name=f"tr.f{idx}.pvp"
             );
         }
-        fval = b.load(fptr, name=f"tr.f{idx}");
-        b.call(_vis, [b.bitcast(fval, i8_ptr, name=f"tr.f{idx}.i8")]);
+        b = self._emit_elem_trace(b, b.load(fptr, name=f"tr.f{idx}"), _vis);
     }
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
@@ -1234,6 +1237,12 @@ impl NaIRGenPass._emit_tuple_box_lifecycle(
 impl NaIRGenPass._coerce_container_element(
     value: ir.Value, element_type: ir.Type
 ) -> ir.Value {
+    if self._str_desc_ty is not None
+        and value.type == self._str_desc_ty
+        and element_type != value.type
+        and self._gc_mode() != "none" {
+        value = self._str_materialize(value);
+    }
     payload_type = self._opt_ptr_payload_of(value.type);
     if payload_type is not None and isinstance(element_type, ir.PointerType) {
         tag = self.builder.extract_value(value, 0, name="elem.optional.tag");

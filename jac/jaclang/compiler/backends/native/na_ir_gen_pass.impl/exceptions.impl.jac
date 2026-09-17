@@ -302,7 +302,17 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
                 exc_msg = self._codegen_expr(nd.cause.params[0]);
             }
         } else {
-            exc_msg = self._codegen_expr(nd.cause);
+            cause_struct = self._struct_name_of(nd.cause);
+            if cause_struct is not None and cause_struct in self.struct_types {
+                exc_type_name = cause_struct;
+                exc_type_id = self._get_or_register_exc_type(cause_struct);
+                exc_payload = self._codegen_expr(nd.cause);
+                if exc_payload is not None {
+                    self._emit_take_ref(exc_payload, op="raise");
+                }
+            } else {
+                exc_msg = self._codegen_expr(nd.cause);
+            }
         }
     }
 

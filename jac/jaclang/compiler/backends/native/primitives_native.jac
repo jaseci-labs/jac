@@ -1679,18 +1679,112 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         if not args {
             return None;
         }
-        arg_val = args[0];
         p = ctx.pass_ref;
-        b = get_builder(p);
         i8 = ir.IntType(8);
+        i32 = ir.IntType(32);
         i64 = ir.IntType(64);
+        point = p._coerce_type(args[0], i64);
+        b = get_builder(p);
+        p._emit_runtime_raise(
+            b.icmp_unsigned(">=", point, ir.Constant(i64, 1114112), name="chr.range"),
+            "ValueError",
+            "chr() arg not in range(0x110000)"
+        );
+        b = get_builder(p);
+        func = b.basic_block.function;
+        ascii_bb = func.append_basic_block("chr.ascii");
+        wide_bb = func.append_basic_block("chr.wide");
+        done_bb = func.append_basic_block("chr.done");
+        b.cbranch(
+            b.icmp_unsigned("<", point, ir.Constant(i64, 128), name="chr.is.ascii"),
+            ascii_bb,
+            wide_bb
+        );
+        b.position_at_end(ascii_bb);
+        cached = b.bitcast(
+            b.gep(
+                p._get_char_cache_gv(),
+                [ir.Constant(i32, 0), point, ir.Constant(i32, 2), ir.Constant(i32, 0)],
+                name="chr.cached"
+            ),
+            i8.as_pointer(),
+            name="chr.cached.str"
+        );
+        ascii_end = b.basic_block;
+        b.branch(done_bb);
+        b.position_at_end(wide_bb);
         p._set_rc_ctx("chr", "");
-        buf = p._str_alloc(b, ir.Constant(i64, 2), name="chr.buf");
+        buf = p._str_alloc(b, ir.Constant(i64, 5), name="chr.buf");
         p._clear_rc_ctx();
-        byte_val = b.trunc(arg_val, i8, name="chr.byte");
-        b.store(byte_val, buf);
-        p._str_finish(b, buf, ir.Constant(i64, 1));
-        return p._mark_owned(buf);
+        width = b.select(
+            b.icmp_unsigned("<", point, ir.Constant(i64, 2048), name="chr.two"),
+            ir.Constant(i64, 2),
+            b.select(
+                b.icmp_unsigned("<", point, ir.Constant(i64, 65536), name="chr.three"),
+                ir.Constant(i64, 3),
+                ir.Constant(i64, 4),
+                name="chr.width.wide"
+            ),
+            name="chr.width"
+        );
+        lead_prefix = b.select(
+            b.icmp_unsigned("==", width, ir.Constant(i64, 2), name="chr.lead.two"),
+            ir.Constant(i64, 192),
+            b.select(
+                b.icmp_unsigned(
+                    "==", width, ir.Constant(i64, 3), name="chr.lead.three"
+                ),
+                ir.Constant(i64, 224),
+                ir.Constant(i64, 240),
+                name="chr.lead.wide"
+            ),
+            name="chr.lead.prefix"
+        );
+        continuation = b.sub(width, ir.Constant(i64, 1), name="chr.cont");
+        lead = b.or_(
+            lead_prefix,
+            b.lshr(
+                point,
+                b.mul(continuation, ir.Constant(i64, 6), name="chr.lead.shift"),
+                name="chr.lead.bits"
+            ),
+            name="chr.lead"
+        );
+        b.store(b.trunc(lead, i8, name="chr.lead.byte"), buf);
+        for offset in range(1, 4) {
+            position = ir.Constant(i64, offset);
+            shift = b.select(
+                b.icmp_unsigned("<", position, width, name=f"chr.in.{offset}"),
+                b.mul(
+                    b.sub(continuation, position, name=f"chr.rest.{offset}"),
+                    ir.Constant(i64, 6),
+                    name=f"chr.shift.{offset}"
+                ),
+                ir.Constant(i64, 0),
+                name=f"chr.bits.{offset}"
+            );
+            payload = b.and_(
+                b.lshr(point, shift, name=f"chr.part.{offset}"),
+                ir.Constant(i64, 63),
+                name=f"chr.low.{offset}"
+            );
+            b.store(
+                b.trunc(
+                    b.or_(payload, ir.Constant(i64, 128), name=f"chr.byte.{offset}"),
+                    i8,
+                    name=f"chr.cont.{offset}"
+                ),
+                b.gep(buf, [position], name=f"chr.slot.{offset}")
+            );
+        }
+        p._str_finish(b, buf, width);
+        wide_end = b.basic_block;
+        b.branch(done_bb);
+        b.position_at_end(done_bb);
+        result = b.phi(i8.as_pointer(), name="chr.result");
+        result.add_incoming(cached, ascii_end);
+        result.add_incoming(buf, wide_end);
+        return p._mark_owned(result);
     }
 
     def emit_ord(
@@ -1699,10 +1793,106 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         if not args {
             return None;
         }
-        arg_val = args[0];
-        b = ctx.pass_ref.builder;
-        byte_val = b.load(arg_val, name="ord.byte");
-        return b.zext(byte_val, ir.IntType(64), name="ord.val");
+        p = ctx.pass_ref;
+        b = get_builder(p);
+        text = b.bitcast(args[0], ir.IntType(8).as_pointer(), name="ord.text");
+        return b.call(self.code_point_fn(p), [text], name="ord.val");
+    }
+
+    def code_point_fn(self: NativeBuiltinEmitter, p: NaIRGenPass) -> ir.Function {
+        name = "__jac_str_code_point";
+        if name in p.llvm_module.globals {
+            existing = p.llvm_module.globals[name];
+            assert isinstance(existing, ir.Function);
+            return existing;
+        }
+        i8 = ir.IntType(8);
+        i64 = ir.IntType(64);
+        fn = p._define_function(name, ir.FunctionType(i64, [i8.as_pointer()]));
+        fn.linkage = "private";
+        text = fn.args[0];
+        head = ir.IRBuilder(fn.append_basic_block("entry"));
+        lead = head.zext(head.load(text, name="lead.byte"), i64, name="lead");
+        ascii_bb = fn.append_basic_block("ascii");
+        wide_bb = fn.append_basic_block("wide");
+        head.cbranch(
+            head.icmp_unsigned("<", lead, ir.Constant(i64, 128), name="is.ascii"),
+            ascii_bb,
+            wide_bb
+        );
+        ir.IRBuilder(ascii_bb).ret(lead);
+        wide = ir.IRBuilder(wide_bb);
+        width = wide.select(
+            wide.icmp_unsigned("<", lead, ir.Constant(i64, 224), name="lead.two"),
+            ir.Constant(i64, 2),
+            wide.select(
+                wide.icmp_unsigned("<", lead, ir.Constant(i64, 240), name="lead.three"),
+                ir.Constant(i64, 3),
+                ir.Constant(i64, 4),
+                name="width.wide"
+            ),
+            name="width"
+        );
+        complete_bb = fn.append_basic_block("complete");
+        wide.cbranch(
+            wide.icmp_unsigned(
+                "<=",
+                width,
+                p._call_str_len(wide, text, name="text.len"),
+                name="complete"
+            ),
+            complete_bb,
+            ascii_bb
+        );
+        wide = ir.IRBuilder(complete_bb);
+        point = wide.and_(
+            lead,
+            wide.select(
+                wide.icmp_unsigned("==", width, ir.Constant(i64, 2), name="mask.two"),
+                ir.Constant(i64, 31),
+                wide.select(
+                    wide.icmp_unsigned(
+                        "==", width, ir.Constant(i64, 3), name="mask.three"
+                    ),
+                    ir.Constant(i64, 15),
+                    ir.Constant(i64, 7),
+                    name="mask.wide"
+                ),
+                name="lead.mask"
+            ),
+            name="lead.bits"
+        );
+        current = wide;
+        for offset in range(1, 4) {
+            step_bb = fn.append_basic_block(f"continuation.{offset}");
+            done_bb = fn.append_basic_block(f"decoded.{offset}");
+            current.cbranch(
+                current.icmp_unsigned(
+                    ">", width, ir.Constant(i64, offset), name=f"has.{offset}"
+                ),
+                step_bb,
+                done_bb
+            );
+            ir.IRBuilder(done_bb).ret(point);
+            current = ir.IRBuilder(step_bb);
+            byte = current.zext(
+                current.load(
+                    current.gep(
+                        text, [ir.Constant(i64, offset)], name=f"byte.ptr.{offset}"
+                    ),
+                    name=f"byte.{offset}"
+                ),
+                i64,
+                name=f"byte.value.{offset}"
+            );
+            point = current.or_(
+                current.shl(point, ir.Constant(i64, 6), name=f"point.shift.{offset}"),
+                current.and_(byte, ir.Constant(i64, 63), name=f"byte.bits.{offset}"),
+                name=f"point.{offset}"
+            );
+        }
+        current.ret(point);
+        return fn;
     }
 
     def emit_hex(

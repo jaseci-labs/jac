@@ -85,6 +85,8 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     unverified_cfg,
 }
 import from jaclang.compiler.frontend.python.compiler_symtable {
+    scope_kind,
+    scope_role,
     sym_block,
     sym_dict_get,
     sym_scope_of,
@@ -116,7 +118,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_emit {
     freevars_from_sym,
     localsplus_index,
     localsplus_index_u,
-    sym_function_child_at,
     visit_expr,
 }
 import from jaclang.compiler.backends.py.jacpython.codegen_util {
@@ -147,51 +148,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_annotations {
     emit_future_function_annotations,
     finish_class_annotations
 }
-
-def sym_class_child_at(
-    parent: sym_block, class_name: str, lineno: int, col_offset: int
-) -> sym_block | None {
-    ci = 0;
-    while ci < len(parent.children) {
-        ch = parent.children[ci];
-        if ch.block_type == "class"
-            and ch.name == class_name
-            and ch.lineno == lineno
-            and ch.col_offset == col_offset {
-            return ch;
-        }
-        ci = ci + 1;
-    }
-    return None;
-}
-
-def sym_class_child(parent: sym_block, class_name: str) -> sym_block | None {
-    ci = 0;
-    while ci < len(parent.children) {
-        ch = parent.children[ci];
-        if ch.block_type == "class" and ch.name == class_name {
-            return ch;
-        }
-        ci = ci + 1;
-    }
-    return None;
-}
-
-
-def sym_function_child(parent: sym_block, fn_name: str) -> sym_block | None {
-    ci = 0;
-    while ci < len(parent.children) {
-        ch = parent.children[ci];
-        if ch.block_type == "function"
-            and ch.annotation_kind != "an annotation"
-            and ch.name == fn_name {
-            return ch;
-        }
-        ci = ci + 1;
-    }
-    return None;
-}
-
 
 # CPython's import prefix keeps int 0 in co_consts even though level uses
 # LOAD_SMALL_INT (same dead-small-int slot as literal folding).
@@ -297,7 +253,7 @@ def definition_qualname(g: cfg_builder, name: str) -> str {
     if sym_scope_of(flags) == SCOPE_GLOBAL_EXPLICIT {
         return name;
     }
-    return nested_code_qualname(g.sym_top.block_type, g.u.qualname, name);
+    return nested_code_qualname(g.sym_top.kind, g.u.qualname, name);
 }
 
 
@@ -486,13 +442,9 @@ def visit_class_def(g: cfg_builder, cd: ClassDef) -> stmt_cont {
     generic = bool(cd.type_params);
     scope: sym_block | None = g.sym_top;
     if generic {
-        scope = sym_function_child_at(
-            scope, "<generic parameters of " + cd.name + ">", cd.lineno, cd.col_offset
-        );
+        scope = scope.child_scope(cd, scope_role.TYPE_PARAMETERS);
     }
-    sym_cls = sym_class_child_at(scope, cd.name, cd.lineno, cd.col_offset)
-        if scope is not None
-        else None;
+    sym_cls = scope.child_scope(cd) if scope is not None else None;
     if sym_cls is None or scope is None {
         codegen_fail(g, "SystemError", "missing symtable for class " + cd.name);
         return stmt_cont(loc=cloc);
@@ -692,13 +644,9 @@ def visit_function_def(
     generic = bool(fd.type_params);
     scope: sym_block | None = g.sym_top;
     if generic {
-        scope = sym_function_child_at(
-            scope, "<generic parameters of " + fd.name + ">", fd.lineno, fd.col_offset
-        );
+        scope = scope.child_scope(fd, scope_role.TYPE_PARAMETERS);
     }
-    sym_fn = sym_function_child_at(scope, fd.name, fd.lineno, fd.col_offset)
-        if scope is not None
-        else None;
+    sym_fn = scope.child_scope(fd) if scope is not None else None;
     if sym_fn is None or scope is None {
         codegen_fail(g, "SystemError", "missing symtable for function " + fd.name);
         return stmt_cont(loc=floc);
@@ -712,7 +660,7 @@ def visit_function_def(
         sym_fn,
         g.private,
         firstlineno,
-        g.sym_top.block_type == "class",
+        g.sym_top.kind == scope_kind.CLASS,
         qualname
     );
     cfg = verify_cfg(unit);
@@ -777,7 +725,7 @@ def generic_definition_builder(
 ) -> cfg_builder {
     assert enclosing.sym_top is not None;
     qname = nested_code_qualname(
-        enclosing.sym_top.block_type, enclosing.u.qualname, scope.name
+        enclosing.sym_top.kind, enclosing.u.qualname, scope.name
     );
     u = unverified_cfg(
         filename=enclosing.u.filename,
@@ -831,15 +779,9 @@ def emit_definition_annotations(
         emit_future_function_annotations(g, fd);
         return;
     }
-    scope: sym_block | None = None;
-    if g.sym_top is not None {
-        for child in g.sym_top.children {
-            if child.function_annotation_key == id(fd) {
-                scope = child;
-                break;
-            }
-        }
-    }
+    scope = g.sym_top.child_scope(fd, scope_role.ANNOTATIONS)
+        if g.sym_top is not None
+        else None;
     if scope is None {
         return;
     }
@@ -1226,16 +1168,11 @@ def emit_type_parameter_expr(
     qualname: str,
     in_class: bool
 ) -> bool {
-    key = id(tp) * 2 + int(is_default);
-    scope: sym_block | None = None;
-    if g.sym_top is not None {
-        for child in g.sym_top.children {
-            if child.type_parameter_key == key {
-                scope = child;
-                break;
-            }
-        }
-    }
+    scope = g.sym_top.child_scope(
+        tp, scope_role.DEFAULT_VALUE if is_default else scope_role.BODY
+    )
+        if g.sym_top is not None
+        else None;
     if scope is None {
         codegen_fail(g, "SystemError", "missing type parameter annotation scope");
         return False;
@@ -1308,15 +1245,15 @@ def visit_type_alias(g: cfg_builder, ta: TypeAlias) -> stmt_cont {
     gp_name = "<generic parameters of " + name + ">";
     sym_v = None;
     if generic {
-        sym_gp = sym_function_child_at(g.sym_top, gp_name, ta.lineno, ta.col_offset);
+        sym_gp = g.sym_top.child_scope(ta, scope_role.TYPE_PARAMETERS);
         if sym_gp is None {
             codegen_fail(g, "SystemError", "missing symtable for " + gp_name);
             return stmt_cont(loc=tloc);
         }
         sym_params = sym_gp;
-        sym_v = sym_function_child_at(sym_gp, name, ta.lineno, ta.col_offset);
+        sym_v = sym_gp.child_scope(ta);
     } else {
-        sym_v = sym_function_child_at(g.sym_top, name, ta.lineno, ta.col_offset);
+        sym_v = g.sym_top.child_scope(ta);
     }
     if sym_v is None {
         codegen_fail(g, "SystemError", "missing symtable for type alias " + name);
@@ -1327,14 +1264,14 @@ def visit_type_alias(g: cfg_builder, ta: TypeAlias) -> stmt_cont {
     # class body, and <parent>.<locals>.Name under a function scope.
     vqname = name;
     gpqname = "<generic parameters of " + name + ">";
-    if g.sym_top.block_type == "class" {
+    if g.sym_top.kind == scope_kind.CLASS {
         vqname = g.u.qualname + "." + name;
         gpqname = g.u.qualname + "." + gpqname;
-    } elif g.sym_top.block_type != "module" {
+    } elif g.sym_top.kind != scope_kind.MODULE {
         vqname = g.u.qualname + ".<locals>." + name;
         gpqname = g.u.qualname + ".<locals>." + gpqname;
     }
-    in_class = g.sym_top.block_type == "class";
+    in_class = g.sym_top.kind == scope_kind.CLASS;
     u_v = type_expression_cfg(
         ta.value, name, vqname, g.u.filename, sym_value, g.private, in_class, tloc
     );

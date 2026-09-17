@@ -1,7 +1,4 @@
-import from jaclang.compiler.backends.py.jacpython.marshal_writer {
-    marshal_constant,
-    marshal_output
-}
+import from jaclang.runtime.python.constant_output { constant_object }
 import from jaclang.runtime.python.objects {
     PyCode,
     PyObj,
@@ -26,7 +23,7 @@ import from jaclang.runtime.python.compiler_integer {
     PyBigInt
 }
 
-def:pub probe_packet -> marshal_output {
+def:pub probe_constants -> u64 {
     same = PyStr(t="str", val="repeat");
     values: list[PyObj] = [
         py_none(),
@@ -52,7 +49,7 @@ def:pub probe_packet -> marshal_output {
         PyFloat(t="float", val=1.2345678901234569),
         PyFloat(t="float", val=0.0)
     ];
-    return marshal_constant(PyTuple(t="tuple", items=values));
+    return constant_object(PyTuple(t="tuple", items=values));
 }
 
 def sample_code -> PyCode {
@@ -78,15 +75,15 @@ def sample_code -> PyCode {
     );
 }
 
-def:pub code_packet -> marshal_output {
-    return marshal_constant(sample_code());
+def:pub code_object -> u64 {
+    return constant_object(sample_code());
 }
 
-def:pub nested_code_packet -> marshal_output {
-    return marshal_constant(PyTuple(t="tuple", items=[sample_code(), sample_code()]));
+def:pub nested_code_objects -> u64 {
+    return constant_object(PyTuple(t="tuple", items=[sample_code(), sample_code()]));
 }
 
-def:pub integer_arithmetic_packet -> marshal_output {
+def:pub integer_arithmetic -> u64 {
     one = PyInt(t="int", val=1);
     large = integer_from_digits([0, 0, 0, 0, 0, 0, 1024], False);
     halfway = integer_add(large, integer_from_digits([0, 0, 0, 4], False));
@@ -99,7 +96,7 @@ def:pub integer_arithmetic_packet -> marshal_output {
         PyFloat(t="float", val=integer_to_float(halfway)),
         PyFloat(t="float", val=integer_to_float(integer_add(halfway, one)))
     ];
-    return marshal_constant(PyTuple(t="tuple", items=values));
+    return constant_object(PyTuple(t="tuple", items=values));
 }
 
 def:pub diagnostic_probe -> int {
@@ -158,29 +155,21 @@ def:pub integer_probe -> int {
     if not isinstance(small, PyInt) or small.val != 0 {
         return 3;
     }
-    decoded = integer_from_marshal([233, 255, 255, 255, 255]);
+    decoded = integer_from_marshal(bytes([233, 255, 255, 255, 255]));
     if not isinstance(decoded, PyInt) or decoded.val != -1 {
         return 4;
     }
     decoded = integer_from_marshal(
-        [108, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4]
+        bytes([108, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4])
     );
     if not isinstance(decoded, PyBigInt)
         or integer_decimal(decoded) != "1267650600228229401496703205376" {
         return 5;
     }
     try {
-        integer_from_marshal([108, 1, 0, 0, 0, 255, 255]);
+        integer_from_marshal(bytes([108, 1, 0, 0, 0, 255, 255]));
     } except ValueError {
         return 0;
     }
     return 6;
-}
-
-def:pub packet_size(value: marshal_output) -> int {
-    return len(value.data) if not value.error else -1;
-}
-
-def:pub packet_byte(value: marshal_output, index: int) -> int {
-    return value.data[index];
 }

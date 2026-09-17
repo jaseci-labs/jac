@@ -1807,6 +1807,7 @@ impl JacCompiler._scrub_native_artifacts_on_error(
     gen = mod.gen;
     gen.py_bytecode = None;
     gen.llvm_ir = None;
+    gen.native_linked_ir = None;
     gen.native_engine = None;
     gen.native_bitcode = None;
     gen.native_layout = None;

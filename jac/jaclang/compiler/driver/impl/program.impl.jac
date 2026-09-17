@@ -324,6 +324,7 @@ impl JacProgram.release_native_dep_units(self: JacProgram) -> None {
         }
         gen.native_engine = None;
         gen.llvm_ir = None;
+        gen.native_linked_ir = None;
         gen.native_bitcode = None;
     }
     self.scratch.na_dep_units.clear();

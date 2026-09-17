@@ -758,9 +758,6 @@ impl NaIRGenPass._register_static_fields(arch_name: str, archhas: uni.ArchHas) -
         self.has_native_code = True;
 
         if var.value is not None and const_init is None {
-            if not self?._global_init_nodes {
-                self._global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [];
-            }
             self._global_init_nodes.append((full_name, var.value, ftype));
         }
     }
@@ -828,10 +825,7 @@ impl NaIRGenPass._register_one_class_const(
     gv.initializer = const_init if const_init is not None else ir.Constant(ftype, None);
 
     if const_init is None {
-        if not self?._global_init_nodes {
-            self._global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [];
-        }
-        self._global_init_nodes.append((full_name, assign.value, ftype));
+        self._global_init_nodes.append((full_name, value, ftype));
     }
 }
 
@@ -2431,6 +2425,39 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     return result;
 }
 
+impl NaIRGenPass._dispatch_receiver_method(
+    type_name: str,
+    method_name: str,
+    receiver: ir.Value,
+    original: ir.Value,
+    nd: uni.FuncCall
+) -> (ir.Value | None) {
+    originals = self._codegen_call_args(nd);
+    arguments = [self._str_view(argument) for argument in originals];
+    result = self._dispatch_primitive_method(
+        type_name, method_name, receiver, arguments, ""
+    );
+    if result is None {
+        return None;
+    }
+    if result is receiver and receiver is not original {
+        if self._str_desc_ty is not None and original.type == self._str_desc_ty {
+            result = self._str_materialize(original);
+        }
+        self._release_owned_args(originals, op=f"{type_name}_method_operand");
+        return result;
+    }
+    self._release_owned_args(
+        [
+            value
+            for value in [original] + originals
+            if value is not result
+        ],
+        op=f"{type_name}_method_operand"
+    );
+    return result;
+}
+
 impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | None) {
     trailer = nd.target;
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
@@ -2791,9 +2818,10 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                     _prep_e = (
                         _prep_e.value if isinstance(_prep_e, uni.KWPair) else _prep_e
                     );
-                    arg_vals[_prep_idx] = self._nogc_elem_prep(
-                        _prep_e, arg_vals[_prep_idx]
-                    );
+                    _prepared = self._nogc_elem_prep(_prep_e, arg_vals[_prep_idx]);
+                    if _prepared is not None {
+                        arg_vals[_prep_idx] = _prepared;
+                    }
                 }
             }
 
@@ -2862,7 +2890,10 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                     _sprep_e = (
                         _sprep_e.value if isinstance(_sprep_e, uni.KWPair) else _sprep_e
                     );
-                    arg_vals[0] = self._nogc_elem_prep(_sprep_e, arg_vals[0]);
+                    _sprepared = self._nogc_elem_prep(_sprep_e, arg_vals[0]);
+                    if _sprepared is not None {
+                        arg_vals[0] = _sprepared;
+                    }
                 }
             }
             result = self._dispatch_primitive_method(
@@ -2965,41 +2996,44 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
 
-    if method_name in self._primitive_method_names("bytes") {
-        bytes_val = self._codegen_receiver(trailer.target);
-        if bytes_val is not None and self._is_bytes_value(bytes_val) {
-            arg_vals = self._codegen_call_args(nd);
-            result = self._dispatch_primitive_method(
-                "bytes", method_name, bytes_val, arg_vals, ""
-            );
-            if result is not None {
-                return result;
-            }
+    obj_val: (ir.Value | None) = None;
+    _bytes_method = method_name in self._primitive_method_names("bytes");
+    _str_method = method_name in self._primitive_method_names("str");
+    if _bytes_method or _str_method {
+        obj_val = self._codegen_receiver(trailer.target);
+        if obj_val is None {
+            return None;
         }
-    }
-
-    if method_name in self._primitive_method_names("str") {
-        str_val = self._str_norm_optional(self._codegen_receiver(trailer.target));
-        if str_val is not None
-            and self._opt_payload_of(str_val.type) == ir.IntType(8).as_pointer() {
-            str_val = self._coerce_type(str_val, ir.IntType(8).as_pointer());
-        }
-        if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {
-            arg_vals = self._codegen_call_args(nd);
-            result = self._dispatch_primitive_method(
-                "str", method_name, str_val, arg_vals, ""
-            );
-            if result is not None {
-                return result;
+        if self._is_bytes_value(obj_val) {
+            if not _bytes_method {
+                return None;
             }
+            return self._dispatch_receiver_method(
+                "bytes", method_name, obj_val, obj_val, nd
+            );
+        }
+        _str_receiver = self._str_view(obj_val);
+        if self._opt_payload_of(_str_receiver.type) == ir.IntType(8).as_pointer() {
+            _str_receiver = self._coerce_type(
+                _str_receiver, ir.IntType(8).as_pointer()
+            );
+        }
+        if _str_receiver.type == ir.IntType(8).as_pointer() {
+            if not _str_method {
+                return None;
+            }
+            return self._dispatch_receiver_method(
+                "str", method_name, _str_receiver, obj_val, nd
+            );
         }
     }
 
     type_name: (str | None) = self._enum_name_of(trailer.target)
         or self._struct_name_of(trailer.target);
-    obj_val: (ir.Value | None) = None;
     if type_name is None {
-        obj_val = self._codegen_receiver(trailer.target);
+        if obj_val is None {
+            obj_val = self._codegen_receiver(trailer.target);
+        }
         if obj_val is not None {
             type_name = self._infer_type_name(obj_val);
 
@@ -4134,10 +4168,14 @@ impl NaIRGenPass._codegen_field_assign(
         _fs_loc = f"{os.path.basename(self.module.loc.mod_path)}:{target.loc.first_line
             if target.loc
             else 0}";
-        _fs_new_pv = self.builder.extract_value(
-            value, 1, name=f"field.{field_name}.newpv"
-        );
-        self._emit_take_ref(_fs_new_pv, op="field_set", loc=_fs_loc);
+        if self._opt_result_owned(value, value_node) {
+            self.rc_ops_elided += 1;
+        } else {
+            _fs_new_pv = self.builder.extract_value(
+                value, 1, name=f"field.{field_name}.newpv"
+            );
+            self._emit_take_ref(_fs_new_pv, op="field_set", loc=_fs_loc);
+        }
         _fs_old = self.builder.load(field_ptr, name=f"field.{field_name}.old");
         _fs_old_pv = self.builder.extract_value(
             _fs_old, 1, name=f"field.{field_name}.oldpv"
