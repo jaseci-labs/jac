@@ -195,9 +195,11 @@ test "sweep_dir removes entries unused past the TTL and keeps live and fresh one
 test "sweep_dir reclaims orphaned temp extractions older than an hour" {
     base = Path(tempfile.mkdtemp());
     policy = Policy(retention=Retention.LAST_USE, ttl_days=14.0);
-    stale_tmp = entry_dir(base, "0123456789abcdef.tmp.4242", TMP_TTL_SECONDS + 60.0);
-    fresh_tmp = entry_dir(base, "fedcba9876543210.tmp.4243", 60.0);
-    stale_file = base / "mod.777.tmp";
+    stale_tmp = entry_dir(
+        base, "0123456789abcdef.tmp.abandoned", TMP_TTL_SECONDS + 60.0
+    );
+    fresh_tmp = entry_dir(base, "fedcba9876543210.tmp.pending", 60.0);
+    stale_file = base / "mod.abandoned.tmp";
     stale_file.write_bytes(b"x");
     backdate(stale_file, TMP_TTL_SECONDS + 60.0);
     result = sweep_dir(base, policy);
@@ -205,7 +207,7 @@ test "sweep_dir reclaims orphaned temp extractions older than an hour" {
     assert not stale_file.exists() , "a crashed writer's temp file must be reclaimed";
     assert fresh_tmp.exists() , "an extraction in progress must be left alone";
     assert sorted(result.removed)
-        == sorted(["0123456789abcdef.tmp.4242", "mod.777.tmp"]);
+        == sorted(["0123456789abcdef.tmp.abandoned", "mod.abandoned.tmp"]);
 }
 
 test "sweep_dir never touches a pinned bucket and reports nothing for it" {
@@ -518,5 +520,24 @@ test "private test environments override every inherited cache family" {
             }
             assert os.environ["JAC_CACHE_HOME"] == "/unrelated";
         }
+    }
+}
+
+
+test "temporary ownership keeps inaccessible writers and reclaims exited writers" {
+    import from jaclang.cache.policy { temporary_in_use }
+    if os.name != "posix" {
+        testskip("POSIX process-probe error semantics");
+    }
+    item = Path("artifact.tmp.4242");
+    with patch("os.kill", side_effect=PermissionError) {
+        assert temporary_in_use(item);
+    }
+    with patch("os.kill", side_effect=ProcessLookupError) {
+        assert not temporary_in_use(item);
+    }
+    with patch("os.kill") as probe {
+        assert temporary_in_use(item);
+        probe.assert_called_once_with(4242, 0);
     }
 }
