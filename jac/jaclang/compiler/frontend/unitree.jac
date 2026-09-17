@@ -166,7 +166,6 @@ node UniNode {
     def postinit -> None;
     can walk_kids with TreeWalker entry;
 
-    has kid: list[UniNode] { getter; }
     has parent: (UniNode | None) { getter; }
     has gen: CodeGenTarget { getter; setter(value: CodeGenTarget); }
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }

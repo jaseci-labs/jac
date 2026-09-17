@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.frontend.unitree {
@@ -44,7 +45,7 @@ def comptime_reach(top: UniNode) -> set[int] {
         if _is_comptime_marker(nd) {
             marked.append(nd);
         }
-        for k in nd.kid {
+        for k in [nd->:Kid:->] {
             if k {
                 stack.append(k);
             }
@@ -60,7 +61,7 @@ def comptime_reach(top: UniNode) -> set[int] {
         while inner {
             nd = inner.pop();
             keep.add(id(nd));
-            for k in nd.kid {
+            for k in [nd->:Kid:->] {
                 if k {
                     inner.append(k);
                 }

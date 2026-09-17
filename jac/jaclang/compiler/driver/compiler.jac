@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import ast as py_ast;

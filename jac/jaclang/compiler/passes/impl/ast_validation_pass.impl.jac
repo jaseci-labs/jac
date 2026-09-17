@@ -57,7 +57,7 @@ impl ASTValidationPass.enter_func_signature with FuncSignature entry {
     has_slash = False;
     has_star = False;
     has_kwargs = False;
-    for k in here.kid {
+    for k in [here->:Kid:->] {
         if isinstance(k, Token) and k.name == Tok.DIV {
             if has_slash {
                 self.ctx.emit(E0050, node_override=k, param="/");
@@ -201,7 +201,7 @@ impl ASTValidationPass._returns_jsx(scope: (Ability | ImplDef)) -> bool {
             and probe.sym_name in ("JsxElement", "JsxPage", "JsxLayout") {
             return True;
         }
-        kids = probe.kid;
+        kids = [probe->:Kid:->];
         if isinstance(kids, list) {
             stack.extend(kids);
         }

@@ -528,7 +528,7 @@ impl UniNode._link(kid: Sequence[UniNode], roles: dict[type, any]) -> None {
 }
 
 impl UniNode._children -> list[UniNode] {
-    out: list[UniNode] = self.kid;
+    out: list[UniNode] = [self->:Kid:->];
     seen: set[int] = {id(k) for k in out};
     for tgt in [self->:Role:->] {
         if id(tgt) not in seen {
@@ -537,10 +537,6 @@ impl UniNode._children -> list[UniNode] {
         }
     }
     return out;
-}
-
-impl UniNode.kid.getter -> list[UniNode] {
-    return [self->:Kid:->];
 }
 
 impl UniNode.parent.getter -> (UniNode | None) {
@@ -1079,7 +1075,7 @@ impl UniNode._sub_node_tab.getter -> dict[(type, list[UniNode])] {
 }
 
 impl UniNode._construct_sub_node_tab -> None {
-    pending = self.kid;
+    pending = [self->:Kid:->];
     ordered: list[UniNode] = [];
     while pending {
         nd = pending.pop();
@@ -1087,7 +1083,7 @@ impl UniNode._construct_sub_node_tab -> None {
             continue;
         }
         ordered.append(nd);
-        pending.extend(nd.kid);
+        pending.extend([nd->:Kid:->]);
     }
 
     for nd in reversed(ordered) {
@@ -1132,7 +1128,7 @@ impl UniNode.add_kids_left(
     parent_update: bool = False,
     role: (type[Role] | None) = None
 ) -> UniNode {
-    self.set_kids([*nodes, *self.kid], pos_update=pos_update);
+    self.set_kids([*nodes, *[self->:Kid:->]], pos_update=pos_update);
     if role is not None {
         for n in nodes {
             self._attach(n, role);
@@ -1147,7 +1143,7 @@ impl UniNode.add_kids_right(
     parent_update: bool = False,
     role: (type[Role] | None) = None
 ) -> UniNode {
-    self.set_kids([*self.kid, *nodes], pos_update=pos_update);
+    self.set_kids([*[self->:Kid:->], *nodes], pos_update=pos_update);
     if role is not None {
         for n in nodes {
             self._attach(n, role);
@@ -1162,7 +1158,7 @@ impl UniNode.insert_kids_at_pos(
     pos_update: bool = True,
     role: (type[Role] | None) = None
 ) -> UniNode {
-    cur = self.kid;
+    cur = [self->:Kid:->];
     self.set_kids([*cur[:pos], *nodes, *cur[pos:]], pos_update=pos_update);
     if role is not None {
         for n in nodes {
@@ -1202,7 +1198,7 @@ impl UniNode.replace_kid(old: UniNode, new: UniNode) -> UniNode {
             self._attach(new if t is old else t, role);
         }
     }
-    self.set_kids([new if k is old else k for k in self.kid], pos_update=False);
+    self.set_kids([new if k is old else k for k in [self->:Kid:->]], pos_update=False);
     return self;
 }
 
@@ -1231,7 +1227,7 @@ impl UniNode.__deepcopy__(memo: dict[int, object]) -> UniNode {
             dup.__dict__[key] = copy.deepcopy(val, memo);
         }
     }
-    for k in self.kid {
+    for k in [self->:Kid:->] {
         kc = copy.deepcopy(k, memo);
         dup +>:Kid:+> kc;
     }
@@ -1255,7 +1251,7 @@ impl UniNode.set_parent(parent: UniNode) -> UniNode {
 }
 
 impl UniNode.resolve_tok_range -> tuple[(Token, Token)] {
-    kids = self.kid;
+    kids = [self->:Kid:->];
     if kids {
         return (kids[0].loc.first_tok, kids[-1].loc.last_tok);
     } elif isinstance(self, Token) {
@@ -1350,7 +1346,7 @@ impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
 
 impl UniNode.flatten -> list[UniNode] {
     ret: list[UniNode] = [self];
-    for k in self.kid {
+    for k in [self->:Kid:->] {
         if k.ct_pruned {
             continue;
         }
@@ -2293,7 +2289,7 @@ impl Test.postinit -> None {
         else name_node.value;
     UniNode.postinit(self);
 
-    if (self.description is None and name_node not in self.kid) {
+    if (self.description is None and name_node not in [self->:Kid:->]) {
         self.insert_kids_at_pos([name_node], pos=1, pos_update=False);
     }
     AstSymbolNode._init_symbol(
@@ -2735,8 +2731,8 @@ impl Ability.postinit -> None {
     self.raises = _raises;
     UniNode.postinit(self);
     if (self.name_ref is None) {
-        first_tok = self.kid[0]
-            if (self.kid and isinstance(self.kid[0], Token))
+        first_tok = [self->:Kid:->][0]
+            if ([self->:Kid:->] and isinstance([self->:Kid:->][0], Token))
             else None;
         if (first_tok is None) {
             raise ValueError('Cannot create synthetic name_ref without location info.');
@@ -3557,12 +3553,12 @@ impl JsxElement.postinit -> None {
 
 
 impl JsxElement.get_body_start_line -> (int | None) {
-    if not self.kid {
+    if not [self->:Kid:->] {
         return None;
     }
-    opening_tag = self.kid[0];
+    opening_tag = [self->:Kid:->][0];
     if isinstance(opening_tag, JsxElement) {
-        for k in opening_tag.kid {
+        for k in [opening_tag->:Kid:->] {
             if (isinstance(k, Token) and (k.name == Tok.JSX_TAG_END) and k.loc) {
                 return k.loc.last_line + 1;
             }
@@ -3572,12 +3568,12 @@ impl JsxElement.get_body_start_line -> (int | None) {
 }
 
 impl JsxElement.get_body_end_line -> (int | None) {
-    if not self.kid {
+    if not [self->:Kid:->] {
         return None;
     }
-    closing_tag = self.kid[-1];
+    closing_tag = [self->:Kid:->][-1];
     if isinstance(closing_tag, JsxElement) {
-        for k in closing_tag.kid {
+        for k in [closing_tag->:Kid:->] {
             if (isinstance(k, Token) and (k.name == Tok.JSX_CLOSE_START) and k.loc) {
                 return k.loc.first_line;
             }

@@ -157,14 +157,14 @@ positions, flags); each child slot the parser fills (`condition`, `body`,
 `target`, ...) is a role-typed edge from
 [`compiler/frontend/roles.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/roles.jac)
 (`ConditionRole`, `BodyRole`, ... all subclasses of `Role`), and the ordered
-token stream is a separate `Kid` edge per child. The spelling passes use is
-unchanged: `nd.condition`, `nd.body`, `nd.kid` and `nd.parent` are accessors
-over those edges (`unitree.impl/roles.impl.jac`: each `{ getter; }` slot
-declared in `unitree.jac` reads its edge type there, and the `init` for each
-class links its children through `_link`). `kid` is the Kid edges in
-connection order, so the formatter and `unparse` see the same token stream as
-before; `parent` is the source of the newest incoming Kid edge (or Role edge,
-for a node reachable only through a slot).
+token stream is a separate `Kid` edge per child. Passes read that stream
+directly with `[nd->:Kid:->]`, which returns children in connection order,
+so the formatter and `unparse` see the same token stream as before.
+`nd.condition`, `nd.body` and `nd.parent` are accessors over edges
+(`unitree.impl/roles.impl.jac` implements the role getters declared in
+`unitree.jac`, and the `init` for each class links its children through
+`_link`). `parent` is the source of the newest incoming Kid edge (or Role
+edge, for a node reachable only through a slot).
 
 Construction connects: a class's generated `init` assigns its scalars and calls
 `_link(kid, roles)`, which records each child in the node's adjacency. After

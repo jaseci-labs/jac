@@ -664,7 +664,7 @@ impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
         if not isinstance(arch, Archetype) {
             continue;
         }
-        for kid in arch.kid {
+        for kid in [arch->:Kid:->] {
             if (
                 isinstance(kid, KWPair)
                 and kid.key is not None
@@ -1391,7 +1391,7 @@ impl TypeEvaluator._invalidate_expr_type_cache(node_: UniNode) -> None {
         node_.type = None;
         node_.ct_value = None;
     }
-    for kid in node_.kid {
+    for kid in [node_->:Kid:->] {
         self._invalidate_expr_type_cache(kid);
     }
 }

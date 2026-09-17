@@ -648,7 +648,7 @@ impl native_capability_violations(
                     continue;
                 }
             }
-            for k in nd.kid {
+            for k in [nd->:Kid:->] {
                 work.append(k);
             }
         }

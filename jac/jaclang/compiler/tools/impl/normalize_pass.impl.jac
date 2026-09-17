@@ -27,7 +27,7 @@ impl NormalizePass.enter_module with uni.Module entry {
                 imp.set_kids(
                     nodes=[
                         k
-                        for k in imp.kid
+                        for k in [imp->:Kid:->]
                         if not (isinstance(k, uni.ModuleItem) and k.name.value == "Any")
                     ]
                 );

@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
     BinaryExpr,
     ConnectOp,
@@ -716,7 +717,7 @@ def get_type_of_binary_operation(
         );
 
         synth_call = FuncCall(
-            target=callable_node, params=params, genai_call=None, kid=expr.kid
+            target=callable_node, params=params, genai_call=None, kid=[expr->:Kid:->]
         );
         if expr.parent is not None {
             synth_call.set_parent(expr.parent);

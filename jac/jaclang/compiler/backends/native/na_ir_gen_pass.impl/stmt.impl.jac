@@ -3459,7 +3459,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         return False;
     }
     _is_flow = False;
-    for k in nd.kid {
+    for k in [nd->:Kid:->] {
         if isinstance(k, uni.Token) and k.name == Tok.KW_FLOW {
             _is_flow = True;
             break;
