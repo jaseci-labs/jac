@@ -294,9 +294,6 @@ def serving_app_for(config: any, entry_file: Path, backend: str) -> str {
 }
 
 
-"""Seal the app image into `image_dir` (the directory the host reads beside
-itself) and describe the program the host boots; a dev build with no client
-bundle boots the entry from source instead."""
 def stage_program(
     entry_file: Path,
     project_dir: Path,

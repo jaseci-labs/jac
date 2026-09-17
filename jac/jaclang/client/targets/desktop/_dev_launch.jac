@@ -27,7 +27,6 @@ def _project_venv_site_packages -> str {
 }
 
 
-"""The environment the WebKitGTK host needs; empty on hosts without WebKitGTK."""
 def desktop_host_env -> list[tuple[str, str]] {
     return DESKTOP_WEBKIT_ENV if sys.platform.startswith("linux") else [];
 }

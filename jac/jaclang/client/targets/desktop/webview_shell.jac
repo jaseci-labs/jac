@@ -24,9 +24,6 @@ import from jaclang.client.targets.desktop._dev_launch {
     jac_desktop_webkit_shell_export
 }
 
-"""Build the native host for `entry_file` into `output_dir` laid out for this
-host, with the client bundle from `dist_dir` (none in dev, where the webview
-follows Vite instead), and return the executable."""
 def _assemble_native_host(
     entry_file: Path, project_dir: Path, output_dir: Path, dist_dir: Optional[Path]
 ) -> Path {

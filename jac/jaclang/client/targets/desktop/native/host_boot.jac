@@ -59,9 +59,6 @@ def preferred_port(app_name: str) -> int {
 }
 
 
-"""The running host binary. Linux answers through /proc; elsewhere the fused
-bringup exported JAC_EXECUTABLE before the interpreter started. argv[0] is
-empty under the embedded interpreter, so it is only a last resort."""
 def host_executable -> str {
     if os.path.isfile("/proc/self/exe") {
         return os.path.realpath("/proc/self/exe");
@@ -74,9 +71,6 @@ def host_executable -> str {
 }
 
 
-"""Where the app keeps its graph and session when JAC_DATA_PATH is unset. A
-macOS app lives in a bundle that must stay read-only, so its state goes under
-Application Support; elsewhere it stays beside the app, as it always has."""
 def default_data_dir(system: str, identifier: str, app_name: str, app_dir: str) -> str {
     if system == "Darwin" {
         return os.path.join(

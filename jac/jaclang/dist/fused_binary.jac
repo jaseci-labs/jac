@@ -76,10 +76,6 @@ def graft_runtime(self_path: str, host_path: str) -> bool {
 }
 
 
-"""Where the fused launcher materializes runtimes, in the order it prefers
-them: $XDG_CACHE_HOME or ~/.cache on every OS (the launcher's own rule, see
-`fused.materialize.cache_root`), the platform cache dir where that differs
-(macOS), then the TMPDIR fallback the launcher takes when neither is writable."""
 def runtime_cache_roots -> list[str] {
     import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
     base = os.environ.get("XDG_CACHE_HOME", "")

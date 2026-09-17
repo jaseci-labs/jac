@@ -1,11 +1,3 @@
-"""Where a built desktop app's pieces live, per host.
-
-Linux ships a flat directory: the executable, libwebview, the sealed image and
-the client bundle side by side. macOS ships an application bundle: the
-executable and libwebview under Contents/MacOS, the image and the client bundle
-under Contents/Resources, Info.plist under Contents. The build lays the app out
-with `for_host`; the running host recovers the same layout from its own path
-with `from_executable`, so build and runtime agree by construction."""
 import from pathlib { Path }
 
 obj AppLayout {
@@ -48,17 +40,14 @@ obj AppLayout {
         return AppLayout(directory=exe_dir, executable=executable, resources=exe_dir);
     }
 
-    """The directory the executable loads its shared libraries from."""
     def library_dir -> Path {
         return self.executable.parent;
     }
 
-    """The shell launcher beside the app that wires in the project venv."""
     def launcher -> Path {
         return self.directory / (self.executable.name + "-launch.sh");
     }
 
-    """The executable as the launcher reaches it from its own directory."""
     def launch_target -> str {
         return "./" + str(self.executable.relative_to(self.directory));
     }

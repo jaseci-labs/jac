@@ -23,12 +23,8 @@ glob WEBVIEW_HEADER: Artifact = Artifact(
          "source",
          "https://raw.githubusercontent.com/webview/webview/0.12.0/core/include/webview/webview.h",
          "b1ff6e11431d031e5f7917e5301f4bcdf3910a2763a0720abfd291994eee7f7b"
-     );
-
-"""The oldest macOS a built desktop app runs on. It matches the floor of the
-shipped jac release, so an app never outlives the interpreter it embeds, and
-every WebKit API the pinned webview header uses predates it."""
-glob MACOS_DESKTOP_MIN_VERSION: str = "12.0";
+     ),
+     MACOS_DESKTOP_MIN_VERSION: str = "12.0";
 
 def source_workspace(source: Path, name: str) -> Path {
     digest = hashlib.sha256();
@@ -66,14 +62,10 @@ def source_workspace(source: Path, name: str) -> Path {
     return destination;
 }
 
-"""The file name of the webview shared library on this host."""
 def webview_library_name -> str {
     return shared_library_name("webview");
 }
 
-"""One host's recipe for compiling the pinned webview header into its shared
-library: the compiler invocation split around the source and output, and the
-identity that stamps the result so an unchanged toolchain skips the rebuild."""
 obj WebviewBuild {
     has label: str,
         library: str,
@@ -87,9 +79,6 @@ obj WebviewBuild {
     }
 }
 
-"""WebKitGTK through pkg-config. The libraries follow the source because Ubuntu
-links with --as-needed, which drops a library named before the object that
-needs it."""
 def linux_webview_build(module: str, version: str, flags: list[str]) -> WebviewBuild {
     return WebviewBuild(
         label="Building native WebKitGTK wrapper",
@@ -109,8 +98,6 @@ def linux_webview_build(module: str, version: str, flags: list[str]) -> WebviewB
     );
 }
 
-"""The WebKit framework that ships with the Xcode Command Line Tools. The
-install name is how the native host links the library: beside itself."""
 def mac_webview_build(macos_version: str, machine: str) -> WebviewBuild {
     return WebviewBuild(
         label="Building native WKWebView wrapper",
@@ -158,8 +145,6 @@ def _webview_build_for_host(host: str) -> WebviewBuild {
     return linux_webview_build(module, version, shlex.split(flags));
 }
 
-"""Build the webview shared library beside the binding in `directory` after
-provisioning this host's toolchain, and return its path."""
 def ensure_webview(directory: Path) -> Path {
     host = ensure_desktop_host();
     return build_webview(directory, _webview_build_for_host(host));
