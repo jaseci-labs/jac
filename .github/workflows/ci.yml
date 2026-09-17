@@ -980,7 +980,7 @@ jobs:
       # second time.
       - name: Verify cold start of the sealed binary
         run: |
-          jac purge
+          jac cache purge
           timeout 5 jac --version
 
       # The guide surface, plugin integration (pth finder / CLI dispatch /
