@@ -148,8 +148,8 @@ Mobile-only npm deps can go in the app's overlay, `[apps.mobile.dependencies.npm
 
 ```bash
 jac run --dev --platform web mobile      # WEB preview (react-native-web via Vite) - iframe-able
-jac setup mobile                         # one-time Expo scaffold → .jac/mobile-rn/
-jac run --dev mobile                     # NATIVE (Metro; press a/i, or Expo Go QR)
+jac run --dev mobile                     # NATIVE (Metro; press a/i, or Expo Go QR); first run scaffolds .jac/mobile-rn/
+jac setup mobile                         # optional: provision the Expo scaffold ahead of time
 jac build mobile --platform android      # APK (gradle or EAS)
 jac build mobile --platform ios          # .app / .ipa (xcodebuild on macOS, or EAS)
 jac build mobile --platform web          # the browser bundle (dist/mobile/ under `jac build --all --platform web`)

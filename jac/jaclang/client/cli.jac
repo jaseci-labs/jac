@@ -10,7 +10,7 @@ import from pathlib { Path }
 
 comptime SPEC_SETUP: CommandSpec = CommandSpec(
          name="setup",
-         help="Set up an app's client (one-time initialization)",
+         help="Provision an app's client ahead of time (run and build do it on first use)",
          args=[
              Arg.create(
                  "target",
@@ -180,9 +180,9 @@ def run_client_build(
 
         import from jaclang.runtime.runtime { JacRuntime as Jac }
         Jac.set_full_target_path(str(entry_path));
-        bundle_path = target.build(
-            entry_path, project_dir, platform or app.platform or None
-        );
+        build_platform = platform or app.platform or None;
+        target.ensure_ready(project_dir, platform=build_platform);
+        bundle_path = target.build(entry_path, project_dir, build_platform);
         if output {
             bundle_path = _place_bundle(Path(bundle_path), Path(output));
         }
@@ -269,6 +269,7 @@ def run_client_start(
         }
     }
     try {
+        target.ensure_ready(project_dir, platform=app_platform or None);
         if dev {
             target.dev(entry_path, project_dir, port=start_port, api_port=start_api);
         } else {

@@ -15,13 +15,15 @@ In a workspace it is an `[apps.<name>]` table beside the web app (`jac create --
 | Android | Managed JDK 21 and Android SDK; accept SDK licenses during setup |
 | iOS (macOS only) | Xcode + Command Line Tools; Jac provisions Ruby/CocoaPods; other hosts need a hosted macOS builder |
 
-## One-time scaffold
+## The scaffold provisions itself on first run
+
+`jac run --dev mobile`, `jac run mobile` and `jac build mobile --platform android|ios` all check readiness first (`ensure_ready`): on the first run they scaffold an Expo project at `.jac/mobile-rn/` (`[client.react_native].project_dir` relocates it; it stays under the `.jac` build root, out of the source tree), merge `[dependencies.npm.native]` into its `package.json`, install them, and write a baseline `eas.json` (`preview` / `production` profiles), narrating each step ("First run: performing one-time mobile setup..."). Later runs only re-sync the deps when the manifest or lockfile changed. `--platform web` never touches the scaffold.
 
 ```bash
-jac setup mobile      # the app named mobile; `jac setup` alone for the default app
+jac setup mobile      # optional: provision ahead of time (CI images, offline prep); `jac setup` alone for the default app
 ```
 
-Scaffolds an Expo project at `.jac/mobile-rn/` (`[client.react_native].project_dir` relocates it; it stays under the `.jac` build root, out of the source tree), merges `[dependencies.npm.native]` into its `package.json`, installs them, and writes a baseline `eas.json` (`preview` / `production` profiles). `jac build` runs the scaffold itself when it is missing; `jac run --dev` needs it in place.
+`jac setup` is the explicit pre-provision, not a prerequisite: it runs the same scaffold + deps sequence and prints the next steps. Under `JAC_OFFLINE=1` a missing scaffold or stale deps cannot be provisioned, so the run stops and names `jac setup <app>` to run online first. Consent-gated toolchain steps (Android SDK licenses, Linux `sudo` package installs) keep their prompt on a TTY and stop with the exact command and env override (`JAC_ACCEPT_ANDROID_LICENSES=1`) when there is none.
 
 ## Configuration - `[client.react_native]`
 

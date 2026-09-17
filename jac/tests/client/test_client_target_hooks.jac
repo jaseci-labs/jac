@@ -116,3 +116,104 @@ test "targets register lazily on first registry access" {
     ret_idx = registry_content.index("return _registry;");
     assert reg_idx < ret_idx , "register_targets must run before get_target_registry returns";
 }
+
+"""`ensure_ready` is the universal readiness verb: the base ClientTarget consults
+`requires_setup` and, when it is set, provisions through the target's own
+`setup()`; otherwise it is a no-op. That is what finally gives the flag a
+runtime meaning."""
+test "ensure_ready on the base target consults requires_setup" {
+    import tempfile;
+    import unittest.mock;
+    import from jaclang.client.targets.registry { get_target_registry }
+
+    registry = get_target_registry();
+    target = registry.get("web");
+    assert target is not None;
+    assert target.requires_setup == False;
+    calls: list[str] = [];
+
+    def _fake_setup(project_dir: Path) {
+        calls.append(f"setup:{project_dir}");
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        with unittest.mock.patch.object(target, "setup", _fake_setup) {
+            target.ensure_ready(proj);
+            assert calls == [] , "requires_setup = False: ensure_ready is a no-op";
+            target.requires_setup = True;
+            try {
+                target.ensure_ready(proj);
+                target.ensure_ready(proj);
+            } finally {
+                target.requires_setup = False;
+            }
+            assert calls == [f"setup:{proj}", f"setup:{proj}"] , (
+                "requires_setup = True: the base ensure_ready provisions via setup()"
+            );
+        }
+    }
+}
+
+"""Web, static and desktop provision inline (Vite, the webview host); none of
+them needs a setup step, so `ensure_ready` must never call `setup()` on them."""
+test "web, static and desktop ensure_ready are no-ops" {
+    import tempfile;
+    import unittest.mock;
+    import from jaclang.client.targets.registry { get_target_registry }
+
+    registry = get_target_registry();
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        for name in ["web", "static", "desktop"] {
+            target = registry.get(name);
+            assert target is not None , name;
+            assert target.requires_setup == False , f"{name} needs no setup step";
+            calls: list[str] = [];
+
+            def _fake_setup(project_dir: Path) {
+                calls.append(name);
+            }
+            with unittest.mock.patch.object(target, "setup", _fake_setup) {
+                target.ensure_ready(proj);
+            }
+            assert calls == [] , f"{name}.ensure_ready must not provision: {calls}";
+        }
+    }
+}
+
+"""The CLI dispatcher (`run_client_build` / `run_client_start` in client/cli.jac)
+asks every target for readiness before dispatching build, dev or start, so any
+target that flips `requires_setup` gets lazy provisioning without further
+wiring. The explicit `jac setup` path stays on `target.setup(...)`."""
+test "the client dispatcher calls ensure_ready before build, dev and start" {
+    content = _cli_jac.read_text().replace("\r\n", "\n");
+    build_section = content.split("def run_client_build(")[1].split(
+        "def run_client_start("
+    )[0];
+    start_section = content.split("def run_client_start(")[1].split("def get_config")[
+        0
+    ];
+    for (label, section, dispatch) in [
+        ("build", build_section, "target.build("),
+        ("start", start_section, "target.dev("),
+        ("start", start_section, "target.start(")
+    ] {
+        ready_idx = section.find("target.ensure_ready(project_dir");
+        dispatch_idx = section.find(dispatch);
+        assert ready_idx >= 0 , f"run_client_{label} must call target.ensure_ready";
+        assert dispatch_idx >= 0 , f"run_client_{label} must call {dispatch}";
+        assert ready_idx < dispatch_idx , (
+            f"run_client_{label}: ensure_ready must run before {dispatch}"
+        );
+    }
+    setup_section = content.split("def run_client_setup(")[1].split(
+        "def _place_bundle("
+    )[0];
+    assert "target_obj.setup(project_dir)" in setup_section , (
+        "jac setup stays the explicit pre-provision entry"
+    );
+    assert "ensure_ready" not in setup_section , (
+        "jac setup calls setup() directly, not the lazy path"
+    );
+}
