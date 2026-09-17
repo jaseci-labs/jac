@@ -1,5 +1,6 @@
 import from enum { StrEnum }
 import from pathlib { Path }
+import from jaclang.cache.locking { FileLock }
 
 glob SWEEP_SENTINEL: str = ".last-sweep",
      SWEEP_INTERVAL_SECONDS: float = 86400.0,
@@ -20,6 +21,14 @@ enum EntryKind(StrEnum) {
     UNKNOWN = "unknown"
 }
 
+enum WriterState(StrEnum) {
+    ACTIVE = "active",
+    INACTIVE = "inactive",
+    UNKNOWN = "unknown"
+}
+
+enum TempLock(StrEnum) { NONE = "none", SUFFIX = "suffix", SIBLINGS = "siblings" }
+
 enum KeepMatch(StrEnum) { NAME = "name", FRAGMENT = "fragment" }
 
 obj CacheEntry {
@@ -36,13 +45,24 @@ obj Policy {
         markers: list[str] = [],
         ttl_env: str = "",
         keep_match: KeepMatch = KeepMatch.NAME,
-        temp_patterns: list[str] = [];
+        temp_patterns: list[str] = [],
+        temp_lock: TempLock = TempLock.NONE;
 
     def ttl_seconds -> float;
     def is_kept(rel: str, name: str, keep: set[str]) -> bool;
     def describe -> str;
     def matches(name: str) -> bool;
     def note_hit(item: Path) -> None;
+}
+
+obj TemporaryClaim {
+    has path: Path,
+        policy: Policy,
+        reclaimable: bool = False,
+        locks: list[FileLock] = [];
+
+    def __enter__ -> TemporaryClaim;
+    def __exit__(_exc_type: object, _exc_value: object, _traceback: object);
 }
 
 obj SweepReport {
@@ -65,7 +85,7 @@ def scan_entries(
     base: Path | str, policy: Policy, exclude: set[str] | None = None
 ) -> list[CacheEntry];
 
-def temporary_in_use(path: Path) -> bool;
+def temporary_owner(path: Path) -> WriterState;
 
 def last_use(item: Path, policy: Policy) -> float;
 

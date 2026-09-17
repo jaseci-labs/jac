@@ -122,7 +122,7 @@ def _cache_purge(bucket_name: str, dry_run: bool) -> int {
         console.print(f"  {verb} {label}");
     }
     for label in result.kept {
-        console.print(f"  kept {label} (in use by this process or a cache writer)");
+        console.print(f"  kept {label} (in use or ownership unknown)");
     }
     for err in result.errors {
         console.warning(err);

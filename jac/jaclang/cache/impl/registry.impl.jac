@@ -13,7 +13,7 @@ import from jaclang.cache.policy {
     SWEEP_SENTINEL,
     dir_size,
     scan_entries,
-    temporary_in_use,
+    TemporaryClaim,
     maybe_sweep_dir,
     remove_entry,
     sweep_dir,
@@ -273,11 +273,17 @@ def _purge_bucket(b: Bucket, keep: set[str], dry_run: bool, result: PurgeReport)
         if candidate.kind not in [EntryKind.STORED, EntryKind.TEMPORARY] {
             continue;
         }
-        if candidate.kind == EntryKind.TEMPORARY and temporary_in_use(item) {
-            result.kept.append(f"{b.name}/{item.relative_to(p).as_posix()}");
+        rel = item.relative_to(p).as_posix();
+        if candidate.kind == EntryKind.TEMPORARY {
+            with TemporaryClaim(item, b.policy) as claim {
+                if claim.reclaimable {
+                    _reclaim_into(result, item, f"{b.name}/{rel}", dry_run);
+                } else {
+                    result.kept.append(f"{b.name}/{rel}");
+                }
+            }
             continue;
         }
-        rel = item.relative_to(p).as_posix();
         if candidate.kind == EntryKind.STORED
             and b.policy.is_kept(rel, item.name, keep) {
             result.kept.append(f"{b.name}/{rel}");

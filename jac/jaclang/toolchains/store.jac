@@ -13,6 +13,7 @@ import from urllib.request { Request, urlopen }
 import from urllib.parse { urlsplit }
 import from jaclang.cli.console { console }
 import from jaclang.cache.registry { bucket, maybe_sweep }
+import from jaclang.cache.locking { FileLock }
 
 obj Artifact {
     has name: str,
@@ -44,55 +45,28 @@ def offline -> bool {
     return os.environ.get("JAC_OFFLINE", "").lower() in ["1", "true", "yes"];
 }
 
-obj InstallLock {
-    has path: Path,
-        handle: int = -1;
-
+obj InstallLock(FileLock) {
     def __enter__ -> InstallLock {
-        self.path.parent.mkdir(parents=True, exist_ok=True);
-        self.handle = os.open(str(self.path), os.O_CREAT | os.O_RDWR, 0o600);
-        try {
-            if os.name == "nt" and os.fstat(self.handle).st_size == 0 {
-                os.write(self.handle, b"0");
+        start = time.monotonic();
+        announced = False;
+        while not self.acquire() {
+            if not announced {
+                console.print(
+                    f"Waiting for another build to finish using {self.path.name}",
+                    style="muted"
+                );
+                announced = True;
             }
-            start = time.monotonic();
-            announced = False;
-            while True {
-                try {
-                    if os.name == "nt" {
-                        import msvcrt;
-                        os.lseek(self.handle, 0, 0);
-                        msvcrt.locking(self.handle, msvcrt.LK_NBLCK, 1);
-                    } else {
-                        import fcntl;
-                        fcntl.flock(self.handle, fcntl.LOCK_EX | fcntl.LOCK_NB);
-                    }
-                    break;
-                } except OSError {
-                    if not announced {
-                        console.print(
-                            f"Waiting for another build to finish using {self.path.name}",
-                            style="muted"
-                        );
-                        announced = True;
-                    }
-                    if time.monotonic() - start > 1800 {
-                        raise TimeoutError(f"Timed out waiting for {self.path}");
-                    }
-                    time.sleep(0.1);
-                }
+            if time.monotonic() - start > 1800 {
+                raise TimeoutError(f"Timed out waiting for {self.path}");
             }
-        } except Exception {
-            os.close(self.handle);
-            self.handle = -1;
-            raise;
+            time.sleep(0.1);
         }
         return self;
     }
 
     def __exit__(_exc_type: object, _exc_value: object, _traceback: object) {
-        os.close(self.handle);
-        self.handle = -1;
+        self.release();
     }
 }
 

@@ -1,5 +1,5 @@
 import from pathlib { Path }
-import from jaclang.cache.policy { Policy, Retention, SweepReport, KeepMatch }
+import from jaclang.cache.policy { Policy, Retention, SweepReport, KeepMatch, TempLock }
 
 obj Bucket {
     has name: str,
@@ -109,7 +109,9 @@ glob RETIRED: tuple[str, ...] = (
          Bucket(
              name="toolchains-downloads",
              relpath="toolchains/downloads",
-             policy=Policy(ttl_days=14.0, temp_patterns=["*.part"]),
+             policy=Policy(
+                 ttl_days=14.0, temp_patterns=["*.part"], temp_lock=TempLock.SUFFIX
+             ),
              summary="verified toolchain archives (extracted into installed/)",
              root_env="JAC_TOOLCHAIN_DIR",
              root_prefix="toolchains"
@@ -121,7 +123,8 @@ glob RETIRED: tuple[str, ...] = (
                  ttl_days=90.0,
                  depth=3,
                  markers=[".jac-install.json"],
-                 temp_patterns=[".install-*"]
+                 temp_patterns=[".install-*"],
+                 temp_lock=TempLock.SIBLINGS
              ),
              summary="installed toolchains by name, version and platform",
              root_env="JAC_TOOLCHAIN_DIR",
@@ -134,7 +137,8 @@ glob RETIRED: tuple[str, ...] = (
                  ttl_days=90.0,
                  depth=3,
                  markers=[".ready"],
-                 temp_patterns=["tmp????????"]
+                 temp_patterns=["tmp????????"],
+                 temp_lock=TempLock.SIBLINGS
              ),
              summary="toolchain builds by source digest",
              root_env="JAC_TOOLCHAIN_DIR",

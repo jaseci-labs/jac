@@ -176,7 +176,7 @@ impl scan_entries(
     return found;
 }
 
-impl temporary_in_use(path: Path) -> bool {
+impl temporary_owner(path: Path) -> WriterState {
     name = path.name;
     owner = "";
     if ".tmp." in name {
@@ -185,7 +185,7 @@ impl temporary_in_use(path: Path) -> bool {
         owner = name.split(".")[-2];
     }
     if not owner.isdecimal() or int(owner) <= 0 {
-        return False;
+        return WriterState.UNKNOWN;
     }
     if os.name == "nt" {
         import csv;
@@ -198,26 +198,71 @@ impl temporary_in_use(path: Path) -> bool {
                 timeout=5
             );
             if result.returncode != 0 {
-                return True;
+                return WriterState.UNKNOWN;
             }
-            return any(
+            active = any(
                 [
                     len(row) > 1 and row[1] == owner
                     for row in csv.reader(result.stdout.splitlines())
                 ]
             );
+            return WriterState.ACTIVE if active else WriterState.INACTIVE;
         } except (OSError, subprocess.TimeoutExpired) {
-            return True;
+            return WriterState.UNKNOWN;
         }
     }
     try {
         os.kill(int(owner), 0);
-        return True;
+        return WriterState.ACTIVE;
     } except ProcessLookupError {
-        return False;
-    } except OSError {
-        return True;
+        return WriterState.INACTIVE;
+    } except (OSError, OverflowError) {
+        return WriterState.UNKNOWN;
     }
+}
+
+impl TemporaryClaim.__enter__ -> TemporaryClaim {
+    state = temporary_owner(self.path);
+    if state != WriterState.UNKNOWN {
+        self.reclaimable = state == WriterState.INACTIVE;
+        return self;
+    }
+    if self.policy.temp_lock == TempLock.NONE
+        or not any(
+            [
+                fnmatch.fnmatchcase(self.path.name, pat)
+                for pat in self.policy.temp_patterns
+            ]
+        ) {
+        return self;
+    }
+    try {
+        paths: list[Path] = [self.path.with_suffix(".lock")]
+            if self.policy.temp_lock == TempLock.SUFFIX
+            else sorted(self.path.parent.glob("*.lock"));
+        if not paths {
+            return self;
+        }
+        for p in paths {
+            lock = FileLock(p);
+            if not lock.acquire(create=False) {
+                return self;
+            }
+            self.locks.append(lock);
+        }
+        self.reclaimable = True;
+    } except OSError {}
+    return self;
+}
+
+impl TemporaryClaim.__exit__(
+    _exc_type: object, _exc_value: object, _traceback: object
+) {
+    for lock in self.locks {
+        lock.release();
+    }
+    self.locks.clear();
+    self.reclaimable = False;
 }
 
 impl last_use(item: Path, policy: Policy) -> float {
@@ -316,12 +361,13 @@ impl sweep_dir(
     for candidate in scan_entries(base, policy) {
         item = candidate.path;
         if candidate.kind == EntryKind.TEMPORARY {
-            if temporary_in_use(item) {
-                result.kept += 1;
-            } elif stamp_now - last_use(item, Policy()) > TMP_TTL_SECONDS {
-                _reclaim(base, item, policy.depth, dry_run, result);
-            } else {
-                result.kept += 1;
+            with TemporaryClaim(item, policy) as claim {
+                if claim.reclaimable
+                    and stamp_now - last_use(item, Policy()) > TMP_TTL_SECONDS {
+                    _reclaim(base, item, policy.depth, dry_run, result);
+                } else {
+                    result.kept += 1;
+                }
             }
             continue;
         }
