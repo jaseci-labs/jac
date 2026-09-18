@@ -10,7 +10,10 @@ import from jaclang.scale.runtime.gateway.service_registry {
     ServiceStatus
 }
 import from jaclang.scale.runtime.gateway.route_table { ServiceRouteTable }
-import from jaclang.scale.runtime.transport.http_forward { raw_forward }
+import from jaclang.scale.runtime.transport.http_forward {
+    HOP_BY_HOP_HEADERS,
+    raw_forward
+}
 import from jaclang.scale.runtime.context.util {
     DEFAULT_GATEWAY_PORT,
     DEFAULT_GATEWAY_HOST,
@@ -31,13 +34,7 @@ import from jaclang.scale.admin.network { JacAPIServerNetwork }
 import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
 import from jaclang.scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 
-glob logger = logging.getLogger(__name__),
-     HOP_BY_HOP_HEADERS: set[str] = {
-         "host",
-         "transfer-encoding",
-         "connection",
-         "keep-alive"
-     };
+glob logger = logging.getLogger(__name__);
 
 obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
