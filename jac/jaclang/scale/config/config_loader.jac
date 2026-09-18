@@ -88,3 +88,5 @@ def _ws_positive(
 def get_scale_config(project_dir: Path | None = None) -> JacScaleConfig;
 def peek_scale_config -> JacScaleConfig | None;
 def reset_scale_config -> None;
+
+def resolve_admin_enabled(configured: bool) -> bool;
