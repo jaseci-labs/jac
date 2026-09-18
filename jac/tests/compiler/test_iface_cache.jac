@@ -35,6 +35,7 @@ import from jaclang.compiler.driver.jir {
     write_precompiled_jir,
     _manifest_compiler_digest
 }
+import from jaclang.compiler.frontend.constant { ImmutabilityKind }
 import from jaclang.compiler.types.stubcat.modiface { read_iface_hash }
 
 glob DEP_V1: str = "def f() -> int { return 1; }\n",
@@ -129,7 +130,9 @@ test "a warm no-edit check replays diagnostics and runs zero passes" {
 }
 
 test "dependency ingestion hydrates from the interface, not the source" {
-    (main, dep) = _project();
+    (main, dep) = _project(
+        DEP_V1 + "\nimport from typing { Final }\n\nglob RATE: Final[float] = 2.5;\n"
+    );
     _check(main);
     prog = _context(main);
     mod = prog.load_dependency_module(dep);
@@ -142,6 +145,9 @@ test "dependency ingestion hydrates from the interface, not the source" {
     );
     assert mod.stub_only , "a hydrated dependency should be interface-only";
     assert "f" in mod.names_in_scope , "the hydrated interface lost a symbol";
+    assert mod.names_in_scope["RATE"].immutability is ImmutabilityKind.FINAL , (
+        "the hydrated interface lost the Final qualifier"
+    );
 }
 
 test "hydrated dependencies retain their application context" {

@@ -598,6 +598,10 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _match_arch_field_order(pat: uni.MatchArch) -> (list[str] | None);
     def _match_subj_member(subj: es.Expression, field: str) -> es.Expression;
     def _ensure_emitters -> None;
+    def _primitive_type_ref(
+        name: str, jac_node: uni.UniNode
+    ) -> (es.Expression | None);
+
     def _resolve_primitive_type_name(_obj_type: TypeBase | None) -> str;
     def _try_primitive_op(
         expr_node: uni.UniNode,
