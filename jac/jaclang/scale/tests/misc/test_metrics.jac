@@ -457,6 +457,7 @@ class _CaptureLogs(logging.Handler) {
 def _collector_for_fleet(workers: int, multiproc_dir: str) -> tuple[any, list[any]] {
     handler = _CaptureLogs();
     previous_level = prometheus_metrics.logger.level;
+    previous_disable = logging.root.manager.disable;
     prometheus_metrics.logger.addHandler(handler);
     prometheus_metrics.logger.setLevel(logging.ERROR);
     logging.disable(logging.NOTSET);
@@ -473,6 +474,7 @@ def _collector_for_fleet(workers: int, multiproc_dir: str) -> tuple[any, list[an
         }
         prometheus_metrics.logger.removeHandler(handler);
         prometheus_metrics.logger.setLevel(previous_level);
+        logging.disable(previous_disable);
     }
     return (collector, handler.records);
 }
@@ -517,4 +519,21 @@ test "a fleet whose values were fixed before the directory was set is reported" 
 test "a single worker collector reports nothing" {
     (_collector, records) = _collector_for_fleet(1, "");
     assert records == [] , [r.getMessage() for r in records];
+}
+
+
+"""`jac test` runs whole files back to back in one process, so a helper that
+widens the process-wide logging cutoff to read a record has to put it back or
+the next file silently loses its own logging."""
+test "capturing collector logs leaves the global logging cutoff alone" {
+    previous = logging.root.manager.disable;
+    logging.disable(logging.CRITICAL);
+    try {
+        _collector_for_fleet(1, "");
+        assert logging.root.manager.disable == logging.CRITICAL , (
+            f"cutoff left at {logging.root.manager.disable}"
+        );
+    } finally {
+        logging.disable(previous);
+    }
 }
