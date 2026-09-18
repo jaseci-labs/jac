@@ -1282,7 +1282,9 @@ impl TypeCheckPass.exit_type_alias with TypeAlias exit {
     if not isinstance(resolved, ClassType)
         or not JAC_TYPE_REGISTRY.is_primitive(resolved.shared.class_name) {
         self.ctx.emit(E1107, node_override=here.value, base=str(resolved));
+        return;
     }
+    here.distinct_base = resolved.shared.class_name;
 }
 
 impl TypeCheckPass.exit_archetype with Archetype exit {
