@@ -146,9 +146,6 @@ openssl() {
 }
 cpython() {
     cd "$src/cpython"
-    # cpython-sources.txt decides what the extracted tree holds. Detach the
-    # upstream rules that still name pruned paths before anything reads them.
-    patch -f -F0 -p1 -i "$recipe/build-graph.patch"
     if [ -n "$host" ]; then
         patch -f -F0 -p1 -i "$recipe/compiler-bridge.patch"
         cp "$recipe/compiler_bridge.c" Python/jac_compile.c
@@ -158,6 +155,11 @@ cpython() {
         cp "$recipe/binding_api.c" Python/jac_bindings.c
         cp "$work/native/jacpython.o" Python/jacpython.o
     fi
+    # cpython-sources.txt decides what the extracted tree holds; detach the
+    # upstream rules that still name pruned paths. This runs second because
+    # compiler-bridge.patch carries zero-context hunks, which match on line
+    # number alone and so must see pristine ones.
+    patch -f -F0 -p1 -i "$recipe/build-graph.patch"
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
         linux-*)

@@ -19,7 +19,7 @@
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
 #   so build-graph.patch detaches upstream rules that name them.
-#   Total: 18 files / 36,067 source lines.
+#   Total: 23 files / 42,118 source lines.
 #
 # After each build, build.sh checks that no commented path came back, reading
 # the marker to decide which builds must lack it.
@@ -28,11 +28,9 @@
 # CI hashes this manifest and rebuilds/verifies Python when it changes.
 # This list covers CPython; sources.json also pins its external dependencies.
 # Generated headers, build prerequisites and licenses remain necessary even
-# when they are not directly compiled. _testembed.c is built by upstream's
-# default make target, despite --disable-test-modules; no test suite is copied.
-# Its frozen header and Modules/xxmodule.c are also make/install prerequisites.
-# The mimalloc WASI source is an unconditional make prerequisite even when the
-# selected platform does not use it.
+# when they are not directly compiled. The mimalloc WASI source is an
+# unconditional make prerequisite even when the selected platform does not
+# use it.
 
 # Build, install and license inputs
 Grammar/
@@ -42,18 +40,18 @@ Misc/platform_triplet.c
 Misc/python-config.in
 Misc/python-config.sh.in
 Misc/python-embed.pc.in
-Misc/python.man
+# Misc/python.man  # pruned: 768 source lines
 Misc/python.pc.in
 Programs/_bootstrap_python.c
 Programs/_freeze_module.c
 Programs/_freeze_module.py
-Programs/_testembed.c
+# Programs/_testembed.c  # pruned: 2,641 source lines
 Programs/python.c
-Programs/test_frozenmain.h
+# Programs/test_frozenmain.h  # pruned: 39 source lines
 # README.rst  # pruned: 235 source lines
 Tools/build/
 Tools/freeze/flag.py
-Tools/gdb/libpython.py
+# Tools/gdb/libpython.py  # pruned: 2,190 source lines
 Tools/scripts/idle3
 Tools/scripts/pydoc3
 aclocal.m4
@@ -607,7 +605,7 @@ Modules/unicodedata.c
 Modules/unicodedata_db.h
 Modules/unicodename_db.h
 # Modules/winreparse.h  # pruned: 59 source lines
-Modules/xxmodule.c
+# Modules/xxmodule.c  # pruned: 413 source lines
 Modules/zlibmodule.c
 
 # Python standard library (no test or GUI packages)
