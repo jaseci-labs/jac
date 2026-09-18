@@ -1,5 +1,8 @@
 class MetricsCollector {
-    def init(self: MetricsCollector, config: dict[str, any] = {}) -> None;
+    def init(
+        self: MetricsCollector, config: dict[str, any] = {}, worker_count: int = 1
+    ) -> None;
+
     def record_request(
         self: MetricsCollector,
         method: str,
@@ -28,7 +31,10 @@ class MetricsCollector {
 }
 
 class NoOpMetricsCollector(MetricsCollector) {
-    def init(self: NoOpMetricsCollector, config: dict[str, any] = {}) {}
+    def init(
+        self: NoOpMetricsCollector, config: dict[str, any] = {}, worker_count: int = 1
+    ) {}
+
     def record_request(
         self: NoOpMetricsCollector,
         method: str,
