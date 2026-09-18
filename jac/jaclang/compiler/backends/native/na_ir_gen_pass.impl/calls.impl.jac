@@ -2269,11 +2269,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             param_ir_types: list[ir.Type] = [];
             for p in sig.get_parameters() {
-                param_ir_types.append(
-                    self._resolve_jac_type(p.type_tag)
-                        if p.type_tag is not None
-                        else ir.IntType(64)
-                );
+                param_ir_types.append(self._resolve_jac_type(p));
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
             func = self._get_or_declare_extern(func_name, ret_ir_type, param_ir_types);

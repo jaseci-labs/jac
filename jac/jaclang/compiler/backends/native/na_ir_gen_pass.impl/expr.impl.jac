@@ -373,9 +373,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         for p in sig.params {
             p_name = p.name.value if p?.name and p.name else f"arg{len(param_names)}";
 
-            p_type = self._resolve_jac_type(p)
-                if p?.type_tag and p.type_tag is not None
-                else ir.IntType(64);
+            p_type = self._resolve_jac_type(p);
             param_types.append(p_type);
             param_names.append(p_name);
         }

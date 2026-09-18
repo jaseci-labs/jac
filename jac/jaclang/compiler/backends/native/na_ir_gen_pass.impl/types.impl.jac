@@ -1137,7 +1137,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         and type_expr.type_tag is not None {
         return self._resolve_jac_type(type_expr.type_tag.tag);
     }
-    return ir.IntType(64);
+    return self._emit_unlowerable_type(type_expr, _ptb);
 }
 
 impl NaIRGenPass._resolve_decl_type(

@@ -449,9 +449,7 @@ impl NaIRGenPass._stamp_mono_fn(
     }
     param_types: list[ir.Type] = [];
     for p in sig.get_parameters() {
-        param_types.append(
-            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
-        );
+        param_types.append(self._resolve_jac_type(p));
     }
     ret_type = self._resolve_jac_type(sig.return_type);
     fnty = ir.FunctionType(ret_type, param_types);
@@ -614,9 +612,7 @@ impl NaIRGenPass._stamp_mono_method(
     }
     param_types: list[ir.Type] = [struct_type.as_pointer()];
     for p in sig.get_parameters() {
-        param_types.append(
-            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
-        );
+        param_types.append(self._resolve_jac_type(p));
     }
     ret_type = self._resolve_jac_type(sig.return_type);
     fnty = ir.FunctionType(ret_type, param_types);
