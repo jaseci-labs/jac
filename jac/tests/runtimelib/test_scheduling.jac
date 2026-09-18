@@ -1,6 +1,7 @@
 """Tests for the built-in scheduler engine."""
 
 import datetime;
+import logging;
 import threading;
 import time;
 import from pathlib { Path }
@@ -302,4 +303,208 @@ test "the served app registers its scheduled targets with the scheduler" {
             client.close();
         }
     }
+}
+
+
+class _Records(logging.Handler) {
+    def init(self: _Records) {
+        super.__init__();
+        self.messages: list[str] = [];
+    }
+
+    def emit(self: _Records, record: logging.LogRecord) {
+        self.messages.append(f"{record.levelname} {record.getMessage()}");
+    }
+}
+
+
+obj _Probe {
+    has started: int = 0,
+        finished: int = 0,
+        running: int = 0,
+        peak: int = 0,
+        lock: threading.Lock = threading.Lock();
+
+    def slow(seconds: float) {
+        with self.lock {
+            self.started += 1;
+            self.running += 1;
+            self.peak = max(self.peak, self.running);
+        }
+        time.sleep(seconds);
+        with self.lock {
+            self.running -= 1;
+            self.finished += 1;
+        }
+    }
+}
+
+
+test "a static task never runs alongside an earlier run of itself" {
+    # #9029: every tick started a new thread whatever was still running, so
+    # a task slower than its interval piled up concurrent copies.
+    probe = _Probe();
+    claims: list[str] = [];
+    def lease(key: str, ttl: int) -> bool {
+        claims.append(key);
+        return True;
+    }
+    sched = fresh_scheduler();
+    sched.lease = lease;
+    sched.register(
+        "slow_fn", lambda { probe.slow(0.7); }, ScheduleSpec(interval=0.2), False
+    );
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    log.addHandler(records);
+    sched.start();
+    try {
+        time.sleep(2.0);
+    } finally {
+        sched.stop(timeout=2.0);
+        log.removeHandler(records);
+    }
+    assert probe.started >= 2 , probe.started;
+    assert probe.peak == 1 , f"{probe.peak} runs overlapped";
+    # A replica busy with the task leaves the tick's lease for another replica.
+    assert len(claims) == probe.started , (len(claims), probe.started);
+    overlaps = [
+        m
+        for m in records.messages
+        if "still running" in m
+    ];
+    assert 1 <= len(overlaps) <= probe.started , records.messages;
+}
+
+
+test "stopping waits for a run in flight within its budget" {
+    probe = _Probe();
+    sched = fresh_scheduler();
+    sched.register(
+        "slow_fn", lambda { probe.slow(0.6); }, ScheduleSpec(interval=0.2), False
+    );
+    sched.start();
+    deadline = time.monotonic() + 3.0;
+    while probe.started == 0 and time.monotonic() < deadline {
+        time.sleep(0.02);
+    }
+    assert probe.started == 1 , probe.started;
+    began = time.monotonic();
+    sched.stop(timeout=3.0);
+    assert probe.finished == probe.started , "the run in flight was abandoned";
+    assert time.monotonic() - began < 2.5;
+}
+
+
+test "stopping gives up on a run past its budget and names it" {
+    probe = _Probe();
+    sched = fresh_scheduler();
+    sched.register(
+        "stuck_fn", lambda { probe.slow(2.0); }, ScheduleSpec(interval=0.2), False
+    );
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    log.addHandler(records);
+    sched.start();
+    try {
+        deadline = time.monotonic() + 3.0;
+        while probe.started == 0 and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+        began = time.monotonic();
+        sched.stop(timeout=0.3);
+        waited = time.monotonic() - began;
+    } finally {
+        log.removeHandler(records);
+    }
+    assert waited < 1.0 , waited;
+    assert probe.finished == 0;
+    assert any("stuck_fn" in m and "still running" in m for m in records.messages) , records.messages;
+}
+
+
+test "a draining scheduler starts no new runs" {
+    import from jaclang.server.serving.drain { DrainState }
+    probe = _Probe();
+    sched = fresh_scheduler();
+    sched.drain = DrainState(timeout=5.0);
+    sched.register(
+        "tick_fn", lambda { probe.slow(0.0); }, ScheduleSpec(interval=0.2), False
+    );
+    sched.start();
+    try {
+        deadline = time.monotonic() + 3.0;
+        while probe.finished == 0 and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+        assert probe.finished >= 1;
+        sched.drain.start("test");
+        before = probe.started;
+        time.sleep(0.8);
+        assert probe.started == before , f"{probe.started
+            - before} run(s) started while draining";
+    } finally {
+        sched.stop(timeout=1.0);
+    }
+}
+
+
+test "a drain with no budget left still names the runs it abandons" {
+    probe = _Probe();
+    sched = fresh_scheduler();
+    sched.register(
+        "late_fn", lambda { probe.slow(1.5); }, ScheduleSpec(interval=0.2), False
+    );
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    log.addHandler(records);
+    sched.start();
+    try {
+        deadline = time.monotonic() + 3.0;
+        while probe.started == 0 and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+        began = time.monotonic();
+        sched.stop(timeout=0.0);
+        waited = time.monotonic() - began;
+    } finally {
+        log.removeHandler(records);
+    }
+    assert waited < 0.5 , waited;
+    assert any("late_fn" in m and "still running" in m for m in records.messages) , records.messages;
+}
+
+
+test "stopping keeps one deadline even when the loop is slow to stop" {
+    # The loop was joined for up to 5 s and the runs then got the full budget
+    # again, so a loop held in a slow lease check pushed shutdown past its drain.
+    probe = _Probe();
+    claiming = threading.Event();
+    def lease(key: str, ttl: int) -> bool {
+        if "slow_claim" in key {
+            claiming.set();
+            time.sleep(1.5);
+        }
+        return True;
+    }
+    sched = fresh_scheduler();
+    sched.lease = lease;
+    sched.register(
+        "long_run", lambda { probe.slow(3.0); }, ScheduleSpec(interval=0.2), False
+    );
+    sched.register("slow_claim", lambda { None; }, ScheduleSpec(interval=0.2), False);
+    sched.start();
+    deadline = time.monotonic() + 5.0;
+    while (probe.started == 0 or not claiming.is_set())
+        and time.monotonic() < deadline {
+        time.sleep(0.02);
+    }
+    claiming.clear();
+    while not claiming.is_set() and time.monotonic() < deadline {
+        time.sleep(0.02);
+    }
+    began = time.monotonic();
+    sched.stop(timeout=1.0);
+    waited = time.monotonic() - began;
+    assert waited < 1.4 , f"stop took {waited:.2f}s against a 1.0s budget";
 }
