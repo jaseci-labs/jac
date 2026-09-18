@@ -2,16 +2,21 @@
 
 Drives a real `jac run --serve` subprocess whose fixture asks for two workers,
 so every scrape has to merge what each forked worker recorded, and a worker
-that dies has to stop contributing its live gauges.
+that dies has to stop contributing its live gauges. The last test runs the
+other serving entry point, an exported source project, because that one sets
+the shared directory from its own code path.
 """
 
 import contextlib;
 import os;
+import shutil;
+import tempfile;
 import signal;
 import subprocess;
 import threading;
 import time;
 import requests;
+import from concurrent.futures { ThreadPoolExecutor }
 import from pathlib { Path }
 import from jaclang.scale.tests.support {
     cleanup_db_files,
@@ -26,6 +31,7 @@ glob FIXTURES_DIR: Path = Path(__file__).parent.parent
      SCRAPE_AUTH: tuple[str, str] = ("admin", "scrape-secret"),
      REQUESTS_TOTAL: str = "metrics_workers_http_requests_total",
      IN_PROGRESS: str = "metrics_workers_http_requests_in_progress",
+     APP_PINGS: str = "app_pings_total",
      PING_SERIES: str = 'metrics_workers_http_requests_total{method="POST",path="/walker/Ping",status_code="200"}';
 
 def _samples(body: str, name: str) -> dict[str, float] {
@@ -56,6 +62,37 @@ def _scrape_until(base: str, done: Callable[[str], bool], budget: float) -> str 
     }
     return body;
 }
+
+def _ping(base: str) -> int {
+    res = requests.post(f"{base}/walker/Ping", json={}, timeout=10);
+    assert res.status_code == 200 , res.text;
+    return int(res.json()["data"]["reports"][0]);
+}
+
+
+"""Ping until more than one worker has answered, so a scrape that reports a
+single worker cannot pass for a merged one."""
+def _load_until_shared(base: str) -> tuple[int, set[int]] {
+    sent = 0;
+    pids: set[int] = set();
+    deadline = time.monotonic() + 30.0;
+    while time.monotonic() < deadline {
+        def _one(_index: int) -> int {
+            return _ping(base);
+        }
+        with ThreadPoolExecutor(max_workers=8) as pool {
+            for pid in pool.map(_one, range(8)) {
+                pids.add(pid);
+            }
+        }
+        sent += 8;
+        if len(pids) > 1 {
+            break;
+        }
+    }
+    return (sent, pids);
+}
+
 
 def _process_table -> dict[int, tuple[int, str]] {
     listing = subprocess.run(
@@ -106,16 +143,14 @@ test "a two-worker scrape merges every worker into one series per metric" {
     server = start_server(FIXTURES_DIR, FIXTURES_DIR / "app.jac", port);
     try {
         assert len(_worker_pids(server.pid)) == 2;
-        sent = 12;
-        for _ in range(sent) {
-            res = requests.post(f"{base}/walker/Ping", json={}, timeout=10);
-            assert res.status_code == 200 , res.text;
-        }
+        (sent, pids) = _load_until_shared(base);
+        assert len(pids) > 1 , f"one worker answered all {sent} pings: {pids}";
         def _all_counted(text: str) -> bool {
             return _samples(text, REQUESTS_TOTAL).get(PING_SERIES) == float(sent);
         }
         body = _scrape_until(base, _all_counted, 15.0);
         assert _samples(body, REQUESTS_TOTAL).get(PING_SERIES) == float(sent) , body;
+        assert _samples(body, APP_PINGS).get(APP_PINGS) == float(sent) , body;
         assert list(_samples(body, IN_PROGRESS).keys()) == [IN_PROGRESS] , body;
         assert len(_samples(body, "jac_info")) == 1 , body;
     } finally {
@@ -158,5 +193,73 @@ test "a worker killed mid-request stops counting as in progress" {
     } finally {
         _stop_fleet(server);
         cleanup_db_files(FIXTURES_DIR);
+    }
+}
+
+
+def _serve_exported(project: Path, port: int) -> subprocess.Popen {
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    server = subprocess.Popen(
+        [jac_executable(), "run", "main.py", "--port", str(port)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(project)
+    );
+    deadline = time.monotonic() + 300.0;
+    while time.monotonic() < deadline {
+        if server.poll() is not None {
+            (out, err) = server.communicate();
+            raise RuntimeError(f"exported app exited\nSTDOUT:\n{out}\nSTDERR:\n{err}");
+        }
+        with contextlib.suppress(requests.RequestException) {
+            if requests.get(f"http://localhost:{port}/healthz", timeout=1).status_code
+                == 200 {
+                return server;
+            }
+        }
+        time.sleep(1);
+    }
+    server.kill();
+    raise RuntimeError(f"exported app never answered /healthz on port {port}");
+}
+
+
+"""`jac build --as source` emits a project that serves itself through
+`runtime/source_app.jac` with no jac binary in the loop, and that entry point
+opens the shared metrics directory from its own code, so it gets the same
+two-worker scrape this suite asks of `jac run --serve`."""
+test "an exported source project merges its workers into one scrape" {
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    workspace = Path(tempfile.mkdtemp(prefix="jac_metrics_export_"));
+    server = None;
+    try {
+        for name in ["app.jac", "jac.toml"] {
+            shutil.copy2(FIXTURES_DIR / name, workspace / name);
+        }
+        built = subprocess.run(
+            [jac_executable(), "build", "app.jac", "--as", "source"],
+            capture_output=True,
+            text=True,
+            cwd=str(workspace)
+        );
+        assert built.returncode == 0 , f"export failed:\n{built.stdout}\n{built.stderr}";
+        port = get_free_port();
+        base = f"http://localhost:{port}";
+        server = _serve_exported(workspace / "dist" / "source", port);
+        (sent, pids) = _load_until_shared(base);
+        assert len(pids) > 1 , f"one worker answered all {sent} pings: {pids}";
+        def _all_counted(text: str) -> bool {
+            return _samples(text, REQUESTS_TOTAL).get(PING_SERIES) == float(sent);
+        }
+        body = _scrape_until(base, _all_counted, 15.0);
+        assert _samples(body, REQUESTS_TOTAL).get(PING_SERIES) == float(sent) , body;
+        assert _samples(body, APP_PINGS).get(APP_PINGS) == float(sent) , body;
+        assert list(_samples(body, IN_PROGRESS).keys()) == [IN_PROGRESS] , body;
+    } finally {
+        if server is not None {
+            _stop_fleet(server);
+        }
+        shutil.rmtree(str(workspace), ignore_errors=True);
     }
 }

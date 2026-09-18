@@ -3,6 +3,10 @@ name = "metrics-workers"
 version = "1.0.0"
 description = "Fixture for Prometheus metrics served by more than one worker"
 
+[apps.metrics_workers]
+kind = "service"
+entry-point = "app"
+
 [serve.workers]
 count = 2
 
