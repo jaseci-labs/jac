@@ -707,6 +707,43 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              [(0, "Cannot return Literal[\"a\"] | NoneType, expected NoneType")]
          ),
          (
+             "membership_narrowing",
+             "checker",
+             "checker_membership_narrowing.jac",
+             4,
+             True,
+             [
+                 (
+                     0,
+                     """
+Cannot return str | NoneType, expected str
+    return ak if ak in (other, "walker") else "obj";  # <-- Error: variable element
+    """
+                 ),
+                 (
+                     1,
+                     """
+Cannot return str | NoneType, expected str
+    return ak;  # <-- Error: only the literals are ruled out, ak is still str | None
+    """
+                 ),
+                 (
+                     2,
+                     """
+Cannot return str | NoneType, expected str
+        return ak;  # <-- Error: only the literals are ruled out, ak is still str | None
+    """
+                 ),
+                 (
+                     3,
+                     """
+Cannot assign Literal["a"] | Literal["b"] | Literal["c"] to Literal["c"]
+        c: Literal["c"] = k;  # <-- Error: not narrowed yet
+    """
+                 )
+             ]
+         ),
+         (
              "literal_ne_does_not_over_narrow",
              "checker",
              "checker_literal_ne_no_over_narrow.jac",
