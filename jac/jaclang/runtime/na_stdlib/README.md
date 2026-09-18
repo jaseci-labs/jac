@@ -195,7 +195,8 @@ native layout records the emitted name separately from its source-level key.
   SCOPE/divergences: copy/copy2 duplicate bytes but do not yet preserve
   mode/mtime metadata; rmtree follows the isdir predicate, so directory
   symlinks are recursed into rather than unlinked; errors raise `ValueError`
-  rather than CPython's `OSError` subclasses.
+  rather than CPython's `OSError` subclasses. `rmtree` errors name the path
+  that failed and end with the `strerror` text.
 
 - **`keyword.jac`** (#7593 item 18) -- `kwlist`/`softkwlist`/`iskeyword`/
   `issoftkeyword` mirroring CPython's lists verbatim, ordering included
