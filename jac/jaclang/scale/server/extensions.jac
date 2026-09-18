@@ -141,7 +141,9 @@ obj MetricsExtension(ServerExtension) {
     def register(server: JacAPIServer) -> None {
         import from jaclang.scale.observability.factory { UtilityFactory }
         cfg = get_scale_config().get_monitoring_config();
-        collector: MetricsCollector = UtilityFactory.create_metrics('prometheus', cfg);
+        collector: MetricsCollector = UtilityFactory.create_metrics(
+            'prometheus', cfg, server.resolved_settings().workers.count
+        );
         server.metrics = collector;
         server.execution_manager.metrics = collector;
         if not collector.is_enabled() {
