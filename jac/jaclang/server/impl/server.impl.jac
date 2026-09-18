@@ -1403,12 +1403,30 @@ impl JacAPIServer._ensure_internal_users -> None {
     );
 }
 
+impl JacAPIServer._scheduled_targets -> list[tuple[str, any, bool]] {
+    import from jaclang.server.task_scheduler { ScheduleSpec }
+    found: list[tuple[str, any, bool]] = [];
+    for (registry, is_walker) in [
+        (dict(self.introspector._walkers), True),
+        (dict(self.introspector._functions), False)
+    ] {
+        for (name, item) in registry.items() {
+            spec = item?.schedule_spec;
+            if isinstance(spec, ScheduleSpec) {
+                found.append((name, spec, is_walker));
+            }
+        }
+    }
+    return found;
+}
+
 impl JacAPIServer._register_scheduled_tasks -> None {
     if self.resolved_settings().static_only {
         return;
     }
     import from jaclang.server.identity.user_manager { SYSTEM_USER }
-    import from jaclang.server.task_scheduler { ScheduleSpec, schedule_namespace }
+    import from jaclang.runtime.builtin { ScheduleTrigger }
+    import from jaclang.server.task_scheduler { schedule_namespace }
     _self = self;
     def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
         async def _run -> any {
@@ -1451,20 +1469,11 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         return target;
     }
     self.introspector.load();
-    registries: list[tuple[dict[str, any], bool]] = [
-        (dict(self.introspector._walkers), True),
-        (dict(self.introspector._functions), False)
-    ];
-    for (registry, is_walker) in registries {
-        for (name, item) in registry.items() {
-            spec = item?.schedule_spec;
-            if not isinstance(spec, ScheduleSpec) {
-                continue;
-            }
-            self.scheduler.register(
-                name, _make_target(name, is_walker), spec, is_walker
-            );
+    for (name, spec, is_walker) in self._scheduled_targets() {
+        if spec.trigger == ScheduleTrigger.DYNAMIC {
+            continue;
         }
+        self.scheduler.register(name, _make_target(name, is_walker), spec, is_walker);
     }
     if self.scheduler.has_pending() {
         logger.info(
@@ -1490,6 +1499,14 @@ impl JacAPIServer._validate_or_raise -> None {
     problems = settings.validate();
     for ext in (self.extensions or []) {
         problems.extend(ext.validate(self));
+    }
+    if not settings.static_only {
+        import from jaclang.server.task_scheduler { schedule_problems }
+        for (name, spec, _is_walker) in self._scheduled_targets() {
+            for problem in schedule_problems(spec) {
+                problems.append(f"@schedule on '{name}': {problem}");
+            }
+        }
     }
     if problems {
         raise ServeConfigError(

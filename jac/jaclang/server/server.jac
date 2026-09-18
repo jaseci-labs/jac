@@ -228,6 +228,7 @@ obj JacAPIServer(EndpointHost) {
     def _ensure_client_bundle -> None;
     def _ensure_internal_users -> None;
     def _register_scheduled_tasks -> None;
+    def _scheduled_targets -> list[tuple[str, any, bool]];
     def _validate_or_raise -> None;
     def _prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings;
     def start(

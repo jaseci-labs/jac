@@ -474,11 +474,6 @@ impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> 
     self._server = server;
     self._service = schedule_namespace(str(server.module_name)) if server else '';
 
-    def _dynamic_handler(task: any) {
-        self._execute_task(task.name, self._system_user_id, task.is_walker);
-    }
-    Scheduler.instance().dynamic_handler = _dynamic_handler;
-
     scheduler_cfg = get_scale_config().get_scheduler_config();
     collection = scheduler_cfg.get('collection', 'scheduled_jobs');
     if self._store is not None {
