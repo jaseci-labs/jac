@@ -1513,6 +1513,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
                 if isinstance(base_type, ClassType)
                     and base_type.is_instantiable_class() {
+                    import from jaclang.compiler.frontend.unitree { in_type_position }
+                    if not in_type_position(expr, include_subscripts=False)
+                        and (
+                            meta_getitem
+                            := self._declared_metaclass_member(base_type, "__getitem__")
+                        ) {
+                        index = self._subscript_index_expr(expr.right);
+                        item_ty = self.get_type_of_magic_method_call(
+                            base_type, "__getitem__", [index], expr
+                        );
+                        if item_ty is not None {
+                            return item_ty;
+                        }
+                        self._report_rejected_method_call(
+                            base_type, meta_getitem, [index], expr
+                        );
+                        return UnknownType(is_diagnosed=True);
+                    }
                     type_args: list[TypeBase] = [];
                     slot_vals: list[Expr] = [];
                     if isinstance(expr.right, IndexSlice) and expr.right.slices {
@@ -1572,17 +1590,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     self.emit_diag(E1040, expr, type=base_type.name);
                     return UnknownType();
                 }
-                subscript_arg: Expr = expr.right;
-                if (
-                    isinstance(expr.right, IndexSlice)
-                    and not expr.right.is_range
-                    and expr.right.slices
-                ) {
-                    slice_start = expr.right.slices[0].start;
-                    if slice_start is not None {
-                        subscript_arg = slice_start;
-                    }
-                }
+                subscript_arg: Expr = self._subscript_index_expr(expr.right);
                 if isinstance(base_type, AnyType) {
                     return AnyType(is_foreign=base_type.is_foreign);
                 }
@@ -3155,21 +3163,11 @@ impl TypeEvaluator.get_type_of_magic_method_call(
     }
     if obj_type.category == TypeCategory.Class {
         assert isinstance(obj_type, ClassType);
-        owner_type = obj_type;
-        if obj_type.is_instantiable_class() {
-            meta_owner = self._metaclass_of(obj_type);
-            if meta_owner is not None {
-                meta_member = self._lookup_class_member(meta_owner, method_name);
-                if (
-                    meta_member is not None
-                    and meta_member.class_type.shared.class_name
-                        not in ("type", "object")
-                ) {
-                    owner_type = meta_owner;
-                }
-            }
+        member = self._declared_metaclass_member(obj_type, method_name);
+        if member is None {
+            member = self._lookup_class_member(obj_type, method_name);
         }
-        if member := self._lookup_class_member(owner_type, method_name) {
+        if member is not None {
             member_ty = self.get_type_of_symbol(member.symbol);
 
             overloaded_fns: list[FunctionType] = [];

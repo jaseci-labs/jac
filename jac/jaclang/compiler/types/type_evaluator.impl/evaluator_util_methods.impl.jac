@@ -463,6 +463,16 @@ impl TypeEvaluator._is_type_subscript(class_type: ClassType) -> bool {
     );
 }
 
+impl TypeEvaluator._subscript_index_expr(right: Expr) -> Expr {
+    if isinstance(right, IndexSlice)
+        and not right.is_range
+        and right.slices
+        and right.slices[0].start is not None {
+        return right.slices[0].start;
+    }
+    return right;
+}
+
 impl TypeEvaluator._get_type_for_member_lookup(object_type: ClassType) -> ClassType {
     if self._is_type_subscript(object_type) {
         inner_type = object_type.private.type_args[0];
@@ -679,6 +689,41 @@ impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
         }
     }
     return None;
+}
+
+impl TypeEvaluator._declared_metaclass_member(
+    cls_type: ClassType, name: str
+) -> (ClassMember | None) {
+    if not cls_type.is_instantiable_class() {
+        return None;
+    }
+    meta_cls = self._metaclass_of(cls_type);
+    if meta_cls is None {
+        return None;
+    }
+    member = self._lookup_class_member(meta_cls, name);
+    if member is None or member.class_type.shared.class_name in ("type", "object") {
+        return None;
+    }
+    return member;
+}
+
+impl TypeEvaluator._report_rejected_method_call(
+    receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
+) -> None {
+    method = self.get_type_of_symbol(member.symbol);
+    if member.overloads or not isinstance(method, FunctionType) {
+        self.emit_diag(E1055, site, method=member.symbol.sym_name);
+        return;
+    }
+    method = method.specialize(receiver);
+    arg_match = self.match_args_to_params(args, site, method);
+    if not arg_match.argument_errors {
+        self.validate_arg_types(
+            arg_match,
+            solved_type_vars=self._receiver_type_var_bindings(method, receiver)
+        );
+    }
 }
 
 impl TypeEvaluator._edge_endpoint_type(
