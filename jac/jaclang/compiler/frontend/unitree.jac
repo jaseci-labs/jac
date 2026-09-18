@@ -745,8 +745,9 @@ node TypeParam(AstSymbolNode, UniNode) {
 }
 
 node TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
-    has is_distinct: bool = False;
-    has distinct_base: (str | None) = None;
+    has is_distinct: bool = False,
+        distinct_base: (str | None) = None;
+
     has name: Name { getter; }
     has type_params: list[TypeParam] { getter; }
     has value: Expr { getter; }
