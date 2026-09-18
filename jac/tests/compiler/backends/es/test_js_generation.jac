@@ -3604,3 +3604,43 @@ test "client codegen accepts a module that brands a value" {
         f"whole module: {unbound}"
     );
 }
+
+test "a brand behaves like its primitive when the client output runs" {
+    js_code = compile_fixture_to_js("distinct_brand_runtime.jac", FIXTURES);
+    wrapper = (
+        js_code
+        + "\nconsole.log(JSON.stringify({"
+        + "  brand_call: brand_call(\"42\"),"
+        + "  tag_call: tag_call(5),"
+        + "  brand_all: brand_all([\"1\", \"2\", \"3\"]),"
+        + "  brands_from_list: brands_from_list(5)"
+        + "}));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "a brand is not callable in the emitted module:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    assert got["brand_call"] == 42 , (
+        f"Brand(x) must coerce like the primitive it erases to: {got['brand_call']}"
+        f"\njs:\n{js_code}"
+    );
+    assert got["tag_call"] == "5" , (
+        f"Tag(x) must coerce like str: {got['tag_call']}\njs:\n{js_code}"
+    );
+    assert got["brand_all"] == [1, 2, 3] , (
+        f"map(Brand, xs) must keep Python's one-argument call contract, or the "
+        f"index leaks into the coercion: {got['brand_all']}\njs:\n{js_code}"
+    );
+    assert got["brands_from_list"] == [5, "5"] , (
+        f"a brand stored in a collection and called out of it must still "
+        f"coerce: {got['brands_from_list']}\njs:\n{js_code}"
+    );
+    assert_balanced_syntax(js_code, "distinct_brand_runtime.jac");
+}
