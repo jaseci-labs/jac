@@ -858,8 +858,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
         self._ensure_privileged_namespace(core_v1, obs_config.namespace);
         if self.logger {
             self.logger.info(
-                f"Deploying observability stack (Prometheus + Grafana + "
-                f"Loki + Alloy) for '{app_name}'",
+                f"Deploying observability stack for '{app_name}'",
                 {"namespace": obs_config.namespace, "provider": type(provider).__name__}
             );
         }

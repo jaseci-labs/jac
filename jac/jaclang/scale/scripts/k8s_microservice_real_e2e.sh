@@ -424,21 +424,30 @@ rm -f "${OVL_JSON}"
 
 _t "profile+overlay OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
-# When [scale.gateway.logs].enabled = true (the fixture
-# default) the kubernetes target also calls MonitoringDeployer, which
-# adds Prometheus + Grafana + Loki + Alloy + kube-state-metrics +
-# node-exporter to the namespace. Verify each Deployment + the Alloy
-# DaemonSet rolls out, Loki responds to /ready, and a LogQL query for
-# the app namespace returns at least one stream (proves Alloy is
+# [scale.gateway.logs] enabled = true (the harness overlay) makes the
+# kubernetes target deploy Loki + Alloy + Grafana. Prometheus,
+# kube-state-metrics and node-exporter follow [scale.monitoring] enabled
+# alone. Both switches are read through the scale config loader the deploy
+# itself uses, so this phase checks what was asked for, not a raw toml path.
+# Verify the Deployments + the Alloy DaemonSet roll out, Prometheus exists
+# exactly when monitoring is on, Loki responds to /ready, and a LogQL query
+# for the app namespace returns at least one stream (proves Alloy is
 # tailing /var/log/pods and pushing to Loki).
-LOGS_ENABLED=$(jac - <<PYEOF
-import tomllib
-with open("${PROJECT_DIR}/jac.toml", "rb") as f:
-    cfg = tomllib.load(f)
-logs = cfg.get("scale", {}).get("gateway", {}).get("logs", {})
-print(int(bool(logs.get("enabled", False))))
+OBS_FLAGS=$(jac - <<PYEOF
+from pathlib import Path
+from jaclang.scale.config.config_loader import get_scale_config
+cfg = get_scale_config(Path("${PROJECT_DIR}"))
+logs = bool(cfg.get_gateway_config()["logs"].get("enabled", False))
+monitoring = bool(cfg.get_monitoring_config()["enabled"])
+print(f"{int(logs)}|{int(monitoring)}")
 PYEOF
 )
+case "${OBS_FLAGS}" in
+    [01]"|"[01]) ;;
+    *) echo "FAIL: could not read the observability switches (got '${OBS_FLAGS}')"; exit 1 ;;
+esac
+LOGS_ENABLED="${OBS_FLAGS%%|*}"
+MONITORING_ENABLED="${OBS_FLAGS#*|}"
 
 if [ "${LOGS_ENABLED}" != "1" ]; then
     echo "  skipping (logs.enabled is false in fixture jac.toml)"
@@ -446,9 +455,19 @@ else
     APP_NAME="jac-e2e"
     LOKI_DEPLOY="${APP_NAME}-loki"
     ALLOY_DS="${APP_NAME}-alloy"
+    OBS_DEPLOYS=("${LOKI_DEPLOY}" "${APP_NAME}-grafana")
+
+    if [ "${MONITORING_ENABLED}" = "1" ]; then
+        OBS_DEPLOYS+=("${APP_NAME}-prometheus")
+    elif kubectl get deployment "${APP_NAME}-prometheus" -n "${NAMESPACE}" >/dev/null 2>&1; then
+        echo "FAIL: ${APP_NAME}-prometheus is deployed but [scale.monitoring] enabled is false"
+        exit 1
+    else
+        echo "  ${APP_NAME}-prometheus absent, as [scale.monitoring] enabled = false asks"
+    fi
 
     echo "  waiting on observability Deployments..."
-    for dep in "${LOKI_DEPLOY}" "${APP_NAME}-prometheus" "${APP_NAME}-grafana"; do
+    for dep in "${OBS_DEPLOYS[@]}"; do
         if ! kubectl rollout status "deployment/${dep}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
             echo "FAIL: ${dep} did not become Ready in 5 min"
             dump_pod_state
@@ -529,10 +548,9 @@ fi
 _t "observability OK"
 echo "=== optional Ingress test ==="
 INGRESS_INFO=$(jac - <<PYEOF
-import tomllib
-with open("${PROJECT_DIR}/jac.toml", "rb") as f:
-    cfg = tomllib.load(f)
-ing = cfg.get("scale", {}).get("gateway", {}).get("ingress", {})
+from pathlib import Path
+from jaclang.scale.config.config_loader import get_scale_config
+ing = get_scale_config(Path("${PROJECT_DIR}")).get_gateway_config()["ingress"]
 print(f"{int(bool(ing.get('enabled', False)))}|{str(ing.get('host', '')).strip()}")
 PYEOF
 )
