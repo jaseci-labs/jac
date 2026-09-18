@@ -73,6 +73,36 @@ def bytearray_pack_py -> dict[any, any] {
     };
 }
 
+
+def bytearray_unpack_py -> dict[any, any] {
+    buf = bytearray(b"\x01\x02\x03\x04");
+    word_buf = bytearray(b"\x01\x02");
+    (w, ) = struct.unpack("H", word_buf);
+    (neg_mid, ) = struct.unpack_from("H", word_buf, -2);
+    blob = b"\x78\x56\x34\x12";
+    (v, ) = struct.unpack("<I", blob);
+    (hi, lo) = struct.unpack(">hh", b"\xff\xfe\x00\x01");
+    (mid, ) = struct.unpack_from("H", buf, 2);
+    (head, ) = struct.unpack_from("<I", blob);
+    (big, ) = struct.unpack("<q", struct.pack("<q", -5));
+    scratch = bytearray(4);
+    struct.pack_into("<H", scratch, 1, 4660);
+    (pi_mid, ) = struct.unpack_from("<H", scratch, 1);
+    return {
+        "word": w,
+        "word_ok": w == 0x0201,
+        "negative_ok": neg_mid == 0x0201,
+        "dword": v,
+        "be_hi": hi,
+        "be_lo": lo,
+        "uf_mid": mid,
+        "uf_head": head,
+        "q_round": big,
+        "pi_uf_ok": pi_mid == 4660,
+
+    };
+}
+
 def bytearray_core_cl -> dict[any, any] {
     return {};
 }
@@ -85,6 +115,10 @@ def bytearray_pack_cl -> dict[any, any] {
     return {};
 }
 
+
+def bytearray_unpack_cl -> dict[any, any] {
+    return {};
+}
 
 def bytearray_core_na -> dict[str, any] {
     empty = bytearray();
@@ -147,6 +181,35 @@ def bytearray_pack_na -> dict[str, any] {
         "p12": buf[12],
         "p14": buf[14],
         "packed_ok": bytes(buf[0:4]) == b"\x78\x56\x34\x12",
+
+    };
+}
+
+def bytearray_unpack_na -> dict[str, any] {
+    buf = bytearray(b"\x01\x02\x03\x04");
+    word_buf = bytearray(b"\x01\x02");
+    (w, ) = struct.unpack("H", word_buf);
+    (neg_mid, ) = struct.unpack_from("H", word_buf, -2);
+    blob = b"\x78\x56\x34\x12";
+    (v, ) = struct.unpack("<I", blob);
+    (hi, lo) = struct.unpack(">hh", b"\xff\xfe\x00\x01");
+    (mid, ) = struct.unpack_from("H", buf, 2);
+    (head, ) = struct.unpack_from("<I", blob);
+    (big, ) = struct.unpack("<q", struct.pack("<q", -5));
+    scratch = bytearray(4);
+    struct.pack_into("<H", scratch, 1, 4660);
+    (pi_mid, ) = struct.unpack_from("<H", scratch, 1);
+    return {
+        "word": w,
+        "word_ok": w == 0x0201,
+        "negative_ok": neg_mid == 0x0201,
+        "dword": v,
+        "be_hi": hi,
+        "be_lo": lo,
+        "uf_mid": mid,
+        "uf_head": head,
+        "q_round": big,
+        "pi_uf_ok": pi_mid == 4660,
 
     };
 }

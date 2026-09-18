@@ -282,7 +282,7 @@ impl NaIRGenPass._emit_struct_pack_into(
     neg = b.icmp_signed("<", off_val, ir.Constant(i64, 0), name="pi.neg");
     self._emit_runtime_raise(
         b.or_(oob, neg, name="pi.bad"),
-        "RuntimeError",
+        "struct.error",
         "pack_into requires a buffer of at least the packed size"
     );
     data_p = b.gep(

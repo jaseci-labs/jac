@@ -173,6 +173,14 @@ glob STR_NA_GAPS: list[any] = [
              "bytearray_pack_na",
              ["na"]
          ),
+         (
+             "bytearray unpack",
+             "prim_bytearray.jac",
+             "bytearray_unpack_py",
+             "bytearray_unpack_cl",
+             "bytearray_unpack_na",
+             ["na"]
+         ),
          ("list", "prim_list.jac", "list_py", "list_cl", "list_na"),
          (
              "native list pop index",

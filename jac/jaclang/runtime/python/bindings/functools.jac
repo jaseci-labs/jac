@@ -14,6 +14,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
     TypeFlags,
+    PropertyCallbacks,
     PropertyDefinition,
     jacpy_binding_typeof,
     jacpy_binding_owner,
@@ -653,24 +654,27 @@ glob:priv callable_flags = u64(
          [
              PropertyDefinition(
                  "func",
-                 partial_field,
+                 PropertyCallbacks(read=partial_field),
                  context=0,
                  doc="function object to use in future partial calls"
              ),
              PropertyDefinition(
                  "args",
-                 partial_field,
+                 PropertyCallbacks(read=partial_field),
                  context=1,
                  doc="tuple of arguments to future partial calls"
              ),
              PropertyDefinition(
                  "keywords",
-                 partial_field,
+                 PropertyCallbacks(read=partial_field),
                  context=2,
                  doc="dictionary of keyword arguments to future partial calls"
              ),
              PropertyDefinition(
-                 "__dict__", jacpy_binding_dict_get, write=jacpy_binding_dict_set
+                 "__dict__",
+                 PropertyCallbacks(
+                     read=jacpy_binding_dict_get, write=jacpy_binding_dict_set
+                 )
              )
          ],
          instance_dict=True
@@ -690,11 +694,12 @@ glob:priv callable_flags = u64(
          [
              PropertyDefinition(
                  "obj",
-                 key_object,
-                 write=key_set_object,
+                 PropertyCallbacks(read=key_object, write=key_set_object),
                  doc="Value wrapped by a key function."
              ),
-             PropertyDefinition("__text_signature__", key_text_signature)
+             PropertyDefinition(
+                 "__text_signature__", PropertyCallbacks(read=key_text_signature)
+             )
          ],
          unhashable=True
      ),
@@ -748,7 +753,10 @@ glob:priv callable_flags = u64(
          ),
          [
              PropertyDefinition(
-                 "__dict__", jacpy_binding_dict_get, write=jacpy_binding_dict_set
+                 "__dict__",
+                 PropertyCallbacks(
+                     read=jacpy_binding_dict_get, write=jacpy_binding_dict_set
+                 )
              )
          ],
          instance_dict=True

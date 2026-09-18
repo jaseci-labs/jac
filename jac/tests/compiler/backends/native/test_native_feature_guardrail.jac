@@ -941,6 +941,32 @@ test "check rejects a native def with an unknown return type" {
     )}";
 }
 
+# An unresolved type in an `as` cast is the same silent-i64 hazard as an
+# unresolved annotation: native lowering reads the cast type to pick a layout.
+test "check rejects a native cast to an unknown type" {
+    prog = check_na_inline(
+        "native_unknown_cast",
+        "def widen(n: int) -> int {\n    v = n as uint32_t;\n    return v;\n}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native cast type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Nesting depth is not a boundary of the language: an unresolved annotation is
+# an error however deep the generic arguments go.
+test "check rejects an unknown type nested deep in a native annotation" {
+    prog = check_na_inline(
+        "native_unknown_deep",
+        "def take(xs: dict[str, dict[str, dict[str, list[uint32_t]]]]) -> int {\n"
+        "    return 0;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for a deeply nested unknown native type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
 # Unknown object field annotations are rejected at analysis time (E2018 from
 # StaticAnalysisPass, the single detection source) naming the written type.
 test "native object field with an unknown type names the type, not '<Unknown>'" {

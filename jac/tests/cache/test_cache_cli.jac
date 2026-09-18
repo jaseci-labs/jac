@@ -17,7 +17,7 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import from unittest.mock { patch }
-import from tests.support { jac_command }
+import from tests.support { cache_env, jac_command }
 import from jaclang.cli.commands.cache { cache }
 import from jaclang.cache.registry { BUCKETS, bucket }
 
@@ -25,7 +25,7 @@ glob DAY: float = 86400.0;
 
 def private_env -> tuple[Path, dict[str, str]] {
     base = Path(tempfile.mkdtemp(prefix="jac-cache-cli-"));
-    return (base, {"JAC_CACHE_HOME": str(base), "XDG_CACHE_HOME": str(base / "xdg")});
+    return (base, cache_env(base));
 }
 
 def seed_entry(base: Path, rel: str, age_days: float, marker: str = ".used") -> Path {
@@ -223,4 +223,37 @@ test "cache purge exits nonzero when a removal fails and still reports what it r
     assert not gone.exists() , "the deletable sibling must still be removed";
     assert stuck.exists();
     assert "b" * 20 in out , "what was removed must still be reported";
+}
+
+
+test "runtime lookup uses the authority and the launcher fallback, never a legacy root" {
+    import from jaclang.dist.fused_binary { materialized_runtime_dir }
+    if os.name != "posix" {
+        testskip("the native launcher uses POSIX runtime roots");
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        env = cache_env(base / "cache");
+        env["XDG_CACHE_HOME"] = str(base / "legacy");
+        env["TMPDIR"] = str(base / "temp");
+        key = "0123456789abcdef";
+        legacy = base / "legacy" / "jac" / "rt" / key;
+        legacy.mkdir(parents=True);
+        (legacy / ".ok").touch();
+        with patch.dict(os.environ, env) {
+            with patch(
+                "jaclang.dist.fused_binary.running_runtime_key", return_value=key
+            ) {
+                assert materialized_runtime_dir("explicit-binary") is None;
+                fallback = base / "temp" / f"jac-cache-{os.getuid()}" / "rt" / key;
+                fallback.mkdir(parents=True);
+                (fallback / ".ok").touch();
+                assert materialized_runtime_dir("explicit-binary") == str(fallback);
+                current = base / "cache" / "rt" / key;
+                current.mkdir(parents=True);
+                (current / ".ok").touch();
+                assert materialized_runtime_dir("explicit-binary") == str(current);
+            }
+        }
+    }
 }

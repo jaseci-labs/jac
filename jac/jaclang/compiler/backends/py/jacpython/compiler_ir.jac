@@ -1,5 +1,5 @@
 import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
-import from jaclang.compiler.backends.py.jacpython.constant_keys { constant_key }
+import from jaclang.runtime.python.constant_keys { constant_key }
 
 # Compiler IR for the P4 back track (PLAN.md P0.10).
 #

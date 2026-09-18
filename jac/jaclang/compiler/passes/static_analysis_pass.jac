@@ -23,7 +23,6 @@ import from jaclang.compiler.frontend.unitree {
     Float,
     ForeverStmt,
     FormattedValue,
-    FuncSignature,
     IfStmt,
     ImplDef,
     Import,
@@ -41,12 +40,12 @@ import from jaclang.compiler.frontend.unitree {
     RaiseStmt,
     ReturnStmt,
     Semi,
-    SubTag,
     Test,
     Token,
     UniNode,
     UniScopeNode,
-    WhileStmt
+    WhileStmt,
+    in_type_position
 }
 
 import from jaclang.compiler.frontend.constant { ExprCtx, SymbolType }

@@ -19,7 +19,8 @@ import from kubernetes.client.exceptions { ApiException }
 import from types { SimpleNamespace }
 import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
     build_k8s_registry,
-    K8sRuntimeServiceResolver
+    K8sRuntimeServiceResolver,
+    resolve_peer_route
 }
 import from jaclang.scale.runtime.gateway.service_registry {
     ServiceRegistry,
@@ -27,6 +28,7 @@ import from jaclang.scale.runtime.gateway.service_registry {
 }
 import from jaclang.server.sv_client { peer_url_env_key }
 import from jaclang.scale.runtime.fleet { FLEET_ENV, fleet_of }
+import from jaclang.scale.config.config_loader { reset_scale_config }
 import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 import from jaclang.scale.deploy.target.kubernetes.database_provisioner {
     DatabaseProvisioner
@@ -683,6 +685,88 @@ test "user env cannot point a pod at an arbitrary service file" {
 }
 
 
+test "build_env bakes a direct peer URL only for peers that are not HTTP-activated" {
+    # A baked JAC_APP_<PEER>_URL would let sv_client.peer_url_from_env's
+    # env-var override (runtime_resolver.jac::resolve_peer_route) win over
+    # the interceptor route on every call, sending traffic straight at a
+    # Service with no live endpoints instead of through the KEDA HTTP
+    # interceptor that can wake it.
+    activated = {
+        "worker": {
+            "http_activation": {
+                "enabled": True,
+                "target_port": 8000,
+                "concurrency_target": 1,
+                "rules": [{"hosts": ["worker.ns.local"]}]
+            }
+        }
+    };
+    for (label, overrides, baked) in [
+        ("HTTP-activated peer", activated, False),
+        ("plain peer", {}, True)
+    ] {
+        builder = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="jac-shop", namespace="ns"),
+            fleet=fleet_of(
+                {"worker": "/worker"},
+                root_app="app",
+                root_file="app.jac",
+                overrides=overrides
+            )
+        );
+        env = {e["name"]: e["value"] for e in builder._build_env("app", {})};
+        assert ("JAC_APP_WORKER_URL" in env) == baked , f"{label}: {env}";
+    }
+}
+
+
+test "resolve_peer_route warns once per service, then again after it recovers and fails again" {
+    # resolve_peer_route runs per fleet member on every sv-to-sv call and
+    # every get_sv_service_routes() lookup, so an unreachable or malformed
+    # scale config used to warn on every single one of those, per service.
+    import jaclang.scale.deploy.target.kubernetes.runtime_resolver as resolver_mod;
+    import jaclang.scale.config.config_loader as config_loader_mod;
+
+    original_warning = resolver_mod.logger.warning;
+    original_get_scale_config = config_loader_mod.get_scale_config;
+    warn_calls: list = [];
+
+    def failing_config(project_dir: object = None) -> object {
+        raise RuntimeError("config unreachable");
+    }
+
+    def healthy_config(project_dir: object = None) -> object {
+        return SimpleNamespace(
+            get_kubernetes_config=lambda { {}},
+            get_app_scale_config=lambda (app_name: str) { {}}
+        );
+    }
+
+    resolver_mod._config_load_warned.discard("k9_warn_once_svc");
+    setattr(
+        resolver_mod.logger, "warning", lambda (msg: str) { warn_calls.append(msg); }
+    );
+
+    try {
+        for (label, loader, expected) in [
+            ("three failing calls warn once", failing_config, 1),
+            ("a recovered call stays quiet", healthy_config, 1),
+            ("failing again after recovery warns again", failing_config, 2)
+        ] {
+            setattr(config_loader_mod, "get_scale_config", loader);
+            for _ in range(3) {
+                resolve_peer_route("k9_warn_once_svc", "ns", 8000);
+            }
+            assert len(warn_calls) == expected , label;
+        }
+    } finally {
+        setattr(config_loader_mod, "get_scale_config", original_get_scale_config);
+        setattr(resolver_mod.logger, "warning", original_warning);
+        resolver_mod._config_load_warned.discard("k9_warn_once_svc");
+    }
+}
+
+
 test "a single-file full-stack app still gets its client bundle built" {
     import tempfile;
     import os;
@@ -726,6 +810,7 @@ def _peer_env_restore(saved: dict[str, str | None]) {
             os.environ[key] = value;
         }
     }
+    reset_scale_config();
 }
 
 
@@ -734,6 +819,10 @@ def _peer_env_isolate {
         os.environ.pop(peer_url_env_key(name), None);
     }
     os.environ["POD_NAMESPACE"] = _PEER_NS;
+    # build_k8s_registry now consults scale config (for http_activation
+    # awareness); reset so no earlier test's cached, possibly
+    # activation-enabled config leaks into these naming-convention checks.
+    reset_scale_config();
 }
 
 

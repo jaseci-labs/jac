@@ -23,7 +23,8 @@ The cache root rule is now one rule everywhere: `JAC_CACHE_HOME` (which
 until now only the embedded Postgres cluster read), else `XDG_CACHE_HOME/jac`
 (now honored on macOS and Windows too when set), else the platform default.
 Every bucket has a retention policy, `JAC_CACHE_TTL_DAYS` overrides all of
-them at once, and the root carries a standard `CACHEDIR.TAG`.
+them at once. Disposable managed buckets carry a standard `CACHEDIR.TAG`;
+the shared root stays untagged because `pg/main` holds persistent state.
 
 A fused `jac` binary's extracted runtime is keyed by the payload's content
 hash alone, no longer by payload plus executable path, so one payload

@@ -1568,7 +1568,7 @@ jac cache [-h] [action] [-b BUCKET] [-n]
 | `-b, --bucket` | With `purge`: only this bucket (`status` lists the names) | all managed buckets |
 | `-n, --dry-run` | With `gc` or `purge`: report what would be removed without removing it | `False` |
 
-The cache root is `~/.cache/jac` on Linux, `~/Library/Caches/jac` on macOS and `%LOCALAPPDATA%\jac\cache` on Windows; `JAC_CACHE_HOME` relocates it, and a set `XDG_CACHE_HOME` is honored on every platform. It carries a standard `CACHEDIR.TAG`, so backup tools that respect the marker skip it.
+The cache root is `~/.cache/jac` on Linux, `~/Library/Caches/jac` on macOS and `%LOCALAPPDATA%\jac\cache` on Windows; `JAC_CACHE_HOME` relocates it, and a set `XDG_CACHE_HOME` is honored on every platform. Disposable managed buckets carry a standard `CACHEDIR.TAG`, so backup tools that respect the marker can skip those buckets. The shared root and external buckets are not tagged: `pg/main` contains persistent database data. Jac removes its own former root-level tag when preparing the cache; it preserves user-authored tags.
 
 Every bucket has a **retention policy**:
 
@@ -1585,7 +1585,7 @@ Every bucket has a **retention policy**:
 | `models` | byLLM model weights | pinned: never collected, `purge` removes it |
 | `pg`, `toolchains-gradle`, `toolchains-android-sdk` | the Postgres cluster, Gradle's home, the Android SDK | external: reported only (`jac db prune` manages the cluster) |
 
-"Unused" is measured from the last time jac touched the entry, not from when it was written. `JAC_CACHE_TTL_DAYS` overrides every age above at once (`0` turns the age sweep off). Each bucket also sweeps itself opportunistically when jac writes to it, at most once per process and once per day, so the cache stays bounded without anyone running `gc`.
+"Unused" is measured from the last time jac touched the entry, not from when it was written. `JAC_CACHE_TTL_DAYS` overrides every age above at once (`0` turns the age sweep off). Abandoned temporary files and staging directories, including nested toolchain staging, are eligible after one hour. PID-bearing staging entries are retained while their writer is alive. Legacy toolchain staging is reclaimed only while its existing installation locks can be held; temporary entries with unknown ownership are preserved. Lock files remain in place so concurrent writers keep sharing the same lock. Status includes temporary entries and lists unrecognized content separately; unrecognized content is never deleted automatically. Each bucket also sweeps itself opportunistically when jac writes to it, at most once per process and once per day, so the cache stays bounded without anyone running `gc`.
 
 **Examples:**
 
@@ -1605,6 +1605,8 @@ jac cache purge
 # Remove one bucket
 jac cache purge --bucket jir-modules
 ```
+
+`purge` also clears inactive temporary entries regardless of age. It preserves live runtime/compiler entries, staging owned by a running writer, and temporary entries whose ownership cannot be established. Retired toolchain directories are reclaimed under both the default root and `JAC_TOOLCHAIN_DIR`, unless a current bucket uses that location.
 
 `purge` refuses external buckets: the Postgres cluster is `jac db`'s (`jac db prune`), and Gradle and the Android SDK are their own tools'.
 

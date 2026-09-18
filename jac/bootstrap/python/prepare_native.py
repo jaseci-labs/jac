@@ -32,17 +32,14 @@ from jaclang.compiler.driver.compile_options import CompileOptions
 from jaclang.compiler.backends.native.na_compile_pass import (
     native_linked_ir_text, require_native_ir,
 )
-from jaclang.compiler.backends.native.shared_emit import (
-    init_object_codegen, inject_shared_init, internalize_native_implementation,
-)
-import jaclang.compiler.backends.native.llvm.binding as llvm
+from jaclang.compiler.backends.native.shared_emit import emit_shared_object
 
 program = JacProgram()
 entry = root / "jaclang/compiler/backends/py/jacpython/native_api.jac"
 module = program.compile(file_path=str(entry), options=CompileOptions(
     aot_mode=True, default_codespace="native", force_target_program=True,
     native_required=True,
-    memory_profile="managed", no_ir_cache=False, opt_level=2, native_target=triple,
+    memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
 ))
 if program.errors_had:
     for error in program.errors_had:
@@ -52,17 +49,13 @@ if module is None:
     raise RuntimeError("JacPython native compilation produced no module")
 ir_text = native_linked_ir_text(module)
 require_native_ir(ir_text)
-ir_text, runtime_exports = inject_shared_init(ir_text, module.gen.interop_manifest)
-init_object_codegen()
-compiled = llvm.parse_assembly(ir_text)
-internalize_native_implementation(
-    compiled, list(module.gen._exported_symbols) + runtime_exports + ["__jac_shared_init"],
-)
-compiled.verify()
-machine = llvm.Target.from_triple(triple).create_target_machine(
-    opt=2, reloc="pic", codemodel="small",
-)
-object_bytes = machine.emit_object(compiled)
+object_bytes = emit_shared_object(
+    ir_text,
+    module.gen.interop_manifest,
+    list(module.gen._exported_symbols),
+    triple,
+    opt_level=2,
+).code
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
 print("JacPython: built native compiler object; no interpreted demotions", flush=True)

@@ -126,6 +126,7 @@ import from jaclang.compiler.backends.py.jacpython.codegen_util {
     no_loc
 }
 import from jaclang.compiler.frontend.python.compiler_symtable {
+    scope_kind,
     sym_block,
     sym_dict_get,
     SCOPE_GLOBAL_IMPLICIT,
@@ -474,7 +475,7 @@ def visit_ann_assign(
         ann_discard_target(g, an.target);
         return stmt_cont(loc=aloc);
     }
-    if g.sym_top is not None and g.sym_top.block_type == "function" {
+    if g.sym_top is not None and g.sym_top.kind == scope_kind.FUNCTION {
         if an.value is None {
             return stmt_cont(loc=aloc);
         }
@@ -502,7 +503,7 @@ def visit_ann_assign(
         }
         return stmt_cont(loc=aloc);
     }
-    if g.sym_top is not None and g.sym_top.block_type == "class" {
+    if g.sym_top is not None and g.sym_top.kind == scope_kind.CLASS {
         if plan is None or not plan.is_class {
             codegen_fail(
                 g,
@@ -884,7 +885,7 @@ def build_annotate_fn_cfg(
 # of emitting silently-wrong bytes.
 def ann_synthetic_sym(plan: ann_scope_plan) -> sym_block | None {
     sym = sym_block(
-        block_type="function",
+        kind=scope_kind.FUNCTION,
         name="__annotate__",
         lineno=plan.body_first_lineno,
         col_offset=0,
@@ -1150,12 +1151,12 @@ def emit_future_function_annotations(
     }
     unit = build_annotate_fn_cfg(sym, plan, g.u.filename);
     if g.sym_top is not None {
-        if g.sym_top.block_type == "function" {
+        if g.sym_top.kind == scope_kind.FUNCTION {
             unit.qualname = g.u.qualname + ".<locals>.__annotate__";
-        } elif g.sym_top.block_type == "class" {
+        } elif g.sym_top.kind == scope_kind.CLASS {
             unit.qualname = g.u.qualname + ".__annotate__";
         }
-        if g.sym_top.block_type == "function" or g.sym_top.nested {
+        if g.sym_top.kind == scope_kind.FUNCTION or g.sym_top.nested {
             unit.flags |= CO_NESTED;
         }
     }

@@ -1,5 +1,6 @@
 """Sub node pass tests – migrated from test_sub_node_pass.py."""
 
+import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -10,7 +11,7 @@ glob LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 test "sub node pass" {
     out = JacProgram();
     code_gen = out.compile(file_path=os.path.join(LANG_FIXTURES, "circle.jac"));
-    for i in code_gen.kid[1].kid {
+    for i in [[code_gen->:Kid:->][1]->:Kid:->] {
         for (k, v) in i._sub_node_tab.items() {
             for n in v {
                 assert n in i.get_all_sub_nodes(k);

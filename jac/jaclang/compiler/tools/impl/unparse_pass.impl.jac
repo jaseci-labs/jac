@@ -2,7 +2,7 @@ def _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
     return sep.join(
         [
             k.gen.jac
-            for k in nd.kid
+            for k in [nd->:Kid:->]
             if k and k.gen.jac
         ]
     );
@@ -33,7 +33,7 @@ impl UnparsePass.unparse_default_exit with uni.UniNode exit {
         here.gen.jac = " ".join(
             [
                 k.gen.jac
-                for k in here.kid
+                for k in [here->:Kid:->]
                 if k and k.gen.jac
             ]
         );
@@ -1107,7 +1107,7 @@ impl UnparsePass.exit_jsx_expression with uni.JsxExpression exit {
 
 impl UnparsePass.exit_jsx_slot with uni.JsxSlot exit {
     parts: list[str] = [];
-    for k in here.kid {
+    for k in [here->:Kid:->] {
         s = k.gen.jac;
         if s is not None {
             parts.append(s);
@@ -1191,7 +1191,7 @@ impl UnparsePass.exit_match_mapping with uni.MatchMapping exit {
 impl UnparsePass.exit_match_k_v_pair with uni.MatchKVPair exit {
     here.gen.jac = here.key.gen.jac
         + " "
-        + here.kid[1].gen.jac
+        + [here->:Kid:->][1].gen.jac
         + " "
         + here.value.gen.jac;
 }

@@ -17,14 +17,20 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import from unittest.mock { patch }
-import from jaclang.jac0core.cache_paths {
-    get_app_cache_dir,
-    get_cache_home,
-    get_jir_cache_dir
+import from tests.support { cache_env }
+import from jaclang.cache.locking { FileLock }
+import from jaclang.toolchains.store { InstallLock }
+import from jaclang.jac0core.cache_paths { get_cache_home, get_jir_cache_dir }
+import from jaclang.cache.home {
+    CACHEDIR_TAG,
+    CACHEDIR_TAG_TEXT,
+    cache_home,
+    ensure_root
 }
-import from jaclang.cache.home { CACHEDIR_TAG, cache_home, ensure_root }
 import from jaclang.cache.policy {
     Policy,
+    WriterState,
+    TemporaryClaim,
     Retention,
     SWEEP_SENTINEL,
     TMP_TTL_SECONDS,
@@ -38,7 +44,8 @@ import from jaclang.cache.registry {
     gc,
     managed_buckets,
     purge,
-    status
+    status,
+    unmanaged
 }
 
 glob DAY: float = 86400.0,
@@ -69,7 +76,7 @@ def backdate(path: Path, seconds_ago: float) {
 """A fresh private cache root, exported as JAC_CACHE_HOME for the block."""
 def private_root -> tuple[Path, dict[str, str]] {
     base = Path(tempfile.mkdtemp(prefix="jac-cache-test-"));
-    return (base, {"JAC_CACHE_HOME": str(base), "XDG_CACHE_HOME": str(base / "xdg")});
+    return (base, cache_env(base));
 }
 
 def entry_dir(base: Path, name: str, age: float, marker: str = "") -> Path {
@@ -119,23 +126,28 @@ test "every pre-bootstrap path derives from the one root" {
     (base, env) = private_root();
     with patch.dict(os.environ, env) {
         assert get_jir_cache_dir() == base / "jir";
-        assert get_app_cache_dir() == base / "apps";
         assert bucket("jir-modules").path() == base / "jir" / "modules";
         assert bucket("apps").path() == base / "apps";
         assert bucket("rt").path() == base / "rt";
     }
 }
 
-test "ensure_root creates the root and stamps CACHEDIR.TAG" {
+test "only disposable buckets are tagged and an old Jac root tag is retired" {
     (base, env) = private_root();
-    shutil.rmtree(base);
+    (base / CACHEDIR_TAG).write_text(CACHEDIR_TAG_TEXT);
+    pg = entry_dir(base, "pg/main", 0.0);
     with patch.dict(os.environ, env) {
         assert ensure_root() == base;
+        assert not (base / CACHEDIR_TAG).exists();
+        rt = bucket("rt").ensure();
+        assert (rt / CACHEDIR_TAG).read_text() == CACHEDIR_TAG_TEXT;
+        bucket("pg").ensure();
+        assert not (base / "pg" / CACHEDIR_TAG).exists();
+        assert pg.exists();
+        (base / CACHEDIR_TAG).write_text("user backup policy");
+        ensure_root();
+        assert (base / CACHEDIR_TAG).read_text() == "user backup policy";
     }
-    tag = base / CACHEDIR_TAG;
-    assert tag.is_file() , "the standard backup opt-out marker must exist";
-    text = tag.read_text();
-    assert text.startswith("Signature: 8a477f597d28d172789f06886806bc55") , "CACHEDIR.TAG must carry the standard signature line";
 }
 
 test "the registry names every bucket the tree writes, each with a policy" {
@@ -188,16 +200,20 @@ test "sweep_dir reclaims orphaned temp extractions older than an hour" {
     base = Path(tempfile.mkdtemp());
     policy = Policy(retention=Retention.LAST_USE, ttl_days=14.0);
     stale_tmp = entry_dir(base, "0123456789abcdef.tmp.4242", TMP_TTL_SECONDS + 60.0);
-    fresh_tmp = entry_dir(base, "fedcba9876543210.tmp.4243", 60.0);
-    stale_file = base / "mod.777.tmp";
+    fresh_tmp = entry_dir(base, "fedcba9876543210.tmp.pending", 60.0);
+    stale_file = base / "mod.4242.tmp";
     stale_file.write_bytes(b"x");
     backdate(stale_file, TMP_TTL_SECONDS + 60.0);
-    result = sweep_dir(base, policy);
+    with patch(
+        "jaclang.cache.policy.temporary_owner", return_value=WriterState.INACTIVE
+    ) {
+        result = sweep_dir(base, policy);
+    }
     assert not stale_tmp.exists() , "a crashed extraction older than an hour must be reclaimed";
     assert not stale_file.exists() , "a crashed writer's temp file must be reclaimed";
     assert fresh_tmp.exists() , "an extraction in progress must be left alone";
     assert sorted(result.removed)
-        == sorted(["0123456789abcdef.tmp.4242", "mod.777.tmp"]);
+        == sorted(["0123456789abcdef.tmp.4242", "mod.4242.tmp"]);
 }
 
 test "sweep_dir never touches a pinned bucket and reports nothing for it" {
@@ -236,7 +252,7 @@ test "sweep_dir walks to the declared depth and prunes emptied parents" {
     backdate(lock, 100.0 * DAY);
     result = sweep_dir(base, policy);
     assert not stale.exists();
-    assert not (base / "ndk").exists() , "an emptied parent directory must be pruned";
+    assert lock.exists() , "lock inodes must survive collection so existing waiters remain synchronized";
     assert live.exists();
     assert result.removed == ["ndk/26/linux-x64-abcd"];
 }
@@ -411,5 +427,225 @@ test "purge removes managed buckets and refuses external ones" {
         result = purge(None);
         assert not models.exists() , "a full purge clears pinned buckets too";
         assert pg.exists() , "a full purge still leaves external buckets alone";
+    }
+}
+
+
+test "inspection and purge include staging while unknown JIR content remains visible" {
+    (base, env) = private_root();
+    with patch.dict(os.environ, env) {
+        install = entry_dir(
+            base, "toolchains/installed/demo/v1/.install-abandoned", 120.0 * DAY
+        );
+        (install.parent / "platform.lock").touch();
+        runtime = entry_dir(base, "rt/abc.tmp.4242", 120.0 * DAY);
+        unknown = entry_dir(base, "jir/unregistered", 120.0 * DAY);
+        rows = {r.name: r for r in status()};
+        assert rows["toolchains-installed"].size_bytes == 1024;
+        assert rows["rt"].size_bytes == 1024;
+        assert rows["jir-digests"].size_bytes == 0;
+        assert unmanaged() == [("jir/unregistered", 1024)];
+        with patch(
+            "jaclang.cache.policy.temporary_owner", return_value=WriterState.INACTIVE
+        ) {
+            dry = purge(dry_run=True);
+        }
+        assert dry.reclaimed_bytes == 2048;
+        assert install.exists() and runtime.exists();
+        with patch(
+            "jaclang.cache.policy.temporary_owner", return_value=WriterState.INACTIVE
+        ) {
+            result = purge();
+        }
+        assert result.reclaimed_bytes == 2048;
+        assert not install.exists() and not runtime.exists();
+        assert unknown.exists();
+    }
+}
+
+test "nested staging uses the orphan TTL and never follows symlinks" {
+    (base, env) = private_root();
+    with patch.dict(os.environ, env) {
+        parent = bucket("toolchains-installed").path();
+        old = entry_dir(parent, "demo/v1/.install-old", TMP_TTL_SECONDS + 60.0);
+        fresh = entry_dir(parent, "demo/v1/.install-fresh", 60.0);
+        old_build = entry_dir(
+            bucket("toolchains-build").path(),
+            "demo/linux/tmpdeadbeef",
+            TMP_TTL_SECONDS + 60.0
+        );
+        (old.parent / "platform.lock").touch();
+        (old_build.parent / "build.lock").touch();
+        named_tool = entry_dir(
+            parent, ".install-tool/v1/platform", 0.0, ".jac-install.json"
+        );
+        active = entry_dir(parent, f"demo/v1/.tmp.{os.getpid()}.active", 120.0 * DAY);
+        backdate(parent / ".install-tool", TMP_TTL_SECONDS + 60.0);
+        outside = entry_dir(base, "outside", 120.0 * DAY);
+        link = parent / "linked";
+        try {
+            link.symlink_to(outside, target_is_directory=True);
+        } except OSError {}
+        gc();
+        assert not old.exists();
+        assert fresh.exists() and active.exists();
+        assert not old_build.exists();
+        assert named_tool.exists();
+        assert (outside / "blob").is_file();
+        purge(["toolchains-installed"]);
+        assert active.exists() , "purge must not delete staging owned by a live writer";
+        assert not fresh.exists();
+    }
+}
+
+test "retired toolchains honor custom roots and never remove an active bucket root" {
+    (base, env) = private_root();
+    with tempfile.TemporaryDirectory() as custom {
+        env["JAC_TOOLCHAIN_DIR"] = custom;
+        old = entry_dir(Path(custom), "llvm-cbe", 0.0);
+        default_old = entry_dir(base, "toolchains/cocoapods", 0.0);
+        with patch.dict(os.environ, env) {
+            extra = dict(unmanaged());
+            assert str(old) in extra;
+            gc(dry_run=True);
+            assert old.exists() and default_old.exists();
+            gc();
+            assert not old.exists() and not default_old.exists();
+        }
+        env["JAC_TOOLCHAIN_DIR"] = str(base / "toolchains/llvm-cbe");
+        with patch.dict(os.environ, env) {
+            active = entry_dir(
+                bucket("toolchains-installed").path(), "demo/v1/platform", 0.0
+            );
+            gc();
+            assert active.exists();
+        }
+    }
+}
+
+test "private test environments override every inherited cache family" {
+    with tempfile.TemporaryDirectory() as tmp {
+        inherited = {
+            "JAC_CACHE_HOME": "/unrelated",
+            "JAC_TOOLCHAIN_DIR": "/unrelated-tools",
+            "JAC_MODELS_DIR": "/unrelated-models",
+            "JAC_SCALE_CACHE_DIR": "/unrelated-binaries"
+        };
+        with patch.dict(os.environ, inherited) {
+            with patch.dict(os.environ, cache_env(tmp)) {
+                for b in BUCKETS {
+                    assert b.path().is_relative_to(Path(tmp).resolve());
+                }
+            }
+            assert os.environ["JAC_CACHE_HOME"] == "/unrelated";
+        }
+    }
+}
+
+
+test "temporary ownership keeps inaccessible writers and reclaims exited writers" {
+    import from jaclang.cache.policy { temporary_owner }
+    if os.name != "posix" {
+        testskip("POSIX process-probe error semantics");
+    }
+    item = Path("artifact.tmp.4242");
+    with patch("os.kill", side_effect=PermissionError) {
+        assert temporary_owner(item) == WriterState.UNKNOWN;
+    }
+    with patch("os.kill", side_effect=ProcessLookupError) {
+        assert temporary_owner(item) == WriterState.INACTIVE;
+    }
+    with patch("os.kill") as probe {
+        assert temporary_owner(item) == WriterState.ACTIVE;
+        probe.assert_called_once_with(4242, 0);
+    }
+}
+
+
+test "legacy writers keep staging through purge and GC until their locks are released" {
+    (base, env) = private_root();
+    with patch.dict(os.environ, env) {
+        for (name, rel) in [
+            ("toolchains-downloads", "archive.part"),
+            ("toolchains-installed", "demo/v1/.install-active"),
+            ("toolchains-build", "demo/linux/tmpdeadbeef")
+        ] {
+            p = bucket(name).path() / rel;
+            lock_path = p.with_suffix(".lock")
+                if name == "toolchains-downloads"
+                else p.parent / "platform.lock";
+            with InstallLock(lock_path) {
+                # Older writers acquire the lock before creating PID-less staging.
+                if name == "toolchains-downloads" {
+                    item = p;
+                    item.write_bytes(b"partial archive");
+                    backdate(item, 120.0 * DAY);
+                } else {
+                    item = entry_dir(bucket(name).path(), rel, 120.0 * DAY);
+                }
+                dry = purge([name], dry_run=True);
+                assert len(dry.kept) == 1 and not dry.removed;
+                gc();
+                assert item.exists();
+                result = purge([name]);
+                assert item.exists() and len(result.kept) == 1;
+            }
+            if name == "toolchains-installed" {
+                gc();
+            } else {
+                purge([name]);
+            }
+            assert not item.exists();
+            assert lock_path.exists();
+        }
+    }
+}
+
+test "unknown temporary ownership is preserved even beyond the orphan TTL" {
+    (base, env) = private_root();
+    with patch.dict(os.environ, env) {
+        for (name, rel) in [
+            ("rt", "artifact.tmp.unknown"),
+            ("toolchains-downloads", "archive.part"),
+            ("toolchains-installed", "demo/v1/.install-unknown"),
+            ("toolchains-build", "demo/linux/tmpunknown1")
+        ] {
+            item = entry_dir(bucket(name).path(), rel, 120.0 * DAY);
+            gc();
+            result = purge([name]);
+            assert item.exists() and len(result.kept) == 1;
+        }
+    }
+}
+
+test "temporary claims hold sibling locks and release them after a partial acquisition" {
+    (base, env) = private_root();
+    with patch.dict(os.environ, env) {
+        b = bucket("toolchains-installed");
+        item = entry_dir(b.path(), "demo/v1/.install-old", 120.0 * DAY);
+        first = item.parent / "a.lock";
+        second = item.parent / "b.lock";
+        first.touch();
+        with InstallLock(second) {
+            with TemporaryClaim(item, b.policy) as claim {
+                assert not claim.reclaimable;
+            }
+            probe = FileLock(first);
+            assert probe.acquire(create=False);
+            probe.release();
+        }
+        with TemporaryClaim(item, b.policy) as claim {
+            assert claim.reclaimable;
+            probe = FileLock(second);
+            assert not probe.acquire(create=False);
+        }
+        assert probe.acquire(create=False);
+        probe.release();
+        with patch(
+            "jaclang.cache.locking.FileLock.acquire", side_effect=PermissionError
+        ) {
+            assert len(purge([b.name]).kept) == 1;
+            assert item.exists();
+        }
     }
 }

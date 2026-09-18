@@ -336,19 +336,11 @@ def prepare_wasm_module(llvm_ir_str: str) -> tuple[ModuleRef, TargetMachine, boo
     assert isinstance(target, llvm.Target);
     tm = target.create_target_machine(opt=2);
     assert isinstance(tm, llvm.TargetMachine);
-    pto = llvm.create_pipeline_tuning_options(speed_level=2);
-    pb = llvm.create_pass_builder(tm, pto);
-    assert isinstance(pb, llvm.PassBuilder);
-    mpm = pb.getModulePassManager();
-    assert isinstance(mpm, llvm.ModulePassManager);
-    mpm.run(mod, pb);
+    import from jaclang.compiler.backends.native.shared_emit { optimize_native_module }
+    optimize_native_module(mod, tm, 2);
     if libc_linked {
         _internalize_late_bound(mod);
-        pb2 = llvm.create_pass_builder(tm, pto);
-        assert isinstance(pb2, llvm.PassBuilder);
-        mpm2 = pb2.getModulePassManager();
-        assert isinstance(mpm2, llvm.ModulePassManager);
-        mpm2.run(mod, pb2);
+        optimize_native_module(mod, tm, 2);
     }
     return (mod, tm, libc_linked);
 }

@@ -1818,6 +1818,10 @@ class Parser:
         if self._match(TT.LPAREN):
             bases = self._collect_until(TT.RPAREN)
             self._expect(TT.RPAREN)
+        if arch_kind == "edge" and self._match(TT.COLON):
+            # Endpoints are static annotations, erased by the seed compiler
+            # just like field annotations (including type-only imports).
+            self._collect_until(TT.LBRACE)
         self._expect(TT.LBRACE)
         body = self._parse_body()
         self._expect(TT.RBRACE)

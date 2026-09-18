@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import json;
 import from typing { cast }
 import jaclang.compiler.backends.es.estree as es;

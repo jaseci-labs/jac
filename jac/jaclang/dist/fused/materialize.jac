@@ -117,6 +117,20 @@ def stamp_cachedir_tag(base: str) {
     }
 }
 
+def prepare_cache_root(base: str) {
+    tag = base + "/" + CACHEDIR_TAG;
+    if os.path.isfile(tag) {
+        if read_at(tag, 0, len(CACHEDIR_TAG_TEXT)) == CACHEDIR_TAG_TEXT
+            and os.path.getsize(tag) == len(CACHEDIR_TAG_TEXT) {
+            os.remove(tag);
+        }
+    }
+
+    rt = base + "/rt";
+    os.makedirs(rt, exist_ok=True);
+    stamp_cachedir_tag(rt);
+}
+
 def:pub cache_root -> str {
     home: str = os.environ.get("HOME", "");
     base: str = os.environ.get("JAC_CACHE_HOME", "");
@@ -133,7 +147,7 @@ def:pub cache_root -> str {
         }
     }
     if base != "" and dir_writable(base) {
-        stamp_cachedir_tag(base);
+        prepare_cache_root(base);
         return base;
     }
     tmp: str = os.environ.get("TMPDIR", "");
@@ -145,7 +159,7 @@ def:pub cache_root -> str {
         die("no writable cache directory (set JAC_CACHE_HOME or TMPDIR)");
         return "";
     }
-    stamp_cachedir_tag(fallback);
+    prepare_cache_root(fallback);
     return fallback;
 }
 

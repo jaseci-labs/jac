@@ -131,17 +131,10 @@ def _runtime_dir_for_key(key: str) -> (str | None) {
         return None;
     }
     roots = [str(bucket("rt").path())];
-    legacy = os.path.join(
-        os.environ.get("XDG_CACHE_HOME", "")
-            or os.path.join(os.path.expanduser("~"), ".cache"),
-        "jac",
-        "rt"
-    );
-    if legacy not in roots {
-        roots.append(legacy);
+    if os.name == "posix" {
+        tmp = os.environ.get("TMPDIR", "") or "/tmp";
+        roots.append(os.path.join(tmp, f"jac-cache-{os.getuid()}", "rt"));
     }
-    tmp = os.environ.get("TMPDIR", "") or "/tmp";
-    roots.append(os.path.join(tmp, f"jac-cache-{os.getuid()}", "rt"));
     for r in roots {
         cand = os.path.join(r, key);
         if os.path.isfile(os.path.join(cand, ".ok")) {

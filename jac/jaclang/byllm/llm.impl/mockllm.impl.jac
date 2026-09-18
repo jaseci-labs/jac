@@ -274,6 +274,41 @@ impl MockLLM._next_reply(params: dict[str, any]) -> MockRawResponse | MockError 
     return _mock_turn(queue.pop(0), _mock_takes_string(params.get("response_format")));
 }
 
+def _mock_image_response(output: object, model: str) -> dict[str, any] {
+    if isinstance(output, MockError) {
+        raise output.error;
+    }
+    data: list[dict[str, any]] = [];
+    items: list[any] = output if isinstance(output, list) else [output];
+    for item in items {
+        source = item.url if isinstance(item, Image) else item;
+        if isinstance(source, (bytes, bytearray, memoryview)) {
+            data.append({"b64_json": base64.b64encode(bytes(source)).decode("utf-8")});
+        } elif isinstance(source, str) {
+            data.append({"url": source});
+        } else {
+            raise TypeError(
+                f"MockLLM cannot serve a {type(item).__name__} as a generated "
+                "image; queue image bytes, a url string, or an Image"
+            );
+        }
+    }
+    return {"model": model, "data": data};
+}
+
+
+impl MockLLM.model_call_image(params: dict[str, any]) -> dict[str, any] {
+    self.seen.append(params);
+    self.seen_prompts.append(str(params.get("prompt") or ""));
+    queue = self._current_queue();
+    if not queue {
+        raise IndexError(
+            f"MockLLM has no queued output left for call {len(self.seen)}"
+        );
+    }
+    return _mock_image_response(queue.pop(0), params.get("model") or self.model_name);
+}
+
 impl MockLLM.model_call_no_stream(params: dict[str, any]) -> object {
     require_optional("litellm", "llm");
     turn = self._next_reply(params);

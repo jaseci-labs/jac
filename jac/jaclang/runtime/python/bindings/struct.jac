@@ -14,6 +14,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
     TypeFlags,
+    PropertyCallbacks,
     PropertyDefinition,
     jacpy_binding_typeof,
     jacpy_binding_owner,
@@ -550,8 +551,12 @@ glob:priv struct_type = TypeDefinition(
              traverse=traverse
          ),
          [
-             PropertyDefinition("format", format_property, doc="Format string"),
-             PropertyDefinition("size", size_property, doc="Record size")
+             PropertyDefinition(
+                 "format", PropertyCallbacks(read=format_property), doc="Format string"
+             ),
+             PropertyDefinition(
+                 "size", PropertyCallbacks(read=size_property), doc="Record size"
+             )
          ]
      ),
      iterator_type = TypeDefinition(

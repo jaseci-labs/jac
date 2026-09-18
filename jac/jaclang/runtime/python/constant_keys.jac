@@ -1,4 +1,4 @@
-"""Exact compiler constant identity, shared by pooling and native serialization."""
+"""Exact compiler constant identity, shared by pooling and CPython constant output."""
 import from jaclang.runtime.python.objects {
     PyObj,
     PyInt,

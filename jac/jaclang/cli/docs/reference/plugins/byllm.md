@@ -1773,6 +1773,73 @@ For a step-by-step walkthrough, see the [Multimodal AI Tutorial](../../tutorials
 
 ---
 
+## Generating Images
+
+An `Image` return type makes the call an image-generation call instead of a chat
+completion. The prompt is the same prompt byLLM builds for any other function -
+the docstring, the `sem` strings and the argument values - and the provider's
+image is handed back as an `Image`:
+
+```jac
+import from jaclang.byllm.lib { Image, Model }
+
+glob painter = Model(model_name="dall-e-3");
+
+"""A flat vector poster, bold shapes, no text."""
+def draw_poster(subject: str, mood: str) -> Image by painter();
+
+with entry {
+    poster = draw_poster("a hot air balloon over Kandy", "calm");
+    print(poster.url);
+}
+```
+
+The returned `Image` is an ordinary `Image`, so it can be passed straight into a
+vision call, saved, or served.
+
+Return `list[Image]` to keep every image the provider sent:
+
+```jac
+def draw_variants(subject: str) -> list[Image] by painter(n=3);
+```
+
+### Generation Parameters
+
+These `by` parameters are forwarded to the provider when set; anything left
+unset takes the provider's default:
+
+| Parameter | Description |
+|-----------|-------------|
+| `n` | How many images to generate |
+| `size` | Pixel size, e.g. `"1024x1024"` |
+| `quality` | Provider quality tier, e.g. `"hd"` |
+| `style` | Provider style, e.g. `"vivid"` |
+| `response_format` | `"b64_json"` (default) or `"url"` |
+| `user` | End-user identifier for provider-side abuse tracking |
+| `timeout` | Request timeout in seconds |
+
+byLLM asks for `b64_json` by default, so the returned `Image` carries the bytes
+as a data URL rather than a provider URL that expires. Pass
+`response_format="url"` to keep the provider's hosted URL instead.
+
+`system_prompt`, from `jac.toml` or from the call, is prepended to the prompt.
+byLLM's built-in chat persona is dropped for an image return, so it does not
+steer the image model. A custom `base_url` is honoured the same way it is on a
+completion.
+
+### Generation Limits
+
+- The model must be an image model. An image return on a chat model fails at the
+  provider, not in byLLM.
+- Image generation takes one call, so `tools=` and `stream=` are refused with a
+  `ConfigurationError`.
+- An `Image` or `Video` argument cannot be sent with an image return: the
+  generation endpoint takes text only, and byLLM has no image-editing path yet.
+- Generation goes through LiteLLM. The `proxy` and `http_client` transports do
+  not carry it.
+
+---
+
 ## Context Methods
 
 ### incl_info

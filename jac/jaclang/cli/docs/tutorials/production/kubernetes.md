@@ -248,11 +248,10 @@ This reconciles a KEDA `InterceptorRoute` and `ScaledObject` for the target,
 and works for both single-app and per-app (`[apps.<name>.scale.http_activation]`) deploys.
 
 !!! note
-    This needs the KEDA HTTP Add-on installed alongside KEDA core. With
-    `min_replicas = 0`, route inbound traffic through the KEDA HTTP interceptor
-    proxy: jac-scale does not yet rewire the gateway or Ingress to it, so a
-    request that reaches the app Service directly will not wake a scaled-to-zero
-    pod.
+    This needs the KEDA HTTP Add-on installed alongside KEDA core. jac-scale
+    routes gateway-forwarded and sv-to-sv RPC traffic to this target through
+    the KEDA HTTP interceptor proxy automatically, so `min_replicas = 0` is
+    safe to use without any manual Ingress or gateway rewiring.
 
 See the [Scale Reference](../../reference/plugins/jac-scale-kubernetes.md#http-add-on-activation-scale-to-zero-on-request) for the full HTTP activation config (routing rules, cold-start response, timeouts).
 
