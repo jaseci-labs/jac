@@ -671,6 +671,7 @@ jobs:
       - name: MTIR integration (byllm)
         env:
           JAC_TEST_RSS_LOG: "1"
+          JAC_TEST_STRICT: "1"
         run: |
           set -o pipefail
           cp -r jac/jaclang/byllm/tests "$RUNNER_TEMP/byllm-tests"

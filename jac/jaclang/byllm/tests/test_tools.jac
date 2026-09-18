@@ -2,7 +2,7 @@
 
 import from jaclang.byllm.types { IterationAction, IterationContext }
 import from jaclang.byllm.lib { MockLLM }
-import from support_tests { call, finish, prompt_text, say, tool_names }
+import from support { call, finish, prompt_text, say, tool_names }
 
 
 """A chat message from one person."""
