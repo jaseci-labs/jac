@@ -9,6 +9,7 @@ const inputs = [_][]const u8{
     "bootstrap/python/sources.json",       "bootstrap/python/cpython-sources.txt",
     "bootstrap/python/build.sh",           "bootstrap/python/smoke.py",
     "bootstrap/python/finalize.py",        "bootstrap/python/compiler-bridge.patch",
+    "bootstrap/python/build-graph.patch",
     "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
     "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
 
@@ -105,6 +106,12 @@ pub fn main(init: std.process.Init) !void {
             const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
             const list = try Io.Dir.cwd().readFileAlloc(io, list_path, a, .limited(128 * 1024));
             try retainSources(io, a, dir, if (mode == .jacpython) list else try cSourceManifest(a, list));
+            // One parser owns the manifest. build.sh checks the finished tree
+            // against this list rather than reading the markers again.
+            try Io.Dir.cwd().writeFile(io, .{
+                .sub_path = try std.fs.path.join(a, &.{ work, "absent-inputs" }),
+                .data = try absentInputs(a, list, mode),
+            });
         }
     }
     const recipe = try std.fs.path.join(a, &.{ root, "bootstrap/python" });
@@ -116,6 +123,7 @@ pub fn main(init: std.process.Init) !void {
     try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "src" }));
     try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "deps" }));
     try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "bin" }));
+    try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "absent-inputs" }));
     try Io.Dir.cwd().deleteTree(io, dest);
     try Io.Dir.cwd().rename(work, Io.Dir.cwd(), dest, io);
     // Verify relocation before allowing a cache hit on the next invocation.
@@ -260,17 +268,59 @@ fn compilerInput(manifest: []const u8, path: []const u8) bool {
     return false;
 }
 
-// Only the build-time host retains the C compiler. Every shipped runtime
-// applies the marked replacement exclusions.
+// A commented manifest path carries a marker naming the builds that must lack
+// it. Every other comment is prose.
+const Marker = enum {
+    // Replaced by the native Jac implementation, and restored for the
+    // build-only host so it can still compile Python itself.
+    removed,
+    // Needed by no build. Absent from the host tree as well.
+    pruned,
+};
+const Exclusion = struct { path: []const u8, marker: Marker };
+
+// "# <path>  # <marker>: <count> source lines". Prose comments have no path in
+// that position and are left alone; an unrecognized marker is a typo that would
+// silently drop a source, so it fails the build instead.
+fn markedExclusion(line: []const u8) !?Exclusion {
+    if (!std.mem.startsWith(u8, line, "# ")) return null;
+    const rest = std.mem.trimEnd(u8, line[2..], " \t\r");
+    const path_end = std.mem.indexOfScalar(u8, rest, ' ') orelse return null;
+    if (path_end == 0) return null;
+    const tail = rest[path_end..];
+    if (!std.mem.startsWith(u8, tail, "  # ")) return null;
+    const word = tail[4..];
+    const colon = std.mem.indexOfScalar(u8, word, ':') orelse return null;
+    const marker = std.meta.stringToEnum(Marker, word[0..colon]) orelse return error.UnknownSourceMarker;
+    return .{ .path = rest[0..path_end], .marker = marker };
+}
+
+// Only the build-time host retains the C compiler, so it alone restores the
+// entries marked as replaced. Pruned entries stay commented for both builds.
 fn cSourceManifest(a: std.mem.Allocator, manifest: []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var lines = std.mem.splitScalar(u8, manifest, '\n');
     while (lines.next()) |line| {
         var value = line;
-        if (std.mem.startsWith(u8, line, "# ")) {
-            if (std.mem.indexOf(u8, line, "  # removed:")) |end| value = line[2..end];
+        if (try markedExclusion(line)) |excluded| {
+            if (excluded.marker == .removed) value = excluded.path;
         }
         try out.appendSlice(a, value);
+        try out.append(a, '\n');
+    }
+    return out.toOwnedSlice(a);
+}
+
+// Paths the finished build must not contain, one per line, for build.sh to
+// check against the tree. Both modes drop pruned entries; only the reduced
+// runtime drops the ones the host restores.
+fn absentInputs(a: std.mem.Allocator, manifest: []const u8, mode: Mode) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var lines = std.mem.splitScalar(u8, manifest, '\n');
+    while (lines.next()) |line| {
+        const excluded = try markedExclusion(line) orelse continue;
+        if (excluded.marker == .removed and mode != .jacpython) continue;
+        try out.appendSlice(a, excluded.path);
         try out.append(a, '\n');
     }
     return out.toOwnedSlice(a);
@@ -364,12 +414,38 @@ test "JacPython is mandatory except for the build-only host" {
     try std.testing.expectError(error.InvalidBuildMode, parseMode(args[0..4]));
 }
 
+test "manifest markers name the builds that must lack a path" {
+    const removed = (try markedExclusion("# Parser/parser.c  # removed: 1,953 source lines")).?;
+    try std.testing.expectEqual(Marker.removed, removed.marker);
+    try std.testing.expectEqualStrings("Parser/parser.c", removed.path);
+    const pruned = (try markedExclusion("# Lib/pydoc_data/  # pruned: 14,979 source lines")).?;
+    try std.testing.expectEqual(Marker.pruned, pruned.marker);
+    try std.testing.expectEqualStrings("Lib/pydoc_data/", pruned.path);
+    // Prose, including the header lines that quote the marker syntax.
+    try std.testing.expectEqual(@as(?Exclusion, null), try markedExclusion("# Parser and tokenizer"));
+    try std.testing.expectEqual(@as(?Exclusion, null), try markedExclusion("#   \"# path  # pruned: N source lines\""));
+    try std.testing.expectEqual(@as(?Exclusion, null), try markedExclusion("Python/ceval.c"));
+    // A misspelled marker would silently drop a source.
+    try std.testing.expectError(error.UnknownSourceMarker, markedExclusion("# Python/ceval.c  # remved: 1 source lines"));
+}
+
+test "only the reduced runtime must lack the entries the host restores" {
+    const a = std.testing.allocator;
+    const source = "# head\n# Parser/parser.c  # removed: 100 source lines\n# Lib/turtle.py  # pruned: 4,291 source lines\nPython/ceval.c\n";
+    const reduced = try absentInputs(a, source, .jacpython);
+    defer a.free(reduced);
+    try std.testing.expectEqualStrings("Parser/parser.c\nLib/turtle.py\n", reduced);
+    const host = try absentInputs(a, source, .host);
+    defer a.free(host);
+    try std.testing.expectEqualStrings("Lib/turtle.py\n", host);
+}
+
 test "C compiler builds restore only marked replacement exclusions" {
     const a = std.testing.allocator;
-    const source = "# source allowlist\n# Parser/parser.c  # removed: 100 source lines\n# unused.c\nPython/ceval.c\n";
+    const source = "# source allowlist\n# Parser/parser.c  # removed: 100 source lines\n# Lib/turtle.py  # pruned: 4,291 source lines\n# unused.c\nPython/ceval.c\n";
     const restored = try cSourceManifest(a, source);
     defer a.free(restored);
-    try std.testing.expectEqualStrings("# source allowlist\nParser/parser.c\n# unused.c\nPython/ceval.c\n\n", restored);
+    try std.testing.expectEqualStrings("# source allowlist\nParser/parser.c\n# Lib/turtle.py  # pruned: 4,291 source lines\n# unused.c\nPython/ceval.c\n\n", restored);
 }
 
 test "source paths stay inside the extracted tree" {

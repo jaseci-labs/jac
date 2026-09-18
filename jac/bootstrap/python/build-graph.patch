@@ -1,0 +1,28 @@
+Detach upstream's build graph from sources no Jac build retains.
+
+cpython-sources.txt is the single authority on which CPython files exist in
+the extracted tree. Upstream's makefile still names a few of them as ordinary
+prerequisites, which turns "stop shipping this file" into a build failure
+rather than a smaller tree. Each hunk here removes one such reference so the
+manifest alone decides.
+
+Marked exclusions ("# path  # removed:") are a separate mechanism: those files
+are restored for the build-only host, and compiler-bridge.patch detaches them
+from the graph for the reduced runtime only. Pruned entries ("# pruned:") are
+absent from both builds, so this patch applies unconditionally.
+
+_ssl.c includes exactly one generated error table, chosen by OpenSSL version.
+sources.json pins OpenSSL 3.5.8, so _ssl_data_35.h is the only one compiled;
+the 1.1.1 and 3.0 tables survive as prerequisites alone.
+
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -3400,7 +3400,7 @@
+ MODULE__HMAC_LDEPS=$(LIBHACL_HMAC_LIB_@LIBHACL_LDEPS_LIBTYPE@)
+ 
+ MODULE__SOCKET_DEPS=$(srcdir)/Modules/socketmodule.h $(srcdir)/Modules/addrinfo.h $(srcdir)/Modules/getaddrinfo.c $(srcdir)/Modules/getnameinfo.c
+-MODULE__SSL_DEPS=$(srcdir)/Modules/_ssl.h $(srcdir)/Modules/_ssl/cert.c $(srcdir)/Modules/_ssl/debughelpers.c $(srcdir)/Modules/_ssl/misc.c $(srcdir)/Modules/_ssl_data_111.h $(srcdir)/Modules/_ssl_data_300.h $(srcdir)/Modules/socketmodule.h
++MODULE__SSL_DEPS=$(srcdir)/Modules/_ssl.h $(srcdir)/Modules/_ssl/cert.c $(srcdir)/Modules/_ssl/debughelpers.c $(srcdir)/Modules/_ssl/misc.c $(srcdir)/Modules/socketmodule.h
+ MODULE__TESTCAPI_DEPS=$(srcdir)/Modules/_testcapi/parts.h $(srcdir)/Modules/_testcapi/util.h
+ MODULE__TESTLIMITEDCAPI_DEPS=$(srcdir)/Modules/_testlimitedcapi/testcapi_long.h $(srcdir)/Modules/_testlimitedcapi/parts.h $(srcdir)/Modules/_testlimitedcapi/util.h
+ MODULE__TESTINTERNALCAPI_DEPS=$(srcdir)/Modules/_testinternalcapi/parts.h
