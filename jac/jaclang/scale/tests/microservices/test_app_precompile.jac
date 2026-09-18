@@ -373,6 +373,32 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
                 );
                 assert "Preparing dynamically imported module" not in result.stdout;
             }
+            (Path(tmp) / "unlisted.jac").write_text(
+                'def:pub other -> str { return "source"; }\n'
+            );
+            result = subprocess.run(
+                [
+                    str(jac_bin),
+                    "run",
+                    "--serve",
+                    "--no-client",
+                    "--faux",
+                    "unlisted.jac"
+                ],
+                cwd=tmp,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=90
+            );
+            assert result.returncode == 0 , result.stdout + result.stderr;
+            real_tmp = os.path.realpath(tmp);
+            missed = f"Sealed image at {real_tmp} does not list unlisted.jac";
+            assert missed in result.stdout , (label, result.stdout);
+            assert "Loading sealed application artifacts" not in result.stdout , (
+                label,
+                result.stdout
+            );
         }
     }
 }

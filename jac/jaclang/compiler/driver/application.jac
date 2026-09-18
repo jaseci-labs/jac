@@ -228,7 +228,14 @@ def _prepare_sealed(
             f'Sealed application has no artifact manifest: {image_root}'
         );
     }
-    manifest = json.loads((Path(image_root) / SERVE_MANIFEST_REL).read_text());
+    serve_manifest = Path(image_root) / SERVE_MANIFEST_REL;
+    if not serve_manifest.is_file() {
+        raise RuntimeError(
+            f'Sealed application has no serving manifest: {serve_manifest}; '
+            'rebuild the bundle so the seal step writes it'
+        );
+    }
+    manifest = json.loads(serve_manifest.read_text());
     manifest['root'] = image_root;
     revision = PreparedApplication(
         image_root, `entry, services=tuple(entries[1:]), dev=False
@@ -333,11 +340,19 @@ def prepare_application(
     `entry = os.path.realpath(`entry);
     `root = os.path.realpath((`root or os.path.dirname(`entry)));
     entries = `list(`dict.fromkeys([`entry, *(os.path.realpath(p) for p in services)]));
-    import from jaclang.server.sealed_serve { sealed_root_for }
+    import from jaclang.server.sealed_serve { sealed_root_for, unlisted_image_root }
     image_root = sealed_root_for(`entry);
     if image_root is not None {
         console.print('  Loading sealed application artifacts');
         return _prepare_sealed(`entry, program, image_root, entries);
+    }
+    unlisted = unlisted_image_root(`entry);
+    if unlisted is not None {
+        missing = os.path.relpath(`entry, unlisted);
+        console.print(
+            f'  Sealed image at {unlisted} does not list {missing}; '
+            'preparing from source'
+        );
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     started = time.monotonic();
