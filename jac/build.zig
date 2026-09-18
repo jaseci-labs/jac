@@ -168,7 +168,18 @@ pub fn build(b: *std.Build) void {
     const ts_seed = b.addExecutable(.{ .name = "fetch_typeshed", .root_module = ts_seed_mod });
     const fetch_ts = b.addRunArtifact(ts_seed);
     fetch_host.step.dependOn(&fetch_ts.step);
-    if (jacllvm) |shim| fetch_host.step.dependOn(shim.place);
+    // JacPython's SDK runs prepare_native.py, which lowers the compiler through
+    // the shim. Dropping the dependency when jacllvm is null lets every consumer
+    // (the payload tool, vendor-musl, ...) rebuild the SDK for minutes and then
+    // die inside the compiler on a missing libjacllvm.so.
+    if (jacllvm) |shim| {
+        fetch_host.step.dependOn(shim.place);
+    } else if (jacpython) {
+        fetch_host.step.dependOn(&b.addFail(
+            "the JacPython runtime needs the LLVMPY_* shim: run `zig build fetch-llvm` " ++
+                "first (or pass -Dshim-bin=<path to libjacllvm.so>)",
+        ).step);
+    }
     fetch_ts.addArg(b.pathFromRoot("jaclang/vendor/typeshed"));
     // has_side_effects: the output lands in the source tree, not the cache, so
     // the step must run even when its (unchanging) argv would otherwise cache
