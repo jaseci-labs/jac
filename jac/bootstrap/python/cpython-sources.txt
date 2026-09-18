@@ -19,7 +19,7 @@
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
 #   so build-graph.patch detaches upstream rules that name them.
-#   Total: 23 files / 42,118 source lines.
+#   Total: 26 files / 47,986 source lines.
 #
 # After each build, build.sh checks that no commented path came back, reading
 # the marker to decide which builds must lack it.
@@ -105,7 +105,7 @@ Python/ast_unparse.c
 Python/bltinmodule.c
 Python/bootstrap_hash.c
 Python/brc.c
-Python/bytecodes.c
+# Python/bytecodes.c  # pruned: 5,549 source lines
 Python/ceval.c
 Python/ceval_gil.c
 Python/ceval_macros.h
@@ -327,7 +327,7 @@ Modules/_ctypes/clinic/_ctypes.c.h
 Modules/_ctypes/clinic/callproc.c.h
 Modules/_ctypes/clinic/cfield.c.h
 Modules/_ctypes/ctypes.h
-Modules/_ctypes/malloc_closure.c
+# Modules/_ctypes/malloc_closure.c  # pruned: 165 source lines
 Modules/_ctypes/stgdict.c
 Modules/_datetimemodule.c
 Modules/_decimal/_decimal.c
@@ -464,7 +464,7 @@ Modules/_threadmodule.c
 Modules/_tracemalloc.c
 Modules/_typesmodule.c
 Modules/_typingmodule.c
-Modules/_uuidmodule.c
+# Modules/_uuidmodule.c  # pruned: 154 source lines
 Modules/_weakref.c
 Modules/_zoneinfo.c
 Modules/_zstd/_zstdmodule.c
