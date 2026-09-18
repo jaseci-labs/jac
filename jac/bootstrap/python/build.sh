@@ -254,18 +254,16 @@ SETUP
     # CPython's install targets create overlapping directories. BSD install
     # fails if another target creates the same directory after its check.
     python_make -j1 PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)' "COMPILEALL_OPTS=-j$jobs" install
-    # Check the completed build, including generated sources and objects.
-    absent_inputs | while IFS= read -r excluded; do
+    # Check the completed build, including generated sources and objects,
+    # against the paths this mode must not contain. build_python.zig writes
+    # that list; it owns the only parser for cpython-sources.txt. Redirect
+    # rather than pipe: a pipeline hides both a missing list and the exit.
+    while IFS= read -r excluded; do
         if [ -e "$excluded" ] || { [ "${excluded%.c}" != "$excluded" ] && [ -e "${excluded%.c}.o" ]; }; then
             echo "Excluded build input reappeared: $excluded" >&2
             exit 1
         fi
-    done
-}
-# Paths this build must not contain, written from cpython-sources.txt by
-# build_python.zig, which owns the only parser for that manifest.
-absent_inputs() {
-    cat "$work/absent-inputs"
+    done < "$work/absent-inputs"
 }
 python_make() {
     if [ -n "$host" ]; then
