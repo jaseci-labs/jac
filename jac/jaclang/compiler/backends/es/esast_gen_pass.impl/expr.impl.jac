@@ -109,29 +109,38 @@ impl EsastGenPass._is_call_target(nd: uni.UniNode) -> bool {
     return isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
 }
 
-impl EsastGenPass.exit_builtin_type with uni.BuiltinType exit {
+impl EsastGenPass._primitive_type_ref(
+    name: str, jac_node: uni.UniNode
+) -> (es.Expression | None) {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    type_name = here.sym_name;
     self._ensure_emitters();
     if (
-        not self._in_type_slot(here)
-        and (
-            getattr(self._builtin_emitter, "emit_" + type_name, None) is not None
-            or JAC_TYPE_REGISTRY.is_sized(type_name)
-        )
+        getattr(self._builtin_emitter, "emit_" + name, None) is None
+        and not JAC_TYPE_REGISTRY.is_sized(name)
     ) {
-        here.gen.es_ast = self.sync_loc(
-            es.MemberExpression(
-                object=es.MemberExpression(
-                    object=es.Identifier(name='_jac'),
-                    property=es.Identifier(name='types'),
-                    computed=False
-                ),
-                property=es.Identifier(name=type_name),
+        return None;
+    }
+    return self.sync_loc(
+        es.MemberExpression(
+            object=es.MemberExpression(
+                object=es.Identifier(name='_jac'),
+                property=es.Identifier(name='types'),
                 computed=False
             ),
-            jac_node=here
-        );
+            property=es.Identifier(name=name),
+            computed=False
+        ),
+        jac_node=jac_node
+    );
+}
+
+impl EsastGenPass.exit_builtin_type with uni.BuiltinType exit {
+    type_name = here.sym_name;
+    prim_ref = None
+        if self._in_type_slot(here)
+        else self._primitive_type_ref(type_name, here);
+    if prim_ref is not None {
+        here.gen.es_ast = prim_ref;
         if not self._is_call_target(here) {
             self.needs_jac_runtime = True;
         }
