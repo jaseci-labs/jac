@@ -3579,3 +3579,28 @@ test "del on a plain local in a graphless module is a no-op, not an error" {
     );
     assert_balanced_syntax(js_code, DEL_PLAIN_FIXTURE);
 }
+
+test "a distinct brand binds the primitive it erases to" {
+    js_code = compile_fixture_to_js("distinct_brand_value.jac", FIXTURES);
+    for (brand, prim) in [("Brand", "int"), ("Tag", "str")] {
+        assert "const " + brand + " = _jac.types." + prim in js_code , (
+            f"a brand is callable wherever the primitive it erases to is, so "
+            f"the module must bind {brand} to {prim}; got:\n{js_code}"
+        );
+    }
+}
+
+
+test "client codegen accepts a module that brands a value" {
+    prog = JacProgram();
+    prog.compile(file_path=os.path.join(FIXTURES, "distinct_brand_value.jac"));
+    unbound = [
+        str(e)
+        for e in prog.errors_had
+        if "never binds" in str(e)
+    ];
+    assert not unbound , (
+        f"a brand read as a free identifier makes client codegen refuse the "
+        f"whole module: {unbound}"
+    );
+}
