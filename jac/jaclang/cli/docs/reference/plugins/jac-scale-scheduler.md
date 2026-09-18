@@ -363,5 +363,5 @@ max_jobs_per_user = 25
 
 - Cron fields, dynamic job triggers, and stored timestamps are all UTC. The one exception is a bare `date` string on `@schedule`, which is read in the server's local timezone; pin an offset there.
 - A job never overlaps itself. If a run is still going when the next fire time arrives, the new run waits (`max_instances=1`).
-- Missed fires within `misfire_grace_time` execute once on recovery; older misses are dropped rather than replayed in a burst.
+- Every fire missed within `misfire_grace_time` runs on recovery, each claiming its own tick, so a replica that stalls makes up to `misfire_grace_time / interval` runs back to back before it catches up. Misses older than the grace window are dropped. Lower `misfire_grace_time` if a burst is worse for your job than a gap.
 - Keep scheduled work idempotent where possible. Interval and cron jobs will run many times, and a restart near a fire time can produce a make-up run.

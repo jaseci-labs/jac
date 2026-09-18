@@ -181,6 +181,7 @@ obj PgStore(Store) {
     def _main -> any;
     def _side -> any;
     def _run(sql: str, params: dict[str, any]) -> list[any];
+    def _side_run(sql: str, params: dict[str, any]) -> list[any];
     def _promotion_columns -> list[tuple[str, str, str]];
     def _promoted_column_type(col: str) -> (str | None);
     def _apply_promotions -> None;

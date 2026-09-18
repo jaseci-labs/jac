@@ -252,6 +252,15 @@ impl PgJobStore.find_active_one(job_id: str) -> dict[str, any] | None {
     return _doc_row(rows[0][0]) if rows else None;
 }
 
+impl PgJobStore.find_one(job_id: str) -> dict[str, any] | None {
+    rows = self.store.rows(
+        "SELECT doc FROM jac_docs WHERE collection = :c AND id = :i "
+        "AND COALESCE(doc->>'service', :svc) = :svc",
+        {'c': self._collection, 'i': job_id, 'svc': self._service}
+    );
+    return _doc_row(rows[0][0]) if rows else None;
+}
+
 impl PgJobStore.update(
     job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
 ) -> bool {
@@ -366,6 +375,10 @@ impl MemoryJobStore.find_active_one(job_id: str) -> dict[str, any] | None {
         return job;
     }
     return None;
+}
+
+impl MemoryJobStore.find_one(job_id: str) -> dict[str, any] | None {
+    return self._jobs.get(job_id);
 }
 
 impl MemoryJobStore.update(
@@ -715,7 +728,10 @@ impl JacScaleScheduler.update_job(
 }
 
 impl JacScaleScheduler.delete_job(job_id: str, acting_as: str | None = None) -> bool {
-    if self.get_job(job_id) is None {
+    # Any status, not just active: an orphaned row is still this service's to
+    # clean up, and find_active_one would hide it from DELETE forever.
+    existing = self._require_store().find_one(job_id);
+    if existing is not None and not self._serves(existing) {
         return False;
     }
     where = {'created_by': acting_as} if acting_as is not None else None;

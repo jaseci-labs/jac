@@ -131,6 +131,19 @@ test "job CRUD on one pod is visible to the other pod's store" {
 
     assert a.delete('mp1') is True;
     assert b.find_active_one('mp1') is None;
+
+    # A row this service owns stays reachable for DELETE whatever its status.
+    # find_active_one hides an orphaned row, which would strand it in the
+    # collection with no way to remove it through the API.
+    retired = _job('mp2', 60.0);
+    retired['status'] = 'orphaned';
+    a.insert(retired);
+    assert a.find_active_one('mp2') is None;
+    assert a.find_one('mp2') is not None;
+    pod = JacScaleScheduler();
+    pod._store = a;
+    assert pod.delete_job('mp2') is True;
+    assert b.find_one('mp2') is None;
 }
 
 
@@ -187,7 +200,7 @@ test "interval jobs scheduled apart share one phase" {
 }
 
 
-test "a job whose occurrence cannot be claimed is skipped" {
+test "a job whose occurrence cannot be claimed is skipped, until it can be again" {
     # #9030: a failed lease check used to answer True, so a database outage
     # ran the job on every worker of every pod at once. Nothing listens on
     # this port, so the real claim fails the way a restarting database does.
@@ -196,6 +209,22 @@ test "a job whose occurrence cannot be claimed is skipped" {
     at = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
     assert pod._claim_fire('down-job', at) is False;
     assert pod._claim_fire('down-job', at + datetime.timedelta(seconds=60)) is False;
+
+    # Skipping is only right if it ends. A restart or failover drops the
+    # connection the claim runs on while the server itself stays up; the
+    # store has to redial rather than hand back the dead one forever.
+    live = _store();
+    if live is None {
+        return;
+    }
+    back = JacScaleScheduler();
+    back._store = PgJobStore(store=live, _collection='mp_back');
+    assert back._claim_fire('back-job', at) is True;
+    try {
+        live._side().run("SELECT pg_terminate_backend(pg_backend_pid())");
+    } except Exception {}
+    assert back._claim_fire('back-job', at + datetime.timedelta(seconds=60)) is True;
+    assert back._claim_fire('back-job', at + datetime.timedelta(seconds=60)) is False;
 }
 
 

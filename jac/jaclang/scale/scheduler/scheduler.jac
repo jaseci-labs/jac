@@ -44,6 +44,7 @@ obj JobStore {
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
+    def find_one(job_id: str) -> dict[str, any] | None;
     def update(
         job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
     ) -> bool;
@@ -77,6 +78,7 @@ obj PgJobStore(JobStore) {
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
+    def find_one(job_id: str) -> dict[str, any] | None;
     def update(
         job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
     ) -> bool;
@@ -104,6 +106,7 @@ obj MemoryJobStore(JobStore) {
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
+    def find_one(job_id: str) -> dict[str, any] | None;
     def update(
         job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
     ) -> bool;
