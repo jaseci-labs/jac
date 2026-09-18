@@ -19,7 +19,7 @@
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
 #   so build-graph.patch detaches upstream rules that name them.
-#   Total: 17 files / 36,067 source lines.
+#   Total: 18 files / 36,067 source lines.
 #
 # After each build, build.sh checks that no commented path came back, reading
 # the marker to decide which builds must lack it.
