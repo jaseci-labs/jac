@@ -1,0 +1,25 @@
+[project]
+name = "scale-to-zero-status-e2e"
+version = "0.1.0"
+default-app = "pingsvc"
+
+[apps.pingsvc]
+kind = "service"
+entry-point = "main"
+
+[scale.kubernetes]
+namespace = "scale-to-zero-status-e2e"
+autoscaler_engine = "keda"
+
+[apps.pingsvc.scale.hpa]
+min = 0
+max = 2
+
+# The cron window (Jan 1st, 00:00-05:00 UTC) is deliberately always in the
+# past or future relative to "now" -- this fixture never actually deploys
+# through KEDA, it only needs a trigger type get_status's config-driven
+# eligibility check recognizes as non-resource-backed.
+[[apps.pingsvc.scale.triggers]]
+type = "cron"
+name = "always-idle-window"
+metadata = { timezone = "Etc/UTC", start = "0 0 1 1 *", end = "5 0 1 1 *", desiredReplicas = "1" }

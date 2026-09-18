@@ -404,6 +404,9 @@ cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
 
 The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. It supports the full [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/) (Prometheus, Redis, RabbitMQ, Kafka, HTTP, and more) and enables scale-to-zero.
 
+!!! note "`min_replicas` / `hpa.min` of `0` requires a real trigger"
+    Setting `min_replicas` (or a per-service `hpa.min`) to `0` is only valid under `autoscaler_engine = "keda"` with at least one configured trigger other than `cpu` or `memory` -- CPU and memory utilization cannot be measured with zero running pods, so those triggers alone can never scale back up from zero. `jac scale deploy --dry-run` rejects a `min` of `0` that does not meet this, naming the service and explaining which condition is missing. A deployment that legitimately settles at zero replicas under this rule is not treated as failed: the deploy rollout does not wait out its timeout on it, and `resource_status()` reports it as `stopped` rather than `failed` (see [`ScaleClient`](#scaleclient) below).
+
 !!! note
     KEDA must be installed on the cluster before using this engine. If KEDA CRDs are absent at deploy time, jac-scale emits an install warning with a link to the [KEDA installation docs](https://keda.sh/docs/latest/deploy/) and the deploy continues with the Deployment's static replica count -- 1 for single-app deploys, each app's configured `[apps.<name>.scale] replicas` for a workspace fleet (no autoscaler is created).
 
@@ -1464,6 +1467,18 @@ reachable at call time).
 | `resource_status(app_name, namespace)` | `ResourceStatusInfo{status, replicas, ready_replicas}` |
 | `service_url(app_name, namespace)` | externally reachable URL or `None` |
 | `scale(app_name, namespace, replicas)` | resizes the app deployment |
+
+`ResourceStatusInfo.status` is one of:
+
+| Status | Meaning |
+|---|---|
+| `pending` | Some replicas are ready, but not all of them yet. |
+| `running` | All replicas are ready. |
+| `stopped` | The deployment is at 0 replicas and eligible for KEDA scale-to-zero (see the [note above](#keda-engine-event-driven-autoscaling)) -- parked on purpose, not broken. |
+| `failed` | At 0 replicas without being scale-to-zero eligible, or any other unready state. |
+| `unknown` | The status check itself errored (e.g. the deployment does not exist, or the cluster is unreachable); `message` carries the error. |
+
+`is_ready()` is `True` only for `running` with every replica ready.
 
 `ScaleClient(kube_context=..., logger=...)` sets a default cluster context for
 every call and an optional custom logger. When `deploy` is given `on_event`,

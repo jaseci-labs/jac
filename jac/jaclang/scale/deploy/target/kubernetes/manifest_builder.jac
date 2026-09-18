@@ -12,6 +12,7 @@ import from jaclang.scale.models.deploy_context { DATABASE_URL_ENV, DeployContex
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.deploy.autoscale.autoscaler { RESOURCE_ONLY_TRIGGER_TYPES }
 import from jaclang.scale.deploy.autoscale.http_activation_config {
     build_http_activation_spec
 }
@@ -173,6 +174,37 @@ def pdb_spec(
         return None;
     }
     return {"maxUnavailable": max_unavailable};
+}
+
+
+def _is_real_trigger_type(trigger_type: any) -> bool {
+    normalized = str(trigger_type or "").strip().lower();
+    return bool(normalized) and normalized not in RESOURCE_ONLY_TRIGGER_TYPES;
+}
+
+
+def is_scale_to_zero_eligible(
+    autoscaler_cfg: dict[str, any] | None, engine: str
+) -> bool {
+    if not isinstance(autoscaler_cfg, dict) {
+        return False;
+    }
+    if int(autoscaler_cfg.get("min", 1)) > 0 {
+        return False;
+    }
+    if str(engine or "hpa") != "keda" {
+        return False;
+    }
+    triggers = autoscaler_cfg.get("triggers", []);
+    if not isinstance(triggers, list) {
+        return False;
+    }
+
+    return any(
+        _is_real_trigger_type(dict(t).get("type", ""))
+        for t in triggers
+        if isinstance(t, dict)
+    );
 }
 
 
@@ -921,6 +953,8 @@ obj ManifestBuilder {
         }
         if self.fleet is not None {
             merged.update(self.fleet.app_config(svc_name));
+        } elif svc_name != GATEWAY_NAME {
+            merged.update(get_scale_config().get_app_scale_config(svc_name));
         }
         extra = self.app_overrides.get(svc_name);
         if isinstance(extra, dict) {
@@ -1565,6 +1599,48 @@ obj ManifestBuilder {
             "triggers": raw_triggers,
             "behavior": dict(behavior)
         };
+    }
+
+    def autoscaler_config_for_deployment(
+        deployment_name: str
+    ) -> dict[str, any] | None {
+        return self._get_autoscaler_config(
+            self._service_key_for_deployment(deployment_name)
+        );
+    }
+
+    def http_activation_config_for_deployment(
+        deployment_name: str
+    ) -> dict[str, any] | None {
+        """Whether a Deployment's own service is parked at zero on purpose
+        because it is HTTP-activated, not metric-scaled. The gateway is
+        excluded because _resolve_scaling always forces it out of
+        HTTP_ACTIVATION -- it is the ingress entry point and must stay warm,
+        so its config can never legitimately explain a zero-replica gateway.
+        """;
+        svc_name = self._service_key_for_deployment(deployment_name);
+        if svc_name == GATEWAY_NAME {
+            return None;
+        }
+        return self._get_http_activation_config(svc_name);
+    }
+
+    def _service_key_for_deployment(deployment_name: str) -> str {
+        suffix = "-deployment";
+        if not deployment_name.endswith(suffix) {
+            return deployment_name;
+        }
+        k8s_name = deployment_name[:-len(suffix)];
+        candidates: list[str] = list(self.fleet.names())
+            if self.fleet is not None
+            else list(get_scale_config().get_jac_config().apps.keys());
+        candidates.append(GATEWAY_NAME);
+        for key in candidates {
+            if k8s_safe_name(str(key)) == k8s_name {
+                return str(key);
+            }
+        }
+        return k8s_name;
     }
 
     def _get_http_activation_config(svc_name: str) -> dict[str, any] | None {

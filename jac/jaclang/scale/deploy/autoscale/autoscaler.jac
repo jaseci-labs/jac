@@ -1,6 +1,8 @@
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50,
      DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
 
+glob RESOURCE_ONLY_TRIGGER_TYPES: set[str] = {"cpu", "memory"};
+
 obj TriggerAuth {
     has secret_refs: dict[str, dict[str, str]] = {};
 }

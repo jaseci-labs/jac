@@ -5,6 +5,10 @@ import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
+    ManifestBuilder,
+    is_scale_to_zero_eligible
+}
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
     create_k8s_secret,
@@ -226,6 +230,28 @@ obj KubernetesTargetBase(DeploymentTarget) {
         }
     }
 
+    def _is_stopped_by_design(app_name: str) -> bool {
+        try {
+            builder = ManifestBuilder(k8s_config=self.k8s_config, logger=self.logger);
+            if builder.http_activation_config_for_deployment(app_name) is not None {
+                return True;
+            }
+            autoscaler_cfg = builder.autoscaler_config_for_deployment(app_name);
+        } except Exception as e {
+            if self.logger {
+                self.logger.warning(
+                    f"Could not resolve the scaling config for "
+                    f"'{app_name}' while checking scale-to-zero eligibility; "
+                    f"treating it as not eligible: {e}"
+                );
+            }
+            return False;
+        }
+        return is_scale_to_zero_eligible(
+            autoscaler_cfg, self.k8s_config.autoscaler_engine
+        );
+    }
+
     def get_status(app_name: str) -> ResourceStatusInfo {
         try {
             self._load_cluster_config();
@@ -244,6 +270,8 @@ obj KubernetesTargetBase(DeploymentTarget) {
                 status = ResourceStatus.RUNNING;
             } elif ready_replicas > 0 {
                 status = ResourceStatus.PENDING;
+            } elif replicas == 0 and self._is_stopped_by_design(app_name) {
+                status = ResourceStatus.STOPPED;
             } else {
                 status = ResourceStatus.FAILED;
             }

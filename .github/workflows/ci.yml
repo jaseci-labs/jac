@@ -867,6 +867,11 @@ jobs:
           JAC_TEST_JOBS: "0"
         run: |
           jac test jac/jaclang/scale/tests/deploy/test_deploy_k8s.jac -x -f "not (early and exit)"
+          # get_status()'s scale-to-zero verdict against a genuine zero-replica
+          # Deployment -- the real status.replicas/readyReplicas shape at zero
+          # is what's under test, not a hand-built fake of it. No KEDA
+          # controller involved: it only ever creates a plain Deployment.
+          jac test jac/jaclang/scale/tests/deploy/test_scale_to_zero_status_e2e.jac -x
       - name: Run KEDA HTTP-activation e2e
         env:
           # Ship the jac built from this checkout to the pods (channel LOCAL),
