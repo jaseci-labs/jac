@@ -719,11 +719,28 @@ def _legacy_sealer_script_for(
 }
 
 
+def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str {
+    if fleet is None or not fleet.root_app {
+        return "";
+    }
+    config = _project_config(project_dir);
+    if config is None or not config.is_workspace {
+        return "";
+    }
+    return fleet.root_app;
+}
+
+
 def _precompile_app(
-    base: Path, seal_binary: bytes, sanitized_toml: (str | None), timeout_s: int
+    base: Path,
+    seal_binary: bytes,
+    sanitized_toml: (str | None),
+    timeout_s: int,
+    app: str = ""
 ) -> Path {
     stage_root = _stage_app(base, sanitized_toml);
     stage = stage_root / "app";
+    seal_flags: list[str] = ["--seal"] + ([f"--app={app}"] if app else []);
     try {
         jac_path = stage_root / ".seal-jac";
         jac_path.write_bytes(seal_binary);
@@ -737,7 +754,9 @@ def _precompile_app(
                 + "with entry {\n"
                 + "    project = Path('app').resolve();\n"
                 + "    config = get_config_for_path(project);\n"
-                + "    if not bake_serve_payloads(config, project, bake_client=False) {\n"
+                + "    if not bake_serve_payloads(\n"
+                + f"        config, project, app={repr(app)}, bake_client=False\n"
+                + "    ) {\n"
                 + "        raise RuntimeError('Serving metadata preparation failed');\n"
                 + "    }\n}\n"
         );
@@ -758,7 +777,7 @@ def _precompile_app(
         }
 
         result = subprocess.run(
-            [str(jac_path), "precompile", str(stage_root), "--seal"],
+            [str(jac_path), "precompile", str(stage_root)] + seal_flags,
             capture_output=True,
             text=True,
             timeout=timeout_s,
@@ -775,7 +794,7 @@ def _precompile_app(
             );
             script = _legacy_sealer_script_for(jac_path, stage_root, timeout_s);
             result = subprocess.run(
-                [str(jac_path), "run", str(script), str(stage_root), "--seal"],
+                [str(jac_path), "run", str(script), str(stage_root)] + seal_flags,
                 capture_output=True,
                 text=True,
                 timeout=timeout_s,
@@ -1051,7 +1070,11 @@ def pack_jab(
     }
     sanitized = sanitized_jac_toml(base);
     staged = _precompile_app(
-        base, seal_binary, sanitized, seal_timeout_setting(project_dir)
+        base,
+        seal_binary,
+        sanitized,
+        seal_timeout_setting(project_dir),
+        sealed_app_name(project_dir, fleet)
     );
 
     try {

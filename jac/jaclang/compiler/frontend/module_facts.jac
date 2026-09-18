@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -40,7 +41,7 @@ obj ModuleFacts {
                 return True;
             }
             if not isinstance(current, (Ability, ImplDef, Archetype, LambdaExpr)) {
-                pending.extend(current.kid);
+                pending.extend([current->:Kid:->]);
             }
         }
         return False;

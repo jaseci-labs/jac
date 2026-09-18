@@ -21,7 +21,7 @@ def _emit(msg: str) {
 
 def get_cache_dir -> Path {
     import from jaclang.cache.registry { bucket }
-    return bucket("models").path();
+    return bucket("models").ensure();
 }
 
 def alias_dir(alias: str) -> Path {

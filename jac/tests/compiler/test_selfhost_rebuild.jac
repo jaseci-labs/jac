@@ -18,6 +18,7 @@ import resource;
 import subprocess;
 import sys;
 import tempfile;
+import from tests.support { cache_env }
 import jaclang;
 
 glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__))),
@@ -34,13 +35,17 @@ glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__)))
          "    print(\"SELFHOST=\" + json.dumps({\n"
          "        \"runs\": a.pass_runs,\n"
          "        \"events\": a.cache_events,\n"
-         "        \"gen2\": gc.get_stats()[2][\"collections\"]\n"
+         "        \"collections\": getattr(gc.collect, \"call_count\")\n"
          "    }));\n"
          "}\n"
      ),
      DRIVER: str = (
-         "import sys; from jaclang.cli.cli_boot import start_cli; "
-         "sys.argv = ['jac', 'run', sys.argv[1]]; start_cli()"
+         "import gc, sys\n"
+         "from unittest.mock import patch\n"
+         "with patch('gc.collect', wraps=gc.collect):\n"
+         "    from jaclang.cli.cli_boot import start_cli\n"
+         "    sys.argv = ['jac', 'run', sys.argv[1]]\n"
+         "    start_cli()"
      );
 
 def _peak_children_mb -> int {
@@ -59,7 +64,7 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
     }
     env: dict[str, str] = dict(os.environ);
     env["HOME"] = work;
-    env["XDG_CACHE_HOME"] = os.path.join(work, "cache");
+    env.update(cache_env(os.path.join(work, "cache")));
     env["LOCALAPPDATA"] = os.path.join(work, "cache");
     for knob in [
         "JAC_NO_DEV_SOURCE",
@@ -111,9 +116,10 @@ test "a cold compiler rebuild ingests each dependency about once and collects on
         f"dependencies were re-ingested: {symtab} symbol-table runs for {compiled} "
         f"modules (bound {SYMTAB_PER_MODULE} per module; events: {events})"
     );
-    gen2 = int(payload["gen2"]);
-    assert gen2 <= compiled // COLLECT_EVERY + COLLECT_SLACK , (
-        f"the unit collector fired {gen2} times for {compiled} modules; the budget "
+    # Automatic generation-2 GC is unrelated to the compiler release budget.
+    collections = int(payload["collections"]);
+    assert collections <= compiled // COLLECT_EVERY + COLLECT_SLACK , (
+        f"explicit collection ran {collections} times for {compiled} modules; the budget "
         f"allows one per {COLLECT_EVERY} releases plus {COLLECT_SLACK}"
     );
     assert events.get("iface_encode", 0) == 0 , (

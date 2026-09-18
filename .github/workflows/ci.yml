@@ -112,12 +112,29 @@ jobs:
 
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
+        with:
+          # This job runs `zig build` steps below, which go through the
+          # source-built interpreter and its native compiler object. A binary
+          # cache hit skips producing both, so ask for them explicitly.
+          need-build-inputs: "true"
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
           use-cache: false
+
+      # Both restores above can miss independently of the binary cache, and the
+      # steps below cannot build the shim themselves (they only consume it).
+      - name: Ensure the LLVMPY shim is present
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
+            exit 0
+          fi
+          zig build fetch-llvm --summary all
+          zig build jacllvm --summary all
 
       # Explicit: a binary-cache hit skips zig build, so these gitignored
       # trees must be materialized either way. The wasm floor is in this list
@@ -142,7 +159,7 @@ jobs:
           BIN="$PWD/zig-out/bin/jac"
           ldd "$BIN" || true
           ! ldd "$BIN" | grep -qi python
-          JAC_NO_DEV_SOURCE=1 "$BIN" -c 'import ctypes; assert ctypes.pythonapi._PyJac_CompilerRequired() == 1; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3'
+          JAC_NO_DEV_SOURCE=1 "$BIN" -c 'import ctypes; assert ctypes.pythonapi._PyJac_CompilerRequired() == 1; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4'
           WORK="$(mktemp -d)"
           printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" --version

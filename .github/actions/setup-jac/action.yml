@@ -21,6 +21,17 @@ inputs:
       the shared jac-bin cache.
     required: false
     default: "false"
+  need-build-inputs:
+    description: >
+      Restore the source-built Python and the LLVMPY_* shim even when the
+      binary cache hits. Set it when the job runs `zig build` steps of its own:
+      every payload-tool step (vendor-musl, vendor-wasm-libc, ...) runs through
+      the source-built interpreter, and building that interpreter compiles the
+      Jac compiler to native code, which loads the shim. A binary hit alone
+      leaves neither on disk, so those steps rebuild the SDK and die in
+      prepare_native.py with a missing libjacllvm.so.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -83,7 +94,7 @@ runs:
     # all source/build inputs. The build-only host has its own fingerprint.
     - name: Restore cached source-built Python
       id: python-cache
-      if: steps.cache.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true'
       uses: actions/cache/restore@v4
       with:
         path: jac/.python-build/jacpython
@@ -101,7 +112,7 @@ runs:
     # populates, so a main-branch miss self-seeds when the job ends.
     - name: Restore cached LLVMPY shim
       id: shim-cache
-      if: steps.cache.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true'
       uses: actions/cache/restore@v4
       with:
         path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
@@ -115,7 +126,7 @@ runs:
     # shim miss (a cached shim needs no LLVM at all).
     - name: Restore cached LLVM (jacllvm shim deps)
       id: llvm-cache
-      if: steps.cache.outputs.cache-hit != 'true' && steps.shim-cache.outputs.cache-hit != 'true'
+      if: (steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true') && steps.shim-cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
         path: jac/.llvm-build

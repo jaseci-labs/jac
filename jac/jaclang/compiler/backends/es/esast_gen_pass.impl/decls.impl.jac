@@ -324,7 +324,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
 }
 
 impl EsastGenPass.enter_ability with uni.Ability entry {
-    if isinstance(here.body, uni.ImplDef) and (here.body not in here.kid) {
+    if isinstance(here.body, uni.ImplDef) and (here.body not in [here->:Kid:->]) {
         here.add_kids_right([here.body], pos_update=False, parent_update=True);
     }
 

@@ -10,3 +10,5 @@ glob CACHEDIR_TAG: str = "CACHEDIR.TAG",
 def cache_home -> Path;
 
 def ensure_root -> Path;
+
+def ensure_cache_dir(path: Path) -> Path;

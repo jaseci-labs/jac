@@ -1,11 +1,17 @@
-def _http_activation_nested_schema -> dict[str, any] {
+import from jaclang.scale.runtime.context.service_routing {
+    KEDA_INTERCEPTOR_SERVICE_ADDRESS
+}
+
+def _http_activation_nested_schema(cluster_scoped: bool = False) -> dict[str, any] {
     """The `nested` fields shared verbatim by [scale.kubernetes.http_activation]
     and [apps.NAME.scale.http_activation] -- factored out so
     the two call sites (top-level default, per-app override) can't drift
     out of sync on a field's type/default the way two independent copies
     would.
+
+    `cluster_scoped` adds the keys that only the top-level block honors.
     """;
-    return {
+    fields = {
         "enabled": {
             "type": "bool",
             "default": False,
@@ -127,6 +133,14 @@ def _http_activation_nested_schema -> dict[str, any] {
             "description": "[[...rules]] array-of-tables. Each entry: hosts (list[str]), paths (list[str]), headers (list of {name, value?}). Fields within one rule are AND'd; separate rules are OR'd. At least one rule is required -- leaving this empty raises an error at build time, since no traffic would ever match and the target would never wake. Use hosts = [\"*\"] for an explicit catch-all."
         }
     };
+    if cluster_scoped {
+        fields["interceptor_service_address"] = {
+            "type": "string",
+            "default": KEDA_INTERCEPTOR_SERVICE_ADDRESS,
+            "description": "host:port of the KEDA HTTP Add-on interceptor proxy Service that activated apps are routed through. Cluster-wide, so it is read from this block only, never from a per-app override. Change it when the Add-on is installed outside the default `keda` namespace."
+        };
+    }
+    return fields;
 }
 
 
@@ -692,7 +706,9 @@ class JacScalePluginConfig {
                             "type": "dict",
                             "default": {},
                             "description": "KEDA HTTP Add-on scale-to-zero activation defaults shared by every fleet app unless overridden per app. Requires the KEDA HTTP Add-on installed separately from core KEDA. For per-app activation use [apps.NAME.scale.http_activation] instead.",
-                            "nested": _http_activation_nested_schema()
+                            "nested": _http_activation_nested_schema(
+                                cluster_scoped=True
+                            )
                         }
                     }
                 },

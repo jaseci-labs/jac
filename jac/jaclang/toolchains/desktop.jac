@@ -46,7 +46,9 @@ def source_workspace(source: Path, name: str) -> Path {
     with InstallLock(destination.with_suffix(".lock")) {
         if not slot_ready(destination) {
             destination.parent.mkdir(parents=True, exist_ok=True);
-            with tempfile.TemporaryDirectory(dir=destination.parent) as tmp {
+            with tempfile.TemporaryDirectory(
+                prefix=f".tmp.{os.getpid()}.", dir=destination.parent
+            ) as tmp {
                 staged = Path(tmp) / "source";
                 staged.mkdir();
                 for path in files {

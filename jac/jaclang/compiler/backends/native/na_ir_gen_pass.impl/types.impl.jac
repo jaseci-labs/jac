@@ -56,7 +56,7 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
         }
         _had_none = len(_members) < len(t.types or []);
         if _members {
-            _mreprs: list[ir.Type] = [];
+            _mreprs: list[ir.Type | None] = [];
             for _m in _members {
                 _mr = self._lower_type(_m);
                 if self._str_desc_ty is not None and _mr == self._str_desc_ty {
@@ -86,7 +86,7 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     return lowered;
 }
 
-impl NaIRGenPass._unify_repr_lowering(reprs: list[ir.Type]) -> (ir.Type | None) {
+impl NaIRGenPass._unify_repr_lowering(reprs: list[ir.Type | None]) -> (ir.Type | None) {
     """One representation for a set of lowerings that share a slot.
 
     Members that share a lowering keep it. An all-pointer set keeps the
@@ -144,7 +144,7 @@ impl NaIRGenPass._unify_repr_lowering(reprs: list[ir.Type]) -> (ir.Type | None) 
 
         if _all_callable {
             for _r in reprs {
-                if self._closure_struct_of(_r) is not None {
+                if _r is not None and self._closure_struct_of(_r) is not None {
                     return _r;
                 }
             }
@@ -1200,12 +1200,6 @@ impl NaIRGenPass._tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStruct
 impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
     _ptb = var?.type;
     if _ptb is not None {
-        try {
-            import from jaclang.compiler.types.types { FunctionType as _FieldFnType }
-            if isinstance(_ptb, _FieldFnType) {
-                return self._lower_function_type_raw(_ptb);
-            }
-        } except ImportError {}
         lowered = self._lower_type(_ptb);
         if lowered is not None {
             if self._str_desc_ty is not None and lowered == self._str_desc_ty {
@@ -2258,9 +2252,13 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _pv_nn = self.builder.icmp_unsigned(
                 "!=", _pv, ir.Constant(_opt_tgt, None), name="opt.wrap.nn"
             );
-            return self.builder.select(
+            _wrapped = self.builder.select(
                 _pv_nn, _ov, ir.Constant(target_type, None), name="opt.wrap.sel"
             );
+            if _pv is not val and self._is_owned(_pv) {
+                self._mark_owned(_wrapped);
+            }
+            return _wrapped;
         }
         if _tgt_is_jacval and isinstance(val.type, ir.PointerType) {
             _object_present = self.builder.icmp_unsigned(
@@ -2690,8 +2688,8 @@ impl NaIRGenPass._emit_binary_op(
     unsigned: bool = False,
     checked: bool = False
 ) -> (ir.Value | None) {
-    left = self._str_norm(left);
-    right = self._str_norm(right);
+    left = self._str_view(left);
+    right = self._str_view(right);
     if isinstance(left.type, ir.PointerType)
         or isinstance(right.type, ir.PointerType) {
         _dunder_res = self._emit_arch_dunder_binop(op, left, right);
@@ -3555,8 +3553,8 @@ impl NaIRGenPass._emit_comparison(
             return self.builder.icmp_signed(_cmp_op, _sc3, _z32c, name="scmp3");
         }
     }
-    left = self._str_norm(left);
-    right = self._str_norm(right);
+    left = self._str_view(left);
+    right = self._str_view(right);
     left_type = left.type;
     right_type = right.type;
     left_layout = left_type.pointee
@@ -4498,7 +4496,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
         if not _live {
             return None;
         }
-        _lreprs: list[ir.Type] = [];
+        _lreprs: list[ir.Type | None] = [];
         for _lv in _live {
             _lr = self._lower_untyped_annotation(_lv);
             if _lr is None {
@@ -4597,7 +4595,10 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                         _fpl = self._lower_untyped_annotation(_fp);
                         _fnparams.append(_fpl if _fpl is not None else ir.IntType(64));
                     }
-                    return ir.FunctionType(_fnret, _fnparams).as_pointer();
+                    (_, closure_type, _) = self._closure_sig_struct(
+                        ir.FunctionType(_fnret, _fnparams)
+                    );
+                    return closure_type.as_pointer();
                 }
             }
             return None;

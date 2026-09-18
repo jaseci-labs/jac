@@ -57,7 +57,7 @@ impl ASTValidationPass.enter_func_signature with FuncSignature entry {
     has_slash = False;
     has_star = False;
     has_kwargs = False;
-    for k in here.kid {
+    for k in [here->:Kid:->] {
         if isinstance(k, Token) and k.name == Tok.DIV {
             if has_slash {
                 self.ctx.emit(E0050, node_override=k, param="/");
@@ -201,7 +201,7 @@ impl ASTValidationPass._returns_jsx(scope: (Ability | ImplDef)) -> bool {
             and probe.sym_name in ("JsxElement", "JsxPage", "JsxLayout") {
             return True;
         }
-        kids = probe.kid;
+        kids = [probe->:Kid:->];
         if isinstance(kids, list) {
             stack.extend(kids);
         }
@@ -243,28 +243,21 @@ impl ASTValidationPass._reject_undeletable(target: UniNode) -> None {
     while isinstance(inner, AtomUnit) {
         inner = inner.value;
     }
+    error = DeleteStmt.invalid_target(inner);
+    if error is not None {
+        what = {
+            DeleteTargetError.LITERAL: "a literal",
+            DeleteTargetError.EMPTY_TARGET_LIST: "an empty target list",
+            DeleteTargetError.NULL_SAFE_ACCESS: "a null-safe access",
+            DeleteTargetError.UNPACKED_TARGET: "an unpacked target"
+        }[error];
+        self.ctx.emit(E0083, node_override=inner, what=what);
+        return;
+    }
     if isinstance(inner, (TupleVal, ListVal)) {
-        if len(inner.values) == 0 {
-            self.ctx.emit(E0083, node_override=inner, what="an empty target list");
-            return;
-        }
         for el in inner.values {
             self._reject_undeletable(el);
         }
-        return;
-    }
-    if isinstance(inner, AtomTrailer) and inner.is_null_ok {
-        self.ctx.emit(E0083, node_override=inner, what="a null-safe access");
-        return;
-    }
-    if isinstance(inner, UnaryExpr)
-        and isinstance(inner.op, Token)
-        and inner.op.name in (Tok.STAR_MUL, Tok.STAR_POW) {
-        self.ctx.emit(E0083, node_override=inner, what="an unpacked target");
-        return;
-    }
-    if isinstance(inner, (Literal, MultiString, FString)) {
-        self.ctx.emit(E0083, node_override=inner, what="a literal");
     }
 }
 

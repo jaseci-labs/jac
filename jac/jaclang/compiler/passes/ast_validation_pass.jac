@@ -54,7 +54,11 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.context { CompileContext }
 import keyword;
-import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
+import from jaclang.compiler.frontend.constant {
+    CodeContext,
+    DeleteTargetError,
+    Tokens as Tok
+}
 
 import from jaclang.compiler.frontend.diagnostics {
     E0010,

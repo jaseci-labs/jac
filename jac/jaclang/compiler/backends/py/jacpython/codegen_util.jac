@@ -1,4 +1,5 @@
 import from jaclang.runtime.python.compiler_integer { PyBigInt, integer_add }
+import from jaclang.compiler.frontend.python.compiler_symtable { scope_kind }
 
 # Pure leaf helpers extracted from compiler_codegen.jac (no cfg_builder,
 # no visit_*/emit_* calls) so the recursive codegen core is smaller to read.
@@ -339,12 +340,12 @@ def function_code_flags(args: arguments, in_class: bool = False) -> int {
 # <Class>.<name> inside a class body, and <parent>.<locals>.<name> under any
 # other (function) scope (compiler.c compute_qualname).
 def nested_code_qualname(
-    parent_block_type: str, parent_qualname: str, name: str
+    parent_kind: scope_kind, parent_qualname: str, name: str
 ) -> str {
-    if parent_block_type == "module" {
+    if parent_kind == scope_kind.MODULE {
         return name;
     }
-    if parent_block_type == "class" {
+    if parent_kind == scope_kind.CLASS {
         return parent_qualname + "." + name;
     }
     return parent_qualname + ".<locals>." + name;

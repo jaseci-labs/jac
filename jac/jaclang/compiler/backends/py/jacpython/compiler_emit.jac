@@ -309,6 +309,7 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     comp_handler,
 }
 import from jaclang.compiler.frontend.python.compiler_symtable {
+    scope_kind,
     sym_block,
     sym_dict_get,
     sym_flag_set,
@@ -400,77 +401,66 @@ def codegen_mangle(g: cfg_builder, name: str) -> str {
         else mangle_name(g.private, name);
 }
 
-# Fast locals for a compile unit. Module scope: comprehension iteration variables
-# only. Function scope: parameters (definition order) then other locals (sorted).
-def inline_storage_names(
-    block: sym_block, cells_only: bool = False, owner: sym_block | None = None
-) -> list[str] {
-    if owner is None {
-        owner = block;
-    }
-    occupied = sym_block_tuple_names(owner.symbols, SCOPE_FREE)
-        + owner.class_free_names;
-    if not cells_only {
-        if owner.block_type == "function" {
-            occupied.extend(sym_block_tuple_names(owner.symbols, SCOPE_LOCAL));
+def inline_storage_names(block: sym_block, cells_only: bool = False) -> list[str] {
+    occupied: set[str] = set(block.class_free_names);
+    for (name, flags) in block.symbols.items() {
+        scope = sym_scope_of(flags);
+        if scope == SCOPE_FREE
+            or (
+                not cells_only
+                and scope == SCOPE_LOCAL
+                and block.kind == scope_kind.FUNCTION
+            ) {
+            occupied.add(name);
         }
     }
     names: list[str] = [];
+    collect_inline_storage(block, cells_only, occupied, names);
+    return names;
+}
+
+# Inlined comprehension storage in first-binding order; `occupied` doubles as
+# the seen set so each alias is claimed once.
+def collect_inline_storage(
+    block: sym_block, cells_only: bool, occupied: set[str], names: list[str]
+) {
     for child in block.children {
         if child.inlined {
             for (name, alias) in child.inline_aliases.items() {
                 if alias not in occupied
-                    and alias not in names
                     and (
                         not cells_only
                         or sym_scope_of(child.symbols[name]) == SCOPE_CELL
                     ) {
+                    occupied.add(alias);
                     names.append(alias);
                 }
             }
-            for name in inline_storage_names(child, cells_only, owner) {
-                if name not in names {
-                    names.append(name);
-                }
-            }
+            collect_inline_storage(child, cells_only, occupied, names);
         }
     }
-    return names;
 }
 
+# Fast locals for a compile unit. Module scope: comprehension iteration variables
+# only. Function scope: parameters (definition order) then other locals (sorted).
 def fast_varnames_from_sym(block: sym_block) -> list[str] {
-    if block.block_type == "function" {
-        out: list[str] = [];
-        pi = 0;
-        while pi < len(block.varnames) {
-            out.append(block.varnames[pi]);
-            pi = pi + 1;
-        }
-        li = 0;
-        while li < len(block.local_varnames) {
-            name = block.local_varnames[li];
-            flags = sym_dict_get(block.symbols, name, 0);
-            if sym_scope_of(flags) == SCOPE_LOCAL {
-                found = False;
-                fi = 0;
-                while fi < len(out) {
-                    if out[fi] == name {
-                        found = True;
-                    }
-                    fi = fi + 1;
-                }
-                if not found {
-                    out.append(name);
-                }
+    if block.kind == scope_kind.FUNCTION {
+        out: list[str] = list(block.varnames);
+        seen: set[str] = set(out);
+        for name in block.local_varnames {
+            if name not in seen
+                and sym_scope_of(sym_dict_get(block.symbols, name, 0)) == SCOPE_LOCAL {
+                seen.add(name);
+                out.append(name);
             }
-            li = li + 1;
         }
-        return out
-            + [
-                name
-                for name in inline_storage_names(block)
-                if name not in out
-            ];
+        for name in inline_storage_names(block) {
+            if name not in seen {
+                seen.add(name);
+                out.append(name);
+            }
+        }
+        return out;
     }
     names = sym_sorted_names(block.symbols);
     out: list[str] = [];
@@ -478,7 +468,7 @@ def fast_varnames_from_sym(block: sym_block) -> list[str] {
     while ni < len(names) {
         name = names[ni];
         flags = block.symbols[name];
-        if block.block_type == "module" {
+        if block.kind == scope_kind.MODULE {
             if sym_flag_set(flags, DEF_COMP_ITER) {
                 out.append(name);
             }
@@ -1177,24 +1167,6 @@ def emit_make_function_with_closure(
     }
 }
 
-def sym_function_child_at(
-    parent: sym_block, fn_name: str, lineno: int, col_offset: int
-) -> sym_block | None {
-    ci = 0;
-    while ci < len(parent.children) {
-        ch = parent.children[ci];
-        if ch.block_type == "function"
-            and ch.annotation_kind != "an annotation"
-            and ch.name == fn_name
-            and ch.lineno == lineno
-            and ch.col_offset == col_offset {
-            return ch;
-        }
-        ci = ci + 1;
-    }
-    return None;
-}
-
 def unit_fail(u: unverified_cfg, kind: str, message: str) {
     if u.diag is None {
         u.diag = lowering_diagnostic(kind=kind, message=message);
@@ -1206,7 +1178,7 @@ def emit_local_or_cell_store(g: cfg_builder, name: str, tloc: cloc) -> bool {
     # Cell/free scope FIRST (see emit_name_load): a STORE_FAST into a
     # cellvar's converted slot would replace the cell object itself,
     # desynchronizing every closure sharing it. CPython stores deref.
-    if g.sym_top is not None and g.sym_top.block_type != "module" {
+    if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
         scope = sym_scope_of(flags);
         if scope == SCOPE_FREE or scope == SCOPE_CELL {
@@ -1235,12 +1207,12 @@ def emit_name_load(
     # never emits a fast load for a CO_FAST_CELL name -- a raw cell escaping
     # as a call argument crashed functools.wraps (wrapped=cell) and
     # recursive_repr (user_function=cell).
-    if g.sym_top is not None and g.sym_top.block_type != "module" {
+    if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
         scope = sym_scope_of(flags);
         if scope == SCOPE_FREE or scope == SCOPE_CELL {
             idx = localsplus_index(g, name);
-            if g.sym_top.block_type == "class" and scope == SCOPE_FREE {
+            if g.sym_top.kind == scope_kind.CLASS and scope == SCOPE_FREE {
                 # Class bodies resolve free names through the class namespace
                 # first: LOAD_LOCALS + LOAD_FROM_DICT_OR_DEREF lets a same-named
                 # class attribute shadow the enclosing cell (CPython
@@ -1330,7 +1302,7 @@ def name_load_opcode(g: cfg_builder, name: str) -> int {
     name = codegen_mangle(g, name);
     # Cell/free names deref even when they occupy a localsplus fast slot
     # (CO_FAST_CELL param): a fast load would leak the raw PyCell.
-    if g.sym_top is not None and g.sym_top.block_type != "module" {
+    if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
         scope = sym_scope_of(flags);
         if scope == SCOPE_FREE or scope == SCOPE_CELL {
@@ -1346,7 +1318,7 @@ def name_load_opcode(g: cfg_builder, name: str) -> int {
     flags = sym_dict_get(g.sym_top.symbols, name, 0);
     scope = sym_scope_of(flags);
     if scope == SCOPE_GLOBAL_EXPLICIT
-        or (scope == SCOPE_GLOBAL_IMPLICIT and g.sym_top.block_type != "module") {
+        or (scope == SCOPE_GLOBAL_IMPLICIT and g.sym_top.kind != scope_kind.MODULE) {
         return OP_LOAD_GLOBAL;
     }
     return OP_LOAD_NAME;
@@ -1404,7 +1376,7 @@ def visit_subscript_index(
                 # still empty (index 0), mirroring register_int_literal_const;
                 # later subscript keys are pure LOAD_SMALL_INT with no entry.
                 in_class_body = g.sym_top is not None
-                    and g.sym_top.block_type == "class";
+                    and g.sym_top.kind == scope_kind.CLASS;
                 if len(g.u.consts) == 0 and not in_class_body {
                     g.u.add_const(cv);
                 }
@@ -1553,7 +1525,7 @@ def register_int_literal_const(g: cfg_builder, e: expr, register_int_const: bool
         return;
     }
     v = (c.value as PyInt).val;
-    in_class_body = g.sym_top is not None and g.sym_top.block_type == "class";
+    in_class_body = g.sym_top is not None and g.sym_top.kind == scope_kind.CLASS;
     if in_class_body {
         return;
     }
@@ -1854,7 +1826,7 @@ def visit_expr(
                 # unless it occupies the protected index-0 dead slot.
                 if len(g.u.consts) == 0 {
                     in_class_body = g.sym_top is not None
-                        and g.sym_top.block_type == "class";
+                        and g.sym_top.kind == scope_kind.CLASS;
                     if not in_class_body {
                         g.u.add_const(cv);
                         g.u.dead_small_int_const = True;
@@ -2719,7 +2691,8 @@ def fast_local_index(g: cfg_builder, name: str) -> int {
             in (SCOPE_GLOBAL_EXPLICIT, SCOPE_GLOBAL_IMPLICIT, SCOPE_CELL, SCOPE_FREE) {
             return -1;
         }
-        if g.sym_top.block_type in ("module", "class") and name not in g.scope_names {
+        if g.sym_top.kind in (scope_kind.MODULE, scope_kind.CLASS)
+            and name not in g.scope_names {
             return -1;
         }
     }
@@ -2762,7 +2735,7 @@ def try_emit_fast_local_pair_load(
 # cell (LOAD_FAST_AND_CLEAR + MAKE_CELL + STORE_DEREF) instead of plain fasts.
 # Module scope is excluded to match emit_name_load's DEREF gating.
 def comp_name_is_cell(g: cfg_builder, name: str) -> bool {
-    if g.sym_top is None or g.sym_top.block_type == "module" {
+    if g.sym_top is None or g.sym_top.kind == scope_kind.MODULE {
         return False;
     }
     flags = sym_dict_get(g.sym_top.symbols, name, 0);
@@ -3065,7 +3038,7 @@ def visit_comp_elt(
                 ul = nloc(un.lineno, un.end_lineno, un.col_offset, un.end_col_offset);
                 if len(g.u.consts) == 0 {
                     in_class_body = g.sym_top is not None
-                        and g.sym_top.block_type == "class";
+                        and g.sym_top.kind == scope_kind.CLASS;
                     if not in_class_body {
                         g.u.add_const(cv);
                         g.u.dead_small_int_const = True;
@@ -3498,6 +3471,7 @@ def emit_comprehension_loop(
 
 def visit_inline_comprehension(
     g: cfg_builder,
+    comprehension_node: expr,
     generators: list[comprehension],
     element: expr,
     value: expr | None,
@@ -3512,14 +3486,11 @@ def visit_inline_comprehension(
     first = generators[0];
     visit_expr(g, first.iter);
     g.emit_op(OP_GET_AITER if first.is_async else OP_GET_ITER, 0, expr_loc(first.iter));
-    kind = "listcomp"
-        if build_op == OP_BUILD_LIST
-        else "setcomp" if build_op == OP_BUILD_SET else "dictcomp";
     if g.sym_top is None {
         codegen_fail(g, "SystemError", "comprehension without symbol table");
         return;
     }
-    scope = sym_function_child_at(g.sym_top, kind, lc.lineno, lc.col_offset);
+    scope = g.sym_top.child_scope(comprehension_node);
     if scope is None {
         codegen_fail(g, "SystemError", "missing inlined comprehension scope");
         return;
@@ -3595,19 +3566,19 @@ def visit_inline_comprehension(
 
 def visit_list_comp(g: cfg_builder, lc: ListComp) {
     visit_inline_comprehension(
-        g, lc.generators, lc.elt, None, OP_BUILD_LIST, OP_LIST_APPEND, expr_loc(lc)
+        g, lc, lc.generators, lc.elt, None, OP_BUILD_LIST, OP_LIST_APPEND, expr_loc(lc)
     );
 }
 
 def visit_set_comp(g: cfg_builder, sc: SetComp) {
     visit_inline_comprehension(
-        g, sc.generators, sc.elt, None, OP_BUILD_SET, OP_SET_ADD, expr_loc(sc)
+        g, sc, sc.generators, sc.elt, None, OP_BUILD_SET, OP_SET_ADD, expr_loc(sc)
     );
 }
 
 def visit_dict_comp(g: cfg_builder, dc: DictComp) {
     visit_inline_comprehension(
-        g, dc.generators, dc.key, dc.value, OP_BUILD_MAP, OP_MAP_ADD, expr_loc(dc)
+        g, dc, dc.generators, dc.key, dc.value, OP_BUILD_MAP, OP_MAP_ADD, expr_loc(dc)
     );
 }
 
@@ -3717,7 +3688,7 @@ def visit_lambda(g: cfg_builder, lam: Lambda) {
         codegen_fail(g, "SystemError", "lambda without symtable");
         return;
     }
-    sym_fn = sym_function_child_at(g.sym_top, "lambda", lam.lineno, lam.col_offset);
+    sym_fn = g.sym_top.child_scope(lam);
     if sym_fn is None {
         codegen_fail(g, "SystemError", "missing symtable for lambda");
         return;
@@ -3727,8 +3698,8 @@ def visit_lambda(g: cfg_builder, lam: Lambda) {
         g.u.filename,
         sym_fn,
         g.private,
-        g.sym_top.block_type == "class",
-        nested_code_qualname(g.sym_top.block_type, g.u.qualname, "<lambda>")
+        g.sym_top.kind == scope_kind.CLASS,
+        nested_code_qualname(g.sym_top.kind, g.u.qualname, "<lambda>")
     );
     if u_fn.diag is not None {
         g.u.diag = u_fn.diag;
@@ -3802,7 +3773,7 @@ def emit_expr_name_store(g: cfg_builder, name: str, tloc: cloc) -> None {
         return;
     }
     opcode = OP_STORE_NAME;
-    if g.sym_top is not None and g.sym_top.block_type != "module" {
+    if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
         scope = sym_scope_of(sym_dict_get(g.sym_top.symbols, name, 0));
         if scope in (SCOPE_GLOBAL_EXPLICIT, SCOPE_GLOBAL_IMPLICIT) {
             opcode = OP_STORE_GLOBAL;
@@ -3821,15 +3792,13 @@ def visit_genexp(g: cfg_builder, ge: GeneratorExp) -> None {
         codegen_fail(g, "SystemError", "generator expression without symtable");
         return;
     }
-    sym_fn = sym_function_child_at(g.sym_top, "genexpr", ge.lineno, ge.col_offset);
+    sym_fn = g.sym_top.child_scope(ge);
     if sym_fn is None {
         codegen_fail(g, "SystemError", "missing symtable for generator expression");
         return;
     }
     u_fn = compile_genexp_cfg(ge, g.u.filename, sym_fn, g.private);
-    u_fn.qualname = nested_code_qualname(
-        g.sym_top.block_type, g.u.qualname, "<genexpr>"
-    );
+    u_fn.qualname = nested_code_qualname(g.sym_top.kind, g.u.qualname, "<genexpr>");
     if u_fn.diag is not None {
         g.u.diag = u_fn.diag;
         return;

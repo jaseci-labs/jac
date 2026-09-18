@@ -307,17 +307,8 @@ impl native_build(
     _opt_level = int(options.opt_level or 0);
     _dump_path = options.dump_ir_path or "";
 
-    if _opt_level > 0 {
-        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
-        pb = llvm.create_pass_builder(target_machine, pto);
-        assert isinstance(pb, llvm.PassBuilder);
-        opt_mpm = pb.getModulePassManager();
-        assert isinstance(opt_mpm, llvm.ModulePassManager);
-        if not shared {
-            opt_mpm.add_internalize_pass();
-        }
-        opt_mpm.run(mod, pb);
-    }
+    import from jaclang.compiler.backends.native.shared_emit { optimize_native_module }
+    optimize_native_module(mod, target_machine, _opt_level, internalize=not shared);
 
     if _dump_path {
         with open(_dump_path, "w") as _df {

@@ -49,7 +49,8 @@ import tempfile;
 import time;
 
 import from pathlib { Path }
-import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
+import from tests.support { cache_env, jac_command, JAC_ROOT, TESTS_DIR }
+import from jaclang.cache.home { cache_home }
 
 """Durable scratch for the reports and the baseline snapshot: the system temp
 directory, never the user's jac cache (a test artifact there would be an
@@ -137,14 +138,14 @@ glob _PROBE_CACHE: dict[str, list[dict[str, any]]] = {};
 
 """This checkout's cache root, which is also where the probe subprocess writes."""
 def head_cache -> str {
-    return os.environ.get("XDG_CACHE_HOME", "") or str(Path.home() / ".cache");
+    return str(cache_home());
 }
 
 """Print a report and leave a copy on disk, because `jac test` swallows stdout.
 
 `jac test` exposes no `--capture=no`, so a passing report would otherwise be
 invisible -- and a report nobody can read is not a report. The file under the
-jac cache root is the copy that survives, and since the runner came in-house
+system temp directory is the copy that survives, and since the runner came in-house
 (#8287) it is the only one.
 """
 def publish(name: str, text: str) {
@@ -160,7 +161,7 @@ def _probe_env(cache: str, tree_dir: str) -> dict[str, str] {
     env.pop("JAC_NO_DEV_SOURCE", None);
     env["JAC_DEV_SOURCE"] = os.path.abspath(tree_dir);
     env["JAC_NO_PRECOMPILE"] = "1";
-    env["XDG_CACHE_HOME"] = cache;
+    env.update(cache_env(cache));
     return env;
 }
 
@@ -238,7 +239,7 @@ def paired_rows(
 
 `git archive` rather than `git worktree add`: the snapshot is a read-only
 measurement subject that must not register itself in the repo the suite is
-running out of. Cached by ref under the jac cache root, so only the first run
+running out of. Cached by ref under the system temp directory, so only the first run
 pays the extraction and the baseline compiler's bootstrap.
 """
 def baseline_tree -> str {

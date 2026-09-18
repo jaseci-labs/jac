@@ -1,11 +1,19 @@
 import os;
 import from pathlib { Path }
-import from jaclang.cache.home { CACHEDIR_TAG, cache_home, ensure_root }
+import from jaclang.cache.home {
+    CACHEDIR_TAG,
+    cache_home,
+    ensure_root,
+    ensure_cache_dir
+}
 import from jaclang.cache.policy {
+    CacheEntry,
+    EntryKind,
     Retention,
     SWEEP_SENTINEL,
     dir_size,
-    entries_at,
+    scan_entries,
+    TemporaryClaim,
     maybe_sweep_dir,
     remove_entry,
     sweep_dir,
@@ -17,26 +25,23 @@ def _override_root(root_env: str) -> Path | None {
     return Path(custom).expanduser() if custom else None;
 }
 
-impl Bucket.path -> Path {
-    custom = _override_root(self.root_env);
+def _resolve_path(relpath: str, root_env: str = "", root_prefix: str = "") -> Path {
+    custom = _override_root(root_env);
     if custom is None {
-        return cache_home() / self.relpath;
+        return cache_home() / relpath;
     }
-    rest = self.relpath[len(self.root_prefix):].lstrip("/");
+    rest = relpath[len(root_prefix):].lstrip("/");
     return custom / rest if rest else custom;
 }
 
-impl family_root(prefix: str) -> Path {
-    for b in BUCKETS {
-        if b.root_prefix == prefix {
-            custom = _override_root(b.root_env);
-            if custom is not None {
-                return custom;
-            }
-            break;
-        }
-    }
-    return cache_home() / prefix;
+impl Bucket.path -> Path {
+    return _resolve_path(self.relpath, self.root_env, self.root_prefix);
+}
+
+impl Bucket.ensure -> Path {
+    ensure_root();
+    p = self.path();
+    return ensure_cache_dir(p) if not self.is_external() else p;
 }
 
 impl Bucket.is_external -> bool {
@@ -44,6 +49,7 @@ impl Bucket.is_external -> bool {
 }
 
 impl Bucket.note_hit(item: Path) -> None {
+    self.ensure();
     self.policy.note_hit(item);
 }
 
@@ -76,7 +82,7 @@ impl external_buckets -> list[Bucket] {
 
 impl maybe_sweep(name: str, keep: set[str] | None = None, force: bool = False) -> bool {
     b = bucket(name);
-    return maybe_sweep_dir(b.path(), b.policy, keep=keep, force=force);
+    return maybe_sweep_dir(b.ensure(), b.policy, keep=keep, force=force);
 }
 
 def _live_for(live: dict[str, set[str]] | None, name: str) -> set[str] {
@@ -86,19 +92,43 @@ def _live_for(live: dict[str, set[str]] | None, name: str) -> set[str] {
     return live.get(name) or set();
 }
 
+def _entries(b: Bucket) -> list[CacheEntry] {
+    return scan_entries(
+        b.path(),
+        b.policy,
+        exclude={
+            str(other.path())
+            for other in BUCKETS
+            if other.name != b.name
+        }
+    );
+}
+
 impl status -> list[BucketStatus] {
     rows: list[BucketStatus] = [];
     for b in BUCKETS {
         p = b.path();
         exists = p.is_dir();
-        found = entries_at(p, b.policy) if exists else [];
+        found = [
+            e
+            for e in _entries(b)
+            if e.kind != EntryKind.UNKNOWN
+        ]
+            if exists
+            else [];
         rows.append(
             BucketStatus(
                 name=b.name,
                 path=p,
                 exists=exists,
-                entries=len(found),
-                size_bytes=sum([dir_size(e) for e in found]),
+                entries=len(
+                    [
+                        e
+                        for e in found
+                        if e.kind != EntryKind.METADATA
+                    ]
+                ),
+                size_bytes=sum([dir_size(e.path) for e in found]),
                 policy=b.policy.describe(),
                 external=b.is_external(),
                 summary=b.summary
@@ -108,38 +138,52 @@ impl status -> list[BucketStatus] {
     return rows;
 }
 
-def _claimed(rel: str) -> bool {
-    for b in BUCKETS {
-        if rel == b.relpath
-            or b.relpath.startswith(rel + "/")
-            or rel.startswith(b.relpath + "/") {
-            return True;
+def _unmanaged_children(parent: Path, owned: set[str], out: set[str]) {
+    try {
+        children: list[Path] = sorted(parent.iterdir());
+    } except OSError {
+        return;
+    }
+    for child in children {
+        path = str(child);
+        if path in owned or child.name in [CACHEDIR_TAG, SWEEP_SENTINEL] {
+            continue;
+        }
+        if not child.is_symlink()
+            and any([p.startswith(path + os.sep) for p in owned]) {
+            _unmanaged_children(child, owned, out);
+        } else {
+            out.add(path);
         }
     }
-    return False;
 }
 
 impl unmanaged -> list[tuple[str, int]] {
     base = cache_home();
+    roots: set[str] = {str(base)};
+    owned: set[str] = {str(b.path()) for b in BUCKETS};
+    paths: set[str] = set();
+    for b in BUCKETS {
+        custom = _override_root(b.root_env);
+        if custom is not None {
+            roots.add(str(custom));
+        }
+        for candidate in _entries(b) {
+            if candidate.kind == EntryKind.UNKNOWN {
+                paths.add(str(candidate.path));
+            }
+        }
+    }
+    for location in roots {
+        if location not in owned {
+            _unmanaged_children(Path(location), owned, paths);
+        }
+    }
     out: list[tuple[str, int]] = [];
-    for parent_rel in ["", "toolchains"] {
-        parent = base / parent_rel if parent_rel else base;
-        try {
-            children = sorted(parent.iterdir());
-        } except OSError {
-            continue;
-        }
-        for child in children {
-            name = child.name;
-            if name.startswith(".") or name == CACHEDIR_TAG {
-                continue;
-            }
-            rel = f"{parent_rel}/{name}" if parent_rel else name;
-            if _claimed(rel) {
-                continue;
-            }
-            out.append((rel, dir_size(child)));
-        }
+    for path in sorted(paths) {
+        p = Path(path);
+        label = p.relative_to(base).as_posix() if p.is_relative_to(base) else path;
+        out.append((label, dir_size(p)));
     }
     return out;
 }
@@ -160,17 +204,34 @@ def _reclaim_into(result: PurgeReport, path: Path, label: str, dry_run: bool) {
 }
 
 def _retired_dirs -> list[Path] {
-    base = cache_home();
-    return [
-        base / name
-        for name in RETIRED
-        if (base / name).exists() or (base / name).is_symlink()
-    ];
+    paths: set[Path] = set();
+    for rel in RETIRED {
+        paths.add(cache_home() / rel);
+        for b in BUCKETS {
+            if b.root_prefix and rel.startswith(b.root_prefix + "/") {
+                paths.add(_resolve_path(rel, b.root_env, b.root_prefix));
+            }
+        }
+    }
+    found: list[Path] = [];
+    for p in paths {
+        if any([b.path().is_relative_to(p) for b in BUCKETS]) {
+            continue;
+        }
+        if p.exists() or p.is_symlink() {
+            found.append(p);
+        }
+    }
+    found.sort();
+    return found;
 }
 
 impl gc(
     dry_run: bool = False, live: dict[str, set[str]] | None = None
 ) -> list[SweepReport] {
+    if not dry_run {
+        ensure_root();
+    }
     reports: list[SweepReport] = [];
     for b in managed_buckets() {
         p = b.path();
@@ -207,9 +268,24 @@ def _purge_bucket(b: Bucket, keep: set[str], dry_run: bool, result: PurgeReport)
     if not p.is_dir() {
         return;
     }
-    for item in entries_at(p, b.policy) {
+    for candidate in _entries(b) {
+        item = candidate.path;
+        if candidate.kind not in [EntryKind.STORED, EntryKind.TEMPORARY] {
+            continue;
+        }
         rel = item.relative_to(p).as_posix();
-        if b.policy.is_kept(rel, item.name, keep) {
+        if candidate.kind == EntryKind.TEMPORARY {
+            with TemporaryClaim(item, b.policy) as claim {
+                if claim.reclaimable {
+                    _reclaim_into(result, item, f"{b.name}/{rel}", dry_run);
+                } else {
+                    result.kept.append(f"{b.name}/{rel}");
+                }
+            }
+            continue;
+        }
+        if candidate.kind == EntryKind.STORED
+            and b.policy.is_kept(rel, item.name, keep) {
             result.kept.append(f"{b.name}/{rel}");
             continue;
         }

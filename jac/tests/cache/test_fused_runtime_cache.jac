@@ -25,7 +25,7 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import from unittest.mock { patch }
-import from jaclang.cache.home { CACHEDIR_TAG, cache_home }
+import from jaclang.cache.home { CACHEDIR_TAG, CACHEDIR_TAG_TEXT, cache_home }
 import from jaclang.dist.fused.trailer { rt_key }
 import from jaclang.dist.fused_binary { runtime_trailer }
 
@@ -130,7 +130,8 @@ test "the launcher and the Python authority agree on the root and on JAC_CACHE_H
         f"expected {rt}\nstderr:\n{st['first'].stderr}"
     );
     assert not (st["xdg"] / "jac" / "rt").exists() , "XDG_CACHE_HOME must lose to JAC_CACHE_HOME in the launcher too";
-    assert (base / CACHEDIR_TAG).is_file() , "the launcher must stamp CACHEDIR.TAG on the root it creates";
+    assert not (base / CACHEDIR_TAG).exists();
+    assert (base / "rt" / CACHEDIR_TAG).is_file() , "the launcher must tag only the disposable runtime bucket";
 }
 
 test "one payload materializes once, whatever path the binary runs from" {
@@ -238,4 +239,20 @@ test "an unwritable cache root falls back to the temp dir" {
     fallback = tmpdir / f"jac-cache-{os.getuid()}" / "rt" / st["key"];
     assert (fallback / ".ok").is_file() , f"the runtime did not land in the temp-dir fallback:\n{run.stderr}";
     assert not (xdg / "jac" / "rt").exists() , "nothing may be written under the unwritable root";
+}
+
+
+test "launcher upgrades the backup boundary without touching persistent data" {
+    st = prepared();
+    base = Path(st["explicit"]);
+    pg = base / "pg" / "main";
+    pg.mkdir(parents=True, exist_ok=True);
+    (pg / "important").write_bytes(b"database");
+    (base / CACHEDIR_TAG).write_text(CACHEDIR_TAG_TEXT);
+    proc = run_launcher(st["one"], st["env"], str(st["tmp"]));
+    assert proc.returncode == 0 , proc.stderr;
+    assert not (base / CACHEDIR_TAG).exists();
+    assert (base / "rt" / CACHEDIR_TAG).is_file();
+    assert not (base / "pg" / CACHEDIR_TAG).exists();
+    assert (pg / "important").read_bytes() == b"database";
 }

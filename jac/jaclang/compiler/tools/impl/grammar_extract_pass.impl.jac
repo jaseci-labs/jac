@@ -299,7 +299,7 @@ impl GrammarExtractPass._returns_none(nd: uni.ImplDef) -> bool {
         if isinstance(cur, uni.Null) {
             return True;
         }
-        for k in (cur.kid or []) {
+        for k in ([cur->:Kid:->] or []) {
             stack.append(k);
         }
     }
@@ -1046,7 +1046,7 @@ impl GrammarExtractPass._has_diag_call(stmts: list[uni.UniNode]) -> bool {
                 }
             }
         }
-        for k in (nd.kid or []) {
+        for k in ([nd->:Kid:->] or []) {
             stack.append(k);
         }
     }
@@ -2512,7 +2512,7 @@ impl GrammarExtractPass._walk_strict(rule_name: str, nd: uni.UniNode) -> None {
             }
         }
     }
-    for k in (nd.kid or []) {
+    for k in ([nd->:Kid:->] or []) {
         self._walk_strict(rule_name, k);
     }
 }

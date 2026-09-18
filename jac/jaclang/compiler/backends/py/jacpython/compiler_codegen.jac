@@ -297,6 +297,7 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     comp_handler,
 }
 import from jaclang.compiler.frontend.python.compiler_symtable {
+    scope_kind,
     sym_block,
     sym_dict_get,
     sym_flag_set,
@@ -367,7 +368,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_emit {
     localsplus_index_u,
     name_load_opcode,
     register_int_literal_const,
-    sym_function_child_at,
     try_emit_fast_local_pair_load,
     unit_fail,
     varname_index,
@@ -443,7 +443,7 @@ def emit_name_store(g: cfg_builder, name: str, tloc: cloc) {
     # cell object itself. CPython emits STORE_DEREF for CO_FAST_CELL params --
     # namedtuple rebinds field_names/typename and broke with "free variable is
     # not set" without this.
-    if g.sym_top is not None and g.sym_top.block_type != "module" {
+    if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
         scope = sym_scope_of(flags);
         if scope == SCOPE_FREE or scope == SCOPE_CELL {
@@ -461,7 +461,9 @@ def emit_name_store(g: cfg_builder, name: str, tloc: cloc) {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
         scope = sym_scope_of(flags);
         if scope == SCOPE_GLOBAL_EXPLICIT
-            or (scope == SCOPE_GLOBAL_IMPLICIT and g.sym_top.block_type != "module") {
+            or (
+                scope == SCOPE_GLOBAL_IMPLICIT and g.sym_top.kind != scope_kind.MODULE
+            ) {
             idx = g.u.add_name(name);
             g.emit_op(OP_STORE_GLOBAL, idx, tloc);
             return;
@@ -475,7 +477,7 @@ def emit_name_delete(g: cfg_builder, name: str, tloc: cloc) {
     name = codegen_mangle(g, name);
     # Cell/free scope FIRST (see emit_name_load in compiler_emit): CPython
     # emits DELETE_DEREF for cell/free names, never DELETE_FAST.
-    if g.sym_top is not None and g.sym_top.block_type != "module" {
+    if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
         scope = sym_scope_of(flags);
         if scope == SCOPE_FREE or scope == SCOPE_CELL {
@@ -493,7 +495,9 @@ def emit_name_delete(g: cfg_builder, name: str, tloc: cloc) {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
         scope = sym_scope_of(flags);
         if scope == SCOPE_GLOBAL_EXPLICIT
-            or (scope == SCOPE_GLOBAL_IMPLICIT and g.sym_top.block_type != "module") {
+            or (
+                scope == SCOPE_GLOBAL_IMPLICIT and g.sym_top.kind != scope_kind.MODULE
+            ) {
             idx = g.u.add_name(name);
             g.emit_op(OP_DELETE_GLOBAL, idx, tloc);
             return;

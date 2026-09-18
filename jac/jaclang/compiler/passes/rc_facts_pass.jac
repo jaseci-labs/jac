@@ -35,6 +35,7 @@ import from jaclang.compiler.frontend.unitree {
     String,
     Symbol,
     Test,
+    Token,
     UnaryExpr,
     UniCFGNode,
     UniNode,
@@ -42,8 +43,10 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.dataflow { solve_backward_gen_kill }
 import from jaclang.compiler.frontend.constant {
+    ExprCtx,
     OwnershipKind,
     SymbolStorage,
+    Tokens as Tok,
     is_borrow_kind
 }
 
@@ -146,7 +149,7 @@ walker RcFactsPass {
         owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
     ) -> None;
 
-    def _param_plainly_rebound(sym: Symbol) -> bool;
+    def _binds_local_name(nm: Name) -> bool;
     def _stamp_move_lowerable(ir_in: Module) -> None;
     def _cfg_owner(sub: UniNode) -> (UniCFGNode | None);
     def _is_def_name(nm: NameAtom) -> bool;

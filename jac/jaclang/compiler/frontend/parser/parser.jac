@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from .tokens {
     LexToken,
     TokenKind,

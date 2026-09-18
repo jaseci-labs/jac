@@ -398,7 +398,7 @@ impl RegionInferPass._wrap_in_open(
         target=handle_name, params=[], genai_call=None, kid=[handle_name]
     );
     opened = OpenStmt(target=handle_call, body=stmts, kid=[handle_call, *stmts]);
-    kids = list(owner.kid);
+    kids = list([owner->:Kid:->]);
     first_pos = -1;
     last_pos = -1;
     for (i, k) in enumerate(kids) {

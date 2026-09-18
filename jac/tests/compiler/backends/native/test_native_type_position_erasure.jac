@@ -204,6 +204,24 @@ test "an erased base is a type position, not a run-time use" {
 }
 
 
+test "an `as` cast type is a type position, not a run-time use" {
+    assert _rejected_imports("type_position_cast_type.jac") == [] , (
+        "a Python name mentioned only as the type of an `as` cast was read as "
+        "a run-time use; a cast lowers to its own operand natively, so "
+        "nothing in the emitted unit reads the module"
+    );
+}
+
+
+test "a `type` alias right-hand side is a type position, not a run-time use" {
+    assert _rejected_imports("type_position_alias_rhs.jac") == [] , (
+        "a Python name mentioned only in a `type` alias was read as a "
+        "run-time use; native glob lowering drops a type declaration, so "
+        "nothing in the emitted unit reads the module"
+    );
+}
+
+
 test "a base the native lane keeps still refuses" {
     assert _rejected_imports("type_position_retained_base.jac") == ["threading"] , (
         "an ordinary Python base is a run-time dependency: the archetype "

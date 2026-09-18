@@ -95,6 +95,9 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     if name == "unpack" {
         return self._emit_struct_unpack(nd, params, fields, total, little);
     }
+    if name == "unpack_from" {
+        return self._emit_struct_unpack_from(nd, params, fields, total, little);
+    }
     if name == "pack_into" {
         return self._emit_struct_pack_into(nd, params, fields, total, little);
     }
@@ -179,42 +182,15 @@ impl NaIRGenPass._emit_struct_pack(
     return bv;
 }
 
-impl NaIRGenPass._emit_struct_unpack(
-    nd: uni.FuncCall,
-    params: Sequence[uni.Expr | uni.KWPair],
-    fields: list[tuple[str, int, bool]],
-    total: int,
-    little: bool
-) -> (ir.Value | None) {
-    if len(params) < 2 {
-        return None;
-    }
+impl NaIRGenPass._emit_struct_decode(
+    fields: list[tuple[str, int, bool]], little: bool, data: ir.Value
+) -> tuple[list[ir.Value], list[ir.Type]] {
     b = self.builder;
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     f32 = ir.FloatType();
     f64 = ir.DoubleType();
-    data_val = self._codegen_expr(params[1]);
-    if data_val is None or not self._is_bytes_value(data_val) {
-        self.ctx.emit(
-            E5092,
-            node_override=nd,
-            kind="struct.unpack buffer",
-            name="non-bytes buffer"
-        );
-        return None;
-    }
-
-    buf_len = self._bytes_len_val(data_val);
-    too_short = self.builder.icmp_signed(
-        "<", buf_len, ir.Constant(ir.IntType(64), total), name="up.short"
-    );
-    self._emit_runtime_raise(
-        too_short, "struct.error", f"unpack requires a buffer of {total} bytes"
-    );
-    data = self._bytes_data_ptr(data_val);
-
     values: list[ir.Value] = [];
     elem_types: list[ir.Type] = [];
     off = 0;
@@ -254,7 +230,15 @@ impl NaIRGenPass._emit_struct_unpack(
             elem_types.append(i64);
         }
     }
+    return (values, elem_types);
+}
 
+impl NaIRGenPass._emit_struct_tuple(
+    values: list[ir.Value], elem_types: list[ir.Type]
+) -> ir.Value {
+    b = self.builder;
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
     tuple_type = ir.LiteralStructType(elem_types);
     null_ptr = ir.Constant(tuple_type.as_pointer(), None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="up.sizeof.gep");
@@ -280,4 +264,115 @@ impl NaIRGenPass._emit_struct_unpack(
     }
     self._mark_owned(tup);
     return tup;
+}
+
+impl NaIRGenPass._emit_struct_unpack(
+    nd: uni.FuncCall,
+    params: Sequence[uni.Expr | uni.KWPair],
+    fields: list[tuple[str, int, bool]],
+    total: int,
+    little: bool
+) -> (ir.Value | None) {
+    if len(params) < 2 {
+        return None;
+    }
+    i64 = ir.IntType(64);
+    data_val = self._codegen_expr(params[1]);
+    if data_val is None {
+        self.ctx.emit(
+            E5092,
+            node_override=nd,
+            kind="struct.unpack buffer",
+            name="unsupported buffer (native accepts bytes and bytearray)"
+        );
+        return None;
+    }
+    view = self._bytearray_src_of(data_val);
+    if view is None {
+        self.ctx.emit(
+            E5092,
+            node_override=nd,
+            kind="struct.unpack buffer",
+            name="unsupported buffer (native accepts bytes and bytearray)"
+        );
+        return None;
+    }
+    buf_len = view[1];
+    data = view[0];
+    too_short = self.builder.icmp_signed(
+        "!=", buf_len, ir.Constant(ir.IntType(64), total), name="up.short"
+    );
+    self._emit_runtime_raise(
+        too_short, "struct.error", f"unpack requires a buffer of {total} bytes"
+    );
+    (values, elem_types) = self._emit_struct_decode(fields, little, data);
+    return self._emit_struct_tuple(values, elem_types);
+}
+
+impl NaIRGenPass._emit_struct_unpack_from(
+    nd: uni.FuncCall,
+    params: Sequence[uni.Expr | uni.KWPair],
+    fields: list[tuple[str, int, bool]],
+    total: int,
+    little: bool
+) -> (ir.Value | None) {
+    if len(params) < 2 {
+        return None;
+    }
+    i64 = ir.IntType(64);
+    data_val = self._codegen_expr(params[1]);
+    if data_val is None {
+        self.ctx.emit(
+            E5092,
+            node_override=nd,
+            kind="struct.unpack_from buffer",
+            name="unsupported buffer (native accepts bytes and bytearray)"
+        );
+        return None;
+    }
+    view = self._bytearray_src_of(data_val);
+    if view is None {
+        self.ctx.emit(
+            E5092,
+            node_override=nd,
+            kind="struct.unpack_from buffer",
+            name="unsupported buffer (native accepts bytes and bytearray)"
+        );
+        return None;
+    }
+    off_val: ir.Value = ir.Constant(i64, 0);
+    if len(params) >= 3 {
+        _off_raw = self._codegen_expr(params[2]);
+        if _off_raw is None {
+            self.ctx.emit(
+                E5092,
+                node_override=nd,
+                kind="struct.unpack_from offset",
+                name="offset expression did not lower"
+            );
+            return None;
+        }
+        off_val = self._coerce_type(_off_raw, i64);
+    }
+    buf_len = view[1];
+    neg = self.builder.icmp_signed("<", off_val, ir.Constant(i64, 0), name="uf.neg");
+    off_adj = self.builder.select(
+        neg,
+        self.builder.add(off_val, buf_len, name="uf.neg.adjusted"),
+        off_val,
+        name="uf.offset"
+    );
+    end_off = self.builder.add(off_adj, ir.Constant(i64, total), name="uf.end");
+    too_low = self.builder.icmp_signed(
+        "<", off_adj, ir.Constant(i64, 0), name="uf.low"
+    );
+    oob = self.builder.icmp_signed(">", end_off, buf_len, name="uf.oob");
+    self._emit_runtime_raise(
+        self.builder.or_(too_low, oob, name="uf.bad"),
+        "struct.error",
+        f"unpack_from requires a buffer of at least {total} bytes"
+    );
+    data = self.builder.gep(view[0], [off_adj], name="uf.data");
+    (values, elem_types) = self._emit_struct_decode(fields, little, data);
+    return self._emit_struct_tuple(values, elem_types);
 }

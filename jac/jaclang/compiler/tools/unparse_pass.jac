@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree { TreeWalker }
 import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.frontend.unitree as uni;
@@ -143,7 +144,7 @@ def unparse_node(nd: uni.UniNode) -> str {
     if isinstance(nd, uni.Token) {
         return nd.value;
     }
-    _kids = list(nd.kid);
+    _kids = list([nd->:Kid:->]);
     if not _kids {
         _v = nd?.value;
         if isinstance(_v, str) {
@@ -160,7 +161,7 @@ def unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
 
     own_path = mod.loc.mod_path;
     saved_body = mod.body;
-    saved_kid = mod.kid;
+    saved_kid = [mod->:Kid:->];
     head_kid = [
         k
         for k in saved_kid

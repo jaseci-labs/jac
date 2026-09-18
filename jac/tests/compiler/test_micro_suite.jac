@@ -10,6 +10,7 @@ This reduces ~640 parametrized tests to ~160 and eliminates redundant
 compilations (was 6-7 compiles per file, now 4).
 """
 
+import from jaclang.compiler.frontend.roles { Kid }
 import ast as ast3;
 import os;
 import from difflib { unified_diff }
@@ -24,7 +25,7 @@ import from jaclang.testing.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
 def parent_scrub(`node: uni.UniNode) -> bool {
-    for i in `node.kid {
+    for i in [`node->:Kid:->] {
         if not isinstance(i, uni.Module) and i.parent is None {
             return False;
         }

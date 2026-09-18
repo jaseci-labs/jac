@@ -74,3 +74,9 @@ test "jac0 type filters preserve order and avoid capturing a type name" {
     assert namespace["select"]([1, "x", 2, "y"], str) == ["x", "y"];
     assert namespace["chained"]([1, "x", 2]) == [1, 2];
 }
+
+test "jac0 erases edge endpoint annotations without evaluating their types" {
+    plain = compile_jac("edge Link {}", "endpoints.jac");
+    typed = compile_jac("edge Link: Source --> Target {}", "endpoints.jac");
+    assert plain == typed;
+}

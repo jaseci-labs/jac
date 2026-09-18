@@ -7,14 +7,7 @@ import zipfile;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch, MagicMock }
-import from jaclang.toolchains.store {
-    Artifact,
-    cache_root,
-    extract,
-    fetch,
-    install,
-    file_digest
-}
+import from jaclang.toolchains.store { Artifact, extract, fetch, install, file_digest }
 
 def sample_artifact(data: bytes) -> Artifact {
     return Artifact(
@@ -261,7 +254,8 @@ test "every toolchain destination resolves inside a managed bucket" {
         }
     }
     pkg = Path(str(toolchains_pkg.__file__)).parent;
-    for src in sorted(pkg.`glob("*.jac")) {
+    sources: list[Path] = list(pkg.`glob("*.jac"));
+    for src in sources {
         if src.name == "store.jac" {
             continue;
         }

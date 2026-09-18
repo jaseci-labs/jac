@@ -271,7 +271,7 @@ impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
                 if (isinstance(nd.left, TupleVal) and nd.left.values)
                 else [nd.left],
             genai_call=None,
-            kid=nd.kid
+            kid=[nd->:Kid:->]
         );
         if nd.parent is not None {
             func_node.set_parent(nd.parent);
@@ -296,7 +296,7 @@ impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
                 if (isinstance(nd.right, TupleVal) and nd.right.values)
                 else [nd.right],
             genai_call=None,
-            kid=nd.kid
+            kid=[nd->:Kid:->]
         );
         if nd.parent is not None {
             func_node.set_parent(nd.parent);
