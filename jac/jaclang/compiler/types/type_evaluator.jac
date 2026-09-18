@@ -350,7 +350,8 @@ obj NarrowingPredicate {
         attr_name: str | None = None,
         narrows_on_true: bool = True,
         narrows_on_false: bool = True,
-        replaces_declared: bool = False;
+        replaces_declared: bool = False,
+        by_equality: bool = False;
 }
 
 enum NarrowingKind {
@@ -895,6 +896,11 @@ walker TypeEvaluator {
 
     def _narrow_type_to(base_type: TypeBase, narrow_type: TypeBase) -> TypeBase | None;
     def _narrow_member_to(member: TypeBase, narrow_type: TypeBase) -> TypeBase | None;
+    def _narrow_type_by_equality(
+        base_type: TypeBase, compared: TypeBase
+    ) -> TypeBase | None;
+
+    def _may_equal(member: TypeBase, compared: TypeBase) -> bool;
     def _specialize_narrow_from_base(
         base_type: TypeBase, narrow_type: TypeBase
     ) -> TypeBase;

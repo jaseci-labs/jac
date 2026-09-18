@@ -5026,7 +5026,8 @@ impl TypeEvaluator._find_predicate_for(
                 attr_name=inner_pred.attr_name,
                 narrows_on_true=inner_pred.narrows_on_false,
                 narrows_on_false=inner_pred.narrows_on_true,
-                replaces_declared=inner_pred.replaces_declared
+                replaces_declared=inner_pred.replaces_declared,
+                by_equality=inner_pred.by_equality
             );
         }
         return None;
@@ -5081,7 +5082,8 @@ impl TypeEvaluator._find_predicate_for(
                     attr_name=most_specific.attr_name,
                     narrows_on_true=most_specific.narrows_on_true,
                     narrows_on_false=(most_specific.narrows_on_false and covers_false),
-                    replaces_declared=most_specific.replaces_declared
+                    replaces_declared=most_specific.replaces_declared,
+                    by_equality=most_specific.by_equality
                 );
 
             case Tok.KW_OR:
@@ -5118,7 +5120,8 @@ impl TypeEvaluator._find_predicate_for(
                             covers_true and all(p.narrows_on_true for p in positive)
                         ),
                         narrows_on_false=all(p.narrows_on_false for p in positive),
-                        replaces_declared=any(p.replaces_declared for p in positive)
+                        replaces_declared=any(p.replaces_declared for p in positive),
+                        by_equality=any(p.by_equality for p in positive)
                     );
                 }
 
@@ -5136,7 +5139,8 @@ impl TypeEvaluator._find_predicate_for(
                     attr_name=chosen.attr_name,
                     narrows_on_true=(len(all_preds) == 1 and chosen.narrows_on_true),
                     narrows_on_false=chosen.narrows_on_false,
-                    replaces_declared=chosen.replaces_declared
+                    replaces_declared=chosen.replaces_declared,
+                    by_equality=chosen.by_equality
                 );
 
         }
@@ -5214,7 +5218,8 @@ impl TypeEvaluator._find_predicate_for(
                     key=key,
                     narrow_type=literal_type,
                     is_inverted=False,
-                    narrows_on_false=False
+                    narrows_on_false=False,
+                    by_equality=True
                 );
 
             case NarrowingKind.LITERAL_NE:
@@ -5226,7 +5231,8 @@ impl TypeEvaluator._find_predicate_for(
                     key=key,
                     narrow_type=literal_type,
                     is_inverted=True,
-                    narrows_on_true=False
+                    narrows_on_true=False,
+                    by_equality=True
                 );
 
             case NarrowingKind.TRUTHINESS:
@@ -5274,7 +5280,8 @@ impl TypeEvaluator._narrowing_equivalent(
     if left.attr_name != right.attr_name {
         return False;
     }
-    if left.replaces_declared != right.replaces_declared {
+    if left.replaces_declared != right.replaces_declared
+        or left.by_equality != right.by_equality {
         return False;
     }
     if left.narrows_on_true != right.narrows_on_true
@@ -5327,6 +5334,10 @@ impl TypeEvaluator._apply_narrowing(
             base_type = incoming;
         } else {
             base_type = target.declared_type;
+        }
+        if predicate.by_equality {
+            by_value = self._narrow_type_by_equality(base_type, predicate.narrow_type);
+            return by_value if by_value is not None else incoming;
         }
 
         narrowed = self._narrow_type_to(base_type, predicate.narrow_type);
@@ -5464,6 +5475,51 @@ impl TypeEvaluator._narrow_member_to(
         return self._specialize_narrow_from_base(member, narrow_type);
     }
     return None;
+}
+
+impl TypeEvaluator._narrow_type_by_equality(
+    base_type: TypeBase, compared: TypeBase
+) -> TypeBase | None {
+    members = (
+        base_type.types
+            if isinstance(base_type, UnionType) and base_type.types
+            else [base_type]
+    );
+    candidates = (
+        compared.types
+            if isinstance(compared, UnionType) and compared.types
+            else [compared]
+    );
+    kept = [
+        m
+        for m in members
+        if any(self._may_equal(m, c) for c in candidates)
+    ];
+    if not kept or len(kept) == len(members) {
+        return None;
+    }
+    return self._union_narrowed_types(kept);
+}
+
+impl TypeEvaluator._may_equal(member: TypeBase, compared: TypeBase) -> bool {
+    if self.is_none_type(member) or self.is_none_type(compared) {
+        return self.is_none_type(member) and self.is_none_type(compared);
+    }
+    if not isinstance(member, ClassType) or not isinstance(compared, ClassType) {
+        return True;
+    }
+    if member.shared.same_class(compared.shared) {
+        if member.is_literal_type() and compared.is_literal_type() {
+            return member.get_literal_value() == compared.get_literal_value();
+        }
+        return True;
+    }
+    numeric = ["bool", "int", "float", "complex"];
+    builtin_values = numeric + ["str", "bytes"];
+    if member.is_builtin(builtin_values) and compared.is_builtin(builtin_values) {
+        return member.is_builtin(numeric) and compared.is_builtin(numeric);
+    }
+    return True;
 }
 
 impl TypeEvaluator._type_matches_isinstance(
