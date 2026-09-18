@@ -418,8 +418,14 @@ impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any]
 }
 
 impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any] {
+    import from jaclang.scale.config.validation {
+        scheduler_job_cap,
+        scheduler_min_interval
+    }
     config = self.load();
     scheduler_config = config.get('scheduler', {});
+    floor: any = scheduler_min_interval(scheduler_config.get('min_interval', 1.0));
+    cap: any = scheduler_job_cap(scheduler_config.get('max_jobs_per_user', 25));
     return {
         'collection': scheduler_config.get('collection', 'scheduled_jobs'),
         'thread_pool_size': int(scheduler_config.get('thread_pool_size', 10)),
@@ -428,7 +434,9 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
         'system_user_password': scheduler_config.get(
             'system_user_password', '__no_login__'
         ),
-        'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0))
+        'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0)),
+        'min_interval': floor if floor is not None else 1.0,
+        'max_jobs_per_user': cap if cap is not None else 25
     };
 }
 

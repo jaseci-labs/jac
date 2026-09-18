@@ -75,11 +75,61 @@ compact holes once; insertion also compacts when the order allocation fills.
 Rehashing rebuilds both indices. This makes deletion amortized constant time,
 preserves insertion order, and bounds order storage during repeated mutations.
 
+Dictionary lookup exposes a borrowed value slot: a null slot means the key is
+absent, while a present slot can contain zero or `None`. Native `dict.get()`
+uses this shared lookup to search once and then apply its default-value rules.
+
 `jc_materialize` decodes this private order storage when copying native
 dictionaries. Keep its decoder synchronized with changes to this allocation;
 the container field offsets still come from the backend's ABI metadata.
 The native dictionary scaling, mutation, and materialization tests cover these
 contracts.
+
+## Native edge type values
+
+Graph operations accept edge classes passed as `type[Edge]` or a narrower
+bound. `backends/native/na_ir_gen_pass.impl/edge_types.impl.jac` resolves these
+values using the existing native class-name identity. The shared graph runtime
+in `runtime/osp_graph.jac` registers each edge's tag and default-constructor
+callback. Literal edge classes retain constant-tag lookup; dynamic filters use
+the same subtype matching as literal filters.
+Dynamic connections resolve one descriptor and reuse its tag and constructor;
+the registry lookup also validates that the class is a registered edge type.
+An unbounded class value uses `Edge` as its layout bound; its runtime class
+identity still determines the registered descriptor.
+
+Constructor callbacks use ordinary object construction, including inherited
+defaults, initialization, and region allocation. Types that require arguments
+remain usable for filtering; connecting through their bare class raises an
+error. A factory result of zero signals that construction without arguments
+is unavailable, rather than representing a graph handle. Generated calls
+propagate pending errors even when there is no source declaration for the callee. Predicate fields and edge-ref element types come from the declared class
+bound. Keep these semantics in the type evaluator, native lowering, and graph
+runtime so callers such as `UniNode` can use ordinary graph operations without
+maintaining lists of concrete edge classes.
+
+Factory callbacks use the ordinary Jac closure representation, including when
+stored in object fields. Callable parameters, fields, and calls must agree on
+that representation; raw function pointers belong to the explicit C interop
+path. Graph references restore their inferred list element type at the native
+runtime boundary, so indexing, iteration, and spreads share normal list lowering.
+
+`Kid` declares `UniNode` endpoints in `frontend/roles.jac`. This keeps direct
+child traversals typed without a wrapper property. Its endpoint annotations
+use a type-only import; the seed compiler erases these
+annotations, so they introduce no runtime import cycle.
+
+## Delete-target validation
+
+`DeleteStmt.invalid_target` classifies one target's invalid syntax using
+`DeleteTargetError`: literals, empty target lists, null-safe access, and
+unpacking. It unwraps parentheses; callers recurse into nonempty target lists.
+AST validation owns the corresponding diagnostic messages. Type checking uses
+the same classification to skip the graph-destruction check on invalid syntax,
+while continuing to check valid value targets. For example, `del *ints()` gets
+an unpacking error, while `del ints()` gets a graph-type error when `ints()`
+returns `list[int]`. Improving expression inference must not introduce a second,
+dependent diagnostic for an already-invalid delete target.
 
 ## Packaged interfaces and compilation lifetimes
 

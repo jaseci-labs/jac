@@ -998,7 +998,9 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> Import {
             and (isinstance(name.alias, Name) or (name.alias is None))
         ) {
             valid_names.append(
-                ModuleItem(name=name.expr, alias=name.alias or None, kid=name.kid)
+                ModuleItem(
+                    name=name.expr, alias=name.alias or None, kid=[name->:Kid:->]
+                )
             );
         } else {
             raise RuntimeError(self.ctx.ice());
@@ -1590,7 +1592,7 @@ impl PyastBuildPass.proc_if(nd: py_ast.If) -> IfStmt {
                 condition=first_elm.condition,
                 body=first_elm.body,
                 else_body=first_elm.else_body,
-                kid=first_elm.kid
+                kid=[first_elm->:Kid:->]
             );
         } else {
             else_body = ElseStmt(body=valid_orelse, kid=valid_orelse);

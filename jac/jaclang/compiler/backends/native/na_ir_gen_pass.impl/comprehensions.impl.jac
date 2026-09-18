@@ -483,9 +483,13 @@ impl NaIRGenPass._codegen_compr_walk_body(
                 );
                 return;
             }
-            coll_val = self.builder.bitcast(
+            _coll_cast = self.builder.bitcast(
                 coll_val, _coll_want, name="compr.coll.cast"
             );
+            if self._is_owned(coll_val) {
+                self._mark_owned(_coll_cast);
+            }
+            coll_val = _coll_cast;
         }
     }
     unpack_target = loop_target if isinstance(loop_target, uni.TupleVal) else None;
@@ -574,6 +578,8 @@ impl NaIRGenPass._codegen_compr_walk_body(
             _compr_old = self.builder.load(loop_alloca, name="compr.old");
             self._emit_rc_release_simple(_compr_old, op="compr_elem", loc="");
             self._emit_rc_retain(elem_val, op="compr_elem", loc="");
+        } elif actual_elem_type == self.jacval_type {
+            self._emit_slot_rebind(loop_alloca, elem_val, owned=False, op="compr_elem");
         }
         self.builder.store(elem_val, loop_alloca);
     }

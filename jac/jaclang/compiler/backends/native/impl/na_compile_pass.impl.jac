@@ -450,14 +450,10 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         if _native_debug {
             _opt_level = 0;
         }
-        if _opt_level > 0 {
-            pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
-            pb = llvm.create_pass_builder(target_machine, pto);
-            assert isinstance(pb, llvm.PassBuilder);
-            opt_mpm = pb.getModulePassManager();
-            assert isinstance(opt_mpm, llvm.ModulePassManager);
-            opt_mpm.run(mod, pb);
+        import from jaclang.compiler.backends.native.shared_emit {
+            optimize_native_module
         }
+        optimize_native_module(mod, target_machine, _opt_level);
 
         _dump_path = _compile_opts.dump_ir_path or "";
         if _dump_path {

@@ -1,5 +1,10 @@
 """Native public symbol-table data and projection from compiler scopes."""
-import from jaclang.compiler.frontend.python.compiler_symtable { sym_block }
+import from jaclang.compiler.frontend.python.compiler_symtable {
+    sym_block,
+    scope_kind,
+    scope_info_kind,
+    is_type_variable_info
+}
 import from jaclang.compiler.frontend.python.compiler_symtable {
     DEF_PARAM,
     DEF_BOUND,
@@ -76,18 +81,18 @@ obj SymtableEntry {
 def _entry_from_block(b: sym_block, nested: bool = False) -> SymtableEntry {
     kind = TYPE_FUNCTION;
     name = b.name;
-    if b.block_type == "module" {
+    if b.kind == scope_kind.MODULE {
         kind = TYPE_MODULE;
-    } elif b.block_type == "class" {
+    } elif b.kind == scope_kind.CLASS {
         kind = TYPE_CLASS;
     } elif b.generic_parameters {
         kind = TYPE_TYPE_PARAMETERS;
         name = name.removeprefix("<generic parameters of ").removesuffix(">");
-    } elif b.annotation_kind == "an annotation" {
+    } elif b.scope_info == scope_info_kind.ANNOTATION {
         kind = TYPE_ANNOTATION;
-    } elif b.annotation_kind == "a type alias" {
+    } elif b.scope_info == scope_info_kind.TYPE_ALIAS {
         kind = TYPE_TYPE_ALIAS;
-    } elif b.type_parameter_key {
+    } elif is_type_variable_info(b.scope_info) {
         kind = TYPE_TYPE_VARIABLE;
     }
     symbols = dict(b.symbols);
@@ -95,8 +100,8 @@ def _entry_from_block(b: sym_block, nested: bool = False) -> SymtableEntry {
     if kind == TYPE_TYPE_PARAMETERS
         and ".defaults" not in symbols
         and any(
-            child.block_type == "function" and not child.annotation_kind
-            for child in b.children
+            child.kind == scope_kind.FUNCTION
+                and child.scope_info == scope_info_kind.NONE for child in b.children
         ) {
         # The public table includes CPython's generic-function defaults slot
         # even when Jac's factory does not need to pass a defaults tuple.
@@ -112,7 +117,7 @@ def _entry_from_block(b: sym_block, nested: bool = False) -> SymtableEntry {
         _varnames=varnames,
         _children=[]
     );
-    if b.annotation_kind and ".format" in table.symbols {
+    if b.scope_info != scope_info_kind.NONE and ".format" in table.symbols {
         table.symbols[".format"] |= SYM_USE;
     }
     for free_name in b.class_free_names {
@@ -120,7 +125,7 @@ def _entry_from_block(b: sym_block, nested: bool = False) -> SymtableEntry {
             table.symbols[free_name] |= PUBLIC_DEF_FREE_CLASS;
         }
     }
-    _entry_children(table, b, nested or b.block_type == "function");
+    _entry_children(table, b, nested or b.kind == scope_kind.FUNCTION);
     return table;
 }
 
@@ -169,7 +174,7 @@ import from jaclang.compiler.frontend.python.compiler_diagnostics {
 }
 import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
 import from jaclang.runtime.python.objects { PyObj, py_error }
-import from jaclang.runtime.python.native_services { runtime_failure }
+import from jaclang.runtime.python.capi { boundary_failure }
 import from c {
     def jacpy_symtable_entry(
         name: u64,
@@ -244,7 +249,7 @@ def symtable_to_object(table: SymtableEntry) -> u64 {
             key_object = ast_write_text(key);
             value_object = jacpy_int(i64(value));
             if jacpy_dict_set_owned(symbols, key_object, value_object) < 0 {
-                raise runtime_failure();
+                raise boundary_failure();
             }
         }
         varnames = ast_output_checked(jacpy_list_new());

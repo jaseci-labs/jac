@@ -137,7 +137,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._register_archetypes(self.module);
     self._register_enum_methods(self.module, declare=False);
 
-    _entry_nodes: list[uni.UniNode] = [];
+    _entry_nodes: list[uni.ModuleCode] = [];
     for stmt in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE) {
         if (
             isinstance(stmt, uni.Ability)

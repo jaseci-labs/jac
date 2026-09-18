@@ -70,7 +70,10 @@ import from jaclang.compiler.frontend.python.ast_nodes {
     And,
     Or
 }
-import from jaclang.compiler.frontend.python.ast_walk { ast_children }
+import from jaclang.compiler.frontend.python.ast_walk {
+    ast_child_visitor,
+    visit_ast_children
+}
 import from jaclang.runtime.python.objects {
     PyObj,
     PyInt,
@@ -551,6 +554,7 @@ def annotation_constant(value: expr) -> Constant {
 
 def stringify_future_annotations(tree: ast_node, filename: str) {
     pending: list[ast_node] = [tree];
+    walk = annotation_walk(pending=pending);
     while pending {
         item = pending.pop();
         if isinstance(item, AnnAssign) {
@@ -561,8 +565,14 @@ def stringify_future_annotations(tree: ast_node, filename: str) {
             and item.returns is not None {
             item.returns = annotation_constant(item.returns);
         }
-        for child in ast_children(item) {
-            pending.append(child.value);
-        }
+        visit_ast_children(item, walk);
+    }
+}
+
+obj annotation_walk(ast_child_visitor) {
+    has pending: list[ast_node];
+
+    def child(field: str, value: ast_node) {
+        self.pending.append(value);
     }
 }

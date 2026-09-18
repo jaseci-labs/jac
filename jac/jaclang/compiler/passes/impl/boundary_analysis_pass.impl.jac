@@ -795,7 +795,7 @@ impl BoundaryAnalysisPass._find_archetype(
     if (isinstance(nd, (Archetype, Enum)) and nd.sym_name == target) {
         return nd;
     }
-    for k in nd.kid {
+    for k in [nd->:Kid:->] {
         found = self._find_archetype(k, target);
         if found is not None {
             return found;
@@ -968,7 +968,7 @@ impl BoundaryAnalysisPass._extract_subscript_inner(expr: (UniNode | None)) -> st
     }
 
     if isinstance(expr, IndexSlice) {
-        for k in expr.kid {
+        for k in [expr->:Kid:->] {
             result = self._extract_subscript_inner(k);
             if result {
                 return result;
@@ -977,7 +977,7 @@ impl BoundaryAnalysisPass._extract_subscript_inner(expr: (UniNode | None)) -> st
     }
 
     if isinstance(expr, Slice) {
-        for k in expr.kid {
+        for k in [expr->:Kid:->] {
             result = self._extract_subscript_inner(k);
             if result {
                 return result;
@@ -1016,7 +1016,7 @@ impl BoundaryAnalysisPass._extract_all_subscript_types(
         return result;
     }
 
-    for k in expr.kid {
+    for k in [expr->:Kid:->] {
         result.extend(self._extract_all_subscript_types(k));
     }
     return result;

@@ -489,7 +489,7 @@ jobs:
           with entry {
               if os.environ.get("JACPYTHON") == "1" {
                   assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
-                  assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3;
+                  assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4;
               } else {
                   assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerRequired");
               }

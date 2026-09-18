@@ -16,6 +16,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
     TypeFlags,
+    PropertyCallbacks,
     PropertyDefinition,
     jacpy_binding_typeof,
     jacpy_binding_owner,
@@ -975,10 +976,23 @@ glob:priv pickler_signature = CallSignature(
              set_attribute=set_attribute
          ),
          [
-             PropertyDefinition("memo", get_memo, write=set_memo),
-             PropertyDefinition("bin", integer_get, context=0, write=integer_set),
-             PropertyDefinition("fast", integer_get, context=1, write=integer_set),
-             PropertyDefinition("dispatch_table", dispatch_get, write=dispatch_set)
+             PropertyDefinition(
+                 "memo", PropertyCallbacks(read=get_memo, write=set_memo)
+             ),
+             PropertyDefinition(
+                 "bin",
+                 PropertyCallbacks(read=integer_get, write=integer_set),
+                 context=0
+             ),
+             PropertyDefinition(
+                 "fast",
+                 PropertyCallbacks(read=integer_get, write=integer_set),
+                 context=1
+             ),
+             PropertyDefinition(
+                 "dispatch_table",
+                 PropertyCallbacks(read=dispatch_get, write=dispatch_set)
+             )
          ]
      ),
      unpickler_type = TypeDefinition(
@@ -1009,7 +1023,7 @@ glob:priv pickler_signature = CallSignature(
              get_attribute=get_attribute,
              set_attribute=set_attribute
          ),
-         [PropertyDefinition("memo", get_memo, write=set_memo)]
+         [PropertyDefinition("memo", PropertyCallbacks(read=get_memo, write=set_memo))]
      ),
      memo_methods = [
          MethodDefinition("copy", MethodCallbacks(positional=memo_copy), "", flags=4),

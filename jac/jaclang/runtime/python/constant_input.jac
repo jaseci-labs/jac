@@ -12,19 +12,20 @@ import from jaclang.runtime.python.objects {
     PySet
 }
 import from jaclang.runtime.python.compiler_integer { integer_from_marshal }
-import from jaclang.runtime.python.native_services { take_buffer, runtime_failure }
+import from jaclang.runtime.python.native_services { take_buffer }
+import from jaclang.runtime.python.capi { read_buffer, boundary_failure }
 import from c {
     def jacpy_value_kind(handle: u64) -> i64;  def jacpy_truth(handle: u64) -> i64;  def jacpy_marshal(
         handle: u64
-    ) -> u64;  def jacpy_utf8(handle: u64) -> u64;  def jacpy_bytes_copy(
+    ) -> u64;  def jacpy_utf8(handle: u64) -> u64;  def jacpy_float_value(
         handle: u64
-    ) -> u64;  def jacpy_float_value(handle: u64) -> f64;  def jacpy_real(
+    ) -> f64;  def jacpy_real(handle: u64) -> f64;  def jacpy_imag(
         handle: u64
-    ) -> f64;  def jacpy_imag(handle: u64) -> f64;  def jacpy_sequence(
+    ) -> f64;  def jacpy_sequence(handle: u64) -> u64;  def jacpy_sequence_size(
         handle: u64
-    ) -> u64;  def jacpy_sequence_size(handle: u64) -> i64;  def jacpy_sequence_item(
-        handle: u64, index: i64
-    ) -> u64;  def jacpy_release(handle: u64);
+    ) -> i64;  def jacpy_sequence_item(handle: u64, index: i64) -> u64;  def jacpy_release(
+        handle: u64
+    );
 }
 
 def read_constant(handle: u64, depth: int = 0) -> PyObj {
@@ -55,23 +56,23 @@ def read_constant(handle: u64, depth: int = 0) -> PyObj {
     if kind == 6 {
         return PyStr(
             t="str",
-            val=bytes(take_buffer(jacpy_utf8(handle))).decode("utf-8", "surrogatepass")
+            val=take_buffer(jacpy_utf8(handle)).decode("utf-8", "surrogatepass")
         );
     }
     if kind == 7 {
-        return PyBytes(t="bytes", val=take_buffer(jacpy_bytes_copy(handle)));
+        return PyBytes(t="bytes", val=list(read_buffer(handle)));
     }
     if kind == 8 or kind == 9 {
         sequence = jacpy_sequence(handle);
         if sequence == 0 {
-            raise runtime_failure();
+            raise boundary_failure();
         }
         items: list[PyObj] = [];
         try {
             for index in range(int(jacpy_sequence_size(sequence))) {
                 item = jacpy_sequence_item(sequence, i64(index));
                 if item == 0 {
-                    raise runtime_failure();
+                    raise boundary_failure();
                 }
                 try {
                     items.append(read_constant(item, depth + 1));

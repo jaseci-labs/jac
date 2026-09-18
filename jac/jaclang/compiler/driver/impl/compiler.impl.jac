@@ -1049,7 +1049,7 @@ impl JacCompiler.stamp_boundary_facts(
         if isinstance(nd, uni.Ability) and nd.sym_name {
             out[nd.sym_name] = nd;
         }
-        for k in nd.kid {
+        for k in [nd->:Kid:->] {
             collect_abilities(k, out);
         }
     }
@@ -1060,7 +1060,7 @@ impl JacCompiler.stamp_boundary_facts(
                 out[nd.sym_name] = nd;
             }
         }
-        for k in nd.kid {
+        for k in [nd->:Kid:->] {
             collect_walkers(k, out);
         }
     }
@@ -1807,6 +1807,7 @@ impl JacCompiler._scrub_native_artifacts_on_error(
     gen = mod.gen;
     gen.py_bytecode = None;
     gen.llvm_ir = None;
+    gen.native_linked_ir = None;
     gen.native_engine = None;
     gen.native_bitcode = None;
     gen.native_layout = None;

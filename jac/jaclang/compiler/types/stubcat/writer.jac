@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import json;
 import struct;
@@ -246,7 +247,7 @@ def metaclass_of_scope(scope: UniScopeNode, evaluator: any) -> (TypeBase | None)
     if not isinstance(scope, Archetype) {
         return None;
     }
-    for kid in scope.kid {
+    for kid in [scope->:Kid:->] {
         if (
             isinstance(kid, KWPair)
             and kid.key is not None

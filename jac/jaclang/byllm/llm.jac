@@ -1,3 +1,4 @@
+import base64;
 import logging;
 import from jaclang.byllm._optdeps.loguru { logger }
 import os;
@@ -24,6 +25,8 @@ import from jaclang.byllm.exceptions {
 }
 import from jaclang.byllm.types {
     CompletionResult,
+    Image,
+    image_resp_kind,
     response_dict,
     LiteLLMMessage,
     MockToolCall,
@@ -149,6 +152,7 @@ obj BaseLLM {
     def make_model_params(mt_run: MTRuntime) -> dict[str, any];
     def log_info(message: str) -> None;
     def format_prompt(params: dict[str, any]) -> str;
+    def dispatch_image(mt_run: MTRuntime) -> object;
     def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
     def dispatch_streaming_with_tools(
@@ -157,6 +161,7 @@ obj BaseLLM {
 
     async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     async def adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str];
+    def model_call_image(params: dict[str, any]) -> dict[str, any];
     def model_call_no_stream(params: dict[str, any]) -> dict[str, any];
     def model_call_with_stream(params: dict[str, any]) -> Iterable[object];
     async def model_call_no_stream_async(params: dict[str, any]) -> dict[str, any];
@@ -176,6 +181,7 @@ obj BaseLLM {
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
     def _invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object;
+    def _resolve_api_base -> str;
     def _get_ctx_window(call_params: dict[str, any]) -> int;
     def _resolve_compaction_params(mt_run: MTRuntime) -> dict[str, any];
     def _maybe_compact(
@@ -200,6 +206,7 @@ obj MockLLM(BaseLLM) {
         _queue: list[any] | None = None;
 
     def postinit -> None;
+    override def model_call_image(params: dict[str, any]) -> dict[str, any];
     override def model_call_no_stream(params: dict[str, any]) -> object;
     override def model_call_with_stream(
         params: dict[str, any]
@@ -249,6 +256,7 @@ obj Model(BaseLLM) {
     override def invoke(mt_run: MTRuntime) -> any;
     override async def ainvoke(mt_run: MTRuntime) -> object;
     def _raise_mapped_provider_error(e: Exception) -> None;
+    override def model_call_image(params: dict[str, any]) -> dict[str, any];
     def model_call_no_stream(params: dict[str, any]) -> dict[str, any];
     async def model_call_no_stream_async(params: dict[str, any]) -> dict[str, any];
     def model_call_with_stream(params: dict[str, any]) -> Iterable[object];

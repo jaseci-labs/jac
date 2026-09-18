@@ -2650,16 +2650,14 @@ impl NativeListEmitter.emit_append(
     ) {
         return ir.Constant(ir.IntType(64), 0);
     }
-    val = p._coerce_type(_boxed_val, helpers["elem_type"]);
-
-    _append_loc = getattr(args[0], 'jac_loc', "");
-    p._rc_call_with_ctx(helpers["append"], [target, val], op="append", loc=_append_loc);
-
-    if isinstance(_boxed_val.type, ir.PointerType)
-        and p._is_owned(_boxed_val)
-        and not p._nogc_headerless() {
-        p._emit_rc_release_simple(_boxed_val, op="append", loc=_append_loc);
-    }
+    val = p._coerce_container_element(_boxed_val, helpers["elem_type"]);
+    p._rc_call_with_ctx(
+        helpers["append"],
+        [target, p._coerce_type(val, helpers["elem_type"])],
+        op="append",
+        loc=getattr(args[0], 'jac_loc', "")
+    );
+    p._release_after_store(val, op="append");
     return ir.Constant(ir.IntType(64), 0);
 }
 
@@ -3536,7 +3534,10 @@ impl NativeDictEmitter.emit_get(
     b = get_builder(p);
     i64 = ir.IntType(64);
     key = p._coerce_type(args[0], helpers["key_type"]);
-    found_i1 = b.call(helpers["contains"], [target, key], name="dget.found");
+    value_slot = b.call(helpers["lookup"], [target, key], name="dget.slot");
+    found_i1 = b.icmp_unsigned(
+        "!=", value_slot, ir.Constant(value_slot.type, None), name="dget.found"
+    );
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="dget.yes");
     notfound_bb = func.append_basic_block(name="dget.no");
@@ -3549,7 +3550,7 @@ impl NativeDictEmitter.emit_get(
     result_type = p._jac_optional_type(val_type) if wrap_optional else val_type;
 
     b.position_at_start(found_bb);
-    val: ir.Value = b.call(helpers["get"], [target, key], name="dget.val");
+    val: ir.Value = b.load(value_slot, name="dget.val");
     if wrap_optional {
         _tagged = b.insert_value(
             ir.Constant(result_type, None),
@@ -5636,6 +5637,35 @@ impl NativeBuiltinEmitter.emit_list(
         b.call(helpers["append"], [result, element]);
         b.branch(condition);
         b.position_at_end(done);
+        return result;
+    }
+
+    if p._is_bytes_value(val) {
+        p._emit_list_helpers("i64", i64);
+        helpers = p.list_helpers.get("i64");
+        if helpers is None {
+            return None;
+        }
+        count = p._bytes_len_val(val);
+        data = p._bytes_data_ptr(val);
+        result = b.call(helpers["new"], [], name="b2l.new");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="b2l.loop");
+        body_bb = func.append_basic_block(name="b2l.body");
+        done_bb = func.append_basic_block(name="b2l.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        index = b.phi(i64, name="b2l.idx");
+        index.add_incoming(ir.Constant(i64, 0), entry_bb);
+        b.cbranch(b.icmp_signed(">=", index, count, name="b2l.end"), done_bb, body_bb);
+        b.position_at_start(body_bb);
+        byte = b.load(b.gep(data, [index], name="b2l.slot"), name="b2l.byte");
+        b.call(helpers["append"], [result, b.zext(byte, i64, name="b2l.value")]);
+        next_index = b.add(index, ir.Constant(i64, 1), name="b2l.next");
+        index.add_incoming(next_index, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
         return result;
     }
 

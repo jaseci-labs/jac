@@ -11,14 +11,21 @@ import from jaclang.scale._optdeps.apscheduler {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.server.task_scheduler { Scheduler, ScheduleTrigger }
+import threading;
+import from jaclang.data.store { TxnIsolation }
 import from jaclang.server.shared_store { shared_store }
 
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',
+     _memory_jobs_lock: threading.Lock = threading.Lock(),
      logger = logging.getLogger(__name__);
 
 obj JobStore {
     def insert(job: dict[str, any]) -> str;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -33,13 +40,23 @@ obj JobStore {
 
     def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj PgJobStore(JobStore) {
     has store: any,
-        _collection: str;
+        _collection: str,
+        _quota_store: any postinit,
+        _quota_lock: threading.Lock postinit;
 
+    def postinit -> None;
     def insert(job: dict[str, any]) -> str;
+    def _write(on: any, job: dict[str, any]) -> str;
+    def _quota_connection -> any;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -54,6 +71,7 @@ obj PgJobStore(JobStore) {
 
     def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj MemoryJobStore(JobStore) {
@@ -61,6 +79,10 @@ obj MemoryJobStore(JobStore) {
 
     def postinit -> None;
     def insert(job: dict[str, any]) -> str;
+    def insert_within_quota(
+        job: dict[str, any], created_by: str, max_active: int
+    ) -> bool;
+
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -75,6 +97,7 @@ obj MemoryJobStore(JobStore) {
 
     def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
     def record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def close -> None;
 }
 
 obj TriggerSpec {
@@ -109,7 +132,10 @@ obj JacScaleScheduler {
     def start -> None;
     def stop(drain: bool = False) -> None;
     def register_dynamic_tasks_from_db -> None;
-    def create_job(name: str, spec: TriggerSpec, created_by: str) -> dict[str, any];
+    def create_job(
+        name: str, spec: TriggerSpec, created_by: str, max_active: int = 0
+    ) -> dict[str, any] | None;
+
     def list_jobs(
         limit: int | None = None,
         offset: int = 0,

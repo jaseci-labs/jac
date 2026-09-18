@@ -5,7 +5,7 @@
 # here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.37.18"
+version = "0.37.19"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "jac/README.md"
@@ -91,8 +91,9 @@ exclude = [
     "scripts/*",
     # Excluded for the no-print rule, not deslop (exclusion is file-level across
     # all lint rules): console.impl.jac IS the console implementation, and
-    # cli_boot.jac is the minimal boot path that must run (e.g. `jac purge`)
-    # before the full CLI/console can load -- bare print() is their mechanism.
+    # cli_boot.jac is the minimal boot path that must run (an app binary's
+    # embedded image) before the full CLI/console can load -- bare print() is
+    # their mechanism.
     # Both were deslopped once by hand and should stay comment/docstring-free.
     "console.impl.jac",
     "cli_boot.jac",

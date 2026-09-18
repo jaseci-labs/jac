@@ -342,6 +342,8 @@ collection = "scheduled_jobs"
 thread_pool_size = 10
 misfire_grace_time = 60
 shutdown_timeout = 10
+min_interval = 1.0
+max_jobs_per_user = 25
 ```
 
 | Key | Default | Meaning |
@@ -353,6 +355,8 @@ shutdown_timeout = 10
 | `shutdown_timeout` | `10` | Seconds to wait for in-flight jobs when the server stops |
 | `system_user_password` | `"__no_login__"` | Password assigned to the internal `__system__` account that static tasks run as, created on first boot. The default is a sentinel; set a real value if you need to log in as that account |
 | `user_exists_ttl` | `30.0` | Seconds the scheduler caches the creator-still-exists check for dynamic jobs before re-querying the user store |
+| `min_interval` | `1.0` | Shortest interval a dynamic job may ask for, in seconds. `POST`/`PUT /jobs` answer `400` below it, and a stored row asking for less is clamped to it when scheduled. A value that is not a finite number above zero is reported at boot and the default is used, so the floor cannot be switched off by a typo |
+| `max_jobs_per_user` | `25` | Active jobs one non-admin account may hold. `POST /jobs` answers `429 QUOTA_EXCEEDED` at the cap; admins are exempt and `0` means unlimited. The count and the write happen together in the job store, serialised per account, so concurrent requests cannot race past the cap. A value that is not a whole number of zero or more is reported at boot and the default is used, so a fractional typo cannot round down into `0` and lift the cap |
 
 ## Behavior Notes
 

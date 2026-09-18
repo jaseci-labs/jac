@@ -222,20 +222,20 @@ impl NaIRGenPass._codegen_bound_args(
     nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
 ) -> list[ir.Value] {
     raw: list[uni.Expr | uni.KWPair] = list(nd.params or []);
-    positional: list[uni.Expr | tuple[str, ir.Value]] = [];
+    positional: list[uni.Expr | NativeSpreadArg] = [];
     kw_map: dict[str, uni.Expr] = {};
     kw_spreads: list[uni.Expr] = [];
-    kw_order: list[tuple[str, str | uni.Expr]] = [];
+    kw_order: list[str | uni.Expr] = [];
     _unpack_names: list[str] = [];
     for param in raw {
         if isinstance(param, uni.KWPair) {
             key = param.key.sym_name if param.key is not None else None;
             if key is not None {
                 kw_map[key] = param.value;
-                kw_order.append(("lit", key));
+                kw_order.append(key);
             } else {
                 kw_spreads.append(param.value);
-                kw_order.append(("spread", param.value));
+                kw_order.append(param.value);
             }
         } elif (
             isinstance(param, uni.UnaryExpr)
@@ -244,7 +244,7 @@ impl NaIRGenPass._codegen_bound_args(
         ) {
             if param.op.name == Tok.STAR_POW {
                 kw_spreads.append(param.operand);
-                kw_order.append(("spread", param.operand));
+                kw_order.append(param.operand);
                 continue;
             }
             _tv = self._codegen_expr(param.operand);
@@ -289,13 +289,13 @@ impl NaIRGenPass._codegen_bound_args(
                         self._emit_rc_retain(_ev, op="spread_elem", loc="");
                         self._mark_owned(_ev);
                     }
-                    positional.append(("spread.val", _ev));
+                    positional.append(NativeSpreadArg(value=_ev));
                 }
                 if _tup_ptr and _tv is not None and self._is_owned(_tv) {
                     self._emit_rc_release_simple(_tv, op="spread_tuple", loc="");
                 }
-            } elif _is_list_sp {
-                positional.append(("spread.list.val", _tv));
+            } elif _is_list_sp and _tv is not None {
+                positional.append(NativeSpreadArg(value=_tv, is_list=True));
             } else {
                 _unpack_names.append(param.op.value);
             }
@@ -329,11 +329,11 @@ impl NaIRGenPass._codegen_bound_args(
 
     if callee_sig is None {
         for p in positional {
-            if isinstance(p, tuple) and p and p[0] == "spread.val" {
-                args.append(p[1]);
+            if isinstance(p, NativeSpreadArg) and not p.is_list {
+                args.append(p.value);
                 continue;
             }
-            if isinstance(p, tuple) and p and p[0] == "spread.list.val" {
+            if isinstance(p, NativeSpreadArg) {
                 self.ctx.emit(
                     E5092,
                     node_override=nd,
@@ -430,7 +430,7 @@ impl NaIRGenPass._codegen_bound_args(
             expected_type = func.args[slot].type
                 if slot < len(func.args)
                 else ir.IntType(64);
-            chosen: (uni.Expr | None) = None;
+            chosen: (uni.Expr | NativeSpreadArg | None) = None;
             if pix < len(positional) {
                 chosen = positional[pix];
             } elif sp.name.sym_name in kw_map {
@@ -442,11 +442,10 @@ impl NaIRGenPass._codegen_bound_args(
                     chosen = None;
                 }
             }
-            if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
-                val = chosen[1];
-            } elif isinstance(chosen, tuple)
-                and chosen
-                and chosen[0] == "spread.list.val" {
+            val: (ir.Value | None) = None;
+            if isinstance(chosen, NativeSpreadArg) and not chosen.is_list {
+                val = chosen.value;
+            } elif isinstance(chosen, NativeSpreadArg) {
                 self.ctx.emit(
                     E5092,
                     node_override=nd,
@@ -469,15 +468,10 @@ impl NaIRGenPass._codegen_bound_args(
 
         for pix in range(len(sig_params), len(positional)) {
             _extra_p = positional[pix];
-            if isinstance(_extra_p, tuple)
-                and _extra_p
-                and _extra_p[0] == "spread.val" {
-                args.append(_extra_p[1]);
-                continue;
-            }
-            if isinstance(_extra_p, tuple)
-                and _extra_p
-                and _extra_p[0] == "spread.list.val" {
+            if isinstance(_extra_p, NativeSpreadArg) {
+                if not _extra_p.is_list {
+                    args.append(_extra_p.value);
+                }
                 continue;
             }
             v = self._codegen_expr(_extra_p);
@@ -514,11 +508,10 @@ impl NaIRGenPass._codegen_bound_args(
                     chosen = None;
                 }
             }
-            if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
-                val = chosen[1];
-            } elif isinstance(chosen, tuple)
-                and chosen
-                and chosen[0] == "spread.list.val" {
+            val = None;
+            if isinstance(chosen, NativeSpreadArg) and not chosen.is_list {
+                val = chosen.value;
+            } elif isinstance(chosen, NativeSpreadArg) {
                 self.ctx.emit(
                     E5092,
                     node_override=nd,
@@ -577,11 +570,10 @@ impl NaIRGenPass._codegen_bound_args(
                     chosen = None;
                 }
             }
-            if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
-                val = chosen[1];
-            } elif isinstance(chosen, tuple)
-                and chosen
-                and chosen[0] == "spread.list.val" {
+            val = None;
+            if isinstance(chosen, NativeSpreadArg) and not chosen.is_list {
+                val = chosen.value;
+            } elif isinstance(chosen, NativeSpreadArg) {
                 self.ctx.emit(
                     E5092,
                     node_override=nd,
@@ -727,7 +719,7 @@ impl NaIRGenPass._emit_pack_slot_refusal(nd: uni.FuncCall, star: str) -> None {
 
 impl NaIRGenPass._codegen_varargs_list(
     nd: uni.FuncCall,
-    extras: list[uni.Expr | tuple[str, ir.Value]],
+    extras: list[uni.Expr | NativeSpreadArg],
     expected: (ir.Type | None)
 ) -> (ir.Value | None) {
     spec: (str | None) = None;
@@ -757,8 +749,8 @@ impl NaIRGenPass._codegen_varargs_list(
         helpers["new"], [], op="new", loc=_loc, name="varargs.new"
     );
     for e in extras {
-        if isinstance(e, tuple) and e and e[0] == "spread.list.val" {
-            _src = e[1];
+        if isinstance(e, NativeSpreadArg) and e.is_list {
+            _src = e.value;
             _src_h = None;
             for (_sn, _slt) in self.list_types.items() {
                 if _slt.as_pointer() == _src.type {
@@ -807,26 +799,26 @@ impl NaIRGenPass._codegen_varargs_list(
             }
             continue;
         }
-        if isinstance(e, tuple) and e and e[0] == "spread.val" {
-            v = e[1];
+        if isinstance(e, NativeSpreadArg) {
+            v = e.value;
         } else {
-            v = self._codegen_expr(e);
-            if v is None {
+            lowered = self._codegen_expr(e);
+            if lowered is None {
                 self.ctx.emit(
                     E5092, node_override=e, kind="expression", name="variadic argument"
                 );
                 continue;
             }
+            v = lowered;
         }
-        if v is None {
-            continue;
-        }
-        _orig = v;
-        v2 = self._coerce_type(v, helpers["elem_type"]);
-        self._rc_call_with_ctx(helpers["append"], [lv, v2], op="list_init", loc=_loc);
-        if isinstance(_orig.type, ir.PointerType) and self._is_owned(_orig) {
-            self._emit_rc_release_simple(_orig, op="list_init", loc=_loc);
-        }
+        stored = self._coerce_container_element(v, helpers["elem_type"]);
+        self._rc_call_with_ctx(
+            helpers["append"],
+            [lv, self._coerce_type(stored, helpers["elem_type"])],
+            op="list_init",
+            loc=_loc
+        );
+        self._release_after_store(stored, op="list_init");
     }
     return self._mark_owned(lv);
 }
@@ -835,7 +827,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
     nd: uni.FuncCall,
     leftover: dict[str, uni.Expr],
     expected: (ir.Type | None),
-    order: (list[tuple[str, str | uni.Expr]] | None) = None,
+    order: (list[str | uni.Expr] | None) = None,
     bind_records: (list[dict[str, any]] | None) = None
 ) -> (ir.Value | None) {
     dict_key: (str | None) = None;
@@ -895,9 +887,8 @@ impl NaIRGenPass._codegen_kwargs_dict(
     }
     _seen_spread = False;
     for _entry in (order or []) {
-        (_kind, _payload) = _entry;
-        if _kind == "lit" {
-            kname: str = _payload;
+        if isinstance(_entry, str) {
+            kname = _entry;
             if kname not in leftover {
                 continue;
             }
@@ -922,18 +913,18 @@ impl NaIRGenPass._codegen_kwargs_dict(
                     f"got multiple values for keyword argument '{kname}'"
                 );
             }
-            _orig = v;
-            v2 = self._coerce_type(v, helpers["val_type"]);
+            stored = self._coerce_container_element(v, helpers["val_type"]);
             self._rc_call_with_ctx(
-                helpers["set_ph"], [dv, k, v2, _lkh], op="dict_init", loc=_loc
+                helpers["set_ph"],
+                [dv, k, self._coerce_type(stored, helpers["val_type"]), _lkh],
+                op="dict_init",
+                loc=_loc
             );
-            if isinstance(_orig.type, ir.PointerType) and self._is_owned(_orig) {
-                self._emit_rc_release_simple(_orig, op="dict_init", loc=_loc);
-            }
+            self._release_after_store(stored, op="dict_init");
             continue;
         }
         _seen_spread = True;
-        sp_expr = _payload;
+        sp_expr = _entry;
         sv = self._codegen_expr(sp_expr);
         if sv is None {
             self.ctx.emit(
@@ -1109,7 +1100,14 @@ impl NaIRGenPass._coerce_narrowed_arg(
 
 impl NaIRGenPass._codegen_receiver(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     _rv = self._codegen_expr(nd);
-    return self._opt_unwrap_attr(_rv) if _rv is not None else None;
+    if _rv is None {
+        return None;
+    }
+    receiver = self._opt_unwrap_attr(_rv);
+    if receiver is not _rv and self._is_owned(_rv) {
+        self._mark_owned(receiver);
+    }
+    return receiver;
 }
 
 impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None {
@@ -1885,12 +1883,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     func_name, arg_vals, arg_nodes=arg_nodes
                 );
 
-                for _barg in arg_vals {
-                    if isinstance(_barg.type, ir.PointerType)
-                        and self._is_owned(_barg) {
-                        self._emit_rc_release_simple(_barg, op="builtin_arg", loc="");
-                    }
-                }
+                self._release_owned_args(arg_vals, op="builtin_arg");
                 if result is not None {
                     return result;
                 }
@@ -2847,7 +2840,8 @@ impl NaIRGenPass._emit_isinstance_core(
     unresolved: list[str] = [];
     static_seen = False;
     static_hit = False;
-    source_type = params[0].type;
+    subject = params[0];
+    source_type = subject.type if isinstance(subject, uni.Expr) else None;
     source_members = source_type.types
         if isinstance(source_type, UnionType)
         else [source_type];

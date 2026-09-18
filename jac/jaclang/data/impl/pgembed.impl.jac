@@ -14,11 +14,8 @@ impl pinned_major -> int {
 
 
 impl dist_cache_dir -> str {
-    return os.path.join(
-        os.path.expanduser(os.environ.get('JAC_CACHE_HOME', '~/.cache/jac')),
-        'pg',
-        'dist'
-    );
+    import from jaclang.cache.registry { bucket }
+    return str(bucket("pg").path() / 'dist');
 }
 
 

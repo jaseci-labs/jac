@@ -1,5 +1,8 @@
 import type from jaclang.compiler.frontend.codeinfo { InteropBinding }
-import type from jaclang.compiler.backends.native.llvm.binding { ModuleRef }
+import type from jaclang.compiler.backends.native.llvm.binding {
+    ModuleRef,
+    TargetMachine
+}
 import type from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
 
 
@@ -309,6 +312,58 @@ def aarch64_floor_atomics_ir(triple: str, clib_paths: list[str]) -> str {
     return aarch64_outline_atomics_ir();
 }
 
+def optimize_native_module(
+    module: ModuleRef,
+    target_machine: TargetMachine,
+    opt_level: int,
+    internalize: bool = False
+) {
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    if opt_level <= 0 {
+        return;
+    }
+    tuning = llvm.create_pipeline_tuning_options(speed_level=opt_level);
+    builder = llvm.create_pass_builder(target_machine, tuning);
+    pipeline = builder.getModulePassManager();
+    if internalize {
+        pipeline.add_internalize_pass();
+    }
+    pipeline.run(module, builder);
+}
+
+obj SharedObject {
+    has code: bytes,
+        exports: list[str];
+}
+
+def emit_shared_object(
+    llvm_ir_str: str,
+    manifest: any,
+    export_symbols: list[str],
+    triple: str,
+    opt_level: int = 2,
+    clib_paths: (list[str] | None) = None
+) -> SharedObject {
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    (ir_str, extra_exports) = inject_shared_init(llvm_ir_str, manifest);
+    exports: list[str] = [];
+    for symbol in list(export_symbols) + extra_exports + ["__jac_shared_init"] {
+        if symbol and symbol not in exports {
+            exports.append(symbol);
+        }
+    }
+    init_object_codegen();
+    ir_str += aarch64_floor_atomics_ir(triple, list(clib_paths or []));
+    module = llvm.parse_assembly(ir_str);
+    internalize_native_implementation(module, exports);
+    module.verify();
+    target_machine = llvm.Target.from_triple(triple).create_target_machine(
+        opt=2, reloc="pic", codemodel="small"
+    );
+    optimize_native_module(module, target_machine, opt_level);
+    return SharedObject(code=target_machine.emit_object(module), exports=exports);
+}
+
 def emit_shared_library(
     llvm_ir_str: str,
     manifest: any,
@@ -321,62 +376,19 @@ def emit_shared_library(
 ) -> tuple[bool, str] {
     import os;
     import sys;
-
-    (ir_str, extra_exports) = inject_shared_init(llvm_ir_str, manifest);
-    is_elf = not sys.platform.startswith("win") and sys.platform != "darwin";
-    if is_elf and clib_paths and "@atexit(" not in ir_str {
-        ir_str += (
-            "\n; --- atexit shim: glibc exports __cxa_atexit dynamically but "
-            "keeps atexit\n; in libc_nonshared.a, so a floor-archive member "
-            "that calls it would leave\n; the artifact with an unresolvable "
-            "reference at dlopen ---\n"
-            "declare i32 @__cxa_atexit(ptr, ptr, ptr)\n"
-            "define hidden i32 @atexit(ptr %f) {\nentry:\n"
-            "  %r = call i32 @__cxa_atexit(ptr %f, ptr null, ptr null)\n"
-            "  ret i32 %r\n}\n"
-        );
-    }
-    exports: list[str] = [];
-    for _s in list(export_symbols) + extra_exports + ["__jac_shared_init"] {
-        if _s and _s not in exports {
-            exports.append(_s);
-        }
-    }
-    init_funcs: list[str] = ["__jac_shared_init"] if auto_init else [];
-
     import jaclang.compiler.backends.native.llvm.binding as llvm;
-    init_object_codegen();
 
     triple = llvm.get_default_triple();
-    assert isinstance(triple, str);
-    ir_str += aarch64_floor_atomics_ir(triple, list(clib_paths or []));
-
     try {
-        mod = llvm.parse_assembly(ir_str);
-        internalize_native_implementation(mod, exports);
-        mod.verify();
+        shared = emit_shared_object(
+            llvm_ir_str, manifest, export_symbols, triple, opt_level, clib_paths
+        );
     } except Exception as e {
         return (False, f"LLVM IR verification failed: {e}");
     }
-
-    target = llvm.Target.from_default_triple();
-    assert isinstance(target, llvm.Target);
-    target_machine = target.create_target_machine(
-        opt=2, reloc="pic", codemodel="small"
-    );
-    assert isinstance(target_machine, llvm.TargetMachine);
-
-    if opt_level > 0 {
-        pto = llvm.create_pipeline_tuning_options(speed_level=opt_level);
-        pb = llvm.create_pass_builder(target_machine, pto);
-        assert isinstance(pb, llvm.PassBuilder);
-        opt_mpm = pb.getModulePassManager();
-        assert isinstance(opt_mpm, llvm.ModulePassManager);
-        opt_mpm.run(mod, pb);
-    }
-
-    obj_bytes = target_machine.emit_object(mod);
-    assert isinstance(obj_bytes, bytes);
+    obj_bytes = shared.code;
+    exports = shared.exports;
+    init_funcs: list[str] = ["__jac_shared_init"] if auto_init else [];
 
     is_windows = sys.platform.startswith("win");
     is_macos = sys.platform == "darwin";

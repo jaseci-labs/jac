@@ -323,7 +323,7 @@ impl CFGBuildPass._exit_wired(nd: UniCFGNode) -> bool {
 }
 
 impl CFGBuildPass._connect_tails(parent: UniNode, target: UniCFGNode) -> None {
-    for k in parent.kid {
+    for k in [parent->:Kid:->] {
         if not k or isinstance(k, Expr) or isinstance(k, Semi) {
             continue;
         }

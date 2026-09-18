@@ -82,8 +82,7 @@ obj string_mode {
 }
 
 obj tok_state {
-    has source: str,
-        data: bytes = b"",
+    has data: bytes,
         pos: int = 0,
         lineno: int = 1,
         col_offset: int = 0,
@@ -109,8 +108,17 @@ obj tok_state {
         comments: dict[int, list[tuple[int, int]]] = {},
         string_modes: list[string_mode] = [];
 
-    def postinit {
-        self.data = self.source.encode("utf-8");
+    # Streaming input releases the lines behind the scan between tokens. Only
+    # the scan position and the current line start index into the buffer, and
+    # an open string keeps its prefix for the fields it still has to resume.
+    def discard_consumed {
+        consumed = self.line_start;
+        if consumed == 0 or self.string_modes {
+            return;
+        }
+        self.data = self.data[consumed:];
+        self.pos -= consumed;
+        self.line_start = 0;
     }
 }
 
@@ -1125,7 +1133,9 @@ def tokenizer_from_string(source: str, filename: str, exec_input: bool) -> tok_s
     if exec_input and buf and not buf.endswith("\n") {
         buf += "\n";
     }
-    return tok_state(source=buf, filename=filename, exec_input=exec_input);
+    return tok_state(
+        data=buf.encode("utf-8"), filename=filename, exec_input=exec_input
+    );
 }
 
 def _endmarker_lineno(st: tok_state) -> int {

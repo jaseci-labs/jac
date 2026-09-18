@@ -739,6 +739,25 @@ test "annotation-only use of a bare python import stays silent" {
     );
 }
 
+test "cast-only use of a bare python import stays silent" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(FIXTURE_DIR, "infer_import_bare_py_cast.jac"),
+        options=CompileOptions(no_cgen=True)
+    );
+    bare_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5084'
+    ];
+    assert not bare_errs , (
+        f"an `as` cast is erased in ES output just like an annotation and "
+        f"must not fire E5084, got {[str(e) for e in bare_errs]}"
+    );
+}
+
+
 test "server-side use of a bare python import stays silent" {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     prog = JacProgram();

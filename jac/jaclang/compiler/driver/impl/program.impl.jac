@@ -119,13 +119,13 @@ impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
         prog_root.set_kids(
             [
                 k
-                for k in prog_root.kid
+                for k in [prog_root->:Kid:->]
                 if k is not released
             ],
             pos_update=False
         );
         del [edge released<-:ScopeChild:<-];
-        if prog_root.kid {
+        if [prog_root->:Kid:->] {
             (first_tok, last_tok) = prog_root.resolve_tok_range();
             prog_root.loc.update_token_range(first_tok, last_tok);
         } else {
@@ -291,7 +291,7 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
                 nd.narrowed_type = None;
                 nd.coerce_to = None;
             }
-            for kid in nd.kid {
+            for kid in [nd->:Kid:->] {
                 stack.append(kid);
             }
         }
@@ -324,6 +324,7 @@ impl JacProgram.release_native_dep_units(self: JacProgram) -> None {
         }
         gen.native_engine = None;
         gen.llvm_ir = None;
+        gen.native_linked_ir = None;
         gen.native_bitcode = None;
     }
     self.scratch.na_dep_units.clear();

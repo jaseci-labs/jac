@@ -141,7 +141,11 @@ import from jaclang.runtime.python.objects {
     PySet
 }
 import from jaclang.runtime.python.compiler_integer { PyBigInt }
-import from jaclang.compiler.frontend.python.ast_walk { ast_children }
+import from jaclang.compiler.frontend.python.ast_walk {
+    ast_child_visitor,
+    visit_ast_children
+}
+
 def ast_kind(value: ast_node) -> str {
     if isinstance(value, Module) {
         return "Module";
@@ -994,34 +998,41 @@ def validate_ast_value(
     if isinstance(value_node, MatchOr) and len(value_node.patterns) < 2 {
         raise ValueError("MatchOr requires at least 2 patterns");
     }
-    for edge in ast_children(value_node) {
-        key = edge.field;
-        child = edge.value;
-        if key == "ctx"
+    visit_ast_children(
+        value_node, ast_value_children(owner=value_node, context=context)
+    );
+}
+
+# Expression context each child of `owner` must carry (CPython ast.c validate).
+obj ast_value_children(ast_child_visitor) {
+    has owner: ast_node,
+        context: str;
+
+    def child(field: str, value: ast_node) {
+        owner = self.owner;
+        if field == "ctx"
             or (
-                key == "generators"
-                and isinstance(value_node, (ListComp, SetComp, GeneratorExp, DictComp))
+                field == "generators"
+                and isinstance(owner, (ListComp, SetComp, GeneratorExp, DictComp))
             )
-            or (key == "keys" and isinstance(value_node, MatchMapping)) {
-            continue;
+            or (field == "keys" and isinstance(owner, MatchMapping)) {
+            return;
         }
         child_context = "Load";
-        if key == "targets" and isinstance(value_node, Delete) {
+        if field == "targets" and isinstance(owner, Delete) {
             child_context = "Del";
         } elif (
-            key == "target"
-            and isinstance(
-                value_node, (AugAssign, AnnAssign, For, AsyncFor, comprehension)
-            )
+            field == "target"
+            and isinstance(owner, (AugAssign, AnnAssign, For, AsyncFor, comprehension))
         )
-            or (key == "targets" and isinstance(value_node, Assign))
-            or (key == "name" and isinstance(value_node, TypeAlias))
-            or (key == "optional_vars" and isinstance(value_node, withitem)) {
+            or (field == "targets" and isinstance(owner, Assign))
+            or (field == "name" and isinstance(owner, TypeAlias))
+            or (field == "optional_vars" and isinstance(owner, withitem)) {
             child_context = "Store";
-        } elif (key == "elts" and isinstance(value_node, (List, Tuple)))
-            or (key == "value" and isinstance(value_node, Starred)) {
-            child_context = context;
+        } elif (field == "elts" and isinstance(owner, (List, Tuple)))
+            or (field == "value" and isinstance(owner, Starred)) {
+            child_context = self.context;
         }
-        validate_ast_value(child, child_context, isinstance(value_node, MatchSequence));
+        validate_ast_value(value, child_context, isinstance(owner, MatchSequence));
     }
 }

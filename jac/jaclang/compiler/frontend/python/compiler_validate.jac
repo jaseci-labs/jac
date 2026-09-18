@@ -1,6 +1,10 @@
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 
-import from jaclang.compiler.frontend.python.ast_walk { ast_children }
+import from jaclang.compiler.frontend.python.ast_walk {
+    ast_child_visitor,
+    ast_child_buffer,
+    visit_ast_children
+}
 
 # AST validation for the P4 back track (INTEGRATION_PLAN Phase 2).
 #
@@ -158,8 +162,14 @@ def validate_feature_version(value: any, version: int) {
             offset=column + 1
         );
     }
-    for child in ast_children(value) {
-        validate_feature_version(child.value, version);
+    visit_ast_children(value, feature_version_walk(version=version));
+}
+
+obj feature_version_walk(ast_child_visitor) {
+    has version: int;
+
+    def child(field: str, value: ast_node) {
+        validate_feature_version(value, self.version);
     }
 }
 
@@ -173,7 +183,8 @@ import from jaclang.compiler.frontend.python.compiler_diagnostics {
 # Diagnose the source AST once, before lowering duplicates finally bodies or
 # folds constant branches. Traversal follows only AST fields, never Jac anchors.
 def check_ast_warnings(tree: ast_node, filename: str) {
-    pending = [(tree, False, False)];
+    pending: list[tuple[ast_node, bool, bool]] = [(tree, False, False)];
+    children = ast_child_buffer();
     while pending {
         (item_node, return_in_finally, loop_exit_in_finally) = pending.pop();
         exit_name = None;
@@ -227,9 +238,8 @@ def check_ast_warnings(tree: ast_node, filename: str) {
                 item_node.col_offset
             );
         }
-        children = [];
-        for child in ast_children(item_node) {
-            key = child.field;
+        for index in range(children.collect(item_node) - 1, -1, -1) {
+            key = children.fields[index];
             child_return = return_in_finally;
             child_loop_exit = loop_exit_in_finally;
             if isinstance(item_node, (FunctionDef, AsyncFunctionDef, ClassDef)) {
@@ -241,9 +251,8 @@ def check_ast_warnings(tree: ast_node, filename: str) {
             } elif isinstance(item_node, (For, AsyncFor, While)) and key == "body" {
                 child_loop_exit = False;
             }
-            children.append((child.value, child_return, child_loop_exit));
+            pending.append((children.nodes[index], child_return, child_loop_exit));
         }
-        pending.extend(reversed(children));
     }
 }
 
@@ -848,6 +857,7 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
     pending: list[tuple[ast_node, bool, bool]] = [
         (item, False, False) for item in reversed(body)
     ];
+    children = ast_child_buffer();
     while pending {
         (item, return_forbidden, loop_exit_forbidden) = pending.pop();
         if (isinstance(item, Return) and return_forbidden)
@@ -859,9 +869,8 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
                 item.col_offset
             );
         }
-        children: list[tuple[ast_node, bool, bool]] = [];
-        for child in ast_children(item) {
-            key = child.field;
+        for index in range(children.collect(item) - 1, -1, -1) {
+            key = children.fields[index];
             no_return = return_forbidden;
             no_loop_exit = loop_exit_forbidden;
             if isinstance(item, (FunctionDef, AsyncFunctionDef, ClassDef)) {
@@ -873,9 +882,8 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
             } elif isinstance(item, (For, AsyncFor, While)) and key == "body" {
                 no_loop_exit = False;
             }
-            children.append((child.value, no_return, no_loop_exit));
+            pending.append((children.nodes[index], no_return, no_loop_exit));
         }
-        pending.extend(reversed(children));
     }
     return validation_ok();
 }
@@ -888,6 +896,7 @@ def validate_suspensions(
     pending: list[tuple[ast_node, bool, bool, bool, bool]] = [
         (item, False, allow_top_await, False, False) for item in reversed(roots)
     ];
+    children = ast_child_buffer();
     while pending {
         (item, in_function, in_async, in_comp, in_annotation) = pending.pop();
         message: str | None = None;
@@ -956,9 +965,8 @@ def validate_suspensions(
             }
             continue;
         }
-        children: list[tuple[ast_node, bool, bool, bool, bool]] = [];
-        for child in ast_children(item) {
-            field = child.field;
+        for index in range(children.collect(item) - 1, -1, -1) {
+            field = children.fields[index];
             fn = in_function;
             asynchronous = in_async;
             comp = in_comp;
@@ -974,9 +982,8 @@ def validate_suspensions(
                 comp = False;
                 annotation = False;
             }
-            children.append((child.value, fn, asynchronous, comp, annotation));
+            pending.append((children.nodes[index], fn, asynchronous, comp, annotation));
         }
-        pending.extend(reversed(children));
     }
     return validation_ok();
 }
@@ -1060,6 +1067,7 @@ def future_features(
         return (flags, validation_ok());
     }
     pending: list[ast_node] = [item for item in reversed(body)];
+    children = ast_child_buffer();
     while pending {
         item = pending.pop();
         if isinstance(item, ImportFrom)
@@ -1076,7 +1084,9 @@ def future_features(
                 )
             );
         }
-        pending.extend(child.value for child in reversed(ast_children(item)));
+        for index in range(children.collect(item) - 1, -1, -1) {
+            pending.append(children.nodes[index]);
+        }
     }
     return (flags, validation_ok());
 }
