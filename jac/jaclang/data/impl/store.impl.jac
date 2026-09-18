@@ -409,7 +409,7 @@ impl PgStore._side -> any {
     }
     fresh: any = self._connect();
     self._side_conn = fresh;
-    if cached is not None and self._side_listened {
+    if self._side_listened {
         for lst in list(self._listeners) {
             fresh.run(f"LISTEN {_quote_channel(lst.ident)}");
         }
