@@ -1,5 +1,6 @@
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig, PersonConfig }
+import from jaclang.project.versioning { caret_upper, fmt3, parse_release }
 
 impl normalize_package_name(name: str) -> str {
     result: list[str] = [];
@@ -40,23 +41,12 @@ impl normalize_constraint(raw: str) -> str {
     }
 
     if raw.startswith("^") {
-        ver_str = raw[1:];
-        parts = ver_str.split(".");
         try {
-            major = int(parts[0]);
-            minor = int(parts[1]) if len(parts) > 1 else 0;
-            patch = int(parts[2]) if len(parts) > 2 else 0;
+            base = parse_release(raw[1:]);
         } except ValueError {
             return raw;
         }
-        padded = ".".join(parts + ["0"] * (3 - len(parts)));
-        if major > 0 {
-            return f">={padded},<{major + 1}.0.0";
-        } elif minor > 0 {
-            return f">={padded},<{major}.{minor + 1}.0";
-        } else {
-            return f">={padded},<{major}.{minor}.{patch + 1}";
-        }
+        return f">={fmt3(base)},<{fmt3(caret_upper(base))}";
     }
 
     if raw.startswith("~") and not raw.startswith("~=") {

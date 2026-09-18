@@ -36,17 +36,11 @@ import from jaclang.project.capabilities {
     scale_intent_from_config
 }
 
+import from tests.deps_fixtures { make_project }
+
 def reset_config {
     import from jaclang.project { config as config_mod }
     config_mod._config = None;
-}
-
-def make_project(toml: str) -> tuple[str, Path] {
-    tmp = tempfile.mkdtemp(prefix="jac_cap_test_");
-    project_dir = Path(tmp) / "proj";
-    project_dir.mkdir();
-    (project_dir / "jac.toml").write_text(toml);
-    return (tmp, project_dir);
 }
 
 glob SERVE_PKGS = ["python-dotenv"],
@@ -262,11 +256,10 @@ test "plain run pulls zero scale deps" {
 # ===== Config integration =====
 test "resolve_config_closures reads [scale] intent from jac.toml" {
     reset_config();
-    (tmp, project_dir) = make_project(
+    (config, tmp) = make_project(
         '[project]\nname = "svc"\nversion = "0.1.0"\n\n[scale.monitoring]\nenabled = true\n'
     );
     try {
-        config = JacConfig.load(project_dir / "jac.toml");
         intent = scale_intent_from_config(config);
         assert intent["monitoring"]["enabled"] is True;
 
@@ -282,9 +275,8 @@ test "resolve_config_closures reads [scale] intent from jac.toml" {
 
 test "scale serve with no scale sections carries no database driver (#8000)" {
     reset_config();
-    (tmp, project_dir) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
+    (config, tmp) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
     try {
-        config = JacConfig.load(project_dir / "jac.toml");
         closures = resolve_config_closures(config, action="serve", scale=True);
         for pkg in DB_DRIVER_PKGS {
             assert pkg not in closures[RUNTIME].deps;
@@ -298,9 +290,8 @@ test "scale serve with no scale sections carries no database driver (#8000)" {
 
 test "scale_intent_from_config empty when no scale section" {
     reset_config();
-    (tmp, project_dir) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
+    (config, tmp) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
     try {
-        config = JacConfig.load(project_dir / "jac.toml");
         assert scale_intent_from_config(config) == {};
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -343,9 +334,8 @@ test "package_missing_error routes through the providing capability" {
 # ===== Installer integration (.jac/venv sync) =====
 test "python provider installs a capability closure into .jac/venv" {
     reset_config();
-    (tmp, project_dir) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
+    (config, tmp) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
     try {
-        config = JacConfig.load(project_dir / "jac.toml");
         python = PythonProvider();
         closure = resolve_closure({"serve", "deploy.k8s"}, RUNTIME);
         specs = [
@@ -376,9 +366,8 @@ test "python provider installs a capability closure into .jac/venv" {
 
 test "installing an empty spec list is a no-op success" {
     reset_config();
-    (tmp, project_dir) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
+    (config, tmp) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
     try {
-        config = JacConfig.load(project_dir / "jac.toml");
         python = PythonProvider();
         with patch.object(PythonProvider, "_run_project_pip") as mock_pip {
             result = python.install_specs(config, [], InstallContext());

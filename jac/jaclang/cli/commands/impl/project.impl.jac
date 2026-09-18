@@ -736,6 +736,7 @@ impl install(
     dev: bool = False,
     extras: list[str] = [],
     no_save: bool = False,
+    frozen: bool = False,
     git: str = "",
     npm: bool | None = None,
     shadcn: bool = False,
@@ -785,6 +786,121 @@ impl install(
         import from jaclang.client.cli { run_npm_add }
         return run_npm_add(packages, dev, install_global);
     }
+    jac_specs = [
+        str(s)
+        for s in (packages or [])
+        if str(s).startswith("jac:")
+    ];
+    if jac_specs {
+        if git {
+            console.error(
+                "Cannot mix --git with jac: specs; --git installs a Python "
+                "package from git, jac: specs install pure-jac packages."
+            );
+            return 1;
+        }
+        plain = [
+            str(s)
+            for s in (packages or [])
+            if not str(s).startswith("jac:")
+        ];
+        if plain {
+            console.error(
+                f"Cannot mix jac: specs with Python package names "
+                f"({', '.join(plain)}). Run them separately.",
+                hint="jac: specs install pure-jac packages; plain names go through pip."
+            );
+            return 1;
+        }
+        if editable {
+            console.error("Cannot mix jac: specs with -e/--editable.");
+            return 1;
+        }
+        if install_global {
+            console.error(
+                "--global does not apply to jac: specs; pure-jac packages "
+                "always live in the shared content store."
+            );
+            return 1;
+        }
+        import from jaclang.project.config { get_config }
+        import from jaclang.project.providers { InstallContext }
+        import from jaclang.project.jac_store { JacDepError }
+        import from jaclang.project.jac_provider {
+            get_jac_dep_provider,
+            parse_jac_spec
+        }
+        config = get_config();
+        if config is None {
+            console.error(
+                "No jac.toml found",
+                hint="Run 'jac create' first; jac: deps are recorded in [dependencies.jac]."
+            );
+            return 1;
+        }
+        spec_entries: dict[str, dict[str, any]] = {};
+        for spec in jac_specs {
+            try {
+                (name, ent) = parse_jac_spec(spec);
+            } except JacDepError as e {
+                console.error(str(e));
+                return 1;
+            }
+            if name in spec_entries {
+                console.error(f"Duplicate jac: spec for '{name}'.");
+                return 1;
+            }
+            spec_entries[name] = ent;
+        }
+        provider = get_jac_dep_provider();
+        ctx = InstallContext(
+            verbose=verbose,
+            install_flags=["--dry-run"] if dry_run else [],
+            frozen=frozen
+        );
+        if dry_run {
+            try {
+                resolved = provider.resolve_closure(
+                    config, ctx, extra_specs=spec_entries
+                );
+            } except JacDepError as e {
+                console.error(str(e));
+                return 1;
+            }
+            console.print(
+                f"\nWould install {len(resolved)} pure-jac package(s):", style="bold"
+            );
+            for pkg in resolved.values() {
+                via = f"{pkg.key}@{pkg.sha[:12]}" if pkg.sha else pkg.key;
+                console.print(f"  {pkg.name} ({via})");
+            }
+            return 0;
+        }
+        if no_save {
+            console.print(
+                f"\nInstalling {len(jac_specs)} pure-jac package(s) "
+                "(not saved to jac.toml)",
+                style="bold"
+            );
+            if not provider.install_no_save(config, jac_specs, ctx) {
+                return 1;
+            }
+            return 0;
+        }
+        console.print(f"\nAdding {len(jac_specs)} pure-jac package(s)", style="bold");
+        failures = 0;
+        for spec in jac_specs {
+            if provider.add_spec(config, spec, dev, ctx) is None {
+                failures += 1;
+            }
+        }
+        if failures {
+            console.error(f"Failed to install {failures} package(s)");
+            return 1;
+        }
+        console.print("\n  ✔ Updated jac.toml [dependencies.jac]", style="muted");
+        return 0;
+    }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv {
@@ -815,7 +931,7 @@ impl install(
         if enabled
     ];
     python = get_python_provider();
-    ctx = InstallContext(verbose=verbose, install_flags=install_flags);
+    ctx = InstallContext(verbose=verbose, install_flags=install_flags, frozen=frozen);
     global_ctx = InstallContext(
         verbose=verbose, install_flags=install_flags, target="global"
     );
@@ -933,8 +1049,8 @@ impl install(
         }
         try {
             config.save();
-            section = "dev-dependencies" if dev else "dependencies";
-            console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
+            section_name = "dev-dependencies" if dev else "dependencies";
+            console.print(f"\n  ✔ Updated jac.toml [{section_name}]", style="muted");
         } except Exception as e {
             console.error(f"Could not save jac.toml: {e}");
             return 1;
@@ -1071,12 +1187,57 @@ impl install(
 
     install_success = True;
     python_deps = dep_plan.for_ecosystem("python");
+    import from jaclang.project.lockfile {
+        harvest_npm_lock,
+        harvest_python_lock,
+        read_lock,
+        update_python_rows
+    }
+    lock = read_lock(config.project_root or Path.cwd());
+    py_pins = lock.get("python", {});
+    py_pins = py_pins if isinstance(py_pins, dict) else {};
     if python_deps {
-        with console.status(
-            f"Installing {len(python_deps)} package(s)...", spinner="dots"
-        ) as status {
-            install_success = python.install_all(config, python_deps, ctx);
+        import from jaclang.project.versioning { norm_pkg_name }
+
+        pin_names = {norm_pkg_name(p) for p in py_pins.keys()};
+        manifest_names = {norm_pkg_name(d.name) for d in python_deps};
+        git_dep_names = {
+            norm_pkg_name(d.name)
+            for d in python_deps
+            if d.source == "git"
+        };
+
+        pin_specs = [
+            f"{name}{py_pins[name]}"
+            for name in sorted(py_pins.keys())
+            if norm_pkg_name(name) in manifest_names
+                and norm_pkg_name(name) not in git_dep_names
+        ];
+        fresh_specs = python.specs_for(
+            [
+                d
+                for d in python_deps
+                if norm_pkg_name(d.name) not in pin_names or d.source == "git"
+            ]
+        );
+        specs = pin_specs + fresh_specs;
+        if specs {
+            with console.status(
+                f"Installing {len(specs)} package(s)...", spinner="dots"
+            ) as status {
+                install_success = python.install_specs(config, specs, ctx);
+            }
         }
+    }
+
+    if not dry_run and install_success and not no_save {
+        harvest = harvest_python_lock(config, config.get_venv_dir());
+        update_python_rows(
+            config.project_root or Path.cwd(),
+            harvest[0] if harvest else None,
+            harvest[1] if harvest else None,
+            npm_pins=harvest_npm_lock(config)
+        );
     }
 
     if dry_run {
@@ -1096,13 +1257,18 @@ impl install(
             continue;
         }
         console.print(f"\n  Installing {provider.name} dependencies", style="muted");
+        installed = True;
         try {
-            provider.install_all(config, provider_deps, ctx);
+            installed = provider.install_all(config, provider_deps, ctx);
+        } except Exception as e {
+            console.error(f"  ✗ {provider.name} dependencies failed: {e}");
+            installed = False;
+        }
+        if installed {
             console.print(
                 f"  ✔ {provider.name} dependencies installed", style="success"
             );
-        } except Exception as e {
-            console.error(f"  ✗ {provider.name} dependencies failed: {e}");
+        } else {
             plugin_failed = True;
         }
     }
@@ -1160,9 +1326,21 @@ impl remove(
         console.error("No packages specified.");
         return 1;
     }
+    import from jaclang.project.jac_provider { get_jac_dep_provider, manifest_jac_deps }
+    (jac_deps, jac_dev) = manifest_jac_deps(config);
     python = get_python_provider();
+    jac_provider = get_jac_dep_provider();
     ctx = InstallContext();
     for name in packages {
+        name = str(name);
+        if name in jac_deps or name in jac_dev {
+            if jac_provider.remove_package(config, name, dev, ctx) {
+                console.success(f"Removed {name} from jac.toml");
+            } else {
+                console.error(f"Failed to remove {name}");
+            }
+            continue;
+        }
         if python.remove_package(config, name, dev, ctx) {
             console.success(f"Removed {name} from jac.toml");
         } else {
@@ -1187,6 +1365,24 @@ def _major_minor(version: str) -> str {
     return version;
 }
 
+def _requirer_closure(requirers: dict[str, any], seeds: list[str]) -> set[str] {
+    reach: set[str] = set(seeds);
+    frontier: list[str] = list(seeds);
+    while frontier {
+        cur = frontier.pop();
+        for (child, parents) in requirers.items() {
+            if child in reach or not isinstance(parents, list) {
+                continue;
+            }
+            if cur in parents {
+                reach.add(child);
+                frontier.append(child);
+            }
+        }
+    }
+    return reach;
+}
+
 impl update(packages: list[str] = [], dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv { make_git_spec }
@@ -1198,8 +1394,137 @@ impl update(packages: list[str] = [], dev: bool = False, verbose: bool = False) 
         );
         return 1;
     }
+    import from jaclang.project.jac_provider {
+        JacDepError,
+        get_jac_dep_provider,
+        manifest_jac_deps,
+        read_deps_map
+    }
+    (jac_deps, jac_dev) = manifest_jac_deps(config);
+
+    section_deps = jac_dev if dev else jac_deps;
+    other_deps = jac_deps if dev else jac_dev;
+    misplaced = [
+        str(p)
+        for p in (packages or [])
+        if str(p) in other_deps
+    ];
+    if misplaced {
+        console.error(
+            f"'{misplaced[0]}' is not a "
+            f"{'dev' if dev else 'main'} dependency "
+            f"({'drop' if dev else 'pass'} -d to update it)."
+        );
+        return 1;
+    }
+    jac_names = set(section_deps.keys());
+    jac_targets = [
+        str(p)
+        for p in (packages or [])
+        if str(p) in jac_names
+    ];
+    leftover = [
+        str(p)
+        for p in (packages or [])
+        if str(p) not in jac_names
+    ];
     python = get_python_provider();
     ctx = InstallContext(verbose=verbose);
+    if jac_targets or ((not packages) and section_deps) {
+        jac_provider = get_jac_dep_provider();
+        if not jac_targets {
+            jac_targets = sorted(section_deps.keys());
+        }
+        old_shas: dict[str, str] = {};
+        old_map = read_deps_map(config);
+        old_shas = {
+            p.get("name", ""): str(p.get("sha", ""))
+            for p in old_map.get("packages", [])
+            if isinstance(p, dict)
+        };
+        import from jaclang.project.lockfile {
+            jac_lock_rows,
+            read_lock,
+            update_jac_rows
+        }
+        try {
+            all_pins = jac_lock_rows(read_lock(config.project_root or Path.cwd()));
+            refresh: set[str] = set();
+            if jac_targets {
+                old_requirers = {
+                    name: row.get("requested_by", [])
+                    for (name, row) in all_pins.items()
+                    if isinstance(row, dict)
+                };
+                refresh = _requirer_closure(old_requirers, jac_targets);
+            }
+            while True {
+                pins = (
+                    {
+                        name: row
+                        for (name, row) in all_pins.items()
+                        if name not in refresh
+                    }
+                        if jac_targets
+                        else {}
+                );
+                resolved = jac_provider.resolve_closure(
+                    config, ctx, frozen_pins=pins, collect_only=True
+                );
+                if not jac_targets {
+                    break;
+                }
+                extra = _requirer_closure(
+                    {name: pkg.requested_by for (name, pkg) in resolved.items()},
+                    jac_targets
+                );
+                grew = False;
+                for dep_name in extra {
+                    if dep_name not in refresh {
+                        refresh.add(dep_name);
+                        grew = True;
+                    }
+                }
+                if not grew {
+                    break;
+                }
+            }
+        } except (JacDepError, OSError) as e {
+            console.error(str(e));
+            return 1;
+        }
+
+        try {
+            jac_provider.materialize_closure(config, resolved, ctx);
+        } except (JacDepError, OSError) as e {
+            console.error(str(e));
+            jac_provider._rematerialize(config);
+            return 1;
+        }
+        jac_provider.save_deps_map(config, resolved);
+        update_jac_rows(config.project_root or Path.cwd(), resolved);
+        for pkg in resolved.values() {
+            if jac_targets and pkg.name not in jac_targets {
+                continue;
+            }
+            old_sha = old_shas.get(pkg.name, "");
+            if pkg.sha and old_sha and old_sha != pkg.sha {
+                console.print(
+                    f"  ✔ {pkg.name}: {old_sha[:12]} -> {pkg.sha[:12]}", style="success"
+                );
+            } else {
+                via = f"{pkg.sha[:12]}" if pkg.sha else "path dep";
+                console.print(f"  ✔ {pkg.name}: up to date ({via})", style="muted");
+            }
+        }
+        if packages {
+            packages = leftover;
+            if not packages {
+                console.success("Dependencies updated");
+                return 0;
+            }
+        }
+    }
 
     specs_to_update: list[str] = [];
     names_to_update: list[str] = [];
@@ -1305,6 +1630,18 @@ impl update(packages: list[str] = [], dev: bool = False, verbose: bool = False) 
             return 1;
         }
     }
+    import from jaclang.project.lockfile {
+        harvest_npm_lock,
+        harvest_python_lock,
+        update_python_rows
+    }
+    harvest = harvest_python_lock(config, config.get_venv_dir());
+    update_python_rows(
+        config.project_root or Path.cwd(),
+        harvest[0] if harvest else None,
+        harvest[1] if harvest else None,
+        npm_pins=harvest_npm_lock(config)
+    );
     console.success("Dependencies updated");
     return 0;
 }
@@ -1867,4 +2204,68 @@ impl bundle(
         }
     }
     return 0;
+}
+
+impl why(packages: list[str] = []) -> int {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.lockfile { jac_lock_rows, read_lock, why_chains }
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
+        );
+        return 1;
+    }
+    if not packages {
+        console.error(
+            "Usage: jac why <package>", hint="Pass at least one dependency name."
+        );
+        return 1;
+    }
+    lock_data = read_lock(config.project_root or Path.cwd());
+    jac_rows = jac_lock_rows(lock_data);
+    py_graph = lock_data.get("python_graph", {});
+    if not isinstance(py_graph, dict) {
+        py_graph = {};
+    }
+    npm_pins = lock_data.get("npm", {});
+    if not isinstance(npm_pins, dict) {
+        npm_pins = {};
+    }
+
+    exit_code = 0;
+    for raw_name in packages {
+        pname = str(raw_name);
+        chains = why_chains(lock_data, pname);
+        known = pname in jac_rows or pname in py_graph or pname in npm_pins;
+        if not chains or not known {
+            console.error(
+                f"'{pname}' is not recorded in jac.lock",
+                hint="Run 'jac install' to (re)generate the lockfile."
+            );
+            exit_code = 1;
+            continue;
+        }
+        by_eco: dict[str, any] = {};
+        for (eco, chain) in chains {
+            if eco not in by_eco {
+                by_eco[eco] = [];
+            }
+            by_eco[eco].append(chain);
+        }
+        for eco in sorted(by_eco.keys()) {
+            console.print(f"\nWhy {pname} ({eco}) is installed", style="bold");
+            for chain in by_eco[eco] {
+                parts = [p + f" ({eco})" for p in chain];
+                line = " <- ".join(parts);
+                if eco == "npm" and len(chain) == 1 {
+                    line += " (direct npm dependency)";
+                }
+                console.print(f"  {line}", style="muted");
+            }
+            console.print(f"  {len(by_eco[eco])} chain(s)", style="muted");
+        }
+    }
+    return exit_code;
 }

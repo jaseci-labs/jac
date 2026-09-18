@@ -547,16 +547,39 @@ impl JacConfig._write_toml_text(text: str) -> None {
 
 def _needs_quoting(key: str) -> bool {
     import re;
-    return not bool(re.`match(r'^[A-Za-z0-9_-]+$', key));
+    return not bool(re.fullmatch(r"[A-Za-z0-9_-]+", key));
 }
+
+def _escape_toml_basic(value: str) -> str {
+    out: list[str] = [];
+    for ch in str(value) {
+        if ch == "\\" {
+            out.append("\\\\");
+        } elif ch == '"' {
+            out.append('\\"');
+        } elif ch == "\n" {
+            out.append("\\n");
+        } elif ch == "\r" {
+            out.append("\\r");
+        } elif ord(ch) < 32 {
+            out.append(f"\\u{ord(ch):04X}");
+        } elif ord(ch) == 127 {
+            out.append("\\u007F");
+        } else {
+            out.append(ch);
+        }
+    }
+    return "".join(out);
+}
+
 
 def _quote_key(key: str) -> str {
     if _needs_quoting(key) {
-        escaped = key.replace("\\", "\\\\").replace('"', '\\"');
-        return f'"{escaped}"';
+        return f'"{_escape_toml_basic(key)}"';
     }
     return key;
 }
+
 
 def _toml_flatten_into(
     view: dict[tuple[str, ...], dict[str, any]],
@@ -597,7 +620,7 @@ def _toml_token_alt(name: str) -> str {
     if name and not _needs_quoting(name) {
         alts.append(re.escape(name));
     }
-    basic = name.replace("\\", "\\\\").replace('"', '\\"');
+    basic = _escape_toml_basic(name);
     alts.append(re.escape(f'"{basic}"'));
     if "'" not in name {
         alts.append(re.escape(f"'{name}'"));
@@ -938,8 +961,7 @@ impl toml_value(value: any) -> str {
     } elif isinstance(value, float) {
         return str(value);
     } elif isinstance(value, str) {
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"');
-        return f'"{escaped}"';
+        return f'"{_escape_toml_basic(value)}"';
     } elif isinstance(value, list) {
         items = [toml_value(item) for item in value];
         return f"[{', '.join(items)}]";
@@ -950,7 +972,7 @@ impl toml_value(value: any) -> str {
         pairs = [f"{_quote_key(k)} = {toml_value(v)}" for (k, v) in value.items()];
         return "{ " + ", ".join(pairs) + " }";
     } else {
-        return f'"{value}"';
+        return f'"{_escape_toml_basic(str(value))}"';
     }
 }
 

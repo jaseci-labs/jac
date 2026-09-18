@@ -59,6 +59,9 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
             _mreprs: list[ir.Type | None] = [];
             for _m in _members {
                 _mr = self._lower_type(_m);
+                if _mr is None {
+                    continue;
+                }
                 if self._str_desc_ty is not None and _mr == self._str_desc_ty {
                     _mr = ir.IntType(8).as_pointer();
                 }

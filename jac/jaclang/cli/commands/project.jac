@@ -222,6 +222,12 @@ comptime SPEC_INSTALL: CommandSpec = CommandSpec(
                  short=""
              ),
              Arg.create(
+                 "frozen",
+                 typ=bool,
+                 `default=False,
+                 help="Install exactly what jac.lock records; error if the manifest has pure-jac dependencies missing from the lockfile"
+             ),
+             Arg.create(
                  "git",
                  `default="",
                  help="Git repository URL to install and record as a git dependency",
@@ -388,6 +394,7 @@ def install(
     dev: bool = False,
     extras: list[str] = [],
     no_save: bool = False,
+    frozen: bool = False,
     git: str = "",
     npm: bool | None = None,
     shadcn: bool = False,
@@ -487,6 +494,26 @@ def update(packages: list[str] = [], dev: bool = False, verbose: bool = False) -
 
 def deps(scale: bool = False, as_json: bool = False) -> int;
 
+comptime SPEC_WHY: CommandSpec = CommandSpec(
+         name="why",
+         help="Explain why a dependency is installed",
+         args=[
+             Arg.create(
+                 "packages",
+                 kind=ArgKind.MULTI_POSITIONAL,
+                 `default=[],
+                 help="Package(s) to explain (reads jac.lock reverse edges)"
+             )
+         ],
+         examples=[
+             ("jac why requests", "Show every chain from requests back to the project"),
+             ("jac why mylib", "Show which pure-jac dependencies pull in mylib")
+         ],
+         group="project",
+         handler_name=ct_name(why)
+     );
+
+def why(packages: list[str] = []) -> int;
 def script(name: str = "", list_scripts: bool = False) -> int;
 
 comptime SPEC_CLEAN: CommandSpec = CommandSpec(

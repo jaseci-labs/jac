@@ -657,11 +657,16 @@ def get_py_code_gen(
             FreezeStructurePass
         }
         passes.append(FreezeStructurePass);
-        return validate_schedule(
-            passes,
-            preprovided={AnalysisFact.CFG_SUCC} if provided is None else provided,
-            origin='codegen schedule'
+
+        sched: list[type[Transform]] = passes;
+        prov: set[AnalysisFact] = (
+            {AnalysisFact.CFG_SUCC} if provided is None else provided
         );
+        if AnalysisFact.CFG_SUCC not in prov {
+            import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
+            sched = [CFGBuildPass] + sched;
+        }
+        return validate_schedule(sched, preprovided=prov, origin='codegen schedule');
     } except ImportError as e {
         fail_loud_on_compiler_source(e);
         if native {
@@ -730,6 +735,7 @@ def execute_passes(
     completed = program.analysis.completed_passes.setdefault(id(module), set());
     for step in passes {
         if step.__name__ in completed {
+            provided.update(pass_provides(step));
             continue;
         }
         if cancel_token is not None and cancel_token.is_set() {

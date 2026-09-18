@@ -169,6 +169,7 @@
             {"title": "MCP Server", "page": "reference/mcp.md"},
             {"title": "Agent Skills & MCP", "page": "reference/agent-skills-and-mcp.md"},
             {"title": "Configuration", "page": "reference/config/index.md"},
+            {"title": "Dependencies", "page": "reference/dependencies.md"},
             {"title": "Workspaces & Apps", "page": "reference/apps.md"},
             {"title": "Publishing Packages", "page": "reference/publishing.md"},
             {"title": "Persistence & Schema Migration", "page": "reference/persistence.md"},

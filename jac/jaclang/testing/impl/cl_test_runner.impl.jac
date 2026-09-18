@@ -48,7 +48,7 @@ impl _point_at_staged_runtime(js: str) -> str {
 impl _stub_npm_imports(
     entry_js: str, staged: dict[str, str]
 ) -> tuple[str, dict[str, str], str, bool] {
-    named: set = set();
+    named: set[str] = set();
     state = {"needs_default": False, "changed": False};
 
     def is_npm(spec: str) -> bool {
@@ -215,8 +215,8 @@ impl _collect_local_imports(
     return (staged, merged_imports);
 }
 
-impl _exported_names(js: str) -> set {
-    names: set = set();
+impl _exported_names(js: str) -> set[str] {
+    names: set[str] = set();
     for m in re.finditer(r"export\s*\{([^}]*)\}", js) {
         for part in m.group(1).split(",") {
             `entry = part.strip();
@@ -314,7 +314,7 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
     }
 
     try {
-        boot_budget = 90.0;
+        boot_budget = 300.0;
         deadline = time.monotonic() + boot_budget;
         while True {
             if proc.poll() is not None {

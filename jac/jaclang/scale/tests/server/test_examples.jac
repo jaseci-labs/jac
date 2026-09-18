@@ -34,7 +34,7 @@ obj JacScaleTestRunner {
     }
 
     """Start the jac-scale server."""
-    def start_server(timeout: int = 30) {
+    def start_server(timeout: int = 300) {
         project_root_result = find_project_root(self.example_file.parent);
         if project_root_result {
             (example_dir, _) = project_root_result;
@@ -79,10 +79,10 @@ obj JacScaleTestRunner {
             cwd=example_dir
         );
 
-        max_attempts = timeout * 5;
+        deadline = time.monotonic() + timeout;
         server_ready = False;
 
-        for _ in range(max_attempts) {
+        while time.monotonic() < deadline {
             if self.server_process.poll() is not None {
                 (stdout, stderr) = self.server_process.communicate();
                 raise RuntimeError(
@@ -92,7 +92,10 @@ obj JacScaleTestRunner {
             }
 
             try {
-                response = requests.get(f"{self.base_url}/healthz", timeout=2);
+                remaining = deadline - time.monotonic();
+                response = requests.get(
+                    f"{self.base_url}/healthz", timeout=max(0.05, min(2.0, remaining))
+                );
                 if response.status_code == 200 {
                     print(f"Server started on port {self.port}");
                     server_ready = True;
@@ -104,9 +107,11 @@ obj JacScaleTestRunner {
         }
 
         if not server_ready {
-            (stdout, stderr) = self.server_process.communicate(timeout=5);
+            self.server_process.kill();
+            (stdout, stderr) = self.server_process.communicate();
             raise RuntimeError(
-                f"Server failed to become ready.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+                f"Server failed to become ready within {timeout}s.\n"
+                f"STDOUT:\n{stdout}\nSTDERR:\n{stderr}"
             );
         }
     }

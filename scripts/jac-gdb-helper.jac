@@ -103,7 +103,7 @@ class JacLoadSymbols(gdb.Command) {
                     fn_obj_offsets[parts[7]] = int(parts[1], 16);
                 }
             }
-        } except Exception { }
+        } except Exception {}
 
         # Compute section base: fn_jit_addr - fn_obj_offset
         section_base = int(text_addr, 16);
