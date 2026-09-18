@@ -6,7 +6,7 @@ impl interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> 
     }
     source = os.environ if environ is None else environ;
 
-    pattern = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}";
+    pattern = ENV_REF_PATTERN;
     def replace_env_var(`match: re.Match) -> str {
         var_name = `match.group(1);
         operator = `match.group(2);
@@ -21,14 +21,103 @@ impl interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> 
         if operator == ":-" {
             return operand;
         } elif operator == ":?" {
-            raise ValueError(f"Environment variable {var_name} is required: {operand}");
+            raise UnresolvedEnvVar(
+                var_name,
+                True,
+                f"Environment variable {var_name} is required: {operand}"
+            );
         }
         if not var_name.isidentifier() {
             return `match.group(0);
         }
-        raise ValueError(f"Environment variable {var_name} is not set");
+        raise UnresolvedEnvVar(
+            var_name, False, f"Environment variable {var_name} is not set"
+        );
     }
     return re.sub(pattern, replace_env_var, value);
+}
+
+impl resolve_env_refs(
+    data: any, environ: dict[str, str] | None = None, path: str = ""
+) -> tuple[any, list[UnresolvedRef]] {
+    refs: list[UnresolvedRef] = [];
+    def walk(item: any, at: str, keys: list[str | int]) -> any {
+        if isinstance(item, str) {
+            try {
+                return interpolate_env_vars(item, environ);
+            } except UnresolvedEnvVar {
+                refs.extend(_unresolved_in(item, at, keys, environ));
+                return item;
+            }
+        } elif isinstance(item, dict) {
+            return {
+                k: walk(v, _child_config_path(at, k), keys + [k])
+                for (k, v) in item.items()
+            };
+        } elif isinstance(item, list) {
+            return [walk(v, f"{at}[{i}]", keys + [i]) for (i, v) in enumerate(item)];
+        }
+        return item;
+    }
+    return (walk(data, path, [path] if path else []), refs);
+}
+
+impl _unresolved_in(
+    value: str, path: str, keys: list[str | int], environ: dict[str, str] | None
+) -> list[UnresolvedRef] {
+    import re;
+    found: list[UnresolvedRef] = [];
+    for `match in re.finditer(ENV_REF_PATTERN, value) {
+        try {
+            interpolate_env_vars(`match.group(0), environ);
+        } except UnresolvedEnvVar as e {
+            found.append(
+                UnresolvedRef(
+                    path=path,
+                    var=e.var,
+                    required=e.required,
+                    message=str(e),
+                    raw=value,
+                    keys=keys
+                )
+            );
+        }
+    }
+    return found;
+}
+
+impl report_env_findings(
+    refs: list[UnresolvedRef], context: str, strict: bool, hint: str = ""
+) -> None {
+    if not refs {
+        return;
+    }
+    message = "\n".join(
+        [f"{context}:"]
+            + [f"  {ref.path}: {ref.message}" for ref in refs]
+            + ([hint] if hint else [])
+    );
+    if strict {
+        raise ValueError(message);
+    }
+    import from jaclang.cli.console { console }
+    console.warning(message);
+}
+
+impl UnresolvedRef.deploy_setting -> tuple[str, list[str | int]] {
+    keys = list(self.keys);
+    if keys and keys[0] in ("apps", "environments") {
+        keys = keys[2:];
+    }
+    if keys and keys[0] == "plugins" {
+        keys = keys[1:];
+    }
+    if len(keys) < 3
+        or keys[0] != "scale"
+        or keys[1] not in ("secrets", "kubernetes") {
+        return ("", []);
+    }
+    return (str(keys[1]), keys[2:]);
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
@@ -153,6 +242,7 @@ impl JacConfig.apply_profile(
             self.apply_profile(parent_name, _visited=_visited);
         }
     }
+    self._record_unresolved(profile, _profile_refs(self.unresolved, profile_name));
 
     section_map = self._section_map();
     for (section, obj) in section_map.items() {
@@ -249,9 +339,31 @@ impl JacConfig.merge_apps_table(apps_table: dict[str, any]) -> None {
     merged = _deep_merge(copy.deepcopy(base), copy.deepcopy(apps_table));
     self._base_data["apps"] = merged;
     self._raw_data["apps"] = copy.deepcopy(merged);
-    self.apps = parse_apps(
-        self._base_data.get("project", {}), _interpolate_recursive(merged)
-    );
+    (resolved, refs) = resolve_env_refs(merged, path="apps");
+    self._record_unresolved(merged, refs, "apps");
+    self.apps = parse_apps(self._base_data.get("project", {}), resolved);
+}
+
+impl JacConfig.live_unresolved -> list[UnresolvedRef] {
+    return [
+        ref
+        for ref in self.unresolved
+        if not ref.path.startswith(("apps.", "environments."))
+    ];
+}
+
+impl JacConfig._record_unresolved(
+    layer: any, refs: list[UnresolvedRef], prefix: str = ""
+) -> None {
+    replaced = set(_replaced_keys(layer, [prefix] if prefix else []));
+    self.unresolved = [
+        ref
+        for ref in self.unresolved
+        if not any(
+            tuple(ref.keys[:depth]) in replaced for depth in range(1, len(ref.keys) + 1)
+        )
+    ]
+        + refs;
 }
 
 impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
@@ -276,8 +388,9 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     if not toml_path.exists() {
         return;
     }
-    data: dict[str, any] = read_toml_with_encoding(str(toml_path));
-    data = _interpolate_recursive(data);
+    raw: dict[str, any] = read_toml_with_encoding(str(toml_path));
+    (data, refs) = resolve_env_refs(raw);
+    self._record_unresolved(raw, refs);
     section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in data {
@@ -1037,8 +1150,9 @@ impl _parse_toml_data(
 ) -> JacConfig {
     import copy;
     raw = data;
-    data = _interpolate_recursive(raw);
+    (data, refs) = resolve_env_refs(raw);
     config = JacConfig();
+    config.unresolved = refs;
     config._raw_data = raw;
     config._base_data = copy.deepcopy(raw);
     if toml_path {
@@ -1359,19 +1473,36 @@ impl _parse_toml_data(
     return config;
 }
 
-impl _interpolate_recursive(`obj: any) -> any {
-    if isinstance(`obj, str) {
-        try {
-            return interpolate_env_vars(`obj);
-        } except ValueError {
-            return `obj;
-        }
-    } elif isinstance(`obj, dict) {
-        return {k: _interpolate_recursive(v) for (k, v) in `obj.items()};
-    } elif isinstance(`obj, list) {
-        return [_interpolate_recursive(item) for item in `obj];
+impl _profile_refs(
+    refs: list[UnresolvedRef], profile_name: str
+) -> list[UnresolvedRef] {
+    prefix = f"environments.{profile_name}.";
+    return [
+        UnresolvedRef(
+            path=ref.path.removeprefix(prefix),
+            var=ref.var,
+            required=ref.required,
+            message=ref.message,
+            raw=ref.raw,
+            keys=ref.keys[2:]
+        )
+        for ref in refs
+        if ref.keys[:2] == ["environments", profile_name]
+    ];
+}
+
+impl _replaced_keys(item: any, keys: list[str | int]) -> list[tuple[str | int, ...]] {
+    if not isinstance(item, dict) {
+        return [tuple(keys)];
     }
-    return `obj;
+    return [
+        replaced for (k, v) in item.items()
+        for replaced in _replaced_keys(v, keys + [k])
+    ];
+}
+
+impl _child_config_path(parent: str, key: str) -> str {
+    return f"{parent}.{key}" if parent else key;
 }
 
 impl get_config(

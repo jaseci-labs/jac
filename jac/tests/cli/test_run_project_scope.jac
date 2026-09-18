@@ -238,3 +238,104 @@ test "an in-tree file keeps its project when the shell is somewhere else" {
         f"a file's own project follows it wherever the shell is; got:\n{out}"
     );
 }
+
+
+"""Run *filename* from *cwd*, returning its exit code and everything it printed."""
+def run_from(cwd: str, filename: str, profile: str = "") -> tuple[int, str] {
+    import from jaclang.project { config as config_mod }
+    buf = io.StringIO();
+    old = os.getcwd();
+    os.chdir(cwd);
+    reset_config();
+    try {
+        if profile {
+            config_mod.get_config(profile=profile);
+        }
+        with redirect_stdout(buf), redirect_stderr(buf) {
+            code = execution_cmds.run(target=filename);
+        }
+    } finally {
+        os.chdir(old);
+        reset_config();
+    }
+    return (code, buf.getvalue());
+}
+
+
+test "a run warns on an unset ${VAR} and stops on an unset ${VAR:?}" {
+    # The target's project is not the cwd's, so the policy reads the owning config.
+    var_name = "JAC_TEST_SCOPE_UNSET";
+    base = '[project]\nname = "target"\nentry-point = "main"\n';
+    def setting(section: str, op: str) -> str {
+        return f'\n[{section}]\nvalue = "${{{var_name}{op}}}"\n';
+    }
+    required = setting("plugins.demo", ":?export it");
+    cases = [
+        ("bare in jac.toml", base + setting("plugins.demo", ""), "", "", 0, True),
+        ("required in jac.toml", base + required, "", "", 2, True),
+        ("required in the active profile", base, required, "prod", 2, True),
+        (
+            "required after a bare reference in one value",
+            base + setting("plugins.demo", "}/${" + var_name + ":?x"),
+            "",
+            "",
+            2,
+            True
+        ),
+        ("a default", base + setting("plugins.demo", ":-x"), "", "", 0, False),
+        ("a deploy secret", base + setting("scale.secrets", ":?x"), "", "", 0, False),
+        (
+            "a deploy target setting",
+            base + setting("scale.kubernetes", ":?x"),
+            "",
+            "",
+            0,
+            False
+        ),
+        ("a shell script", base + setting("scripts", ":?x"), "", "", 0, False),
+        (
+            "a script in the active profile",
+            base,
+            setting("scripts", ":?x"),
+            "prod",
+            0,
+            False
+        ),
+        ("an unknown table", base + setting("made_up", ":?x"), "", "", 0, False)
+    ];
+    previous = os.environ.pop(var_name, None);
+    try {
+        for (label, base_toml, overlay_toml, profile, expected, reported) in cases {
+            world = tempfile.mkdtemp(prefix="jacscope-config-");
+            try {
+                target = os.path.join(world, "target");
+                write(os.path.join(target, "jac.toml"), base_toml);
+                if overlay_toml {
+                    write(os.path.join(target, "jac.prod.toml"), overlay_toml);
+                }
+                write(
+                    os.path.join(target, "main.jac"),
+                    'with entry {\n    print("target-ran");\n}\n'
+                );
+                write(
+                    os.path.join(world, "shell", "jac.toml"),
+                    '[project]\nname = "shell"\nentry-point = "main"\n'
+                );
+                (code, out) = run_from(
+                    os.path.join(world, "shell"),
+                    os.path.join(target, "main.jac"),
+                    profile=profile
+                );
+            } finally {
+                shutil.rmtree(world, ignore_errors=True);
+            }
+            assert code == expected , f"{label}: expected exit {expected}, got {code}";
+            assert (var_name in out) == reported , f"{label}: {out}";
+            assert ("target-ran" in out) == (expected == 0) , f"{label}: {out}";
+        }
+    } finally {
+        if previous is not None {
+            os.environ[var_name] = previous;
+        }
+    }
+}

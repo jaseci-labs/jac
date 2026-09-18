@@ -1,6 +1,7 @@
 import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
 import from jaclang.server { sv_client }
 import from jaclang.server.settings { ServeSettings }
+import from jaclang.project.config { UnresolvedRef }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.config.config_loader {
     GATEWAY_POD_KEYS,
@@ -248,6 +249,22 @@ def with_config_revision(manifest: dict[str, any], revision: str) -> dict[str, a
     );
 }
 
+
+def _setting_value(start: object, keys: list[str | int]) -> object {
+    value: object = start;
+    for part in keys {
+        if isinstance(part, int) {
+            value = value[part]
+                if isinstance(value, list) and part < len(value)
+                else None;
+        } elif isinstance(value, dict) {
+            value = value.get(part);
+        } else {
+            value = getattr(value, part, None);
+        }
+    }
+    return value;
+}
 
 obj ManifestBuilder {
     has k8s_config: KubernetesConfig,
@@ -719,6 +736,7 @@ obj ManifestBuilder {
             unresolved_toml_references
         }
         base = Path(self.project_dir);
+        self._check_deploy_settings_resolve();
         base_toml = sanitized_jac_toml(base);
         if base_toml is None {
             return;
@@ -761,6 +779,36 @@ obj ManifestBuilder {
                 + "\nSupply each one through [scale.secrets] or the app's env, or give "
                 "it a ${VAR:-default}."
         );
+    }
+
+    def _check_deploy_settings_resolve {
+        import from pathlib { Path }
+        import from jaclang.project.config { get_config_for_path, report_env_findings }
+        config = get_config_for_path(Path(self.project_dir));
+        if config is None {
+            return;
+        }
+        report_env_findings(
+            [
+                ref
+                for ref in config.unresolved
+                if self._deploys_literal(ref)
+            ],
+            "jac.toml reads environment variables this machine does not have, so the "
+            "deploy would carry these settings as literal text",
+            strict=True,
+            hint="Export each one or put it in the project .env, or give it a "
+            "${VAR:-default}."
+        );
+    }
+
+    def _deploys_literal(ref: UnresolvedRef) -> bool {
+        (section, keys) = ref.deploy_setting();
+        if not section {
+            return False;
+        }
+        source = self.secrets if section == "secrets" else self.k8s_config;
+        return _setting_value(source, keys) == ref.raw;
     }
 
     def _pod_environ(

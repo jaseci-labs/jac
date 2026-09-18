@@ -44,6 +44,16 @@ def make_temp_project(temp_dir: Path) -> Path {
     return project_dir;
 }
 
+"""Resolve a project built from *files*, returning its unresolved refs."""
+def _unresolved_refs(tmpdir: Path, files: dict[str, str], profile: str) -> list[any] {
+    for (name, text) in files.items() {
+        (tmpdir / name).write_text(text);
+    }
+    config = JacConfig.resolve(start_path=tmpdir, profile=profile);
+    assert config is not None;
+    return config.live_unresolved();
+}
+
 """Write base, prod, and local TOML files into project_dir."""
 def write_multi_profile(project_dir: Path) {
     (project_dir / "jac.toml").write_text(BASE_TOML);
@@ -120,6 +130,10 @@ test "interpolate against a given environment instead of the process one" {
         ("${POD_VAR}", "from-pod"),
         ("${JAC_PROCESS_ONLY:-fallback}", "fallback"),
         ("echo ${1}", "echo ${1}"),
+        ("${#ARR[@]}", "${#ARR[@]}"),
+        ("${JAC_PROCESS_ONLY%%.txt}", "${JAC_PROCESS_ONLY%%.txt}"),
+        ("${JAC_PROCESS_ONLY^^}", "${JAC_PROCESS_ONLY^^}"),
+        ("${1:?positional}", "Environment variable 1 is required: positional"),
         ("${JAC_PROCESS_ONLY}", "Environment variable JAC_PROCESS_ONLY is not set"),
         (
             "${JAC_PROCESS_ONLY:?pods need it}",
@@ -144,6 +158,101 @@ test "interpolate non string passthrough" {
     config_mod._config = None;
     assert interpolate_env_vars(_as_any(123)) == 123;
     assert interpolate_env_vars(_as_any(None)) is None;
+}
+
+test "config load records unset environment variables instead of failing" {
+    config_mod._config = None;
+    var_name = "JAC_TEST_ENV_MISSING";
+    base = "[project]\nname = \"test-project\"\n\n";
+    bare = f"[scale.secrets]\nSOME_API_KEY = \"${{{var_name}}}\"\n";
+    required = f"[scale.secrets]\nSOME_API_KEY = \"${{{var_name}:?set it}}\"\n";
+    literal = "[scale.secrets]\nSOME_API_KEY = \"sk-literal\"\n";
+    inline = f"[environments.prod.scale.secrets]\nSOME_API_KEY = \"${{{var_name}}}\"\n";
+    setting = "scale.secrets.SOME_API_KEY";
+    origins = f"[serve]\ncors_origins = [\"${{{var_name}:?set it}}\"]\n";
+    listed = "serve.cors_origins[0]";
+    cases = [
+        ("bare in jac.toml", {"jac.toml": base + bare}, "", [(setting, False)]),
+        ("required in jac.toml", {"jac.toml": base + required}, "", [(setting, True)]),
+        (
+            "required after a bare reference in one value",
+            {
+                "jac.toml": base
+                    + f"[scale.secrets]\nSOME_API_KEY = \"${{{var_name}}}/${{{var_name}:?set it}}\"\n"
+            },
+            "",
+            [(setting, False), (setting, True)]
+        ),
+        (
+            "required in a profile file",
+            {"jac.toml": base, "jac.prod.toml": required},
+            "prod",
+            [(setting, True)]
+        ),
+        (
+            "redefined by the active profile file",
+            {"jac.toml": base + bare, "jac.prod.toml": literal},
+            "prod",
+            []
+        ),
+        ("an inactive inline profile", {"jac.toml": base + inline}, "", []),
+        (
+            "the active inline profile",
+            {"jac.toml": base + inline},
+            "prod",
+            [(setting, False)]
+        ),
+        (
+            "a default",
+            {
+                "jac.toml": base
+                    + f"[scale.secrets]\nSOME_API_KEY = \"${{{var_name}:-x}}\"\n"
+            },
+            "",
+            []
+        ),
+        ("required inside a list", {"jac.toml": base + origins}, "", [(listed, True)]),
+        (
+            "a list the active profile file empties",
+            {
+                "jac.toml": base + origins,
+                "jac.prod.toml": "[serve]\ncors_origins = []\n"
+            },
+            "prod",
+            []
+        ),
+        (
+            "an empty table in the active profile file",
+            {"jac.toml": base + required, "jac.prod.toml": "[scale.secrets]\n"},
+            "prod",
+            [(setting, True)]
+        )
+    ];
+    previous = os.environ.pop(var_name, None);
+    try {
+        for (label, files, profile, expected) in cases {
+            with TemporaryDirectory() as tmpdir {
+                refs = _unresolved_refs(Path(tmpdir), files, profile);
+                assert [(ref.path, ref.required) for ref in refs] == expected , (
+                    f"{label}: {[(ref.path, ref.required) for ref in refs]}"
+                );
+                for ref in refs {
+                    assert ref.var == var_name , label;
+                    assert ref.raw.startswith(f"${{{var_name}") , label;
+                    assert ref.deploy_setting()
+                        == (
+                            ("secrets", ["SOME_API_KEY"])
+                                if ref.path == setting
+                                else ("", [])
+                        ) , label;
+                }
+            }
+        }
+    } finally {
+        if previous is not None {
+            os.environ[var_name] = previous;
+        }
+    }
 }
 
 # ===========================================================================

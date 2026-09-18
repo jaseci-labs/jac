@@ -673,6 +673,113 @@ test "a shipped jac.toml value the pods cannot resolve stops the deploy before p
 }
 
 
+test "a deploy setting this machine cannot resolve stops manifest generation" {
+    import tempfile;
+    import from jaclang.scale.config.config_loader { JacScaleConfig }
+    secret = "[scale.secrets]\nDEMO_API_KEY = \"${DEMO_HOST_KEY}\"\n";
+    cases = [
+        (
+            "an unset secret",
+            {"jac.toml": secret},
+            [
+                "scale.secrets.DEMO_API_KEY: Environment variable DEMO_HOST_KEY is not set"
+            ]
+        ),
+        (
+            "an unset required namespace",
+            {
+                "jac.toml": "[scale.kubernetes]\nnamespace = \"${DEMO_NS:?set DEMO_NS}\"\n"
+            },
+            [
+                "scale.kubernetes.namespace: Environment variable DEMO_NS is required: set DEMO_NS"
+            ]
+        ),
+        (
+            "an unset nested setting the pods would resolve differently",
+            {
+                "jac.toml": "[scale.kubernetes.http_activation]\n"
+                "interceptor_service_address = \"${K8S_NAMESPACE}.svc\"\n"
+            },
+            [
+                "scale.kubernetes.http_activation.interceptor_service_address: Environment variable K8S_NAMESPACE is not set"
+            ]
+        ),
+        (
+            "an unset secret under a quoted dotted key",
+            {
+                "jac.toml": "[scale.secrets]\n\"SERVICE.API.KEY\" = \"${DEMO_HOST_KEY}\"\n"
+            },
+            [
+                "scale.secrets.SERVICE.API.KEY: Environment variable DEMO_HOST_KEY is not set"
+            ]
+        ),
+        (
+            "an unset label under a quoted dotted key",
+            {
+                "jac.toml": "[scale.kubernetes.labels]\n"
+                "\"app.kubernetes.io/part-of\" = \"${K8S_NAMESPACE}\"\n"
+            },
+            [
+                "scale.kubernetes.labels.app.kubernetes.io/part-of: Environment variable K8S_NAMESPACE is not set"
+            ]
+        ),
+        (
+            "a secret the active profile replaces",
+            {
+                "jac.toml": "[environment]\ndefault_profile = \"prod\"\n" + secret,
+                "jac.prod.toml": "[scale.secrets]\nDEMO_API_KEY = \"sk-prod\"\n"
+            },
+            []
+        ),
+        (
+            "a secret with a default",
+            {"jac.toml": "[scale.secrets]\nDEMO_API_KEY = \"${DEMO_HOST_KEY:-sk}\"\n"},
+            []
+        )
+    ];
+    for (label, tomls, expected) in cases {
+        with tempfile.TemporaryDirectory() as tmp {
+            project = _routed_project(tmp, ["main.jac"]);
+            for (rel, extra) in tomls.items() {
+                path = Path(project) / rel;
+                header = path.read_text() if path.exists() else "";
+                path.write_text(header + extra);
+            }
+            caught = "";
+            with mock.patch.dict(os.environ, {}) {
+                os.environ.pop("DEMO_HOST_KEY", None);
+                os.environ.pop("DEMO_NS", None);
+                os.environ.pop("K8S_NAMESPACE", None);
+                scale = JacScaleConfig(Path(project));
+                k8s_config = KubernetesConfig.from_dict(
+                    KubernetesConfig,
+                    scale.get_kubernetes_config()
+                        | {"app_name": "jac-shop", "bundle_storage_class": "efs-sc"}
+                );
+                builder = ManifestBuilder(
+                    k8s_config=k8s_config,
+                    project_dir=project,
+                    secrets=scale.get_secrets_config(),
+                    fleet=fleet_of({}, root_app="main"),
+                    dry_run=True
+                );
+                try {
+                    builder.generate_manifests(
+                        AppConfig(code_folder=project, app_name="jac-shop"), "img"
+                    );
+                } except ValueError as e {
+                    caught = str(e);
+                }
+            }
+            assert bool(caught) == bool(expected) , f"{label}: {caught!r}";
+            for fragment in expected {
+                assert fragment in caught , f"{label}: {caught}";
+            }
+        }
+    }
+}
+
+
 test "user env cannot point a pod at an arbitrary service file" {
     cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
     builder = ManifestBuilder(k8s_config=cfg);

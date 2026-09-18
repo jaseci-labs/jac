@@ -645,6 +645,62 @@ def _file_app(cfg: any, target: str, takeover: (bool | None)) -> any {
     return app;
 }
 
+def _env_refs_resolve(cfg: any) -> bool {
+    import from jaclang.project.config { CAPABILITY_SECTIONS, report_env_findings }
+
+    if cfg is None {
+        return True;
+    }
+
+    run_sections = {
+        "project",
+        "run",
+        "build",
+        "native",
+        "memory",
+        "placement",
+        "serve",
+        "cache",
+        "storage",
+        "environment",
+        "client_errors",
+        "check",
+        "plugins",
+        *CAPABILITY_SECTIONS
+    };
+    live = [
+        ref
+        for ref in cfg.live_unresolved()
+        if ref.keys[0] in run_sections and not ref.deploy_setting()[0]
+    ];
+    report_env_findings(
+        [
+            ref
+            for ref in live
+            if not ref.required
+        ],
+        "jac.toml reads environment variables that are not set, so these settings "
+        "keep their ${...} text",
+        strict=False
+    );
+    try {
+        report_env_findings(
+            [
+                ref
+                for ref in live
+                if ref.required
+            ],
+            "jac.toml requires environment variables that are not set",
+            strict=True,
+            hint="Export each one, or give it a ${VAR:-default}."
+        );
+    } except ValueError as e {
+        console.error(str(e));
+        return False;
+    }
+    return True;
+}
+
 def _resolve_target(
     target: str, takeover: (bool | None) = None
 ) -> tuple[JacConfig | None, AppConfig | None, str, int] {
@@ -898,6 +954,9 @@ impl run(
             console.print(f"backend      : {backend}");
         }
         return _show_run(plan, app, target, file, want_serve);
+    }
+    if not _env_refs_resolve(eff) {
+        return 2;
     }
 
     if want_serve {

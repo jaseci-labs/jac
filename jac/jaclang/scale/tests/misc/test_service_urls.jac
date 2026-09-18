@@ -97,19 +97,28 @@ test "empty app_name in config falls back to http://localhost:<port>" {
 }
 
 
-test "an unresolved ${VAR} app_name is rejected and falls back to localhost" {
+test "an app_name still carrying ${...} never reaches the URL" {
     prev_app = os.environ.pop("K8S_APP_NAME", None);
     prev_env = os.environ.pop("SVCURL_UNSET", None);
     prev_var = os.environ.pop("JAC_SVCURL_NONEXISTENT", None);
-    project_dir = _seed_k8s_config(
-        "[scale.kubernetes]\napp_name = \"${JAC_SVCURL_NONEXISTENT}\"\n"
-    );
+    prev_set = os.environ.get("JAC_SVCURL_SET");
+    os.environ["JAC_SVCURL_SET"] = "svcurl";
+    # An unset name keeps its ${...} text; ${VAR:+alt} is not an env var
+    # reference at all, so it survives interpolation verbatim.
+    cases = ["${JAC_SVCURL_NONEXISTENT}", "${JAC_SVCURL_SET:+alt}"];
     try {
-        # expandvars leaves an unresolved ${VAR} intact, so the "${" guard rejects it.
-        assert service_base_url("SVCURL_UNSET", "worker", 6000)
-            == "http://localhost:6000";
+        for app_name in cases {
+            project_dir = _seed_k8s_config(
+                f"[scale.kubernetes]\napp_name = \"{app_name}\"\n"
+            );
+            try {
+                assert service_base_url("SVCURL_UNSET", "worker", 6000)
+                    == "http://localhost:6000" , (f"{app_name} must not reach the URL");
+            } finally {
+                _teardown_config(project_dir);
+            }
+        }
     } finally {
-        _teardown_config(project_dir);
         if prev_app is not None {
             os.environ["K8S_APP_NAME"] = prev_app;
         }
@@ -118,6 +127,11 @@ test "an unresolved ${VAR} app_name is rejected and falls back to localhost" {
         }
         if prev_var is not None {
             os.environ["JAC_SVCURL_NONEXISTENT"] = prev_var;
+        }
+        if prev_set is None {
+            os.environ.pop("JAC_SVCURL_SET", None);
+        } else {
+            os.environ["JAC_SVCURL_SET"] = prev_set;
         }
     }
 }

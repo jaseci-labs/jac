@@ -1018,7 +1018,7 @@ DATABASE_PASSWORD = "${DB_PASS}"
 STATIC_VALUE = "hardcoded-value"
 ```
 
-Values using `${ENV_VAR}` syntax are resolved from the local environment at deploy time; an unset variable fails the config load. Shell-style fallback operators are supported: `${VAR:-default}` substitutes a default when the variable is unset, and `${VAR:?message}` fails with your own error message. The resolved key-value pairs are created as a proper Kubernetes Secret (`{app_name}-secrets`) and injected into pods via `envFrom.secretRef`.
+Values using `${ENV_VAR}` syntax are resolved from the local environment at deploy time, after the project `.env` is loaded, so a value can come from either. An unset variable stops the deploy, `--dry-run` included, before anything reaches the cluster. Shell-style fallback operators are supported: `${VAR:-default}` substitutes a default when the variable is unset, and `${VAR:?message}` fails with your own error message. The resolved key-value pairs are created as a proper Kubernetes Secret (`{app_name}-secrets`) and injected into pods via `envFrom.secretRef`. Other commands, such as `jac check` or `jac run`, do not need these variables.
 
 ### How It Works
 

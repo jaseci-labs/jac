@@ -4,7 +4,8 @@ import sys;
 import tomllib;
 import from pathlib { Path }
 import from jaclang.project.apps { AppConfig, implicit_app, parse_apps }
-glob CAPABILITY_SECTIONS: tuple[str, ...] = (
+glob ENV_REF_PATTERN: str = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}",
+     CAPABILITY_SECTIONS: tuple[str, ...] = (
          "byllm",
          "scale",
          "client",
@@ -241,7 +242,41 @@ obj DevConfig {
         fmt_jobs: str = "";
 }
 
+class UnresolvedEnvVar(ValueError) {
+    has var: str,
+        required: bool;
+
+    def init(self: UnresolvedEnvVar, var: str, required: bool, message: str) {
+        ValueError.__init__(self, message);
+        self.var = var;
+        self.required = required;
+    }
+}
+
+obj UnresolvedRef {
+    has path: str,
+        var: str,
+        required: bool,
+        message: str,
+        raw: str,
+        keys: list[str | int] = [];
+
+    def deploy_setting -> tuple[str, list[str | int]];
+}
+
 def interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> str;
+
+def resolve_env_refs(
+    data: any, environ: dict[str, str] | None = None, path: str = ""
+) -> tuple[any, list[UnresolvedRef]];
+
+def _unresolved_in(
+    value: str, path: str, keys: list[str | int], environ: dict[str, str] | None
+) -> list[UnresolvedRef];
+
+def report_env_findings(
+    refs: list[UnresolvedRef], context: str, strict: bool, hint: str = ""
+) -> None;
 
 def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 
@@ -288,7 +323,8 @@ obj JacConfig {
         apps: dict[str, AppConfig] = {},
         is_workspace: bool = False,
         _base_data: dict[str, any] = {},
-        _layers: list[tuple[str, str]] = [];
+        _layers: list[tuple[str, str]] = [],
+        unresolved: list[UnresolvedRef] = [];
 
     has default_app: str { getter; }
 
@@ -342,6 +378,11 @@ obj JacConfig {
 
     def merge_from_toml_file(toml_path: Path) -> None;
     def merge_apps_table(apps_table: dict[str, any]) -> None;
+    def live_unresolved -> list[UnresolvedRef];
+    def _record_unresolved(
+        layer: any, refs: list[UnresolvedRef], prefix: str = ""
+    ) -> None;
+
     def app(name: str) -> AppConfig | None;
     def resolve_app(name: str = "") -> AppConfig;
     def resolved_kind(app: AppConfig) -> str;
@@ -357,7 +398,11 @@ def _parse_persons(raw: list[object]) -> list[PersonConfig];
 
 def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 
-def _interpolate_recursive(`obj: any) -> any;
+def _profile_refs(refs: list[UnresolvedRef], profile_name: str) -> list[UnresolvedRef];
+
+def _replaced_keys(item: any, keys: list[str | int]) -> list[tuple[str | int, ...]];
+
+def _child_config_path(parent: str, key: str) -> str;
 
 glob _config: JacConfig | None = None,
      _config_explicit: bool = False,
