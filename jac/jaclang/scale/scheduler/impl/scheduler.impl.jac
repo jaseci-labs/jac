@@ -723,8 +723,6 @@ impl JacScaleScheduler.update_job(
 }
 
 impl JacScaleScheduler.delete_job(job_id: str, acting_as: str | None = None) -> bool {
-    # Any status, not just active: an orphaned row is still this service's to
-    # clean up, and find_active_one would hide it from DELETE forever.
     existing = self._require_store().find_one(job_id);
     if existing is not None and not self._serves(existing) {
         return False;
