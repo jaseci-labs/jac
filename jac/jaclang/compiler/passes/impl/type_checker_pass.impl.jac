@@ -6,31 +6,18 @@ impl TypeCheckPass.exit_name with Name exit {
     if here.__class__ is not Name {
         return;
     }
-    if here.sym is None {
-        if isinstance(here.parent, AtomTrailer) and here.parent.right is here {
-            return;
-        }
-        if isinstance(here.parent, HasVar)
-            and here.parent.defer
-            and here is not here.parent.name {
-            return;
-        }
-        if isinstance(here.parent, KWPair) and here.parent.key is here {
-            return;
-        }
-        if isinstance(here.parent, SubTag) {
-            return;
-        }
-
-        if isinstance(here.parent, ModulePath) {
-            return;
-        }
-        if isinstance(here.parent, JsxElementName) {
-            return;
-        }
-        if isinstance(here.parent, ModuleCode) and here.parent.name is here {
-            return;
-        }
+    if self.evaluator._is_non_expression_name(here) {
+        return;
+    }
+    is_bare_field = (
+        here.sym is not None
+        and here.sym.sym_type == SymbolType.HAS_VAR
+        and isinstance(here.sym.parent_tab, Archetype)
+        and here.expr_ctx == ExprCtx.LOAD
+        and self.evaluator._is_attr_receiver_name(here)
+        and not self.evaluator._is_runtime_local_name(here)
+    );
+    if here.sym is None or is_bare_field {
         self.evaluator.get_type_of_expression(here);
     }
     if here.sym is not None {

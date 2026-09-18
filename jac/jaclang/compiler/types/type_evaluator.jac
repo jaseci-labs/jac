@@ -77,6 +77,7 @@ import from jaclang.compiler.frontend.unitree {
     MatchStmt,
     MatchWild,
     Module,
+    ModuleCode,
     ModuleItem,
     ModulePath,
     MultiString,
@@ -92,6 +93,7 @@ import from jaclang.compiler.frontend.unitree {
     RaiseStmt,
     ReturnStmt,
     Semi,
+    SemDef,
     SetCompr,
     SetVal,
     Source,
@@ -112,7 +114,8 @@ import from jaclang.compiler.frontend.unitree {
     UniScopeNode,
     WhileStmt,
     WithStmt,
-    YieldExpr
+    YieldExpr,
+    find_python_scope_node_of
 }
 import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant {
@@ -638,6 +641,10 @@ walker TypeEvaluator {
     def resolve_imported_symbols(sym: Symbol) -> Symbol;
     def _set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase;
     def _resolution_scope_for(expr: UniNode) -> UniScopeNode | None;
+    def _is_non_expression_name(expr: Name) -> bool;
+    def _is_attr_receiver_name(expr: Name) -> bool;
+    def _is_runtime_local_name(expr: Name) -> bool;
+    def _lookup_bare_runtime_name(scope: UniScopeNode, name: str) -> Symbol | None;
     def _is_expr_self(expr: Expr) -> bool;
     def _is_expr_super(expr: Expr) -> bool;
     def _get_enclosing_function(nd: UniNode) -> Ability | None;

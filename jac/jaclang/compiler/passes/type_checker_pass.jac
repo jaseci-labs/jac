@@ -67,7 +67,7 @@ import from jaclang.compiler.frontend.unitree {
 import from jaclang.compiler.passes.context { CompileContext }
 
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
+import from jaclang.compiler.frontend.constant { ExprCtx, SymbolType, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.types.ct_value { CT_DEFERRED, CtValue }
 import from jaclang.compiler.types.types {

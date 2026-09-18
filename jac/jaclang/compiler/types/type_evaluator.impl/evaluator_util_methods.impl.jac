@@ -1041,6 +1041,75 @@ impl TypeEvaluator._resolution_scope_for(expr: UniNode) -> UniScopeNode | None {
     return scope;
 }
 
+impl TypeEvaluator._is_non_expression_name(expr: Name) -> bool {
+    return (
+        (isinstance(expr.parent, AtomTrailer) and expr.parent.right is expr)
+        or (
+            isinstance(expr.parent, HasVar)
+            and expr.parent.defer
+            and expr is not expr.parent.name
+        )
+        or (isinstance(expr.parent, KWPair) and expr.parent.key is expr)
+        or isinstance(expr.parent, SubTag)
+        or isinstance(expr.parent, ModulePath)
+        or isinstance(expr.parent, JsxElementName)
+        or (isinstance(expr.parent, ModuleCode) and expr.parent.name is expr)
+        or (isinstance(expr.parent, SemDef) and expr in expr.parent.target)
+    );
+}
+
+impl TypeEvaluator._is_attr_receiver_name(expr: Name) -> bool {
+    return (
+        isinstance(expr.parent, AtomTrailer)
+        and expr.parent.target is expr
+        and expr.parent.is_attr
+    );
+}
+
+impl TypeEvaluator._is_runtime_local_name(expr: Name) -> bool {
+    scope = find_python_scope_node_of(expr);
+    if scope is None {
+        return False;
+    }
+    if expr.value in scope.implicit_rebinds {
+        return True;
+    }
+    for assignment in scope.get_all_sub_nodes(Assignment) {
+        if find_python_scope_node_of(assignment) is not scope {
+            continue;
+        }
+        for target in assignment.target {
+            if isinstance(target, Name) and target.value == expr.value {
+                return True;
+            }
+            for nested in target.get_all_sub_nodes(Name) {
+                if nested.value == expr.value {
+                    return True;
+                }
+            }
+        }
+    }
+    return False;
+}
+
+impl TypeEvaluator._lookup_bare_runtime_name(
+    scope: UniScopeNode, name: str
+) -> Symbol | None {
+    cur: UniScopeNode | None = scope;
+    while cur is not None {
+        if not isinstance(cur, Archetype) {
+            if isinstance(cur, Module) {
+                return lookup_symtab(cur, name, self.builtins_module);
+            }
+            if found := collect_member_syms(cur, name) {
+                return found[0];
+            }
+        }
+        cur = cur.parent_scope;
+    }
+    return None;
+}
+
 impl TypeEvaluator._is_expr_self(expr: Expr) -> bool {
     if (
         isinstance(expr, Name)
