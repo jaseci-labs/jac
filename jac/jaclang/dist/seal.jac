@@ -334,10 +334,15 @@ def vendor_jab_deps(config: any, img: Path) -> bool {
         f"  Vendoring {len(specs)} Python dependency closure as wheels", style="muted"
     );
     wd = wheels_dir(img);
-    (ok, err) = download_wheels(specs, wd);
-    if not ok {
+    result = download_wheels(specs, wd);
+    if not result.ok {
+        what = (
+            f"no usable wheel for {', '.join(result.missing)}"
+                if result.missing
+                else "wheel download failed"
+        );
         console.error(
-            f"Fat-jab vendoring failed while downloading wheels:\n  {err}",
+            f"Fat-jab vendoring failed, {what}:\n  {result.detail}",
             hint=(
                 "A dep may lack a wheel for this platform. Build without --fat, "
                 "or pre-provide the wheels via PIP_FIND_LINKS."

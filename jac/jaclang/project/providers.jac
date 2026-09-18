@@ -378,10 +378,10 @@ obj PythonProvider(EcosystemProvider) {
 
     def _install_global(specs: list[str], ctx: InstallContext) -> bool {
         import subprocess;
-        import sys;
-        cmd: list[str] = [sys.executable, "-m", "pip", "install", "--upgrade"]
-            + ctx.install_flags
-            + specs;
+        import from jaclang.project.pyvenv { pip_command, pip_python }
+        cmd: list[str] = pip_command(
+            pip_python(), ["install", "--upgrade"] + ctx.install_flags + specs
+        );
         if ctx.verbose {
             console.print(f"  Running: {' '.join(cmd)}", style="muted");
         }

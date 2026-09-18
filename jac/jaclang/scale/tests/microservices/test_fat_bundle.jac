@@ -1,20 +1,32 @@
 import io;
 import os;
+import re;
+import sys;
 import tarfile;
 import tempfile;
 import json;
 import from pathlib { Path }
+import from jaclang.testing.requires { require_network }
 import from jaclang.scale.tests.support { require_pod_binary }
 import from jaclang.project.providers { write_venv_deps_marker }
+import from jaclang.dist.jab_vendor { WheelTarget, download_wheels }
+import from jaclang.scale.utils.vendor_wheels {
+    POD_GLIBC,
+    pod_arch_from_argv,
+    pod_wheel_target
+}
 import from jaclang.scale.injector.bundle {
     _strip_external_record_lines,
     staged_venv_files,
     content_address,
     fat_bundle_enabled,
     fat_bundle_setting,
-    pack_jab,
-    _pod_wheel_platform
+    pack_jab
 }
+
+
+glob _MANYLINUX_X86_64 = re.compile(r"manylinux(2014|_2_\d+)_x86_64"),
+     _MANYLINUX_AARCH64 = re.compile(r"manylinux(2014|_2_\d+)_aarch64");
 
 
 def _app(toml: str) -> str {
@@ -46,10 +58,84 @@ def _member(raw: bytes, name: str) -> bytes {
 }
 
 
-test "a deploy pins vendored wheels to a manylinux tag for the node arch" {
-    assert _pod_wheel_platform("") == "";
-    assert _pod_wheel_platform("aarch64") == "manylinux_2_36_aarch64";
-    assert _pod_wheel_platform("x86_64") == "manylinux_2_36_x86_64";
+test "a deploy targets the node arch, the pod glibc floor and the seal binary's python" {
+    assert pod_wheel_target("") is None;
+    target = pod_wheel_target("x86_64");
+    assert target is not None;
+    assert target.arch == "x86_64";
+    assert POD_GLIBC == (2, 36);
+    assert target.glibc == POD_GLIBC;
+    assert target.python_version
+        == f"{sys.version_info.major}.{sys.version_info.minor}";
+    assert target.platform_tag() == "manylinux_2_36_x86_64";
+    tags = target.platform_tags();
+    assert tags[0] == "manylinux_2_36_x86_64" , tags;
+    assert "manylinux2014_x86_64" in tags and "manylinux_2_17_x86_64" in tags , tags;
+    assert "manylinux_2_28_x86_64" in tags , tags;
+    assert "--implementation" in target.pip_args() and "cp" in target.pip_args();
+    arm = pod_wheel_target("arm64");
+    assert arm is not None and arm.arch == "aarch64";
+    assert "manylinux2014_aarch64" in arm.platform_tags();
+}
+
+
+test "the vendor script still understands the platform tag older deploy hosts pass" {
+    assert pod_arch_from_argv("x86_64") == "x86_64";
+    assert pod_arch_from_argv("manylinux_2_36_aarch64") == "aarch64";
+    assert pod_arch_from_argv("manylinux2014_x86_64") == "x86_64";
+    assert pod_arch_from_argv("") == "";
+}
+
+
+test "a pod target downloads real manylinux2014-only wheels from PyPI" {
+    require_network();
+    target = WheelTarget(arch="x86_64", python_version="3.12", glibc=POD_GLIBC);
+    with tempfile.TemporaryDirectory(prefix="jac-pod-wheels-") as tmp {
+        result = download_wheels(
+            ["watchdog==6.0.0", "bcrypt==5.0.0"], Path(tmp), target=target
+        );
+        assert result.ok , result.detail;
+        wheels = sorted([p.name for p in Path(tmp).`glob("*.whl")]);
+    }
+    assert "watchdog-6.0.0-py3-none-manylinux2014_x86_64.whl" in wheels , wheels;
+    bcrypt = [
+        w
+        for w in wheels
+        if w.startswith("bcrypt-5.0.0-cp39-abi3-")
+    ];
+    assert len(bcrypt) == 1 and _MANYLINUX_X86_64.search(bcrypt[0]) , wheels;
+    assert not any(["macosx" in w or "aarch64" in w for w in wheels]) , wheels;
+}
+
+
+test "an sdist-only dep is built on the host and ships when its wheel fits the pod" {
+    require_network();
+    target = WheelTarget(arch="aarch64", python_version="3.12", glibc=POD_GLIBC);
+    with tempfile.TemporaryDirectory(prefix="jac-pod-sdist-") as tmp {
+        saved_cache = os.environ.get("PIP_CACHE_DIR");
+        os.environ["PIP_CACHE_DIR"] = str(Path(tmp) / "pip-cache");
+        try {
+            result = download_wheels(
+                ["http-ece==1.2.1"], Path(tmp) / "wheels", target=target
+            );
+        } finally {
+            if saved_cache is None {
+                del os.environ["PIP_CACHE_DIR"];
+            } else {
+                os.environ["PIP_CACHE_DIR"] = saved_cache;
+            }
+        }
+        assert result.ok , result.detail;
+        wheels = sorted([p.name for p in (Path(tmp) / "wheels").`glob("*.whl")]);
+    }
+    assert "http_ece-1.2.1-py2.py3-none-any.whl" in wheels , wheels;
+    crypto = [
+        w
+        for w in wheels
+        if w.startswith("cryptography-")
+    ];
+    assert len(crypto) == 1 and _MANYLINUX_AARCH64.search(crypto[0]) , wheels;
+    assert not any(["macosx" in w or "x86_64" in w for w in wheels]) , wheels;
 }
 
 
