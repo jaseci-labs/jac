@@ -208,8 +208,84 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # jac-check is a reroute lane (JAC_NO_DEV_SOURCE: ""): it runs the compiler
+  # from the checkout and never loads the binary's sealed payload. build-kit
+  # spends ~8.5 min precompiling + SEALING 612 modules into a payload this lane
+  # then ignores, and jac-check is the critical path, so that wait is the run's
+  # wall clock. Build it a launcher-only kit in parallel instead. -Dskip-precompile
+  # still ships the full payload tree and the [dev] reroute machinery; it only
+  # drops the JIR precompile and the seal, which is exactly the part this lane
+  # does not read. Never saved to the shared jac-bin cache (setup-jac gates that
+  # on skip-precompile != true), so it cannot serve a sealed consumer.
+  build-kit-dev:
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    needs: changes
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the jac binary (no JIR precompile)
+        uses: ./.github/actions/setup-jac
+        with:
+          skip-precompile: "true"
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Materialize typeshed + vendored runtimes
+        working-directory: jac
+        run: |
+          zig build fetch-typeshed --summary all
+          zig build vendor-musl --summary all
+          zig build vendor-musl-linux-aarch64 --summary all
+          zig build vendor-wasm-libc --summary all
+
+      # build-kit's smokes all pin JAC_NO_DEV_SOURCE=1 and exercise the sealed
+      # payload, which this binary deliberately does not have. Exercise the
+      # reroute the consumers actually take instead: cwd is the repo root so the
+      # walk-up finds jac.toml's [dev] jaclang_source.
+      - name: Reroute smoke (compiler from the checkout)
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/jac/zig-out/bin/jac"
+          WORK="$(mktemp -d)"
+          printf 'with entry { print(6*7); }\n' > "$WORK/warm.jac"
+          out="$("$BIN" run "$WORK/warm.jac" 2>&1)" || { echo "$out"; exit 1; }
+          echo "$out" | tail -3
+          # -qx, not -q: an unanchored 42 also matches 142 or a diagnostic that
+          # happens to contain those digits, which would hide a broken reroute.
+          echo "$out" | grep -qx '42'
+
+      - name: Verify the kit is complete
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          for p in zig-out/bin/jac jaclang/vendor/typeshed/stdlib \
+                   .pbs-build/linux-x86_64/musl/lib \
+                   .pbs-build/linux-aarch64/musl/lib \
+                   .pbs-build/wasm32/libc; do
+            [ -e "$p" ] || { echo "::error::dev kit is missing $p"; exit 1; }
+          done
+
+      - name: Upload the dev kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-kit-dev
+          path: |
+            jac/zig-out/bin/jac
+            jac/jaclang/vendor/typeshed/stdlib
+            jac/.pbs-build/linux-x86_64/musl/lib
+            jac/.pbs-build/linux-aarch64/musl/lib
+            jac/.pbs-build/wasm32/libc
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
   jac-check:
-    needs: [changes, build-kit]
+    needs: [changes, build-kit-dev]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
@@ -280,6 +356,8 @@ jobs:
             jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
 
       - uses: ./.github/actions/jac-kit
+        with:
+          name: jac-kit-dev
 
       - name: Install plugin deps so jac check resolves scale/byllm imports
         # Pins mirror jac/jaclang/project/capabilities.jac.
@@ -1587,6 +1665,7 @@ jobs:
     needs:
       - changes
       - build-kit
+      - build-kit-dev
       - macos-native
       - jac-check
       - contribution-checks
