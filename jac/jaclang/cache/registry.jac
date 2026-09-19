@@ -7,7 +7,8 @@ obj Bucket {
         policy: Policy,
         summary: str = "",
         root_env: str = "",
-        root_prefix: str = "";
+        root_prefix: str = "",
+        root_dir: str = "";
 
     def path -> Path;
     def ensure -> Path;
@@ -169,6 +170,10 @@ glob RETIRED: tuple[str, ...] = (
      ];
 
 def bucket(name: str) -> Bucket;
+
+def project_bucket -> Bucket | None;
+
+def all_buckets -> list[Bucket];
 
 def managed_buckets -> list[Bucket];
 def external_buckets -> list[Bucket];
