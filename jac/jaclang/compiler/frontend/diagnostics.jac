@@ -922,6 +922,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " or in the 'init'/'postinit' of the object that declares it when the"
          " declaration has no initializer."
      ),
+     E1137 = _err(
+         "E1137",
+         Category.IMPORT,
+         "A test file imports from its own module '{module}'",
+         help="A .test.jac runs inside the namespace of the module it sits"
+         " beside, so the names of '{module}' are already in scope here."
+         " Importing them re-enters the module while it is still initializing,"
+         " which fails at run time with 'cannot import name ... from partially"
+         " initialized module'. Remove the import and use the names directly."
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,

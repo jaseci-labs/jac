@@ -307,6 +307,10 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
         }
         for (idx, npath) in enumerate(path_parts) {
             mod_path = path_list[idx + offset];
+            if idx == len(path_parts) - 1
+                and self._imports_own_module(node_, mod_path) {
+                self.emit_diag(E1137, npath, module=node_.dot_path_str);
+            }
 
             if mod_path in self._module_type_cache {
                 resolved_for_cache = str(Path(mod_path).resolve());
@@ -558,6 +562,15 @@ impl TypeEvaluator.resolve_to_definition_symbol(symbol: Symbol) -> Symbol {
     return cur;
 }
 
+
+impl TypeEvaluator._imports_own_module(node_: ModulePath, mod_path: str) -> bool {
+    importer = node_.loc.mod_path if node_.loc else "";
+    if not importer or not importer.endswith(".test.jac") {
+        return False;
+    }
+    base = Path(importer[:-len(".test.jac")] + ".jac");
+    return base.exists() and Path(mod_path).resolve() == base.resolve();
+}
 
 impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {
     if node_.level <= 0 or node_.string_path_value is not None {
