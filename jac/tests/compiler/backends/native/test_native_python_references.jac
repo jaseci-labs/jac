@@ -67,7 +67,7 @@ test "error results release nested frames and preserve the original exception" {
     sentinel = ValueError("original error");
     witness = object();
     before_witness = sys.getrefcount(witness);
-    def fail -> None {
+    def fail {
         assert sys.getrefcount(witness) > before_witness;
         raise sentinel;
     }

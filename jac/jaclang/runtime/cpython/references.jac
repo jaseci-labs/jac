@@ -1,4 +1,3 @@
-"""Shared ownership and cycle-collector visibility for hosted Python values."""
 import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_visit,
@@ -105,7 +104,6 @@ obj ReferenceState(NativeState) {
     }
 }
 
-# Consume all supplied owned references, including when tuple allocation fails.
 def owned_tuple(values: list[u64]) -> u64 {
     held = ReferenceState(references=values);
     for value in values {

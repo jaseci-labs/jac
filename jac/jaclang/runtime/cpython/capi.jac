@@ -1,10 +1,3 @@
-"""Retained CPython object operations shared by native Jac and JacPython.
-
-Handles borrow their arguments. Object-producing operations return a new
-reference (zero on error), released with jacpy_release or returned to Python.
-All calls require the interpreter lock; exceptions remain in CPython's thread
-state. The same ABI serves ordinary CPython and JacPython runtimes.
-"""
 enum builtin_kind {
     NONE = 0,
     BOOL = 1,
@@ -271,7 +264,6 @@ def object_error(kind: str, message: str) {
 }
 
 
-# The payload of a retained bytes-like value, copied into Jac storage.
 def read_buffer(handle: u64) -> bytes {
     size = jacpy_bytes_length(handle);
     data = b"\x00" * int(size);
@@ -321,7 +313,6 @@ def repr_value(value: u64) -> str {
     }
 }
 
-# Both inputs are borrowed; the returned tuple owns its references.
 def pair(first: u64, second: u64) -> u64 {
     result = required(jacpy_tuple_new(2));
     jacpy_tuple_set_owned(result, 0, jacpy_retain(first));
@@ -336,7 +327,6 @@ def checked(status: i64) {
     }
 }
 
-# Entries are borrowed; each successful result owns all its element references.
 def object_tuple(values: list[u64]) -> u64 {
     result = required(jacpy_tuple_new(i64(len(values))));
     for i in range(len(values)) {
@@ -356,7 +346,6 @@ def type_name(value: u64, qualified: bool = False) -> str {
     }
 }
 
-# Preserve the original exception if formatting a diagnostic invokes user code.
 def serialization_note(value: u64, key: u64, index: int, kind: int, detail: str = "") {
     error = jacpy_error_take();
     if error == 0 {

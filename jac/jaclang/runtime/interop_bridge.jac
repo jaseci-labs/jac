@@ -1,4 +1,3 @@
-"""Calling conventions and lifetimes at the Python/native boundary."""
 import ctypes;
 import logging;
 import from collections.abc { Callable, Iterable }
@@ -62,12 +61,10 @@ obj NativeLibrary {
     }
 }
 
-"""Recognize the interpreter ABI in a native unit's unresolved symbols."""
 def native_requires_python(symbols: Iterable[str]) -> bool {
     return any(name.startswith(("Py", "_Py", "jacpy_")) for name in symbols);
 }
 
-"""Python-dependent entries hold the GIL and propagate the error indicator."""
 def native_callable(
     address: int, requires_python: bool, restype: type | None, *argtypes: type
 ) -> Callable {
