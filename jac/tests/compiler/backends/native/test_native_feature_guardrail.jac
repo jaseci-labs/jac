@@ -215,7 +215,7 @@ test "guardrail: field access on an untyped (any) node-ref element demotes the a
     (prog, ir, log) = compile_na_inline_demote(
         "node_ref_any_field",
         "node N { has tag: int = 0; }\n"
-        "edge Portal {}\n"
+        "edge Portal: any --> any {}\n"
         "walker W {\n"
         "    has v: int = 0;\n"
         "    can go with N entry {\n"
@@ -709,7 +709,7 @@ test "guardrail: list-endpoint disconnect lowers; list plus predicate stays loud
     )}";
     prog2 = compile_na_inline(
         "disconnect_pred_list",
-        "edge E { has w: int = 0; }\n"
+        "edge E: N --> N { has w: int = 0; }\n"
         "node N {}\n"
         "walker W {\n"
         "    can go with N entry {\n"
@@ -769,7 +769,7 @@ test "osp gate: connect-only module (no walker) lowers without E5090" {
     prog = compile_na_inline(
         "connect_no_walker",
         "node Area { has tag: int = 0; }\n"
-        "edge In {}\n"
+        "edge In: Area --> Area {}\n"
         "with entry {\n"
         "    a = Area(tag=1);\n"
         "    b = Area(tag=2);\n"
