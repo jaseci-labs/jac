@@ -1,209 +1,287 @@
-import type from jaclang.compiler.frontend.unitree { UniNode }
+import type from jaclang.compiler.frontend.unitree {
+    Ability,
+    ArchHas,
+    Archetype,
+    AssertStmt,
+    AssignCompr,
+    Assignment,
+    AstAccessNode,
+    AstDocNode,
+    AstElseBodyNode,
+    AstTypedVarNode,
+    AtomTrailer,
+    AwaitingClause,
+    CastExpr,
+    CfgExpr,
+    CompareExpr,
+    ConcurrentExpr,
+    ConnectOp,
+    CtrlStmt,
+    DictCompr,
+    DictVal,
+    DisconnectOp,
+    EdgeOpRef,
+    EdgeRefTrailer,
+    ElseIf,
+    ElseStmt,
+    Enum,
+    EventSignature,
+    Except,
+    Expr,
+    ExprAsItem,
+    FString,
+    FilterCompr,
+    FinallyStmt,
+    FormattedValue,
+    FuncSignature,
+    GlobalVars,
+    HasVar,
+    IfElseExpr,
+    ImplDef,
+    Import,
+    IndexSlice,
+    InnerCompr,
+    IterForStmt,
+    JsxAttribute,
+    JsxChild,
+    JsxElement,
+    JsxElementName,
+    KVPair,
+    KWPair,
+    ListCompr,
+    MatchArch,
+    MatchCase,
+    MatchKVPair,
+    MatchOr,
+    MatchPattern,
+    Module,
+    ModuleItem,
+    ModulePath,
+    MultiString,
+    Name,
+    NameAtom,
+    ParamVar,
+    ProgramModule,
+    PyInlineCode,
+    RaiseStmt,
+    Slice,
+    String,
+    SubTag,
+    SwitchCase,
+    Test,
+    Token,
+    TryStmt,
+    TypeParam,
+    TypedCtxBlock,
+    UnaryExpr,
+    UniNode,
+    VisitStmt
+}
 
-edge Role {}
+edge Role: UniNode --> UniNode {}
 
 edge Kid: UniNode --> UniNode {}
 
-edge ImplOf {}
+edge ImplOf: UniNode --> UniNode {}
 
-edge AccessRole(Role) {}
+edge AccessRole(Role): AstAccessNode --> SubTag[Token] {}
 
-edge AccessorsRole(Role) {}
+edge AccessorsRole(Role): HasVar --> Ability {}
 
-edge AliasRole(Role) {}
+edge AliasRole(Role): UniNode --> Expr {}
 
-edge ArchTagInfoRole(Role) {}
+edge ArchTagInfoRole(Role): EventSignature --> Expr {}
 
-edge ArchTypeRole(Role) {}
+edge ArchTypeRole(Role): Archetype --> Token {}
 
-edge ArgPatternsRole(Role) {}
+edge ArgPatternsRole(Role): MatchArch --> MatchPattern {}
 
-edge AssignmentsRole(Role) {}
+edge AssignmentsRole(Role): GlobalVars --> Assignment {}
 
-edge AssignsRole(Role) {}
+edge AssignsRole(Role): AssignCompr --> KWPair {}
 
-edge AttributesRole(Role) {}
+edge AttributesRole(Role): JsxElement --> JsxAttribute {}
 
-edge AugOpRole(Role) {}
+edge AugOpRole(Role): Assignment --> Token {}
 
-edge AwaitingBodyRole(Role) {}
+edge AwaitingBodyRole(Role): TryStmt --> AwaitingClause {}
 
-edge BaseClassesRole(Role) {}
+edge BaseClassesRole(Role): UniNode --> Expr {}
 
-edge BodyRole(Role) {}
+edge BodyRole(Role): UniNode --> UniNode {}
 
-edge BoundRole(Role) {}
+edge BoundRole(Role): TypeParam --> Expr {}
 
-edge CasesRole(Role) {}
+edge CasesRole(Role): UniNode --> MatchCase | SwitchCase {}
 
-edge CastTypeRole(Role) {}
+edge CastTypeRole(Role): CastExpr --> Expr {}
 
-edge CauseRole(Role) {}
+edge CauseRole(Role): RaiseStmt --> Expr {}
 
-edge ChainRole(Role) {}
+edge ChainRole(Role): EdgeRefTrailer --> Expr {}
 
-edge ChildrenRole(Role) {}
+edge ChildrenRole(Role): JsxElement --> JsxChild | JsxElement {}
 
-edge ClibDeclsRole(Role) {}
+edge ClibDeclsRole(Role): Import --> UniNode {}
 
-edge CodeRole(Role) {}
+edge CodeRole(Role): PyInlineCode --> Token {}
 
-edge CollectionRole(Role) {}
+edge CollectionRole(Role): UniNode --> Expr {}
 
-edge ComparesRole(Role) {}
+edge ComparesRole(Role): FilterCompr --> Expr {}
 
-edge ComprRole(Role) {}
+edge ComprRole(Role): UniNode --> InnerCompr {}
 
-edge ConditionRole(Role) {}
+edge ConditionRole(Role): UniNode --> Expr {}
 
-edge ConditionalRole(Role) {}
+edge ConditionalRole(Role): InnerCompr --> Expr {}
 
-edge ConnAssignRole(Role) {}
+edge ConnAssignRole(Role): ConnectOp --> AssignCompr {}
 
-edge ConnTypeRole(Role) {}
+edge ConnTypeRole(Role): ConnectOp --> Expr {}
 
-edge CountByRole(Role) {}
+edge CountByRole(Role): IterForStmt --> Assignment {}
 
-edge CtrlRole(Role) {}
+edge CtrlRole(Role): CtrlStmt --> Token {}
 
-edge DecoratorsRole(Role) {}
+edge DecoratorsRole(Role): UniNode --> Expr {}
 
-edge DefaultValRole(Role) {}
+edge DefaultValRole(Role): TypeParam --> Expr {}
 
-edge DescriptionRole(Role) {}
+edge DescriptionRole(Role): Test --> String {}
 
-edge DocRole(Role) {}
+edge DocRole(Role): AstDocNode --> String {}
 
-edge DynamicTagRole(Role) {}
+edge DynamicTagRole(Role): JsxElement --> Expr {}
 
-edge EdgeSpecRole(Role) {}
+edge EdgeSpecRole(Role): DisconnectOp --> EdgeOpRef {}
 
-edge ElseBodyRole(Role) {}
+edge ElseBodyRole(Role): AstElseBodyNode --> ElseIf | ElseStmt {}
 
-edge ElseValueRole(Role) {}
+edge ElseValueRole(Role): IfElseExpr --> CfgExpr {}
 
-edge EndRole(Role) {}
+edge EndRole(Role): FString --> Token {}
 
-edge ErrorMsgRole(Role) {}
+edge ErrorMsgRole(Role): AssertStmt --> Expr {}
 
-edge EventRole(Role) {}
+edge EventRole(Role): EventSignature --> Token {}
 
-edge ExTypeRole(Role) {}
+edge ExTypeRole(Role): Except --> Expr {}
 
-edge ExceptsRole(Role) {}
+edge ExceptsRole(Role): TryStmt --> Except {}
 
-edge ExprRole(Role) {}
+edge ExprRole(Role): UniNode --> Expr {}
 
-edge ExprsRole(Role) {}
+edge ExprsRole(Role): UniNode --> Expr | ExprAsItem {}
 
-edge FTypeRole(Role) {}
+edge FTypeRole(Role): FilterCompr --> Expr {}
 
-edge FilterCondRole(Role) {}
+edge FilterCondRole(Role): EdgeOpRef --> FilterCompr {}
 
-edge FinallyBodyRole(Role) {}
+edge FinallyBodyRole(Role): TryStmt --> FinallyStmt {}
 
-edge FormatPartRole(Role) {}
+edge FormatPartRole(Role): FormattedValue --> Expr {}
 
-edge FormatSpecRole(Role) {}
+edge FormatSpecRole(Role): FormattedValue --> Expr {}
 
-edge FromLocRole(Role) {}
+edge FromLocRole(Role): Import --> ModulePath {}
 
-edge FromTargetRole(Role) {}
+edge FromTargetRole(Role): RaiseStmt --> Expr {}
 
-edge GuardRole(Role) {}
+edge GuardRole(Role): MatchCase --> Expr {}
 
-edge HintRole(Role) {}
+edge HintRole(Role): Import --> SubTag[Token] {}
 
-edge InsertLocRole(Role) {}
+edge InsertLocRole(Role): VisitStmt --> Expr {}
 
-edge ItemsRole(Role) {}
+edge ItemsRole(Role): Import --> ModuleItem | ModulePath {}
 
-edge IterRole(Role) {}
+edge IterRole(Role): IterForStmt --> Assignment {}
 
-edge KeyRole(Role) {}
+edge KeyRole(Role): UniNode --> Expr | MatchPattern {}
 
-edge KeywordsRole(Role) {}
+edge KeywordsRole(Role): Archetype --> KWPair {}
 
-edge KvPairRole(Role) {}
+edge KvPairRole(Role): DictCompr --> KVPair {}
 
-edge KvPairsRole(Role) {}
+edge KvPairsRole(Role): DictVal --> KVPair {}
 
-edge KwPatternsRole(Role) {}
+edge KwPatternsRole(Role): MatchArch --> MatchKVPair {}
 
-edge KwargsRole(Role) {}
+edge KwargsRole(Role): FuncSignature --> ParamVar {}
 
-edge KwonlyargsRole(Role) {}
+edge KwonlyargsRole(Role): FuncSignature --> ParamVar {}
 
-edge LeftRole(Role) {}
+edge LeftRole(Role): UniNode --> Expr {}
 
-edge MainRole(Role) {}
+edge MainRole(Role): ProgramModule --> Module {}
 
-edge NameRole(Role) {}
+edge NameRole(Role): UniNode --> AtomTrailer | JsxElementName | NameAtom | Token {}
 
-edge NameRefRole(Role) {}
+edge NameRefRole(Role): Ability --> NameAtom {}
 
-edge OpRole(Role) {}
+edge OpRole(Role): UniNode --> ConnectOp | DisconnectOp | Token {}
 
-edge OperandRole(Role) {}
+edge OperandRole(Role): UnaryExpr --> Expr {}
 
-edge OpsRole(Role) {}
+edge OpsRole(Role): CompareExpr --> Token {}
 
-edge OutExprRole(Role) {}
+edge OutExprRole(Role): ListCompr --> Expr {}
 
-edge ParamsRole(Role) {}
+edge ParamsRole(Role): UniNode --> Expr | KWPair | ParamVar {}
 
-edge PartsRole(Role) {}
+edge PartsRole(Role): UniNode --> FormattedValue | Token {}
 
-edge PathRole(Role) {}
+edge PathRole(Role): ModulePath --> Name | String {}
 
-edge PatternRole(Role) {}
+edge PatternRole(Role): UniNode --> MatchPattern {}
 
-edge PatternsRole(Role) {}
+edge PatternsRole(Role): MatchOr --> MatchPattern {}
 
-edge PosonlyParamsRole(Role) {}
+edge PosonlyParamsRole(Role): FuncSignature --> ParamVar {}
 
-edge ReturnTypeRole(Role) {}
+edge ReturnTypeRole(Role): FuncSignature --> Expr {}
 
-edge RightRole(Role) {}
+edge RightRole(Role): UniNode --> Expr {}
 
-edge RightsRole(Role) {}
+edge RightsRole(Role): CompareExpr --> Expr {}
 
-edge SignatureRole(Role) {}
+edge SignatureRole(Role): UniNode --> EventSignature | FuncSignature {}
 
-edge SlicesRole(Role) {}
+edge SlicesRole(Role): IndexSlice --> Slice {}
 
-edge SpecRole(Role) {}
+edge SpecRole(Role): ImplDef --> EventSignature | Expr | FuncSignature {}
 
-edge SrcEndpointRole(Role) {}
+edge SrcEndpointRole(Role): Archetype --> Expr {}
 
-edge StartRole(Role) {}
+edge StartRole(Role): UniNode --> Expr | Token {}
 
-edge StepRole(Role) {}
+edge StepRole(Role): Slice --> Expr {}
 
-edge StopRole(Role) {}
+edge StopRole(Role): Slice --> Expr {}
 
-edge StringsRole(Role) {}
+edge StringsRole(Role): MultiString --> FString | String {}
 
-edge TargetRole(Role) {}
+edge TargetRole(Role): UniNode --> Expr {}
 
-edge TgtEndpointRole(Role) {}
+edge TgtEndpointRole(Role): Archetype --> Expr {}
 
-edge TokRole(Role) {}
+edge TokRole(Role): ConcurrentExpr --> Token {}
 
-edge TypeCtxRole(Role) {}
+edge TypeCtxRole(Role): TypedCtxBlock --> Expr {}
 
-edge TypeParamsRole(Role) {}
+edge TypeParamsRole(Role): UniNode --> TypeParam {}
 
-edge TypeTagRole(Role) {}
+edge TypeTagRole(Role): AstTypedVarNode --> SubTag[Expr] {}
 
-edge UnpackRole(Role) {}
+edge UnpackRole(Role): ParamVar --> Token {}
 
-edge ValueRole(Role) {}
+edge ValueRole(Role): UniNode --> Ability | Expr | MatchPattern | Token {}
 
-edge ValueTypeRole(Role) {}
+edge ValueTypeRole(Role): Enum --> Expr {}
 
-edge ValuesRole(Role) {}
+edge ValuesRole(Role): UniNode --> Expr | KWPair | MatchPattern {}
 
-edge VarargsRole(Role) {}
+edge VarargsRole(Role): FuncSignature --> ParamVar {}
 
-edge VarsRole(Role) {}
+edge VarsRole(Role): ArchHas --> HasVar {}

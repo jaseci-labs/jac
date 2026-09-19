@@ -756,6 +756,9 @@ impl TypeEvaluator._edge_endpoint_type(
         return None;
     }
     declared = self._edge_endpoint_declared(edge_type, edge_dir == EdgeDir.IN);
+    if declared is None or declared.is_any_instance() {
+        return None;
+    }
     if isinstance(declared, ClassType) {
         return declared;
     }

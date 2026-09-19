@@ -403,13 +403,17 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
     }
 
     for nd in mod.get_all_sub_nodes(typ=Archetype) {
-        if nd.src_endpoint is not None and nd.arch_kind != "edge" {
-            self.ctx.emit(
-                E2027,
-                node_override=nd.src_endpoint,
-                arch_type=(nd.arch_kind or nd.arch_type.value),
-                name=nd.name.value
-            );
+        if nd.arch_kind != "edge" {
+            if nd.src_endpoint is not None {
+                self.ctx.emit(
+                    E2027,
+                    node_override=nd.src_endpoint,
+                    arch_type=(nd.arch_kind or nd.arch_type.value),
+                    name=nd.name.value
+                );
+            }
+        } elif not nd.declares_endpoints() {
+            self.ctx.emit(E2086, node_override=nd.name, name=nd.name.value);
         }
     }
 }
