@@ -479,8 +479,10 @@ def precompile_unit_context(
     );
     selected = precompile_context(jac_path, pkg_root, program, source_app);
     compiler.unit_collect = collect;
-    owner = None if compiler.selfhost.is_selfhost(selected) else selected.options;
-    with cache_scope(owner) {
+    owner_options = None
+        if compiler.selfhost.is_selfhost(selected)
+        else selected.options;
+    with cache_scope(owner_options) {
         try {
             yield selected;
         } finally {

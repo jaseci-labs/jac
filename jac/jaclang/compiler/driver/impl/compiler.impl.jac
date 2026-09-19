@@ -1271,8 +1271,8 @@ impl JacCompiler.compile(
     context_errors = len(target_program.errors_had);
     context_warnings = len(target_program.warnings_had);
     import from jaclang.compiler.driver.compilation_context { compilation_scope }
-    owner = None if self.selfhost.is_selfhost(target_program) else options;
-    with compilation_scope(owner) {
+    owner_options = None if self.selfhost.is_selfhost(target_program) else options;
+    with compilation_scope(owner_options) {
         import from jaclang.compiler.native_scope {
             activate_scope_lowering,
             deactivate_scope_lowering,

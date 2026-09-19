@@ -398,10 +398,10 @@ obj IfaceRegistry {
     @contextmanager
     def _compilation_scope -> Iterator[None] {
         import from jaclang.compiler.driver.compilation_context { compilation_scope }
-        owner = None
+        owner_options = None
             if self.prog._get_compiler().selfhost.is_selfhost(self.prog)
             else self.prog.options;
-        with compilation_scope(owner) {
+        with compilation_scope(owner_options) {
             yield ;
         }
     }
