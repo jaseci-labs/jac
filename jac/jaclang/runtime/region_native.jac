@@ -1,8 +1,5 @@
 import from c { def malloc(n: int) -> int;  }
 import from c { def free(p: int) -> None;  }
-import from c { def __jac_region_tls_get -> int;  }
-import from c { def __jac_region_tls_set(v: int) -> None;  }
-import from c { def __jac_region_gbl_get -> int;  }
 import from c { def __jac_region_died_hook(rgn: int) -> None;  }
 
 glob HDR_ALLOC_ID_OFF: int = -32,

@@ -90,13 +90,15 @@ impl NaIRGenPass._emit_hash_core_helpers(
         else None;
     if _tkf is not None {
         bhe.ret(self._emit_tuple_key_hash(bhe, hash_fn.args[0]));
-    } elif is_bytes_key or is_str_key or _key_sz > 0 {
+    } elif is_str_key and not is_bytes_key and _key_sz == 0 {
+        bhe.ret(bhe.call(self._emit_cstr_hash_fn(), [hash_fn.args[0]], name="h"));
+    } elif is_bytes_key or _key_sz > 0 {
         h_a = bhe.alloca(i64, name="h");
         idx_a = bhe.alloca(i64, name="idx");
         bhe.store(ir.Constant(i64, HASH_FNV_BASIS), h_a);
         bhe.store(ir.Constant(i64, 0), idx_a);
-        _hdata = None;
-        _hlen = None;
+        _hdata: ir.Value;
+        _hlen: ir.Value;
         if is_bytes_key {
             _hlen = bhe.load(
                 bhe.gep(
@@ -115,11 +117,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
                 i8p,
                 name="bdata"
             );
-        } elif _key_sz > 0 {
+        } else {
             _hlen = ir.Constant(i64, _key_sz);
             _hdata = bhe.bitcast(hash_fn.args[0], i8p, name="kdata");
-        } else {
-            _hdata = hash_fn.args[0];
         }
         hlc = hash_fn.append_basic_block("lc");
         hlb = hash_fn.append_basic_block("lb");
@@ -127,17 +127,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
         bhe.branch(hlc);
         blc = ir.IRBuilder(hlc);
         hidx = blc.load(idx_a, name="idx");
-        if _hlen is not None {
-            blc.cbranch(blc.icmp_unsigned("<", hidx, _hlen, name="more"), hlb, hrt);
-            blb = ir.IRBuilder(hlb);
-            hch = blb.load(blb.gep(_hdata, [hidx], name="cp"), name="ch");
-        } else {
-            hch0 = blc.load(blc.gep(_hdata, [hidx], name="cp"), name="ch");
-            hend = blc.icmp_signed("==", hch0, ir.Constant(i8, 0), name="end");
-            blc.cbranch(hend, hrt, hlb);
-            blb = ir.IRBuilder(hlb);
-            hch = hch0;
-        }
+        blc.cbranch(blc.icmp_unsigned("<", hidx, _hlen, name="more"), hlb, hrt);
+        blb = ir.IRBuilder(hlb);
+        hch = blb.load(blb.gep(_hdata, [hidx], name="cp"), name="ch");
         hcur = blb.load(h_a, name="h");
         hce = blb.zext(hch, i64, name="ce");
         hxor = blb.xor(hcur, hce, name="hx");
@@ -147,16 +139,14 @@ impl NaIRGenPass._emit_hash_core_helpers(
         blb.branch(hlc);
         brt = ir.IRBuilder(hrt);
         brt.ret(brt.load(h_a, name="hf"));
+    } elif isinstance(key_type, ir.PointerType) {
+        ki = bhe.ptrtoint(hash_fn.args[0], i64, name="ki");
+        bhe.ret(bhe.mul(ki, ir.Constant(i64, HASH_MUL_K), name="h"));
+    } elif isinstance(key_type, ir.DoubleType) {
+        kbits = bhe.bitcast(hash_fn.args[0], i64, name="kbits");
+        bhe.ret(bhe.mul(kbits, ir.Constant(i64, HASH_MUL_K), name="h"));
     } else {
-        if isinstance(key_type, ir.PointerType) {
-            ki = bhe.ptrtoint(hash_fn.args[0], i64, name="ki");
-            bhe.ret(bhe.mul(ki, ir.Constant(i64, HASH_MUL_K), name="h"));
-        } elif isinstance(key_type, ir.DoubleType) {
-            kbits = bhe.bitcast(hash_fn.args[0], i64, name="kbits");
-            bhe.ret(bhe.mul(kbits, ir.Constant(i64, HASH_MUL_K), name="h"));
-        } else {
-            bhe.ret(bhe.mul(hash_fn.args[0], ir.Constant(i64, HASH_MUL_K), name="h"));
-        }
+        bhe.ret(bhe.mul(hash_fn.args[0], ir.Constant(i64, HASH_MUL_K), name="h"));
     }
 
     find_fnty = ir.FunctionType(i64, [cont_ptr_type, key_type, i64]);
@@ -1007,6 +997,55 @@ impl NaIRGenPass._emit_hash_core_helpers(
         core[_wkey] = _wfn;
     }
     return core;
+}
+
+impl NaIRGenPass._emit_cstr_hash_fn -> ir.Function {
+    """`__jac_cstr_hash(s)`: FNV-1a over the bytes of a NUL-terminated string.
+
+    The runtime twin of `_static_str_hash`, with the same basis and prime, so a
+    hash folded at compile time matches the one computed here for the same
+    bytes. It serves every consumer that hashes a C string: dict keys stored as
+    NUL-terminated `str`, and the class-name identity `isinstance` reads out of
+    an allocation header.
+    """;
+    if self._cstr_hash_fn is not None {
+        return self._cstr_hash_fn;
+    }
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    fn: any = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(i64, [i8.as_pointer()]),
+        name="__jac_cstr_hash"
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "s";
+    head = fn.append_basic_block("entry");
+    loop = fn.append_basic_block("loop");
+    body = fn.append_basic_block("body");
+    done = fn.append_basic_block("done");
+    b = ir.IRBuilder(head);
+    b.branch(loop);
+    b = ir.IRBuilder(loop);
+    h = b.phi(i64, name="h");
+    idx = b.phi(i64, name="idx");
+    ch = b.load(b.gep(fn.args[0], [idx], name="cp"), name="ch");
+    b.cbranch(b.icmp_unsigned("==", ch, ir.Constant(i8, 0), name="end"), done, body);
+    b = ir.IRBuilder(body);
+    mixed = b.mul(
+        b.xor(h, b.zext(ch, i64, name="ce"), name="hx"),
+        ir.Constant(i64, HASH_FNV_PRIME),
+        name="hm"
+    );
+    nxt = b.add(idx, ir.Constant(i64, 1), name="ni");
+    b.branch(loop);
+    h.add_incoming(ir.Constant(i64, HASH_FNV_BASIS), head);
+    h.add_incoming(mixed, body);
+    idx.add_incoming(ir.Constant(i64, 0), head);
+    idx.add_incoming(nxt, body);
+    ir.IRBuilder(done).ret(h);
+    self._cstr_hash_fn = fn;
+    return fn;
 }
 
 impl NaIRGenPass._static_str_hash(key: str) -> int {

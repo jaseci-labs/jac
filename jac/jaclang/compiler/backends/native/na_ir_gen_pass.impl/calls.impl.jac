@@ -1245,7 +1245,8 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.MEM_LOAD: self._emit_intrinsic_mem_load,
         IntrinsicDispatch.MEM_STORE: self._emit_intrinsic_mem_store,
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
-        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor
+        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor,
+        IntrinsicDispatch.REGION_TLS: self._emit_intrinsic_region_tls
     };
     handler = _emitters.get(intr.dispatch);
     if handler is None {
@@ -1395,6 +1396,22 @@ impl NaIRGenPass._emit_intrinsic_call_dtor(
     obj_ptr = self.builder.inttoptr(obj_val, i8p, name="dtor.obj");
     self.builder.call(fn_ptr, [obj_ptr]);
     return None;
+}
+
+impl NaIRGenPass._emit_intrinsic_region_tls(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    self._emit_region_tls_slot();
+    operands: list[ir.Value] = [];
+    for (arg, spec) in zip(args, intr.param_specs) {
+        val = self._intrinsic_operand(nd, intr, arg, spec);
+        if val is None {
+            return None;
+        }
+        operands.append(val);
+    }
+    result = self.builder.call(self.extern_funcs[intr.name], operands);
+    return None if intr.result_spec == "none" else result;
 }
 
 impl NaIRGenPass._codegen_synthetic_call(
@@ -1902,6 +1919,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             self._emit_unsupported_builtin_call(nd, func_name);
             return None;
+        }
+
+        if func_name == "ord" {
+            _ord_const = self._folded_ord(nd);
+            if _ord_const is not None {
+                return _ord_const;
+            }
         }
 
         if func_name
@@ -3685,4 +3709,24 @@ impl NaIRGenPass._codegen_callable_value(
         }
     }
     return result;
+}
+
+impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
+    """`ord` of a one-character literal, folded to its code point.
+
+    The call has already resolved to the builtin, so a module's own `ord` never
+    reaches here. Scanners compare characters against literals, as C does with
+    `c == '#'`; folding keeps each of those a constant instead of a runtime
+    decode of a static string.
+    """;
+    import from jaclang.compiler.frontend.const_fold { fold_const }
+    params = list(nd.params or []);
+    if len(params) != 1 or not isinstance(params[0], uni.Expr) {
+        return None;
+    }
+    (ok, value) = fold_const(params[0]);
+    if not ok or not isinstance(value, str) or len(value) != 1 {
+        return None;
+    }
+    return ir.Constant(ir.IntType(64), ord(value));
 }
