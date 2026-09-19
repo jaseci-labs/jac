@@ -261,6 +261,81 @@ test "E0025: empty body recovers without crash" {
     assert has_diagnostic_code(prog, "E0025");
 }
 
+# ── E0001: bare tuple targets in `for ... in` must be parenthesized ──
+test "E0001: bare tuple target in for loop names the parenthesized form" {
+    (prog, _) = parse_with_prog(
+        'with entry { d = {"a": 1}; for k, v in d.items() { print(k); } }'
+    );
+    assert has_diagnostic_code(prog, "E0001");
+    assert count_diagnostic_code(prog, "E0001") == 1;
+
+    def paren_help -> (str | None) {
+        for a in prog.errors_had {
+            if "parenthesized" in a.msg {
+                return a.help_text;
+            }
+        }
+        return None;
+    }
+
+    assert "for (n, c) in" in (paren_help() or "");
+}
+
+test "E0001: bare tuple target in comprehension names the parenthesized form" {
+    (prog, _) = parse_with_prog(
+        'with entry { d = {"a": 1}; ks = [k for k, v in d.items()]; }'
+    );
+    assert has_diagnostic_code(prog, "E0001");
+
+    def paren_help -> (str | None) {
+        for a in prog.errors_had {
+            if "parenthesized" in a.msg {
+                return a.help_text;
+            }
+        }
+        return None;
+    }
+
+    assert "(k, v)" in (paren_help() or "");
+}
+
+test "E0001: bare triple target emits one diagnostic and resyncs at 'in'" {
+    (prog, _) = parse_with_prog(
+        'with entry { xs = [(1, 2, 3)]; for a, b, c in xs { print(a); } }'
+    );
+    assert count_diagnostic_code(prog, "E0001") == 1;
+}
+
+test "E0001: parenthesized tuple target does not fire" {
+    (prog, had_err) = parse_with_prog(
+        'with entry { d = {"a": 1}; for (k, v) in d.items() { print(k); } '
+            + 'ks = [k for (k, v) in d.items()]; }'
+    );
+    assert not had_err;
+    assert not has_diagnostic_code(prog, "E0001");
+}
+
+test "E0001: bare tuple target in numeric for resyncs at '=' and emits one diagnostic" {
+    (prog, _) = parse_with_prog(
+        'with entry { n = 10; for i, j = 0 while n < 10 with i += 1 { pass; } }'
+    );
+    assert len(prog.errors_had) == 1;
+    assert count_diagnostic_code(prog, "E0001") == 1;
+    assert "parenthesized" in prog.errors_had[0].msg;
+    for a in prog.errors_had {
+        assert "EOF" not in a.msg;
+    }
+}
+
+test "E0001: numeric-for-style target missing both in and eq recovers within bounds" {
+    (prog, _) = parse_with_prog('with entry { for k, v { x; } }');
+    assert has_diagnostic_code(prog, "E0001");
+    assert len(prog.errors_had) <= 3;
+    for a in prog.errors_had {
+        assert "EOF" not in a.msg;
+    }
+}
+
 # ── E0027: forward typed connection missing :+> ──────────────────────
 test "E0027: +>: EdgeType without :+> closer emits E0027" {
     (prog, _) = compile_only("parser_E0027_forward_missing_close.jac");
