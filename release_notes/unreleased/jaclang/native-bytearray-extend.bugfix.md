@@ -1,0 +1,1 @@
+- **Fix: Native bytearray extension**: Support integer-list sources, including explicitly sized elements, with byte-range validation and an unchanged destination on invalid input.

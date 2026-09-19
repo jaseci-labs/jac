@@ -200,9 +200,55 @@ impl NaIRGenPass._dispatch_bytearray_method(
         }
         src = self._bytearray_src_of(v);
         if src is None {
-            return None;
+            spec = self._infer_list_elem_type(v);
+            helpers = self.list_helpers.get(spec) if spec is not None else None;
+            if helpers is None or not isinstance(helpers["elem_type"], ir.IntType) {
+                return None;
+            }
+            elem_type = helpers["elem_type"];
+            if elem_type.width > 64 {
+                return None;
+            }
+            i32 = ir.IntType(32);
+            length_ptr = self.builder.gep(
+                v, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ba.ext.len.p"
+            );
+            length = self.builder.load(length_ptr, name="ba.ext.len");
+
+            for phase in ("validate", "append") {
+                func = self.builder.function;
+                before = self.builder.block;
+                loop = func.append_basic_block(name=f"ba.ext.{phase}.loop");
+                body = func.append_basic_block(name=f"ba.ext.{phase}.body");
+                done = func.append_basic_block(name=f"ba.ext.{phase}.done");
+                self.builder.branch(loop);
+                self.builder.position_at_end(loop);
+                index = self.builder.phi(i64, name="ba.ext.index");
+                index.add_incoming(ir.Constant(i64, 0), before);
+                finished = self.builder.icmp_unsigned(">=", index, length);
+                self.builder.cbranch(finished, done, body);
+                self.builder.position_at_end(body);
+                element = self.builder.call(helpers["get"], [v, index]);
+                integer = self._coerce_type(element, i64);
+                if phase == "validate" {
+                    invalid = self.builder.icmp_unsigned(
+                        ">", integer, ir.Constant(i64, 255)
+                    );
+                    self._emit_runtime_raise(
+                        invalid, "ValueError", "byte must be in range(0, 256)"
+                    );
+                } else {
+                    byte = self.builder.trunc(integer, i8);
+                    self.builder.call(self.list_helpers["u8"]["append"], [recv, byte]);
+                }
+                next_index = self.builder.add(index, ir.Constant(i64, 1));
+                index.add_incoming(next_index, self.builder.block);
+                self.builder.branch(loop);
+                self.builder.position_at_end(done);
+            }
+        } else {
+            self.builder.call(fns["extend_raw"], [recv, src[0], src[1]], name="");
         }
-        self.builder.call(fns["extend_raw"], [recv, src[0], src[1]], name="");
         if self._is_owned(v) {
             self._emit_rc_release_simple(v, op="ba_extend", loc="");
         }
