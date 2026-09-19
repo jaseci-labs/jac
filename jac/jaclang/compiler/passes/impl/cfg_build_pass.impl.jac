@@ -823,17 +823,13 @@ impl CFGBuildPass._wire_compr_filters(
         }
         encl = encl.parent;
     }
-    prev_node: UniCFGNode | None = None;
+    passed: UniCFGNode = comprs[0];
     for compr in comprs {
-        if prev_node is not None {
-            self.link_bbs(prev_node, compr);
+        if compr is not comprs[0] {
+            self._link_on_pass(passed, compr);
         }
-        prev_node = compr;
-        if not compr.conditional {
-            continue;
-        }
-        new_conditional: list[Expr] = [];
-        for cond in compr.conditional {
+        passed = compr;
+        for cond in (compr.conditional or []) {
             cfg_pred: CfgExpr;
             if isinstance(cond, CfgExpr) {
                 cfg_pred = cond;
@@ -842,17 +838,18 @@ impl CFGBuildPass._wire_compr_filters(
                 compr.replace_kid(cond, cfg_pred);
             }
             cfg_pred.affected_symbols.update(collect_narrowing_symbols(cfg_pred.expr));
-            if prev_node is not None {
-                self.link_bbs(prev_node, cfg_pred);
-            }
-            self._set_and_link(cfg_pred, target_node, None);
-            prev_node = cfg_pred;
-            new_conditional.append(cfg_pred);
+            self._link_on_pass(passed, cfg_pred);
+            passed = cfg_pred;
         }
     }
+    self._link_on_pass(passed, target_node);
+}
 
-    if prev_node is not None and prev_node is not target_node {
-        self.link_bbs(prev_node, target_node);
+impl CFGBuildPass._link_on_pass(step: UniCFGNode, nxt: UniCFGNode) -> None {
+    if isinstance(step, CfgExpr) {
+        self._set_and_link(step, nxt, None);
+    } else {
+        self.link_bbs(step, nxt);
     }
 }
 
