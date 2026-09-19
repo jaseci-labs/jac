@@ -2228,7 +2228,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _jv_is_none = self.builder.icmp_unsigned(
                 "==", _jv_tag, ir.Constant(ir.IntType(8), 8), name="opt.jv.isnone"
             );
-            _jv_pl = self._unbox_from_jacval(val, _opt_tgt);
+            _jv_pl = self._unbox_jacval_container(val, _opt_tgt);
             _jv_ov = self.builder.insert_value(
                 ir.Constant(target_type, None),
                 ir.Constant(ir.IntType(8), 1),
@@ -2286,7 +2286,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
         }
         _pl = self.builder.extract_value(val, 1, name="opt.payload");
         if self?.jacval_type and target_type == self.jacval_type {
-            _boxed = self._box_to_jacval(_pl);
+            _boxed = self._box_to_jacval(self._jacval_container(_pl));
             _none_jv = self.builder.insert_value(
                 ir.Constant(self.jacval_type, None),
                 ir.Constant(ir.IntType(8), 8),
@@ -2314,10 +2314,10 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 
     if self?.jacval_type {
         if target_type == self.jacval_type and val.type != self.jacval_type {
-            return self._box_to_jacval(val);
+            return self._box_to_jacval(self._jacval_container(val));
         }
         if val.type == self.jacval_type and target_type != self.jacval_type {
-            return self._unbox_from_jacval(val, target_type);
+            return self._unbox_jacval_container(val, target_type);
         }
     }
 

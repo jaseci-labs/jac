@@ -253,6 +253,167 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
     return ir.Constant(target_type, None);
 }
 
+impl NaIRGenPass._dict_key_of_ptr(t: ir.Type) -> (str | None) {
+    if not isinstance(t, ir.PointerType) {
+        return None;
+    }
+    for (dk, dt) in self.dict_types.items() {
+        if dt.as_pointer() == t {
+            return dk;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._reflavor_dict(
+    val: ir.Value, src_key: str, dst_key: str
+) -> (ir.Value | None) {
+    if self._builder is None or self.builder.function is None {
+        return None;
+    }
+    src_h = self.dict_helpers.get(src_key);
+    if src_h is None {
+        return None;
+    }
+    key_name = dst_key.split(":", 1)[0];
+    val_name = dst_key.split(":", 1)[1];
+    if val_name == "jacval" {
+        dst_val_type: ir.Type = self.jacval_type;
+    } else {
+        dst_t = self.dict_types.get(dst_key);
+        if dst_t is None or self.dict_helpers.get(dst_key) is None {
+            return None;
+        }
+        dst_val_type = self.dict_helpers[dst_key]["val_type"];
+    }
+    (_kn, key_size) = self._hash_key_spec(src_h["key_type"]);
+    self._emit_dict_helpers(
+        key_name, val_name, src_h["key_type"], dst_val_type, key_size
+    );
+    dst_h = self.dict_helpers[dst_key];
+    i64 = ir.IntType(64);
+    out = self.builder.call(dst_h["new"], [], name="dict.reflavor");
+    fn = self.builder.block.function;
+    head_bb = fn.append_basic_block("dref.head");
+    body_bb = fn.append_basic_block("dref.body");
+    end_bb = fn.append_basic_block("dref.end");
+    idx_slot = self._entry_alloca(i64, "dref.idx");
+    self.builder.store(ir.Constant(i64, 0), idx_slot);
+    self.builder.branch(head_bb);
+
+    self._builder = ir.IRBuilder(head_bb);
+    idx = self.builder.load(idx_slot, name="dref.i");
+    n = self.builder.call(src_h["len"], [val], name="dref.n");
+    self.builder.cbranch(
+        self.builder.icmp_signed("<", idx, n, name="dref.ok"), body_bb, end_bb
+    );
+
+    self._builder = ir.IRBuilder(body_bb);
+    k = self.builder.call(src_h["get_key"], [val, idx], name="dref.k");
+    v = self.builder.call(src_h["get_val"], [val, idx], name="dref.v");
+    self._rc_call_with_ctx(
+        dst_h["set"],
+        [
+            out,
+            self._coerce_type(k, dst_h["key_type"]),
+            self._coerce_type(v, dst_h["val_type"])
+        ],
+        op="dict_init",
+        loc="dict_reflavor"
+    );
+    self.builder.store(
+        self.builder.add(idx, ir.Constant(i64, 1), name="dref.i.next"), idx_slot
+    );
+    self.builder.branch(head_bb);
+
+    self._builder = ir.IRBuilder(end_bb);
+    if self._is_owned(val) and self._gc_mode() != "none" {
+        self._emit_rc_release_simple(val, op="dict_reflavor", loc="dict_reflavor");
+    }
+    return self._mark_owned(out);
+}
+
+impl NaIRGenPass._guarded_reflavor(
+    ptr: ir.Value, kind: str, src: str, dst: str
+) -> ir.Value {
+    if isinstance(ptr, ir.Constant) {
+        return ptr;
+    }
+    _entry_bb = self.builder.block;
+    _fn = self.builder.function;
+    _conv_bb = _fn.append_basic_block("jvc.conv");
+    _join_bb = _fn.append_basic_block("jvc.join");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "==", ptr, ir.Constant(ptr.type, None), name="jvc.isnull"
+        ),
+        _join_bb,
+        _conv_bb
+    );
+    self._builder = ir.IRBuilder(_conv_bb);
+    _res = self._reflavor_list(ptr, src, dst)
+        if kind == "list"
+        else self._reflavor_dict(ptr, src, dst);
+    if _res is None {
+        _res = ptr;
+    }
+    _conv_end = self.builder.block;
+    self.builder.branch(_join_bb);
+    self._builder = ir.IRBuilder(_join_bb);
+    _out = self.builder.phi(_res.type, name="jvc.out");
+    _out.add_incoming(ir.Constant(_res.type, None), _entry_bb);
+    _out.add_incoming(_res, _conv_end);
+    return self._mark_owned(_out) if _res is not ptr else _out;
+}
+
+impl NaIRGenPass._jacval_container(val: ir.Value) -> ir.Value {
+    if self._builder is None or not isinstance(val.type, ir.PointerType) {
+        return val;
+    }
+    _ls = self._spec_from_list_slot_type(val.type);
+    if _ls is not None and _ls != "jacval" {
+        self._emit_list_helpers("jacval", self.jacval_type);
+        return self._guarded_reflavor(val, "list", _ls, "jacval");
+    }
+    _dk = self._dict_key_of_ptr(val.type);
+    if _dk is not None and not _dk.endswith(":jacval") {
+        return self._guarded_reflavor(
+            val, "dict", _dk, _dk.split(":", 1)[0] + ":jacval"
+        );
+    }
+    return val;
+}
+
+impl NaIRGenPass._unbox_jacval_container(
+    jv: ir.Value, target_type: ir.Type
+) -> ir.Value {
+    _ls = self._spec_from_list_slot_type(target_type);
+    if _ls is not None
+        and _ls != "jacval"
+        and isinstance(target_type, ir.PointerType) {
+        self._emit_list_helpers("jacval", self.jacval_type);
+        _jl = self._unbox_from_jacval(jv, self.list_types["jacval"].as_pointer());
+        return self._guarded_reflavor(_jl, "list", "jacval", _ls);
+    }
+    _dk = self._dict_key_of_ptr(target_type);
+    if _dk is not None and not _dk.endswith(":jacval") {
+        _src_key = _dk.split(":", 1)[0] + ":jacval";
+        if self.dict_helpers.get(_src_key) is None {
+            (_kn, _ksz) = self._hash_key_spec(self.dict_helpers[_dk]["key_type"]);
+            self._emit_dict_helpers(
+                _dk.split(":", 1)[0],
+                "jacval",
+                self.dict_helpers[_dk]["key_type"],
+                self.jacval_type,
+                _ksz
+            );
+        }
+        _jd = self._unbox_from_jacval(jv, self.dict_types[_src_key].as_pointer());
+        return self._guarded_reflavor(_jd, "dict", _src_key, _dk);
+    }
+    return self._unbox_from_jacval(jv, target_type);
+}
+
 impl NaIRGenPass._dict_key_reconcile(
     dk: (str | None), val: (ir.Value | None)
 ) -> (str | None) {

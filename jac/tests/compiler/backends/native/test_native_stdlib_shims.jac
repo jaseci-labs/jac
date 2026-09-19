@@ -36,6 +36,14 @@ shim. The type argument is an archetype because a generic archetype is
 type-erased natively: `ContextVar[int]` is refused rather than lowered
 (#8229), and the last test pins that refusal, since it is the shim's scope
 line rather than a defect.
+
+`json_probe.jac` hands `json.dumps` dicts and lists the caller built with typed
+elements (`dict[str, int]`, `list[int]`, `list[str]`, ...). The shim takes
+`value: any` and walks it as `dict[str, any]` / `list[any]`, so a container
+must be re-boxed element by element when it crosses into `any`: before that,
+every dict value came out `null` and a `list[int]` segfaulted (#9290). The
+probe also sends typed lists and dicts through `any` and back, which must keep
+their contents.
 """
 
 import from tests.support { jac_command }
@@ -48,10 +56,13 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-def _sv_run(fixture: str) -> tuple[(str, str)] {
+def _sv_run(fixture: str, force_python: bool = False) -> tuple[(str, str)] {
     src = os.path.join(FIXTURES, fixture);
+    # `jac run` itself runs a fully lowerable program natively under the
+    # default codespace, so a fixture that lowers whole needs CPython forced.
+    args = ["run", "--backend", "python", src] if force_python else ["run", src];
     proc = subprocess.run(
-        jac_command("run", src), capture_output=True, text=True, timeout=900
+        jac_command(*args), capture_output=True, text=True, timeout=900
     );
     assert proc.returncode == 0 , f"sv run failed: {proc.stderr[-800:]
         if proc.stderr
@@ -132,6 +143,12 @@ test "native contextvars answers what CPython's contextvars answers" {
     (sv_out, _sv_err) = _sv_run("contextvars_probe.jac");
     (na_out, _na_err) = _na_run("contextvars_probe.jac");
     _same_lines(sv_out, na_out, "contextvars");
+}
+
+test "native json.dumps of typed containers answers what CPython's json answers" {
+    (sv_out, _sv_err) = _sv_run("json_probe.jac", force_python=True);
+    (na_out, _na_err) = _na_run("json_probe.jac");
+    _same_lines(sv_out, na_out, "json");
 }
 
 test "a ContextVar at a scalar type argument is refused, not lowered" {
