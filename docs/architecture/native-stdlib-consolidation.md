@@ -32,6 +32,10 @@ Targeted native tests exercise reference transfer, repeated alias clearing,
 mutable object identity, Unicode and large integers, errors through nested calls,
 exception identity, import failures, and null-handle rejection. The harness holds
 the GIL through the existing native JIT and the hosted shared-library loader.
+Linked Python ABI symbols determine a `requires_python` runtime requirement.
+Source artifact format 2 records that requirement; the loader and generated
+Python-to-native stubs share the same calling-convention decision with native
+test and CLI entries. Python-free entries continue to release the GIL.
 Module resolution and bootstrap payload extraction still need the migrations
 described below.
 
@@ -39,7 +43,7 @@ The migration is incomplete. A stronger ownership test exposed a pre-existing
 native exception bug: `longjmp` skips reference cleanup in intermediate native
 frames. `ObjectRef` cannot supply language-level exception safety on that path.
 The reproducer is
-[native_unwind_cleanup.jac](../../scripts/fixtures/native_unwind_cleanup.jac).
+[native_unwind_cleanup.jac](../../jac/tests/compiler/backends/native/fixtures/native_unwind_cleanup.jac).
 The temporary `PythonFailure` exception adapter has been removed; explicit
 owned results provide the runtime boundary without depending on that unsafe
 unwind path. Ordinary native `try`/`except` integration still requires a
@@ -114,13 +118,15 @@ with E5090, even though the equivalent generic native C API call succeeds.
    helpers can print errors and return zero. Neither supplies the required
    exception contract for general stdlib calls. Native cleanup and `try`/`except`
    must preserve the original Python exception and its traceback.
-4. **Runtime entry.** The hosted `NativeLibrary` loader now uses `PyDLL`, which
-   retains the GIL and propagates pending Python errors. Native JIT tests use
-   the equivalent `PYFUNCTYPE` convention. Foreign-thread entry, callbacks,
+4. **Runtime entry.** Python-dependent `NativeLibrary` artifacts use `PyDLL`,
+   which retains the GIL and propagates pending Python errors. Generated stubs,
+   JIT initializers, native tests and CLI entries use the shared `native_callable`
+   helper to select the equivalent `PYFUNCTYPE` convention. Foreign-thread entry, callbacks,
    and finalization still need the complete interpreter/thread-state contract;
    loading the same symbols does not establish it.
-5. **Artifact requirements.** Standalone native builds currently reject Python
-   dependencies. A Python-backed native application must package and initialize
+5. **Artifact requirements.** Shared artifacts record Python dependencies.
+   Standalone native builds reject linked Python ABI dependencies with an
+   explicit error. A Python-backed native application must package and initialize
    the interpreter before entering code that uses it. Compiler availability at
    build time does not provide an interpreter to the emitted executable.
 

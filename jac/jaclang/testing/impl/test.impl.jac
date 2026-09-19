@@ -110,6 +110,7 @@ impl invoke_native_test(
     import os;
     import sys;
     import tempfile;
+    import from jaclang.runtime.interop_bridge { native_callable }
     if engine is None {
         raise RuntimeError(f"native engine unavailable for {test_name}");
     }
@@ -117,7 +118,7 @@ impl invoke_native_test(
     if addr == 0 {
         raise RuntimeError(f"native test symbol missing: {symbol}");
     }
-    native_fn = ctypes.CFUNCTYPE(ctypes.c_char_p)(addr);
+    native_fn = native_callable(addr, engine.requires_python, ctypes.c_char_p);
     def run_glob_inits {
         done = engine?._jac_glob_inits_done;
         if done is None {
@@ -133,7 +134,7 @@ impl invoke_native_test(
             done.add(init_sym);
             init_addr = engine.get_function_address(init_sym);
             if init_addr {
-                (ctypes.CFUNCTYPE(None)(init_addr))();
+                native_callable(init_addr, engine.requires_python, None)();
             }
         }
     }

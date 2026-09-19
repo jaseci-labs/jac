@@ -14,6 +14,7 @@ import from ctypes {
     Structure
 }
 import from jaclang.compiler.backends.native.llvm.binding { ffi, targets, object_file }
+import from jaclang.runtime.interop_bridge { native_callable, native_requires_python }
 
 with entry {
     ffi.lib.LLVMPY_LinkInMCJIT;
@@ -66,6 +67,11 @@ class ExecutionEngine(ffi.ObjectRef) {
         """
     def init(self: ExecutionEngine, ptr: any, module: any) -> object {
         self._modules = `set([module]);
+        self.requires_python: bool = native_requires_python(
+            value.name for values in (module.functions, module.global_variables)
+            for value in values
+            if value.is_declaration
+        );
         self._td: (targets.TargetData | None) = None;
         self.static_init_symbols: list[str] = [];
         self.static_init_chained = `set();
@@ -87,7 +93,7 @@ class ExecutionEngine(ffi.ObjectRef) {
         for symbol in symbols {
             addr = ffi.lib.LLVMPY_GetFunctionAddress(self, symbol.encode("ascii"));
             if addr {
-                CFUNCTYPE(None)(addr)();
+                native_callable(addr, self.requires_python, None)();
             }
         }
     }
@@ -142,6 +148,12 @@ class ExecutionEngine(ffi.ObjectRef) {
         ffi.lib.LLVMPY_AddModule(self, module);
         module._owned = True;
         self._modules.add(module);
+        self.requires_python = self.requires_python
+            or native_requires_python(
+                value.name for values in (module.functions, module.global_variables)
+                for value in values
+                if value.is_declaration
+            );
     }
 
     """

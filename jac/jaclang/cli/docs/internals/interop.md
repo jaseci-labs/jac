@@ -73,7 +73,7 @@ remaining rows.
 | 4 | **`na → na`** | Free | Linker symbol reference | Native values / pointers | `NativeCompilePass` relocation |
 | 5 | **`cl → sv`** | Marshalled | HTTP `POST /walker/*` or `/function/*` | JSON envelope | `EsastGenPass` (`__jacSpawn`/`__jacCallFunction`) + `jaclang.scale` |
 | 6 | **`sv → cl`** | Marshalled (one-shot) | Static bundle + bootstrap JSON (CSR) | The compiled JS bundle + init payload | `JcirGenPass` static route + Vite/Bun bundler |
-| 7 | **`sv → na`** | Marshalled | `ctypes.CFUNCTYPE` over the JIT address (or AOT `.so`) | C-ABI scalars; Jac objects as zero-copy views | `JcirGenPass` ctypes stub + `NaIRGenPass` C-ABI export |
+| 7 | **`sv → na`** | Marshalled | `native_callable` over the JIT address (or AOT `.so`), holding the GIL for Python-dependent code | C-ABI scalars; Jac objects as zero-copy views | `JcirGenPass` ctypes stub + `NaIRGenPass` C-ABI export |
 | 8 | **`na → sv`** | Marshalled | Python callback registered as a JIT symbol | C-ABI scalars | `interop_bridge` (`llvm.add_symbol`) |
 | 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + `WasmLinker` exports |
 | 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | `WasmLinker` import table + cl host shim |
@@ -262,10 +262,20 @@ export. At call time it resolves the JIT address and builds a typed ctypes
 trampoline:
 
 ```python
+from jaclang.runtime.interop_bridge import native_callable
+
 _addr = __jac_native_engine__.get_function_address('add')
-_fn   = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)(_addr)
+_fn = native_callable(
+    _addr, __jac_native_engine__.requires_python,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+)
 return _fn(a, b)
 ```
+
+The engine derives `requires_python` from linked interpreter ABI symbols. Source
+artifacts carry the same requirement in their native product metadata. The
+shared helper selects `PYFUNCTYPE` for Python-dependent entries, preserving the
+GIL and propagating Python errors, and `CFUNCTYPE` for Python-free entries.
 
 ### `na → sv` -- native calls Python
 

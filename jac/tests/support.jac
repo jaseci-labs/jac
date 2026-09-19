@@ -243,19 +243,10 @@ def _compile_native_fixture(
 
 """Get a ctypes-callable function from a JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
+    import from jaclang.runtime.interop_bridge { native_callable }
     addr = eng.get_function_address(name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
-    functype = ctypes.CFUNCTYPE(restype, *argtypes);
-    return functype(addr);
-}
-
-"""Call native Python-object entry points with the GIL and error checks."""
-def get_python_func(
-    eng: ExecutionEngine, name: str, restype: type | None, *argtypes: type
-) -> any {
-    addr = eng.get_function_address(name);
-    assert addr != 0 , f"Function '{name}' not found in JIT engine";
-    return ctypes.PYFUNCTYPE(restype, *argtypes)(addr);
+    return native_callable(addr, eng.requires_python, restype, *argtypes);
 }
 
 """Return True if the program emitted at least one alert with the given code."""

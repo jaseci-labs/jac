@@ -1024,7 +1024,10 @@ def _exec_file(
                     if main {
                         addr = engine.get_function_address("jac_entry");
                         if addr != 0 {
-                            fn = ctypes.CFUNCTYPE(None)(addr);
+                            import from jaclang.runtime.interop_bridge {
+                                native_callable
+                            }
+                            fn = native_callable(addr, engine.requires_python, None);
                             fn();
                             native_executed = True;
                         }

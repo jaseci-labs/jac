@@ -1,4 +1,4 @@
-"""Python-hosted native libraries enter with the GIL and propagate Python errors."""
+"""Calling conventions and lifetimes at the Python/native boundary."""
 import ctypes;
 import logging;
 import from collections.abc { Callable, Iterable }
@@ -18,14 +18,16 @@ obj NativeCallback {
 obj NativeLibrary {
     has path: str,
         bindings: list[NativeCallback] = [],
-        library: ctypes.PyDLL | None = None,
+        requires_python: bool = False,
+        library: ctypes.CDLL | None = None,
         initialized: bool = False,
         callbacks: list[object] = [],
         functions: dict[str, Callable] = {};
 
-    def handle -> ctypes.PyDLL {
+    def handle -> ctypes.CDLL {
         if self.library is None {
-            self.library = ctypes.PyDLL(self.path);
+            loader = ctypes.PyDLL if self.requires_python else ctypes.CDLL;
+            self.library = loader(self.path);
         }
         return self.library;
     }
@@ -58,6 +60,22 @@ obj NativeLibrary {
         initializer();
         self.initialized = True;
     }
+}
+
+"""Recognize the interpreter ABI in a native unit's unresolved symbols."""
+def native_requires_python(symbols: Iterable[str]) -> bool {
+    return any(name.startswith(("Py", "_Py", "jacpy_")) for name in symbols);
+}
+
+"""Python-dependent entries hold the GIL and propagate the error indicator."""
+def native_callable(
+    address: int, requires_python: bool, restype: type | None, *argtypes: type
+) -> Callable {
+    if address == 0 {
+        raise ValueError("native entry has no address");
+    }
+    factory = ctypes.PYFUNCTYPE if requires_python else ctypes.CFUNCTYPE;
+    return factory(restype, *argtypes)(address);
 }
 
 glob logger = logging.getLogger(__name__),

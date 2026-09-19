@@ -118,6 +118,13 @@ impl native_ir_live_externs(llvm_ir_text: str) -> set[str] {
     for (_dc_q, _dc_bare) in _dc_decl.findall(llvm_ir_text) {
         declared.add(_dc_q or _dc_bare);
     }
+    _dc_global = _dc_re.compile(
+        r'^@(?:"([^\"]+)"|([A-Za-z0-9_.$\-]+))\s*=\s*(?:external|extern_weak)\b',
+        _dc_re.MULTILINE
+    );
+    for (_dc_q, _dc_bare) in _dc_global.findall(llvm_ir_text) {
+        declared.add(_dc_q or _dc_bare);
+    }
     if not declared {
         return declared;
     }

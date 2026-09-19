@@ -3,7 +3,8 @@ import type from jaclang.compiler.frontend.unitree { Module }
 def validate_native_application(module: Module, shared: bool, memory: str) -> str {
     import from jaclang.compiler.backends.native.na_compile_pass {
         native_linked_ir_text,
-        native_demoted_ir_symbols
+        native_demoted_ir_symbols,
+        native_ir_live_externs
     }
     import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
     manifest = module.gen.interop_manifest;
@@ -15,6 +16,13 @@ def validate_native_application(module: Module, shared: bool, memory: str) -> st
         );
     }
     llvm_ir = native_linked_ir_text(module);
+    import from jaclang.runtime.interop_bridge { native_requires_python }
+    if not shared and native_requires_python(native_ir_live_externs(llvm_ir)) {
+        raise ValueError(
+            'This native unit requires a hosted Python runtime; '
+                + 'emit a shared library for a Python-hosted application'
+        );
+    }
     demoted = sorted(
         set(native_demoted_ir_symbols(llvm_ir))
             | {issue.symbol for issue in native_lowering_issues(llvm_ir)}

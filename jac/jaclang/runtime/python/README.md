@@ -73,6 +73,12 @@ result, allowing intermediate native frames to release their references before
 restoring the original interpreter exception. This boundary does not depend on
 native `longjmp` cleanup.
 These operations require an attached interpreter thread holding the GIL.
+Native engines and source artifacts record their Python-runtime requirement.
+The hosted loader, generated call stubs, native tests, and CLI entry calls share
+the calling-convention policy in `runtime/interop_bridge.jac`: Python-dependent
+calls hold the GIL and propagate interpreter errors, while Python-free calls
+release it. This does not provide interpreter initialization for standalone
+executables or a callback ABI for arbitrary native functions.
 
 Declarations contain no Python objects and live for the process lifetime. Each
 interpreter owns its module state and heap types. Owned argument frames release

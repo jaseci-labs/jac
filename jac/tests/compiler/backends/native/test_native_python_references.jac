@@ -4,24 +4,23 @@ import functools;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { NATIVE_FIXTURES, compile_native, get_python_func }
+import from tests.support { NATIVE_FIXTURES, compile_native, get_func }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.dist.native_product { write_native_product }
-import from jaclang.runtime.interop_bridge { NativeLibrary }
+import from jaclang.runtime.interop_bridge { NativeLibrary, native_callable }
 
 @functools.cache
 def engine -> ExecutionEngine {
     (native, module) = compile_native("python_references.jac");
     assert module.gen.llvm_ir is not None;
+    assert native.requires_python;
     return native;
 }
 
 def object_call(name: str, arity: int) -> any {
-    return get_python_func(
-        engine(), name, ctypes.c_void_p, *([ctypes.py_object] * arity)
-    );
+    return get_func(engine(), name, ctypes.c_void_p, *([ctypes.py_object] * arity));
 }
 
 def take(value: int) -> any {
@@ -36,8 +35,8 @@ def take(value: int) -> any {
 
 test "owned references transfer once and aliases clear before release" {
     identity = object_call("retained_identity", 1);
-    release = get_python_func(engine(), "release_local", None, ctypes.py_object);
-    clear_alias = get_python_func(engine(), "release_alias", None, ctypes.py_object);
+    release = get_func(engine(), "release_local", None, ctypes.py_object);
+    clear_alias = get_func(engine(), "release_alias", None, ctypes.py_object);
     value = object();
     before = sys.getrefcount(value);
     for _ in range(1000) {
@@ -113,10 +112,23 @@ test "the hosted shared-library loader keeps the interpreter lock" {
     assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
     assert module is not None;
     with tempfile.TemporaryDirectory() as directory {
+        try {
+            write_native_product(
+                module, Path(directory), Path("unhosted"), shared=False
+            );
+        } except ValueError as error {
+            assert "hosted Python runtime" in str(error);
+        } else {
+            raise AssertionError("Python-dependent code became an unhosted executable");
+        }
         product = write_native_product(
             module, Path(directory), Path("references"), emit_source=False
         );
-        library = NativeLibrary(str(Path(directory) / product["output"]));
+        assert product["requires_python"];
+        library = NativeLibrary(
+            str(Path(directory) / product["output"]),
+            requires_python=product["requires_python"]
+        );
         check = library.handle().gil_held;
         check.argtypes = [];
         check.restype = ctypes.c_int32;
@@ -129,5 +141,31 @@ test "the hosted shared-library loader keeps the interpreter lock" {
         } except SystemError {} else {
             raise AssertionError("hosted loader lost the Python exception");
         }
+    }
+}
+
+test "native entry conventions follow the runtime requirement" {
+    address = engine().get_function_address("gil_held");
+    assert native_callable(address, True, ctypes.c_int32)() == 1;
+    assert native_callable(address, False, ctypes.c_int32)() == 0;
+}
+
+test "generated Python stubs preserve interpreter state and errors" {
+    program = JacProgram();
+    path = str(Path(NATIVE_FIXTURES) / "python_hosted_entry.jac");
+    module = program.compile(path, options=CompileOptions(default_codespace="server"));
+    assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
+    assert module is not None and module.gen.native_engine is not None;
+    assert module.gen.native_engine.requires_python;
+    namespace: dict[str, any] = {
+        "__jac_native_engine__": module.gen.native_engine,
+        "__jac_interop_py_funcs__": module.gen.interop_py_funcs
+    };
+    exec(compile(module.gen.py, path, "exec"), namespace);
+    assert namespace["server_call"]() == 1;
+    try {
+        namespace["hosted_failure"]();
+    } except TypeError {} else {
+        raise AssertionError("generated native stub lost the Python exception");
     }
 }

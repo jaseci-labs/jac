@@ -10,7 +10,7 @@ import from jaclang.runtime.prepared {
     publish
 }
 
-glob SOURCE_FORMAT: int = 1;
+glob SOURCE_FORMAT: int = 2;
 
 def artifact_path(base: Path, relative: str) -> Path {
     path = (base / relative).resolve();
@@ -50,7 +50,8 @@ def _load_application(record: dict[str, any], base: Path) -> PreparedApplication
             native = item['native'];
             engine = NativeLibrary(
                 str(artifact_path(directory, native['output'])),
-                bindings=[NativeCallback(**binding) for binding in native['callbacks']]
+                bindings=[NativeCallback(**binding) for binding in native['callbacks']],
+                requires_python=native['requires_python']
             );
             application.native[path] = (engine, engine.functions);
         }

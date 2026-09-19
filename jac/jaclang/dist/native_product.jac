@@ -21,6 +21,11 @@ def write_native_product(
     }
     manifest = module.gen.interop_manifest;
     llvm_ir = validate_native_application(module, shared, memory);
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_ir_live_externs
+    }
+    import from jaclang.runtime.interop_bridge { native_requires_python }
+    requires_python = native_requires_python(native_ir_live_externs(llvm_ir));
     bindings = manifest.native_imports if shared else [];
     output = relative.with_suffix('.so' if shared else '');
     source = relative.with_suffix('.c');
@@ -60,6 +65,7 @@ def write_native_product(
         'source': source.as_posix() if emit_source else '',
         'output': output.as_posix(),
         'kind': 'shared' if shared else 'executable',
+        'requires_python': requires_python,
         'libraries': list(module.gen._clib_paths),
         'callbacks': [
             {

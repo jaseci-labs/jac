@@ -14,9 +14,11 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
             parts.append(
                 f"def {binding.name}({params}):\n"
                     + f"    import ctypes\n"
+                    + "    from jaclang.runtime.interop_bridge import native_callable\n"
                     + f"    _addr = __jac_native_engine__"
                     + f".get_function_address('{binding.name}')\n"
-                    + f"    _fn = ctypes.CFUNCTYPE({ret_ct}, {arg_cts})(_addr)\n"
+                    + "    _fn = native_callable(_addr, "
+                    + f"__jac_native_engine__.requires_python, {ret_ct}, {arg_cts})\n"
                     + f"    return _fn({params})"
             );
             names.append(binding.name);
