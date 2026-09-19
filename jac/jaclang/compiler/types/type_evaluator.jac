@@ -119,6 +119,7 @@ import from jaclang.compiler.frontend.constant {
     TOKEN_MAP,
     BindingKind,
     CodeContext,
+    ExprCtx,
     ImmutabilityKind,
     SymbolType,
     Tokens as Tok,
@@ -661,6 +662,8 @@ walker TypeEvaluator {
     def _is_expr_super(expr: Expr) -> bool;
     def _get_enclosing_function(nd: UniNode) -> Ability | None;
     def _get_enclosing_return_scope(nd: UniNode) -> Ability | LambdaExpr | None;
+    def _in_function_body(nd: UniNode) -> bool;
+    def _stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool;
     def _get_declared_return_type(scope: Ability | LambdaExpr) -> TypeBase | None;
     def _infer_lambda_block_return_type(body: Sequence[CodeBlockStmt]) -> TypeBase;
     def _collect_return_types(

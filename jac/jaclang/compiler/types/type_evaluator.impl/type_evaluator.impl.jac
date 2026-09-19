@@ -2102,6 +2102,43 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
 
+                class_member = symbol;
+                while symbol is not None
+                    and isinstance(symbol.parent_tab, (Archetype, Enum))
+                    and not (
+                        symbol.decl is not None
+                        and isinstance(symbol.decl.name_of, TypeParam)
+                    )
+                    and expr.expr_ctx == ExprCtx.LOAD
+                    and expr.value
+                        not in (
+                            "self",
+                            "super",
+                            "root",
+                            "here",
+                            "visitor",
+                            "props",
+                            "init",
+                            "postinit"
+                        )
+                    and not (
+                        isinstance(expr.parent, AtomTrailer)
+                        and expr.parent.is_attr
+                        and expr.parent.target is not expr
+                    )
+                    and self._in_function_body(expr)
+                    and not self._stored_in_same_function(symbol, expr) {
+                    outer_scope = symbol.parent_tab.parent_scope;
+                    symbol = lookup_symtab(
+                        outer_scope, expr.value, self.builtins_module
+                    )
+                        if outer_scope is not None
+                        else None;
+                }
+                if symbol is not class_member and expr.sym is class_member {
+                    expr.sym = None;
+                }
+
                 if self._in_native_context()
                     and (symbol is None or symbol.parent_tab is self.builtins_module) {
                     na_sym = self.na_builtins_module.names_in_scope.get(expr.value);

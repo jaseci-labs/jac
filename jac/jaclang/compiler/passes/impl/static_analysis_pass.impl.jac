@@ -154,9 +154,46 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
         suggestion = self._literal_case_suggestion(name_nd.value);
         if suggestion is not None {
             hint = f"Jac uses Python-style literals -- did you mean `{suggestion}`?";
+        } else {
+            hint = self._enclosing_class_member(name_nd);
         }
         self.ctx.emit(W2001, node_override=name_nd, name=name_nd.value, help_text=hint);
     }
+}
+
+impl StaticAnalysisPass._enclosing_class_member(name_nd: Name) -> (str | None) {
+    method: (Ability | None) = None;
+    cur = name_nd.parent;
+    while cur is not None {
+        owner: (UniNode | None) = cur;
+        if isinstance(cur, Ability) and method is None {
+            method = cur;
+        }
+        if isinstance(cur, ImplDef) and cur.decl_link is not None {
+            if method is None and isinstance(cur.decl_link, Ability) {
+                method = cur.decl_link;
+            }
+            owner = cur.decl_link.find_parent_of_type(Archetype);
+        }
+        if isinstance(owner, Archetype) and name_nd.value in owner.names_in_scope {
+            receiver = "self";
+            if method is not None
+                and (
+                    method.is_classmethod
+                    or any(
+                        isinstance(dec, Name) and dec.value == "classmethod"
+                        for dec in (method.decorators or [])
+                    )
+                ) {
+                receiver = "cls";
+            } elif method is not None and method.is_static {
+                receiver = owner.sym_name;
+            }
+            return f"`{name_nd.value}` is a member of `{owner.sym_name}`, and a method body does not see its class's names; refer to it as `{receiver}.{name_nd.value}`.";
+        }
+        cur = cur.parent;
+    }
+    return None;
 }
 
 impl StaticAnalysisPass._literal_case_suggestion(name: str) -> (str | None) {
