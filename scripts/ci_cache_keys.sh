@@ -20,9 +20,17 @@ compiler_tree() {
 python_tree() {
   tree jac/bootstrap/build_python.zig jac/bootstrap/seed.zig jac/bootstrap/python |
     if [ "$1" = cpython ]; then
-      # Matches build_python.buildKey's host-mode exclusions. Jac sources and
-      # native bridge edits cannot invalidate the ordinary CPython SDK.
-      awk -F '\t' '$2 !~ /\/(compiler-bridge.patch|compiler_bridge.c|compiler_bridge.h|prepare_native.py|compiler_runtime.c|object_api.c|binding_api.c)$/'
+      # Share the local build's mode boundary. Read the committed manifest,
+      # because these keys describe HEAD rather than working-tree edits.
+      local excluded_inputs
+      excluded_inputs=$(git show HEAD:jac/bootstrap/python/jacpython-only.txt) || return
+      awk -F '\t' '
+        NR == FNR {
+          if ($0 !~ /^#/ && NF) excluded["jac/bootstrap/python/" $0] = 1
+          next
+        }
+        !($2 in excluded)
+      ' <(printf '%s\n' "$excluded_inputs") -
     else
       cat
     fi

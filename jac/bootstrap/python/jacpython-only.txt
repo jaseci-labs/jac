@@ -1,0 +1,8 @@
+# Build adapters used only by JacPython, relative to this directory.
+# Shared runtime APIs must remain inputs to both Python build modes.
+compiler-bridge.patch
+compiler_bridge.c
+compiler_bridge.h
+prepare_native.py
+compiler_runtime.c
+binding_api.c

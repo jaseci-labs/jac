@@ -11,10 +11,12 @@ git config user.email 'cache-test@example.invalid'
 mkdir -p scripts jac/jaclang/compiler jac/jaclang/scale jac/bootstrap/python jac/native
 cp "$repo/scripts/ci_cache_keys.sh" scripts/
 cp "$repo/jac/jaclang/compiler_inputs.txt" jac/jaclang/
+cp "$repo/jac/bootstrap/python/jacpython-only.txt" jac/bootstrap/python/
 printf 'compiler\n' > jac/jaclang/compiler/pass.jac
 printf 'app\n' > jac/jaclang/scale/app.jac
 printf 'recipe\n' > jac/bootstrap/python/build.sh
 printf 'bridge\n' > jac/bootstrap/python/compiler_bridge.c
+printf 'objects\n' > jac/bootstrap/python/object_api.c
 printf 'shim\n' > jac/native/shim.cpp
 printf 'dependencies\n' > jac/build.zig.zon
 git add .
@@ -72,6 +74,12 @@ printf adapter >> jac/bootstrap/python/compiler_bridge.c
 commit adapter
 after=$(keys)
 same compiler; same python_cpython; changed python_jacpython; changed binary
+
+before=$after
+printf object_api >> jac/bootstrap/python/object_api.c
+commit object_api
+after=$(keys)
+same compiler; changed python_cpython; changed python_jacpython; changed binary
 
 before=$after
 printf recipe >> jac/bootstrap/python/build.sh

@@ -5,16 +5,16 @@ const builtin = @import("builtin");
 const seed = @import("seed.zig");
 const Io = std.Io;
 const inputs = [_][]const u8{
-    "bootstrap/build_python.zig",          "bootstrap/seed.zig",
-    "bootstrap/python/sources.json",       "bootstrap/python/cpython-sources.txt",
-    "bootstrap/python/build.sh",           "bootstrap/python/smoke.py",
-    "bootstrap/python/finalize.py",        "bootstrap/python/compiler-bridge.patch",
-    "bootstrap/python/build-graph.patch",
-    "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
-    "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
-
-    "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
+    "bootstrap/build_python.zig",         "bootstrap/seed.zig",
+    "bootstrap/python/sources.json",      "bootstrap/python/cpython-sources.txt",
+    "bootstrap/python/build.sh",          "bootstrap/python/smoke.py",
+    "bootstrap/python/finalize.py",       "bootstrap/python/compiler-bridge.patch",
+    "bootstrap/python/build-graph.patch", "bootstrap/python/compiler_runtime.c",
+    "bootstrap/python/compiler_bridge.c", "bootstrap/python/object_api.c",
+    "bootstrap/python/binding_api.c",     "bootstrap/python/compiler_bridge.h",
+    "bootstrap/python/prepare_native.py", "bootstrap/python/jacpython-only.txt",
 };
+const jacpython_only_inputs = @embedFile("python/jacpython-only.txt");
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
 const Mode = enum { host, jacpython };
 const native_toolchain_inputs = [_][]const u8{ "build.zig", "build.zig.zon", "bootstrap/pins.json" };
@@ -156,6 +156,16 @@ fn sourceArchive(io: Io, a: std.mem.Allocator, cache_dir: []const u8, source: So
     return bytes;
 }
 
+fn jacPythonOnlyInput(path: []const u8) bool {
+    const prefix = "bootstrap/python/";
+    if (!std.mem.startsWith(u8, path, prefix)) return false;
+    var lines = std.mem.tokenizeScalar(u8, jacpython_only_inputs, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.eql(u8, path[prefix.len..], line)) return true;
+    }
+    return false;
+}
+
 fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, host_dest: []const u8, mode: Mode) ![64]u8 {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
     hash.update(@tagName(mode));
@@ -167,10 +177,7 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
         hash.update(std.mem.trim(u8, sdk.stdout, " \r\n"));
     }
     for (inputs) |path| {
-        if (mode != .jacpython and (std.mem.endsWith(u8, path, "/compiler-bridge.patch") or
-            std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
-            std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c") or
-            std.mem.endsWith(u8, path, "/binding_api.c"))) continue;
+        if (mode != .jacpython and jacPythonOnlyInput(path)) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
