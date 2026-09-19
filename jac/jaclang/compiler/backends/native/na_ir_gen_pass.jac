@@ -120,6 +120,15 @@ obj NativeSpreadArg {
         is_list: bool = False;
 }
 
+obj NativeComprehension {
+    has comprs: list[uni.InnerCompr],
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: uni.UniNode | None = None,
+        spec: str = "";
+}
+
 obj NativeIterCallback {
     has function: ir.Value,
         function_type: ir.FunctionType,
@@ -792,46 +801,18 @@ walker NaIRGenPass {
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
     def _codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None);
     def _codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None);
-    def _emit_compr_element(
-        kind: str,
-        acc: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: (uni.UniNode | None),
-        spec: str
+    def _emit_compr_element(compr: NativeComprehension) -> None;
+    def _codegen_compr_walk(compr: NativeComprehension, idx: int) -> None;
+    def _codegen_compr_step(
+        compr: NativeComprehension, idx: int, next_bb: ir.Block
     ) -> None;
 
-    def _codegen_compr_walk(
-        comprs: list[uni.InnerCompr],
-        idx: int,
-        kind: str,
-        acc: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: (uni.UniNode | None),
-        spec: str
+    def _codegen_compr_walk_body(compr: NativeComprehension, idx: int) -> None;
+    def _codegen_compr_iter_walk(
+        compr: NativeComprehension, idx: int, source: tuple[ir.Value, ir.Type, bool]
     ) -> None;
 
-    def _codegen_compr_walk_body(
-        comprs: list[uni.InnerCompr],
-        idx: int,
-        kind: str,
-        acc: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: (uni.UniNode | None),
-        spec: str
-    ) -> None;
-
-    def _codegen_compr_range_walk(
-        inner: uni.InnerCompr,
-        comprs: list[uni.InnerCompr],
-        idx: int,
-        kind: str,
-        acc: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: (uni.UniNode | None),
-        spec: str,
-        conditionals: list[uni.Expr]
-    ) -> None;
-
+    def _codegen_compr_range_walk(compr: NativeComprehension, idx: int) -> None;
     def _emit_key_comparison(
         b: ir.IRBuilder,
         key_type: ir.Type,
@@ -1477,6 +1458,7 @@ walker NaIRGenPass {
         obj_val: ir.Value, struct_name: str, expr: uni.UniNode
     ) -> (tuple[ir.Value, str, ir.Type] | None);
 
+    def _iter_source(coll: uni.Expr) -> (tuple[ir.Value, ir.Type, bool] | None);
     def _try_iter_protocol_for(nd: uni.InForStmt) -> bool;
     def _spec_from_list_slot_type(t: (ir.Type | None)) -> (str | None);
     def _reflavor_list(

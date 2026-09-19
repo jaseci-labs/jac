@@ -1227,38 +1227,38 @@ impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
     return self._mark_reference_owned(_next_val);
 }
 
-impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
-    coll = nd.collection;
+impl NaIRGenPass._iter_source(
+    coll: uni.Expr
+) -> (tuple[ir.Value, ir.Type, bool] | None) {
     self._ensure_iter_types();
-
     is_adapter_call = (
         isinstance(coll, uni.FuncCall)
         and self._get_name(coll.target) in ["map", "filter", "enumerate", "zip", "iter"]
         and coll.call_kind == "builtin"
     );
-
     _ustruct = self._struct_name_of(coll) if not is_adapter_call else None;
-    is_user_iterable = _ustruct is not None and self._arch_implements_iter(_ustruct);
-    built: (tuple[ir.Value, str, ir.Type] | None) = None;
-    owns_iter = False;
-    if is_adapter_call or is_user_iterable {
+    if is_adapter_call
+        or (_ustruct is not None and self._arch_implements_iter(_ustruct)) {
         built = self._build_iter_from_expr(coll);
-        owns_iter = True;
-    } else {
-        elem_t = self._iter_elem_llvm_of(coll);
-        if elem_t is not None {
-            iv = self._codegen_expr(coll);
-            if iv is not None {
-                ename = "tuple" if isinstance(elem_t, ir.LiteralStructType) else "iter";
-                built = (iv, ename, elem_t);
-                owns_iter = self._is_owned(iv);
-            }
-        }
+        return None if built is None else (built[0], built[2], True);
     }
-    if built is None {
+    elem_t = self._iter_elem_llvm_of(coll);
+    if elem_t is None {
+        return None;
+    }
+    iv = self._codegen_expr(coll);
+    if iv is None {
+        return None;
+    }
+    return (iv, elem_t, self._is_owned(iv));
+}
+
+impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
+    source = self._iter_source(nd.collection);
+    if source is None {
         return False;
     }
-    (iter_val, elem_name, elem_type) = built;
+    (iter_val, elem_type, owns_iter) = source;
     i8p = ir.IntType(8).as_pointer();
     _loc = "iter_for";
     tuple_target = nd.target if isinstance(nd.target, uni.TupleVal) else None;

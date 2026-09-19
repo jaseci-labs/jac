@@ -129,16 +129,10 @@ import from jaclang.compiler.frontend.python.peg_runtime {
 }
 import from jaclang.compiler.frontend.python.token_model { mk_diag, tok_loc }
 
-def _code_points(text: str) -> set[int] {
-    points: set[int] = set();
-    for ch in text {
-        points.add(ord(ch));
-    }
-    return points;
-}
-
 # The characters a backslash may escape in a str literal, as code points.
-glob VALID_ESCAPE_POINTS: set[int] = _code_points("\\\"'abfnrtv\n\r01234567xuUN");
+glob VALID_ESCAPE_POINTS: set[int] = {
+         ord(c) for c in "\\\"'abfnrtv\n\r01234567xuUN"
+     };
 
 obj pa_cmpop_expr_pair {
     has cmpop: cmpop,
