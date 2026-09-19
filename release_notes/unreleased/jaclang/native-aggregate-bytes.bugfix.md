@@ -1,0 +1,1 @@
+- **Fix: Bytes buffers in foreign struct calls**: Pass the byte payload pointer, rather than its internal header, to C functions with struct arguments or returns.
