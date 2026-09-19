@@ -130,6 +130,14 @@ def _probe_source(intr: any) -> str {
             "return x + 7; }\n"
         );
     }
+    if intr.dispatch == IntrinsicDispatch.REGION_TLS {
+        return (
+            "def probe(x: int) -> int { old = __jac_region_tls_get(); "
+            "__jac_region_tls_set(x + 7); v = __jac_region_tls_get(); "
+            "__jac_region_tls_set(old); "
+            "return v if __jac_region_gbl_get() != 0 else 0; }\n"
+        );
+    }
     assert False , (
         f"no probe strategy for dispatch {intr.dispatch}: add one so this "
         "exhaustive gate keeps covering every registered intrinsic"
