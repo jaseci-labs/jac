@@ -583,6 +583,8 @@ walker TypeEvaluator {
     ) -> bool;
 
     def _extern_scalar_type(type_expr: Expr | None) -> TypeBase;
+    def _intrinsic_function_type(name: str) -> (FunctionType | None);
+    def _intrinsic_spec_type(spec: str) -> TypeBase;
     def _check_extern_ctor_args(expr: FuncCall, arch: Archetype) -> None;
     def _extern_member_type(arch: Archetype, name: str) -> TypeBase;
     def _extern_field_type(field: HasVar) -> TypeBase;

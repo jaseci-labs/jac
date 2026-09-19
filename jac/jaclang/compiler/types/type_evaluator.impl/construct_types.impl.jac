@@ -804,6 +804,43 @@ impl TypeEvaluator._super_owner_for(node_: Name, rest: list[ClassType]) -> Class
     return rest[0];
 }
 
+impl TypeEvaluator._intrinsic_function_type(name: str) -> (FunctionType | None) {
+    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
+    import from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
+    registry = intrinsic_registry_if_ready();
+    intr = registry.get(name) if isinstance(registry, IntrinsicRegistry) else None;
+    if intr is None {
+        return None;
+    }
+    parameters: list[Parameter] = [];
+    for (idx, spec) in enumerate(intr.param_specs) {
+        parameters.append(
+            Parameter(
+                name=f"arg{idx}",
+                category=ParameterCategory.Positional,
+                param_type=self._intrinsic_spec_type(spec),
+                param_kind=ParamKind.POSONLY
+            )
+        );
+    }
+    return FunctionType(
+        func_name=name,
+        return_type=self._intrinsic_spec_type(intr.result_spec),
+        parameters=parameters
+    );
+}
+
+impl TypeEvaluator._intrinsic_spec_type(spec: str) -> TypeBase {
+    if spec == "none" {
+        return self._convert_to_instance(self.get_none_type());
+    }
+    scalar = self._get_type_from_module(self.jac_builtins_module, spec);
+    if isinstance(scalar, ClassType) {
+        return self._convert_to_instance(scalar);
+    }
+    return AnyType(is_foreign=True, foreign_scalar=spec);
+}
+
 impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if isinstance(type_expr, Name) {

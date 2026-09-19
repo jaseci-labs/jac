@@ -2195,6 +2195,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     return symbol_type;
                 }
+                if intrinsic := self._intrinsic_function_type(expr.value) {
+                    return intrinsic;
+                }
             }
 
         case AwaitExpr():
