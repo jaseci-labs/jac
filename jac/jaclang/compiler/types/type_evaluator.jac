@@ -374,8 +374,7 @@ enum NarrowingKind {
 enum EndpointVerdict {
     CONFORMS = "conforms",
     VIOLATES = "violates",
-    UNPROVEN = "unproven",
-    UNDECLARED = "undeclared"
+    UNPROVEN = "unproven"
 }
 
 obj ConditionInfo {
@@ -716,7 +715,7 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def _edge_endpoint_verdict(
-        actual: TypeBase, declared: TypeBase | None
+        actual: TypeBase, declared: TypeBase
     ) -> EndpointVerdict;
 
     def _connected_node_type(operand: TypeBase) -> TypeBase;

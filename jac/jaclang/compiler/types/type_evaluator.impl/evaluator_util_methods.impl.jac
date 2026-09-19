@@ -770,11 +770,8 @@ impl TypeEvaluator._edge_endpoint_type(
 }
 
 impl TypeEvaluator._edge_endpoint_verdict(
-    actual: TypeBase, declared: TypeBase | None
+    actual: TypeBase, declared: TypeBase
 ) -> EndpointVerdict {
-    if declared is None {
-        return EndpointVerdict.UNDECLARED;
-    }
     if declared.is_any_type() or isinstance(declared, UnknownType) {
         return EndpointVerdict.CONFORMS;
     }
