@@ -3725,6 +3725,31 @@ impl TypeEvaluator.assign_type(
         required_method = _protocol_methods.get(dest_type.shared.class_name);
         if required_method {
             if self._lookup_object_member(src_type, required_method) {
+                def has_type_var(ty: TypeBase) -> bool {
+                    if isinstance(ty, TypeVarType) {
+                        return True;
+                    }
+                    if isinstance(ty, UnionType) {
+                        return any(has_type_var(member) for member in ty.types);
+                    }
+                    if isinstance(ty, ClassType) and ty.private.type_args {
+                        return any(has_type_var(arg) for arg in ty.private.type_args);
+                    }
+                    return False;
+                }
+                if dest_type.shared.class_name in ("Iterable", "Iterator")
+                    and dest_type.private.type_args
+                    and not has_type_var(dest_type.private.type_args[0])
+                    and src_type.is_builtin(["list", "tuple", "set", "frozenset"]) {
+                    elem = self._get_iterable_element_type(src_type);
+                    if elem is not None and not isinstance(elem, UnknownType) {
+                        return self.assign_type(
+                            self._convert_to_instance(elem),
+                            self._convert_to_instance(dest_type.private.type_args[0]),
+                            strict
+                        );
+                    }
+                }
                 return True;
             }
         }

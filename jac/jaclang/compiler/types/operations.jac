@@ -1,5 +1,6 @@
 import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
+    AtomTrailer,
     BinaryExpr,
     ConnectOp,
     DisconnectOp,
@@ -243,6 +244,17 @@ def is_annotation_type(evaluator: TypeEvaluator, ty: TypeBase) -> bool {
     return False;
 }
 
+def _is_literal_form(operand: Expr) -> bool {
+    if not isinstance(operand, AtomTrailer) or operand.is_attr {
+        return False;
+    }
+    head = operand.target;
+    if isinstance(head, AtomTrailer) and head.is_attr {
+        head = head.right;
+    }
+    return isinstance(head, Name) and head.value == "Literal";
+}
+
 def get_type_of_binary_operation(
     evaluator: TypeEvaluator, expr: BinaryExpr
 ) -> TypeBase {
@@ -353,8 +365,11 @@ def get_type_of_binary_operation(
 
     if (isinstance(expr.op, Token) and (expr.op.name in BINARY_OPERATOR_MAP)) {
         if expr.op.name == Tok.BW_OR {
-            if is_annotation_type(evaluator, left_type)
-                and is_annotation_type(evaluator, right_type) {
+            if (is_annotation_type(evaluator, left_type) or _is_literal_form(expr.left))
+                and (
+                    is_annotation_type(evaluator, right_type)
+                    or _is_literal_form(expr.right)
+                ) {
                 return UnionType(
                     types=[
                         evaluator._convert_to_instance(left_type),

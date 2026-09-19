@@ -197,7 +197,7 @@ class CallInstr(Instruction) {
     }
 
     def _descr(self: CallInstr, buf: any, add_metadata: any) -> object {
-        def descr_arg(i: any, a: any) -> object {
+        def descr_arg(i: any, a: any) -> str {
             if (i in self.arg_attributes) {
                 attrs = ' '.join(self.arg_attributes[i]._to_list(a.type)) + ' ';
             } else {

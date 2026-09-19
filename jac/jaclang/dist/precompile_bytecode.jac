@@ -172,7 +172,7 @@ def _application_sources(package_dir: str, app: str) -> list[str] | None {
         raise ValueError(f'Unknown app: {app}');
     }
     program = JacProgram();
-    entries = [selected];
+    entries: list[any] = [selected];
     if selected.has_server {
         import from jaclang.server.assembly { service_apps }
         entries.extend(service_apps(workspace, selected));
