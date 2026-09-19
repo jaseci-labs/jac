@@ -2,15 +2,19 @@
 node Base {
     has tag: str = "";
 }
+
 node A(Base) {
     has av: int = 0;
 }
+
 node B(Base) {
     has bv: int = 0;
 }
+
 node C(Base) {
     has cv: int = 0;
 }
+
 edge Multi: Base --> A | B {}
 edge Narrow: A | B --> C {}
 

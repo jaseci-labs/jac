@@ -850,8 +850,18 @@ impl Parser.parse_factor -> Expr {
     return self.parse_connect();
 }
 
+impl Parser.parse_edge_endpoint -> Expr {
+    self._no_connect_op_depth += 1;
+    endpoint = self.parse_pipe();
+    self._no_connect_op_depth -= 1;
+    return endpoint;
+}
+
 impl Parser.parse_connect -> Expr {
     left = self.parse_atomic_pipe();
+    if self._no_connect_op_depth > 0 {
+        return left;
+    }
     while True {
         conn_op = self.parse_connect_op();
         if conn_op is None {
@@ -5313,9 +5323,9 @@ impl Parser.parse_archetype -> Archetype {
     if self.check(TokenKind.COLON) {
         self.expect(TokenKind.COLON);
         ep_colon_uni = self.make_uni_token(self.previous());
-        src_endpoint = self.parse_atomic_chain();
+        src_endpoint = self.parse_edge_endpoint();
         ep_arrow_uni = self.consume_uni(TokenKind.ARROW_R);
-        tgt_endpoint = self.parse_atomic_chain();
+        tgt_endpoint = self.parse_edge_endpoint();
     }
     body_l: (list[UniNode] | None) = None;
     body_lb_uni = None;

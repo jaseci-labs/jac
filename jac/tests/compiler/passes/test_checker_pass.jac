@@ -5156,7 +5156,7 @@ def _endpoint_diags(program: JacProgram) -> list[tuple[str, int]] {
         [
             (d.code.code, d.loc.first_line)
             for d in program.errors_had + program.warnings_had
-            if d.code and d.code.code in ("E1408", "E1409", "W2081", "W2082", "E0111")
+            if d.code and d.code.code in ("E1136", "E1137", "W2081", "W2082", "E2086")
         ]
     );
 }
@@ -5170,8 +5170,8 @@ test "edge_endpoint_declaration_is_enforced_at_connect_and_traversal" {
     program = JacProgram();
     program.compile(os.path.join(CHECKER_FIXTURES, "edge_endpoint_violation.jac"));
     got = _endpoint_diags(program);
-    assert ("E1408", 23) in got , f"backwards connect must be E1408 at 23, got {got}";
-    assert ("E1409", 25) in got , f"wrong-origin traversal must be E1409 at 25, got {got}";
+    assert ("E1136", 23) in got , f"backwards connect must be E1136 at 23, got {got}";
+    assert ("E1137", 25) in got , f"wrong-origin traversal must be E1137 at 25, got {got}";
     assert ("W2081", 12) in got , f"`any` operands must warn W2081 at 12, got {got}";
     for clean in [19, 20, 21, 27, 28] {
         assert not [
@@ -5219,7 +5219,7 @@ test "edge_without_an_endpoint_clause_is_rejected" {
     program = JacProgram();
     program.compile(os.path.join(CHECKER_FIXTURES, "edge_missing_endpoints.jac"));
     got = _endpoint_diags(program);
-    assert got == [("E0111", 6)] , f"only the bare edge on line 6 may be flagged, got {got}";
+    assert got == [("E2086", 6)] , f"only the bare edge on line 6 may be flagged, got {got}";
 }
 
 test "mobui_project_forbids_html_intrinsic_tags" {

@@ -389,6 +389,7 @@ obj Parser {
         source: Source postinit,
         diags: list[SrcDiag] = [],
         _view_body_depth: int = 0,
+        _no_connect_op_depth: int = 0,
         _gen_test_idx: int = 0;
 
     def postinit;
@@ -462,6 +463,7 @@ obj Parser {
     def parse_power -> Expr;
     def parse_factor -> Expr;
     def parse_connect -> Expr;
+    def parse_edge_endpoint -> Expr;
     def parse_connect_op -> ConnectOp | DisconnectOp | None;
     def parse_edge_op_ref_inline -> EdgeOpRef | None;
     def parse_atomic_pipe -> Expr;

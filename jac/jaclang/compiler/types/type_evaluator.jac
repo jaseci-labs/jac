@@ -367,6 +367,13 @@ enum NarrowingKind {
     TYPE_GUARD = "type_guard"
 }
 
+enum EndpointVerdict {
+    CONFORMS = "conforms",
+    VIOLATES = "violates",
+    UNPROVEN = "unproven",
+    UNDECLARED = "undeclared"
+}
+
 obj ConditionInfo {
     has kind: NarrowingKind,
         key: str,
@@ -696,9 +703,17 @@ walker TypeEvaluator {
 
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
+    def _edge_endpoint_declared(
+        edge_type: ClassType, want_src: bool
+    ) -> TypeBase | None;
+
     def _edge_endpoint_type(
         edge_type: ClassType, edge_dir: EdgeDir
     ) -> TypeBase | None;
+
+    def _edge_endpoint_verdict(
+        actual: TypeBase, declared: TypeBase | None
+    ) -> EndpointVerdict;
 
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;

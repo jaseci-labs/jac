@@ -733,29 +733,70 @@ impl TypeEvaluator._report_rejected_method_call(
     }
 }
 
-impl TypeEvaluator._edge_endpoint_type(
-    edge_type: ClassType, edge_dir: EdgeDir
+impl TypeEvaluator._edge_endpoint_declared(
+    edge_type: ClassType, want_src: bool
 ) -> TypeBase | None {
     for cls in edge_type.shared.mro {
         arch = cls.shared.symbol_table;
         if not isinstance(arch, Archetype) {
             continue;
         }
-        endpoint: Expr | None = None;
-        if edge_dir == EdgeDir.OUT {
-            endpoint = arch.tgt_endpoint;
-        } elif edge_dir == EdgeDir.IN {
-            endpoint = arch.src_endpoint;
-        }
+        endpoint = arch.src_endpoint if want_src else arch.tgt_endpoint;
         if endpoint is not None {
-            ep_type = self.get_type_of_expression(endpoint);
-            if isinstance(ep_type, ClassType) {
-                return ep_type;
-            }
-            return None;
+            return self.get_type_of_expression(endpoint);
         }
     }
     return None;
+}
+
+impl TypeEvaluator._edge_endpoint_type(
+    edge_type: ClassType, edge_dir: EdgeDir
+) -> TypeBase | None {
+    if edge_dir != EdgeDir.OUT and edge_dir != EdgeDir.IN {
+        return None;
+    }
+    declared = self._edge_endpoint_declared(edge_type, edge_dir == EdgeDir.IN);
+    if isinstance(declared, ClassType) {
+        return declared;
+    }
+    if isinstance(declared, UnionType)
+        and all(isinstance(m, ClassType) for m in declared.types) {
+        return declared;
+    }
+    return None;
+}
+
+impl TypeEvaluator._edge_endpoint_verdict(
+    actual: TypeBase, declared: TypeBase | None
+) -> EndpointVerdict {
+    if declared is None {
+        return EndpointVerdict.UNDECLARED;
+    }
+    if declared.is_any_type() or isinstance(declared, UnknownType) {
+        return EndpointVerdict.CONFORMS;
+    }
+    if actual.is_any_type() or isinstance(actual, UnknownType) {
+        return EndpointVerdict.UNPROVEN;
+    }
+    if isinstance(actual, UnionType) {
+        verdicts = [
+            self._edge_endpoint_verdict(member, declared) for member in actual.types
+        ];
+        if EndpointVerdict.VIOLATES in verdicts {
+            return EndpointVerdict.VIOLATES;
+        }
+        if EndpointVerdict.UNPROVEN in verdicts {
+            return EndpointVerdict.UNPROVEN;
+        }
+        return EndpointVerdict.CONFORMS;
+    }
+    if not isinstance(actual, ClassType) {
+        return EndpointVerdict.UNPROVEN;
+    }
+    if self.assign_type(actual, self._convert_to_instance(declared), strict=False) {
+        return EndpointVerdict.CONFORMS;
+    }
+    return EndpointVerdict.VIOLATES;
 }
 
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
