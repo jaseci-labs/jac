@@ -13,10 +13,10 @@ target: the cache grew with targets x modules, and every new target re-paid a
 cold analysis of the whole shared closure (#9284).
 
 The projection the key uses is now derived from the module's own path and its
-owning program's bound options, so a module reached from two entry points lands
-on one entry. Apps stay apart: app identity is part of the projection, and the
-owning app is resolved by containment, so a module shared by two apps still
-keys once per app.
+owning program's bound options, and never reads an entry point, so a module
+reached from two entry points lands on one entry. Apps stay apart on their own:
+`app` and `app_kind` are terms of both `analysis_identity` and
+`codegen_identity`, so a module shared by two apps still keys once per app.
 """
 
 import os;
@@ -24,10 +24,7 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compilation_context { cache_scope }
-import from jaclang.compiler.driver.jir {
-    get_module_cache_path,
-    module_cache_key
-}
+import from jaclang.compiler.driver.jir { get_module_cache_path, module_cache_key }
 import from jaclang.project.config {
     get_config,
     get_config_for_path,
@@ -53,9 +50,7 @@ def _project(prefix: str, toml: str) -> Path {
 def _keyed_as(base: Path, rooted_at: str, **extra: any) -> tuple[Path, str] {
     # Key `shared.jac` the way a compile rooted at `rooted_at` keys it.
     options = CompileOptions(
-        entry_point=str(base / f"{rooted_at}.jac"),
-        project_root=str(base),
-        **extra
+        entry_point=str(base / f"{rooted_at}.jac"), project_root=str(base), **extra
     );
     with cache_scope(options) {
         target = str(base / "shared.jac");

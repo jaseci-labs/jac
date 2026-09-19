@@ -63,9 +63,7 @@ test "workspace probes scale with modules within a compilation request" {
                         - first} extra filesystem probes'
                 );
             }
-            with compilation_scope(
-                CompileOptions(project_root=td, target_app='api')
-            ) {
+            with compilation_scope(CompileOptions(project_root=td, target_app='api')) {
                 other = context_app(path);
                 assert other is not None and other.name == 'api';
             }
