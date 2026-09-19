@@ -84,6 +84,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E0071,
     E0075,
     E0076,
+    E0078,
     E0082,
     E0083,
     E2019,
@@ -105,6 +106,8 @@ walker ASTValidationPass(TreeWalker) {
     can exit_walk with UniNode exit {
         self.ctx.exit_node(here);
     }
+
+    can enter_module with Module entry;
 
     has ctx: CompileContext,
         module: Module;

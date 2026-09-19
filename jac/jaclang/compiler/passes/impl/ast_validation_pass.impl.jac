@@ -345,6 +345,50 @@ impl ASTValidationPass.enter_func_call with FuncCall entry {
     }
 }
 
+impl ASTValidationPass.enter_module with Module entry {
+    if here.is_raised_from_py or here.stub_only {
+        return;
+    }
+    overload_names: set[str] = set();
+    for item in (here.body or []) {
+        if not (isinstance(item, Ability) and isinstance(item.name_ref, Name)) {
+            continue;
+        }
+        decorated = False;
+        for dec in (item.decorators or []) {
+            if isinstance(dec, Name) and dec.value == "overload" {
+                decorated = True;
+                break;
+            }
+        }
+        if decorated {
+            overload_names.add(item.name_ref.value);
+        }
+    }
+    plain_seen: set[str] = set();
+    for item in (here.body or []) {
+        if not (isinstance(item, Ability) and isinstance(item.name_ref, Name)) {
+            continue;
+        }
+        decorated = False;
+        for dec in (item.decorators or []) {
+            if isinstance(dec, Name) and dec.value == "overload" {
+                decorated = True;
+                break;
+            }
+        }
+        if decorated {
+            continue;
+        }
+        name = item.name_ref.value;
+        if name in plain_seen or name in overload_names {
+            self.ctx.emit(E0078, node_override=item.name_ref, name=name);
+        } else {
+            plain_seen.add(name);
+        }
+    }
+}
+
 impl ASTValidationPass.enter_archetype with Archetype entry {
     if here.base_classes is not None {
         seen_bases: set[str] = set();

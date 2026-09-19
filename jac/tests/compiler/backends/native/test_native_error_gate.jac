@@ -152,3 +152,40 @@ test "clean na module still publishes artifacts and caches" {
         "clean na module must still be written to the jir cache"
     );
 }
+
+test "duplicate module functions refuse native codegen" {
+    src = write_module(
+        "gate_duplicate.jac",
+        "def collide(x: int) -> int { return x; }\n"
+        "def collide(x: int) -> int { return x + 1; }\n"
+        "with entry { print(collide(1)); }\n"
+    );
+    prog = JacProgram();
+    mod = prog.compile(file_path=src, options=native_force_opts());
+    assert has_error_code(prog, "E0078") , (
+        f"Expected E0078 for duplicate module functions, got: {fmt_errors(prog)}"
+    );
+    assert mod.gen.llvm_ir is None , ("duplicate functions must not publish native IR");
+    assert mod.gen.native_engine is None , (
+        "duplicate functions must not publish a native engine"
+    );
+}
+
+test "undefined native names refuse codegen instead of emitting a hole" {
+    src = write_module(
+        "gate_undefined_name.jac",
+        "def probe() -> int { return NATIVE_KIND_PARSE_ESTREE; }\n"
+        "with entry { print(probe()); }\n"
+    );
+    prog = JacProgram();
+    mod = prog.compile(file_path=src, options=native_force_opts());
+    assert prog.errors_had , (
+        "an unresolved name in native code must produce a compiler diagnostic"
+    );
+    assert mod.gen.llvm_ir is None , (
+        "an unresolved native name must not publish native IR"
+    );
+    assert mod.gen.native_engine is None , (
+        "an unresolved native name must not publish a native engine"
+    );
+}
