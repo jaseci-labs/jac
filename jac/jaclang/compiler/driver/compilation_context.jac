@@ -34,12 +34,6 @@ def compilation_scope(options: CompileOptions | None = None) -> Iterator[None] {
 }
 
 def active_options -> CompileOptions | None {
-    # The options of the program that owns the module being compiled. The
-    # cache key is derived from these at the point of use, via
-    # `CompileOptions.module_projection`, rather than handed down pre-hashed
-    # from whoever entered the scope -- so a dependency cannot inherit the
-    # root's entry point. `None` means no owning context (selfhost, and the
-    # context-free keys `jac.dist` writes for precompiled modules).
     return _active_options.get();
 }
 
@@ -151,10 +145,6 @@ def bind_options(
 }
 
 def context_identity(options: CompileOptions) -> str {
-    # Separating JacProgram contexts and keying the module cache are the same
-    # question -- "can these two compiles share compiled output?" -- so they
-    # ask it of one projection. Two entry points with the same options and app
-    # now share a context, which is the point: they produce the same output.
     return hashlib.sha256(options.module_projection().encode()).hexdigest()[:20];
 }
 

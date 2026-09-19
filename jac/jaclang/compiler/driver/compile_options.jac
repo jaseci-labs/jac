@@ -164,20 +164,6 @@ obj CompileOptions {
     }
 
     def module_projection -> str {
-        # The option terms that can change a module's compiled output, and so
-        # the option half of its cache key. The path-derived half lives in
-        # `jir._project_env_fingerprint` (resolved codespace, placement pins,
-        # app facts, workspace digest).
-        #
-        # `entry_point` is deliberately absent. Nothing in the compiler reads
-        # it -- `bind_options` uses it only to decide whether to inherit the
-        # parent program's options, and every field that gate controls is
-        # already a term here. Keying on it meant `bind_options` stamped the
-        # file named on the command line onto every dependency it bound, so
-        # one unedited module got a cache entry per check/test/run target and
-        # each new target re-paid a cold analysis of the shared closure
-        # (#9284). `app`/`app_kind` ride in both identities below, so modules
-        # shared between apps still key once per app.
         return ";".join(
             [
                 self.analysis_identity(),

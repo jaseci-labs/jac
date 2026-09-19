@@ -507,9 +507,6 @@ def module_env_fingerprint(source_path: str) -> str {
 }
 
 def _owner_projection -> str {
-    # The option half of a module's key, taken from the options of the program
-    # that owns it and projected here rather than inherited pre-hashed. See
-    # `CompileOptions.module_projection` for why the entry point is not in it.
     import from jaclang.compiler.driver.compilation_context { active_options }
     options = active_options();
     return options.module_projection() if options is not None else '';
@@ -826,9 +823,7 @@ def _get_module_cache_dir(source_path: str) -> Path {
 def get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
-    path_hash = hashlib.sha256(
-        (str(source) + _owner_projection()).encode()
-    ).hexdigest()[:8];
+    path_hash = hashlib.sha256((str(source) + _owner_projection()).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }

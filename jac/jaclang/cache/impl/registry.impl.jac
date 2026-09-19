@@ -66,14 +66,6 @@ def _registered(name: str) -> Bucket | None {
 }
 
 impl project_bucket -> Bucket | None {
-    # A project keeps its own compiled modules beside it, under
-    # `<project>/.jac/cache`, because they are the project's build output and
-    # not machine state. They are the same generation directories `jir-modules`
-    # holds and age out under the same policy, but they sit outside
-    # `cache_home()`, so the machine-wide registry could not see them: they
-    # were reported by nothing and reclaimed only as a side effect of a later
-    # compile (#9284). Registering the one belonging to the project the command
-    # is run in puts it under `jac cache` like any other bucket.
     import from jaclang.project.config { get_config }
     modules = _registered("jir-modules");
     if modules is None {
@@ -214,8 +206,7 @@ def _unmanaged_children(parent: Path, owned: set[str], out: set[str]) {
 impl unmanaged -> list[tuple[str, int]] {
     base = cache_home();
     roots: set[str] = {str(base)};
-    # Machine-wide only: this answers "what sits in the cache root that no
-    # bucket owns". A project's cache is owned, and lives outside the root.
+
     owned: set[str] = {str(b.path()) for b in BUCKETS};
     paths: set[str] = set();
     for b in BUCKETS {
