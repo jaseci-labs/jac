@@ -60,20 +60,20 @@ The four client entry points are `web.jac`, `mobile.jac`, `desktop.jac`, and
 
 | Authored files | Physical lines |
 | --- | ---: |
-| Shared UI and styles | 536 |
+| Shared UI and styles | 535 |
 | Feed and scoring services | 170 |
 | CLI | 116 |
-| Web, mobile, desktop entry points | 17 |
+| Web, mobile, desktop entry points | 19 |
 | Tests | 66 |
 | `jac.toml` | 51 |
-| **Total** | **956** |
+| **Total** | **957** |
 
 Reproduce the count with `wc -l jac.toml *.jac core/*.jac`.
 Documentation, dependencies, compiler/runtime code, and generated platform files
 are outside this application-source count. Local compatibility checks use Jac
 `0.37.18`. The project uses the installed Jac binary without a compiler-source
 override. Web fleet routing and authentication are exercised against that binary.
-The desktop entry includes an empty `with entry` block so the packaged host has
+The desktop entry includes a `with entry` block with a `None;` no-op so the packaged host has
 the bootstrap artifact expected by the current desktop runtime.
 The original desktop captures used a generator fix with explicitly typed port
 values so the native host includes the port number in its navigation URL.

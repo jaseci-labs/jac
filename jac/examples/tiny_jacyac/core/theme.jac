@@ -9,9 +9,8 @@ obj Colors {
         accent: str = "#355d45";
 }
 
-glob:pub C = Colors();
-
-glob:pub S = StyleSheet.create(
+glob:pub C = Colors(),
+     S = StyleSheet.create(
          {
              "screen": {"flex": 1, "backgroundColor": C.paper},
              "page": {
