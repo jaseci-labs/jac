@@ -267,6 +267,8 @@ walker NaIRGenPass {
         _class_name_consts: dict[str, ir.Constant] = {},
         _isa_fn: (ir.Function | None) = None,
         _isa_seq_fn: (ir.Function | None) = None,
+        _isa_h_fn: (ir.Function | None) = None,
+        _cstr_hash_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
         _vtable_less_reach: (set[str] | None) = None,
         _short_mro_reach: (dict[str, list[str]] | None) = None,
@@ -2412,6 +2414,18 @@ walker NaIRGenPass {
     def _is_enum_arch(name: str) -> bool;
     def _emit_isa_fn -> ir.Function;
     def _emit_isa_seq_fn -> ir.Function;
+    def _emit_isa_hashed_fn -> ir.Function;
+    def _emit_isa_name_match(
+        b: ir.IRBuilder,
+        gate: (ir.Value | None),
+        name: ir.Value,
+        other: ir.Value,
+        strcmp: ir.Function,
+        on_match: ir.Block,
+        on_miss: ir.Block
+    ) -> None;
+
+    def _emit_cstr_hash_fn -> ir.Function;
     def _is_runtime_class_tuple(t: any) -> bool;
     def _runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value | None);
     def _runtime_class_arms(
