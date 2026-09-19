@@ -1,3 +1,3 @@
-edge Remote: any --> any {
+edge Remote : any --> any {
     has weight: int = 11;
 }

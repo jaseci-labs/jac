@@ -6,8 +6,8 @@ node Person {
     }
 }
 
-edge Friend: Person --> Person {}
-edge Family: any --> any {
+edge Friend : Person --> Person {}
+edge Family : any --> any {
     can announce with FriendFinder entry {
         print(f"{visitor} is traveling to family member");
     }
@@ -21,9 +21,9 @@ glob p1 = Person(name="John"),
 
 with entry {
     root ++> p1;
-    p1 +>:Friend:+> p2;
-    p2 +>:Family:+> [p1, p3];
-    p2 +>:Friend:+> p3;
+    p1 +>: Friend :+> p2;
+    p2 +>: Family :+> [p1, p3];
+    p2 +>: Friend :+> p3;
 }
 
 # This is also a class

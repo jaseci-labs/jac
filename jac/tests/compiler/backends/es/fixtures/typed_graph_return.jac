@@ -16,9 +16,9 @@ node Employee {
         salary: float = 0.0;
 }
 
-edge BelongsTo: any --> any {}
+edge BelongsTo : any --> any {}
 
-edge Manages: any --> any {
+edge Manages : any --> any {
     has since: str = "";
 }
 
@@ -62,7 +62,7 @@ def:pub app -> JsxElement {
         departments = result.reports;
     }
 
-    async def addEmployee(name: str, role: str) {
+    async def addEmployee(name: str, role: str) -> None {
         if selectedDept {
             result = jid(selectedDept) spawn add_employee(
                 name=name, role=role, dept_id=jid(selectedDept)

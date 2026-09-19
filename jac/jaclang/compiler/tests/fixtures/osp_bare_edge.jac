@@ -12,8 +12,7 @@ walker counts outgoing E edges at each visited node: a=2, b=1, c=0, d=0 -> 3.
 node N {
     has v: int = 0;
 }
-
-edge E: N --> N {
+edge E : N --> N {
     has w: int = 0;
 }
 
@@ -26,7 +25,7 @@ walker Counter {
     }
 }
 
-def bare_edge_py -> dict[str, any] {
+def bare_edge_py() -> dict[str, any] {
     a = N(v=1);
     b = N(v=2);
     c = N(v=3);
@@ -40,7 +39,7 @@ def bare_edge_py -> dict[str, any] {
 }
 
 
-def bare_edge_na -> dict[str, any] {
+def bare_edge_na() -> dict[str, any] {
     a = N(v=1);
     b = N(v=2);
     c = N(v=3);

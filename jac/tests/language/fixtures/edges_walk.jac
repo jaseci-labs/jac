@@ -6,27 +6,27 @@ node node_a {
     has val: int;
 }
 
-edge Edge_a: any --> any {
+edge Edge_a : any --> any {
     has value: int = 10;
 }
 
-edge Edge_b: any --> any {
+edge Edge_b : any --> any {
     has value1: int = 20;
 }
 
-edge Edge_c: any --> any {
+edge Edge_c : any --> any {
     has value2: int = 30;
 }
 
 impl creator.create{
     for i = 0 while i < 2 with i += 1 {
-        here +>:Edge_c:value2=30:+> (node_a(val=i + 1));
+        here +>: Edge_c : value2=30 :+> (node_a(val=i + 1));
         visit [-->];
     }
-    here +>:Edge_a:value=10:+> (end := node_a(val=i + 10));
-    end +>:Edge_b:value1=20:+> (last := node_a(val=i + 20));
+    here +>: Edge_a : value=10 :+> (end := node_a(val=i + 10));
+    end +>: Edge_b : value1=20 :+> (last := node_a(val=i + 20));
     for j = 0 while j < 2 with j += 1 {
-        last +>:Edge_c:value2=40:+> (node_a(val=i + 40));
+        last +>: Edge_c : value2=40 :+> (node_a(val=i + 40));
     }
 }
 

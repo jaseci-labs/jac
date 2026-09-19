@@ -16,14 +16,12 @@ c has nothing.
 node N {
     has v: int = 0;
 }
-
-edge E: N --> N {
+edge E : N --> N {
     has w: int = 0;
 }
+edge F : N --> N {}
 
-edge F: N --> N {}
-
-def disc_between_py -> dict[str, any] {
+def disc_between_py() -> dict[str, any] {
     a = N(v=1);
     b = N(v=2);
     c = N(v=3);
@@ -33,8 +31,8 @@ def disc_between_py -> dict[str, any] {
     a +>:E:+> c;
     c ++> d;
     c +>:E:+> d;
-    before_a = len([edge a-->]);
-    before_c = len([edge c-->]);
+    before_a = len([edge a -->]);
+    before_c = len([edge c -->]);
     did_t = a del ->:E:-> b;
     did_u = c del --> d;
     return {
@@ -42,15 +40,15 @@ def disc_between_py -> dict[str, any] {
         "before_c": before_c,
         "removed_t": 1 if did_t else 0,
         "removed_u": 1 if did_u else 0,
-        "typed_left": len([a->:E:->]),
-        "f_left": len([a->:F:->]),
-        "a_out": len([edge a-->]),
-        "c_out": len([c-->])
+        "typed_left": len([a ->:E:->]),
+        "f_left": len([a ->:F:->]),
+        "a_out": len([edge a -->]),
+        "c_out": len([c -->])
     };
 }
 
 
-def disc_between_na -> dict[str, any] {
+def disc_between_na() -> dict[str, any] {
     a = N(v=1);
     b = N(v=2);
     c = N(v=3);
@@ -60,8 +58,8 @@ def disc_between_na -> dict[str, any] {
     a +>:E:+> c;
     c ++> d;
     c +>:E:+> d;
-    before_a = len([edge a-->]);
-    before_c = len([edge c-->]);
+    before_a = len([edge a -->]);
+    before_c = len([edge c -->]);
     did_t = a del ->:E:-> b;
     did_u = c del --> d;
     return {
@@ -69,16 +67,16 @@ def disc_between_na -> dict[str, any] {
         "before_c": before_c,
         "removed_t": 1 if did_t else 0,
         "removed_u": 1 if did_u else 0,
-        "typed_left": len([a->:E:->]),
-        "f_left": len([a->:F:->]),
-        "a_out": len([edge a-->]),
-        "c_out": len([c-->])
+        "typed_left": len([a ->:E:->]),
+        "f_left": len([a ->:F:->]),
+        "a_out": len([edge a -->]),
+        "c_out": len([c -->])
     };
 }
 
 # --- cl (ECMAScript, in-process via the kernel) ---
 
-def disc_between_cl -> dict[str, any] {
+def disc_between_cl() -> dict[str, any] {
     a = N(v=1);
     b = N(v=2);
     c = N(v=3);
@@ -88,8 +86,8 @@ def disc_between_cl -> dict[str, any] {
     a +>:E:+> c;
     c ++> d;
     c +>:E:+> d;
-    before_a = len([edge a-->]);
-    before_c = len([edge c-->]);
+    before_a = len([edge a -->]);
+    before_c = len([edge c -->]);
     did_t = a del ->:E:-> b;
     did_u = c del --> d;
     return {
@@ -97,9 +95,9 @@ def disc_between_cl -> dict[str, any] {
         "before_c": before_c,
         "removed_t": 1 if did_t else 0,
         "removed_u": 1 if did_u else 0,
-        "typed_left": len([a->:E:->]),
-        "f_left": len([a->:F:->]),
-        "a_out": len([edge a-->]),
-        "c_out": len([c-->])
+        "typed_left": len([a ->:E:->]),
+        "f_left": len([a ->:F:->]),
+        "a_out": len([edge a -->]),
+        "c_out": len([c -->])
     };
 }

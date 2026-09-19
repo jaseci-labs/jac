@@ -12,7 +12,7 @@ node S {
     has v: int = 0;
 }
 
-edge L: S --> S {
+edge L : S --> S {
     has w: int = 0;
 }
 
@@ -24,12 +24,12 @@ walker Chainer {
         if here.v == 2 {
             here +>:L(w=9):+> S(v=99);
         }
-        visit [here->:L:->];
+        visit [here ->:L:->];
     }
 }
 
 
-def interop_py -> dict[str, any] {
+def interop_py() -> dict[str, any] {
     a = S(v=1);
     b = S(v=2);
     c = S(v=3);
@@ -37,13 +37,13 @@ def interop_py -> dict[str, any] {
     b +>:L(w=2):+> c;
     wlk = Chainer();
     wlk spawn a;
-    after_b = len([b->:L:->]);
-    grown = [b->:L:w==9:->[?:S]];
+    after_b = len([b ->:L:->]);
+    grown = [b ->:L:w == 9:->[?:S]];
     grown_v = grown[0].v if len(grown) > 0 else -1;
     return {"hits": wlk.hits, "after_b": after_b, "grown_v": grown_v};
 }
 
-def interop_cl -> dict[str, any] {
+def interop_cl() -> dict[str, any] {
     a = S(v=1);
     b = S(v=2);
     c = S(v=3);
@@ -51,13 +51,13 @@ def interop_cl -> dict[str, any] {
     b +>:L(w=2):+> c;
     wlk = Chainer();
     wlk spawn a;
-    after_b = len([b->:L:->]);
-    grown = [b->:L:w==9:->[?:S]];
+    after_b = len([b ->:L:->]);
+    grown = [b ->:L:w == 9:->[?:S]];
     grown_v = grown[0].v if len(grown) > 0 else -1;
     return {"hits": wlk.hits, "after_b": after_b, "grown_v": grown_v};
 }
 
-def interop_na -> dict[str, any] {
+def interop_na() -> dict[str, any] {
     a = S(v=1);
     b = S(v=2);
     c = S(v=3);
@@ -65,8 +65,8 @@ def interop_na -> dict[str, any] {
     b +>:L(w=2):+> c;
     wlk = Chainer();
     wlk spawn a;
-    after_b = len([b->:L:->]);
-    grown = [b->:L:w==9:->[?:S]];
+    after_b = len([b ->:L:->]);
+    grown = [b ->:L:w == 9:->[?:S]];
     grown_v = grown[0].v if len(grown) > 0 else -1;
     return {"hits": wlk.hits, "after_b": after_b, "grown_v": grown_v};
 }

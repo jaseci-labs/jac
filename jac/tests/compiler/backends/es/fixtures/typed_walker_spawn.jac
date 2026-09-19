@@ -16,9 +16,9 @@ node Task {
         done: bool = False;
 }
 
-edge Owns: any --> any {}
+edge Owns : any --> any {}
 
-edge AssignedTo: any --> any {}
+edge AssignedTo : any --> any {}
 
 walker create_project {
     has name: str,
@@ -61,7 +61,7 @@ def:pub app -> JsxElement {
         projects = [project];
     }
 
-    async def loadTasks(projectId: str) {
+    async def loadTasks(projectId: str) -> None {
         result = projectId spawn get_project_tasks();
         tasks = result.reports;
     }

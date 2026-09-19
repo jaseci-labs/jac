@@ -13,14 +13,14 @@ node NodeB {
     has name: str = "x";
 }
 
-edge MyEdge: NodeA --> NodeB {
+edge MyEdge : NodeA --> NodeB {
     has weight: int = 0;
 }
 
 with entry {
     a: NodeA = NodeA(0);
     b: NodeB = NodeB("b");
-    a +>:MyEdge:+> b;
+    a +>: MyEdge :+> b;
 
     # Bare untyped disconnect — must not emit W1051.
     a del --> b;

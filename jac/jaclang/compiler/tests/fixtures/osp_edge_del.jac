@@ -12,12 +12,10 @@ into native context, so the `na {}` block carries its own copies.
 node Area {
     has tag: int = 0;
 }
-
 node Entity {
     has eid: int = 0;
 }
-
-edge In: Entity --> Area {}
+edge In : Entity --> Area {}
 
 # --- py reference (sv runtime) ---
 def move_to_area(ent: Entity, new_area: Area) {
@@ -32,7 +30,7 @@ def ent_area_count(ent: Entity) -> int {
     return len([ent->:In:->[?:Area]]);
 }
 
-def edge_del_py -> dict[str, any] {
+def edge_del_py() -> dict[str, any] {
     a1 = Area(tag=1);
     a2 = Area(tag=2);
     e = Entity(eid=7);
@@ -57,7 +55,7 @@ def ent_area_count_na(ent: Entity) -> int {
     return len([ent->:In:->[?:Area]]);
 }
 
-def edge_del_na -> dict[str, any] {
+def edge_del_na() -> dict[str, any] {
     a1 = Area(tag=1);
     a2 = Area(tag=2);
     e = Entity(eid=7);

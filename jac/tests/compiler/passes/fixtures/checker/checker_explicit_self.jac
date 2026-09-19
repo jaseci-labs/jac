@@ -23,19 +23,19 @@ node MyNode {
         return self.label;
     }
 
-    def good_method -> str {
+    def good_method() -> str {
         return self.label;
     }
 }
 
-edge MyEdge: any --> any {
+edge MyEdge : any --> any {
     has weight: float = 1.0;
 
     def bad_method(self: MyEdge) -> float {
         return self.weight;
     }
 
-    def good_method -> float {
+    def good_method() -> float {
         return self.weight;
     }
 }
@@ -47,13 +47,13 @@ walker MyWalker {
         return self.data;
     }
 
-    def good_method -> str {
+    def good_method() -> str {
         return self.data;
     }
 }
 
 class PyClass {
-    def init(self: PyClass) {
+    def __init__(self: PyClass) -> None {
         self.val = 42;
     }
 

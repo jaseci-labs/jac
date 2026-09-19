@@ -7,6 +7,7 @@ Self (capital S) refers to the current enclosing type. It is:
 - Valid in obj, node, edge, walker, enum, and generic contexts
 """
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 1: class def — classmethod basics
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -15,7 +16,7 @@ Self (capital S) refers to the current enclosing type. It is:
 obj Counter {
     has count: int = 0;
 
-    class def create -> Self {
+    class def create() -> Self {
         return Self(count=0);
     }
 
@@ -23,7 +24,7 @@ obj Counter {
         return Self(count=n);
     }
 
-    def increment -> Self {
+    def increment() -> Self {
         self.count += 1;
         return self;
     }
@@ -50,7 +51,7 @@ obj Registry {
     has name: str,
         tag: str = "default";
 
-    class def class_name -> str {
+    class def class_name() -> str {
         return Self.__name__;
     }
 
@@ -69,7 +70,7 @@ with entry:__main__ {
 
     r = Registry.make("alpha");
     print(f"2.2: {r.name}");  # alpha
-    print(f"2.3: {r.tag}");  # default
+    print(f"2.3: {r.tag}");   # default
 
     r2 = Registry.make_tagged("beta", "vip");
     print(f"2.4: {r2.name} {r2.tag}");  # beta vip
@@ -100,7 +101,7 @@ obj QueryBuilder {
         return self;
     }
 
-    def build -> str {
+    def build() -> str {
         q = f"SELECT * FROM {self.table}";
         if self.conditions {
             q += " WHERE " + " AND ".join(self.conditions);
@@ -114,9 +115,7 @@ obj QueryBuilder {
 
 with entry:__main__ {
     # --- Section 3: fluent builder ---
-    q = QueryBuilder().from_table("users").where("age > 18").where("active = 1").limit(
-        10
-    ).build();
+    q = QueryBuilder().from_table("users").where("age > 18").where("active = 1").limit(10).build();
     print(f"3.1: {q}");  # SELECT * FROM users WHERE age > 18 AND active = 1 LIMIT 10
 }
 
@@ -133,7 +132,7 @@ obj Animal {
         return Self(name=name);
     }
 
-    def speak -> str {
+    def speak() -> str {
         return f"{self.name} says {self.sound}";
     }
 }
@@ -186,7 +185,7 @@ obj Shape {
     has x: float = 0.0,
         y: float = 0.0;
 
-    class def at_origin -> Self {
+    class def at_origin() -> Self {
         return Self();
     }
 
@@ -203,7 +202,7 @@ obj Shape {
         return self;
     }
 
-    def pos -> str {
+    def pos() -> str {
         return f"({self.x}, {self.y})";
     }
 }
@@ -245,7 +244,7 @@ obj Vector {
         return self.x == other.x and self.y == other.y;
     }
 
-    def __str__ -> str {
+    def __str__() -> str {
         return f"Vector({self.x}, {self.y})";
     }
 }
@@ -277,12 +276,12 @@ node TreeNode {
         return Self(label=label, depth=depth);
     }
 
-    def describe -> str {
+    def describe() -> str {
         return f"{self.label}@d{self.depth}";
     }
 }
 
-edge WeightedEdge: any --> any {
+edge WeightedEdge : any --> any {
     has weight: float = 1.0;
 
     class def with_weight(w: float) -> Self {
@@ -334,7 +333,7 @@ glob T = TypeVar('T');
 obj Stack[T] {
     has items: list[T] = [];
 
-    class def empty -> Self {
+    class def empty() -> Self {
         return Self();
     }
 
@@ -343,11 +342,11 @@ obj Stack[T] {
         return self;
     }
 
-    def peek -> T {
+    def peek() -> T {
         return self.items[-1];
     }
 
-    def size -> int {
+    def size() -> int {
         return len(self.items);
     }
 }
@@ -388,14 +387,14 @@ with entry:__main__ {
 
 """Self as return type in abstract method declarations."""
 obj Cloneable {
-    def clone -> Self abst;
+    def clone() -> Self abst;
 }
 
 obj Point(Cloneable) {
     has x: int = 0,
         y: int = 0;
 
-    override def clone -> Self {
+    override def clone() -> Self {
         return Self(x=self.x, y=self.y);
     }
 }
@@ -403,7 +402,7 @@ obj Point(Cloneable) {
 obj Point3D(Point) {
     has z: int = 0;
 
-    override def clone -> Self {
+    override def clone() -> Self {
         return Self(x=self.x, y=self.y, z=self.z);
     }
 }
@@ -432,22 +431,22 @@ obj Config {
         verbose: bool = False,
         level: int = 0;
 
-    class def `default -> Self;
-    def with_debug -> Self;
-    def with_verbose -> Self;
+    class def `default() -> Self;
+    def with_debug() -> Self;
+    def with_verbose() -> Self;
     def with_level(n: int) -> Self;
 }
 
-impl Config.default -> Self {
+impl Config.default() -> Self {
     return Self(debug=False, verbose=False, level=0);
 }
 
-impl Config.with_debug -> Self {
+impl Config.with_debug() -> Self {
     self.debug = True;
     return self;
 }
 
-impl Config.with_verbose -> Self {
+impl Config.with_verbose() -> Self {
     self.verbose = True;
     return self;
 }
@@ -473,7 +472,7 @@ obj Singleton {
     static has _instance: Singleton | None = None;
     has value: int = 0;
 
-    class def get_instance -> Self {
+    class def get_instance() -> Self {
         if Self._instance is None {
             Self._instance = Self(value=0);
         }
@@ -515,7 +514,7 @@ obj Money {
         return Self(amount=self.amount + other.amount, currency=self.currency);
     }
 
-    def __str__ -> str {
+    def __str__() -> str {
         return f"{self.amount} {self.currency}";
     }
 }
@@ -538,7 +537,7 @@ with entry:__main__ {
 obj Wrapper {
     has data: str = "";
 
-    def copy -> Self {
+    def copy() -> Self {
         # self = instance, Self = the type
         return Self(data=self.data);
     }
@@ -558,7 +557,7 @@ with entry:__main__ {
     w11 = Wrapper.from_str("hello");
     w2 = w11.copy();
     w3 = w11.transform(str.upper);
-    print(f"14.1: {w11.data}");  # hello
+    print(f"14.1: {w11.data}");   # hello
     print(f"14.2: {w2.data}");  # hello
     print(f"14.3: {w3.data}");  # HELLO
     print(f"14.4: {w is not w2}");  # True
@@ -585,7 +584,7 @@ obj Formatter {
         return Self(text=text);
     }
 
-    def format -> str {
+    def format() -> str {
         if len(self.text) > self.width {
             return self.text[:self.width] + "...";
         }

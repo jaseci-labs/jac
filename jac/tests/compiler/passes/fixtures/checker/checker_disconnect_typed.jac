@@ -1,4 +1,4 @@
-edge MyEdge: NodeA --> NodeB {
+edge MyEdge : NodeA --> NodeB {
     has id: int;
 }
 
@@ -13,7 +13,7 @@ node NodeB {
 with entry {
     a_inst: NodeA = NodeA(0);
     b_inst: NodeB = NodeB("bob");
-    a_inst +>:MyEdge:+> b_inst;
+    a_inst +>: MyEdge :+> b_inst;
     edge_inst: MyEdge = MyEdge(1);
 
     # Ok cases — typed disconnect using actual edge type / instance.

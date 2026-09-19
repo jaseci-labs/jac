@@ -13,28 +13,22 @@ two compound trigger forms (tuple and union) to verify per-element
 promotion. Names that resolve correctly must not emit E2018.
 """
 
-node N {
-    has v: int = 0;
-}
-edge MyEdge: N --> N {
-    has w: int = 0;
-}
-walker GoodWalker {
-    can ping with Root entry {}
-}
+node N { has v: int = 0; }
+edge MyEdge : N --> N { has w: int = 0; }
+walker GoodWalker { can ping with Root entry { ; } }
 
 walker BadWalker {
-    can on1 with NoSuchType entry {}  # E2018
-    can on2 with (N, AlsoMissing) entry {}  # E2018 (tuple element)
-    can on3 with N | StillMissing exit {}  # E2018 (union member)
-    can on_ok with N entry {}  # Ok
+    can on1 with NoSuchType entry { ; }                # E2018
+    can on2 with (N, AlsoMissing) entry { ; }          # E2018 (tuple element)
+    can on3 with N | StillMissing exit { ; }           # E2018 (union member)
+    can on_ok with N entry { ; }                       # Ok
 }
 
 with entry {
     a = N();
     b = N();
-    a +>:NoSuchEdge:+> b;  # E2018 (connect conn_type)
-    a del ->:NoSuchEdge:-> b;  # E2018 (disconnect typed edge)
-    a +>:MyEdge:+> b;  # Ok
-    a del ->:MyEdge:-> b;  # Ok
+    a +>: NoSuchEdge :+> b;        # E2018 (connect conn_type)
+    a del ->:NoSuchEdge:-> b;      # E2018 (disconnect typed edge)
+    a +>: MyEdge :+> b;            # Ok
+    a del ->:MyEdge:-> b;          # Ok
 }

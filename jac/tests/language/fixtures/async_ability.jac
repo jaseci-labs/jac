@@ -12,7 +12,7 @@ node MyNode {
     }
 }
 
-edge MyEdge: any --> any {
+edge MyEdge : any --> any {
     has value: int;
 }
 
@@ -36,19 +36,15 @@ async walker MyWalker {
 
 with entry {
     root ++> (node1 := MyNode(5));
-    node1 +>:MyEdge(100):+> MyNode(10);
-    node1 +>:MyEdge(200):+> MyNode(15);
+    node1 +>: MyEdge(100) :+> MyNode(10);
+    node1 +>: MyEdge(200) :+> MyNode(15);
     walker1 = MyWalker("Mylife");
-}
-
-async def foo(w: W, a: A) {
-    print("Let's start the task");
-    x = w spawn a;
-    print("It is Coroutine task", isinstance(x, Coroutine));
-    await x;
-    print("Coroutine task is completed");
-}
-
-with entry {
+    async def foo(w: W, a: A) -> None {
+        print("Let's start the task");
+        x = w spawn a;
+        print("It is Coroutine task", isinstance(x, Coroutine));
+        await x;
+        print("Coroutine task is completed");
+    }
     asyncio.run(foo(walker1, node1));
 }

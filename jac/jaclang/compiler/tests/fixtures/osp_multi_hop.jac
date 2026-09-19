@@ -25,8 +25,8 @@ node Tweet {
     has val: int;
 }
 
-edge Follow: Profile --> Profile {}
-edge Posted: Profile --> Tweet {}
+edge Follow : Profile --> Profile {}
+edge Posted : Profile --> Tweet {}
 
 def multi_hop_py -> dict[str, any] {
     me = Profile(val=1);

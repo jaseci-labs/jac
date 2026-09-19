@@ -6,8 +6,7 @@ globally-stable hash tags handle but position-based numbering could not."""
 node Room {
     has tag: int = 0;
 }
-
-edge Door: any --> any {
+edge Door : any --> any {
     has w: int = 0;
 }
 

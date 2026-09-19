@@ -15,12 +15,12 @@ node P {
     has v: int = 0;
 }
 
-edge E: P --> P {
+edge E : P --> P {
     has w: int = 0;
 }
 
 
-def plain_ops_py -> dict[str, any] {
+def plain_ops_py() -> dict[str, any] {
     a = P(v=1);
     b = P(v=2);
     c = P(v=3);
@@ -29,17 +29,17 @@ def plain_ops_py -> dict[str, any] {
     a +>:E(w=1):+> c;
     a +>:E(w=2):+> d;
     c +>:E(w=3):+> d;
-    out_all = len([a-->]);
-    out_typed = len([a->:E:->]);
-    picked = [a->:E:w==2:->[?:P]];
+    out_all = len([a -->]);
+    out_typed = len([a ->:E:->]);
+    picked = [a ->:E:w == 2:->[?:P]];
     picked_v = picked[0].v if len(picked) > 0 else -1;
-    two_hop = len([a->:E:->->:E:->]);
-    into_d = len([d<--]);
-    ordered = [a->:E:->[?:P]];
+    two_hop = len([a ->:E:-> ->:E:->]);
+    into_d = len([d <--]);
+    ordered = [a ->:E:->[?:P]];
     first_v = ordered[0].v if len(ordered) > 0 else -1;
     a del ->:E:-> c;
-    after_del = len([a->:E:->]);
-    still_in_d = len([d<--]);
+    after_del = len([a ->:E:->]);
+    still_in_d = len([d <--]);
     return {
         "out_all": out_all,
         "out_typed": out_typed,
@@ -52,7 +52,7 @@ def plain_ops_py -> dict[str, any] {
     };
 }
 
-def plain_ops_cl -> dict[str, any] {
+def plain_ops_cl() -> dict[str, any] {
     a = P(v=1);
     b = P(v=2);
     c = P(v=3);
@@ -61,17 +61,17 @@ def plain_ops_cl -> dict[str, any] {
     a +>:E(w=1):+> c;
     a +>:E(w=2):+> d;
     c +>:E(w=3):+> d;
-    out_all = len([a-->]);
-    out_typed = len([a->:E:->]);
-    picked = [a->:E:w==2:->[?:P]];
+    out_all = len([a -->]);
+    out_typed = len([a ->:E:->]);
+    picked = [a ->:E:w == 2:->[?:P]];
     picked_v = picked[0].v if len(picked) > 0 else -1;
-    two_hop = len([a->:E:->->:E:->]);
-    into_d = len([d<--]);
-    ordered = [a->:E:->[?:P]];
+    two_hop = len([a ->:E:-> ->:E:->]);
+    into_d = len([d <--]);
+    ordered = [a ->:E:->[?:P]];
     first_v = ordered[0].v if len(ordered) > 0 else -1;
     a del ->:E:-> c;
-    after_del = len([a->:E:->]);
-    still_in_d = len([d<--]);
+    after_del = len([a ->:E:->]);
+    still_in_d = len([d <--]);
     return {
         "out_all": out_all,
         "out_typed": out_typed,
@@ -84,7 +84,7 @@ def plain_ops_cl -> dict[str, any] {
     };
 }
 
-def plain_ops_na -> dict[str, any] {
+def plain_ops_na() -> dict[str, any] {
     a = P(v=1);
     b = P(v=2);
     c = P(v=3);
@@ -93,17 +93,17 @@ def plain_ops_na -> dict[str, any] {
     a +>:E(w=1):+> c;
     a +>:E(w=2):+> d;
     c +>:E(w=3):+> d;
-    out_all = len([a-->]);
-    out_typed = len([a->:E:->]);
-    picked = [a->:E:w==2:->[?:P]];
+    out_all = len([a -->]);
+    out_typed = len([a ->:E:->]);
+    picked = [a ->:E:w == 2:->[?:P]];
     picked_v = picked[0].v if len(picked) > 0 else -1;
-    two_hop = len([a->:E:->->:E:->]);
-    into_d = len([d<--]);
-    ordered = [a->:E:->[?:P]];
+    two_hop = len([a ->:E:-> ->:E:->]);
+    into_d = len([d <--]);
+    ordered = [a ->:E:->[?:P]];
     first_v = ordered[0].v if len(ordered) > 0 else -1;
     a del ->:E:-> c;
-    after_del = len([a->:E:->]);
-    still_in_d = len([d<--]);
+    after_del = len([a ->:E:->]);
+    still_in_d = len([d <--]);
     return {
         "out_all": out_all,
         "out_typed": out_typed,
