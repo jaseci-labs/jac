@@ -149,6 +149,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 native_parity=True,
                 force_target_program=True,
                 iface_ok=True,
+                strict_dependencies=True,
                 suppress_codes=list(opts.get("suppress_codes") or []),
                 target_app=str(opts.get("target_app") or ""),
                 app_kind=str(opts.get("app_kind") or ""),

@@ -341,8 +341,17 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                     return npath.type;
                 }
                 npath.type = UnknownType(is_diagnosed=True);
+                declared = self._declared_missing_dependency(node_)
+                    if self.program is not None
+                        and self.program.options is not None
+                        and self.program.options.strict_dependencies
+                    else None;
                 if self._relative_import_must_resolve(node_) {
                     self.emit_diag(E1134, npath, module=node_.dot_path_str);
+                } elif declared is not None {
+                    self.emit_diag(
+                        E1136, npath, module=node_.dot_path_str, package=declared
+                    );
                 } else {
                     self.emit_diag(W1100, npath);
                 }
@@ -570,6 +579,54 @@ impl TypeEvaluator._relative_import_must_resolve(node_: ModulePath) -> bool {
     return not self._import_error_is_handled(imp);
 }
 
+
+impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | None) {
+    if node_.level > 0 or node_.string_path_value is not None or not node_.path {
+        return None;
+    }
+    imp = node_.find_parent_of_type(Import);
+    if imp is None
+        or imp.is_typed
+        or imp.is_comptime
+        or self._import_error_is_handled(imp) {
+        return None;
+    }
+    mod = node_.find_parent_of_type(Module);
+    if mod is None or not mod.loc or not mod.loc.mod_path {
+        return None;
+    }
+    import from jaclang.project.config { get_config_for_path }
+    try {
+        cfg = get_config_for_path(Path(mod.loc.mod_path));
+    } except Exception {
+        return None;
+    }
+    if cfg is None {
+        return None;
+    }
+    def norm(name: str) -> str {
+        return name.strip().lower().replace("-", "_").replace(".", "_");
+    }
+    wanted = norm(str(node_.path[0].value));
+    names: list[str] = [*cfg.dependencies, *cfg.dev_dependencies];
+    owner = cfg.app_for_path(str(Path(mod.loc.mod_path).resolve()));
+    app_name = owner.name if owner is not None else "";
+    if not app_name and self.program is not None and self.program.options is not None {
+        app_name = self.program.options.target_app or "";
+    }
+    if app_name and app_name in cfg.apps {
+        try {
+            app_cfg = cfg.effective_for_app(app_name);
+            names.extend([*app_cfg.dependencies, *app_cfg.dev_dependencies]);
+        } except Exception {}
+    }
+    for declared in names {
+        if norm(str(declared)) == wanted {
+            return str(declared);
+        }
+    }
+    return None;
+}
 
 impl TypeEvaluator._import_error_is_handled(imp: Import) -> bool {
     caught = {'ImportError', 'ModuleNotFoundError', 'Exception', 'BaseException'};

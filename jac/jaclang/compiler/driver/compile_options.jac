@@ -53,6 +53,7 @@ obj CompileOptions {
         ui: str = "",
         project_root: (str | None) = None,
         native_module_walk_order: (str | None) = None,
+        strict_dependencies: bool = False,
         cancel_token: any = None;
 
     def postinit {
@@ -155,7 +156,8 @@ obj CompileOptions {
                 f"app={self.target_app}",
                 f"app_kind={self.app_kind}"
             ]
-        );
+        )
+            + (";strict_deps=1" if self.strict_dependencies else "");
     }
 
     def analysis_fingerprint -> str {
