@@ -401,7 +401,7 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              "unannotated_reassignment_frozen",
              "checker",
              "checker_none_sentinel_reassignment.jac",
-             3,
+             4,
              True,
              [
                  (
@@ -421,7 +421,10 @@ glob CHECKER_DIRS: dict[(str, str)] = {
         count = "bad";  # <-- Error
         ^^^^^^^^^^^^^^
     """
-                 )
+                 ),
+                 (3, """
+    Cannot assign int | Literal[""] to str
+    """)
              ]
          ),
          (

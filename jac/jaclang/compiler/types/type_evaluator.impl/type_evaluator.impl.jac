@@ -1865,6 +1865,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if none_type is not None {
                         op_type = self.exclude_type_from_union(op_type, none_type);
                     }
+                    if isinstance(op_type, NeverType) {
+                        continue;
+                    }
                 }
                 self._collect_unique_types(op_type, operand_types);
             }
@@ -2415,6 +2418,75 @@ impl TypeEvaluator._get_type_of_symbol(symbol: Symbol) -> TypeBase {
             if len(binding_types) > 1 and has_none and has_value {
                 return UnionType(types=binding_types);
             }
+        }
+    }
+    first = symbol.decl.name_of if symbol.decl else None;
+    if len(symbol.defn) == 1
+        and isinstance(first, Name)
+        and isinstance(first.parent, Assignment)
+        and first.parent.type_tag is None
+        and isinstance(first.parent.value, Null) {
+        stores: list[NameAtom] = [];
+        for use in symbol.uses {
+            target: UniNode = use.name_of;
+            site = target.parent;
+            while isinstance(site, (TupleVal, ListVal)) {
+                target = site;
+                site = site.parent;
+            }
+            if isinstance(site, Assignment) and target in site.target {
+                if site.type_tag is not None or site.aug_op is not None {
+                    stores = [];
+                    break;
+                }
+                stores.append(use);
+            } elif isinstance(site, InForStmt) and site.target is target {
+                stores.append(use);
+            }
+        }
+        widened: list[TypeBase] = [];
+        if stores {
+            widened.append(self._get_type_of_symbol_decl(symbol, symbol.decl));
+        }
+        fresh: list[Expr] = [];
+        self._diagnostic_suppression_depth += 1;
+        try {
+            for store in stores {
+                source: Expr | None = None;
+                site = store.name_of.parent;
+                while isinstance(site, (TupleVal, ListVal)) {
+                    site = site.parent;
+                }
+                if isinstance(site, Assignment) {
+                    source = site.value;
+                } elif isinstance(site, InForStmt) {
+                    source = site.collection;
+                }
+                if source is not None and source.type is None {
+                    fresh.append(source);
+                }
+                store_type = self._get_type_of_symbol_decl(symbol, store);
+                parts = store_type.types
+                    if isinstance(store_type, UnionType)
+                    else [store_type];
+                for part in parts {
+                    if isinstance(part, (UnknownType, NeverType)) {
+                        continue;
+                    }
+                    part = self._widen_literal_for_declaration(part);
+                    if not self._type_in_list(part, widened) {
+                        widened.append(part);
+                    }
+                }
+            }
+        } finally {
+            self._diagnostic_suppression_depth -= 1;
+            for source in fresh {
+                self._invalidate_expr_type_cache(source);
+            }
+        }
+        if len(widened) > 1 {
+            return UnionType(types=widened);
         }
     }
     return self._get_type_of_symbol_decl(symbol, symbol.decl);
