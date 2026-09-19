@@ -87,7 +87,19 @@ for i in 1 2 3; do
     sleep 5
     [ "$i" = 3 ] && fail "browser failed to launch after 3 attempts"
 done
-jac browse wait '#top' || fail "landing #top never appeared"
+# Cold 4-vCPU runners transform the whole client graph on demand the first
+# time the dev server is hit; that can outrun `jac browse wait`'s 30s default
+# before anything mounts. Retry the wait so one slow compile doesn't kill the
+# journey (each retry resumes the same compile; vite caches transforms).
+mount_ok=false
+for i in 1 2 3 4; do
+    if jac browse wait '#top'; then
+        mount_ok=true
+        break
+    fi
+    echo "landing not mounted yet (attempt $i); waiting out the cold compile"
+done
+[ "$mount_ok" = true ] || fail "landing #top never appeared"
 # The headless profile persists localStorage between runs; start from a clean
 # slate so the JacYac journey always begins at the auth form.
 jac browse eval 'localStorage.clear(); sessionStorage.clear(); "storage cleared"' \
