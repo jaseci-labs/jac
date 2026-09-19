@@ -126,7 +126,7 @@ class ExecutionEngine(ffi.ObjectRef) {
 
         It's a fatal error in LLVM if the symbol of *name* doesn't exist.
         """
-    def get_global_value_address(self: ExecutionEngine, name: any) -> object {
+    def get_global_value_address(self: ExecutionEngine, name: str) -> int {
         self._pin();
         return ffi.lib.LLVMPY_GetGlobalValueAddress(self, name.encode("ascii"));
     }
@@ -161,7 +161,7 @@ class ExecutionEngine(ffi.ObjectRef) {
         Run static constructors which initialize module-level static objects.
         """
     def run_static_constructors(self: ExecutionEngine) -> object {
-        ffi.lib.LLVMPY_RunStaticConstructors(self);
+        self._run_static("LLVMPY_RunStaticConstructors");
     }
 
     """
@@ -169,7 +169,17 @@ class ExecutionEngine(ffi.ObjectRef) {
         resources.
         """
     def run_static_destructors(self: ExecutionEngine) -> object {
-        ffi.lib.LLVMPY_RunStaticDestructors(self);
+        self._run_static("LLVMPY_RunStaticDestructors");
+    }
+
+    def _run_static(self: ExecutionEngine, symbol: str) {
+        address = cast(getattr(ffi.lib, symbol), c_void_p).value;
+        assert isinstance(address, int);
+        native_callable(
+            address, self.requires_python, None, ffi.LLVMExecutionEngineRef
+        )(
+            self
+        );
     }
 
     """

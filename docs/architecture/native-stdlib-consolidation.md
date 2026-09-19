@@ -39,7 +39,8 @@ the GIL through the existing native JIT and the hosted shared-library loader.
 Linked Python ABI symbols determine a `requires_python` runtime requirement.
 Source artifact format 2 records that requirement; the loader and generated
 Python-to-native stubs share the same calling-convention decision with native
-test and CLI entries. Python-free entries continue to release the GIL.
+test and CLI entries, including LLVM static constructors and destructors.
+Python-free entries continue to release the GIL.
 Module resolution and bootstrap payload extraction still need the migrations
 described below.
 

@@ -6,6 +6,7 @@ import tempfile;
 import from pathlib { Path }
 import from tests.support { NATIVE_FIXTURES, compile_native, get_func }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import jaclang.compiler.backends.native.llvm.binding as llvm;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.dist.native_product { write_native_product }
@@ -148,6 +149,37 @@ test "native entry conventions follow the runtime requirement" {
     address = engine().get_function_address("gil_held");
     assert native_callable(address, True, ctypes.c_int32)() == 1;
     assert native_callable(address, False, ctypes.c_int32)() == 0;
+}
+
+test "LLVM lifecycle entries retain Python interpreter state" {
+    llvm.initialize_native_target();
+    llvm.initialize_native_asmprinter();
+    module = llvm.parse_assembly(
+        "@seen = global i32 -1\n"
+            + "declare i32 @PyGILState_Check()\n"
+            + "define void @check_gil() {\n"
+            + "  %held = call i32 @PyGILState_Check()\n"
+            + "  store i32 %held, ptr @seen\n"
+            + "  ret void\n}\n"
+            + "@llvm.global_ctors = appending global [1 x {i32, ptr, ptr}] "
+            + "[{i32, ptr, ptr} {i32 65535, ptr @check_gil, ptr null}]\n"
+            + "@llvm.global_dtors = appending global [1 x {i32, ptr, ptr}] "
+            + "[{i32, ptr, ptr} {i32 65535, ptr @check_gil, ptr null}]\n"
+    );
+    machine = llvm.Target.from_default_triple().create_target_machine();
+    native = llvm.create_mcjit_compiler(module, machine);
+    try {
+        assert native.requires_python;
+        native.finalize_object();
+        seen = ctypes.c_int32.from_address(native.get_global_value_address("seen"));
+        native.run_static_constructors();
+        assert seen.value == 1;
+        seen.value = -1;
+        native.run_static_destructors();
+        assert seen.value == 1;
+    } finally {
+        native.close();
+    }
 }
 
 test "an external native project uses the bundled shared object runtime" {
