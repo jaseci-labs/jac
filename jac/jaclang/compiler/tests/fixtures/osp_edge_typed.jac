@@ -16,8 +16,8 @@ node City {
     has val: int;
 }
 
-edge Road {}
-edge Rail {}
+edge Road: City --> City {}
+edge Rail: City --> City {}
 
 walker Router {
     has seen: list[any] = [];
@@ -28,7 +28,7 @@ walker Router {
     }
 }
 
-def edge_typed_py() -> dict[str, any] {
+def edge_typed_py -> dict[str, any] {
     a = City(val=1);
     b = City(val=2);
     c = City(val=3);
@@ -42,7 +42,7 @@ def edge_typed_py() -> dict[str, any] {
 }
 
 
-def edge_typed_na() -> dict[str, any] {
+def edge_typed_na -> dict[str, any] {
     a = City(val=1);
     b = City(val=2);
     c = City(val=3);
@@ -56,7 +56,7 @@ def edge_typed_na() -> dict[str, any] {
 }
 
 
-def edge_typed_cl() -> dict[str, any] {
+def edge_typed_cl -> dict[str, any] {
     a = City(val=1);
     b = City(val=2);
     c = City(val=3);

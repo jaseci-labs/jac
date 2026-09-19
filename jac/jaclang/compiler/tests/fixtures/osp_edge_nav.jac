@@ -24,13 +24,16 @@ node World {}
 node Area {
     has tag: int = 0;
 }
+
 node Entity {
     has eid: int = 0;
 }
-edge Portal {
+
+edge Portal: Area --> Area {
     has w: int = 0;
 }
-edge In {}
+
+edge In: Entity --> Area {}
 
 walker VisPass {
     has ports: int = 0,
@@ -62,7 +65,7 @@ def world_areas(w: World) -> int {
     return len([w-->[?:Area]]);  # (3) explicit origin
 }
 
-def edge_nav_py() -> dict[str, any] {
+def edge_nav_py -> dict[str, any] {
     w = World();
     a1 = Area(tag=1);
     a2 = Area(tag=2);
@@ -98,7 +101,7 @@ def world_areas_na(w: World) -> int {
     return len([w-->[?:Area]]);
 }
 
-def edge_nav_na() -> dict[str, any] {
+def edge_nav_na -> dict[str, any] {
     w = World();
     a1 = Area(tag=1);
     a2 = Area(tag=2);

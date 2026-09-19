@@ -16,7 +16,8 @@ Graph: a -Portal(cx=42)-> b(tag=99), a -Portal(cx=8)-> c(tag=7). From a:
 node Spot {
     has tag: int = 0;
 }
-edge Portal {
+
+edge Portal: Spot --> Spot {
     has cx: float = 0.0;
 }
 
@@ -48,7 +49,7 @@ def first_portal_cx(x: Spot) -> float {
     return es[0].cx;  # edge field via def + return
 }
 
-def field_access_py() -> dict[str, any] {
+def field_access_py -> dict[str, any] {
     a = Spot(tag=1);
     b = Spot(tag=99);
     c = Spot(tag=7);
@@ -73,7 +74,7 @@ def first_portal_cx_na(x: Spot) -> float {
     return es[0].cx;
 }
 
-def field_access_na() -> dict[str, any] {
+def field_access_na -> dict[str, any] {
     a = Spot(tag=1);
     b = Spot(tag=99);
     c = Spot(tag=7);

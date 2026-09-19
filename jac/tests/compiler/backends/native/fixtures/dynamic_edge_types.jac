@@ -5,14 +5,14 @@ node Item {
 }
 
 edge Role: Item --> Item {}
-edge First(Role) {}
-edge Second(Role) {}
-edge Weighted(Role) {
+edge First(Role): any --> any {}
+edge Second(Role): any --> any {}
+edge Weighted(Role): Item --> Item {
     has weight: int = 7;
 }
 
-edge Heavy(Weighted) {}
-edge Initialized(Role) {
+edge Heavy(Weighted): any --> any {}
+edge Initialized(Role): any --> any {
     has weight: int = 0;
 
     def init(weight: int = 13) {
@@ -20,7 +20,7 @@ edge Initialized(Role) {
     }
 }
 
-edge Finished(Role) {
+edge Finished(Role): any --> any {
     has weight: int = 5;
 
     def postinit {
@@ -28,11 +28,11 @@ edge Finished(Role) {
     }
 }
 
-edge Required(Role) {
+edge Required(Role): any --> any {
     has weight: int;
 }
 
-edge Failing(Role) {
+edge Failing(Role): any --> any {
     def postinit {
         raise ValueError("edge initialization failed");
     }

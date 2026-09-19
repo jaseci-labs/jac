@@ -10,7 +10,7 @@ node MyNode {
     }
 }
 
-edge MyEdge {
+edge MyEdge: any --> any {
     has path: int;
 
     can ability3 with MyWalker entry {
@@ -44,6 +44,6 @@ walker MyWalker {
 
 with entry {
     e1 = MyEdge(1);
-    root +>: e1 :+> MyNode(10) +>: MyEdge(2) :+> MyNode(20);
+    root +>:e1:+> MyNode(10) +>:MyEdge(2):+> MyNode(20);
     MyWalker() spawn e1;
 }

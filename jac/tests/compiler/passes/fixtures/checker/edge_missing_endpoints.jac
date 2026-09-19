@@ -3,7 +3,7 @@ node Spot {
     has k: int = 0;
 }
 
-edge Bare {}
+edge Bare: any --> any {}
 edge Widened: any --> any {}
 edge AnyNode: Node --> Node {}
 edge Precise: Spot --> Spot {}

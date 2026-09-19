@@ -28,7 +28,7 @@ node PMsg {
         seq: int = 0;
 }
 
-edge PPosted {}
+edge PPosted: any --> any {}
 
 glob PROMOS: dict[str, list[str]] = {"PMsg": ["at", "seq"]};
 
@@ -220,7 +220,7 @@ node PRareSub(PRare) {}
 
 node PFiller {}
 
-edge PLink {}
+edge PLink: any --> any {}
 
 
 def _node_row(arch: str, ancestry: list[str]) -> AnchorRow {

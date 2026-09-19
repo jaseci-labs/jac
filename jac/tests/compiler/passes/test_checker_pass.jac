@@ -5118,7 +5118,7 @@ test "edge_endpoint_typing_narrows_neighbour_traversals" {
         "follow_out": "list[Profile]",  # ->:Follow:-> narrows to target
         "post_in": "list[Profile]",  # <-:Post:<- narrows to source
         "post_out": "list[Tweet]",  # ->:Post:-> narrows to target
-        "untyped": "list[<any>]",  # bare edge stays gradual
+        "untyped": "list[<any>]",  # the `any --> any` opt-out stays gradual
         "inherited": "list[Profile]",  # subtype edge inherits endpoints
         "one": "Tweet",  # subscript element of a narrowed list
         "field_read": "str"  # field read off a narrowed element

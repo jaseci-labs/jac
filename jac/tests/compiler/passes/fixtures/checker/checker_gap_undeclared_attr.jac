@@ -27,9 +27,9 @@ No errors expected for:
 obj MyObj {
     has name: str;
 
-    def init(name: str) -> None {
-        self.name = name;           # Ok: declared field
-        self.extra = 42;            # Error: undeclared attribute on obj
+    def init(name: str) {
+        self.name = name;  # Ok: declared field
+        self.extra = 42;  # Error: undeclared attribute on obj
     }
 }
 
@@ -37,19 +37,19 @@ obj MyObj {
 node MyNode {
     has label: str;
 
-    def init(label: str) -> None {
-        self.label = label;         # Ok: declared field
-        self.extra = "data";        # Error: undeclared attribute on node
+    def init(label: str) {
+        self.label = label;  # Ok: declared field
+        self.extra = "data";  # Error: undeclared attribute on node
     }
 }
 
 # --- edge: no monkey patching allowed ---
-edge MyEdge {
+edge MyEdge: any --> any {
     has weight: float;
 
-    def init(weight: float) -> None {
-        self.weight = weight;       # Ok: declared field
-        self.extra = True;          # Error: undeclared attribute on edge
+    def init(weight: float) {
+        self.weight = weight;  # Ok: declared field
+        self.extra = True;  # Error: undeclared attribute on edge
     }
 }
 
@@ -57,9 +57,9 @@ edge MyEdge {
 walker MyWalker {
     has target: str;
 
-    def init(target: str) -> None {
-        self.target = target;       # Ok: declared field
-        self.extra = [];            # Error: undeclared attribute on walker
+    def init(target: str) {
+        self.target = target;  # Ok: declared field
+        self.extra = [];  # Error: undeclared attribute on walker
     }
 }
 
@@ -67,9 +67,9 @@ walker MyWalker {
 class FlexibleClass {
     has name: str;
 
-    def init(self: FlexibleClass, name: str) -> None {
-        self.name = name;           # Ok: declared field
-        self.extra = 42;            # Ok: class allows dynamic attributes
+    def init(self: FlexibleClass, name: str) {
+        self.name = name;  # Ok: declared field
+        self.extra = 42;  # Ok: class allows dynamic attributes
     }
 }
 

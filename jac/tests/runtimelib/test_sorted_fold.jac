@@ -27,7 +27,7 @@ node SItem {
         boost: int = 0;
 }
 
-edge SAt {
+edge SAt: SBoard --> SItem {
     has at: int = 0;
 }
 

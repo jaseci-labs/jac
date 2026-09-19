@@ -828,6 +828,9 @@ impl TypeEvaluator._report_endpoint_verdict(
     actual: TypeBase,
     declared: TypeBase
 ) -> None {
+    if isinstance(actual, ClassType) and not actual.is_instance() {
+        return;
+    }
     verdict = self._edge_endpoint_verdict(actual, declared);
     if verdict != EndpointVerdict.VIOLATES and verdict != EndpointVerdict.UNPROVEN {
         return;

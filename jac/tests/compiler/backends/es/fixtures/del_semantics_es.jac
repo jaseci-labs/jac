@@ -9,7 +9,7 @@ node N {
     has t: int;
 }
 
-edge E {}
+edge E: N --> N {}
 
 def del_forms -> dict[any, any] {
     d = {"k": 1, "j": 2};
@@ -41,7 +41,7 @@ def del_forms -> dict[any, any] {
     calls = [0];
     picked = {"k": N(8)};
 
-    def pick() -> dict[any, any] {
+    def pick -> dict[any, any] {
         calls[0] = calls[0] + 1;
         return picked;
     }

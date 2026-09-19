@@ -1,17 +1,20 @@
 obj MyObj {
     has x: int = 0;
+
     pass
 }
 
 class MyClass {
-    def __init__(self: MyClass) {
+    def init(self: MyClass) {
         pass;
     }
+
     pass
 }
 
 node MyNode {
     has y: float = 0.0;
+
     pass
 }
 
@@ -19,7 +22,7 @@ walker MyWalker {
     pass
 }
 
-edge MyEdge {
+edge MyEdge: any --> any {
     pass
 }
 
@@ -38,20 +41,20 @@ with entry {
 
     try {
         x = 1 / 0;
-    } except Exception{
+    } except Exception {
         pass;
     }
+}
 
-    pass = 10;
+glob pass = 10;
+with entry {
     my_list = [1, 2, pass];
     x = pass;
     print(pass);
-
 }
 
 def foo(pass: int) -> int {
     return pass + 1;
 }
 
-def pass() -> None {
-}
+def pass {}

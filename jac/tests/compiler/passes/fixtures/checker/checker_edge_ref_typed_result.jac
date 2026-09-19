@@ -7,23 +7,23 @@ node Place {
     has name: str = "x";
 }
 
-edge MyEdge {
+edge MyEdge: Place --> Place {
     has weight: int = 1;
 }
 
-edge OtherEdge {
+edge OtherEdge: any --> any {
     has tag: str = "t";
 }
 
 with entry {
     a: Place = Place();
     b: Place = Place();
-    a +>: MyEdge :+> b;
+    a +>:MyEdge:+> b;
 
     # Typed-edge form on edges_only must yield list[MyEdge].
-    edges_typed: list[MyEdge] = [edge a ->:MyEdge:-> b];          # Ok
+    edges_typed: list[MyEdge] = [edge a->:MyEdge:->b];  # Ok
 
     # Wrong typed-edge result element type — must error: the RHS is
     # list[MyEdge], not list[OtherEdge].
-    bad_edges: list[OtherEdge] = [edge a ->:MyEdge:-> b];         # Error
+    bad_edges: list[OtherEdge] = [edge a->:MyEdge:->b];  # Error
 }

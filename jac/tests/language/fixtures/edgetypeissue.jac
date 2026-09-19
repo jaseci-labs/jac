@@ -1,10 +1,10 @@
 node x {}
 
-edge e {
+edge e: Root --> x {
     has name: str;
 }
 
 with entry {
-    nodes = root +>: e(name="hello") :+> x();
+    nodes = root +>:e(name="hello"):+> x();
     print(nodes);
 }

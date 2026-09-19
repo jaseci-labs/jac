@@ -26,7 +26,7 @@ node Team {
     has name: str = "";
 }
 
-edge MemberOf {}
+edge MemberOf: any --> any {}
 
 def _as_any(v: any) -> any {
     return v;

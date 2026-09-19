@@ -1,13 +1,13 @@
 """Domain model for the agent tool-surface fixture."""
 
 node User {
-    has name: str;
-    has age: int = 0;
+    has name: str,
+        age: int = 0;
 }
 
 node Post {
-    has title: str;
-    has body: str = "";
+    has title: str,
+        body: str = "";
 }
 
-edge Wrote {}
+edge Wrote: any --> any {}

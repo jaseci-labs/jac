@@ -2,7 +2,7 @@ node a {
     has val: float;
 }
 
-edge Edge1 {
+edge Edge1: any --> any {
     has val: int = 5;
 }
 
@@ -22,6 +22,7 @@ with entry {
 }
 
 glob p = b[1];
+
 with entry {
     for k in range(0, 10) {
         p +>:Edge1:val=6:+> (p := a(val=k));

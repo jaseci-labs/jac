@@ -2,14 +2,14 @@ node simple {
     has tag: str;
 }
 
-edge simple_edge {
+edge simple_edge: any --> any {
     has index: int = 0;
 }
 
 with entry {
     if (not [root-->]) {
-        root +>: simple_edge : index=0 :+> simple(tag="first");
-        root +>: simple_edge : index=1 :+> simple(tag="second");
+        root +>:simple_edge:index=0:+> simple(tag="first");
+        root +>:simple_edge:index=1:+> simple(tag="second");
     }
 }
 
