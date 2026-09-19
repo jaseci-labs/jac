@@ -2414,6 +2414,7 @@ walker NaIRGenPass {
     def _is_enum_arch(name: str) -> bool;
     def _emit_isa_fn -> ir.Function;
     def _emit_isa_seq_fn -> ir.Function;
+    def _folded_ord(nd: uni.FuncCall) -> (ir.Constant | None);
     def _emit_isa_hashed_fn -> ir.Function;
     def _emit_isa_name_match(
         b: ir.IRBuilder,

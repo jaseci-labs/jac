@@ -139,16 +139,14 @@ impl NaIRGenPass._emit_hash_core_helpers(
         blb.branch(hlc);
         brt = ir.IRBuilder(hrt);
         brt.ret(brt.load(h_a, name="hf"));
+    } elif isinstance(key_type, ir.PointerType) {
+        ki = bhe.ptrtoint(hash_fn.args[0], i64, name="ki");
+        bhe.ret(bhe.mul(ki, ir.Constant(i64, HASH_MUL_K), name="h"));
+    } elif isinstance(key_type, ir.DoubleType) {
+        kbits = bhe.bitcast(hash_fn.args[0], i64, name="kbits");
+        bhe.ret(bhe.mul(kbits, ir.Constant(i64, HASH_MUL_K), name="h"));
     } else {
-        if isinstance(key_type, ir.PointerType) {
-            ki = bhe.ptrtoint(hash_fn.args[0], i64, name="ki");
-            bhe.ret(bhe.mul(ki, ir.Constant(i64, HASH_MUL_K), name="h"));
-        } elif isinstance(key_type, ir.DoubleType) {
-            kbits = bhe.bitcast(hash_fn.args[0], i64, name="kbits");
-            bhe.ret(bhe.mul(kbits, ir.Constant(i64, HASH_MUL_K), name="h"));
-        } else {
-            bhe.ret(bhe.mul(hash_fn.args[0], ir.Constant(i64, HASH_MUL_K), name="h"));
-        }
+        bhe.ret(bhe.mul(hash_fn.args[0], ir.Constant(i64, HASH_MUL_K), name="h"));
     }
 
     find_fnty = ir.FunctionType(i64, [cont_ptr_type, key_type, i64]);

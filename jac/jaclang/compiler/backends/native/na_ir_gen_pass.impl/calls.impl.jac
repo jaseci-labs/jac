@@ -1904,6 +1904,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return None;
         }
 
+        if func_name == "ord" {
+            _ord_const = self._folded_ord(nd);
+            if _ord_const is not None {
+                return _ord_const;
+            }
+        }
+
         if func_name
             in (
                 "ord",
@@ -3685,4 +3692,24 @@ impl NaIRGenPass._codegen_callable_value(
         }
     }
     return result;
+}
+
+impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
+    """`ord` of a one-character literal, folded to its code point.
+
+    The call has already resolved to the builtin, so a module's own `ord` never
+    reaches here. Scanners compare characters against literals, as C does with
+    `c == '#'`; folding keeps each of those a constant instead of a runtime
+    decode of a static string.
+    """;
+    import from jaclang.compiler.frontend.const_fold { fold_const }
+    params = list(nd.params or []);
+    if len(params) != 1 or not isinstance(params[0], uni.Expr) {
+        return None;
+    }
+    (ok, value) = fold_const(params[0]);
+    if not ok or not isinstance(value, str) or len(value) != 1 {
+        return None;
+    }
+    return ir.Constant(ir.IntType(64), ord(value));
 }
