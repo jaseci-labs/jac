@@ -82,9 +82,9 @@ obj ReferenceState(NativeState) {
     has references: list[u64];
 
     def clear {
-        previous = self.references;
-        self.references = [u64(0) for _ in previous];
-        for value in previous {
+        for index in range(len(self.references)) {
+            value = self.references[index];
+            self.references[index] = 0;
             jacpy_release(value);
         }
     }

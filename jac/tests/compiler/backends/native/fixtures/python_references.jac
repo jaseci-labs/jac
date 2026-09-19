@@ -1,6 +1,7 @@
 """Owned Python results return through native frames before restoring an error."""
 import from jaclang.runtime.cpython.references {
     ObjectResult,
+    ReferenceState,
     object_result,
     borrowed_result
 }
@@ -56,6 +57,17 @@ def:pub release_alias(value: u64) {
     alias = result.reference;
     result.reference.clear();
     alias.clear();
+}
+
+glob reference_group: ReferenceState = ReferenceState(references=[]);
+
+def:pub clear_group {
+    reference_group.clear();
+}
+
+def:pub release_group(factory: u64, args: u64) {
+    reference_group.references = [jacpy_call(factory, args, u64(0)) for _ in range(3)];
+    clear_group();
 }
 
 def:pub borrow_null -> u64 {

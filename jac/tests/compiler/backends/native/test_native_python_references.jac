@@ -62,6 +62,34 @@ test "generic native calls retain object identity and mutable aliases" {
     assert value == [42];
 }
 
+test "reference groups tolerate reentrant destruction" {
+    clear = get_func(engine(), "clear_group", None);
+    release = get_func(
+        engine(), "release_group", None, ctypes.py_object, ctypes.py_object
+    );
+    destroyed: list[int] = [];
+    created: list[int] = [];
+    class Tracked {
+        has index: int = 0;
+
+        def init(self: Tracked) {
+            self.index = len(created);
+            created.append(self.index);
+        }
+
+        def __del__(self: Tracked) {
+            destroyed.append(self.index);
+            clear();
+        }
+    }
+    for _ in range(100) {
+        release(Tracked, ());
+        clear();
+    }
+    assert len(created) == 300;
+    assert destroyed == created;
+}
+
 test "error results release nested frames and preserve the original exception" {
     call = object_call("call_with_witness", 4);
     sentinel = ValueError("original error");

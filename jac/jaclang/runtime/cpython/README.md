@@ -27,8 +27,10 @@ raises `SystemError` at that boundary. Use `object_result` only where a null
 handle is an error, not for normal iterator exhaustion or optional lookup.
 
 `NativeState` and `ReferenceState` provide the reference visitation and clearing
-protocol used by JacPython module bindings. `owned_tuple` consumes every supplied
-owned reference, including on allocation failure. The `pair` and `object_tuple`
+protocol used by JacPython module bindings. Clearing a reference group
+empties each slot before releasing it, without allocating a replacement list;
+reentrant clearing observes consumed slots as empty. `owned_tuple` consumes every
+supplied owned reference, including on allocation failure. The `pair` and `object_tuple`
 helpers borrow their inputs; their results own the element references.
 `read_buffer` copies bytes into Jac storage. `serialization_note` preserves the
 original Python exception while formatting diagnostic context.
