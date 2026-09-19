@@ -93,7 +93,10 @@ obj ModuleCompilation {
     }
 
     def analysis {
-        import from jaclang.compiler.driver.pipeline { get_analysis_sched }
+        import from jaclang.compiler.driver.pipeline {
+            require_product,
+            CompilationProduct
+        }
         import from jaclang.compiler.frontend.constant { CodeContext as _CodeCtx }
         self.native = self.module is not None
             and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
@@ -123,16 +126,22 @@ obj ModuleCompilation {
                 or not module_import_in_flight(self.path)
             );
 
-        if _analyze {
-            if not self.program.analysis.analyses_run.provides(
-                self.module, AnalysisFact.TYPE_OF
+        if _analyze
+            and (
+                not self.program.analysis.analyses_run.provides(
+                    self.module, AnalysisFact.CFG_SUCC
+                )
+                or not self.program.analysis.analyses_run.provides(
+                    self.module, AnalysisFact.TYPE_OF
+                )
             ) {
-                self.compiler.run_schedule(
-                    mod=self.module,
-                    target_program=self.program,
-                    passes=get_analysis_sched(),
-                    cancel_token=self.options.cancel_token
-                );
+            if not require_product(
+                self.program,
+                self.module,
+                CompilationProduct.ANALYSIS,
+                cancel_token=self.options.cancel_token
+            ) {
+                self.blocked = True;
             }
         }
 
@@ -316,7 +325,8 @@ obj ModuleCompilation {
 
     def codegen {
         import from jaclang.compiler.driver.pipeline {
-            get_analysis_sched,
+            require_product,
+            CompilationProduct,
             get_py_code_gen
         }
         if (
@@ -330,17 +340,23 @@ obj ModuleCompilation {
             import from jaclang.compiler.frontend.module_facts { ModuleFacts }
             needs_native = self.native
                 or ModuleFacts.has_native_context_stmts(self.module);
+            has_cfg = self.program.analysis.analyses_run.provides(
+                self.module, AnalysisFact.CFG_SUCC
+            );
+            has_types = self.program.analysis.analyses_run.provides(
+                self.module, AnalysisFact.TYPE_OF
+            );
 
-            if needs_native
-                and not self.program.analysis.analyses_run.provides(
-                    self.module, AnalysisFact.TYPE_OF
-                ) {
-                self.compiler.run_schedule(
-                    mod=self.module,
-                    target_program=self.program,
-                    passes=get_analysis_sched(),
+            if (needs_native and (not has_cfg or not has_types)) {
+                if not require_product(
+                    self.program,
+                    self.module,
+                    CompilationProduct.ANALYSIS,
                     cancel_token=self.options.cancel_token
-                );
+                ) {
+                    self.blocked = True;
+                    return;
+                }
             }
             self.compiler.run_schedule(
                 mod=self.module,

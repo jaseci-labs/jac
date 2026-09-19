@@ -151,9 +151,39 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     }
 }
 
-def require_product(
+def _product_ready(
     program: JacProgram, module: Module, product: CompilationProduct
 ) -> bool {
+    if product == CompilationProduct.FLOW {
+        return program.analysis.analyses_run.provides(module, AnalysisFact.CFG_SUCC);
+    }
+    if product == CompilationProduct.ANALYSIS {
+        return (
+            program.analysis.analyses_run.provides(module, AnalysisFact.CFG_SUCC)
+            and program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF)
+        );
+    }
+    if product == CompilationProduct.CLIENT {
+        return program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF);
+    }
+    if product == CompilationProduct.NATIVE_IR {
+        return (
+            program.analysis.analyses_run.provides(module, AnalysisFact.CFG_SUCC)
+            and program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF)
+        );
+    }
+    return True;
+}
+
+def require_product(
+    program: JacProgram,
+    module: Module,
+    product: CompilationProduct,
+    cancel_token: (Event | None) = None
+) -> bool {
+    active_cancel = cancel_token
+        if cancel_token is not None
+        else program.options.cancel_token;
     program.analysis.retain_tasks(module);
     tasks = program.analysis.product_tasks.setdefault(id(module), {});
     task = tasks.get(product);
@@ -163,10 +193,17 @@ def require_product(
                 f"Compilation dependency cycle: {product.value} of {module.loc.mod_path}"
             );
         }
-        return task.state == TaskState.SUCCEEDED;
+        if task.state != TaskState.SUCCEEDED {
+            return False;
+        }
+        if _product_ready(program, module, product) {
+            return True;
+        }
+        task.state = TaskState.RUNNING;
+    } else {
+        task = ProductTask(product, TaskState.RUNNING);
+        tasks[product] = task;
     }
-    task = ProductTask(product, TaskState.RUNNING);
-    tasks[product] = task;
     start = time.perf_counter();
     before = len(program.errors_had);
     try {
@@ -174,8 +211,12 @@ def require_product(
             and not program.analysis.analyses_run.provides(
                 module, AnalysisFact.CFG_SUCC
             ) {
-            if not require_product(program, module, CompilationProduct.FLOW) {
-                task.state = TaskState.FAILED;
+            if not require_product(
+                program, module, CompilationProduct.FLOW, cancel_token=active_cancel
+            ) {
+                task.state = TaskState.CANCELLED
+                    if active_cancel is not None and active_cancel.is_set()
+                    else TaskState.FAILED;
                 return False;
             }
         }
@@ -183,8 +224,12 @@ def require_product(
             and not program.analysis.analyses_run.provides(
                 module, AnalysisFact.TYPE_OF
             ) {
-            if not require_product(program, module, CompilationProduct.ANALYSIS) {
-                task.state = TaskState.FAILED;
+            if not require_product(
+                program, module, CompilationProduct.ANALYSIS, cancel_token=active_cancel
+            ) {
+                task.state = TaskState.CANCELLED
+                    if active_cancel is not None and active_cancel.is_set()
+                    else TaskState.FAILED;
                 return False;
             }
         }
@@ -196,16 +241,17 @@ def require_product(
                 return False;
             }
         } else {
-            program.run_schedule(module, product_pipeline(product));
-        }
-        task.state = TaskState.CANCELLED
-            if program.options.cancel_token is not None
-                and program.options.cancel_token.is_set()
-            else (
-                TaskState.SUCCEEDED
-                    if len(program.errors_had) == before
-                    else TaskState.FAILED
+            program.run_schedule(
+                module, product_pipeline(product), cancel_token=active_cancel
             );
+        }
+        if active_cancel is not None and active_cancel.is_set() {
+            task.state = TaskState.CANCELLED;
+        } elif len(program.errors_had) != before {
+            task.state = TaskState.FAILED;
+        } else {
+            task.state = TaskState.SUCCEEDED;
+        }
         return task.state == TaskState.SUCCEEDED;
     } except Exception {
         task.state = TaskState.FAILED;
