@@ -2224,6 +2224,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                             }
                         }
                     } elif isinstance(chain_item, EdgeOpRef) {
+                        element_type = AnyType();
                         if (
                             chain_item.filter_cond is not None
                             and chain_item.filter_cond.f_type is not None

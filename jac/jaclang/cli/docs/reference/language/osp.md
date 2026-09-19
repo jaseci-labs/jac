@@ -291,6 +291,10 @@ edge Tie: Node --> Node {}    # some node, without naming which
 
 Because the declaration is trusted by inference, it is also enforced. Connecting node types the edge does not declare is `E1136`, and traversing an edge from a node it cannot start from is `E1137`. An operand that is merely more general than the declaration -- a `Node` where `Profile` is declared -- may still be the declared type at runtime, so it warns (`W2081`, `W2082`) instead of failing.
 
+Collection operands are checked by their element types, including every member of a tuple. A bidirectional connection must satisfy the endpoints in both directions, since either node can be reached by an outgoing traversal. Use compatible bounds on both endpoints, such as `Person --> Person`, for such edges.
+
+Each hop determines its own result type. Following a typed hop with an unconstrained hop returns `list[any]`; the earlier hop's type does not describe the final neighbours.
+
 The `()` after the name remains reserved for **edge inheritance**, orthogonal to the endpoints. A subtype edge inherits its base edge's endpoints unless it re-declares them:
 
 ```jac

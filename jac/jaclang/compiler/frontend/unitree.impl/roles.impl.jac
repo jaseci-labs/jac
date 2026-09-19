@@ -222,7 +222,7 @@ impl SubTag.__repr__ -> str {
 }
 
 impl Module.body.getter -> Sequence[ElementStmt | String | EmptyToken] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[ElementStmt | String | EmptyToken];
 }
 
 impl Module.__repr__ -> str {
@@ -238,7 +238,7 @@ impl ProgramModule.__repr__ -> str {
 }
 
 impl TypeParam.name.getter -> Name {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as Name;
 }
 
 impl TypeParam.bound.getter -> (Expr | None) {
@@ -256,7 +256,7 @@ impl TypeParam.__repr__ -> str {
 }
 
 impl TypeAlias.name.getter -> Name {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as Name;
 }
 
 impl TypeAlias.type_params.getter -> list[TypeParam] {
@@ -264,7 +264,7 @@ impl TypeAlias.type_params.getter -> list[TypeParam] {
 }
 
 impl TypeAlias.value.getter -> Expr {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as Expr;
 }
 
 impl TypeAlias.__repr__ -> str {
@@ -280,11 +280,11 @@ impl GlobalVars.__repr__ -> str {
 }
 
 impl Test.name.getter -> Name {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as Name;
 }
 
 impl Test.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl Test.description.getter -> (String | None) {
@@ -302,11 +302,11 @@ impl Test.__repr__ -> str {
 
 impl ModuleCode.name.getter -> (Name | None) {
     found = [self->:NameRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Name | None);
 }
 
 impl ModuleCode.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl ModuleCode.__repr__ -> str {
@@ -349,7 +349,7 @@ impl ModulePath.path.getter -> (Sequence[(Name | String)] | None) {
 
 impl ModulePath.alias.getter -> (Name | None) {
     found = [self->:AliasRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Name | None);
 }
 
 impl ModulePath.__repr__ -> str {
@@ -357,12 +357,12 @@ impl ModulePath.__repr__ -> str {
 }
 
 impl ModuleItem.name.getter -> (Name | Token) {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as (Name | Token);
 }
 
 impl ModuleItem.alias.getter -> (Name | None) {
     found = [self->:AliasRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Name | None);
 }
 
 impl ModuleItem.__repr__ -> str {
@@ -370,7 +370,7 @@ impl ModuleItem.__repr__ -> str {
 }
 
 impl Archetype.name.getter -> Name {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as Name;
 }
 
 impl Archetype.arch_type.getter -> Token {
@@ -413,7 +413,7 @@ impl ImplDef.decorators.getter -> (Sequence[Expr] | None) {
 }
 
 impl ImplDef.target.getter -> Sequence[NameAtom] {
-    return [self->:TargetRole:->];
+    return ([self->:TargetRole:->]) as Sequence[NameAtom];
 }
 
 impl ImplDef.spec.getter -> (Sequence[Expr] | FuncSignature | EventSignature | None) {
@@ -429,11 +429,11 @@ impl ImplDef.__repr__ -> str {
 }
 
 impl SemDef.target.getter -> Sequence[NameAtom] {
-    return [self->:TargetRole:->];
+    return ([self->:TargetRole:->]) as Sequence[NameAtom];
 }
 
 impl SemDef.value.getter -> MultiString {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as MultiString;
 }
 
 impl SemDef.__repr__ -> str {
@@ -441,7 +441,7 @@ impl SemDef.__repr__ -> str {
 }
 
 impl Enum.name.getter -> Name {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as Name;
 }
 
 impl Enum.value_type.getter -> (Expr | None) {
@@ -484,7 +484,7 @@ impl FuncSignature.posonly_params.getter -> Sequence[ParamVar] {
 }
 
 impl FuncSignature.params.getter -> (Sequence[ParamVar] | None) {
-    return [self->:ParamsRole:->];
+    return ([self->:ParamsRole:->]) as (Sequence[ParamVar] | None);
 }
 
 impl FuncSignature.varargs.getter -> (ParamVar | None) {
@@ -524,7 +524,7 @@ impl EventSignature.__repr__ -> str {
 }
 
 impl ParamVar.name.getter -> Name {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as Name;
 }
 
 impl ParamVar.unpack.getter -> (Token | None) {
@@ -534,7 +534,7 @@ impl ParamVar.unpack.getter -> (Token | None) {
 
 impl ParamVar.value.getter -> (Expr | None) {
     found = [self->:ValueRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Expr | None);
 }
 
 impl ParamVar.__repr__ -> str {
@@ -550,12 +550,12 @@ impl ArchHas.__repr__ -> str {
 }
 
 impl HasVar.name.getter -> Name {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as Name;
 }
 
 impl HasVar.value.getter -> (Expr | None) {
     found = [self->:ValueRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Expr | None);
 }
 
 impl HasVar.accessors.getter -> (Sequence[Ability] | None) {
@@ -571,7 +571,7 @@ impl TypedCtxBlock.type_ctx.getter -> Expr {
 }
 
 impl TypedCtxBlock.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl TypedCtxBlock.__repr__ -> str {
@@ -583,7 +583,7 @@ impl OpenStmt.target.getter -> Expr {
 }
 
 impl OpenStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl OpenStmt.__repr__ -> str {
@@ -595,7 +595,7 @@ impl IfStmt.condition.getter -> Expr {
 }
 
 impl IfStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl IfStmt.__repr__ -> str {
@@ -607,7 +607,7 @@ impl ElseIf.__repr__ -> str {
 }
 
 impl ElseStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl ElseStmt.__repr__ -> str {
@@ -623,7 +623,7 @@ impl ExprStmt.__repr__ -> str {
 }
 
 impl TryStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl TryStmt.excepts.getter -> Sequence[Except] {
@@ -645,7 +645,7 @@ impl TryStmt.__repr__ -> str {
 }
 
 impl AwaitingClause.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl AwaitingClause.__repr__ -> str {
@@ -658,11 +658,11 @@ impl Except.ex_type.getter -> Expr {
 
 impl Except.name.getter -> (Name | None) {
     found = [self->:NameRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Name | None);
 }
 
 impl Except.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl Except.__repr__ -> str {
@@ -670,7 +670,7 @@ impl Except.__repr__ -> str {
 }
 
 impl FinallyStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl FinallyStmt.__repr__ -> str {
@@ -690,7 +690,7 @@ impl IterForStmt.count_by.getter -> Assignment {
 }
 
 impl IterForStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl IterForStmt.__repr__ -> str {
@@ -706,7 +706,7 @@ impl InForStmt.collection.getter -> Expr {
 }
 
 impl InForStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl InForStmt.__repr__ -> str {
@@ -718,7 +718,7 @@ impl WhileStmt.condition.getter -> Expr {
 }
 
 impl WhileStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl WhileStmt.__repr__ -> str {
@@ -726,7 +726,7 @@ impl WhileStmt.__repr__ -> str {
 }
 
 impl ForeverStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl ForeverStmt.__repr__ -> str {
@@ -734,11 +734,11 @@ impl ForeverStmt.__repr__ -> str {
 }
 
 impl WithStmt.exprs.getter -> Sequence[ExprAsItem] {
-    return [self->:ExprsRole:->];
+    return ([self->:ExprsRole:->]) as Sequence[ExprAsItem];
 }
 
 impl WithStmt.body.getter -> Sequence[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as Sequence[CodeBlockStmt];
 }
 
 impl WithStmt.__repr__ -> str {
@@ -844,7 +844,7 @@ impl AwaitExpr.__repr__ -> str {
 }
 
 impl CastExpr.value.getter -> Expr {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as Expr;
 }
 
 impl CastExpr.cast_type.getter -> Expr {
@@ -861,7 +861,7 @@ impl Assignment.target.getter -> Sequence[Expr] {
 
 impl Assignment.value.getter -> Expr | YieldExpr | None {
     found = [self->:ValueRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as Expr | YieldExpr | None;
 }
 
 impl Assignment.aug_op.getter -> (Token | None) {
@@ -919,11 +919,11 @@ impl CompareExpr.__repr__ -> str {
 }
 
 impl BoolExpr.op.getter -> Token {
-    return [self->:OpRole:->][0];
+    return ([self->:OpRole:->][0]) as Token;
 }
 
 impl BoolExpr.values.getter -> list[CfgExpr] {
-    return [self->:ValuesRole:->];
+    return ([self->:ValuesRole:->]) as list[CfgExpr];
 }
 
 impl BoolExpr.__repr__ -> str {
@@ -936,7 +936,7 @@ impl LambdaExpr.body.getter -> (Expr | Sequence[CodeBlockStmt]) {
 
 impl LambdaExpr.signature.getter -> (FuncSignature | None) {
     found = [self->:SignatureRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (FuncSignature | None);
 }
 
 impl LambdaExpr.__repr__ -> str {
@@ -948,7 +948,7 @@ impl UnaryExpr.operand.getter -> Expr {
 }
 
 impl UnaryExpr.op.getter -> Token {
-    return [self->:OpRole:->][0];
+    return ([self->:OpRole:->][0]) as Token;
 }
 
 impl UnaryExpr.__repr__ -> str {
@@ -956,11 +956,11 @@ impl UnaryExpr.__repr__ -> str {
 }
 
 impl IfElseExpr.condition.getter -> CfgExpr {
-    return [self->:ConditionRole:->][0];
+    return ([self->:ConditionRole:->][0]) as CfgExpr;
 }
 
 impl IfElseExpr.value.getter -> CfgExpr {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as CfgExpr;
 }
 
 impl IfElseExpr.else_value.getter -> CfgExpr {
@@ -981,11 +981,11 @@ impl MultiString.__repr__ -> str {
 
 impl FString.start.getter -> (Token | None) {
     found = [self->:StartRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Token | None);
 }
 
 impl FString.parts.getter -> Sequence[(String | FormattedValue)] {
-    return [self->:PartsRole:->];
+    return ([self->:PartsRole:->]) as Sequence[(String | FormattedValue)];
 }
 
 impl FString.end.getter -> (Token | None) {
@@ -1011,7 +1011,7 @@ impl FormattedValue.__repr__ -> str {
 }
 
 impl ListVal.values.getter -> Sequence[Expr] {
-    return [self->:ValuesRole:->];
+    return ([self->:ValuesRole:->]) as Sequence[Expr];
 }
 
 impl ListVal.__repr__ -> str {
@@ -1019,7 +1019,7 @@ impl ListVal.__repr__ -> str {
 }
 
 impl SetVal.values.getter -> (Sequence[Expr] | None) {
-    return [self->:ValuesRole:->];
+    return ([self->:ValuesRole:->]) as (Sequence[Expr] | None);
 }
 
 impl SetVal.__repr__ -> str {
@@ -1027,7 +1027,7 @@ impl SetVal.__repr__ -> str {
 }
 
 impl TupleVal.values.getter -> Sequence[(Expr | KWPair)] {
-    return [self->:ValuesRole:->];
+    return ([self->:ValuesRole:->]) as Sequence[(Expr | KWPair)];
 }
 
 impl TupleVal.__repr__ -> str {
@@ -1044,11 +1044,11 @@ impl DictVal.__repr__ -> str {
 
 impl KVPair.key.getter -> (Expr | None) {
     found = [self->:KeyRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Expr | None);
 }
 
 impl KVPair.value.getter -> Expr {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as Expr;
 }
 
 impl KVPair.__repr__ -> str {
@@ -1057,11 +1057,11 @@ impl KVPair.__repr__ -> str {
 
 impl KWPair.key.getter -> (NameAtom | None) {
     found = [self->:KeyRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (NameAtom | None);
 }
 
 impl KWPair.value.getter -> Expr {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as Expr;
 }
 
 impl KWPair.__repr__ -> str {
@@ -1129,7 +1129,7 @@ impl AtomTrailer.__repr__ -> str {
 }
 
 impl AtomUnit.value.getter -> Expr | YieldExpr | Ability {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as Expr | YieldExpr | Ability;
 }
 
 impl AtomUnit.__repr__ -> str {
@@ -1150,7 +1150,7 @@ impl FuncCall.target.getter -> Expr {
 }
 
 impl FuncCall.params.getter -> (Sequence[(Expr | KWPair)] | None) {
-    return [self->:ParamsRole:->];
+    return ([self->:ParamsRole:->]) as (Sequence[(Expr | KWPair)] | None);
 }
 
 impl FuncCall.__repr__ -> str {
@@ -1159,7 +1159,7 @@ impl FuncCall.__repr__ -> str {
 
 impl Slice.start.getter -> (Expr | None) {
     found = [self->:StartRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (Expr | None);
 }
 
 impl Slice.stop.getter -> (Expr | None) {
@@ -1246,7 +1246,7 @@ impl AssignCompr.__repr__ -> str {
 
 impl JsxElement.name.getter -> (JsxElementName | None) {
     found = [self->:NameRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as (JsxElementName | None);
 }
 
 impl JsxElement.attributes.getter -> (Sequence[JsxAttribute] | None) {
@@ -1267,7 +1267,7 @@ impl JsxElement.__repr__ -> str {
 }
 
 impl JsxElementName.parts.getter -> Sequence[(Name | Token)] {
-    return [self->:PartsRole:->];
+    return ([self->:PartsRole:->]) as Sequence[(Name | Token)];
 }
 
 impl JsxElementName.__repr__ -> str {
@@ -1287,12 +1287,12 @@ impl JsxSpreadAttribute.__repr__ -> str {
 }
 
 impl JsxNormalAttribute.name.getter -> (Name | Token) {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as (Name | Token);
 }
 
 impl JsxNormalAttribute.value.getter -> String | Expr | None {
     found = [self->:ValueRole:->];
-    return found[0] if found else None;
+    return (found[0] if found else None) as String | Expr | None;
 }
 
 impl JsxNormalAttribute.__repr__ -> str {
@@ -1324,7 +1324,7 @@ impl JsxSlot.__repr__ -> str {
 }
 
 impl JsxComment.value.getter -> Token {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as Token;
 }
 
 impl JsxComment.__repr__ -> str {
@@ -1336,7 +1336,7 @@ impl MatchStmt.target.getter -> Expr {
 }
 
 impl MatchStmt.cases.getter -> list[MatchCase] {
-    return [self->:CasesRole:->];
+    return ([self->:CasesRole:->]) as list[MatchCase];
 }
 
 impl MatchStmt.__repr__ -> str {
@@ -1353,7 +1353,7 @@ impl MatchCase.guard.getter -> (Expr | None) {
 }
 
 impl MatchCase.body.getter -> list[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as list[CodeBlockStmt];
 }
 
 impl MatchCase.__repr__ -> str {
@@ -1365,7 +1365,7 @@ impl SwitchStmt.target.getter -> Expr {
 }
 
 impl SwitchStmt.cases.getter -> list[SwitchCase] {
-    return [self->:CasesRole:->];
+    return ([self->:CasesRole:->]) as list[SwitchCase];
 }
 
 impl SwitchStmt.__repr__ -> str {
@@ -1378,7 +1378,7 @@ impl SwitchCase.pattern.getter -> (MatchPattern | None) {
 }
 
 impl SwitchCase.body.getter -> list[CodeBlockStmt] {
-    return [self->:BodyRole:->];
+    return ([self->:BodyRole:->]) as list[CodeBlockStmt];
 }
 
 impl SwitchCase.__repr__ -> str {
@@ -1394,7 +1394,7 @@ impl MatchOr.__repr__ -> str {
 }
 
 impl MatchAs.name.getter -> NameAtom {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as NameAtom;
 }
 
 impl MatchAs.pattern.getter -> (MatchPattern | None) {
@@ -1411,7 +1411,7 @@ impl MatchWild.__repr__ -> str {
 }
 
 impl MatchValue.value.getter -> Expr {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as Expr;
 }
 
 impl MatchValue.__repr__ -> str {
@@ -1419,7 +1419,7 @@ impl MatchValue.__repr__ -> str {
 }
 
 impl MatchSingleton.value.getter -> (Bool | Null) {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as (Bool | Null);
 }
 
 impl MatchSingleton.__repr__ -> str {
@@ -1427,7 +1427,7 @@ impl MatchSingleton.__repr__ -> str {
 }
 
 impl MatchSequence.values.getter -> list[MatchPattern] {
-    return [self->:ValuesRole:->];
+    return ([self->:ValuesRole:->]) as list[MatchPattern];
 }
 
 impl MatchSequence.__repr__ -> str {
@@ -1435,7 +1435,7 @@ impl MatchSequence.__repr__ -> str {
 }
 
 impl MatchMapping.values.getter -> list[(MatchKVPair | MatchStar)] {
-    return [self->:ValuesRole:->];
+    return ([self->:ValuesRole:->]) as list[(MatchKVPair | MatchStar)];
 }
 
 impl MatchMapping.__repr__ -> str {
@@ -1443,11 +1443,11 @@ impl MatchMapping.__repr__ -> str {
 }
 
 impl MatchKVPair.key.getter -> MatchPattern | NameAtom | AtomExpr {
-    return [self->:KeyRole:->][0];
+    return ([self->:KeyRole:->][0]) as MatchPattern | NameAtom | AtomExpr;
 }
 
 impl MatchKVPair.value.getter -> MatchPattern {
-    return [self->:ValueRole:->][0];
+    return ([self->:ValueRole:->][0]) as MatchPattern;
 }
 
 impl MatchKVPair.__repr__ -> str {
@@ -1455,7 +1455,7 @@ impl MatchKVPair.__repr__ -> str {
 }
 
 impl MatchStar.name.getter -> NameAtom {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as NameAtom;
 }
 
 impl MatchStar.__repr__ -> str {
@@ -1463,7 +1463,7 @@ impl MatchStar.__repr__ -> str {
 }
 
 impl MatchArch.name.getter -> (AtomTrailer | NameAtom) {
-    return [self->:NameRole:->][0];
+    return ([self->:NameRole:->][0]) as (AtomTrailer | NameAtom);
 }
 
 impl MatchArch.arg_patterns.getter -> (Sequence[MatchPattern] | None) {
@@ -2645,7 +2645,7 @@ impl GraphExpr.init(*, exprs: Sequence[Expr], kid: Sequence[UniNode] = []) -> No
 }
 
 impl GraphExpr.exprs.getter -> Sequence[Expr] {
-    return [self->:ExprsRole:->];
+    return ([self->:ExprsRole:->]) as Sequence[Expr];
 }
 
 impl GraphExpr.__repr__ -> str {
