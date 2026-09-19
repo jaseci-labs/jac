@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import json;
 import struct;
@@ -41,7 +42,7 @@ import from jaclang.compiler.types.types {
     UnionType,
     UnknownType
 }
-import from jaclang.compiler.frontend.constant { BindingKind }
+import from jaclang.compiler.frontend.constant { BindingKind, ImmutabilityKind }
 import from jaclang.compiler.types.stubcat.format {
     ACCESS_PRIVATE,
     ACCESS_PROTECTED,
@@ -76,12 +77,14 @@ import from jaclang.compiler.types.stubcat.format {
     SH_TYPEDDICT,
     SH_XREF,
     SYMF_DEFER,
+    SYMF_FINAL,
     SYMF_HAS_DEFAULT,
     SYMF_INSTANCE_METHOD,
     SYMF_NA_ESCAPES,
     SYMF_NA_REGION_HANDLE,
     SYMF_NA_STACK_OK,
     SYMF_PARAM_REBOUND,
+    SYMF_READONLY,
     TV_CLASS_PARAM,
     TV_CONTRAVARIANT,
     TV_COVARIANT,
@@ -246,7 +249,7 @@ def metaclass_of_scope(scope: UniScopeNode, evaluator: any) -> (TypeBase | None)
     if not isinstance(scope, Archetype) {
         return None;
     }
-    for kid in scope.kid {
+    for kid in [scope->:Kid:->] {
         if (
             isinstance(kid, KWPair)
             and kid.key is not None
@@ -1183,6 +1186,11 @@ obj CatalogWriter {
         }
         if self._jac_method_of(sym) is not None {
             symbits |= SYMF_INSTANCE_METHOD;
+        }
+        if sym.immutability is ImmutabilityKind.FINAL {
+            symbits |= SYMF_FINAL;
+        } elif sym.immutability is ImmutabilityKind.READONLY {
+            symbits |= SYMF_READONLY;
         }
         try {
             decl_node = sym.decl.name_of if sym.decl else None;

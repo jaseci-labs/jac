@@ -11,9 +11,8 @@ import from jaclang.runtime.exceptions { WriteConflict }
 glob logger = logging.getLogger(__name__),
      SCHEMA_VERSION = 1,
      SCHEMA_STAMP_KEY = 'schema_fingerprint',
-     _schema_ready: dict[str, str] = {},
+     _schema_ready: set[str] = set(),
      _schema_gate = threading.Lock(),
-     _schema_extensions: dict[str, list[str]] = {},
      __all__ = [
          'AnchorRow',
          'Store',
@@ -23,16 +22,8 @@ glob logger = logging.getLogger(__name__),
          'SCHEMA_VERSION',
          'SCHEMA_STAMP_KEY',
          'SessionConflictError',
-         'register_schema_extension'
+         'OUTBOX_SCHEMA_SQL'
      ];
-
-def register_schema_extension(name: str, statements: list[str]) {
-    _schema_extensions[name] = list(statements);
-}
-
-def _schema_extension_key -> str {
-    return ",".join(sorted(_schema_extensions));
-}
 
 
 enum TxnIsolation(StrEnum) {
@@ -119,6 +110,7 @@ obj Store {
     def kv_delete(key: str) -> None abst;
     def kv_acquire_lease(key: str, ttl_seconds: int, owner: str) -> bool abst;
     def kv_release_lease(key: str, owner: str) -> bool abst;
+    def kv_claim_tick(key: str, tick: int) -> bool abst;
     def quarantine(
         missing_id: UUID, referrer_id: (UUID | None), kind: str
     ) -> None abst;
@@ -178,6 +170,7 @@ obj PgStore(Store) {
     def kv_delete(key: str) -> None;
     def kv_acquire_lease(key: str, ttl_seconds: int, owner: str) -> bool;
     def kv_release_lease(key: str, owner: str) -> bool;
+    def kv_claim_tick(key: str, tick: int) -> bool;
     def quarantine(missing_id: UUID, referrer_id: (UUID | None), kind: str) -> None;
     def notify(channel: str, payload: str) -> None;
     def listen(channel: str, callback: any) -> None;
@@ -188,6 +181,7 @@ obj PgStore(Store) {
     def _main -> any;
     def _side -> any;
     def _run(sql: str, params: dict[str, any]) -> list[any];
+    def _side_run(sql: str, params: dict[str, any]) -> list[any];
     def _promotion_columns -> list[tuple[str, str, str]];
     def _promoted_column_type(col: str) -> (str | None);
     def _apply_promotions -> None;

@@ -502,7 +502,10 @@ def _fetch_verified_asset(
     }
     digest = parts[0].strip().lower();
     artifact = Artifact("jac-deployment", digest, "asset", url, digest);
-    return fetch(artifact, cache_file).read_bytes();
+    payload = fetch(artifact, cache_file).read_bytes();
+    import from jaclang.cache.registry { maybe_sweep }
+    maybe_sweep("scale-binaries");
+    return payload;
 }
 
 
@@ -601,13 +604,8 @@ def resolve_pod_base_image(
 
 
 def _scale_cache_root -> Path {
-    base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
-    if base {
-        return Path(base);
-    }
-    return Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache"))
-        / "jac"
-        / "scale-binaries";
+    import from jaclang.cache.registry { bucket }
+    return bucket("scale-binaries").path();
 }
 
 

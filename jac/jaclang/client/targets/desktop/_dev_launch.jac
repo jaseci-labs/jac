@@ -1,4 +1,5 @@
 import os;
+import sys;
 import sysconfig;
 import site;
 import from pathlib { Path }
@@ -26,9 +27,14 @@ def _project_venv_site_packages -> str {
 }
 
 
+def desktop_host_env -> list[tuple[str, str]] {
+    return DESKTOP_WEBKIT_ENV if sys.platform.startswith("linux") else [];
+}
+
+
 def jac_desktop_webkit_shell_export -> str {
     return "".join(
-        [f'export {key}="${{{key}:-{val}}}"\n' for (key, val) in DESKTOP_WEBKIT_ENV]
+        [f'export {key}="${{{key}:-{val}}}"\n' for (key, val) in desktop_host_env()]
     );
 }
 
@@ -155,7 +161,7 @@ def desktop_app_runtime_env(base: any = None) -> dict[str, str] {
     for key in ["PYTHONEXECUTABLE", "JAC_EXECUTABLE", "VIRTUAL_ENV", ] {
         env.pop(key, None);
     }
-    for (key, val) in DESKTOP_WEBKIT_ENV {
+    for (key, val) in desktop_host_env() {
         env.setdefault(key, val);
     }
     _prepend_env_path(env, "JAC_DESKTOP_DEPS", _project_venv_site_packages());

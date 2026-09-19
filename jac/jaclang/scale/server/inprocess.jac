@@ -68,9 +68,10 @@ def prepare_inprocess_runtime(
     }
 
     import from jaclang.scale.runtime.provider { mark_scale_runtime }
+    static_only = bool((overrides or {}).get('static_only', False));
     (base, _) = os.path.split(jac_file);
     base = base or "./";
-    mod = base_stem(jac_file);
+    mod = "" if static_only else base_stem(jac_file);
     os.makedirs(base_path, exist_ok=True);
     mark_scale_runtime();
     Jac.set_base_path(base_path);
@@ -79,34 +80,31 @@ def prepare_inprocess_runtime(
     mach = Jac.create_j_context(user_root=None);
     Jac.set_context(mach);
     try {
-        if mod in Jac.loaded_modules {
-            del Jac.loaded_modules[mod];
+        if not static_only {
+            if mod in Jac.loaded_modules {
+                del Jac.loaded_modules[mod];
+            }
+            if mod in sys.modules {
+                del sys.modules[mod];
+            }
+            import from jaclang.project.config { get_config_for_dir }
+            import from jaclang.server.assembly { service_apps }
+            import from jaclang.compiler.driver.application { prepare_application }
+            import from jaclang.runtime.prepared { initialize_application }
+            cfg = get_config_for_dir(base);
+            served = cfg.app_for_path(os.path.abspath(jac_file))
+                if cfg is not None
+                else None;
+            project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
+            services = service_apps(cfg, served) if cfg and served else [];
+            prepared = prepare_application(
+                jac_file,
+                Jac.get_program(),
+                project_root,
+                [svc.entry_path(project_root) for svc in services]
+            );
+            mod = initialize_application(prepared, cfg, served).__name__;
         }
-        if mod in sys.modules {
-            del sys.modules[mod];
-        }
-        import from jaclang.project.config { get_config_for_dir }
-        import from jaclang.server.assembly { service_apps }
-        import from jaclang.compiler.driver.application { prepare_application }
-        import from jaclang.runtime.prepared { initialize_application }
-        cfg = get_config_for_dir(base);
-        served = cfg.app_for_path(os.path.abspath(jac_file))
-            if cfg is not None
-            else None;
-        project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
-        static_only = bool((overrides or {}).get('static_only', False));
-        services = service_apps(cfg, served)
-            if cfg and served and not static_only
-            else [];
-        prepared = prepare_application(
-            jac_file,
-            Jac.get_program(),
-            project_root,
-            [svc.entry_path(project_root) for svc in services]
-        );
-        mod = initialize_application(
-            prepared, cfg, None if static_only else served
-        ).__name__;
 
         serve_overrides: dict[str, any] = {'no_client': True};
         serve_overrides.update(overrides or {});
@@ -118,7 +116,9 @@ def prepare_inprocess_runtime(
             settings=ServeSettings.load(base_path, serve_overrides),
             extensions=_extensions_for(endpoint_profile) + list(extensions or [])
         );
-        server.load_module();
+        if not static_only {
+            server.load_module();
+        }
         server._ensure_internal_users();
         app = server.build_app();
         if setup_background_services {
@@ -140,10 +140,10 @@ def prepare_inprocess_runtime(
             _prior_ctx=prior_ctx
         );
     } except Exception {
-        if mod in Jac.loaded_modules {
+        if not static_only and mod in Jac.loaded_modules {
             del Jac.loaded_modules[mod];
         }
-        if mod in sys.modules {
+        if not static_only and mod in sys.modules {
             del sys.modules[mod];
         }
         Jac.set_shared_root_resolver(None);

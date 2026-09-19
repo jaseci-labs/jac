@@ -1,0 +1,11 @@
+{
+  "baseline": {"workflow": "ci.yml", "branch": "main", "runs": 10, "alert_ratio": 1.25},
+  "phases": {
+    "site-check": {"measure": "command", "hang_seconds": 200, "max_rss_mib": 2350},
+    "desktop-build": {"measure": "command", "hang_seconds": 540, "max_rss_mib": 6000},
+    "production-build": {"measure": "command", "hang_seconds": 420, "max_rss_mib": 6200},
+    "quickstart-ready": {"measure": "readiness"},
+    "production-ready": {"measure": "readiness"},
+    "fleet-ready": {"measure": "readiness"}
+  }
+}

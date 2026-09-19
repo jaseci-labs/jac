@@ -1,9 +1,11 @@
 """Per-app scale settings live under [apps.<name>.scale] and reach every reader
 through one helper; the gateway's own settings live under [scale.gateway]."""
 
+import io;
 import os;
 import shutil;
 import tempfile;
+import from contextlib { redirect_stderr }
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 import from jaclang.scale.config.config_loader {
@@ -476,6 +478,117 @@ test "profile and local app overlays preserve nested pod settings" {
         ]
             == pod;
     } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+glob _OVERLAY_TOML: str = '[project]\n'
+     'name = "ukey"\n'
+     'default-app = "svc"\n'
+     '\n'
+     '[apps.svc]\n'
+     'kind = "service"\n'
+     'entry-point = "svc"\n'
+     'route = "/api/svc"\n'
+     '\n'
+     '[apps.other]\n'
+     'kind = "service"\n'
+     'entry-point = "other"\n'
+     'route = "/api/other"\n'
+     '\n'
+     '[apps.svc.scale]\n'
+     'rpc_timeout = 30.0\n'
+     'replicas = 2\n'
+     'memory_limit = "1Gi"\n';
+
+
+def _overlay_project(toml: str = _OVERLAY_TOML) -> Path {
+    d = Path(tempfile.mkdtemp(prefix="jac-app-overlay-"));
+    (d / "jac.toml").write_text(toml, encoding="utf-8");
+    for name in ("svc", "other") {
+        (d / f"{name}.jac").write_text("with entry {}\n", encoding="utf-8");
+    }
+    return d;
+}
+
+
+def _serving(d: Path, app_file: str) -> JacScaleConfig {
+    return JacScaleConfig(project_dir=d, entry_path=str(d / app_file));
+}
+
+
+"""Load the scale config as the process serving app_file does, with strict
+validation on; returns the strict error ('' when it loaded) and the config."""
+def _strict_load(d: Path, app_file: str) -> tuple[str, dict[str, any]] {
+    os.environ[STRICT_ENV] = "1";
+    try {
+        return ("", _serving(d, app_file).load());
+    } except ValueError as e {
+        return (str(e), {});
+    } finally {
+        os.environ.pop(STRICT_ENV, None);
+    }
+}
+
+
+test "the process serving an app accepts its own [apps.<name>.scale] keys (#9162)" {
+    d = _overlay_project();
+    reset_scale_config();
+    try {
+        (raised, loaded) = _strict_load(d, "svc.jac");
+        assert raised == "" , (
+            f"per-app keys are applied, so they are not unknown [scale] keys: {raised}"
+        );
+        assert loaded["rpc_timeout"] == 30.0 , loaded;
+        assert loaded["replicas"] == 2 , loaded;
+        assert loaded["memory_limit"] == "1Gi" , loaded;
+        assert _serving(d, "svc.jac").get_app_scale_config("svc")["memory_limit"]
+            == "1Gi";
+        err = io.StringIO();
+        with redirect_stderr(err) {
+            _serving(d, "svc.jac").load();
+        }
+        assert "unknown key" not in err.getvalue() , err.getvalue();
+        (raised, loaded) = _strict_load(d, "other.jac");
+        assert raised == "" , raised;
+        assert "replicas" not in loaded , "another app's overlay never leaks in";
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "an unknown [apps.<name>.scale] key is reported under that table" {
+    d = _overlay_project(
+        _OVERLAY_TOML.replace('memory_limit = "1Gi"', 'memory_limits = "1Gi"')
+    );
+    reset_scale_config();
+    try {
+        (raised, _) = _strict_load(d, "svc.jac");
+        assert "[apps.svc.scale] has unknown key 'memory_limits'" in raised , raised;
+        assert "did you mean 'memory_limit'" in raised , raised;
+        assert "[scale]" not in raised , raised;
+        (raised, _) = _strict_load(d, "other.jac");
+        assert raised == "" , f"svc's overlay is not other's: {raised}";
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "an unknown project-level [scale] key still fails strict mode while serving an app" {
+    d = _overlay_project(_OVERLAY_TOML + '\n[scale.gatway]\ncolocate = true\n');
+    reset_scale_config();
+    try {
+        (raised, _) = _strict_load(d, "svc.jac");
+        assert "[scale] has unknown key 'gatway'" in raised , raised;
+        assert "did you mean 'gateway'" in raised , raised;
+        assert "rpc_timeout" not in raised , raised;
+    } finally {
+        reset_scale_config();
         shutil.rmtree(d, ignore_errors=True);
     }
 }

@@ -913,6 +913,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " not checked here, since another toolchain resolves it.",
          blocks_codegen=True
      ),
+     E1135 = _err(
+         "E1135",
+         Category.TYPE,
+         "Cannot assign to '{name}': it is declared {kind}",
+         help="A binding annotated with 'Final' (or a 'readonly' member of an"
+         " imported TypeScript interface) can only be set at its declaration,"
+         " or in the 'init'/'postinit' of the object that declares it when the"
+         " declaration has no initializer."
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
@@ -2184,4 +2193,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.RUNTIME,
          "Client error could not be traced to Jac source: {message}",
          help="The dev loop kept the raw location it was given, but nothing under .jac/client/compiled claims it -- a browser extension, a dependency with no source map, or an artifact from a build that has since been replaced. Reload after a clean build if the location should be yours."
+     ),
+     E0059 = _err(
+         "E0059",
+         Category.SYNTAX,
+         "'continue' is not valid inside a loop's else block",
+         help="the else block runs after the loop has already exhausted, so there"
+         " is no next iteration for 'continue' to skip to (Python would re-enter"
+         " the loop test here, usually re-running the else forever). Use 'break'"
+         " to leave the loop from the else block, or restructure the condition."
      );

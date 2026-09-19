@@ -75,6 +75,7 @@ class JacDesktopConfig(PluginConfigBase) {
     def get_engine(self: JacDesktopConfig) -> str;
     def get_backend(self: JacDesktopConfig) -> str;
     def get_plugin_configs(self: JacDesktopConfig) -> dict[str, any];
+    def get_icon(self: JacDesktopConfig) -> Path | None;
     def validate(self: JacDesktopConfig) -> None;
 }
 

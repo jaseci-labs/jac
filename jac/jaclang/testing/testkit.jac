@@ -137,7 +137,7 @@ obj ServingTestClient {
         json: any = None,
         data: any = None,
         content: any = None,
-        files: (dict[str, any] | None) = None,
+        files: (dict[str, any] | list[tuple[str, any]] | None) = None,
         params: (dict[str, any] | None) = None,
         headers: (dict[str, any] | None) = None,
         follow_redirects: (bool | None) = None
@@ -323,10 +323,11 @@ async def dispatch_and_collect(app: any, request: any) -> tuple[any, bytes] {
     return (response, content);
 }
 
-def _build_multipart(files: dict[str, any], data: any = None) -> tuple[bytes, str] {
+def _build_multipart(files: any, data: any = None) -> tuple[bytes, str] {
     boundary = f"jactest{secrets.token_hex(16)}";
     parts: list[bytes] = [];
-    for (field, spec) in files.items() {
+    pairs = list(files.items()) if isinstance(files, dict) else list(files);
+    for (field, spec) in pairs {
         filename = str(field);
         content: bytes = b'';
         ctype = 'application/octet-stream';

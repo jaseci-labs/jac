@@ -64,7 +64,7 @@ def integer_decimal(value: PyBigInt) -> str {
     return result if decimal else "0";
 }
 
-def integer_from_marshal(data: list[int]) -> PyObj {
+def integer_from_marshal(data: bytes) -> PyObj {
     # The retained numeric runtime supplies a single marshal v4 integer.
     # Decode into Jac-owned storage before releasing its Python byte buffer.
     if len(data) < 5 {

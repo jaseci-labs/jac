@@ -41,6 +41,35 @@ test "register_targets registers the desktop target" {
     assert registry.get("native-desktop") is None;
 }
 
+"""The desktop target provisions its webview host inline at build time, so the
+universal readiness hook is a no-op here: `requires_setup` is off and
+`ensure_ready` never reaches `setup()` (itself an explicit no-op)."""
+test "desktop ensure_ready is a no-op" {
+    import tempfile;
+    import unittest.mock;
+    import from pathlib { Path }
+    import from jaclang.client.targets.registry { get_target_registry }
+
+    target = get_target_registry().get("desktop");
+    assert target is not None;
+    assert target.requires_setup == False;
+    calls: list[str] = [];
+
+    def _fake_setup(project_dir: Path) {
+        calls.append("setup");
+    }
+
+    with tempfile.TemporaryDirectory() as d {
+        with unittest.mock.patch.object(target, "setup", _fake_setup) {
+            target.ensure_ready(Path(d));
+        }
+        assert calls == [] , "desktop needs no setup step; ensure_ready must not call it";
+        # And the real setup() is itself an explicit no-op: nothing is written.
+        target.setup(Path(d));
+        assert list(Path(d).iterdir()) == [] , "desktop setup writes nothing";
+    }
+}
+
 """DesktopTarget.engine() reads `[desktop] engine` and dispatches on it: the
 default is the native webview, and `engine = "cef"` selects the CEF shell.
 The two shells are helper modules, not targets of their own."""
@@ -253,6 +282,7 @@ venv into JAC_DESKTOP_DEPS -- otherwise the fused desktop host cannot import
 serve deps that `jac install` placed in `.jac/venv`."""
 test "desktop launch wires JAC_DESKTOP_DEPS from the project venv" {
     import os;
+    import sys;
     import tempfile;
     import shutil;
     import from pathlib { Path }
@@ -262,10 +292,15 @@ test "desktop launch wires JAC_DESKTOP_DEPS from the project venv" {
         jac_desktop_webkit_shell_export
     }
 
-    # Pin the launch-script contract on the shared shell fragments.
+    # Pin the launch-script contract on the shared shell fragments: the
+    # WebKitGTK knobs belong to the Linux host alone.
     webkit = jac_desktop_webkit_shell_export();
-    assert "GDK_BACKEND" in webkit , "launch script must export GDK_BACKEND";
-    assert "WEBKIT_DISABLE_DMABUF_RENDERER" in webkit;
+    if sys.platform.startswith("linux") {
+        assert "GDK_BACKEND" in webkit , "launch script must export GDK_BACKEND";
+        assert "WEBKIT_DISABLE_DMABUF_RENDERER" in webkit;
+    } else {
+        assert webkit == "" , "only the WebKitGTK host takes GDK/WebKit exports";
+    }
     snippet = jac_desktop_deps_shell_export();
     assert "JAC_DESKTOP_DEPS" in snippet , "launch script must export JAC_DESKTOP_DEPS";
     assert "venv/lib" in snippet , "launch script must discover the sibling project venv";
@@ -283,7 +318,9 @@ test "desktop launch wires JAC_DESKTOP_DEPS from the project venv" {
         os.chdir(proj);
         os.environ.pop("JAC_DESKTOP_DEPS", None);
         env = desktop_app_runtime_env({});
-        assert env.get("JAC_DESKTOP_DEPS") == str(site) , (
+        # realpath on both sides: macOS mounts its temp dir behind /private.
+        assert os.path.realpath(env.get("JAC_DESKTOP_DEPS", ""))
+            == os.path.realpath(str(site)) , (
             f"desktop_app_runtime_env must set JAC_DESKTOP_DEPS to the project venv site, got {env.get(
                 'JAC_DESKTOP_DEPS'
             )!r}"
@@ -387,4 +424,84 @@ test "dev launch detects editable worktree roots" {
     # Scale is folded into jaclang (jaclang.scale), so the editable jaclang root
     # carries it; there is no separate JAC_DESKTOP_SCALE_SRC root to detect.
     assert "JAC_DESKTOP_SCALE_SRC" not in roots , "no separate scale root (scale is part of jaclang)";
+}
+
+
+"""The build lays the app out per host and the running host recovers the same
+layout from its own executable, so the two never disagree about where the
+client bundle, the image and libwebview live."""
+test "the app layout is flat on Linux and a bundle on macOS" {
+    import from pathlib { Path }
+    import from jaclang.client.targets.desktop.app_layout { AppLayout }
+    out = Path("/out");
+    flat = AppLayout.for_host(out, "Notes", "linux-x64");
+    assert flat.bundle is None;
+    assert flat.executable == out / "Notes";
+    assert flat.resources == out and flat.library_dir() == out;
+    assert flat.launch_target() == "./Notes";
+    assert flat.launcher() == out / "Notes-launch.sh";
+    mac = AppLayout.for_host(out, "Notes", "mac-aarch64");
+    assert mac.bundle == out / "Notes.app";
+    assert mac.executable == out / "Notes.app" / "Contents" / "MacOS" / "Notes";
+    assert mac.resources == out / "Notes.app" / "Contents" / "Resources";
+    assert mac.library_dir() == mac.executable.parent;
+    assert mac.launch_target() == "./Notes.app/Contents/MacOS/Notes";
+    for built in [flat, mac] {
+        again = AppLayout.from_executable(built.executable);
+        assert again.directory == built.directory;
+        assert again.resources == built.resources;
+        assert again.bundle == built.bundle;
+    }
+}
+
+
+test "the macOS bundle metadata names the app for Finder and the Dock" {
+    import plistlib;
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.client.desktop_config { DesktopIdentity }
+    import from jaclang.client.targets.desktop.app_layout { AppLayout }
+    import from jaclang.client.targets.desktop.macos_bundle {
+        bundle_info,
+        write_bundle_metadata
+    }
+    import from jaclang.toolchains.desktop { MACOS_DESKTOP_MIN_VERSION }
+    identity = DesktopIdentity(
+        name="Notes", identifier="org.example.notes", version="2.1.0"
+    );
+    with tempfile.TemporaryDirectory() as tmp {
+        layout = AppLayout.for_host(Path(tmp), "Notes", "mac-aarch64");
+        layout.library_dir().mkdir(parents=True);
+        icon = Path(tmp) / "icon.icns";
+        icon.write_bytes(b"icns");
+        info = write_bundle_metadata(layout, identity, "Notes Desktop", icon);
+        with open(info, "rb") as f {
+            plist = plistlib.load(f);
+        }
+        assert plist["CFBundleExecutable"] == "Notes";
+        assert plist["CFBundleIdentifier"] == "org.example.notes";
+        assert plist["CFBundleShortVersionString"] == "2.1.0";
+        assert plist["CFBundleDisplayName"] == "Notes Desktop";
+        assert plist["LSMinimumSystemVersion"] == MACOS_DESKTOP_MIN_VERSION;
+        assert plist["CFBundleIconFile"] == "AppIcon";
+        assert (layout.resources / "AppIcon.icns").read_bytes() == b"icns";
+        assert (Path(tmp) / "Notes.app" / "Contents" / "PkgInfo").read_text()
+            == "APPL????";
+    }
+    plain = bundle_info(identity, "Notes", "", False);
+    assert "CFBundleIconFile" not in plain;
+    assert plain["CFBundleDisplayName"] == "Notes";
+}
+
+
+test "macOS app state lives under Application Support" {
+    import from jaclang.client.targets.desktop.native.host_boot { default_data_dir }
+    mac = default_data_dir(
+        "Darwin", "org.example.notes", "Notes", "/apps/Notes.app/Contents/Resources"
+    );
+    assert mac.endswith("/Library/Application Support/org.example.notes");
+    unnamed = default_data_dir("Darwin", "", "Notes", "/x");
+    assert unnamed.endswith("/Library/Application Support/Notes");
+    assert default_data_dir("Linux", "org.example.notes", "Notes", "/apps/notes")
+        == "/apps/notes";
 }

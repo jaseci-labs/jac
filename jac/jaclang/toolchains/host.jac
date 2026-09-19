@@ -26,6 +26,17 @@ def executable(name: str) -> str {
     return name + ".exe" if os.name == "nt" else name;
 }
 
+def shared_library_name(stem: str) -> str {
+    system = platform.system();
+    if system == "Darwin" {
+        return "lib" + stem + ".dylib";
+    }
+    if system == "Windows" {
+        return stem + ".dll";
+    }
+    return "lib" + stem + ".so";
+}
+
 def run_step(
     label: str,
     command: list[str],

@@ -598,7 +598,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
     } finally {
         self._leave_function(state);
     }
-    desc = nd.description.lit_value if nd.description else "";
+    desc = str(nd.description.lit_value) if nd.description else "";
     self.native_tests.append((test_name, symbol, desc, line));
     self.has_native_code = True;
 
@@ -718,7 +718,12 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         }
         for (i, arg) in enumerate(fn.args) {
             if i < len(param_names) {
-                self._bind_function_parameter(param_names[i], arg);
+                self._bind_function_parameter(
+                    param_names[i],
+                    arg,
+                    rebound=i < len(sig_params)
+                        and bool(sig_params[i].name?.sym?.param_rebound)
+                );
                 continue;
             }
             (cap_name, cap_mode, _cap_type) = captures[i - len(param_names)];
@@ -779,16 +784,18 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
         return;
     }
     sibs: list[uni.Ability] = [];
+    sib_names: dict[uni.Ability, str] = {};
     for _st in _fbody {
         if (
             isinstance(_st, uni.Ability)
-            and _st.name_ref
+            and _st.name_ref is not None
             and (_st.signature is None or isinstance(_st.signature, uni.FuncSignature))
             and not self._ability_is_generator(_st)
             and not _st?.type_params
             and _st not in self._nested_predecl
         ) {
             sibs.append(_st);
+            sib_names[_st] = _st.name_ref.sym_name;
         }
     }
     _found_self = False;
@@ -801,10 +808,9 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
     if not _found_self {
         return;
     }
-    _sib_by_name: dict[str, uni.Ability] = {};
-    for s in sibs {
-        _sib_by_name[s.name_ref.sym_name] = s;
-    }
+    _sib_by_name: dict[str, uni.Ability] = {
+        name: sib for (sib, name) in sib_names.items()
+    };
     _cap_order: dict[uni.Ability, list[str]] = {};
     _cap_modes: dict[uni.Ability, dict[str, str]] = {};
     _sib_refs: dict[uni.Ability, set[str]] = {};
@@ -866,8 +872,8 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
         }
     }
     for s in sibs {
-        _sname = s.name_ref.sym_name;
-        _ssig = s.signature;
+        _sname = sib_names[s];
+        _ssig = s.signature if isinstance(s.signature, uni.FuncSignature) else None;
 
         _defer = False;
         _cap_types: dict[str, ir.Type] = {};
@@ -1100,12 +1106,18 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
 
         frame_size = (gc.cursor + 7) // 8 * 8;
         frame_slots = list(gc.slots);
+        frame_bindings = {
+            binding
+            for binding in self.local_vars
+            if binding not in self.nogc_no_free_vars
+                and binding not in self.closure_cell_handles
+        };
         cell_inits = list(gc.cell_inits);
     } finally {
         self._leave_function(state);
     }
 
-    drop_fn = self._emit_generator_drop_fn(_sym_base, frame_slots);
+    drop_fn = self._emit_generator_drop_fn(_sym_base, frame_slots, frame_bindings);
 
     state = self._enter_function(func);
     try {
@@ -1139,9 +1151,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
                 p_raw, ptype.as_pointer(), name=f"gen.ps.{pname}"
             );
             self.builder.store(arg, p_slot);
-            if isinstance(ptype, ir.PointerType) {
-                self._emit_rc_retain(arg, op="gen_param", loc=name);
-            }
+            self._emit_take_ref(arg, op="gen_param", loc=name);
         }
 
         _ci32 = ir.IntType(32);
@@ -1164,9 +1174,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
             if param_index is not None {
                 _parg = func.args[param_index];
                 self.builder.store(_parg, _cvalp);
-                if isinstance(_vt, ir.PointerType) {
-                    self._emit_rc_retain(_parg, op="gen_param", loc=name);
-                }
+                self._emit_take_ref(_parg, op="gen_param", loc=name);
             }
             _ch_raw = self.builder.gep(
                 raw, [ir.Constant(i64, ci.slot_off)], name=f"gen.cellh.{ci.name}"
@@ -1189,7 +1197,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
 }
 
 impl NaIRGenPass._emit_generator_drop_fn(
-    name: str, slots: list[tuple[str, int, ir.Type]]
+    name: str, slots: list[tuple[str, int, ir.Type]], bindings: set[str]
 ) -> ir.Function {
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
@@ -1202,10 +1210,8 @@ impl NaIRGenPass._emit_generator_drop_fn(
     state = self._enter_function(fn);
     try {
         for (sname, soff, stype) in slots {
-            if not isinstance(stype, ir.PointerType) {
-                continue;
-            }
-            if isinstance(stype.pointee, ir.FunctionType) {
+            if not self._is_reference_type(stype)
+                or (not isinstance(stype, ir.PointerType) and sname not in bindings) {
                 continue;
             }
             s_raw = self.builder.gep(
@@ -1214,9 +1220,13 @@ impl NaIRGenPass._emit_generator_drop_fn(
             s_slot = self.builder.bitcast(
                 s_raw, stype.as_pointer(), name=f"drop.s.{sname}"
             );
-            val = self.builder.load(s_slot, name=f"drop.v.{sname}");
-            self._emit_rc_release_typed(val, op="gen_drop", loc=name);
-            self.builder.store(ir.Constant(stype, None), s_slot);
+            if isinstance(stype, ir.PointerType) {
+                val = self.builder.load(s_slot, name=f"drop.v.{sname}");
+                self._emit_rc_release_typed(val, op="gen_drop", loc=name);
+                self.builder.store(ir.Constant(stype, None), s_slot);
+            } else {
+                self._emit_slot_clear(s_slot, op="gen_drop", loc=name);
+            }
         }
         self.builder.ret_void();
     } finally {
@@ -1245,7 +1255,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     self.func_symtab["__jac_glob_init"] = func;
     state = self._enter_function(func);
     try {
-        if self?._global_init_nodes and self._global_init_nodes {
+        if self._global_init_nodes {
             self._scan_closure_escapes(
                 self.module, [t[1] for t in self._global_init_nodes]
             );
@@ -1271,7 +1281,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
         self.builder.ret_void();
         self.builder.position_at_end(_gi_run);
         self.builder.store(ir.Constant(_i8, 1), _gi_done_gv);
-        if self?._global_init_nodes and self._global_init_nodes {
+        if self._global_init_nodes {
             for init_tuple in self._global_init_nodes {
                 var_name = init_tuple[0];
                 init_node = init_tuple[1];
@@ -1308,7 +1318,12 @@ impl NaIRGenPass._emit_glob_init_func -> None {
                 if init_val is not None {
                     global_var = self.global_vars.get(var_name);
                     if global_var is not None {
-                        coerced = self._coerce_type(init_val, var_type);
+                        coerced = self._coerce_container_element(init_val, var_type)
+                            if var_type == self.jacval_type
+                            else self._coerce_type(init_val, var_type);
+                        if not self._is_raw_int_ptr(coerced) {
+                            self._emit_take_ref(coerced, op="glob_init");
+                        }
                         self.builder.store(coerced, global_var);
                     }
                 }

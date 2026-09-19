@@ -19,8 +19,8 @@ ignore it.
 on a snapshot of `BASELINE_REF`, in alternating rounds, so the delta belongs to
 the branch rather than to the machine or to the order the two were run in. The
 snapshot is a `git archive` of the pinned ref plus symlinks to this checkout's
-gitignored build artifacts, cached under the jac cache root and reused across
-runs. It is opt-in (`JAC_TIMING_BASELINE=1`) because the first run bootstraps a
+gitignored build artifacts, cached under the system temp directory and reused
+across runs. It is opt-in (`JAC_TIMING_BASELINE=1`) because the first run bootstraps a
 second compiler from scratch, which takes minutes and belongs in a deliberate
 measurement, never in `jac test`.
 
@@ -34,7 +34,7 @@ The chess binary also carries a correctness floor instead of a time floor. A
 lower time bound would only catch a binary that exits early, and the printed
 result tally catches that directly and without a threshold to argue about.
 
-Every report is written to `<jac cache root>/timing/*.txt` as well as printed,
+Every report is written to `<temp dir>/jac-compile-timing/timing/*.txt` as well as printed,
 because `jac test` offers no way to turn its capture off and a report that
 only survives a failure is not much of a report. Since the runner came in-house
 (#8287) that file is the only durable copy, so read the tables there.
@@ -49,8 +49,15 @@ import tempfile;
 import time;
 
 import from pathlib { Path }
-import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
-import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+import from tests.support { cache_env, jac_command, JAC_ROOT, TESTS_DIR }
+import from jaclang.cache.home { cache_home }
+
+"""Durable scratch for the reports and the baseline snapshot: the system temp
+directory, never the user's jac cache (a test artifact there would be an
+unmanaged bucket for `jac cache` to report and reclaim)."""
+def scratch_dir -> Path {
+    return Path(tempfile.gettempdir()) / "jac-compile-timing";
+}
 
 glob PROBE: str = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "compile_timing_probe.jac"
@@ -131,19 +138,19 @@ glob _PROBE_CACHE: dict[str, list[dict[str, any]]] = {};
 
 """This checkout's cache root, which is also where the probe subprocess writes."""
 def head_cache -> str {
-    return os.environ.get("XDG_CACHE_HOME", "") or str(Path.home() / ".cache");
+    return str(cache_home());
 }
 
 """Print a report and leave a copy on disk, because `jac test` swallows stdout.
 
 `jac test` exposes no `--capture=no`, so a passing report would otherwise be
 invisible -- and a report nobody can read is not a report. The file under the
-jac cache root is the copy that survives, and since the runner came in-house
+system temp directory is the copy that survives, and since the runner came in-house
 (#8287) it is the only one.
 """
 def publish(name: str, text: str) {
     print(text);
-    out_dir = get_jir_cache_dir().parent / "timing";
+    out_dir = scratch_dir() / "timing";
     out_dir.mkdir(parents=True, exist_ok=True);
     (out_dir / f"{name}.txt").write_text(text + "\n", encoding="utf-8");
 }
@@ -154,7 +161,7 @@ def _probe_env(cache: str, tree_dir: str) -> dict[str, str] {
     env.pop("JAC_NO_DEV_SOURCE", None);
     env["JAC_DEV_SOURCE"] = os.path.abspath(tree_dir);
     env["JAC_NO_PRECOMPILE"] = "1";
-    env["XDG_CACHE_HOME"] = cache;
+    env.update(cache_env(cache));
     return env;
 }
 
@@ -232,11 +239,11 @@ def paired_rows(
 
 `git archive` rather than `git worktree add`: the snapshot is a read-only
 measurement subject that must not register itself in the repo the suite is
-running out of. Cached by ref under the jac cache root, so only the first run
+running out of. Cached by ref under the system temp directory, so only the first run
 pays the extraction and the baseline compiler's bootstrap.
 """
 def baseline_tree -> str {
-    dest = get_jir_cache_dir().parent / "timing-baseline" / BASELINE_REF[:12];
+    dest = scratch_dir() / "timing-baseline" / BASELINE_REF[:12];
     tree = dest / "jac";
     if (tree / "jac.toml").is_file() {
         return str(tree);

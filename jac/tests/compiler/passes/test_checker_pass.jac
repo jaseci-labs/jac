@@ -696,6 +696,35 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              []
          ),
          ("expr_narrowing", "checker", "checker_expr_narrowing.jac", 0, True, []),
+         # `x == "literal"` narrows like the int, float and bool forms; `!=`
+         # rules out one value, never the whole class.
+         (
+             "literal_eq_narrowing",
+             "checker",
+             "checker_literal_eq_narrowing.jac",
+             1,
+             True,
+             [(0, "Cannot return Literal[\"a\"] | NoneType, expected NoneType")]
+         ),
+         (
+             "literal_ne_does_not_over_narrow",
+             "checker",
+             "checker_literal_ne_no_over_narrow.jac",
+             10,
+             True,
+             [
+                 (0, "Cannot assign str | NoneType to NoneType"),
+                 (1, "Cannot assign int | NoneType to NoneType"),
+                 (2, "Cannot assign float | NoneType to NoneType"),
+                 (3, "Cannot assign bool | NoneType to NoneType"),
+                 (4, "Cannot assign str | NoneType to NoneType"),
+                 (5, "Cannot assign int | NoneType to NoneType"),
+                 (6, "Cannot assign float | NoneType to NoneType"),
+                 (7, "Cannot assign bool | NoneType to NoneType"),
+                 (8, "Cannot assign Literal[\"a\"] | Literal[\"b\"] to NoneType"),
+                 (9, "Cannot assign str | NoneType to Literal[\"node\"]")
+             ]
+         ),
          (
              "reassign_in_branch",
              "checker",
@@ -2039,6 +2068,73 @@ test "lambda_param_inferred_from_expected_callable" {
         w1051
     )}:\n"
         + "\n---\n".join(w.pretty_print() for w in w1051);
+}
+
+test "overload_rejection_help" {
+    # Each E1054 must name why the overload was rejected, keyed by assigned name.
+    path = os.path.join(CHECKER_FIXTURES, "checker_overload_rejection_help.jac");
+    program = JacProgram();
+    program.compile(path);
+
+    with open(path) as fixture {
+        line_of = {
+            row.strip().split(" = ")[0]: no
+            for (no, row) in enumerate(fixture.read().splitlines(), start=1)
+            if " = " in row
+        };
+    }
+    by_line = {
+        e.loc.first_line: (e.help_text or "")
+        for e in program.errors_had
+        if e.code and e.code.code == "E1054"
+    };
+    assert len(by_line) == 14 , f"Expected 14 E1054s, got {len(by_line)}:\n{by_line}";
+    helps = {name: by_line.get(line, "") for (name, line) in line_of.items()};
+
+    expected = {
+        "a": ["returns 'dict[str, int]', but must return"],
+        "b": ["takes 2 parameter(s), but a callable taking 1 is expected"],
+        "g": ["returns 'dict[str, int]', but must return"],
+        "h": ["accepts 'int' for parameter 'n', but will be called with 'str'"],
+        "i": ["lambda parameter 'd' has no annotation", "`lambda (d: <type>) { ... }`"],
+        "c": ["The candidates expect:", "overload 2: 'Callable[[int]"],
+        "d": ["Every overload expects 'SupportsIndex'"],
+        "e": ["parameter 'iterable'"],
+        "j": ["parameter 'base'"],
+        "k": [
+            "The closest candidates expect:",
+            " | ...'",
+            "overloads 3, 6:",
+            "and 1 more"
+        ],
+        "m": ["parameter 'reverse'", "The closest match, overload 2, expects 'bool'"],
+        "n": [
+            "parameter 'repl'",
+            "The closest match, overload 1, expects 'str | Callable[[Match[str]], str]'"
+        ]
+    };
+    for (name, needles) in expected.items() {
+        for needle in needles {
+            assert needle in helps[name] , f"{name} help lacks {needle!r}:\n{helps[
+                name
+            ]}";
+        }
+    }
+    # Arity-compatible callbacks with optional params are blamed on the return type.
+    assert "parameter(s)" not in helps["g"] , helps["g"];
+    # Filtered overloads must not be described as every overload.
+    assert "Every overload" not in helps["m"] + helps["n"] , f"{helps['m']}\n{helps[
+        'n'
+    ]}";
+    assert "expects 'str'" in helps["p"] and "Literal" not in helps["p"] , helps["p"];
+    assert helps["f"] == "" and line_of["f"] in by_line , f"Unknown keyword should stay bare:\n{helps[
+        'f'
+    ]}";
+    for text in helps.values() {
+        for row in text.splitlines() {
+            assert len(row) <= 240 , f"Help line too long ({len(row)}):\n{row}";
+        }
+    }
 }
 
 test "lambda_param_unresolved_requires_annotation" {
@@ -5280,6 +5376,19 @@ test "bare_list_flow_inference" {
         assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
             target
         )}";
+    }
+}
+
+test "final_reassignment_errors" {
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_final_reassignment.jac"), options=NO_TC
+    );
+    errors = [e.pretty_print() for e in program.errors_had];
+    names = ["SHARED_RATE", "x", "x", "y", "y", "label", "LIMIT"];
+    assert len(errors) == len(names) , "\n---\n".join(errors);
+    for (err, name) in zip(errors, names) {
+        assert "E1135" in err and f"'{name}'" in err , err;
     }
 }
 

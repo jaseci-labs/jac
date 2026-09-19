@@ -11,7 +11,6 @@
 #include "pycore_symtable.h"
 #include "pycore_pystate.h"
 #include "pycore_interp.h"
-#include "marshal.h"
 #include "errcode.h"
 #include "jac_compile.h"
 #include <unistd.h>
@@ -19,66 +18,24 @@
 
 /* These entry points are Jac-generated native code. No replacement bytecode
  * or Python callback is loaded by this adapter. String ABI arguments carry
- * owner, data, and explicit UTF-8 byte length. */
-extern PyObject *jacpy_exception_type(const char *);
+ * owner, data, and explicit UTF-8 byte length. Object results are new
+ * references; zero means the Python exception is already set. */
 extern void *jac_str_new(const char *, int64_t);
 extern void jac_release(void *);
-extern void *jacpy_compile_object(uint64_t, uint64_t, void *, const char *, int64_t, int64_t, int64_t, int64_t);
-extern int64_t jacpy_result_kind(void *);
-extern int64_t jacpy_packet_size(void *);
-extern int64_t jacpy_packet_byte(void *, int64_t);
-extern uint64_t jacpy_ast_result(void *);
-extern uint64_t jacpy_take_value(void *);
+extern uint64_t jacpy_compile_object(uint64_t, uint64_t, void *, const char *, int64_t, int64_t, int64_t, int64_t);
 extern uint64_t jacpy_mangle(uint64_t, uint64_t);
 extern int64_t jacpy_stack_effect(int64_t, int64_t, int64_t);
 
-PyAPI_FUNC(int) _PyJac_CompilerBridgeVersion(void) { return 3; }
-PyAPI_FUNC(int) _PyJac_SymtableBridgeVersion(void) { return 2; }
-PyAPI_FUNC(int) _PyJac_TokenizeBridgeVersion(void) { return 2; }
+PyAPI_FUNC(int) _PyJac_CompilerBridgeVersion(void) { return 4; }
+PyAPI_FUNC(int) _PyJac_SymtableBridgeVersion(void) { return 3; }
+PyAPI_FUNC(int) _PyJac_TokenizeBridgeVersion(void) { return 3; }
 PyAPI_FUNC(int) _PyJac_CompilerRequired(void) { return 1; }
 
-static PyObject *jac_result(void *result)
+static PyObject *jac_object(uint64_t handle)
 {
-    if (result == NULL) {
-        if (!PyErr_Occurred()) PyErr_SetString(PyExc_SystemError,"native JacPython returned no result");
-        return NULL;
-    }
-    int64_t kind=jacpy_result_kind(result);
-    PyObject *value=NULL;
-    if (kind == 1) value=(PyObject *)(uintptr_t)jacpy_ast_result(result);
-    else if (kind == 2) value=(PyObject *)(uintptr_t)jacpy_take_value(result);
-    else if (kind == 0) {
-        int64_t size=jacpy_packet_size(result);
-        if (size < 0) PyErr_SetString(PyExc_SystemError,"native JacPython could not encode its result");
-        else {
-            char *data=PyMem_Malloc((size_t)size);
-            if (data == NULL) PyErr_NoMemory();
-            else {
-                for (int64_t i=0;i<size;i++) data[i]=(char)jacpy_packet_byte(result,i);
-                value=PyMarshal_ReadObjectFromString(data,(Py_ssize_t)size);
-                PyMem_Free(data);
-            }
-        }
-    }
-    jac_release(result);
-    if (value == NULL) {
-        if (!PyErr_Occurred()) PyErr_SetString(PyExc_SystemError,"native JacPython failed without an exception");
-        return NULL;
-    }
-    if (PyTuple_Check(value) && PyTuple_GET_SIZE(value) == 8) {
-        /* Native Jac has classified and positioned the diagnostic. Construct
-         * the corresponding retained CPython exception value at the ABI. */
-        const char *name=PyUnicode_AsUTF8(PyTuple_GET_ITEM(value,0));
-        PyObject *type=name ? jacpy_exception_type(name) : NULL;
-        if (type == NULL) { Py_DECREF(value); if (!PyErr_Occurred()) PyErr_SetString(PyExc_SystemError,"unknown native diagnostic"); return NULL; }
-        if (PyObject_IsSubclass(type,PyExc_SyntaxError) > 0) {
-            PyObject *location=PyTuple_GetSlice(value,2,8);
-            PyObject *args=location ? PyTuple_Pack(2,PyTuple_GET_ITEM(value,1),location) : NULL;
-            Py_XDECREF(location);
-            if (args) { PyErr_SetObject(type,args); Py_DECREF(args); }
-        } else PyErr_SetObject(type,PyTuple_GET_ITEM(value,1));
-        Py_DECREF(value); return NULL;
-    }
+    PyObject *value = (PyObject *)(uintptr_t)handle;
+    if (value == NULL && !PyErr_Occurred())
+        PyErr_SetString(PyExc_SystemError, "native JacPython failed without an exception");
     return value;
 }
 
@@ -101,10 +58,10 @@ _PyJac_CompileObject(PyObject *source, PyObject *filename, int start,
     if (optimize < 0) optimize=_PyInterpreterState_GetConfig(_PyInterpreterState_GET())->optimization_level;
     void *mode_string=jac_str_new(mode,(int64_t)strlen(mode));
     if (mode_string == NULL) return PyErr_NoMemory();
-    void *native=jacpy_compile_object((uint64_t)(uintptr_t)source,(uint64_t)(uintptr_t)filename,
+    uint64_t native=jacpy_compile_object((uint64_t)(uintptr_t)source,(uint64_t)(uintptr_t)filename,
         mode_string,(const char *)mode_string,(int64_t)strlen(mode),optimize,options,feature);
     jac_release(mode_string);
-    PyObject *result=jac_result(native);
+    PyObject *result=jac_object(native);
     if (result == NULL) return NULL;
     if (!(options & PyCF_ONLY_AST) && !PyCode_Check(result)) {
         Py_DECREF(result); PyErr_SetString(PyExc_TypeError,"JacPython compiler must return a code object"); return NULL;
@@ -295,7 +252,7 @@ _Py_Mangle(PyObject *privateobj, PyObject *name)
 {
     /* A missing/non-string private value means there is no class context. */
     if (privateobj == NULL || !PyUnicode_Check(privateobj)) return Py_NewRef(name);
-    return (PyObject *)(uintptr_t)jacpy_mangle((uint64_t)(uintptr_t)privateobj,(uint64_t)(uintptr_t)name);
+    return jac_object(jacpy_mangle((uint64_t)(uintptr_t)privateobj,(uint64_t)(uintptr_t)name));
 }
 
 int
@@ -313,7 +270,7 @@ char *
 _PyTokenizer_FindEncodingFilename(int fd, PyObject *filename)
 {
     extern uint64_t jacpy_fd_encoding(int64_t);
-    PyObject *result=(PyObject *)(uintptr_t)jacpy_fd_encoding(fd);
+    PyObject *result=jac_object(jacpy_fd_encoding(fd));
     if (result == NULL) return NULL;
     PyObject *encoding=result;
     Py_ssize_t length;
@@ -330,20 +287,20 @@ _PyTokenizer_FindEncodingFilename(int fd, PyObject *filename)
 
 static PyObject *jac_symtable(PyObject *self, PyObject *args)
 {
-    extern void *jacpy_symtable_object(uint64_t,uint64_t,void *,const char *,int64_t);
+    extern uint64_t jacpy_symtable_object(uint64_t,uint64_t,void *,const char *,int64_t);
     PyObject *source,*filename;
     const char *mode;
     if (!PyArg_ParseTuple(args,"OO&s:symtable",&source,PyUnicode_FSDecoder,&filename,&mode)) return NULL;
     int64_t length=(int64_t)strlen(mode);
     void *text=jac_str_new(mode,length);
     if (!text) { Py_DECREF(filename); return PyErr_NoMemory(); }
-    void *native=jacpy_symtable_object((uint64_t)(uintptr_t)source,(uint64_t)(uintptr_t)filename,text,(const char *)text,length);
+    uint64_t native=jacpy_symtable_object((uint64_t)(uintptr_t)source,(uint64_t)(uintptr_t)filename,text,(const char *)text,length);
     jac_release(text); Py_DECREF(filename);
-    return jac_result(native);
+    return jac_object(native);
 }
 /* Retained Python iterator value around the native Jac stream state. */
 extern void *jacpy_token_create(uint64_t, void *, const char *, int64_t, _Bool, _Bool);
-extern void *jacpy_token_step(void *);
+extern uint64_t jacpy_token_step(void *);
 extern void jacpy_token_dispose(void *);
 typedef struct { PyObject_HEAD PyObject *reader; void *iterator; } JacTokenizer;
 static int jac_token_traverse(PyObject *object, visitproc visit, void *arg) {
@@ -361,9 +318,8 @@ static void jac_token_dealloc(PyObject *object) {
 static PyObject *jac_token_next(PyObject *object) {
     JacTokenizer *self=(JacTokenizer *)object;
     if (self->iterator == NULL) return NULL;
-    void *result=jacpy_token_step(self->iterator);
-    if (result && jacpy_result_kind(result) == 3) { jac_release(result); return NULL; }
-    return jac_result(result);
+    /* NULL without an exception ends the stream. */
+    return (PyObject *)(uintptr_t)jacpy_token_step(self->iterator);
 }
 static PyType_Slot jac_token_slots[] = {
     {Py_tp_dealloc,jac_token_dealloc},{Py_tp_traverse,jac_token_traverse},

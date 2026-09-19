@@ -53,7 +53,7 @@ jobs:
           zig build $DTARGET --summary all
           zig-out/bin/jac -c '
           import ast, ctypes, sys
-          assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+          assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
           assert not hasattr(sys, "_jacpython_compile")
           assert not hasattr(sys, "_jacpython_image")
           assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42
@@ -69,14 +69,14 @@ jobs:
           if [ -x zig-out/bin/jac ]; then
             lldb --batch -o 'settings set target.disable-aslr false' -o run \
               -k 'thread backtrace all' -k 'image list -o -f' \
-              -- zig-out/bin/jac -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+              -- zig-out/bin/jac -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
           elif [ -x .python-build/jacpython/macos-aarch64/python/install/bin/python3.14 ]; then
             cold_cache=$(mktemp -d)
             lldb --batch -o 'settings set target.disable-aslr false' -o run \
               -k 'thread backtrace all' -k 'image list -o -f' \
               -- .python-build/jacpython/macos-aarch64/python/install/bin/python3.14 \
               -I -S -B -X faulthandler -X "pycache_prefix=$cold_cache" -OO \
-              -c 'import ast, ctypes, encodings, sys; assert eval("6 * 7") == 42; assert isinstance(ast.parse("x=1"), ast.Module); assert encodings.search_function.__code__.co_filename == encodings.__file__; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3'
+              -c 'import ast, ctypes, encodings, sys; assert eval("6 * 7") == 42; assert isinstance(ast.parse("x=1"), ast.Module); assert encodings.search_function.__code__.co_filename == encodings.__file__; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4'
           fi
       - uses: actions/upload-artifact@v4
         if: failure()

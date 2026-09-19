@@ -1,0 +1,17 @@
+# Sources that can change compilation, relative to jaclang/.
+# Shared by JIR, the JacPython bootstrap, and CI. Directories include only
+# .jac/.py sources, excluding hidden directories, tests/, test/, __pycache__,
+# and *.test.* files. Keep producing-compiler identity in every artifact key.
+__init__.py
+jac0.py
+bootstrap_manifest.py
+meta_importer.py
+jac0core
+compiler
+runtime
+lib
+cli/cli_boot.jac
+project
+dist/precompile_bytecode.jac
+dist/source/build.jac
+dist/source/run.jac

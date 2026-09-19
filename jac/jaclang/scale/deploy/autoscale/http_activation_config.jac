@@ -88,6 +88,10 @@ def build_http_activation_spec(
         );
     }
 
+    import from jaclang.scale.runtime.context.service_routing { k8s_service_dns_host }
+    internal_host = k8s_service_dns_host(service_name, namespace);
+    rules.append(HTTPRoutingRule(hosts=[internal_host]));
+
     placeholder = None;
     has_placeholder = (
         "cold_start_body" in cfg

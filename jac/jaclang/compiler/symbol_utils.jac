@@ -14,7 +14,6 @@ import from jaclang.compiler.frontend.unitree {
     Enum as UniEnum,
     Expr,
     FuncCall,
-    FuncSignature,
     GlobalVars,
     HasVar,
     Import,
@@ -25,12 +24,12 @@ import from jaclang.compiler.frontend.unitree {
     Name,
     NameAtom,
     ParamVar,
-    SubTag,
     Symbol,
     Token,
     UniNode,
     UniScopeNode,
-    ability_of_symbol
+    ability_of_symbol,
+    in_type_position
 }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
@@ -419,23 +418,6 @@ def report_client_bare_import_uses(reporter: any, mod: Module) {
     }
 }
 
-def _in_annotation_position(nm: Name, stop: UniNode) -> bool {
-    cur = nm.parent;
-    while cur is not None and cur is not stop {
-        if isinstance(cur, SubTag) {
-            return True;
-        }
-        if isinstance(cur, ParamVar) {
-            return False;
-        }
-        if isinstance(cur, FuncSignature) {
-            return True;
-        }
-        cur = cur.parent;
-    }
-    return False;
-}
-
 def _bare_py_import_bindings(mod: Module) -> dict[str, tuple[ModuleItem, Import]] {
     out: dict[str, tuple[ModuleItem, Import]] = {};
     for imp in mod.get_all_sub_nodes(Import) {
@@ -511,7 +493,7 @@ def _report_client_bare_import_uses(reporter: any, mod: Module, stmt: UniNode) {
         if _shadows_bare_import(nm) {
             continue;
         }
-        if _in_annotation_position(nm, stmt) {
+        if in_type_position(nm, include_subscripts=False) {
             continue;
         }
         (item, imp) = hit;
@@ -643,7 +625,7 @@ def client_value_ref_targets(
             if (isinstance(par, KWPair) and par.key is nm) {
                 continue;
             }
-            if _in_annotation_position(nm, stmt) {
+            if in_type_position(nm, include_subscripts=False) {
                 continue;
             }
             sym = nm.sym;
@@ -715,7 +697,7 @@ def _import_used_as_value(mod: Module, imp: Import) -> bool {
             if (isinstance(par, AtomTrailer) and par.is_attr and par.right is nm) {
                 continue;
             }
-            if _in_annotation_position(nm, stmt) {
+            if in_type_position(nm, include_subscripts=False) {
                 continue;
             }
             return True;

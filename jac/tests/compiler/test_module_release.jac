@@ -5,6 +5,7 @@ handle registry), so once `JacProgram.release_module` evicts a module from
 the hub, the node/edge cycle must be reclaimable by the garbage collector.
 This is the memory contract per-module release relies on.
 """
+import from jaclang.compiler.frontend.roles { Kid }
 import gc;
 import weakref;
 import from jaclang.compiler.driver.program { JacProgram }
@@ -17,8 +18,8 @@ def _probe(prog: JacProgram) -> tuple[any, ...] {
     return (
         mod.loc.mod_path,
         weakref.ref(mod),
-        weakref.ref(mod.kid[0]),
-        weakref.ref(getattr(mod.kid[0], "__jac__")),
+        weakref.ref([mod->:Kid:->][0]),
+        weakref.ref(getattr([mod->:Kid:->][0], "__jac__")),
 
     );
 }
@@ -35,7 +36,7 @@ test "released module trees are garbage collectable" {
 def _compile_probe(prog: JacProgram) -> tuple[any, ...] {
     mod = prog.compile(file_path="release_closure_probe.jac", use_str=SRC);
     assert mod is not None;
-    return (weakref.ref(mod), weakref.ref(mod.kid[0]));
+    return (weakref.ref(mod), weakref.ref([mod->:Kid:->][0]));
 }
 
 test "a fully compiled module is collectable after release_compile_closure" {

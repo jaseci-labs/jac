@@ -676,6 +676,9 @@ impl BaseLLM._compact_messages(
 
 impl BaseLLM.ainvoke(mt_run: MTRuntime) -> any {
     import asyncio;
+    if image_resp_kind(mt_run.resp_type) {
+        return await asyncio.to_thread(self.dispatch_image, mt_run);
+    }
     logging_stream = mt_run.stream and mt_run.call_params.get("logging", False);
     no_tools = len(mt_run.tools) == 0;
     if not mt_run.stream and no_tools and not logging_stream {
@@ -694,6 +697,9 @@ impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
 }
 
 impl BaseLLM.invoke(mt_run: MTRuntime) -> any {
+    if image_resp_kind(mt_run.resp_type) {
+        return self.dispatch_image(mt_run);
+    }
     handler = mt_run.call_params.get("stream_handler");
     if mt_run.stream and handler is not None and callable(handler) {
         return self._invoke_with_handler(mt_run, cast(Callable, handler));
@@ -1256,13 +1262,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
     params = {
         "model": self.model_name,
         "api_key": self.api_key or None,
-        "api_base": (
-            self.config.get("base_url")
-            or self.config.get("host")
-            or self.config.get("api_base")
-            or self.api_base
-            or _model_config.get("base_url")
-        ),
+        "api_base": self._resolve_api_base(),
         "messages": messages,
         "tools": tools,
         "response_format": mt_run.get_output_schema(),
@@ -1828,6 +1828,127 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str] {
     if len(mt_run._usage_history) == usage_base {
         _record_usage(mt_run, {}, stream_model, finish_reason=finish_reason);
     }
+}
+
+glob _IMAGE_CALL_PARAMS: tuple[str, ...] = (
+         "n",
+         "size",
+         "quality",
+         "style",
+         "response_format",
+         "user",
+         "timeout"
+     );
+
+
+def _image_prompt(mt_run: MTRuntime) -> str {
+    parts: list[str] = [];
+
+    def keep(text: str) {
+        trimmed = text.strip();
+        if trimmed {
+            parts.append(trimmed);
+        }
+    }
+    for msg in mt_run.get_msg_list() {
+        role = msg.get("role") if isinstance(msg, dict) else msg?.role;
+        if str(role) not in ("system", "user") {
+            continue;
+        }
+        content = msg.get("content") if isinstance(msg, dict) else msg?.content;
+        if isinstance(content, str) {
+            keep(content);
+            continue;
+        }
+        for block in content or [] {
+            if not isinstance(block, dict) {
+                continue;
+            }
+            if block.get("type") != "text" {
+                raise ConfigurationError(
+                    "An Image return type is served by an image-generation call, "
+                    "which takes text only, so the "
+                    f"{block.get('type')} argument of this call cannot be sent. "
+                    "byLLM has no image-editing path yet."
+                );
+            }
+            keep(str(block.get("text") or ""));
+        }
+    }
+    return "\n".join(parts);
+}
+
+
+def _images_from_response(response: dict[str, any]) -> list[Image] {
+    images: list[Image] = [];
+    for raw in response.get("data") or [] {
+        item = raw if isinstance(raw, dict) else response_dict(raw);
+        encoded = item.get("b64_json");
+        if encoded {
+            images.append(Image(url=base64.b64decode(str(encoded))));
+            continue;
+        }
+        url = item.get("url");
+        if url {
+            images.append(Image(url=str(url)));
+            continue;
+        }
+        raise OutputConversionError(
+            f"An image result carried neither b64_json nor url: {sorted(item)}"
+        );
+    }
+    if not images {
+        raise OutputConversionError("The model returned no image for this call.");
+    }
+    return images;
+}
+
+
+impl BaseLLM.dispatch_image(mt_run: MTRuntime) -> object {
+    params: dict[str, any] = {
+        "model": self.model_name,
+        "prompt": _image_prompt(mt_run),
+        "response_format": "b64_json"
+    };
+    api_base = self._resolve_api_base();
+    if api_base {
+        params["api_base"] = api_base;
+    }
+    for key in _IMAGE_CALL_PARAMS {
+        value = mt_run.call_params.get(key, self.call_params.get(key));
+        if value is not None {
+            params[key] = value;
+        }
+    }
+    self.log_info(f"Calling image model: {self.model_name} with params: {params}");
+    response = self.model_call_image(params);
+    _record_usage(
+        mt_run,
+        response.get("usage") or {},
+        str(response.get("model") or self.model_name),
+        call_kind="image_generation"
+    );
+    images = _images_from_response(response);
+    return images if image_resp_kind(mt_run.resp_type) == "many" else images[0];
+}
+
+
+impl BaseLLM._resolve_api_base -> str {
+    return (
+        self.config.get("base_url")
+        or self.config.get("host")
+        or self.config.get("api_base")
+        or self.api_base
+        or _model_config.get("base_url")
+        or ""
+    );
+}
+
+impl BaseLLM.model_call_image(params: dict[str, any]) -> dict[str, any] {
+    raise NotImplementedError(
+        f"{type(self).__name__} cannot generate images: implement "
+        "model_call_image to serve an Image return type."
+    );
 }
 
 impl BaseLLM.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {

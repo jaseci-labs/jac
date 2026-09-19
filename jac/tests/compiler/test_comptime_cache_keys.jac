@@ -29,14 +29,9 @@ import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
 import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }
+import from tests.support { cache_env }
 
-glob CACHE_HOME_VARS: tuple[any, ...] = (
-         "HOME",
-         "USERPROFILE",
-         "XDG_CACHE_HOME",
-         "LOCALAPPDATA"
-     ),
-     SPEC_SRC: str = "obj Spec {\n    has name: str,\n        help: str;\n}\n",
+glob SPEC_SRC: str = "obj Spec {\n    has name: str,\n        help: str;\n}\n",
      OTHER_SRC: str = "def helper -> int {\n    return 1;\n}\n",
      OTHER_SRC_EDIT: str = "def helper -> int {\n    return 2;\n}\n",
      CONSUMER_SRC: str = (
@@ -51,7 +46,7 @@ glob CACHE_HOME_VARS: tuple[any, ...] = (
      );
 
 def _isolated(tmp: str) -> any {
-    env: dict[str, str] = {var: tmp for var in CACHE_HOME_VARS};
+    env = cache_env(os.path.join(tmp, "cache"));
     env["JAC_REBUILD"] = "";
     env["JAC_NO_PRECOMPILE"] = "";
     return patch.dict(os.environ, env);

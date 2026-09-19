@@ -31,7 +31,7 @@ def _install_importer() -> None:
 # --- Lazy compiler/runtime bootstrap -------------------------------------
 # The compiler and runtime.runtime were previously imported eagerly here, which
 # pulled them (and the parser/codegen pipeline) in on every `import jaclang`
-# and defeated the lazy CLI fast paths -- `jac --version` / `--help` / `purge`
+# and defeated the lazy CLI fast paths -- `jac --version` / `--help`
 # must stay light. They now load on first attribute access (PEP 562) so plain
 # `import jaclang` stays cheap while `from jaclang import JacRuntime`,
 # `import jaclang.compiler`, etc. keep working unchanged.

@@ -2157,8 +2157,11 @@ test "jac check shows warnings for files with warnings only" {
     # Should exit with code 0 (warnings don't fail the check)
     assert result == 0 , "check should exit with code 0 for warnings only";
 
-    # Should show FAILURES section with warnings
-    assert "FAILURES" in combined , "should display FAILURES section for warnings";
+    # Should show a WARNINGS section, not a FAILURES banner, since the file passed
+    assert "WARNINGS" in combined , "should display WARNINGS section for warnings";
+    assert "FAILURES" not in combined , (
+        "a passing file's warnings must not be reported under a FAILURES banner"
+    );
 
     # Should show the warning messages
     assert "defined but never used" in combined , "should display unused variable warnings";
@@ -2166,8 +2169,51 @@ test "jac check shows warnings for files with warnings only" {
     # Should show warning indicators
     assert "warning" in combined.lower() , "should indicate warnings in output";
 
-    # File should appear in summary with warnings count
+    # File should appear in the ok progress line and in the warnings section
+    assert "ok" in combined , "should show ok status for a passing file with warnings";
     assert "warnings_only.jac" in combined , "should show file path in output";
+}
+
+test "jac check on a mixed run never lists a passing file under failed files" {
+    captured_stdout = io.StringIO();
+    captured_stderr = io.StringIO();
+    old_stdout = sys.stdout;
+    old_stderr = sys.stderr;
+    sys.stdout = captured_stdout;
+    sys.stderr = captured_stderr;
+
+    try {
+        result = analysis.check(
+            [fixture_path("test_syntax_err.jac"), fixture_path("warnings_only.jac")]
+        );
+        stdout = captured_stdout.getvalue();
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    combined = stdout + stderr;
+
+    # A real error anywhere in the run still fails it overall.
+    assert result == 1 , "check should exit with code 1 when any file has errors";
+
+    # Both sections should appear: the erroring file under FAILURES, the
+    # passing-with-warnings file under its own WARNINGS section.
+    assert "FAILURES" in combined , "should display FAILURES section for the erroring file";
+    assert "WARNINGS" in combined , "should display WARNINGS section for the passing file";
+    assert "failed files" in combined , "should display failed files summary";
+
+    # print_failed_summary's line format is "<path> - N error(s), M warning(s)";
+    # only entries in failed_results ever produce it. A passing file sharing
+    # this run with a real failure must never produce that line -- the other
+    # half of the bug this fix corrects, previously unasserted.
+    assert "warnings_only.jac - " not in combined , (
+        "a passing file's warnings must never be reported under failed files"
+    );
+    assert "test_syntax_err.jac - " in combined , (
+        "the erroring file must still appear in the failed files summary"
+    );
 }
 
 test "jac check nowarn flag suppresses warnings" {

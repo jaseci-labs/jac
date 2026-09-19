@@ -25,7 +25,9 @@ enum builtin_kind {
 }
 
 import from c {
-    def jacpy_dict_memory(value: u64) -> i64;  def jacpy_dict_items(
+    def jacpy_bytes_copy_to(value: u64, target: bytes, size: i64);  def jacpy_bytes_from_data(
+        data: bytes, size: i64
+    ) -> u64;  def jacpy_dict_memory(value: u64) -> i64;  def jacpy_dict_items(
         value: u64
     ) -> u64;  def jacpy_unicode_intern(value: u64) -> u64;  def jacpy_exception_context(
         error: u64, cause: u64
@@ -269,21 +271,16 @@ def object_error(kind: str, message: str) {
 }
 
 
-def read_buffer(handle: u64) -> list[int] {
-    return [
-        int(jacpy_buffer_byte(handle, i64(i)))
-        for i in range(int(jacpy_buffer_size(handle)))
-    ];
+# The payload of a retained bytes-like value, copied into Jac storage.
+def read_buffer(handle: u64) -> bytes {
+    size = jacpy_bytes_length(handle);
+    data = b"\x00" * int(size);
+    jacpy_bytes_copy_to(handle, data, size);
+    return data;
 }
 
-def write_buffer(data: list[int]) -> u64 {
-    handle = jacpy_buffer_new(i64(len(data)));
-    if handle != 0 {
-        for i in range(len(data)) {
-            jacpy_buffer_set(handle, i64(i), i64(data[i]));
-        }
-    }
-    return handle;
+def write_buffer(data: bytes) -> u64 {
+    return jacpy_bytes_from_data(data, i64(len(data)));
 }
 
 
@@ -309,7 +306,7 @@ def text_object(value: str) -> u64 {
 def text_value(value: u64) -> str {
     buffer = required(jacpy_utf8(value));
     try {
-        return bytes(read_buffer(buffer)).decode("utf-8", "surrogatepass");
+        return read_buffer(buffer).decode("utf-8", "surrogatepass");
     } finally {
         jacpy_release(buffer);
     }

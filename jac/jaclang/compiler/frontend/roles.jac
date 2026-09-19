@@ -1,6 +1,8 @@
+import type from jaclang.compiler.frontend.unitree { UniNode }
+
 edge Role {}
 
-edge Kid {}
+edge Kid: UniNode --> UniNode {}
 
 edge ImplOf {}
 

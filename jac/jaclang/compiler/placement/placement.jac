@@ -4,7 +4,7 @@ import from collections.abc { Callable }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 
-glob PLACEMENT_SCHEMA: int = 1,
+glob PLACEMENT_SCHEMA: int = 2,
      PLACEMENT_SV_SIGNAL_NODES: tuple[tuple[str, type], ...] = (
          ("TypedCtxBlock", uni.TypedCtxBlock),
          ("PyInlineCode", uni.PyInlineCode),
@@ -83,7 +83,7 @@ obj ElementSummary {
 }
 
 obj PlacementSummary {
-    has schema: int = 1,
+    has schema: int = PLACEMENT_SCHEMA,
         mod_path: str = '',
         decided: str = '',
         anchors: list[str] = [],
@@ -293,19 +293,9 @@ def _element_reqs(stmt: uni.UniNode) -> list[list[str]] {
         } elif eco == 'virtual' {
             reqs.append(['NPM', 'virtual @jac import']);
         } elif eco == 'py' {
-            npm_dep = False;
-            if isinstance(stmt, uni.Import) and stmt.from_loc is not None {
-                import from jaclang.compiler.placement.placement_pins {
-                    is_client_npm_import
-                }
-                mod_path = stmt.loc.mod_path or '';
-                npm_dep = is_client_npm_import(stmt.from_loc.dot_path_str, mod_path);
-            }
-            if npm_dep {
-                reqs.append(['NPM', 'npm dependency']);
-            } else {
-                reqs.append(['PY', 'python import']);
-            }
+            import from jaclang.compiler.driver.boundary_classify { classify_import }
+            verdict = classify_import(stmt);
+            reqs.append(['NPM' if verdict.world == 'npm' else 'PY', verdict.rule]);
         }
         return reqs;
     }
@@ -524,7 +514,7 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
             break;
         }
     }
-    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
+    import from jaclang.compiler.driver.boundary_classify { classify_import }
     for imp in module.get_all_sub_nodes(uni.Import) {
         if imp.has_clib_decls or imp.is_virtual_jac or imp.has_string_path {
             continue;
@@ -532,20 +522,7 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
         if imp.is_comptime {
             continue;
         }
-        if imp.from_loc is None {
-            reasons.append('plain python import');
-            break;
-        }
-        if is_client_npm_import(imp.from_loc.dot_path_str, mod_path) {
-            continue;
-        }
-        resolved = None;
-        try {
-            resolved = imp.from_loc.resolve_relative_path();
-        } except Exception {
-            resolved = None;
-        }
-        if not isinstance(resolved, str) or not resolved.endswith('.jac') {
+        if classify_import(imp).world == 'py' {
             reasons.append('plain python import');
             break;
         }

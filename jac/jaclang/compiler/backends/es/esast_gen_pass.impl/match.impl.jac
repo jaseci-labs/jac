@@ -38,6 +38,10 @@ impl EsastGenPass.exit_match_stmt with uni.MatchStmt exit {
     self.match_seq += 1;
     subj_name = f"__jac_match_subj_{self.match_seq}";
     flag_name = f"__jac_matched_{self.match_seq}";
+    break_label = self._match_break_labels.get(id(here));
+    if break_label is None {
+        break_label = '';
+    }
     stmts: list[es.Statement] = [];
     stmts.append(
         self.sync_loc(
@@ -135,6 +139,21 @@ impl EsastGenPass.exit_match_stmt with uni.MatchStmt exit {
                 jac_node=mcase
             );
         }
+        if break_label != '' {
+            inner = [
+                self.sync_loc(
+                    es.LabeledStatement(
+                        label=self.sync_loc(
+                            es.Identifier(name=break_label), jac_node=mcase
+                        ),
+                        body=self.sync_loc(
+                            es.BlockStatement(body=inner), jac_node=mcase
+                        )
+                    ),
+                    jac_node=mcase
+                )
+            ];
+        }
         stmts.append(
             self.sync_loc(
                 es.IfStatement(
@@ -147,6 +166,7 @@ impl EsastGenPass.exit_match_stmt with uni.MatchStmt exit {
             )
         );
     }
+    self._match_break_labels.pop(id(here), None);
     here.gen.es_ast = stmts;
 }
 

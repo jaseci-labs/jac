@@ -1,6 +1,5 @@
 import json;
 import os;
-import sys;
 import ctypes;
 import queue;
 import threading;
@@ -8,14 +7,6 @@ import from pathlib { Path }
 import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from webview_lib { libwebview_name }
 
-
-def _binary_dir -> str {
-    if os.path.isfile("/proc/self/exe") {
-        return os.path.dirname(os.path.realpath("/proc/self/exe"));
-    }
-
-    return os.path.dirname(os.path.abspath(sys.argv[0]));
-}
 
 obj PluginHost {
     has plugins: dict[str, DesktopPlugin],
@@ -36,29 +27,28 @@ obj PluginHost {
         self.plugins[name] = plugin;
     }
 
-    def setup(wv_handle: int) {
+    """Bind the plugins to the webview; `library_dir` holds the host's shared
+    libraries, which is the directory of the running executable."""
+    def setup(wv_handle: int, library_dir: str) {
         self._wv_handle = wv_handle;
-        exe_dir = _binary_dir();
-        lib_name = libwebview_name();
-        lib_path = os.path.join(exe_dir, lib_name);
-        self._wv_lib = ctypes.CDLL(lib_path);
+        self._wv_lib = ctypes.CDLL(os.path.join(library_dir, libwebview_name()));
 
         for plugin in self.plugins.values() {
             plugin.setup(wv_handle, self._wv_lib);
         }
     }
 
-    def setup_cef {
+    def setup_cef(library_dir: str) {
         self._cef = True;
-        self._cef_lib = self._load_cef_lib();
+        self._cef_lib = self._load_cef_lib(library_dir);
         for plugin in self.plugins.values() {
             plugin.setup_cef(self);
         }
     }
 
-    def _load_cef_lib -> (ctypes.CDLL | None) {
+    def _load_cef_lib(library_dir: str) -> (ctypes.CDLL | None) {
         try {
-            lib_path = os.path.join(_binary_dir(), "libcef_dispatch.so");
+            lib_path = os.path.join(library_dir, "libcef_dispatch.so");
             lib = ctypes.CDLL(lib_path);
 
             title_argtypes: list[type[ctypes.c_char_p]] = [ctypes.c_char_p];

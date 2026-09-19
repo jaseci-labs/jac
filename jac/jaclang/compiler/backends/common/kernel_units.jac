@@ -50,8 +50,8 @@ def kernel_unit_owner(path: str, module_name: str = "") -> str {
 }
 
 def _units_dir -> str {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
-    d = os.path.join(str(get_jir_cache_dir()), "kernel_units");
+    import from jaclang.cache.registry { bucket }
+    d = str(bucket("jir-kernel-units").path());
     os.makedirs(d, exist_ok=True);
     return d;
 }
@@ -121,33 +121,18 @@ def _atomic_write(path: str, text: str) {
     os.replace(tmp, path);
 }
 
-glob _RETIRED_UNITS: set[str] = set();
+def live_unit_digests -> set[str] {
+    import hashlib;
+    digests: set[str] = set();
+    for parts in [OSP_CORE_PARTS, FMT_KERNEL_PARTS, REGION_KERNEL_PARTS] {
+        digests.add(hashlib.sha256(unit_source(parts).encode()).hexdigest()[:16]);
+    }
+    return digests;
+}
 
-def _retire_superseded_artifacts(name: str, keep: str) {
-    import glob as _g;
-    import time;
-    import from jaclang.compiler.driver.jir { generation_ttl_seconds }
-    if name in _RETIRED_UNITS {
-        return;
-    }
-    _RETIRED_UNITS.add(name);
-    ttl = generation_ttl_seconds();
-    if ttl <= 0.0 {
-        return;
-    }
-    cutoff = time.time() - ttl;
-    live = f"{name}.{keep}.";
-    for path in _g.`glob(os.path.join(_units_dir(), f"{name}.*")) {
-        base = os.path.basename(path);
-        if base.endswith(".jac") or base.startswith(live) {
-            continue;
-        }
-        try {
-            if os.path.getmtime(path) < cutoff {
-                os.remove(path);
-            }
-        } except OSError {}
-    }
+def retire_stale_units(force: bool = False) -> bool {
+    import from jaclang.cache.registry { maybe_sweep }
+    return maybe_sweep("jir-kernel-units", keep=live_unit_digests(), force=force);
 }
 
 def kernel_unit_path(name: str, parts: list[str]) -> str {
@@ -157,8 +142,8 @@ def kernel_unit_path(name: str, parts: list[str]) -> str {
     path = os.path.join(_units_dir(), f"{name}.{digest}.jac");
     if not os.path.exists(path) {
         _atomic_write(path, source);
+        retire_stale_units();
     }
-    _retire_superseded_artifacts(name, digest);
     return path;
 }
 
@@ -212,12 +197,19 @@ def load_unit_artifact(unit_path: str, kind: str, fingerprint: str) -> (str | No
 
 def store_unit_artifact(unit_path: str, kind: str, fingerprint: str, text: str) {
     import glob as _g;
+    import time;
+    import from jaclang.cache.registry { bucket }
     path = unit_artifact_path(unit_path, kind, fingerprint);
     stem = os.path.splitext(os.path.basename(unit_path))[0];
+
+    ttl = bucket("jir-kernel-units").policy.ttl_seconds();
+    cutoff = time.time() - ttl;
     for stale in _g.`glob(os.path.join(_units_dir(), f"{stem}.*.{kind}")) {
-        if stale != path {
+        if stale != path and ttl > 0.0 {
             try {
-                os.remove(stale);
+                if os.path.getmtime(stale) < cutoff {
+                    os.remove(stale);
+                }
             } except Exception {}
         }
     }
@@ -229,6 +221,7 @@ def store_unit_artifact(unit_path: str, kind: str, fingerprint: str, text: str) 
         }
     } except Exception {}
     _atomic_write(path, text);
+    retire_stale_units();
 }
 
 def es_pass_fingerprint -> str {

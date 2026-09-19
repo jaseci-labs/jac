@@ -478,7 +478,7 @@ impl Parser.parse_module -> Module {
         if nid not in seen {
             seen[nid] = True;
             node_list.append(nd);
-            for child in nd.kid {
+            for child in [nd->:Kid:->] {
                 walk.append(child);
             }
         }
@@ -1276,7 +1276,7 @@ impl Parser.parse_atomic_chain -> Expr {
                     lparen_tok = call_kid[1];
                     rparen_tok = call_kid[len(call_kid) - 1];
                     new_gc_kid: list[UniNode] = [lparen_tok];
-                    for c in first_arg.kid {
+                    for c in [first_arg->:Kid:->] {
                         new_gc_kid.append(c);
                     }
                     new_gc_kid.append(rparen_tok);
@@ -5726,7 +5726,8 @@ impl Parser.parse_accessor -> Ability {
 
     signature: FuncSignature | None = self.parse_func_signature();
     has_sig_content = not (
-        len(signature.kid) == 1 and isinstance(signature.kid[0], EmptyToken)
+        len([signature->:Kid:->]) == 1
+        and isinstance([signature->:Kid:->][0], EmptyToken)
     );
     if not has_sig_content {
         signature = None;

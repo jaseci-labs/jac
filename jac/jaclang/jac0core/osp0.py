@@ -248,7 +248,7 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
     """
     if edge is not None and dir != 3 and not edges_only and not isinstance(origin, list):
         me = origin.__jac__
-        if not me.persistent and (
+        if not me._persistent and (
             not me.edges or (not me.mixed and _light_edge_types.get(edge))
         ):
             subs = _edge_subtypes.get(edge)
@@ -258,7 +258,7 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
                 if dir == 2:
                     d = me.out_light
                     lst = d.get(edge) if d else None
-                    return list(lst) if lst else []
+                    return lst.copy() if lst else []
                 d = me.in_light
                 lst = d.get(edge) if d else None
                 if not lst:
@@ -326,8 +326,8 @@ _scope_of: Callable | None = None
 def visit0(walker: Any, expr: Any, insert_loc: int = -1) -> bool:
     """`visit expr;` from a walker or a node ability.
 
-    A list of node/edge archetypes (the compiler's `visit :0: [k for k in
-    self.kid ...]`) is written onto the walker's own queue: the kernel
+    A list of node/edge archetypes (the compiler's `visit :0:
+    [self->:Kid:->]`) is written onto the walker's own queue: the kernel
     registers the live scope per walker at spawn, so the common `visit` and
     `visit :0:` forms need neither the context lookup nor a kernel call.
     Anything else (a GraphQuery, a single archetype, a foreign object, a

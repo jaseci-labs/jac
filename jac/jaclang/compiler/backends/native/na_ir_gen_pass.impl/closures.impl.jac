@@ -102,6 +102,19 @@ impl NaIRGenPass._closure_struct_of(val_type: ir.Type) -> (str | None) {
     return None;
 }
 
+impl NaIRGenPass._callable_signature_of(val_type: ir.Type) -> (ir.FunctionType | None) {
+    closure_name = self._closure_struct_of(val_type);
+    if closure_name is not None {
+        (_, signature) = self.closure_sig_registry[closure_name];
+        return ir.FunctionType(signature.return_type, list(signature.args)[:-1]);
+    }
+    if isinstance(val_type, ir.PointerType)
+        and isinstance(val_type.pointee, ir.FunctionType) {
+        return val_type.pointee;
+    }
+    return None;
+}
+
 impl NaIRGenPass._closure_cell_struct(slot_type: ir.Type) -> str {
     key = str(slot_type);
     _existing = self._closure_cell_structs.get(key);

@@ -881,6 +881,30 @@ impl JacGraph.refs(
     slc: (slice | None) = None,
     lazy: bool = False
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {
+    if not isinstance(path, GraphQuery) {
+        path = GraphQuery(path, hops=[QHop(dir=EdgeDir.OUT.value)]);
+    }
+    if slc is not None and path.slc is None {
+        path.slc = slc;
+    }
+    if len(path.origin) == 1
+        and len(path.hops) == 1
+        and not path.edges_only
+        and not path.order {
+        query_hop = path.hops[0];
+        anchor = path.origin[0]?.__jac__;
+        if isinstance(anchor, NodeAnchor)
+            and not query_hop.epreds
+            and query_hop.only is None
+            and light_hop_answers(anchor, query_hop.`edge) {
+            found = light_hop(anchor, query_hop.dir, query_hop.`edge, False);
+            found = filter_query_nodes(found, query_hop.nd, query_hop.preds);
+            if path.limit is not None {
+                return found[path.offset:path.offset + path.limit];
+            }
+            return found[path.slc] if path.slc is not None else found;
+        }
+    }
     import from jaclang.runtime.graph_walk {
         access_gated,
         has_persistent_origin,
@@ -888,12 +912,6 @@ impl JacGraph.refs(
         origin_anchors,
         walk_edges,
         walk_nodes
-    }
-    if not isinstance(path, GraphQuery) {
-        path = GraphQuery(path, hops=[QHop(dir=EdgeDir.OUT.value)]);
-    }
-    if slc is not None and path.slc is None {
-        path.slc = slc;
     }
     origins = origin_anchors(path);
     ctx = JacRuntimeInterface.peek_context();
@@ -1037,10 +1055,18 @@ impl JacGraph.connect(
 }
 
 impl JacGraph.hop(
-    origin: any, dir: int, edge_type: (type | None) = None, edges_only: bool = False
+    origin: any,
+    dir: int,
+    edge_type: (type | None) = None,
+    edges_only: bool = False,
+    nd: (type | tuple[type, ...] | None) = None,
+    preds: (list[QPred] | None) = None,
+    from_visit: bool = False
 ) -> list[any] {
-    if not isinstance(origin, `list) {
+    if not isinstance(origin, `list)
+        and (not edges_only or (nd is None and not preds and not from_visit)) {
         anchor = origin.__jac__;
+        found: (list[any] | None) = None;
         if (
             edge_type is not None
             and dir != 3
@@ -1055,19 +1081,28 @@ impl JacGraph.hop(
             if dir == 2 {
                 d = anchor.out_light;
                 lst = d.get(edge_type) if d else None;
-                return `list(lst) if lst else [];
+                found = `list(lst) if lst else [];
+            } else {
+                d = anchor.in_light;
+                lst = d.get(edge_type) if d else None;
+                found = _deref(lst) if lst else [];
             }
-            d = anchor.in_light;
-            lst = d.get(edge_type) if d else None;
-            return _deref(lst) if lst else [];
+        } elif light_hop_answers(anchor, edge_type) {
+            found = light_hop(anchor, dir, edge_type, edges_only);
         }
-        if light_hop_answers(anchor, edge_type) {
-            return light_hop(anchor, dir, edge_type, edges_only);
+        if found is not None {
+            return filter_query_nodes(found, nd, preds or [])
+                if nd is not None or preds
+                else found;
         }
     }
-    return JacRuntimeInterface.refs(
-        GraphQuery(origin, hops=[QHop(dir=dir, `edge=edge_type)], edges_only=edges_only)
+    query = GraphQuery(
+        origin,
+        hops=[QHop(dir=dir, `edge=edge_type, nd=nd, preds=preds or [])],
+        edges_only=edges_only
     );
+    query.from_visit = from_visit;
+    return JacRuntimeInterface.refs(query);
 }
 
 impl JacGraph.clear_edges(

@@ -10,6 +10,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
     TypeFlags,
+    PropertyCallbacks,
     PropertyDefinition,
     jacpy_binding_allocate
 }
@@ -378,11 +379,15 @@ glob:priv scanner_type = TypeDefinition(
              clear=scanner_clear,
              traverse=scanner_traverse
          ),
-         [PropertyDefinition("strict", scanner_property, 0, doc="strict")]
+         [
+             PropertyDefinition(
+                 "strict", PropertyCallbacks(read=scanner_property), 0, doc="strict"
+             )
+         ]
              + [
                  PropertyDefinition(
                      scanner_names[i],
-                     scanner_property,
+                     PropertyCallbacks(read=scanner_property),
                      u64(i + 1),
                      doc=scanner_names[i]
                  ) for i in range(5)
@@ -402,12 +407,25 @@ glob:priv scanner_type = TypeDefinition(
          ),
          [
              PropertyDefinition(
-                 encoder_names[i], encoder_property, u64(i), doc=encoder_names[i]
+                 encoder_names[i],
+                 PropertyCallbacks(read=encoder_property),
+                 u64(i),
+                 doc=encoder_names[i]
              ) for i in range(6)
          ]
              + [
-                 PropertyDefinition("sort_keys", encoder_property, 6, doc="sort_keys"),
-                 PropertyDefinition("skipkeys", encoder_property, 7, doc="skipkeys")
+                 PropertyDefinition(
+                     "sort_keys",
+                     PropertyCallbacks(read=encoder_property),
+                     6,
+                     doc="sort_keys"
+                 ),
+                 PropertyDefinition(
+                     "skipkeys",
+                     PropertyCallbacks(read=encoder_property),
+                     7,
+                     doc="skipkeys"
+                 )
              ]
      );
 

@@ -347,19 +347,30 @@ The HTTP concerns stay on the declaration, so the body remains an ordinary
 #### Limits
 
 - **Functions only.** A walker can `report` any number of times, so there is
-  no single value to project onto a raw body. `envelope=False` on a walker
-  has no effect.
-- **Text only.** A `bytes` return is stringified by `Serializer` before the
-  response layer sees it, so binary payloads are not yet expressible. Serve
-  those as static assets.
+  no single value to project onto a raw body. `envelope=False` and `produces`
+  on a walker have no effect, and the decorator logs a warning saying so at
+  import time. A route that needs a raw body has to be a `def`.
 - **Errors keep the envelope.** A failing call still returns the JSON error
   envelope with its usual status code, so a 500 is never mistaken for a valid
   payload of the declared content type. Callers should check the status, and
   `curl -f` does this for you.
 
-Omitting `produces` yields `text/plain; charset=utf-8`. A non-`str` return is
-JSON-encoded into the body, but still without the envelope around it -- useful
-when a third-party client expects a bare JSON document:
+A `bytes` return is written to the body unchanged, so a raw endpoint can hand
+the browser a file -- a spreadsheet, an image, a PDF -- without base64 in a JSON
+field:
+
+```jac
+@restspec(method=HTTPMethod.GET, path="/report.xlsx",
+          produces="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          envelope=False)
+def :pub report_xlsx() -> bytes {
+    return build_workbook();   # body is exactly these bytes
+}
+```
+
+Omitting `produces` yields `text/plain; charset=utf-8`. A non-`str`, non-`bytes`
+return is JSON-encoded into the body, but still without the envelope around it
+-- useful when a third-party client expects a bare JSON document:
 
 ```jac
 @restspec(method=HTTPMethod.GET, path="/.well-known/jac.json",
@@ -1785,7 +1796,7 @@ An un-awaited cross-app walker spawn is a message, not a call. It is written to 
 - **Dedupe window.** The key also dedupes the _sender_: within `DELIVERED_TTL_S` (24h) an identical un-awaited spawn -- same app, walker and arguments, hence the same default key -- is the same message and is dropped, whether the first copy is still pending or already delivered. To spawn twice on purpose, pass a distinct `idempotency_key=`. Delivered rows older than the TTL and expired receiver keys are pruned by every worker pass, after which the same spawn is a new message.
 - **Receiver scoping.** The receiving endpoint scopes a key by the authenticated caller, the provider app and the walker or function before it looks the key up or remembers it, so one client cannot replay another client's cached response by sending its key. The wire header is the raw key; scoping is internal.
 - **Retries and leases.** Exponential backoff per attempt, capped; after `DEFAULT_MAX_ATTEMPTS` (8) the entry is marked `dead`. A worker claims a row with a `LEASE_S` (60s) lease; if the process dies mid-delivery the lease expires and the row is retried, with `attempts` counting the lost try. `outbox.dead_letters()` lists dead rows, which are kept for inspection until `outbox.purge_dead(older_than_s=...)` removes them; `outbox.deliver_pending()` runs one delivery pass by hand (tests, cron) and `outbox.prune()` one pruning pass.
-- **Storage.** The project's Postgres store when one is configured (tables `jac_outbox`, `jac_outbox_seen`), else `.jac/data/outbox.sqlite`. Enqueue rides the caller's request transaction; the worker and the receiver's key bookkeeping use their own connection, committed on their own, so a remember that happens after the walker's scope has closed never leaves a request transaction open.
+- **Storage.** The project's Postgres store when one is configured (tables `jac_outbox` and `jac_outbox_seen`, part of the store's base schema and created with the rest of it), else `.jac/data/outbox.sqlite`. Enqueue rides the caller's request transaction; the worker and the receiver's key bookkeeping use their own connection, committed on their own, so a remember that happens after the walker's scope has closed never leaves a request transaction open.
 
 ```jac
 import from jaclang.server { outbox }

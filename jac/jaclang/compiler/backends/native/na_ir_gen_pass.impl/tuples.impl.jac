@@ -28,19 +28,21 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         if v is None {
             return None;
         }
-        v = self._str_norm(v);
+        v = self._str_materialize(v)
+            if _in_return and self._elem_kind(v.type) == "str"
+            else self._str_norm(v);
 
         if declared_fields {
             v = self._coerce_container_element(v, declared_fields[len(elem_vals)]);
         }
 
         _owns = self._is_owned(v);
-        if _in_return and isinstance(v.type, ir.PointerType) and not _owns {
+        if _in_return and self._is_reference_type(v.type) and not _owns {
             is_named_local = isinstance(val, uni.Name)
                 and val.sym_name in self.local_vars
                 and val.sym_name not in self.param_vars;
             if not is_named_local {
-                self._emit_rc_retain(v, op="return_tuple_elem");
+                self._emit_take_ref(v, op="return_tuple_elem");
                 self._mark_owned(v);
                 _owns = True;
             } elif _ret_direct {
@@ -133,49 +135,33 @@ impl NaIRGenPass._codegen_tuple_unpack(
             and _elem_owned[i];
         if var_name in self.local_vars {
             alloca = self.local_vars[var_name];
-            _slot_ty = alloca.type;
-            if not isinstance(_slot_ty, ir.PointerType) {
+            if not isinstance(alloca.type, ir.PointerType) {
                 return False;
             }
-            stored = self._coerce_type(elem_val, _slot_ty.pointee);
-            new_ref = self._rc_slot_ref(stored) if rc_ok else None;
-            if new_ref is not None {
-                if not moved {
-                    self._emit_rc_retain(new_ref, op="unpack", loc="");
-                }
-                old_ref = self._rc_slot_ref(
-                    self.builder.load(alloca, name=f"unpack.{i}.old")
-                );
-                if old_ref is not None {
-                    pending_old.append(old_ref);
-                }
-            }
-            self.builder.store(stored, alloca);
+            slot_type = alloca.pointee_type;
+            stored = self._coerce_container_element(elem_val, slot_type)
+                if slot_type == self.jacval_type
+                else self._coerce_type(elem_val, slot_type);
         } else {
             alloca = self._entry_alloca(elem_val.type, var_name);
-            new_ref = self._rc_slot_ref(elem_val) if rc_ok else None;
-            if new_ref is not None {
-                _saved_block = self.builder.block;
-                self.builder.position_after(alloca);
-                self.builder.store(ir.Constant(elem_val.type, None), alloca);
-                self.builder.position_at_end(_saved_block);
-                if not moved {
-                    self._emit_rc_retain(new_ref, op="unpack", loc="");
-                }
-                old_ref = self._rc_slot_ref(
-                    self.builder.load(alloca, name=f"unpack.{i}.old")
-                );
-                if old_ref is not None {
-                    pending_old.append(old_ref);
-                }
-            }
-            self.builder.store(elem_val, alloca);
             self.local_vars[var_name] = alloca;
+            stored = elem_val;
         }
+        if rc_ok
+            and self._is_reference_type(alloca.pointee_type)
+            and self._gc_mode() != "none" {
+            if moved or self._is_owned(stored) {
+                self.rc_ops_elided += 1;
+            } else {
+                self._emit_take_ref(stored, op="unpack");
+            }
+            pending_old.append(self.builder.load(alloca, name=f"unpack.{i}.old"));
+        }
+        self.builder.store(stored, alloca);
     }
 
     for old_val in pending_old {
-        self._emit_rc_release_simple(old_val, op="unpack_old", loc="");
+        self._emit_slot_release(old_val, op="unpack_old");
     }
     if (not is_value) and self._is_owned(_orig_tv) {
         self._emit_rc_release_simple(_orig_tv, op="unpack_box", loc="");
@@ -207,39 +193,12 @@ impl NaIRGenPass._sizeof_llvm(ty: ir.Type) -> ir.Value {
     return self.builder.ptrtoint(size_gep, i64, name="sizeof");
 }
 
-impl NaIRGenPass._rc_slot_ref(val: ir.Value) -> (ir.Value | None) {
-    if self?.jacval_type and val.type == self.jacval_type {
-        return None;
-    }
-    if isinstance(val.type, ir.PointerType) {
-        if isinstance(val.type.pointee, ir.FunctionType) {
-            return None;
-        }
-        return val;
-    }
-    if self._opt_ptr_payload_of(val.type) is not None {
-        return self.builder.extract_value(val, 1, name="rc.opt.pv");
-    }
-    return None;
-}
-
-impl NaIRGenPass._tuple_managed_fields(
-    struct_type: ir.LiteralStructType
-) -> list[tuple[int, bool]] {
-    out: list[tuple[int, bool]] = [];
-    for (i, ety) in enumerate(struct_type.elements) {
-        if self?.jacval_type and ety == self.jacval_type {
-            continue;
-        }
-        if isinstance(ety, ir.PointerType) {
-            if not isinstance(ety.pointee, ir.FunctionType) {
-                out.append((i, False));
-            }
-        } elif self._opt_ptr_payload_of(ety) is not None {
-            out.append((i, True));
-        }
-    }
-    return out;
+impl NaIRGenPass._tuple_managed_fields(struct_type: ir.LiteralStructType) -> list[int] {
+    return [
+        index
+        for (index, element) in enumerate(struct_type.elements)
+        if self._is_reference_type(element)
+    ];
 }
 
 impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
@@ -253,15 +212,15 @@ impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     );
     if _rc_box {
         _owned = val?.na_tuple_owned;
-        for (_bi, _b_opt) in _managed {
+        for _bi in _managed {
             if _owned is not None and _bi < len(_owned) and _owned[_bi] {
                 continue;
             }
-            _bfv = self.builder.extract_value(val, _bi, name=f"box.f{_bi}");
-            if _b_opt {
-                _bfv = self.builder.extract_value(_bfv, 1, name=f"box.f{_bi}.pv");
-            }
-            self._emit_rc_retain(_bfv, op="box_field", loc=loc);
+            self._emit_take_ref(
+                self.builder.extract_value(val, _bi, name=f"box.f{_bi}"),
+                op="box_field",
+                loc=loc
+            );
         }
     }
 

@@ -1,4 +1,7 @@
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+import from jaclang.compiler.frontend.python.syntax_error {
+    syntax_failure,
+    source_line_bytes
+}
 # P0.7 parser action helpers (PLAN.md).
 #
 # Lowers CPython grammar actions (_PyAST_*, _PyPegen_*) into ast_nodes.jac
@@ -2304,23 +2307,7 @@ def interpolation_text(
         end_col = format.col_offset;
     }
     if not p.source_lines {
-        data = p.tok.source.encode("utf-8");
-        start_byte = 0;
-        end_byte = 0;
-        while end_byte < len(data) {
-            byte = data[end_byte];
-            end_byte += 1;
-            if byte == 13 and end_byte < len(data) and data[end_byte] == 10 {
-                end_byte += 1;
-            }
-            if byte == 10 or byte == 13 {
-                p.source_lines.append(data[start_byte:end_byte]);
-                start_byte = end_byte;
-            }
-        }
-        if start_byte < len(data) {
-            p.source_lines.append(data[start_byte:]);
-        }
+        p.source_lines = source_line_bytes(p.tok.data);
     }
     lines = p.source_lines;
     text = b"";

@@ -10,9 +10,9 @@ obj syntax_failure(Exception) {
         kind: str = "SyntaxError";
 }
 
-def split_source_lines(source: str) -> list[str] {
-    data = source.encode("utf-8", "surrogatepass");
-    lines: list[str] = [];
+# Lines keep their terminators; CR, LF and CRLF each end a line.
+def source_line_bytes(data: bytes) -> list[bytes] {
+    lines: list[bytes] = [];
     start = 0;
     index = 0;
     while index < len(data) {
@@ -25,13 +25,21 @@ def split_source_lines(source: str) -> list[str] {
         } elif byte != 10 {
             continue;
         }
-        lines.append(data[start:index].decode("utf-8", "surrogatepass"));
+        lines.append(data[start:index]);
         start = index;
     }
     if start < len(data) {
-        lines.append(data[start:].decode("utf-8", "surrogatepass"));
+        lines.append(data[start:]);
     }
     return lines;
+}
+
+def decode_source_lines(data: bytes) -> list[str] {
+    return [line.decode("utf-8", "surrogatepass") for line in source_line_bytes(data)];
+}
+
+def split_source_lines(source: str) -> list[str] {
+    return decode_source_lines(source.encode("utf-8", "surrogatepass"));
 }
 
 def source_character_column(source: str, byte_column: int) -> int {

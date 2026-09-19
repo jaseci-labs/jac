@@ -45,7 +45,7 @@ assert ctypes.pythonapi.PyInitConfig_Create
 mode = sys.argv[1] if len(sys.argv) > 1 else "jacpython"
 assert mode in ("jacpython", "host"), mode
 if mode == "jacpython":
-    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
 try:
     required_compiler = ctypes.pythonapi._PyJac_CompilerRequired
 except AttributeError:
@@ -598,7 +598,7 @@ assert _heapq.heappop([1, 2, 3]) == 1
     _heapq.heapify_max(heap)
     assert [_heapq.heappop_max(heap) for _ in range(4)] == [4, 3, 2, 1]
     assert required_compiler() == 1
-    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
     for retired in ("_jacpython_compile", "_jacpython_symtable", "_jacpython_tokenize", "_jacpython_image", "_jacpython_code"):
         assert not hasattr(sys, retired), retired
     assert not any(name.startswith("_jacpython_seed") for name in sys.modules)
@@ -760,7 +760,7 @@ else:
                                   "ok = eval('6 * 7') == 42 and isinstance(ast.parse('x=1'), ast.Module); "
                                   "ok = ok and encodings.search_function.__code__.co_filename == encodings.__file__; "
                                   "ok = ok and not hasattr(sys, '_jacpython_compile'); "
-                                  "sys.exit(0 if ok and ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3 else 1)"],
+                                  "sys.exit(0 if ok and ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4 else 1)"],
                 check=True,
             )
     # Global definitions need stable module-level identities for pickle.

@@ -125,7 +125,7 @@ walker:pub WalkerStream {
 
 import from typing { Generator }
 # Streaming function test
-def:pub FunctionStream(count: int = 3) -> None {
+def:pub FunctionStream(count: int = 3) {
     import time;
     def stream -> Generator {
         for i in range(count) {
@@ -201,6 +201,65 @@ walker:pub PublicFileUpload {
             "content_type": self.attachment.content_type,
             "size": self.attachment.size,
             "public": True
+        };
+    }
+}
+
+"""Walker that takes several files under one field name."""
+walker UploadManyFiles {
+    has files: list[UploadFile];
+
+    can process with Root entry {
+        report {"filenames": [f.filename for f in self.files]};
+    }
+}
+
+"""Walker whose file list may be empty."""
+walker UploadManyFilesOptional {
+    has files: list[UploadFile] = [];
+
+    can process with Root entry {
+        report {"count": len(self.files)};
+    }
+}
+
+"""Walker whose single file may be absent."""
+walker UploadOptionalFile {
+    has attachment: UploadFile | None = None;
+
+    can process with Root entry {
+        report {
+            "filename": self.attachment.filename
+                if self.attachment is not None
+                else None
+        };
+    }
+}
+
+"""Walker whose field takes a file or a plain string."""
+walker UploadNoteOrText {
+    has note: UploadFile | str;
+
+    can process with Root entry {
+        report {
+            "kind": "file" if isinstance(self.note, UploadFile) else "text",
+            "value": self.note.filename
+                if isinstance(self.note, UploadFile)
+                else self.note
+        };
+    }
+}
+
+"""Walker whose field takes several files or a plain string."""
+walker UploadDocsOrText {
+    has docs: list[UploadFile] | str;
+
+    can process with Root entry {
+        report {
+            "files": [f.filename for f in self.docs]
+                if isinstance(self.docs, list)
+                else None,
+            "text": self.docs if isinstance(self.docs, str) else None
         };
     }
 }
@@ -366,7 +425,7 @@ def:pub ws_echo(message: str, client_id: str = "anonymous") -> dict[str, any] {
 
 """Public streaming WebSocket function; yields chunk frames over the socket."""
 @restspec(protocol=APIProtocol.WEBSOCKET)
-def:pub ws_stream(count: int = 3) -> None {
+def:pub ws_stream(count: int = 3) {
     def stream -> Generator {
         for i in range(count) {
             yield {"index": i, "label": f"chunk-{i}"};

@@ -720,7 +720,7 @@ def:pub jacpy_binascii_convert(
         if operation == 9 {
             return jacpy_int(i64(crc32(source, int(option))));
         }
-        data = read_buffer(source);
+        data = list(read_buffer(source));
         result: list[int] = [];
         if operation == 0 {
             result = a2b_uu(data);
@@ -742,7 +742,7 @@ def:pub jacpy_binascii_convert(
             object_error("SystemError", "unknown binary codec operation");
             return 0;
         }
-        return write_buffer(result);
+        return write_buffer(bytes(result));
     } except module_failure as error {
         message = error.message;
         jacpy_set_exception(error_type, message, i64(len(message.encode("utf-8"))));

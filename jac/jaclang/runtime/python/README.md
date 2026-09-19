@@ -14,12 +14,20 @@ selects the compiler at build time; each binary contains one runtime.
 | `jac/bootstrap/python/` | Pinned source build and shared C shims for opaque CPython ABI records and object APIs |
 
 `native_api.jac` connects source/AST requests to `product_compile.jac` and the
-native parser, scanner, and symbol-table implementation. `marshal_writer.jac`
-serializes code objects for CPython's retained marshal reader. No replacement
-bytecode, embedded compiler seed, or Python dispatch callback is shipped.
-The payload excludes these implementation directories from its ordinary
-Python/JIR precompile; their CPython license is retained.
-The native implementation currently uses Jac's managed memory profile.
+native parser, scanner, and symbol-table implementation. Every request returns
+a retained CPython value or raises its exception directly: `constant_output.jac`
+builds constants and code objects through the object API and CPython's
+validated code constructor, and `ast_output.jac` publishes trees with the
+interpreter's own AST types and operator singletons. Strings and byte payloads
+cross the boundary in single copies. No replacement bytecode, embedded compiler
+seed, or Python dispatch callback is shipped. The payload excludes these
+implementation directories from its ordinary Python/JIR precompile; their
+CPython license is retained.
+
+The native object is built with Jac's `rc` memory profile and the same LLVM
+module pipeline as every other native artifact. Each compile request runs inside
+one region, so the tokens, trees, symbol tables and code units it builds are
+reclaimed together once its CPython result exists.
 
 The build-time host is ordinary CPython. `prepare_native.py` uses Jac's native
 backend to emit the replacement object, rejects interpreted demotions, and

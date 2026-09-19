@@ -129,7 +129,7 @@ def run_js_function(js_code: str, func_name: str) -> dict[str, any] {
             + "()));"
         );
     result = subprocess.run(
-        ["node", "-e", wrapper], capture_output=True, text=True, timeout=10
+        ["node", "-"], input=wrapper, capture_output=True, text=True, timeout=10
     );
     assert result.returncode == 0 , f"Node.js failed: {result.stderr}";
     return json.loads(result.stdout.strip());
@@ -187,7 +187,7 @@ runtime itself rather than only on what a fixture function returns.
 def run_js_expr(js_code: str, expr: str) -> any {
     wrapper = js_code + "\nconsole.log(JSON.stringify(" + expr + "));";
     result = subprocess.run(
-        ["node", "-e", wrapper], capture_output=True, text=True, timeout=10
+        ["node", "-"], input=wrapper, capture_output=True, text=True, timeout=10
     );
     assert result.returncode == 0 , f"Node.js failed: {result.stderr}";
     return json.loads(result.stdout.strip());
@@ -207,6 +207,17 @@ def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple[any, ...
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
+}
+
+def compile_native_errors(fixture: str) -> list[str] {
+    # compile_native for fixtures whose native lane is EXPECTED to emit
+    # diagnostics; returns the rendered errors for assertion.
+    prog = JacProgram();
+    prog.compile(
+        file_path=str(os.path.join(_fixture_shadow_dir(), fixture)),
+        options=CompileOptions()
+    );
+    return [str(e) for e in prog.errors_had] if prog.errors_had else [];
 }
 
 def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {

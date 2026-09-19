@@ -154,7 +154,7 @@ def _occ_policy -> tuple[str, int, int] {
 }
 
 impl ExecutionManager._finalize_call_response(
-    call_state: CallState, result: any
+    call_state: CallState, result: any, serialize_result: bool = True
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
@@ -167,7 +167,9 @@ impl ExecutionManager._finalize_call_response(
     }
 
     envelope: dict[str, object] = {
-        'result': Serializer.serialize(result, api_mode=True),
+        'result': Serializer.serialize(result, api_mode=True)
+            if serialize_result
+            else result,
         'reports': Serializer.serialize(reports, api_mode=True)
     };
     ctx = Jac.get_context();
@@ -278,18 +280,26 @@ async def _run_function_with_occ(
 }
 
 impl ExecutionManager.execute_function(
-    func: Callable[(..., any)], args: dict[(str, any)], username: str
+    func: Callable[(..., any)],
+    args: dict[(str, any)],
+    username: str,
+    serialize_result: bool = True
 ) -> dict[str, JsonValue] {
     import inspect;
 
     if inspect.iscoroutinefunction(func) {
-        return await self.execute_function_async(func, args, username);
+        return await self.execute_function_async(
+            func, args, username, serialize_result
+        );
     }
-    return await self.execute_function_sync(func, args, username);
+    return await self.execute_function_sync(func, args, username, serialize_result);
 }
 
 impl ExecutionManager.execute_function_sync(
-    func: Callable[(..., any)], args: dict[(str, any)], username: str
+    func: Callable[(..., any)],
+    args: dict[(str, any)],
+    username: str,
+    serialize_result: bool = True
 ) -> dict[str, JsonValue] {
     async def run_attempt(
         call_state: CallState, _ctx: ExecutionContext
@@ -299,7 +309,7 @@ impl ExecutionManager.execute_function_sync(
         if iscoroutine(result) {
             result = await result;
         }
-        return await self._finalize_call_response(call_state, result);
+        return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
         self, args, username, run_attempt, unit_key=_unit_key_for(func)
@@ -307,13 +317,16 @@ impl ExecutionManager.execute_function_sync(
 }
 
 impl ExecutionManager.execute_function_async(
-    func: Callable[(..., any)], args: dict[(str, any)], username: str
+    func: Callable[(..., any)],
+    args: dict[(str, any)],
+    username: str,
+    serialize_result: bool = True
 ) -> dict[str, JsonValue] {
     async def run_attempt(
         call_state: CallState, _ctx: ExecutionContext
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
         result = await func(**args);
-        return await self._finalize_call_response(call_state, result);
+        return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
         self, args, username, run_attempt, unit_key=_unit_key_for(func)
@@ -665,6 +678,15 @@ impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
         for (k, v) in self._walkers.items()
         if not v?.schedule_spec
     };
+}
+
+impl ModuleIntrospector.find_target(name: str) -> any {
+    if not self._walkers and not self._functions {
+        self.load();
+    } else {
+        self._check_module_freshness();
+    }
+    return self._walkers.get(name) or self._functions.get(name);
 }
 
 impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., any)]] {
@@ -1125,7 +1147,9 @@ impl JacAPIServer.build_app -> ServingApp {
     import from jaclang.server.serving.openapi { register_docs_endpoints }
     import from jaclang.project.config { JacConfig }
     settings = self.resolved_settings();
-    self.introspector.load();
+    if not settings.static_only {
+        self.introspector.load();
+    }
     self.introspector.dev_mode = settings.dev;
     app = ServingApp(
         title=f"{self.module_name} API",
@@ -1276,6 +1300,10 @@ impl JacAPIServer.get_walkers -> dict[str, type[WalkerArchetype]] {
     return self.introspector.get_walkers();
 }
 
+impl JacAPIServer.find_target(name: str) -> any {
+    return self.introspector.find_target(name);
+}
+
 impl JacAPIServer.print_endpoint_docs -> None {
     print_endpoint_docs(self);
 }
@@ -1375,9 +1403,30 @@ impl JacAPIServer._ensure_internal_users -> None {
     );
 }
 
-impl JacAPIServer._register_scheduled_tasks -> None {
-    import from jaclang.server.identity.user_manager { SYSTEM_USER }
+impl JacAPIServer._scheduled_targets -> list[tuple[str, any, bool]] {
     import from jaclang.server.task_scheduler { ScheduleSpec }
+    found: list[tuple[str, any, bool]] = [];
+    for (registry, is_walker) in [
+        (dict(self.introspector._walkers), True),
+        (dict(self.introspector._functions), False)
+    ] {
+        for (name, item) in registry.items() {
+            spec = item?.schedule_spec;
+            if isinstance(spec, ScheduleSpec) {
+                found.append((name, spec, is_walker));
+            }
+        }
+    }
+    return found;
+}
+
+impl JacAPIServer._register_scheduled_tasks -> None {
+    if self.resolved_settings().static_only {
+        return;
+    }
+    import from jaclang.server.identity.user_manager { SYSTEM_USER }
+    import from jaclang.runtime.builtin { ScheduleTrigger }
+    import from jaclang.server.task_scheduler { schedule_namespace }
     _self = self;
     def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
         async def _run -> any {
@@ -1420,20 +1469,11 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         return target;
     }
     self.introspector.load();
-    registries: list[tuple[dict[str, any], bool]] = [
-        (dict(self.introspector._walkers), True),
-        (dict(self.introspector._functions), False)
-    ];
-    for (registry, is_walker) in registries {
-        for (name, item) in registry.items() {
-            spec = item?.schedule_spec;
-            if not isinstance(spec, ScheduleSpec) {
-                continue;
-            }
-            self.scheduler.register(
-                name, _make_target(name, is_walker), spec, is_walker
-            );
+    for (name, spec, is_walker) in self._scheduled_targets() {
+        if spec.trigger == ScheduleTrigger.DYNAMIC {
+            continue;
         }
+        self.scheduler.register(name, _make_target(name, is_walker), spec, is_walker);
     }
     if self.scheduler.has_pending() {
         logger.info(
@@ -1445,16 +1485,11 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     store: any = storage.store if isinstance(storage, PgIdentityStorage) else None;
     if store is not None {
         _store: any = store;
-        def _lease(key: str, ttl: int) -> bool {
-            import os;
-            import socket;
-            return bool(
-                _store.kv_acquire_lease(
-                    key, ttl, f"{socket.gethostname()}:{os.getpid()}"
-                )
-            );
+        def _claim(key: str, tick: int) -> bool {
+            return bool(_store.kv_claim_tick(key, tick));
         }
-        self.scheduler.lease = _lease;
+        self.scheduler.claim = _claim;
+        self.scheduler.namespace = schedule_namespace(self.module_name);
     }
 }
 
@@ -1464,6 +1499,14 @@ impl JacAPIServer._validate_or_raise -> None {
     problems = settings.validate();
     for ext in (self.extensions or []) {
         problems.extend(ext.validate(self));
+    }
+    if not settings.static_only {
+        import from jaclang.server.task_scheduler { schedule_problems }
+        for (name, spec, _is_walker) in self._scheduled_targets() {
+            for problem in schedule_problems(spec) {
+                problems.append(f"@schedule on '{name}': {problem}");
+            }
+        }
     }
     if problems {
         raise ServeConfigError(
@@ -1477,14 +1520,18 @@ impl JacAPIServer._prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings
     settings = self.resolved_settings();
     settings.dev = dev;
     settings.no_client = no_client;
-    self.introspector.load();
+    if not settings.static_only {
+        self.introspector.load();
+    }
     self._validate_or_raise();
     configure_access_logging(
         enabled=settings.access_log.enabled,
         format=settings.access_log.format,
         suppress_health_checks=settings.access_log.suppress_health_checks
     );
-    self._ensure_sv_siblings();
+    if not settings.static_only {
+        self._ensure_sv_siblings();
+    }
     self._ensure_internal_users();
     self._ensure_client_bundle();
     self.build_app();

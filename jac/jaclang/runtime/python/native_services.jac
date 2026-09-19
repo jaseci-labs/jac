@@ -1,4 +1,4 @@
-import from jaclang.runtime.python.capi { read_buffer }
+import from jaclang.runtime.python.capi { read_buffer, required, boundary_failure }
 import from jaclang.runtime.python.objects { PyObj }
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 import from jaclang.runtime.python.compiler_integer { integer_from_marshal }
@@ -9,19 +9,13 @@ import from c {
         handle: u64
     ) -> f64;  def jacpy_normalize(source: str, size: i64) -> u64;  def jacpy_unicode_escape(
         source: str, size: i64
-    ) -> u64;  def jacpy_bytes_escape(source: str, size: i64) -> u64;  def jacpy_buffer_size(
-        handle: u64
-    ) -> i64;  def jacpy_buffer_byte(handle: u64, index: i64) -> i64;  def jacpy_release(
+    ) -> u64;  def jacpy_bytes_escape(source: str, size: i64) -> u64;  def jacpy_release(
         handle: u64
     );  def jacpy_warning(message: str, filename: str, line: i64) -> i64;
 }
 
-obj runtime_failure(Exception) {}
-
-def take_buffer(handle: u64) -> list[int] {
-    if handle == 0 {
-        raise runtime_failure();
-    }
+def take_buffer(handle: u64) -> bytes {
+    required(handle);
     try {
         return read_buffer(handle);
     } finally {
@@ -30,13 +24,11 @@ def take_buffer(handle: u64) -> list[int] {
 }
 
 def take_error_text -> str {
-    return bytes(take_buffer(jacpy_take_error_text())).decode("utf-8", "surrogatepass");
+    return take_buffer(jacpy_take_error_text()).decode("utf-8", "surrogatepass");
 }
 
 def normalize_identifier(value: str) -> str {
-    return bytes(
-        take_buffer(jacpy_normalize(value, i64(len(value.encode("utf-8")))))
-    ).decode(
+    return take_buffer(jacpy_normalize(value, i64(len(value.encode("utf-8"))))).decode(
         "utf-8"
     );
 }
@@ -46,7 +38,7 @@ def decode_unicode(value: str) -> str {
     if handle == 0 and jacpy_error_is("UnicodeError") != 0 {
         raise syntax_failure("(unicode error) " + take_error_text());
     }
-    return bytes(take_buffer(handle)).decode("utf-8", "surrogatepass");
+    return take_buffer(handle).decode("utf-8", "surrogatepass");
 }
 
 def decode_bytes(value: str) -> list[int] {
@@ -54,7 +46,7 @@ def decode_bytes(value: str) -> list[int] {
     if handle == 0 and jacpy_error_is("ValueError") != 0 {
         raise syntax_failure(take_error_text());
     }
-    return take_buffer(handle);
+    return list(take_buffer(handle));
 }
 
 def warn(message: str, filename: str, line: int, column: int = 0) {
@@ -65,7 +57,7 @@ def warn(message: str, filename: str, line: int, column: int = 0) {
                 message, filename=filename, lineno=line, offset=column + 1
             );
         }
-        raise runtime_failure();
+        raise boundary_failure();
     }
 }
 
@@ -87,7 +79,7 @@ def parse_float(value: str) -> float {
         if jacpy_error_is("ValueError") != 0 {
             raise syntax_failure(take_error_text());
         }
-        raise runtime_failure();
+        raise boundary_failure();
     }
     try {
         return float(jacpy_float_value(handle));

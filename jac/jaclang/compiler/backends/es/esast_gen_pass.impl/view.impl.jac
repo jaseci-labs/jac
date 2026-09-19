@@ -16,22 +16,64 @@ impl EsastGenPass._view_open_loop_acc(nd: uni.UniNode) -> None {
 }
 
 impl EsastGenPass._view_loop_stmt(
-    nd: uni.UniNode, loop_stmt: es.Statement
+    nd: uni.UniNode, loop_stmts: list[es.Statement]
 ) -> es.Statement {
     if id(nd) not in self._view_slot_loops {
-        return loop_stmt;
+        return loop_stmts[0];
     }
     self._view_slot_loops.discard(id(nd));
     acc = self._view_stack.pop() if self._view_stack else None;
     if not isinstance(acc, str) {
-        return loop_stmt;
+        return loop_stmts[0];
     }
-    iife = self._view_iife_from_stmts([loop_stmt], acc, nd);
+    iife = self._view_iife_from_stmts(loop_stmts, acc, nd);
     outer = self._cur_view_acc();
     if outer is not None {
         return self._view_emit_child(outer, iife, nd);
     }
     return self.sync_loc(es.ExpressionStatement(expression=iife), jac_node=nd);
+}
+
+impl EsastGenPass._push_loop_label(nd: uni.UniNode) -> None {
+    if not isinstance(nd, uni.AstElseBodyNode) or nd.else_body is None {
+        self._loop_label_stack.append('');
+        return;
+    }
+    self._loop_label_seq += 1;
+    self._loop_label_stack.append(f"__jac_loop_{self._loop_label_seq}");
+}
+
+impl EsastGenPass._finish_loop(
+    nd: uni.UniNode, loop_stmt: es.Statement
+) -> es.Statement {
+    label = '';
+    if self._loop_label_stack {
+        label = self._loop_label_stack.pop();
+    }
+    if nd.else_body is None {
+        return self._view_loop_stmt(nd, [loop_stmt]);
+    }
+    else_stmts = self._collect_stmt_body(nd.else_body.body);
+    else_stmts = self._prepend_hoisted(nd, else_stmts);
+    else_block = self.sync_loc(
+        es.BlockStatement(body=else_stmts), jac_node=nd.else_body
+    );
+    seq_block = self.sync_loc(
+        es.BlockStatement(body=[loop_stmt, else_block]), jac_node=nd
+    );
+    inner: es.Statement = seq_block;
+    if label != '' and label in self._used_loop_labels {
+        self._used_loop_labels.discard(label);
+        inner = self.sync_loc(
+            es.LabeledStatement(
+                label=self.sync_loc(es.Identifier(name=label), jac_node=nd),
+                body=seq_block
+            ),
+            jac_node=nd
+        );
+    }
+
+    return self._view_loop_stmt(nd, [inner]);
 }
 
 impl EsastGenPass._view_chain_open(nd: uni.UniNode) -> None {

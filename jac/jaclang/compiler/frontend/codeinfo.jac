@@ -94,7 +94,7 @@ obj NativeFieldInfo {
         is_func_ptr: bool = False,
         func_param_types: (list[str] | None) = None,
         func_ret_type: (str | None) = None,
-        elem_keys: (list[str] | None) = None,
+        elem_keys: (list[str | None] | None) = None,
         foreign: bool = False;
 }
 
@@ -125,7 +125,7 @@ obj NativeFuncLayout {
         ret_struct_name: (str | None) = None,
         ret_tuple_layout: (NativeTupleLayout | None) = None,
         ret_enum_type: (str | None) = None,
-        ret_elem_keys: (list[str] | None) = None;
+        ret_elem_keys: (list[str | None] | None) = None;
 }
 
 obj NativeTestLayout {
@@ -760,7 +760,7 @@ obj NodeComments {
 }
 
 obj CodeGenTarget {
-    has py: str = '',
+    has _py: (str | None) = None,
         jac: str = '',
         _doc_ir: (Doc | None) = None,
         js: str = '',
@@ -790,6 +790,7 @@ obj CodeGenTarget {
         _exported_symbols: list[str] = [],
         doc_comments: (NodeComments | None) = None;
 
+    has py: str { getter; setter(value: str); }
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }

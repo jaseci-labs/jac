@@ -2,7 +2,9 @@ def separator(text: str, char: str = '=', total_width: int = 80) -> str;
 
 def print_file_progress(file_path: str, success: bool, idx: int, total: int) -> None;
 
-def print_failures(failed_results: list[dict[str, any]], nowarn: bool = False) -> None;
+def print_section(
+    title: str, results: list[dict[str, any]], nowarn: bool = False
+) -> None;
 
 def print_failed_summary(failed_results: list[dict[str, any]]) -> None;
 

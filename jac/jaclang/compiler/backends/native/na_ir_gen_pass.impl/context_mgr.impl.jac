@@ -60,24 +60,21 @@ impl NaIRGenPass._codegen_with_recursive(
     if len(enter_fn.args) > 0 {
         enter_args[0] = self._coerce_type(cm_val, enter_fn.args[0].type);
     }
-    enter_result = self.builder.call(enter_fn, enter_args, name="cm.enter");
-
-    if expr_item.alias is not None {
-        alias_name = self._get_name(expr_item.alias);
-        if alias_name is not None {
-            alloca = self._entry_alloca(enter_result.type, alias_name);
-
-            if isinstance(enter_result.type, ir.PointerType) {
-                self.builder.store(ir.Constant(enter_result.type, None), alloca);
-                self._emit_rc_retain(
-                    enter_result,
-                    op="ctx_enter",
-                    loc=getattr(enter_result, 'jac_loc', '')
-                );
-            }
-            self.builder.store(enter_result, alloca);
-            self.local_vars[alias_name] = alloca;
+    enter_result = self._mark_reference_owned(
+        self.builder.call(enter_fn, enter_args, name="cm.enter")
+    );
+    alias_name = self._get_name(expr_item.alias)
+        if expr_item.alias is not None
+        else None;
+    if alias_name is not None {
+        alloca = self._entry_alloca(enter_result.type, alias_name);
+        if self._is_reference_type(enter_result.type) {
+            self._emit_slot_rebind(alloca, enter_result, owned=True, op="ctx_enter");
         }
+        self.builder.store(enter_result, alloca);
+        self.local_vars[alias_name] = alloca;
+    } else {
+        self._release_owned_args([enter_result], op="ctx_enter");
     }
 
     body_bb = func.append_basic_block(name=f"with.body.{idx}");
@@ -103,7 +100,10 @@ impl NaIRGenPass._codegen_with_recursive(
     for i in range(1, len(exit_fn.args)) {
         exit_args.append(self._coerce_type(null_ptr, exit_fn.args[i].type));
     }
-    self.builder.call(exit_fn, exit_args, name="cm.exit");
+    exit_result = self.builder.call(exit_fn, exit_args, name="cm.exit");
+    self._release_owned_args(
+        [self._mark_reference_owned(exit_result), cm_val], op="ctx_exit"
+    );
     self.builder.branch(merge_bb);
 
     self.builder.position_at_end(merge_bb);
