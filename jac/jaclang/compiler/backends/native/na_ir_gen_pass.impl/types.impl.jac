@@ -554,7 +554,85 @@ impl NaIRGenPass._restore_list_read(
 }
 
 impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    _view_elem = self._dict_view_elem_llvm(expr);
+    if _view_elem is not None {
+        return _view_elem;
+    }
     return self._typed_elem_llvm_of(expr, "list[");
+}
+
+impl NaIRGenPass._dict_view_elem_llvm(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    """Element storage of a `dict_items` / `dict_keys` / `dict_values` receiver.
+
+    The native emitters lower `d.items()` to a list of boxed `[K, V]` pair
+    tuples and `d.keys()`/`d.values()` to plain element lists, but the type
+    system names those receivers `dict_items[K, V]` and friends, which the
+    `list[` prefix test in `_typed_elem_llvm_of` rejects -- so a read like
+    `t = d.items()[0]` stayed an untyped pointer and a later `t[0]` fell
+    into the string-index fallback and read tuple bytes as characters. The
+    views' element layouts are derived here from the view's own type args,
+    which keeps `t` typed as the pair tuple it really is.
+    """;
+    if expr is None {
+        return None;
+    }
+    _ty = self._flow_narrowed_type_of(expr);
+    if _ty is None {
+        return None;
+    }
+    _sole = self._opt_sole_member(_ty);
+    if _sole is not None {
+        _ty = _sole;
+    }
+    candidates = _ty.types if isinstance(_ty, UnionType) else [_ty];
+    view: (ClassType | None) = None;
+    for _cand in candidates {
+        if isinstance(_cand, ClassType)
+            and _cand.shared.class_name in ("dict_items", "dict_keys", "dict_values")
+            and _cand.private.type_args {
+            view = _cand;
+            break;
+        }
+    }
+    if view is None {
+        return None;
+    }
+    args = view.private.type_args;
+    if view.shared.class_name == "dict_items" {
+        if len(args) < 2 {
+            return None;
+        }
+        kt = self._elem_storage_llvm(args[0]);
+        vt = self._elem_storage_llvm(args[1]);
+        if kt is None or vt is None {
+            return None;
+        }
+        if self._str_desc_ty is not None {
+            if kt == self._str_desc_ty {
+                kt = ir.IntType(8).as_pointer();
+            }
+            if vt == self._str_desc_ty {
+                vt = ir.IntType(8).as_pointer();
+            }
+        }
+        return self._tuple_struct_of([kt, vt]).as_pointer();
+    }
+    _elem_arg = (
+        args[1]
+        if (view.shared.class_name == "dict_values" and len(args) >= 2)
+        else args[0]
+    );
+    elem = self._elem_storage_llvm(_elem_arg);
+    if elem is None {
+        return None;
+    }
+    if self._str_desc_ty is not None and elem == self._str_desc_ty {
+        elem = ir.IntType(8).as_pointer();
+    }
+    if isinstance(elem, ir.VoidType) {
+        return ir.IntType(64);
+    }
+    return elem;
 }
 
 impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
@@ -825,19 +903,18 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     }
 
     if cname == "dict" {
-        k_llvm: ir.Type = ir.IntType(64);
-        v_llvm: ir.Type = ir.IntType(64);
+        k_llvm: ir.Type = ir.IntType(8).as_pointer();
+        v_llvm: ir.Type = self.jacval_type;
         if len(type_args) >= 2 {
             _k = self._elem_storage_llvm(type_args[0]);
-            _v = self._elem_storage_llvm(type_args[1]);
-            if _k is None or _v is None {
+            if _k is None {
                 return None;
             }
             if self?.jacval_type and _k == self.jacval_type {
                 return None;
             }
             k_llvm = _k;
-            v_llvm = _v;
+            v_llvm = self.jacval_type;
         }
         if self._str_desc_ty is not None {
             if k_llvm == self._str_desc_ty {
@@ -2690,6 +2767,13 @@ impl NaIRGenPass._emit_binary_op(
 ) -> (ir.Value | None) {
     left = self._str_view(left);
     right = self._str_view(right);
+    if self?.jacval_type {
+        if left.type == self.jacval_type and right.type != self.jacval_type {
+            left = self._unbox_from_jacval(left, right.type);
+        } elif right.type == self.jacval_type and left.type != self.jacval_type {
+            right = self._unbox_from_jacval(right, left.type);
+        }
+    }
     if isinstance(left.type, ir.PointerType)
         or isinstance(right.type, ir.PointerType) {
         _dunder_res = self._emit_arch_dunder_binop(op, left, right);
@@ -4614,6 +4698,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                     _dk = self._lower_untyped_annotation(_dkv.values[0]);
                     _dv = self._lower_untyped_annotation(_dkv.values[1]);
                     if _dk is not None and _dv is not None {
+                        _dv = self.jacval_type;
                         if self._str_desc_ty is not None {
                             if _dk == self._str_desc_ty {
                                 _dk = ir.IntType(8).as_pointer();

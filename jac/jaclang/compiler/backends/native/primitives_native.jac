@@ -23,7 +23,8 @@ obj NativeEmitCtx {
         call_kwargs: dict[str, UniNode] = {},
         arg_nodes: list[UniNode] = [],
         call_node: UniNode | None = None,
-        receiver_node: UniNode | None = None;
+        receiver_node: UniNode | None = None,
+        semantic_val_type: (ir.Type | None) = None;
 }
 
 

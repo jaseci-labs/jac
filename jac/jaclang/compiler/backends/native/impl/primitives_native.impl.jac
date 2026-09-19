@@ -3545,12 +3545,21 @@ impl NativeDictEmitter.emit_get(
     b.cbranch(found_i1, found_bb, notfound_bb);
 
     val_type = helpers["val_type"];
+    v_sem = (
+        ctx.semantic_val_type
+        if ctx.semantic_val_type is not None
+        else val_type
+    );
 
-    wrap_optional = (len(args) < 2) and (not isinstance(val_type, ir.PointerType));
-    result_type = p._jac_optional_type(val_type) if wrap_optional else val_type;
+    wrap_optional = (len(args) < 2) and (not isinstance(v_sem, ir.PointerType));
+    result_type = p._jac_optional_type(v_sem) if wrap_optional else v_sem;
 
     b.position_at_start(found_bb);
-    val: ir.Value = b.load(value_slot, name="dget.val");
+    jv: ir.Value = b.load(value_slot, name="dget.val");
+    val: ir.Value = jv;
+    if v_sem != val_type {
+        val = p._unbox_from_jacval(jv, v_sem);
+    }
     if wrap_optional {
         _tagged = b.insert_value(
             ir.Constant(result_type, None),
@@ -3566,9 +3575,9 @@ impl NativeDictEmitter.emit_get(
     if wrap_optional {
         default_val: ir.Value = ir.Constant(result_type, None);
     } elif len(args) >= 2 {
-        default_val = p._coerce_type(args[1], val_type);
+        default_val = p._coerce_type(args[1], v_sem);
     } else {
-        default_val = ir.Constant(val_type, None);
+        default_val = ir.Constant(v_sem, None);
     }
     b.branch(done_bb);
 
@@ -3579,10 +3588,10 @@ impl NativeDictEmitter.emit_get(
     retained = b.extract_value(result, 1, name="dget.payload")
         if wrap_optional
         else result;
-    p._emit_elem_retain(b, val_type, retained);
+    p._emit_elem_retain(b, v_sem, retained);
     p._release_owned_args(args, op="dict_get_arg");
     p._release_owned_args([target], op="dict_get_receiver");
-    if p._elem_kind(val_type) != "raw" {
+    if p._elem_kind(v_sem) != "raw" {
         p._mark_owned(result);
     }
     return result;
@@ -3654,16 +3663,14 @@ impl NativeDictEmitter.emit_values(
     i64 = ir.IntType(64);
 
     val_type = helpers["val_type"];
-    if isinstance(val_type, ir.PointerType) {
-        vt_name = "ptr";
-        val_type = ir.IntType(8).as_pointer();
-    } elif isinstance(val_type, ir.DoubleType) {
-        vt_name = "f64";
-    } else {
-        vt_name = "i64";
-    }
-    p._emit_list_helpers(vt_name, val_type);
-    lhelpers = p.list_helpers.get(vt_name);
+    v_sem = (
+        ctx.semantic_val_type
+        if ctx.semantic_val_type is not None
+        else val_type
+    );
+    v_spec = p._dict_val_spec(v_sem);
+    p._emit_list_helpers(v_spec, v_sem);
+    lhelpers = p.list_helpers.get(v_spec);
     if lhelpers is None {
         return None;
     }
@@ -3685,9 +3692,12 @@ impl NativeDictEmitter.emit_values(
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
     key = b.call(helpers["get_key"], [target, idx], name="dvals.key");
-    val: ir.Value = b.call(helpers["get"], [target, key], name="dvals.val");
-    val = p._cast_to_list_elem(b, val, lhelpers["elem_type"], "dvals.val");
-    b.call(lhelpers["append"], [new_list, val]);
+    jv: ir.Value = b.call(helpers["get"], [target, key], name="dvals.val");
+    v: ir.Value = jv;
+    if v_sem != val_type {
+        v = p._unbox_from_jacval(jv, v_sem);
+    }
+    b.call(lhelpers["append"], [new_list, v]);
     next_idx = b.add(idx, ir.Constant(i64, 1), name="dvals.next");
     idx.add_incoming(next_idx, body_bb);
     b.branch(loop_bb);
@@ -3709,8 +3719,13 @@ impl NativeDictEmitter.emit_items(
     i8p = ir.IntType(8).as_pointer();
     key_type = helpers["key_type"];
     val_type = helpers["val_type"];
+    v_sem = (
+        ctx.semantic_val_type
+        if ctx.semantic_val_type is not None
+        else val_type
+    );
 
-    tuple_type = ir.LiteralStructType([key_type, val_type]);
+    tuple_type = ir.LiteralStructType([key_type, v_sem]);
 
     p._emit_list_helpers("ptr", i8p);
     lhelpers = p.list_helpers.get("ptr");
@@ -3738,11 +3753,15 @@ impl NativeDictEmitter.emit_items(
     b.position_at_start(body_bb);
 
     key = b.call(helpers["get_key"], [target, idx], name="ditems.key");
-    val = b.call(helpers["get"], [target, key], name="ditems.val");
+    jv: ir.Value = b.call(helpers["get"], [target, key], name="ditems.val");
+    v: ir.Value = jv;
+    if v_sem != val_type {
+        v = p._unbox_from_jacval(jv, v_sem);
+    }
 
     pair: ir.Value = ir.Constant(tuple_type, ir.Undefined);
     pair = b.insert_value(pair, key, 0, name="ditems.key.field");
-    pair = b.insert_value(pair, val, 1, name="ditems.val.field");
+    pair = b.insert_value(pair, v, 1, name="ditems.val.field");
     boxed = p._box_value_tuple(pair);
     tup_i8p = b.bitcast(boxed, i8p, name="ditems.i8p");
     b.call(lhelpers["append"], [new_list, tup_i8p]);
@@ -3768,6 +3787,11 @@ impl NativeDictEmitter.emit_pop(
     b = get_builder(p);
     key = p._coerce_type(args[0], helpers["key_type"]);
     val_type = helpers["val_type"];
+    v_sem = (
+        ctx.semantic_val_type
+        if ctx.semantic_val_type is not None
+        else val_type
+    );
     has_default = len(args) >= 2;
 
     func = b.basic_block.function;
@@ -3779,28 +3803,40 @@ impl NativeDictEmitter.emit_pop(
     b.cbranch(found_i1, found_bb, notfound_bb);
 
     b.position_at_start(found_bb);
-    popped_val = b.call(helpers["pop"], [target, key], name="dpop.val");
+    jv: ir.Value = b.call(helpers["pop"], [target, key], name="dpop.val");
+    popped_val: ir.Value = jv;
+    if v_sem != val_type {
+        popped_val = p._unbox_from_jacval(jv, v_sem);
+    }
     _found_pred = b.basic_block;
     b.branch(done_bb);
 
     b.position_at_start(notfound_bb);
     if has_default {
-        default_val = p._coerce_type(args[1], val_type);
+        default_val = p._coerce_type(args[1], v_sem);
     } else {
         p._emit_runtime_raise(
             ir.Constant(ir.IntType(1), 1), "KeyError", "key not found"
         );
-        if p._elem_kind(val_type) != "raw" {
-            default_val = ir.Constant(val_type, None);
+        if p?.jacval_type and v_sem == p.jacval_type {
+            default_val = b.insert_value(
+                ir.Constant(v_sem, ir.Undefined),
+                ir.Constant(ir.IntType(8), 8),
+                0,
+                name="dpop.none.tag"
+            );
+            default_val = b.insert_value(
+                default_val, ir.Constant(ir.IntType(64), 0), 1, name="dpop.none.pay"
+            );
         } else {
-            default_val = ir.Constant(val_type, 0);
+            default_val = ir.Constant(v_sem, None);
         }
     }
     _notfound_pred = b.basic_block;
     b.branch(done_bb);
 
     b.position_at_start(done_bb);
-    result = b.phi(val_type, name="dpop.result");
+    result = b.phi(v_sem, name="dpop.result");
     result.add_incoming(popped_val, _found_pred);
     result.add_incoming(default_val, _notfound_pred);
     p._release_owned_args([key], op="dict_method_key");
@@ -3841,6 +3877,11 @@ impl NativeDictEmitter.emit_popitem(
     i64 = ir.IntType(64);
     key_type = helpers["key_type"];
     val_type = helpers["val_type"];
+    v_sem = (
+        ctx.semantic_val_type
+        if ctx.semantic_val_type is not None
+        else val_type
+    );
 
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dpi.len.ptr"
@@ -3873,9 +3914,13 @@ impl NativeDictEmitter.emit_popitem(
         }
     }
 
-    last_val = b.call(helpers["pop"], [target, last_key], name="dpi.val");
+    last_jv = b.call(helpers["pop"], [target, last_key], name="dpi.val");
+    last_val: ir.Value = last_jv;
+    if v_sem != val_type {
+        last_val = p._unbox_from_jacval(last_jv, v_sem);
+    }
 
-    tuple_type = ir.LiteralStructType([key_type, val_type]);
+    tuple_type = ir.LiteralStructType([key_type, v_sem]);
     null_ptr = ir.Constant(tuple_type.as_pointer(), None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="dpi.sizeof.gep");
     size = b.ptrtoint(size_gep, i64, name="dpi.sizeof");
@@ -3893,9 +3938,7 @@ impl NativeDictEmitter.emit_popitem(
     kt_str = "i8p"
         if isinstance(key_type, ir.PointerType)
         else ("f64" if isinstance(key_type, ir.DoubleType) else "i64");
-    vt_str = "i8p"
-        if isinstance(val_type, ir.PointerType)
-        else ("f64" if isinstance(val_type, ir.DoubleType) else "i64");
+    vt_str = p._dict_val_spec(v_sem);
     tkey = f"{kt_str}.{vt_str}";
     if tkey not in p.tuple_types {
         p.tuple_types[tkey] = tuple_type;
@@ -3918,10 +3961,23 @@ impl NativeDictEmitter.emit_setdefault(
     i64 = ir.IntType(64);
     key = p._coerce_type(args[0], helpers["key_type"]);
     val_type = helpers["val_type"];
+    v_sem = (
+        ctx.semantic_val_type
+        if ctx.semantic_val_type is not None
+        else val_type
+    );
     if len(args) >= 2 {
         default_val = p._coerce_type(args[1], val_type);
     } elif p._elem_kind(val_type) != "raw" {
         default_val = ir.Constant(val_type, None);
+        if p?.jacval_type and val_type == p.jacval_type {
+            default_val = b.insert_value(
+                default_val, ir.Constant(ir.IntType(8), 8), 0, name="sdef.none.tag"
+            );
+            default_val = b.insert_value(
+                default_val, ir.Constant(i64, 0), 1, name="sdef.none.payload"
+            );
+        }
     } else {
         return None;
     }
@@ -3934,17 +3990,25 @@ impl NativeDictEmitter.emit_setdefault(
     b.cbranch(found, found_bb, notfound_bb);
 
     b.position_at_start(found_bb);
-    existing = b.call(helpers["get"], [target, key], name="sdef.existing");
+    existing_jv = b.call(helpers["get"], [target, key], name="sdef.existing");
+    existing: ir.Value = existing_jv;
+    if v_sem != val_type {
+        existing = p._unbox_from_jacval(existing_jv, v_sem);
+    }
     b.branch(done_bb);
 
     b.position_at_start(notfound_bb);
     b.call(helpers["set"], [target, key, default_val]);
+    default_out: ir.Value = default_val;
+    if v_sem != val_type {
+        default_out = p._unbox_from_jacval(default_val, v_sem);
+    }
     b.branch(done_bb);
 
     b.position_at_start(done_bb);
-    result = b.phi(val_type, name="sdef.result");
+    result = b.phi(v_sem, name="sdef.result");
     result.add_incoming(existing, found_bb);
-    result.add_incoming(default_val, notfound_bb);
+    result.add_incoming(default_out, notfound_bb);
     p._emit_take_ref(result, op="dict_setdefault_result");
     p._release_owned_args(args, op="dict_setdefault_arg");
     return result;
@@ -5735,9 +5799,9 @@ impl NativeBuiltinEmitter.emit_dict(
     b = get_builder(p);
     if not args {
         p._emit_dict_helpers(
-            "ptr", "i64", ir.IntType(8).as_pointer(), ir.IntType(64), 0
+            "ptr", "jacval", ir.IntType(8).as_pointer(), p.jacval_type, 0
         );
-        helpers = p.dict_helpers.get("ptr:i64");
+        helpers = p.dict_helpers.get("ptr:jacval");
         if helpers is None {
             return None;
         }

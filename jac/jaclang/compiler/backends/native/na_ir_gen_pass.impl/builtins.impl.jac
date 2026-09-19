@@ -617,6 +617,21 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
             } elif isinstance(val.type, ir.DoubleType) {
                 fmt_parts.append("%s");
                 args.append(self._emit_float_repr(val));
+            } elif self?.jacval_type is not None and val.type == self.jacval_type {
+                _jv_s_fn = self._str_jacval_fn();
+                if _jv_s_fn is None {
+                    self.emit(
+                        E5092,
+                        node_override=part,
+                        kind="f-string value",
+                        name=type(part.format_part).__name__
+                    );
+                    return None;
+                }
+                _jv_s = self.builder.call(_jv_s_fn, [val], name="fstr.jv");
+                obj_strs.append(_jv_s);
+                fmt_parts.append("%s");
+                args.append(_jv_s);
             } elif isinstance(val.type, ir.PointerType) {
                 obj_s = self._emit_obj_str(val);
                 if obj_s is None {

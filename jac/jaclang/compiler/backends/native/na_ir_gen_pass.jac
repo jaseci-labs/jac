@@ -997,7 +997,8 @@ walker NaIRGenPass {
         args: list[ir.Value],
         type_key: str,
         kwargs: (dict[str, uni.UniNode] | None) = None,
-        kw_node: (uni.UniNode | None) = None
+        kw_node: (uni.UniNode | None) = None,
+        semantic_val_type: (ir.Type | None) = None
     ) -> (ir.Value | None);
 
     def _dispatch_builtin(
@@ -1099,7 +1100,8 @@ walker NaIRGenPass {
         key_val: ir.Value,
         key_type_name: str,
         val_type_name: str,
-        key_node: (uni.UniNode | None) = None
+        key_node: (uni.UniNode | None) = None,
+        want_type: (ir.Type | None) = None
     ) -> (ir.Value | None);
 
     def _codegen_dict_set(
@@ -2276,6 +2278,7 @@ walker NaIRGenPass {
 
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    def _dict_view_elem_llvm(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _typed_elem_llvm_of(
         expr: (uni.UniNode | None), prefix: str
     ) -> (ir.Type | None);

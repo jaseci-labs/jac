@@ -2941,8 +2941,40 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         dict_type_key = self._dict_key_reconcile(dict_type_key, dict_val);
         if dict_val is not None and dict_type_key is not None {
             arg_vals = self._codegen_call_args(nd);
+            sem_v: (ir.Type | None) = None;
+            _rt = trailer.target.type
+                if isinstance(trailer.target, uni.Expr)
+                    and isinstance(trailer.target.type, ClassType)
+                else None;
+            _rargs = (
+                _rt.private.type_args
+                if (_rt is not None and _rt.private is not None)
+                else []
+            );
+            if len(_rargs) >= 2 {
+                sem_v = self._lower_type(_rargs[1]);
+            }
+            if sem_v is not None {
+                _sem_ok = (
+                    isinstance(sem_v, ir.IntType)
+                    or isinstance(sem_v, ir.FloatType)
+                    or isinstance(sem_v, ir.DoubleType)
+                    or isinstance(sem_v, ir.PointerType)
+                );
+                if self?.jacval_type and sem_v == self.jacval_type {
+                    _sem_ok = True;
+                }
+                if not _sem_ok {
+                    sem_v = None;
+                }
+            }
             result = self._dispatch_primitive_method(
-                "dict", method_name, dict_val, arg_vals, dict_type_key
+                "dict",
+                method_name,
+                dict_val,
+                arg_vals,
+                dict_type_key,
+                semantic_val_type=sem_v
             );
             if result is not None {
                 return result;

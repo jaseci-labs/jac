@@ -1904,6 +1904,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return None;
         }
 
+        if func_name == "dict" and not (nd.params or []) {
+            _d_empty = self._dispatch_builtin(
+                "dict", [], kwargs=self._split_call_kwargs(nd), kw_node=nd
+            );
+            if _d_empty is not None {
+                return _d_empty;
+            }
+            self._emit_unsupported_builtin_call(nd, func_name);
+            return None;
+        }
+
         if func_name
             in (
                 "ord",

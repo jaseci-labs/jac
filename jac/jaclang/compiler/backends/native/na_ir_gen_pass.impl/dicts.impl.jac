@@ -316,7 +316,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     }
 
     _own_dk = self._dict_key_of(nd);
-    use_jacval = _own_dk is not None and _own_dk.endswith(":jacval");
+    use_jacval = self?.jacval_type is not None;
 
     if _own_dk is not None and not use_jacval and _own_dk in self.dict_helpers {
         dict_key = _own_dk;
@@ -490,7 +490,8 @@ impl NaIRGenPass._codegen_dict_access(
     key_val: ir.Value,
     key_type_name: str,
     val_type_name: str,
-    key_node: (uni.UniNode | None) = None
+    key_node: (uni.UniNode | None) = None,
+    want_type: (ir.Type | None) = None
 ) -> (ir.Value | None) {
     dict_key = f"{key_type_name}:{val_type_name}";
     helpers = self.dict_helpers.get(dict_key);
@@ -516,6 +517,21 @@ impl NaIRGenPass._codegen_dict_access(
     borrowed = self.builder.call(_get_fn, _get_args, name="dict.get");
     self._release_owned_args([key_val], op="dict_get");
     result = self._finish_borrowed_read(target_val, borrowed);
+    if (
+        want_type is not None
+        and self?.jacval_type
+        and helpers["val_type"] == self.jacval_type
+        and result.type == self.jacval_type
+        and want_type != self.jacval_type
+        and (
+            isinstance(want_type, ir.IntType)
+            or isinstance(want_type, ir.DoubleType)
+            or isinstance(want_type, ir.FloatType)
+            or isinstance(want_type, ir.PointerType)
+        )
+    ) {
+        result = self._unbox_from_jacval(result, want_type);
+    }
     self._emit_runtime_raise(not_exists, "KeyError", "key not found");
     return result;
 }

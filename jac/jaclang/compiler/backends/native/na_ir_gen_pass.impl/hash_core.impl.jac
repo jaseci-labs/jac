@@ -1118,6 +1118,8 @@ impl NaIRGenPass._tuple_key_fields(key_type: ir.Type) -> list[tuple[int, str]] |
             out.append((i, "str"));
         } elif self._str_desc_ty is not None and ety == self._str_desc_ty {
             out.append((i, "jacstr"));
+        } elif self?.jacval_type is not None and ety == self.jacval_type {
+            out.append((i, "jacval"));
         } elif self._tuple_key_fields(ety) is not None {
             out.append((i, "tuple"));
         } elif isinstance(ety, ir.PointerType) {
@@ -1168,6 +1170,9 @@ impl NaIRGenPass._emit_tuple_key_hash(b: ir.IRBuilder, value: ir.Value) -> ir.Va
             hashed = b.select(zero, ir.Constant(i64, 0), bits, name="tk.float.hash");
         } elif kind == "ptr" {
             hashed = b.ptrtoint(field, i64, name="tk.ptr.hash");
+        } elif kind == "jacval" {
+            field = b.extract_value(field, 1, name="tk.jv.payload");
+            hashed = field;
         } elif field.type == i64 {
             hashed = field;
         } else {
@@ -1195,6 +1200,8 @@ impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
             sig += "s";
         } elif kind == "jacstr" {
             sig += "j";
+        } elif kind == "jacval" {
+            sig += "jv";
         } elif kind == "tuple" {
             element = struct_type.elements[i];
             nested = element.pointee

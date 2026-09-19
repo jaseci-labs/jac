@@ -111,9 +111,7 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
     }
 
     key_type_name = "i64";
-    val_type_name = "i64";
     key_type: ir.Type = ir.IntType(64);
-    val_type: ir.Type = ir.IntType(64);
     key_size = 0;
 
     if isinstance(key_expr, uni.TupleVal) {
@@ -133,33 +131,6 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         key_type_name = self._tuple_spec_name(struct_type);
     }
 
-    if isinstance(val_expr, uni.TupleVal) {
-        val_type_name = "ptr";
-        val_type = ir.IntType(8).as_pointer();
-    } elif isinstance(val_expr, uni.FuncCall) {
-        call_name = self._get_name(val_expr.target);
-        if call_name is not None and call_name in self.struct_types {
-            val_type_name = "ptr";
-            val_type = ir.IntType(8).as_pointer();
-        }
-    } elif isinstance(val_expr, uni.AtomTrailer) {
-        val_type_name = "ptr";
-        val_type = ir.IntType(8).as_pointer();
-    } elif isinstance(val_expr, uni.Name) {
-        if (
-            self._struct_name_of(val_expr) is not None
-            or self._list_spec_of(val_expr) is not None
-        ) {
-            val_type_name = "ptr";
-            val_type = ir.IntType(8).as_pointer();
-        }
-    }
-
-    if val_type_name == "i64" and self._struct_name_of(val_expr) is not None {
-        val_type_name = "ptr";
-        val_type = ir.IntType(8).as_pointer();
-    }
-
     resolved_key = self._elem_storage_llvm(key_expr.type);
     if resolved_key is not None {
         key_type = ir.IntType(8).as_pointer()
@@ -167,13 +138,9 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
             else resolved_key;
         (key_type_name, key_size) = self._hash_key_spec(key_type);
     }
-    resolved_value = self._elem_storage_llvm(val_expr.type);
-    if resolved_value is not None {
-        val_type = ir.IntType(8).as_pointer()
-            if self._str_desc_ty is not None and resolved_value == self._str_desc_ty
-            else resolved_value;
-        val_type_name = self._dict_val_spec(val_type);
-    }
+
+    val_type = self.jacval_type;
+    val_type_name = "jacval";
 
     self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     dict_key = f"{key_type_name}:{val_type_name}";

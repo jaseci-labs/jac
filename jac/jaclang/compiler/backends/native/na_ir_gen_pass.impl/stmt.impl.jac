@@ -998,7 +998,17 @@ impl NaIRGenPass._match_elem_ty_of(
 impl NaIRGenPass._match_cast_elem(
     elem: ir.Value, elem_ty: (TypeBase | None)
 ) -> ir.Value {
-    if elem_ty is None or not isinstance(elem.type, ir.PointerType) {
+    if elem_ty is None {
+        return elem;
+    }
+    if self?.jacval_type and elem.type == self.jacval_type {
+        lowered = self._lower_type(elem_ty);
+        if lowered is not None and lowered != self.jacval_type {
+            return self._unbox_from_jacval(elem, lowered);
+        }
+        return elem;
+    }
+    if not isinstance(elem.type, ir.PointerType) {
         return elem;
     }
     lowered = self._lower_type(elem_ty);

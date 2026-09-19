@@ -553,8 +553,8 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
     if kfn is None or vfn is None {
         return None;
     }
-    self._emit_dict_helpers(_kspec[0], _vspec[0], _kspec[1], _vspec[1]);
-    _st: any = self.dict_types.get(f"{_kspec[0]}:{_vspec[0]}");
+    self._emit_dict_helpers(_kspec[0], "jacval", _kspec[1], self.jacval_type);
+    _st: any = self.dict_types.get(f"{_kspec[0]}:jacval");
     if _st is None {
         return None;
     }
@@ -613,6 +613,13 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
     self._repr_acc_concat(acc, self._repr_call_elem_fn(kfn, k_el), True);
     self._repr_acc_concat(acc, colon_g, False);
     v_el: any = b.load(b.gep(vals, [_slot], name="rp.v.p"), name="rp.v");
+    if v_el.type != vfn.args[0].type {
+        if self?.jacval_type and v_el.type == self.jacval_type {
+            v_el = self._unbox_from_jacval(v_el, vfn.args[0].type);
+        } else {
+            v_el = self.builder.bitcast(v_el, vfn.args[0].type, name="rp.v.cast");
+        }
+    }
     self._repr_acc_concat(acc, self._repr_call_elem_fn(vfn, v_el), True);
     b.store(b.add(i_cur, ir.Constant(i64, 1), name="rp.inc"), iv);
     b.branch(cond_bb);

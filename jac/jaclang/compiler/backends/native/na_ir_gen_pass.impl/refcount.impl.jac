@@ -2444,6 +2444,20 @@ impl NaIRGenPass._emit_scope_cleanup(
             }
             continue;
         }
+        if (
+            self?.jacval_type
+            and isinstance(alloca.type, ir.PointerType)
+            and alloca.pointee_type == self.jacval_type
+        ) {
+            if var_name == skip_var {
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+            } else {
+                val = self.builder.load(alloca, name=f"cleanup.{var_name}");
+                self._emit_elem_release(self.builder, self.jacval_type, val);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+            }
+            continue;
+        }
         if isinstance(alloca.type, ir.PointerType)
             and isinstance(alloca.pointee_type, ir.PointerType) {
             if var_name in self.region_handle_vars {
