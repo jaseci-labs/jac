@@ -6,7 +6,10 @@ emit_callable, emit_hash, emit_id, emit_iter, emit_next,
 emit_hasattr, emit_getattr, emit_setattr, emit_vars, emit_delattr,
 emit_dir, emit_print, emit_input, emit_open.
 
-Python/SV only — CL and NA return {} (not yet implemented).
+Python/SV only, except the type_*/isinstance_dict rows below, which also
+run on CL to lock in #6149 (`type(x) is <T>` compared a string tag against
+a runtime object, so it was always false). NA is untouched — the bug was
+ES-only.
 """
 
 class _I {
@@ -60,6 +63,17 @@ def builtins_introspection_py() -> dict[any, any] {
         "type_int": type(42).__name__,
         "type_str": type("hi").__name__,
         "type_list": type([]).__name__,
+        # type() identity (#6149): `is`/`is not` compare the object type()
+        # returns, not a name for it. bool_isnot_int pins exact-type
+        # semantics (isinstance(True, int) is true; this must stay false).
+        "type_is_str": 1 if type("s") is str else 0,
+        "type_isnot_dict": 1 if type(7) is not dict else 0,
+        "type_bool_isnot_int": 1 if type(True) is not int else 0,
+        "type_arch_is": 1 if type(o) is _I else 0,
+        "type_arch_name": type(o).__name__,
+        # type() of a builtin type object is `type` itself (#8887 review).
+        "type_of_type_is_type": 1 if type(str) is type else 0,
+        "isinstance_dict_t": 1 if isinstance({"a": 1}, dict) else 0,
         # emit_repr
         "repr_42": repr(42),
         "repr_neg5": repr(-5),
@@ -99,10 +113,33 @@ def builtins_introspection_py() -> dict[any, any] {
 }
 
 def builtins_introspection_cl() -> dict[any, any] {
-    return {};
+    o: _I = _I();
+    return {
+        "type_is_str": 1 if type("s") is str else 0,
+        "type_isnot_dict": 1 if type(7) is not dict else 0,
+        "type_bool_isnot_int": 1 if type(True) is not int else 0,
+        "type_arch_is": 1 if type(o) is _I else 0,
+        "type_arch_name": type(o).__name__,
+        "type_of_type_is_type": 1 if type(str) is type else 0,
+        "isinstance_dict_t": 1 if isinstance({"a": 1}, dict) else 0
+    };
 }
 
 
 def builtins_introspection_na() -> dict[str, any] {
     return {};
+}
+
+"""Known type()-identity gaps (#8887 review): a tuple lowers to a plain
+array and JS has one `number` type, so these read the opposite of
+Python. Pinned so closing or regressing either is a conscious update.
+"""
+def type_identity_known_gaps_cl() -> dict[any, any] {
+    t: tuple[int, int] = (1, 2);
+    f: float = 3.0;
+    return {
+        "type_tuple_is_list": 1 if type(t) is list else 0,
+        "type_tuple_is_tuple": 1 if type(t) is tuple else 0,
+        "type_float_is_float": 1 if type(f) is float else 0
+    };
 }

@@ -5,6 +5,7 @@ import from jaclang.compiler.tests.xbackend_equiv {
     run_py_fixture,
     compile_fixture_to_js,
     run_js_function,
+    run_js_expr,
     compile_native,
     compile_native_errors,
     get_func,
@@ -589,12 +590,54 @@ glob STR_NA_GAPS: list[any] = [
              "dictorder_na",
              ["na"]
          ),
+         # cl only covers the type()-identity rows; require=["cl"] so a
+         # regression there fails instead of being swallowed silently.
          (
              "builtins introspection",
              "prim_builtins_introspection.jac",
              "builtins_introspection_py",
              "builtins_introspection_cl",
-             "builtins_introspection_na"
+             "builtins_introspection_na",
+             ["cl"],
+             [
+                 "enumerate_len",
+                 "enumerate_0_idx",
+                 "enumerate_2_val",
+                 "zip_len",
+                 "zip_0_a",
+                 "map_result",
+                 "filter_result",
+                 "isinstance_int_t",
+                 "isinstance_int_f",
+                 "isinstance_exc",
+                 "issubclass_val_exc",
+                 "issubclass_idx_lookup",
+                 "issubclass_int_str",
+                 "type_int",
+                 "type_str",
+                 "type_list",
+                 "repr_42",
+                 "repr_neg5",
+                 "ascii_hello",
+                 "callable_fn",
+                 "callable_int",
+                 "hash_42",
+                 "hash_0",
+                 "id_positive",
+                 "iter_next_10",
+                 "iter_next_99",
+                 "hasattr_t",
+                 "hasattr_f",
+                 "getattr_ok",
+                 "setattr_ok",
+                 "vars_ok",
+                 "has_dyn",
+                 "del_ok",
+                 "dir_ok",
+                 "callable_print",
+                 "callable_input",
+                 "callable_open"
+             ]
          ),
          (
              "match sequence",
@@ -669,6 +712,59 @@ with entry {
         EQUIV_CASES,
         _equiv_case,
         id_fn=lambda (c: tuple[any, ...]) { c[0]; }
+    );
+}
+
+test "type() identity known gaps (#8887 review)" {
+    # Pins the known representation-erasure gaps so they stay documented
+    # instead of silently implied-fixed.
+    js_code = compile_fixture_to_js("prim_builtins_introspection.jac");
+    result = run_js_function(js_code, "type_identity_known_gaps_cl");
+    assert result["type_tuple_is_list"] == 1 , (
+        "known gap: a compiled tuple is indistinguishable from a list, so "
+        "type(tuple) is list reads true (Python: False)"
+    );
+    assert result["type_tuple_is_tuple"] == 0 , (
+        "known gap: a compiled tuple is indistinguishable from a list, so "
+        "type(tuple) is tuple reads false (Python: True)"
+    );
+    assert result["type_float_is_float"] == 0 , (
+        "known gap: JS has one number type, so a whole-valued float is "
+        "indistinguishable from an int -- type(3.0) is float reads false "
+        "(Python: True)"
+    );
+}
+
+test "type() does not mutate a frozen archetype constructor (#8887 review)" {
+    # __name__ used to be written lazily by type(), which threw on a
+    # frozen constructor. 'use strict' has to prefix the whole bundle,
+    # not just the probe, since strict mode is lexical to type()'s own
+    # definition site, not the caller.
+    js_code = "'use strict';\n"
+        + compile_fixture_to_js("prim_builtins_introspection.jac");
+    result = run_js_expr(
+        js_code,
+        "(() => { "
+        "const hadOwnBeforeAnyTypeCall = "
+        "Object.prototype.hasOwnProperty.call(_I, '__name__'); "
+        "Object.freeze(_I); "
+        "try { "
+        "const t = _jac.builtin.type(new _I()); "
+        "return {ok: true, name: (t.__name__ === undefined ? null : t.__name__), "
+        "hadOwnBefore: hadOwnBeforeAnyTypeCall}; "
+        "} catch (e) { return {ok: false, error: String(e)}; } "
+        "})()"
+    );
+    assert result["ok"] , (
+        f"type() must not write to the class it is inspecting -- calling "
+        f"it on a frozen constructor raised: {result.get('error')}"
+    );
+    assert result["name"] == "_I" , (
+        f"type(x).__name__ must read \"_I\", got {result['name']!r}"
+    );
+    assert result["hadOwnBefore"] , (
+        "__name__ must already be the class's own property before type() "
+        "is ever called -- it must not be type()'s job to add it"
     );
 }
 

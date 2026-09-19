@@ -1922,7 +1922,10 @@ impl ESBuiltinEmitter.emit_issubclass(
 impl ESBuiltinEmitter.emit_type(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return "typeof " + args[0];
+    if len(args) != 1 {
+        return None;
+    }
+    return _rt("builtin", "type", args);
 }
 
 impl ESBuiltinEmitter.emit_id(
