@@ -1967,7 +1967,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5080 = _err(
          "E5080",
          Category.CODEGEN,
-         "Argument '{name}' for server function '{func}' is given both positionally and by keyword"
+         "Argument '{name}' for call to '{func}' is given both positionally and by keyword"
      ),
      E5081 = _err("E5081", Category.CODEGEN, "Unknown client framework '{framework}'"),
      E5083 = _err(

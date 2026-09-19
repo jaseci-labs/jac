@@ -1,4 +1,7 @@
-import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
+import from jaclang.compiler.backends.es.primitives_es {
+    ESEmitCtx,
+    builtin_kwarg_param_names
+}
 
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
@@ -1249,13 +1252,40 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                 for _p in here.params
                 if not isinstance(_p, uni.KWPair)
             ];
+
+            _call_args: list[(es.Expression | es.SpreadElement)] = args;
+            _call_props: list[(es.Property | es.SpreadElement)] = props;
+            _builtin_params = builtin_kwarg_param_names(_builtin_name);
+            _use_kwargs_temp = False;
+            _spread_arg: (es.Expression | None) = None;
+            if _builtin_params is not None and props {
+                (_spread_arg, _spread_read_source) = self._make_kwargs_spread_context(
+                    props, here
+                );
+                _use_kwargs_temp = _spread_read_source is not None;
+                _ordered = self._call_args_from_slots(
+                    self._resolve_call_arg_slots(
+                        here,
+                        args,
+                        props,
+                        _builtin_params,
+                        _builtin_name,
+                        _spread_read_source
+                    )
+                );
+                if _ordered is not None {
+                    _call_args = _ordered;
+                    _call_props = [];
+                }
+            }
+
             _args_strs: list[str] = [];
-            for _a in args {
+            for _a in _call_args {
                 _args_strs.append(_unparser.generate(_a));
             }
 
             _kwargs: dict[str, str] = {};
-            for _p in props {
+            for _p in _call_props {
                 if isinstance(_p, es.Property) and _p.value {
                     _val_str = _unparser.generate(_p.value);
                     _args_strs.append(_val_str);
@@ -1288,9 +1318,15 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                 if "_jac." in str(_result) {
                     self.needs_jac_runtime = True;
                 }
-                here.gen.es_ast = self.sync_loc(
+                _raw_expr: es.Expression = self.sync_loc(
                     es.RawCode(code=_result), jac_node=here
                 );
+                if _use_kwargs_temp and _spread_arg is not None {
+                    _raw_expr = self._wrap_with_kwargs_temp(
+                        _raw_expr, _spread_arg, here
+                    );
+                }
+                here.gen.es_ast = _raw_expr;
                 return;
             }
         }
