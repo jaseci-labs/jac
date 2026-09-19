@@ -742,6 +742,36 @@ impl TypeEvaluator._validate_call_type(
     return UnknownType();
 }
 
+def _literal_kwargs_spread(arg: KWPair) -> (list[tuple[str, Expr]] | None) {
+    if arg.key is not None {
+        return None;
+    }
+    spread = arg.value;
+    while isinstance(spread, AtomUnit) and isinstance(spread.value, Expr) {
+        spread = spread.value;
+    }
+    if not isinstance(spread, DictVal) {
+        return None;
+    }
+    last: dict[str, Expr] = {};
+    for kv in spread.kv_pairs {
+        key = kv.key;
+        name: (str | bytes | None) = None;
+        if isinstance(key, String) {
+            name = key.lit_value;
+        } elif isinstance(key, MultiString)
+            and all(isinstance(part, String) for part in key.strings) {
+            name = key.lit_value;
+        }
+        if not isinstance(name, str) {
+            return None;
+        }
+        last.pop(name, None);
+        last[name] = kv.value;
+    }
+    return list(last.items());
+}
+
 impl TypeEvaluator.match_args_to_params(
     arg_nodes: (Sequence[Expr | KWPair] | None),
     node_for_error: UniNode | None,
@@ -787,7 +817,20 @@ impl TypeEvaluator.match_args_to_params(
     param_tracker = ParamAssignmentTracker(params_to_match);
     for arg in (arg_nodes or []) {
         try {
-            if isinstance(arg, KWPair) {
+            spread = _literal_kwargs_spread(arg) if isinstance(arg, KWPair) else None;
+            if spread is not None {
+                for (name, value_expr) in spread {
+                    spread_param = param_tracker.lookup_named_parameter(name);
+                    if spread_param is None {
+                        if not checking_overload {
+                            self.emit_diag(E1052, value_expr, name=name);
+                        }
+                        argument_errors = True;
+                        continue;
+                    }
+                    arg_params[value_expr] = spread_param;
+                }
+            } elif isinstance(arg, KWPair) {
                 matching_param = param_tracker.match_named_argument(arg);
                 arg_params[arg] = matching_param;
             } else {
