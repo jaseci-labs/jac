@@ -5151,6 +5151,77 @@ test "edge_endpoint_clause_rejected_on_non_edge" {
         + "\\n---\\n".join(e.pretty_print() for e in program.errors_had);
 }
 
+def _endpoint_diags(program: JacProgram) -> list[tuple[str, int]] {
+    return sorted(
+        [
+            (d.code.code, d.loc.first_line)
+            for d in program.errors_had + program.warnings_had
+            if d.code and d.code.code in ("E1408", "E1409", "W2081", "W2082", "E0111")
+        ]
+    );
+}
+
+test "edge_endpoint_declaration_is_enforced_at_connect_and_traversal" {
+    # Step 1: `edge Post: Profile --> Tweet` is already trusted by inference to
+    # narrow a traversal, so a connect that violates it is a miscompile, not a
+    # style question -- field access resolves by slot index, so the wrong node
+    # silently reads the wrong field. A provable mismatch is an error; operands
+    # the checker cannot resolve stay a warning so dynamic graph code still runs.
+    program = JacProgram();
+    program.compile(os.path.join(CHECKER_FIXTURES, "edge_endpoint_violation.jac"));
+    got = _endpoint_diags(program);
+    assert ("E1408", 23) in got , f"backwards connect must be E1408 at 23, got {got}";
+    assert ("E1409", 25) in got , f"wrong-origin traversal must be E1409 at 25, got {got}";
+    assert ("W2081", 12) in got , f"`any` operands must warn W2081 at 12, got {got}";
+    for clean in [19, 20, 21, 27, 28] {
+        assert not [
+            p
+            for p in got
+            if p[1] == clean
+        ] , f"line {clean} conforms and must stay silent, got {got}";
+    }
+}
+
+test "edge_endpoint_admits_a_union_like_every_other_type_position" {
+    # Step 2: endpoints parsed through `parse_atomic_chain`, which stops short of
+    # the union operator, so `A | B` was E0005 -- while `has v: A | B` parsed
+    # fine through `parse_pipe`. 27 of the compiler's own role getters return a
+    # union, so endpoints were inexpressible for them until this parses.
+    program = JacProgram();
+    mod = program.compile(os.path.join(CHECKER_FIXTURES, "edge_endpoint_union.jac"));
+    assert len(program.errors_had) == 0 , "Unexpected errors:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    expected = {
+        "multi_out": "list[A | B]",
+        "narrow_out": "list[C]",
+        "narrow_in": "list[A | B]",
+        "shared_field": "str"
+    };
+    seen: dict[str, str] = {};
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.value in expected and nm.type is not None {
+            seen[nm.value] = str(nm.type);
+        }
+    }
+    for (target, want) in expected.items() {
+        assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
+            target
+        )}";
+    }
+}
+
+test "edge_without_an_endpoint_clause_is_rejected" {
+    # Step 3: a bare `edge Foo {}` widens every traversal through it to `any`
+    # with nothing written down, which is the one place Jac let an annotation be
+    # implied by silence. The widening stays available -- `any --> any` keeps the
+    # gradual behaviour exactly, `Node --> Node` asks for node-ness -- but it has
+    # to be said.
+    program = JacProgram();
+    program.compile(os.path.join(CHECKER_FIXTURES, "edge_missing_endpoints.jac"));
+    got = _endpoint_diags(program);
+    assert got == [("E0111", 6)] , f"only the bare edge on line 6 may be flagged, got {got}";
+}
+
 test "mobui_project_forbids_html_intrinsic_tags" {
     # D17: in a mobui (React Native) project, raw HTML host tags are
     # forbidden — JsxIntrinsicGuardPass emits E1105 for each lowercase tag,
