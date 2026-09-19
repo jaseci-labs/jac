@@ -66,8 +66,12 @@ records without module-specific policy.
 The object API is also linked into the stock CPython build. Compiler-only
 operations remain in `compiler_runtime.c`; reference ownership, scalar values,
 generic calls, and GC visitation belong to the shared runtime. Native
-`references.jac` supplies `ObjectRef`, owned-reference transfer, preserved Python
-failures, and the native-state visitation protocol used by module bindings.
+`references.jac` supplies `ObjectRef`, owned-reference transfer, explicit
+`ObjectResult` values, and the native-state visitation protocol used by module
+bindings. Python errors remain owned values until the outer entry consumes a
+result, allowing intermediate native frames to release their references before
+restoring the original interpreter exception. This boundary does not depend on
+native `longjmp` cleanup.
 These operations require an attached interpreter thread holding the GIL.
 
 Declarations contain no Python objects and live for the process lifetime. Each

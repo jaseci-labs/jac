@@ -13,25 +13,39 @@ Python modules, extension modules, and the replacement modules provided by a
 JacPython build.
 
 The same native shared library passed nine probe groups in both the installed
-stock-CPython Jac binary and an existing JacPython runtime. Both were Python
-3.14.6. The existing JacPython runtime reports compiler bridge version 3; it was
-not rebuilt from the current sources, which expect version 4. These results
-establish the bridge mechanism on those runtimes, not a fresh JacPython build
-certification or full standard-library conformance.
+stock-CPython Jac binary and a freshly source-built JacPython runtime. Both were
+Python 3.14.6; JacPython reports compiler bridge version 4. Both runtime variants
+were also built from source and passed their required runtime smoke checks.
+These results establish the shared bridge mechanism, not full standard-library
+conformance or completion of the compiler migration.
 
 The retained object API is now linked into both runtime variants. Shared object
 operations have moved out of the JacPython compiler adapter, and generic
 reference ownership and GC visitation no longer depend on extension bindings.
 `runtime/python/references.jac` owns native Python references, transfers results,
-and captures/restores original Python exceptions. Existing module bindings reuse
+and carries original Python exceptions in explicit `ObjectResult` values. The
+outer Python entry consumes a result and restores its exception only after
+intermediate native frames have returned normally. Existing module bindings reuse
 the same ownership protocol. Both build cache identities include the shared API.
 
 Targeted native tests exercise reference transfer, repeated alias clearing,
-mutable object identity, Unicode and large integers, nested exception unwinding,
+mutable object identity, Unicode and large integers, errors through nested calls,
 exception identity, import failures, and null-handle rejection. The harness holds
 the GIL through the existing native JIT and the hosted shared-library loader.
 Module resolution and bootstrap payload extraction still need the migrations
 described below.
+
+The migration is incomplete. A stronger ownership test exposed a pre-existing
+native exception bug: `longjmp` skips reference cleanup in intermediate native
+frames. `ObjectRef` cannot supply language-level exception safety on that path.
+The reproducer is
+[native_unwind_cleanup.jac](../../scripts/fixtures/native_unwind_cleanup.jac).
+The temporary `PythonFailure` exception adapter has been removed; explicit
+owned results provide the runtime boundary without depending on that unsafe
+unwind path. Ordinary native `try`/`except` integration still requires a
+coordinated exception-ABI change, including generators, iterator adapters,
+temporary values, and exported entry points. Merely enabling the existing error
+slots globally does not establish those contracts.
 
 ## Reproduce
 

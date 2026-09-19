@@ -39,11 +39,28 @@ obj ObjectRef(NativeState) {
     }
 }
 
-obj PythonFailure(Exception) {
-    has error: ObjectRef;
+obj ObjectResult {
+    has reference: ObjectRef,
+        failed: bool = False;
+
+    def take -> u64 {
+        value = self.reference.take();
+        if value == 0 {
+            object_error("SystemError", "native object result was already consumed");
+            return 0;
+        }
+        if self.failed {
+            jacpy_error_restore(value);
+            return 0;
+        }
+        return value;
+    }
 }
 
-def python_failure {
+def object_result(value: u64) -> ObjectResult {
+    if value != 0 {
+        return ObjectResult(reference=ObjectRef(value=value));
+    }
     error = jacpy_error_take();
     if error == 0 {
         object_error(
@@ -51,26 +68,15 @@ def python_failure {
         );
         error = jacpy_error_take();
     }
-    raise PythonFailure(error=ObjectRef(value=error));
+    return ObjectResult(reference=ObjectRef(value=error), failed=True);
 }
 
-def owned_object(value: u64) -> ObjectRef {
-    if value == 0 {
-        python_failure();
-    }
-    return ObjectRef(value=value);
-}
-
-def borrowed_object(value: u64) -> ObjectRef {
+def borrowed_result(value: u64) -> ObjectResult {
     if value == 0 {
         object_error("SystemError", "cannot borrow a null Python object");
-        python_failure();
+        return object_result(0);
     }
-    return owned_object(jacpy_retain(value));
-}
-
-def restore_failure(failure: PythonFailure) {
-    jacpy_error_restore(jacpy_retain(failure.error.value));
+    return object_result(jacpy_retain(value));
 }
 
 obj ReferenceState(NativeState) {

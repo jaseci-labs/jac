@@ -4,8 +4,10 @@ import functools;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { compile_native, compile_native_ir, get_python_func }
+import from tests.support { NATIVE_FIXTURES, compile_native, get_python_func }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.dist.native_product { write_native_product }
 import from jaclang.runtime.interop_bridge { NativeLibrary }
 
@@ -60,7 +62,7 @@ test "generic native calls retain object identity and mutable aliases" {
     assert value == [42];
 }
 
-test "native exception unwinding releases nested frames and preserves the error" {
+test "error results release nested frames and preserve the original exception" {
     call = object_call("call_with_witness", 4);
     sentinel = ValueError("original error");
     witness = object();
@@ -98,7 +100,18 @@ test "null references and runtime import errors remain Python exceptions" {
 }
 
 test "the hosted shared-library loader keeps the interpreter lock" {
-    module = compile_native_ir("python_references.jac");
+    program = JacProgram();
+    module = program.compile(
+        file_path=str(Path(NATIVE_FIXTURES) / "python_references.jac"),
+        options=CompileOptions(
+            aot_mode=True,
+            force_codespace="native",
+            force_target_program=True,
+            native_required=True
+        )
+    );
+    assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
+    assert module is not None;
     with tempfile.TemporaryDirectory() as directory {
         product = write_native_product(
             module, Path(directory), Path("references"), emit_source=False

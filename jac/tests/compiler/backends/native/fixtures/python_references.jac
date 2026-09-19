@@ -1,84 +1,79 @@
-"""Owned runtime values and native exception cleanup at a Python entry point."""
+"""Owned Python results return through native frames before restoring an error."""
 import from jaclang.runtime.python.references {
-    ObjectRef,
-    PythonFailure,
-    owned_object,
-    borrowed_object,
-    restore_failure
+    ObjectResult,
+    object_result,
+    borrowed_result
 }
 import from jaclang.runtime.python.capi {
     jacpy_import_object,
     jacpy_getattr,
     jacpy_call
 }
-
-import from c { def PyGILState_Check -> i32; }
+import from c { def PyGILState_Check -> i32;  }
 
 def:pub gil_held -> i32 {
     return PyGILState_Check();
 }
 
-def:pub import_call(module_name: u64, name: u64, args: u64, kwargs: u64) -> u64 {
-    try {
-        module = owned_object(jacpy_import_object(module_name));
-        callable = owned_object(jacpy_getattr(module.value, name));
-        result = owned_object(jacpy_call(callable.value, args, kwargs));
-        return result.take();
-    } except PythonFailure as failure {
-        restore_failure(failure);
-        return 0;
+def imported(module_name: u64, name: u64, args: u64, kwargs: u64) -> ObjectResult {
+    module = object_result(jacpy_import_object(module_name));
+    if module.failed {
+        return module;
     }
+    callable = object_result(jacpy_getattr(module.reference.value, name));
+    if callable.failed {
+        return callable;
+    }
+    return object_result(jacpy_call(callable.reference.value, args, kwargs));
+}
+
+def:pub import_call(module_name: u64, name: u64, args: u64, kwargs: u64) -> u64 {
+    return imported(module_name, name, args, kwargs).take();
+}
+
+def method(value: u64, name: u64, args: u64, kwargs: u64) -> ObjectResult {
+    callable = object_result(jacpy_getattr(value, name));
+    if callable.failed {
+        return callable;
+    }
+    return object_result(jacpy_call(callable.reference.value, args, kwargs));
 }
 
 def:pub method_call(value: u64, name: u64, args: u64, kwargs: u64) -> u64 {
-    try {
-        callable = owned_object(jacpy_getattr(value, name));
-        result = owned_object(jacpy_call(callable.value, args, kwargs));
-        return result.take();
-    } except PythonFailure as failure {
-        restore_failure(failure);
-        return 0;
-    }
+    return method(value, name, args, kwargs).take();
 }
 
 def:pub retained_identity(value: u64) -> u64 {
-    reference = borrowed_object(value);
-    return reference.take();
+    return borrowed_result(value).take();
 }
 
 def:pub release_local(value: u64) {
-    reference = borrowed_object(value);
+    reference = borrowed_result(value);
 }
 
 def:pub release_alias(value: u64) {
-    reference = borrowed_object(value);
-    alias = reference;
-    reference.clear();
+    result = borrowed_result(value);
+    alias = result.reference;
+    result.reference.clear();
     alias.clear();
 }
 
 def:pub borrow_null -> u64 {
-    try {
-        reference = borrowed_object(u64(0));
-        return reference.take();
-    } except PythonFailure as failure {
-        restore_failure(failure);
-        return 0;
-    }
+    return borrowed_result(u64(0)).take();
 }
 
-def invoke(value: u64, args: u64, kwargs: u64, witness: u64) -> ObjectRef {
-    held = borrowed_object(witness);
-    result = owned_object(jacpy_call(value, args, kwargs));
+def invoke(value: u64, args: u64, kwargs: u64, witness: u64) -> ObjectResult {
+    held = borrowed_result(witness);
+    if held.failed {
+        return held;
+    }
+    result = object_result(jacpy_call(value, args, kwargs));
+    if result.failed {
+        return result;
+    }
     return held;
 }
 
 def:pub call_with_witness(value: u64, args: u64, kwargs: u64, witness: u64) -> u64 {
-    try {
-        result = invoke(value, args, kwargs, witness);
-        return result.take();
-    } except PythonFailure as failure {
-        restore_failure(failure);
-        return 0;
-    }
+    return invoke(value, args, kwargs, witness).take();
 }
