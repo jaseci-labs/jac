@@ -398,6 +398,14 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              ]
          ),
          (
+             "subscript_guard_assignment",
+             "checker",
+             "checker_subscript_guard_assignment.jac",
+             3,
+             True,
+             []
+         ),
+         (
              "unannotated_reassignment_frozen",
              "checker",
              "checker_none_sentinel_reassignment.jac",
