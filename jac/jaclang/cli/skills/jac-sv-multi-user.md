@@ -15,7 +15,7 @@ Plus **`allroots()`** (ambient) - enumerate every user's `root` (`list[Root]`) f
 ```jac
 node Profile { has username: str; }
 node Tweet { has content: str; }
-edge Posted {}
+edge Posted: Profile --> Tweet {}
 
 # CREATE - data lives under the author's root; grant() is what makes it
 # reachable by OTHER users. littleX is built on exactly this.
@@ -81,7 +81,7 @@ the grant is one entry, and membership is an edge.
 ```jac
 node Doc { has body: str; }
 node Team { has name: str; }
-edge MemberOf {}
+edge MemberOf: Root --> Team {}
 
 import from jaclang { JacRuntime as Jac }
 import from uuid { UUID }
@@ -137,7 +137,7 @@ node PublicNode {
         return AccessLevel.WRITE;    # every instance opens WRITE to every user
     }
 }
-edge PublicEdge {
+edge PublicEdge: any --> any {
     def __jac_access__ -> AccessLevel {
         return AccessLevel.WRITE;
     }

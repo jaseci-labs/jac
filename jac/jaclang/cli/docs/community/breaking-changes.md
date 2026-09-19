@@ -7,6 +7,42 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### An `edge` declaration must name its endpoints ([#9315](https://github.com/jaseci-labs/jac/pull/9315), unreleased)
+
+`edge Foo {}` is now `E2086`. The endpoint clause is what lets a traversal through
+an edge infer a node type instead of `any`, so leaving it off was the one place
+Jac let an annotation be implied by silence -- `has v;` is a parse error and an
+untyped parameter is `E0052`.
+
+Name the node types the edge connects, or say the widening out loud:
+
+```jac
+edge Follows: Profile --> Profile {}   # the node types it links
+edge Tagged: any --> any {}            # keeps the old gradual behaviour exactly
+edge Linked: Node --> Node {}          # some node, without naming which
+```
+
+`any --> any` is the mechanical rewrite: an `any` endpoint narrows to nothing, so
+a traversal through it still yields `list[<any>]`. `Node --> Node` is stricter --
+it narrows the traversal to `Node`, so field reads off the result become `E1030`.
+An edge that inherits endpoints from a base edge needs no clause of its own.
+
+The declaration is now enforced as well as read. Connecting node types the edge
+does not declare is `E1136`, and traversing an edge from a node it cannot start
+from is `E1137`; both were previously accepted, and because archetype field
+access resolves by slot index the result was a wrong-field read rather than an
+error. An operand that is merely more general than the declaration -- a `Node`
+where `Profile` is declared -- may still be the declared type at runtime, so it
+warns (`W2081`, `W2082`) instead of failing.
+
+Endpoints also accept a union now, like every other type position:
+
+```jac
+edge Multi: Base --> A | B {}          # narrows to list[A | B]
+```
+
+---
+
 ### `jac purge` is removed; `jac cache` owns the machine-wide cache (#9246)
 
 `jac purge` is gone. It removed exactly `~/.cache/jac/jir` plus two
