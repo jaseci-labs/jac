@@ -63,6 +63,13 @@ no per-module C adapters. `capi.jac` declares shared retained-object operations;
 `bootstrap/python/binding_api.c` stores opaque CPython module, type, and buffer
 records without module-specific policy.
 
+The object API is also linked into the stock CPython build. Compiler-only
+operations remain in `compiler_runtime.c`; reference ownership, scalar values,
+generic calls, and GC visitation belong to the shared runtime. Native
+`references.jac` supplies `ObjectRef`, owned-reference transfer, preserved Python
+failures, and the native-state visitation protocol used by module bindings.
+These operations require an attached interpreter thread holding the GIL.
+
 Declarations contain no Python objects and live for the process lifetime. Each
 interpreter owns its module state and heap types. Owned argument frames release
 conversions on success and error paths. A shared native-state protocol exposes

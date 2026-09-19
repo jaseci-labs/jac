@@ -1,4 +1,6 @@
 """CSV declarations, owned callbacks, and interpreter-local native configuration."""
+import from jaclang.runtime.python.capi { jacpy_visit }
+
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -8,7 +10,6 @@ import from jaclang.runtime.python.bindings.module {
     add_state_owned,
     jacpy_binding_exception,
     jacpy_binding_state_get,
-    jacpy_binding_visit,
     jacpy_binding_module_native_get,
     jacpy_binding_module_native_set,
     jacpy_binding_module_native_present
@@ -31,7 +32,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     traverse_payload
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -88,9 +89,7 @@ obj CsvReaderState(ReferenceState) {
         if status != 0 {
             return status;
         }
-        return jacpy_binding_visit(
-            jacpy_csv_reader_fields(self.native), visitor, context
-        );
+        return jacpy_visit(jacpy_csv_reader_fields(self.native), visitor, context);
     }
 }
 

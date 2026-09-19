@@ -4,6 +4,7 @@
 #include <Python.h>
 #include <errno.h>
 #include <stdint.h>
+#include "internal/pycore_pyerrors.h"
 
 /* libpython is built with hidden visibility, so only marked symbols reach a
  * native library that dlopens into this runtime. These entry points ARE that
@@ -12,6 +13,75 @@
 
 #define OBJECT(h) ((PyObject *)(uintptr_t)(h))
 #define HANDLE(p) ((uint64_t)(uintptr_t)(p))
+
+int32_t jacpy_visit(uint64_t value, uint64_t visitor, uint64_t context) {
+    return value ? ((visitproc)(uintptr_t)visitor)(OBJECT(value), (void *)(uintptr_t)context) : 0;
+}
+
+/* Shared by stock CPython, the JacPython compiler and native modules. */
+PyObject *jacpy_exception_type(const char *name) {
+#define EXCEPTION(kind) if (strcmp(name, #kind) == 0) return PyExc_##kind
+    EXCEPTION(BaseException); EXCEPTION(Exception); EXCEPTION(BaseExceptionGroup);
+    EXCEPTION(StopAsyncIteration); EXCEPTION(StopIteration); EXCEPTION(GeneratorExit);
+    EXCEPTION(ArithmeticError); EXCEPTION(LookupError); EXCEPTION(AssertionError);
+    EXCEPTION(AttributeError); EXCEPTION(BufferError); EXCEPTION(EOFError);
+    EXCEPTION(FloatingPointError); EXCEPTION(OSError); EXCEPTION(ImportError);
+    EXCEPTION(ModuleNotFoundError); EXCEPTION(IndexError); EXCEPTION(KeyError);
+    EXCEPTION(KeyboardInterrupt); EXCEPTION(MemoryError); EXCEPTION(NameError);
+    EXCEPTION(OverflowError); EXCEPTION(RuntimeError); EXCEPTION(RecursionError);
+    EXCEPTION(NotImplementedError); EXCEPTION(SyntaxError); EXCEPTION(IndentationError);
+    EXCEPTION(TabError); EXCEPTION(ReferenceError); EXCEPTION(SystemError);
+    EXCEPTION(SystemExit); EXCEPTION(TypeError); EXCEPTION(UnboundLocalError);
+    EXCEPTION(UnicodeError); EXCEPTION(UnicodeEncodeError); EXCEPTION(UnicodeDecodeError);
+    EXCEPTION(UnicodeTranslateError); EXCEPTION(ValueError); EXCEPTION(ZeroDivisionError);
+    EXCEPTION(BlockingIOError); EXCEPTION(BrokenPipeError); EXCEPTION(ChildProcessError);
+    EXCEPTION(ConnectionError); EXCEPTION(ConnectionAbortedError); EXCEPTION(ConnectionRefusedError);
+    EXCEPTION(ConnectionResetError); EXCEPTION(FileExistsError); EXCEPTION(FileNotFoundError);
+    EXCEPTION(InterruptedError); EXCEPTION(IsADirectoryError); EXCEPTION(NotADirectoryError);
+    EXCEPTION(PermissionError); EXCEPTION(ProcessLookupError); EXCEPTION(TimeoutError);
+    EXCEPTION(EnvironmentError); EXCEPTION(IOError); EXCEPTION(Warning);
+    EXCEPTION(UserWarning); EXCEPTION(DeprecationWarning); EXCEPTION(PendingDeprecationWarning);
+    EXCEPTION(SyntaxWarning); EXCEPTION(RuntimeWarning); EXCEPTION(FutureWarning);
+    EXCEPTION(ImportWarning); EXCEPTION(UnicodeWarning); EXCEPTION(BytesWarning);
+    EXCEPTION(EncodingWarning); EXCEPTION(ResourceWarning);
+#undef EXCEPTION
+    if (strcmp(name, "_IncompleteInputError") == 0) return PyExc_IncompleteInputError;
+    return NULL;
+}
+int64_t jacpy_buffer_size(uint64_t handle) { return PyBytes_GET_SIZE((PyObject *)(uintptr_t)handle); }
+int64_t jacpy_buffer_byte(uint64_t handle, int64_t index) {
+    return (unsigned char)PyBytes_AS_STRING((PyObject *)(uintptr_t)handle)[index];
+}
+void jacpy_release(uint64_t handle) { Py_XDECREF((PyObject *)(uintptr_t)handle); }
+double jacpy_float_value(uint64_t handle) { return PyFloat_AS_DOUBLE((PyObject *)(uintptr_t)handle); }
+uint64_t jacpy_list_new(void) { return (uint64_t)(uintptr_t)PyList_New(0); }
+uint64_t jacpy_none(void) { return (uint64_t)(uintptr_t)Py_NewRef(Py_None); }
+uint64_t jacpy_int(int64_t value) { return (uint64_t)(uintptr_t)PyLong_FromLongLong(value); }
+uint64_t jacpy_text(const char *value, int64_t size) {
+    return (uint64_t)(uintptr_t)PyUnicode_DecodeUTF8(value, size, "surrogatepass");
+}
+uint64_t jacpy_buffer_new(int64_t size) { return (uint64_t)(uintptr_t)PyBytes_FromStringAndSize(NULL, size); }
+void jacpy_buffer_set(uint64_t handle, int64_t index, int64_t value) {
+    PyBytes_AS_STRING((PyObject *)(uintptr_t)handle)[index] = (char)value;
+}
+int64_t jacpy_truth(uint64_t handle) { return PyObject_IsTrue((PyObject *)(uintptr_t)handle); }
+uint64_t jacpy_utf8(uint64_t handle) {
+    return (uint64_t)(uintptr_t)PyUnicode_AsEncodedString((PyObject *)(uintptr_t)handle,"utf-8","surrogatepass");
+}
+int64_t jacpy_is_list(uint64_t handle) { return PyList_Check((PyObject *)(uintptr_t)handle); }
+int64_t jacpy_integer_value(uint64_t handle) { return PyLong_AsLongLong((PyObject *)(uintptr_t)handle); }
+int64_t jacpy_error_pending(void) { return PyErr_Occurred() != NULL; }
+int64_t jacpy_error_is(const char *name) {
+    PyObject *type = jacpy_exception_type(name);
+    return type != NULL && PyErr_ExceptionMatches(type);
+}
+uint64_t jacpy_dict_new(void) { return (uint64_t)(uintptr_t)PyDict_New(); }
+void jacpy_raise_error(const char *kind, const char *message, int64_t size) {
+    PyObject *type=jacpy_exception_type(kind);
+    if (type == NULL) type=PyExc_SystemError;
+    PyObject *text=PyUnicode_DecodeUTF8(message,size,"surrogatepass");
+    if (text) { PyErr_SetObject(type,text); Py_DECREF(text); }
+}
 
 int64_t jacpy_object_size(uint64_t handle) {
     return PySequence_Size(OBJECT(handle));

@@ -1,4 +1,6 @@
 """Native typed-array declarations, sequence protocols, and buffer ownership."""
+import from jaclang.runtime.python.capi { jacpy_visit }
+
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
@@ -7,8 +9,7 @@ import from jaclang.runtime.python.bindings.module {
     add_state_owned,
     add_owned,
     jacpy_binding_state_get,
-    jacpy_binding_state_set,
-    jacpy_binding_visit
+    jacpy_binding_state_set
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -25,7 +26,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_slot,
     jacpy_binding_basicsize
 }
-import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.references { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -34,7 +35,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     dispose_payload
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState, owned_tuple }
+import from jaclang.runtime.python.references { ReferenceState, owned_tuple }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -146,7 +147,7 @@ obj ArrayState(NativeState) {
     }
 
     def traverse_refs(visitor: u64, context: u64) -> i32 {
-        return jacpy_binding_visit(jacpy_array_field(self.native), visitor, context);
+        return jacpy_visit(jacpy_array_field(self.native), visitor, context);
     }
 
     def drop {
@@ -162,9 +163,7 @@ obj ArrayIteratorState(NativeState) {
     }
 
     def traverse_refs(visitor: u64, context: u64) -> i32 {
-        return jacpy_binding_visit(
-            jacpy_array_cursor_owner(self.native), visitor, context
-        );
+        return jacpy_visit(jacpy_array_cursor_owner(self.native), visitor, context);
     }
 
     def drop {

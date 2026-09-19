@@ -16,38 +16,8 @@
  * boundary -- a separately built native unit calls them -- so export them. */
 #pragma GCC visibility push(default)
 
-
-/* Exception identity belongs to the retained runtime, not the caller's
- * mutable builtins dictionary. Shared by compiler and extension boundaries. */
-PyObject *jacpy_exception_type(const char *name) {
-#define EXCEPTION(kind) if (strcmp(name, #kind) == 0) return PyExc_##kind
-    EXCEPTION(BaseException); EXCEPTION(Exception); EXCEPTION(BaseExceptionGroup);
-    EXCEPTION(StopAsyncIteration); EXCEPTION(StopIteration); EXCEPTION(GeneratorExit);
-    EXCEPTION(ArithmeticError); EXCEPTION(LookupError); EXCEPTION(AssertionError);
-    EXCEPTION(AttributeError); EXCEPTION(BufferError); EXCEPTION(EOFError);
-    EXCEPTION(FloatingPointError); EXCEPTION(OSError); EXCEPTION(ImportError);
-    EXCEPTION(ModuleNotFoundError); EXCEPTION(IndexError); EXCEPTION(KeyError);
-    EXCEPTION(KeyboardInterrupt); EXCEPTION(MemoryError); EXCEPTION(NameError);
-    EXCEPTION(OverflowError); EXCEPTION(RuntimeError); EXCEPTION(RecursionError);
-    EXCEPTION(NotImplementedError); EXCEPTION(SyntaxError); EXCEPTION(IndentationError);
-    EXCEPTION(TabError); EXCEPTION(ReferenceError); EXCEPTION(SystemError);
-    EXCEPTION(SystemExit); EXCEPTION(TypeError); EXCEPTION(UnboundLocalError);
-    EXCEPTION(UnicodeError); EXCEPTION(UnicodeEncodeError); EXCEPTION(UnicodeDecodeError);
-    EXCEPTION(UnicodeTranslateError); EXCEPTION(ValueError); EXCEPTION(ZeroDivisionError);
-    EXCEPTION(BlockingIOError); EXCEPTION(BrokenPipeError); EXCEPTION(ChildProcessError);
-    EXCEPTION(ConnectionError); EXCEPTION(ConnectionAbortedError); EXCEPTION(ConnectionRefusedError);
-    EXCEPTION(ConnectionResetError); EXCEPTION(FileExistsError); EXCEPTION(FileNotFoundError);
-    EXCEPTION(InterruptedError); EXCEPTION(IsADirectoryError); EXCEPTION(NotADirectoryError);
-    EXCEPTION(PermissionError); EXCEPTION(ProcessLookupError); EXCEPTION(TimeoutError);
-    EXCEPTION(EnvironmentError); EXCEPTION(IOError); EXCEPTION(Warning);
-    EXCEPTION(UserWarning); EXCEPTION(DeprecationWarning); EXCEPTION(PendingDeprecationWarning);
-    EXCEPTION(SyntaxWarning); EXCEPTION(RuntimeWarning); EXCEPTION(FutureWarning);
-    EXCEPTION(ImportWarning); EXCEPTION(UnicodeWarning); EXCEPTION(BytesWarning);
-    EXCEPTION(EncodingWarning); EXCEPTION(ResourceWarning);
-#undef EXCEPTION
-    if (strcmp(name, "_IncompleteInputError") == 0) return PyExc_IncompleteInputError;
-    return NULL;
-}
+/* Shared object operations live in object_api.c in both runtime variants. */
+extern PyObject *jacpy_exception_type(const char *name);
 
 /* Values returned by this boundary are owned PyBytes handles. Callers hold
  * the GIL, copy the UTF-8 payload into Jac-owned storage, and release them. */
@@ -77,11 +47,7 @@ uint64_t jacpy_bytes_escape(const char *source, int64_t size) {
     int invalid_char = -1;
     return (uint64_t)(uintptr_t)_PyBytes_DecodeEscape2(source, size, NULL, &invalid_char, &invalid);
 }
-int64_t jacpy_buffer_size(uint64_t handle) { return PyBytes_GET_SIZE((PyObject *)(uintptr_t)handle); }
-int64_t jacpy_buffer_byte(uint64_t handle, int64_t index) {
-    return (unsigned char)PyBytes_AS_STRING((PyObject *)(uintptr_t)handle)[index];
-}
-void jacpy_release(uint64_t handle) { Py_XDECREF((PyObject *)(uintptr_t)handle); }
+
 int64_t jacpy_warning(const char *message, const char *filename, int64_t line) {
     return PyErr_WarnExplicit(PyExc_SyntaxWarning, message, filename, (int)line, NULL, NULL);
 }
@@ -106,7 +72,6 @@ uint64_t jacpy_parse_float(const char *source, int64_t size) {
     Py_DECREF(text);
     return (uint64_t)(uintptr_t)value;
 }
-double jacpy_float_value(uint64_t handle) { return PyFloat_AS_DOUBLE((PyObject *)(uintptr_t)handle); }
 
 /* AST constructors and attributes are retained CPython value operations.
  * Traversal, node selection, and field conversion live in native Jac.
@@ -233,7 +198,7 @@ uint64_t jacpy_optional_field(uint64_t handle, int64_t field) {
     if (name == NULL || PyObject_GetOptionalAttr((PyObject *)(uintptr_t)handle, name, &value) < 0) return 0;
     return (uint64_t)(uintptr_t)(value != NULL ? value : Py_NewRef(Py_None));
 }
-uint64_t jacpy_list_new(void) { return (uint64_t)(uintptr_t)PyList_New(0); }
+
 int64_t jacpy_list_append_owned(uint64_t target, uint64_t value) {
     if (!value) return -1;
     PyObject *item = (PyObject *)(uintptr_t)value;
@@ -241,15 +206,7 @@ int64_t jacpy_list_append_owned(uint64_t target, uint64_t value) {
     Py_DECREF(item);
     return status;
 }
-uint64_t jacpy_none(void) { return (uint64_t)(uintptr_t)Py_NewRef(Py_None); }
-uint64_t jacpy_int(int64_t value) { return (uint64_t)(uintptr_t)PyLong_FromLongLong(value); }
-uint64_t jacpy_text(const char *value, int64_t size) {
-    return (uint64_t)(uintptr_t)PyUnicode_DecodeUTF8(value, size, "surrogatepass");
-}
-uint64_t jacpy_buffer_new(int64_t size) { return (uint64_t)(uintptr_t)PyBytes_FromStringAndSize(NULL, size); }
-void jacpy_buffer_set(uint64_t handle, int64_t index, int64_t value) {
-    PyBytes_AS_STRING((PyObject *)(uintptr_t)handle)[index] = (char)value;
-}
+
 /* Code objects are assembled by native Jac and constructed through the same
  * validated constructor marshal uses. Handles are borrowed. */
 uint64_t jacpy_code_new(int64_t argcount, int64_t posonlyargcount, int64_t kwonlyargcount,
@@ -297,13 +254,11 @@ int64_t jacpy_value_kind(uint64_t handle) {
     if (PyFrozenSet_Check(value)) return 9;
     return -1;
 }
-int64_t jacpy_truth(uint64_t handle) { return PyObject_IsTrue((PyObject *)(uintptr_t)handle); }
+
 uint64_t jacpy_marshal(uint64_t handle) {
     return (uint64_t)(uintptr_t)PyMarshal_WriteObjectToString((PyObject *)(uintptr_t)handle, 4);
 }
-uint64_t jacpy_utf8(uint64_t handle) {
-    return (uint64_t)(uintptr_t)PyUnicode_AsEncodedString((PyObject *)(uintptr_t)handle,"utf-8","surrogatepass");
-}
+
 double jacpy_real(uint64_t handle) { return PyComplex_RealAsDouble((PyObject *)(uintptr_t)handle); }
 double jacpy_imag(uint64_t handle) { return PyComplex_ImagAsDouble((PyObject *)(uintptr_t)handle); }
 uint64_t jacpy_sequence(uint64_t handle) { return (uint64_t)(uintptr_t)PySequence_List((PyObject *)(uintptr_t)handle); }
@@ -311,9 +266,6 @@ int64_t jacpy_sequence_size(uint64_t handle) { return PyList_GET_SIZE((PyObject 
 uint64_t jacpy_sequence_item(uint64_t handle, int64_t index) {
     return (uint64_t)(uintptr_t)Py_NewRef(PyList_GET_ITEM((PyObject *)(uintptr_t)handle,index));
 }
-int64_t jacpy_is_list(uint64_t handle) { return PyList_Check((PyObject *)(uintptr_t)handle); }
-int64_t jacpy_integer_value(uint64_t handle) { return PyLong_AsLongLong((PyObject *)(uintptr_t)handle); }
-int64_t jacpy_error_pending(void) { return PyErr_Occurred() != NULL; }
 
 uint64_t jacpy_decode(uint64_t handle, const char *encoding) {
     PyObject *data = (PyObject *)(uintptr_t)handle;
@@ -340,10 +292,6 @@ void jacpy_raise_compiler_error(const char *kind, uint64_t message, uint64_t loc
         return;
     }
     PyErr_SetObject(type, (PyObject *)(uintptr_t)message);
-}
-int64_t jacpy_error_is(const char *name) {
-    PyObject *type = jacpy_exception_type(name);
-    return type != NULL && PyErr_ExceptionMatches(type);
 }
 
 #include <structmember.h>
@@ -414,7 +362,7 @@ uint64_t jacpy_symtable_entry(uint64_t name, int64_t kind, int64_t lineno, int64
     entry->type=(int)kind; entry->lineno=(int)lineno; entry->nested=(int)nested;
     return (uint64_t)(uintptr_t)entry;
 }
-uint64_t jacpy_dict_new(void) { return (uint64_t)(uintptr_t)PyDict_New(); }
+
 int64_t jacpy_dict_set_owned(uint64_t dictionary,uint64_t key,uint64_t value) {
     PyObject *k=(PyObject *)(uintptr_t)key,*v=(PyObject *)(uintptr_t)value;
     if (k == NULL || v == NULL) { Py_XDECREF(k); Py_XDECREF(v); return -1; }
@@ -473,12 +421,6 @@ uint64_t jacpy_fd_line(int64_t fd) {
     }
     PyObject *result=PyBytes_FromObject(line); Py_DECREF(line);
     return (uint64_t)(uintptr_t)result;
-}
-void jacpy_raise_error(const char *kind, const char *message, int64_t size) {
-    PyObject *type=jacpy_exception_type(kind);
-    if (type == NULL) type=PyExc_SystemError;
-    PyObject *text=PyUnicode_DecodeUTF8(message,size,"surrogatepass");
-    if (text) { PyErr_SetObject(type,text); Py_DECREF(text); }
 }
 
 /* Initialize Jac native module storage before CPython starts importing. */

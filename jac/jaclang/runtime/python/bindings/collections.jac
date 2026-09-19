@@ -1,4 +1,6 @@
 """Native collection types, iteration, descriptors, and Python ownership."""
+import from jaclang.runtime.python.capi { jacpy_visit }
+
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
@@ -7,8 +9,7 @@ import from jaclang.runtime.python.bindings.module {
     add_state_owned,
     add_owned,
     jacpy_binding_state_get,
-    jacpy_binding_state_set,
-    jacpy_binding_visit
+    jacpy_binding_state_set
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -30,7 +31,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_base_dealloc,
     jacpy_binding_object_state
 }
-import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.references { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -41,7 +42,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     dispose_payload
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState, owned_tuple }
+import from jaclang.runtime.python.references { ReferenceState, owned_tuple }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -120,7 +121,7 @@ obj DequeState(NativeState) {
 
     def traverse_refs(visitor: u64, context: u64) -> i32 {
         for i in range(int(jacpy_deque_size(self.native))) {
-            status = jacpy_binding_visit(
+            status = jacpy_visit(
                 jacpy_deque_borrow(self.native, i64(i)), visitor, context
             );
             if status != 0 {

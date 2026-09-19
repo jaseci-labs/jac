@@ -48,7 +48,7 @@ import from jaclang.runtime.python.capi {
     jacpy_object_str,
     jacpy_call_one
 }
-import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.references { NativeState }
 
 obj CsvConfig(NativeState) {
     has limit: i64 = 128 * 1024;

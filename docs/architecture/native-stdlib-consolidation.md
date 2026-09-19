@@ -1,7 +1,8 @@
 # Native standard library consolidation
 
-Status: feasibility investigation and executable probe, not a completed import
-routing migration. Audited against checkout `36c2d1d03` on Linux x86-64.
+Status: shared runtime object API and ownership foundation implemented; ordinary
+import routing is not yet migrated. Initial audit: checkout `36c2d1d03` on Linux
+x86-64.
 
 ## Finding
 
@@ -18,15 +19,25 @@ not rebuilt from the current sources, which expect version 4. These results
 establish the bridge mechanism on those runtimes, not a fresh JacPython build
 certification or full standard-library conformance.
 
-No production module resolution, packaging, or stdlib implementation is changed
-by this investigation.
+The retained object API is now linked into both runtime variants. Shared object
+operations have moved out of the JacPython compiler adapter, and generic
+reference ownership and GC visitation no longer depend on extension bindings.
+`runtime/python/references.jac` owns native Python references, transfers results,
+and captures/restores original Python exceptions. Existing module bindings reuse
+the same ownership protocol. Both build cache identities include the shared API.
+
+Four targeted native tests exercise reference transfer, repeated alias clearing,
+mutable object identity, Unicode and large integers, nested exception unwinding,
+exception identity, import failures, and null-handle rejection. The harness holds
+the GIL through the existing native JIT. Module resolution and bootstrap payload
+extraction still need the migrations described below.
 
 ## Reproduce
 
 From the repository root:
 
 ```sh
-jac -c 'import runpy; runpy.run_path("scripts/probe_native_stdlib.py", run_name="__main__")' --report /tmp/native-stdlib.json
+jac run scripts/probe_native_stdlib.jac --report /tmp/native-stdlib.json
 ```
 
 An optional `--runtime PATH` repeats verification in another Python or Jac
@@ -39,7 +50,10 @@ runtime, using the same compiled artifact. For example, append:
 The driver builds [native_stdlib_bridge.jac](../../scripts/fixtures/native_stdlib_bridge.jac)
 with the checkout compiler into a temporary shared library, rejects build
 failures and reported demotions, and verifies it in fresh subprocesses. It
-records runtime versions and module origins in the optional JSON report.
+records runtime versions and module origins in the optional JSON report. The Jac
+driver serializes its verification function into a temporary code artifact so
+the same checks run in each pinned Python 3.14 runtime without installing the
+Jac compiler there.
 
 | Probe | Verified behavior |
 | --- | --- |

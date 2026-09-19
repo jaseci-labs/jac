@@ -1,12 +1,13 @@
 """Native iterator type declarations and ownership at the Python ABI boundary."""
+import from jaclang.runtime.python.capi { jacpy_visit }
+
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
     MethodCallbacks,
     MethodDefinition,
     add_state_owned,
-    jacpy_binding_state_get,
-    jacpy_binding_visit
+    jacpy_binding_state_get
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -21,7 +22,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_basicsize,
     jacpy_binding_generic_alias
 }
-import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.references { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -31,7 +32,7 @@ import from jaclang.runtime.python.bindings.payload {
     dispose_payload,
     jacpy_binding_dealloc_guard
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -136,7 +137,7 @@ obj PipelineState(NativeState) {
 
     override def traverse_refs(visitor: u64, context: u64) -> i32 {
         for index in range(7) {
-            status = jacpy_binding_visit(
+            status = jacpy_visit(
                 jacpy_pipeline_field(self.native, i64(index)), visitor, context
             );
             if status != 0 {
@@ -160,7 +161,7 @@ obj CombinationState(NativeState) {
 
     override def traverse_refs(visitor: u64, context: u64) -> i32 {
         for index in range(2) {
-            status = jacpy_binding_visit(
+            status = jacpy_visit(
                 jacpy_combinatorial_field(self.native, i64(index)), visitor, context
             );
             if status != 0 {
@@ -184,7 +185,7 @@ obj GroupState(NativeState) {
 
     override def traverse_refs(visitor: u64, context: u64) -> i32 {
         for index in range(5) {
-            status = jacpy_binding_visit(
+            status = jacpy_visit(
                 jacpy_group_field(self.native, i64(index)), visitor, context
             );
             if status != 0 {
@@ -208,7 +209,7 @@ obj BlockState(NativeState) {
 
     override def traverse_refs(visitor: u64, context: u64) -> i32 {
         for index in range(int(jacpy_tee_block_count(self.native))) {
-            status = jacpy_binding_visit(
+            status = jacpy_visit(
                 jacpy_tee_block_field(self.native, i64(index)), visitor, context
             );
             if status != 0 {
@@ -231,9 +232,7 @@ obj CursorState(NativeState) {
     has native: tee_cursor;
 
     override def traverse_refs(visitor: u64, context: u64) -> i32 {
-        return jacpy_binding_visit(
-            jacpy_tee_cursor_field(self.native), visitor, context
-        );
+        return jacpy_visit(jacpy_tee_cursor_field(self.native), visitor, context);
     }
 
     override def clear {

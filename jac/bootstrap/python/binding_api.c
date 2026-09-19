@@ -117,9 +117,7 @@ void jacpy_binding_state_set(uint64_t module, int64_t index, uint64_t value) {
     JacModuleState *state = PyModule_GetState(P(module));
     Py_XSETREF(state->references[index], Py_XNewRef((PyObject *)P(value)));
 }
-int32_t jacpy_binding_visit(uint64_t value, uint64_t visitor, uint64_t context) {
-    return value ? ((visitproc)P(visitor))(P(value), P(context)) : 0;
-}
+extern int32_t jacpy_visit(uint64_t value, uint64_t visitor, uint64_t context);
 uint64_t jacpy_binding_exception(const char *name, const char *base, const char *doc) {
     extern PyObject *jacpy_exception_type(const char *);
     return H(PyErr_NewExceptionWithDoc(name, *doc ? doc : NULL, *base ? jacpy_exception_type(base) : NULL, NULL));
@@ -377,7 +375,7 @@ int32_t jacpy_binding_dict_visit(uint64_t object, uint64_t definition,
     JacTypeSpec *spec = P(definition);
     if (!spec->instance_dict) return 0;
     PyObject **dict = _PyObject_GetDictPtr(P(object));
-    return dict ? jacpy_binding_visit(H(*dict), visitor, context) : 0;
+    return dict ? jacpy_visit(H(*dict), visitor, context) : 0;
 }
 void jacpy_binding_dict_clear(uint64_t object, uint64_t definition) {
     JacTypeSpec *spec = P(definition);

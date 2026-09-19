@@ -3,8 +3,8 @@
 Declarations contain no Python objects and are constructed once during native
 initialization. The immutable records can be shared by isolated interpreters.
 """
-import from jaclang.runtime.python.capi { jacpy_release }
-import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.capi { jacpy_release, jacpy_visit }
+import from jaclang.runtime.python.references { NativeState }
 import from c {
     obj ModuleHooks {
         has execute: Callable[[u64], i32] = 0,
@@ -25,9 +25,9 @@ import from c {
         module: u64
     ) -> u64;  def jacpy_binding_state_count(module: u64) -> i64;  def jacpy_binding_state_get(
         module: u64, index: i64
-    ) -> u64;  def jacpy_binding_state_set(module: u64, index: i64, value: u64);  def jacpy_binding_visit(
-        value: u64, visitor: u64, context: u64
-    ) -> i32;  def jacpy_binding_exception(name: str, base: str, doc: str) -> u64;
+    ) -> u64;  def jacpy_binding_state_set(module: u64, index: i64, value: u64);  def jacpy_binding_exception(
+        name: str, base: str, doc: str
+    ) -> u64;
 }
 
 import from c {
@@ -47,7 +47,7 @@ def traverse_state(module: u64, visitor: u64, context: u64) -> i32 {
         }
     }
     for index in range(int(jacpy_binding_state_count(module))) {
-        result = jacpy_binding_visit(
+        result = jacpy_visit(
             jacpy_binding_state_get(module, i64(index)), visitor, context
         );
         if result != 0 {

@@ -22,7 +22,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     traverse_payload
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,

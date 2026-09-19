@@ -1,4 +1,6 @@
 """Native callable types, descriptors, and ownership for functools."""
+import from jaclang.runtime.python.capi { jacpy_visit }
+
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodDefinition,
@@ -7,8 +9,7 @@ import from jaclang.runtime.python.bindings.module {
     add_state_owned,
     jacpy_binding_state_get,
     jacpy_binding_state_set,
-    add_owned,
-    jacpy_binding_visit
+    add_owned
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -27,7 +28,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_method_bind,
     jacpy_binding_marker
 }
-import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.references { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -36,7 +37,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     traverse_payload
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -97,7 +98,7 @@ obj PartialState(NativeState) {
 
     def traverse_refs(visitor: u64, context: u64) -> i32 {
         for i in range(4) {
-            status = jacpy_binding_visit(
+            status = jacpy_visit(
                 jacpy_partial_field(self.native, i64(i)), visitor, context
             );
             if status != 0 {
@@ -121,7 +122,7 @@ obj LruState(NativeState) {
 
     def traverse_refs(visitor: u64, context: u64) -> i32 {
         for i in range(7) {
-            status = jacpy_binding_visit(
+            status = jacpy_visit(
                 jacpy_lru_field(self.native, i64(i)), visitor, context
             );
             if status != 0 {

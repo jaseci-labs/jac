@@ -151,7 +151,6 @@ cpython() {
         cp "$recipe/compiler_bridge.c" Python/jac_compile.c
         cp "$recipe/compiler_bridge.h" Python/jac_compile.h
         cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
-        cp "$recipe/object_api.c" Python/jac_objects.c
         cp "$recipe/binding_api.c" Python/jac_bindings.c
         cp "$work/native/jacpython.o" Python/jacpython.o
     fi
@@ -160,6 +159,16 @@ cpython() {
     # compiler-bridge.patch carries zero-context hunks, which match on line
     # number alone and so must see pristine ones.
     patch -f -F0 -p1 -i "$recipe/build-graph.patch"
+    # Native callers share the same retained-object ABI with either compiler.
+    # Keep it outside compiler-bridge.patch, which only selects JacPython.
+    cp "$recipe/object_api.c" Python/jac_objects.c
+    sed 's|^PYTHON_OBJS=|PYTHON_OBJS= Python/jac_objects.o |' \
+        Makefile.pre.in > Makefile.pre.in.new
+    mv Makefile.pre.in.new Makefile.pre.in
+    cat >> Makefile.pre.in <<'MAKE'
+
+Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
+MAKE
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
         linux-*)
@@ -221,7 +230,7 @@ _bisect
 _heapq
 _random
 binascii
-_operator -lcrypto
+_operator
 _queue
 _json
 _csv
@@ -249,7 +258,7 @@ SETUP
         --with-tail-call-interp "$python_lto" \
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
         --with-openssl="$deps" --with-openssl-rpath=no \
-        --with-system-expat --with-system-libmpdec --without-readline
+        --with-system-expat --with-system-libmpdec --without-readline LIBS=-lcrypto
     # Embed the same core objects in the executable: venv --copies must run
     # without a libpython next to the copied executable. Jac's launcher still
     # uses the separately built shared library. Neither needs libpython3.so.

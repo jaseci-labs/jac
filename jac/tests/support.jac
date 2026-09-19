@@ -249,6 +249,15 @@ def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any 
     return functype(addr);
 }
 
+"""Call native Python-object entry points with the GIL and error checks."""
+def get_python_func(
+    eng: ExecutionEngine, name: str, restype: type | None, *argtypes: type
+) -> any {
+    addr = eng.get_function_address(name);
+    assert addr != 0 , f"Function '{name}' not found in JIT engine";
+    return ctypes.PYFUNCTYPE(restype, *argtypes)(addr);
+}
+
 """Return True if the program emitted at least one alert with the given code."""
 def has_error_code(prog: any, code: str) -> bool {
     for alrt in prog.errors_had {

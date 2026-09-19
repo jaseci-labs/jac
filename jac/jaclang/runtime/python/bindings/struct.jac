@@ -1,4 +1,6 @@
 """Struct bindings with owned format plans and exported-buffer iterators."""
+import from jaclang.runtime.python.capi { jacpy_visit }
+
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -7,8 +9,7 @@ import from jaclang.runtime.python.bindings.module {
     add_state_owned,
     jacpy_binding_exception,
     jacpy_binding_state_get,
-    jacpy_binding_state_set,
-    jacpy_binding_visit
+    jacpy_binding_state_set
 }
 import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
@@ -29,7 +30,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     traverse_payload
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState }
+import from jaclang.runtime.python.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -105,13 +106,13 @@ obj UnpackState(NativeState) {
     }
 
     def traverse_refs(visitor: u64, context: u64) -> i32 {
-        status = jacpy_binding_visit(self.owner, visitor, context);
+        status = jacpy_visit(self.owner, visitor, context);
         if status != 0 {
             return status;
         }
         buffer = self.buffer;
         if buffer is not None {
-            return jacpy_binding_visit(buffer.owner(), visitor, context);
+            return jacpy_visit(buffer.owner(), visitor, context);
         }
         return i32(0);
     }

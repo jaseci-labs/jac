@@ -1,6 +1,7 @@
 """Native state owned by a Python object through an opaque ABI payload slot."""
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_visit }
+import from jaclang.runtime.python.capi { jacpy_visit }
+
+import from jaclang.runtime.python.references { NativeState }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_typeof,
     jacpy_binding_dict_visit,
@@ -22,7 +23,7 @@ import from c {
 def traverse_payload(
     instance: u64, definition: u64, visitor: u64, context: u64
 ) -> i32 {
-    result = jacpy_binding_visit(jacpy_binding_typeof(instance), visitor, context);
+    result = jacpy_visit(jacpy_binding_typeof(instance), visitor, context);
     if result != 0 {
         return result;
     }

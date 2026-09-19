@@ -42,6 +42,31 @@ assert sqlite3.connect(":memory:").execute("select 6 * 7").fetchone() == (42,)
 assert str(decimal.Decimal("0.1") + decimal.Decimal("0.2")) == "0.3"
 assert hashlib.sha256(sample).digest()
 assert ctypes.pythonapi.PyInitConfig_Create
+# The native object ABI belongs to the runtime, independently of its compiler.
+object_api = ctypes.pythonapi
+object_api.jacpy_import_object.argtypes = [ctypes.py_object]
+object_api.jacpy_import_object.restype = ctypes.c_void_p
+object_api.jacpy_getattr.argtypes = [ctypes.c_void_p, ctypes.py_object]
+object_api.jacpy_getattr.restype = ctypes.c_void_p
+object_api.jacpy_call.argtypes = [ctypes.c_void_p, ctypes.py_object, ctypes.py_object]
+object_api.jacpy_call.restype = ctypes.c_void_p
+object_api.jacpy_release.argtypes = [ctypes.c_void_p]
+object_api.jacpy_release.restype = None
+object_handles = []
+try:
+    object_handles.append(object_api.jacpy_import_object("builtins"))
+    object_handles.append(object_api.jacpy_getattr(object_handles[-1], "sorted"))
+    object_handles.append(object_api.jacpy_call(object_handles[-1], ([2, 3, 1],), {"reverse": True}))
+    assert ctypes.cast(object_handles[-1], ctypes.py_object).value == [3, 2, 1]
+    try:
+        object_api.jacpy_getattr(object_handles[0], "__jac_missing_object_api_probe__")
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("native object API lost AttributeError")
+finally:
+    for object_handle in reversed(object_handles):
+        object_api.jacpy_release(object_handle)
 mode = sys.argv[1] if len(sys.argv) > 1 else "jacpython"
 assert mode in ("jacpython", "host"), mode
 if mode == "jacpython":

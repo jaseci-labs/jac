@@ -1,4 +1,6 @@
 """Native pickle constructors, descriptors, and Python callback ownership."""
+import from jaclang.runtime.python.capi { jacpy_visit }
+
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
@@ -8,7 +10,6 @@ import from jaclang.runtime.python.bindings.module {
     add_state_owned,
     jacpy_binding_state_get,
     jacpy_binding_state_set,
-    jacpy_binding_visit,
     jacpy_binding_exception,
     jacpy_binding_exception_with_base
 }
@@ -25,7 +26,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_type_matches,
     jacpy_binding_basicsize
 }
-import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.references { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -34,7 +35,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     dispose_payload
 }
-import from jaclang.runtime.python.bindings.references { ReferenceState, owned_tuple }
+import from jaclang.runtime.python.references { ReferenceState, owned_tuple }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -140,7 +141,7 @@ obj PicklerState(CodecState) {
             return result;
         }
         for index in range(8) {
-            result = jacpy_binding_visit(
+            result = jacpy_visit(
                 jacpy_pickler_field(self.native, i64(index)), visitor, context
             );
             if result != 0 {
@@ -169,7 +170,7 @@ obj UnpicklerState(CodecState) {
             return result;
         }
         for index in range(int(jacpy_unpickler_field_count(self.native))) {
-            result = jacpy_binding_visit(
+            result = jacpy_visit(
                 jacpy_unpickler_field(self.native, i64(index)), visitor, context
             );
             if result != 0 {
