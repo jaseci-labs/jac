@@ -1,0 +1,1 @@
+- **Fix native walker list visits**: Evaluate list conversions before capturing the LLVM builder, and release the converted temporary instead of releasing an already-consumed source list twice.
