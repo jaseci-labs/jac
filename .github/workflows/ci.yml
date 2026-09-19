@@ -577,6 +577,7 @@ jobs:
           jac run scripts/run_cpython_compiler_tests.jac --module test.test_bisect --native-modules _bisect
           jac run scripts/run_cpython_compiler_tests.jac --module test.test_heapq --native-modules _heapq
           jac run scripts/run_cpython_compiler_tests.jac --module test.test_random --native-modules _random
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_statistics --native-modules _statistics
 
   # Everything except the compiler tests.
   test-runtime:
