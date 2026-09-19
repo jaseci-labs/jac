@@ -56,6 +56,21 @@ Jac ships its own native linker, so there's no `gcc`/`ld` in the loop. The nativ
 !!! tip "Shipping a full app instead?"
     The native subset is the price of the smallest possible artifact. To ship *any* Jac program (walkers, Python imports, even a web client) as one executable, use `jac build --as binary` -- it fuses your app's sealed `.jab` onto the `jac` launcher so the file carries the full runtime. A plain `jac build` emits the sealed `.jab` bundle itself, which any Jac install runs with zero live compilation. Add `--fat` to either to vendor the Python dependency closure into the bundle so it materializes offline, with no PyPI (see [fat jab](../reference/cli/index.md#jac-build)). See [Ship it](../quick-guide/project-kinds.md#ship-it-one-file-or-one-executable) and [`jac build`](../reference/cli/index.md#jac-build).
 
+## How a sealed jab boots natively {#sealed-native-boot}
+
+When a `cli`, `cli-native`, or `native-binary` app is sealed with native artifacts, `jac build` writes two files per target triple under the bundle's native directory: the standalone executable and an **entry library** (`lib<stem>.so` / `.dylib` / `.dll`) built with `--entry-lib`, which exports the host-protocol symbols `jac_entry`, `__jac_argc`, `__jac_argv`, and `__jac_shared_init` (see [entry libraries](../reference/language/native-pathway.md#entry-libraries)).
+
+At run time, `jac run app.jab` picks the fastest lane that works, falling back in order:
+
+1. **Standalone executable** -- if a native binary for this platform was sealed, the runner replaces itself with it via `execv`. No interpreter is involved.
+2. **Entry library, loaded in-process** -- otherwise the runner `dlopen`s the entry library into its own address space, fills in `__jac_argv`/`__jac_argc`, calls `__jac_shared_init` to run global initializers, then invokes `jac_entry`. Sharing the address space with the Jac runtime keeps the door open for native-to-Python callbacks across the interop bridge.
+3. **JIT interpreter** -- if neither artifact exists or loads, the entry runs through the ordinary JIT pathway.
+
+The fallback stops at a boundary: once `jac_entry` has started executing, a failure aborts the run instead of falling back -- replaying the entry through another lane would run its side effects twice.
+
+!!! note "Apps that call back into Python"
+    An app whose native code imports Python symbols (`native_imports`) cannot be self-contained, so sealing drops the standalone executable and records the fact in a `<lib>.interop.json` sidecar next to the entry library (naming the unresolved symbols). The jab manifest carries its `native.interop` flag from that record -- never inferred from which artifacts happen to be present. Such apps seal as host-driven entry-library only; there is no standalone exe to exec.
+
 ## Run natively in place {#cli-native}
 
 Set `kind = "cli-native"` in `jac.toml` when you want the *program* to execute through the native pathway rather than producing a distributable artifact -- the same native subset, run as a command. A bare `jac run` then compiles-and-executes it. (`cli` runs on the Python VM; `cli-native` runs the native build; `native-binary` ships the executable.)

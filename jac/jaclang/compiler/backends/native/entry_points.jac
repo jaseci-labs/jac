@@ -170,7 +170,8 @@ def finalize_native_ir(
     shared: bool,
     is_windows: bool,
     is_macos: bool,
-    static_musl: bool
+    static_musl: bool,
+    emit_entry_stub: bool = False
 ) -> tuple[str, list[str]] {
     import from jaclang.compiler.backends.native.shared_emit {
         aarch64_floor_atomics_ir,
@@ -178,7 +179,9 @@ def finalize_native_ir(
     }
     extra_exports: list[str] = [];
     if shared {
-        (llvm_ir_str, extra_exports) = inject_shared_init(llvm_ir_str, manifest);
+        (llvm_ir_str, extra_exports) = inject_shared_init(
+            llvm_ir_str, manifest, emit_entry_stub=emit_entry_stub
+        );
     } elif is_windows {
         llvm_ir_str = _inject_entry_pe(llvm_ir_str);
     } elif is_macos {

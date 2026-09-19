@@ -1162,7 +1162,11 @@ impl JacCompiler.stamp_boundary_facts(
                     facts.from_loc_resolved = None;
                 }
                 facts.is_service = nd.is_service_import;
-                if (nd.items and not facts.is_service and nd.in_client_context()) {
+                if (
+                    nd.items
+                    and not facts.is_service
+                    and (nd.in_client_context() or native_ctx or in_native_mod)
+                ) {
                     resolved = facts.from_loc_resolved;
                     if (resolved is not None and resolved.endswith('.jac')) {
                         try {
@@ -1775,9 +1779,9 @@ impl JacCompiler._module_scoped_errors(
     target_program: JacProgram, mod_path: str
 ) -> bool {
     import from jaclang.compiler.frontend.diagnostics { Category }
+    import from jaclang.jac0core.ext_registry { is_module_scoped_path }
     norm = os.path.normpath(mod_path);
 
-    prefix = (norm[:-4] if norm.endswith('.jac') else norm) + '.';
     for e in target_program.errors_had {
         if e.code is None or e.code.category not in (Category.CODEGEN, Category.ICE) {
             continue;
@@ -1787,7 +1791,7 @@ impl JacCompiler._module_scoped_errors(
         } except Exception {
             continue;
         }
-        if e_path == norm or e_path.startswith(prefix) {
+        if is_module_scoped_path(e_path, norm) {
             return True;
         }
     }
