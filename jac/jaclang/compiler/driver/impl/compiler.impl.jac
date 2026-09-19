@@ -143,7 +143,7 @@ impl JacCompiler.get_bytecode(
         actual = context_program(actual, options);
     }
     with compilation_scope(
-        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
+        None if self.selfhost.is_selfhost(actual) else actual.options
     ) {
         return self._get_bytecode(full_target, actual);
     }
@@ -1271,10 +1271,8 @@ impl JacCompiler.compile(
     context_errors = len(target_program.errors_had);
     context_warnings = len(target_program.warnings_had);
     import from jaclang.compiler.driver.compilation_context { compilation_scope }
-    identity = ''
-        if self.selfhost.is_selfhost(target_program)
-        else target_program.context_key;
-    with compilation_scope(identity, options) {
+    owner = None if self.selfhost.is_selfhost(target_program) else options;
+    with compilation_scope(owner) {
         import from jaclang.compiler.native_scope {
             activate_scope_lowering,
             deactivate_scope_lowering,
@@ -2058,7 +2056,7 @@ impl JacCompiler.get_client_artifact(
         actual = context_program(actual, options);
     }
     with compilation_scope(
-        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
+        None if self.selfhost.is_selfhost(actual) else actual.options
     ) {
         return self._get_client_artifact(full_target, actual);
     }

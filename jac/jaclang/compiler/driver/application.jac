@@ -65,7 +65,7 @@ def _write(path: any, value: any) {
 def _sections(path: any, program: any) -> dict[int, bytes] {
     import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
     actual = program_for(path, program);
-    with cache_scope(actual.context_key, actual.options) {
+    with cache_scope(actual.options) {
         return _context_sections(path);
     }
 }

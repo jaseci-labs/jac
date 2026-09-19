@@ -506,10 +506,18 @@ def module_env_fingerprint(source_path: str) -> str {
     return h.hexdigest();
 }
 
+def _owner_projection -> str {
+    # The option half of a module's key, taken from the options of the program
+    # that owns it and projected here rather than inherited pre-hashed. See
+    # `CompileOptions.module_projection` for why the entry point is not in it.
+    import from jaclang.compiler.driver.compilation_context { active_options }
+    options = active_options();
+    return options.module_projection() if options is not None else '';
+}
+
 def compute_module_key(source_path: str) -> str {
-    import from jaclang.compiler.driver.compilation_context { cache_identity }
     h = hashlib.sha256();
-    h.update(cache_identity().encode());
+    h.update(_owner_projection().encode());
     h.update(_env_fingerprint_for(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
@@ -747,7 +755,7 @@ def compute_precompile_module_key(source_path: str, compiler_digest: str = "") -
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     h = hashlib.sha256();
 
-    with cache_scope('') {
+    with cache_scope() {
         h.update(module_cache_key(source_path).encode());
     }
     h.update(b"|compiler=");
@@ -816,10 +824,11 @@ def _get_module_cache_dir(source_path: str) -> Path {
 }
 
 def get_module_cache_path(source_path: str) -> Path {
-    import from jaclang.compiler.driver.compilation_context { cache_identity }
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
-    path_hash = hashlib.sha256((str(source) + cache_identity()).encode()).hexdigest()[:8];
+    path_hash = hashlib.sha256(
+        (str(source) + _owner_projection()).encode()
+    ).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }

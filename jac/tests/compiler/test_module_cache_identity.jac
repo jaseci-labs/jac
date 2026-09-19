@@ -23,10 +23,7 @@ import os;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.compilation_context {
-    cache_scope,
-    context_identity
-}
+import from jaclang.compiler.driver.compilation_context { cache_scope }
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
     module_cache_key
@@ -60,7 +57,7 @@ def _keyed_as(base: Path, rooted_at: str, **extra: any) -> tuple[Path, str] {
         project_root=str(base),
         **extra
     );
-    with cache_scope(context_identity(options), options) {
+    with cache_scope(options) {
         target = str(base / "shared.jac");
         return (get_module_cache_path(target), module_cache_key(target));
     }

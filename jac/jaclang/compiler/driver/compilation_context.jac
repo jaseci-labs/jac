@@ -13,35 +13,34 @@ import from jaclang.compiler.passes.context { Alert }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
-     ),
-     _cache_context: ContextVar[str] = ContextVar('jac_compilation_cache', `default='');
+     );
 
 @contextmanager
-def cache_scope(
-    identity: str, options: CompileOptions | None = None
-) -> Iterator[None] {
-    token = _cache_context.set(identity);
-    option_token = _active_options.set(options);
+def cache_scope(options: CompileOptions | None = None) -> Iterator[None] {
+    token = _active_options.set(options);
     try {
         yield ;
     } finally {
-        _cache_context.reset(token);
-        _active_options.reset(option_token);
+        _active_options.reset(token);
     }
 }
 
 @contextmanager
-def compilation_scope(
-    identity: str, options: CompileOptions | None = None
-) -> Iterator[None] {
+def compilation_scope(options: CompileOptions | None = None) -> Iterator[None] {
     import from jaclang.project.workspace { workspace_scope }
-    with cache_scope(identity, options), workspace_scope() {
+    with cache_scope(options), workspace_scope() {
         yield ;
     }
 }
 
-def cache_identity -> str {
-    return _cache_context.get();
+def active_options -> CompileOptions | None {
+    # The options of the program that owns the module being compiled. The
+    # cache key is derived from these at the point of use, via
+    # `CompileOptions.module_projection`, rather than handed down pre-hashed
+    # from whoever entered the scope -- so a dependency cannot inherit the
+    # root's entry point. `None` means no owning context (selfhost, and the
+    # context-free keys `jac.dist` writes for precompiled modules).
+    return _active_options.get();
 }
 
 obj SourceUnit {
@@ -152,20 +151,11 @@ def bind_options(
 }
 
 def context_identity(options: CompileOptions) -> str {
-    return hashlib.sha256(
-        repr(
-            (
-                options.analysis_identity(),
-                options.codegen_identity(),
-                options.aot_mode,
-                options.force_codespace,
-                options.default_codespace,
-                options.ui,
-                options.project_root,
-                options.entry_point
-            )
-        ).encode()
-    ).hexdigest()[:20];
+    # Separating JacProgram contexts and keying the module cache are the same
+    # question -- "can these two compiles share compiled output?" -- so they
+    # ask it of one projection. Two entry points with the same options and app
+    # now share a context, which is the point: they produce the same output.
+    return hashlib.sha256(options.module_projection().encode()).hexdigest()[:20];
 }
 
 def context_program(program: JacProgram, options: CompileOptions) -> JacProgram {
@@ -225,10 +215,10 @@ def context_app(path: str) -> AppSpec | None {
 def artifact_cache_path(path: str, program: JacProgram) -> Path {
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     selected = program_for(path, program);
-    identity = ''
+    owner = None
         if selected._get_compiler().selfhost.is_selfhost(selected)
-        else selected.context_key;
-    with cache_scope(identity, selected.options) {
+        else selected.options;
+    with cache_scope(owner) {
         return get_module_cache_path(path);
     }
 }
