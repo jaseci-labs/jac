@@ -447,6 +447,13 @@ walker NaIRGenPass {
         destructor: ir.Function | None = None
     ) -> tuple[ir.Function, ir.Function];
 
+    def _emit_tls_ready_key(
+        accessor: ir.Function,
+        state_gv: ir.GlobalVariable,
+        key_gv: ir.GlobalVariable,
+        init_fn: ir.Function
+    ) -> ir.Value;
+
     def _get_exception_context_fn -> ir.Function;
     def _exception_handler_slot(b: ir.IRBuilder) -> ir.Value;
     def _region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value;
