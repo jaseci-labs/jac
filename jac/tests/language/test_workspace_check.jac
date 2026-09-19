@@ -312,6 +312,44 @@ test "the gate checks imported bodies in the entry compilation context" {
 }
 
 
+# A file argument reads its imports as interfaces, so a type error inside an
+# imported body is not reported. The output has to say so, or `jac check
+# main.jac` reads as a check of the whole program.
+test "jac check <file> says its imports were read as interfaces only" {
+    d = _workspace();
+    with open(os.path.join(d, HELPER), "a") as f {
+        f.write("\ndef broken -> int {\n    return \"not an int\";\n}\n");
+    }
+    (rc, out) = _check_in(d, paths=[SVC_ENTRY]);
+    assert rc == 0 , f"the file itself is clean:\n{out}";
+    assert "1 imported module read as interfaces only" in out , out;
+    assert "Run 'jac check' with no paths in the project root" in out , out;
+    (rc_gate, out_gate) = _check_in(d);
+    assert rc_gate != 0 , f"the gate must see the body error:\n{out_gate}";
+    assert "read as interfaces only" not in out_gate , out_gate;
+    _cleanup();
+}
+
+test "jac check <file> outside any workspace says the same" {
+    parent = tempfile.mkdtemp(prefix="jacloose_");
+    _tmp_dirs.append(parent);
+    with open(os.path.join(parent, "helper.jac"), "w") as f {
+        f.write(
+            "def:pub takes_int(x: int) -> int {\n    return x + 1;\n}\n\n"
+            "def:pub broken -> int {\n    return takes_int(\"not an int\");\n}\n"
+        );
+    }
+    with open(os.path.join(parent, "main.jac"), "w") as f {
+        f.write(
+            "import from helper { broken }\n\nwith entry {\n    print(broken());\n}\n"
+        );
+    }
+    (rc, out) = _check_in(parent, paths=["main.jac"]);
+    assert rc == 0 , f"main.jac itself is clean:\n{out}";
+    assert "1 imported module read as interfaces only" in out , out;
+    _cleanup();
+}
+
 test "app test directories override the entry default" {
     d = _workspace();
     with open(os.path.join(d, 'jac.toml'), 'a') as config {

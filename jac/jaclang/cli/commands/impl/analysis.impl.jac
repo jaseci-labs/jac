@@ -162,6 +162,26 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 compile_application(prog, file_path, compile_options);
             } else {
                 prog.compile(file_path, options=compile_options);
+                if opts.get("named") {
+                    project_dir = os.path.realpath(
+                        str(opts["project_root"])
+                            if opts.get("project_root")
+                            else os.path.dirname(file_path)
+                    );
+                    checked = os.path.realpath(file_path);
+                    result['reached'] = sorted(
+                        {
+                            real
+                            for real in [
+                                os.path.realpath(str(key)) for key in prog.mod.hub
+                            ]
+                            if real.endswith(".jac")
+                                and not real.endswith((".impl.jac", ".test.jac"))
+                                and real.startswith(project_dir + os.sep)
+                                and real != checked
+                        }
+                    );
+                }
             }
         }
         if opts.get("placements") {
@@ -347,15 +367,15 @@ impl check(
                     selected_app = next(iter(f_ws.apps.values()), None);
                 }
             }
-            units.append(
-                _check_unit(
-                    f,
-                    selected_app.name if selected_app is not None else '',
-                    selected_app.kind if selected_app is not None else '',
-                    selected_app.name if selected_app is not None else '',
-                    f_ws.project_root if f_ws is not None else ''
-                )
+            file_unit = _check_unit(
+                f,
+                selected_app.name if selected_app is not None else '',
+                selected_app.kind if selected_app is not None else '',
+                selected_app.name if selected_app is not None else '',
+                f_ws.project_root if f_ws is not None else ''
             );
+            file_unit['named'] = os.path.realpath(f) in named_files;
+            units.append(file_unit);
         }
     }
     cfg = get_config();
@@ -398,6 +418,7 @@ impl check(
             job_opts['app_kind'] = unit['kind'];
             job_opts['project_root'] = unit['root_dir'];
             job_opts['closure'] = unit['closure'];
+            job_opts['named'] = bool(unit.get('named'));
             return {'opts': job_opts, 'collect': (not use_pool) and (idx < total - 1)};
         }
 
@@ -505,6 +526,31 @@ impl check(
     }
     if print_errs and len(warning_results) > 0 {
         print_section("WARNINGS", warning_results, nowarn);
+    }
+
+    file_units = [
+        r
+        for r in results
+        if r['_unit'].get('named')
+    ];
+    reached: set[str] = set();
+    for r in file_units {
+        reached.update(_wire_list(r.get('reached')));
+    }
+    reached -= {os.path.realpath(str(r['path'])) for r in file_units};
+    if reached and not parse_only {
+        count = len(file_units);
+        n = len(reached);
+        files_word = "file" if count == 1 else "files";
+        own_word = "its" if count == 1 else "their";
+        modules_word = "module" if n == 1 else "modules";
+        them_word = "it" if n == 1 else "them";
+        console.print(
+            f"Checked {count} {files_word} on {own_word} own; {n} imported "
+                + f"{modules_word} read as interfaces only, so type errors inside "
+                + f"{them_word} are not reported. Run 'jac check' with no paths in "
+                + "the project root to check the whole program."
+        );
     }
 
     elapsed = time() - start_time;
