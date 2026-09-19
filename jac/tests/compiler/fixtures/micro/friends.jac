@@ -6,8 +6,8 @@ node Person {
     }
 }
 
-edge Friend {}
-edge Family {
+edge Friend : Person --> Person {}
+edge Family : any --> any {
     can announce with FriendFinder entry {
         print(f"{visitor} is traveling to family member");
     }

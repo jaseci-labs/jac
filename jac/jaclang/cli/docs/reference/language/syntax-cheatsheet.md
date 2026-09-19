@@ -810,7 +810,7 @@ node Person {
 }
 
 # Edges connect nodes and can carry data
-edge Friendship {
+edge Friendship: Person --> Person {
     has since: int = 0;
 }
 
@@ -834,7 +834,7 @@ node Employee(Person) {
 }
 
 # Edge with methods
-edge Weighted {
+edge Weighted: Person --> Person {
     has weight: float = 1.0;
 
     def normalize(max_w: float) -> float {

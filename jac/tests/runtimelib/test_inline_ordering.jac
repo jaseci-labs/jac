@@ -30,7 +30,7 @@ node IItem {
         mark: int = 0;
 }
 
-edge ISent {
+edge ISent: IBoard --> IItem {
     has sent: int = 0;
 }
 

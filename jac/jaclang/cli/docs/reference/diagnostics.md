@@ -295,6 +295,10 @@ Emitted by the type checker and type evaluator.
 | `E1097` | Connection right operand must be a node instance |
 | `E1098` | Connection type must be an edge instance |
 | `E1099` | Cannot access attribute "{attr}" for type "{type}"; attribute is missing from {missing} |
+| `E1136` | Connection {side} operand is "{actual}", but edge "{edge_name}" declares its {side} endpoint as "{declared}" |
+| `E1137` | Traversal origin is "{actual}", but edge "{edge_name}" declares its {side} endpoint as "{declared}", so this traversal can never match |
+| `W2081` | Connection {side} operand is "{actual}", which cannot be checked against the {side} endpoint "{declared}" declared by edge "{edge_name}" |
+| `W2082` | Traversal origin is "{actual}", which cannot be checked against the {side} endpoint "{declared}" declared by edge "{edge_name}" |
 
 ### mobUI-Project JSX Host Tags
 
@@ -500,6 +504,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 | `E2024` | 'has' is not allowed inside a JSX slot body. A slot body is a statement template that re-runs on every render; declaring reactive state there would compile to a conditional 'useState' and violate React's rules of hooks. Declare 'has'-fields at the component scope (the enclosing 'def -> JsxElement' body). |
 | `E2025` | A 'has'-field of type 'Ref[...]' must be constructed with an initializer: write '= Ref()' for a DOM ref, or '= Ref(initial)' for a value ref. It lowers to React's 'useRef', so a bare declaration has no ref object to hold -- '.current' would never be defined. This mirrors how every other 'has'-field carries a value. |
 | `E2027` | Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}' |
+| `E2086` | Edge '{name}' declares no endpoints, so every traversal through it widens to 'any' |
 | `E2084` | An expression without a trailing ';' is only treated as an implicit return when it is the final statement of a function, ability, or lambda body. |
 | `W2019` | 'while' loop in a JSX slot renders JSX without a 'key' attribute -- add 'key=' so siblings keep their identity across re-renders. |
 | `W2020` | 'awaiting' is not yet implemented on the '{target}' target -- the 'awaiting' clause body will be ignored at runtime. Only the 'cl' (react/preact) target currently lowers 'awaiting' to a Suspense fallback. |

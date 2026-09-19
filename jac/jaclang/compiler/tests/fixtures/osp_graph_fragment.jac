@@ -4,7 +4,7 @@ node FragmentItem {
     has value: int;
 }
 
-edge FragmentLink {
+edge FragmentLink : any --> any {
     has weight: int = 0;
 }
 

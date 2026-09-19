@@ -16,7 +16,7 @@ Graph: a -Portal(cx=42)-> b(tag=99), a -Portal(cx=8)-> c(tag=7). From a:
 node Spot {
     has tag: int = 0;
 }
-edge Portal {
+edge Portal : Spot --> Spot {
     has cx: float = 0.0;
 }
 

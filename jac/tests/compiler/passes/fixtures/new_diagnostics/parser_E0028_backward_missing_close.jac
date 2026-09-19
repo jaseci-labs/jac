@@ -1,6 +1,6 @@
 """Fixture for E0028: backward typed connection (<+: EdgeType) missing :<+ closer."""
 node Person { has name: str; }
-edge Knows { has since: int = 0; }
+edge Knows : any --> any { has since: int = 0; }
 with entry {
     alice = Person(name="alice");
     bob = Person(name="bob");

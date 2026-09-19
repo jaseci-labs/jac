@@ -44,7 +44,7 @@ node TNode {
     has a: int = 0;
 }
 
-edge TRel {
+edge TRel: any --> any {
     has w: int = 0;
 }
 
@@ -369,7 +369,7 @@ node RtNode {
     has label: str = "";
 }
 
-edge RtRel {
+edge RtRel: RtNode --> RtNode {
     has w: int = 0;
 }
 

@@ -10,4 +10,4 @@ node Post {
     has body: str = "";
 }
 
-edge Wrote {}
+edge Wrote : any --> any {}

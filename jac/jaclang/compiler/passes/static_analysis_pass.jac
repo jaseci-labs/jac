@@ -66,7 +66,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E2027,
     E2055,
     E2083,
-    E2085
+    E2085,
+    E2086
 }
 import type from jaclang.compiler.driver.program { JacProgram }
 

@@ -9,7 +9,7 @@ walker Creator {
     can travel with Root | node_a entry;
 }
 
-edge MyEdge {
+edge MyEdge : any --> any {
     has val: int = 5,
         val2: int = 10;
 }

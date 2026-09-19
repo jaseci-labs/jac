@@ -75,7 +75,7 @@ node PublicNode {
     }
 }
 
-edge PublicEdge {
+edge PublicEdge: PublicNode --> PublicNode {
     def __jac_access__ -> AccessLevel {
         return AccessLevel.READ;
     }
@@ -112,13 +112,13 @@ node DocPage(PublicNode) {
         toc: list[TocEntry] = [];
 }
 
-edge HasHub(PublicEdge) {}
+edge HasHub(PublicEdge): Node --> DocsHub {}
 
-edge HasVersion(PublicEdge) {}
+edge HasVersion(PublicEdge): DocsHub --> DocVersion {}
 
-edge Contains(PublicEdge) {}
+edge Contains(PublicEdge): DocContainer --> DocContainer | DocPage {}
 
-edge NextPage(PublicEdge) {}
+edge NextPage(PublicEdge): DocPage --> DocPage {}
 
 walker trace_route {
     has segs: list[str] = [];

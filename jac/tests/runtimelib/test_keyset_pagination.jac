@@ -26,7 +26,7 @@ node Entry {
         seq: int = 0;
 }
 
-edge Carried {}
+edge Carried: Feed --> Entry {}
 
 
 def _ctx(tmpdir: str) -> ExecutionContext {

@@ -29,9 +29,9 @@ node LifeNode {
     has label: str = "";
 }
 
-edge LifeEdge {}
+edge LifeEdge: any --> any {}
 
-edge LifeHeavyEdge {
+edge LifeHeavyEdge: any --> any {
     has weight: int = 42;
 }
 

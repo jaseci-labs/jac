@@ -735,6 +735,43 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " element types cannot be verified — use \"{type}[NodeType]\" or pass a"
          " concrete list of nodes instead"
      ),
+     E1136 = _err(
+         "E1136",
+         Category.TYPE,
+         "Connection {side} operand is \"{actual}\", but edge \"{edge_name}\" declares its"
+         " {side} endpoint as \"{declared}\"",
+         help="A declared endpoint is what lets a traversal through this edge infer"
+         " a node type instead of `any`, so a connection that contradicts it makes"
+         " that inference wrong. Connect nodes that match the declaration, or widen"
+         " the edge's endpoints."
+     ),
+     W2081 = _warn(
+         "W2081",
+         Category.TYPE,
+         "Connection {side} operand is \"{actual}\", which cannot be checked against"
+         " the {side} endpoint \"{declared}\" declared by edge \"{edge_name}\"",
+         help="Give the operand a concrete node type to have this verified, or"
+         " declare the edge's endpoints as `any --> any` if it is meant to accept"
+         " any node."
+     ),
+     E1137 = _err(
+         "E1137",
+         Category.TYPE,
+         "Traversal origin is \"{actual}\", but edge \"{edge_name}\" declares its {side}"
+         " endpoint as \"{declared}\", so this traversal can never match",
+         help="An edge only connects the node types it declares, so traversing it"
+         " from an unrelated node yields nothing. Start from a node that matches the"
+         " declaration, or widen the edge's endpoints."
+     ),
+     W2082 = _warn(
+         "W2082",
+         Category.TYPE,
+         "Traversal origin is \"{actual}\", which cannot be checked against the {side}"
+         " endpoint \"{declared}\" declared by edge \"{edge_name}\"",
+         help="Give the origin a concrete node type to have this verified, or declare"
+         " the edge's endpoints as `any --> any` if it is meant to start from any"
+         " node."
+     ),
      E1119 = _err(
          "E1119",
          Category.TYPE,
@@ -1299,6 +1336,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2027",
          Category.SEMANTIC,
          "Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}'"
+     ),
+     E2086 = _err(
+         "E2086",
+         Category.SEMANTIC,
+         "Edge '{name}' declares no endpoints, so every traversal through it widens to 'any'",
+         help="Name the node types this edge connects: `edge {name}: Src --> Tgt {{}}`."
+         " To keep accepting any node, say so -- `any --> any` preserves the gradual"
+         " behaviour exactly, and `Node --> Node` asks for a node without naming which."
      ),
      E2009 = _err(
          "E2009",

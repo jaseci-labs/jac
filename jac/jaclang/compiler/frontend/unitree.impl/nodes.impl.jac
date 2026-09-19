@@ -1819,6 +1819,45 @@ impl Archetype.get_has_vars -> list[HasVar] {
     return has_vars;
 }
 
+impl Archetype.base_archetypes -> list[Archetype] {
+    bases: list[Archetype] = [];
+    for base in self.base_classes {
+        base_name: UniNode = base;
+        if isinstance(base, AtomTrailer) and isinstance(base.right, Name) {
+            base_name = base.right;
+        }
+        if not isinstance(base_name, AstSymbolNode) or not base_name.sym {
+            continue;
+        }
+        base_decl = base_name.sym.decl;
+        if not base_decl {
+            continue;
+        }
+        base_arch = base_decl.find_parent_of_type(Archetype);
+        if base_arch is not None {
+            bases.append(base_arch);
+        }
+    }
+    return bases;
+}
+
+impl Archetype.declares_endpoints -> bool {
+    seen: set[int] = set();
+    pending: list[Archetype] = [self];
+    while pending {
+        cur = pending.pop();
+        if id(cur) in seen {
+            continue;
+        }
+        seen.add(id(cur));
+        if cur.src_endpoint is not None {
+            return True;
+        }
+        pending.extend(cur.base_archetypes());
+    }
+    return False;
+}
+
 impl Archetype.get_methods -> list[Ability] {
     body = self._get_impl_resolved_body();
     methods: list[Ability] = [];

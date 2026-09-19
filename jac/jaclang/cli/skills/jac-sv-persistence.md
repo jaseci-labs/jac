@@ -13,7 +13,7 @@ node Post {
     has published: bool = False;
 }
 
-edge Wrote { has at: str = ""; }
+edge Wrote: User --> Post { has at: str = ""; }
 
 # CREATE - typed edge from user to the new post
 def:pub write_post(user_id: str, title: str) -> Post | None {
@@ -83,7 +83,7 @@ Without this a `[?:Post, -at]` still returns the right rows -- correctness never
 
 ```
 node Team { has name: str; }
-edge MemberOf {}
+edge MemberOf: Node --> Team {}
 
 user +>:MemberOf():+> team;                  # joining costs one edge
 allow_group(doc, jid(team), AccessLevel.READ);   # sharing costs one entry

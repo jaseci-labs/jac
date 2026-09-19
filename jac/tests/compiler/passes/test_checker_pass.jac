@@ -5118,7 +5118,7 @@ test "edge_endpoint_typing_narrows_neighbour_traversals" {
         "follow_out": "list[Profile]",  # ->:Follow:-> narrows to target
         "post_in": "list[Profile]",  # <-:Post:<- narrows to source
         "post_out": "list[Tweet]",  # ->:Post:-> narrows to target
-        "untyped": "list[<any>]",  # bare edge stays gradual
+        "untyped": "list[<any>]",  # the `any --> any` opt-out stays gradual
         "inherited": "list[Profile]",  # subtype edge inherits endpoints
         "one": "Tweet",  # subscript element of a narrowed list
         "field_read": "str"  # field read off a narrowed element
@@ -5149,6 +5149,78 @@ test "edge_endpoint_clause_rejected_on_non_edge" {
     }
     assert has_e2027 , "Expected E2027 for endpoint clause on a node, got:\\n"
         + "\\n---\\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+def _endpoint_diags(program: JacProgram) -> list[tuple[str, int]] {
+    return sorted(
+        [
+            (d.code.code, d.loc.first_line)
+            for d in program.errors_had + program.warnings_had
+            if d.code and d.code.code in ("E1136", "E1137", "W2081", "W2082", "E2086")
+        ]
+    );
+}
+
+test "edge_endpoint_declaration_is_enforced_at_connect_and_traversal" {
+    # Step 1: `edge Post: Profile --> Tweet` is already trusted by inference to
+    # narrow a traversal, so a connect that violates it is a miscompile, not a
+    # style question -- field access resolves by slot index, so the wrong node
+    # silently reads the wrong field. Only an unrelated type is an error; a
+    # supertype operand may well be the declared type at runtime, so it warns.
+    program = JacProgram();
+    program.compile(os.path.join(CHECKER_FIXTURES, "edge_endpoint_violation.jac"));
+    got = _endpoint_diags(program);
+    assert ("E1136", 27) in got , f"backwards connect must be E1136 at 27, got {got}";
+    assert ("E1137", 28) in got , f"wrong-origin traversal must be E1137 at 28, got {got}";
+    assert ("W2081", 14) in got , f"a supertype source must warn W2081 at 14, got {got}";
+    assert ("W2082", 18) in got , f"a supertype origin must warn W2082 at 18, got {got}";
+    for clean in [24, 25, 26, 29, 30] {
+        assert not [
+            p
+            for p in got
+            if p[1] == clean
+        ] , f"line {clean} conforms and must stay silent, got {got}";
+    }
+}
+
+test "edge_endpoint_admits_a_union_like_every_other_type_position" {
+    # Step 2: endpoints parsed through `parse_atomic_chain`, which stops short of
+    # the union operator, so `A | B` was E0005 -- while `has v: A | B` parsed
+    # fine through `parse_pipe`. 27 of the compiler's own role getters return a
+    # union, so endpoints were inexpressible for them until this parses.
+    program = JacProgram();
+    mod = program.compile(os.path.join(CHECKER_FIXTURES, "edge_endpoint_union.jac"));
+    assert len(program.errors_had) == 0 , "Unexpected errors:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    expected = {
+        "multi_out": "list[A | B]",
+        "narrow_out": "list[C]",
+        "narrow_in": "list[A | B]",
+        "shared_field": "str"
+    };
+    seen: dict[str, str] = {};
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.value in expected and nm.type is not None {
+            seen[nm.value] = str(nm.type);
+        }
+    }
+    for (target, want) in expected.items() {
+        assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
+            target
+        )}";
+    }
+}
+
+test "edge_without_an_endpoint_clause_is_rejected" {
+    # Step 3: a bare `edge Foo {}` widens every traversal through it to `any`
+    # with nothing written down, which is the one place Jac let an annotation be
+    # implied by silence. The widening stays available -- `any --> any` keeps the
+    # gradual behaviour exactly, `Node --> Node` asks for node-ness -- but it has
+    # to be said.
+    program = JacProgram();
+    program.compile(os.path.join(CHECKER_FIXTURES, "edge_missing_endpoints.jac"));
+    got = _endpoint_diags(program);
+    assert got == [("E2086", 6)] , f"only the bare edge on line 6 may be flagged, got {got}";
 }
 
 test "mobui_project_forbids_html_intrinsic_tags" {

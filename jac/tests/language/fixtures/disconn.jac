@@ -2,7 +2,7 @@ node c {
     has cc: int = 9;
 }
 
-edge aaa {
+edge aaa : any --> any {
     has vvv: int = 45;
 }
 
