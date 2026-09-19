@@ -833,7 +833,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     slot.add_incoming(next_slot, probe_next);
 
     b = ir.IRBuilder(found);
-    first = b.zext(
+    run_start = b.zext(
         b.load(
             b.gep(ent, [zero32, ir.Constant(i32, 2)], name="isa.first.p"),
             name="isa.first32"
@@ -841,7 +841,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
         i64,
         name="isa.first"
     );
-    count = b.zext(
+    run_len = b.zext(
         b.load(
             b.gep(ent, [zero32, ir.Constant(i32, 3)], name="isa.count.p"),
             name="isa.count32"
@@ -849,7 +849,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
         i64,
         name="isa.count"
     );
-    stop = b.add(first, count, name="isa.stop");
+    stop = b.add(run_start, run_len, name="isa.stop");
     b.branch(walk);
 
     b = ir.IRBuilder(walk);
@@ -875,7 +875,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     b = ir.IRBuilder(walk_next);
     nxt = b.add(i, ir.Constant(i64, 1), name="isa.in");
     b.branch(walk);
-    i.add_incoming(first, found);
+    i.add_incoming(run_start, found);
     i.add_incoming(nxt, walk_next);
 
     ir.IRBuilder(yes).ret(ir.Constant(i1, 1));

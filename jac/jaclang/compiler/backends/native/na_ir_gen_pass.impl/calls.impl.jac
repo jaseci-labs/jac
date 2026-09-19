@@ -1245,7 +1245,8 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.MEM_LOAD: self._emit_intrinsic_mem_load,
         IntrinsicDispatch.MEM_STORE: self._emit_intrinsic_mem_store,
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
-        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor
+        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor,
+        IntrinsicDispatch.REGION_TLS: self._emit_intrinsic_region_tls
     };
     handler = _emitters.get(intr.dispatch);
     if handler is None {
@@ -1395,6 +1396,22 @@ impl NaIRGenPass._emit_intrinsic_call_dtor(
     obj_ptr = self.builder.inttoptr(obj_val, i8p, name="dtor.obj");
     self.builder.call(fn_ptr, [obj_ptr]);
     return None;
+}
+
+impl NaIRGenPass._emit_intrinsic_region_tls(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    self._emit_region_tls_slot();
+    operands: list[ir.Value] = [];
+    for (arg, spec) in zip(args, intr.param_specs) {
+        val = self._intrinsic_operand(nd, intr, arg, spec);
+        if val is None {
+            return None;
+        }
+        operands.append(val);
+    }
+    result = self.builder.call(self.extern_funcs[intr.name], operands);
+    return None if intr.result_spec == "none" else result;
 }
 
 impl NaIRGenPass._codegen_synthetic_call(
