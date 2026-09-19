@@ -2,8 +2,8 @@ node MyNode {
     has val: int;
 }
 
-edge Friend;
-edge Follows;
+edge Friend: MyNode --> MyNode;
+edge Follows: MyNode --> MyNode;
 
 walker travel {
     can visit_friends with MyNode exit {
