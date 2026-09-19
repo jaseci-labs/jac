@@ -88,16 +88,28 @@ for i in 1 2 3; do
     [ "$i" = 3 ] && fail "browser failed to launch after 3 attempts"
 done
 # Cold 4-vCPU runners transform the whole client graph on demand the first
-# time the dev server is hit; that can outrun `jac browse wait`'s 30s default
-# before anything mounts. Retry the wait so one slow compile doesn't kill the
-# journey (each retry resumes the same compile; vite caches transforms).
+# time the dev server is hit, and vite re-runs dep optimization every time a
+# lazily imported package is discovered: each round bumps the dep hash,
+# serves 504s for stale generations, and forces a full page reload, so the
+# landing can be knocked down and restarted several times before anything
+# mounts (observed: 7+ distinct dep generations, >2 minutes on a cold cache;
+# later stops and the fleet pass reuse the warm cache). Poll patiently past
+# the churn instead of a fixed handful of waits, and re-open periodically so
+# a page wedged mid-boot on a stale dep generation gets a clean navigation.
 mount_ok=false
-for i in 1 2 3 4; do
+landing_deadline=$(( $(date +%s) + 360 ))
+next_reopen=$(( $(date +%s) + 90 ))
+while [ "$(date +%s)" -lt "$landing_deadline" ]; do
     if jac browse wait '#top'; then
         mount_ok=true
         break
     fi
-    echo "landing not mounted yet (attempt $i); waiting out the cold compile"
+    echo "landing not mounted yet; waiting out vite's cold dep optimization"
+    if [ "$(date +%s)" -ge "$next_reopen" ]; then
+        echo "re-opening the landing for a clean load"
+        jac browse open "$BASE_URL" || true
+        next_reopen=$(( $(date +%s) + 90 ))
+    fi
 done
 [ "$mount_ok" = true ] || fail "landing #top never appeared"
 # The headless profile persists localStorage between runs; start from a clean
