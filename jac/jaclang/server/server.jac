@@ -33,6 +33,7 @@ obj ServerExtension {
 
     def register(server: JacAPIServer) -> None abst;
     def on_worker_start(server: JacAPIServer) {}
+    def on_worker_exit(server: JacAPIServer, pid: int) {}
 }
 
 
@@ -250,6 +251,7 @@ obj JacAPIServer(EndpointHost) {
         port_retries: int = 0
     ) -> int;
 
+    def _on_worker_exit(pid: int) -> None;
     def request_stop -> None;
 }
 

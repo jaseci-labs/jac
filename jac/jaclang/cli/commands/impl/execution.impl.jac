@@ -1252,48 +1252,6 @@ impl serve(
     }
     (base, mod, mach) = _proc_file(filename);
 
-    try {
-        console.print("Preparing application...", style="bold");
-        import from jaclang.compiler.driver.application { prepare_application }
-        import from jaclang.server.assembly { service_apps }
-        project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
-        services = service_apps(cfg, served) if cfg and served else [];
-        prepared = prepare_application(
-            filename,
-            Jac.get_program(),
-            project_root,
-            [svc.entry_path(project_root) for svc in services],
-            not no_client and not faux and (served is None or served.kind == "web-app"),
-            dev
-        );
-        console.print("Initializing application...", style="bold");
-        import from jaclang.runtime.prepared { initialize_application }
-        mod = initialize_application(prepared, cfg, served).__name__;
-        if Jac.get_program().errors_had {
-            for error in Jac.get_program().errors_had {
-                console.error(error.pretty_print());
-            }
-            mach.close();
-            return 1;
-        }
-    } except Exception as e {
-        if Jac.get_program().errors_had {
-            for error in Jac.get_program().errors_had {
-                console.error(error.pretty_print());
-            }
-        } else {
-            import from jaclang.runtime.traceback_render { dump_traceback }
-            console.error(f"Error loading {filename}: {e}");
-            console.error(dump_traceback(e));
-        }
-        mach.close();
-        return 1;
-    }
-
-    try {
-        mach.mem.unit_exit();
-    } except Exception {}
-
     port_pinned = port > 0;
     port = port if port_pinned else 8000;
     if dev and not no_client {
@@ -1307,6 +1265,7 @@ impl serve(
     }
 
     import from jaclang.server.settings { ServeConfigError, ServeSettings }
+    import from jaclang.server.serving.supervisor { worker_metrics_dir }
     overrides: dict[str, any] = {
         'port': actual_api_port,
         'strict_port': api_port_pinned,
@@ -1326,148 +1285,190 @@ impl serve(
         mach.close();
         return 1;
     }
-    ServerClass = Jac.get_api_server_class();
-    server = ServerClass(module_name=mod, base_path=base, settings=settings);
-    if prepared.client_compiler is not None or (dev and not no_client) {
-        server.introspector._bundle_builder = Jac.get_client_bundle_builder();
-    }
-    if prepared.client_compiler is not None {
-        server.introspector._bundle_builder._compiler = prepared.client_compiler;
-    }
-    if faux {
+
+    with worker_metrics_dir(settings) {
         try {
-            server.print_endpoint_docs();
-        } except Exception as e {
-            import from jaclang.runtime.traceback_render { dump_traceback }
-            console.error(f"Error generating endpoint documentation: {e}");
-            console.error(dump_traceback(e));
-            mach.close();
-            return 1;
-        }
-        mach.close();
-        return 0;
-    }
-
-    hot_reloader = None;
-
-    vite_holder: list[any] = [];
-    if dev {
-        if not _ensure_watchdog_installed() {
-            mach.close();
-            return 1;
-        }
-        try {
-            import from jaclang.server.hmr { HotReloader }
-            import from jaclang.server.watcher { JacFileWatcher }
-
-            watcher = JacFileWatcher(watch_paths=[base]);
-            client_compiler = None;
-            if not no_client {
-                try {
-                    client_compiler = server.introspector._bundle_builder._get_compiler();
-                } except Exception as e {
-                    console.warning(
-                        f"Client compiler unavailable, HMR uses legacy mode: {e}"
-                    );
+            console.print("Preparing application...", style="bold");
+            import from jaclang.compiler.driver.application { prepare_application }
+            import from jaclang.server.assembly { service_apps }
+            project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
+            services = service_apps(cfg, served) if cfg and served else [];
+            prepared = prepare_application(
+                filename,
+                Jac.get_program(),
+                project_root,
+                [svc.entry_path(project_root) for svc in services],
+                not no_client
+                    and not faux
+                    and (served is None or served.kind == "web-app"),
+                dev
+            );
+            console.print("Initializing application...", style="bold");
+            import from jaclang.runtime.prepared { initialize_application }
+            mod = initialize_application(prepared, cfg, served).__name__;
+            if Jac.get_program().errors_had {
+                for error in Jac.get_program().errors_had {
+                    console.error(error.pretty_print());
                 }
+                mach.close();
+                return 1;
             }
-            hot_reloader = HotReloader(
-                base_path=base,
-                module_name=mod,
-                entry_path=os.path.realpath(filename),
-                watcher=watcher,
-                client_compiler=client_compiler
-            );
-            hot_reloader.start();
-
-            if server?.enable_hmr {
-                server.enable_hmr(hot_reloader);
+        } except Exception as e {
+            if Jac.get_program().errors_had {
+                for error in Jac.get_program().errors_had {
+                    console.error(error.pretty_print());
+                }
+            } else {
+                import from jaclang.runtime.traceback_render { dump_traceback }
+                console.error(f"Error loading {filename}: {e}");
+                console.error(dump_traceback(e));
             }
-        } except ImportError as e {
-            console.error(f"Error: Could not initialize HMR: {e}");
-            console.error(
-                "\nMake sure 'watchdog' is installed by running: jac install --dev"
-            );
             mach.close();
             return 1;
-        } except Exception as e {
-            console.warning(f"HMR initialization failed: {e}");
         }
-    }
-
-    def _announce_ready(actual_port: int) {
-        primary_port = actual_port;
-        if dev and not no_client {
-            free_vite_port = _find_free_port(
-                vite_port, skip_port=actual_port, strict=port_pinned
-            );
-            declared_paths: list[str] = [];
-            claimed_paths: list[str] = [];
-            try {
-                import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
-                declared_paths = server.introspector.declared_api_paths();
-                claimed_paths = server.introspector.client_claimed_paths(
-                    DEV_PROXY_PREFIXES
-                );
-            } except Exception as e {
-                console.warning(f"Could not read declared API paths: {e}");
-            }
-            (started_vite, bound_port) = _start_vite_dev_server(
-                base, free_vite_port, actual_port, declared_paths, claimed_paths
-            );
-            if started_vite {
-                vite_holder.append(started_vite);
-            }
-            primary_port = bound_port;
-        }
-        _print_startup_message(
-            dev=dev,
-            no_client=no_client,
-            primary_port=primary_port,
-            api_port=actual_port,
-            base_path=base
-        );
-    }
-    try {
-        return int(
-            server.start(dev=dev, no_client=no_client, on_ready=_announce_ready)
-        );
-    } except ServeConfigError as e {
-        console.error(str(e));
-        if hot_reloader is not None {
-            hot_reloader.stop();
-        }
-        mach.close();
-        return 1;
-    } except KeyboardInterrupt {
-        console.print('\nShutting down');
-        return 0;
-    } except Exception as e {
-        import from jaclang.runtime.traceback_render { dump_traceback }
-        import from jaclang.server.net { PortInUseError }
-        if isinstance(e, PortInUseError) {
-            raise;
-        }
-        console.error(f"Server error: {e}");
-        console.error(dump_traceback(e));
-        return 1;
-    } finally {
         try {
+            mach.mem.unit_exit();
+        } except Exception {}
+        ServerClass = Jac.get_api_server_class();
+        server = ServerClass(module_name=mod, base_path=base, settings=settings);
+        if prepared.client_compiler is not None or (dev and not no_client) {
+            server.introspector._bundle_builder = Jac.get_client_bundle_builder();
+        }
+        if prepared.client_compiler is not None {
+            server.introspector._bundle_builder._compiler = prepared.client_compiler;
+        }
+        if faux {
+            try {
+                server.print_endpoint_docs();
+            } except Exception as e {
+                import from jaclang.runtime.traceback_render { dump_traceback }
+                console.error(f"Error generating endpoint documentation: {e}");
+                console.error(dump_traceback(e));
+                mach.close();
+                return 1;
+            }
+            mach.close();
+            return 0;
+        }
+        hot_reloader = None;
+        vite_holder: list[any] = [];
+        if dev {
+            if not _ensure_watchdog_installed() {
+                mach.close();
+                return 1;
+            }
+            try {
+                import from jaclang.server.hmr { HotReloader }
+                import from jaclang.server.watcher { JacFileWatcher }
+
+                watcher = JacFileWatcher(watch_paths=[base]);
+                client_compiler = None;
+                if not no_client {
+                    try {
+                        client_compiler = server.introspector._bundle_builder._get_compiler();
+                    } except Exception as e {
+                        console.warning(
+                            f"Client compiler unavailable, HMR uses legacy mode: {e}"
+                        );
+                    }
+                }
+                hot_reloader = HotReloader(
+                    base_path=base,
+                    module_name=mod,
+                    entry_path=os.path.realpath(filename),
+                    watcher=watcher,
+                    client_compiler=client_compiler
+                );
+                hot_reloader.start();
+
+                if server?.enable_hmr {
+                    server.enable_hmr(hot_reloader);
+                }
+            } except ImportError as e {
+                console.error(f"Error: Could not initialize HMR: {e}");
+                console.error(
+                    "\nMake sure 'watchdog' is installed by running: jac install --dev"
+                );
+                mach.close();
+                return 1;
+            } except Exception as e {
+                console.warning(f"HMR initialization failed: {e}");
+            }
+        }
+        def _announce_ready(actual_port: int) {
+            primary_port = actual_port;
+            if dev and not no_client {
+                free_vite_port = _find_free_port(
+                    vite_port, skip_port=actual_port, strict=port_pinned
+                );
+                declared_paths: list[str] = [];
+                claimed_paths: list[str] = [];
+                try {
+                    import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
+                    declared_paths = server.introspector.declared_api_paths();
+                    claimed_paths = server.introspector.client_claimed_paths(
+                        DEV_PROXY_PREFIXES
+                    );
+                } except Exception as e {
+                    console.warning(f"Could not read declared API paths: {e}");
+                }
+                (started_vite, bound_port) = _start_vite_dev_server(
+                    base, free_vite_port, actual_port, declared_paths, claimed_paths
+                );
+                if started_vite {
+                    vite_holder.append(started_vite);
+                }
+                primary_port = bound_port;
+            }
+            _print_startup_message(
+                dev=dev,
+                no_client=no_client,
+                primary_port=primary_port,
+                api_port=actual_port,
+                base_path=base
+            );
+        }
+        try {
+            return int(
+                server.start(dev=dev, no_client=no_client, on_ready=_announce_ready)
+            );
+        } except ServeConfigError as e {
+            console.error(str(e));
             if hot_reloader is not None {
                 hot_reloader.stop();
             }
-        } finally {
-            import subprocess;
-            for started_vite in vite_holder {
-                started_vite.terminate();
-                try {
-                    started_vite.`wait(timeout=5);
-                } except subprocess.TimeoutExpired {
-                    started_vite.kill();
-                    started_vite.`wait();
-                }
-            }
             mach.close();
+            return 1;
+        } except KeyboardInterrupt {
+            console.print('\nShutting down');
+            return 0;
+        } except Exception as e {
+            import from jaclang.runtime.traceback_render { dump_traceback }
+            import from jaclang.server.net { PortInUseError }
+            if isinstance(e, PortInUseError) {
+                raise;
+            }
+            console.error(f"Server error: {e}");
+            console.error(dump_traceback(e));
+            return 1;
+        } finally {
+            try {
+                if hot_reloader is not None {
+                    hot_reloader.stop();
+                }
+            } finally {
+                import subprocess;
+                for started_vite in vite_holder {
+                    started_vite.terminate();
+                    try {
+                        started_vite.`wait(timeout=5);
+                    } except subprocess.TimeoutExpired {
+                        started_vite.kill();
+                        started_vite.`wait();
+                    }
+                }
+                mach.close();
+            }
         }
     }
 }
