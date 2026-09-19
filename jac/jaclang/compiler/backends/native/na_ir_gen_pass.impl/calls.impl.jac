@@ -135,7 +135,8 @@ impl NaIRGenPass._transfer_own_args(
         if not (_is_ctor or _aidx in _own_idx) or not isinstance(_anode, uni.Name) {
             continue;
         }
-        if not _hl and not self._is_move_site(_anode) {
+        if (not _hl and not self._is_move_site(_anode))
+            or _anode.sym_name in self.borrowed_vars {
             continue;
         }
         _salloca = self.local_vars.get(_anode.sym_name);

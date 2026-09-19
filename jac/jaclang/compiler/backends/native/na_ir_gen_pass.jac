@@ -141,7 +141,7 @@ obj NativeGeneratorState {
 obj NativeBindingState {
     has local_vars: dict[str, ir.Value],
         param_vars: set[str],
-        nogc_no_free_vars: set[str],
+        borrowed_vars: set[str],
         nogc_owned_str_vars: set[str],
         region_handle_vars: set[str],
         var_list_elem_struct: dict[str, ir.Type | None],
@@ -374,7 +374,7 @@ walker NaIRGenPass {
         _region_kernel_registered: bool = False,
         _managed_ctor_node: int = 0,
         clib_declared_sigs: dict[str, tuple[ir.Type, list[ir.Type]]] = {},
-        nogc_no_free_vars: set[str] = set(),
+        borrowed_vars: set[str] = set(),
         nogc_owned_str_vars: set[str] = set(),
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -1902,6 +1902,7 @@ walker NaIRGenPass {
     def _is_owned(val: ir.Value) -> bool;
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
+    def _bind_borrowed(nd: uni.Assignment, var_name: str, slot_ty: ir.Type) -> bool;
     def _release_owned_operands(
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
     ) -> None;
