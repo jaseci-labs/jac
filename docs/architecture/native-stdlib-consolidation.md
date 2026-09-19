@@ -130,10 +130,12 @@ with E5090, even though the equivalent generic native C API call succeeds.
    and finalization still need the complete interpreter/thread-state contract;
    loading the same symbols does not establish it.
 5. **Artifact requirements.** Shared artifacts record Python dependencies.
-   Standalone native builds reject linked Python ABI dependencies with an
-   explicit error. A Python-backed native application must package and initialize
-   the interpreter before entering code that uses it. Compiler availability at
-   build time does not provide an interpreter to the emitted executable.
+   Standalone native builds reject Python ABI dependencies without an explicit
+   interpreter library. Existing C FFI embedders can link and initialize Python
+   themselves, as the desktop and CEF hosts do. A Python-backed native application
+   must package and initialize the interpreter before entering code that uses it.
+   Compiler availability at build time does not provide an interpreter to the
+   emitted executable.
 
 Relevant implementation points:
 

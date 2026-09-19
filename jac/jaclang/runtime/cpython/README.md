@@ -39,6 +39,8 @@ native exception handling. Ordinary native `try`/`except` support needs the
 compiler cleanup changes described in the
 [migration document](../../../../docs/architecture/native-stdlib-consolidation.md).
 
-The hosted entry policy lives in `runtime/interop_bridge.jac`. Targeted behavior
-is covered by the
+The hosted entry policy lives in `runtime/interop_bridge.jac`. Executable hosts
+must explicitly link and initialize their interpreter through C FFI. Declarations
+in the default `c` namespace do not supply that interpreter dependency.
+Targeted behavior is covered by the
 [native reference tests](../../../tests/compiler/backends/native/test_native_python_references.jac).

@@ -17,10 +17,19 @@ def validate_native_application(module: Module, shared: bool, memory: str) -> st
     }
     llvm_ir = native_linked_ir_text(module);
     import from jaclang.runtime.interop_bridge { native_requires_python }
-    if not shared and native_requires_python(native_ir_live_externs(llvm_ir)) {
+
+    explicit_symbols = (
+        symbol
+        for (symbol, library) in module.gen._clib_symbol_lib.items()
+        if library not in ("libc.so", "libc.dylib", "c.dll")
+    );
+    if not shared
+        and native_requires_python(native_ir_live_externs(llvm_ir))
+        and not native_requires_python(explicit_symbols) {
         raise ValueError(
             'This native unit requires a hosted Python runtime; '
-                + 'emit a shared library for a Python-hosted application'
+                + 'emit a shared library for a Python-hosted application, '
+                + 'or explicitly link and initialize the interpreter through C FFI'
         );
     }
     demoted = sorted(
