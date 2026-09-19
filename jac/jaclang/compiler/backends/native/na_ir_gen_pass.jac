@@ -502,6 +502,14 @@ walker NaIRGenPass {
         str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
     ) -> (ir.Value | None);
 
+    def _emit_whitespace_width(
+        text: ir.Value, cursor: ir.Value, length: ir.Value, reverse: bool
+    ) -> ir.Value;
+
+    def _codegen_str_split_whitespace(
+        text: ir.Value, maxsplit: ir.Value | None = None, reverse: bool = False
+    ) -> ir.Value;
+
     def _codegen_str_split(
         str_val: ir.Value,
         sep_val: ir.Value,

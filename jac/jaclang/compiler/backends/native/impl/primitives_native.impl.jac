@@ -1204,23 +1204,27 @@ impl NativeStrEmitter.emit_removesuffix(
 impl NativeStrEmitter.emit_split(
     self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if args {
-        return ctx.pass_ref._codegen_str_split(
-            target, args[0], args[1] if len(args) > 1 else None
+    if not args or (isinstance(args[0], ir.Constant) and args[0].constant is None) {
+        return ctx.pass_ref._codegen_str_split_whitespace(
+            target, args[1] if len(args) > 1 else None
         );
     }
-    return None;
+    return ctx.pass_ref._codegen_str_split(
+        target, args[0], args[1] if len(args) > 1 else None
+    );
 }
 
 impl NativeStrEmitter.emit_rsplit(
     self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if args {
-        return ctx.pass_ref._codegen_str_split(
-            target, args[0], args[1] if len(args) > 1 else None, True
+    if not args or (isinstance(args[0], ir.Constant) and args[0].constant is None) {
+        return ctx.pass_ref._codegen_str_split_whitespace(
+            target, args[1] if len(args) > 1 else None, True
         );
     }
-    return None;
+    return ctx.pass_ref._codegen_str_split(
+        target, args[0], args[1] if len(args) > 1 else None, True
+    );
 }
 
 impl NativeStrEmitter.emit_splitlines(

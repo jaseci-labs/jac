@@ -10,6 +10,7 @@ glob NATIVE_TIME_FUNCS: set[str] = {
      };
 glob NATIVE_OS_FUNCS: set[str] = {
          "getpid",
+         "listdir",
          "getcwd",
          "getenv",
          "chdir",
