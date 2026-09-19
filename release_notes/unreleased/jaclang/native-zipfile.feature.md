@@ -1,0 +1,1 @@
+- **Native ZIP archives**: Add read-only `zipfile.ZipFile` support for ZIP/PK3 archives, including stored and DEFLATE members, archive listings, metadata, and integrity checks. Run native context-manager cleanup on returns, loop control, and exceptions.

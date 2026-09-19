@@ -96,7 +96,8 @@ obj NativeFinalizer {
         function: ir.Function,
         loop_depth: int,
         handler_depth: int,
-        pop_handler: bool = False;
+        pop_handler: bool = False,
+        context_exit: tuple[ir.Value, ir.Function] | None = None;
 }
 
 obj NativeErrorHandler {
@@ -950,6 +951,7 @@ walker NaIRGenPass {
         trace_fn_name: str, container_ptr_type: ir.Type, layout: dict[str, any]
     ) -> ir.Function;
 
+    def _emit_context_exit(cm: ir.Value, exit_fn: ir.Function) -> ir.Value;
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(
         exprs: Sequence[uni.ExprAsItem], idx: int, body: Sequence[uni.CodeBlockStmt]
