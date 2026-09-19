@@ -549,9 +549,40 @@ impl NaIRGenPass._make_range_iter(range_val: ir.Value) -> ir.Value {
     return self._make_jac_iter(next_fn, state);
 }
 
+impl NaIRGenPass._list_from_iter(
+    iter_val: ir.Value, iter_elem_type: ir.Type, list_elem_type: ir.Type
+) -> (ir.Value | None) {
+    spec = self._spec_from_container_ptr(self._lower_list_for_elem(list_elem_type));
+    helpers = self.list_helpers.get(spec) if spec is not None else None;
+    if helpers is None {
+        return None;
+    }
+    b = self.builder;
+    slot_type = ir.IntType(8).as_pointer()
+        if iter_elem_type == self._str_desc_ty
+        else iter_elem_type;
+    slot = self._entry_alloca(slot_type, "list.iter.element");
+    result = b.call(helpers["new"], [], name="list.iter.result");
+    func = b.basic_block.function;
+    condition = func.append_basic_block("list.iter.next");
+    body = func.append_basic_block("list.iter.append");
+    done = func.append_basic_block("list.iter.done");
+    b.branch(condition);
+    b.position_at_end(condition);
+    b.cbranch(self._emit_iter_advance(b, iter_val, slot), body, done);
+    b.position_at_end(body);
+    stored_type = helpers["elem_type"];
+    assert isinstance(stored_type, ir.Type);
+    b.call(helpers["append"], [result, self._coerce_type(b.load(slot), stored_type)]);
+    b.branch(condition);
+    b.position_at_end(done);
+    return result;
+}
+
 impl NaIRGenPass._make_iter_from_value(
     val: ir.Value, expr: uni.UniNode
 ) -> (tuple[ir.Value, str, ir.Type] | None) {
+    self._ensure_iter_types();
     i8p = ir.IntType(8).as_pointer();
 
     _checked_list = self._list_spec_of(expr);
