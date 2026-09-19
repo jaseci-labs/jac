@@ -4,7 +4,7 @@ Import compatibility maps remain retained standard-library data. Attribute
 traversal, identity validation and map selection execute in native Jac.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     repr_value,
     jacpy_error_restore,
     jacpy_object_str,

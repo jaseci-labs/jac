@@ -24,7 +24,7 @@ import from jaclang.runtime.python.modules.numeric {
     tan,
     tanh
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     boundary_failure,
     required,
     checked,

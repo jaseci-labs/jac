@@ -13,7 +13,7 @@ import from jaclang.runtime.python.objects {
 }
 import from jaclang.runtime.python.compiler_integer { integer_from_marshal }
 import from jaclang.runtime.python.native_services { take_buffer }
-import from jaclang.runtime.python.capi { read_buffer, boundary_failure }
+import from jaclang.runtime.cpython.capi { read_buffer, boundary_failure }
 import from c {
     def jacpy_value_kind(handle: u64) -> i64;  def jacpy_truth(handle: u64) -> i64;  def jacpy_marshal(
         handle: u64

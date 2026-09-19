@@ -1,5 +1,5 @@
 """Native callable types, descriptors, and ownership for functools."""
-import from jaclang.runtime.python.capi { jacpy_visit }
+import from jaclang.runtime.cpython.capi { jacpy_visit }
 
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
@@ -28,7 +28,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_method_bind,
     jacpy_binding_marker
 }
-import from jaclang.runtime.python.references { NativeState }
+import from jaclang.runtime.cpython.references { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -37,7 +37,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     traverse_payload
 }
-import from jaclang.runtime.python.references { ReferenceState }
+import from jaclang.runtime.cpython.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -62,7 +62,7 @@ import from jaclang.runtime.python.modules.functools {
     jacpy_reduce,
     jacpy_cmp_key
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_recursion_enter,
     jacpy_recursion_leave,
     jacpy_release,

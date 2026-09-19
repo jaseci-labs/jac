@@ -4,7 +4,7 @@ Compile with tests.support.compile_native in a runtime with the shared object AP
 Calling unwind with a borrowed PyObject must leave its reference count unchanged.
 The current longjmp path skips the intermediate frame's ObjectRef destructor.
 """
-import from jaclang.runtime.python.references { ObjectResult, borrowed_result }
+import from jaclang.runtime.cpython.references { ObjectResult, borrowed_result }
 
 def fail {
     raise ValueError("native failure");

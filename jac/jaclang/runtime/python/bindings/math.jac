@@ -11,7 +11,7 @@ import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     invoke
 }
-import from jaclang.runtime.python.capi { jacpy_float }
+import from jaclang.runtime.cpython.capi { jacpy_float }
 import from jaclang.runtime.python.modules.math {
     jacpy_math_binary,
     jacpy_math_comb,

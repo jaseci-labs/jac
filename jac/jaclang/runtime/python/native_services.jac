@@ -1,4 +1,4 @@
-import from jaclang.runtime.python.capi { read_buffer, required, boundary_failure }
+import from jaclang.runtime.cpython.capi { read_buffer, required, boundary_failure }
 import from jaclang.runtime.python.objects { PyObj }
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 import from jaclang.runtime.python.compiler_integer { integer_from_marshal }

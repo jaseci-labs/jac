@@ -2,7 +2,7 @@
 
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_memory_byte,
     jacpy_memory_set,
     jacpy_int,

@@ -5,7 +5,7 @@ and all collection algorithms execute in Jac. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
 """
 import from jaclang.runtime.python.modules.object_ring { object_ring }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_retain,
     jacpy_release,
     jacpy_error_pending,

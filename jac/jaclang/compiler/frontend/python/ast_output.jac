@@ -117,7 +117,7 @@ import from jaclang.compiler.frontend.python.ast_nodes {
     ParamSpec,
     TypeVarTuple
 }
-import from jaclang.runtime.python.capi { boundary_failure }
+import from jaclang.runtime.cpython.capi { boundary_failure }
 import from jaclang.runtime.python.objects { PyObj }
 import from jaclang.runtime.python.constant_output { constant_object }
 import from c {

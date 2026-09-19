@@ -1,5 +1,5 @@
 """Native iterator type declarations and ownership at the Python ABI boundary."""
-import from jaclang.runtime.python.capi { jacpy_visit }
+import from jaclang.runtime.cpython.capi { jacpy_visit }
 
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
@@ -22,7 +22,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_basicsize,
     jacpy_binding_generic_alias
 }
-import from jaclang.runtime.python.references { NativeState }
+import from jaclang.runtime.cpython.references { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -32,7 +32,7 @@ import from jaclang.runtime.python.bindings.payload {
     dispose_payload,
     jacpy_binding_dealloc_guard
 }
-import from jaclang.runtime.python.references { ReferenceState }
+import from jaclang.runtime.cpython.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -40,7 +40,7 @@ import from jaclang.runtime.python.bindings.arguments {
     index_value,
     jacpy_ssize
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_retain,
     jacpy_release,
     jacpy_none,

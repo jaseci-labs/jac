@@ -4,7 +4,7 @@ CPython supplies the Python values and their float conversion. The rational
 approximation evaluates natively over machine doubles.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_float,
     jacpy_number_as_double,
     jacpy_error_pending,

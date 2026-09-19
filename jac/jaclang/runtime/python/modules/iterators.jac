@@ -5,7 +5,7 @@ is recycled only under exclusive ownership, with finalizers deferred until the
 replacement contents have been published. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_retain,
     jacpy_iter,

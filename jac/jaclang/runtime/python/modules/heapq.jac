@@ -4,7 +4,7 @@ Keep compared objects alive across arbitrary user callbacks, then recheck the
 list length before accessing slots. Swaps use the current slots, including
 changes made by comparisons. Derived from CPython; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_retain,
     jacpy_none,

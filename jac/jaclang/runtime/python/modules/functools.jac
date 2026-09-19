@@ -4,7 +4,7 @@ The object boundary retains Python callbacks and containers, including the
 runtime's ordered dictionary. No Python implementation of these policies runs.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_retain,
     jacpy_error_pending,

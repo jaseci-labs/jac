@@ -5,7 +5,7 @@ owned reference twice. Cursor movement and replay are Jac algorithms; Python's
 standard trashcan mechanism bounds destruction of long block chains.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_retain,
     jacpy_iter,

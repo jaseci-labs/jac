@@ -17,7 +17,7 @@ import from jaclang.runtime.python.modules.cmath {
     jacpy_cmath_rect,
     jacpy_cmath_isclose
 }
-import from jaclang.runtime.python.capi { jacpy_float, jacpy_complex }
+import from jaclang.runtime.cpython.capi { jacpy_float, jacpy_complex }
 
 def:priv acos_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(0, value);

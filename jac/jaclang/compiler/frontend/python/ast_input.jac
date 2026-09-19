@@ -131,7 +131,7 @@ import from jaclang.compiler.frontend.python.ast_nodes {
 }
 import from jaclang.runtime.python.objects { PyObj }
 import from jaclang.runtime.python.native_services { take_buffer }
-import from jaclang.runtime.python.capi { boundary_failure }
+import from jaclang.runtime.cpython.capi { boundary_failure }
 import from jaclang.runtime.python.constant_input { read_constant }
 import from c {
     def jacpy_field(handle: u64, field: i64) -> u64;  def jacpy_optional_field(

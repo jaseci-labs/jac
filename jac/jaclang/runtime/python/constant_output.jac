@@ -23,7 +23,7 @@ import from jaclang.runtime.python.opcode_meta {
     CO_FAST_CELL,
     CO_FAST_FREE
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     checked,
     required,
     text_object,

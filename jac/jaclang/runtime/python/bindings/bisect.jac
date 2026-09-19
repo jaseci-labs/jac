@@ -11,7 +11,7 @@ import from jaclang.runtime.python.bindings.arguments {
     index_value
 }
 import from jaclang.runtime.python.modules.bisect { jacpy_bisect }
-import from jaclang.runtime.python.capi { jacpy_is_none }
+import from jaclang.runtime.cpython.capi { jacpy_is_none }
 
 def:priv signature(name: str) -> CallSignature {
     return CallSignature(name, ["a", "x", "lo", "hi", "key"], 2, 4);

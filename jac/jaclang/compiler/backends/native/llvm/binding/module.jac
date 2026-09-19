@@ -216,6 +216,21 @@ class ModuleRef(ffi.ObjectRef) {
         return _FunctionsIterator(it, `dict(module=self));
     }
 
+    def declaration_names(self: ModuleRef) -> list[str] {
+        names: list[str] = [];
+        for function in self.functions {
+            if function.is_declaration {
+                names.append(function.name);
+            }
+        }
+        for variable in self.global_variables {
+            if variable.is_declaration {
+                names.append(variable.name);
+            }
+        }
+        return names;
+    }
+
     def clone(self: ModuleRef) -> object {
         return ModuleRef(ffi.lib.LLVMPY_CloneModule(self), self._context);
     }

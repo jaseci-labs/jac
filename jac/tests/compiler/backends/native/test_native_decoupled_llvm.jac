@@ -21,6 +21,20 @@ import jaclang.compiler.backends.native.llvm.binding as llvm;
 import from jaclang.compiler.backends.native.llvm { ir }
 import from jaclang.compiler.backends.native.llvm.ir { types as ir_types }
 
+test "module declarations include external globals and exclude definitions" {
+    module = llvm.parse_assembly(
+        "declare i32 @foreign_call()\n"
+            + "@PyExc_ValueError = external global ptr\n"
+            + "@defined = global i32 0\n"
+            + "define i32 @local() { ret i32 0 }\n"
+    );
+    try {
+        assert set(module.declaration_names()) == {"foreign_call", "PyExc_ValueError"};
+    } finally {
+        module.close();
+    }
+}
+
 # `Type` subclasses that are never instantiated directly -- they exist only to
 # share behaviour with their concrete subclasses, so they need no representative
 # in the `__eq__` cross product below.

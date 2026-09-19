@@ -10,7 +10,7 @@ import from jaclang.runtime.python.modules.binary_scalars {
     write_bits,
     integer_from_bits
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     required,
     checked,
     object_error,

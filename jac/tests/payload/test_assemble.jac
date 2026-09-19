@@ -48,7 +48,7 @@ def rf(path: str) -> bytes {
     }
 }
 
-test "payload excludes interpreted JacPython modules and keeps their license" {
+test "payload keeps the shared CPython API and excludes JacPython implementations" {
     with tempfile.TemporaryDirectory() as tmp {
         source = os.path.join(tmp, "source");
         target = os.path.join(tmp, "target");
@@ -62,12 +62,17 @@ test "payload excludes interpreted JacPython modules and keeps their license" {
             wf(source, path, b"implementation");
         }
         wf(source, "runtime/python/LICENSE.cpython", b"license");
+        wf(source, "runtime/cpython/capi.jac", b"shared API");
+        wf(source, "runtime/cpython/references.jac", b"shared ownership");
         wf(source, "compiler/frontend/parser.jac", b"Jac parser");
         copy_tree(source, target, skip_jaclang);
         for path in removed {
             assert not os.path.exists(os.path.join(target, path));
         }
         assert rf(os.path.join(target, "runtime/python/LICENSE.cpython")) == b"license";
+        assert rf(os.path.join(target, "runtime/cpython/capi.jac")) == b"shared API";
+        assert rf(os.path.join(target, "runtime/cpython/references.jac"))
+            == b"shared ownership";
         assert rf(os.path.join(target, "compiler/frontend/parser.jac"))
             == b"Jac parser";
     }

@@ -4,7 +4,7 @@ CPython supplies values and their protocol operations. Search and insertion
 orchestration execute here, without converting the sequence to a Jac list.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_none,
     jacpy_int,

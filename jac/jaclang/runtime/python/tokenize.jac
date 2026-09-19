@@ -23,7 +23,7 @@ import from jaclang.compiler.frontend.python.token_model {
     tok_diag
 }
 
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     boundary_failure,
     checked,
     required,

@@ -15,7 +15,7 @@ import from jaclang.runtime.python.bindings.arguments {
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
 import from jaclang.runtime.python.modules.binascii { jacpy_binascii_convert }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_truth,
     jacpy_error_pending,

@@ -1,7 +1,7 @@
 """Native state owned by a Python object through an opaque ABI payload slot."""
-import from jaclang.runtime.python.capi { jacpy_visit }
+import from jaclang.runtime.cpython.capi { jacpy_visit }
 
-import from jaclang.runtime.python.references { NativeState }
+import from jaclang.runtime.cpython.references { NativeState }
 import from jaclang.runtime.python.bindings.type {
     jacpy_binding_typeof,
     jacpy_binding_dict_visit,

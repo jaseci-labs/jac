@@ -4,7 +4,7 @@ Comparisons may advance either iterator recursively. Snapshot comparison
 operands and publish state before releasing Python references.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_retain,
     jacpy_iter,

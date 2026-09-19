@@ -4,7 +4,7 @@ Derived from CPython's _randommodule and the MT2002 algorithm by Makoto
 Matsumoto and Takuji Nishimura. See the Mersenne Twister notice in
 ../LICENSE.cpython. No host random implementation is called.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_int,
     object_error,
@@ -33,7 +33,7 @@ import from jaclang.runtime.python.capi {
     jacpy_buffer_set
 }
 
-import from jaclang.runtime.python.references { NativeState }
+import from jaclang.runtime.cpython.references { NativeState }
 
 obj mt19937(NativeState) {
     has words: list[u32] = [u32(0) for i in range(624)],

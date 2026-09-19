@@ -1,5 +1,5 @@
-"""Shared ownership and cycle-collector visibility for Python reference fields."""
-import from jaclang.runtime.python.capi {
+"""Shared ownership and cycle-collector visibility for hosted Python values."""
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_visit,
     jacpy_retain,

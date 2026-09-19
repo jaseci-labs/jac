@@ -1,7 +1,7 @@
 """Decode Python source values using native encoding detection."""
 import from jaclang.compiler.frontend.python.source_encoding { source_encoding }
 import from jaclang.runtime.python.native_services { take_buffer, take_error_text }
-import from jaclang.runtime.python.capi { read_buffer, boundary_failure }
+import from jaclang.runtime.cpython.capi { read_buffer, boundary_failure }
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 import from c {
     def jacpy_source_kind(handle: u64) -> i64;  def jacpy_error_pending -> i64;  def jacpy_source_bytes(

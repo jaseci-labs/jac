@@ -43,7 +43,7 @@ import from jaclang.compiler.frontend.python.syntax_error {
     source_character_column
 }
 import from jaclang.runtime.python.objects { PyObj, PyCode, PyError, PyInt }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     boundary_failure,
     checked,
     required,

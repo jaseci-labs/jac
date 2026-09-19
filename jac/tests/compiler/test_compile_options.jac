@@ -756,9 +756,9 @@ test "native-only dependencies stay in the target rather than the compiler host"
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.selfhost { SelfHostCache }
     program = JacProgram();
-    program.options = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    program.options = _pinned_opts(native_require=["jaclang.runtime.cpython.*"]);
     host = SelfHostCache(_jaclang_root="/checkout/jaclang");
-    assert host.resolve("/checkout/jaclang/runtime/python/capi.jac", program)
+    assert host.resolve("/checkout/jaclang/runtime/cpython/capi.jac", program)
         is program;
     assert host.peek_program() is None;
 }

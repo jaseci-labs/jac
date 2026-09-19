@@ -1,5 +1,5 @@
 """Native collection types, iteration, descriptors, and Python ownership."""
-import from jaclang.runtime.python.capi { jacpy_visit }
+import from jaclang.runtime.cpython.capi { jacpy_visit }
 
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
@@ -31,7 +31,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_base_dealloc,
     jacpy_binding_object_state
 }
-import from jaclang.runtime.python.references { NativeState }
+import from jaclang.runtime.cpython.references { NativeState }
 import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
@@ -42,7 +42,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     dispose_payload
 }
-import from jaclang.runtime.python.references { ReferenceState, owned_tuple }
+import from jaclang.runtime.cpython.references { ReferenceState, owned_tuple }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -79,7 +79,7 @@ import from jaclang.runtime.python.modules.collections {
     jacpy_count_elements,
     jacpy_default_repr
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jac_heap_size,
     jacpy_retain,
     jacpy_release,

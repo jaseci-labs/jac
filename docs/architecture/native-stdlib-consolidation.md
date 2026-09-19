@@ -22,11 +22,15 @@ conformance or completion of the compiler migration.
 The retained object API is now linked into both runtime variants. Shared object
 operations have moved out of the JacPython compiler adapter, and generic
 reference ownership and GC visitation no longer depend on extension bindings.
-`runtime/python/references.jac` owns native Python references, transfers results,
+`runtime/cpython/references.jac` owns native Python references, transfers results,
 and carries original Python exceptions in explicit `ObjectResult` values. The
 outer Python entry consumes a result and restores its exception only after
 intermediate native frames have returned normally. Existing module bindings reuse
 the same ownership protocol. Both build cache identities include the shared API.
+The shared interface lives in `runtime/cpython`, which is included in the binary
+payload; `runtime/python` contains JacPython implementations excluded from that
+payload. The existing shared-runtime module registry keeps these interfaces in
+the native target when imported by an external application.
 
 Targeted native tests exercise reference transfer, repeated alias clearing,
 mutable object identity, Unicode and large integers, errors through nested calls,

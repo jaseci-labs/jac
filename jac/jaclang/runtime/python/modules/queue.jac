@@ -5,9 +5,9 @@ consuming an item passes that notification on when more items remain. CPython
 references are visible to its cycle collector through the borrowed-item ABI.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi { jacpy_visit }
+import from jaclang.runtime.cpython.capi { jacpy_visit }
 
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_retain,
     jacpy_release,
     jacpy_lock_notify,
@@ -21,8 +21,8 @@ import from jaclang.runtime.python.capi {
     jacpy_set_none_exception,
     object_error
 }
-import from jaclang.runtime.python.references { NativeState }
-import from jaclang.runtime.python.capi { jacpy_lock_free }
+import from jaclang.runtime.cpython.references { NativeState }
+import from jaclang.runtime.cpython.capi { jacpy_lock_free }
 
 import from jaclang.runtime.python.modules.object_ring { object_ring }
 

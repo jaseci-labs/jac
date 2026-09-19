@@ -1,10 +1,10 @@
 """Owned Python results return through native frames before restoring an error."""
-import from jaclang.runtime.python.references {
+import from jaclang.runtime.cpython.references {
     ObjectResult,
     object_result,
     borrowed_result
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_import_object,
     jacpy_getattr,
     jacpy_call

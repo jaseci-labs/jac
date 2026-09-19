@@ -11,7 +11,7 @@ import from jaclang.runtime.python.modules.pickle_stream {
     builtin_stream_error
 }
 import from jaclang.runtime.python.modules.pickle_objects { global_names, mapped_names }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_is_iterator,
     type_name,
     serialization_note,

@@ -14,6 +14,7 @@ import from ctypes {
     Structure
 }
 import from jaclang.compiler.backends.native.llvm.binding { ffi, targets, object_file }
+import from jaclang.compiler.backends.native.llvm.binding.module { ModuleRef }
 import from jaclang.runtime.interop_bridge { native_callable, native_requires_python }
 
 with entry {
@@ -29,7 +30,7 @@ with entry {
     systems, ``False`` otherwise).
     """
 def create_mcjit_compiler(
-    module: any, target_machine: any, use_lmm: any = None
+    module: ModuleRef, target_machine: any, use_lmm: any = None
 ) -> ExecutionEngine {
     if (use_lmm is None) {
         use_lmm = platform.machine() in ('arm64', 'aarch64');
@@ -65,13 +66,9 @@ class ExecutionEngine(ffi.ObjectRef) {
     """
         Module ownership is transferred to the EE
         """
-    def init(self: ExecutionEngine, ptr: any, module: any) -> object {
+    def init(self: ExecutionEngine, ptr: any, module: ModuleRef) -> object {
         self._modules = `set([module]);
-        self.requires_python: bool = native_requires_python(
-            value.name for values in (module.functions, module.global_variables)
-            for value in values
-            if value.is_declaration
-        );
+        self.requires_python: bool = native_requires_python(module.declaration_names());
         self._td: (targets.TargetData | None) = None;
         self.static_init_symbols: list[str] = [];
         self.static_init_chained = `set();
@@ -141,7 +138,7 @@ class ExecutionEngine(ffi.ObjectRef) {
     """
         Ownership of module is transferred to the execution engine
         """
-    def add_module(self: ExecutionEngine, module: any) -> object {
+    def add_module(self: ExecutionEngine, module: ModuleRef) -> object {
         if (module in self._modules) {
             raise KeyError("module already added to this engine");
         }
@@ -149,11 +146,7 @@ class ExecutionEngine(ffi.ObjectRef) {
         module._owned = True;
         self._modules.add(module);
         self.requires_python = self.requires_python
-            or native_requires_python(
-                value.name for values in (module.functions, module.global_variables)
-                for value in values
-                if value.is_declaration
-            );
+            or native_requires_python(module.declaration_names());
     }
 
     """

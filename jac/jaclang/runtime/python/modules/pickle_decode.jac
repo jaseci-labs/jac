@@ -11,7 +11,7 @@ import from jaclang.runtime.python.modules.pickle_stream {
     builtin_stream_error
 }
 import from jaclang.runtime.python.modules.binary_scalars { integer_from_bits }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_error_is,
     text_value,
     jacpy_dict_items,

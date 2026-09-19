@@ -4,7 +4,7 @@ Retained Python objects provide byte storage and file callbacks. Protocol
 framing and cursor progression are Jac policies. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_error_take,
     jacpy_error_restore,
     jacpy_exception_context,

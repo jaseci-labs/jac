@@ -4,7 +4,7 @@ All token decisions, escaping, traversal and callback orchestration run natively
 CPython supplies Unicode storage, containers, scalar construction and exceptions.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     boundary_failure,
     required,
     checked,
@@ -569,7 +569,7 @@ def:pub jacpy_json_scan(
     }
 }
 
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     type_name,
     jacpy_error_pending,
     repr_value,

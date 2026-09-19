@@ -4,7 +4,7 @@ The algorithm kernels use typed native buffers. Python buffer validation,
 argument binding, and module exception identities remain at the object ABI.
 See ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     read_buffer,
     write_buffer,
     jacpy_set_exception,

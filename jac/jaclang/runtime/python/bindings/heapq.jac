@@ -11,7 +11,7 @@ import from jaclang.runtime.python.bindings.arguments {
     invoke_one,
     invalid
 }
-import from jaclang.runtime.python.capi { jacpy_is_list, type_name }
+import from jaclang.runtime.cpython.capi { jacpy_is_list, type_name }
 import from jaclang.runtime.python.modules.heapq {
     jacpy_heap_push,
     jacpy_heap_pop,

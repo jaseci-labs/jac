@@ -9,7 +9,8 @@ selects the compiler at build time; each binary contains one runtime.
 | --- | --- |
 | `jac/jaclang/compiler/frontend/python/` | Python scanning, parsing, AST validation, source decoding, and symbol analysis |
 | `jac/jaclang/compiler/backends/py/jacpython/` | Native request handling, bytecode generation, assembly, and code-object serialization |
-| `jac/jaclang/runtime/python/` | Compiler values, tokenizer/symbol-table interfaces, shared object API, and native standard-library modules |
+| `jac/jaclang/runtime/python/` | Compiler values, tokenizer/symbol-table interfaces, and JacPython standard-library implementations |
+| `jac/jaclang/runtime/cpython/` | Shared CPython object API, reference ownership, error results, and GC visitation |
 | `jac/jaclang/runtime/python/bindings/` | Native module/type declarations, argument binding, descriptors, and Python object ownership |
 | `jac/bootstrap/python/` | Pinned source build and shared C shims for opaque CPython ABI records and object APIs |
 
@@ -20,9 +21,10 @@ builds constants and code objects through the object API and CPython's
 validated code constructor, and `ast_output.jac` publishes trees with the
 interpreter's own AST types and operator singletons. Strings and byte payloads
 cross the boundary in single copies. No replacement bytecode, embedded compiler
-seed, or Python dispatch callback is shipped. The payload excludes these
-implementation directories from its ordinary Python/JIR precompile; their
-CPython license is retained.
+seed, or Python dispatch callback is shipped. The payload excludes native compiler
+and JacPython module implementations from its ordinary Python/JIR precompile;
+their CPython license is retained. The shared `runtime/cpython/` interface is
+included for native applications using either runtime variant.
 
 The native object is built with Jac's `rc` memory profile and the same LLVM
 module pipeline as every other native artifact. Each compile request runs inside
@@ -58,7 +60,7 @@ to the CPython-derived code across these packages.
 `modules/` contains the native standard-library algorithms. `bindings/` implements
 all seventeen module adapters in native Jac, including their `PyInit_*` entry points,
 constructors, descriptors, protocol callbacks, and lifecycle handling. There are
-no per-module C adapters. `capi.jac` declares shared retained-object operations;
+no per-module C adapters. `runtime/cpython/capi.jac` declares shared retained-object operations;
 `bootstrap/python/object_api.c` implements those C API primitives, while
 `bootstrap/python/binding_api.c` stores opaque CPython module, type, and buffer
 records without module-specific policy.
@@ -66,7 +68,7 @@ records without module-specific policy.
 The object API is also linked into the stock CPython build. Compiler-only
 operations remain in `compiler_runtime.c`; reference ownership, scalar values,
 generic calls, and GC visitation belong to the shared runtime. Native
-`references.jac` supplies `ObjectRef`, owned-reference transfer, explicit
+`runtime/cpython/references.jac` supplies `ObjectRef`, owned-reference transfer, explicit
 `ObjectResult` values, and the native-state visitation protocol used by module
 bindings. Python errors remain owned values until the outer entry consumes a
 result, allowing intermediate native frames to release their references before

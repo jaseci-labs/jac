@@ -4,7 +4,7 @@ Balanced integer products and adaptive-precision square roots avoid linear
 chains of growing intermediate integers. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_retain,
     jacpy_release,
     jacpy_int,
@@ -74,7 +74,7 @@ import from jaclang.runtime.python.modules.numeric {
     nan,
     scaled
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_number_as_double,
     jacpy_float,
     jacpy_clear_errno,
@@ -93,7 +93,7 @@ import from jaclang.runtime.python.capi {
     type_name
 }
 
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_iter,
     jacpy_iter_next,
     jacpy_sequence_tuple,

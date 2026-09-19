@@ -1,5 +1,5 @@
 """CSV declarations, owned callbacks, and interpreter-local native configuration."""
-import from jaclang.runtime.python.capi { jacpy_visit }
+import from jaclang.runtime.cpython.capi { jacpy_visit }
 
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
@@ -32,7 +32,7 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     traverse_payload
 }
-import from jaclang.runtime.python.references { ReferenceState }
+import from jaclang.runtime.cpython.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
@@ -51,7 +51,7 @@ import from jaclang.runtime.python.modules.csv {
     jacpy_csv_write,
     jacpy_csv_registry
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_retain,
     jacpy_none,

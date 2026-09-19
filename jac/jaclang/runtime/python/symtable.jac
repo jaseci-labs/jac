@@ -174,7 +174,7 @@ import from jaclang.compiler.frontend.python.compiler_diagnostics {
 }
 import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
 import from jaclang.runtime.python.objects { PyObj, py_error }
-import from jaclang.runtime.python.capi { boundary_failure }
+import from jaclang.runtime.cpython.capi { boundary_failure }
 import from c {
     def jacpy_symtable_entry(
         name: u64,

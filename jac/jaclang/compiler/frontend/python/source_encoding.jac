@@ -2,7 +2,7 @@
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 
 import from jaclang.runtime.python.native_services { take_error_text }
-import from jaclang.runtime.python.capi { boundary_failure }
+import from jaclang.runtime.cpython.capi { boundary_failure }
 import from c {
     def jacpy_codec_valid(name: str) -> i64;  def jacpy_error_is(name: str) -> i64;
 }

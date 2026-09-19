@@ -3,7 +3,7 @@
 CPython owns public objects and protocol calls; typed native state owns parsing
 and quoting. Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     boundary_failure,
     required,
     checked,
@@ -48,7 +48,7 @@ import from jaclang.runtime.python.capi {
     jacpy_object_str,
     jacpy_call_one
 }
-import from jaclang.runtime.python.references { NativeState }
+import from jaclang.runtime.cpython.references { NativeState }
 
 obj CsvConfig(NativeState) {
     has limit: i64 = 128 * 1024;

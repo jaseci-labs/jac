@@ -1,9 +1,9 @@
-"""Retained CPython object operations for native Jac module implementations.
+"""Retained CPython object operations shared by native Jac and JacPython.
 
 Handles borrow their arguments. Object-producing operations return a new
 reference (zero on error), released with jacpy_release or returned to Python.
 All calls require the interpreter lock; exceptions remain in CPython's thread
-state. No Python implementation of a replaced module is invoked here.
+state. The same ABI serves ordinary CPython and JacPython runtimes.
 """
 enum builtin_kind {
     NONE = 0,

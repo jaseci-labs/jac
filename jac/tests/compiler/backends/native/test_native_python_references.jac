@@ -150,6 +150,30 @@ test "native entry conventions follow the runtime requirement" {
     assert native_callable(address, False, ctypes.c_int32)() == 0;
 }
 
+test "an external native project uses the bundled shared object runtime" {
+    with tempfile.TemporaryDirectory() as directory {
+        path = Path(directory) / "hosted.jac";
+        path.write_text(
+            "import from jaclang.runtime.cpython.references { borrowed_result }\n"
+                + "def:pub echo_object(value: u64) -> u64 { "
+                + "return borrowed_result(value).take(); }\n"
+        );
+        program = JacProgram();
+        module = program.compile(
+            str(path),
+            options=CompileOptions(force_codespace="native", force_target_program=True)
+        );
+        assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
+        assert module is not None and module.gen.native_engine is not None;
+        assert module.gen.native_engine.requires_python;
+        echo_object = get_func(
+            module.gen.native_engine, "echo_object", ctypes.c_void_p, ctypes.py_object
+        );
+        value = object();
+        assert take(echo_object(value)) is value;
+    }
+}
+
 test "generated Python stubs preserve interpreter state and errors" {
     program = JacProgram();
     path = str(Path(NATIVE_FIXTURES) / "python_hosted_entry.jac");

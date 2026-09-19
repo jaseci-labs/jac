@@ -3,7 +3,7 @@ import from jaclang.runtime.python.modules.pickle_encode { pickle_state }
 import from jaclang.runtime.python.modules.pickle_decode { unpickle_state }
 import from jaclang.runtime.python.modules.pickle_objects { find_global }
 import from jaclang.runtime.python.modules.pickle_stream { builtin_stream_error }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     text_value,
     required,
     checked,

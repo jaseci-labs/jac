@@ -1,5 +1,5 @@
 """Struct bindings with owned format plans and exported-buffer iterators."""
-import from jaclang.runtime.python.capi { jacpy_visit }
+import from jaclang.runtime.cpython.capi { jacpy_visit }
 
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
@@ -30,14 +30,14 @@ import from jaclang.runtime.python.bindings.payload {
     clear_payload,
     traverse_payload
 }
-import from jaclang.runtime.python.references { ReferenceState }
+import from jaclang.runtime.cpython.references { ReferenceState }
 import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     CallSignature,
     invoke
 }
 import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_retain,
     jacpy_is_unicode,

@@ -39,7 +39,7 @@ import from jaclang.runtime.python.modules.queue {
     jacpy_queue_get,
     jacpy_queue_size
 }
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     jacpy_release,
     jacpy_none,
     jacpy_boolean,

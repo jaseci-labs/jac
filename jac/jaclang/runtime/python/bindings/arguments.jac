@@ -1,5 +1,5 @@
 """Argument ownership and signature binding shared by native Python adapters."""
-import from jaclang.runtime.python.capi {
+import from jaclang.runtime.cpython.capi {
     boundary_failure,
     required,
     object_error,

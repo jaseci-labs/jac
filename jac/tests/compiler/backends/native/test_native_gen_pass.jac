@@ -2709,8 +2709,9 @@ test "py interop native function has stub in python" {
     assert "native_add_one_to_doubled" in py_src;
     # The native function body should NOT appear as executable code in Python
     assert "return py_double(x) + 1" not in py_src;
-    # Should reference ctypes for the bridge
-    assert "CFUNCTYPE" in py_src;
+    # The shared entry helper selects the artifact's calling convention.
+    assert "native_callable" in py_src;
+    assert "__jac_native_engine__.requires_python" in py_src;
     assert "get_function_address" in py_src;
 }
 
