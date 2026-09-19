@@ -793,10 +793,124 @@ impl TypeEvaluator._edge_endpoint_verdict(
     if not isinstance(actual, ClassType) {
         return EndpointVerdict.UNPROVEN;
     }
-    if self.assign_type(actual, self._convert_to_instance(declared), strict=False) {
+    declared_inst = self._convert_to_instance(declared);
+    if self.assign_type(actual, declared_inst, strict=False) {
         return EndpointVerdict.CONFORMS;
     }
+    if self.assign_type(declared_inst, actual, strict=False) {
+        return EndpointVerdict.UNPROVEN;
+    }
     return EndpointVerdict.VIOLATES;
+}
+
+impl TypeEvaluator._connected_node_type(operand: TypeBase) -> TypeBase {
+    if isinstance(operand, ClassType)
+        and operand.is_builtin()
+        and operand.shared.class_name in ("list", "tuple", "set", "frozenset") {
+        type_args = operand.private.type_args;
+        if type_args and len(type_args) > 0 {
+            return type_args[0];
+        }
+        return AnyType();
+    }
+    return operand;
+}
+
+impl TypeEvaluator._report_endpoint_verdict(
+    at: UniNode,
+    violation: DiagnosticInfo,
+    unproven: DiagnosticInfo,
+    edge_type: ClassType,
+    side: str,
+    actual: TypeBase,
+    declared: TypeBase
+) -> None {
+    verdict = self._edge_endpoint_verdict(actual, declared);
+    if verdict != EndpointVerdict.VIOLATES and verdict != EndpointVerdict.UNPROVEN {
+        return;
+    }
+    self.emit_diag(
+        violation if verdict == EndpointVerdict.VIOLATES else unproven,
+        at,
+        side=side,
+        actual=str(actual),
+        edge_name=edge_type.shared.class_name,
+        declared=str(self._convert_to_instance(declared))
+    );
+}
+
+impl TypeEvaluator._check_connect_endpoints(
+    conn_type: TypeBase,
+    edge_dir: EdgeDir,
+    left: Expr,
+    left_type: TypeBase,
+    right: Expr,
+    right_type: TypeBase
+) -> None {
+    if edge_dir != EdgeDir.OUT and edge_dir != EdgeDir.IN {
+        return;
+    }
+    edge_type = conn_type;
+    if isinstance(edge_type, ClassType) {
+        edge_type = self._get_type_for_member_lookup(edge_type);
+    }
+    if not isinstance(edge_type, ClassType) or not edge_type.is_edge_type() {
+        return;
+    }
+    outbound = edge_dir == EdgeDir.OUT;
+    for (side, at, operand_type, want_src) in [
+        (
+            "source",
+            left if outbound else right,
+            left_type if outbound else right_type,
+            True
+        ),
+        (
+            "target",
+            right if outbound else left,
+            right_type if outbound else left_type,
+            False
+        )
+    ] {
+        declared = self._edge_endpoint_declared(edge_type, want_src);
+        if declared is None {
+            continue;
+        }
+        self._report_endpoint_verdict(
+            at,
+            E1136,
+            W2081,
+            edge_type,
+            side,
+            self._connected_node_type(operand_type),
+            declared
+        );
+    }
+}
+
+impl TypeEvaluator._check_traversal_origin(
+    edge_type: ClassType, edge_dir: EdgeDir, origin_type: TypeBase | None, at: UniNode
+) -> None {
+    if origin_type is None {
+        return;
+    }
+    if edge_dir != EdgeDir.OUT and edge_dir != EdgeDir.IN {
+        return;
+    }
+    want_src = edge_dir == EdgeDir.OUT;
+    declared = self._edge_endpoint_declared(edge_type, want_src);
+    if declared is None {
+        return;
+    }
+    self._report_endpoint_verdict(
+        at,
+        E1137,
+        W2082,
+        edge_type,
+        "source" if want_src else "target",
+        self._connected_node_type(origin_type),
+        declared
+    );
 }
 
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {

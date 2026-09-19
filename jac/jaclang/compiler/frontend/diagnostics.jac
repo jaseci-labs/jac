@@ -738,7 +738,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1136 = _err(
          "E1136",
          Category.TYPE,
-         "Connection {side} operand is \"{actual}\", but edge \"{edge}\" declares its"
+         "Connection {side} operand is \"{actual}\", but edge \"{edge_name}\" declares its"
          " {side} endpoint as \"{declared}\"",
          help="A declared endpoint is what lets a traversal through this edge infer"
          " a node type instead of `any`, so a connection that contradicts it makes"
@@ -749,7 +749,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W2081",
          Category.TYPE,
          "Connection {side} operand is \"{actual}\", which cannot be checked against"
-         " the {side} endpoint \"{declared}\" declared by edge \"{edge}\"",
+         " the {side} endpoint \"{declared}\" declared by edge \"{edge_name}\"",
          help="Give the operand a concrete node type to have this verified, or"
          " declare the edge's endpoints as `any --> any` if it is meant to accept"
          " any node."
@@ -757,7 +757,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1137 = _err(
          "E1137",
          Category.TYPE,
-         "Traversal origin is \"{actual}\", but edge \"{edge}\" declares its {side}"
+         "Traversal origin is \"{actual}\", but edge \"{edge_name}\" declares its {side}"
          " endpoint as \"{declared}\", so this traversal can never match",
          help="An edge only connects the node types it declares, so traversing it"
          " from an unrelated node yields nothing. Start from a node that matches the"
@@ -767,7 +767,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W2082",
          Category.TYPE,
          "Traversal origin is \"{actual}\", which cannot be checked against the {side}"
-         " endpoint \"{declared}\" declared by edge \"{edge}\"",
+         " endpoint \"{declared}\" declared by edge \"{edge_name}\"",
          help="Give the origin a concrete node type to have this verified, or declare"
          " the edge's endpoints as `any --> any` if it is meant to start from any"
          " node."

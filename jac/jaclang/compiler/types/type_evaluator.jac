@@ -253,6 +253,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E1129,
     E1131,
     E1134,
+    E1136,
+    E1137,
     E0049,
     E5094,
     W1050,
@@ -260,7 +262,9 @@ import from jaclang.compiler.frontend.diagnostics {
     W1053,
     W1100,
     W1101,
-    W1102
+    W1102,
+    W2081,
+    W2082
 }
 
 obj PrefetchedTypes {
@@ -714,6 +718,33 @@ walker TypeEvaluator {
     def _edge_endpoint_verdict(
         actual: TypeBase, declared: TypeBase | None
     ) -> EndpointVerdict;
+
+    def _connected_node_type(operand: TypeBase) -> TypeBase;
+    def _report_endpoint_verdict(
+        at: UniNode,
+        violation: DiagnosticInfo,
+        unproven: DiagnosticInfo,
+        edge_type: ClassType,
+        side: str,
+        actual: TypeBase,
+        declared: TypeBase
+    ) -> None;
+
+    def _check_connect_endpoints(
+        conn_type: TypeBase,
+        edge_dir: EdgeDir,
+        left: Expr,
+        left_type: TypeBase,
+        right: Expr,
+        right_type: TypeBase
+    ) -> None;
+
+    def _check_traversal_origin(
+        edge_type: ClassType,
+        edge_dir: EdgeDir,
+        origin_type: TypeBase | None,
+        at: UniNode
+    ) -> None;
 
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;

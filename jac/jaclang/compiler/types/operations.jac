@@ -573,6 +573,16 @@ def get_type_of_binary_operation(
                         }
                     }
                 }
+                if not isinstance(conn_type, UnknownType) {
+                    evaluator._check_connect_endpoints(
+                        conn_type,
+                        expr.op.edge_dir,
+                        expr.left,
+                        left_type,
+                        expr.right,
+                        right_type
+                    );
+                }
             }
 
             if expr.op.capture_edges and evaluator.prefetch.list_class {

@@ -5165,15 +5165,16 @@ test "edge_endpoint_declaration_is_enforced_at_connect_and_traversal" {
     # Step 1: `edge Post: Profile --> Tweet` is already trusted by inference to
     # narrow a traversal, so a connect that violates it is a miscompile, not a
     # style question -- field access resolves by slot index, so the wrong node
-    # silently reads the wrong field. A provable mismatch is an error; operands
-    # the checker cannot resolve stay a warning so dynamic graph code still runs.
+    # silently reads the wrong field. Only an unrelated type is an error; a
+    # supertype operand may well be the declared type at runtime, so it warns.
     program = JacProgram();
     program.compile(os.path.join(CHECKER_FIXTURES, "edge_endpoint_violation.jac"));
     got = _endpoint_diags(program);
-    assert ("E1136", 23) in got , f"backwards connect must be E1136 at 23, got {got}";
-    assert ("E1137", 25) in got , f"wrong-origin traversal must be E1137 at 25, got {got}";
-    assert ("W2081", 12) in got , f"`any` operands must warn W2081 at 12, got {got}";
-    for clean in [19, 20, 21, 27, 28] {
+    assert ("E1136", 27) in got , f"backwards connect must be E1136 at 27, got {got}";
+    assert ("E1137", 28) in got , f"wrong-origin traversal must be E1137 at 28, got {got}";
+    assert ("W2081", 14) in got , f"a supertype source must warn W2081 at 14, got {got}";
+    assert ("W2082", 18) in got , f"a supertype origin must warn W2082 at 18, got {got}";
+    for clean in [24, 25, 26, 29, 30] {
         assert not [
             p
             for p in got
