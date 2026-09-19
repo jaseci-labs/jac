@@ -482,6 +482,7 @@ walker NaIRGenPass {
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
     def _fstring_spec_text(spec: uni.Expr) -> (str | None);
     def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple[str, str] | None);
+    def _bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value;
     def _emit_fstr_repr(val: ir.Value, part: uni.FormattedValue) -> (ir.Value | None);
     def _emit_dyn_spec_format(
         val: ir.Value, spec_val: ir.Value, part: uni.FormattedValue

@@ -47,10 +47,8 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
 
         if isinstance(val.type, ir.IntType) {
             if val.type.width == 1 {
-                t_g = self._make_global_string("True", name_prefix=".repr.true");
-                f_g = self._make_global_string("False", name_prefix=".repr.false");
                 fmt_parts.append("%s");
-                args.append(self.builder.select(val, t_g, f_g, name="print.bool"));
+                args.append(self._bool_text(self.builder, val, "print.bool"));
             } else {
                 _unsigned = self._is_unsigned_node(param);
                 if val.type.width < 64 {
@@ -611,9 +609,8 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 fmt_parts.append("%lld");
                 args.append(val);
             } elif isinstance(val.type, ir.IntType) and val.type.width == 1 {
-                val = self.builder.zext(val, ir.IntType(64));
-                fmt_parts.append("%lld");
-                args.append(val);
+                fmt_parts.append("%s");
+                args.append(self._bool_text(self.builder, val, "fstr.bool"));
             } elif isinstance(val.type, ir.DoubleType) {
                 fmt_parts.append("%s");
                 args.append(self._emit_float_repr(val));
@@ -1445,6 +1442,15 @@ impl NaIRGenPass._emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None) {
     return ir.Constant(ir.IntType(64), 0);
 }
 
+impl NaIRGenPass._bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value {
+    return b.select(
+        flag,
+        self._make_global_string("True", name_prefix=".repr.true"),
+        self._make_global_string("False", name_prefix=".repr.false"),
+        name=name
+    );
+}
+
 impl NaIRGenPass._emit_fstr_repr(
     val: ir.Value, part: uni.FormattedValue
 ) -> (ir.Value | None) {
@@ -1454,9 +1460,7 @@ impl NaIRGenPass._emit_fstr_repr(
         self._emit_rc_helpers();
     }
     if isinstance(val.type, ir.IntType) and val.type.width == 1 {
-        t_g = self._make_global_string("True", name_prefix=".repr.true");
-        f_g = self._make_global_string("False", name_prefix=".repr.false");
-        return self.builder.select(val, t_g, f_g, name="fstr.repr.bool");
+        return self._bool_text(self.builder, val, "fstr.repr.bool");
     }
     if isinstance(val.type, ir.IntType) {
         fn = self._repr_leaf_fn("int");
@@ -1572,9 +1576,7 @@ impl NaIRGenPass._emit_opt_repr(opt_val: ir.Value) -> (ir.Value | None) {
     payload = b.extract_value(opt_val, 1, name="opt.repr.pl");
     some_str: (ir.Value | None) = None;
     if isinstance(payload.type, ir.IntType) and payload.type.width == 1 {
-        t_g = self._make_global_string("True", name_prefix=".repr.true");
-        f_g = self._make_global_string("False", name_prefix=".repr.false");
-        some_str = b.select(payload, t_g, f_g, name="opt.repr.bool");
+        some_str = self._bool_text(b, payload, "opt.repr.bool");
     } elif isinstance(payload.type, ir.IntType) {
         fn = self._repr_leaf_fn("int");
         if fn is not None {

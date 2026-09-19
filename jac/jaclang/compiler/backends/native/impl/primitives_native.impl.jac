@@ -5376,9 +5376,7 @@ impl NativeBuiltinEmitter.emit_str(
     }
 
     if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
-        true_s = p._make_global_string("True", name_prefix=".str.true");
-        false_s = p._make_global_string("False", name_prefix=".str.false");
-        return b.select(arg_val, true_s, false_s, name="str.bool");
+        return p._bool_text(b, arg_val, "str.bool");
     }
 
     if isinstance(arg_val.type, ir.PointerType) {
