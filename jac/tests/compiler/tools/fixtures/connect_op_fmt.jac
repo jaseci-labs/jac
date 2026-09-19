@@ -3,7 +3,7 @@ node N {
     has v: int = 0;
 }
 
-edge E : N | Root --> N {
+edge E: N | Root --> N {
     has w: int = 0;
 }
 
