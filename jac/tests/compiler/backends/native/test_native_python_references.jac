@@ -2,8 +2,12 @@
 import ctypes;
 import functools;
 import sys;
-import from tests.support { compile_native, get_python_func }
+import tempfile;
+import from pathlib { Path }
+import from tests.support { compile_native, compile_native_ir, get_python_func }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.dist.native_product { write_native_product }
+import from jaclang.runtime.interop_bridge { NativeLibrary }
 
 @functools.cache
 def engine -> ExecutionEngine {
@@ -21,7 +25,7 @@ def object_call(name: str, arity: int) -> any {
 def take(value: int) -> any {
     assert value != 0 , "native result was NULL without an exception";
     result = ctypes.cast(value, ctypes.py_object).value;
-    release = ctypes.pythonapi.Py_DecRef;
+    release = ctypes.pythonapi["Py_DecRef"];
     release.argtypes = [ctypes.c_void_p];
     release.restype = None;
     release(value);
@@ -60,10 +64,11 @@ test "native exception unwinding releases nested frames and preserves the error"
     call = object_call("call_with_witness", 4);
     sentinel = ValueError("original error");
     witness = object();
+    before_witness = sys.getrefcount(witness);
     def fail -> None {
+        assert sys.getrefcount(witness) > before_witness;
         raise sentinel;
     }
-    before_witness = sys.getrefcount(witness);
     before_error = sys.getrefcount(sentinel);
     for _ in range(1000) {
         try {
@@ -89,5 +94,27 @@ test "null references and runtime import errors remain Python exceptions" {
         object_call("borrow_null", 0)();
     } except SystemError {} else {
         raise AssertionError("native borrow accepted a NULL object");
+    }
+}
+
+test "the hosted shared-library loader keeps the interpreter lock" {
+    module = compile_native_ir("python_references.jac");
+    with tempfile.TemporaryDirectory() as directory {
+        product = write_native_product(
+            module, Path(directory), Path("references"), emit_source=False
+        );
+        library = NativeLibrary(str(Path(directory) / product["output"]));
+        check = library.handle().gil_held;
+        check.argtypes = [];
+        check.restype = ctypes.c_int32;
+        assert check() == 1;
+        failing = library.handle().borrow_null;
+        failing.argtypes = [];
+        failing.restype = ctypes.c_void_p;
+        try {
+            failing();
+        } except SystemError {} else {
+            raise AssertionError("hosted loader lost the Python exception");
+        }
     }
 }

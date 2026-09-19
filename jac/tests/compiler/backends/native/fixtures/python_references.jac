@@ -12,6 +12,12 @@ import from jaclang.runtime.python.capi {
     jacpy_call
 }
 
+import from c { def PyGILState_Check -> i32; }
+
+def:pub gil_held -> i32 {
+    return PyGILState_Check();
+}
+
 def:pub import_call(module_name: u64, name: u64, args: u64, kwargs: u64) -> u64 {
     try {
         module = owned_object(jacpy_import_object(module_name));
@@ -63,7 +69,8 @@ def:pub borrow_null -> u64 {
 
 def invoke(value: u64, args: u64, kwargs: u64, witness: u64) -> ObjectRef {
     held = borrowed_object(witness);
-    return owned_object(jacpy_call(value, args, kwargs));
+    result = owned_object(jacpy_call(value, args, kwargs));
+    return held;
 }
 
 def:pub call_with_witness(value: u64, args: u64, kwargs: u64, witness: u64) -> u64 {

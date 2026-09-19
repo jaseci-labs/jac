@@ -1,3 +1,4 @@
+"""Python-hosted native libraries enter with the GIL and propagate Python errors."""
 import ctypes;
 import logging;
 import from collections.abc { Callable, Iterable }
@@ -17,14 +18,14 @@ obj NativeCallback {
 obj NativeLibrary {
     has path: str,
         bindings: list[NativeCallback] = [],
-        library: ctypes.CDLL | None = None,
+        library: ctypes.PyDLL | None = None,
         initialized: bool = False,
         callbacks: list[object] = [],
         functions: dict[str, Callable] = {};
 
-    def handle -> ctypes.CDLL {
+    def handle -> ctypes.PyDLL {
         if self.library is None {
-            self.library = ctypes.CDLL(self.path);
+            self.library = ctypes.PyDLL(self.path);
         }
         return self.library;
     }

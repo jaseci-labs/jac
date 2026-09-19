@@ -43,7 +43,7 @@ assert str(decimal.Decimal("0.1") + decimal.Decimal("0.2")) == "0.3"
 assert hashlib.sha256(sample).digest()
 assert ctypes.pythonapi.PyInitConfig_Create
 # The native object ABI belongs to the runtime, independently of its compiler.
-object_api = ctypes.pythonapi
+object_api = ctypes.PyDLL(None)
 object_api.jacpy_import_object.argtypes = [ctypes.py_object]
 object_api.jacpy_import_object.restype = ctypes.c_void_p
 object_api.jacpy_getattr.argtypes = [ctypes.c_void_p, ctypes.py_object]

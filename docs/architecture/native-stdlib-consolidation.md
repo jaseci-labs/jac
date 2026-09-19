@@ -26,11 +26,12 @@ reference ownership and GC visitation no longer depend on extension bindings.
 and captures/restores original Python exceptions. Existing module bindings reuse
 the same ownership protocol. Both build cache identities include the shared API.
 
-Four targeted native tests exercise reference transfer, repeated alias clearing,
+Targeted native tests exercise reference transfer, repeated alias clearing,
 mutable object identity, Unicode and large integers, nested exception unwinding,
 exception identity, import failures, and null-handle rejection. The harness holds
-the GIL through the existing native JIT. Module resolution and bootstrap payload
-extraction still need the migrations described below.
+the GIL through the existing native JIT and the hosted shared-library loader.
+Module resolution and bootstrap payload extraction still need the migrations
+described below.
 
 ## Reproduce
 
@@ -99,10 +100,11 @@ with E5090, even though the equivalent generic native C API call succeeds.
    helpers can print errors and return zero. Neither supplies the required
    exception contract for general stdlib calls. Native cleanup and `try`/`except`
    must preserve the original Python exception and its traceback.
-4. **Runtime entry.** Current native library loading uses `CDLL`, which can
-   release the GIL. The prototype deliberately uses `PyDLL`. Production entry
-   points need an explicit interpreter/thread-state contract, including callbacks
-   and finalization, instead of merely loading the same symbols.
+4. **Runtime entry.** The hosted `NativeLibrary` loader now uses `PyDLL`, which
+   retains the GIL and propagates pending Python errors. Native JIT tests use
+   the equivalent `PYFUNCTYPE` convention. Foreign-thread entry, callbacks,
+   and finalization still need the complete interpreter/thread-state contract;
+   loading the same symbols does not establish it.
 5. **Artifact requirements.** Standalone native builds currently reject Python
    dependencies. A Python-backed native application must package and initialize
    the interpreter before entering code that uses it. Compiler availability at

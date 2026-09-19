@@ -28,7 +28,7 @@ def verify(library: str) -> dict[str, any] {
     lib.import_call.restype = ctypes.c_void_p;
     lib.method_call.argtypes = [ctypes.py_object] * 4;
     lib.method_call.restype = ctypes.c_void_p;
-    dec = ctypes.pythonapi.Py_DecRef;
+    dec = ctypes.pythonapi["Py_DecRef"];
     dec.argtypes = [ctypes.c_void_p];
     dec.restype = None;
     def take(ptr: int) -> any {
