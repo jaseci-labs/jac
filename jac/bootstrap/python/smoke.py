@@ -507,12 +507,31 @@ assert _heapq.heappop([1, 2, 3]) == 1
     del owner
     gc.collect()
     assert owner_ref() is None, "Native JSON bindings hid a Python reference cycle"
+    # Py_EnterRecursiveCall guards available C stack, not Python frame depth.
+    # Zig raises the inherited stack limit, so a fixed nesting depth on the
+    # main thread need not overflow. Give this probe a bounded thread stack.
+    import threading
+    recursion_results = []
+    def probe_json_recursion():
+        try:
+            json.loads("[" * 100_000 + "0" + "]" * 100_000)
+        except BaseException as error:
+            recursion_results.append(error)
+        else:
+            recursion_results.append(None)
+        recursion_results.append(json.loads("[42]"))
+
+    previous_stack_size = threading.stack_size(1024 * 1024)
     try:
-        json.loads("[" * 100_000 + "0" + "]" * 100_000)
-    except RecursionError:
-        pass
-    else:
-        raise AssertionError("Native JSON did not guard recursive parsing")
+        recursion_thread = threading.Thread(target=probe_json_recursion)
+        recursion_thread.start()
+        recursion_thread.join()
+    finally:
+        threading.stack_size(previous_stack_size)
+    assert len(recursion_results) == 2 and isinstance(recursion_results[0], RecursionError), (
+        "Native JSON did not guard recursive parsing", recursion_results
+    )
+    assert recursion_results[1] == [42], recursion_results
     assert ctypes.pythonapi.jacpy_queue_get
     import threading
     fifo = _queue.SimpleQueue()
