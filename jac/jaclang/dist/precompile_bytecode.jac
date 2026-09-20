@@ -737,6 +737,17 @@ def app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any]
         if triples {
             caps.append("platform-locked");
             meta["triples"] = triples;
+            if kind in ["cli-native", "native-binary"]
+                and len(triples) == 1
+                and `entry {
+                native_entry = Path(NATIVE_DIR_REL)
+                    / triples[0]
+                    / (ext_registry.base_stem(Path(entry_path).name) + ".so");
+                if (pkg_path / native_entry).is_file() {
+                    `entry["path"] = native_entry.as_posix();
+                    `entry["runtime"] = "native-shared";
+                }
+            }
         }
     }
     return meta;

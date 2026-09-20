@@ -181,6 +181,28 @@ impl native_build(
         return 0;
     }
 
+    import from jaclang.compiler.backends.native.entry_points {
+        native_application_requires_python
+    }
+    if not shared and native_application_requires_python(ir_module) {
+        try {
+            import jaclang.compiler.backends.native.llvm.binding as llvm;
+            if options.native_target
+                and options.native_target != llvm.get_default_triple() {
+                raise ValueError(
+                    "Python-hosted applications require a runtime for the requested target"
+                );
+            }
+            import from jaclang.dist.native_application { write_native_application }
+            write_native_application(ir_module, output, memory);
+            console.print(f"  Native application written to {output}.");
+            return 0;
+        } except Exception as error {
+            console.error(str(error));
+            return 1;
+        }
+    }
+
     try {
         llvm_ir_str = validate_native_application(ir_module, shared, memory);
     } except ValueError as error {

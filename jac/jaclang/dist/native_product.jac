@@ -8,7 +8,8 @@ def write_native_product(
     relative: Path,
     shared: bool = True,
     memory: str = '',
-    emit_source: bool = True
+    emit_source: bool = True,
+    entry_symbol: str = ""
 ) -> dict[str, any] {
     import from jaclang.compiler.backends.native.entry_points {
         inject_main,
@@ -47,6 +48,9 @@ def write_native_product(
             raise ValueError('Binary runtime products must be shared libraries');
         }
         exports = list(module.gen._exported_symbols);
+        if entry_symbol {
+            exports.append(entry_symbol);
+        }
         exports.extend(binding.name for binding in manifest.native_exports);
         exports.extend('__jac_bind_' + binding.name for binding in bindings);
         (ok, error) = emit_shared_library(

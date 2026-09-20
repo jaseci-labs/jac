@@ -25,7 +25,7 @@ def fused_base_length(data: bytes) -> int {
             return -1;
         }
     }
-    if parse_trailer(data[total - TRAILER_LEN:], MAGIC) is None {
+    if parse_trailer(data[total - TRAILER_LEN:total], MAGIC) is None {
         return -1;
     }
     return total;
@@ -41,9 +41,11 @@ def has_runtime(path: str = "") -> bool {
 
 def append_overlay(base_path: str, jab_path: str, out_path: str) -> bool {
     base = Path(base_path).read_bytes();
-    if len(base) < TRAILER_LEN or parse_trailer(base[-TRAILER_LEN:], MAGIC) is None {
+    base_length = fused_base_length(base);
+    if base_length < 0 {
         return False;
     }
+    base = base[:base_length];
     jab = Path(jab_path).read_bytes();
     out = Path(out_path);
     out.write_bytes(

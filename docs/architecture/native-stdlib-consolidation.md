@@ -66,9 +66,12 @@ upstream sources. Native Jac reaches these modules through the same public Pytho
 object API as it uses in a stock CPython build.
 
 Python-dependent artifacts record their runtime requirement. Standalone native
-application packaging must reuse the existing fused runtime and application
-bundle infrastructure; a compiler's build-time interpreter alone does not make
-an emitted executable self-contained.
+applications embed a shared native entry in the existing sealed JAB format, then
+attach it to the fused runtime. Project bundles use the same native product. The
+JAB loader retains the GIL, passes application arguments, and propagates original
+Python exceptions. Native entries perform their own dependency initialization.
+Artifact publication is atomic, and replacing an app overlay retains only the
+base runtime. Cross-target hosted builds require a matching target runtime.
 
 ## Validation and remaining work
 
@@ -80,7 +83,7 @@ embedding, Linux startup on glibc 2.17, and macOS ARM64 cross-linking.
 The migration still needs complete representation facts, Python-backed global
 initialization and rebinding, container/callback identity, remaining object
 protocols and checked scalar boundaries, thread/finalization guarantees, and
-hosted native application packaging. Independent-GIL concurrency and complete
+fresh sealed-runtime application validation. Independent-GIL concurrency and complete
 stdlib conformance are not established by the current tests.
 
 The explicit bridge probe remains available:

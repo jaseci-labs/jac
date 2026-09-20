@@ -543,6 +543,10 @@ impl run_jab_image(
         console.error(f"{label}: sealed entry '{entry_rel}' missing from image.");
         return 1;
     }
+    if entry_meta.get("runtime") == "native-shared" {
+        import from jaclang.dist.native_application { run_native_application }
+        return run_native_application(entry_abs, args);
+    }
     servable = kind in ["service", "service-mesh", "web-app", "web-static"];
     if serve_only or servable {
         serve_port = port;

@@ -11,7 +11,8 @@ def _run_bundled_app -> (int | None) {
     import from jaclang.cli.commands.execution { run_jab_image }
 
     try {
-        with open(sys.executable, "rb") as f {
+        import from jaclang.dist.fused_binary { running_executable }
+        with open(running_executable(), "rb") as f {
             f.seek(int(off));
             data = f.read(int(length));
         }

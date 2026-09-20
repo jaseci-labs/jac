@@ -1707,7 +1707,8 @@ def _bundle_binary(config: any, output: str, fat: bool = False, app: str = "") -
     import from jaclang.dist.jab { jab_app_meta }
 
     name = config.project.name;
-    jac_bin = os.path.realpath(sys.executable);
+    import from jaclang.dist.fused_binary { running_executable }
+    jac_bin = running_executable();
 
     import from jaclang.dist.fused_binary { has_runtime, append_overlay }
     if not has_runtime(jac_bin) {

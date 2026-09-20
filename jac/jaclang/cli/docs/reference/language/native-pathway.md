@@ -608,8 +608,11 @@ retain their Python representation until an explicit native conversion is needed
 Using Python modules makes the native artifact depend on an initialized Python
 runtime. Hosted JIT calls and shared libraries retain the interpreter lock.
 Explicit C FFI remains available for code that must run before interpreter startup.
-Standalone hosted application packaging and the remaining object-boundary work
-are tracked in the native stdlib consolidation architecture document.
+When built with a fused Jac runtime, Python-dependent native applications carry
+that runtime and a sealed shared native entry. `jac build --native` produces the
+application executable; project bundles use the same artifact and loader.
+Remaining object-boundary work is tracked in the native stdlib consolidation
+architecture document.
 
 ---
 

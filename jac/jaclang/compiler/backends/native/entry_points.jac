@@ -1,10 +1,26 @@
 import type from jaclang.compiler.frontend.unitree { Module }
 
-def validate_native_application(module: Module, shared: bool, memory: str) -> str {
+def native_application_requires_python(module: Module) -> bool {
     import from jaclang.compiler.backends.native.na_compile_pass {
         native_linked_ir_text,
-        native_demoted_ir_symbols,
         native_ir_live_externs
+    }
+    import from jaclang.runtime.interop_bridge { native_requires_python }
+    explicit_symbols = (
+        symbol
+        for (symbol, library) in module.gen._clib_symbol_lib.items()
+        if library not in ("libc.so", "libc.dylib", "c.dll")
+    );
+    return native_requires_python(native_ir_live_externs(native_linked_ir_text(module)))
+        and not native_requires_python(explicit_symbols);
+}
+
+def validate_native_application(
+    module: Module, shared: bool, memory: str, hosted: bool = False
+) -> str {
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_linked_ir_text,
+        native_demoted_ir_symbols
     }
     import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
     manifest = module.gen.interop_manifest;
@@ -16,16 +32,7 @@ def validate_native_application(module: Module, shared: bool, memory: str) -> st
         );
     }
     llvm_ir = native_linked_ir_text(module);
-    import from jaclang.runtime.interop_bridge { native_requires_python }
-
-    explicit_symbols = (
-        symbol
-        for (symbol, library) in module.gen._clib_symbol_lib.items()
-        if library not in ("libc.so", "libc.dylib", "c.dll")
-    );
-    if not shared
-        and native_requires_python(native_ir_live_externs(llvm_ir))
-        and not native_requires_python(explicit_symbols) {
+    if not shared and not hosted and native_application_requires_python(module) {
         raise ValueError(
             'This native unit requires a hosted Python runtime; '
                 + 'emit a shared library for a Python-hosted application, '

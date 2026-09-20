@@ -146,7 +146,12 @@ def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
     entry_file = resolve_entry_file(config, app);
-    if entry_file is None or not native_default_path_ok(str(entry_file)) {
+    import from jaclang.dist.precompile_bytecode { bundle_app }
+    chosen = bundle_app(config, app);
+    explicitly_native = chosen is not None
+        and config.resolved_kind(chosen) in ["cli-native", "native-binary"];
+    if entry_file is None
+        or (not explicitly_native and not native_default_path_ok(str(entry_file))) {
         return True;
     }
     try {
@@ -159,11 +164,21 @@ def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     stem = base_stem(entry_file.name);
     out_dir = pkg_copy / NATIVE_DIR_REL / triple;
     out_dir.mkdir(parents=True, exist_ok=True);
-    console.print(f"  Compiling native binary for {triple}", style="muted");
-    import from jaclang.cli.commands.native_build { native_build }
-    rc = native_build(filename=str(entry_file), output=str(out_dir / stem));
-    if rc != 0 {
-        console.error("Native compilation failed; seal aborted.");
+    console.print(f"  Compiling native application for {triple}", style="muted");
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.pipeline_runner { native_application }
+    import from jaclang.dist.native_application { write_native_payload }
+    try {
+        program = JacProgram();
+        (module, _) = native_application(program, str(entry_file));
+        if program.errors_had {
+            raise ValueError(
+                "\n".join(error.pretty_print() for error in program.errors_had)
+            );
+        }
+        write_native_payload(module, pkg_copy, Path(NATIVE_DIR_REL) / triple / stem);
+    } except Exception as error {
+        console.error(f"Native compilation failed; seal aborted: {error}");
         return False;
     }
     return True;
