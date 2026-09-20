@@ -617,7 +617,21 @@ walker NaIRGenPass {
     def _python_error_matches(ex: uni.Expr) -> ir.Value;
     def _python_expr(nd: uni.UniNode) -> bool;
     def _python_runtime(name: str, args: list[ir.Value]) -> ir.Value;
-    def _python_box(value: ir.Value) -> ir.Value;
+    def _python_box(value: ir.Value, consume: bool = True) -> ir.Value;
+    def _python_handle(value: ir.Value) -> ir.Value;
+    def _python_operation(
+        name: str,
+        values: list[ir.Value],
+        extra: list[ir.Value],
+        status: bool = False,
+        consume: bool = True
+    ) -> ir.Value;
+    def _python_binary(op: str, left: ir.Value, right: ir.Value) -> ir.Value;
+    def _python_compare(
+        op: str, left: ir.Value, right: ir.Value, consume: bool
+    ) -> ir.Value;
+    def _python_compare_chain(nd: uni.CompareExpr, left: ir.Value) -> ir.Value;
+    def _python_bool_expr(nd: uni.BoolExpr, first: ir.Value) -> ir.Value;
     def _python_import(binding: NativePythonImport) -> ir.Value;
     def _python_call(nd: uni.FuncCall) -> ir.Value;
     def _python_attribute(nd: uni.AtomTrailer) -> ir.Value;

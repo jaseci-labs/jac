@@ -338,6 +338,10 @@ impl TypeCheckPass._diag_erased_membership(
         return;
     }
     hay_t = self.evaluator.get_type_of_expression(hay);
+    import from jaclang.compiler.native_imports { python_object_expression }
+    if python_object_expression(hay) {
+        return;
+    }
 
     if hay_t is None
         or isinstance(hay_t, UnknownType)

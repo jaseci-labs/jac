@@ -70,6 +70,13 @@ remain owned exception values while native locals and `finally` blocks clean up.
 The outer hosted entry restores the original interpreter exception. Native
 handlers match Python exception classes through CPython's exception matcher.
 
+Generic arithmetic, rich comparison, identity, membership and truth testing
+also use the shared object API. Chained comparisons and boolean expressions
+short-circuit while retaining the selected Python value. A shared expression
+provenance check distinguishes hosted values from untyped native containers in
+membership diagnostics. These paths have targeted large-integer, aliasing,
+short-circuit and exception tests.
+
 The initial ordinary-import probe opens SQLite, executes a query, reads the row,
 and returns a checked native scalar. A repeated-error probe verifies native
 `except sqlite3.OperationalError` handling and propagation to the Python caller.

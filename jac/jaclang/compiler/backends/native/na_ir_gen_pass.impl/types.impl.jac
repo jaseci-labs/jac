@@ -1567,6 +1567,9 @@ impl NaIRGenPass._consume_bool(val: ir.Value) -> ir.Value {
 }
 
 impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
+    if self._python_value(val.type) {
+        return self._python_runtime("truth", [val]);
+    }
     if self._str_desc_ty is not None and val.type == self._str_desc_ty {
         return self.builder.icmp_signed(
             "!=",

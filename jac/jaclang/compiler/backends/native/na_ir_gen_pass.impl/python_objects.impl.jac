@@ -17,6 +17,18 @@ impl NaIRGenPass._python_expr(nd: uni.UniNode) -> bool {
     if isinstance(nd, uni.AtomTrailer) or isinstance(nd, uni.FuncCall) {
         return self._python_expr(nd.target);
     }
+    if isinstance(nd, uni.CfgExpr) {
+        return self._python_expr(nd.expr);
+    }
+    if isinstance(nd, uni.AtomUnit) {
+        return self._python_expr(nd.value);
+    }
+    if isinstance(nd, uni.BinaryExpr) {
+        return self._python_expr(nd.left) or self._python_expr(nd.right);
+    }
+    if isinstance(nd, uni.UnaryExpr) and nd.op.name != Tok.NOT {
+        return self._python_expr(nd.operand);
+    }
     return False;
 }
 
@@ -40,9 +52,14 @@ impl NaIRGenPass._python_runtime(name: str, args: list[ir.Value]) -> ir.Value {
     return result;
 }
 
-impl NaIRGenPass._python_box(value: ir.Value) -> ir.Value {
+impl NaIRGenPass._python_box(value: ir.Value, consume: bool = True) -> ir.Value {
     if self._python_value(value.type) {
         return value;
+    }
+    if isinstance(value, ir.Constant)
+        and value.type == ir.IntType(8).as_pointer()
+        and value.constant is None {
+        return self._python_runtime("none", []);
     }
     if isinstance(value.type, ir.IntType) {
         result = self._python_runtime(
@@ -56,7 +73,9 @@ impl NaIRGenPass._python_box(value: ir.Value) -> ir.Value {
     } else {
         raise ValueError(f"Unsupported Python object conversion: {value.type}");
     }
-    self._release_owned_args([value]);
+    if consume {
+        self._release_owned_args([value]);
+    }
     return result;
 }
 

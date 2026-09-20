@@ -671,6 +671,9 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     if left is None or right is None {
         return None;
     }
+    if self._python_value(left.type) or self._python_value(right.type) {
+        return self._python_binary(op, left, right);
+    }
     result: (ir.Value | None);
     _unsigned = self._is_unsigned_node(nd) or self._is_unsigned_node(nd.left);
     _checked = (
@@ -883,6 +886,10 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             return None;
         }
         if len(nd.ops) > 1 and len(nd.rights) == len(nd.ops) {
+            if self._python_value(left.type)
+                or any(self._python_expr(right) for right in nd.rights) {
+                return self._python_compare_chain(nd, left);
+            }
             return self._codegen_compare_chain(nd, left);
         }
         self._peer_container_ty = left.type;
@@ -913,6 +920,9 @@ impl NaIRGenPass._codegen_compare_link(
 ) -> (ir.Value | None) {
     _cmp_left_orig = left;
     _cmp_right_orig = right;
+    if self._python_value(left.type) or self._python_value(right.type) {
+        return self._python_compare(op, left, right, release_operands);
+    }
 
     if self?.jacval_type and op in (Tok.KW_IS, Tok.KW_ISN, Tok.EE, Tok.NE) {
         _none_negate = op in (Tok.KW_ISN, Tok.NE);
@@ -1596,7 +1606,7 @@ impl NaIRGenPass._codegen_compare_chain(
             }
             return None;
         }
-        link = self._to_bool(link);
+        link = self._consume_bool(link);
         result = link
             if result is None
             else self.builder.and_(result, link, name=f"chain.and.{i}");
@@ -1627,6 +1637,17 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
         return operand;
     }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
+    if self._python_value(operand.type) {
+        if op == Tok.NOT {
+            return self.builder.not_(self._consume_bool(operand));
+        }
+        operations: dict[str, str] = {
+            Tok.MINUS: "neg",
+            Tok.PLUS: "pos",
+            Tok.BW_NOT: "invert"
+        };
+        return self._python_operation(operations[op], [operand], []);
+    }
     if op == Tok.MINUS {
         if isinstance(operand.type, (ir.DoubleType, ir.FloatType)) {
             return self.builder.fneg(operand, name="fneg");
@@ -1729,6 +1750,10 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
     first_value = self._str_norm_optional(self._codegen_expr(nd.values[0]));
     if first_value is None {
         return None;
+    }
+    if self._python_value(first_value.type)
+        or any(self._python_expr(value) for value in nd.values[1:]) {
+        return self._python_bool_expr(nd, first_value);
     }
     result: ir.Value = first_value;
 

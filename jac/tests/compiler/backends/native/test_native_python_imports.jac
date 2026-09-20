@@ -31,3 +31,18 @@ test "ordinary imports preserve object protocols and original Python errors" {
     }
     assert sys.getrefcount(sqlite3) == module_references;
 }
+
+test "Python values use runtime arithmetic identity membership and truth" {
+    (engine, _) = compile_native("python_imports.jac");
+    for name in ["arithmetic", "identity_and_truth", "membership", "short_circuit"] {
+        call = get_func(engine, name, ctypes.c_bool);
+        for _ in range(100) {
+            assert call() , name;
+        }
+    }
+    failed = get_func(engine, "comparison_error", ctypes.c_bool);
+    try {
+        failed();
+        assert False , "rich comparison lost its Python exception";
+    } except TypeError {}
+}
