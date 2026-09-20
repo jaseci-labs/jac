@@ -21,6 +21,8 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
     SEC_CTDEPS,
+    SEC_NATIVE_OBJ,
+    SEC_LLVM_IR,
     precompiled_jir_matches_source,
     read_section_bytes
 }
@@ -172,11 +174,19 @@ test "the comptime producers are recorded on the consumer's cache" {
     }
 }
 
-test "an edit to a module no fold read leaves the consumer's cache alone" {
+test "an ordinary runtime import leaves a server consumer's fold cache alone" {
     paths = _project();
+    # Dynamic imports do not bake the dependency body into this artifact.
+    # Native consumers do, and must invalidate on an imported body edit.
+    _write(
+        os.path.join(paths["root"], "jac.toml"),
+        '[project]\nname = "fold-cache"\n[placement.pins]\nconsmod = "server"\n'
+    );
     with _isolated(paths["root"]) {
         _folded(paths["consmod"]);
         cache = artifact_cache_path(paths["consmod"], JacProgram());
+        assert read_section_bytes(cache.read_bytes(), SEC_NATIVE_OBJ) is None;
+        assert read_section_bytes(cache.read_bytes(), SEC_LLVM_IR) is None;
         stamp = os.path.getmtime(cache);
         _write(paths["othermod"], OTHER_SRC_EDIT);
         _folded(paths["consmod"]);

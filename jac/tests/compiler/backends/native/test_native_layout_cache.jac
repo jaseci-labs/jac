@@ -76,3 +76,20 @@ test "warm native node readers invalidate after a provider layout edit" {
 test "warm native readers track transitive inherited layouts" {
     check_layout_edit("obj", inherited=True);
 }
+
+
+test "warm native consumers observe ordinary imported body changes" {
+    with tempfile.TemporaryDirectory(prefix="jac-body-cache-") as directory {
+        folder = Path(directory);
+        provider = folder / "provider.jac";
+        provider.write_text("def value() -> int { return 1; }\n");
+        (folder / "main.jac").write_text(
+            "import from .provider { value }\nwith entry { print(value()); }\n"
+        );
+        assert build_value(folder, 0) == "1";
+        assert build_value(folder, 1) == "1";
+        provider.write_text("def value() -> int { return 2; }\n");
+        assert build_value(folder, 2) == "2";
+        assert build_value(folder, 3) == "2";
+    }
+}
