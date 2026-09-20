@@ -1472,6 +1472,8 @@ jobs:
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main' | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
           sudo apt-get install -y llvm-22-dev cmake
+      - name: Check C projection intrinsic semantics
+        run: jac test jac/tests/toolchains/test_c_backend.jac
       - name: Scaffold and export the jaclang.org site
         run: |
           jac create site --awesome

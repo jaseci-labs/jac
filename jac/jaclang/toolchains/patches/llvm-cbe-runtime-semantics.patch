@@ -1,14 +1,17 @@
 --- a/lib/Target/CBackend/CBackend.cpp
 +++ b/lib/Target/CBackend/CBackend.cpp
-@@ -19,6 +19,7 @@
+@@ -17,8 +17,10 @@
+ #include "llvm/CodeGen/TargetLowering.h"
+ #include "llvm/IR/DebugInfoMetadata.h"
  #include "llvm/IR/InstIterator.h"
++#include "llvm/IR/IRBuilder.h"
  #include "llvm/IR/IntrinsicsPowerPC.h"
  #include "llvm/IR/IntrinsicsX86.h"
 +#include "llvm/IR/IntrinsicsWebAssembly.h"
  #include "llvm/IR/PatternMatch.h"
  #include "llvm/MC/TargetRegistry.h"
  #include "llvm/Support/Debug.h"
-@@ -1679,8 +1680,8 @@
+@@ -1679,8 +1681,8 @@
    }
  
    // Mangle globals with the standard mangler interface for LLC compatibility.
@@ -19,7 +22,7 @@
    }
  
    std::string VarName;
-@@ -2132,7 +2133,7 @@
+@@ -2132,7 +2134,7 @@
  
  static void defineInt128(raw_ostream &Out) {
    // Output typedefs for 128-bit integers
@@ -28,7 +31,7 @@
           "*/\n"
        << "typedef int __attribute__((mode(TI))) int128_t;\n"
        << "typedef unsigned __attribute__((mode(TI))) uint128_t;\n"
-@@ -2189,32 +2190,32 @@
+@@ -2189,32 +2191,32 @@
        << " return l.hi != r.hi || l.lo != r.lo; }\n"
        << "static __forceinline bool llvm_icmp_ule_u128(uint128_t l, uint128_t "
           "r) {"
@@ -69,7 +72,7 @@
        << "#define __emulate_i128\n"
        << "#endif\n\n";
  }
-@@ -2457,8 +2458,6 @@
+@@ -2457,8 +2459,6 @@
    // Support for integers with explicit sizes. This one isn't conditional
    // because virtually all CBE output will use it.
    OutHeaders << "#include <stdint.h>\n"; // Sized integer support
@@ -78,7 +81,7 @@
    // Provide a definition for `bool' if not compiling with a C++ compiler.
    OutHeaders << "#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n";
    OutHeaders << "\n";
-@@ -2585,7 +2584,9 @@
+@@ -2585,7 +2585,9 @@
        case Intrinsic::ssub_sat:
        case Intrinsic::sshl_sat:
        case Intrinsic::ushl_sat:
@@ -89,7 +92,7 @@
        case Intrinsic::ceil:
        case Intrinsic::ctlz:
        case Intrinsic::ctpop:
-@@ -2615,13 +2616,6 @@
+@@ -2615,13 +2617,6 @@
           (I->getName() == "setjmp" || I->getName() == "longjmp" ||
            I->getName() == "_setjmp" || I->getName() == "siglongjmp" ||
            I->getName() == "sigsetjmp")) ||
@@ -103,7 +106,7 @@
          I->getName() == "alloca" || I->getName() == "_alloca" ||
          I->getName() == "_chkstk" || I->getName() == "__chkstk" ||
          I->getName() == "___chkstk_ms")
-@@ -2694,54 +2688,15 @@
+@@ -2694,54 +2689,15 @@
        if (I->hasLocalLinkage())
          continue; // Internal Global
  
@@ -167,7 +170,7 @@
      }
    }
  
-@@ -3070,11 +3025,11 @@
+@@ -3070,11 +3026,11 @@
          } else if (opcode == Instruction::FRem) {
            // Output a call to fmod/fmodf instead of emitting a%b
            if (ElemTy->isFloatTy())
@@ -182,7 +185,7 @@
          } else {
            Out << "a.vector[" << n << "]";
            switch (opcode) {
-@@ -3278,11 +3233,11 @@
+@@ -3278,11 +3234,11 @@
        } else if (opcode == Instruction::FRem) {
          // Output a call to fmod/fmodf instead of emitting a%b
          if (ElemTy->isFloatTy())
@@ -197,7 +200,7 @@
        } else {
          Out << "a";
          switch (opcode) {
-@@ -4214,11 +4169,11 @@
+@@ -4214,11 +4170,11 @@
    } else if (I.getOpcode() == Instruction::FRem) {
      // Output a call to fmod/fmodf instead of emitting a%b
      if (I.getType() == Type::getFloatTy(I.getContext()))
@@ -212,7 +215,7 @@
      writeOperand(I.getOperand(0), ContextCasted);
      Out << ", ";
      writeOperand(I.getOperand(1), ContextCasted);
-@@ -4597,52 +4552,39 @@
+@@ -4597,52 +4553,39 @@
        DBG_ERRS("Unsupported Intrinsic!" << Opcode);
        errorWithMessage("unsupported instrinsic");
  
@@ -295,7 +298,7 @@
  
      case Intrinsic::uadd_sat:
        //   r = (a > XX_MAX - b) ? XX_MAX : a + b
-@@ -4817,19 +4759,19 @@
+@@ -4817,19 +4760,19 @@
        errorWithMessage("unsupported instrinsic");
  
      case Intrinsic::ceil:
@@ -319,7 +322,7 @@
        break;
  
      case Intrinsic::fmuladd:
-@@ -4838,19 +4780,19 @@
+@@ -4838,19 +4781,19 @@
  
      case Intrinsic::pow:
      case Intrinsic::powi:
@@ -343,7 +346,33 @@
        break;
      }
    }
-@@ -4899,7 +4841,9 @@
+@@ -4875,6 +4818,25 @@
+       if (CallInst *CI = dyn_cast<CallInst>(I++)) {
+         if (Function *F = CI->getCalledFunction()) {
+           switch (F->getIntrinsicID()) {
++          case Intrinsic::ptrmask: {
++            // C represents integral pointers. Extend the mask with ones when
++            // the pointer index is narrower, preserving non-index address bits.
++            IRBuilder<> Builder(CI);
++            Value *Pointer = CI->getArgOperand(0);
++            Value *Mask = CI->getArgOperand(1);
++            if (TD->isNonIntegralPointerType(Pointer->getType()))
++              errorWithMessage("ptrmask requires an integral pointer in C");
++            Type *IntegerType = TD->getIntPtrType(Pointer->getType());
++            Value *Bits = Builder.CreatePtrToInt(Pointer, IntegerType);
++            Value *FullMask = Builder.CreateNot(
++                Builder.CreateZExtOrTrunc(Builder.CreateNot(Mask), IntegerType));
++            Value *Result = Builder.CreateIntToPtr(
++                Builder.CreateAnd(Bits, FullMask), Pointer->getType());
++            CI->replaceAllUsesWith(Result);
++            CI->eraseFromParent();
++            LoweredAny = true;
++            break;
++          }
+           case Intrinsic::not_intrinsic:
+           case Intrinsic::vastart:
+           case Intrinsic::vacopy:
+@@ -4899,7 +4861,9 @@
            case Intrinsic::ssub_sat:
            case Intrinsic::ushl_sat:
            case Intrinsic::sshl_sat:
@@ -354,7 +383,7 @@
            case Intrinsic::ceil:
            case Intrinsic::ctlz:
            case Intrinsic::ctpop:
-@@ -4924,6 +4868,9 @@
+@@ -4924,6 +4888,9 @@
            case Intrinsic::smax:
            case Intrinsic::abs:
            case Intrinsic::is_constant:
@@ -364,7 +393,7 @@
              // We directly implement these intrinsics
              break;
  
-@@ -5086,6 +5033,21 @@
+@@ -5086,6 +5053,21 @@
    case Intrinsic::dbg_declare:
    case Intrinsic::dbg_assign:
      return true; // ignore these intrinsics
@@ -386,7 +415,7 @@
    case Intrinsic::vastart:
      headerUseStdarg();
      Out << "0; ";
-@@ -5241,6 +5203,8 @@
+@@ -5241,6 +5223,8 @@
    case Intrinsic::usub_with_overflow:
    case Intrinsic::umul_with_overflow:
    case Intrinsic::smul_with_overflow:
@@ -395,7 +424,7 @@
    case Intrinsic::bswap:
    case Intrinsic::ctlz:
    case Intrinsic::ctpop:
-@@ -5610,8 +5574,75 @@
+@@ -5610,8 +5594,75 @@
    }
  }
  
@@ -471,7 +500,7 @@
  
    writeMemoryAccess(I.getOperand(0), I.getType(), I.isVolatile(),
                      I.getAlign().value());
-@@ -5619,6 +5650,14 @@
+@@ -5619,6 +5670,14 @@
  
  void CWriter::visitStoreInst(StoreInst &I) {
    CurInstr = &I;
@@ -486,28 +515,3 @@
  
    writeMemoryAccess(I.getPointerOperand(), I.getOperand(0)->getType(),
                      I.isVolatile(), I.getAlign().value());
---- a/lib/Target/CBackend/CBackend.h
-+++ b/lib/Target/CBackend/CBackend.h
-@@ -306,7 +306,10 @@
-   void visitFCmpInst(FCmpInst &I);
- 
-   void visitCastInst(CastInst &I);
-+  void visitAtomicRMWInst(AtomicRMWInst &I);
-+  void visitAtomicCmpXchgInst(AtomicCmpXchgInst &I);
-   void visitSelectInst(SelectInst &I);
-+  void visitFreezeInst(FreezeInst &I) { writeOperand(I.getOperand(0)); }
-   void visitCallInst(CallInst &I);
-   void visitInlineAsm(CallInst &I);
-   bool visitBuiltinCall(CallInst &I, Intrinsic::ID ID);
---- a/lib/Target/CBackend/CTargetMachine.cpp
-+++ b/lib/Target/CBackend/CTargetMachine.cpp
-@@ -37,8 +37,7 @@
-   PM.add(createLowerInvokePass());
-   PM.add(createUnreachableBlockEliminationPass());
- 
--  // Lower atomic operations to libcalls
--  PM.add(createAtomicExpandLegacyPass());
-+  // Preserve atomics for CWriter: the downstream C compiler owns lowering.
- 
-   // Lower vector operations into shuffle sequences
-   PM.add(createExpandReductionsPass());
