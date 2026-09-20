@@ -2648,8 +2648,6 @@ class CodeGen:
         if node.arch_kind:
             arch_base = "_jac_osp." + node.arch_kind.capitalize()
             bases = f"{bases}, {arch_base}" if bases else arch_base
-        if any(isinstance(member, FuncDef) and member.is_abstract for member in node.body):
-            bases = f"{bases}, _jac_abc.ABC" if bases else "_jac_abc.ABC"
         base_str = f"({bases})" if bases else ""
         self._line(f"class {node.name}{tp_str}{base_str}:")
         self.indent += 1

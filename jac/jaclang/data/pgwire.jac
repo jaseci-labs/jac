@@ -44,6 +44,5 @@ obj PgWireConnection {
     def _send(msg_type: str, payload: bytes) -> None;
     def _read_message -> tuple[str, bytes];
     def _read_exact(n: int) -> bytes;
-    def _pump_ready -> None;
     def _handle_async(msg_type: str, payload: bytes) -> bool;
 }

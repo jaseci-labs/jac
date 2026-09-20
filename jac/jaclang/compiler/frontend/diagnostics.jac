@@ -1605,6 +1605,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "'await' is only valid inside an 'async' function or ability",
          help="Mark the enclosing function or ability 'async' (e.g. `async def` or `async can`) so it compiles to a coroutine capable of `await`; otherwise remove the `await` and call it synchronously."
      ),
+     E2086 = _err(
+         "E2086",
+         Category.SEMANTIC,
+         "'{name}' is declared but never implemented",
+         help="A declaration without a body needs an `impl {name} { ... }` in this"
+         " module or one of its annexes. Without one the call returns the return"
+         " type's default value. Write the implementation, mark the declaration"
+         " `abst` if a subclass is meant to supply it, or delete the declaration."
+     ),
      W3001 = _warn(
          "W3001",
          Category.LINT,

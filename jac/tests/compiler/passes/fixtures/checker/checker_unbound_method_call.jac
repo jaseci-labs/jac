@@ -45,7 +45,6 @@ obj Cat(Animal) {
     def init(name: str) {
         Animal.init(self, name=123);
     }  # <-- Error
-
 }
 
 # Error: missing required param
@@ -53,16 +52,16 @@ obj Bird(Animal) {
     def init {
         Animal.init(self);
     }  # <-- Error
-
 }
 
 # Valid: static method should NOT be treated as unbound method call
 obj Factory {
-    static def create(data: str) -> Factory;
+    static def create(data: str) -> Factory abst;
 
-    @property
-    def runtime -> Factory {
-        return Factory.create("test");  # Valid: static method call
+    has runtime: Factory {
+        getter {
+            return Factory.create("test");  # Valid: static method call
+        }
     }
 }
 

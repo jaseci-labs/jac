@@ -493,6 +493,7 @@ An app's walkers and `def:pub` functions form its public boundary. Other declara
 | `W2010` | Abstract ability {name} should not have a definition |
 | `E2011` | Parameter count mismatch for ability {name} |
 | `E2012` | From the declaration of {name} |
+| `E2086` | '{name}' is declared but never implemented |
 
 ### JSX Slot Body Rules
 

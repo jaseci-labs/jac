@@ -197,9 +197,9 @@ class JacClassReferences {
 obj LLMModel(Protocol) {
     has call_params: dict[(str, object)];
 
-    def __call__(**kwargs: object) -> LLMModel;
-    def invoke(mt_run: MTRuntime) -> object;
-    async def ainvoke(mt_run: MTRuntime) -> object;
+    def __call__(**kwargs: object) -> LLMModel abst;
+    def invoke(mt_run: MTRuntime) -> object abst;
+    async def ainvoke(mt_run: MTRuntime) -> object abst;
 }
 
 class JacContext {

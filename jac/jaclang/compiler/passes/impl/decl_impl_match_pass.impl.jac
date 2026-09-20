@@ -10,7 +10,35 @@ impl DeclImplMatchPass._run_impl(ir_in: Module) -> Module {
     for arch in ir_in.get_all_sub_nodes(Archetype) {
         self._populate_inline_init_symbols(arch);
     }
+    self._report_unimplemented(ir_in);
     return ir_in;
+}
+
+impl DeclImplMatchPass._report_unimplemented(ir_in: Module) -> None {
+    if str(ir_in.loc.mod_path).endswith(".pyi") or ir_in.stub_only {
+        return;
+    }
+    for ability in ir_in.get_all_sub_nodes(Ability) {
+        if not ability.needs_impl or self._impl_optional(ability) {
+            continue;
+        }
+        self.ctx.emit(E2086, node_override=ability.name_spec, name=ability.sym_name);
+    }
+}
+
+impl DeclImplMatchPass._impl_optional(ability: Ability) -> bool {
+    if ability.is_abstract
+        or ability.is_genai_ability
+        or ability.accessor_kind != ""
+        or ability.find_parent_of_type(Import) is not None {
+        return True;
+    }
+    for decor in (ability.decorators or []) {
+        if isinstance(decor, Name) and decor.value == "overload" {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl DeclImplMatchPass.defn_lookup(lookup: Symbol) -> (NameAtom | None) {
