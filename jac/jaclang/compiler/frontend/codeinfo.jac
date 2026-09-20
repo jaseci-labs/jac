@@ -527,6 +527,26 @@ def resolve_native_module(
     clean = module_name.lstrip('.');
     path_name = clean.replace('.', os.sep);
 
+    level = len(module_name) - len(clean);
+    if level > 0 {
+        if not allow_inferred {
+            return (None, None);
+        }
+        search = os.path.abspath(base_dir);
+        for _ in range(level - 1) {
+            search = os.path.dirname(search);
+        }
+        candidate = os.path.join(search, path_name);
+        if os.path.isdir(candidate) {
+            candidate = os.path.join(candidate, '__init__');
+        }
+        local = _inferred_native_path(_native_variant_path(candidate));
+        if local is not None {
+            return (str(os.path.relpath(local, os.path.abspath(base_dir))), local);
+        }
+        return (None, None);
+    }
+
     if clean.startswith('jaclang.') {
         import from jaclang.project.modresolver { resolve_module }
         import from jaclang.compiler.native_scope {

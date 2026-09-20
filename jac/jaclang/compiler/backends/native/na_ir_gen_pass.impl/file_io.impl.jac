@@ -1,3 +1,55 @@
+impl NaIRGenPass._emit_read_to_eof(
+    b: ir.IRBuilder, fn: ir.Function, handle: ir.Value
+) -> tuple[ir.Value, ir.Value] {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    fread_fn = self._get_or_declare_extern("fread", i64, [i8p, i64, i64, i8p]);
+    ftell_fn = self._get_or_declare_extern("ftell", i64, [i8p]);
+    fseek_fn = self._get_or_declare_extern("fseek", i32, [i8p, i64, i32]);
+    malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
+    realloc_fn = self._get_or_declare_extern("realloc", i8p, [i8p, i64]);
+    chunk = ir.Constant(i64, 65536);
+    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]);
+    hint = b.call(ftell_fn, [handle], name="rd.hint");
+    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]);
+    room = b.icmp_signed(">", hint, ir.Constant(i64, 0), name="rd.sized");
+    first_cap = b.select(room, b.add(hint, ir.Constant(i64, 1)), chunk, name="rd.cap0");
+    first_buf = b.call(malloc_fn, [first_cap], name="rd.buf0");
+    entry_bb = b.basic_block;
+    loop_bb = fn.append_basic_block("rd.loop");
+    grow_bb = fn.append_basic_block("rd.grow");
+    done_bb = fn.append_basic_block("rd.done");
+    b.branch(loop_bb);
+
+    b.position_at_end(loop_bb);
+    buf = b.phi(i8p, name="rd.buf");
+    cap = b.phi(i64, name="rd.cap");
+    filled = b.phi(i64, name="rd.filled");
+    buf.add_incoming(first_buf, entry_bb);
+    cap.add_incoming(first_cap, entry_bb);
+    filled.add_incoming(ir.Constant(i64, 0), entry_bb);
+    want = b.sub(cap, filled, name="rd.want");
+    got = b.call(
+        fread_fn,
+        [b.gep(buf, [filled], name="rd.at"), ir.Constant(i64, 1), want, handle],
+        name="rd.got"
+    );
+    now = b.add(filled, got, name="rd.now");
+    b.cbranch(b.icmp_unsigned("<", got, want, name="rd.eof"), done_bb, grow_bb);
+
+    b.position_at_end(grow_bb);
+    bigger = b.add(cap, chunk, name="rd.cap.next");
+    grown = b.call(realloc_fn, [buf, bigger], name="rd.buf.next");
+    buf.add_incoming(grown, grow_bb);
+    cap.add_incoming(bigger, grow_bb);
+    filled.add_incoming(now, grow_bb);
+    b.branch(loop_bb);
+
+    b.position_at_end(done_bb);
+    return (buf, now);
+}
+
 impl NaIRGenPass._get_file_struct_type -> ir.Type {
     if self._file_struct_type is not None {
         return self._file_struct_type;
@@ -83,33 +135,28 @@ impl NaIRGenPass._emit_file_like_helpers(
     self_arg = read_fn.args[0];
     handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
-    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]);
-    file_size = b.call(ftell_fn, [handle], name="file.size");
-    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]);
+    (scratch, read_len) = self._emit_read_to_eof(b, read_fn, handle);
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
     if binary {
-        total = b.add(file_size, ir.Constant(i64, 8), name="rd.total");
+        total = b.add(read_len, ir.Constant(i64, 8), name="rd.total");
         raw = b.call(rc_alloc_fn, [total], name="rd.raw");
         self._emit_set_type_tag(b, raw, "bytes");
         bv = b.bitcast(raw, bytes_ptr_type, name="rd.bytes");
         len_ptr = b.gep(bv, [z32, z32], name="rd.len.ptr");
-        b.store(file_size, len_ptr);
+        b.store(read_len, len_ptr);
         arr_ptr = b.gep(bv, [z32, one32], name="rd.data.arr");
         data_ptr = b.bitcast(arr_ptr, i8p, name="rd.data");
-        b.call(fread_fn, [data_ptr, ir.Constant(i64, 1), file_size, handle]);
+        b.call(memcpy_fn, [data_ptr, scratch, read_len]);
+        b.call(free_fn, [scratch]);
         b.ret(bv);
     } else {
-        buf_size = b.add(file_size, ir.Constant(i64, 1), name="buf.size");
+        buf_size = b.add(read_len, ir.Constant(i64, 1), name="buf.size");
         buffer = self._str_alloc(b, buf_size, name="read.buf");
-        bytes_read = b.call(
-            fread_fn,
-            [buffer, ir.Constant(i64, 1), file_size, handle],
-            name="bytes.read"
-        );
-        read_end = b.gep(buffer, [bytes_read], name="read.end");
+        b.call(memcpy_fn, [buffer, scratch, read_len]);
+        b.call(free_fn, [scratch]);
+        read_end = b.gep(buffer, [read_len], name="read.end");
         b.store(ir.Constant(ir.IntType(8), 0), read_end);
-        self._stamp_str_len(
-            b, buffer, self._call_str_len_raw(b, buffer, name="read.len")
-        );
+        self._stamp_str_len(b, buffer, read_len);
         b.ret(buffer);
     }
 

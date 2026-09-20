@@ -1213,6 +1213,10 @@ walker NaIRGenPass {
     def _get_file_struct_type -> ir.Type;
     def _get_binary_file_struct_type -> ir.Type;
     def _register_file_like_struct(name: str) -> ir.Type;
+    def _emit_read_to_eof(
+        b: ir.IRBuilder, fn: ir.Function, handle: ir.Value
+    ) -> tuple[ir.Value, ir.Value];
+
     def _emit_file_helpers -> None;
     def _emit_binary_file_helpers -> None;
     def _emit_file_like_helpers(

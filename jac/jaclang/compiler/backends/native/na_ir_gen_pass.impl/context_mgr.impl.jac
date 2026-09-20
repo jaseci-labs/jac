@@ -61,7 +61,7 @@ impl NaIRGenPass._codegen_with_recursive(
     self.builder.store(cm_val, owner);
     self.local_vars[owner_name] = owner;
     if self._nogc_headerless() and not self._is_owned(cm_val) {
-        self.nogc_no_free_vars.add(owner_name);
+        self.borrowed_vars.add(owner_name);
     }
 
     enter_args: list[ir.Value] = [cm_val];
@@ -95,7 +95,7 @@ impl NaIRGenPass._codegen_with_recursive(
         self.builder.store(enter_result, alloca);
         self.local_vars[alias_name] = alloca;
         if self._nogc_headerless() and not enter_owned {
-            self.nogc_no_free_vars.add(alias_name);
+            self.borrowed_vars.add(alias_name);
         }
     } else {
         self._release_owned_args([enter_result], op="ctx_enter");
