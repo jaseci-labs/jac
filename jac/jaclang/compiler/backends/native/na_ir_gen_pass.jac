@@ -1483,6 +1483,7 @@ walker NaIRGenPass {
         iter_val: ir.Value, iter_elem_type: ir.Type, list_elem_type: ir.Type
     ) -> (ir.Value | None);
 
+    def _emit_range_len(range_val: ir.Value) -> ir.Value;
     def _make_iter_from_value(
         val: ir.Value, expr: uni.UniNode
     ) -> (tuple[ir.Value, str, ir.Type] | None);

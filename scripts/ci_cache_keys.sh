@@ -27,6 +27,17 @@ python_tree() {
       cat
     fi
 }
+# The compiler-input RULE lives twice on purpose: here in awk, and in
+# jir.compiler_source_files. They cannot be merged -- this script runs at
+# checkout time, before any jac binary exists (the same acyclicity constraint as
+# the Zig seeds, #8785) -- so they are held to the same answer by
+# jac/tests/compiler/test_compiler_identity_rule.jac instead. This mode is what
+# that test reads; it prints package-relative paths, one per line.
+if [ "${1:-}" = "--list-compiler-inputs" ]; then
+  compiler_tree | awk -F '\t' '{print $2}' | sed 's|^jac/jaclang/||' | LC_ALL=C sort -u
+  exit 0
+fi
+
 fingerprint() {
   # Sort/deduplicate overlapping roots; paths and modes accompany blob hashes.
   LC_ALL=C sort -u | git hash-object --stdin

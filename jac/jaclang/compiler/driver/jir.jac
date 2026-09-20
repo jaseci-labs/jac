@@ -6,8 +6,12 @@ import sys;
 import zlib;
 import from pathlib { Path }
 import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
-
-import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS, COMPILER_DIGEST_ROOTS }
+import from jaclang.bootstrap_manifest {
+    COMPILER_DIGEST_ROOTS,
+    COMPILER_IDENTITY_NAME,
+    NATIVE_LOWERED_PATHS,
+    is_native_lowered
+}
 
 glob MAGIC = b"JIR\x00",
      FORMAT_VERSION: int = 29,
@@ -355,9 +359,6 @@ def is_compiler_tree_path(source_path: str) -> bool {
         return False;
     }
     rel = resolved[len(base):].replace(os.sep, "/");
-    if any(rel.startswith(prefix) for prefix in SOURCE_ONLY_PATHS) {
-        return False;
-    }
     for digest_root in COMPILER_DIGEST_ROOTS {
         if rel == digest_root or rel.startswith(digest_root + "/") {
             return True;
@@ -419,9 +420,6 @@ def compiler_source_files(pkg_dir: str) -> list[str] {
                 rel = os.path.relpath(os.path.join(walk_dir, name), base).replace(
                     os.sep, "/"
                 );
-                if any(rel.startswith(prefix) for prefix in SOURCE_ONLY_PATHS) {
-                    continue;
-                }
                 if rel in COMPILER_DIGEST_SKIP {
                     continue;
                 }
@@ -432,19 +430,101 @@ def compiler_source_files(pkg_dir: str) -> list[str] {
     return sorted(rels);
 }
 
-def compiler_source_digest(pkg_dir: str) -> str {
-    base = str(Path(pkg_dir));
-    rels = compiler_source_files(base);
-    h = hashlib.sha256();
-    for rel in rels {
-        h.update(rel.encode());
-        h.update(
-            compute_content_sha256(
-                os.path.join(base, rel.replace("/", os.sep))
-            ).encode()
+def compiler_identity_path(pkg_dir: str) -> Path {
+    return Path(pkg_dir) / COMPILER_IDENTITY_NAME;
+}
+
+def read_compiler_identity(pkg_dir: str) -> dict[str, str] {
+    import json;
+    try {
+        raw = json.loads(compiler_identity_path(pkg_dir).read_text());
+    } except Exception {
+        return {};
+    }
+    recorded = raw.get("inputs", {}) or {};
+    return {str(k): str(v) for (k, v) in recorded.items()};
+}
+
+def declared_compiler_inputs(pkg_dir: str, recorded: dict[str, str]) -> list[str] {
+    base = str(pkg_dir);
+    declares = os.path.isfile(os.path.join(base, "compiler_inputs.txt"));
+    for prefix in (NATIVE_LOWERED_PATHS if declares else ()) {
+        if os.path.isdir(os.path.join(base, prefix.replace("/", os.sep))) {
+            continue;
+        }
+        if any(rel.startswith(prefix + "/") for rel in recorded) {
+            continue;
+        }
+        raise RuntimeError(
+            f"compiler identity is incomplete: {base!r} carries no sources under "
+            f"{prefix!r} and no recorded hashes for it in {COMPILER_IDENTITY_NAME}. A "
+            "staging that drops a natively lowered input must record what it dropped, "
+            "or its digest silently describes a smaller compiler than the one it was "
+            "built from."
         );
     }
-    return f"{len(rels)}:{h.hexdigest()}";
+    rels: set = set(compiler_source_files(base));
+    rels.update(recorded.keys());
+    return sorted(rels);
+}
+
+def resolve_compiler_input(pkg_dir: str, rel: str, recorded: dict[str, str]) -> str {
+    full = os.path.join(str(pkg_dir), rel.replace("/", os.sep));
+    if os.path.isfile(full) {
+        return compute_content_sha256(full);
+    }
+    if is_native_lowered(rel) and rel in recorded {
+        return recorded[rel];
+    }
+    raise RuntimeError(
+        f"compiler identity is incomplete: declared input {rel!r} is absent from "
+        f"{pkg_dir!r} and carries no recorded hash in {COMPILER_IDENTITY_NAME}. A "
+        "staging may omit an input only when it is natively lowered "
+        f"({', '.join(NATIVE_LOWERED_PATHS)}) and records its hash."
+    );
+}
+
+def fold_compiler_digest(rows: list[tuple[str, str]]) -> str {
+    h = hashlib.sha256();
+    for (rel, sha) in rows {
+        h.update(rel.encode());
+        h.update(sha.encode());
+    }
+    return f"{len(rows)}:{h.hexdigest()}";
+}
+
+def compiler_source_digest(pkg_dir: str) -> str {
+    base = str(Path(pkg_dir));
+    recorded = read_compiler_identity(base);
+    rows = [
+        (rel, resolve_compiler_input(base, rel, recorded))
+        for rel in declared_compiler_inputs(base, recorded)
+    ];
+    return fold_compiler_digest(rows);
+}
+
+def write_compiler_identity(pkg_dir: str, dest_dir: str) -> str {
+    import json;
+    base = str(Path(pkg_dir));
+    recorded = read_compiler_identity(base);
+    rels = declared_compiler_inputs(base, recorded);
+    rows = [(rel, resolve_compiler_input(base, rel, recorded)) for rel in rels];
+    digest = fold_compiler_digest(rows);
+    out = Path(dest_dir) / COMPILER_IDENTITY_NAME;
+    out.parent.mkdir(parents=True, exist_ok=True);
+    out.write_text(
+        json.dumps(
+            {
+                "format": 1,
+                "digest": digest,
+                "lowered": list(NATIVE_LOWERED_PATHS),
+                "inputs": dict(rows)
+            },
+            indent=1,
+            sort_keys=True
+        )
+    );
+    return digest;
 }
 
 glob _COMPILER_DIGEST_CACHE: list[str] = [];
@@ -457,7 +537,8 @@ def _digest_manifest_path(pkg_dir: str) -> Path {
 def _manifest_compiler_digest(pkg_dir: str) -> str {
     import json;
     base = str(Path(pkg_dir));
-    rels = compiler_source_files(base);
+    recorded = read_compiler_identity(base);
+    rels = declared_compiler_inputs(base, recorded);
     manifest_path = _digest_manifest_path(base);
     entries: dict[str, any] = {};
     stored_digest = "";
@@ -471,10 +552,19 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
     }
     changed = False;
     new_entries: dict[str, list[float | int | str]] = {};
-    h = hashlib.sha256();
+    rows: list[tuple[str, str]] = [];
     for rel in rels {
         full = os.path.join(base, rel.replace("/", os.sep));
-        st = os.stat(full);
+        st: any = None;
+        try {
+            st = os.stat(full);
+        } except OSError {
+            st = None;
+        }
+        if st is None {
+            rows.append((rel, resolve_compiler_input(base, rel, recorded)));
+            continue;
+        }
         prev = entries.get(rel);
         if (
             isinstance(prev, list)
@@ -488,41 +578,30 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
             changed = True;
         }
         new_entries[rel] = [st.st_mtime, st.st_size, sha];
-        h.update(rel.encode());
-        h.update(sha.encode());
+        rows.append((rel, sha));
     }
     if len(new_entries) != len(entries) {
         changed = True;
     }
-    digest = f"{len(rels)}:{h.hexdigest()}";
-    import from jaclang.cache.registry { bucket, maybe_sweep }
-    if changed or digest != stored_digest {
-        try {
+    digest = fold_compiler_digest(rows);
+    try {
+        import from jaclang.cache.registry { bucket, maybe_sweep }
+        if changed or digest != stored_digest {
             manifest_path.parent.mkdir(parents=True, exist_ok=True);
             tmp = manifest_path.with_suffix(f".{os.getpid()}.tmp");
             tmp.write_text(json.dumps({"entries": new_entries, "digest": digest}));
             tmp.rename(manifest_path);
             maybe_sweep("jir-digests");
-        } except Exception {}
-    } else {
-        bucket("jir-digests").note_hit(manifest_path);
-    }
+        } else {
+            bucket("jir-digests").note_hit(manifest_path);
+        }
+    } except Exception {}
     return digest;
 }
 
 def running_compiler_digest -> str {
     if not _COMPILER_DIGEST_CACHE {
-        pinned = os.environ.get("JAC_COMPILER_DIGEST_PIN", "").strip();
-        if pinned {
-            _COMPILER_DIGEST_CACHE.append(f"pin:{pinned}");
-        } else {
-            try {
-                digest = _manifest_compiler_digest(_jaclang_pkg_dir);
-            } except Exception {
-                digest = compiler_source_digest(_jaclang_pkg_dir);
-            }
-            _COMPILER_DIGEST_CACHE.append(digest);
-        }
+        _COMPILER_DIGEST_CACHE.append(_manifest_compiler_digest(_jaclang_pkg_dir));
     }
     return _COMPILER_DIGEST_CACHE[0];
 }
@@ -997,11 +1076,39 @@ def jir_cacheable_source_path(source_path: str) -> bool {
         or (source_path.endswith('.jac') and not source_path.endswith('.na.jac'));
 }
 
+glob ENV_TRUTHY: set[str] = {
+         '1',
+         'true',
+         'True',
+         'TRUE',
+         'yes',
+         'YES',
+         'on',
+         'ON'
+     };
+
 def cache_mode -> tuple[bool, bool] {
-    truthy: set = {'1', 'true', 'True', 'TRUE', 'yes', 'YES', 'on', 'ON'};
-    rebuild = os.environ.get('JAC_REBUILD', '') in truthy;
-    no_precompile = os.environ.get('JAC_NO_PRECOMPILE', '') in truthy;
+    rebuild = os.environ.get('JAC_REBUILD', '') in ENV_TRUTHY;
+    no_precompile = os.environ.get('JAC_NO_PRECOMPILE', '') in ENV_TRUTHY;
     return (rebuild, no_precompile);
+}
+
+def precompile_required -> bool {
+    return os.environ.get('JAC_PRECOMPILE_REQUIRED', '') in ENV_TRUTHY;
+}
+
+def bundle_dir_allowed(bundle_dir: str) -> bool {
+    dev = os.environ.get('JAC_DEV_SOURCE', '').strip();
+    if not dev {
+        return True;
+    }
+    try {
+        resolved = str(Path(bundle_dir).resolve());
+        dev_root = str(Path(dev).resolve());
+    } except OSError {
+        return False;
+    }
+    return resolved == dev_root or resolved.startswith(dev_root + os.sep);
 }
 
 glob _jaclang_pkg_dir: str = str(

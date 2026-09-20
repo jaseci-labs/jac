@@ -30,10 +30,10 @@ glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
 def new_engine(pool_size: int, misfire_grace: int) -> any;
 
 obj JobStore {
-    def insert(job: dict[str, any]) -> str;
+    def insert(job: dict[str, any]) -> str abst;
     def insert_within_quota(
         job: dict[str, any], created_by: str, max_active: int
-    ) -> bool;
+    ) -> bool abst;
 
     def find_active(
         limit: int | None = None,
@@ -41,17 +41,17 @@ obj JobStore {
         trigger: str | None = None,
         created_by: str | None = None,
         service: str | None = None
-    ) -> tuple[list[dict[str, any]], int];
+    ) -> tuple[list[dict[str, any]], int] abst;
 
-    def find_active_one(job_id: str) -> dict[str, any] | None;
-    def find_one(job_id: str) -> dict[str, any] | None;
+    def find_active_one(job_id: str) -> dict[str, any] | None abst;
+    def find_one(job_id: str) -> dict[str, any] | None abst;
     def update(
         job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
-    ) -> bool;
+    ) -> bool abst;
 
-    def delete(job_id: str, where: dict[str, any] | None = None) -> bool;
-    def record_run(job_id: str, status: str, error: str | None = None) -> None;
-    def close -> None;
+    def delete(job_id: str, where: dict[str, any] | None = None) -> bool abst;
+    def record_run(job_id: str, status: str, error: str | None = None) -> None abst;
+    def close -> None abst;
 }
 
 obj PgJobStore(JobStore) {

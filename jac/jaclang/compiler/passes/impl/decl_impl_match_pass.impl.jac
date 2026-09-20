@@ -10,7 +10,65 @@ impl DeclImplMatchPass._run_impl(ir_in: Module) -> Module {
     for arch in ir_in.get_all_sub_nodes(Archetype) {
         self._populate_inline_init_symbols(arch);
     }
+    self._report_unimplemented(ir_in);
     return ir_in;
+}
+
+impl DeclImplMatchPass._report_unimplemented(ir_in: Module) -> None {
+    if str(ir_in.loc.mod_path).endswith(".pyi") or ir_in.stub_only {
+        return;
+    }
+    supplied = self._impl_block_members(ir_in);
+    for ability in ir_in.get_all_sub_nodes(Ability) {
+        if not ability.needs_impl or self._impl_optional(ability, supplied) {
+            continue;
+        }
+        self.ctx.emit(E2087, node_override=ability.name_spec, name=ability.sym_name);
+    }
+}
+
+impl DeclImplMatchPass._impl_block_members(ir_in: Module) -> dict[str, set[str]] {
+    supplied: dict[str, set[str]] = {};
+    for impl_node in ir_in.get_all_sub_nodes(ImplDef) {
+        if not impl_node.target {
+            continue;
+        }
+        owner = impl_node.target[-1].sym_name;
+        inner = impl_node.body;
+        if not isinstance(inner, list) {
+            continue;
+        }
+        for item in inner {
+            if isinstance(item, Ability) and not item.needs_impl {
+                if owner not in supplied {
+                    supplied[owner] = set();
+                }
+                supplied[owner].add(item.sym_name);
+            }
+        }
+    }
+    return supplied;
+}
+
+impl DeclImplMatchPass._impl_optional(
+    ability: Ability, supplied: dict[str, set[str]]
+) -> bool {
+    if ability.is_abstract
+        or ability.is_genai_ability
+        or ability.accessor_kind != ""
+        or ability.find_parent_of_type(Import) is not None {
+        return True;
+    }
+    for decor in (ability.decorators or []) {
+        if isinstance(decor, Name) and decor.value == "overload" {
+            return True;
+        }
+    }
+    holder = ability.find_parent_of_type(AstImplNeedingNode);
+    if holder is not None and holder.sym_name in supplied {
+        return ability.sym_name in supplied[holder.sym_name];
+    }
+    return False;
 }
 
 impl DeclImplMatchPass.defn_lookup(lookup: Symbol) -> (NameAtom | None) {

@@ -1,29 +1,29 @@
 class MetricsCollector {
-    def init(self: MetricsCollector, config: dict[str, any] = {}) -> None;
+    def init(self: MetricsCollector, config: dict[str, any] = {}) -> None abst;
     def record_request(
         self: MetricsCollector,
         method: str,
         path: str,
         status_code: int,
         duration_seconds: float
-    ) -> None;
+    ) -> None abst;
 
-    def request_started(self: MetricsCollector) -> None;
-    def request_finished(self: MetricsCollector) -> None;
+    def request_started(self: MetricsCollector) -> None abst;
+    def request_finished(self: MetricsCollector) -> None abst;
     def record_walker(
         self: MetricsCollector,
         walker_name: str,
         duration_seconds: float,
         success: bool = True
-    ) -> None;
+    ) -> None abst;
 
-    def record_ws_connection_opened(self: MetricsCollector) -> None;
-    def record_ws_connection_closed(self: MetricsCollector) -> None;
-    def record_ws_broadcast(self: MetricsCollector) -> None;
-    def record_read_tier_retry(self: MetricsCollector, unit_key: str) -> None;
-    def get_endpoint_handler(self: MetricsCollector) -> Callable[..., any];
-    def expose(self: MetricsCollector) -> bytes;
-    def is_enabled(self: MetricsCollector) -> bool;
+    def record_ws_connection_opened(self: MetricsCollector) -> None abst;
+    def record_ws_connection_closed(self: MetricsCollector) -> None abst;
+    def record_ws_broadcast(self: MetricsCollector) -> None abst;
+    def record_read_tier_retry(self: MetricsCollector, unit_key: str) -> None abst;
+    def get_endpoint_handler(self: MetricsCollector) -> Callable[..., any] abst;
+    def expose(self: MetricsCollector) -> bytes abst;
+    def is_enabled(self: MetricsCollector) -> bool abst;
 }
 
 class NoOpMetricsCollector(MetricsCollector) {

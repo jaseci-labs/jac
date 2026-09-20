@@ -295,14 +295,22 @@ jobs:
       # be mis-served; the fingerprint in the key PREFIX keeps it from being
       # inherited at all, since such a seed would only ever miss. A
       # compiler-touching commit therefore forfeits the seed by construction.
+      #
+      # Key shared with setup-jac, so the three jacpython legs here restore the
+      # tree ci.yml's build-kit already paid for instead of each recompiling it.
+      # No runner.os/runner.arch: a precompiled unit is relocatable marshalled
+      # bytecode whose key folds no platform axis (see the note in setup-jac).
+      # The runtime token stays, and must: a .jac module's bytecode comes from
+      # the HOST interpreter's `compile`, which is the native Jac compiler under
+      # jacpython and CPython's own under cpython, so the two legs cannot share.
       - name: Restore cached JIR precompile tree (dev channel)
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
           path: jac/.precompiled-build/${{ matrix.runtime }}
-          key: jac-precompiled-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          key: jac-precompiled-${{ matrix.runtime }}-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
-            jac-precompiled-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-
+            jac-precompiled-${{ matrix.runtime }}-c${{ steps.inputs.outputs.compiler }}-
 
       # Cache the selected runtime and any build host. Release builds remain cold.
       - name: Resolve Python SDK cache input

@@ -105,6 +105,11 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(site, "jaclang"),
             skip_jaclang
         );
+        import from jaclang.compiler.driver.jir { write_compiler_identity }
+        _identity = write_compiler_identity(
+            os.path.join(repo_root, "jaclang"), os.path.join(site, "jaclang")
+        );
+        log(f"   compiler identity: {_identity}");
 
         copy_file(
             os.path.join(repo_root, "bootstrap", "pins.json"),

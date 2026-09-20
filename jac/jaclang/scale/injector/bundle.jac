@@ -64,6 +64,7 @@ glob _EXCLUDE_ENV: set[str] = {
          "JAC_LLVM_SHIM",
          "JAC_DEV_SOURCE",
          "JAC_NO_PRECOMPILE",
+         "JAC_PRECOMPILE_REQUIRED",
          "JAC_EXECUTABLE"
      };
 
@@ -449,27 +450,9 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
 
 
 def unresolved_toml_references(text: str, environ: dict[str, str]) -> list[str] {
-    import from jaclang.project.config { interpolate_env_vars }
-    found: list[str] = [];
-    def collect(item: any, path: str) {
-        if isinstance(item, dict) {
-            for (key, value) in item.items() {
-                collect(value, f"{path}.{key}" if path else str(key));
-            }
-        } elif isinstance(item, list) {
-            for (i, element) in enumerate(item) {
-                collect(element, f"{path}[{i}]");
-            }
-        } elif isinstance(item, str) {
-            try {
-                interpolate_env_vars(item, environ);
-            } except ValueError as e {
-                found.append(f"{path}: {e}");
-            }
-        }
-    }
-    collect(tomllib.loads(text), "");
-    return found;
+    import from jaclang.project.config { resolve_env_refs }
+    (_, refs) = resolve_env_refs(tomllib.loads(text), environ);
+    return [f"{ref.path}: {ref.describe()}" for ref in refs];
 }
 
 

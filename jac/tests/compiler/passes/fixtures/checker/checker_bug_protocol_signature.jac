@@ -10,7 +10,7 @@ is incompatible (takes int instead of str, returns str instead of None).
 """
 
 class Drawable(Protocol) {
-    def draw(canvas: str) -> None;
+    def draw(canvas: str) -> None abst;
 }
 
 obj WrongSignature {
@@ -21,10 +21,10 @@ obj WrongSignature {
 }
 
 obj CorrectSignature {
-    def draw(canvas: str) -> None { }
+    def draw(canvas: str) {}
 }
 
-def render(item: Drawable) -> None {
+def render(item: Drawable) {
     item.draw("canvas");
 }
 

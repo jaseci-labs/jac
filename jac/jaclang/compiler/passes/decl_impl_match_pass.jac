@@ -3,6 +3,7 @@ import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
     Assignment,
+    Import,
     AstImplNeedingNode,
     AstSymbolNode,
     AtomTrailer,
@@ -30,6 +31,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E2016,
     E2017,
     E2026,
+    E2087,
     W2080
 }
 
@@ -39,6 +41,9 @@ walker DeclImplMatchPass {
         _e2026_reported: set[int] = set();
 
     def _run_impl(ir_in: Module) -> Module;
+    def _report_unimplemented(ir_in: Module) -> None;
+    def _impl_optional(ability: Ability, supplied: dict[str, set[str]]) -> bool;
+    def _impl_block_members(ir_in: Module) -> dict[str, set[str]];
     can run_walk with Module entry;
     def defn_lookup(lookup: Symbol) -> (NameAtom | None);
     def _find_archetype_defn(lookup: Symbol) -> (NameAtom | None);

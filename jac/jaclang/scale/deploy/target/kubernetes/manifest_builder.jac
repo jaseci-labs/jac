@@ -708,6 +708,37 @@ obj ManifestBuilder {
         );
     }
 
+    def _check_deploy_settings_resolve {
+        import from pathlib { Path }
+        import from jaclang.project.config { get_config_for_path, report_env_findings }
+        config = get_config_for_path(Path(self.project_dir));
+        if config is None {
+            return;
+        }
+        shipped: set = set();
+        for value in self.secrets.values() {
+            if isinstance(value, str) {
+                shipped.add(value);
+            }
+        }
+        for value in self.k8s_config.to_dict().values() {
+            if isinstance(value, str) {
+                shipped.add(value);
+            }
+        }
+        report_env_findings(
+            [
+                ref
+                for ref in config.unresolved
+                if ref.raw in shipped
+            ],
+            "jac.toml reads environment variables this machine does not have, so the "
+            "deploy would ship these settings as literal ${...} text:",
+            hint="Export each one or put it in the project .env, "
+            "or give it a ${VAR:-default}."
+        );
+    }
+
     def _check_pod_config_resolves(
         deployments: dict[str, dict[str, any]], user_secret: dict[str, any] | None
     ) {
@@ -719,6 +750,7 @@ obj ManifestBuilder {
             unresolved_toml_references
         }
         base = Path(self.project_dir);
+        self._check_deploy_settings_resolve();
         base_toml = sanitized_jac_toml(base);
         if base_toml is None {
             return;

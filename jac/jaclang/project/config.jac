@@ -243,7 +243,29 @@ obj DevConfig {
         fmt_jobs: str = "";
 }
 
-def interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> str;
+obj UnresolvedRef {
+    has path: str = "",
+        var: str = "",
+        raw: str = "",
+        required: bool = False,
+        message: str = "";
+
+    def describe -> str;
+}
+
+def interpolate_env_vars(
+    value: str,
+    environ: dict[str, str] | None = None,
+    sink: list[UnresolvedRef] | None = None
+) -> str;
+
+def resolve_env_refs(
+    data: any, environ: dict[str, str] | None = None, path: str = ""
+) -> tuple[any, list[UnresolvedRef]];
+
+def report_env_findings(
+    refs: list[UnresolvedRef], context: str, hint: str = ""
+) -> None;
 
 def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 
@@ -290,7 +312,8 @@ obj JacConfig {
         apps: dict[str, AppConfig] = {},
         is_workspace: bool = False,
         _base_data: dict[str, any] = {},
-        _layers: list[tuple[str, str]] = [];
+        _layers: list[tuple[str, str]] = [],
+        unresolved: list[UnresolvedRef] = [];
 
     has default_app: str { getter; }
 
