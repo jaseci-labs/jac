@@ -21,6 +21,42 @@ import from tests.ownership_helpers { compile_fixture, expect_ownership_codes }
 glob OWNERSHIP_CASES: list[tuple[any, ...]] = [
          ("places", "take needs optional storage", "take_nonoptional.jac", ["E1319"]),
          (
+             "managed borrows",
+             "a borrow of a parameter path is accepted",
+             "managed_borrow_ok.jac",
+             []
+         ),
+         (
+             "managed borrows",
+             "writing a field the borrow reads through",
+             "managed_borrow_write.jac",
+             ["E1321"]
+         ),
+         (
+             "managed borrows",
+             "a call that may write that field",
+             "managed_borrow_call.jac",
+             ["E1322"]
+         ),
+         (
+             "managed borrows",
+             "a call that writes nothing it reads through",
+             "managed_borrow_call_ok.jac",
+             []
+         ),
+         (
+             "managed borrows",
+             "assigning through a shared borrow",
+             "managed_borrow_shared_write.jac",
+             ["E1320"]
+         ),
+         (
+             "managed borrows",
+             "a borrow must start where the value outlives it",
+             "managed_borrow_start.jac",
+             ["E1323"]
+         ),
+         (
              "places",
              "take cannot mutate a shared field",
              "take_shared_field.jac",

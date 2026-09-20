@@ -14,11 +14,8 @@ impl pinned_major -> int {
 
 
 impl dist_cache_dir -> str {
-    return os.path.join(
-        os.path.expanduser(os.environ.get('JAC_CACHE_HOME', '~/.cache/jac')),
-        'pg',
-        'dist'
-    );
+    import from jaclang.cache.registry { bucket }
+    return str(bucket("pg").path() / 'dist');
 }
 
 
@@ -676,8 +673,10 @@ impl PgRuntime._ensure_database -> None {
         if created {
             conn.run(f'CREATE DATABASE "{self.database}"');
         }
-        record_database(conn, self.database, self.kind, self.owner_path);
-        if self.kind == DbKind.SCRATCH {
+        record_database(
+            conn, self.database, self.kind, self.owner_path, pid=self.owner_pid
+        );
+        if self.kind == DbKind.SCRATCH and not self.owner_pid {
             start_heartbeat(self.conninfo(), self.database);
         }
         if created and self.kind == DbKind.SCRATCH {
@@ -690,38 +689,101 @@ impl PgRuntime._ensure_database -> None {
 
 
 impl PgRuntime._reap_scratch(conn: any) -> int {
-    import from jaclang.data.dbcatalog {
-        condemn_stale_scratch,
-        dead_scratch_databases,
-        drop_if_still_dead,
-        list_databases
-    }
-    reaped = 0;
+    import from jaclang.data.dbcatalog { list_databases }
     try {
-        records = list_databases(conn);
-        if (marked := condemn_stale_scratch(conn, records)) {
+        records = [
+            rec
+            for rec in list_databases(conn)
+            if rec.is_scratch()
+        ];
+    } except Exception as e {
+        logger.debug(f"scratch reap skipped, registry unreadable: {e}");
+        return 0;
+    }
+    return self._reap(conn, records);
+}
+
+
+impl PgRuntime._reap(conn: any, records: list[DbRecord]) -> int {
+    import from jaclang.data.dbcatalog {
+        condemn_abandoned,
+        drop_if_still_dead,
+        orphan_grace_seconds,
+        pardon_recovered,
+        reclaimable_databases
+    }
+    by_name = {rec.database: rec for rec in records};
+    grace_h = orphan_grace_seconds() // 3600;
+    reaped_scratch = 0;
+    reaped_orphans = 0;
+    try {
+        marked = condemn_abandoned(conn, records);
+        marked_scratch = len(
+            [
+                n
+                for n in marked
+                if by_name[n].is_scratch()
+            ]
+        );
+        if marked_scratch {
             logger.info(
-                f"{len(marked)} scratch database(s) have stopped heartbeating; "
+                f"{marked_scratch} scratch database(s) have stopped heartbeating; "
                 'they will be reclaimed by a later start if they are still '
                 'silent and unused by then'
             );
         }
-        for name in dead_scratch_databases(records) {
-            if name != self.database and drop_if_still_dead(conn, name) {
-                reaped += 1;
+        if len(marked) > marked_scratch {
+            logger.info(
+                f"{len(marked) - marked_scratch} database(s) whose project "
+                'directory is gone were marked; a later start reclaims them once '
+                f"they have been gone for {grace_h}h (JAC_DB_ORPHAN_GRACE_HOURS)"
+            );
+        }
+        if (pardoned := pardon_recovered(conn, records)) {
+            logger.info(
+                f"{len(pardoned)} database(s) whose project directory is back "
+                'were unmarked'
+            );
+        }
+        pending = [
+            name
+            for name in reclaimable_databases(records)
+            if name != self.database
+        ];
+        deadline = time.monotonic() + SWEEP_DROP_BUDGET_SECONDS;
+        for i in range(len(pending)) {
+            if time.monotonic() > deadline {
+                logger.info(
+                    f"{len(pending) - i} reclaimable database(s) left for a later "
+                    f"start; this sweep used its {SWEEP_DROP_BUDGET_SECONDS}s"
+                );
+                break;
+            }
+            if not drop_if_still_dead(conn, pending[i]) {
+                continue;
+            }
+            if by_name[pending[i]].is_scratch() {
+                reaped_scratch += 1;
+            } else {
+                reaped_orphans += 1;
             }
         }
     } except Exception as e {
-        logger.debug(f"scratch reap failed: {e}");
-        return reaped;
+        logger.debug(f"database reap failed: {e}");
     }
-    if reaped {
+    if reaped_scratch {
         logger.info(
-            f"reclaimed {reaped} scratch database(s) left by processes that "
-            'are no longer running'
+            f"reclaimed {reaped_scratch} scratch database(s) left by processes "
+            'that are no longer running'
         );
     }
-    return reaped;
+    if reaped_orphans {
+        logger.info(
+            f"reclaimed {reaped_orphans} database(s) whose project directory has "
+            f"been gone for more than {grace_h}h"
+        );
+    }
+    return reaped_scratch + reaped_orphans;
 }
 
 
@@ -751,7 +813,8 @@ impl PgRuntime._sweep_on_start -> None {
     import from jaclang.data.dbcatalog {
         connect_admin,
         drop_database,
-        expired_databases
+        expired_databases,
+        list_databases
     }
     try {
         conn: any = connect_admin(self.conninfo());
@@ -760,7 +823,7 @@ impl PgRuntime._sweep_on_start -> None {
         return;
     }
     try {
-        self._reap_scratch(conn);
+        self._reap(conn, list_databases(conn));
         if self.retention_days > 0 {
             swept = 0;
             for name in expired_databases(conn, self.retention_days, self.database) {

@@ -233,7 +233,11 @@ def _application_sources(package_dir: str, app: str) -> list[str] | None {
             options = bind_options(
                 application.entry,
                 program,
-                CompileOptions(entry_point=application.entry, project_root=package_dir)
+                CompileOptions(
+                    entry_point=application.entry,
+                    project_root=package_dir,
+                    no_cgen=True
+                )
             );
             compile_application(program, application.entry, options);
         }
@@ -595,9 +599,11 @@ def precompile_unit_context(
         os.path.realpath(jac_path), app
     );
     selected = precompile_context(jac_path, pkg_root, program, source_app);
-    identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
     compiler.unit_collect = collect;
-    with cache_scope(identity, selected.options) {
+    owner_options = None
+        if compiler.selfhost.is_selfhost(selected)
+        else selected.options;
+    with cache_scope(owner_options) {
         try {
             yield selected;
         } finally {

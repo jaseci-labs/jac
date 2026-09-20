@@ -205,6 +205,65 @@ walker:pub PublicFileUpload {
     }
 }
 
+"""Walker that takes several files under one field name."""
+walker UploadManyFiles {
+    has files: list[UploadFile];
+
+    can process with Root entry {
+        report {"filenames": [f.filename for f in self.files]};
+    }
+}
+
+"""Walker whose file list may be empty."""
+walker UploadManyFilesOptional {
+    has files: list[UploadFile] = [];
+
+    can process with Root entry {
+        report {"count": len(self.files)};
+    }
+}
+
+"""Walker whose single file may be absent."""
+walker UploadOptionalFile {
+    has attachment: UploadFile | None = None;
+
+    can process with Root entry {
+        report {
+            "filename": self.attachment.filename
+                if self.attachment is not None
+                else None
+        };
+    }
+}
+
+"""Walker whose field takes a file or a plain string."""
+walker UploadNoteOrText {
+    has note: UploadFile | str;
+
+    can process with Root entry {
+        report {
+            "kind": "file" if isinstance(self.note, UploadFile) else "text",
+            "value": self.note.filename
+                if isinstance(self.note, UploadFile)
+                else self.note
+        };
+    }
+}
+
+"""Walker whose field takes several files or a plain string."""
+walker UploadDocsOrText {
+    has docs: list[UploadFile] | str;
+
+    can process with Root entry {
+        report {
+            "files": [f.filename for f in self.docs]
+                if isinstance(self.docs, list)
+                else None,
+            "text": self.docs if isinstance(self.docs, str) else None
+        };
+    }
+}
+
 # ============================================================================
 # Webhook Walkers
 # ============================================================================

@@ -351,6 +351,30 @@ def:pub raw_json -> dict[str, any] {
     return {"a": 1};
 }
 
+"""A bytes return reaches the wire as the bytes themselves, not as their repr.
+The payload holds a NUL and a high byte so a str() round trip cannot survive
+it."""
+@restspec(
+    method=HTTPMethod.GET,
+    path="/raw/bytes",
+    produces="application/octet-stream",
+    envelope=False
+)
+def:pub raw_bytes -> bytes {
+    return b"PK\x03\x04\x00\xffRAW";
+}
+
+"""A bytearray return is a body too."""
+@restspec(
+    method=HTTPMethod.GET,
+    path="/raw/bytearray",
+    produces="application/octet-stream",
+    envelope=False
+)
+def:pub raw_bytearray -> bytearray {
+    return bytearray(b"\x00\x01\x02");
+}
+
 """Envelope stays on by default -- regression guard for the opt-in."""
 @restspec(method=HTTPMethod.GET, path="/raw/enveloped")
 def:pub still_enveloped -> str {

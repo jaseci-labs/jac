@@ -1,3 +1,11 @@
+impl ClientTarget.ensure_ready(
+    self: ClientTarget, project_dir: Path, platform: Optional[str] = None
+) -> None {
+    if self.requires_setup {
+        self.setup(project_dir);
+    }
+}
+
 impl TargetRegistry.register(target: ClientTarget) -> None {
     self._targets[target.name] = target;
 }

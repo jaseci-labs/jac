@@ -733,6 +733,18 @@ test "while else" {
     assert "Completed" in lines[2];
 }
 
+test "for else" {
+    output = run_jac(os.path.join(FIXTURES, "for_else.jac"));
+    lines = output.split("\n");
+    assert "Sum:  1006" in lines[0];
+    assert "Done" in lines[1];
+}
+
+test "break in loop else stays in its owning loop" {
+    output = run_jac(os.path.join(FIXTURES, "loop_else_break.jac"));
+    assert output.strip() == "1444";
+}
+
 test "forever loop" {
     output = run_jac(os.path.join(FIXTURES, "forever_loop.jac"));
     lines = output.split("\n");

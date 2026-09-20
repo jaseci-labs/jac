@@ -466,7 +466,9 @@ impl OwnershipCheckPass._region_expr_is_scalar(expr: Expr | None) -> bool {
             } except Exception {
                 _om = "";
             }
-            if _om in _REGION_SCALARS or _om in ("str", "LiteralString", "bytes") {
+            if _om in _REGION_SCALARS
+                or JAC_TYPE_REGISTRY.is_numeric(_om)
+                or _om in ("str", "LiteralString", "bytes") {
                 return True;
             }
         }
@@ -481,7 +483,7 @@ impl OwnershipCheckPass._region_expr_is_scalar(expr: Expr | None) -> bool {
     } except Exception {
         return False;
     }
-    return _m in _REGION_SCALARS;
+    return _m in _REGION_SCALARS or JAC_TYPE_REGISTRY.is_numeric(_m);
 }
 
 impl OwnershipCheckPass._region_callee_is_safe(

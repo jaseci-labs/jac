@@ -12,7 +12,7 @@ node S {
     has v: int = 0;
 }
 
-edge L {
+edge L : S --> S {
     has w: int = 0;
 }
 

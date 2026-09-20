@@ -6,9 +6,11 @@ import from jaclang.compiler.tests.xbackend_equiv {
     compile_fixture_to_js,
     run_js_function,
     compile_native,
+    compile_native_errors,
     get_func,
     compare_results
 }
+import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 # (case, fixture, py fn, cl fn, na fn, [backends that must run])
 """Rows `prim_str`'s native lane does not produce yet.
@@ -169,6 +171,14 @@ glob STR_NA_GAPS: list[any] = [
              "bytearray_pack_py",
              "bytearray_pack_cl",
              "bytearray_pack_na",
+             ["na"]
+         ),
+         (
+             "bytearray unpack",
+             "prim_bytearray.jac",
+             "bytearray_unpack_py",
+             "bytearray_unpack_cl",
+             "bytearray_unpack_na",
              ["na"]
          ),
          ("list", "prim_list.jac", "list_py", "list_cl", "list_na"),
@@ -634,6 +644,14 @@ glob STR_NA_GAPS: list[any] = [
              "hetero_na",
              ["na"]
          ),
+         (
+             "sort key str comparator",
+             "prim_sort_key.jac",
+             "sort_key_py",
+             "sort_key_cl",
+             "sort_key_na",
+             ["na"]
+         ),
 
      ];
 
@@ -679,6 +697,56 @@ test "bundled shutil" {
     run_with_both(
         "prim_shutil.jac", "shutil_py", "shutil_cl", "shutil_na", require=["na"]
     );
+}
+
+test "native sort never silently orders object-returning keys" {
+    # Node values lower to bare i8*, the same LLVM type as raw string
+    # data. The checker's call overloads reject a non-comparable key
+    # type, and the native sort gate (semantic return type -> E5092)
+    # independently refuses one before emitting comparisons (#9144).
+    errors = compile_native_errors("prim_sort_key_object.jac");
+    assert len(errors) > 0 , "object-returning sort key compiled silently";
+    assert any("No matching overload" in e or "E5092" in e for e in errors) , (
+        f"object-returning sort key must be rejected: {errors}"
+    );
+}
+
+test "native gradual object keys demote, never pointer-sort (#9158)" {
+    # A `-> any` key slips the checker's overloads, so only the native
+    # gate sees the danger: the erased i8* is indistinguishable from
+    # string data, and object pointers must never reach strcmp. The
+    # function demotes to its Python implementation instead, while a
+    # semantic `-> str` key in the same module stays natively lowered.
+    (eng, na_ir) = compile_native("prim_sort_key_gradual.jac");
+    llvm_txt = str(na_ir.gen.llvm_ir);
+    issues = native_lowering_issues(llvm_txt);
+    demoted = [
+        i
+        for i in issues
+        if "grad_obj_na" in i.symbol
+    ];
+    assert len(demoted) == 1 , (
+        f"gradual object key function should demote exactly once: {issues}"
+    );
+    assert "orderable key values" in demoted[0].detail , demoted[0].detail;
+    kept = [
+        i
+        for i in issues
+        if "grad_str_na" in i.symbol
+    ];
+    assert len(kept) == 0 , f"semantic str key must lower natively: {kept}";
+    assert "__jac_str_cmp" in llvm_txt , "str-key control should use the semantic string comparator";
+    assert "strcmp" not in llvm_txt , "no raw pointer may reach libc strcmp (#9158)";
+}
+
+test "annotated block lambda tails are type-checked (#9158)" {
+    # The checker skipped the tails of block-bodied lambdas entirely, so a
+    # tail violating the declared return type went undiagnosed and the
+    # native sort backend saw no semantic key type at all.
+    errors = compile_native_errors("prim_lambda_bad_tail.jac");
+    assert any(
+        "Cannot return tuple[str, int], expected tuple[int, int]" in e for e in errors
+    ) , (f"mismatching lambda tail must be diagnosed: {errors}");
 }
 
 test "native call resolves bundled stdlib signature, not typeshed (#7037)" {

@@ -125,6 +125,8 @@
 "prim_bytearray.bytearray_pack_na" = "native"
 "prim_bytearray.bytearray_slices_cl" = "client"
 "prim_bytearray.bytearray_slices_na" = "native"
+"prim_bytearray.bytearray_unpack_cl" = "client"
+"prim_bytearray.bytearray_unpack_na" = "native"
 "prim_bytes.bytes_case_cl" = "client"
 "prim_bytes.bytes_modify_cl" = "client"
 "prim_bytes.bytes_search_cl" = "client"

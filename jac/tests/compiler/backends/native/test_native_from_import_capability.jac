@@ -335,16 +335,16 @@ test "a body-scoped from-import demotes only its owning function" {
 
 test "a Jac field import is a compile-time declaration" {
     assert _rejected_imports("object_field_default.jac") == [] , (
-        "`field` only ever appears as a has-field default, where the "
+        "`ObjectField` only ever appears as a has-field default, where the "
         "declaration site consumes it; the native lane never calls it, so "
         "the import belongs in the compile-time vocabulary"
     );
     assert _scan_verdict(
-        _module_with("import from jaclang.runtime.object_model { field }")
+        _module_with("import from jaclang.runtime.object_model { ObjectField }")
     )
         == "OK" , (
         "the inferred-placement scanner reads the same vocabulary, so a "
-        "`field` import must stop demoting the module there too"
+        "`ObjectField` import must stop demoting the module there too"
     );
 }
 
@@ -352,7 +352,7 @@ test "a Jac field import is a compile-time declaration" {
 test "a Python dataclass decorator still refuses" {
     verdict = _scan_verdict(_module_with("import from dataclasses { dataclass }"));
     assert verdict != "OK" , (
-        "the vocabulary is per name: `field` erases at the declaration site "
+        "the vocabulary is per name: `ObjectField` erases at the declaration site "
         f"and `dataclass` does not, so listing it must still refuse: {verdict}"
     );
 }
@@ -363,7 +363,7 @@ test "a field-defaulted archetype lowers and builds its defaults" {
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , (
         "no native IR for an archetype whose has-fields default through "
-        "`jaclang.runtime.object_model.field`"
+        "`jaclang.runtime.object_model.ObjectField`"
     );
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";

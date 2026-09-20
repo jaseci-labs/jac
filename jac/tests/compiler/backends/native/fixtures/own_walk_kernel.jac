@@ -8,7 +8,7 @@ node Cell {
     has val: int = 0;
 }
 
-edge Step {}
+edge Step : any --> any {}
 
 walker Summer {
     has acc: int = 0;

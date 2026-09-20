@@ -28,7 +28,7 @@ node MyNode {
     }
 }
 
-edge MyEdge {
+edge MyEdge : any --> any {
     has weight: float = 1.0;
 
     def bad_method(self: MyEdge) -> float {

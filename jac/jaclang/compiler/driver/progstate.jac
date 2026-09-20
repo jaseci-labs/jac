@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import sys;
 import jaclang.compiler.frontend.unitree as uni;
@@ -100,7 +101,7 @@ obj ModuleHub {
         prog_root.set_kids(
             [
                 k
-                for k in prog_root.kid
+                for k in [prog_root->:Kid:->]
                 if id(k) not in dropped_ids
             ],
             pos_update=False

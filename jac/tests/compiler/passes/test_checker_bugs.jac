@@ -745,11 +745,11 @@ test "bug_dstr1_docstring_before_local_declaration" {
     );
 }
 
-test "bug_dloc1_decorated_class_in_function_body" {
+test "bug_dloc1_decorated_object_in_function_body" {
     program = compile_and_check("checker_bug_decorated_local_class.jac");
 
     assert len(program.errors_had) == 0 , (
-        "Bug #DLOC-1: a decorated class inside a function body must parse "
+        "Bug #DLOC-1: a decorated object inside a function body must parse "
         "as an Archetype so the type checker recognises its constructor and "
         "fields. "
         f"Got errors: {[str(e) for e in program.errors_had]}"

@@ -166,7 +166,7 @@ This is useful when data isn't appearing as expected.
     So far, the edges between nodes are generic -- they just mean "connected." Jac also supports **typed edges** with their own data:
 
     ```jac
-    edge Scheduled {
+    edge Scheduled: Root --> Task {
         has time: str,
             priority: int = 1;
     }

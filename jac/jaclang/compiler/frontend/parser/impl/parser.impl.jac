@@ -478,7 +478,7 @@ impl Parser.parse_module -> Module {
         if nid not in seen {
             seen[nid] = True;
             node_list.append(nd);
-            for child in nd.kid {
+            for child in [nd->:Kid:->] {
                 walk.append(child);
             }
         }
@@ -850,8 +850,18 @@ impl Parser.parse_factor -> Expr {
     return self.parse_connect();
 }
 
+impl Parser.parse_edge_endpoint -> Expr {
+    self._no_connect_op_depth += 1;
+    endpoint = self.parse_pipe();
+    self._no_connect_op_depth -= 1;
+    return endpoint;
+}
+
 impl Parser.parse_connect -> Expr {
     left = self.parse_atomic_pipe();
+    if self._no_connect_op_depth > 0 {
+        return left;
+    }
     while True {
         conn_op = self.parse_connect_op();
         if conn_op is None {
@@ -1276,7 +1286,7 @@ impl Parser.parse_atomic_chain -> Expr {
                     lparen_tok = call_kid[1];
                     rparen_tok = call_kid[len(call_kid) - 1];
                     new_gc_kid: list[UniNode] = [lparen_tok];
-                    for c in first_arg.kid {
+                    for c in [first_arg->:Kid:->] {
                         new_gc_kid.append(c);
                     }
                     new_gc_kid.append(rparen_tok);
@@ -5313,9 +5323,9 @@ impl Parser.parse_archetype -> Archetype {
     if self.check(TokenKind.COLON) {
         self.expect(TokenKind.COLON);
         ep_colon_uni = self.make_uni_token(self.previous());
-        src_endpoint = self.parse_atomic_chain();
+        src_endpoint = self.parse_edge_endpoint();
         ep_arrow_uni = self.consume_uni(TokenKind.ARROW_R);
-        tgt_endpoint = self.parse_atomic_chain();
+        tgt_endpoint = self.parse_edge_endpoint();
     }
     body_l: (list[UniNode] | None) = None;
     body_lb_uni = None;
@@ -5726,7 +5736,8 @@ impl Parser.parse_accessor -> Ability {
 
     signature: FuncSignature | None = self.parse_func_signature();
     has_sig_content = not (
-        len(signature.kid) == 1 and isinstance(signature.kid[0], EmptyToken)
+        len([signature->:Kid:->]) == 1
+        and isinstance([signature->:Kid:->][0], EmptyToken)
     );
     if not has_sig_content {
         signature = None;

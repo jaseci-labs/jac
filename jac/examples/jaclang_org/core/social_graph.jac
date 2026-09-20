@@ -78,15 +78,15 @@ obj ProjectResult {
         project: Project | None = None;
 }
 
-edge Follow {}
-edge Post {}
-edge Member {}
-edge ChannelPost {}
-edge HasAvatar {}
-edge Owns {}
+edge Follow: Profile --> Profile {}
+edge Post: Profile --> Tweet {}
+edge Member: Profile --> Channel {}
+edge ChannelPost: Channel --> Tweet {}
+edge HasAvatar: Profile --> Avatar {}
+edge Owns: Profile --> Project {}
 
-edge Studies {}
-edge PublishesAs {}
+edge Studies: GeniusMemory --> GeniusTopic {}
+edge PublishesAs: GeniusTopic --> Profile {}
 
 node GeniusMemory {
     has last_posted: str = "",

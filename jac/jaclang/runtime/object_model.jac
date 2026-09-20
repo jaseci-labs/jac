@@ -12,9 +12,7 @@ class ObjectField {
         default_factory: PyCallable[[], object] | None,
         `init: bool,
         repr: bool,
-        compare: bool,
-        kw_only: bool,
-        metadata: dict[str, object];
+        kw_only: bool;
 
     def init(
         self: ObjectField,
@@ -25,9 +23,7 @@ class ObjectField {
         default_factory: PyCallable[[], object] | None = None,
         `init: bool = True,
         repr: bool = True,
-        compare: bool = True,
-        kw_only: bool = False,
-        metadata: dict[str, object] | None = None
+        kw_only: bool = False
     ) {
         if `default is not MISSING and default_factory is not None {
             raise ValueError("A field cannot have both a default and a factory");
@@ -41,9 +37,7 @@ class ObjectField {
         self.default_factory = default_factory;
         self.`init = `init;
         self.repr = repr;
-        self.compare = compare;
         self.kw_only = kw_only;
-        self.metadata = dict(metadata or {});
     }
 
     def bind(self: ObjectField, name: str, annotation: object) -> ObjectField {
@@ -54,33 +48,11 @@ class ObjectField {
             default_factory=self.default_factory,
             `init=self.`init,
             repr=self.repr,
-            compare=self.compare,
-            kw_only=self.kw_only,
-            metadata=self.metadata
+            kw_only=self.kw_only
         );
     }
 }
 
-def field(
-    *,
-    `default: object = MISSING,
-    default_factory: PyCallable[[], object] | None = None,
-    `init: bool = True,
-    repr: bool = True,
-    compare: bool = True,
-    kw_only: bool = False,
-    metadata: dict[str, object] | None = None
-) -> ObjectField {
-    return ObjectField(
-        `default=`default,
-        default_factory=default_factory,
-        `init=`init,
-        repr=repr,
-        compare=compare,
-        kw_only=kw_only,
-        metadata=metadata
-    );
-}
 
 def is_jac_object(value: object) -> bool {
     cls = value if isinstance(value, `type) else type(value);

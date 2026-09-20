@@ -7,7 +7,7 @@ import zlib;
 import from pathlib { Path }
 import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
 
-import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
+import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS, COMPILER_DIGEST_ROOTS }
 
 glob MAGIC = b"JIR\x00",
      FORMAT_VERSION: int = 29,
@@ -387,25 +387,16 @@ def _module_codespace_mode(source_path: str) -> str {
     }
 }
 
-glob COMPILER_DIGEST_ROOTS: tuple[str, ...] = (
-         "jac0.py",
-         "bootstrap_manifest.py",
-         "meta_importer.py",
-         "jac0core",
-         "compiler",
-         "runtime",
-         "lib",
-         "cli/cli_boot.jac",
-         "project",
-         "dist/precompile_bytecode.jac"
-     ),
-     COMPILER_DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".py"),
+glob COMPILER_DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".py"),
      COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__"),
      COMPILER_DIGEST_SKIP: tuple[str, ...] = ();
 
 def compiler_source_files(pkg_dir: str) -> list[str] {
     base = str(Path(pkg_dir));
     rels: list[str] = [];
+    if os.path.isfile(os.path.join(base, "compiler_inputs.txt")) {
+        rels.append("compiler_inputs.txt");
+    }
     for `entry in COMPILER_DIGEST_ROOTS {
         target = os.path.join(base, `entry.replace("/", os.sep));
         if os.path.isfile(target) {
@@ -504,13 +495,17 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
         changed = True;
     }
     digest = f"{len(rels)}:{h.hexdigest()}";
+    import from jaclang.cache.registry { bucket, maybe_sweep }
     if changed or digest != stored_digest {
         try {
             manifest_path.parent.mkdir(parents=True, exist_ok=True);
             tmp = manifest_path.with_suffix(f".{os.getpid()}.tmp");
             tmp.write_text(json.dumps({"entries": new_entries, "digest": digest}));
             tmp.rename(manifest_path);
+            maybe_sweep("jir-digests");
         } except Exception {}
+    } else {
+        bucket("jir-digests").note_hit(manifest_path);
     }
     return digest;
 }
@@ -634,10 +629,15 @@ def module_env_fingerprint(source_path: str) -> str {
     return h.hexdigest();
 }
 
+def _owner_projection -> str {
+    import from jaclang.compiler.driver.compilation_context { active_options }
+    options = active_options();
+    return options.module_projection() if options is not None else '';
+}
+
 def compute_module_key(source_path: str) -> str {
-    import from jaclang.compiler.driver.compilation_context { cache_identity }
     h = hashlib.sha256();
-    h.update(cache_identity().encode());
+    h.update(_owner_projection().encode());
     h.update(_env_fingerprint_for(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
@@ -973,7 +973,7 @@ def compute_precompile_module_key(source_path: str, compiler_digest: str = "") -
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     h = hashlib.sha256();
 
-    with cache_scope('') {
+    with cache_scope() {
         h.update(module_cache_key(source_path).encode());
     }
     h.update(b"|compiler=");
@@ -1036,98 +1036,50 @@ def _module_cache_root(source_path: str) -> Path {
 }
 
 def _get_module_cache_dir(source_path: str) -> Path {
-    return _module_cache_root(source_path) / compiler_generation();
+    cache_dir = _module_cache_root(source_path) / compiler_generation();
+    _touch_generation(cache_dir);
+    return cache_dir;
 }
 
 def get_module_cache_path(source_path: str) -> Path {
-    import from jaclang.compiler.driver.compilation_context { cache_identity }
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
-    path_hash = hashlib.sha256((str(source) + cache_identity()).encode()).hexdigest()[:8];
+    path_hash = hashlib.sha256((str(source) + _owner_projection()).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }
 
-glob GENERATION_TTL_DAYS: float = 14.0,
-     _SWEPT_ROOTS: set[str] = set();
+glob _TOUCHED_GENERATIONS: set[str] = set();
 
-def generation_ttl_seconds -> float {
-    raw = os.environ.get("JAC_CACHE_GENERATION_TTL_DAYS", "").strip();
-    if not raw {
-        return GENERATION_TTL_DAYS * 86400.0;
+def _touch_generation(cache_dir: Path) {
+    key = str(cache_dir);
+    if key in _TOUCHED_GENERATIONS {
+        return;
     }
-    try {
-        return max(0.0, float(raw)) * 86400.0;
-    } except ValueError {
-        return GENERATION_TTL_DAYS * 86400.0;
+    _TOUCHED_GENERATIONS.add(key);
+    import from jaclang.cache.registry { bucket }
+    if cache_dir.is_dir() {
+        bucket("jir-modules").note_hit(cache_dir);
     }
-}
-
-def _is_generation_name(name: str) -> bool {
-    if len(name) != 16 {
-        return False;
-    }
-    for ch in name {
-        if ch not in "0123456789abcdef" {
-            return False;
-        }
-    }
-    return True;
 }
 
 def sweep_stale_generations(cache_root: Path, keep: str) -> int {
-    import shutil;
-    import time;
-    ttl = generation_ttl_seconds();
-    if ttl <= 0.0 {
-        return 0;
-    }
-    now = time.time();
-    removed = 0;
-    try {
-        items = list(cache_root.iterdir());
-    } except OSError {
-        return 0;
-    }
-    for item in items {
-        name = item.name;
-        is_dir = item.is_dir();
-        if is_dir {
-            if name == keep or not (_is_generation_name(name) or name == "native") {
-                continue;
-            }
-        } elif not name.endswith(".jir") {
-            continue;
-        }
-        try {
-            if now - item.stat().st_mtime <= ttl {
-                continue;
-            }
-        } except OSError {
-            continue;
-        }
-        if is_dir {
-            shutil.rmtree(item, ignore_errors=True);
-        } else {
-            try {
-                item.unlink();
-            } except OSError {
-                continue;
-            }
-        }
-        removed += 1;
-    }
-    return removed;
+    import from jaclang.cache.policy { sweep_dir }
+    import from jaclang.cache.registry { bucket }
+    result = sweep_dir(
+        cache_root, bucket("jir-modules").policy, keep={keep}, bucket="jir-modules"
+    );
+    return len(result.removed);
 }
 
 def _sweep_once(cache_root: Path) {
-    key = str(cache_root);
-    if key in _SWEPT_ROOTS {
-        return;
-    }
-    _SWEPT_ROOTS.add(key);
     try {
-        sweep_stale_generations(cache_root, compiler_generation());
+        import from jaclang.cache.policy { maybe_sweep_dir }
+        import from jaclang.cache.registry { bucket, maybe_sweep }
+        maybe_sweep_dir(
+            cache_root, bucket("jir-modules").policy, keep={compiler_generation()}
+        );
+        maybe_sweep("jir-bootstrap");
     } except Exception {}
 }
 

@@ -209,10 +209,13 @@ impl NaIRGenPass._codegen_clib_call(
                 call_args.append(ir.Constant(pp["type"], 0));
             } else {
                 _cv = jac_val;
-                if pp.get("is_str") and isinstance(_cv.type, ir.PointerType) {
+                scalar_type = pp["type"];
+                if self._is_bytes_value(_cv)
+                    and scalar_type == ir.IntType(8).as_pointer() {
+                    _cv = self._bytes_data_ptr(_cv);
+                } elif pp.get("is_str") and isinstance(_cv.type, ir.PointerType) {
                     _cv = self._membrane_str_out(self.builder, _cv);
                 }
-                scalar_type = pp["type"];
                 if isinstance(scalar_type, ir.PointerType)
                     and not scalar_type.is_opaque
                     and isinstance(scalar_type.pointee, ir.FunctionType) {

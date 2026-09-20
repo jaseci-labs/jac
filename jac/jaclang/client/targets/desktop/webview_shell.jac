@@ -1,11 +1,13 @@
 import os;
-import from jaclang.toolchains.desktop { ensure_webview }
 import shutil;
 import subprocess;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
-import from jaclang.client.targets.desktop.plugin.webview_lib { libwebview_name }
+import from jaclang.toolchains.desktop { ensure_webview, webview_library_name }
+import from jaclang.toolchains.host { host_platform }
+import from jaclang.client.targets.desktop.app_layout { AppLayout }
+import from jaclang.client.targets.desktop.macos_bundle { write_bundle_metadata }
 import from jaclang.client.targets.desktop.desktop_build {
     _find_webview_dir,
     _jac_bin,
@@ -34,41 +36,47 @@ def _assemble_native_host(
     dispatch = cfg.get_dispatch_config();
     plugin_configs = cfg.get_plugin_configs();
     app_name = ident.name or "app";
+    title = win.title or app_name;
 
     if output_dir.exists() {
         shutil.rmtree(output_dir);
     }
-    output_dir.mkdir(parents=True, exist_ok=True);
+    layout = AppLayout.for_host(output_dir, app_name, host_platform());
+    layout.library_dir().mkdir(parents=True, exist_ok=True);
+    layout.resources.mkdir(parents=True, exist_ok=True);
 
     if dist_dir is not None {
-        shutil.copytree(dist_dir, output_dir / "dist");
+        shutil.copytree(dist_dir, layout.resources / "dist");
     }
     webview_dir = _find_webview_dir();
-    lib = ensure_webview(webview_dir);
-    out_lib_name = libwebview_name();
-    shutil.copy2(lib, output_dir / out_lib_name);
+    shutil.copy2(
+        ensure_webview(webview_dir), layout.library_dir() / webview_library_name()
+    );
     shutil.copy2(webview_dir / "webview.jac", output_dir / "webview.jac");
 
     backend = cfg.get_backend();
-    program = stage_program(entry_file, project_dir, output_dir, backend, dist_dir);
+    program = stage_program(
+        entry_file, project_dir, layout.resources, backend, dist_dir
+    );
 
     _stage_fused_runtime(output_dir);
     host_src = _generate_host_source(
-        win.title or app_name,
+        title,
         win.width,
         win.height,
-        str(app_name),
+        app_name,
         program,
         backend,
         dispatch.timeout_s,
         dispatch.max_queue,
         dispatch.debug,
-        plugin_configs
+        plugin_configs,
+        identifier=ident.identifier
     );
     (output_dir / "host.jac").write_text(host_src);
 
     console.print("  Compiling native host (jac build --native)...", style="muted");
-    binary = output_dir / app_name;
+    binary = layout.executable;
     res = subprocess.run(
         [
             _jac_bin(),
@@ -86,11 +94,14 @@ def _assemble_native_host(
     }
 
     _bundle_runtime(binary);
+    if layout.bundle is not None {
+        write_bundle_metadata(layout, ident, title, cfg.get_icon());
+    }
     stray = project_dir / app_name;
     if stray.exists() and stray.resolve() != binary.resolve() {
         stray.unlink();
     }
-    launcher = output_dir / f"{app_name}-launch.sh";
+    launcher = layout.launcher();
     venv_dir = project_dir / ".jac" / "venv";
     venv_rel = os.path.relpath(str(venv_dir), str(output_dir));
 
@@ -98,7 +109,7 @@ def _assemble_native_host(
         ("#!/bin/sh\n" "cd \"$(dirname \"$0\")\" || exit 1\n")
             + jac_desktop_webkit_shell_export()
             + jac_desktop_deps_shell_export(venv_rel)
-            + f"exec ./{app_name} \"$@\"\n"
+            + f"exec \"{layout.launch_target()}\" \"$@\"\n"
     );
     os.chmod(launcher, 0o755);
     return binary;
@@ -111,9 +122,11 @@ def webview_build(
 
     console.print("\n🖥️  Building desktop app (Jac-native webview)", style="bold");
     binary = _assemble_native_host(entry_file, project_dir, out_dir, web_bundle.parent);
-    console.print(f"\n✅ Desktop app built: {binary}", style="bold green");
+    layout = AppLayout.from_executable(binary);
+    built = layout.bundle if layout.bundle is not None else binary;
+    console.print(f"\n✅ Desktop app built: {built}", style="bold green");
     console.print(
-        f"   run: (cd {binary.parent} && ./{binary.name}-launch.sh)"
+        f"   run: (cd {layout.directory} && ./{layout.launcher().name})"
         "  # or jac run <app>",
         style="muted"
     );

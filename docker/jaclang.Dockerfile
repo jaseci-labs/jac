@@ -30,15 +30,13 @@ FROM debian:trixie-slim
 
 ARG TARGETARCH
 
-# A fixed, HOME-independent cache root: the launcher keys the extracted tree
-# by (payload hash, executable path) and finds it via XDG_CACHE_HOME first,
-# so the tree baked below is reused no matter which user or HOME runs jac.
+# A fixed, HOME-independent cache root for tools honoring XDG_CACHE_HOME.
 ENV XDG_CACHE_HOME=/opt/jac/cache
 
-# jac's own runtime state (the embedded Postgres cluster) is keyed off
-# JAC_CACHE_HOME, which otherwise follows HOME. Pin it to a shared sticky
-# directory so any uid the pod runs as can provision a cluster, and so an
-# operator who mounts a volume has one path to mount.
+# JAC_CACHE_HOME takes precedence over XDG_CACHE_HOME for all Jac caches,
+# including the payload-hash-keyed runtime and the embedded Postgres cluster.
+# Pin it to a shared sticky directory so any uid can reuse the baked runtime
+# and provision a cluster independently of HOME.
 ENV JAC_CACHE_HOME=/opt/jac/state
 
 COPY ${TARGETARCH}/jac /usr/local/bin/jac
@@ -63,12 +61,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && chmod 0755 /usr/local/bin/jac \
     && jac --version \
-    && ls /opt/jac/cache/jac/rt/*/.ok \
+    && ls "${JAC_CACHE_HOME}"/rt/*/.ok \
     && mkdir /tmp/seed \
     && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main"\n\n[dependencies]\nsetuptools = ">=75"\n\n[scale.kubernetes]\nnamespace = "seed"\n' > /tmp/seed/jac.toml \
     && printf 'with entry {}\n' > /tmp/seed/main.jac \
-    && rt_lib=$(ls -d /opt/jac/cache/jac/rt/*/python/lib/python3.*) \
-    && /opt/jac/cache/jac/rt/*/python/bin/python3.* -m venv --without-pip /tmp/seed/.jac/venv \
+    && rt_lib=$(ls -d "${JAC_CACHE_HOME}"/rt/*/python/lib/python3.*) \
+    && "${JAC_CACHE_HOME}"/rt/*/python/bin/python3.* -m venv --without-pip /tmp/seed/.jac/venv \
     && cp -a "$rt_lib/site-packages/pip" "$rt_lib"/site-packages/pip-*.dist-info \
         /tmp/seed/.jac/venv/lib/python3.*/site-packages/ \
     && (cd /tmp/seed && jac install) \
@@ -77,8 +75,8 @@ RUN apt-get update \
     && ls "$rt_lib/site-packages" | grep -q dotenv \
     && ls "$rt_lib/site-packages" | grep -q setuptools \
     && rm -rf /tmp/seed \
-    && chmod -R a+rX /opt/jac/cache \
-    && chmod 1777 /opt/jac/cache/jac
+    && chmod -R a+rX "${JAC_CACHE_HOME}" \
+    && chmod 1777 "${JAC_CACHE_HOME}"
 
 # `jac db fetch` runs the runtime's own resolution chain (pinned major, newest
 # published fallback, checksum-verified download) so the version pin lives in

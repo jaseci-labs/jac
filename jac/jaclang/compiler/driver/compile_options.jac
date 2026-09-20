@@ -1,5 +1,3 @@
-import from jaclang.runtime.object_model { field }
-
 glob _config_probe: dict[str, bool] = {"active": False};
 
 def _project_config -> any {
@@ -47,7 +45,7 @@ obj CompileOptions {
         rc_stats: (bool | None) = None,
         nogc_debug: (bool | None) = None,
         na_debug: (bool | None) = None,
-        suppress_codes: list[str] = field(default_factory=`list),
+        suppress_codes: list[str] = [],
         default_codespace: str = "",
         app_kind: str = "",
         target_app: str = "",
@@ -186,6 +184,20 @@ obj CompileOptions {
     def analysis_fingerprint -> str {
         import hashlib;
         return hashlib.sha256(self.analysis_identity().encode()).hexdigest()[:12];
+    }
+
+    def module_projection -> str {
+        return ";".join(
+            [
+                self.analysis_identity(),
+                self.codegen_identity(),
+                f"aot={int(bool(self.aot_mode))}",
+                f"force_cs={self.force_codespace}",
+                f"default_cs={self.default_codespace}",
+                f"ui={self.ui}",
+                f"root={self.project_root or ''}"
+            ]
+        );
     }
 
     def for_symbols(need_tree: bool = False) -> CompileOptions {

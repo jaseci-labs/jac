@@ -45,8 +45,8 @@ node Person {
     }
 }
 
-edge Friend {}
-edge Family {
+edge Friend: Person --> Person {}
+edge Family: Person --> Person {
     can announce with FriendFinder entry {
         print(f"{visitor} is traveling to family member");
     }
@@ -185,7 +185,7 @@ node Person {
     has name: str;
 }
 
-edge Friend {}
+edge Friend: Person --> Person {}
 ```
 
 **In Library Mode:**
@@ -258,8 +258,8 @@ node Person {
     has name: str;
 }
 
-edge Friend {}
-edge Family {}
+edge Friend: Person --> Person {}
+edge Family: Person --> Person {}
 
 with entry {
     p1 = Person(name="John");
@@ -314,7 +314,7 @@ result = spawn(FriendFinder(), root())
 **In Jac:**
 
 ```jac
-edge Family {}
+edge Family: Person --> Person {}
 
 walker Visitor {
     can traverse with Root entry {

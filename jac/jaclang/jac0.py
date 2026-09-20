@@ -952,7 +952,8 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
             j += 1
         inner = tokens[i + 1 : j]
         if len(inner) >= 2 and inner[0].value == "?" and inner[1].type == TT.COLON:
-            type_tokens = inner[2:]
+            filter_parts = _split_top(inner[2:], TT.COMMA)
+            type_tokens = filter_parts[0]
             if not type_tokens or any(
                 t.type != (TT.NAME if n % 2 == 0 else TT.DOT)
                 for n, t in enumerate(type_tokens)
@@ -965,13 +966,30 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
             names = {t.value for t in tokens if t.type == TT.NAME}
             while item in names:
                 item += "_"
+            predicates: list[Token] = []
+            for part in filter_parts[1:]:
+                if (
+                    len(part) < 3
+                    or part[0].type != TT.NAME
+                    or part[1].type != TT.OP
+                    or part[1].value not in ("==", "!=", "<", "<=", ">", ">=")
+                ):
+                    raise ParseError(
+                        f"line {tok.line}: seed node predicates require `name op value`"
+                    )
+                predicates.extend([
+                    _tok(TT.NAME, "and", tok), _tok(TT.LPAREN, "(", tok),
+                    _tok(TT.NAME, item, tok), _tok(TT.DOT, ".", tok),
+                    *part, _tok(TT.RPAREN, ")", tok),
+                ])
             out.extend([
                 _tok(TT.LBRACKET, "[", tok), _tok(TT.NAME, item, tok),
                 _tok(TT.NAME, "for", tok), _tok(TT.NAME, item, tok),
                 _tok(TT.NAME, "in", tok), *origin, _tok(TT.NAME, "if", tok),
                 _tok(TT.NAME, "isinstance", tok), _tok(TT.LPAREN, "(", tok),
                 _tok(TT.NAME, item, tok), _tok(TT.COMMA, ",", tok), *type_tokens,
-                _tok(TT.RPAREN, ")", tok), _tok(TT.RBRACKET, "]", tok),
+                _tok(TT.RPAREN, ")", tok), *predicates,
+                _tok(TT.RBRACKET, "]", tok),
             ])
             i = j + 1
             continue
@@ -1012,6 +1030,27 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
                 raise ParseError(
                     f"line {tok.line}: only plain typed hops are admitted in the seed subset"
                 )
+            if (
+                not edges_only and len(trailing) >= 4
+                and trailing[0].type == TT.LBRACKET
+                and trailing[1].value == "?"
+                and trailing[2].type == TT.COLON
+                and trailing[-1].type == TT.RBRACKET
+            ):
+                # Apply the same node filter used by `items[?:T, field == value]`
+                # after the hop, preserving the adjacency's child order.
+                cur = _osp_call(
+                    "refs0" if flt else "hop0",
+                    [
+                        cur,
+                        [_tok(TT.NUMBER, str(direction), tok)],
+                        [_tok(TT.NAME, etype or "None", tok)],
+                        [_tok(TT.NAME, "False", tok)],
+                    ] + ([_lower_preds(flt, tok)] if flt else []),
+                    tok,
+                )
+                cur = _lower_edge_refs(cur + trailing)
+                continue
             for tt_ in trailing:
                 if tt_.type == TT.OP and tt_.value.startswith("?"):
                     raise ParseError(
@@ -1195,7 +1234,7 @@ def _paren_group_spans_subscript(tokens: list[Token], open_idx: int) -> bool:
         j += 1
     return False
 
-def transform_tokens(tokens: list[Token]) -> list[Token]:
+def transform_tokens(tokens: list[Token], *, allow_cast: bool = True) -> list[Token]:
     """Apply Jac→Python transformations on a token list.
 
     1. super.method → super().method
@@ -1215,6 +1254,41 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
 
     while i < len(tokens):
         tok = tokens[i]
+
+        # An `as` cast is a type assertion, erased on the Python backend.
+        # Consume the same atomic/union type shape as parse_cast_type, leaving
+        # enclosing delimiters and subsequent value operators untouched.
+        if allow_cast and tok.type == TT.NAME and tok.value == "as" and not tok.backtick:
+            i += 1
+            while True:
+                if i >= len(tokens) or tokens[i].type not in (TT.NAME, TT.LPAREN):
+                    raise ParseError(f"line {tok.line}: expected a cast type")
+                if tokens[i].type == TT.NAME:
+                    i += 1
+                while i < len(tokens):
+                    if tokens[i].type == TT.DOT:
+                        i += 1
+                        if i >= len(tokens) or tokens[i].type != TT.NAME:
+                            raise ParseError(f"line {tok.line}: expected a cast type name")
+                        i += 1
+                    elif tokens[i].type in (TT.LPAREN, TT.LBRACKET):
+                        depth = 1
+                        i += 1
+                        while i < len(tokens) and depth:
+                            if tokens[i].type in (TT.LPAREN, TT.LBRACKET):
+                                depth += 1
+                            elif tokens[i].type in (TT.RPAREN, TT.RBRACKET):
+                                depth -= 1
+                            i += 1
+                        if depth:
+                            raise ParseError(f"line {tok.line}: unclosed cast type")
+                    else:
+                        break
+                if i < len(tokens) and tokens[i].type == TT.OP and tokens[i].value == "|":
+                    i += 1
+                    continue
+                break
+            continue
 
         # === lambda NAME: TYPE : body → lambda NAME: body (no parens) ===
         if (
@@ -1403,9 +1477,9 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
     return out
 
 
-def tokens_to_str(tokens: list[Token]) -> str:
+def tokens_to_str(tokens: list[Token], *, allow_cast: bool = True) -> str:
     """Transform and join tokens into a Python expression string."""
-    return _join_tokens(transform_tokens(tokens))
+    return _join_tokens(transform_tokens(tokens, allow_cast=allow_cast))
 
 
 # =============================================================================
@@ -1473,10 +1547,12 @@ class Parser:
         *stop: TT,
         stop_values: set | None = None,
         stop_names: set | None = None,
+        allow_cast: bool = True,
     ) -> str:
         """Collect tokens until a stop token at depth 0, return as Python str."""
         return tokens_to_str(
-            self._collect_tokens_until(*stop, stop_values=stop_values, stop_names=stop_names)
+            self._collect_tokens_until(*stop, stop_values=stop_values, stop_names=stop_names),
+            allow_cast=allow_cast,
         )
 
     def _collect_tokens_until(
@@ -1779,6 +1855,10 @@ class Parser:
         if self._match(TT.LPAREN):
             bases = self._collect_until(TT.RPAREN)
             self._expect(TT.RPAREN)
+        if arch_kind == "edge" and self._match(TT.COLON):
+            # Endpoints are static annotations, erased by the seed compiler
+            # just like field annotations (including type-only imports).
+            self._collect_until(TT.LBRACE)
         self._expect(TT.LBRACE)
         body = self._parse_body()
         self._expect(TT.RBRACE)
@@ -2205,7 +2285,7 @@ class Parser:
         cases: list[tuple[str, list]] = []
         while self._match(TT.NAME, "case"):
             # Collect pattern until : (colon after pattern)
-            pattern = self._collect_until(TT.COLON)
+            pattern = self._collect_until(TT.COLON, allow_cast=False)
             self._expect(TT.COLON)
             # Collect body until next 'case' or closing '}'
             body: list = []
@@ -2281,7 +2361,7 @@ class Parser:
             exc_type = ""
             exc_name = ""
             if not self._at(TT.LBRACE):
-                exc_str = self._collect_until(TT.LBRACE)
+                exc_str = self._collect_until(TT.LBRACE, allow_cast=False)
                 if " as " in exc_str:
                     parts = exc_str.rsplit(" as ", 1)
                     exc_type = parts[0].strip()
@@ -2313,7 +2393,7 @@ class Parser:
         if is_async:
             self._expect(TT.NAME, "async")
         self._expect(TT.NAME, "with")
-        items = self._collect_until(TT.LBRACE)
+        items = self._collect_until(TT.LBRACE, allow_cast=False)
         self._expect(TT.LBRACE)
         body = self._parse_body()
         self._expect(TT.RBRACE)
@@ -2422,7 +2502,7 @@ class CodeGen:
         self._scan_needs(module.body)
         self._line("from __future__ import annotations")
         if self.needs_object_model_import:
-            self._line("from jaclang.runtime.object_model import make_object as _jac_make_object, field")
+            self._line("from jaclang.runtime.object_model import make_object as _jac_make_object, ObjectField")
         if self.needs_enum_import:
             self._line("import enum")
         if self.needs_typing_import:
@@ -2813,34 +2893,34 @@ class CodeGen:
                         )
                 continue
             if var.by_postinit:
-                self._line(f"{var.name}: {var.type_ann} = field(init=False)")
+                self._line(f"{var.name}: {var.type_ann} = ObjectField(init=False)")
             elif var.default:
                 d = var.default.strip()
                 d_norm = d.replace(" ", "")
                 if d == "[]":
                     self._line(
-                        f"{var.name}: {var.type_ann} = field(default_factory=list)"
+                        f"{var.name}: {var.type_ann} = ObjectField(default_factory=list)"
                     )
                 elif d_norm == "{}":
                     self._line(
-                        f"{var.name}: {var.type_ann} = field(default_factory=dict)"
+                        f"{var.name}: {var.type_ann} = ObjectField(default_factory=dict)"
                     )
                 elif d_norm in ("set()", "list()", "dict()", "frozenset()"):
                     self._line(
                         f"{var.name}: {var.type_ann} = "
-                        f"field(default_factory={d_norm[:-2]})"
+                        f"ObjectField(default_factory={d_norm[:-2]})"
                     )
                 elif (
                     d.endswith(")")
                     and not d.startswith("(")
-                    and not d.startswith("field(")
+                    and not d.startswith("ObjectField(")
                     and not d.startswith("ClassVar")
                 ):
                     # A call expression builds a fresh value per instance;
                     # a shared default would alias it across instances.
                     self._line(
                         f"{var.name}: {var.type_ann} = "
-                        f"field(default_factory=lambda: {var.default})"
+                        f"ObjectField(default_factory=lambda: {var.default})"
                     )
                 else:
                     self._line(f"{var.name}: {var.type_ann} = {var.default}")

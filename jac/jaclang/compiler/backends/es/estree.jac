@@ -78,6 +78,12 @@ obj ContinueStatement(Statement) {
         `type: TypingLiteral['ContinueStatement'] = 'ContinueStatement';
 }
 
+obj LabeledStatement(Statement) {
+    has label: Identifier,
+        body: Statement,
+        `type: TypingLiteral['LabeledStatement'] = 'LabeledStatement';
+}
+
 obj IfStatement(Statement) {
     has `test: (Expression | None) = None,
         consequent: (Statement | None) = None,

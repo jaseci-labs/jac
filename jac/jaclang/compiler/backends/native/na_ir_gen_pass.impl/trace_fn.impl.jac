@@ -26,10 +26,7 @@ impl NaIRGenPass._struct_has_ref_fields(arch_name: str) -> bool {
     field_indices = self.struct_field_indices.get(arch_name, {});
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
     for (fname, ftype) in field_types.items() {
-        if (
-            self._elem_kind(ftype) != "raw"
-            or self._opt_ptr_payload_of(ftype) is not None
-        )
+        if self._is_reference_type(ftype)
             and fname not in foreign_fields
             and field_indices.get(fname, -1) >= 0 {
             return True;

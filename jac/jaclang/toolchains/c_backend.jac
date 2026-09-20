@@ -1,3 +1,4 @@
+import from jaclang.jac0core.cache_paths { FileLock }
 import os;
 import shutil;
 import subprocess;
@@ -6,11 +7,12 @@ import from pathlib { Path }
 import from jaclang.toolchains.host { executable, host_platform, run_step }
 import from jaclang.toolchains.store {
     Artifact,
-    InstallLock,
-    cache_root,
+    build_slot,
     extract,
     fetch,
-    file_digest
+    file_digest,
+    publish_build_slot,
+    slot_ready
 }
 
 glob LLVM_MAJOR: int = 22,
@@ -34,12 +36,14 @@ def ensure_c_backend -> Path {
         return path;
     }
     patch = Path(__file__).parent / 'patches' / 'llvm-cbe-runtime-semantics.patch';
-    directory = cache_root()
-        / C_BACKEND.key()
-        / (host_platform() + '-' + file_digest(patch)[:16]);
+    directory = build_slot(
+        C_BACKEND.name,
+        host_platform(),
+        f"{C_BACKEND.version[:16]}-{file_digest(patch)[:16]}"
+    );
     binary = directory / 'bin' / executable('llvm-cbe');
-    with InstallLock(directory.with_suffix('.lock')) {
-        if binary.is_file() {
+    with FileLock(directory.with_suffix('.lock')) {
+        if slot_ready(directory) and binary.is_file() {
             return binary;
         }
         llvm_config = shutil.which(f'llvm-config-{LLVM_MAJOR}')
@@ -63,7 +67,9 @@ def ensure_c_backend -> Path {
         ).strip();
         archive = fetch(C_BACKEND);
         directory.parent.mkdir(parents=True, exist_ok=True);
-        with tempfile.TemporaryDirectory(dir=directory.parent) as temporary {
+        with tempfile.TemporaryDirectory(
+            prefix=f".tmp.{os.getpid()}.", dir=directory.parent
+        ) as temporary {
             staging = Path(temporary);
             extract(archive, staging / 'source');
             source = next((staging / 'source').iterdir());
@@ -102,7 +108,7 @@ def ensure_c_backend -> Path {
                 build / 'tools' / 'llvm-cbe' / executable('llvm-cbe'), ready / 'bin'
             );
             shutil.copy2(source / 'LICENSE', ready / 'LICENSE');
-            ready.replace(directory);
+            publish_build_slot(ready, directory);
         }
     }
     return binary;

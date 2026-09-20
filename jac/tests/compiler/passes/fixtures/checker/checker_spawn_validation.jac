@@ -11,7 +11,7 @@ Diagnostics:
 """
 
 node Place { has name: str; }
-edge Road { has length: int = 0; }
+edge Road : any --> any { has length: int = 0; }
 
 obj NotAWalker { has v: int; }
 

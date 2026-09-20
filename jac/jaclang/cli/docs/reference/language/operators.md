@@ -350,7 +350,7 @@ node Person {
     has name: str;
 }
 
-edge Friend {
+edge Friend: Person --> Person {
     has since: int = 2020;
 }
 
@@ -377,7 +377,7 @@ node Item {
     has value: int = 0;
 }
 
-edge Link {
+edge Link: Item --> Item {
     has weight: int = 1;
 }
 

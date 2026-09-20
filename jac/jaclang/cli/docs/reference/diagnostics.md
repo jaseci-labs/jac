@@ -295,6 +295,10 @@ Emitted by the type checker and type evaluator.
 | `E1097` | Connection right operand must be a node instance |
 | `E1098` | Connection type must be an edge instance |
 | `E1099` | Cannot access attribute "{attr}" for type "{type}"; attribute is missing from {missing} |
+| `E1136` | Connection {side} operand is "{actual}", but edge "{edge_name}" declares its {side} endpoint as "{declared}" |
+| `E1137` | Traversal origin is "{actual}", but edge "{edge_name}" declares its {side} endpoint as "{declared}", so this traversal can never match |
+| `W2081` | Connection {side} operand is "{actual}", which cannot be checked against the {side} endpoint "{declared}" declared by edge "{edge_name}" |
+| `W2082` | Traversal origin is "{actual}", which cannot be checked against the {side} endpoint "{declared}" declared by edge "{edge_name}" |
 
 ### mobUI-Project JSX Host Tags
 
@@ -347,6 +351,10 @@ Emitted by `OwnershipCheckPass` for `own`/`lin`/`imm`/`&`/`&mut` bindings and de
 | `E1317` | Cannot move '{name}' out of the element '{place}' |
 | `E1318` | Cannot call mutating method '{method}' through a shared borrow of '{name}' |
 | `E1319` | Invalid {operation} place: {reason} |
+| `E1320` | Cannot assign '{field}' through a shared borrow of '{name}' |
+| `E1321` | Cannot write '{field}' while the borrow '{name}' reads through it |
+| `E1322` | Call to '{callee}' may write '{field}' while the borrow '{name}' reads through it |
+| `E1323` | Borrow '{name}' must start at a parameter, `self`, an `own` value or another borrow |
 
 ### Zero-RC Enforcement Errors
 
@@ -500,6 +508,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 | `E2024` | 'has' is not allowed inside a JSX slot body. A slot body is a statement template that re-runs on every render; declaring reactive state there would compile to a conditional 'useState' and violate React's rules of hooks. Declare 'has'-fields at the component scope (the enclosing 'def -> JsxElement' body). |
 | `E2025` | A 'has'-field of type 'Ref[...]' must be constructed with an initializer: write '= Ref()' for a DOM ref, or '= Ref(initial)' for a value ref. It lowers to React's 'useRef', so a bare declaration has no ref object to hold -- '.current' would never be defined. This mirrors how every other 'has'-field carries a value. |
 | `E2027` | Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}' |
+| `E2086` | Edge '{name}' declares no endpoints, so every traversal through it widens to 'any' |
 | `E2084` | An expression without a trailing ';' is only treated as an implicit return when it is the final statement of a function, ability, or lambda body. |
 | `W2019` | 'while' loop in a JSX slot renders JSX without a 'key' attribute -- add 'key=' so siblings keep their identity across re-renders. |
 | `W2020` | 'awaiting' is not yet implemented on the '{target}' target -- the 'awaiting' clause body will be ignored at runtime. Only the 'cl' (react/preact) target currently lowers 'awaiting' to a Suspense fallback. |
@@ -622,7 +631,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 
 `E5082` fires when a plain client import references a server symbol that does not bridge: server `def:pub` endpoints bridge automatically over RPC, so the fix is to make the symbol a `def:pub` endpoint, pin it (or its module) `"client"` via `[placement.pins]`, or move it into client code.
 
-`E5084` is the bare-import sibling. A bare name resolves across the module universe -- local Jac module first, then Python, then the client npm world (jac.toml `[dependencies.npm]`, the active framework's own packages, and whatever is installed under `.jac/client/node_modules`), so `import from react { useRef }` works unquoted. When the name resolves to none of those client-reachable worlds, placement pins the import server-side, the bundle never binds the symbol, and the page would fail at runtime with a ReferenceError -- so client use fails the build instead. Install or declare the package in `[dependencies.npm]` (or quote the module to pin the npm form), or keep the use server-side behind a `def:pub` endpoint. Annotation-only uses do not fire it, since ES output erases type annotations; imports whose uses are all server-side prune silently as before.
+`E5084` is the bare-import sibling. A bare name resolves across the module universe in a fixed order -- a local Jac module first, then a name declared in jac.toml `[dependencies.npm]` or owned by the active framework (`react`, `react-dom`, ...), then a Python module the importing file can import, and only then whatever is merely installed under `.jac/client/node_modules` -- so `import from react { useRef }` works unquoted, while a transitive npm package that shares a name with a Python module (`dotenv`, `argparse`) never captures that import. When the name resolves to none of the client-reachable worlds, placement pins the import server-side, the bundle never binds the symbol, and the page would fail at runtime with a ReferenceError -- so client use fails the build instead. Install or declare the package in `[dependencies.npm]` (or quote the module to pin the npm form), or keep the use server-side behind a `def:pub` endpoint. Annotation-only uses do not fire it, since ES output erases type annotations; imports whose uses are all server-side prune silently as before.
 
 `E5086` covers the same failure for a *module's own* declarations rather than its imports. The bundle carries what is placed in the client codespace, plus `def:pub` endpoints, which are bound to a generated client-side forwarder that calls them over RPC. Anything else named by client code -- a function pinned `"server"` via `[placement.pins]`, a glob kept server-side -- would emit as a bare identifier that resolves to nothing. That is a guaranteed `ReferenceError` at module load, so it fails the build at the seam that produces the artifact. Give the element client presence (drop the pin, or make it `def:pub`), or keep the use out of client code.
 

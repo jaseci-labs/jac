@@ -31,9 +31,9 @@ test "sibling native errno import retains its platform filename" {
 test "native package imports use the same provider as semantic imports" {
     import from tempfile { TemporaryDirectory }
     import from jaclang.project.modresolver { resolve_module }
-    import from jaclang.compiler.native_scope {
-        activate_scope_lowering,
-        deactivate_scope_lowering
+    import from jaclang.compiler.frontend.codeinfo {
+        set_native_unit_compile,
+        reset_native_unit_compile
     }
     with TemporaryDirectory() as directory {
         compiler = os.path.join(directory, "jaclang", "compiler");
@@ -48,7 +48,7 @@ test "native package imports use the same provider as semantic imports" {
         with open(fixture, "w") as source {
             source.write("");
         }
-        activate_scope_lowering(checkout);
+        previous = set_native_unit_compile(True);
         try {
             for importer in [fixture, os.path.join(compiler, "entry.jac")] {
                 (expected, language) = resolve_module(
@@ -64,7 +64,56 @@ test "native package imports use the same provider as semantic imports" {
                     == (os.path.dirname(importer) == compiler);
             }
         } finally {
-            deactivate_scope_lowering();
+            reset_native_unit_compile(previous);
+        }
+    }
+}
+
+test "explicit native relative imports retain their level and target variant" {
+    import from tempfile { TemporaryDirectory }
+    import from pathlib { Path }
+    with TemporaryDirectory() as directory {
+        workspace = Path(directory);
+        child = workspace / "formats" / "q1";
+        child.mkdir(parents=True);
+        # Same-named providers must not steal a parent-relative import.
+        for file in [
+            workspace / "records.jac",
+            child.parent / "records.jac",
+            child / "records.jac",
+            child.parent / "records.darwin.jac"
+        ] {
+            file.write_text("obj Record { has value: int = 42; }\n");
+        }
+        package = child.parent / "shared";
+        package.mkdir();
+        (package / "__init__.jac").write_text("obj Shared {}\n");
+        prior = set_native_target_override("aarch64-apple-darwin");
+        try {
+            for (name, expected) in [
+                (".records", child / "records.jac"),
+                ("..records", child.parent / "records.darwin.jac"),
+                ("...records", workspace / "records.jac"),
+                ("..shared", package / "__init__.jac"),
+                ("...formats.shared", package / "__init__.jac")
+            ] {
+                (source, resolved) = resolve_native_module(name, str(child));
+                assert source is not None and resolved is not None;
+                assert os.path.realpath(resolved) == str(expected.resolve());
+                assert os.path.realpath(child / source) == str(expected.resolve());
+            }
+            set_native_target_override("x86_64-unknown-linux-gnu");
+            (_, resolved) = resolve_native_module("..records", str(child));
+            assert resolved == str(child.parent / "records.jac");
+            # Explicit relative names must not bind a bundled native module.
+            assert resolve_native_module("..math", str(child)) == (None, None);
+            assert resolve_native_module("..records", str(child), allow_inferred=False)
+                == (None, None);
+            # A dotted suffix must not trigger an ancestor search either.
+            assert resolve_native_module(".formats.records", str(child))
+                == (None, None);
+        } finally {
+            set_native_target_override(prior);
         }
     }
 }

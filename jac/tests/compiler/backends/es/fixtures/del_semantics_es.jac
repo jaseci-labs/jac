@@ -9,7 +9,7 @@ node N {
     has t: int;
 }
 
-edge E {}
+edge E : N --> N {}
 
 def del_forms -> dict[any, any] {
     d = {"k": 1, "j": 2};

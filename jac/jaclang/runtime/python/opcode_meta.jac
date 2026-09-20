@@ -354,6 +354,12 @@ glob CO_OPTIMIZED: int = 1,
      CO_HAS_DOCSTRING: int = 67108864,
      CO_METHOD: int = 134217728;
 
+# co_localspluskinds bits (Include/internal/pycore_code.h).
+glob CO_FAST_HIDDEN: int = 16,
+     CO_FAST_LOCAL: int = 32,
+     CO_FAST_CELL: int = 64,
+     CO_FAST_FREE: int = 128;
+
 # CPython locals-plus kind bit flags (marshal reader / symtable contract).
 glob LP_LOCAL: int = 32,
      LP_CELL: int = 64,

@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
     Module,
     TreeWalker,
@@ -40,7 +41,6 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.context { CompileContext }
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
     SymbolType,
@@ -67,15 +67,9 @@ walker BoundaryAnalysisPass(TreeWalker) {
         prog: JacProgram;
 
     static has HOST_PASS: bool = True;
-    has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = field(
-        default_factory=`dict
-    ),
-        _imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = field(
-            default_factory=`dict
-        ),
-        _imported_native_modules: dict[(str, tuple[(str, InteropContext)])] = field(
-            default_factory=`dict
-        );
+    has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = {},
+        _imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = {},
+        _imported_native_modules: dict[(str, tuple[(str, InteropContext)])] = {};
 
     can prepare with entry;
     def _resolved_native_decl(name_node: (UniNode | None)) -> (Ability | None);

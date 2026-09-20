@@ -10,6 +10,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
     TypeFlags,
+    PropertyCallbacks,
     PropertyDefinition,
     jacpy_binding_allocate,
     jacpy_binding_typeof
@@ -748,7 +749,11 @@ glob:priv itemgetter_type = TypeDefinition(
              traverse=itemgetter_traverse,
              dealloc=itemgetter_deallocate
          ),
-         [PropertyDefinition("__text_signature__", accessor_signature)]
+         [
+             PropertyDefinition(
+                 "__text_signature__", PropertyCallbacks(read=accessor_signature)
+             )
+         ]
      );
 
 def:priv attrgetter_create(type: u64, args: u64, kwargs: u64) -> u64 {
@@ -801,7 +806,11 @@ glob:priv attrgetter_type = TypeDefinition(
              traverse=attrgetter_traverse,
              dealloc=attrgetter_deallocate
          ),
-         [PropertyDefinition("__text_signature__", accessor_signature)]
+         [
+             PropertyDefinition(
+                 "__text_signature__", PropertyCallbacks(read=accessor_signature)
+             )
+         ]
      );
 
 def:priv methodcaller_create(type: u64, args: u64, kwargs: u64) -> u64 {
@@ -854,7 +863,11 @@ glob:priv methodcaller_type = TypeDefinition(
              traverse=methodcaller_traverse,
              dealloc=methodcaller_deallocate
          ),
-         [PropertyDefinition("__text_signature__", accessor_signature)]
+         [
+             PropertyDefinition(
+                 "__text_signature__", PropertyCallbacks(read=accessor_signature)
+             )
+         ]
      );
 
 def:priv execute(module: u64) -> i32 {

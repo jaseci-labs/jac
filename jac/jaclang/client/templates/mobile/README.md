@@ -12,12 +12,18 @@ jac install                                     # once, and again after editing 
 jac run --dev --platform web                    # web preview: View -> <div>, Text -> <span>, hot reload
 jac run --show                                  # what a bare `jac run` would do for this app
 
-jac setup                                       # once: Expo scaffold in .jac/mobile-rn/
 jac run --dev                                   # native: Metro dev server (press a / i, or scan with Expo Go)
 jac build --platform android                    # APK (gradle, or EAS via [client.react_native])
 jac build --platform ios                        # .app / .ipa (xcodebuild on macOS, or EAS)
 jac build --platform web                        # the same app as a browser bundle
+jac setup                                       # optional: provision the Expo scaffold ahead of time
 ```
+
+The first native `jac run` / `jac build` scaffolds the Expo project in
+`.jac/mobile-rn/` and installs its packages, narrating the one-time setup;
+later runs only re-sync the packages when the manifest changed. `jac setup`
+does the same ahead of time (CI images, offline prep; `JAC_OFFLINE=1` runs
+cannot provision and point back at it).
 
 A bare `jac run` on a `mobile` app builds it for the app's platform and installs
 it on a device or simulator; the `--dev` forms above are the development loops.
@@ -108,7 +114,8 @@ jac install --npm some-package
 
 Packages the web bundle needs go under `[dependencies.npm]`; packages only the
 native (Expo) project needs go under `[dependencies.npm.native]`, which
-`jac setup` merges into `.jac/mobile-rn/package.json`.
+the scaffold step (first native run, or `jac setup`) merges into
+`.jac/mobile-rn/package.json`.
 
 ## Next steps
 

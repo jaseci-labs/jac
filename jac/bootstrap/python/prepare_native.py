@@ -42,7 +42,7 @@ entry = root / "jaclang/compiler/backends/py/jacpython/native_api.jac"
 options = CompileOptions(
     aot_mode=True, default_codespace="native", skip_native_engine=True,
     native_required=True,
-    memory_profile="managed", no_ir_cache=False, opt_level=2, native_target=triple,
+    memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
 )
 plan = build_link_plan(program, [str(entry)], options)
 if program.errors_had:

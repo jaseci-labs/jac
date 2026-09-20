@@ -7,6 +7,77 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### An `edge` declaration must name its endpoints ([#9315](https://github.com/jaseci-labs/jac/pull/9315), unreleased)
+
+`edge Foo {}` is now `E2086`. The endpoint clause is what lets a traversal through
+an edge infer a node type instead of `any`, so leaving it off was the one place
+Jac let an annotation be implied by silence -- `has v;` is a parse error and an
+untyped parameter is `E0052`.
+
+Name the node types the edge connects, or say the widening out loud:
+
+```jac
+edge Follows: Profile --> Profile {}   # the node types it links
+edge Tagged: any --> any {}            # keeps the old gradual behaviour exactly
+edge Linked: Node --> Node {}          # some node, without naming which
+```
+
+`any --> any` is the mechanical rewrite: an `any` endpoint narrows to nothing, so
+a traversal through it still yields `list[<any>]`. `Node --> Node` is stricter --
+it narrows the traversal to `Node`, so field reads off the result become `E1030`.
+An edge that inherits endpoints from a base edge needs no clause of its own.
+
+The declaration is now enforced as well as read. Connecting node types the edge
+does not declare is `E1136`, and traversing an edge from a node it cannot start
+from is `E1137`; both were previously accepted, and because archetype field
+access resolves by slot index the result was a wrong-field read rather than an
+error. An operand that is merely more general than the declaration -- a `Node`
+where `Profile` is declared -- may still be the declared type at runtime, so it
+warns (`W2081`, `W2082`) instead of failing.
+
+Endpoints also accept a union now, like every other type position:
+
+```jac
+edge Multi: Base --> A | B {}          # narrows to list[A | B]
+```
+
+---
+
+### `jac purge` is removed; `jac cache` owns the machine-wide cache (#9246)
+
+`jac purge` is gone. It removed exactly `~/.cache/jac/jir` plus two
+directories that no longer existed, and never reached the fused-binary
+runtimes, app images, toolchains, model weights or release binaries that made
+up most of the cache. Typing it now prints the replacement and exits:
+
+| Old | New |
+|---|---|
+| `jac purge` | `jac cache purge` (every managed bucket) or `jac cache purge --bucket jir-modules` (just the compiled modules) |
+| `rm -rf ~/.cache/jac` by hand | `jac cache status` to see what is there, `jac cache gc` to reclaim what has expired, `jac cache purge` to clear it |
+
+The cache root rule is now one rule everywhere: `JAC_CACHE_HOME` (which
+until now only the embedded Postgres cluster read), else `XDG_CACHE_HOME/jac`
+(now honored on macOS and Windows too when set), else the platform default.
+Every bucket has a retention policy, `JAC_CACHE_TTL_DAYS` overrides all of
+them at once. Disposable managed buckets carry a standard `CACHEDIR.TAG`;
+the shared root stays untagged because `pg/main` holds persistent state.
+
+A fused `jac` binary's extracted runtime is keyed by the payload's content
+hash alone, no longer by payload plus executable path, so one payload
+materializes once however many locations it runs from. Runtimes unused for
+30 days are reclaimed at the next launch; the first run after upgrading
+extracts once more into the new key, and the old `<hash>-<pathhash>` directories
+age out on the same schedule (or go at once with `jac cache purge --bucket rt`).
+
+Two toolchain trees moved into managed buckets so `jac cache` can reclaim
+them: the LLVM C backend build now lives under `toolchains/build/llvm-cbe/`
+and the CocoaPods home under `toolchains/installed/cocoapods/`. The old
+`toolchains/llvm-cbe/` and `toolchains/cocoapods/` directories are retired;
+`jac cache gc` removes them, and the next `jac build` that needs the tool
+rebuilds or reinstalls it once.
+
+---
+
 ### Apps use entry modules and compilation contexts (#9088)
 
 Every explicit `[apps.<name>]` table now requires `kind` and `entry-point`.

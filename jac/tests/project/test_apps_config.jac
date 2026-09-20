@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.project.apps { AppConfig, implicit_app, parse_apps }
 import from jaclang.project.config { JacConfig }
+import from jaclang.project.plugin_config { PluginConfigBase }
 import from jaclang.project.kinds {
     KIND_SPECS,
     MOBILE_PLATFORMS,
@@ -734,5 +735,89 @@ test "entry resolution shares local import rules without executing packages" {
             == str(root_path / 'core' / '__init__.py');
         assert package_app.entry_path(directory)
             == resolve_module('core', str(root_path / 'main.jac'))[0];
+    }
+}
+
+
+# ===========================================================================
+# Plugin config layers
+# ===========================================================================
+glob LAYERED_TOML = (
+         '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.mobile]\nkind = "mobile"\nentry-point = "mobile.main"\n\n[byllm]\nmodel = "base-model"\ntemperature = 0.1\n\n[apps.web.byllm]\nmodel = "web-model"\n'
+     ),
+     LAYERED_STRICT_ENV = "JAC_TEST_PLUGIN_CONFIG_STRICT";
+
+
+"""A plugin that declares a schema for its [byllm] table; the real byllm loader declares none."""
+class LayeredPluginConfig(PluginConfigBase) {
+    override def get_plugin_name(self: LayeredPluginConfig) -> str {
+        return "byllm";
+    }
+
+    override def get_default_config(self: LayeredPluginConfig) -> dict[str, any] {
+        return {"model": "default-model", "temperature": 0.5};
+    }
+
+    override def get_config_schema(self: LayeredPluginConfig) -> dict[str, any] {
+        return {
+            "section": "byllm",
+            "options": {
+                "model": {"type": "string", "default": "default-model"},
+                "temperature": {"type": "float", "default": 0.5}
+            }
+        };
+    }
+
+    override def get_config_strict_env(self: LayeredPluginConfig) -> str {
+        return LAYERED_STRICT_ENV;
+    }
+}
+
+
+"""Load the plugin config as the process serving root_path/web/main.jac does,
+with strict validation on; returns the strict error ('' when it loaded) and the config."""
+def _strict_plugin_load(root_path: Path, toml: str) -> tuple[str, dict[str, any]] {
+    (root_path / "jac.toml").write_text(toml);
+    os.environ[LAYERED_STRICT_ENV] = "1";
+    try {
+        cfg = LayeredPluginConfig(
+            project_dir=root_path, entry_path=str(root_path / "web" / "main.jac")
+        );
+        return ("", cfg.load());
+    } except ValueError as e {
+        return (str(e), {});
+    } finally {
+        os.environ.pop(LAYERED_STRICT_ENV, None);
+    }
+}
+
+
+test "PluginConfigBase validates the project table and the app overlay separately" {
+    config_mod._config = None;
+    with TemporaryDirectory() as td {
+        root_path = write_workspace(Path(td) / "acme", LAYERED_TOML);
+        (raised, loaded) = _strict_plugin_load(root_path, LAYERED_TOML);
+        assert raised == "" , raised;
+        assert loaded == {"model": "web-model", "temperature": 0.1} , loaded;
+        (raised, _) = _strict_plugin_load(
+            root_path,
+            LAYERED_TOML.replace('[apps.web.byllm]\nmodel', '[apps.web.byllm]\nmodle')
+        );
+        assert "[apps.web.byllm] has unknown key 'modle'" in raised , raised;
+        assert "did you mean 'model'" in raised , raised;
+        assert "[byllm]" not in raised , raised;
+        (raised, _) = _strict_plugin_load(
+            root_path, LAYERED_TOML.replace("temperature = 0.1", "temprature = 0.1")
+        );
+        assert "[byllm] has unknown key 'temprature'" in raised , raised;
+        assert "did you mean 'temperature'" in raised , raised;
+        assert "web-model" not in raised and "[apps.web.byllm]" not in raised , raised;
+        (raised, loaded) = _strict_plugin_load(
+            root_path, LAYERED_TOML.replace("[apps.web.byllm]", "[apps.mobile.byllm]")
+        );
+        assert raised == "" , raised;
+        assert loaded == {"model": "base-model", "temperature": 0.1} , (
+            "another app's overlay never reaches this app's config"
+        );
     }
 }

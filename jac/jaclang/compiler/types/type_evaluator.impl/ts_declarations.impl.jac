@@ -386,7 +386,12 @@ impl TypeEvaluator._ts_synth_class_types(
                     );
                 }
             }
-            self._install_synth_member(scope, synth_src, mname, member_type);
+            immutability = ImmutabilityKind.READONLY
+                if all(m.readonly and not m.is_method for m in group)
+                else ImmutabilityKind.NONE;
+            self._install_synth_member(
+                scope, synth_src, mname, member_type, immutability
+            );
         }
         if decl.call_sig is not None {
             self._install_synth_member(
@@ -421,7 +426,11 @@ impl TypeEvaluator._ts_synth_class_types(
 }
 
 impl TypeEvaluator._install_synth_member(
-    scope: UniScopeNode, synth_src: Source, mname: str, member_type: TypeBase
+    scope: UniScopeNode,
+    synth_src: Source,
+    mname: str,
+    member_type: TypeBase,
+    immutability: ImmutabilityKind = ImmutabilityKind.NONE
 ) -> None {
     field_node = Name(
         orig_src=synth_src,
@@ -436,6 +445,7 @@ impl TypeEvaluator._install_synth_member(
     );
     field_node.type = member_type;
     _field_sym = Symbol(defn=field_node, access=SymbolAccess.PUBLIC, parent_tab=scope);
+    _field_sym.immutability = immutability;
     scope.adopt_primary(_field_sym, mname);
 }
 

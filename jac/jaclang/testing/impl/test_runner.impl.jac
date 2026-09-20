@@ -1038,6 +1038,8 @@ impl run_tests(
     }
     selector = _build_selector(test_name, filter);
     workers = resolve_jobs(jobs);
+    import from jaclang.server.session { own_child_databases }
+    own_child_databases();
     started = time.perf_counter();
     raw_jobs = jobs
         if (jobs not in (None, ""))

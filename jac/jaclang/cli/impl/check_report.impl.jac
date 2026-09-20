@@ -10,6 +10,17 @@ def print_guide_hint(code: (str | None), category: (str | None)) -> None {
     }
 }
 
+def print_diag(d: any, is_error: bool) {
+    import from jaclang.cli.console { console }
+    emit = console.error if is_error else console.warning;
+    if isinstance(d, dict) {
+        emit(str(d.get('pretty') or d.get('text') or ''));
+        print_guide_hint(d.get('code'), d.get('category'));
+    } else {
+        emit(str(d));
+    }
+}
+
 impl separator(text: str, char: str = '=', total_width: int = 80) -> str {
     text_part = f" {text} ";
     remaining = total_width - len(text_part);
@@ -24,30 +35,28 @@ impl print_file_progress(file_path: str, success: bool, idx: int, total: int) ->
     console.print(f"{file_path} {status} [{percentage}%]");
 }
 
-impl print_failures(
-    failed_results: list[dict[str, any]], nowarn: bool = False
+impl print_section(
+    title: str, results: list[dict[str, any]], nowarn: bool = False
 ) -> None {
     import from jaclang.cli.console { console }
+    visible = [
+        r
+        for r in results
+        if r.get('errors') or (not nowarn and r.get('warnings'))
+    ];
+    if not visible {
+        return;
+    }
     console.print("");
-    console.print(separator("FAILURES"));
-    for r in failed_results {
+    console.print(separator(title));
+    for r in visible {
         console.print(separator(r['path'], char='_'));
-        for e in r['errors'] {
-            if isinstance(e, dict) {
-                console.error(str(e.get('pretty') or e.get('text') or ''));
-                print_guide_hint(e.get('code'), e.get('category'));
-            } else {
-                console.error(str(e));
-            }
+        for e in r.get('errors', []) {
+            print_diag(e, is_error=True);
         }
-        if not nowarn and r['warnings'] {
-            for w in r['warnings'] {
-                if isinstance(w, dict) {
-                    console.warning(str(w.get('pretty') or w.get('text') or ''));
-                    print_guide_hint(w.get('code'), w.get('category'));
-                } else {
-                    console.warning(str(w));
-                }
+        if not nowarn {
+            for w in r.get('warnings', []) {
+                print_diag(w, is_error=False);
             }
         }
         console.print("");

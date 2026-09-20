@@ -9,8 +9,19 @@ import from c {
         dst: bytes, src: int, n: int
     ) -> int;  def memmove(dst: int, src: bytes, n: int) -> int;
 }
+import from c { def write(fd: i32, buf: bytes, n: int) -> int;  }
 import from _dirent_native { dirent_name }
-import from _fd_native { open_readonly }
+import from _fd_native { open_readonly, open_writetrunc }
+
+def:pub write_file(path: str, data: bytes) -> bool {
+    fd = open_writetrunc(path);
+    if fd < 0 {
+        return False;
+    }
+    wrote = write(fd, data, len(data));
+    close(fd);
+    return wrote == len(data);
+}
 
 def:pub read_at(path: str, off: int, n: int) -> bytes {
     fd = open_readonly(path);

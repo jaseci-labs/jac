@@ -147,10 +147,20 @@ impl TypeCheckPass.exit_filter_compr with FilterCompr exit {
     self.evaluator.get_type_of_expression(here);
 }
 
+def _lambda_value_body(nd: LambdaExpr) -> bool {
+    if isinstance(nd.body, Expr) or nd.tail_return_expr() is not None {
+        return True;
+    }
+    return isinstance(nd.body, list)
+        and len(nd.body) == 1
+        and isinstance(nd.body[0], ReturnStmt)
+        and nd.body[0].expr is not None;
+}
+
 def _lambda_needs_context(nd: LambdaExpr) -> bool {
     return nd.signature is not None
         and any(param.type_tag is None for param in nd.signature.get_parameters())
-        and (isinstance(nd.body, Expr) or nd.tail_return_expr() is not None);
+        and _lambda_value_body(nd);
 }
 
 impl TypeCheckPass.enter_lambda_expr with LambdaExpr entry {
@@ -195,7 +205,6 @@ impl TypeCheckPass.exit_gen_compr with GenCompr exit {
 
 impl TypeCheckPass.exit_func_call with FuncCall exit {
     import from jaclang.compiler.symbol_utils {
-        CallKind,
         classify_call,
         ability_of_symbol,
         resolve_expr_symbol
@@ -214,10 +223,6 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
     here.chunks_recv_type = _chunks_receiver_type(here);
 
     here.callee_decl = ability_of_symbol(resolve_expr_symbol(here.target));
-
-    if here.call_kind == CallKind.INTRINSIC.value {
-        self._check_intrinsic_call(here);
-    }
 
     if (
         here.callee_decl is not None
@@ -260,61 +265,6 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
                 }
             }
         }
-    }
-}
-
-impl TypeCheckPass._check_intrinsic_call(nd: FuncCall) -> None {
-    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
-
-    intrinsics = intrinsic_registry_if_ready();
-    name = nd.target.sym_name if isinstance(nd.target, Name) else None;
-    if intrinsics is None or name is None {
-        return;
-    }
-    import from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
-
-    if not isinstance(intrinsics, IntrinsicRegistry) {
-        return;
-    }
-    intr = intrinsics.get(name);
-    if intr is None {
-        return;
-    }
-    positional: list[Expr] = [];
-    has_kw = False;
-    for p in (nd.params or []) {
-        if isinstance(p, KWPair) {
-            has_kw = True;
-        } else {
-            positional.append(p);
-        }
-    }
-    if has_kw {
-        self.ctx.emit(
-            E5095,
-            node_override=nd,
-            name=intr.name,
-            reason="keyword arguments are not accepted"
-        );
-    } elif len(positional) != intr.arity() {
-        self.ctx.emit(
-            E5095,
-            node_override=nd,
-            name=intr.name,
-            reason=f"expected {intr.arity()} argument(s), got {len(positional)}"
-        );
-    }
-    if intr.result_spec != "none" {
-        if self.evaluator.na_builtins_module is not None {
-            result_cls = self.evaluator._get_type_from_module(
-                self.evaluator.na_builtins_module, intr.result_spec
-            );
-            if not isinstance(result_cls, UnknownType) {
-                nd.type = self.evaluator._convert_to_instance(result_cls);
-            }
-        }
-    } else {
-        nd.type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
     }
 }
 
@@ -411,6 +361,9 @@ impl TypeCheckPass.exit_binary_expr with BinaryExpr exit {
         return;
     }
     self.evaluator.get_type_of_expression(here);
+    if isinstance(here.op, Token) and here.op.name == Tok.WALRUS_EQ {
+        self._check_immutable_write(here.left);
+    }
 }
 
 impl TypeCheckPass.exit_atom_trailer with AtomTrailer exit {
@@ -447,6 +400,118 @@ impl TypeCheckPass.exit_atom_trailer with AtomTrailer exit {
     }
 }
 
+impl TypeCheckPass._write_leaves(target: (Expr | None)) -> list[Expr] {
+    if isinstance(target, (TupleVal, ListVal)) {
+        leaves: list[Expr] = [];
+        for v in target.values {
+            if isinstance(v, Expr) {
+                leaves.extend(self._write_leaves(v));
+            }
+        }
+        return leaves;
+    }
+    if isinstance(target, UnaryExpr) and target.op.name == Tok.STAR_MUL {
+        return self._write_leaves(target.operand);
+    }
+    return [target] if target is not None else [];
+}
+
+impl TypeCheckPass._check_immutable_write(
+    target: (Expr | None), rebind_scope: (UniNode | None) = None
+) -> None {
+    if target is not None {
+        self._deferred_writes.append((target, rebind_scope));
+    }
+}
+
+impl TypeCheckPass._flush_immutable_writes -> None {
+    pending = self._deferred_writes;
+    self._deferred_writes = [];
+    for (target, rebind_scope) in pending {
+        self._judge_immutable_write(target, rebind_scope);
+    }
+}
+
+impl TypeCheckPass._judge_immutable_write(
+    target: (Expr | None), rebind_scope: (UniNode | None) = None
+) -> None {
+    for leaf in self._write_leaves(target) {
+        if isinstance(leaf, AtomTrailer)
+            and leaf.is_attr
+            and isinstance(leaf.right, Name) {
+            self.evaluator.get_type_of_expression(leaf);
+            name = leaf.right;
+            sym = name.sym;
+        } elif isinstance(leaf, Name) {
+            name = leaf;
+            sym = self._rebound_enclosing_symbol(rebind_scope, leaf)
+                if rebind_scope is not None
+                else leaf.sym;
+        } else {
+            continue;
+        }
+        if sym is None or sym.decl is name {
+            continue;
+        }
+        decl_sym = self.evaluator.resolve_imported_symbols(sym);
+        self.evaluator.get_type_of_symbol(decl_sym);
+        if decl_sym.immutability == ImmutabilityKind.NONE
+            or self._is_initializer_write(leaf, decl_sym) {
+            continue;
+        }
+        kind = "read-only"
+            if decl_sym.immutability == ImmutabilityKind.READONLY
+            else "Final";
+        self.ctx.emit(
+            E1135,
+            node_override=leaf,
+            name=name.value,
+            kind=kind,
+            related=[(f"'{name.value}' declared {kind} here", decl_sym.decl)]
+        );
+    }
+}
+
+impl TypeCheckPass._rebound_enclosing_symbol(
+    scope: UniNode, leaf: Name
+) -> (Symbol | None) {
+    py_scope = find_python_scope_node_of(scope);
+    return py_scope.names_in_scope.get(leaf.value) if py_scope is not None else None;
+}
+
+impl TypeCheckPass._is_initializer_write(target: Expr, decl_sym: Symbol) -> bool {
+    field = decl_sym.decl.name_of;
+    if not (
+        isinstance(field, HasVar)
+        and field.value is None
+        and isinstance(target, AtomTrailer)
+        and isinstance(target.target, Name)
+    ) {
+        return False;
+    }
+    method = self.evaluator._get_enclosing_function(target);
+    return method is not None
+        and method.is_method
+        and not method.is_static
+        and method.sym_name in ("init", "__init__", "postinit", "__post_init__")
+        and method.method_owner is field.find_parent_of_type(Archetype)
+        and self._is_self_ref(target.target, method);
+}
+
+impl TypeCheckPass._is_self_ref(base: Name, method: Ability) -> bool {
+    if base.value == "self" {
+        return True;
+    }
+    sig = method.signature;
+    params = sig.params if isinstance(sig, FuncSignature) else None;
+    return (
+        params is not None
+        and len(params) > 0
+        and base.sym is not None
+        and base.sym is params[0].name.sym
+    );
+}
+
 impl TypeCheckPass.exit_assignment with Assignment exit {
     if here.is_enum_stmt {
         return;
@@ -459,6 +524,9 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
             f"initializer of comptime binding '{label}'",
             self.evaluator.ct_demand(here.value)
         );
+    }
+    for write_target in here.target {
+        self._check_immutable_write(write_target);
     }
     if ((len(here.target) == 1) and (here.value is not None)) {
         target = here.target[0];
@@ -1276,7 +1344,9 @@ impl TypeCheckPass.exit_type_alias with TypeAlias exit {
     if not isinstance(resolved, ClassType)
         or not JAC_TYPE_REGISTRY.is_primitive(resolved.shared.class_name) {
         self.ctx.emit(E1107, node_override=here.value, base=str(resolved));
+        return;
     }
+    here.distinct_base = resolved.shared.class_name;
 }
 
 impl TypeCheckPass.exit_archetype with Archetype exit {
@@ -1310,11 +1380,9 @@ impl TypeCheckPass.exit_archetype with Archetype exit {
 impl TypeCheckPass.exit_enum with Enum exit {
     cls_type = self.evaluator.get_type_of_enum(here);
 
-    for child in here.kid {
-        if isinstance(child, Assignment) {
-            for target in child.target {
-                self.evaluator.get_type_of_expression(target);
-            }
+    for child in [here->:Kid:->[?:Assignment]] {
+        for target in child.target {
+            self.evaluator.get_type_of_expression(target);
         }
     }
     if (
@@ -1397,6 +1465,7 @@ impl TypeCheckPass._install_client_state_setters -> None {
 
 impl TypeCheckPass.postinit -> None {
     self.evaluator = self.prog.get_type_evaluator();
+    self._deferred_writes = [];
 }
 
 impl TypeCheckPass.initialize with entry {
@@ -1420,6 +1489,7 @@ impl TypeCheckPass.prepare with entry {
 }
 
 impl TypeCheckPass.finish with exit {
+    self._flush_immutable_writes();
     if self.ctx.nested_depth {
         return;
     }
@@ -1451,8 +1521,9 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
 
 impl TypeCheckPass.exit_has_var with HasVar exit {
     import from jaclang.compiler.field_semantics { field_initialization }
-    if (here.defer and here.kid and isinstance(here.kid[-1], Name)) {
-        postinit_nd: Name = here.kid[-1];
+    kids = [here->:Kid:->];
+    postinit_nd = kids[-1] if kids else None;
+    if here.defer and isinstance(postinit_nd, Name) {
         if postinit_nd.sym is None {
             arch = here.parent.parent if isinstance(here.parent, ArchHas) else None;
             if isinstance(arch, Archetype) {
@@ -1499,9 +1570,23 @@ impl TypeCheckPass.exit_has_var with HasVar exit {
             );
             if is_factory {
                 if isinstance(right_type, FunctionType) {
+                    self.evaluator.match_args_to_params(None, value_expr, right_type);
                     right_type = right_type.return_type or UnknownType();
                 } elif isinstance(right_type, ClassType) {
-                    right_type = self.evaluator._convert_to_instance(right_type);
+                    call = FuncCall(
+                        target=value_expr,
+                        params=None,
+                        genai_call=None,
+                        kid=[value_expr]
+                    );
+                    call.set_parent(here);
+                    try {
+                        right_type = self.evaluator._validate_call_type(
+                            call, right_type
+                        );
+                    } finally {
+                        del [edge call-->];
+                    }
                 }
             }
             verdict = self.evaluator.assign_expr(
@@ -1592,6 +1677,7 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         self._eval_unpacking_names(here.target);
         self.evaluator.get_type_of_expression(here.target);
     }
+    self._check_immutable_write(here.target, rebind_scope=here);
 
     collection_type = self.evaluator.get_type_of_expression(here.collection);
 
@@ -1804,6 +1890,9 @@ impl TypeCheckPass._check_comptime_only_use(nd: Name) -> None {
     if not is_ct_import and not is_ct_def {
         return;
     }
+    if in_type_position(nd, include_subscripts=False) {
+        return;
+    }
     if self._in_comptime_context(nd) or self.evaluator.ct_quiet {
         return;
     }
@@ -1841,6 +1930,7 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
     exit_method = "__aexit__" if here.is_async else "__exit__";
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
+        self._check_immutable_write(ctx_item.alias, rebind_scope=here);
         expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
         if not isinstance(expr_type, UnknownType) and not expr_type.is_any_instance() {
             enter_result = self.evaluator.get_type_of_magic_method_call(
@@ -1863,6 +1953,14 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
             }
         }
     }
+}
+
+impl TypeCheckPass.exit_except with Except exit {
+    self._check_immutable_write(here.name, rebind_scope=here);
+}
+
+impl TypeCheckPass.exit_match_as with MatchAs exit {
+    self._check_immutable_write(here.name, rebind_scope=here);
 }
 
 impl TypeCheckPass.exit_while_stmt with WhileStmt exit {
@@ -1950,10 +2048,11 @@ impl TypeCheckPass.exit_yield_expr with YieldExpr exit {
 impl TypeCheckPass.exit_delete_stmt with DeleteStmt exit {
     for target in here.targets {
         self.evaluator.get_type_of_expression(target);
+        self._check_immutable_write(target);
     }
     for leaf in here.leaf_targets() {
         if DeleteStmt.is_location(leaf)
-            or isinstance(leaf, (Literal, MultiString, FString)) {
+            or DeleteStmt.invalid_target(leaf) is not None {
             continue;
         }
         leaf_type = self.evaluator.get_type_of_expression(leaf);
@@ -2109,7 +2208,7 @@ impl TypeCheckPass._stamp_fixed_width -> None {
                 nd.fw_safe = self._provably_in_range(nd, name);
             }
         }
-        for k in nd.kid {
+        for k in [nd->:Kid:->] {
             stack.append(k);
         }
     }

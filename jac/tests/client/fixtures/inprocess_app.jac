@@ -29,7 +29,7 @@ node Note {
     has text: str = "";
 }
 
-edge HasNote {}
+edge HasNote : Root --> Note {}
 
 walker:pub leave_note {
     has text: str = "";

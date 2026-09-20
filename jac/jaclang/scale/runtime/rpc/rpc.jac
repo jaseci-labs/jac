@@ -95,6 +95,26 @@ def _provider_url(app_name: str) -> str {
 }
 
 
+def _resolve_call_target(module_name: str) -> tuple[str, str | None] {
+    """One bundled lookup for (url, interceptor Host-header override), so
+    the two are never resolved independently and can't disagree.
+    Primary source: the live K8s dynamic registry (JacScaleRuntime's
+    get_sv_service_routes, K8s-mode only) -- it already fails open to {}
+    and warns (once per underlying cause) at its own failure sites, so
+    there is nothing to catch or re-warn about here. Fallback:
+    _provider_url's registry/env-var resolution -- the K8s path never
+    reaches here, so no separate host-override table is needed for it.""";
+    import from jaclang.scale.runtime.provider { JacScaleRuntime }
+
+    routes: dict[str, any] = JacScaleRuntime.get_sv_service_routes();
+    route = routes.get(module_name);
+    if route is not None and route.url {
+        return (route.url, route.host_header);
+    }
+    return (_provider_url(module_name), None);
+}
+
+
 def service_call(
     module_name: str,
     func_name: str,
@@ -115,7 +135,7 @@ def service_call(
             return _iter_sse_text(str(resp.text), func_label);
         }
         data = resp.json();
-        return _unwrap_sv_envelope(data, module_name, func_name);
+        return sv_client.function_result(data, module_name, func_name);
     }
 
     if breaker_should_skip(module_name) {
@@ -125,10 +145,14 @@ def service_call(
         );
     }
 
-    url: str = _provider_url(module_name);
+    (url, host_override) = _resolve_call_target(module_name);
     import from jaclang.server.serving.client { post_stream_aware_sync }
 
     send_headers: dict[str, str] = _rpc_headers(headers);
+
+    if host_override {
+        send_headers["Host"] = host_override;
+    }
 
     rpc_timeout: float = _sv_rpc_timeout(module_name);
 
@@ -146,7 +170,7 @@ def service_call(
     if kind == 'sse' {
         return payload;
     }
-    return _unwrap_sv_envelope(payload, module_name, func_name);
+    return sv_client.function_result(payload, module_name, func_name);
 }
 
 
@@ -167,7 +191,9 @@ def walker_call(
             f"/walker/{walker_name}", json=args, headers=_rpc_headers(headers)
         );
         data = resp.json();
-        return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
+        return sv_client.hydrate_walker_envelope(
+            data, module_name, walker_name, stub_cls
+        );
     }
 
     if breaker_should_skip(module_name) {
@@ -177,10 +203,14 @@ def walker_call(
         );
     }
 
-    url = _provider_url(module_name);
+    (url, host_override) = _resolve_call_target(module_name);
     import from jaclang.server.serving.client { request_sync }
 
     send_headers: dict[str, str] = _rpc_headers(headers);
+
+    if host_override {
+        send_headers["Host"] = host_override;
+    }
 
     rpc_timeout: float = _sv_rpc_timeout(module_name);
 
@@ -196,7 +226,7 @@ def walker_call(
     }
 
     data = _rpc_with_retries(module_name, f"walker spawn '{label}'", send);
-    return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
+    return sv_client.hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
 }
 
 
@@ -219,31 +249,4 @@ def _sv_rpc_timeout(app_name: str) -> float {
         }
     } except Exception {}
     return _SV_DEFAULT_RPC_TIMEOUT;
-}
-
-
-def _unwrap_sv_envelope(data: any, module_name: str, func_name: str) -> any {
-    if isinstance(data, dict) and data.get("ok") {
-        result_envelope = data.get("data");
-        if isinstance(result_envelope, dict) and ("result" in result_envelope) {
-            return result_envelope["result"];
-        }
-        return result_envelope;
-    }
-    err: any = (data.get("error") if isinstance(data, dict) else None) or {};
-    msg = err.get("message") if isinstance(err, dict) else str(err);
-    raise RuntimeError(
-        f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
-    );
-}
-
-def _hydrate_walker_envelope(
-    data: any, module_name: str, walker_name: str, stub_cls: any
-) -> any {
-    import from jaclang.server.sv_client { _rehydrate_walker, _unwrap_envelope }
-    envelope = _unwrap_envelope(data, module_name, walker_name);
-    if stub_cls is None {
-        return envelope.get("result") if isinstance(envelope, dict) else None;
-    }
-    return _rehydrate_walker(envelope, stub_cls);
 }

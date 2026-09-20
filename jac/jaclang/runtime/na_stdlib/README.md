@@ -481,3 +481,43 @@ rather than silent breakage.
 
 [#6404]: https://github.com/jaseci-labs/jaseci/issues/6404
 [#6940]: https://github.com/jaseci-labs/jaseci/issues/6940
+
+## ZIP archives (`zipfile`)
+
+`zipfile.jac` adds a read-only, path-based `ZipFile(file, mode="r")` for ZIP32
+archives, including PK3 files. Its public surface is `namelist`, `infolist`,
+`getinfo(name)`, `read(name)`, `close`, and the context-manager protocol.
+`ZipInfo` exposes `filename`, `compress_type`, `flag_bits`, `CRC`,
+`compress_size`, `file_size`, `header_offset`, `extra`, `comment`, and `is_dir`.
+The archive's `comment` is also available. Duplicate names remain in listing
+order; name lookup selects the last entry, matching CPython.
+
+The parser follows the [PKWARE ZIP specification](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT).
+It accepts stored and DEFLATE entries, data descriptors, archive comments,
+prepended data, UTF-8 names, and CP437 names. It checks central-directory and
+local-header bounds, overlapping entries, header agreement, decompressed
+length, and CRC-32. Malformed archives raise `BadZipFile`; missing names raise
+`KeyError`; reading a closed archive raises `ValueError`. Invalid UTF-8 names
+raise `BadZipFile` (CPython raises `UnicodeDecodeError`).
+
+The DEFLATE decoder reuses the existing `_zlib_native` one-shot FFI. A first
+pass obtains the decoded bytes from a zlib frame with a placeholder Adler-32.
+A second pass supplies the computed Adler-32 and requires `Z_OK`, exact output
+length, and exact input consumption. A checksum failure alone is never accepted
+as proof of a complete stream. This trades a second decompression pass for
+reuse of the existing portable buffer API without a platform-dependent
+`z_stream` layout. Output allocation is bounded by the declared member size
+and DEFLATE's expansion bound; ZIP's CRC-32 is checked separately.
+
+Scope: archives are loaded into memory, and `read` returns a complete member.
+ZIP64, encryption, other compression methods, writing, streaming member
+handles, extraction, file-like constructor arguments, `Path` arguments, and
+`read(ZipInfo)` are not implemented. Unsupported archive features raise
+explicit errors rather than returning partial data. As with the bundled zlib
+floor, this requires a native host with libz; it is not a WASM implementation.
+
+Native context-manager lowering also runs `__exit__` for `return`, `break`,
+`continue`, and propagated exceptions, closing resources acquired by this API.
+It retains the native pathway's existing null exception-argument convention;
+Python exception type/value/traceback objects are not materialized for
+`__exit__`. A truthy return from `__exit__` suppresses the pending exception.

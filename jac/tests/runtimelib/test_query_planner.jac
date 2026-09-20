@@ -24,7 +24,7 @@ node PB {
     has tag: str = "";
 }
 
-edge PRel {
+edge PRel: any --> any {
     has w: int = 0;
 }
 

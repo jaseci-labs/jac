@@ -8,7 +8,9 @@ import from jaclang.compiler.frontend.constant {
     DELIM_MAP,
     BindingKind,
     CodeContext,
+    DeleteTargetError,
     ExprCtx,
+    ImmutabilityKind,
     OwnershipKind,
     SymbolAccess,
     SymbolStorage,
@@ -166,7 +168,6 @@ node UniNode {
     def postinit -> None;
     can walk_kids with TreeWalker entry;
 
-    has kid: list[UniNode] { getter; }
     has parent: (UniNode | None) { getter; }
     has gen: CodeGenTarget { getter; setter(value: CodeGenTarget); }
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
@@ -178,8 +179,8 @@ node UniNode {
     def freeze_structure -> None;
     def thaw_structure -> None;
     def structure_thawed -> StructureThaw;
-    def _attach(child: UniNode, role: type[Role]) -> None;
-    def _role_clear(role: type[Role]) -> None;
+    def _attach(child: UniNode, role: type[Edge]) -> None;
+    def _role_clear(role: type[Edge]) -> None;
     def _as_node_list(value: any) -> list[UniNode];
     def _children -> list[UniNode];
     def _role_shaped(role: type[Role], found: list[UniNode]) -> any;
@@ -268,6 +269,7 @@ node Symbol {
         imported: bool postinit,
         semstr: str postinit,
         ownership: OwnershipKind = OwnershipKind.NONE,
+        immutability: ImmutabilityKind = ImmutabilityKind.NONE,
         linear: bool = False,
         is_view: bool = False,
         param_rebound: bool = False,
@@ -666,7 +668,8 @@ node Module(AstDocNode, UniScopeNode) {
         rc_last_use: dict[int, list[str]] postinit,
         rc_scope_cleanup: dict[int, list[str]] postinit,
         rc_move_in: set[int] postinit,
-        own_move_sites: set[int] postinit;
+        own_move_sites: set[int] postinit,
+        managed_borrow_binds: set[int] postinit;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
 
@@ -747,7 +750,9 @@ node TypeParam(AstSymbolNode, UniNode) {
 }
 
 node TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
-    has is_distinct: bool = False;
+    has is_distinct: bool = False,
+        distinct_base: (str | None) = None;
+
     has name: Name { getter; }
     has type_params: list[TypeParam] { getter; }
     has value: Expr { getter; }
@@ -982,6 +987,8 @@ node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImpl
 
     def get_has_vars -> list[HasVar];
     def get_methods -> list[Ability];
+    def base_archetypes -> list[Archetype];
+    def declares_endpoints -> bool;
     def __repr__ -> str;
 }
 
@@ -1090,7 +1097,8 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
     def postinit -> None;
 
     has receiver_mode: OwnershipKind = OwnershipKind.NONE,
-        raises: list[str] postinit;
+        raises: list[str] postinit,
+        writes: (list[str] | None) = None;
 
     has is_method: bool { getter; }
     has is_cls_method: bool { getter; }
@@ -1483,6 +1491,7 @@ node DeleteStmt(CodeBlockStmt) {
     def __repr__ -> str;
     def leaf_targets -> list[Expr];
     static def unwrap_target(target: Expr) -> Expr;
+    static def invalid_target(target: UniNode) -> (DeleteTargetError | None);
     static def is_location(target: Expr) -> bool;
     static def type_has_graph_member(t: (TypeBase | None)) -> bool;
     static def type_may_hold_graph(t: (TypeBase | None)) -> bool;

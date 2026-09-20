@@ -12,12 +12,14 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         jac clean --cache
         ```
 
-        If the problem persists, delete the global per-user cache manually:
+        If the problem persists, clear the machine-wide cache with `jac cache`. `jac cache status` shows every bucket (compiled modules, fused runtimes, app images, toolchains, and so on) with its size; `jac cache purge --bucket jir-modules` clears just the compiled modules, and `jac cache purge` clears every managed bucket:
+        ```bash
+        jac cache status
+        jac cache purge --bucket jir-modules
+        jac cache purge
         ```
-        Linux:   rm -rf ~/.cache/jac
-        macOS:   rm -rf ~/Library/Caches/jac
-        Windows: rmdir /s /q %LOCALAPPDATA%\jac\cache
-        ```
+
+        The cache lives at `~/.cache/jac` on Linux, `~/Library/Caches/jac` on macOS and `%LOCALAPPDATA%\jac\cache` on Windows (`JAC_CACHE_HOME` or `XDG_CACHE_HOME` relocate it). It is also collected on its own: every bucket has a retention policy, and `jac cache gc` runs them on demand.
 
     ??? question "What do I need to install to get started with Jac?"
         See the [Installation Guide](../quick-guide/install.md)

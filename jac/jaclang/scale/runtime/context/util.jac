@@ -38,11 +38,17 @@ glob _DEFAULT_HTTP_FORWARD_TIMEOUT: float = 30.0,
 glob DEFAULT_GATEWAY_PORT: int = 8000,
      DEFAULT_GATEWAY_HOST: str = "0.0.0.0",
      DEFAULT_CLIENT_DIST_DIR: str = ".jac/client/dist",
-     K8S_CLUSTER_DNS_SUFFIX: str = "svc.cluster.local";
+     K8S_CLUSTER_DNS_SUFFIX: str = "svc.cluster.local",
+     _RFC1123_MAX_LEN: int = 253;
+
+
+def k8s_service_dns_host(service_name: str, namespace: str) -> str {
+    return f"{service_name}.{namespace}.{K8S_CLUSTER_DNS_SUFFIX}";
+}
 
 
 def k8s_service_dns_url(safe_name: str, namespace: str, port: int) -> str {
-    return f"http://{safe_name}-service.{namespace}.{K8S_CLUSTER_DNS_SUFFIX}:{port}";
+    return f"http://{k8s_service_dns_host(f'{safe_name}-service', namespace)}:{port}";
 }
 
 
@@ -147,8 +153,7 @@ def wait_for_health(
 }
 
 
-glob GATEWAY_NAME: str = "__gateway__",
-     _RFC1123_MAX_LEN: int = 253;
+glob GATEWAY_NAME: str = "__gateway__";
 
 def k8s_safe_name(svc_name: str) -> str {
     if svc_name == GATEWAY_NAME {

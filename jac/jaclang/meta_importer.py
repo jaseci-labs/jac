@@ -80,9 +80,18 @@ def _bootstrap_compile(
 
     if cache_file.is_file():
         try:
-            return marshal.loads(cache_file.read_bytes())  # noqa: S302
+            code = marshal.loads(cache_file.read_bytes())  # noqa: S302
         except Exception:
             cache_file.unlink(missing_ok=True)
+        else:
+            # A hit is a use: the `jir-bootstrap` bucket is swept by last use
+            # (`jaclang.cache`), and this tier cannot reach the Jac-side
+            # authority itself, so it refreshes the entry's mtime directly.
+            try:
+                os.utime(cache_file, None)
+            except OSError:
+                pass
+            return code
 
     # Cache miss — transpile with jac0, compile, and cache (best-effort).
     py_source = _jac0_compile(jac_source, file_path, impl_sources=impl_sources)

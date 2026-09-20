@@ -5,6 +5,11 @@
 #include <errno.h>
 #include <stdint.h>
 
+/* libpython is built with hidden visibility, so only marked symbols reach a
+ * native library that dlopens into this runtime. These entry points ARE that
+ * boundary -- a separately built native unit calls them -- so export them. */
+#pragma GCC visibility push(default)
+
 #define OBJECT(h) ((PyObject *)(uintptr_t)(h))
 #define HANDLE(p) ((uint64_t)(uintptr_t)(p))
 
@@ -426,6 +431,10 @@ int64_t jacpy_is_bytes(uint64_t value) { return PyBytes_Check(OBJECT(value)); }
 int64_t jacpy_is_bytearray(uint64_t value) { return PyByteArray_Check(OBJECT(value)); }
 uint64_t jacpy_bytes_address(uint64_t value) { return (uint64_t)(uintptr_t)(PyBytes_Check(OBJECT(value)) ? PyBytes_AS_STRING(OBJECT(value)) : PyByteArray_AS_STRING(OBJECT(value))); }
 int64_t jacpy_bytes_length(uint64_t value) { return PyBytes_Check(OBJECT(value)) ? PyBytes_GET_SIZE(OBJECT(value)) : PyByteArray_GET_SIZE(OBJECT(value)); }
+/* Jac passes a bytes argument as its payload address; these copy a whole
+ * payload across the boundary instead of one element per call. */
+void jacpy_bytes_copy_to(uint64_t value, char *target, int64_t size) { memcpy(target, (const char *)(uintptr_t)jacpy_bytes_address(value), (size_t)size); }
+uint64_t jacpy_bytes_from_data(const char *data, int64_t size) { return HANDLE(PyBytes_FromStringAndSize(data, size)); }
 int64_t jacpy_index_check(uint64_t value) { return PyIndex_Check(OBJECT(value)); }
 uint64_t jacpy_long_pointer(uint64_t value) { return (uint64_t)(uintptr_t)PyLong_AsVoidPtr(OBJECT(value)); }
 uint64_t jacpy_uint(uint64_t value) { return HANDLE(PyLong_FromUnsignedLongLong(value)); }
@@ -645,3 +654,4 @@ int64_t jacpy_warn(const char *category, const char *message, int64_t stacklevel
 }
 uint64_t jacpy_builtins(void) { return HANDLE(Py_NewRef(PyEval_GetBuiltins())); }
 int64_t jacpy_type_subtype(uint64_t type, uint64_t base) { return PyType_IsSubtype((PyTypeObject *)OBJECT(type), (PyTypeObject *)OBJECT(base)); }
+#pragma GCC visibility pop

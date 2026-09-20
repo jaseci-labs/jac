@@ -1,10 +1,12 @@
 """Dependency-free tests for the Jac-native webview binding.
 
-Compile-only: these need ONLY the jac toolchain - no WebKitGTK, no libpython-dev,
-no display. `jac build --native` records the needed shared libraries (DT_NEEDED) and an
-$ORIGIN runpath without dlopening them, so a host that binds libwebview.so (or
-libpython) links cleanly with nothing installed. This catches binding-signature
-drift, wrong/missing externs, wrong soname, and codegen regressions.
+Compile-only: these need ONLY the jac toolchain - no WebKitGTK or WebKit, no
+libpython-dev, no display. `jac build --native` records the needed shared
+libraries (DT_NEEDED on ELF, LC_LOAD_DYLIB on Mach-O) and a runpath beside the
+binary ($ORIGIN, @loader_path) without dlopening them, so a host that binds
+libwebview (or libpython) links cleanly with nothing installed. This catches
+binding-signature drift, wrong/missing externs, wrong soname, and codegen
+regressions.
 """
 import os;
 import shutil;
@@ -13,6 +15,23 @@ import sys;
 import sysconfig;
 import tempfile;
 import from pathlib { Path }
+
+"""The executable magic and the libwebview link a host must carry on this OS."""
+def _native_executable(data: bytes) {
+    magic = b"\xcf\xfa\xed\xfe" if sys.platform == "darwin" else b"\x7fELF";
+    assert data[:4] == magic , "output is not a native executable";
+}
+
+def _links_webview(data: bytes) {
+    _native_executable(data);
+    if sys.platform == "darwin" {
+        assert b"libwebview.dylib" in data , "binary must link libwebview.dylib";
+        assert b"@loader_path" in data , "binary must load libwebview beside itself";
+    } else {
+        assert b"libwebview.so" in data , "binary must link libwebview.so";
+        assert b"$ORIGIN" in data , "binary must carry an $ORIGIN runpath";
+    }
+}
 
 """Locate the shipped webview binding (now under jaclang/client/)."""
 def _webview_dir -> Path {
@@ -99,8 +118,8 @@ def _compile_host(
     }
 }
 
-"""A host that uses the obj:pub Webview API links libwebview.so via $ORIGIN."""
-test "webview binding host compiles and links libwebview.so" {
+"""A host that uses the obj:pub Webview API links libwebview beside itself."""
+test "webview binding host compiles and links libwebview" {
     src = (
         "import from webview { BindingCallback, Webview, new_webview, respond, HINT_NONE, run_main_loop }\n"
         "def on_call(id: int, req: int, arg: int) -> None { respond(arg, id, \"1\"); }\n"
@@ -115,16 +134,14 @@ test "webview binding host compiles and links libwebview.so" {
     );
     (rc, err, data) = _compile_host(src);
     assert rc == 0 , f"binding host failed to compile:\n{err}";
-    assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
-    assert b"libwebview.so" in data , "binary must link libwebview.so";
-    assert b"$ORIGIN" in data , "binary must carry an $ORIGIN runpath";
+    _links_webview(data);
 }
 
 """The embedded-CPython host (the desktop runtime model) links libpython."""
 test "embedded-python host compiles and links libpython" {
     soname = sysconfig.get_config_var("INSTSONAME")
         or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0";
-    stem = soname.split(".so")[0].encode();  # e.g. b"libpython3.14"
+    stem = soname.split(".so")[0].removesuffix(".dylib").encode();  # e.g. b"libpython3.14"
     src = (
         f'import from "{soname}" {{\n'
         "    def Py_Initialize() -> None;\n"
@@ -135,7 +152,7 @@ test "embedded-python host compiles and links libpython" {
     );
     (rc, err, data) = _compile_host(src);
     assert rc == 0 , f"embedded-python host failed to compile:\n{err}";
-    assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
+    _native_executable(data);
     assert stem in data , "binary must link the libpython soname";
 }
 
@@ -162,7 +179,7 @@ test "entry-level webview handle wires run_main_loop" {
     );
     (rc, err, data) = _compile_host(src);
     assert rc == 0 , f"get_handle host failed to compile:\n{err}";
-    assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
+    _native_executable(data);
 }
 
 """The plugin bridge + embedded-CPython + webview host compiles as a unit.
@@ -228,7 +245,6 @@ test "plugin bridge host compiles with webview + libpython" {
     );
     (rc, err, data) = _compile_host(src);
     assert rc == 0 , f"plugin bridge host failed to compile:\n{err}";
-    assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
-    assert b"libwebview.so" in data , "binary must link libwebview.so";
+    _links_webview(data);
     assert b"libpython" in data , "binary must link libpython";
 }

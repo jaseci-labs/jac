@@ -50,7 +50,7 @@ node Person {
     has age: int;
 }
 
-edge Knows {
+edge Knows: Person --> Person {
     has since: int;
 }
 
@@ -179,14 +179,16 @@ Edges are first-class connections between nodes. Unlike simple object references
 ### 1 Edge Declaration
 
 ```jac
-edge Friend {
+node Person { has name: str; }
+
+edge Friend: Person --> Person {
     has since: int;
     has strength: float = 1.0;
 }
 
-edge Follows { }  # Edge with no data
+edge Follows: Person --> Person { }  # Edge with no data
 
-edge Weighted {
+edge Weighted: Person --> Person {
     has weight: float;
 
     def get_normalized(max_weight: float) -> float {
@@ -195,12 +197,16 @@ edge Weighted {
 }
 ```
 
+An edge names the node types it connects; see [Typed Edge Endpoints](#4-typed-edge-endpoints) for the full rules, including `any --> any` when it really does connect anything.
+
 ### 2 Edge Entry/Exit
 
 Edges are locations too: an edge may declare abilities of its own, which fire when the walker's itinerary includes the edge itself.
 
 ```jac
-edge Road {
+node Place { has name: str; }
+
+edge Road: Place --> Place {
     has distance: float;
 
     can on_traverse with Traveler entry {
@@ -239,7 +245,7 @@ with entry {
 
 ### 4 Typed Edge Endpoints
 
-By default an edge can connect *any* node types, so a neighbour traversal such as `[here ->:Friend:->]` has element type `any` and needs a `[?:Type]` filter before you can read a field off the result. You can instead declare the **source** and **target** node types an edge connects, after a `:`, using the traversal arrow so it reads like the navigation it enables:
+Every edge declares the **source** and **target** node types it connects, after a `:`, using the traversal arrow so it reads like the navigation it enables. That declaration is what lets a neighbour traversal infer a node type instead of `any`, which is why it is required rather than optional -- an edge without one is `E2086`:
 
 ```jac
 node Profile { has name: str = ""; }
@@ -268,7 +274,26 @@ with entry {
 
 An outgoing traversal (`->:Edge:->`) narrows to the **target** type; an incoming traversal (`<-:Edge:<-`) narrows to the **source** type. A `[?:Sub]` filter can still narrow *further* to a subtype.
 
-Typed endpoints are **opt-in and gradual**: an untyped `edge Link {}` keeps `any → any` connectivity and `list[any]` traversal results, so existing code is unaffected. The endpoint type is a **bound** -- `Profile` *or a subtype* -- so subclass-heterogeneous graphs stay valid.
+The endpoint type is a **bound** -- `Profile` *or a subtype* -- so subclass-heterogeneous graphs stay valid. An endpoint is an ordinary type position, so it also takes a union:
+
+```jac
+edge Mentions: Profile --> Profile | Tweet {}   # either target type
+```
+
+When an edge really does connect anything, say so rather than leaving the clause off:
+
+```jac
+edge Link: any --> any {}     # gradual: traversals stay list[any], as before
+edge Tie: Node --> Node {}    # some node, without naming which
+```
+
+`any --> any` is the exact-behaviour form -- an `any` endpoint narrows to nothing, so traversals through it still yield `list[any]` and need a `[?:Type]` filter. `Node --> Node` is stricter: it narrows traversals to `Node`, so reading a field off the result is `E1030` until you filter.
+
+Because the declaration is trusted by inference, it is also enforced. Connecting node types the edge does not declare is `E1136`, and traversing an edge from a node it cannot start from is `E1137`. An operand that is merely more general than the declaration -- a `Node` where `Profile` is declared -- may still be the declared type at runtime, so it warns (`W2081`, `W2082`) instead of failing.
+
+Collection operands are checked by their element types, including every member of a tuple. A bidirectional connection must satisfy the endpoints in both directions, since either node can be reached by an outgoing traversal. Use compatible bounds on both endpoints, such as `Person --> Person`, for such edges.
+
+Each hop determines its own result type. Following a typed hop with an unconstrained hop returns `list[any]`; the earlier hop's type does not describe the final neighbours.
 
 The `()` after the name remains reserved for **edge inheritance**, orthogonal to the endpoints. A subtype edge inherits its base edge's endpoints unless it re-declares them:
 
@@ -364,7 +389,7 @@ walker Visitor {
 
 ```jac
 node Person {}
-edge Friend { has since: int = 2020; }
+edge Friend: Person --> Person { has since: int = 2020; }
 
 walker Visitor {
     can filter with Person entry {
@@ -719,8 +744,8 @@ with entry {
 
 ```jac
 node Person { has name: str; }
-edge Friend { has since: int = 2020; }
-edge Colleague { has department: str = ""; }
+edge Friend: Person --> Person { has since: int = 2020; }
+edge Colleague: Person --> Person { has department: str = ""; }
 
 with entry {
     alice = Person(name="Alice");
@@ -741,9 +766,9 @@ with entry {
 
 ```jac
 node Item {}
-edge Start {}
-edge Next {}
-edge End {}
+edge Start: Item --> Item {}
+edge Next: Item --> Item {}
+edge End: Item --> Item {}
 
 with entry {
     a = Item();
@@ -771,7 +796,7 @@ in block heads, for example `if graph { a; }.root { ... }`.
 
 ```jac
 node Part { has name: str; }
-edge Next { has weight: int = 0; }
+edge Next: Part --> Part { has weight: int = 0; }
 
 with entry {
     a = Part("a");
@@ -853,7 +878,7 @@ as ordinary graph mutations. Graph fragments do not provide pattern matching.
 
 ```jac
 node Person { has name: str; }
-edge Friend {}
+edge Friend: Person --> Person {}
 
 with entry {
     alice = Person(name="Alice");
@@ -986,7 +1011,7 @@ Every served deployment has one public graph alongside the per-user roots: the *
 
 ```jac
 node Post { has text: str; }
-edge Posted {}
+edge Posted: Root --> Post {}
 
 walker:pub publish {
     has text: str;
@@ -1024,7 +1049,7 @@ node PublicNode {
     }
 }
 
-edge PublicEdge {
+edge PublicEdge: any --> any {
     def __jac_access__ -> AccessLevel {
         return AccessLevel.WRITE;
     }
@@ -1114,7 +1139,7 @@ This is useful for aggregation patterns where you need to collect results from c
 
 ```jac
 node Person { has age: int = 0; }
-edge Friend { has since: int = 2020; }
+edge Friend: Person --> Person { has since: int = 2020; }
 
 walker FilteredWalker {
     can start with Root entry {
@@ -1188,9 +1213,9 @@ node Room {
 
 ```jac
 node Person {}
-edge EdgeType {}
-edge Edge { has attr: int = 0; has a: int = 0; has b: int = 0; }
-edge Friend {}
+edge EdgeType: Person --> Person {}
+edge Edge: Person --> Person { has attr: int = 0; has a: int = 0; has b: int = 0; }
+edge Friend: Person --> Person {}
 
 walker Traverser {
     can query with Person entry {
@@ -1225,8 +1250,8 @@ node User {
     has status: str = "";
     has verified: bool = False;
 }
-edge Friend { has since: int = 2020; }
-edge Link { has weight: float = 0.0; }
+edge Friend: User --> User { has since: int = 2020; }
+edge Link: User --> User { has weight: float = 0.0; }
 
 walker Filter {
     can query with User entry {
@@ -1245,8 +1270,8 @@ walker Filter {
 
 ```jac
 node Person { has age: int = 0; }
-edge Friend { has since: int = 2020; }
-edge Colleague {}
+edge Friend: Person --> Person { has since: int = 2020; }
+edge Colleague: Person --> Person {}
 
 walker Querier {
     can complex with Person entry {
@@ -1290,8 +1315,8 @@ Three guarantees and one constraint govern every edge reference:
 
 ```jac
 node State { has name: str = ""; }
-edge Coin {}
-edge Push {}
+edge Coin: State --> State {}
+edge Push: State --> State {}
 
 walker Fire {
     has table: dict = {};

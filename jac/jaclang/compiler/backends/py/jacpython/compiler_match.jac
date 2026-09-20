@@ -68,6 +68,7 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     stmt_cont,
 }
 import from jaclang.compiler.backends.py.jacpython.flowgraph { optimize_swap_range }
+import from jaclang.compiler.frontend.python.compiler_symtable { scope_kind }
 import from jaclang.compiler.backends.py.jacpython.compiler_emit {
     codegen_busy,
     codegen_fail,
@@ -853,7 +854,7 @@ def visit_match(
 ) -> stmt_cont {
     mloc = nloc(m.lineno, m.end_lineno, m.col_offset, m.end_col_offset);
     # Class bodies still need their annotation and __classcell__ epilogue.
-    if g.sym_top is not None and g.sym_top.block_type == "class" {
+    if g.sym_top is not None and g.sym_top.kind == scope_kind.CLASS {
         more_code_follows = True;
     }
     if len(m.cases) == 0 {

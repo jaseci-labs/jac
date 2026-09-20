@@ -23,7 +23,7 @@ node mynode(this, that) {}  # define a new node
 
 
 
-edge parent {}  # define a new edge
+edge parent : any --> any {}  # define a new edge
 
 
 

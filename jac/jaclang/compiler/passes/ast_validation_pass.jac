@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
     Module,
     TreeWalker,
@@ -53,7 +54,11 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.context { CompileContext }
 import keyword;
-import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
+import from jaclang.compiler.frontend.constant {
+    CodeContext,
+    DeleteTargetError,
+    Tokens as Tok
+}
 
 import from jaclang.compiler.frontend.diagnostics {
     E0010,
@@ -71,6 +76,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E0052,
     E0055,
     E0058,
+    E0059,
     E0063,
     E0065,
     E0066,

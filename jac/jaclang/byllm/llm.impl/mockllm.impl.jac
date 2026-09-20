@@ -1,5 +1,5 @@
 def _mock_jsonable(value: object) -> object {
-    import from dataclasses { fields, is_dataclass }
+    import from jaclang.runtime.object_interop { fields, is_record }
     import from enum { Enum }
     import from jaclang.runtime.archetype { Archetype }
     if value is None or isinstance(value, (bool, int, float, str)) {
@@ -25,7 +25,7 @@ def _mock_jsonable(value: object) -> object {
             if not k.startswith("_")
         };
     }
-    if is_dataclass(value) and not isinstance(value, type) {
+    if is_record(value) and not isinstance(value, type) {
         return {
             f.name: _mock_jsonable(getattr(value, f.name))
             for f in fields(value)
@@ -73,7 +73,19 @@ def _mock_turn(
         output = output[0];
     }
     if isinstance(output, MockError) {
-        return output;
+        if output.reply is None {
+            return output;
+        }
+        if output.content or output.after {
+            raise ValueError(
+                "MockError takes content= with after=, or reply=, not both"
+            );
+        }
+        reply = _mock_turn(output.reply, text_is_value);
+        if not isinstance(reply, MockRawResponse) {
+            raise ValueError("MockError(reply=...) cannot be another MockError");
+        }
+        return MockError(error=output.error, reply=reply);
     }
     if isinstance(output, MockRawResponse) {
         if usage is None {
@@ -83,7 +95,9 @@ def _mock_turn(
             content=output.content,
             tool_calls=list(output.tool_calls),
             usage=usage,
-            finish_reason=output.finish_reason
+            finish_reason=output.finish_reason,
+            model=output.model,
+            unnamed_fragments=output.unnamed_fragments
         );
     }
     if isinstance(output, MockToolCall) {
@@ -181,6 +195,20 @@ def _mock_chunk(
 }
 
 
+obj _MockStream {
+    has chunks: Iterator[object],
+        logging_obj: object;
+
+    def __iter__ -> _MockStream {
+        return self;
+    }
+
+    def __next__ -> object {
+        return next(self.chunks);
+    }
+}
+
+
 def _mock_chunks(turn: MockRawResponse, model: str, size: int) -> list[object] {
     out: list[object] = [];
     first = True;
@@ -198,9 +226,11 @@ def _mock_chunks(turn: MockRawResponse, model: str, size: int) -> list[object] {
         for (n, piece) in enumerate(pieces) {
             frag: dict[str, any] = {"index": index, "function": {"arguments": piece}};
             if n == 0 {
-                frag["id"] = call_id;
                 frag["type"] = "function";
-                frag["function"]["name"] = name;
+                if not turn.unnamed_fragments {
+                    frag["id"] = call_id;
+                    frag["function"]["name"] = name;
+                }
             }
             delta = {"tool_calls": [frag]};
             if first {
@@ -274,33 +304,79 @@ impl MockLLM._next_reply(params: dict[str, any]) -> MockRawResponse | MockError 
     return _mock_turn(queue.pop(0), _mock_takes_string(params.get("response_format")));
 }
 
+def _mock_image_response(output: object, model: str) -> dict[str, any] {
+    if isinstance(output, MockError) {
+        raise output.error;
+    }
+    data: list[dict[str, any]] = [];
+    items: list[any] = output if isinstance(output, list) else [output];
+    for item in items {
+        source = item.url if isinstance(item, Image) else item;
+        if isinstance(source, (bytes, bytearray, memoryview)) {
+            data.append({"b64_json": base64.b64encode(bytes(source)).decode("utf-8")});
+        } elif isinstance(source, str) {
+            data.append({"url": source});
+        } else {
+            raise TypeError(
+                f"MockLLM cannot serve a {type(item).__name__} as a generated "
+                "image; queue image bytes, a url string, or an Image"
+            );
+        }
+    }
+    return {"model": model, "data": data};
+}
+
+
+impl MockLLM.model_call_image(params: dict[str, any]) -> dict[str, any] {
+    self.seen.append(params);
+    self.seen_prompts.append(str(params.get("prompt") or ""));
+    queue = self._current_queue();
+    if not queue {
+        raise IndexError(
+            f"MockLLM has no queued output left for call {len(self.seen)}"
+        );
+    }
+    return _mock_image_response(queue.pop(0), params.get("model") or self.model_name);
+}
+
 impl MockLLM.model_call_no_stream(params: dict[str, any]) -> object {
     require_optional("litellm", "llm");
     turn = self._next_reply(params);
     if isinstance(turn, MockError) {
         raise turn.error;
     }
-    return _mock_response(turn, params.get("model") or self.model_name);
+    return _mock_response(turn, turn.model or params.get("model") or self.model_name);
 }
 
-impl MockLLM.model_call_with_stream(
-    params: dict[str, any]
-) -> Generator[object, None, None] {
+impl MockLLM.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     require_optional("litellm", "llm");
+    stream = self._stream_reply(params);
+    if self.logging_obj is not None {
+        return _MockStream(chunks=stream, logging_obj=self.logging_obj);
+    }
+    return stream;
+}
+
+impl MockLLM._stream_reply(params: dict[str, any]) -> Generator[object, None, None] {
     turn = self._next_reply(params);
     model = params.get("model") or self.model_name;
     if isinstance(turn, MockError) {
-        partial = _mock_chunks(
-            MockRawResponse(content=turn.content), model, self.chunk_size
-        )
-            if turn.content
-            else [];
-        for chunk in partial[:turn.after] {
+        partial: list[object] = [];
+        if isinstance(turn.reply, MockRawResponse) {
+            partial = _mock_chunks(
+                turn.reply, turn.reply.model or model, self.chunk_size
+            );
+        } elif turn.content {
+            partial = _mock_chunks(
+                MockRawResponse(content=turn.content), model, self.chunk_size
+            )[:turn.after];
+        }
+        for chunk in partial {
             yield chunk;
         }
         raise turn.error;
     }
-    for chunk in _mock_chunks(turn, model, self.chunk_size) {
+    for chunk in _mock_chunks(turn, turn.model or model, self.chunk_size) {
         yield chunk;
     }
 }

@@ -86,7 +86,7 @@ Every response is wrapped in a standard envelope:
  "error": null, "meta": {"extra": {"http_status": 200}}}
 ```
 
-Errors flip `ok` to `false` and fill `error: {code, message}` (e.g. `UNAUTHORIZED` + `http_status: 401`). Returned archetypes carry `_jac_type` / `_jac_id` / `_jac_archetype` keys - wire bookkeeping that lets the jac client rehydrate real typed instances; raw REST consumers should read fields and ignore them.
+Errors flip `ok` to `false` and fill `error: {code, message}` (e.g. `UNAUTHORIZED` + `http_status: 401`). Returned archetypes carry `_jac_type` / `_jac_id` / `_jac_archetype` keys - wire bookkeeping that lets the jac client rehydrate real typed instances; raw REST consumers should read fields and ignore them. A walker in `result` carries its `has` fields only; the values it reported live in `data.reports` and are not repeated inside it.
 
 ## @restspec - custom methods and paths
 

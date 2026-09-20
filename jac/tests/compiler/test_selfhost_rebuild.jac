@@ -18,6 +18,7 @@ import resource;
 import subprocess;
 import sys;
 import tempfile;
+import from tests.support { cache_env }
 import jaclang;
 
 glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__))),
@@ -34,13 +35,17 @@ glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__)))
          "    print(\"SELFHOST=\" + json.dumps({\n"
          "        \"runs\": a.pass_runs,\n"
          "        \"events\": a.cache_events,\n"
-         "        \"gen2\": gc.get_stats()[2][\"collections\"]\n"
+         "        \"collections\": getattr(gc.collect, \"call_count\")\n"
          "    }));\n"
          "}\n"
      ),
      DRIVER: str = (
-         "import sys; from jaclang.cli.cli_boot import start_cli; "
-         "sys.argv = ['jac', 'run', sys.argv[1]]; start_cli()"
+         "import gc, sys\n"
+         "from unittest.mock import patch\n"
+         "with patch('gc.collect', wraps=gc.collect):\n"
+         "    from jaclang.cli.cli_boot import start_cli\n"
+         "    sys.argv = ['jac', 'run', sys.argv[1]]\n"
+         "    start_cli()"
      );
 
 def _peak_children_mb -> int {
@@ -59,7 +64,7 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
     }
     env: dict[str, str] = dict(os.environ);
     env["HOME"] = work;
-    env["XDG_CACHE_HOME"] = os.path.join(work, "cache");
+    env.update(cache_env(os.path.join(work, "cache")));
     env["LOCALAPPDATA"] = os.path.join(work, "cache");
     for knob in [
         "JAC_NO_DEV_SOURCE",

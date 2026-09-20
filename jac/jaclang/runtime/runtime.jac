@@ -9,7 +9,7 @@ import from collections { OrderedDict, deque }
 import from collections.abc { Callable, Coroutine, Iterable, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
-import from jaclang.runtime.object_model { field, make_object }
+import from jaclang.runtime.object_model { make_object }
 import from inspect { getfile }
 import from logging { getLogger }
 import from typing { TYPE_CHECKING, Literal, ParamSpec, Protocol, TypeAlias, TypeVar }
@@ -34,7 +34,7 @@ import from jaclang.runtime.archetype {
     light_hop_answers
 }
 import from jaclang.runtime.constants { EdgeDir, colors }
-import from jaclang.runtime.graph_query { GraphQuery, QHop }
+import from jaclang.runtime.graph_query { GraphQuery, QHop, QPred, filter_query_nodes }
 import from jaclang.runtime.constructs {
     AccessLevel,
     access_level_cast,
@@ -330,7 +330,13 @@ class JacGraph {
     ) -> EdgeArchetype;
 
     static def hop(
-        origin: any, dir: int, edge_type: (type | None) = None, edges_only: bool = False
+        origin: any,
+        dir: int,
+        edge_type: (type | None) = None,
+        edges_only: bool = False,
+        nd: (type | tuple[type, ...] | None) = None,
+        preds: (list[QPred] | None) = None,
+        from_visit: bool = False
     ) -> list[any];
 
     static def clear_edges(

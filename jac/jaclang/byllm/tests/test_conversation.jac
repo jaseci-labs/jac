@@ -6,7 +6,7 @@ plumbing are filtered out on the way; a real tool result is not.
 
 import from jaclang.byllm.types { Message, MessageRole }
 import from jaclang.byllm.lib { MockLLM }
-import from support_tests { call, finish, say }
+import from support { call, finish, say }
 
 
 def get_weather(city: str) -> str {

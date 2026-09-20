@@ -689,10 +689,10 @@ test "native source fingerprints are stable across caller cache contexts" {
     with tempfile.TemporaryDirectory() as work {
         source = Path(work) / "stable.jac";
         source.write_text("def value() -> int { return 1; }\n");
-        with cache_scope("caller") {
+        with cache_scope(CompileOptions(target_app="caller")) {
             before = NativeUnitRegistry._source_key(str(source));
         }
-        with cache_scope("dependency") {
+        with cache_scope(CompileOptions(target_app="dependency")) {
             after = NativeUnitRegistry._source_key(str(source));
         }
         assert before is not None;

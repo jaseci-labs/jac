@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
     Module,
     TreeWalker,
@@ -23,7 +24,6 @@ import from jaclang.compiler.frontend.unitree {
     Token
 }
 import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant { SymbolType, Tokens as Tok }
 
 walker EndpointEffectPass(TreeWalker) {
@@ -39,11 +39,11 @@ walker EndpointEffectPass(TreeWalker) {
         module: Module,
         _is_writer: bool = False,
         _unknown: bool = False,
-        _declared_reads: set[str] = field(default_factory=set),
-        _declared_writes: set[str] = field(default_factory=set),
-        _assumptions: set[str] = field(default_factory=set),
-        _touches: set[str] = field(default_factory=`set),
-        _visited: set[int] = field(default_factory=set);
+        _declared_reads: set[str] = set(),
+        _declared_writes: set[str] = set(),
+        _assumptions: set[str] = set(),
+        _touches: set[str] = set(),
+        _visited: set[int] = set();
 
     can prepare with entry {
         if self.ctx.nested_depth {
@@ -200,7 +200,7 @@ walker EndpointEffectPass(TreeWalker) {
             }
         }
 
-        for child in nd.kid {
+        for child in [nd->:Kid:->] {
             if child {
                 self._scan(child);
             }

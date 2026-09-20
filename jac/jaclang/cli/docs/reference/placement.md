@@ -26,6 +26,16 @@ the bytecode. The solver consumes summaries and owns every decision:
 | A `[placement.pins]` entry (base table or the selected app's `[apps.<name>.placement.pins]` overlay) | its pinned space (immovable) |
 | The entry file of a declared `service` app | server (the module is compiled in that app context) |
 
+A bare `import from X { ... }` is classified by resolution, in a fixed order:
+a local Jac module, then a name declared in `[dependencies.npm]` or owned by
+the client framework (npm), then a Python module the importing file can
+import (Python), and only then a package that is merely installed under
+`.jac/client/node_modules` (npm). Declared dependencies win over a Python
+module of the same name; a transitive npm package never captures a Python
+import. `jac check --placements` names the rule that fired, for example
+`NPM: npm dependency ([dependencies.npm])` or `PY: python import (python
+module shadows the undeclared npm package)`.
+
 `def:pub` is the one row that depends on the **app kind**, because `pub` means
 *export* client-side and *endpoint* server-side: it has no settled meaning until
 placement does. In a kind that has a server (`web-app`, `service`,

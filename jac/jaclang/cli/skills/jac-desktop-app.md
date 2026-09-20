@@ -10,17 +10,22 @@ The desktop target turns a full-stack Jac app into **one `jac build --native`d b
 The desktop target ships with `jaclang` core -- nothing extra to install. The app's kind selects it: `[project] kind = "desktop"` in a single-app project, or an `[apps.<name>] kind = "desktop"` table in a workspace (`jac create --app studio --kind desktop`); no flag is needed. The renderer is `[desktop] engine`: `"native"` (default, the OS webview) or `"cef"` (a bundled Chromium; no HMR, so `jac run --dev` needs `engine = "native"`). Both build into `.jac/client/desktop/`.
 
 ```bash
-jac build studio           # -> .jac/client/desktop/<app>  (single binary + dist/); plain `jac build` in a single-app project
+jac build studio           # -> .jac/client/desktop/<app>  (single binary + dist/; a <name>.app bundle on macOS); plain `jac build` in a single-app project
 jac run studio             # build (if needed), then launch the native window
 jac run --dev studio       # HMR: Vite on 127.0.0.1 + recompile on .jac saves
 ```
 
-There is **no `jac setup desktop` step** - the native host is generated at build time. Run the built binary directly with `(cd .jac/client/desktop && ./<app>)`.
+There is **no `jac setup desktop` step** - the native host is generated at build time, and the desktop target's readiness hook (`ensure_ready`) is a no-op. Run the built app directly with `(cd .jac/client/desktop && ./<app>-launch.sh)`; on macOS `open <app>.app` works too.
 
-Jac provisions the native webview wrapper and its build dependencies automatically.
-Use `jac setup --toolchain desktop` to prepare them ahead of time. Linux system
-libraries require administrator access; downloads and generated native libraries
-live in the managed toolchain cache.
+Jac provisions the native webview wrapper and its build dependencies automatically
+on the first `jac run` / `jac build`, narrating each step. Use
+`jac setup --toolchain desktop` to prepare them ahead of time (CI images, offline
+prep). Linux builds against WebKitGTK, whose system libraries install through the
+package manager with `sudo` (`sudo -n` when there is no TTY, so an unattended run
+stops with the command to run instead of hanging); macOS builds against the WebKit
+framework of the Xcode Command Line Tools (`xcode-select --install`) and needs
+nothing else. Downloads and generated native libraries live in the managed
+toolchain cache.
 
 ## Configuration - `[desktop]` in `jac.toml`
 
@@ -88,14 +93,20 @@ notification = true
 
 ## Output layout
 
+Linux ships a flat directory:
+
 ```
 .jac/client/desktop/
-  my-app          # the native binary
-  dist/           # the served cl bundle
-  libwebview.so   # OS-webview wrapper (resolved via $ORIGIN runpath)
+  my-app             # the native binary
+  my-app-launch.sh   # launcher that wires in the project venv
+  app.jab            # the sealed app image the host serves (embedded backend only)
+  dist/              # the served cl bundle
+  libwebview.so      # WebKitGTK wrapper (resolved via $ORIGIN runpath)
 ```
 
-The directory is **relocatable** - the binary finds its sibling `dist/` and `libwebview.so` relative to itself. Ship the whole directory.
+macOS ships the same pieces as an application bundle (`my-app.app/Contents/MacOS/my-app` + `libwebview.dylib`, `Contents/Resources/{app.jab,dist/}`, `Contents/Info.plist` from `[desktop] name`/`identifier`/`version`, `AppIcon.icns` when `[desktop] icon` names a `.icns` or `.png`).
+
+The directory is **relocatable** - the binary finds `dist/`, the image and the webview library relative to itself. Ship the whole directory (or the `.app`). App state (graph, session) lives beside the binary on Linux and under `~/Library/Application Support/<identifier>` on macOS; `JAC_DATA_PATH` overrides both.
 
 ## Gotchas and current limits
 

@@ -95,7 +95,7 @@ test "rootless graph archetypes follow a client pin" {
         {
             "model.jac": (
                 "node Block {\n    has opcode: str = \"\";\n}\n"
-                + "edge NextOf {}\n"
+                + "edge NextOf: Block --> Block {}\n"
                 + "def make_pair() -> Block {\n"
                 + "    a = Block(opcode=\"a\");\n"
                 + "    b = Block(opcode=\"b\");\n"

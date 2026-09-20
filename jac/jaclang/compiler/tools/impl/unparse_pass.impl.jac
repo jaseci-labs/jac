@@ -2,7 +2,7 @@ def _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
     return sep.join(
         [
             k.gen.jac
-            for k in nd.kid
+            for k in [nd->:Kid:->]
             if k and k.gen.jac
         ]
     );
@@ -19,8 +19,8 @@ impl UnparsePass._comma_sep(nodes: Sequence[uni.UniNode]) -> str {
 }
 
 impl UnparsePass.unparse_prepare_exit with uni.UniNode exit {
-    for attr in vars(here).values() {
-        if isinstance(attr, uni.Token) and not attr.gen.jac {
+    for attr in [here->:Role:->[?:uni.Token]] {
+        if not attr.gen.jac {
             attr.gen.jac = attr.value;
         }
     }
@@ -33,7 +33,7 @@ impl UnparsePass.unparse_default_exit with uni.UniNode exit {
         here.gen.jac = " ".join(
             [
                 k.gen.jac
-                for k in here.kid
+                for k in [here->:Kid:->]
                 if k and k.gen.jac
             ]
         );
@@ -52,8 +52,7 @@ impl UnparsePass.exit_name with uni.Name exit {
         return;
     }
     prefix = "`" if here.is_kwesc else "";
-    suffix = ",\n" if here.is_enum_stmt else "";
-    here.gen.jac = prefix + here.value + suffix;
+    here.gen.jac = prefix + here.value;
 }
 
 impl UnparsePass.exit_string with uni.String exit {
@@ -712,14 +711,15 @@ impl UnparsePass.exit_return_stmt with uni.ReturnStmt exit {
 
 impl UnparsePass.exit_visit_stmt with uni.VisitStmt exit {
     parts: list[str] = ["visit"];
-    if here.insert_loc {
-        parts.append(here.insert_loc.gen.jac);
+    if here.insert_loc is not None {
+        parts[0] += ":" + here.insert_loc.gen.jac + ":";
     }
     parts.append(here.target.gen.jac);
     if here.else_body {
         parts.append(here.else_body.gen.jac);
+    } else {
+        parts.append(";");
     }
-    parts.append(";");
     here.gen.jac = " ".join(parts);
 }
 
@@ -756,11 +756,12 @@ impl UnparsePass.exit_assignment with uni.Assignment exit {
     }
     result = " ".join(parts);
 
-    if not here.is_enum_stmt
-        and not (
-            isinstance(here.parent, uni.IterForStmt)
-            and (here == here.parent.iter or here == here.parent.count_by)
-        ) {
+    if here.is_enum_stmt {
+        result += ",";
+    } elif not (
+        isinstance(here.parent, uni.IterForStmt)
+        and (here == here.parent.iter or here == here.parent.count_by)
+    ) {
         result = result + ";";
     }
     here.gen.jac = result;
@@ -1106,7 +1107,7 @@ impl UnparsePass.exit_jsx_expression with uni.JsxExpression exit {
 
 impl UnparsePass.exit_jsx_slot with uni.JsxSlot exit {
     parts: list[str] = [];
-    for k in here.kid {
+    for k in [here->:Kid:->] {
         s = k.gen.jac;
         if s is not None {
             parts.append(s);
@@ -1190,7 +1191,7 @@ impl UnparsePass.exit_match_mapping with uni.MatchMapping exit {
 impl UnparsePass.exit_match_k_v_pair with uni.MatchKVPair exit {
     here.gen.jac = here.key.gen.jac
         + " "
-        + here.kid[1].gen.jac
+        + [here->:Kid:->][1].gen.jac
         + " "
         + here.value.gen.jac;
 }

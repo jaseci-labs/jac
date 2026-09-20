@@ -327,7 +327,17 @@ impl JcirGenPass.exit_else_if with ElseIf exit {
 }
 
 impl JcirGenPass.exit_else_stmt with ElseStmt exit {
-    self.set_out(here, self.resolve_stmt_block(here.body));
+    body = self.resolve_stmt_block(here.body);
+    if isinstance(here.parent, (InForStmt, IterForStmt, WhileStmt)) {
+        body = [
+            self.nod(
+                'While',
+                ['test', 'body', 'orelse'],
+                [self.const_of(True), body + [self.nod('Break', [], [])], []]
+            )
+        ];
+    }
+    self.set_out(here, body);
 }
 
 impl JcirGenPass.exit_expr_stmt with ExprStmt exit {

@@ -2,7 +2,7 @@ node a {
     has val: float;
 }
 
-edge Edge1 {
+edge Edge1 : any --> any {
     has val: int = 5;
 }
 

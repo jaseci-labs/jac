@@ -16,9 +16,9 @@ node Employee {
         salary: float = 0.0;
 }
 
-edge BelongsTo {}
+edge BelongsTo : any --> any {}
 
-edge Manages {
+edge Manages : any --> any {
     has since: str = "";
 }
 

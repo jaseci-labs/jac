@@ -16,8 +16,8 @@ fire on every step and are always valid.
 
 node Place { has v: int = 0; }
 node City { has population: int = 0; }
-edge Road { has length: int = 0; }
-edge Friend { has since: int = 0; }
+edge Road : any --> any { has length: int = 0; }
+edge Friend : any --> any { has since: int = 0; }
 obj NotAnArch { has v: int = 0; }
 
 walker WalkerOne { can ping with Root entry { ; } }
@@ -41,7 +41,7 @@ node BadNode {
     can on3 with NotAnArch exit   { ; }               # E1117 (obj, exit form)
 }
 
-edge BadEdge {
+edge BadEdge : any --> any {
     # Edge triggers must be walkers.
     can on1 with Road entry       { ; }               # E1117 (edge)
     can on2 with Place exit       { ; }               # E1117 (node)
@@ -67,7 +67,7 @@ node GoodNode {
     can on_walker_tuple with (WalkerOne, WalkerTwo) exit { ; }
 }
 
-edge GoodEdge {
+edge GoodEdge : any --> any {
     can any_entry with entry         { ; }
     can on_walker with WalkerOne entry  { ; }
 }

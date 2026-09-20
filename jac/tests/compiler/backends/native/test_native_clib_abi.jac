@@ -10,6 +10,7 @@ import ctypes;
 import os;
 import shutil;
 import subprocess;
+import sys;
 import tempfile;
 import from tests.support {
     jac_command,

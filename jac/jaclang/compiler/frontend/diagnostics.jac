@@ -735,6 +735,43 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " element types cannot be verified — use \"{type}[NodeType]\" or pass a"
          " concrete list of nodes instead"
      ),
+     E1136 = _err(
+         "E1136",
+         Category.TYPE,
+         "Connection {side} operand is \"{actual}\", but edge \"{edge_name}\" declares its"
+         " {side} endpoint as \"{declared}\"",
+         help="A declared endpoint is what lets a traversal through this edge infer"
+         " a node type instead of `any`, so a connection that contradicts it makes"
+         " that inference wrong. Connect nodes that match the declaration, or widen"
+         " the edge's endpoints."
+     ),
+     W2081 = _warn(
+         "W2081",
+         Category.TYPE,
+         "Connection {side} operand is \"{actual}\", which cannot be checked against"
+         " the {side} endpoint \"{declared}\" declared by edge \"{edge_name}\"",
+         help="Give the operand a concrete node type to have this verified, or"
+         " declare the edge's endpoints as `any --> any` if it is meant to accept"
+         " any node."
+     ),
+     E1137 = _err(
+         "E1137",
+         Category.TYPE,
+         "Traversal origin is \"{actual}\", but edge \"{edge_name}\" declares its {side}"
+         " endpoint as \"{declared}\", so this traversal can never match",
+         help="An edge only connects the node types it declares, so traversing it"
+         " from an unrelated node yields nothing. Start from a node that matches the"
+         " declaration, or widen the edge's endpoints."
+     ),
+     W2082 = _warn(
+         "W2082",
+         Category.TYPE,
+         "Traversal origin is \"{actual}\", which cannot be checked against the {side}"
+         " endpoint \"{declared}\" declared by edge \"{edge_name}\"",
+         help="Give the origin a concrete node type to have this verified, or declare"
+         " the edge's endpoints as `any --> any` if it is meant to start from any"
+         " node."
+     ),
      E1119 = _err(
          "E1119",
          Category.TYPE,
@@ -913,6 +950,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " not checked here, since another toolchain resolves it.",
          blocks_codegen=True
      ),
+     E1135 = _err(
+         "E1135",
+         Category.TYPE,
+         "Cannot assign to '{name}': it is declared {kind}",
+         help="A binding annotated with 'Final' (or a 'readonly' member of an"
+         " imported TypeScript interface) can only be set at its declaration,"
+         " or in the 'init'/'postinit' of the object that declares it when the"
+         " declaration has no initializer."
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
@@ -1082,6 +1128,40 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="take(place) requires an optional local or field and leaves None."
          " swap(&mut a, &mut b) requires two writable places of the same type."
          " Use pop() to move an owned container element out."
+     ),
+     E1320 = _err(
+         "E1320",
+         Category.SEMANTIC,
+         "Cannot assign '{field}' through a shared borrow of '{name}'",
+         help="A `&` borrow is read-only. Take the borrow with `&mut`, or assign"
+         " through the owner directly."
+     ),
+     E1321 = _err(
+         "E1321",
+         Category.SEMANTIC,
+         "Cannot write '{field}' while the borrow '{name}' reads through it",
+         help="'{name}' was reached through a '{field}' field or element, and a"
+         " borrow does not keep its referent alive. Writing '{field}' on any"
+         " object while '{name}' is still used could release what it points at."
+         " Finish using '{name}' first, or hold it in an ordinary (owning) local."
+     ),
+     E1322 = _err(
+         "E1322",
+         Category.SEMANTIC,
+         "Call to '{callee}' may write '{field}' while the borrow '{name}' reads through it",
+         help="'{name}' was reached through '{field}', and '{callee}' may write"
+         " that field on some object (or the compiler cannot tell what it"
+         " writes), which could release what '{name}' points at. Finish using"
+         " '{name}' before the call, or hold it in an ordinary (owning) local."
+     ),
+     E1323 = _err(
+         "E1323",
+         Category.SEMANTIC,
+         "Borrow '{name}' must start at a parameter, `self`, an `own` value or another borrow",
+         help="A borrow does not keep its referent alive, so its starting point"
+         " must outlive it. An ordinary local or a module global can be released"
+         " while the borrow is still used. Borrow from the parameter the value"
+         " came from, or keep an ordinary (owning) local instead of a borrow."
      ),
      W1310 = _warn(
          "W1310",
@@ -1290,6 +1370,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2027",
          Category.SEMANTIC,
          "Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}'"
+     ),
+     E2086 = _err(
+         "E2086",
+         Category.SEMANTIC,
+         "Edge '{name}' declares no endpoints, so every traversal through it widens to 'any'",
+         help="Name the node types this edge connects: `edge {name}: Src --> Tgt {{}}`."
+         " To keep accepting any node, say so -- `any --> any` preserves the gradual"
+         " behaviour exactly, and `Node --> Node` asks for a node without naming which."
      ),
      E2009 = _err(
          "E2009",
@@ -2148,4 +2236,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.RUNTIME,
          "Client error could not be traced to Jac source: {message}",
          help="The dev loop kept the raw location it was given, but nothing under .jac/client/compiled claims it -- a browser extension, a dependency with no source map, or an artifact from a build that has since been replaced. Reload after a clean build if the location should be yours."
+     ),
+     E0059 = _err(
+         "E0059",
+         Category.SYNTAX,
+         "'continue' is not valid inside a loop's else block",
+         help="the else block runs after the loop has already exhausted, so there"
+         " is no next iteration for 'continue' to skip to (Python would re-enter"
+         " the loop test here, usually re-running the else forever). Use 'break'"
+         " to leave the loop from the else block, or restructure the condition."
      );

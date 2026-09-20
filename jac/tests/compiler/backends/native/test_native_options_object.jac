@@ -11,6 +11,8 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
+import from unittest.mock { patch }
+import from tests.support { cache_env }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 

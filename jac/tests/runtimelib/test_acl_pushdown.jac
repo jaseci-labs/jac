@@ -34,7 +34,7 @@ node Team {
     has name: str = "";
 }
 
-edge MemberOf {}
+edge MemberOf: any --> any {}
 
 node CustomDoc {
     has label: str = "";

@@ -622,7 +622,7 @@ def heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
     import from jaclang.compiler.backends.native.link_glue { inject_heap_accounting }
     declarations: dict[str, str] = {};
     defined: set[str] = set();
-    # Optimized units can inline the allocator; the plan owns the GC policy.
+
     managed = plan.options.na_gc_mode != "none";
     registry = plan.prog.native_units();
     for unit in plan.units {
@@ -800,8 +800,8 @@ def units_source_key(paths: list[str], options: CompileOptions) -> str {
     h.update(options.codegen_identity().encode("utf-8"));
     h.update(options.effective_triple().encode("utf-8"));
     import from jaclang.compiler.driver.compilation_context { cache_scope }
-    # Unit source identity belongs to the link plan, independent of its caller.
-    with cache_scope("", options) {
+
+    with cache_scope(options) {
         for path in sorted(os.path.realpath(p) for p in paths) {
             h.update(native_unit_identity(path).encode("utf-8"));
             try {

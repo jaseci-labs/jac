@@ -144,7 +144,7 @@ impl JacCompiler.get_bytecode(
         actual = context_program(actual, options);
     }
     with compilation_scope(
-        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
+        None if self.selfhost.is_selfhost(actual) else actual.options
     ) {
         return self._get_bytecode(full_target, actual);
     }
@@ -328,15 +328,7 @@ impl JacCompiler._load_native_from_cache(
     target_program: JacProgram,
     cached_interop: (dict[str, any] | None)
 ) -> None {
-    """Stamp each import with the emitter's native-only verdict.
-
-    Whether an import resolves to a module the native lane owns, and
-    whether that module lives inside jaclang's own tree, are both
-    import-resolution questions: they need the hub, the placement pins
-    and the filesystem, which is the driver's ground and not a pass's.
-    The emitter used to ask for them through `self.prog`, the one
-    driver read left in a sealed pass. It now consumes a bool.
-    """;
+    """Restore the owned native engine and its import metadata from cache.""";
     import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
     import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
     engine: ExecutionEngine | SharedNativeEngine | None = self._sealed_native_engine(
@@ -352,6 +344,7 @@ impl JacCompiler._load_native_from_cache(
         return;
     }
     gen = CodeGenTarget();
+    self._restore_native_clibs(gen, cached_interop);
     gen.native_engine = engine;
     py_func_table: dict[str, Callable[..., object]] = {};
     callbacks_list: list[object] = [];
@@ -394,7 +387,6 @@ impl JacCompiler._restore_sections(
     secs: dict[int, bytes],
     base_dir: str = ""
 ) -> None {
-    # Building an engine releases analysis scratch; restore serialized products after it.
     if (SEC_NBITCODE in secs or SEC_NOBJ in secs)
         and self._wants_native_engine(full_target, actual_program) {
         try {
@@ -558,7 +550,12 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict[str, any] {
     if manifest is None {
         return {};
     }
-    interop_data: dict[str, any] = {'bindings': {}};
+    interop_data: dict[str, any] = {
+        'bindings': {},
+        'clib_paths': list(result.gen._clib_paths),
+        'clib_symbol_lib': dict(result.gen._clib_symbol_lib),
+        'exported_symbols': list(result.gen._exported_symbols)
+    };
     for (name, binding) in manifest.bindings.items() {
         interop_data['bindings'][name] = {
             'name': binding.name,
@@ -582,6 +579,18 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict[str, any] {
     interop_data['app_edges'] = list(manifest.app_edges);
     interop_data['provider_routes'] = dict(manifest.provider_routes);
     return interop_data;
+}
+
+impl JacCompiler._restore_native_clibs(
+    gen: CodeGenTarget, cached_interop: (dict[str, any] | None)
+) -> None {
+    if cached_interop is None or 'clib_paths' not in cached_interop {
+        raise ValueError("Native cache lacks foreign-library metadata");
+    }
+
+    gen._clib_paths.extend(cached_interop['clib_paths']);
+    gen._clib_symbol_lib.update(cached_interop.get('clib_symbol_lib', {}));
+    gen._exported_symbols.extend(cached_interop.get('exported_symbols', []));
 }
 
 impl JacCompiler._deserialize_interop_table(
@@ -962,7 +971,7 @@ impl JacCompiler.stamp_boundary_facts(
         if isinstance(nd, uni.Ability) and nd.sym_name {
             out[nd.sym_name] = nd;
         }
-        for k in nd.kid {
+        for k in [nd->:Kid:->] {
             collect_abilities(k, out);
         }
     }
@@ -973,7 +982,7 @@ impl JacCompiler.stamp_boundary_facts(
                 out[nd.sym_name] = nd;
             }
         }
-        for k in nd.kid {
+        for k in [nd->:Kid:->] {
             collect_walkers(k, out);
         }
     }
@@ -1187,10 +1196,8 @@ impl JacCompiler.compile(
     context_errors = len(target_program.errors_had);
     context_warnings = len(target_program.warnings_had);
     import from jaclang.compiler.driver.compilation_context { compilation_scope }
-    identity = ''
-        if self.selfhost.is_selfhost(target_program)
-        else target_program.context_key;
-    with compilation_scope(identity, options) {
+    owner_options = None if self.selfhost.is_selfhost(target_program) else options;
+    with compilation_scope(owner_options) {
         with compile_progress.track(str(file_path)) {
             if self._reentrant_depth == 0 and not self.stub_catalog_disabled {
                 if not self.selfhost.is_selfhost(target_program) {
@@ -1732,6 +1739,7 @@ impl JacCompiler._scrub_native_artifacts_on_error(
     gen = mod.gen;
     gen.py_bytecode = None;
     gen.llvm_ir = None;
+    gen.native_linked_ir = None;
     gen.native_engine = None;
     gen.native_bitcode = None;
     gen.native_object = None;
@@ -1984,7 +1992,7 @@ impl JacCompiler.get_client_artifact(
         actual = context_program(actual, options);
     }
     with compilation_scope(
-        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
+        None if self.selfhost.is_selfhost(actual) else actual.options
     ) {
         return self._get_client_artifact(full_target, actual);
     }

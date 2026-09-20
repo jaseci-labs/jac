@@ -6,7 +6,7 @@ node FragmentNode {
     has value: int;
 }
 
-edge FragmentEdge {
+edge FragmentEdge: FragmentNode --> FragmentNode {
     has weight: int = 0;
 }
 

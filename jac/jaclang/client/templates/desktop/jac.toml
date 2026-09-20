@@ -22,6 +22,7 @@ watchdog = ">=3.0.0"
 name = "{{name}}"
 identifier = "com.example.{{name}}"
 version = "1.0.0"
+# icon = "assets/icon.png"   # .icns or .png; the macOS bundle carries it
 
 [jacpack]
 name = "desktop"

@@ -3,7 +3,7 @@ import from c { def access(path: str, mode: i32) -> i32;  }
 import from c { def unlink(path: str) -> i32;  }
 import from c { def rmdir(path: str) -> i32;  }
 import from c { def rename(oldp: str, newp: str) -> i32;  }
-import from _directory_native { directory_names }
+import from _directory_native { try_directory_names }
 
 
 def:pub which(cmd: str) -> (str | None) {
@@ -63,21 +63,49 @@ def:pub move(src: str, dst: str) -> str {
         raise ValueError(f"move: cannot relocate directory '{src}' across filesystems");
     }
     copyfile(src, real_dst);
-    unlink(src);
+    if unlink(src) != 0 {
+        raise ValueError(f"move: could not remove '{src}'");
+    }
     return real_dst;
 }
 
-def:pub rmtree(path: str) {
-    children = directory_names(path);
-    for nm in children {
+def:pub rmtree(path: str, ignore_errors: bool = False) {
+    _rmtree_walk(path, ignore_errors);
+}
+
+def _rmtree_children(path: str, ignore_errors: bool) -> bool {
+    ok = True;
+    for nm in try_directory_names(path) {
         child = os.path.join(path, nm);
+        if unlink(child) == 0 {
+            continue;
+        }
         if os.path.isdir(child) {
-            rmtree(child);
-        } else {
-            unlink(child);
+            if not _rmtree_walk(child, ignore_errors) {
+                ok = False;
+            }
+            continue;
+        }
+        if not ignore_errors {
+            raise ValueError(f"rmtree: could not remove '{child}'");
+        }
+        ok = False;
+    }
+    return ok;
+}
+
+def _rmtree_walk(path: str, ignore_errors: bool) -> bool {
+    ok = _rmtree_children(path, ignore_errors);
+    if rmdir(path) != 0 {
+        if not _rmtree_children(path, ignore_errors) {
+            ok = False;
+        }
+        if rmdir(path) != 0 {
+            if not ignore_errors {
+                raise ValueError(f"rmtree: could not remove '{path}'");
+            }
+            return False;
         }
     }
-    if rmdir(path) != 0 {
-        raise ValueError(f"rmtree: could not remove '{path}'");
-    }
+    return ok;
 }

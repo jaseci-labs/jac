@@ -9,7 +9,8 @@ import from jaclang.cli.console { console }
 import from jaclang.toolchains.host { host_platform, executable, run_step }
 import from jaclang.toolchains.pins { JDK_ARTIFACTS, JDK_VERSION, ANDROID_ARTIFACTS }
 import from jaclang.jac0core.cache_paths { FileLock }
-import from jaclang.toolchains.store { cache_root, install, offline }
+import from jaclang.cache.registry { bucket }
+import from jaclang.toolchains.store { install, offline }
 
 obj AndroidEnvironment {
     has java_home: Path,
@@ -21,7 +22,7 @@ obj AndroidEnvironment {
         result["ANDROID_HOME"] = str(self.sdk_home);
         result["ANDROID_SDK_ROOT"] = str(self.sdk_home);
         result["GRADLE_USER_HOME"] = os.environ.get(
-            "GRADLE_USER_HOME", str(cache_root() / "gradle")
+            "GRADLE_USER_HOME", str(bucket("toolchains-gradle").path())
         );
         result["PATH"] = os.pathsep.join(
             [
@@ -99,7 +100,7 @@ def ensure_android -> AndroidEnvironment {
     custom = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT");
     sdk = Path(custom).expanduser().resolve()
         if custom
-        else cache_root() / "android-sdk" / host;
+        else bucket("toolchains-android-sdk").path() / host;
     sdk.mkdir(parents=True, exist_ok=True);
     environment = AndroidEnvironment(java, sdk);
     manager_name = "sdkmanager.bat" if os.name == "nt" else "sdkmanager";

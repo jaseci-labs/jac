@@ -3012,3 +3012,24 @@ test "sv_client: awaited walker spawn rehydrates the stub with reports" {
         _reset_bridge_state();
     }
 }
+
+test "sv_client: a walker spawn without a stub class is refused before the provider runs" {
+    _reset_bridge_state();
+    stub = _BridgeStubClient(
+        payload={"ok": True, "data": {"result": {"name": "ada"}, "reports": []}}
+    );
+    sv_client.register_test_client("social", stub);
+    try {
+        try {
+            asyncio.run(
+                sv_client.spawn_walker("social", "greet_walker", {"name": "ada"}, None)
+            );
+            assert False , "a spawn with no boundary contract must raise";
+        } except BridgeError as e {
+            assert "no declared boundary contract" in str(e);
+        }
+        assert stub.calls == [] , "the provider must not have been asked to run the walker";
+    } finally {
+        _reset_bridge_state();
+    }
+}

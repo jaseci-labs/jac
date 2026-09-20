@@ -9,6 +9,13 @@ test "native field factories use ordinary calls and fresh values per instance" {
     assert probe();
 }
 
+test "field helpers preserve deferred and keyword-only constructor slots" {
+    (engine, _) = compile_native("native_object_field_descriptors.jac");
+    probe = get_func(engine, "probe", ctypes.c_bool);
+    assert probe();
+    assert probe();
+}
+
 test "synthetic pipe calls preserve the source graph after lowering" {
     (engine, module) = compile_native("pipe_fwd.jac");
     chain = get_func(engine, "pipe_chain", ctypes.c_int64, ctypes.c_int64);

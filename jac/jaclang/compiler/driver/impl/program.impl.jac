@@ -135,13 +135,13 @@ impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
         prog_root.set_kids(
             [
                 k
-                for k in prog_root.kid
+                for k in [prog_root->:Kid:->]
                 if k is not released
             ],
             pos_update=False
         );
         del [edge released<-:ScopeChild:<-];
-        if prog_root.kid {
+        if [prog_root->:Kid:->] {
             (first_tok, last_tok) = prog_root.resolve_tok_range();
             prog_root.loc.update_token_range(first_tok, last_tok);
         } else {
@@ -319,7 +319,7 @@ impl JacProgram.scrub_hub_types(self: JacProgram) -> None {
                 nd.coerce_to = None;
                 nd.ct_value = None;
             }
-            for kid in nd.kid {
+            for kid in [nd->:Kid:->] {
                 stack.append(kid);
             }
         }

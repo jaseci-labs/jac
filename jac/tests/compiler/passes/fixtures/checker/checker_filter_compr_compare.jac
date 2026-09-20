@@ -1,4 +1,4 @@
-edge MyEdge {
+edge MyEdge : NodeA --> NodeA {
     has weight: int,
         label: str;
 }

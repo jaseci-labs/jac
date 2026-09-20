@@ -115,14 +115,21 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(site, "jaclang", "dist", "payload", "python-sources.json")
         );
 
-        awesome_src = os.path.join(repo_root, "examples", "jaclang_org");
-        if os.path.isdir(awesome_src) {
-            log("==> bundling the jaclang.org site as the --awesome template");
-            copy_tree(
-                awesome_src, os.path.join(site, "awesome_template"), skip_site_template
-            );
-        } else {
-            log(f"==> no {awesome_src}; --awesome template not bundled");
+        for (name, example) in [
+            ("awesome", "jaclang_org"),
+            ("awetiny", "tiny_jacyac")
+        ] {
+            template_src = os.path.join(repo_root, "examples", example);
+            if os.path.isdir(template_src) {
+                log(f"==> bundling {example} as the --{name} template");
+                copy_tree(
+                    template_src,
+                    os.path.join(site, f"{name}_template"),
+                    skip_site_template
+                );
+            } else {
+                log(f"==> no {template_src}; --{name} template not bundled");
+            }
         }
     } else {
         log(

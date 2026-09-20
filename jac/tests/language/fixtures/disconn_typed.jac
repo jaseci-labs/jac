@@ -5,9 +5,9 @@ node N {
     has v: int = 0;
 }
 
-edge E {}
+edge E : N --> N {}
 
-edge F {}
+edge F : N --> N {}
 
 with entry {
     a = N(v=1);

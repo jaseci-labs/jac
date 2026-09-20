@@ -1,4 +1,4 @@
-import from jaclang.runtime.object_model { field }
+import from jaclang.compiler.frontend.roles { Kid }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
@@ -11,18 +11,18 @@ obj OspSlot {
         ability: str,
         is_entry: bool,
         has_body: bool,
-        trigger_names: list[str] = field(default_factory=`list);
+        trigger_names: list[str] = [];
 }
 
 
 obj OspModel {
-    has arch_kind: dict[(str, str)] = field(default_factory=`dict),
-        tags: dict[(str, int)] = field(default_factory=`dict),
-        order: list[str] = field(default_factory=`list),
-        order_index: dict[(str, int)] = field(default_factory=`dict),
-        isa: dict[(str, list[str])] = field(default_factory=`dict),
-        slots: list[OspSlot] = field(default_factory=`list),
-        collisions: list[tuple[str, str]] = field(default_factory=`list),
+    has arch_kind: dict[(str, str)] = {},
+        tags: dict[(str, int)] = {},
+        order: list[str] = [],
+        order_index: dict[(str, int)] = {},
+        isa: dict[(str, list[str])] = {},
+        slots: list[OspSlot] = [],
+        collisions: list[tuple[str, str]] = [],
         uses_construct: bool = False;
 
     def has_event_ability -> bool {
@@ -250,7 +250,7 @@ obj OspAnalysis {
                     and (nd.op.name == Tok.KW_SPAWN) {
                     return True;
                 }
-                for k in nd.kid {
+                for k in [nd->:Kid:->] {
                     work.append(k);
                 }
             }

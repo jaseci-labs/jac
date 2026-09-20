@@ -1,5 +1,6 @@
 """Compiler materialization retains declared field semantics across LLVM pointer erasure."""
 
+import json;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.codeinfo {
@@ -41,7 +42,7 @@ test "materialization skips deleted native dictionary entries and preserves orde
     import tempfile;
     import from tests.support { NATIVE_FIXTURES }
     import from jaclang.cli.commands.native_build { native_build }
-    activate_scope_lowering();
+    previous = set_native_unit_compile(True);
     try {
         with tempfile.TemporaryDirectory() as directory {
             suffix = ".dylib" if sys.platform == "darwin" else ".so";
@@ -77,6 +78,6 @@ test "materialization skips deleted native dictionary entries and preserves orde
                 == 1;
         }
     } finally {
-        deactivate_scope_lowering();
+        reset_native_unit_compile(previous);
     }
 }

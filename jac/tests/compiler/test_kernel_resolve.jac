@@ -235,10 +235,10 @@ test "kernel source identity is independent of the caller compilation context" {
         source = Path(directory) / "unit.jac";
         source.write_text("def answer -> int { return 42; }\n");
         options = kernel_options();
-        with cache_scope("build-context", options) {
+        with cache_scope(CompileOptions(target_app="build-context")) {
             built = units_source_key([str(source)], options);
         }
-        with cache_scope("application-context", options) {
+        with cache_scope(CompileOptions(target_app="application-context")) {
             assert units_source_key([str(source)], options) == built;
         }
     }

@@ -999,13 +999,7 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> Import {
         ) {
             valid_names.append(
                 ModuleItem(
-                    name=name.expr,
-                    alias=name.alias or None,
-                    kid=[
-                        i
-                        for i in name.kid
-                        if i
-                    ]
+                    name=name.expr, alias=name.alias or None, kid=[name->:Kid:->]
                 )
             );
         } else {
@@ -1598,7 +1592,7 @@ impl PyastBuildPass.proc_if(nd: py_ast.If) -> IfStmt {
                 condition=first_elm.condition,
                 body=first_elm.body,
                 else_body=first_elm.else_body,
-                kid=first_elm.kid
+                kid=[first_elm->:Kid:->]
             );
         } else {
             else_body = ElseStmt(body=valid_orelse, kid=valid_orelse);

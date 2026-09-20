@@ -12,6 +12,8 @@ glob logger = logging.getLogger(__name__),
      UNREACHABLE_HOST_GRACE_SECONDS = 1800,
      LIVE_PID_GRACE_SECONDS = 86400,
      SCRATCH_CONDEMN_SEPARATION_SECONDS = 3600,
+     ORPHAN_GRACE_ENV = 'JAC_DB_ORPHAN_GRACE_HOURS',
+     ORPHAN_GRACE_HOURS = 24,
      __all__ = [
          'DbKind',
          'DbRecord',
@@ -19,15 +21,16 @@ glob logger = logging.getLogger(__name__),
          'DERIVED_TABLES',
          'LIVE_PID_GRACE_SECONDS',
          'MAINTENANCE_DB',
+         'ORPHAN_GRACE_ENV',
+         'ORPHAN_GRACE_HOURS',
          'REGISTRY_TABLE',
          'SCRATCH_CONDEMN_SEPARATION_SECONDS',
          'SCRATCH_HEARTBEAT_SECONDS',
          'SCRATCH_PREFIX',
          'UNREACHABLE_HOST_GRACE_SECONDS',
          'admin_conninfo',
-         'condemn_stale_scratch',
+         'condemn_abandoned',
          'connect_admin',
-         'dead_scratch_databases',
          'drop_database',
          'drop_if_still_dead',
          'ensure_registry',
@@ -37,7 +40,11 @@ glob logger = logging.getLogger(__name__),
          'is_jac_database',
          'list_databases',
          'load_record',
+         'orphan_grace_seconds',
+         'owned_databases',
+         'pardon_recovered',
          'process_alive',
+         'reclaimable_databases',
          'record_database',
          'sqlstate_of',
          'start_heartbeat',
@@ -72,6 +79,12 @@ obj DbRecord {
     def looks_abandoned -> bool;
     def dead_scratch_reason -> str;
     def is_orphaned -> bool;
+    def is_reclaimable_orphan -> bool;
+    def is_reclaimable -> bool;
+    def condemnable -> bool;
+    def pardonable -> bool;
+    def reclaim_reason -> str;
+    def condemn_reason -> str;
     def state -> str;
 }
 
@@ -83,16 +96,21 @@ def admin_conninfo(info: ConnInfo) -> ConnInfo;
 def connect_admin(info: ConnInfo) -> any;
 def holds_no_data(info: ConnInfo, database: str) -> bool;
 def ensure_registry(conn: any) -> bool;
-def record_database(conn: any, database: str, kind: DbKind, owner_path: str) -> None;
+def record_database(
+    conn: any, database: str, kind: DbKind, owner_path: str, pid: int = 0
+) -> None;
 
 def forget_database(conn: any, database: str) -> None;
 def list_databases(conn: any) -> list[DbRecord];
 def load_record(conn: any, database: str) -> (DbRecord | None);
 def drop_database(conn: any, database: str, force: bool = False) -> bool;
 def drop_if_still_dead(conn: any, database: str) -> bool;
-def condemn_stale_scratch(conn: any, records: list[DbRecord]) -> list[str];
+def condemn_abandoned(conn: any, records: list[DbRecord]) -> list[str];
+def pardon_recovered(conn: any, records: list[DbRecord]) -> list[str];
 def process_alive(host: str, pid: int) -> bool;
-def dead_scratch_databases(records: list[DbRecord]) -> list[str];
+def reclaimable_databases(records: list[DbRecord]) -> list[str];
+def owned_databases(conn: any, pid: int) -> list[str];
+def orphan_grace_seconds -> int;
 def expired_databases(conn: any, days: int, keep: str) -> list[str];
 def touch_heartbeat(conn: any, database: str) -> bool;
 def start_heartbeat(info: ConnInfo, database: str) -> None;

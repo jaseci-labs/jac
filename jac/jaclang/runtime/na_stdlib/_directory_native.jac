@@ -31,3 +31,21 @@ def:pub directory_names(path: str) -> list[str] {
     }
     return names;
 }
+
+def:pub try_directory_names(path: str) -> list[str] {
+    names: list[str] = [];
+    directory = opendir(path);
+    if directory == 0 {
+        return names;
+    }
+    ent = readdir(directory);
+    while ent != 0 {
+        name = dirent_name(ent);
+        if name != "." and name != ".." {
+            names.append(name);
+        }
+        ent = readdir(directory);
+    }
+    closedir(directory);
+    return names;
+}

@@ -281,7 +281,7 @@ node TreeNode {
     }
 }
 
-edge WeightedEdge {
+edge WeightedEdge : any --> any {
     has weight: float = 1.0;
 
     class def with_weight(w: float) -> Self {

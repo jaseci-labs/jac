@@ -10,6 +10,7 @@ glob NATIVE_TIME_FUNCS: set[str] = {
      };
 glob NATIVE_OS_FUNCS: set[str] = {
          "getpid",
+         "listdir",
          "getcwd",
          "getenv",
          "chdir",
@@ -44,7 +45,14 @@ glob NATIVE_RANDOM_FUNCS: set[str] = {
          "uniform",
 
      };
-glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", "pack_into", };
+glob NATIVE_STRUCT_FUNCS: set[str] = {
+         "pack",
+         "unpack",
+         "calcsize",
+         "pack_into",
+         "unpack_from",
+
+     };
 glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_WHITE: int = 1,
      RC_COLOR_GRAY: int = 2,

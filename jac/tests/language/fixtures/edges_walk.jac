@@ -6,15 +6,15 @@ node node_a {
     has val: int;
 }
 
-edge Edge_a {
+edge Edge_a : any --> any {
     has value: int = 10;
 }
 
-edge Edge_b {
+edge Edge_b : any --> any {
     has value1: int = 20;
 }
 
-edge Edge_c {
+edge Edge_c : any --> any {
     has value2: int = 30;
 }
 

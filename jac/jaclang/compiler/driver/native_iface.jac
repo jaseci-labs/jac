@@ -1,6 +1,5 @@
 import hashlib;
 import json;
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.codeinfo {
     NativeModuleLayout,
     native_layout_to_dict
@@ -20,11 +19,11 @@ obj NativeExport {
         symbol: str,
         kind: str,
         is_pub: bool = False,
-        param_types: list[str] = field(default_factory=`list),
-        param_names: list[str] = field(default_factory=`list),
-        param_defaults: list[str] = field(default_factory=`list),
+        param_types: list[str] = [],
+        param_names: list[str] = [],
+        param_defaults: list[str] = [],
         ret_type: str = "",
-        ownership: list[str] = field(default_factory=`list);
+        ownership: list[str] = [];
 
     def to_dict -> dict[str, any] {
         return {
@@ -136,9 +135,9 @@ obj NativeClassLayout {
         size: int = 0,
         tag: int = 0,
         tag_offset: int = -1,
-        fields: dict[str, NativeFieldSlot] = field(default_factory=`dict),
-        bases: list[str] = field(default_factory=`list),
-        vtable: list[str] = field(default_factory=`list),
+        fields: dict[str, NativeFieldSlot] = {},
+        bases: list[str] = [],
+        vtable: list[str] = [],
         is_node: bool = False;
 
     def to_dict -> dict[str, any] {
@@ -175,18 +174,18 @@ obj NativeIface {
     has format: int = NIFACE_FORMAT,
         module: str = "",
         prefix: str = "",
-        exports: dict[str, NativeExport] = field(default_factory=`dict),
-        classes: dict[str, NativeClassLayout] = field(default_factory=`dict),
-        enums: dict[str, list[str]] = field(default_factory=`dict),
+        exports: dict[str, NativeExport] = {},
+        classes: dict[str, NativeClassLayout] = {},
+        enums: dict[str, list[str]] = {},
         init_symbol: str = "",
         entry_symbol: str = "",
-        demoted: list[str] = field(default_factory=`list),
-        clib_paths: list[str] = field(default_factory=`list),
-        python_imports: list[str] = field(default_factory=`list),
-        clib_symbol_lib: dict[str, str] = field(default_factory=`dict),
+        demoted: list[str] = [],
+        clib_paths: list[str] = [],
+        python_imports: list[str] = [],
+        clib_symbol_lib: dict[str, str] = {},
         layout: (NativeModuleLayout | None) = None,
-        deps: list[str] = field(default_factory=`list),
-        coverage: dict[str, any] = field(default_factory=`dict);
+        deps: list[str] = [],
+        coverage: dict[str, any] = {};
 
     def digest_fields -> dict[str, any] {
         return {

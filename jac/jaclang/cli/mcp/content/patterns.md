@@ -100,7 +100,7 @@ node City {
         population: int = 0;
 }
 
-edge Road {
+edge Road: City --> City {
     has distance: float = 0.0;
 }
 
@@ -137,11 +137,11 @@ node User {
         bio: str = "";
 }
 
-edge Follows {
+edge Follows: User --> User {
     has since: str = "";
 }
 
-edge Blocks {
+edge Blocks: User --> User {
     has reason: str = "";
 }
 

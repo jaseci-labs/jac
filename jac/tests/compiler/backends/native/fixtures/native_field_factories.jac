@@ -1,5 +1,3 @@
-import from jaclang.runtime.object_model { field as declare }
-
 glob calls: int = 0;
 
 def make_value(seed: int = 7) -> int {
@@ -12,11 +10,15 @@ def make_items -> list[int] {
 }
 
 obj Record {
-    has hidden: int = declare(default_factory=make_value, `init=False),
-        value: int = declare(default_factory=make_value),
-        keyword: int = declare(`default=13, kw_only=True),
-        items: list[int] = declare(default_factory=make_items),
-        empty: list[int] = declare(default_factory=`list);
+    has hidden: int postinit,
+        value: int = make_value(),
+        keyword: int = 13,
+        items: list[int] = make_items(),
+        empty: list[int] = [];
+
+    def postinit {
+        self.hidden = make_value();
+    }
 }
 
 def probe -> bool {
