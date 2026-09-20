@@ -19,6 +19,47 @@ def c_compiler -> str {
     return cc;
 }
 
+test "source export retains native functions without constructing JIT engines" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.dist.publish.runtime_vendor { _compile_runtime_module }
+    cc = c_compiler();
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        source = base / 'helper.jac';
+        (base / 'jac.toml').write_text('[placement]\ndefault = "native"\n');
+        source.write_text('def:pub answer -> int { return 42; }\n');
+        program = JacProgram();
+        program.options = CompileOptions(
+            default_codespace='native', force_codespace='native'
+        );
+        native: dict[str, any] = {};
+        with patch(
+            'jaclang.compiler.backends.native.link_plan.jit_engine_for_module',
+            side_effect=AssertionError('source export must not create a JIT engine')
+        ) as jit {
+            python = _compile_runtime_module(base, source, program, native);
+        }
+        assert jit.call_count == 0;
+        assert python;
+        assert native['record']['kind'] == 'shared';
+        c_source = base / 'helper.c';
+        c_source.write_bytes(native['content']);
+        library = base / 'helper.so';
+        built = subprocess.run(
+            [cc, '-shared', '-fPIC', str(c_source), '-o', str(library), '-lm'],
+            capture_output=True,
+            text=True
+        );
+        assert built.returncode == 0 , built.stderr;
+        answer = ctypes.CDLL(str(library)).answer;
+        answer.argtypes = [];
+        answer.restype = ctypes.c_int64;
+        assert answer() == 42;
+    }
+}
+
 test "C allocation attributes use the allocator argument positions" {
     cc = c_compiler();
     source = """

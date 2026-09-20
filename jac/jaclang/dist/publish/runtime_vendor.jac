@@ -135,7 +135,7 @@ def _compile_runtime_module(
     }
     import from jaclang.compiler.driver.source_products { python_source }
     (py_out, ir) = python_source(str(path), prog);
-    if native is not None and ir is not None and ir.gen.native_engine is not None {
+    if native is not None and ir is not None and ir.gen.llvm_ir is not None {
         import from jaclang.dist.native_product { write_native_product }
         with tempfile.TemporaryDirectory(prefix='jac-runtime-native-') as temporary {
             directory = Path(temporary);

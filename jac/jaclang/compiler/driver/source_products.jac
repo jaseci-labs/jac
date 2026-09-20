@@ -13,6 +13,7 @@ def python_source(path: str, program: JacProgram) -> tuple[str, Module | None] {
     options.need_full_ast = True;
     options.no_cgen = False;
     options.symtab_ir_only = False;
+    options.skip_native_engine = True;
     before = len(actual.errors_had);
     module = actual.compile(file_path=path, options=options);
     if len(actual.errors_had) > before {
