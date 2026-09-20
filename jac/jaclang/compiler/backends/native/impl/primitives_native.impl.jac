@@ -4899,41 +4899,135 @@ impl NativeBuiltinEmitter.emit_round(
 impl NativeBuiltinEmitter.emit_min(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if len(args) < 2 {
-        return None;
-    }
-    b = ctx.pass_ref.builder;
-    a = args[0];
-    v = args[1];
-    if isinstance(a.type, ir.IntType) and isinstance(v.type, ir.IntType) {
-        cmp = b.icmp_signed("<", a, v, name="min.cmp");
-        return b.select(cmp, a, v, name="min.result");
-    }
-    if isinstance(a.type, ir.DoubleType) and isinstance(v.type, ir.DoubleType) {
-        cmp = b.fcmp_ordered("<", a, v, name="min.fcmp");
-        return b.select(cmp, a, v, name="min.fresult");
-    }
-    return None;
+    return self._emit_extreme(ctx, args, "<", "min");
 }
 
 impl NativeBuiltinEmitter.emit_max(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if len(args) < 2 {
+    return self._emit_extreme(ctx, args, ">", "max");
+}
+
+impl NativeBuiltinEmitter._emit_extreme(
+    self: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    args: list[ir.Value],
+    op: str,
+    name: str
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    kwargs = ctx?.call_kwargs or {};
+    if not args or any(k != "default" for k in kwargs) {
         return None;
     }
-    b = ctx.pass_ref.builder;
-    a = args[0];
-    v = args[1];
-    if isinstance(a.type, ir.IntType) and isinstance(v.type, ir.IntType) {
-        cmp = b.icmp_signed(">", a, v, name="max.cmp");
-        return b.select(cmp, a, v, name="max.result");
+    helpers: (dict[str, any] | None) = None;
+    if len(args) == 1 {
+        for (key, ty) in p.list_types.items() {
+            if args[0].type == ty.as_pointer() {
+                helpers = p.list_helpers.get(key);
+                break;
+            }
+        }
+        if helpers is None {
+            return None;
+        }
+        ty = helpers["elem_type"];
+    } else {
+        if kwargs {
+            return None;
+        }
+        ty = args[0].type;
+        if any(value.type != ty for value in args) {
+            return None;
+        }
     }
-    if isinstance(a.type, ir.DoubleType) and isinstance(v.type, ir.DoubleType) {
-        cmp = b.fcmp_ordered(">", a, v, name="max.fcmp");
-        return b.select(cmp, a, v, name="max.fresult");
+    if not isinstance(ty, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+        return None;
     }
-    return None;
+    unsigned = ty == ir.IntType(1);
+    if ctx.arg_nodes {
+        if helpers is not None {
+            elements = p._nogc_type_arg_mangles(ctx.arg_nodes[0]);
+            unsigned = unsigned or bool(elements and elements[0].startswith("u"));
+        } else {
+            signs = [p._is_unsigned_node(nd) for nd in ctx.arg_nodes];
+            if any(signs) and not all(signs) {
+                return None;
+            }
+            unsigned = unsigned or all(signs);
+        }
+    }
+    if helpers is None {
+        best = args[0];
+        for candidate in args[1:] {
+            if isinstance(ty, (ir.DoubleType, ir.FloatType)) {
+                better = b.fcmp_ordered(op, candidate, best);
+            } elif unsigned {
+                better = b.icmp_unsigned(op, candidate, best);
+            } else {
+                better = b.icmp_signed(op, candidate, best);
+            }
+            best = b.select(better, candidate, best, name=name + ".best");
+        }
+        return best;
+    }
+    fallback: (ir.Value | None) = None;
+    if "default" in kwargs {
+        fallback = p._codegen_expr(kwargs["default"]);
+        if fallback is None or fallback.type != ty {
+            return None;
+        }
+    }
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    length = b.call(helpers["len"], [args[0]], name=name + ".len");
+    empty = b.icmp_unsigned("==", length, zero);
+    fn = b.basic_block.function;
+    start = fn.append_basic_block(name + ".start");
+    loop = fn.append_basic_block(name + ".loop");
+    body = fn.append_basic_block(name + ".body");
+    done = fn.append_basic_block(name + ".done");
+    if fallback is None {
+        p._emit_runtime_raise(
+            empty, "ValueError", name + "() arg is an empty sequence"
+        );
+        b.branch(start);
+    } else {
+        empty_block = b.basic_block;
+        b.cbranch(empty, done, start);
+    }
+    b.position_at_end(start);
+    first = b.call(helpers["get"], [args[0], zero]);
+    b.branch(loop);
+    b.position_at_end(loop);
+    idx = b.phi(i64, name=name + ".index");
+    best = b.phi(ty, name=name + ".best");
+    idx.add_incoming(one, start);
+    best.add_incoming(first, start);
+    b.cbranch(b.icmp_unsigned("<", idx, length), body, done);
+    b.position_at_end(body);
+    candidate = b.call(helpers["get"], [args[0], idx]);
+    if isinstance(ty, (ir.DoubleType, ir.FloatType)) {
+        better = b.fcmp_ordered(op, candidate, best);
+    } elif unsigned {
+        better = b.icmp_unsigned(op, candidate, best);
+    } else {
+        better = b.icmp_signed(op, candidate, best);
+    }
+    selected = b.select(better, candidate, best);
+    next_index = b.add(idx, one);
+    best.add_incoming(selected, b.basic_block);
+    idx.add_incoming(next_index, b.basic_block);
+    b.branch(loop);
+    b.position_at_end(done);
+    result = b.phi(ty, name=name + ".result");
+    result.add_incoming(best, loop);
+    if fallback is not None {
+        result.add_incoming(fallback, empty_block);
+    }
+    return result;
 }
 
 impl NativeBuiltinEmitter.emit_sum(
