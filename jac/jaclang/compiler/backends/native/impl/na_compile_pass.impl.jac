@@ -193,7 +193,9 @@ impl native_unit_demotions(
                         _ud_meta = _ud_json.loads(_ud_mf.read());
                     }
                     _ud_cached = _ud_meta.get("demoted_symbols");
-                    if _ud_cached is not None {
+                    import from jaclang.compiler.driver.jir { ct_dep_text_fresh }
+                    if _ud_cached is not None
+                        and ct_dep_text_fresh(_ud_meta.get("ct_deps", "")) {
                         return set(_ud_cached);
                     }
                 }
