@@ -53,7 +53,7 @@ int64_t jacpy_buffer_byte(uint64_t handle, int64_t index) {
     return (unsigned char)PyBytes_AS_STRING((PyObject *)(uintptr_t)handle)[index];
 }
 void jacpy_release(uint64_t handle) { Py_XDECREF((PyObject *)(uintptr_t)handle); }
-double jacpy_float_value(uint64_t handle) { return PyFloat_AS_DOUBLE((PyObject *)(uintptr_t)handle); }
+double jacpy_float_value(uint64_t handle) { return PyFloat_AsDouble((PyObject *)(uintptr_t)handle); }
 uint64_t jacpy_list_new(void) { return (uint64_t)(uintptr_t)PyList_New(0); }
 uint64_t jacpy_none(void) { return (uint64_t)(uintptr_t)Py_NewRef(Py_None); }
 uint64_t jacpy_int(int64_t value) { return (uint64_t)(uintptr_t)PyLong_FromLongLong(value); }

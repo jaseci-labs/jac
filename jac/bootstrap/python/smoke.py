@@ -51,6 +51,33 @@ assert object_api.jacpy_error_pending() == 0
 detached_api = ctypes.CDLL(None)
 detached_api.jacpy_error_pending.restype = ctypes.c_int64
 assert detached_api.jacpy_error_pending() == 0
+object_api.jacpy_float_value.argtypes = [ctypes.py_object]
+object_api.jacpy_float_value.restype = ctypes.c_double
+
+class NativeFloatProbe:
+    def __float__(self):
+        return 3.25
+
+class NativeIndexProbe:
+    def __index__(self):
+        return 7
+
+for numeric in (22, 1.5, True, NativeFloatProbe(), NativeIndexProbe()):
+    assert object_api.jacpy_float_value(numeric) == float(numeric)
+for invalid in (object(), "1.5", None):
+    try:
+        object_api.jacpy_float_value(invalid)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("native float conversion accepted an incompatible object")
+try:
+    object_api.jacpy_float_value(1 << 20000)
+except OverflowError:
+    pass
+else:
+    raise AssertionError("native float conversion lost OverflowError")
+
 object_api.jacpy_import_object.argtypes = [ctypes.py_object]
 object_api.jacpy_import_object.restype = ctypes.c_void_p
 object_api.jacpy_getattr.argtypes = [ctypes.c_void_p, ctypes.py_object]
