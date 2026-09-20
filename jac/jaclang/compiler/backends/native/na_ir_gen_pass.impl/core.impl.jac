@@ -562,7 +562,10 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         is_bundled_native_module
     }
 
-    import from jaclang.compiler.native_imports { python_import_binding }
+    import from jaclang.compiler.native_imports {
+        python_import_binding,
+        python_import_symbol
+    }
     processed_modules: set[str] = set();
     imported_mods: list[tuple[str, uni.Module]] = [];
     manifest = self.module.gen.interop_manifest;
@@ -583,8 +586,9 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     for imp in ModuleFacts.iter_module_imports(self.module) + _nested_native {
         for item in imp.items {
             binding = python_import_binding(item, entry_base);
-            if binding is not None {
-                self._python_imports[binding.binding] = binding;
+            symbol = python_import_symbol(item);
+            if binding is not None and symbol is not None {
+                self._python_imports[id(symbol)] = binding;
             }
         }
     }

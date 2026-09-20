@@ -25,8 +25,6 @@ impl NaIRGenPass._ensure_iter_types -> None {
     );
     self._register_iter_struct("EnumerateIterState", ["upstream", "idx"], [i8p, i64]);
     self._register_iter_struct("ZipIterState", ["up_a", "up_b"], [i8p, i8p]);
-
-    self._register_iter_struct("UserIterState", ["obj"], [i8p]);
 }
 
 impl NaIRGenPass._register_iter_struct(
@@ -591,6 +589,12 @@ impl NaIRGenPass._make_iter_from_value(
     self._ensure_iter_types();
     i8p = ir.IntType(8).as_pointer();
 
+    if self._python_value(val.type) {
+        iterator = self._python_runtime("iter", [val]);
+        self._release_owned_args([val]);
+        return self._make_user_iter(iterator, "__JacPythonIterator");
+    }
+
     _checked_list = self._list_spec_of(expr);
     if _checked_list is not None and _checked_list in self.list_helpers {
         lt = self.list_types.get(_checked_list);
@@ -758,7 +762,10 @@ impl NaIRGenPass._build_iter_from_expr(
             }
             return self._make_zip_iter(up_a, up_b);
         }
-        if cname == "iter" and len(params) == 1 {
+        if cname == "iter"
+            and len(params) == 1
+            and self._struct_name_of(params[0]) is None
+            and not self._python_expr(params[0]) {
             return self._build_iter_from_expr(params[0]);
         }
     }
@@ -1104,7 +1111,9 @@ impl NaIRGenPass._user_iter_next_fn(
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i1 = ir.IntType(1);
-    state_ptr_type = self.struct_types["UserIterState"].as_pointer();
+    state_name = "UserIterState." + iter_struct;
+    self._register_iter_struct(state_name, ["obj", "current"], [i8p, elem_type]);
+    state_ptr_type = self.struct_types[state_name].as_pointer();
     fn = ir.Function(
         self.llvm_module,
         ir.FunctionType(i1, [i8p, i8p]),
@@ -1127,6 +1136,10 @@ impl NaIRGenPass._user_iter_next_fn(
     kind = b.load(error_type);
     b.cbranch(b.icmp_signed("==", kind, ir.Constant(i32, 0)), success, failure);
     b.position_at_end(success);
+    current = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 1)]);
+    previous = b.load(current);
+    b.store(value, current);
+    self._emit_elem_release(b, elem_type, previous);
     b.store(value, b.bitcast(fn.args[1], elem_type.as_pointer()));
     b.ret(ir.Constant(i1, 1));
     b.position_at_end(failure);
@@ -1154,7 +1167,8 @@ impl NaIRGenPass._make_user_iter(
     next_fn = self._user_iter_next_fn(iter_struct, next_method_fn, elem_type);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    st = self._alloc_iter_struct("UserIterState");
+    st = self._alloc_iter_struct("UserIterState." + iter_struct);
+    self.builder.store(ir.Constant(st.pointee_type, None), st);
     obj_i8 = self.builder.bitcast(it_obj, i8p, name="usr.obj.store");
     self.builder.store(
         obj_i8,
@@ -1162,28 +1176,27 @@ impl NaIRGenPass._make_user_iter(
             st, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.obj.field"
         )
     );
+    self._consume_temporary(it_obj);
     return (self._make_jac_iter(next_fn, st), "user", elem_type);
 }
 
 impl NaIRGenPass._make_user_iter_from_obj(
     obj_val: ir.Value, struct_name: str, expr: uni.UniNode
 ) -> (tuple[ir.Value, str, ir.Type] | None) {
-    if self._resolve_method(struct_name, "__next__") is not None {
-        it_obj = obj_val;
-        iter_struct = struct_name;
-        if not self._is_owned(it_obj) {
-            self._emit_rc_retain(it_obj, op="user_iter");
-            self._mark_owned(it_obj);
+    if self._resolve_method(struct_name, "__iter__") is None
+        and self._resolve_method(struct_name, "__next__") is not None {
+        if not self._is_owned(obj_val) {
+            self._emit_rc_retain(obj_val, op="user_iter");
+            self._mark_owned(obj_val);
         }
-        return self._make_user_iter(it_obj, iter_struct);
+        return self._make_user_iter(obj_val, struct_name);
     }
     iter_fn = self._resolve_method(struct_name, "__iter__");
     if iter_fn is None {
         return None;
     }
-    it_obj = self.builder.call(iter_fn, [obj_val], name="usr.iter");
-    self._emit_pending_error_check();
-    self._mark_owned(it_obj);
+    it_obj = self._call_protocol_method(obj_val, struct_name, "__iter__");
+    assert it_obj is not None;
 
     inferred_struct = self._infer_type_name(it_obj);
     built = self._make_user_iter(it_obj, inferred_struct)
@@ -1194,10 +1207,26 @@ impl NaIRGenPass._make_user_iter_from_obj(
         return None;
     }
 
-    if self._is_owned(obj_val) {
-        self._emit_rc_release_simple(obj_val, op="user_iter_src");
-    }
     return built;
+}
+
+impl NaIRGenPass._call_protocol_method(
+    value: ir.Value, struct_name: str, method: str
+) -> ir.Value | None {
+    function = self._resolve_method(struct_name, method);
+    if function is None {
+        return None;
+    }
+    result = self._codegen_virtual_call(value, method, [value], struct_name);
+    if result is None {
+        receiver = self._coerce_type(value, function.args[0].type);
+        result = self.builder.call(function, [receiver]);
+        self._emit_pending_error_check();
+        self._release_owned_args([receiver]);
+    }
+    self._mark_reference_owned(result);
+    self._protect_temporary(result);
+    return result;
 }
 
 impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
@@ -1207,8 +1236,17 @@ impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
     arg = params[0];
-    elem_type = self._iter_elem_llvm_of(arg);
     iter_val = self._codegen_expr(arg);
+    if iter_val is not None {
+        struct_name = self._infer_type_name(iter_val);
+        if struct_name is not None {
+            result = self._call_protocol_method(iter_val, struct_name, "__next__");
+            if result is not None {
+                return result;
+            }
+        }
+    }
+    elem_type = self._iter_elem_llvm_of(arg);
     if iter_val is None or elem_type is None {
         self._emit_unsupported_builtin_call(nd, "next");
         return None;
@@ -1244,7 +1282,8 @@ impl NaIRGenPass._iter_source(
         and coll.call_kind == "builtin"
     );
     _ustruct = self._struct_name_of(coll) if not is_adapter_call else None;
-    if is_adapter_call
+    if self._python_expr(coll)
+        or is_adapter_call
         or (_ustruct is not None and self._arch_implements_iter(_ustruct)) {
         built = self._build_iter_from_expr(coll);
         return None if built is None else (built[0], built[2], True);

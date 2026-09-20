@@ -119,3 +119,46 @@ def short_circuit -> bool {
     }
     return zero < large < (large + 1);
 }
+
+def iterate(early: bool) -> int {
+    connection = sqlite3.connect(":memory:");
+    total = 0;
+    try {
+        for row in connection.execute("select 17 union all select 25") {
+            total += int(row[0]);
+            if early {
+                break;
+            }
+        }
+    } finally {
+        connection.close();
+    }
+    return total;
+}
+
+def iterator_failure -> int {
+    connection = sqlite3.connect(":memory:");
+    cursor = connection.execute("select 42");
+    connection.close();
+    for row in cursor {
+        return row[0];
+    }
+    return 0;
+}
+
+def builtin_protocols -> bool {
+    connection = sqlite3.connect(":memory:");
+    try {
+        cursor = connection.execute("select 42, 17");
+        row = next(cursor);
+        if len(row) != 2 or str(row[0]) != "42" {
+            return False;
+        }
+        if list(row)[1] != 17 or next(cursor, None) is not None {
+            return False;
+        }
+        return int(str(row[0])) == 42;
+    } finally {
+        connection.close();
+    }
+}

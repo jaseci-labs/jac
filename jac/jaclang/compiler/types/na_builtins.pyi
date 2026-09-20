@@ -22,8 +22,6 @@ __all__ = [
     "open",
     "Iterable",
     "Iterator",
-    "iter",
-    "next",
     "managed",
     "take",
     "swap",
@@ -50,9 +48,6 @@ class Region:
 # The region a value was allocated in (the growth anchor of a traversal),
 # or None for a managed value.
 def region_of(__x: object) -> Region | None: ...
-
-def iter(__o: Iterable[_T]) -> Iterator[_T]: ...
-def next(__i: Iterator[_T]) -> _T: ...
 
 class File:
     # Fields backing the emitted struct (handle is opaque and intentionally

@@ -46,3 +46,25 @@ test "Python values use runtime arithmetic identity membership and truth" {
         assert False , "rich comparison lost its Python exception";
     } except TypeError {}
 }
+
+test "Python iterators release values on exhaustion and early exit" {
+    (engine, _) = compile_native("python_imports.jac");
+    call = get_func(engine, "iterate", ctypes.c_int64, ctypes.c_bool);
+    for _ in range(100) {
+        assert call(False) == 42;
+        assert call(True) == 17;
+    }
+}
+
+test "Python iteration errors and builtin protocols preserve Python behavior" {
+    (engine, _) = compile_native("python_imports.jac");
+    protocols = get_func(engine, "builtin_protocols", ctypes.c_bool);
+    failed = get_func(engine, "iterator_failure", ctypes.c_int64);
+    for _ in range(100) {
+        assert protocols();
+        try {
+            failed();
+            assert False , "closed cursor iteration lost its Python error";
+        } except sqlite3.ProgrammingError {}
+    }
+}

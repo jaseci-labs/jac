@@ -14,14 +14,14 @@ def double(x: int) -> int {
 # A self-iterator: the object is its own iterator (Python's most common idiom,
 # `__iter__` returns self).
 obj Counter {
-    has cur: int;
-    has stop: int;
+    has cur: int,
+        stop: int;
 
-    def __iter__() -> Counter {
+    def __iter__ -> Counter {
         return self;
     }
 
-    def __next__() -> int {
+    def __next__ -> int {
         if self.cur >= self.stop {
             raise StopIteration("done");
         }
@@ -34,14 +34,14 @@ obj Counter {
 # An iterable whose `__iter__` returns a *separate* fresh iterator object — the
 # other standard idiom (a re-iterable collection).
 obj Cursor {
-    has cur: int;
-    has stop: int;
+    has cur: int,
+        stop: int;
 
-    def __iter__() -> Cursor {
+    def __iter__ -> Cursor {
         return self;
     }
 
-    def __next__() -> int {
+    def __next__ -> int {
         if self.cur >= self.stop {
             raise StopIteration("stop");
         }
@@ -54,13 +54,13 @@ obj Cursor {
 obj NumberRange {
     has n: int;
 
-    def __iter__() -> Cursor {
+    def __iter__ -> Cursor {
         return Cursor(cur=0, stop=self.n);
     }
 }
 
 # --- for-loop over a self-iterator: 0+1+2+3+4 = 10 ---
-def user_self_for() -> int {
+def user_self_for -> int {
     total: int = 0;
     for x in Counter(cur=0, stop=5) {
         total = total + x;
@@ -69,7 +69,7 @@ def user_self_for() -> int {
 }
 
 # --- for-loop over a borrowed self-iterator variable: 0+1+2 = 3 ---
-def user_self_for_var() -> int {
+def user_self_for_var -> int {
     c = Counter(cur=0, stop=3);
     total: int = 0;
     for x in c {
@@ -80,7 +80,7 @@ def user_self_for_var() -> int {
 
 # --- for-loop over an iterable whose __iter__ yields a separate cursor:
 #     0+1+2+3 = 6 ---
-def user_separate_for() -> int {
+def user_separate_for -> int {
     total: int = 0;
     for x in NumberRange(n=4) {
         total = total + x;
@@ -89,7 +89,7 @@ def user_separate_for() -> int {
 }
 
 # --- first-class iter()/next() over a user iterator: a=10,b=11 -> 1011 ---
-def user_iter_next() -> int {
+def user_iter_next -> int {
     it = iter(Counter(cur=10, stop=20));
     a = next(it);
     b = next(it);
@@ -97,7 +97,7 @@ def user_iter_next() -> int {
 }
 
 # --- map() over a user iterator (adapter composition): (0+1+2)*2 = 6 ---
-def user_map_compose() -> int {
+def user_map_compose -> int {
     total: int = 0;
     for x in map(double, Counter(cur=0, stop=3)) {
         total = total + x;
@@ -106,7 +106,7 @@ def user_map_compose() -> int {
 }
 
 # --- break mid-iteration over a user iterator: stop at x==3, sum 0+1+2 = 3 ---
-def user_break() -> int {
+def user_break -> int {
     total: int = 0;
     for x in Counter(cur=0, stop=100) {
         if x == 3 {
@@ -119,11 +119,11 @@ def user_break() -> int {
 
 # --- a user iterator boxed as Iterator[T] and returned across a function
 #     boundary, then for-looped by the caller: 0+1+2+3+4 = 10 ---
-def user_gen() -> Iterator[int] {
+def user_gen -> Iterator[int] {
     return iter(Counter(cur=0, stop=5));
 }
 
-def user_cross_fn() -> int {
+def user_cross_fn -> int {
     total: int = 0;
     for x in user_gen() {
         total = total + x;
@@ -135,11 +135,11 @@ def user_cross_fn() -> int {
 obj Boom {
     has n: int;
 
-    def __iter__() -> Boom {
+    def __iter__ -> Boom {
         return self;
     }
 
-    def __next__() -> int {
+    def __next__ -> int {
         if self.n <= 0 {
             raise ValueError("boom");
         }
@@ -150,7 +150,7 @@ obj Boom {
 
 # --- a non-StopIteration exception raised inside __next__ must propagate out of
 #     the for-loop (not be swallowed as end-of-iteration): caught -> 42 ---
-def user_next_propagates() -> int {
+def user_next_propagates -> int {
     total: int = 0;
     try {
         for x in Boom(n=2) {
@@ -170,7 +170,7 @@ obj SubCounter(Counter) {
 # --- a subclass driving inherited __iter__/__next__: 0+1+2+3 = 6. The receiver
 #     is coerced to __next__'s declared self type, so an inherited method stays
 #     well-typed. ---
-def user_inherited_iter() -> int {
+def user_inherited_iter -> int {
     total: int = 0;
     for x in SubCounter(cur=0, stop=4, extra=99) {
         total = total + x;
@@ -178,4 +178,11 @@ def user_inherited_iter() -> int {
     return total;
 }
 
-with entry { }
+def concrete_iterator_identity -> bool {
+    counter = Counter(cur=3, stop=5);
+    iterator = iter(counter);
+    if iterator is not counter {
+        return False;
+    }
+    return next(iterator) == 3 and iterator.cur == 4;
+}

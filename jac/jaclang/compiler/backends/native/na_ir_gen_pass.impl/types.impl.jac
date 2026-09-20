@@ -1789,6 +1789,26 @@ impl NaIRGenPass._coerce_borrowed(val: ir.Value, target_type: ir.Type) -> ir.Val
 }
 
 impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
+    if self._jac_iter_type is not None
+        and target_type == self._jac_iter_type.as_pointer()
+        and val.type != target_type {
+        struct_name = self._infer_type_name(val);
+        if struct_name is not None
+            and self._resolve_method(struct_name, "__next__") is not None {
+            if not self._is_owned(val) {
+                val = self.builder.gep(
+                    val,
+                    [ir.Constant(ir.IntType(32), 0)],
+                    name="iterator.interface.owner"
+                );
+                self._emit_take_ref(val, op="iterator_interface");
+                self._mark_owned(val);
+            }
+            result = self._make_user_iter(val, struct_name);
+            assert result is not None;
+            return result[0];
+        }
+    }
     if self._python_imports
         and self._python_value(val.type)
         and target_type != val.type {

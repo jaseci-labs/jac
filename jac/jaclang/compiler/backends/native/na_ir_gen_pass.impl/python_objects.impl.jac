@@ -12,7 +12,10 @@ impl NaIRGenPass._python_expr(nd: uni.UniNode) -> bool {
         if slot is not None {
             return self._python_value(slot.pointee_type);
         }
-        return nd.value in self._python_imports;
+        return nd.sym is not None and id(nd.sym) in self._python_imports;
+    }
+    if isinstance(nd, uni.FuncCall) and self._python_builtin(nd) {
+        return True;
     }
     if isinstance(nd, uni.AtomTrailer) or isinstance(nd, uni.FuncCall) {
         return self._python_expr(nd.target);
@@ -80,6 +83,15 @@ impl NaIRGenPass._python_box(value: ir.Value, consume: bool = True) -> ir.Value 
 }
 
 impl NaIRGenPass._python_import(binding: NativePythonImport) -> ir.Value {
+    if binding.attribute {
+        return self._python_runtime(
+            "import_from",
+            [
+                self._make_global_string(binding.module),
+                self._make_global_string(binding.attribute)
+            ]
+        );
+    }
     imported = self._python_runtime(
         "import", [self._make_global_string(binding.module)]
     );
@@ -89,18 +101,59 @@ impl NaIRGenPass._python_import(binding: NativePythonImport) -> ir.Value {
             "import", [self._make_global_string(binding.bind_module)]
         );
     }
-    if binding.attribute {
-        value = self._python_runtime(
-            "getattr", [imported, self._make_global_string(binding.attribute)]
-        );
-        self._release_owned_args([imported]);
-        return value;
-    }
     return imported;
 }
 
+impl NaIRGenPass._python_import_statement(nd: uni.Import) -> None {
+    import from jaclang.compiler.native_imports { python_import_symbol }
+    import from jaclang.compiler.passes.capability_check_pass { import_bound_name }
+    for item in nd.items {
+        symbol = python_import_symbol(item);
+        binding = self._python_imports.get(id(symbol)) if symbol is not None else None;
+        if binding is None {
+            continue;
+        }
+        value = self._python_import(binding);
+        name = import_bound_name(item);
+        assert name is not None;
+        slot = self.local_vars.get(name);
+        if slot is None {
+            slot = self._entry_alloca(value.type, name);
+            self.local_vars[name] = slot;
+        }
+        assert slot.pointee_type == value.type;
+        self._emit_slot_rebind(slot, value, owned=True, op="python_import");
+        self.builder.store(value, slot);
+    }
+}
+
+impl NaIRGenPass._python_builtin(nd: uni.FuncCall) -> bool {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    name = self._get_name(nd.target);
+    return nd.call_kind == "builtin"
+        and name is not None
+        and not JAC_TYPE_REGISTRY.is_sized(name)
+        and any(
+            self._python_expr(param.value if isinstance(param, uni.KWPair) else param)
+            for param in (nd.params or [])
+        );
+}
+
 impl NaIRGenPass._python_call(nd: uni.FuncCall) -> ir.Value {
-    callable = self._codegen_required(nd.target);
+    callable: ir.Value | None;
+    if self._python_builtin(nd) {
+        name = self._get_name(nd.target);
+        assert name is not None;
+        builtins = self._python_runtime(
+            "import", [self._make_global_string("builtins")]
+        );
+        callable = self._python_runtime(
+            "getattr", [builtins, self._make_global_string(name)]
+        );
+        self._release_owned_args([builtins]);
+    } else {
+        callable = self._codegen_required(nd.target);
+    }
     assert callable is not None;
     params = list(nd.params or []);
     count = sum(

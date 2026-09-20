@@ -567,8 +567,8 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         }
         return value;
     }
-    if var_name in self._python_imports {
-        return self._python_import(self._python_imports[var_name]);
+    if nd.sym is not None and id(nd.sym) in self._python_imports {
+        return self._python_import(self._python_imports[id(nd.sym)]);
     }
     if var_name in self.func_symtab {
         return self.func_symtab[var_name];

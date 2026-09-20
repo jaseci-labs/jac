@@ -1453,7 +1453,7 @@ impl NaIRGenPass._codegen_synthetic_call(
 }
 
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
-    if self._python_expr(nd.target) {
+    if self._python_expr(nd.target) or self._python_builtin(nd) {
         return self._python_call(nd);
     }
     import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
@@ -1748,6 +1748,16 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "iter" {
+            parameters = list(nd.params or []);
+            if len(parameters) == 1 {
+                struct_name = self._struct_name_of(parameters[0]);
+                if struct_name is not None
+                    and self._resolve_method(struct_name, "__iter__") is not None {
+                    value = self._codegen_required(parameters[0]);
+                    assert value is not None;
+                    return self._call_protocol_method(value, struct_name, "__iter__");
+                }
+            }
             built = self._build_iter_from_expr(nd);
             if built is not None {
                 (iter_val, _ename, _etype) = built;

@@ -7,6 +7,23 @@ obj NativePythonImport {
         bind_module: str = "";
 }
 
+def python_import_symbol(item: uni.UniNode) -> uni.Symbol | None {
+    """Return the resolved binding, including catalog-backed from imports.""";
+    if isinstance(item, uni.ModuleItem) {
+        bound = item.binding_name;
+        return bound.sym if bound is not None else None;
+    }
+    if isinstance(item, uni.ModulePath) {
+        if item.alias is not None {
+            return item.alias.sym;
+        }
+        if item.path and isinstance(item.path[0], uni.Name) {
+            return item.path[0].sym;
+        }
+    }
+    return None;
+}
+
 def python_object_expression(nd: uni.UniNode, seen: set[int] | None = None) -> bool {
     """Identify values originating from the hosted provider, including local aliases.""";
     import os;
@@ -23,7 +40,21 @@ def python_object_expression(nd: uni.UniNode, seen: set[int] | None = None) -> b
     if isinstance(nd, uni.AtomUnit) {
         return python_object_expression(nd.value, seen);
     }
-    if isinstance(nd, (uni.FuncCall, uni.AtomTrailer)) {
+    if isinstance(nd, uni.FuncCall) {
+        if python_object_expression(nd.target, seen) {
+            return True;
+        }
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+        return nd.call_kind == "builtin"
+            and isinstance(nd.target, uni.Name)
+            and not JAC_TYPE_REGISTRY.is_sized(nd.target.value)
+            and any(
+                python_object_expression(
+                    param.value if isinstance(param, uni.KWPair) else param, seen
+                ) for param in (nd.params or [])
+            );
+    }
+    if isinstance(nd, uni.AtomTrailer) {
         return python_object_expression(nd.target, seen);
     }
     if isinstance(nd, uni.BinaryExpr) {
@@ -32,6 +63,21 @@ def python_object_expression(nd: uni.UniNode, seen: set[int] | None = None) -> b
     }
     if not isinstance(nd, uni.Name) or nd.sym is None or nd.sym.decl is None {
         return False;
+    }
+    if nd.sym.imported or nd.sym.in_stub_scope() {
+        module = nd.find_parent_of_type(uni.Module);
+        if module is not None {
+            base = os.path.dirname(os.path.abspath(module.loc.mod_path));
+            for statement in module.get_all_sub_nodes(uni.Import) {
+                for item in statement.items {
+                    if python_import_symbol(item) is nd.sym {
+                        if python_import_binding(item, base) is not None {
+                            return True;
+                        }
+                    }
+                }
+            }
+        }
     }
     declaration = nd.sym.decl;
     owner: uni.UniNode | None = declaration;
@@ -43,6 +89,9 @@ def python_object_expression(nd: uni.UniNode, seen: set[int] | None = None) -> b
         if isinstance(owner, uni.Assignment) {
             return owner.value is not None
                 and python_object_expression(owner.value, seen);
+        }
+        if isinstance(owner, uni.InForStmt) {
+            return python_object_expression(owner.collection, seen);
         }
         if isinstance(owner, (uni.Ability, uni.ParamVar, uni.HasVar, uni.Module)) {
             break;

@@ -18,15 +18,17 @@ enum builtin_kind {
 }
 
 import from c {
-    def PyErr_GivenExceptionMatches(error: u64, kind: u64) -> i32;  def jacpy_visit(
-        value: u64, visitor: u64, context: u64
-    ) -> i32;  def jacpy_bytes_copy_to(value: u64, target: bytes, size: i64);  def jacpy_bytes_from_data(
-        data: bytes, size: i64
-    ) -> u64;  def jacpy_dict_memory(value: u64) -> i64;  def jacpy_dict_items(
+    def PyThreadState_Get -> u64;  def PyImport_ImportModuleLevelObject(
+        name: u64, globals: u64, locals: u64, fromlist: u64, level: i32
+    ) -> u64;  def _PyEval_ImportFrom(thread: u64, module: u64, name: u64) -> u64;  def PyErr_GivenExceptionMatches(
+        error: u64, kind: u64
+    ) -> i32;  def jacpy_visit(value: u64, visitor: u64, context: u64) -> i32;  def jacpy_bytes_copy_to(
+        value: u64, target: bytes, size: i64
+    );  def jacpy_bytes_from_data(data: bytes, size: i64) -> u64;  def jacpy_dict_memory(
         value: u64
-    ) -> u64;  def jacpy_unicode_intern(value: u64) -> u64;  def jacpy_exception_context(
-        error: u64, cause: u64
-    );  def jacpy_not_implemented -> u64;  def jacpy_ellipsis -> u64;  def jacpy_is_iterator(
+    ) -> i64;  def jacpy_dict_items(value: u64) -> u64;  def jacpy_unicode_intern(
+        value: u64
+    ) -> u64;  def jacpy_exception_context(error: u64, cause: u64);  def jacpy_not_implemented -> u64;  def jacpy_ellipsis -> u64;  def jacpy_is_iterator(
         value: u64
     ) -> i64;  def jacpy_mapping_optional_item(mapping: u64, key: u64) -> u64;  def jacpy_audit_pickle_find(
         module: u64, name: u64

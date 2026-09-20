@@ -77,6 +77,18 @@ provenance check distinguishes hosted values from untyped native containers in
 membership diagnostics. These paths have targeted large-integer, aliasing,
 short-circuit and exception tests.
 
+Hosted iterators reuse the native user-iterator adapter. Its state owns the
+latest returned reference until replacement or destruction, so exhaustion and
+early exit release yielded Python values. Builtins receiving Python-backed
+arguments use the interpreter as well, including `next` with a default, `len`,
+`str`, `int` and `list`.
+
+Function-local imports execute at their statement and keep an owned local
+binding. Import recognition uses resolved symbol identity, preserving aliases
+with the same spelling in different scopes. From-imports reuse the pinned
+interpreter's import machinery, including its circular-import fallback and
+`ImportError` construction. Module-level binding state remains outstanding.
+
 The initial ordinary-import probe opens SQLite, executes a query, reads the row,
 and returns a checked native scalar. A repeated-error probe verifies native
 `except sqlite3.OperationalError` handling and propagation to the Python caller.

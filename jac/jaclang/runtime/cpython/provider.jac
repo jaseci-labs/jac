@@ -1,5 +1,8 @@
 import from jaclang.runtime.cpython.references { ObjectRef, object_result }
 import from jaclang.runtime.cpython.capi {
+    PyThreadState_Get,
+    PyImport_ImportModuleLevelObject,
+    _PyEval_ImportFrom,
     PyErr_GivenExceptionMatches,
     jacpy_import_object,
     jacpy_getattr_string,
@@ -15,6 +18,8 @@ import from jaclang.runtime.cpython.capi {
     jacpy_dict_new,
     jacpy_setitem,
     jacpy_getitem,
+    jacpy_iter,
+    jacpy_iter_next,
     jacpy_retain,
     jacpy_truth,
     jacpy_integer_value,
@@ -25,16 +30,39 @@ import from jaclang.runtime.cpython.capi {
 
 obj __JacPythonValue(ObjectRef) {}
 
+obj __JacPythonIterator(ObjectRef) {
+    def __iter__ -> __JacPythonIterator {
+        return self;
+    }
+
+    def __next__ -> __JacPythonValue {
+        value = jacpy_iter_next(self.value);
+        if value == 0 {
+            __jac_python_check();
+            raise StopIteration();
+        }
+        return __jac_python_result(value);
+    }
+}
+
 obj __JacPythonError(Exception) {
     has reference: ObjectRef;
 }
 
-def __jac_python_result(value: u64) -> __JacPythonValue {
+def __jac_python_checked(value: u64) -> u64 {
     if value != 0 {
-        return __JacPythonValue(value=value);
+        return value;
     }
     result = object_result(0);
     raise __JacPythonError(reference=result.reference);
+}
+
+def __jac_python_result(value: u64) -> __JacPythonValue {
+    return __JacPythonValue(value=__jac_python_checked(value));
+}
+
+def __jac_python_iter(value: __JacPythonValue) -> __JacPythonIterator {
+    return __JacPythonIterator(value=__jac_python_checked(jacpy_iter(value.value)));
 }
 
 def __jac_python_check {
@@ -51,6 +79,20 @@ def __jac_python_restore(error: __JacPythonError) {
 def __jac_python_import(name: str) -> __JacPythonValue {
     module_name = __jac_python_text(name);
     return __jac_python_result(jacpy_import_object(module_name.value));
+}
+
+def __jac_python_import_from(name: str, attribute: str) -> __JacPythonValue {
+    module_name = __jac_python_text(name);
+    member_name = __jac_python_text(attribute);
+    members = __jac_python_tuple(1);
+    __jac_python_tuple_set(members, 0, member_name);
+    module = __jac_python_result(
+        PyImport_ImportModuleLevelObject(module_name.value, 0, 0, members.value, i32(0))
+    );
+
+    return __jac_python_result(
+        _PyEval_ImportFrom(PyThreadState_Get(), module.value, member_name.value)
+    );
 }
 
 def __jac_python_getattr(value: __JacPythonValue, name: str) -> __JacPythonValue {
