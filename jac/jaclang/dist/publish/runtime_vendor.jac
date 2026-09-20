@@ -236,7 +236,9 @@ def build_runtime_closure(
                 pkg_root, path, program, native, native_sources
             );
         } finally {
-            program._get_compiler().release_compile_state(program);
+            if program.contexts {
+                program._get_compiler().release_compile_state(program);
+            }
         }
         tree = py_ast.parse(source, filename=str(path));
         sources[module] = tree;
