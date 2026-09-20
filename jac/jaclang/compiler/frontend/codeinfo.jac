@@ -246,6 +246,8 @@ def install_native_static_init(
     engine.static_init_chained = {"jac_entry"};
 }
 
+glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"};
+
 glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "sys",
          "math",
@@ -449,7 +451,8 @@ def is_bundled_native_module(module_name: str) -> bool {
     if stdlib_dir is None or not module_name {
         return False;
     }
-    path_name = module_name.lstrip('.').replace('.', os.sep);
+    clean = module_name.lstrip('.');
+    path_name = NATIVE_STDLIB_EXTENSIONS.get(clean, clean).replace('.', os.sep);
     return _native_variant_path(os.path.join(stdlib_dir, path_name)) is not None;
 }
 
@@ -608,7 +611,8 @@ def resolve_native_module(
 
     bundled_root = native_stdlib_root();
     if bundled_root is not None {
-        bundled = _native_variant_path(os.path.join(bundled_root, path_name));
+        bundled_name = NATIVE_STDLIB_EXTENSIONS.get(clean, path_name);
+        bundled = _native_variant_path(os.path.join(bundled_root, bundled_name));
         if bundled is not None {
             return (path_name, bundled);
         }

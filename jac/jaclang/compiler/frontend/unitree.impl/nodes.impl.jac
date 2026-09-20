@@ -1660,6 +1660,7 @@ impl ModulePath.native_bundled_path -> (str | None) {
     import os;
     import from jaclang.compiler.frontend.codeinfo {
         is_bundled_native_module,
+        NATIVE_STDLIB_EXTENSIONS,
         resolve_native_module
     }
     mod_path = self.loc.mod_path if self.loc else None;
@@ -1670,7 +1671,7 @@ impl ModulePath.native_bundled_path -> (str | None) {
         return None;
     }
     base = self.dot_path_str;
-    if not is_bundled_native_module(base) {
+    if base in NATIVE_STDLIB_EXTENSIONS or not is_bundled_native_module(base) {
         return None;
     }
     base_dir = os.path.dirname(mod_path) if mod_path else os.getcwd();

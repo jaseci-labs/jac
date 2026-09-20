@@ -18,6 +18,9 @@ def:pub raise_os_error(operation: str, path: str, code: int) {
     if code == 2 {
         raise FileNotFoundError(message);
     }
+    if code == 21 {
+        raise IsADirectoryError(message);
+    }
     if code == 20 {
         raise NotADirectoryError(message);
     }

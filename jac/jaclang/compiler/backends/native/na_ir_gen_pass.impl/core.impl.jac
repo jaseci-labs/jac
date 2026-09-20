@@ -1372,6 +1372,9 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                     (mod_name, _supported) = classify_native_import(item);
                     if _supported and mod_name is not None {
                         self._native_stdlib_modules.add(mod_name);
+                        if is_bundled_native_module(mod_name) {
+                            self._native_module_imports.add(mod_name);
+                        }
                     } elif mod_name is not None
                         and is_bundled_native_module(mod_name) {
                         self._native_module_imports.add(mod_name);

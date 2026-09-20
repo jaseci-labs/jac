@@ -1193,6 +1193,15 @@ impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
 impl NaIRGenPass._native_module_call_target(
     nd: uni.FuncCall
 ) -> tuple[str, str] | None {
+    if isinstance(nd.target, uni.Name) and nd.target.sym is not None {
+        import from jaclang.compiler.frontend.codeinfo { NATIVE_STDLIB_EXTENSIONS }
+        scope = nd.target.sym.parent_tab;
+        if isinstance(scope, uni.Module)
+            and scope.stub_only
+            and scope.name in NATIVE_STDLIB_EXTENSIONS {
+            return (scope.name, nd.target.sym.name);
+        }
+    }
     trailer = nd.target;
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
         return None;
@@ -1205,7 +1214,8 @@ impl NaIRGenPass._native_module_call_target(
         return None;
     }
 
-    if mod_name == "os.path" and method_name in NATIVE_OSPATH_FUNCS {
+    if (mod_name == "os.path" and method_name in NATIVE_OSPATH_FUNCS)
+        or (mod_name == "os" and method_name in NATIVE_OS_FUNCS) {
         return None;
     }
 
@@ -1479,12 +1489,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
     func_name: str | None = None;
     _mod_qual: (str | None) = None;
-    if _call_kind == "method" {
-        _mod_fn = self._native_module_call_target(nd);
-        if _mod_fn is None {
-            return self._codegen_method_call(nd);
-        }
+    _mod_fn = self._native_module_call_target(nd);
+    if _mod_fn is not None {
         (_mod_qual, func_name) = _mod_fn;
+    } elif _call_kind == "method" {
+        return self._codegen_method_call(nd);
     } else {
         func_name = self._get_name(nd.target);
         if func_name is None {
