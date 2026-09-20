@@ -70,7 +70,7 @@ def _write_application(
             'origin': relative.as_posix(),
             'manifest': application.manifests.get(path, {})
         };
-        if module is not None and module.gen.llvm_ir is not None {
+        if module is not None and module.gen.native_engine is not None {
             import from jaclang.dist.native_product { write_native_product }
             item['native'] = write_native_product(
                 module, directory, Path("native") / python_path, program=program
