@@ -1309,9 +1309,12 @@ impl NaIRGenPass._iter_source(
     }
     elem_t = self._iter_elem_llvm_of(coll);
     if elem_t is None {
-        # A range carries no element type of its own; it iterates through
-        # the range iterator, which owns the handle it hands back.
-        if self._type_key_of(coll) == "range" {
+        is_range_call = (
+            isinstance(coll, uni.FuncCall)
+            and self._get_name(coll.target) == "range"
+            and coll.call_kind == "builtin"
+        );
+        if not is_range_call and self._type_key_of(coll) == "range" {
             rv = self._codegen_expr(coll);
             if rv is None {
                 return None;
