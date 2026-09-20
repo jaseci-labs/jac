@@ -44,6 +44,13 @@ assert hashlib.sha256(sample).digest()
 assert ctypes.pythonapi.PyInitConfig_Create
 # The native object ABI belongs to the runtime, independently of its compiler.
 object_api = ctypes.PyDLL(None)
+# CDLL releases the thread state around the call. Error polling is also used
+# before interpreter startup by native-only global initializers.
+object_api.jacpy_error_pending.restype = ctypes.c_int64
+assert object_api.jacpy_error_pending() == 0
+detached_api = ctypes.CDLL(None)
+detached_api.jacpy_error_pending.restype = ctypes.c_int64
+assert detached_api.jacpy_error_pending() == 0
 object_api.jacpy_import_object.argtypes = [ctypes.py_object]
 object_api.jacpy_import_object.restype = ctypes.c_void_p
 object_api.jacpy_getattr.argtypes = [ctypes.c_void_p, ctypes.py_object]

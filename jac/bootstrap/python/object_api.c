@@ -70,7 +70,12 @@ uint64_t jacpy_utf8(uint64_t handle) {
 }
 int64_t jacpy_is_list(uint64_t handle) { return PyList_Check((PyObject *)(uintptr_t)handle); }
 int64_t jacpy_integer_value(uint64_t handle) { return PyLong_AsLongLong((PyObject *)(uintptr_t)handle); }
-int64_t jacpy_error_pending(void) { return PyErr_Occurred() != NULL; }
+/* Native-only module storage may initialize before CPython, and native
+ * callers can poll after detaching. An error belongs to an attached thread;
+ * PyErr_Occurred itself requires that thread state to exist. */
+int64_t jacpy_error_pending(void) {
+    return PyThreadState_GetUnchecked() != NULL && PyErr_Occurred() != NULL;
+}
 int64_t jacpy_error_is(const char *name) {
     PyObject *type = jacpy_exception_type(name);
     return type != NULL && PyErr_ExceptionMatches(type);
