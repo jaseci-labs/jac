@@ -362,7 +362,7 @@ def _native_compile(path: str) {
 }
 
 def _native_ir(path: str) -> str {
-    cache_path = get_module_cache_path(path);
+    cache_path = artifact_cache_path(path, JacProgram());
     if not cache_path.is_file() {
         return "";
     }

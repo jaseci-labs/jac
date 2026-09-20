@@ -1300,7 +1300,7 @@ def jit_engine(plan: LinkPlan) -> ExecutionEngine {
     symbol_lib = plan.clib_symbol_lib();
     for symbol in undefined_functions(merged) {
         lib_path = symbol_lib.get(symbol);
-        if lib_path is None {
+        if lib_path is None or lib_path in ("libc.so", "libc.dylib", "c.dll") {
             continue;
         }
         if lib_path not in libraries {

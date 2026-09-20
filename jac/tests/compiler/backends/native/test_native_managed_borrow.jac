@@ -7,6 +7,7 @@ pays both per step.
 """
 
 import ctypes;
+import from tests.support { native_address }
 import re;
 import from tests.support { compile_native, compile_native_ir }
 
@@ -22,7 +23,7 @@ def function_body(ir: str, name: str) -> str {
 test "a borrowed walk answers what the owning walk answers" {
     (eng, _) = compile_native("managed_borrow_walk.jac");
     for name in ["borrowed", "owning"] {
-        address = eng.get_function_address(name);
+        address = native_address(eng, name);
         assert isinstance(address, int) and address != 0 , name;
         walk = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
         for (rule_type, want) in [(1, 11), (2, 22), (3, 33), (9, -1)] {

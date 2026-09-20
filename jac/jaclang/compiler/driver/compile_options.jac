@@ -150,7 +150,7 @@ obj CompileOptions {
                 "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
                 "nogc_grand=" + ",".join(sorted(self.memory_exempt or [])),
                 f"rc_debug={int(bool(self.rc_debug_codegen))}",
-                f"target={self.effective_triple()}",
+                f"target={self.native_target}",
                 f"native_debug={int(bool(self.native_debug))}",
                 f"opt={self.opt_level}",
                 f"threads={self.native_threads}",

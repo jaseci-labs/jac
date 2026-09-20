@@ -10,7 +10,6 @@ import from jaclang.compiler.driver.jir {
     SEC_NBITCODE,
     SEC_NIFACE,
     SEC_NOBJ,
-    SEC_MODKEY,
     SEC_PLACEMENT,
     cache_mode,
     current_native_stamp,
@@ -386,9 +385,6 @@ obj NativeUnitRegistry {
             SEC_NIFACE: stamp.pack(ent.iface.to_bytes()),
             SEC_NDEPS: stamp.pack(native_deps_section(ent.dep_digests))
         };
-        if ent.source_key is not None {
-            sections[SEC_MODKEY] = ent.source_key.encode("utf-8");
-        }
         if ent.object_bytes is not None {
             sections[SEC_NOBJ] = stamp.pack(ent.object_bytes);
         }

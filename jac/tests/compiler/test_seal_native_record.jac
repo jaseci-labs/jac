@@ -42,7 +42,7 @@ def _app(tmp: str) -> str {
     os.makedirs(pkg);
     Path(os.path.join(pkg, "__init__.jac")).write_text("");
     Path(os.path.join(pkg, "jac.toml")).write_text(
-        "[project]\nname = \"natapp\"\nentry-point = \"main.jac\"\n"
+        "[project]\nname = \"natapp\"\nentry-point = \"main\"\n"
         "kind = \"cli\"\n\n[placement.pins]\nfast = \"native\"\n"
     );
     Path(os.path.join(pkg, "fast.jac")).write_text(

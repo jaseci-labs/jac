@@ -768,13 +768,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 overload_scope, def_sym.sym_name
                             );
                             for overload_symbol in all_syms {
-                                if overload_symbol == def_sym {
-                                    continue;
-                                }
                                 overload_type = self.get_type_of_symbol(
                                     overload_symbol
                                 );
-                                if isinstance(overload_type, FunctionType) {
+                                if isinstance(overload_type, FunctionType)
+                                    and overload_type is not sym_type {
                                     overloaded_fns.append(overload_type);
                                 }
                             }

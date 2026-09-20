@@ -6,6 +6,7 @@ and release the converted temporary rather than freeing the source twice.
 """
 
 import ctypes;
+import from tests.support { native_address }
 import os;
 import from jaclang.compiler.driver.program { JacProgram }
 import from tests.support { JAC_ROOT, native_force_opts }
@@ -37,7 +38,7 @@ def engine -> any {
 }
 
 def run_visits(name: str, repeats: int) -> int {
-    address = engine().get_function_address(name);
+    address = native_address(engine(), name);
     assert address != 0 , f"missing native function {name}";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address)(repeats);
 }

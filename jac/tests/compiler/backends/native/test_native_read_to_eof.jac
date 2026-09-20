@@ -6,6 +6,7 @@ ftell() as the length and issued one fread() of exactly that many bytes.
 """
 
 import ctypes;
+import from tests.support { native_address }
 import os;
 import from tests.support { compile_native }
 
@@ -21,7 +22,7 @@ test "read() returns the whole file even when its size reports as zero" {
         ("status_has_marker", 1),
         ("cmdline_len", len(open("/proc/self/cmdline", "rb").read()))
     ] {
-        address = eng.get_function_address(name);
+        address = native_address(eng, name);
         assert isinstance(address, int) and address != 0 , name;
         got = ctypes.CFUNCTYPE(ctypes.c_int64)(address)();
         assert got == want , f"{name}: {got} != {want}";
