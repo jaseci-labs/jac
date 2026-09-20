@@ -2403,6 +2403,37 @@ def _context_mgr__context_managers_with_enter_exit_once(eng: any, _ir: any) {
     assert f() == 101;
 }
 
+test "context managers preserve borrowed owners with slot exceptions" {
+    options = CompileOptions(
+        force_codespace="native", force_target_program=True, memory_profile="nogc"
+    );
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=os.path.join(FIXTURES, "context_mgr_nogc.jac"), options=options
+    );
+    assert not prog.errors_had;
+    eng = ir.gen.native_engine;
+    assert eng is not None;
+    for (name, expected) in [
+        ("normal", 111),
+        ("returning", 701),
+        ("looping", 3),
+        ("throwing", 11)
+    ] {
+        assert get_func(eng, name, ctypes.c_int64)() == expected , name;
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        # Headerless strings pass (data, length), without the managed root slot.
+        path = os.path.join(directory, "context.bin").encode();
+        assert get_func(
+            eng, "file_context", ctypes.c_int64, ctypes.c_char_p, ctypes.c_int64
+        )(
+            path, len(path)
+        )
+            == 6;
+    }
+}
+
 test "context_mgr" {
     (_eng, _ir) = compile_native("context_mgr.jac");
     _context_mgr__context_managers_with_enter(_eng, _ir);
@@ -2411,6 +2442,16 @@ test "context_mgr" {
     _context_mgr__context_managers_with_as_binding(_eng, _ir);
     _context_mgr__context_managers_file_context_manager(_eng, _ir);
     _context_mgr__context_managers_with_enter_exit_once(_eng, _ir);
+    for (name, expected) in [
+        ("test_with_return", 701),
+        ("test_with_loop_control", 3),
+        ("test_with_raise", 1),
+        ("test_with_nested_raise", 11),
+        ("test_with_suppression", 1),
+        ("test_with_failed_enter", 10)
+    ] {
+        assert get_func(_eng, name, ctypes.c_int64)() == expected , name;
+    }
 }
 
 # --- TestNativeRuntimeErrors ---

@@ -2,7 +2,27 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.20 (Latest Release)
+## jaclang 0.37.21 (Latest Release)
+
+### New Features
+
+- **Feature: `_statistics` is native Jac, and the unbuilt tier 2 sources leave the tree**: The `statistics` accelerator's inverse normal CDF joins the native standard-library replacements, so JacPython now supplies seventeen modules and the manifest excludes 69 CPython files (115,252 source lines). Separately, the tier 2 optimizer's analysis and symbol passes, the JIT, and the two generated case tables are compiled only under `--enable-experimental-jit`, which no Jac build passes; they linked as empty objects and are now pruned (11,750 lines). `Python/optimizer.c` is kept, because its non-tier-2 branch defines the `_PyDumpExecutors` stub that `sys` calls unconditionally.
+- **Tiny JacYac scaffold**: `jac create <name> --awetiny` creates a compact social app with web, mobile, desktop, and CLI clients sharing feed and scoring services. The example ships inside the Jac binary alongside the `--awesome` template and is type-checked in the packaged-binary smoke test.
+- **Native ZIP archives**: Add read-only `zipfile.ZipFile` support for ZIP/PK3 archives, including stored and DEFLATE members, archive listings, metadata, and integrity checks. Run native context-manager cleanup on returns, loop control, and exceptions.
+
+### Bug Fixes
+
+- **Fix: `list[UploadFile]` walker fields receive multipart files**: A walker or function field typed `list[UploadFile]` (or `UploadFile | None`) was classified as a JSON body field, because file parameters were detected from the type's name and `list[UploadFile]` is named `list`. It answered 422 `Field required`, or bound an empty list when defaulted. File parameters are now detected from the type object, and every file posted under the field's name is bound.
+- **Fix: `jac create --awesome` sites build again**: A fresh install pulled `@hugeicons/core-free-icons` 4.3.4, whose ESM entry re-exports `./Grid2x2Icon.js`-style paths that don't exist in the package (the shipped files use `Grid2X2` with a capital X), breaking every `jac build` with a Vite "Could not resolve" error on case-sensitive filesystems. The jaclang.org template now pins `@hugeicons/core-free-icons` to 4.3.3 until upstream fixes the typo.
+- **Fix: one module, one cache entry, whatever you compiled**: The module cache keyed every dependency on the compile's entry point, so `jac check a.jac` and `jac check b.jac` in one project each wrote their own copy of every module they shared. The cache grew with targets x modules -- one reporter measured 106 copies of a single unedited module in a 293-module app -- and each new target re-paid a cold analysis of the whole shared closure. A module's cache key is now derived from its own compile: the owning program's options projected through `CompileOptions.module_projection`, which never reads the entry point. Modules shared between apps still key once per app. Existing cache entries are re-keyed on the next build.
+- **Fix: `jac cache` sees a project's own cache**: A project's compiled modules live under `<project>/.jac/cache`, outside the machine-wide cache root, so `jac cache status` never reported them and `jac cache gc` never reclaimed them. They now register as a `project` bucket when the command runs inside a project.
+- **Fix native walker list visits**: Evaluate list conversions before capturing the LLVM builder, and release the converted temporary instead of releasing an already-consumed source list twice.
+- **Fix: the pinned Python build works on macOS and iOS again**: The source manifest pruned `Modules/_ctypes/malloc_closure.c` and `Modules/_uuidmodule.c` as needed by no build. On Darwin, `configure` selects Apple's system libffi unconditionally and substitutes `malloc_closure.c` into the `_ctypes` sources, and it enables `_uuid` whenever the SDK supplies `uuid/uuid.h`, so `make` stopped with `No rule to make target Modules/_ctypes/malloc_closure.c`. Both files are retained again, and a path is now pruned only when no supported platform's `configure` selects it.
+- **Fix: Native bytearray extension**: Support integer-list sources, including explicitly sized elements, with byte-range validation and an unchanged destination on invalid input.
+- **Fix: Bytes buffers in foreign struct calls**: Pass the byte payload pointer, rather than its internal header, to C functions with struct arguments or returns.
+- **Fix: native `sorted()` and `list()` accept any iterable**: On the native backend, `sorted()` of a set, tuple, dict, bytes or string, and `list()` of a dict, a string or a range object, failed to compile. Both now accept any value the native iterator protocol can walk.
+
+## jaclang 0.37.20
 
 ### Breaking Changes
 

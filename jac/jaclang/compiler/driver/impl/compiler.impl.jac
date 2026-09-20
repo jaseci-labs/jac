@@ -346,6 +346,7 @@ impl JacCompiler._load_native_from_cache(
             install_native_static_init
         }
         gen = CodeGenTarget();
+        self._restore_native_clibs(gen, cached_interop);
         gen.native_engine = engine;
         py_func_table: dict[str, Callable[..., object]] = {};
         callbacks_list: list[object] = [];
@@ -419,6 +420,7 @@ impl JacCompiler._load_native_from_bitcode(
         install_native_static_init
     }
     gen = CodeGenTarget();
+    self._restore_native_clibs(gen, cached_interop);
     gen.native_engine = engine;
     py_func_table: dict[str, Callable[..., object]] = {};
     callbacks_list: list[object] = [];
@@ -623,7 +625,12 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict[str, any] {
     if manifest is None {
         return {};
     }
-    interop_data: dict[str, any] = {'bindings': {}};
+    interop_data: dict[str, any] = {
+        'bindings': {},
+        'clib_paths': list(result.gen._clib_paths),
+        'clib_symbol_lib': dict(result.gen._clib_symbol_lib),
+        'exported_symbols': list(result.gen._exported_symbols)
+    };
     for (name, binding) in manifest.bindings.items() {
         interop_data['bindings'][name] = {
             'name': binding.name,
@@ -647,6 +654,23 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict[str, any] {
     interop_data['app_edges'] = list(manifest.app_edges);
     interop_data['provider_routes'] = dict(manifest.provider_routes);
     return interop_data;
+}
+
+impl JacCompiler._restore_native_clibs(
+    gen: CodeGenTarget, cached_interop: (dict[str, any] | None)
+) -> None {
+    if cached_interop is None or 'clib_paths' not in cached_interop {
+        raise ValueError("Native cache lacks foreign-library metadata");
+    }
+    import from jaclang.compiler.backends.native.na_compile_pass { load_jit_clib }
+    for lib_path in cached_interop['clib_paths'] {
+        if not load_jit_clib(lib_path) {
+            raise ValueError(f"Cannot restore native library: {lib_path}");
+        }
+        gen._clib_paths.append(lib_path);
+    }
+    gen._clib_symbol_lib.update(cached_interop.get('clib_symbol_lib', {}));
+    gen._exported_symbols.extend(cached_interop.get('exported_symbols', []));
 }
 
 impl JacCompiler._deserialize_interop_table(

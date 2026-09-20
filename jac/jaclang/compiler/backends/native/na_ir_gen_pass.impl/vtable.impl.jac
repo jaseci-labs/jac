@@ -202,13 +202,13 @@ impl NaIRGenPass._isinstance_class_name_hit(
 
     Every archetype instantiation stamps its class name into the allocation
     header, so this identity survives the module boundary the vtable does not:
-    the name is the same string whichever unit allocated the object. `__jac_isa`
-    matches it against the program-wide `(class, ancestor)` table, whose rows
-    come from the same merged `mro_order` that
-    `_register_imported_hierarchy` fills, so an imported base matches through an
-    imported MRO without a second identity scheme. `None` when no header is
-    around to read -- a headerless build keeps the site loud rather than
-    guessing.
+    the name is the same string whichever unit allocated the object. The
+    targets here are classes the compiler can name, so each one's hash is
+    folded into a constant for `__jac_isa_h`, whose index comes from the same
+    merged `mro_order` that `_register_imported_hierarchy` fills: an imported
+    base matches through an imported MRO without a second identity scheme.
+    `None` when no header is around to read -- a headerless build keeps the site
+    loud rather than guessing.
     """;
     if self._emit_runtime_class_name_fn() is None {
         return None;
@@ -217,11 +217,18 @@ impl NaIRGenPass._isinstance_class_name_hit(
     if cls_id is None {
         return None;
     }
-    isa_fn = self._emit_isa_fn();
+    isa_fn = self._emit_isa_hashed_fn();
+    i64 = ir.IntType(64);
     hit: (ir.Value | None) = None;
     for name in names {
         one = self.builder.call(
-            isa_fn, [cls_id, self._emit_class_name_const(name)], name="isinst.nm.res"
+            isa_fn,
+            [
+                cls_id,
+                self._emit_class_name_const(name),
+                ir.Constant(i64, self._static_str_hash(name))
+            ],
+            name="isinst.nm.res"
         );
         hit = one if hit is None else self.builder.or_(hit, one, name="isinst.nm.or");
     }
@@ -620,107 +627,300 @@ impl NaIRGenPass._is_enum_arch(name: str) -> bool {
 }
 
 impl NaIRGenPass._emit_isa_fn -> ir.Function {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    """`__jac_isa(cls, tgt)`: the class-name check for a target known only at run time.
+
+    A runtime class handle, or an arm of a variadic tuple of them, reaches the
+    check as a bare name, so its hash is taken here before handing off to the
+    shared core. Sites whose target is a class the compiler can name call
+    `__jac_isa_h` directly and fold that hash into a constant.
+    """;
     if self._isa_fn is not None {
         return self._isa_fn;
     }
     i1 = ir.IntType(1);
-    i8 = ir.IntType(8);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    i8p = i8.as_pointer();
-    row_ty = ir.LiteralStructType([i8p, i8p]);
-
-    reg = get_layout_registry(self.module, self.prog);
-    rows: list[ir.Constant] = [];
-    for cls in sorted(reg.mro_order) {
-        for anc in self._mro_of(cls) {
-            if anc == cls {
-                continue;
-            }
-            rows.append(
-                ir.Constant(
-                    row_ty,
-                    [self._emit_class_name_const(cls), self._emit_class_name_const(anc)]
-                )
-            );
-        }
-    }
-    rows.append(ir.Constant(row_ty, [ir.Constant(i8p, None), ir.Constant(i8p, None)]));
-    tbl_ty = ir.ArrayType(row_ty, len(rows));
-    tbl = ir.GlobalVariable(self.llvm_module, tbl_ty, name=".jac.isa.table");
-    tbl.linkage = "private";
-    tbl.global_constant = True;
-    tbl.initializer = ir.Constant(tbl_ty, rows);
-
-    strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+    i8p = ir.IntType(8).as_pointer();
     fn: any = self._define_function("__jac_isa", ir.FunctionType(i1, [i8p, i8p]));
     fn.linkage = "private";
     fn.args[0].name = "cls";
     fn.args[1].name = "tgt";
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    th = b.call(self._emit_cstr_hash_fn(), [fn.args[1]], name="isa.th");
+    b.ret(
+        b.call(self._emit_isa_hashed_fn(), [fn.args[0], fn.args[1], th], name="isa.res")
+    );
+    self._isa_fn = fn;
+    return fn;
+}
+
+impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
+    """`__jac_isa_h(cls, tgt, tgt_hash)`: does class `cls` answer for class `tgt`?
+
+    Both arguments are class names read as identity: the object's, out of its
+    allocation header, and the target's. A name is the same string in every
+    unit, which is what lets this answer across module boundaries where a
+    vtable pointer cannot.
+
+    The program's classes are indexed at compile time by the FNV hash of their
+    name (`_static_str_hash`), each entry pointing at that class's ancestors,
+    which carry their own hashes. A check is then a pointer compare, one
+    runtime hash of the object's name, one probe, and a walk of that class's own
+    ancestors: O(depth), never a scan of the whole program's classes.
+
+    Names from this unit are the same linkonce_odr constants on both sides, so
+    they match by address and no string is compared. A name from another unit
+    has a different address and is confirmed with one `strcmp`, taken only
+    after the hashes agree, which also keeps two names that collide on 64 bits
+    distinct.
+    """;
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    if self._isa_h_fn is not None {
+        return self._isa_h_fn;
+    }
+    i1 = ir.IntType(1);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    anc_ty = ir.LiteralStructType([i64, i8p]);
+    ent_ty = ir.LiteralStructType([i64, i8p, i32, i32]);
+
+    reg = get_layout_registry(self.module, self.prog);
+    classes = sorted(set(reg.mro_order));
+    ancestors: list[ir.Constant] = [];
+    spans: dict[str, tuple[int, int]] = {};
+    for cls in classes {
+        first = len(ancestors);
+        for anc in self._mro_of(cls) {
+            if anc != cls {
+                ancestors.append(
+                    ir.Constant(
+                        anc_ty,
+                        [
+                            ir.Constant(i64, self._static_str_hash(anc)),
+                            self._emit_class_name_const(anc)
+                        ]
+                    )
+                );
+            }
+        }
+        spans[cls] = (first, len(ancestors) - first);
+    }
+    ancestors.append(
+        ir.Constant(anc_ty, [ir.Constant(i64, 0), ir.Constant(i8p, None)])
+    );
+    anc_arr = ir.ArrayType(anc_ty, len(ancestors));
+    anc_gv = ir.GlobalVariable(self.llvm_module, anc_arr, name=".jac.isa.ancestors");
+    anc_gv.linkage = "private";
+    anc_gv.global_constant = True;
+    anc_gv.initializer = ir.Constant(anc_arr, ancestors);
+
+    cap = 8;
+    while cap < 2 * len(classes) {
+        cap *= 2;
+    }
+    empty = ir.Constant(
+        ent_ty,
+        [
+            ir.Constant(i64, 0),
+            ir.Constant(i8p, None),
+            ir.Constant(i32, 0),
+            ir.Constant(i32, 0)
+        ]
+    );
+    slots: list[ir.Constant] = [empty for _i in range(cap)];
+    taken: list[bool] = [False for _i in range(cap)];
+    for cls in classes {
+        h = self._static_str_hash(cls);
+        s = h & (cap - 1);
+        while taken[s] {
+            s = (s + 1) & (cap - 1);
+        }
+        taken[s] = True;
+        (first, count) = spans[cls];
+        slots[s] = ir.Constant(
+            ent_ty,
+            [
+                ir.Constant(i64, h),
+                self._emit_class_name_const(cls),
+                ir.Constant(i32, first),
+                ir.Constant(i32, count)
+            ]
+        );
+    }
+    idx_arr = ir.ArrayType(ent_ty, cap);
+    idx_gv = ir.GlobalVariable(self.llvm_module, idx_arr, name=".jac.isa.index");
+    idx_gv.linkage = "private";
+    idx_gv.global_constant = True;
+    idx_gv.initializer = ir.Constant(idx_arr, slots);
+
+    strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+    fn: any = self._define_function(
+        "__jac_isa_h", ir.FunctionType(i1, [i8p, i8p, i64])
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "cls";
+    fn.args[1].name = "tgt";
+    fn.args[2].name = "th";
     _cls = fn.args[0];
     _tgt = fn.args[1];
+    _th = fn.args[2];
+    zero32 = ir.Constant(i32, 0);
+    mask = ir.Constant(i64, cap - 1);
 
-    `entry = fn.append_basic_block("entry");
-    scan = fn.append_basic_block("scan");
-    row = fn.append_basic_block("row");
-    anc_bb = fn.append_basic_block("anc");
-    next_bb = fn.append_basic_block("next");
+    head = fn.append_basic_block("entry");
+    by_hash = fn.append_basic_block("by.hash");
+    lookup = fn.append_basic_block("lookup");
+    probe = fn.append_basic_block("probe");
+    probe_hash = fn.append_basic_block("probe.hash");
+    probe_name = fn.append_basic_block("probe.name");
+    probe_next = fn.append_basic_block("probe.next");
+    found = fn.append_basic_block("found");
+    walk = fn.append_basic_block("walk");
+    walk_hash = fn.append_basic_block("walk.hash");
+    walk_name = fn.append_basic_block("walk.name");
+    walk_next = fn.append_basic_block("walk.next");
     yes = fn.append_basic_block("yes");
     no = fn.append_basic_block("no");
 
-    be = ir.IRBuilder(`entry);
-    idx = be.alloca(i64, name="i");
-    be.store(ir.Constant(i64, 0), idx);
+    b = ir.IRBuilder(head);
+    b.cbranch(b.icmp_unsigned("==", _cls, _tgt, name="isa.self"), yes, by_hash);
 
-    _self_hit = be.icmp_signed(
-        "==",
-        be.call(strcmp, [_cls, _tgt], name="isa.self"),
-        ir.Constant(i32, 0),
-        name="isa.self.eq"
-    );
-    be.cbranch(_self_hit, yes, scan);
-
-    bs = ir.IRBuilder(scan);
-    _i = bs.load(idx, name="i");
-    _cp = bs.gep(
-        tbl, [ir.Constant(i32, 0), _i, ir.Constant(i32, 0)], name="isa.rowc.p"
-    );
-    _rc = bs.load(_cp, name="isa.rowc");
-    bs.cbranch(
-        bs.icmp_unsigned("==", _rc, ir.Constant(i8p, None), name="isa.end"), no, row
+    b = ir.IRBuilder(by_hash);
+    hc = b.call(self._emit_cstr_hash_fn(), [_cls], name="isa.hc");
+    self._emit_isa_name_match(
+        b,
+        b.icmp_unsigned("==", hc, _th, name="isa.hsame"),
+        _cls,
+        _tgt,
+        strcmp,
+        yes,
+        lookup
     );
 
-    br = ir.IRBuilder(row);
-    _c_eq = br.icmp_signed(
-        "==",
-        br.call(strcmp, [_rc, _cls], name="isa.cc"),
-        ir.Constant(i32, 0),
-        name="isa.cc.eq"
-    );
-    br.cbranch(_c_eq, anc_bb, next_bb);
+    b = ir.IRBuilder(lookup);
+    start_slot = b.and_(hc, mask, name="isa.s0");
+    b.branch(probe);
 
-    ba = ir.IRBuilder(anc_bb);
-    _ap = ba.gep(
-        tbl, [ir.Constant(i32, 0), _i, ir.Constant(i32, 1)], name="isa.rowa.p"
+    b = ir.IRBuilder(probe);
+    slot = b.phi(i64, name="isa.slot");
+    ent = b.gep(idx_gv, [ir.Constant(i64, 0), slot], name="isa.ent");
+    ent_name = b.load(
+        b.gep(ent, [zero32, ir.Constant(i32, 1)], name="isa.ent.np"),
+        name="isa.ent.name"
     );
-    _ra = ba.load(_ap, name="isa.rowa");
-    _a_eq = ba.icmp_signed(
-        "==",
-        ba.call(strcmp, [_ra, _tgt], name="isa.ac"),
-        ir.Constant(i32, 0),
-        name="isa.ac.eq"
+    b.cbranch(
+        b.icmp_unsigned("==", ent_name, ir.Constant(i8p, None), name="isa.ent.empty"),
+        no,
+        probe_hash
     );
-    ba.cbranch(_a_eq, yes, next_bb);
 
-    bn = ir.IRBuilder(next_bb);
-    bn.store(bn.add(_i, ir.Constant(i64, 1), name="isa.in"), idx);
-    bn.branch(scan);
+    b = ir.IRBuilder(probe_hash);
+    ent_hash = b.load(
+        b.gep(ent, [zero32, zero32], name="isa.ent.hp"), name="isa.ent.hash"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", ent_hash, hc, name="isa.ent.hit"), probe_name, probe_next
+    );
+
+    b = ir.IRBuilder(probe_name);
+    self._emit_isa_name_match(b, None, ent_name, _cls, strcmp, found, probe_next);
+
+    b = ir.IRBuilder(probe_next);
+    next_slot = b.and_(
+        b.add(slot, ir.Constant(i64, 1), name="isa.s1"), mask, name="isa.sn"
+    );
+    b.branch(probe);
+    slot.add_incoming(start_slot, lookup);
+    slot.add_incoming(next_slot, probe_next);
+
+    b = ir.IRBuilder(found);
+    run_start = b.zext(
+        b.load(
+            b.gep(ent, [zero32, ir.Constant(i32, 2)], name="isa.first.p"),
+            name="isa.first32"
+        ),
+        i64,
+        name="isa.first"
+    );
+    run_len = b.zext(
+        b.load(
+            b.gep(ent, [zero32, ir.Constant(i32, 3)], name="isa.count.p"),
+            name="isa.count32"
+        ),
+        i64,
+        name="isa.count"
+    );
+    stop = b.add(run_start, run_len, name="isa.stop");
+    b.branch(walk);
+
+    b = ir.IRBuilder(walk);
+    i = b.phi(i64, name="isa.i");
+    anc = b.gep(anc_gv, [ir.Constant(i64, 0), i], name="isa.anc");
+    b.cbranch(b.icmp_unsigned("<", i, stop, name="isa.more"), walk_hash, no);
+
+    b = ir.IRBuilder(walk_hash);
+    anc_hash = b.load(
+        b.gep(anc, [zero32, zero32], name="isa.anc.hp"), name="isa.anc.hash"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", anc_hash, _th, name="isa.anc.hit"), walk_name, walk_next
+    );
+
+    b = ir.IRBuilder(walk_name);
+    anc_name = b.load(
+        b.gep(anc, [zero32, ir.Constant(i32, 1)], name="isa.anc.np"),
+        name="isa.anc.name"
+    );
+    self._emit_isa_name_match(b, None, anc_name, _tgt, strcmp, yes, walk_next);
+
+    b = ir.IRBuilder(walk_next);
+    nxt = b.add(i, ir.Constant(i64, 1), name="isa.in");
+    b.branch(walk);
+    i.add_incoming(run_start, found);
+    i.add_incoming(nxt, walk_next);
 
     ir.IRBuilder(yes).ret(ir.Constant(i1, 1));
     ir.IRBuilder(no).ret(ir.Constant(i1, 0));
-    self._isa_fn = fn;
+    self._isa_h_fn = fn;
     return fn;
+}
+
+impl NaIRGenPass._emit_isa_name_match(
+    b: ir.IRBuilder,
+    gate: (ir.Value | None),
+    name: ir.Value,
+    other: ir.Value,
+    strcmp: ir.Function,
+    on_match: ir.Block,
+    on_miss: ir.Block
+) -> None {
+    """End `b`'s block by branching on whether two class names are the same class.
+
+    Names from one unit are the same constant, so the address compare settles
+    them; only a name from another unit falls through to `strcmp`. `gate`, when
+    given, must hold before either compare runs -- the hash agreement that makes
+    a confirm worth taking -- and a false gate goes straight to `on_miss`.
+    """;
+    fn = b.block.function;
+    by_text = fn.append_basic_block("isa.by.text");
+    by_addr = b.block if gate is None else fn.append_basic_block("isa.by.addr");
+    if gate is not None {
+        b.cbranch(gate, by_addr, on_miss);
+        b = ir.IRBuilder(by_addr);
+    }
+    b.cbranch(
+        b.icmp_unsigned("==", name, other, name="isa.same.addr"), on_match, by_text
+    );
+    t = ir.IRBuilder(by_text);
+    t.cbranch(
+        t.icmp_signed(
+            "==",
+            t.call(strcmp, [name, other], name="isa.cmp"),
+            ir.Constant(ir.IntType(32), 0),
+            name="isa.same.text"
+        ),
+        on_match,
+        on_miss
+    );
 }
 
 impl NaIRGenPass._runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value | None) {

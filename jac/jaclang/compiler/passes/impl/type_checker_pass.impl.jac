@@ -201,7 +201,6 @@ impl TypeCheckPass.exit_gen_compr with GenCompr exit {
 
 impl TypeCheckPass.exit_func_call with FuncCall exit {
     import from jaclang.compiler.symbol_utils {
-        CallKind,
         classify_call,
         ability_of_symbol,
         resolve_expr_symbol
@@ -220,10 +219,6 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
     here.chunks_recv_type = _chunks_receiver_type(here);
 
     here.callee_decl = ability_of_symbol(resolve_expr_symbol(here.target));
-
-    if here.call_kind == CallKind.INTRINSIC.value {
-        self._check_intrinsic_call(here);
-    }
 
     if (
         here.callee_decl is not None
@@ -266,61 +261,6 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
                 }
             }
         }
-    }
-}
-
-impl TypeCheckPass._check_intrinsic_call(nd: FuncCall) -> None {
-    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
-
-    intrinsics = intrinsic_registry_if_ready();
-    name = nd.target.sym_name if isinstance(nd.target, Name) else None;
-    if intrinsics is None or name is None {
-        return;
-    }
-    import from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
-
-    if not isinstance(intrinsics, IntrinsicRegistry) {
-        return;
-    }
-    intr = intrinsics.get(name);
-    if intr is None {
-        return;
-    }
-    positional: list[Expr] = [];
-    has_kw = False;
-    for p in (nd.params or []) {
-        if isinstance(p, KWPair) {
-            has_kw = True;
-        } else {
-            positional.append(p);
-        }
-    }
-    if has_kw {
-        self.ctx.emit(
-            E5095,
-            node_override=nd,
-            name=intr.name,
-            reason="keyword arguments are not accepted"
-        );
-    } elif len(positional) != intr.arity() {
-        self.ctx.emit(
-            E5095,
-            node_override=nd,
-            name=intr.name,
-            reason=f"expected {intr.arity()} argument(s), got {len(positional)}"
-        );
-    }
-    if intr.result_spec != "none" {
-        if self.evaluator.na_builtins_module is not None {
-            result_cls = self.evaluator._get_type_from_module(
-                self.evaluator.na_builtins_module, intr.result_spec
-            );
-            if not isinstance(result_cls, UnknownType) {
-                nd.type = self.evaluator._convert_to_instance(result_cls);
-            }
-        }
-    } else {
-        nd.type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
     }
 }
 

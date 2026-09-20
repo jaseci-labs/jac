@@ -1646,6 +1646,9 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         if p._is_bytes_value(arg_val) {
             return p._mark_owned(p._emit_bytes_repr(arg_val));
         }
+        if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
+            return p._bool_text(b, arg_val, "repr.bool");
+        }
         if isinstance(arg_val.type, ir.IntType) {
             buf_ptr = b.call(p.rc_alloc_fn, [ir.Constant(i64, 64)], name="repr.buf");
             snprintf = p._get_or_declare_extern(

@@ -11,7 +11,16 @@ cat >"$FIXTURE/bin/gh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
+  'api --help')
+    if [[ ! -e "$FIXTURE/legacy-gh" ]]; then
+      printf '%s\n' '--allow-escape-sequences'
+    fi ;;
   *'/logs')
+    if [[ -e "$FIXTURE/legacy-gh" ]]; then
+      [[ "$*" != *'--allow-escape-sequences'* ]] || exit 1
+    else
+      [[ "$*" == *'--allow-escape-sequences'* ]] || exit 1
+    fi
     [[ ! -e "$FIXTURE/expired" ]] || exit 1
     cat "$FIXTURE/plan" ;;
   *'/commits/'*) printf '%s\n' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
@@ -57,6 +66,10 @@ reject() {
 reset_fixture
 [[ "$(bash "$GUARD" v0.37.15 123)" == 'linux-x86_64 linux-aarch64 macos-aarch64' ]]
 checks=$((checks + 1))
+touch "$FIXTURE/legacy-gh"
+[[ "$(bash "$GUARD" v0.37.15 123)" == 'linux-x86_64 linux-aarch64 macos-aarch64' ]]
+checks=$((checks + 1))
+rm "$FIXTURE/legacy-gh"
 for index in {0..7}; do
     jq --argjson i "$index" 'del(.assets[$i])' "$FIXTURE/assets.original" >"$FIXTURE/assets"
     reject

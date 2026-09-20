@@ -73,7 +73,19 @@ def _mock_turn(
         output = output[0];
     }
     if isinstance(output, MockError) {
-        return output;
+        if output.reply is None {
+            return output;
+        }
+        if output.content or output.after {
+            raise ValueError(
+                "MockError takes content= with after=, or reply=, not both"
+            );
+        }
+        reply = _mock_turn(output.reply, text_is_value);
+        if not isinstance(reply, MockRawResponse) {
+            raise ValueError("MockError(reply=...) cannot be another MockError");
+        }
+        return MockError(error=output.error, reply=reply);
     }
     if isinstance(output, MockRawResponse) {
         if usage is None {
@@ -83,7 +95,9 @@ def _mock_turn(
             content=output.content,
             tool_calls=list(output.tool_calls),
             usage=usage,
-            finish_reason=output.finish_reason
+            finish_reason=output.finish_reason,
+            model=output.model,
+            unnamed_fragments=output.unnamed_fragments
         );
     }
     if isinstance(output, MockToolCall) {
@@ -181,6 +195,20 @@ def _mock_chunk(
 }
 
 
+obj _MockStream {
+    has chunks: Iterator[object],
+        logging_obj: object;
+
+    def __iter__ -> _MockStream {
+        return self;
+    }
+
+    def __next__ -> object {
+        return next(self.chunks);
+    }
+}
+
+
 def _mock_chunks(turn: MockRawResponse, model: str, size: int) -> list[object] {
     out: list[object] = [];
     first = True;
@@ -198,9 +226,11 @@ def _mock_chunks(turn: MockRawResponse, model: str, size: int) -> list[object] {
         for (n, piece) in enumerate(pieces) {
             frag: dict[str, any] = {"index": index, "function": {"arguments": piece}};
             if n == 0 {
-                frag["id"] = call_id;
                 frag["type"] = "function";
-                frag["function"]["name"] = name;
+                if not turn.unnamed_fragments {
+                    frag["id"] = call_id;
+                    frag["function"]["name"] = name;
+                }
             }
             delta = {"tool_calls": [frag]};
             if first {
@@ -315,27 +345,38 @@ impl MockLLM.model_call_no_stream(params: dict[str, any]) -> object {
     if isinstance(turn, MockError) {
         raise turn.error;
     }
-    return _mock_response(turn, params.get("model") or self.model_name);
+    return _mock_response(turn, turn.model or params.get("model") or self.model_name);
 }
 
-impl MockLLM.model_call_with_stream(
-    params: dict[str, any]
-) -> Generator[object, None, None] {
+impl MockLLM.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     require_optional("litellm", "llm");
+    stream = self._stream_reply(params);
+    if self.logging_obj is not None {
+        return _MockStream(chunks=stream, logging_obj=self.logging_obj);
+    }
+    return stream;
+}
+
+impl MockLLM._stream_reply(params: dict[str, any]) -> Generator[object, None, None] {
     turn = self._next_reply(params);
     model = params.get("model") or self.model_name;
     if isinstance(turn, MockError) {
-        partial = _mock_chunks(
-            MockRawResponse(content=turn.content), model, self.chunk_size
-        )
-            if turn.content
-            else [];
-        for chunk in partial[:turn.after] {
+        partial: list[object] = [];
+        if isinstance(turn.reply, MockRawResponse) {
+            partial = _mock_chunks(
+                turn.reply, turn.reply.model or model, self.chunk_size
+            );
+        } elif turn.content {
+            partial = _mock_chunks(
+                MockRawResponse(content=turn.content), model, self.chunk_size
+            )[:turn.after];
+        }
+        for chunk in partial {
             yield chunk;
         }
         raise turn.error;
     }
-    for chunk in _mock_chunks(turn, model, self.chunk_size) {
+    for chunk in _mock_chunks(turn, turn.model or model, self.chunk_size) {
         yield chunk;
     }
 }

@@ -498,7 +498,7 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
         if except_node.name is not None {
             self.local_vars[var_name] = alloca;
             if self._nogc_headerless() {
-                self.nogc_no_free_vars.add(var_name);
+                self.borrowed_vars.add(var_name);
             }
         }
         if isinstance(except_node.body, (list, tuple)) {
@@ -554,6 +554,10 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
             }
             self._finally_stack = saved_finalizers[:index];
             self._slot_try_stack = saved_handlers[:frame.handler_depth];
+            if frame.context_exit is not None {
+                (owner, exit_fn) = frame.context_exit;
+                self._emit_context_exit(self.builder.load(owner), exit_fn);
+            }
             if frame.body is not None and isinstance(frame.body.body, (list, tuple)) {
                 self._codegen_body(frame.body.body);
             }

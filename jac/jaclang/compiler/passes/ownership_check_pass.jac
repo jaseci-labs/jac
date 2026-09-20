@@ -36,6 +36,7 @@ import from jaclang.compiler.frontend.unitree {
     ModuleCode,
     MultiString,
     Name,
+    Null,
     OpenStmt,
     ParamVar,
     RaiseStmt,
@@ -94,10 +95,13 @@ obj BorrowMeta {
         owner: (SymId | None) = None,
         is_mut: bool = False,
         extra_owners: list[SymId] postinit,
-        field: str = "";
+        field: str = "",
+        managed: bool = False,
+        path_fields: set[str] postinit;
 
     def postinit {
         self.extra_owners = [];
+        self.path_fields = set();
     }
 }
 
@@ -109,6 +113,7 @@ walker OwnershipCheckPass {
         linear_decl: dict[SymId, Name] = {},
         consumed_syms: set[SymId] = set(),
         borrow_meta: dict[SymId, BorrowMeta] = {},
+        declared_borrows: set[SymId] = set(),
         e1304_borrow_ids: set[SymId] = set(),
         in_consumed: dict[int, set[SymId]] = {},
         in_live_borrows: dict[int, set[SymId]] = {},
@@ -195,6 +200,18 @@ walker OwnershipCheckPass {
     def _self_method_callees(ability: Ability) -> list[Ability];
     def _stamp_receiver_modes -> None;
     def _stamp_raises_effects -> None;
+    def _stamp_write_effects -> None;
+    def _local_writes(ab: Ability) -> set[str];
+    def _owning_ability(nd: UniNode) -> (Ability | None);
+    def _store_fields(tgt: Expr, out: set[str]) -> None;
+    def _call_writes(call: FuncCall) -> set[str];
+    def _stamp_managed_borrows -> None;
+    def _is_place_borrow(nd: Assignment) -> bool;
+    def _is_null_bind(nd: Assignment) -> bool;
+    def _managed_start_ok(start: Name) -> bool;
+    def _path_fields(expr: Expr) -> set[str];
+    def _emit_shared_write_diagnostics -> None;
+    def _emit_managed_borrow_diagnostics(cfg_nodes: list[UniCFGNode]) -> None;
     def _raise_type_name(nd: RaiseStmt) -> (str | None);
     def _handled_by_enclosing_try(nd: UniNode, exc: str, stop: UniNode) -> bool;
     def _callee_ability(call: FuncCall) -> (Ability | None);

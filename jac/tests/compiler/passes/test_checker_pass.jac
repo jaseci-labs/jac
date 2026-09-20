@@ -696,6 +696,16 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              []
          ),
          ("expr_narrowing", "checker", "checker_expr_narrowing.jac", 0, True, []),
+         # A comprehension's `if` clauses run in order, so each narrows the
+         # element expression, the later clauses and any later `for` clause.
+         (
+             "comprehension_clause_narrowing",
+             "checker",
+             "checker_comprehension_clause_narrowing.jac",
+             0,
+             True,
+             []
+         ),
          # `x == "literal"` narrows like the int, float and bool forms; `!=`
          # rules out one value, never the whole class.
          (

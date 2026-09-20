@@ -1,4 +1,4 @@
-"""Shared helpers for the byLLM suite.
+"""Shared helpers for the byLLM suite. `TESTING.md` holds the rules.
 
 Tests fake the model with `MockLLM`, which replaces only the network call, so byLLM
 builds the real request and parses the reply. The builders below script its turns:
@@ -8,20 +8,17 @@ builds the real request and parses the reply. The builders below script its turn
     assert task("x") == "done";
     assert llm.sent("tools")[0] is not None;
 
-A typed answer is queued as the value itself, and `MockLLM` sends it in the envelope
-the parser expects. For a real `Model` (provider quirks, api-key resolution):
+A typed answer is queued as the value itself. A reply also carries what the provider
+reports about it: `say(..., model=...)` for the model that answered, and
+`fail(error, reply=...)` for a stream that drops after sending it. For a real `Model`:
 
-    with scripted(model, [say("hi")]) as llm { ... llm.seen ... }
+    with scripted(model, replies) { ... }
 
 The file is not collected as a suite: it has no `test_` prefix by design.
 """
 
-import contextlib;
-import io;
 import logging;
 import os;
-import types;
-import from typing { Generator }
 import from unittest { mock }
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.llm { BaseLLM }
@@ -37,11 +34,17 @@ glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures"),
      };
 
 
-"""Model text; `finish_reason="length"` makes it a truncated turn."""
+"""Model text; `finish_reason="length"` makes it a truncated turn, and `model` names
+the model that answered."""
 def say(
-    content: str, usage: dict[str, any] | None = None, finish_reason: str = ""
+    content: str,
+    usage: dict[str, any] | None = None,
+    finish_reason: str = "",
+    model: str = ""
 ) -> MockRawResponse {
-    return MockRawResponse(content=content, usage=usage, finish_reason=finish_reason);
+    return MockRawResponse(
+        content=content, usage=usage, finish_reason=finish_reason, model=model
+    );
 }
 
 
@@ -51,19 +54,28 @@ def call(
     args: dict[str, any] | str | None = None,
     call_id: str = "",
     usage: dict[str, any] | None = None,
-    finish_reason: str = ""
+    finish_reason: str = "",
+    model: str = "",
+    unnamed_fragments: bool = False
 ) -> MockRawResponse {
     return calls(
         [(name, args if args is not None else {}, call_id)],
         usage=usage,
-        finish_reason=finish_reason
+        finish_reason=finish_reason,
+        model=model,
+        unnamed_fragments=unnamed_fragments
     );
 }
 
 
-"""Several tool calls in one turn; each entry is (name, args) or (name, args, id)."""
+"""Several tool calls in one turn; each entry is (name, args) or (name, args, id).
+`unnamed_fragments` streams their arguments with no id or name."""
 def calls(
-    entries: list[any], usage: dict[str, any] | None = None, finish_reason: str = ""
+    entries: list[any],
+    usage: dict[str, any] | None = None,
+    finish_reason: str = "",
+    model: str = "",
+    unnamed_fragments: bool = False
 ) -> MockRawResponse {
     return MockRawResponse(
         tool_calls=[
@@ -71,26 +83,50 @@ def calls(
             for e in entries
         ],
         usage=usage,
-        finish_reason=finish_reason
+        finish_reason=finish_reason,
+        model=model,
+        unnamed_fragments=unnamed_fragments
     );
 }
 
 
-def finish(output: object, call_id: str = "call_finish") -> MockRawResponse {
-    return call("finish_tool", {"final_output": output}, call_id=call_id);
+def finish(
+    output: object, call_id: str = "call_finish", usage: dict[str, any] | None = None
+) -> MockRawResponse {
+    return call("finish_tool", {"final_output": output}, call_id=call_id, usage=usage);
 }
 
 
-"""Raise `error` instead of answering. On a stream, `content` is delivered first and
-the error fires after `after` of its chunks: `fail(err, content="partial", after=1)`."""
-def fail(error: Exception, content: str = "", after: int = 0) -> MockError {
-    return MockError(error=error, content=content, after=after);
+"""Raise `error` instead of answering. On a stream, the error can follow a partial reply:
+
+    fail(err, content="partial", after=1)   the first `after` chunks of `content`
+    fail(err, reply=call("write_file", a))  the whole of `reply`, any queue entry
+
+`content` with `after=0` sends nothing. Without a stream the error is raised at once.
+"""
+def fail(
+    error: Exception, content: str = "", after: int = 0, reply: object = None
+) -> MockError {
+    return MockError(error=error, content=content, after=after, reply=reply);
 }
 
 
 """Tool names as the model would see them in one recorded params dict."""
 def tool_names(params: dict[str, any]) -> list[any] {
     return [t["function"]["name"] for t in (params.get("tools") or [])];
+}
+
+
+"""One streamed text chunk, as litellm delivers it."""
+def text_chunk(text: str, model: str = "fake") -> object {
+    import litellm;
+    return litellm.ModelResponseStream(
+        id="chunk",
+        object="chat.completion.chunk",
+        created=1,
+        model=model,
+        choices=[{"index": 0, "delta": {"content": text}, "finish_reason": None}]
+    );
 }
 
 
@@ -169,39 +205,49 @@ def mk_run(
 }
 
 
+"""The path of the fixture file or directory `name`."""
+def fixture_path(name: str) -> str {
+    return os.path.join(FIXTURE_DIR, name);
+}
+
+
+"""Import fixture module `name`. Imports are cached, so tests that load one share it."""
 def load_fixture(name: str) -> any {
     return Jac.jac_import(name, base_path=FIXTURE_DIR + "/")[0];
 }
 
 
-"""Import a fixture program and return what it printed."""
-def run_fixture(name: str) -> str {
-    buf = io.StringIO();
-    with contextlib.redirect_stdout(buf) {
-        Jac.jac_import(name, base_path=FIXTURE_DIR + "/");
+"""A write-only text sink that keeps what it is given, for a log handler."""
+obj _Lines {
+    has lines: list[str] = [];
+
+    def write(text: str) {
+        self.lines.append(text);
     }
-    return buf.getvalue();
+
+    def flush {}
 }
 
 
-"""Collect every log record at or above `level` from logger `name` (root by default)."""
+"""Collect std `logging` records at or above `level` from logger `name` (root by default)."""
 obj LogCapture {
     has level: int = logging.DEBUG,
         name: str = "",
-        buf: io.StringIO | None = None,
+        sink: _Lines | None = None,
         _handler: logging.Handler | None = None,
         _logger: logging.Logger | None = None,
         _prev_level: int = 0;
 
     def __enter__ -> LogCapture {
-        self.buf = io.StringIO();
-        handler = logging.StreamHandler(self.buf);
-        handler.setLevel(self.level);
+        self.sink = _Lines();
+        level: any = self.level;
+        handler = logging.StreamHandler(self.sink);
+        handler.setLevel(level);
         handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"));
         target = logging.getLogger(self.name);
         self._prev_level = target.level;
         target.addHandler(handler);
-        target.setLevel(self.level);
+        target.setLevel(level);
         self._handler = handler;
         self._logger = target;
         return self;
@@ -209,20 +255,56 @@ obj LogCapture {
 
     def __exit__(*_exc: any) -> bool {
         if self._logger is not None and self._handler is not None {
+            previous: any = self._prev_level;
             self._logger.removeHandler(self._handler);
-            self._logger.setLevel(self._prev_level);
+            self._logger.setLevel(previous);
         }
         return False;
     }
 
     def text -> str {
-        return self.buf.getvalue() if self.buf is not None else "";
+        return "".join(self.sink.lines) if self.sink is not None else "";
     }
 }
 
 
 def capture_logs(level: int = logging.DEBUG, name: str = "") -> LogCapture {
     return LogCapture(level=level, name=name);
+}
+
+
+"""Collect loguru records at or above `level`. Sinks already installed stay installed."""
+obj LoguruCapture {
+    has level: str = "DEBUG",
+        sink: _Lines | None = None,
+        _sink_id: any = None;
+
+    def __enter__ -> LoguruCapture {
+        import from loguru { logger }
+        self.sink = _Lines();
+        self._sink_id = logger.add(
+            self.sink.write, level=self.level, format="{level} {message}"
+        );
+        return self;
+    }
+
+    def __exit__(*_exc: any) -> bool {
+        import from loguru { logger }
+        if self._sink_id is not None {
+            logger.remove(self._sink_id);
+            self._sink_id = None;
+        }
+        return False;
+    }
+
+    def text -> str {
+        return "".join(self.sink.lines) if self.sink is not None else "";
+    }
+}
+
+
+def capture_loguru(level: str = "DEBUG") -> LoguruCapture {
+    return LoguruCapture(level=level);
 }
 
 
@@ -270,9 +352,10 @@ def data_url(block: dict[str, any]) -> str {
 }
 
 
-"""Skip the calling test when an optional dependency is absent.
+"""Skip the calling test when `module` is absent, even under `JAC_TEST_STRICT`.
 
-    need("PIL", "Pillow");
+Only for a dependency CI does not install: `need("cv2", "OpenCV")`. For one it does,
+call `require_module` from `jaclang.testing.requires`, which fails under strict.
 """
 def need(module: str, package: str = "") {
     import importlib;
@@ -282,6 +365,31 @@ def need(module: str, package: str = "") {
         testskip(f"This test requires {package or module} to be installed");
     }
 }
+
+
+"""Skip the calling test unless `path` compiles into the runtime's own program; fail
+instead under `JAC_TEST_STRICT`.
+
+A file inside the jaclang package compiles into the compiler's program instead, so the
+MTIR it registers never reaches `JacRuntime.program`. CI runs such tests from a copy.
+"""
+def need_outside_jaclang(path: str) {
+    import from jaclang.runtime.runtime { JacRuntime }
+    import from jaclang.testing.test_runner { strict_mode }
+    program = JacRuntime.get_program();
+    if JacRuntime.get_selfhost().resolve(path, program) is program {
+        return;
+    }
+    reason = (
+        "this fixture compiles into the compiler's own program here; "
+        "run from a copy outside the jaclang tree, as CI does"
+    );
+    if strict_mode() {
+        raise AssertionError(f"{reason} (JAC_TEST_STRICT is set)");
+    }
+    testskip(reason);
+}
+
 
 """The whole conversation of call `n` as one string, for `in` assertions.
 
@@ -374,13 +482,9 @@ obj RoutingLLM(MockLLM) {
         return super.model_call_no_stream(params);
     }
 
-    override def model_call_with_stream(
-        params: dict[str, any]
-    ) -> Generator[object, None, None] {
+    override def model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
         self._queue_route(params);
-        for chunk in super.model_call_with_stream(params) {
-            yield chunk;
-        }
+        return super.model_call_with_stream(params);
     }
 
     """Put this call's routing answer at the head of the queue. A prompt with no

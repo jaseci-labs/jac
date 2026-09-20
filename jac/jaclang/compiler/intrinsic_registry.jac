@@ -5,7 +5,8 @@ enum IntrinsicDispatch {
     MEM_LOAD = "mem_load",
     MEM_STORE = "mem_store",
     ATOMIC_XCHG = "atomic_xchg",
-    CALL_DTOR = "call_dtor"
+    CALL_DTOR = "call_dtor",
+    REGION_TLS = "region_tls"
 }
 
 obj IntrinsicEntry {
@@ -120,6 +121,24 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=["i64", "i64"],
                  result_spec="none",
                  dispatch=IntrinsicDispatch.CALL_DTOR
+             ),
+             "__jac_region_tls_get": IntrinsicEntry(
+                 name="__jac_region_tls_get",
+                 param_specs=[],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.REGION_TLS
+             ),
+             "__jac_region_tls_set": IntrinsicEntry(
+                 name="__jac_region_tls_set",
+                 param_specs=["i64"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.REGION_TLS
+             ),
+             "__jac_region_gbl_get": IntrinsicEntry(
+                 name="__jac_region_gbl_get",
+                 param_specs=[],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.REGION_TLS
              )
          }
      );

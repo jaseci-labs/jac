@@ -9,14 +9,11 @@ enum Personality {
     AMBIVERT = 3
 }
 
-sem Personality.INTROVERT =
-"Person who is reserved, reflective, and prefers solitude.";
+sem Personality.INTROVERT = "Person who is reserved, reflective, and prefers solitude.";
 
-sem Personality.EXTROVERT =
-"Person who is outgoing, socially confident, and energized by interaction.";
+sem Personality.EXTROVERT = "Person who is outgoing, socially confident, and energized by interaction.";
 
-sem Personality.AMBIVERT =
-"Person who shows a balance of introverted and extroverted traits.";
+sem Personality.AMBIVERT = "Person who shows a balance of introverted and extroverted traits.";
 
 """Status codes for operations."""
 enum Status {
@@ -30,7 +27,11 @@ sem Status.ACTIVE = "Operation is currently running.";
 sem Status.COMPLETED = "Operation has finished successfully.";
 
 """Simple enum without explicit values."""
-enum Color { RED, GREEN, BLUE }
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+}
 
 """Person with personality classification."""
 obj Person {
@@ -43,7 +44,4 @@ sem Person.personality = "The personality type of the person.";
 sem Person.status = "The current status of the person.";
 
 """Extract person information from description."""
-def get_person_info(name: str) -> Person by llm(
-    reason=True,
-    temperature=0.0
-);
+def get_person_info(name: str) -> Person by llm(reason=True, temperature=0.0);

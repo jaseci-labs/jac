@@ -129,6 +129,11 @@ import from jaclang.compiler.frontend.python.peg_runtime {
 }
 import from jaclang.compiler.frontend.python.token_model { mk_diag, tok_loc }
 
+# The characters a backslash may escape in a str literal, as code points.
+glob VALID_ESCAPE_POINTS: set[int] = {
+         ord(c) for c in "\\\"'abfnrtv\n\r01234567xuUN"
+     };
+
 obj pa_cmpop_expr_pair {
     has cmpop: cmpop,
         expr: expr;
@@ -231,66 +236,67 @@ def pa_warn_escape(escape: str, tok: peg_token | None) {
 
 # Escape decoding uses the retained string/bytes object runtime, just as
 # CPython's string_parser.c does. No parser or compiler API is called here.
+#
+# The body goes to the unicode-escape codec, which reproduces ASCII as written,
+# including a backslash escape of an ASCII character. That source is copied in
+# runs; only a character the codec cannot take as written breaks a run: a
+# non-ASCII character, spelled as a \U escape, and a backslash in front of one,
+# spelled as an escaped backslash.
 def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
-    import from jaclang.runtime.python.characters {
-        point_width,
-        point_char,
-        unicode_point
-    }
+    import from jaclang.runtime.python.characters { point_width, point_at }
     import from jaclang.runtime.python.native_services { decode_unicode }
     data = body.encode("utf-8");
-    encoded: list[str] = [];
+    size = len(data);
+    parts: list[str] = [];
+    run = 0;
     i = 0;
-    while i < len(data) {
-        ch = point_char(data, i);
-        width = point_width(data, i);
-        if ch == "\\" and i + 1 < len(data) {
-            following = point_char(data, i + 1);
-            if data[i + 1] < 128 {
-                if following not in "\\\"'abfnrtv\n\r01234567xuUN" {
-                    pa_warn_escape(following, tok);
-                } elif following in "4567" and i + 3 < len(data) {
-                    tail = data[i + 1:i + 4].decode("utf-8");
-                    if data[i + 2] >= 48
-                        and data[i + 2] <= 55
-                        and data[i + 3] >= 48
-                        and data[i + 3] <= 55 {
-                        pa_warn_escape(tail, tok);
-                    }
-                }
-                encoded.append(ch + following);
-                i += 2;
-                continue;
+    while i < size {
+        c = data[i];
+        if c == ord("\\") and i + 1 < size and data[i + 1] < 128 {
+            following = data[i + 1];
+            if following not in VALID_ESCAPE_POINTS {
+                pa_warn_escape(chr(following), tok);
+            } elif following >= ord("4")
+                and following <= ord("7")
+                and i + 3 < size
+                and data[i + 2] >= ord("0")
+                and data[i + 2] <= ord("7")
+                and data[i + 3] >= ord("0")
+                and data[i + 3] <= ord("7") {
+                pa_warn_escape(data[i + 1:i + 4].decode("utf-8"), tok);
             }
-            encoded.append("\\u005c");
-        } elif data[i] >= 128 {
-            point = unicode_point(ch);
-            digits = "0123456789abcdef";
-            escape = "\\U";
-            for shift in range(7, -1, -1) {
-                escape += digits[(point >> (shift * 4)) & 15];
-            }
-            encoded.append(escape);
-        } else {
-            encoded.append(ch);
+            i += 2;
+            continue;
         }
-        i += width;
+        if c < 128 and not (c == ord("\\") and i + 1 < size) {
+            i += 1;
+            continue;
+        }
+        if run < i {
+            parts.append(data[run:i].decode("utf-8"));
+        }
+        if c == ord("\\") {
+            parts.append("\\u005c");
+            i += 1;
+        } else {
+            parts.append("\\U" + format(point_at(data, i), "08x"));
+            i += point_width(data, i);
+        }
+        run = i;
     }
-    return decode_unicode("".join(encoded));
+    if run < size {
+        parts.append(data[run:size].decode("utf-8"));
+    }
+    return decode_unicode("".join(parts));
 }
 
 def pa_decode_bytes_escape_body(body: str, raw: bool) -> list[int] {
     import from jaclang.runtime.python.native_services { decode_bytes }
-    data = body.encode("utf-8");
-    values: list[int] = [];
-    for item in data {
-        if item >= 128 {
-            raise syntax_failure("bytes can only contain ASCII literal characters");
-        }
-        values.append(item);
+    if not body.isascii() {
+        raise syntax_failure("bytes can only contain ASCII literal characters");
     }
     if raw {
-        return values;
+        return list(body.encode("utf-8"));
     }
     return decode_bytes(body);
 }

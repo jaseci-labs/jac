@@ -1096,7 +1096,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         frame_bindings = {
             binding
             for binding in self.local_vars
-            if binding not in self.nogc_no_free_vars
+            if binding not in self.borrowed_vars
                 and binding not in self.closure_cell_handles
         };
         if self._error_frame is not None {

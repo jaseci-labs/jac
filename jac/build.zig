@@ -459,6 +459,8 @@ pub fn build(b: *std.Build) void {
         // --link-source arg itself is the cache key for that mode.
         if (link_dir == null) {
             addTreeInputs(b, mk, "jaclang");
+            addTreeInputs(b, mk, "examples/jaclang_org");
+            addTreeInputs(b, mk, "examples/tiny_jacyac");
             mk.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
             mk.addFileInput(b.path("jaclang/vendor/typeshed/TARBALL_SHA256"));
         }
@@ -502,6 +504,7 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
     defer walker.deinit();
     while (walker.next(io) catch @panic("tree inputs: walk failed")) |entry| {
         if (entry.kind != .file) continue;
+        if (std.mem.startsWith(u8, entry.path, ".jac/")) continue;
         if (std.mem.indexOf(u8, entry.path, "__pycache__") != null) continue;
         if (std.mem.indexOf(u8, entry.path, "node_modules") != null) continue;
         if (std.mem.endsWith(u8, entry.path, ".pyc")) continue;

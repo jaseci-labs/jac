@@ -221,13 +221,13 @@ def peg_check_memo(p: peg_parser, rule_type: int) -> peg_memo | None {
     if not peg_ensure_token(p) {
         return p.lexer_failure;
     }
-    head = p.tokens[p.mark].memo_head;
+    head: &peg_memo | None = &p.tokens[p.mark].memo_head;
     while head is not None {
         if head.rule_type == rule_type {
             p.mark = head.end_mark;
             return head;
         }
-        head = head.next;
+        head = &head.next;
     }
     return None;
 }
@@ -254,14 +254,14 @@ def peg_update_memo(
         peg_insert_memo(p, start_mark, rule_type, result);
         return;
     }
-    head = p.tokens[start_mark].memo_head;
+    head: &mut peg_memo | None = &mut p.tokens[start_mark].memo_head;
     while head is not None {
         if head.rule_type == rule_type {
             head.result = result;
             head.end_mark = p.mark;
             return;
         }
-        head = head.next;
+        head = &mut head.next;
     }
     peg_insert_memo(p, start_mark, rule_type, result);
 }
@@ -273,7 +273,7 @@ def peg_expect_token(p: peg_parser, tok_type: int) -> peg_token | None {
     if not peg_ensure_token(p) {
         return None;
     }
-    t = p.tokens[p.mark];
+    t: &peg_token = &p.tokens[p.mark];
     if t.tok_type != tok_type {
         return None;
     }
@@ -306,7 +306,7 @@ def peg_expect_soft_keyword(p: peg_parser, spelling: str) -> peg_token | None {
     if not peg_ensure_token(p) {
         return None;
     }
-    t = p.tokens[p.mark];
+    t: &peg_token = &p.tokens[p.mark];
     if t.tok_type != NAME {
         return None;
     }

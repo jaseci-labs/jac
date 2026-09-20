@@ -672,6 +672,7 @@ jobs:
       - name: MTIR integration (byllm)
         env:
           JAC_TEST_RSS_LOG: "1"
+          JAC_TEST_STRICT: "1"
         run: |
           set -o pipefail
           cp -r jac/jaclang/byllm/tests "$RUNNER_TEMP/byllm-tests"
@@ -1029,6 +1030,13 @@ jobs:
             "python-dotenv>=1.2.1,<2.0.0" \
             "requests>=2.32.0,<3.0.0" \
             --global
+
+      - name: Validate the bundled Tiny JacYac workspace
+        timeout-minutes: 5
+        run: |
+          jac create tiny --awetiny
+          cd tiny
+          jac check --nowarn
 
       # Fullstack smoke on the jaclang.org site, scaffolded the way the README
       # quickstart tells a user to. `jac create <name> --awesome` dumps the copy
