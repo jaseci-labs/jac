@@ -1169,7 +1169,9 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
 
 
 def _mergeable_sections(
-    cache_path: Path, key_sections: dict[int, bytes]
+    cache_path: Path,
+    key_sections: dict[int, bytes],
+    incoming: (dict[int, bytes] | None) = None
 ) -> tuple[dict[int, bytes], int] {
     try {
         if not cache_path.exists() {
@@ -1188,6 +1190,14 @@ def _mergeable_sections(
         secs = read_sections(data, pos + len(magic));
         if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY)
             or secs.get(SEC_ENVKEY) != key_sections.get(SEC_ENVKEY) {
+            return ({}, 0, );
+        }
+        if not ct_deps_fresh(data) {
+            return ({}, 0, );
+        }
+        if incoming is not None
+            and SEC_CTDEPS in incoming
+            and incoming[SEC_CTDEPS] != secs.get(SEC_CTDEPS, b"") {
             return ({}, 0, );
         }
         return (secs, header.flags, );
@@ -1209,7 +1219,9 @@ def write_module_cache(
     try {
         cache_path = get_module_cache_path(resolved_path);
         key_sections = module_jir_key_sections(resolved_path);
-        (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
+        (existing, existing_flags) = _mergeable_sections(
+            cache_path, key_sections, extra_sections
+        );
         sections: dict[int, bytes] = {};
         sections.update(existing);
         sections.update(key_sections);
