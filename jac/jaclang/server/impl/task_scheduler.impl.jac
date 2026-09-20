@@ -36,6 +36,22 @@ impl Scheduler.register(
     );
 }
 
+impl tick_of(when: datetime.datetime) -> int {
+    epoch = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc);
+    moment = when
+        if when.tzinfo is not None
+        else when.replace(tzinfo=datetime.timezone.utc);
+    return (moment - epoch) // datetime.timedelta(microseconds=1);
+}
+
+impl schedule_namespace(module_name: str) -> str {
+    service = os.environ.get('JAC_SV_NAME', '').strip();
+    if service and service != '__gateway__' {
+        return service;
+    }
+    return module_name;
+}
+
 impl schedule_problems(spec: ScheduleSpec) -> list[str] {
     timing = [
         name
@@ -109,7 +125,12 @@ impl schedule_problems(spec: ScheduleSpec) -> list[str] {
 }
 
 impl next_interval_run(seconds: float, now: datetime.datetime) -> datetime.datetime {
-    return now + datetime.timedelta(seconds=seconds);
+    step = datetime.timedelta(seconds=seconds);
+    if step <= datetime.timedelta(0) {
+        return now + step;
+    }
+    epoch = datetime.datetime(1970, 1, 1, tzinfo=now.tzinfo);
+    return epoch + step * ((now - epoch) // step + 1);
 }
 
 impl CronSchedule.parse(expr: str) -> CronSchedule {
@@ -211,6 +232,12 @@ impl Scheduler.start -> None {
     if self._running {
         return;
     }
+    now = datetime.datetime.now(datetime.timezone.utc);
+    for task in self._tasks {
+        if task.next_run is not None {
+            task.next_run = self._compute_next_run(task.spec, now);
+        }
+    }
     self._running = True;
     self._stop_event = threading.Event();
     self._done_event = threading.Event();
@@ -224,27 +251,29 @@ impl Scheduler.start_if_pending -> None {
     }
 }
 
-impl Scheduler._lease_ttl(spec: ScheduleSpec) -> int {
-    if spec.interval is not None and spec.interval > 0 {
-        return max(1, min(300, int(float(spec.interval) * 0.8)));
-    }
-    if spec.cron is not None {
-        return 45;
-    }
-    return 300;
-}
-
-impl Scheduler._may_fire(task: ScheduledTask) -> bool {
-    if self.lease is None {
+impl Scheduler._may_fire(task: ScheduledTask, due: datetime.datetime) -> bool {
+    if self.claim is None {
         return True;
     }
-    lease_fn: any = self.lease;
+    claim_fn: any = self.claim;
+    key = f"sched:{self.namespace}:{task.name}";
     try {
-        return bool(lease_fn(f"sched:{task.name}", self._lease_ttl(task.spec)));
+        won = bool(claim_fn(key, tick_of(due)));
     } except Exception as e {
-        logger.warning(f"lease check for '{task.name}' failed: {e}; firing anyway");
-        return True;
+        if key not in self._failing_claims {
+            self._failing_claims.add(key);
+            logger.warning(
+                f"could not claim the {due.isoformat()} tick of '{task.name}': {e}; "
+                "skipping its ticks until a claim succeeds"
+            );
+        }
+        return False;
     }
+    if key in self._failing_claims {
+        self._failing_claims.discard(key);
+        logger.info(f"tick claims for '{task.name}' are succeeding again");
+    }
+    return won;
 }
 
 impl Scheduler.stop -> None {
@@ -308,8 +337,9 @@ impl Scheduler._run_loop -> None {
         }
         heapq.heappop(heap);
         now = datetime.datetime.now(datetime.timezone.utc);
+        due = task.next_run;
         task.last_run = now;
-        if self._may_fire(task) {
+        if due is not None and self._may_fire(task, due) {
             threading.Thread(target=self._execute, args=(task, ), daemon=True).start();
         } else {
             logger.debug(f"'{task.name}' fired elsewhere this tick; skipping");

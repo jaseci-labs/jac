@@ -1971,6 +1971,32 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                     if store_val is None {
                                         continue;
                                     }
+                                    if self._spec_of(
+                                        target_expr.target,
+                                        ("bytearray", ),
+                                        self.list_types
+                                    )
+                                        is not None {
+                                        if not isinstance(store_val.type, ir.IntType) {
+                                            return;
+                                        }
+                                        byte_int = self._coerce_type(
+                                            store_val, ir.IntType(64)
+                                        );
+                                        invalid_byte = self.builder.icmp_unsigned(
+                                            ">",
+                                            byte_int,
+                                            ir.Constant(ir.IntType(64), 255)
+                                        );
+                                        self._emit_runtime_raise(
+                                            invalid_byte,
+                                            "ValueError",
+                                            "byte must be in range(0, 256)"
+                                        );
+                                        store_val = self.builder.trunc(
+                                            byte_int, ir.IntType(8)
+                                        );
+                                    }
                                     self._codegen_index_set(
                                         target_val, idx_val, store_val, elem_type_name
                                     );

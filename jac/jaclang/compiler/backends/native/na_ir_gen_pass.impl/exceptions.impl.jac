@@ -886,6 +886,10 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
             if frame.pop_handler {
                 self.builder.call(self._exc_pop_fn, []);
             }
+            if frame.context_exit is not None {
+                (cm, exit_fn) = frame.context_exit;
+                self._emit_context_exit(cm, exit_fn);
+            }
             if frame.body is not None and isinstance(frame.body.body, (list, tuple)) {
                 self._codegen_body(frame.body.body);
             }

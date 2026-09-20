@@ -84,6 +84,110 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
     i64 = ir.IntType(64);
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
 
+    if name == "listdir" {
+        path = self._str_arg(self._codegen_expr(params[0]))
+            if params
+            else self._make_global_string(".");
+        if isinstance(path, ir.Constant) and path.constant is None {
+            path = self._make_global_string(".");
+        }
+        if path is None or path.type != i8p {
+            return None;
+        }
+        strlen = self._get_or_declare_extern("strlen", i64, [i8p]);
+        raw_len = self.builder.call(strlen, [path]);
+        full_len = self._call_str_len(self.builder, path);
+        self._emit_runtime_raise(
+            self.builder.icmp_unsigned("!=", raw_len, full_len),
+            "ValueError",
+            "embedded null byte"
+        );
+        triple = str(self.llvm_module.triple or "").lower();
+        darwin = "darwin" in triple or "apple" in triple or "macos" in triple;
+
+        open_fn = self._get_or_declare_extern("opendir", i8p, [i8p]);
+        read_fn = self._get_or_declare_extern(
+            "readdir$INODE64" if darwin and "x86_64" in triple else "readdir",
+            i8p,
+            [i8p]
+        );
+        close_fn = self._get_or_declare_extern("closedir", i32, [i8p]);
+        errno_fn = self._get_or_declare_extern(
+            "__error" if darwin else "__errno_location", i32.as_pointer(), []
+        );
+        directory = self.builder.call(open_fn, [path]);
+        errptr = self.builder.call(errno_fn, []);
+        err = self.builder.load(errptr);
+        failed = self.builder.icmp_unsigned("==", directory, ir.Constant(i8p, None));
+        self._emit_runtime_raise(
+            self.builder.and_(
+                failed, self.builder.icmp_signed("==", err, ir.Constant(i32, 2))
+            ),
+            "FileNotFoundError",
+            "directory not found"
+        );
+        self._emit_runtime_raise(
+            self.builder.and_(
+                failed, self.builder.icmp_signed("==", err, ir.Constant(i32, 20))
+            ),
+            "NotADirectoryError",
+            "not a directory"
+        );
+        self._emit_runtime_raise(
+            self.builder.and_(
+                failed, self.builder.icmp_signed("==", err, ir.Constant(i32, 13))
+            ),
+            "PermissionError",
+            "directory access denied"
+        );
+        self._emit_runtime_raise(failed, "OSError", "cannot open directory");
+        self._emit_list_helpers("ptr", i8p);
+        helpers = self.list_helpers["ptr"];
+        result = self.builder.call(helpers["new"], []);
+        self._nogc_stamp_elem_drops(result, ["str"]);
+        func = self.builder.function;
+        loop = func.append_basic_block("listdir.next");
+        body = func.append_basic_block("listdir.name");
+        append = func.append_basic_block("listdir.append");
+        done = func.append_basic_block("listdir.done");
+        self.builder.branch(loop);
+        self.builder.position_at_end(loop);
+        self.builder.store(ir.Constant(i32, 0), errptr);
+        item = self.builder.call(read_fn, [directory]);
+        self.builder.cbranch(
+            self.builder.icmp_unsigned("==", item, ir.Constant(i8p, None)), done, body
+        );
+        self.builder.position_at_end(body);
+        filename = self.builder.gep(item, [ir.Constant(i64, 21 if darwin else 19)]);
+        strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+        dot = self.builder.call(strcmp, [filename, self._make_global_string(".")]);
+        dots = self.builder.call(strcmp, [filename, self._make_global_string("..")]);
+        skip_bb = self.builder.or_(
+            self.builder.icmp_signed("==", dot, ir.Constant(i32, 0)),
+            self.builder.icmp_signed("==", dots, ir.Constant(i32, 0))
+        );
+        self.builder.cbranch(skip_bb, loop, append);
+        self.builder.position_at_end(append);
+        copied = self._rc_strdup(filename, name="listdir.copy", raw=True);
+        self._rc_call_with_ctx(helpers["append"], [result, copied], op="listdir");
+        self._emit_rc_release_simple(copied, op="listdir");
+        self.builder.branch(loop);
+        self.builder.position_at_end(done);
+        read_error = self.builder.load(errptr);
+        closed = self.builder.call(close_fn, [directory]);
+        self._emit_runtime_raise(
+            self.builder.icmp_signed("!=", read_error, ir.Constant(i32, 0)),
+            "OSError",
+            "cannot read directory"
+        );
+        self._emit_runtime_raise(
+            self.builder.icmp_signed("!=", closed, ir.Constant(i32, 0)),
+            "OSError",
+            "cannot close directory"
+        );
+        return result;
+    }
+
     if name == "getpid" {
         fn = self._get_or_declare_extern("getpid", i32, []);
         pid = self.builder.call(fn, [], name="os.getpid");

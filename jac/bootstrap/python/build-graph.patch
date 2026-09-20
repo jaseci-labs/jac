@@ -1,0 +1,158 @@
+Detach upstream's build graph from sources no Jac build retains.
+
+cpython-sources.txt is the single authority on which CPython files exist in
+the extracted tree. Upstream's makefile still names a few of them as ordinary
+prerequisites, which turns "stop shipping this file" into a build failure
+rather than a smaller tree. Each hunk here removes one such reference so the
+manifest alone decides.
+
+Marked exclusions ("# path  # removed:") are a separate mechanism: those files
+are restored for the build-only host, and compiler-bridge.patch detaches them
+from the graph for the reduced runtime only. Pruned entries ("# pruned:") are
+absent from both builds, so this patch applies unconditionally, and second:
+compiler-bridge.patch carries zero-context hunks that match on line number
+alone, so it has to see pristine ones.
+
+Two constraints shape the context below, and an edit that ignores either one
+still applies on macOS and fails the Linux build.
+
+  No hunk takes context from a line compiler-bridge.patch removes first:
+  Makefile.pre.in lines 2201-2207 and 2214-2216 in the pinned tree. That is
+  why the ceval.o hunk carries a single line on each side.
+
+  Trailing context is at least as long as leading context. GNU patch refuses a
+  hunk with fewer suffix than prefix lines even at --fuzz=0, while the patch
+  2.0 that ships with macOS accepts it, so an unbalanced hunk passes locally
+  and rejects in CI.
+
+PYTHON_OBJS, Python/ceval.o, Python/optimizer.o and the JIT recipe: tier 2 and
+the JIT are compiled only when --enable-experimental-jit is passed. build.sh
+never passes it, so configure leaves _Py_TIER2 and _Py_JIT undefined, and
+optimizer_analysis.c, optimizer_symbols.c and jit.c are then empty translation
+units. Dropping those three from PYTHON_OBJS lets the manifest prune them
+together with the two generated case tables they include.
+
+optimizer.c stays. Its outer #ifdef _Py_TIER2 has an #else that defines the
+_PyDumpExecutors stub, which sysmodule.c calls unconditionally, so the object
+is not empty and the source is not pruned; only its executor_cases.c.h
+prerequisite goes, which it never actually includes. ceval.c likewise guards
+its own executor_cases.c.h include, so there too only the prerequisite goes.
+jit_stencils.h becomes unreachable once jit.o does, because configure leaves
+JIT_STENCILS_H empty unless the JIT is on.
+
+regen-executor-cases and regen-optimizer-cases keep naming pruned and
+discarded sources, as regen-parser already does: no default target reaches
+them.
+
+build_all: gdbhooks copies Tools/gdb/libpython.py next to the interpreter for
+test_gdb, and Programs/_testembed is an embedding test program. Neither is
+installed, and no test suite is copied into the runtime.
+
+altmaninstall/maninstall: the manual page lands under $(MANDIR), inside the
+share tree that build.sh discards after install. It was written and deleted.
+
+libinstall: Modules/xxmodule.c is a sample extension, named as a prerequisite
+and never read by the recipe.
+
+MODULE__SSL_DEPS: _ssl.c includes exactly one generated error table, chosen by
+OpenSSL version. sources.json pins OpenSSL 3.5.8, so _ssl_data_35.h is the
+only one compiled; the 1.1.1 and 3.0 tables survive as prerequisites alone.
+
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -466,15 +466,12 @@
+ 		Python/intrinsics.o \
+-		Python/jit.o \
+ 		Python/legacy_tracing.o \
+ 		Python/lock.o \
+ 		Python/marshal.o \
+ 		Python/modsupport.o \
+ 		Python/mysnprintf.o \
+ 		Python/mystrtoul.o \
+ 		Python/object_stack.o \
+ 		Python/optimizer.o \
+-		Python/optimizer_analysis.o \
+-		Python/optimizer_symbols.o \
+ 		Python/parking_lot.o \
+ 		Python/pathconfig.o \
+ 		Python/preconfig.o \
+@@ -799,7 +796,7 @@
+ 
+ .PHONY: build_all
+ build_all:	check-clean-src check-app-store-compliance $(BUILDPYTHON) platform sharedmods \
+-		gdbhooks Programs/_testembed scripts checksharedmods rundsymutil build-details.json
++		scripts checksharedmods rundsymutil build-details.json
+ 
+ .PHONY: build_wasm
+ build_wasm: check-clean-src $(BUILDPYTHON) platform sharedmods \
+@@ -2211,3 +2208,2 @@
+ 		$(srcdir)/Python/generated_cases.c.h \
+-		$(srcdir)/Python/executor_cases.c.h \
+ 		$(srcdir)/Python/opcode_targets.h
+@@ -2217,14 +2213,8 @@
+ 
+ Python/optimizer.o: \
+-		$(srcdir)/Python/executor_cases.c.h \
+ 		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
+ 		$(srcdir)/Include/internal/pycore_optimizer.h
+ 
+-Python/optimizer_analysis.o: \
+-		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
+-		$(srcdir)/Include/internal/pycore_optimizer.h \
+-		$(srcdir)/Python/optimizer_cases.c.h
+-
+ Python/frozen.o: $(FROZEN_FILES_OUT)
+ 
+ # Generate DTrace probe macros, then rename them (PYTHON_ -> PyDTrace_) to
+@@ -2536,14 +2526,10 @@
+ 		else	true; \
+ 		fi; \
+ 	done
+-	$(INSTALL_DATA) $(srcdir)/Misc/python.man \
+-		$(DESTDIR)$(MANDIR)/man1/python$(VERSION).1
+ 
+ # Install the unversioned manual page
+ .PHONY: maninstall
+ maninstall:	altmaninstall
+-	-rm -f $(DESTDIR)$(MANDIR)/man1/python3.1
+-	(cd $(DESTDIR)$(MANDIR)/man1; $(LN) -s python$(VERSION).1 python3.1)
+ 
+ # Install the library
+ XMLLIBSUBDIRS=  xml xml/dom xml/etree xml/parsers xml/sax
+@@ -2736,7 +2722,7 @@
+ TEST_MODULES=@TEST_MODULES@
+ 
+ .PHONY: libinstall
+-libinstall:	all $(srcdir)/Modules/xxmodule.c
++libinstall:	all
+ 	@for i in $(SCRIPTDIR) $(LIBDEST); \
+ 	do \
+ 		if test ! -d $(DESTDIR)$$i; then \
+@@ -3117,18 +3103,6 @@
+ Python/emscripten_trampoline_wasm.c: Python/emscripten_trampoline_inner.wasm
+ 	$(PYTHON_FOR_REGEN) $(srcdir)/Platforms/emscripten/prepare_external_wasm.py $< $@ getWasmTrampolineModule
+ 
+-JIT_DEPS = \
+-		$(srcdir)/Tools/jit/*.c \
+-		$(srcdir)/Tools/jit/*.py \
+-		$(srcdir)/Python/executor_cases.c.h \
+-		pyconfig.h
+-
+-jit_stencils.h: $(JIT_DEPS)
+-	@REGEN_JIT_COMMAND@
+-
+-Python/jit.o: $(srcdir)/Python/jit.c @JIT_STENCILS_H@
+-	$(CC) -c $(PY_CORE_CFLAGS) -o $@ $<
+-
+ .PHONY: regen-jit
+ regen-jit:
+ 	@REGEN_JIT_COMMAND@
+@@ -3400,7 +3374,7 @@
+ MODULE__HMAC_LDEPS=$(LIBHACL_HMAC_LIB_@LIBHACL_LDEPS_LIBTYPE@)
+ 
+ MODULE__SOCKET_DEPS=$(srcdir)/Modules/socketmodule.h $(srcdir)/Modules/addrinfo.h $(srcdir)/Modules/getaddrinfo.c $(srcdir)/Modules/getnameinfo.c
+-MODULE__SSL_DEPS=$(srcdir)/Modules/_ssl.h $(srcdir)/Modules/_ssl/cert.c $(srcdir)/Modules/_ssl/debughelpers.c $(srcdir)/Modules/_ssl/misc.c $(srcdir)/Modules/_ssl_data_111.h $(srcdir)/Modules/_ssl_data_300.h $(srcdir)/Modules/socketmodule.h
++MODULE__SSL_DEPS=$(srcdir)/Modules/_ssl.h $(srcdir)/Modules/_ssl/cert.c $(srcdir)/Modules/_ssl/debughelpers.c $(srcdir)/Modules/_ssl/misc.c $(srcdir)/Modules/socketmodule.h
+ MODULE__TESTCAPI_DEPS=$(srcdir)/Modules/_testcapi/parts.h $(srcdir)/Modules/_testcapi/util.h
+ MODULE__TESTLIMITEDCAPI_DEPS=$(srcdir)/Modules/_testlimitedcapi/testcapi_long.h $(srcdir)/Modules/_testlimitedcapi/parts.h $(srcdir)/Modules/_testlimitedcapi/util.h
+ MODULE__TESTINTERNALCAPI_DEPS=$(srcdir)/Modules/_testinternalcapi/parts.h

@@ -6,11 +6,15 @@ import from jaclang.comptime { fields, get_field }
 import from jaclang.scale._optdeps.apscheduler {
     BackgroundScheduler,
     CronTrigger,
-    ThreadPoolExecutor,
     HAS_APSCHEDULER
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.task_scheduler { Scheduler, ScheduleTrigger }
+import from jaclang.server.task_scheduler {
+    Scheduler,
+    ScheduleTrigger,
+    schedule_namespace,
+    tick_of
+}
 import threading;
 import from jaclang.data.store { TxnIsolation }
 import from jaclang.server.shared_store { shared_store }
@@ -18,7 +22,12 @@ import from jaclang.server.shared_store { shared_store }
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',
      _memory_jobs_lock: threading.Lock = threading.Lock(),
+     _EPOCH: datetime.datetime = datetime.datetime(
+         1970, 1, 1, tzinfo=datetime.timezone.utc
+     ),
      logger = logging.getLogger(__name__);
+
+def new_engine(pool_size: int, misfire_grace: int) -> any;
 
 obj JobStore {
     def insert(job: dict[str, any]) -> str;
@@ -30,10 +39,12 @@ obj JobStore {
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
-        created_by: str | None = None
+        created_by: str | None = None,
+        service: str | None = None
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
+    def find_one(job_id: str) -> dict[str, any] | None;
     def update(
         job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
     ) -> bool;
@@ -46,6 +57,7 @@ obj JobStore {
 obj PgJobStore(JobStore) {
     has store: any,
         _collection: str,
+        _service: str = "",
         _quota_store: any postinit,
         _quota_lock: threading.Lock postinit;
 
@@ -61,10 +73,12 @@ obj PgJobStore(JobStore) {
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
-        created_by: str | None = None
+        created_by: str | None = None,
+        service: str | None = None
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
+    def find_one(job_id: str) -> dict[str, any] | None;
     def update(
         job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
     ) -> bool;
@@ -87,10 +101,12 @@ obj MemoryJobStore(JobStore) {
         limit: int | None = None,
         offset: int = 0,
         trigger: str | None = None,
-        created_by: str | None = None
+        created_by: str | None = None,
+        service: str | None = None
     ) -> tuple[list[dict[str, any]], int];
 
     def find_active_one(job_id: str) -> dict[str, any] | None;
+    def find_one(job_id: str) -> dict[str, any] | None;
     def update(
         job_id: str, updates: dict[str, any], where: dict[str, any] | None = None
     ) -> bool;
@@ -124,7 +140,9 @@ obj JacScaleScheduler {
         _store: JobStore | None = None,
         _server: any | None = None,
         _user_exists_cache: dict[str, float] postinit,
-        _user_exists_ttl: float = 30.0;
+        _user_exists_ttl: float = 30.0,
+        _service: str = "",
+        _failing_claims: set[str] = set();
 
     def postinit -> None;
     static def instance -> JacScaleScheduler;
@@ -149,7 +167,9 @@ obj JacScaleScheduler {
     ) -> (dict[str, any] | None);
 
     def delete_job(job_id: str, acting_as: str | None = None) -> bool;
-    def _acquire_fire_lease(job_id: str, spec: TriggerSpec) -> bool;
+    def _claim_fire(job_id: str, scheduled_at: datetime.datetime | None) -> bool;
+    def _target(name: str, is_walker: bool) -> any;
+    def _serves(job: dict[str, any]) -> bool;
     def _notify_jobs_changed(job_id: str) -> None;
     def _start_jobs_listener -> None;
     def _on_jobs_changed(payload: str) -> None;

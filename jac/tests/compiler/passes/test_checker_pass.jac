@@ -5379,6 +5379,19 @@ test "bare_list_flow_inference" {
     }
 }
 
+test "final_reassignment_errors" {
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_final_reassignment.jac"), options=NO_TC
+    );
+    errors = [e.pretty_print() for e in program.errors_had];
+    names = ["SHARED_RATE", "x", "x", "y", "y", "label", "LIMIT"];
+    assert len(errors) == len(names) , "\n---\n".join(errors);
+    for (err, name) in zip(errors, names) {
+        assert "E1135" in err and f"'{name}'" in err , err;
+    }
+}
+
 test "none_equality_not_flagged" {
     # `==` / `!=` never fail to resolve in Python (object.__eq__ is the
     # universal identity fallback), so None-equality must not raise E1110.

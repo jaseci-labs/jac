@@ -577,6 +577,7 @@ jobs:
           jac run scripts/run_cpython_compiler_tests.jac --module test.test_bisect --native-modules _bisect
           jac run scripts/run_cpython_compiler_tests.jac --module test.test_heapq --native-modules _heapq
           jac run scripts/run_cpython_compiler_tests.jac --module test.test_random --native-modules _random
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_statistics --native-modules _statistics
 
   # Everything except the compiler tests.
   test-runtime:
@@ -1029,6 +1030,13 @@ jobs:
             "python-dotenv>=1.2.1,<2.0.0" \
             "requests>=2.32.0,<3.0.0" \
             --global
+
+      - name: Validate the bundled Tiny JacYac workspace
+        timeout-minutes: 5
+        run: |
+          jac create tiny --awetiny
+          cd tiny
+          jac check --nowarn
 
       # Fullstack smoke on the jaclang.org site, scaffolded the way the README
       # quickstart tells a user to. `jac create <name> --awesome` dumps the copy

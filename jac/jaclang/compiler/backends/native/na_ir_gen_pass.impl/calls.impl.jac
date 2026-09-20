@@ -2420,21 +2420,18 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     self._emit_err_check(self._callee_ability_of(nd) or self._linked_callee_decl(func));
 
     if func_name in self.clib_extern_names {
-        for (sname, abi_type) in self.clib_struct_abi_types.items() {
-            if call_result.type == abi_type {
+        foreign_decl = self._foreign_fns().get(func_name);
+        result_name = foreign_decl["ret"] if foreign_decl is not None else None;
+        if isinstance(result_name, str) and result_name in self.clib_struct_names {
+            result_struct = self.struct_types.get(result_name);
+            abi_type = self.clib_struct_abi_types.get(result_name);
+            if result_struct is not None
+                and (
+                    call_result.type == result_struct or call_result.type == abi_type
+                ) {
                 call_result = self._coerce_type(
-                    call_result, self.struct_types[sname].as_pointer()
+                    call_result, result_struct.as_pointer()
                 );
-                break;
-            }
-        }
-
-        if not isinstance(call_result.type, ir.PointerType) {
-            for (sname, stype) in self.struct_types.items() {
-                if sname in self.clib_struct_names and call_result.type == stype {
-                    call_result = self._coerce_type(call_result, stype.as_pointer());
-                    break;
-                }
             }
         }
     }

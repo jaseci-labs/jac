@@ -11,7 +11,9 @@ import from jaclang.server.task_scheduler {
     Scheduler,
     ScheduleSpec,
     ScheduledTask,
-    schedule_problems
+    schedule_namespace,
+    schedule_problems,
+    tick_of
 }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
@@ -148,11 +150,13 @@ test "compute next run and schedule decorator" {
     assert result is not None;
     assert abs((result - now).total_seconds() - 3600) < 2;
 
-    # Interval
+    # Interval: the next multiple of the interval since the epoch, so every
+    # replica lands on the same ticks no matter when it booted.
     result = sched._compute_next_run(ScheduleSpec(interval=60.0), now);
     assert result is not None;
     delta = (result - now).total_seconds();
-    assert 59.0 <= delta <= 61.0;
+    assert 0.0 < delta <= 60.0 , delta;
+    assert result.second == 0 and result.microsecond == 0 , result;
 
     # Cron
     result = sched._compute_next_run(ScheduleSpec(cron="* * * * *"), now);
@@ -429,4 +433,181 @@ test "the served app refuses to start on a bad @schedule, naming every target" {
             client.close();
         }
     }
+}
+
+def _ticks(
+    sched: Scheduler, spec: ScheduleSpec, boot: datetime.datetime
+) -> list[datetime.datetime] {
+    out: list[datetime.datetime] = [];
+    at: any = boot;
+    for _ in range(4) {
+        at = sched._compute_next_run(spec, at);
+        out.append(at);
+    }
+    return out;
+}
+
+
+test "replicas that booted apart fire on the same interval ticks" {
+    # #9027: each replica used to tick from its own boot time, so two pods
+    # booted 305 s apart ran a 610 s task on two phases, each outside the
+    # other's 300 s lease. Ticks now come from the epoch, not the boot.
+    sched = fresh_scheduler();
+    spec = ScheduleSpec(interval=610);
+    boot_a = datetime.datetime(
+        2026, 9, 15, 11, 33, 13, 500000, tzinfo=datetime.timezone.utc
+    );
+    boot_b = boot_a + datetime.timedelta(seconds=305);
+    ticks_a = _ticks(sched, spec, boot_a);
+    ticks_b = _ticks(sched, spec, boot_b);
+    for t in ticks_a + ticks_b {
+        assert tick_of(t) % (610 * 1000000) == 0 , f"{t} is off the 610 s grid";
+    }
+    assert ticks_b[0] in ticks_a , f"pod B must land on pod A's ticks: {ticks_a} {ticks_b}";
+
+    hourly = ScheduleSpec(interval=3600);
+    first = sched._compute_next_run(hourly, boot_a);
+    assert first is not None and first.minute == 0 and first.second == 0 , first;
+}
+
+
+test "a worker recomputes inherited fire times when it starts" {
+    # A forked or respawned worker inherits the parent's next_run, already in
+    # the past, and used to fire it the moment its loop began.
+    sched = fresh_scheduler();
+    sched.register("beat", lambda { None; }, ScheduleSpec(interval=600), False);
+    stale = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1);
+    sched._tasks[0].next_run = stale;
+    sched.start();
+    try {
+        # The loop stamps last_run the moment it pops a task, so an inherited
+        # past fire time is caught whichever thread gets there first.
+        task = sched._tasks[0];
+        assert task.last_run is None , task.last_run;
+        assert task.next_run is not None;
+        assert task.next_run > datetime.datetime.now(datetime.timezone.utc) , task.next_run;
+    } finally {
+        sched.stop();
+    }
+}
+
+
+def _shared_claims -> tuple[Callable[[str, int], bool], dict[str, int]] {
+    # Stands in for kv_claim_tick: a key admits a tick only above its last one.
+    last: dict[str, int] = {};
+    lock = threading.Lock();
+    def claim(key: str, tick: int) -> bool {
+        with lock {
+            if last.get(key, -1) >= tick {
+                return False;
+            }
+            last[key] = tick;
+            return True;
+        }
+    }
+    return (claim, last);
+}
+
+
+test "one replica wins each tick, and a stale tick is refused" {
+    (claim, last) = _shared_claims();
+    pod_a = fresh_scheduler();
+    pod_b = fresh_scheduler();
+    for pod in [pod_a, pod_b] {
+        pod.claim = claim;
+        pod.namespace = "orders";
+        pod.register("beat", lambda { None; }, ScheduleSpec(interval=610), False);
+    }
+    tick_1 = datetime.datetime(2026, 9, 15, 11, 43, 20, tzinfo=datetime.timezone.utc);
+    tick_2 = tick_1 + datetime.timedelta(seconds=610);
+    task_a = pod_a._tasks[0];
+    task_b = pod_b._tasks[0];
+
+    assert [pod_a._may_fire(task_a, tick_1), pod_b._may_fire(task_b, tick_1)]
+        == [True, False];
+    assert [pod_b._may_fire(task_b, tick_2), pod_a._may_fire(task_a, tick_2)]
+        == [True, False];
+    # A respawned worker holding an old fire time cannot run it again.
+    assert pod_a._may_fire(task_a, tick_1) is False;
+    assert last == {"sched:orders:beat": tick_of(tick_2)} , last;
+}
+
+
+test "services sharing a database claim their own task of the same name" {
+    # #9028: the key was the bare task name, so a heartbeat in two services
+    # contended for one lease and one of them silently skipped every tick.
+    (claim, last) = _shared_claims();
+    orders = fresh_scheduler();
+    billing = fresh_scheduler();
+    orders.claim = claim;
+    billing.claim = claim;
+    orders.namespace = "orders";
+    billing.namespace = "billing";
+    for pod in [orders, billing] {
+        pod.register("heartbeat", lambda { None; }, ScheduleSpec(interval=60), False);
+    }
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    assert orders._may_fire(orders._tasks[0], tick) is True;
+    assert billing._may_fire(billing._tasks[0], tick) is True;
+    assert sorted(last.keys()) == ["sched:billing:heartbeat", "sched:orders:heartbeat"];
+}
+
+
+test "the namespace is the fleet service name, else the served module" {
+    import os;
+    saved = os.environ.pop("JAC_SV_NAME", None);
+    try {
+        assert schedule_namespace("main") == "main";
+        os.environ["JAC_SV_NAME"] = "orders";
+        assert schedule_namespace("main") == "orders";
+        os.environ["JAC_SV_NAME"] = "__gateway__";
+        assert schedule_namespace("main") == "main";
+    } finally {
+        os.environ.pop("JAC_SV_NAME", None);
+        if saved is not None {
+            os.environ["JAC_SV_NAME"] = saved;
+        }
+    }
+}
+
+
+test "a tick whose claim cannot be checked is skipped, and logged once" {
+    # #9030: a failed lease check used to return True on every worker of
+    # every pod, so a database blip ran the task everywhere at once.
+    calls: list[int] = [];
+    def broken(key: str, tick: int) -> bool {
+        calls.append(tick);
+        if len(calls) <= 2 {
+            raise ConnectionError("database is restarting");
+        }
+        return True;
+    }
+    sched = fresh_scheduler();
+    sched.claim = broken;
+    sched.namespace = "orders";
+    sched.register("mailer", lambda { None; }, ScheduleSpec(interval=60), False);
+    task = sched._tasks[0];
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    log.addHandler(records);
+    try {
+        assert sched._may_fire(task, tick) is False;
+        assert sched._may_fire(task, tick + datetime.timedelta(seconds=60)) is False;
+        assert sched._may_fire(task, tick + datetime.timedelta(seconds=120)) is True;
+    } finally {
+        log.removeHandler(records);
+    }
+    warnings = [
+        m
+        for m in records.messages
+        if m.startswith("WARNING")
+    ];
+    recovered = [
+        m
+        for m in records.messages
+        if "succeeding again" in m
+    ];
+    assert len(warnings) == 1 , records.messages;
+    assert len(recovered) == 1 , records.messages;
 }

@@ -90,4 +90,10 @@ printf shim >> jac/native/shim.cpp
 commit shim
 after=$(keys)
 changed binary; changed python_jacpython; same python_cpython
+before=$after
+mkdir -p jac/examples/tiny_jacyac
+printf example > jac/examples/tiny_jacyac/web.jac
+commit tiny-example
+after=$(keys)
+changed binary; same compiler; same python_cpython; same python_jacpython
 echo 'CI cache mutation tests passed'

@@ -65,7 +65,7 @@ walker SyncInventory {
 | Argument | Type | Meaning |
 |----------|------|---------|
 | `trigger` | `ScheduleTrigger.STATIC` or `ScheduleTrigger.DYNAMIC` | `STATIC` starts running as soon as the server boots. `DYNAMIC` marks the target as schedulable through the `/jobs` REST API. |
-| `interval` | `float` | Seconds between runs. |
+| `interval` | `float` | Seconds between runs. Runs land on whole multiples of the interval counted from the Unix epoch in UTC, so every replica agrees on the same ticks and the first run comes within one interval of boot (`interval=3600` runs on the hour). |
 | `cron` | `str` | 5-field cron expression, evaluated in UTC. |
 | `date` | `str` | One-shot fire time. A bare `"YYYY-MM-DD HH:MM:SS"` is read in the **server's local timezone** here, not UTC. Append an offset, `"2026-12-31 09:00:00+00:00"`, to pin it. |
 
@@ -113,7 +113,7 @@ def year_end_cleanup -> None {
 
 Static tasks run as the system user. Use them for app-wide work such as cache warming, digests, and cleanup, not for per-user logic.
 
-Every server replica registers and fires its own copy of each static task, so when you run more than one replica the task executes once per replica per tick. Keep static work idempotent, or route per-tick work through a dynamic job, which takes a per-fire lease when a database is configured.
+With a database configured, each tick of a static task runs on at most one replica: every replica computes the same ticks and claims each one in the database before running it, so a replica that boots, restarts, or is respawned later cannot run a tick that already ran. The claim comes before the run, so a replica that stops after claiming a tick has spent it and nothing retries that tick. A task that must not lose a run, such as billing, should pick up on its next tick whatever an earlier one left undone. Claims are made per service, so two services sharing one database can each have a task with the same name. If a claim cannot be made because the database is unreachable, that tick is skipped rather than run on every replica, and the server logs one warning per task until claims succeed again. Without a database there is no coordination and every replica fires its own copy.
 
 ## Cron Expressions
 
@@ -210,6 +210,7 @@ A successful create returns `201` with the stored job:
     "is_walker": true,
     "created_at": "2026-07-30T06:55:00.583399+00:00",
     "status": "active",
+    "service": "main",
     "trigger": "interval",
     "interval": 60.0,
     "cron": null,
@@ -328,7 +329,7 @@ The list response is paginated and scoped to the caller:
 Where jobs live depends on the database connection, set as `url` under `[scale.database]` in `jac.toml` or via the `JAC_DB_URL` environment variable:
 
 - **No reachable database**: jobs are held in memory. Dynamic jobs disappear when the server restarts and exist only on the replica that accepted the `POST`. There is also no duplicate-run protection: a schedule registered on more than one replica fires on every one of them, so this mode is for a single local server, not for multi-replica deployments.
-- **Database configured** (provisioned automatically by `--scale` on Kubernetes): jobs are persisted to the document store under the `scheduled_jobs` collection, survive restarts, and are re-registered on boot. A per-fire lease ensures each dynamic job fires on only one replica per tick.
+- **Database configured** (provisioned automatically by `--scale` on Kubernetes): jobs are persisted to the document store under the `scheduled_jobs` collection, survive restarts, and are re-registered on boot. Each scheduled run of a job is claimed in the database by at most one replica, keyed by the time the run was scheduled for, so a run that starts late cannot repeat one another replica already made. As with static tasks, a replica that stops after claiming a run has spent it. A run that cannot be claimed because the database is unreachable is skipped rather than made on every replica. A job is recorded with the `service` that created it. `GET /jobs` lists jobs from every service that shares the database, each with its `service`, while a service schedules, reads, changes and deletes only its own jobs and answers `404` for the rest, which is how the fleet gateway finds the service that owns a job. A job with no `service`, written by an earlier release, belongs to whichever service serves its target.
 
 Each execution updates the job record with run bookkeeping, visible via `GET /jobs/{job_id}`:
 
@@ -364,11 +365,11 @@ max_jobs_per_user = 25
 | `system_user_password` | `"__no_login__"` | Password assigned to the internal `__system__` account that static tasks run as, created on first boot. The default is a sentinel; set a real value if you need to log in as that account |
 | `user_exists_ttl` | `30.0` | Seconds the scheduler caches the creator-still-exists check for dynamic jobs before re-querying the user store |
 | `min_interval` | `1.0` | Shortest interval a dynamic job may ask for, in seconds. `POST`/`PUT /jobs` answer `400` below it, and a stored row asking for less is clamped to it when scheduled. A value that is not a finite number above zero is reported at boot and the default is used, so the floor cannot be switched off by a typo |
-| `max_jobs_per_user` | `25` | Active jobs one non-admin account may hold. `POST /jobs` answers `429 QUOTA_EXCEEDED` at the cap; admins are exempt and `0` means unlimited. The count and the write happen together in the job store, serialised per account, so concurrent requests cannot race past the cap. A value that is not a whole number of zero or more is reported at boot and the default is used, so a fractional typo cannot round down into `0` and lift the cap |
+| `max_jobs_per_user` | `25` | Active jobs one non-admin account may hold in one service. `POST /jobs` answers `429 QUOTA_EXCEEDED` at the cap; admins are exempt and `0` means unlimited. Each service counts only its own jobs, plus any job written before jobs recorded a service. The count and the write happen together in the job store, serialised per account and service, so concurrent requests cannot race past the cap. A value that is not a whole number of zero or more is reported at boot and the default is used, so a fractional typo cannot round down into `0` and lift the cap |
 
 ## Behavior Notes
 
 - Cron fields, dynamic job triggers, and stored timestamps are all UTC. The one exception is a bare `date` string on `@schedule`, which is read in the server's local timezone; pin an offset there.
 - A job never overlaps itself. If a run is still going when the next fire time arrives, the new run waits (`max_instances=1`).
-- Missed fires within `misfire_grace_time` execute once on recovery; older misses are dropped rather than replayed in a burst.
+- Every fire missed within `misfire_grace_time` runs on recovery, each claiming its own tick, so a replica that stalls makes up to `misfire_grace_time / interval` runs back to back before it catches up. Misses older than the grace window are dropped. Lower `misfire_grace_time` if a burst is worse for your job than a gap.
 - Keep scheduled work idempotent where possible. Interval and cron jobs will run many times, and a restart near a fire time can produce a make-up run.

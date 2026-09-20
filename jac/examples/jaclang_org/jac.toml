@@ -1,7 +1,7 @@
 [project]
 name = "jaclang_org"
 default-app = "web"
-jac-version = "==0.37.19"
+jac-version = "==0.37.21"
 
 # Makes this site scaffoldable as a template: `jac create <name> --awesome`
 # dumps it (the payload bundles this tree as awesome_template beside the
@@ -100,7 +100,10 @@ default_model = "anthropic/claude-sonnet-5"
 "@noble/hashes" = "^2.0.1"
 react-native-web = "^0.21.2"
 embla-carousel-react = "*"
-"@hugeicons/core-free-icons" = "*"
+# 4.3.4 ships dist/esm/index.js re-exporting './Grid2x2Icon.js' etc. while the
+# shipped files are 'Grid2X2Icon.js' (capital X) -- rollup cannot resolve them
+# on case-sensitive filesystems. Un-pin once upstream fixes the case mismatch.
+"@hugeicons/core-free-icons" = "4.3.3"
 "@hugeicons/react" = "*"
 radix-ui = "*"
 class-variance-authority = "*"

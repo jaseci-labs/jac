@@ -17,6 +17,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.frontend.constant {
     BindingKind,
+    ImmutabilityKind,
     OwnershipKind,
     SymbolAccess,
     SymbolType,
@@ -64,10 +65,12 @@ import from jaclang.compiler.types.stubcat.format {
     SH_STDLIB,
     SH_TYPEDDICT,
     SH_XREF,
+    SYMF_FINAL,
     SYMF_NA_ESCAPES,
     SYMF_NA_REGION_HANDLE,
     SYMF_NA_STACK_OK,
     SYMF_PARAM_REBOUND,
+    SYMF_READONLY,
     TV_CLASS_PARAM,
     TV_CONTRAVARIANT,
     TV_COVARIANT,
@@ -700,6 +703,11 @@ obj StubCatalog {
             sym._binding_kind = BindingKind.BOTH;
         }
         sym.param_rebound = (rec.symbits & SYMF_PARAM_REBOUND) != 0;
+        if (rec.symbits & SYMF_FINAL) != 0 {
+            sym.immutability = ImmutabilityKind.FINAL;
+        } elif (rec.symbits & SYMF_READONLY) != 0 {
+            sym.immutability = ImmutabilityKind.READONLY;
+        }
         sym.na_escapes = (rec.symbits & SYMF_NA_ESCAPES) != 0;
         sym.na_region_handle = (rec.symbits & SYMF_NA_REGION_HANDLE) != 0;
         sym.na_stack_ok = (rec.symbits & SYMF_NA_STACK_OK) != 0;

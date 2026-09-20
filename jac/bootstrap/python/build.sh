@@ -155,6 +155,11 @@ cpython() {
         cp "$recipe/binding_api.c" Python/jac_bindings.c
         cp "$work/native/jacpython.o" Python/jacpython.o
     fi
+    # cpython-sources.txt decides what the extracted tree holds; detach the
+    # upstream rules that still name pruned paths. This runs second because
+    # compiler-bridge.patch carries zero-context hunks, which match on line
+    # number alone and so must see pristine ones.
+    patch -f -F0 -p1 -i "$recipe/build-graph.patch"
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
         linux-*)
@@ -228,6 +233,7 @@ _functools
 itertools
 array
 _pickle
+_statistics
 SETUP
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above
@@ -251,16 +257,16 @@ SETUP
     # CPython's install targets create overlapping directories. BSD install
     # fails if another target creates the same directory after its check.
     python_make -j1 PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)' "COMPILEALL_OPTS=-j$jobs" install
-    if [ -n "$host" ]; then
-        # Check the completed build, including generated sources and objects.
-        sed -n 's/^# \([^ ]*\)  # removed:.*/\1/p' "$recipe/cpython-sources.txt" |
-        while IFS= read -r excluded; do
-            if [ -e "$excluded" ] || { [ "${excluded%.c}" != "$excluded" ] && [ -e "${excluded%.c}.o" ]; }; then
-                echo "Excluded compiler input reappeared: $excluded" >&2
-                exit 1
-            fi
-        done
-    fi
+    # Check the completed build, including generated sources and objects,
+    # against the paths this mode must not contain. build_python.zig writes
+    # that list; it owns the only parser for cpython-sources.txt. Redirect
+    # rather than pipe: a pipeline hides both a missing list and the exit.
+    while IFS= read -r excluded; do
+        if [ -e "$excluded" ] || { [ "${excluded%.c}" != "$excluded" ] && [ -e "${excluded%.c}.o" ]; }; then
+            echo "Excluded build input reappeared: $excluded" >&2
+            exit 1
+        fi
+    done < "$work/absent-inputs"
 }
 python_make() {
     if [ -n "$host" ]; then

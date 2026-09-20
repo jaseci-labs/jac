@@ -96,7 +96,8 @@ obj NativeFinalizer {
         function: ir.Function,
         loop_depth: int,
         handler_depth: int,
-        pop_handler: bool = False;
+        pop_handler: bool = False,
+        context_exit: tuple[ir.Value, ir.Function] | None = None;
 }
 
 obj NativeErrorHandler {
@@ -501,6 +502,14 @@ walker NaIRGenPass {
     def _codegen_str_strip_chars(
         str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
     ) -> (ir.Value | None);
+
+    def _emit_whitespace_width(
+        text: ir.Value, cursor: ir.Value, length: ir.Value, reverse: bool
+    ) -> ir.Value;
+
+    def _codegen_str_split_whitespace(
+        text: ir.Value, maxsplit: ir.Value | None = None, reverse: bool = False
+    ) -> ir.Value;
 
     def _codegen_str_split(
         str_val: ir.Value,
@@ -942,6 +951,7 @@ walker NaIRGenPass {
         trace_fn_name: str, container_ptr_type: ir.Type, layout: dict[str, any]
     ) -> ir.Function;
 
+    def _emit_context_exit(cm: ir.Value, exit_fn: ir.Function) -> ir.Value;
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(
         exprs: Sequence[uni.ExprAsItem], idx: int, body: Sequence[uni.CodeBlockStmt]
@@ -1424,6 +1434,10 @@ walker NaIRGenPass {
 
     def _range_iter_next_fn -> ir.Function;
     def _make_range_iter(range_val: ir.Value) -> ir.Value;
+    def _list_from_iter(
+        iter_val: ir.Value, iter_elem_type: ir.Type, list_elem_type: ir.Type
+    ) -> (ir.Value | None);
+
     def _make_iter_from_value(
         val: ir.Value, expr: uni.UniNode
     ) -> (tuple[ir.Value, str, ir.Type] | None);

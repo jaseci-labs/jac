@@ -369,5 +369,5 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
         file_obj, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="file.closed.ptr"
     );
     self.builder.store(ir.Constant(i1, 0), closed_ptr);
-    return file_obj;
+    return self._mark_owned(file_obj);
 }

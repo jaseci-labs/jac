@@ -1426,6 +1426,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     }
     import from jaclang.server.identity.user_manager { SYSTEM_USER }
     import from jaclang.runtime.builtin { ScheduleTrigger }
+    import from jaclang.server.task_scheduler { schedule_namespace }
     _self = self;
     def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
         async def _run -> any {
@@ -1484,16 +1485,11 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     store: any = storage.store if isinstance(storage, PgIdentityStorage) else None;
     if store is not None {
         _store: any = store;
-        def _lease(key: str, ttl: int) -> bool {
-            import os;
-            import socket;
-            return bool(
-                _store.kv_acquire_lease(
-                    key, ttl, f"{socket.gethostname()}:{os.getpid()}"
-                )
-            );
+        def _claim(key: str, tick: int) -> bool {
+            return bool(_store.kv_claim_tick(key, tick));
         }
-        self.scheduler.lease = _lease;
+        self.scheduler.claim = _claim;
+        self.scheduler.namespace = schedule_namespace(self.module_name);
     }
 }
 

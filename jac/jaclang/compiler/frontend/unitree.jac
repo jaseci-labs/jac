@@ -10,6 +10,7 @@ import from jaclang.compiler.frontend.constant {
     CodeContext,
     DeleteTargetError,
     ExprCtx,
+    ImmutabilityKind,
     OwnershipKind,
     SymbolAccess,
     SymbolStorage,
@@ -268,6 +269,7 @@ node Symbol {
         imported: bool postinit,
         semstr: str postinit,
         ownership: OwnershipKind = OwnershipKind.NONE,
+        immutability: ImmutabilityKind = ImmutabilityKind.NONE,
         linear: bool = False,
         is_view: bool = False,
         param_rebound: bool = False,
@@ -745,7 +747,9 @@ node TypeParam(AstSymbolNode, UniNode) {
 }
 
 node TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
-    has is_distinct: bool = False;
+    has is_distinct: bool = False,
+        distinct_base: (str | None) = None;
+
     has name: Name { getter; }
     has type_params: list[TypeParam] { getter; }
     has value: Expr { getter; }

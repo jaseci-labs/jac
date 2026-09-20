@@ -56,7 +56,7 @@ and are maintained directly in Jac. [`LICENSE.cpython`](LICENSE.cpython) applies
 to the CPython-derived code across these packages.
 
 `modules/` contains the native standard-library algorithms. `bindings/` implements
-all sixteen module adapters in native Jac, including their `PyInit_*` entry points,
+all seventeen module adapters in native Jac, including their `PyInit_*` entry points,
 constructors, descriptors, protocol callbacks, and lifecycle handling. There are
 no per-module C adapters. `capi.jac` declares shared retained-object operations;
 `bootstrap/python/object_api.c` implements those C API primitives, while
@@ -82,6 +82,12 @@ C layout; the runtime smoke checks allocation growth and reclamation instead.
 `modules/numeric.jac`. Integer algorithms use retained CPython integer operations;
 there is no second arbitrary-precision runtime for these modules. Accurate
 summation, vector norms, and dot products use native error-free transforms.
+
+`modules/statistics.jac` evaluates Wichura's AS241 inverse normal CDF over the
+same libm interface. Its three coefficient pairs are applied by Horner's method
+in the reference implementation's multiply-add order, and every comparison keeps
+that implementation's orientation, so a NaN probability reaches the tail branch
+and returns NaN rather than raising.
 
 `modules/functools.jac` implements partial argument binding, reductions,
 comparison keys, and cache policy. Bounded caches reuse the retained runtime's

@@ -1,7 +1,7 @@
 import struct;
 
-glob MAGIC: bytes = b"JSCAT004",
-     FORMAT_VERSION: int = 4,
+glob MAGIC: bytes = b"JSCAT005",
+     FORMAT_VERSION: int = 5,
      HEADER_FMT: str = "<8sI6I8QII",
      HEADER_SIZE: int = 108,
      TY_UNKNOWN: int = 0,
@@ -55,7 +55,9 @@ glob MAGIC: bytes = b"JSCAT004",
      SYMF_NA_STACK_OK: int = 8,
      SYMF_HAS_DEFAULT: int = 16,
      SYMF_DEFER: int = 32,
-     SYMF_INSTANCE_METHOD: int = 64;
+     SYMF_INSTANCE_METHOD: int = 64,
+     SYMF_FINAL: int = 128,
+     SYMF_READONLY: int = 256;
 
 obj Header {
     has n_strings: int = 0,
