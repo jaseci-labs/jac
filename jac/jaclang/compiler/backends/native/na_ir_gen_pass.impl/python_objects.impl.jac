@@ -177,18 +177,14 @@ impl NaIRGenPass._python_call(nd: uni.FuncCall) -> ir.Value {
     for param in params {
         if isinstance(param, uni.KWPair) {
             assert param.key is not None;
-            raw = self._codegen_required(param.value);
-            assert raw is not None;
-            value = self._python_box(raw);
+            value = self._python_argument(param.value);
             key = self._python_runtime(
                 "text", [self._make_global_string(param.key.sym_name)]
             );
             self._python_runtime("setitem", [keywords, key, value]);
             self._release_owned_args([key, value]);
         } else {
-            raw = self._codegen_required(param);
-            assert raw is not None;
-            value = self._python_box(raw);
+            value = self._python_argument(param);
             self._python_runtime(
                 "tuple_set", [positional, ir.Constant(ir.IntType(64), index), value]
             );
@@ -201,27 +197,187 @@ impl NaIRGenPass._python_call(nd: uni.FuncCall) -> ir.Value {
     return result;
 }
 
-impl NaIRGenPass._python_attribute(nd: uni.AtomTrailer) -> ir.Value {
-    target = self._codegen_required(nd.target);
-    assert target is not None;
-    if nd.is_attr {
-        name = self._get_name(nd.right);
-        assert name is not None;
-        result = self._python_runtime(
-            "getattr", [target, self._make_global_string(name)]
-        );
-    } else {
-        assert isinstance(nd.right, uni.IndexSlice) and not nd.right.is_range;
-        index = self._codegen_required(nd.right.slices[0].start);
-        assert index is not None;
-        key = self._python_box(index);
-        result = self._python_runtime("getitem", [target, key]);
-        self._release_owned_args([key]);
+impl NaIRGenPass._python_argument(nd: uni.UniNode | None) -> ir.Value {
+    if nd is None {
+        return self._python_runtime("none", []);
     }
-    self._release_owned_args([target]);
+    if isinstance(nd, uni.AtomUnit) {
+        return self._python_argument(nd.value);
+    }
+    if isinstance(nd, uni.Name)
+        and nd.sym is not None
+        and nd.value not in self.local_vars {
+        scope = nd.sym.parent_tab;
+        if isinstance(scope, uni.Module)
+            and scope.name == "builtins"
+            and scope.stub_only {
+            builtins = self._python_runtime(
+                "import", [self._make_global_string("builtins")]
+            );
+            result = self._python_runtime(
+                "getattr", [builtins, self._make_global_string(nd.sym.sym_name)]
+            );
+            self._release_owned_args([builtins]);
+            return result;
+        }
+    }
+    if isinstance(nd, uni.DictVal) {
+        result = self._python_runtime("dict", []);
+        for pair in nd.kv_pairs {
+            assert pair.key is not None;
+            key = self._python_argument(pair.key);
+            value = self._python_argument(pair.value);
+            self._python_runtime("setitem", [result, key, value]);
+            self._release_owned_args([key, value]);
+        }
+        return result;
+    }
+    if isinstance(nd, (uni.ListVal, uni.SetVal, uni.TupleVal)) {
+        values = list(nd.values or []);
+        result = self._python_runtime(
+            "tuple", [ir.Constant(ir.IntType(64), len(values))]
+        )
+            if isinstance(nd, uni.TupleVal)
+            else self._python_runtime(
+                "set" if isinstance(nd, uni.SetVal) else "list", []
+            );
+        for (index, element) in enumerate(values) {
+            value = self._python_argument(element);
+            if isinstance(nd, uni.TupleVal) {
+                self._python_runtime(
+                    "tuple_set", [result, ir.Constant(ir.IntType(64), index), value]
+                );
+            } else {
+                self._python_operation(
+                    "set_add" if isinstance(nd, uni.SetVal) else "list_append",
+                    [result, value],
+                    [],
+                    status=True,
+                    consume=False
+                );
+            }
+            self._release_owned_args([value]);
+        }
+        return result;
+    }
+    native_value = self._codegen_required(nd);
+    assert native_value is not None;
+    return self._python_box(native_value);
+}
+
+impl NaIRGenPass._python_index(nd: uni.IndexSlice) -> ir.Value {
+    if not nd.is_range {
+        return self._python_argument(nd.slices[0].start);
+    }
+    result: ir.Value | None = None;
+    if len(nd.slices) > 1 {
+        result = self._python_runtime(
+            "tuple", [ir.Constant(ir.IntType(64), len(nd.slices))]
+        );
+    }
+    for (index, part) in enumerate(nd.slices) {
+        bounds = [
+            self._python_argument(bound) for bound in [part.start, part.stop, part.step]
+        ];
+        value = self._python_runtime("slice", bounds);
+        self._release_owned_args(bounds);
+        if result is None {
+            return value;
+        }
+        self._python_runtime(
+            "tuple_set", [result, ir.Constant(ir.IntType(64), index), value]
+        );
+        self._release_owned_args([value]);
+    }
+    assert result is not None;
     return result;
 }
 
+impl NaIRGenPass._python_target(nd: uni.AtomTrailer) -> tuple[ir.Value, ir.Value] {
+    target = self._codegen_required(nd.target);
+    assert target is not None;
+    key: ir.Value;
+    if nd.is_attr {
+        name = self._get_name(nd.right);
+        assert name is not None;
+        key = self._python_runtime("text", [self._make_global_string(name)]);
+    } else {
+        assert isinstance(nd.right, uni.IndexSlice);
+        key = self._python_index(nd.right);
+    }
+    return (target, key);
+}
+
+impl NaIRGenPass._python_attribute(nd: uni.AtomTrailer) -> ir.Value {
+    (target, key) = self._python_target(nd);
+    result = self._python_operation(
+        "getattr" if nd.is_attr else "getitem", [target, key], []
+    );
+    return result;
+}
+
+impl NaIRGenPass._python_assignment(nd: uni.Assignment) -> bool {
+    if len(nd.target) != 1 or nd.value is None {
+        return False;
+    }
+    target = nd.target[0];
+    local = self.local_vars.get(target.value) if isinstance(target, uni.Name) else None;
+    local_augmented = nd.aug_op is not None
+        and local is not None
+        and self._python_value(local.pointee_type);
+    python_target = isinstance(target, uni.AtomTrailer)
+        and self._python_expr(target.target);
+    if not local_augmented and not python_target {
+        return False;
+    }
+    frame = self._error_frame;
+    assert frame is not None;
+    frame.temporaries.append([]);
+    try {
+        owner: ir.Value | None = None;
+        key: ir.Value | None = None;
+        result: ir.Value;
+        if nd.aug_op is not None {
+            if isinstance(target, uni.AtomTrailer) {
+                (owner, key) = self._python_target(target);
+                current = self._python_operation(
+                    "getattr" if target.is_attr else "getitem",
+                    [owner, key],
+                    [],
+                    consume=False
+                );
+            } else {
+                local_value = self._codegen_required(target);
+                assert local_value is not None;
+                current = local_value;
+            }
+            value = self._python_argument(nd.value);
+            result = self._python_binary(nd.aug_op.value, current, value, inplace=True);
+        } else {
+            result = self._python_argument(nd.value);
+            assert isinstance(target, uni.AtomTrailer);
+            (owner, key) = self._python_target(target);
+        }
+        if local_augmented {
+            assert local is not None;
+            self._emit_slot_rebind(local, result, owned=True, op="python.inplace");
+            self.builder.store(result, local);
+        } else {
+            assert isinstance(target, uni.AtomTrailer)
+                and owner is not None
+                and key is not None;
+            self._python_operation(
+                "setattr" if target.is_attr else "setitem",
+                [owner, key, result],
+                [],
+                status=True
+            );
+        }
+        return True;
+    } finally {
+        frame.temporaries.pop();
+    }
+}
 
 impl NaIRGenPass._python_error_payload(record: ir.Value) -> ir.Value {
     typed = self.builder.bitcast(record, self._get_error_record_type().as_pointer());

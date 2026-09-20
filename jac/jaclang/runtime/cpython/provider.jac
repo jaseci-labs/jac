@@ -1,6 +1,7 @@
 import from jaclang.runtime.cpython.references { ObjectRef, object_result }
 import from jaclang.runtime.cpython.capi {
     PyThreadState_Get,
+    PySlice_New,
     PyInterpreterState_Get,
     PyInterpreterState_GetDict,
     jacpy_mapping_optional_item,
@@ -23,6 +24,8 @@ import from jaclang.runtime.cpython.capi {
     jacpy_tuple_new,
     jacpy_tuple_set_owned,
     jacpy_dict_new,
+    jacpy_list_new,
+    jacpy_set_new,
     jacpy_setitem,
     jacpy_getitem,
     jacpy_iter,
@@ -166,6 +169,20 @@ def __jac_python_tuple_set(
 
 def __jac_python_dict -> __JacPythonValue {
     return __jac_python_result(jacpy_dict_new());
+}
+
+def __jac_python_list -> __JacPythonValue {
+    return __jac_python_result(jacpy_list_new());
+}
+
+def __jac_python_set -> __JacPythonValue {
+    return __jac_python_result(jacpy_set_new(0, i64(0)));
+}
+
+def __jac_python_slice(
+    start: __JacPythonValue, stop: __JacPythonValue, step: __JacPythonValue
+) -> __JacPythonValue {
+    return __jac_python_result(PySlice_New(start.value, stop.value, step.value));
 }
 
 def __jac_python_setitem(

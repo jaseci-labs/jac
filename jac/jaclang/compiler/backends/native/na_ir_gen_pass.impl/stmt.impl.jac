@@ -1710,6 +1710,9 @@ impl NaIRGenPass._apply_scalar_aug_op(
 }
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
+    if self._python_assignment(nd) {
+        return;
+    }
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
         return;

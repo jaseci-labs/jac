@@ -37,10 +37,21 @@ impl NaIRGenPass._python_operation(
     return result;
 }
 
-impl NaIRGenPass._python_binary(op: str, left: ir.Value, right: ir.Value) -> ir.Value {
+impl NaIRGenPass._python_binary(
+    op: str, left: ir.Value, right: ir.Value, inplace: bool = False
+) -> ir.Value {
+    if inplace {
+        import from jaclang.compiler.frontend.constant { TOKEN_MAP }
+        spelling = op[:-1];
+        op = next(
+            token
+            for (token, value) in TOKEN_MAP.items()
+            if value == spelling
+        );
+    }
     if op == Tok.STAR_POW {
         return self._python_operation(
-            "power", [left, right], [ir.Constant(ir.IntType(64), 0)]
+            "power", [left, right], [ir.Constant(ir.IntType(64), int(inplace))]
         );
     }
     operations: dict[str, str] = {
@@ -56,7 +67,11 @@ impl NaIRGenPass._python_binary(op: str, left: ir.Value, right: ir.Value) -> ir.
         Tok.BW_OR: "or_",
         Tok.BW_XOR: "xor"
     };
-    return self._python_operation(operations[op], [left, right], []);
+    operation = operations[op];
+    if inplace {
+        operation = "i" + operation.rstrip("_");
+    }
+    return self._python_operation(operation, [left, right], []);
 }
 
 impl NaIRGenPass._python_compare(

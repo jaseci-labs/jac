@@ -629,7 +629,10 @@ walker NaIRGenPass {
         consume: bool = True
     ) -> ir.Value;
 
-    def _python_binary(op: str, left: ir.Value, right: ir.Value) -> ir.Value;
+    def _python_binary(
+        op: str, left: ir.Value, right: ir.Value, inplace: bool = False
+    ) -> ir.Value;
+
     def _python_compare(
         op: str, left: ir.Value, right: ir.Value, consume: bool
     ) -> ir.Value;
@@ -644,6 +647,10 @@ walker NaIRGenPass {
     def _python_module_state -> ir.Value;
     def _python_global(name: str) -> ir.Value;
     def _python_call(nd: uni.FuncCall) -> ir.Value;
+    def _python_argument(nd: uni.UniNode | None) -> ir.Value;
+    def _python_index(nd: uni.IndexSlice) -> ir.Value;
+    def _python_target(nd: uni.AtomTrailer) -> tuple[ir.Value, ir.Value];
+    def _python_assignment(nd: uni.Assignment) -> bool;
     def _python_builtin(nd: uni.FuncCall) -> bool;
     def _python_attribute(nd: uni.AtomTrailer) -> ir.Value;
     def _call_protocol_method(

@@ -18,7 +18,7 @@ enum builtin_kind {
 }
 
 import from c {
-    def PyInterpreterState_Get -> u64;  def PyInterpreterState_GetDict(
+    def PySlice_New(start: u64, stop: u64, step: u64) -> u64;  def PyInterpreterState_Get -> u64;  def PyInterpreterState_GetDict(
         interpreter: u64
     ) -> u64;  def PyThreadState_Get -> u64;  def PyImport_ImportModuleLevelObject(
         name: u64, globals: u64, locals: u64, fromlist: u64, level: i32
