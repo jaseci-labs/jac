@@ -26,7 +26,10 @@ import from jaclang.compiler.driver.jir {
     read_section_bytes
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.driver.compilation_context {
+    artifact_cache_path,
+    program_for
+}
 import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }
@@ -362,13 +365,14 @@ def _native_compile(path: str) {
 }
 
 def _native_ir(path: str) -> str {
-    cache_path = artifact_cache_path(path, JacProgram());
+    prog = program_for(path, JacProgram());
+    cache_path = artifact_cache_path(path, prog);
     if not cache_path.is_file() {
         return "";
     }
     payload = native_section_payload(
         read_section_bytes(cache_path.read_bytes(), SEC_NBITCODE),
-        JacProgram().native_units().stamp_for()
+        prog.native_units().stamp_for()
     );
     return str(llvm.parse_bitcode(payload)) if payload is not None else "";
 }

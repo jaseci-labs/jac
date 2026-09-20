@@ -116,6 +116,7 @@ test "application analysis does not eagerly publish selfhost dependency interfac
     import from jaclang.compiler.driver.compiler { JacCompiler }
     import from jaclang.compiler.driver.selfhost { SelfHostCache }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.compilation_context { program_for }
     import jaclang.compiler.types.stubcat.modiface;
     import jaclang.compiler.driver.jir as jir;
     with TemporaryDirectory() as directory {
@@ -163,9 +164,11 @@ test "application analysis does not eagerly publish selfhost dependency interfac
         );
         program.compile(str(consumer), options=CompileOptions(no_cgen=True));
         assert not program.errors_had;
-        assert str(plugin) in internal.iface_registry()._iface_bytes , (
-            "bundled libraries outside the compiler fingerprint need dependency interfaces"
+        owner = program_for(str(plugin), program);
+        assert str(plugin) in owner.iface_registry()._iface_bytes , (
+            "bundled libraries outside the compiler fingerprint need owned dependency interfaces"
         );
+        assert str(plugin) not in internal.iface_registry()._iface_bytes;
         explicit = internal.iface_registry().ensure(str(toolchain / "api.jac"));
         assert explicit is not None;
         assert internal.analysis.cache_events.get("iface_encode", 0) > 0 , (
