@@ -2864,6 +2864,79 @@ impl NaIRGenPass._emit_isinstance_core(
     static_hit = False;
     subject = params[0];
     source_type = subject.type if isinstance(subject, uni.Expr) else None;
+
+    if self?.jacval_type
+        and operand.type == self.jacval_type
+        and names
+        and all(name in ("bytes", "bytearray") for name in names) {
+        if self._nogc_headerless() {
+            self._emit_unsupported_builtin_call(nd, "isinstance");
+            return None;
+        }
+        tag = self.builder.extract_value(operand, 0, name="buffer.tag");
+        payload = self.builder.extract_value(operand, 1, name="buffer.payload");
+        heap = self.builder.or_(
+            self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 2)),
+            self.builder.or_(
+                self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 3)),
+                self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 6))
+            )
+        );
+        safe_payload = self.builder.select(heap, payload, ir.Constant(payload.type, 0));
+        pointer = self.builder.inttoptr(
+            safe_payload, i8.as_pointer(), name="buffer.ptr"
+        );
+        buffer_names = [
+            "list_u8" if name == "bytearray" else "bytes" for name in names
+        ];
+        b = self.builder;
+        i64 = ir.IntType(64);
+        buffer_entry = b.block;
+        inspect = b.append_basic_block("buffer.inspect");
+        literal = b.append_basic_block("buffer.literal");
+        allocated = b.append_basic_block("buffer.allocated");
+        done = b.append_basic_block("buffer.done");
+        b.cbranch(
+            b.icmp_unsigned("!=", safe_payload, ir.Constant(payload.type, 0)),
+            inspect,
+            done
+        );
+        b.position_at_end(inspect);
+        rc = b.load(
+            b.bitcast(b.gep(pointer, [ir.Constant(i64, HDR_RC_OFF)]), i64.as_pointer())
+        );
+        compact = b.and_(
+            b.icmp_unsigned("==", tag, ir.Constant(i8, 2)),
+            b.icmp_unsigned("==", rc, ir.Constant(i64, RC_SENTINEL))
+        );
+        b.cbranch(compact, literal, allocated);
+
+        b.position_at_end(literal);
+        marker = b.load(
+            b.bitcast(
+                b.gep(pointer, [ir.Constant(i64, HDR_DTOR_OFF)]), i64.as_pointer()
+            )
+        );
+        literal_hit = b.and_(
+            ir.Constant(i1, 1 if "bytes" in names else 0),
+            b.icmp_unsigned("==", marker, ir.Constant(i64, 0))
+        );
+        b.branch(done);
+        b.position_at_end(allocated);
+        hit = self._isinstance_class_name_hit(pointer, buffer_names);
+        if hit is None {
+            self._emit_unsupported_builtin_call(nd, "isinstance");
+            return None;
+        }
+        allocated_end = b.block;
+        b.branch(done);
+        b.position_at_end(done);
+        result = b.phi(i1, name="buffer.match");
+        result.add_incoming(ir.Constant(i1, 0), buffer_entry);
+        result.add_incoming(literal_hit, literal);
+        result.add_incoming(hit, allocated_end);
+        return result;
+    }
     source_members = source_type.types
         if isinstance(source_type, UnionType)
         else [source_type];
