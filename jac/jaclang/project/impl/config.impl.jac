@@ -1251,6 +1251,7 @@ impl _parse_toml_data(
         config.check = CheckConfig(
             print_errs=check_data.get("print_errs", True),
             lint=lint_config,
+            exclude=check_data.get("exclude", []),
             suppress=check_data.get("suppress", []),
             suppress_categories=check_data.get("suppress_categories", []),
             enforce_access=check_data.get("enforce_access", False),

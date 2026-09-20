@@ -408,11 +408,8 @@ jobs:
       # ServingApp"). Check the tree with its own compiler instead: the job
       # clears JAC_NO_DEV_SOURCE ("" engages the reroute, as the equivalence
       # chunk does).
-      - name: Run jac check (using .jacignore)
-        run: |
-          set -euo pipefail
-          IGNORE_ARGS="tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
-          jac check . --ignore $IGNORE_ARGS --nowarn
+      - name: Run jac check (exclusions from jac.toml [check] exclude)
+        run: jac check . --nowarn
 
       - name: Save JIR analysis cache
         if: success()

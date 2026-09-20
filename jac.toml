@@ -71,6 +71,92 @@ require = [
     "jaclang.runtime.python.*",
 ]
 
+[check]
+# Modules excluded from the `jac check` gate. `jac check` reads this list, so
+# CI, the precommit hook and a local run all apply the same policy; --ignore
+# adds to it. This replaces the old .jacignore, which now only governs what a
+# `jac build` bundle ships.
+#
+# Matching (project/source.jac:path_matches_exclude): an entry containing `/`
+# is fnmatched against the whole path; a bare entry is fnmatched against EVERY
+# path component, so a bare `types.jac` silences every file of that basename
+# repo-wide. Every path entry below is path-qualified for that reason -- one
+# line per excluded module, so a fix deletes exactly one line.
+exclude = [
+    # Test trees and the fixtures that hold deliberate diagnostics: a checker
+    # fixture exists to fail `jac check`, so checking it proves nothing and
+    # blocks every commit that touches it.
+    "tests",
+    "checker_*.jac",
+    "*_err.jac",
+
+    # Everything below is a module that does not currently pass `jac check`.
+    # Adding to this list is a debt, not a policy: the goal is to empty it.
+    # llvmlite-bound native IR generation.
+    # These NaIRGenPass body files reach llvmlite handles (ir.Function.args,
+    # .linkage, IRBuilder.append_basic_block, Type.as_pointer) through the
+    # vendored py2jac translation under backends/native/llvm/, whose
+    # ctypes-derived values the checker sees as Unknown. Not annotatable
+    # without typing that vendored surface. The declaration
+    # (na_ir_gen_pass.jac) and the other 32 body files are checked.
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/calls.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/core.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/debug.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/enums.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/expr.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/func.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/generics.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/iterators.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/objects.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/refcount.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/stmt.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/types.impl.jac",
+    "jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/vtable.impl.jac",
+
+    # byllm -- litellm/LLM-provider glue.
+    "jac/jaclang/byllm/llm.impl/basellm.impl.jac",
+    "jac/jaclang/byllm/llm.impl/local.impl.jac",
+    "jac/jaclang/byllm/llm.impl/mockllm.impl.jac",
+    "jac/jaclang/byllm/llm.impl/model.impl.jac",
+    "jac/jaclang/byllm/llm.impl/modelpool.impl.jac",
+    "jac/jaclang/byllm/llm.jac",
+    "jac/jaclang/byllm/telemetry.impl/telemetry.impl.jac",
+    "jac/jaclang/byllm/telemetry.jac",
+    "jac/jaclang/byllm/types.jac",
+
+    # jac-scale server surface.
+
+    # jac-scale -- kubernetes / opentelemetry client glue.
+    "jac/jaclang/scale/deploy/autoscale/hpa_autoscaler.impl.jac",
+    "jac/jaclang/scale/deploy/autoscale/hpa_autoscaler.jac",
+    "jac/jaclang/scale/runtime/context/tracing.jac",
+
+    # Runtime library.
+    "jac/jaclang/client/targets/desktop/native/cef/cef_subprocess.jac",
+
+    # ECMAScript backend.
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/assign.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/calls.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/comptime.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/core.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/decls.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/dts.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/expr.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/imports.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/match.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/module.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/ops.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/osp.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/stmt.impl.jac",
+    "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/view.impl.jac",
+
+    # Example apps.
+
+    # CPython-derived Python grammar.
+    "jac/jaclang/compiler/frontend/python/parser.jac",
+]
+
 [check.lint]
 # "all" enables every autolint rule; the two strip-* entries are the opt-in
 # "deslop" rules (W3050/W3051) that remove all comments and docstrings. They

@@ -959,6 +959,23 @@ test "merge project kebab case" {
     }
 }
 
+test "check exclude parses and defaults empty" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        assert cfg.check.exclude == [];
+        overlay = temp_project / "overlay.toml";
+        overlay.write_text(
+            "[check]\nexclude = [\"tests\", \"*_err.jac\"]\n\n"
+            "[check.lint]\nselect = [\"all\"]\n"
+        );
+        cfg.merge_from_toml_file(overlay);
+        assert cfg.check.exclude == ["tests", "*_err.jac"];
+        assert cfg.check.lint.select == ["all"];
+    }
+}
+
 test "merge check with nested lint" {
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {

@@ -225,6 +225,7 @@ import a non-seed module only inside a function body, because a hoisted
 import deadlocks bootstrap. That is why many imports in this tree are local
 to the function that uses them; `scripts/check_seed_manifest.py` enforces it.
 
-**Type checking.** `jac check .` runs in CI over the whole repository with
-the exclusions in the root `.jacignore`. Every entry there is a debt with a
-stated reason; the target is an empty file.
+**Type checking.** `jac check .` runs in CI over the whole repository. It
+reads its exclusions from `[check] exclude` in the root `jac.toml`, so CI, the
+precommit hook and a local run apply the same policy. Every path entry there is
+a debt with a stated reason; the target is a list holding only the test trees.

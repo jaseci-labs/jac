@@ -255,7 +255,9 @@ impl check(
         paths = [paths];
     }
     start_time = time();
-    ignore_list = _normalize_ignore_patterns(ignore or []);
+    ignore_list = _normalize_ignore_patterns(
+        list(ignore or []) + _configured_check_excludes()
+    );
     (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
         disable_error_code or []
     );
@@ -1812,6 +1814,12 @@ def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
 def _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
     import from jaclang.project.source { normalize_exclude_patterns }
     return normalize_exclude_patterns(ignore);
+}
+
+def _configured_check_excludes -> list[str] {
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    return list(config.check.exclude) if config is not None else [];
 }
 
 def _drop_git_ignored(paths: list[str]) -> list[str] {

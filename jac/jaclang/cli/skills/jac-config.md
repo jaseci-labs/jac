@@ -91,9 +91,11 @@ cache = true
 
 byLLM, scale, the client/desktop framework, and the MCP server all ship inside the `jac` binary - there is no plugin system, nothing to enable or disable, and no `jac plugins` command. Configure a capability with its top-level table (`[byllm]`, `[scale.*]`, `[client]`, `[desktop]`) and run `jac install` to resolve its optional third-party dependencies into `.jac/venv` (e.g. a `[byllm]` model config pulls litellm/pillow; `[scale.deploy] target = "kubernetes"` pulls the kubernetes/docker clients -- `[scale.database]` pulls nothing, the Postgres wire client is built in). Old `[plugins.<name>]` config paths no longer parse - use the top-level names.
 
-## .jacignore
+## Excluding files
 
-`.jacignore` at the project root excludes files from compilation/analysis - one pattern per line, `.gitignore`-style (`*.generated.jac`, `test_fixtures/`). A `jac scale deploy` honors it too: a parked tree is not staged into the app bundle, so it never reaches the pods or their boot compile.
+Two lists, two jobs. `[check] exclude` in `jac.toml` is the analysis gate: `jac check` reads it, and `--ignore` adds to it, so CI, the precommit hook and a local run all apply the same policy. `[check.lint] exclude` does the same for the autolint rules `jac format --lintfix` applies. Both take one pattern per entry - an entry containing `/` is matched against the whole path, a bare entry against every path component.
+
+`.jacignore` at the project root is about membership, not analysis: a parked tree is not staged into the app bundle, so a `jac scale deploy` never ships it to the pods or their boot compile. One pattern per line, `.gitignore`-style (`*.generated.jac`, `test_fixtures/`).
 
 ## Pitfalls
 
