@@ -279,7 +279,7 @@ impl NaIRGenPass._codegen_virtual_call(
     non_overridden = self._non_overridden_methods.get(obj_type_name);
     if non_overridden is not None and method_name in non_overridden {
         _dv_res = self.builder.call(func, coerced, name=f"call.{method_name}");
-
+        self._emit_pending_error_check();
         self._release_owned_args(coerced, op="mcall_arg");
         return _dv_res;
     }
@@ -341,6 +341,7 @@ impl NaIRGenPass._codegen_virtual_call(
                 }
             }
             _vd_r: ir.Value = self.builder.call(_vf, _vd_args, name=f"vd.call.{_vc}");
+            self._emit_pending_error_check();
             _vd_ret_t = fn_type.return_type;
             if not isinstance(_vd_ret_t, ir.VoidType) and _vd_r.type != _vd_ret_t {
                 _vd_r = self._coerce_type(_vd_r, _vd_ret_t);
@@ -351,6 +352,7 @@ impl NaIRGenPass._codegen_virtual_call(
         }
 
         _vd_fb = self.builder.call(func, coerced, name=f"vd.fb.{method_name}");
+        self._emit_pending_error_check();
         _vd_incoming.append((_vd_fb, self.builder.block));
         self.builder.branch(_vd_done);
         self.builder.position_at_end(_vd_done);
@@ -381,7 +383,7 @@ impl NaIRGenPass._codegen_virtual_call(
         method_i8, fn_type.as_pointer(), name=f"fn.{method_name}"
     );
     _vt_res = self.builder.call(typed_fn, coerced, name=f"vcall.{method_name}");
-
+    self._emit_pending_error_check();
     self._release_owned_args(coerced, op="vcall_arg");
     return _vt_res;
 }

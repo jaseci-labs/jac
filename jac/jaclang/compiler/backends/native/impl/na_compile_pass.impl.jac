@@ -1371,7 +1371,9 @@ impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
         kmod = llvm.parse_assembly(ir_str);
         kmod.verify();
         for _gv in _mod_globals(kmod) {
-            if not _gv.is_declaration {
+            # Coalesced accessors must use the same shared TLS state in every unit.
+            # Privatizing weak globals can leave an accessor reading a different key.
+            if not _gv.is_declaration and _gv.linkage == llvm.Linkage.external {
                 _gv.linkage = "internal";
             }
         }
