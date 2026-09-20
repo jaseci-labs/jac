@@ -1,18 +1,7 @@
-"""The bundled `pathlib` shim must answer exactly what CPython's does.
+"""Compare Python and native Path behavior, including fields, iteration, and filesystem errors."""
 
-`import from pathlib { Path }` binds CPython's `pathlib` on the sv pathway and
-`na_stdlib/pathlib.jac` on the na pathway, so running one fixture through both
-and demanding identical stdout *is* the congruence contract -- CPython is the
-oracle, not a hand-copied expectation table.
-
-`pathlib_probe.jac` exercises the whole provided surface: the constructor over
-a `str` and over a `Path`, `str()`, f-string interpolation, truthiness,
-`.name`, `.stem`, `.parent`, `/`, `.resolve()`, `.exists()` and `.is_dir()`,
-including an `obj` carrying a `Path`-typed `has` field with a `Path("")`
-default -- the shape `compiler/types/types.jac` declares.
-"""
-
-import from tests.support { jac_command }
+import ctypes;
+import from tests.support { jac_command, compile_native, get_func }
 
 import os;
 import subprocess;
@@ -70,16 +59,7 @@ test "the native Path answers what CPython's Path answers" {
     }
 }
 
-test "a Path member outside the provided surface fails the native compile" {
-    src = os.path.join(FIXTURES, "pathlib_unsupported.jac");
-    out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
-    comp = subprocess.run(
-        jac_command("build", "--native", src, "-o", out_bin),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    combined = (comp.stdout or "") + (comp.stderr or "");
-    assert comp.returncode != 0 , f"unsupported Path member compiled silently: {combined[-600:]}";
-    assert "suffix" in combined , f"diagnostic does not name the member: {combined[-600:]}";
+test "Python Path members use the complete CPython implementation" {
+    (engine, _) = compile_native("pathlib_suffix.jac", required=True);
+    assert get_func(engine, "suffix_matches", ctypes.c_bool)();
 }

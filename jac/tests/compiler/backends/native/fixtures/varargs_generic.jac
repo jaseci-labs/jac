@@ -1,6 +1,6 @@
 """A variadic parameter typed by a generic archetype's erased type parameter.
 
-`Cell[T]` is the shape the bundled `contextvars` shim wanted (#8247): the
+`Cell[T]` exercises generic object construction (#8247): the
 pack carries the *presence* of a fallback, which `(T | None) = None` cannot,
 because `None` is also a legal value there. Every answer below is pinned
 against CPython by running this same file on both pathways, so the precedence

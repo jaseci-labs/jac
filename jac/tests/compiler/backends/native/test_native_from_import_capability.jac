@@ -1,35 +1,4 @@
-"""A `from`-import item is classified by the capability gate, like a bare import.
-
-`native_capability_violations` walked an import statement's items and asked
-`classify_native_import` for a module name. Only a `ModulePath` -- the
-`import mod;` spelling -- ever produced one, so under forced-native placement
-every `from` import was waved through without being classified at all.
-
-That is the silent-miscompile class. `import from threading { Event }` with
-`obj Holder(Event)` over it passed the gate, and the base is dropped by
-`LayoutPass` on the way to a layout, so the module lowered to a `Holder` with
-everything it inherits quietly missing. A refusal is the right answer, and it
-is the answer the bare spelling of the same module already gave.
-
-Inferred placement never had the hole: `scan_native_blockers` reads a `from`
-import's module through `imp.from_loc` and refuses it there. So the fix is to
-classify `ModuleItem` on the same terms the bare spelling gets, using the
-compile-time vocabulary centralized in `codeinfo` -- and the verdicts on the
-inferred path must not move at all, which is pinned below.
-
-The four ways a `from`-import item can be legitimate are each pinned here: a
-compile-time name (`ABC`, `cast`, `TypeVar`, `TypeAlias`, `ClassVar`), a
-lowered stdlib module, an na_stdlib-shimmed module, and another Jac module on
-the native pathway. The vocabulary is per name and not per module, so a
-compile-time module's non-erasable name still refuses.
-
-Where the refusal lands is #8206's partition: a module-scope import has no
-owning callable and stays module-fatal, while a body-scoped one demotes its
-function to a seam and leaves its siblings native. A property accessor is an
-owning callable too -- the native lane lowers a `{ getter; }` body as a method
-and the demotion coverage already names it `<Archetype>.<field>.__get__` -- so
-the partition answers for it rather than falling through to a module refusal.
-"""
+"""Native import planning distinguishes erased names, Python objects, and native Jac dependencies."""
 
 import ctypes;
 import os;
@@ -256,10 +225,10 @@ test "a consumer links a ClassVar-importing dependency" {
 
 
 test "a from import of a Python standard-library module lowers" {
-    assert _rejected_imports("from_import_shimmed_stdlib.jac") == [] , (
+    assert _rejected_imports("from_import_python_stdlib.jac") == [] , (
         "Python from-imports must bind through the shared object provider"
     );
-    (prog, ir) = _compile_native("from_import_shimmed_stdlib.jac");
+    (prog, ir) = _compile_native("from_import_python_stdlib.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , (
         "no native IR for a module importing Python stdlib"

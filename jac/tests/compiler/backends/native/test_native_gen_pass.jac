@@ -3197,7 +3197,7 @@ test "clib bytes argument lowers to a raw data pointer (issue #6940 Phase 2)" {
     # `{ i64 len, [n x i8] }` struct pointer), and the call site passes the
     # pointer to the first data byte so C never reads the 8-byte length header
     # as leading data. The element count travels through the explicit length
-    # parameter. This is the FFI floor under the bundled na_stdlib zlib tier.
+    # parameter. This checks the explicit C FFI buffer boundary.
     prog = JacProgram();
     ir = prog.compile(
         str(os.path.join(FIXTURES, "clib_bytes_buffer.jac")),
@@ -3743,8 +3743,8 @@ test "native-default chess.jac runs via cli" {
     );
 }
 
-test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Finding 2)" {
-    # A regular `.jac` (no `na {}` block) that imports a bundled na_stdlib module
+test "nacompile auto-promoted .jac delegates stdlib imports to Python" {
+    # A regular `.jac` (no `na {}` block) that imports a Python stdlib module
     # is auto-promoted by `jac build --native`. The entry point emits a call to each
     # imported module's `__jac_glob_init_<safe>` (driven by
     # native_transitive_sources), so the cross-module merge MUST link those
@@ -3756,9 +3756,9 @@ test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Findi
     # `undefined symbol: __jac_glob_init_zlib_na_*`. The `.jac` form already
     # worked; this pins the auto-promote (plain `.jac`) form on Linux/ELF.
     import platform;
-    fixture = str(os.path.join(FIXTURES, "autopromote_bundled_zlib.jac"));
+    fixture = str(os.path.join(FIXTURES, "autopromote_python_zlib.jac"));
     with tempfile.TemporaryDirectory() as tmpdir {
-        out = os.path.join(tmpdir, "autopromote_bundled_zlib");
+        out = os.path.join(tmpdir, "autopromote_python_zlib");
         comp = subprocess.run(
             jac_command("build", "--native", fixture, "-o", out),
             capture_output=True,

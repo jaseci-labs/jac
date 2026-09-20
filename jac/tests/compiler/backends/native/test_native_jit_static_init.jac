@@ -8,11 +8,9 @@ entry` block -- so a native *library* unit had no callable initializer at all.
 Its imports' module-level tables stayed at their null placeholders and the
 first read of one segfaulted the host process (#8228).
 
-`keyword` is the sharp case: the bundled shim's `kwlist` is a `list[str]`
-literal, which is not a compile-time constant the way an int or a float is, so
-it is emitted as a null global plus a store inside the shim's initializer.
-`iskeyword` is then a walk over that list, i.e. a dereference of null. Both
-import spellings reach it, and both are pinned here.
+The keyword regressions now reach CPython's module initialization through the
+shared object provider. Both import spellings must still run their pending
+initializers before exposing a callable address.
 
 The engine now runs the plan the first time it hands out a function address,
 which is the JIT counterpart of the loader step. `jac_entry` is exempt: it
@@ -96,19 +94,19 @@ def _assert_answers_one(fixture: str, spelling: str) {
     assert code == 0 , f"the {spelling} spelling failed to run: {err[-800:]}";
     assert out == "1" , (
         f"the {spelling} spelling answered {out!r}: `iskeyword('class')` is "
-        f"True, so a 0 means the shim's table was read empty rather than "
+        f"True, so a 0 means the module was read before it was "
         f"initialized"
     );
 }
 
 
 test "a from-imported shim's table is live when a JIT'd unit reads it" {
-    _assert_answers_one("from_import_shimmed_stdlib.jac", "from-import");
+    _assert_answers_one("from_import_python_stdlib.jac", "from-import");
 }
 
 
 test "a bare-imported shim's table is live when a JIT'd unit reads it" {
-    _assert_answers_one("bare_import_shimmed_stdlib.jac", "bare import");
+    _assert_answers_one("bare_import_python_stdlib.jac", "bare import");
 }
 
 

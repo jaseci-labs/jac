@@ -1,7 +1,7 @@
 """A `while True` loop with no break only exits via return/raise, so a
 function whose body ends in such a loop cannot fall through and must not
 be flagged E1004 (implicit None return). Regression for the false
-positive that hit the bundled na_stdlib `zlib.decompress` retry loop.
+positive that hit a native decompression retry loop.
 """
 
 def spin(x: int) -> int {

@@ -1,44 +1,11 @@
-"""The bundled `fnmatch` / `logging` shims and the `os` gaps must answer what
-CPython answers.
+"""Stdlib output congruence between Python and native object calls.
 
-`import from fnmatch {...}` binds CPython's module on the sv pathway and
-`na_stdlib/fnmatch.jac` on the na pathway, so running one fixture through both
-and demanding identical output *is* the congruence contract -- CPython is the
-oracle, not a hand-copied expectation table. Same for `logging`.
-
-`fnmatch_probe.jac` walks a 29-pattern by 14-name grid through both
-`fnmatchcase` and `fnmatch`, covering the metacharacters (`*`, `?`), character
-classes with negation and ranges, and every awkward bracket case CPython's
-`translate` special-cases: a `]` first in the class, an unterminated `[` that
-falls back to a literal, `[!]`, and a `-` at either end of a class.
-
-`os_gaps_probe.jac` covers the members the audit found missing: `os.sep` and
-its sibling module attributes, which had no dispatch at all (only `sys.*` and
-`math.*` resolved as module attributes); the `relpath` / `normcase` added to
-the bundled `os/path.jac`; the `abspath` / `splitext` / `normpath` that were
-already written there; and the `getmtime` / `normcase` intrinsics now
-reachable through the flat `import os`. The mtime is pinned with `touch -t`
--- POSIX, so it behaves the same under GNU and BSD touch -- which makes both
-runs read one stamp; the absolute value is irrelevant, only that the two
-pathways agree on it.
-
-`logging_probe.jac` writes on stderr, where CPython's default handler writes,
-and pins the parts of the surface that are congruent: the default WARNING
-threshold suppressing `.debug`/`.info`, `basicConfig` lowering it, the
-`%(levelname)s`/`%(name)s`/`%(message)s` format fields, and `getLogger()`
-answering to the name `root`.
-
-`contextvars_probe.jac` runs one `ContextVar[Req]` through the whole
-precedence ladder `get` implements -- a set value, then the call's own
-default, then the constructor default, then `LookupError` -- so the sv run
-answers out of CPython's own `contextvars` and the na run out of the bundled
-shim. The type argument is an archetype because a generic archetype is
-type-erased natively: `ContextVar[int]` is refused rather than lowered
-(#8229), and the last test pins that refusal, since it is the shim's scope
-line rather than a defect.
+The fixtures cover path operations, fnmatch patterns, logging, and contextvars.
+Both pathways use the bundled interpreter standard library.
 """
 
-import from tests.support { jac_command }
+import ctypes;
+import from tests.support { jac_command, compile_native, get_func }
 
 import os;
 import subprocess;
@@ -110,7 +77,7 @@ test "native fnmatch answers what CPython's fnmatch answers" {
     _same_lines(sv_out, na_out, "fnmatch");
 }
 
-"""Keep only the shim's own records, so a compiler note on stderr cannot
+"""Keep only the application log records, so a compiler note on stderr cannot
 turn a congruence failure into a passing (or spuriously failing) diff."""
 def _log_lines(text: str) -> str {
     kept = [
@@ -134,16 +101,7 @@ test "native contextvars answers what CPython's contextvars answers" {
     _same_lines(sv_out, na_out, "contextvars");
 }
 
-test "a ContextVar at a scalar type argument is refused, not lowered" {
-    src = os.path.join(FIXTURES, "contextvars_unsupported.jac");
-    out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
-    comp = subprocess.run(
-        jac_command("build", "--native", src, "-o", out_bin),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    combined = (comp.stdout or "") + (comp.stderr or "");
-    assert comp.returncode != 0 , f"an erased scalar slot compiled silently: {combined[-600:]}";
-    assert "ContextVar[int]" in combined , f"diagnostic does not name the instantiation: {combined[-600:]}";
+test "a Python ContextVar preserves scalar type arguments and defaults" {
+    (engine, _) = compile_native("contextvars_scalar.jac", required=True);
+    assert get_func(engine, "scalar_value", ctypes.c_int64)() == 7;
 }
