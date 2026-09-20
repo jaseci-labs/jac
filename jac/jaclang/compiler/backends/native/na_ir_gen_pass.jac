@@ -624,6 +624,7 @@ walker NaIRGenPass {
     def _python_import(binding: NativePythonImport) -> ir.Value;
     def _python_import_statement(nd: uni.Import) -> None;
     def _python_bind_locals(owner: uni.UniNode) -> None;
+    def _declare_python_module_init -> None;
     def _emit_python_module_init -> None;
     def _python_ensure_module -> None;
     def _python_module_state -> ir.Value;
@@ -1294,6 +1295,10 @@ walker NaIRGenPass {
 
     def _record_ret_facts(name: str, sig: uni.FuncSignature) -> None;
     def _emit_glob_init_func -> None;
+    def _emit_global_initializer(
+        var_name: str, init_node: uni.UniNode, var_type: ir.Type
+    ) -> None;
+
     def _set_rc_ctx(op: str, loc: str) -> None;
     def _clear_rc_ctx -> None;
     def _emit_live_list_remove(

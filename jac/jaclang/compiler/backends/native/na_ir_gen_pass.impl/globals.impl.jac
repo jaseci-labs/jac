@@ -128,6 +128,11 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 continue;
             }
 
+            if isinstance(target, uni.Name) and target.sym is not None
+                and (id(target.sym), var_name) in self._python_imports.module_bindings {
+                continue;
+            }
+
             var_type: ir.Type = ir.IntType(64);
             if assign.type_tag is not None {
                 _widened = self._widened_tuple_decl_type(assign.type_tag, assign.value);
@@ -220,16 +225,6 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
         target_name = self._get_name(value_node.target);
         if target_name is not None and target_name in self.struct_types {
             return self.struct_types[target_name].as_pointer();
-        }
-
-        right_name = self._get_name(value_node.right);
-        if target_name == "sys" and right_name == "argv" {
-            i8p = ir.IntType(8).as_pointer();
-            self._emit_list_helpers("ptr", i8p);
-            list_type = self.list_types.get("ptr");
-            if list_type is not None {
-                return list_type.as_pointer();
-            }
         }
     }
     return None;

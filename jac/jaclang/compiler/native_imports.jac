@@ -12,7 +12,50 @@ obj NativePythonImports {
         statements: dict[int, NativePythonImport] = {},
         module_bindings: set[tuple[int, str]] = set(),
         local_bindings: dict[int, list[NativePythonImport]] = {},
-        initializers: list[NativePythonImport] = [];
+        module_statements: list[uni.UniNode] = [];
+
+    def plan_globals(module: uni.Module) {
+        import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+        import from jaclang.compiler.frontend.constant { CodeContext }
+        if not self.symbols {
+            return;
+        }
+        for statement in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
+            if isinstance(statement, uni.Import) {
+                if any(id(item) in self.statements for item in statement.items) {
+                    self.module_statements.append(statement);
+                }
+            } elif isinstance(statement, uni.GlobalVars) {
+                for assignment in statement.assignments {
+                    if ModuleFacts.is_erased_type_decl(assignment) {
+                        continue;
+                    }
+                    self.module_statements.append(assignment);
+                    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+                    annotation = assignment.type_tag.tag
+                        if assignment.type_tag
+                        else None;
+                    native_scalar = isinstance(annotation, (uni.Name, uni.BuiltinType))
+                        and (
+                            annotation.value in {"int", "float", "bool", "str", "bytes"}
+                            or JAC_TYPE_REGISTRY.is_sized(annotation.value)
+                        );
+                    if not native_scalar
+                        and assignment.value is not None
+                        and python_object_expression(assignment.value) {
+                        for target in assignment.target {
+                            if isinstance(target, uni.Name)
+                                and target.sym is not None {
+                                self.module_bindings.add(
+                                    (id(target.sym), target.value)
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     def register(item: uni.UniNode, binding: NativePythonImport, module_level: bool) {
         symbol = python_import_symbol(item);
@@ -23,7 +66,6 @@ obj NativePythonImports {
         self.statements[id(item)] = binding;
         if module_level {
             self.module_bindings.add((id(symbol), binding.binding));
-            self.initializers.append(binding);
         } else {
             owner = item.parent;
             while owner is not None

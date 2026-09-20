@@ -130,7 +130,8 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
 
     self._register_imported_struct_types();
     self._declare_pending_clib_abilities();
-    self._emit_python_module_init();
+    self._python_imports.plan_globals(self.module);
+    self._declare_python_module_init();
     self._register_globals(self.module);
     self._register_entry_globals(self.module);
 
@@ -167,6 +168,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     if _unclaimed {
         return self.module;
     }
+    self._emit_python_module_init();
     self._codegen_entry(_entry_nodes);
     self._finalize_trace_lookup();
 

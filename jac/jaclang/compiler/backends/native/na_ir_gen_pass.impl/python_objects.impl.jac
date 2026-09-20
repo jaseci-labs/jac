@@ -12,7 +12,11 @@ impl NaIRGenPass._python_expr(nd: uni.UniNode) -> bool {
         if slot is not None {
             return self._python_value(slot.pointee_type);
         }
-        return nd.sym is not None and id(nd.sym) in self._python_imports.symbols;
+        return nd.sym is not None
+            and (
+                id(nd.sym) in self._python_imports.symbols
+                or (id(nd.sym), nd.value) in self._python_imports.module_bindings
+            );
     }
     if isinstance(nd, uni.FuncCall) and self._python_builtin(nd) {
         return True;
@@ -325,9 +329,13 @@ impl NaIRGenPass._python_assignment(nd: uni.Assignment) -> bool {
     local_augmented = nd.aug_op is not None
         and local is not None
         and self._python_value(local.pointee_type);
+    global_target = isinstance(target, uni.Name)
+        and target.sym is not None
+        and local is None
+        and (id(target.sym), target.value) in self._python_imports.module_bindings;
     python_target = isinstance(target, uni.AtomTrailer)
         and self._python_expr(target.target);
-    if not local_augmented and not python_target {
+    if not local_augmented and not python_target and not global_target {
         return False;
     }
     frame = self._error_frame;
@@ -355,10 +363,20 @@ impl NaIRGenPass._python_assignment(nd: uni.Assignment) -> bool {
             result = self._python_binary(nd.aug_op.value, current, value, inplace=True);
         } else {
             result = self._python_argument(nd.value);
-            assert isinstance(target, uni.AtomTrailer);
-            (owner, key) = self._python_target(target);
+            if isinstance(target, uni.AtomTrailer) {
+                (owner, key) = self._python_target(target);
+            }
         }
-        if local_augmented {
+        if global_target {
+            assert isinstance(target, uni.Name);
+            self._python_ensure_module();
+            namespace = self._python_module_state();
+            global_key = self._python_runtime(
+                "text", [self._make_global_string(target.value)]
+            );
+            self._python_runtime("setitem", [namespace, global_key, result]);
+            self._release_owned_args([namespace, global_key, result]);
+        } elif local_augmented {
             assert local is not None;
             self._emit_slot_rebind(local, result, owned=True, op="python.inplace");
             self.builder.store(result, local);
@@ -452,8 +470,8 @@ impl NaIRGenPass._python_global(name: str) -> ir.Value {
     return value;
 }
 
-impl NaIRGenPass._emit_python_module_init -> None {
-    if not self._python_imports.initializers {
+impl NaIRGenPass._declare_python_module_init -> None {
+    if not self._python_imports.module_statements {
         return;
     }
     identity = ir.GlobalVariable(
@@ -470,20 +488,63 @@ impl NaIRGenPass._emit_python_module_init -> None {
     );
     initializer.linkage = "private";
     self._python_init_fn = initializer;
+}
+
+impl NaIRGenPass._emit_python_module_init -> None {
+    initializer = self._python_init_fn;
+    if initializer is None {
+        return;
+    }
     previous = self._enter_function(initializer);
     frame = self._error_frame;
     assert frame is not None;
     frame.temporaries.append([]);
     try {
+        if self._global_init_nodes {
+            self._scan_closure_escapes(self.module, [item[1] for item in self._global_init_nodes]);
+        }
         namespace = initializer.args[0];
         self._bind_function_parameter("namespace", namespace);
-        for binding in self._python_imports.initializers {
-            value = self._python_import(binding);
-            key = self._python_runtime(
-                "text", [self._make_global_string(binding.binding)]
-            );
-            self._python_runtime("setitem", [namespace, key, value]);
-            self._release_owned_args([key, value]);
+        for statement in self._python_imports.module_statements {
+            if isinstance(statement, uni.Import) {
+                for item in statement.items {
+                    binding = self._python_imports.statements.get(id(item));
+                    if binding is None {
+                        continue;
+                    }
+                    value = self._python_import(binding);
+                    key = self._python_runtime(
+                        "text", [self._make_global_string(binding.binding)]
+                    );
+                    self._python_runtime("setitem", [namespace, key, value]);
+                    self._release_owned_args([key, value]);
+                }
+            } elif isinstance(statement, uni.Assignment) {
+                python_targets = [
+                    target
+                    for target in statement.target
+                    if isinstance(target, uni.Name)
+                        and target.sym is not None
+                        and (id(target.sym), target.value)
+                            in self._python_imports.module_bindings
+                ];
+                if python_targets and statement.value is not None {
+                    value = self._python_argument(statement.value);
+                    for target in python_targets {
+                        key = self._python_runtime(
+                            "text", [self._make_global_string(target.value)]
+                        );
+                        self._python_runtime("setitem", [namespace, key, value]);
+                        self._release_owned_args([key]);
+                    }
+                    self._release_owned_args([value]);
+                }
+                for (name, expression, value_type) in self._global_init_nodes {
+                    if expression is statement.value {
+                        self._emit_global_initializer(name, expression, value_type);
+                    }
+                }
+            }
         }
         self._release_temporaries();
         self._emit_scope_cleanup(loc="python.module.init");
