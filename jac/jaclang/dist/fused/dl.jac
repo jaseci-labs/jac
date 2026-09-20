@@ -3,7 +3,7 @@ import from "libdl.so.2" {
         handle: int, symbol: str
     ) -> int;  def dlerror -> int;
 }
-import from c { def strdup(s: int) -> str;  }
+import from ._libc { c_string }
 
 glob RTLD_NOW: int = 2,
      RTLD_GLOBAL: int = 256,
@@ -14,5 +14,5 @@ def:pub dl_error -> str {
     if p == 0 {
         return "unknown dl error";
     }
-    return strdup(p);
+    return c_string(p);
 }

@@ -1,7 +1,8 @@
+import from ._libc { c_string }
 import from c {
     def dlopen(filename: str, flags: i32) -> int;  def dlsym(
         handle: int, symbol: str
-    ) -> int;  def dlerror -> int;  def strdup(s: int) -> str;
+    ) -> int;  def dlerror -> int;
 }
 
 glob RTLD_NOW: int = 2,
@@ -13,5 +14,5 @@ def:pub dl_error -> str {
     if p == 0 {
         return "unknown dl error";
     }
-    return strdup(p);
+    return c_string(p);
 }

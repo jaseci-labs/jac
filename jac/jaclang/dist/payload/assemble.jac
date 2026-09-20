@@ -4,6 +4,7 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
      TAR_REGTYPE: bytes = b"0",
      TAR_DIRTYPE: bytes = b"5",
      FLOOR_ARCHIVES: tuple[str, ...] = (
+         "libjacbootstrap.a",
          "libssl.a",
          "libcrypto.a",
          "libsqlite3.a",

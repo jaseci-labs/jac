@@ -102,21 +102,27 @@ impl BoundaryAnalysisPass._native_source_module_of(
     mod: (Module | None)
 ) -> (str | None) {
     import os;
+    import from jaclang.compiler.frontend.codeinfo { native_variant_path }
     if mod is None or mod is self.module or mod.loc is None or not mod.loc.mod_path {
         return None;
     }
     if not (self.module and self.module.loc and self.module.loc.mod_path) {
         return None;
     }
+    source_path = os.path.abspath(mod.loc.mod_path);
+    if not source_path.endswith('.jac') {
+        return None;
+    }
+
+    source_path = native_variant_path(source_path[:-len('.jac')]) or source_path;
     try {
         rel = str(
             os.path.relpath(
-                os.path.abspath(mod.loc.mod_path),
-                os.path.dirname(os.path.abspath(self.module.loc.mod_path))
+                source_path, os.path.dirname(os.path.abspath(self.module.loc.mod_path))
             )
         );
     } except ValueError {
-        rel = os.path.abspath(mod.loc.mod_path);
+        rel = source_path;
     }
     if rel.endswith('.jac') {
         return rel;

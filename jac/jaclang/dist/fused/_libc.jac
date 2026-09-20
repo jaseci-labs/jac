@@ -1,62 +1,47 @@
 import from c {
-    def pread(fd: i32, buf: bytes, n: int, off: int) -> int;  def close(
-        fd: i32
-    ) -> i32;  def getuid -> i32;  def opendir(path: str) -> int;  def readdir(
-        dirp: int
-    ) -> int;  def closedir(dirp: int) -> i32;  def malloc(size: int) -> int;  def free(
-        ptr: int
-    ) -> None;  def strcpy(dst: int, src: str) -> int;  def strdup(s: int) -> str;  def memcpy(
-        dst: bytes, src: int, n: int
-    ) -> int;  def memmove(dst: int, src: bytes, n: int) -> int;
+    def getuid -> i32;  def malloc(size: int) -> int;  def free(ptr: int) -> None;  def strcpy(
+        dst: int, src: str
+    ) -> int;  def memcpy(dst: bytes, src: int, n: int) -> int;  def memmove(
+        dst: int, src: bytes, n: int
+    ) -> int;
 }
-import from c { def write(fd: i32, buf: bytes, n: int) -> int;  }
-import from _dirent_native { dirent_name }
-import from _fd_native { open_readonly, open_writetrunc }
+import from jacbootstrap {
+    def jac_boot_string(address: int) -> str;  def jac_boot_read(
+        path: str, offset: int, buffer: bytes, length: int
+    ) -> int;  def jac_boot_write(path: str, data: bytes, length: int) -> bool;  def jac_boot_directory(
+        path: str
+    ) -> int;  def jac_boot_directory_next(cursor: int) -> int;  def jac_boot_directory_close(
+        cursor: int
+    ) -> None;
+}
 
 def:pub write_file(path: str, data: bytes) -> bool {
-    fd = open_writetrunc(path);
-    if fd < 0 {
-        return False;
-    }
-    wrote = write(fd, data, len(data));
-    close(fd);
-    return wrote == len(data);
+    return jac_boot_write(path, data, len(data));
 }
 
 def:pub read_at(path: str, off: int, n: int) -> bytes {
-    fd = open_readonly(path);
-    if fd < 0 {
-        return b"";
-    }
     buf = b"\x00" * n;
-    got = pread(fd, buf, n, off);
-    close(fd);
-    if got < 0 {
-        return b"";
-    }
-    return buf[0:got];
+    got = jac_boot_read(path, off, buf, n);
+    return buf[0:got] if got >= 0 else b"";
 }
 
 def:pub listdir(path: str) -> list[str] {
     names: list[str] = [];
-    dirp = opendir(path);
-    if dirp == 0 {
+    cursor = jac_boot_directory(path);
+    if cursor == 0 {
         return names;
     }
-    ent = readdir(dirp);
-    while ent != 0 {
-        name = dirent_name(ent);
-        if name != "." and name != ".." {
-            names.append(name);
-        }
-        ent = readdir(dirp);
+    name = jac_boot_directory_next(cursor);
+    while name != 0 {
+        names.append(c_string(name));
+        name = jac_boot_directory_next(cursor);
     }
-    closedir(dirp);
+    jac_boot_directory_close(cursor);
     return names;
 }
 
 def:pub c_string(ptr: int) -> str {
-    return strdup(ptr);
+    return jac_boot_string(ptr);
 }
 
 def:pub c_alloc_string(s: str) -> int {

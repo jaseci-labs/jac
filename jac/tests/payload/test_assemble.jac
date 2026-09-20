@@ -466,7 +466,7 @@ test "stage_floor stages the floor allow-list + CA bundle, skips non-floor archi
     base = tempfile.mkdtemp(prefix="jac-payload-floor-");
     try {
         pbs = os.path.join(base, "pbs");
-        for n in ("libz.a", "libssl.a", "libX11.a") {
+        for n in ("libjacbootstrap.a", "libz.a", "libssl.a", "libX11.a") {
             wf(pbs, "build/lib/" + n, b"!<arch>\n");
         }
         wf(
@@ -478,6 +478,7 @@ test "stage_floor stages the floor allow-list + CA bundle, skips non-floor archi
         stage_floor(pbs, stage);
         osarch = host_os_arch();
         floor = os.path.join(stage, "python", "floor");
+        assert os.path.isfile(os.path.join(floor, osarch, "libjacbootstrap.a"));
         assert os.path.isfile(os.path.join(floor, osarch, "libz.a"));
         assert os.path.isfile(os.path.join(floor, osarch, "libssl.a"));
         assert os.path.isfile(os.path.join(floor, "cacert.pem"));

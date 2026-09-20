@@ -455,7 +455,7 @@ def is_bundled_native_module(module_name: str) -> bool {
         return False;
     }
     path_name = module_name.lstrip('.').replace('.', os.sep);
-    return _native_variant_path(os.path.join(stdlib_dir, path_name)) is not None;
+    return native_variant_path(os.path.join(stdlib_dir, path_name)) is not None;
 }
 
 def set_native_target_override(triple: str | None) -> (str | None) {
@@ -500,7 +500,7 @@ def native_target_os -> str {
     return "linux";
 }
 
-def _native_variant_path(base_no_ext: str) -> (str | None) {
+def native_variant_path(base_no_ext: str) -> (str | None) {
     import os;
     _osv = os.path.join(f"{base_no_ext}.{native_target_os()}.jac");
     if os.path.exists(_osv) {
@@ -545,7 +545,7 @@ def resolve_native_module(
         if os.path.isdir(candidate) {
             candidate = os.path.join(candidate, '__init__');
         }
-        local = _inferred_native_path(_native_variant_path(candidate));
+        local = _inferred_native_path(native_variant_path(candidate));
         if local is not None {
             return (str(os.path.relpath(local, os.path.abspath(base_dir))), local);
         }
@@ -562,6 +562,7 @@ def resolve_native_module(
         if language != 'jac' or not candidate.endswith('.jac') {
             return (None, None);
         }
+        candidate = native_variant_path(candidate[:-len('.jac')]) or candidate;
         candidate = os.path.realpath(candidate);
         if (scope_lowering_active() and in_native_scope_path(candidate))
             or clean in SHARED_RUNTIME_MODULES {
@@ -570,7 +571,7 @@ def resolve_native_module(
         if allow_inferred {
             search = os.path.abspath(base_dir);
             while True {
-                local = _native_variant_path(os.path.join(search, path_name));
+                local = native_variant_path(os.path.join(search, path_name));
                 if local is not None {
                     native = _inferred_native_path(candidate);
                     return (native, native);
@@ -587,7 +588,7 @@ def resolve_native_module(
 
     if allow_inferred {
         local = _inferred_native_path(
-            _native_variant_path(os.path.join(base_dir, clean))
+            native_variant_path(os.path.join(base_dir, clean))
         );
         if local is not None {
             return (str(os.path.relpath(local, os.path.abspath(base_dir))), local);
@@ -596,7 +597,7 @@ def resolve_native_module(
             search = os.path.abspath(base_dir);
             while True {
                 cand = _inferred_native_path(
-                    _native_variant_path(os.path.join(search, path_name))
+                    native_variant_path(os.path.join(search, path_name))
                 );
                 if cand is not None {
                     rel = str(os.path.relpath(cand, os.path.abspath(base_dir)));
@@ -613,7 +614,7 @@ def resolve_native_module(
 
     bundled_root = native_stdlib_root();
     if bundled_root is not None {
-        bundled = _native_variant_path(os.path.join(bundled_root, path_name));
+        bundled = native_variant_path(os.path.join(bundled_root, path_name));
         if bundled is not None {
             return (path_name, bundled);
         }

@@ -2,11 +2,12 @@
 
 `jac` is one self-contained executable: a small native launcher stub with the
 jaclang runtime + a private CPython appended as a payload. It needs **no system
-Python, uv, or pip** at install or runtime. Both halves are Jac:
+Python, uv, or pip** at install or runtime. The launcher and packaging policy are Jac; a private Zig archive supplies operations needed before CPython can load:
 
 | Piece | Where | Tier |
 |---|---|---|
 | Launcher stub (`launcher.jac`) | this directory | native (`jac build --as native` / `nacompile`) |
+| Private bootstrap archive (`platform.zig`) | this directory | Zig standard library, statically linked |
 | Fused-runtime library | `jaclang/dist/fused/` | native, shipped in the payload |
 | Payload tool (fetch, stage, precompile, pack) | `jaclang/dist/payload/` | Python tier, run on source-built CPython |
 | Bootstrap seeds (`build_python.zig`, `fetch_typeshed.zig`), `pins.json` | `bootstrap/` | Zig + the pin files |
@@ -14,22 +15,31 @@ Python, uv, or pip** at install or runtime. Both halves are Jac:
 
 Instead of statically linking CPython, the launcher **`dlopen`s the bundled
 `libpython` at runtime** -- the same way jac-native loads LLVM. The stub links
-only libc (and `libdl` on Linux, so it also runs on glibc < 2.34); nothing
-Python is linked at build time.
+the private bootstrap archive and system libraries. Linux retains `libdl` and
+`libpthread` explicitly for glibc 2.17; nothing Python is linked at build time.
 
 ## The fused-runtime library (`jaclang/dist/fused/`)
 
 | Module | Role |
 |---|---|
-| `trailer.jac` | The ONE definition of the on-disk trailer format (`JACBIN01` / `JABOVL01`, 80 bytes) and the `rt/<hash16>-<pathhash>` cache key. Pure Jac, so the same source binds on the native pathway (the stub) and the Python pathway (`jaclang.dist.fused_binary`: `jac build --as binary`, the desktop graft, the payload tool's `pack`). |
-| `materialize.jac` | Find the trailer at the end of the running executable (stepping over a `.jab` overlay), resolve the cache dir (`$XDG_CACHE_HOME` / `$HOME/.cache` / per-uid tmp), and on first run verify (sha256) + extract the payload: `ZstdFile(io.BytesIO(payload))` into `tarfile.open(..., mode="r|").extractall()` -- the bundled native `compression.zstd` / `tarfile` / `io` modules, exactly what CPython would run. Per-pid temp dir, `.ok` marker, atomic rename, GC of this binary's older trees. |
+| `trailer.jac` | The ONE definition of the on-disk trailer format (`JACBIN01` / `JABOVL01`, 80 bytes) and the content-addressed `rt/<hash16>` cache key. Pure Jac, so the same source binds on the native pathway (the stub) and the Python pathway (`jaclang.dist.fused_binary`: `jac build --as binary`, the desktop graft, the payload tool's `pack`). |
+| `materialize.jac` | Validate trailers, resolve the cache root, verify SHA256, and extract the payload through the private bootstrap interface. Publish a per-process staging directory with an `.ok` marker and atomic rename; touch last-use markers and reclaim expired runtimes. |
 | `embed.jac` | dlopen the bundled libpython (`RTLD_NOW\|RTLD_GLOBAL`), bind the C-API the hosts use (`PyApi`: function-pointer fields filled by `dlsym`), and initialize through the PEP 741 init-config API: home, module search paths and program name go to CPython directly, never through the environment (#7047). Worker mode (`parse_argv`) and print-and-exit flags (`-V`, `-h`) are honoured. |
 | `bringup.jac` | `open_runtime(exe)` = materialize + dlopen; `engine_boot()` = the desktop host's bring-up (materialize, dlopen, init with no argv). |
 | `report.jac` | `die` (message + exit 70) and `say` (cold-start narration) to stderr, before CPython exists. |
-| `_libc.jac` | The portable libc floor: positional reads (`fopen`/`fseeko`/`fread`), directory listing, malloc'd C strings and the `char**` lists PEP 741 takes. |
+| `_libc.jac` | Positional reads, complete writes, directory iteration, and the C string storage needed by PEP 741. Reuses the private platform interface and the compiler’s C string conversion. |
 
-The OS-specific pieces are bundled native stdlib floors with per-OS variants
-(`na_stdlib/_dl_native.{linux,darwin}.jac`, `_exec_native.{linux,darwin}.jac`).
+`platform.jac` declares the private C interface implemented by
+`launcher/platform.zig`. Zig's standard library supplies filesystem operations,
+SHA256, streaming zstd decoding, and PAX tar parsing. It accepts regular files
+and directories, rejects archive traversal and links, and reads every compressed
+layer before publication. The single-threaded archive includes its compiler
+runtime support and is staged through the existing floor archive infrastructure
+as `libjacbootstrap.a`, so desktop hosts use the same implementation.
+
+`dl.jac` and `dl.darwin.jac` contain only the platform's dynamic-loader declarations
+and flags. Linux explicitly retains `libdl.so.2` for the glibc 2.17 baseline.
+No public Python stdlib module is required before loading the interpreter.
 
 The desktop host (`jaclang/client/targets/desktop`) imports the same
 library: the builder stages `fused/` beside the generated host so `import from
@@ -40,7 +50,7 @@ fused.bringup { engine_boot }` resolves, and grafts the running jac's
 ## Binary shape
 
 ```
-jac = [ launcher stub (links libc/libdl only) ][ runtime.tar.zst ][ trailer ]
+jac = [ launcher stub + private bootstrap ][ runtime.tar.zst ][ trailer ]
 trailer = "JACBIN01" | payload_len(u64 LE) | sha256_hex(64)   (80 bytes, at EOF)
 ```
 
@@ -60,8 +70,8 @@ payload trailer, and exports `JAC_APP_OVERLAY_OFF/_LEN` so `cli_boot` slices the
 
 The payload is two concatenated zstd frames (a content-addressed deps frame the
 build reuses across runs, and a small per-commit jac frame) whose decoded
-concatenation is one tar stream. Materialized to `<cache>/rt/<hash16>-<pathhash>/`
-on first run (`<pathhash>` folds in the binary's own path, #7012):
+layers are both read by the launcher. Materialized to `<cache>/rt/<hash16>/`
+on first run; copies of the same payload share the same runtime cache:
 
 ```
 python/lib/libpython3.14.{dylib,so}   <- dlopened (RTLD_NOW|RTLD_GLOBAL)
@@ -74,7 +84,8 @@ site/                                  <- jaclang + _jac_finder
 ```bash
 cd jac
 
-zig build test                       # bootstrap unit tests (no network needed)
+zig build test-launcher              # targeted private extraction tests
+zig build test                       # all bootstrap unit tests (no network needed)
 zig build stub                       # just the launcher stub (no payload)
 zig build                            # -> zig-out/bin/jac (stock CPython)
 JACPYTHON=1 zig build                 # opt in to the native JacPython compiler
@@ -155,5 +166,5 @@ performance parity has not been established.
   `jac run` a script that calls `jaclang.dist.fused_binary.graft_runtime(<installed jac>, <stub copy>)`,
   then run the copy with a fresh `HOME`.
 * `jac test jac/tests/payload/` covers the trailer codec, deterministic staging,
-  frame routing and the payload CLI; the bundled `compression.zstd` / `tarfile`
-  equivalence tests cover the decode path the launcher uses.
+  frame routing and the payload CLI. `zig build test-launcher` covers the private
+  decoder, concatenated layers, PAX paths, permissions, truncation, and traversal.

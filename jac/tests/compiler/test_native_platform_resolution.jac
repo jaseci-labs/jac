@@ -117,3 +117,29 @@ test "explicit native relative imports retain their level and target variant" {
         }
     }
 }
+
+test "qualified and relative native support imports select the same target variant" {
+    import jaclang;
+    import from jaclang.compiler.native_scope {
+        activate_scope_lowering,
+        deactivate_scope_lowering
+    }
+    directory = os.path.join(os.path.dirname(jaclang.__file__), "dist", "fused");
+    prior = set_native_target_override("aarch64-apple-darwin");
+    activate_scope_lowering(os.path.join(directory, "embed.jac"));
+    try {
+        for (triple, suffix) in [
+            ("aarch64-apple-darwin", "dl.darwin.jac"),
+            ("x86_64-unknown-linux-gnu", "dl.jac")
+        ] {
+            set_native_target_override(triple);
+            (_, qualified) = resolve_native_module("jaclang.dist.fused.dl", directory);
+            (_, relative) = resolve_native_module(".dl", directory);
+            assert qualified == relative;
+            assert qualified is not None and os.path.basename(qualified) == suffix;
+        }
+    } finally {
+        deactivate_scope_lowering();
+        set_native_target_override(prior);
+    }
+}

@@ -1,7 +1,7 @@
 import from .embed { Embed, open_tree }
 import from .materialize { materialize }
 import from .report { die }
-import from _exec_native { executable_path }
+import from .platform { executable_path }
 
 def:pub open_runtime(exe_path: str) -> Embed {
     return open_tree(materialize(exe_path), exe_path);

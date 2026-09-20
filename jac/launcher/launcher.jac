@@ -1,5 +1,5 @@
 """jac single-binary launcher: the headless CLI frontend over the fused
-runtime core (`_fused.*` in the bundled native stdlib).
+runtime core (`jaclang.dist.fused`).
 
 This executable carries the jaclang runtime + a private CPython as a
 zstd-compressed payload appended after the image. On first run it
@@ -18,12 +18,16 @@ Dispatch, before any Python bring-up:
   * otherwise boot the jaclang CLI.
 """
 
-import os;
-import sys;
+import from jaclang.dist.fused.platform {
+    arguments,
+    set_environment,
+    clear_environment,
+    terminate
+}
 import from jaclang.dist.fused.bringup { open_runtime }
 import from jaclang.dist.fused.materialize { overlay_for_path, stubcat_for_path }
 import from jaclang.dist.fused.report { die }
-import from _exec_native { executable_path }
+import from jaclang.dist.fused.platform { executable_path }
 
 """The validated boot dance: pin `sys.executable` to THIS binary (under
 embedding, getpath derives it from the program name, and anything that
@@ -72,11 +76,11 @@ with entry {
     # follows for PYTHONHOME/PYTHONPATH, #7047).
     ovl = overlay_for_path(exe_path);
     if ovl is not None {
-        os.environ["JAC_APP_OVERLAY_OFF"] = str(ovl.off);
-        os.environ["JAC_APP_OVERLAY_LEN"] = str(ovl.length);
+        set_environment("JAC_APP_OVERLAY_OFF", str(ovl.off));
+        set_environment("JAC_APP_OVERLAY_LEN", str(ovl.length));
     } else {
-        os.environ.pop("JAC_APP_OVERLAY_OFF", "");
-        os.environ.pop("JAC_APP_OVERLAY_LEN", "");
+        clear_environment("JAC_APP_OVERLAY_OFF");
+        clear_environment("JAC_APP_OVERLAY_LEN");
     }
 
     # The stub catalog region (pre-resolved typeshed types) follows the same
@@ -85,30 +89,30 @@ with entry {
     # coordinates that only make sense for this file.
     cat = stubcat_for_path(exe_path);
     if cat is not None {
-        os.environ["JAC_STUBCAT_OFF"] = str(cat.off);
-        os.environ["JAC_STUBCAT_LEN"] = str(cat.length);
+        set_environment("JAC_STUBCAT_OFF", str(cat.off));
+        set_environment("JAC_STUBCAT_LEN", str(cat.length));
     } else {
-        os.environ.pop("JAC_STUBCAT_OFF", "");
-        os.environ.pop("JAC_STUBCAT_LEN", "");
+        clear_environment("JAC_STUBCAT_OFF");
+        clear_environment("JAC_STUBCAT_LEN");
     }
 
     emb = open_runtime(exe_path);
 
-    argv = sys.argv;
+    argv = arguments();
     worker = len(argv) > 1 and is_python_first_arg(argv[1]);
     # A non-negative result means the interpreter handled a print-and-exit
     # flag (worker mode -h/-V/--help): exit with the code CPython requested,
     # never the boot path.
     requested = emb.init_interpreter(argv, worker);
     if requested >= 0 {
-        sys.`exit(requested);
+        terminate(requested);
     }
     if worker {
         # Py_RunMain executes the parsed -c/-m/script and finalizes. Exit
         # codes are 8-bit (the OS masks them).
-        sys.`exit(emb.api.Py_RunMain() & 255);
+        terminate(emb.api.Py_RunMain() & 255);
     }
     rc = emb.api.PyRun_SimpleString(BOOT_SRC);
     emb.api.Py_FinalizeEx();
-    sys.`exit(0 if rc == 0 else 1);
+    terminate(0 if rc == 0 else 1);
 }

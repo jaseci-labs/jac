@@ -293,8 +293,7 @@ pub fn build(b: *std.Build) void {
         return;
     };
 
-    // The TARGET's source-built Python tree: the payload input, and the C floor archives
-    // (libzstd.a, libcrypto.a, ...) the stub static-links. Same tree as the
+    // The TARGET's source-built Python tree is the payload input. Same tree as the
     // host's whenever host == target, which is every CI lane.
     const python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, osarch }));
     const python_tree = b.fmt("{s}/python", .{python_dir});
@@ -307,15 +306,41 @@ pub fn build(b: *std.Build) void {
     };
 
     // --- launcher stub: the in-checkout compiler compiles launcher/ natively --
+    var floor_query = target.query;
+    if (target.result.os.tag == .linux and target.result.abi.isGnu() and floor_query.glibc_version == null) {
+        floor_query.glibc_version = .{ .major = 2, .minor = 17, .patch = 0 };
+    }
+    if (target.result.os.tag == .macos and floor_query.os_version_min == null) {
+        floor_query.os_version_min = .{ .semver = .{ .major = 11, .minor = 0, .patch = 0 } };
+    }
+    const launcher_floor = b.addLibrary(.{
+        .name = "jacbootstrap",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("launcher/platform.zig"),
+            .target = b.resolveTargetQuery(floor_query),
+            // Streaming decompression dominates first-run latency.
+            .optimize = .ReleaseFast,
+            .link_libc = true,
+            .pic = true,
+            .single_threaded = true,
+        }),
+    });
+    launcher_floor.bundle_compiler_rt = true;
+    // Reuse the existing target floor archive resolver and payload staging.
+    // Place this after the Python seed, which owns the containing build tree.
+    const install_floor = b.addUpdateSourceFiles();
+    install_floor.addCopyFileToSource(launcher_floor.getEmittedBin(), b.fmt(".python-build/{s}/{s}/python/build/lib/libjacbootstrap.a", .{ python_variant, osarch }));
+    install_floor.step.dependOn(fetch_target);
     // A native build treats any native-seam demotion in the stub's closure as
     // a hard error: a function demoted to Python-only cannot run before CPython
     // exists. (The whole-program type-check gate is not used here: it cannot
     // see the bundled per-OS native floors the launcher imports.) Needs the
-    // LLVMPY_* shim placed in-tree and the target's C floor archives.
+    // LLVMPY_* shim placed in-tree and the private launcher archive.
     const build_stub = tool.run("jac", &.{ "build", "--native" });
-    // Pin the selected runtime's libraries and certificates when both variants are cached.
     build_stub.setEnvironmentVariable("JAC_NATIVE_FLOOR_DIR", b.fmt("{s}/build/lib", .{python_tree}));
-    build_stub.setEnvironmentVariable("JAC_NATIVE_CA_BUNDLE", b.fmt("{s}/build/cacert.pem", .{python_tree}));
+    build_stub.step.dependOn(&install_floor.step);
+    build_stub.addFileInput(launcher_floor.getEmittedBin());
     build_stub.addFileArg(b.path("launcher/launcher.jac"));
     build_stub.addArg("-o");
     const stub = build_stub.addOutputFileArg("jac-stub");
@@ -341,6 +366,8 @@ pub fn build(b: *std.Build) void {
         // the tradeoff is .inherit marks the step as having side-effects, so it
         // ALWAYS repacks (no caching) while the flag is on.
         const mk = tool.run("payload", &.{ "mkpayload", python_tree, root });
+        mk.step.dependOn(&install_floor.step);
+        mk.addFileInput(launcher_floor.getEmittedBin());
         if (b.option(bool, "payload-progress", "Stream the payload build (mkpayload) live; disables its caching") orelse false) {
             mk.stdio = .inherit;
         }
@@ -539,6 +566,18 @@ fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     test_step.dependOn(&b.addRunArtifact(llvm_tests).step);
     const ts_tests = b.addTest(.{ .name = "fetch-typeshed-tests", .root_module = ts_mod });
     test_step.dependOn(&b.addRunArtifact(ts_tests).step);
+    const launcher_tests = b.addTest(.{
+        .name = "launcher-platform-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("launcher/platform_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+    const run_launcher_tests = b.addRunArtifact(launcher_tests);
+    test_step.dependOn(&run_launcher_tests.step);
+    b.step("test-launcher", "Test private launcher extraction without Python").dependOn(&run_launcher_tests.step);
 }
 
 /// Map a target to the os-arch token the build-python subcommand understands,

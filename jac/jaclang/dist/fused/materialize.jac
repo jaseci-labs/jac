@@ -1,10 +1,18 @@
-import hashlib;
-import os;
-import shutil;
-import tarfile;
-import time;
-import from compression.zstd { ZstdFile }
-import from io { BytesIO }
+import from .platform {
+    environment,
+    payload_digest,
+    unpack_payload,
+    process_id,
+    jac_boot_is_file as is_file,
+    jac_boot_is_dir as is_dir,
+    jac_boot_size as file_size,
+    jac_boot_mtime as modified_at,
+    jac_boot_clock as clock,
+    jac_boot_mkdirs as mkdirs,
+    jac_boot_remove as remove_file,
+    jac_boot_rmtree as remove_tree,
+    jac_boot_rename as rename_path
+}
 import from c { def atoi(s: str) -> i32;  }
 import from .trailer {
     MAGIC,
@@ -19,7 +27,7 @@ import from .trailer {
 }
 import from ._libc { read_at, getuid, listdir, write_file }
 import from .report { die, say }
-import from _cache_platform { platform_cache_home }
+import from .platform { platform_cache_home }
 
 glob CACHEDIR_TAG: str = "CACHEDIR.TAG",
      CACHEDIR_TAG_TEXT: bytes = (
@@ -60,7 +68,7 @@ def:pub peek_overlay(exe_path: str, total: int) -> Overlay | None {
 }
 
 def:pub overlay_for_path(exe_path: str) -> Overlay | None {
-    total = os.path.getsize(exe_path);
+    total = file_size(exe_path);
     if total < TRAILER_LEN {
         return None;
     }
@@ -86,7 +94,7 @@ def:pub peek_stubcat(exe_path: str, total: int) -> Overlay | None {
 }
 
 def:pub stubcat_for_path(exe_path: str) -> Overlay | None {
-    total = os.path.getsize(exe_path);
+    total = file_size(exe_path);
     if total < TRAILER_LEN {
         return None;
     }
@@ -98,48 +106,48 @@ def:pub stubcat_for_path(exe_path: str) -> Overlay | None {
 }
 
 def dir_writable(path: str) -> bool {
-    os.makedirs(path, exist_ok=True);
-    if not os.path.isdir(path) {
+    mkdirs(path);
+    if not is_dir(path) {
         return False;
     }
     probe = path + "/.jac-write-probe";
     if not write_file(probe, b"") {
         return False;
     }
-    os.remove(probe);
+    remove_file(probe);
     return True;
 }
 
 def stamp_cachedir_tag(base: str) {
     tag = base + "/" + CACHEDIR_TAG;
-    if not os.path.isfile(tag) {
+    if not is_file(tag) {
         write_file(tag, CACHEDIR_TAG_TEXT);
     }
 }
 
 def prepare_cache_root(base: str) {
     tag = base + "/" + CACHEDIR_TAG;
-    if os.path.isfile(tag) {
+    if is_file(tag) {
         if read_at(tag, 0, len(CACHEDIR_TAG_TEXT)) == CACHEDIR_TAG_TEXT
-            and os.path.getsize(tag) == len(CACHEDIR_TAG_TEXT) {
-            os.remove(tag);
+            and file_size(tag) == len(CACHEDIR_TAG_TEXT) {
+            remove_file(tag);
         }
     }
 
     rt = base + "/rt";
-    os.makedirs(rt, exist_ok=True);
+    mkdirs(rt);
     stamp_cachedir_tag(rt);
 }
 
 def:pub cache_root -> str {
-    home: str = os.environ.get("HOME", "");
-    base: str = os.environ.get("JAC_CACHE_HOME", "");
+    home: str = environment("HOME");
+    base: str = environment("JAC_CACHE_HOME");
     if base != "" {
         if base.startswith("~/") and home != "" {
             base = home + base[1:len(base)];
         }
     } else {
-        xdg: str = os.environ.get("XDG_CACHE_HOME", "");
+        xdg: str = environment("XDG_CACHE_HOME");
         if xdg != "" {
             base = xdg + "/jac";
         } elif home != "" {
@@ -150,7 +158,7 @@ def:pub cache_root -> str {
         prepare_cache_root(base);
         return base;
     }
-    tmp: str = os.environ.get("TMPDIR", "");
+    tmp: str = environment("TMPDIR");
     if tmp == "" {
         tmp = "/tmp";
     }
@@ -164,7 +172,7 @@ def:pub cache_root -> str {
 }
 
 def:pub materialize(exe_path: str) -> str {
-    total = os.path.getsize(exe_path);
+    total = file_size(exe_path);
     if total < TRAILER_LEN {
         die("binary too small to carry a runtime payload");
         return "";
@@ -181,7 +189,7 @@ def:pub materialize(exe_path: str) -> str {
     cache_dir = cache_root();
     key = rt_key(trailer.hash16());
     rt = f"{cache_dir}/rt/{key}";
-    if not os.path.isfile(rt + "/.ok") {
+    if not is_file(rt + "/.ok") {
         first_run(exe_path, total, trailer, rt);
     }
     mark_used(rt);
@@ -190,7 +198,7 @@ def:pub materialize(exe_path: str) -> str {
 }
 
 def first_run(exe_path: str, total: int, trailer: Trailer, rt: str) {
-    t0 = time.monotonic();
+    t0 = clock(True);
     say("first run, performing one-time setup...");
     say(f"  runtime cache: {rt}");
     say(f"  reading embedded payload ({trailer.payload_len // 1048576} MiB)...");
@@ -205,35 +213,37 @@ def first_run(exe_path: str, total: int, trailer: Trailer, rt: str) {
         return;
     }
     say("  verifying payload (sha256)...");
-    if hashlib.sha256(zbuf).hexdigest() != trailer.hash_hex {
+    if payload_digest(zbuf) != trailer.hash_hex {
         die("payload integrity check failed (truncated or tampered binary)");
         return;
     }
     extract_payload(zbuf, rt);
-    secs = time.monotonic() - t0;
+    secs = clock(True) - t0;
     say(f"one-time setup complete ({secs:.1f}s).");
 }
 
 def:pub extract_payload(zbuf: bytes, rt: str) {
-    tmp = f"{rt}.tmp.{os.getpid()}";
-    if os.path.isdir(tmp) {
-        shutil.rmtree(tmp, ignore_errors=True);
+    tmp = f"{rt}.tmp.{process_id()}";
+    if is_dir(tmp) {
+        remove_tree(tmp);
     }
-    os.makedirs(tmp, exist_ok=True);
+    mkdirs(tmp);
     say("  extracting runtime...");
-    tf = tarfile.open(fileobj=ZstdFile(BytesIO(zbuf)), mode="r|");
-    tf.extractall(tmp);
-    tf.close();
+    error = unpack_payload(zbuf, tmp);
+    if error != "" {
+        remove_tree(tmp);
+        die(f"could not extract the runtime: {error}");
+        return;
+    }
     if not write_file(tmp + "/.ok", b"") {
-        shutil.rmtree(tmp, ignore_errors=True);
+        remove_tree(tmp);
         die(f"could not mark the extracted runtime complete ({tmp}/.ok)");
     }
-    os.makedirs(os.path.dirname(rt), exist_ok=True);
-    os.rename(tmp, rt);
-    if os.path.isdir(tmp) {
-        shutil.rmtree(tmp, ignore_errors=True);
+    rename_path(tmp, rt);
+    if is_dir(tmp) {
+        remove_tree(tmp);
     }
-    if not os.path.isfile(rt + "/.ok") {
+    if not is_file(rt + "/.ok") {
         die("could not publish the extracted runtime");
     }
 }
@@ -243,7 +253,7 @@ def:pub mark_used(rt: str) {
 }
 
 def:pub runtime_ttl_seconds -> float {
-    raw: str = os.environ.get(TTL_ENV, "");
+    raw: str = environment(TTL_ENV);
     days: int = RUNTIME_TTL_DAYS;
     if raw != "" {
         days = int(atoi(raw));
@@ -257,19 +267,18 @@ def:pub runtime_ttl_seconds -> float {
 def:pub last_used(rt: str) -> float {
     for marker in [USED_MARKER, ".ok"] {
         stamp = rt + "/" + marker;
-        if os.path.isfile(stamp) {
-            return os.path.getmtime(stamp);
+        if is_file(stamp) {
+            return modified_at(stamp);
         }
     }
-    return os.path.getmtime(rt);
+    return modified_at(rt);
 }
 
 def:pub sweep_runtimes(cache_dir: str, keep_key: str) {
     rtdir = cache_dir + "/rt";
-    now = time.time();
+    now = clock(False);
     sentinel = rtdir + "/" + SWEEP_SENTINEL;
-    if os.path.isfile(sentinel)
-        and now - os.path.getmtime(sentinel) < SWEEP_INTERVAL_SECONDS {
+    if is_file(sentinel) and now - modified_at(sentinel) < SWEEP_INTERVAL_SECONDS {
         return;
     }
     if not write_file(sentinel, b"") {
@@ -281,19 +290,19 @@ def:pub sweep_runtimes(cache_dir: str, keep_key: str) {
             continue;
         }
         full = f"{rtdir}/{name}";
-        if not os.path.isdir(full) {
+        if not is_dir(full) {
             continue;
         }
         if ".tmp." in name {
-            if now - os.path.getmtime(full) > TMP_TTL_SECONDS {
+            if now - modified_at(full) > TMP_TTL_SECONDS {
                 say(f"  removing abandoned extraction {full}...");
-                shutil.rmtree(full, ignore_errors=True);
+                remove_tree(full);
             }
             continue;
         }
         if ttl > 0.0 and now - last_used(full) > ttl {
             say(f"  removing unused runtime {full}...");
-            shutil.rmtree(full, ignore_errors=True);
+            remove_tree(full);
         }
     }
 }

@@ -1,6 +1,6 @@
-import os;
+import from .platform { environment, set_environment, jac_boot_is_file as is_file }
 import from .report { die }
-import from _dl_native { dlopen, dlsym, dl_error, RTLD_NOW, RTLD_GLOBAL, SHLIB_EXT }
+import from .dl { dlopen, dlsym, dl_error, RTLD_NOW, RTLD_GLOBAL, SHLIB_EXT }
 import from ._libc { peek, poke, c_string, c_alloc_string }
 
 glob PY_VER: str = "3.14",
@@ -230,18 +230,18 @@ obj CStrArray {
 }
 
 def:pub open_tree(rt: str, exe_path: str) -> Embed {
-    os.environ["JAC_STANDALONE"] = "1";
-    os.environ["JAC_EXECUTABLE"] = exe_path;
+    set_environment("JAC_STANDALONE", "1");
+    set_environment("JAC_EXECUTABLE", exe_path);
 
-    if not os.environ.get("MIMALLOC_PURGE_DELAY", "") {
-        os.environ["MIMALLOC_PURGE_DELAY"] = "0";
+    if not environment("MIMALLOC_PURGE_DELAY") {
+        set_environment("MIMALLOC_PURGE_DELAY", "0");
     }
 
     ca_bundle = rt + "/python/floor/cacert.pem";
-    if not os.environ.get("SSL_CERT_FILE", "")
-        and not os.environ.get("SSL_CERT_DIR", "")
-        and os.path.isfile(ca_bundle) {
-        os.environ["SSL_CERT_FILE"] = ca_bundle;
+    if not environment("SSL_CERT_FILE")
+        and not environment("SSL_CERT_DIR")
+        and is_file(ca_bundle) {
+        set_environment("SSL_CERT_FILE", ca_bundle);
     }
     libpath = f"{rt}/python/lib/libpython{PY_VER}{SHLIB_EXT}";
     handle = dlopen(libpath, i32(RTLD_NOW | RTLD_GLOBAL));
