@@ -872,7 +872,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     );
 
     _canon_src: dict[str, any] = {};
-    dep_edges: dict[str, any] = {};
+    dep_edges: dict[str | None, list[str]] = {};
     typed_only: dict[str, bool] = {};
     qi = 0;
     while qi < len(wq) {

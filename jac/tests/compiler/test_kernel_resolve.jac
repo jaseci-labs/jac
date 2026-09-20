@@ -12,6 +12,7 @@ import hashlib;
 import os;
 import tempfile;
 import from pathlib { Path }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.backends.native.kernel_resolve {
     KERNEL_LIB_ENV,
     KernelUnavailable,
