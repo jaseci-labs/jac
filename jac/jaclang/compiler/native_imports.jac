@@ -7,8 +7,37 @@ obj NativePythonImport {
         bind_module: str = "";
 }
 
+obj NativePythonImports {
+    has symbols: dict[int, NativePythonImport] = {},
+        statements: dict[int, NativePythonImport] = {},
+        module_bindings: set[tuple[int, str]] = set(),
+        local_bindings: dict[int, list[NativePythonImport]] = {},
+        initializers: list[NativePythonImport] = [];
+
+    def register(item: uni.UniNode, binding: NativePythonImport, module_level: bool) {
+        symbol = python_import_symbol(item);
+        if symbol is None {
+            return;
+        }
+        self.symbols[id(symbol)] = binding;
+        self.statements[id(item)] = binding;
+        if module_level {
+            self.module_bindings.add((id(symbol), binding.binding));
+            self.initializers.append(binding);
+        } else {
+            owner = item.parent;
+            while owner is not None
+                and not isinstance(owner, (uni.Ability, uni.ImplDef)) {
+                owner = owner.parent;
+            }
+            if owner is not None {
+                self.local_bindings.setdefault(id(owner), []).append(binding);
+            }
+        }
+    }
+}
+
 def python_import_symbol(item: uni.UniNode) -> uni.Symbol | None {
-    """Return the resolved binding, including catalog-backed from imports.""";
     if isinstance(item, uni.ModuleItem) {
         bound = item.binding_name;
         return bound.sym if bound is not None else None;
@@ -25,7 +54,6 @@ def python_import_symbol(item: uni.UniNode) -> uni.Symbol | None {
 }
 
 def python_object_expression(nd: uni.UniNode, seen: set[int] | None = None) -> bool {
-    """Identify values originating from the hosted provider, including local aliases.""";
     import os;
     if seen is None {
         seen = set();

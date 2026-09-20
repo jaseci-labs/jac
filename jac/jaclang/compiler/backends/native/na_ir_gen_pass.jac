@@ -16,7 +16,7 @@ import from jaclang.compiler.backends.native.lowering {
     NativeLoweringKind
 }
 import from jaclang.runtime.scalars { ScalarShape }
-import from jaclang.compiler.native_imports { NativePythonImport }
+import from jaclang.compiler.native_imports { NativePythonImport, NativePythonImports }
 
 import from jaclang.compiler.frontend.codeinfo {
     HDR_ALLOC_ID_OFF,
@@ -402,8 +402,7 @@ walker NaIRGenPass {
         set_release_fns: dict[str, ir.Function] = {},
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
-        _python_imports: dict[int, NativePythonImport] = {},
-        _python_globals: dict[tuple[int, str], NativePythonImport] = {},
+        _python_imports: NativePythonImports = NativePythonImports(),
         _python_init_fn: ir.Function | None = None,
         _python_module_identity: ir.GlobalVariable | None = None,
         _native_module_imports: set[str] = set(),
@@ -639,6 +638,7 @@ walker NaIRGenPass {
     def _python_bool_expr(nd: uni.BoolExpr, first: ir.Value) -> ir.Value;
     def _python_import(binding: NativePythonImport) -> ir.Value;
     def _python_import_statement(nd: uni.Import) -> None;
+    def _python_bind_locals(owner: uni.UniNode) -> None;
     def _emit_python_module_init -> None;
     def _python_ensure_module -> None;
     def _python_module_state -> ir.Value;

@@ -204,9 +204,11 @@ first test's writes reach the second. Tests that want a fixture compiled once
 should assert against it once, in a single test.
 """
 def compile_native(
-    fixture: str, fixture_dir: str = ""
+    fixture: str, fixture_dir: str = "", required: bool = False
 ) -> tuple[ExecutionEngine, Module] {
-    ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
+    options = native_force_opts();
+    options.native_required = required;
+    ir = _compile_native_fixture(fixture, fixture_dir, options);
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);

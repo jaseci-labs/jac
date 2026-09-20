@@ -324,7 +324,7 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
             propagate
         );
         self.builder.position_at_end(unhandled);
-        if self._python_imports {
+        if self._python_imports.symbols {
             python_error = func.append_basic_block("err.python");
             native_error = func.append_basic_block("err.native");
             self.builder.cbranch(
@@ -468,7 +468,7 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
         }
         handler_bb = func.append_basic_block(f"except.handler.{i}");
         next_bb = func.append_basic_block(f"except.dispatch.{i + 1}");
-        if self._python_imports and ex is not None {
+        if self._python_imports.symbols and ex is not None {
             python_match = func.append_basic_block(f"except.python.{i}");
             native_match = func.append_basic_block(f"except.native.{i}");
             self.builder.cbranch(

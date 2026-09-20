@@ -557,6 +557,19 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         alloca = self.local_vars[var_name];
         value = self.builder.load(alloca, name=var_name);
 
+        if self._python_value(value.type) {
+            missing = self.builder.icmp_unsigned(
+                "==", value, ir.Constant(value.type, None)
+            );
+            unbound = self.builder.function.append_basic_block("python.unbound");
+            bound = self.builder.function.append_basic_block("python.bound");
+            self.builder.cbranch(missing, unbound, bound);
+            self.builder.position_at_end(unbound);
+            self._python_runtime("unbound", [self._make_global_string(var_name)]);
+            self.builder.branch(bound);
+            self.builder.position_at_end(bound);
+        }
+
         if self._type_key_of(nd) == "str"
             and not self._python_value(value.type)
             and isinstance(value.type, ir.PointerType)
@@ -567,11 +580,12 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         }
         return value;
     }
-    if nd.sym is not None and (id(nd.sym), var_name) in self._python_globals {
+    if nd.sym is not None
+        and (id(nd.sym), var_name) in self._python_imports.module_bindings {
         return self._python_global(var_name);
     }
-    if nd.sym is not None and id(nd.sym) in self._python_imports {
-        return self._python_import(self._python_imports[id(nd.sym)]);
+    if nd.sym is not None and id(nd.sym) in self._python_imports.symbols {
+        return self._python_import(self._python_imports.symbols[id(nd.sym)]);
     }
     if var_name in self.func_symtab {
         return self.func_symtab[var_name];

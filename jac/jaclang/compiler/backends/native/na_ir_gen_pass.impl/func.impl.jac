@@ -482,6 +482,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         if nd.find_parent_of_type(uni.Module) is self.module {
             self._python_ensure_module();
         }
+        self._python_bind_locals(nd.body if isinstance(nd.body, uni.ImplDef) else nd);
         if body is not None {
             _symtab_before_body = dict(self.func_symtab);
             self._codegen_body(body);
@@ -726,6 +727,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
             }
             self.param_vars.add(cap_name);
         }
+        self._python_bind_locals(nd.body if isinstance(nd.body, uni.ImplDef) else nd);
         if body is not None {
             self._codegen_body(body);
         }
@@ -1058,6 +1060,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         body_bb = resume_fn.append_basic_block("body");
         self.builder.position_at_end(body_bb);
 
+        self._python_bind_locals(nd.body if isinstance(nd.body, uni.ImplDef) else nd);
         body = ModuleFacts.unwrap_body(nd);
         if body is not None {
             _symtab_before = dict(self.func_symtab);

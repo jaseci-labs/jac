@@ -4,7 +4,7 @@ impl NaIRGenPass._python_value(ty: ir.Type) -> bool {
 }
 
 impl NaIRGenPass._python_expr(nd: uni.UniNode) -> bool {
-    if not self._python_imports {
+    if not self._python_imports.symbols {
         return False;
     }
     if isinstance(nd, uni.Name) {
@@ -12,7 +12,7 @@ impl NaIRGenPass._python_expr(nd: uni.UniNode) -> bool {
         if slot is not None {
             return self._python_value(slot.pointee_type);
         }
-        return nd.sym is not None and id(nd.sym) in self._python_imports;
+        return nd.sym is not None and id(nd.sym) in self._python_imports.symbols;
     }
     if isinstance(nd, uni.FuncCall) and self._python_builtin(nd) {
         return True;
@@ -70,6 +70,8 @@ impl NaIRGenPass._python_box(value: ir.Value, consume: bool = True) -> ir.Value 
         );
     } elif isinstance(value.type, (ir.DoubleType, ir.FloatType)) {
         result = self._python_runtime("float", [value]);
+    } elif self._is_bytes_value(value) {
+        result = self._python_runtime("bytes", [value]);
     } elif value.type == self._str_desc_ty
         or value.type == ir.IntType(8).as_pointer() {
         result = self._python_runtime("text", [value]);
@@ -104,12 +106,20 @@ impl NaIRGenPass._python_import(binding: NativePythonImport) -> ir.Value {
     return imported;
 }
 
+impl NaIRGenPass._python_bind_locals(owner: uni.UniNode) -> None {
+    for binding in self._python_imports.local_bindings.get(id(owner), []) {
+        if binding.binding not in self.local_vars {
+            self.local_vars[binding.binding] = self._entry_alloca(
+                self.struct_types["__JacPythonValue"].as_pointer(), binding.binding
+            );
+        }
+    }
+}
+
 impl NaIRGenPass._python_import_statement(nd: uni.Import) -> None {
-    import from jaclang.compiler.native_imports { python_import_symbol }
     import from jaclang.compiler.passes.capability_check_pass { import_bound_name }
     for item in nd.items {
-        symbol = python_import_symbol(item);
-        binding = self._python_imports.get(id(symbol)) if symbol is not None else None;
+        binding = self._python_imports.statements.get(id(item));
         if binding is None {
             continue;
         }
@@ -287,7 +297,7 @@ impl NaIRGenPass._python_global(name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._emit_python_module_init -> None {
-    if not self._python_globals {
+    if not self._python_imports.initializers {
         return;
     }
     identity = ir.GlobalVariable(
@@ -311,7 +321,7 @@ impl NaIRGenPass._emit_python_module_init -> None {
     try {
         namespace = initializer.args[0];
         self._bind_function_parameter("namespace", namespace);
-        for binding in self._python_globals.values() {
+        for binding in self._python_imports.initializers {
             value = self._python_import(binding);
             key = self._python_runtime(
                 "text", [self._make_global_string(binding.binding)]

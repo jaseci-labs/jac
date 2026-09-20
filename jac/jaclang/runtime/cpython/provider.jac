@@ -31,6 +31,11 @@ import from jaclang.runtime.cpython.capi {
     jacpy_truth,
     jacpy_integer_value,
     jacpy_float_value,
+    jacpy_is_bytes,
+    read_buffer,
+    text_value,
+    boundary_failure,
+    object_error,
     jacpy_error_pending,
     jacpy_error_restore
 }
@@ -77,6 +82,16 @@ def __jac_python_check {
         failure = object_result(0);
         raise __JacPythonError(reference=failure.reference);
     }
+}
+
+def __jac_python_unbound(name: str) {
+    object_error(
+        "UnboundLocalError",
+        "cannot access local variable '"
+            + name
+            + "' where it is not associated with a value"
+    );
+    __jac_python_check();
 }
 
 def __jac_python_restore(error: __JacPythonError) {
@@ -183,6 +198,23 @@ def __jac_python_as_float(value: __JacPythonValue) -> float {
     result = jacpy_float_value(value.value);
     __jac_python_check();
     return result;
+}
+
+def __jac_python_as_text(value: __JacPythonValue) -> str {
+    try {
+        return text_value(value.value);
+    } except boundary_failure {
+        __jac_python_check();
+        raise;
+    }
+}
+
+def __jac_python_as_bytes(value: __JacPythonValue) -> bytes {
+    if jacpy_is_bytes(value.value) == 0 {
+        object_error("TypeError", "expected a bytes object");
+        __jac_python_check();
+    }
+    return read_buffer(value.value);
 }
 
 

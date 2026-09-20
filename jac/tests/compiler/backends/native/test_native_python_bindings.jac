@@ -5,8 +5,62 @@ import sys;
 import types;
 import from tests.support { compile_native, get_func }
 
+test "local imports remain unbound until their statement executes" {
+    (engine, _) = compile_native("python_import_bindings.jac", required=True);
+    import from unittest.mock { patch }
+    replacement = types.ModuleType("sqlite3");
+    setattr(replacement, "sqlite_version", 17);
+    with patch.dict(sys.modules, {"sqlite3": replacement}) {
+        conditional = get_func(
+            engine, "conditional_binding", ctypes.c_int64, ctypes.c_bool
+        );
+        before = get_func(engine, "binding_before_statement", ctypes.c_int64);
+        for _ in range(100) {
+            assert conditional(True) == 17;
+            try {
+                conditional(False);
+                assert False , "a skipped import must leave its binding unbound";
+            } except UnboundLocalError as error {
+                assert "version" in str(error);
+            }
+            try {
+                before();
+                assert False , "reading a local import must not execute it early";
+            } except UnboundLocalError as error {
+                assert "version" in str(error);
+            }
+        }
+    }
+}
+
+test "repeated imports execute in order and local reexports retain their module" {
+    (engine, _) = compile_native("python_repeated_imports.jac", required=True);
+    calls: list[str] = [];
+    def attribute(name: str) -> any {
+        if name != "sqlite_version" {
+            raise AttributeError(name);
+        }
+        calls.append(name);
+        return len(calls);
+    }
+    replacement = types.ModuleType("sqlite3");
+    setattr(replacement, "__getattr__", attribute);
+    child = types.ModuleType("sqlite3.dbapi2");
+    setattr(child, "sqlite_version", 99);
+    import from unittest.mock { patch }
+    with patch.dict(sys.modules, {"sqlite3": replacement, "sqlite3.dbapi2": child}) {
+        number = get_func(engine, "number", ctypes.c_int64);
+        assert number() == 32;
+        assert len(calls) == 3;
+        local = get_func(engine, "local_number", ctypes.c_int64);
+        assert local() == 99;
+        assert len(calls) == 4;
+        assert number() == 32;
+    }
+}
+
 test "Python import aliases are scoped and local imports execute once" {
-    (engine, _) = compile_native("python_import_bindings.jac");
+    (engine, _) = compile_native("python_import_bindings.jac", required=True);
     assert get_func(engine, "add", ctypes.c_int64)() == 10;
     assert get_func(engine, "subtract", ctypes.c_int64)() == 4;
     local = get_func(engine, "local_binding", ctypes.c_bool);
@@ -40,7 +94,7 @@ test "Python import aliases are scoped and local imports execute once" {
 }
 
 test "module imports initialize eagerly and preserve distinct alias bindings" {
-    (engine, _) = compile_native("python_module_bindings.jac");
+    (engine, _) = compile_native("python_module_bindings.jac", required=True);
     calls: list[str] = [];
     def attribute(name: str) -> any {
         if name != "sqlite_version" {
@@ -71,7 +125,7 @@ test "module imports initialize eagerly and preserve distinct alias bindings" {
 }
 
 test "failed module imports roll back and retry without retaining partial bindings" {
-    (engine, _) = compile_native("python_module_bindings.jac");
+    (engine, _) = compile_native("python_module_bindings.jac", required=True);
     sentinel = object();
     baseline = sys.getrefcount(sentinel);
     calls: list[str] = [];
@@ -106,7 +160,7 @@ test "failed module imports roll back and retry without retaining partial bindin
 
 test "native module bindings belong to each interpreter" {
     import _interpreters;
-    (engine, _) = compile_native("python_module_bindings.jac");
+    (engine, _) = compile_native("python_module_bindings.jac", required=True);
     original = sys.modules[sqlite3.__name__];
     replacement = types.ModuleType("sqlite3");
     setattr(replacement, "sqlite_version", 17);
@@ -143,7 +197,7 @@ test "native module bindings belong to each interpreter" {
 test "concurrent and recursive native entry reuse Python module locks" {
     import from concurrent.futures { ThreadPoolExecutor }
     import from threading { Event }
-    (engine, _) = compile_native("python_module_bindings.jac");
+    (engine, _) = compile_native("python_module_bindings.jac", required=True);
     replacement = types.ModuleType("sqlite3");
     original = sys.modules[sqlite3.__name__];
     try {

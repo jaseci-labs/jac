@@ -1809,7 +1809,7 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
             return result[0];
         }
     }
-    if self._python_imports
+    if self._python_imports.symbols
         and self._python_value(val.type)
         and target_type != val.type {
         if isinstance(target_type, ir.IntType) {
@@ -1823,6 +1823,16 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
             converted = self._python_runtime("as_float", [val]);
             self._release_owned_args([val]);
             return self._coerce_type(converted, target_type);
+        }
+        if target_type == self._str_desc_ty {
+            converted = self._python_runtime("as_text", [val]);
+            self._release_owned_args([val]);
+            return converted;
+        }
+        if target_type == self._get_bytes_struct_type().as_pointer() {
+            converted = self._python_runtime("as_bytes", [val]);
+            self._release_owned_args([val]);
+            return converted;
         }
     }
     _was_owned = self._is_owned(val);

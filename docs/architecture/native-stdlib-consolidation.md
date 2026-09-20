@@ -89,6 +89,17 @@ with the same spelling in different scopes. From-imports reuse the pinned
 interpreter's import machinery, including its circular-import fallback and
 `ImportError` construction.
 
+The import plan separates statement occurrences, resolved symbols, and lexical
+scopes. Repeated imports execute in source order even when they overwrite the
+same binding. Local bindings start uninitialized and raise `UnboundLocalError`
+if their statement has not run. Shared runtime functions use the existing module
+symbol naming mechanism, so helper names do not collide with user functions.
+
+Explicit native text and bytes boundaries use checked conversions through the
+shared object API and buffer helpers. Unicode and embedded NUL bytes survive a
+round trip; wrong Python object types raise `TypeError` instead of being cast to
+an incompatible native layout. Native bytes arguments are boxed as Python bytes.
+
 Module import bindings initialize eagerly and live in a namespace owned by the
 current interpreter. The namespace is keyed by a private, address-significant
 native module identity; the existing JIT engine pinning keeps escaped code and

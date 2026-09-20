@@ -159,6 +159,9 @@ def native_safe_sym(src: str) -> str {
 
 def native_library_function_symbol(mod_path: str, name: str) -> str {
     import os;
+    if is_shared_runtime_module(mod_path) {
+        return f"__jac_lib_{native_safe_sym(module_dotted_name(mod_path))}_{name}";
+    }
     library_root = native_stdlib_root();
     if library_root is None {
         return name;
