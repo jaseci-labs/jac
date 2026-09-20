@@ -167,6 +167,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     set_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_set_new_loc, name="set.new"
     );
+    self._protect_temporary(self._mark_owned(set_val));
     self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd));
     _sinit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc

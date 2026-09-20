@@ -44,17 +44,29 @@ Python-free entries continue to release the GIL.
 Module resolution and bootstrap payload extraction still need the migrations
 described below.
 
-The migration is incomplete. A stronger ownership test exposed a pre-existing
-native exception bug: `longjmp` skips reference cleanup in intermediate native
-frames. `ObjectRef` cannot supply language-level exception safety on that path.
-The reproducer is
-[native_unwind_cleanup.jac](../../jac/tests/compiler/backends/native/fixtures/native_unwind_cleanup.jac).
-The temporary `PythonFailure` exception adapter has been removed; explicit
-owned results provide the runtime boundary without depending on that unsafe
-unwind path. Ordinary native `try`/`except` integration still requires a
-coordinated exception-ABI change, including generators, iterator adapters,
-temporary values, and exported entry points. Merely enabling the existing error
-slots globally does not establish those contracts.
+Native exception ABI 2 propagates pending errors through ordinary returns and
+uses the same dispatch path for managed code, `nogc`, generators and iterator
+adapters. It no longer uses `setjmp`/`longjmp`. Each function releases its local
+values before propagating to its caller. Expression cleanup slots protect
+already evaluated arguments, partial construction and return values while
+`finally` executes. Generator frames distinguish owned bindings from scratch
+slots, and preserve caught and pending errors across suspension.
+
+An owned error record carries the native payload and a copy of its message.
+Managed code uses the existing reference-counting runtime. `nogc` code uses
+explicit ownership transfer and static drops, without introducing reference
+counting into the program. Native tests copy a failure diagnostic before clearing
+the owned pending error. Exception TLS symbols include the native ABI version so
+an older host cannot interpret the new context layout accidentally.
+
+The ownership regressions live in
+[native_unwind_cleanup.jac](../../jac/tests/compiler/backends/native/fixtures/native_unwind_cleanup.jac)
+and
+[test_native_python_references.jac](../../jac/tests/compiler/backends/native/test_native_python_references.jac).
+Original Python exceptions still cross the runtime boundary through owned
+`ObjectResult` values. The compiler's ordinary Python-object provider and its
+native `try`/`except` integration remain to be implemented; the transport change
+alone does not migrate imports or establish stdlib conformance.
 
 ## Reproduce
 

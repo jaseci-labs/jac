@@ -1,6 +1,33 @@
 import os;
 
 impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
+    frame = self._error_frame;
+    if frame is None
+        or self._builder is None
+        or frame.function is not self.builder.function {
+        return self._codegen_expr_inner(nd);
+    }
+    temporaries: list[NativeTemporary] = [];
+    frame.temporaries.append(temporaries);
+    try {
+        result = self._codegen_expr_inner(nd);
+    } finally {
+        if not self.builder.block.is_terminated {
+            for temporary in temporaries {
+                self.builder.store(
+                    ir.Constant(temporary.value.type, None), temporary.slot
+                );
+            }
+        }
+        frame.temporaries.pop();
+    }
+    if result is not None {
+        self._protect_temporary(result);
+    }
+    return result;
+}
+
+impl NaIRGenPass._codegen_expr_inner(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if nd is None {
         return None;
     }
@@ -281,9 +308,6 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
         gc.out_i8, gc.elem_type.as_pointer(), name="yield.out"
     );
     self.builder.store(v, out_typed);
-    for _entry in self._gen_try_stack {
-        self.builder.call(self._exc_pop_fn, []);
-    }
     k = len(gc.resume_blocks) + 1;
     ip_slot = self.builder.bitcast(gc.frame_i8, i64.as_pointer(), name="yield.ip");
     self.builder.store(ir.Constant(i64, k), ip_slot);
@@ -292,23 +316,6 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     rbb = gc.resume_fn.append_basic_block(f"resume{k}");
     gc.resume_blocks.append(rbb);
     self.builder.position_at_end(rbb);
-    for _entry in self._gen_try_stack {
-        exc_state = _entry.state;
-        self.builder.call(self._exc_push_fn, [exc_state]);
-        env_ptr = self.builder.gep(
-            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"rearm.env.{k}"
-        );
-        env_i8p = self.builder.bitcast(env_ptr, i8p, name=f"rearm.envp.{k}");
-        sj = self.builder.call(
-            self.extern_funcs["setjmp"], [env_i8p], name=f"rearm.sj.{k}"
-        );
-        is_exc = self.builder.icmp_signed(
-            "!=", sj, ir.Constant(i32, 0), name=f"rearm.isexc.{k}"
-        );
-        cont_bb = gc.resume_fn.append_basic_block(f"resume{k}.armed");
-        self.builder.cbranch(is_exc, _entry.dispatch, cont_bb);
-        self.builder.position_at_end(cont_bb);
-    }
 }
 
 impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {

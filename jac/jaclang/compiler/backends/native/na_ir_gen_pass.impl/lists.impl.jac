@@ -448,6 +448,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     list_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_list_new_loc, name="list.new"
     );
+    self._protect_temporary(self._mark_owned(list_val));
     if not self._container_is_view(nd) {
         self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd));
     }

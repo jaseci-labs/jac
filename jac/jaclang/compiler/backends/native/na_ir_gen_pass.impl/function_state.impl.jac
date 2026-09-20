@@ -65,9 +65,9 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
         loop_stack=self.loop_stack,
         _self_owned=self._self_owned,
         _self_arch=self._self_arch,
+        _error_frame=self._error_frame,
         _di_current_sp=self._di_current_sp,
         _gen_ctx=self._gen_ctx,
-        _gen_try_stack=self._gen_try_stack,
         _slot_try_stack=self._slot_try_stack,
         _finally_stack=self._finally_stack,
         _caught_error_stack=self._caught_error_stack
@@ -81,10 +81,27 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
     self._self_owned = False;
     self._di_current_sp = None;
     self._gen_ctx = None;
-    self._gen_try_stack = [];
     self._slot_try_stack = [];
     self._finally_stack = [];
     self._caught_error_stack = [];
+    context = self.builder.call(self._get_exception_context_fn(), []);
+    i32 = ir.IntType(32);
+    depth = self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, 3)]);
+    fields = [
+        self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, index)])
+        for index in range(3)
+    ];
+    self._error_frame = NativeErrorFrame(
+        function=func,
+        depth=depth,
+        owns_error=self.builder.gep(
+            context, [ir.Constant(i32, 0), ir.Constant(i32, 4)]
+        ),
+        slots=(fields[0], fields[1], fields[2])
+    );
+    self.builder.store(
+        self.builder.add(self.builder.load(depth), ir.Constant(i32, 1)), depth
+    );
     return state;
 }
 
@@ -111,6 +128,20 @@ impl NaIRGenPass._bind_function_parameter(
 }
 
 impl NaIRGenPass._leave_function(state: NativeFunctionState) -> None {
+    if self._builder is not None and self._error_frame is not None {
+        for block in self.builder.function.basic_blocks {
+            if isinstance(block.terminator, ir.Ret) {
+                b = ir.IRBuilder(block);
+                b.position_before(block.terminator);
+                b.store(
+                    b.sub(
+                        b.load(self._error_frame.depth), ir.Constant(ir.IntType(32), 1)
+                    ),
+                    self._error_frame.depth
+                );
+            }
+        }
+    }
     self._leave_bindings(state.bindings);
     self._builder = state._builder;
     self.func_symtab = state.func_symtab;
@@ -120,9 +151,9 @@ impl NaIRGenPass._leave_function(state: NativeFunctionState) -> None {
     self.loop_stack = state.loop_stack;
     self._self_owned = state._self_owned;
     self._self_arch = state._self_arch;
+    self._error_frame = state._error_frame;
     self._di_current_sp = state._di_current_sp;
     self._gen_ctx = state._gen_ctx;
-    self._gen_try_stack = state._gen_try_stack;
     self._slot_try_stack = state._slot_try_stack;
     self._finally_stack = state._finally_stack;
     self._caught_error_stack = state._caught_error_stack;

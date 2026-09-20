@@ -152,6 +152,11 @@ impl NaIRGenPass._transfer_own_args(
     if not _hl {
         return release_args;
     }
+    for index in _own_idx {
+        if index < len(args) {
+            self._consume_temporary(args[index]);
+        }
+    }
     return [
         _rv
         for (_ri, _rv) in enumerate(release_args)
@@ -1111,6 +1116,9 @@ impl NaIRGenPass._codegen_receiver(nd: (uni.UniNode | None)) -> (ir.Value | None
 }
 
 impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None {
+    if self._is_owned(value) {
+        self._consume_temporary(value);
+    }
     if self._elem_kind(value.type) in ("rc_ptr", "str") and not self._is_owned(value) {
         self._emit_rc_retain(value, op=op, loc=loc);
         return;
@@ -1143,6 +1151,7 @@ impl NaIRGenPass._codegen_decorated_call(
     fptr = self.builder.load(slot_gv, name=f"decslot.{func_name}");
     result = self.builder.call(fptr, coerced, name=f"call.{func_name}");
     self._release_owned_args(coerced, op="call_arg");
+    self._emit_pending_error_check();
     return result;
 }
 

@@ -1,185 +1,9 @@
-impl NaIRGenPass._get_exception_state_type -> ir.Type {
-    if self._exc_state_type is not None {
-        return self._exc_state_type;
-    }
-    jmp_buf_type = ir.ArrayType(ir.IntType(8), 200);
-    exc_state = self.llvm_module.context.get_identified_type("JacExceptionState");
-
-    exc_state.set_body(
-        jmp_buf_type,
-        ir.IntType(8).as_pointer(),
-        ir.IntType(32),
-        ir.IntType(8).as_pointer(),
-        ir.IntType(8).as_pointer()
-    );
-    self._exc_state_type = exc_state;
-    return exc_state;
-}
-
-impl NaIRGenPass._declare_exception_runtime -> None {
-    i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
-
-    setjmp_fn = self._get_or_declare_extern("setjmp", i32, [i8p]);
-    setjmp_fn.attributes.add("returns_twice");
-
-    longjmp_fn = self._get_or_declare_extern("longjmp", ir.VoidType(), [i8p, i32]);
-    longjmp_fn.attributes.add("noreturn");
-
-    self._get_or_declare_extern("abort", ir.VoidType(), []);
-
-    self._emit_exc_push_helper();
-
-    self._emit_exc_pop_helper();
-
-    self._emit_exc_raise_helper();
-}
-
-impl NaIRGenPass._emit_exc_push_helper -> None {
-    exc_state_type = self._get_exception_state_type();
-    exc_state_ptr = exc_state_type.as_pointer();
-    i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
-    fnty = ir.FunctionType(ir.VoidType(), [exc_state_ptr]);
-    func = self._define_function("__jac_exc_push", fnty);
-    func.linkage = "private";
-    func.args[0].name = "state";
-    bb = func.append_basic_block("entry");
-    b = ir.IRBuilder(bb);
-    handler_slot = self._exception_handler_slot(b);
-    state = func.args[0];
-
-    prev_handler = b.load(handler_slot, name="prev");
-    prev_as_i8p = b.bitcast(prev_handler, i8p, name="prev.i8p");
-    prev_ptr = b.gep(
-        state, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="prev.ptr"
-    );
-    b.store(prev_as_i8p, prev_ptr);
-
-    type_ptr = b.gep(
-        state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="type.ptr"
-    );
-    b.store(ir.Constant(i32, 0), type_ptr);
-
-    obj_ptr = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="obj.ptr");
-    b.store(ir.Constant(i8p, None), obj_ptr);
-
-    msg_ptr = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="msg.ptr");
-    b.store(ir.Constant(i8p, None), msg_ptr);
-
-    b.store(state, handler_slot);
-    b.ret_void();
-    self._exc_push_fn = func;
-}
-
-impl NaIRGenPass._emit_exc_pop_helper -> None {
-    exc_state_type = self._get_exception_state_type();
-    exc_state_ptr = exc_state_type.as_pointer();
-    i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
-    fnty = ir.FunctionType(ir.VoidType(), []);
-    func = self._define_function("__jac_exc_pop", fnty);
-    func.linkage = "private";
-    bb = func.append_basic_block("entry");
-    b = ir.IRBuilder(bb);
-    handler_slot = self._exception_handler_slot(b);
-
-    cur_handler = b.load(handler_slot, name="cur");
-
-    prev_ptr = b.gep(
-        cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="prev.ptr"
-    );
-    prev_i8p = b.load(prev_ptr, name="prev.i8p");
-    prev_handler = b.bitcast(prev_i8p, exc_state_ptr, name="prev.handler");
-
-    b.store(prev_handler, handler_slot);
-    b.ret_void();
-    self._exc_pop_fn = func;
-}
-
-impl NaIRGenPass._emit_exc_raise_helper -> None {
-    exc_state_type = self._get_exception_state_type();
-    exc_state_ptr = exc_state_type.as_pointer();
-    i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
-    fnty = ir.FunctionType(ir.VoidType(), [i8p, i32, i8p]);
-    func = self._define_function("__jac_exc_raise", fnty);
-    func.linkage = "private";
-    func.args[0].name = "obj";
-    func.args[1].name = "type_id";
-    func.args[2].name = "msg";
-    entry_bb = func.append_basic_block("entry");
-    has_handler_bb = func.append_basic_block("has.handler");
-    no_handler_bb = func.append_basic_block("no.handler");
-    b = ir.IRBuilder(entry_bb);
-    handler_slot = self._exception_handler_slot(b);
-    obj_val = func.args[0];
-    type_val = func.args[1];
-    msg_val = func.args[2];
-
-    cur_handler = b.load(handler_slot, name="cur.handler");
-    null_ptr = ir.Constant(exc_state_ptr, None);
-    is_null = b.icmp_unsigned("==", cur_handler, null_ptr, name="no.handler.check");
-    b.cbranch(is_null, no_handler_bb, has_handler_bb);
-
-    b.position_at_end(no_handler_bb);
-    printf_fn = self._get_printf();
-    err_fmt_str = "Uncaught exception: %s\n\0";
-    err_fmt_bytes = bytearray(err_fmt_str.encode("utf8"));
-    err_fmt_const = ir.Constant(
-        ir.ArrayType(ir.IntType(8), len(err_fmt_bytes)), err_fmt_bytes
-    );
-    err_fmt_global = ir.GlobalVariable(
-        self.llvm_module, err_fmt_const.type, name=".exc.uncaught.fmt"
-    );
-    err_fmt_global.linkage = "private";
-    err_fmt_global.global_constant = True;
-    err_fmt_global.initializer = err_fmt_const;
-    err_fmt_ptr = b.bitcast(err_fmt_global, i8p);
-    b.call(printf_fn, [err_fmt_ptr, msg_val]);
-
-    _fflush = self._get_or_declare_extern("fflush", ir.IntType(32), [i8p]);
-    b.call(_fflush, [ir.Constant(i8p, None)]);
-    abort_fn = self.extern_funcs["abort"];
-    b.call(abort_fn, []);
-    b.unreachable();
-
-    b.position_at_end(has_handler_bb);
-
-    obj_ptr = b.gep(
-        cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
-    );
-    b.store(obj_val, obj_ptr);
-
-    type_ptr = b.gep(
-        cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="exc.type.ptr"
-    );
-    b.store(type_val, type_ptr);
-
-    msg_slot = b.gep(
-        cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="exc.msg.ptr"
-    );
-    b.store(msg_val, msg_slot);
-
-    env_ptr = b.gep(
-        cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
-    );
-    env_i8p = b.bitcast(env_ptr, i8p, name="env.i8p");
-    longjmp_fn = self.extern_funcs["longjmp"];
-    b.call(longjmp_fn, [env_i8p, ir.Constant(i32, 1)]);
-    b.unreachable();
-    self._exc_raise_fn = func;
-}
-
 impl NaIRGenPass._emit_runtime_raise(
     is_error: ir.Value,
     exc_type_name: str,
     msg: str,
     release_on_error: list[ir.Value] = []
 ) -> None {
-    if not self._slot_lowering_active() and self._exc_raise_fn is None {
-        self._declare_exception_runtime();
-    }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     func = self.builder.function;
@@ -213,14 +37,7 @@ impl NaIRGenPass._emit_runtime_raise(
         self._rt_error_msgs[msg] = global_str;
     }
     msg_val = self.builder.bitcast(global_str, i8p, name="rt.msg.cast");
-    if self._slot_lowering_active() {
-        self._codegen_raise_slot(msg_val, exc_type_id, msg_val);
-    } else {
-        self.builder.call(
-            self._exc_raise_fn, [msg_val, ir.Constant(i32, exc_type_id), msg_val]
-        );
-        self.builder.unreachable();
-    }
+    self._codegen_raise_slot(None, exc_type_id, msg_val);
 
     self.builder.position_at_end(ok_bb);
 }
@@ -248,27 +65,30 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
 
-    if not self._slot_lowering_active() and self._exc_raise_fn is None {
-        self._declare_exception_runtime();
-    }
-
     if nd.cause is None {
         for (owner, values) in reversed(self._caught_error_stack) {
             if owner is self.builder.function {
-                if self._slot_lowering_active() {
-                    for (slot, value) in zip(self._nogc_err_slot(), values) {
-                        self.builder.store(value, slot);
-                    }
-                    self._emit_err_propagate(loc="reraise");
-                } else {
-                    self.builder.call(
-                        self._exc_raise_fn, [values[1], values[0], values[2]]
-                    );
-                    self.builder.unreachable();
-                }
-                return;
+                active = owner.append_basic_block("reraise.active");
+                next_error = owner.append_basic_block("reraise.next");
+                self.builder.cbranch(
+                    self.builder.icmp_signed(
+                        "!=", self.builder.load(values[0]), ir.Constant(i32, 0)
+                    ),
+                    active,
+                    next_error
+                );
+                self.builder.position_at_end(active);
+                self._restore_error(values);
+                self._emit_err_propagate(loc="reraise");
+                self.builder.position_at_end(next_error);
             }
         }
+        self._codegen_raise_slot(
+            None,
+            self._get_or_register_exc_type("RuntimeError"),
+            self._make_global_string("No active exception to reraise")
+        );
+        return;
     }
     exc_payload: (ir.Value | None) = None;
     exc_msg: (ir.Value | None) = None;
@@ -307,9 +127,6 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
                 exc_type_name = cause_struct;
                 exc_type_id = self._get_or_register_exc_type(cause_struct);
                 exc_payload = self._codegen_expr(nd.cause);
-                if exc_payload is not None {
-                    self._emit_take_ref(exc_payload, op="raise");
-                }
             } else {
                 exc_msg = self._codegen_expr(nd.cause);
             }
@@ -319,8 +136,6 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     if exc_msg is None {
         exc_msg = self._make_global_string(exc_type_name, name_prefix=".exc.msg");
     }
-    exc_msg = self._str_norm(exc_msg);
-    exc_payload = self._str_norm_optional(exc_payload);
     if exc_msg is None {
         return;
     }
@@ -328,273 +143,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     if isinstance(exc_msg.type, ir.PointerType) and exc_msg.type != i8p {
         exc_msg = self.builder.bitcast(exc_msg, i8p, name="exc.msg.cast");
     }
-    if exc_payload is None {
-        exc_payload = exc_msg;
-    } elif isinstance(exc_payload.type, ir.PointerType) and exc_payload.type != i8p {
-        exc_payload = self.builder.bitcast(exc_payload, i8p, name="exc.obj.cast");
-    }
-
-    if self._slot_lowering_active() {
-        self._codegen_raise_slot(exc_payload, exc_type_id, exc_msg);
-        return;
-    }
-    self.builder.call(
-        self._exc_raise_fn, [exc_payload, ir.Constant(i32, exc_type_id), exc_msg]
-    );
-    self.builder.unreachable();
-}
-
-impl NaIRGenPass._raise_has_frame_handler(nd: uni.RaiseStmt) -> bool {
-    _child: uni.UniNode = nd;
-    _cur = nd.parent;
-    while _cur is not None {
-        if isinstance(_cur, uni.TryStmt) and _child in list(_cur.body) {
-            return True;
-        }
-        if isinstance(_cur, (uni.Ability, uni.LambdaExpr, uni.Module)) {
-            return False;
-        }
-        _child = _cur;
-        _cur = _cur.parent;
-    }
-    return False;
-}
-
-impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
-    if self._slot_lowering_active() {
-        self._codegen_try_slot(nd);
-    } elif nd.finally_body is not None and self._gen_ctx is None {
-        self._codegen_finally_guard(nd);
-    } else {
-        self._codegen_try_unwind(nd);
-    }
-}
-
-impl NaIRGenPass._codegen_try_unwind(
-    nd: uni.TryStmt, emit_finally: bool = True
-) -> None {
-    i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
-
-    if self._exc_raise_fn is None {
-        self._declare_exception_runtime();
-    }
-    exc_state_type = self._get_exception_state_type();
-    exc_state_ptr = exc_state_type.as_pointer();
-    func = self.builder.function;
-    _gc = self._gen_ctx;
-    _in_gen = _gc is not None and func is _gc.resume_fn;
-
-    func.attributes.add("optnone");
-    func.attributes.add("noinline");
-
-    setup_bb = func.append_basic_block(name="try.setup");
-    body_bb = func.append_basic_block(name="try.body");
-    success_bb = func.append_basic_block(name="try.success");
-    dispatch_bb = func.append_basic_block(name="except.dispatch");
-    finally_bb = func.append_basic_block(name="finally");
-    merge_bb = func.append_basic_block(name="try.merge");
-
-    self.builder.branch(setup_bb);
-
-    self.builder.position_at_end(setup_bb);
-    (exc_state, _rgn_depth_slot) = self._push_exception_handler(dispatch_bb, body_bb);
-
-    self.builder.position_at_end(body_bb);
-    if _in_gen {
-        self._gen_try_stack.append(
-            NativeGeneratorHandler(state=exc_state, dispatch=dispatch_bb)
-        );
-    }
-    frame = NativeFinalizer(
-        body=nd.finally_body if emit_finally else None,
-        function=func,
-        loop_depth=len(self.loop_stack),
-        handler_depth=len(self._slot_try_stack),
-        pop_handler=True
-    );
-    self._finally_stack.append(frame);
-    if isinstance(nd.body, (list, tuple)) {
-        self._codegen_body(nd.body);
-    }
-    self._finally_stack.pop();
-    if _in_gen {
-        self._gen_try_stack.pop();
-    }
-    if not self.builder.block.is_terminated {
-        self.builder.branch(success_bb);
-    }
-
-    self.builder.position_at_end(success_bb);
-    self.builder.call(self._exc_pop_fn, []);
-
-    frame.pop_handler = False;
-    self._finally_stack.append(frame);
-    if nd.else_body is not None {
-        else_bb = func.append_basic_block(name="try.else");
-        self.builder.branch(else_bb);
-        self.builder.position_at_end(else_bb);
-        if isinstance(nd.else_body, uni.ElseStmt) {
-            if isinstance(nd.else_body.body, (list, tuple)) {
-                self._codegen_body(nd.else_body.body);
-            }
-        }
-        if not self.builder.block.is_terminated {
-            self.builder.branch(finally_bb);
-        }
-    } elif not self.builder.block.is_terminated {
-        self.builder.branch(finally_bb);
-    }
-
-    self._finally_stack.pop();
-    self.builder.position_at_end(dispatch_bb);
-    self._region_unwind(self.builder.load(_rgn_depth_slot, name="rgn.depth"));
-
-    exc_type_ptr = self.builder.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="exc.type.ptr"
-    );
-    exc_type_val = self.builder.load(exc_type_ptr, name="exc.type");
-
-    exc_obj_ptr = self.builder.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
-    );
-    exc_obj_val = self.builder.load(exc_obj_ptr, name="exc.obj");
-    exc_msg_slot = self.builder.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="exc.msg.slot"
-    );
-    if nd.excepts {
-        current_dispatch_bb = dispatch_bb;
-        for (i, except_node) in enumerate(nd.excepts) {
-            handler_bb = func.append_basic_block(name=f"except.handler.{i}");
-            is_last = i == len(nd.excepts) - 1;
-
-            next_dispatch_bb: ir.Block | None = None;
-            if not is_last {
-                next_dispatch_bb = func.append_basic_block(
-                    name=f"except.dispatch.{i + 1}"
-                );
-            } else {
-                next_dispatch_bb = None;
-            }
-
-            caught_type_name = self._get_name(except_node.ex_type) or "Exception";
-            caught_type_id = self._get_or_register_exc_type(caught_type_name);
-
-            if i > 0 {
-                self.builder.position_at_end(current_dispatch_bb);
-
-                exc_type_val = self.builder.load(exc_type_ptr, name=f"exc.type.{i}");
-                exc_obj_val = self.builder.load(exc_obj_ptr, name=f"exc.obj.{i}");
-            }
-
-            if caught_type_id == 0 {
-                self.builder.branch(handler_bb);
-            } else {
-                descendants = self._get_exc_descendants(caught_type_name);
-                does_match = self.builder.icmp_signed(
-                    "==",
-                    exc_type_val,
-                    ir.Constant(i32, caught_type_id),
-                    name=f"exc.match.{i}"
-                );
-                for desc_name in descendants {
-                    desc_id = self._get_or_register_exc_type(desc_name);
-                    desc_match = self.builder.icmp_signed(
-                        "==",
-                        exc_type_val,
-                        ir.Constant(i32, desc_id),
-                        name=f"exc.match.{i}.{desc_name}"
-                    );
-                    does_match = self.builder.or_(
-                        does_match, desc_match, name=f"exc.or.{i}.{desc_name}"
-                    );
-                }
-                if next_dispatch_bb is not None {
-                    self.builder.cbranch(does_match, handler_bb, next_dispatch_bb);
-                } else {
-                    reraise_bb = func.append_basic_block(name="except.reraise");
-                    self.builder.cbranch(does_match, handler_bb, reraise_bb);
-                    self.builder.position_at_end(reraise_bb);
-                    self.builder.call(self._exc_pop_fn, []);
-                    reraise_obj = self.builder.load(exc_obj_ptr, name="reraise.obj");
-                    reraise_type = self.builder.load(exc_type_ptr, name="reraise.type");
-                    reraise_msg = self.builder.load(exc_msg_slot, name="reraise.msg");
-                    self.builder.call(
-                        self._exc_raise_fn, [reraise_obj, reraise_type, reraise_msg]
-                    );
-                    self.builder.unreachable();
-                }
-            }
-
-            self.builder.position_at_end(handler_bb);
-            self.builder.call(self._exc_pop_fn, []);
-
-            if except_node.name is not None {
-                var_name = except_node.name.value
-                    if isinstance(except_node.name, uni.Name)
-                    else str(except_node.name);
-
-                if caught_type_name in self.struct_types {
-                    handler_exc_obj = self.builder.load(
-                        exc_obj_ptr, name="exc.bound.obj"
-                    );
-                    _exc_sp_ty = self.struct_types[caught_type_name].as_pointer();
-                    typed_obj = self.builder.bitcast(
-                        handler_exc_obj, _exc_sp_ty, name="exc.bound.typed"
-                    );
-                    alloca = self._entry_alloca(_exc_sp_ty, var_name);
-                    self.builder.store(typed_obj, alloca);
-                } else {
-                    handler_exc_msg = self.builder.load(
-                        exc_msg_slot, name="exc.bound.msg"
-                    );
-                    alloca = self._entry_alloca(i8p, var_name);
-                    self.builder.store(handler_exc_msg, alloca);
-                }
-                self.local_vars[var_name] = alloca;
-            }
-
-            self._caught_error_stack.append((func, self._exception_values(exc_state)));
-            self._finally_stack.append(frame);
-            if isinstance(except_node.body, (list, tuple)) {
-                self._codegen_body(except_node.body);
-            }
-            self._finally_stack.pop();
-            self._caught_error_stack.pop();
-            if not self.builder.block.is_terminated {
-                self.builder.branch(finally_bb);
-            }
-
-            if next_dispatch_bb is not None {
-                current_dispatch_bb = next_dispatch_bb;
-            }
-        }
-    } else {
-        self.builder.call(self._exc_pop_fn, []);
-        exc_msg_val = self.builder.load(exc_msg_slot, name="exc.msg");
-        self.builder.call(self._exc_raise_fn, [exc_obj_val, exc_type_val, exc_msg_val]);
-        self.builder.unreachable();
-    }
-
-    self.builder.position_at_end(finally_bb);
-    if emit_finally and nd.finally_body is not None {
-        if isinstance(nd.finally_body.body, (list, tuple)) {
-            self._codegen_body(nd.finally_body.body);
-        }
-    }
-    if not self.builder.block.is_terminated {
-        self.builder.branch(merge_bb);
-    }
-
-    self.builder.position_at_end(merge_bb);
-}
-
-impl NaIRGenPass._slot_lowering_active -> bool {
-    return (
-        bool(getattr(self.module.gen, "nogc_enforced", False))
-        or "wasm" in str(self.llvm_module.triple)
-    )
-        and self._gen_ctx is None;
+    self._codegen_raise_slot(exc_payload, exc_type_id, exc_msg);
 }
 
 impl NaIRGenPass._get_exception_context_fn -> ir.Function {
@@ -604,19 +153,20 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    context_type = ir.LiteralStructType([i32, i8p, i8p, i8p]);
+    context_type = ir.LiteralStructType([i32, i8p, i8p, i32, ir.IntType(1)]);
     context_ptr = context_type.as_pointer();
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    import from jaclang.compiler.frontend.codeinfo { native_exception_symbol }
     (get_fn, set_fn) = self._emit_tls_slot(
-        "__jac_exception_tls",
-        "__jac_exception_tls_get",
-        "__jac_exception_tls_set",
+        native_exception_symbol("tls"),
+        native_exception_symbol("tls_get"),
+        native_exception_symbol("tls_set"),
         free_fn
     );
     func = ir.Function(
         self.llvm_module,
         ir.FunctionType(context_ptr, []),
-        name="__jac_exception_context"
+        name=native_exception_symbol("context")
     );
     func.linkage = "weak";
     self._exc_context_fn = func;
@@ -639,48 +189,153 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     return func;
 }
 
-impl NaIRGenPass._exception_handler_slot(b: ir.IRBuilder) -> ir.Value {
-    context = b.call(self._get_exception_context_fn(), []);
-    slot = b.gep(
-        context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 3)]
-    );
-    return b.bitcast(slot, self._get_exception_state_type().as_pointer().as_pointer());
-}
-
-impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
+impl NaIRGenPass._error_slots(b: ir.IRBuilder) -> tuple[ir.Value, ir.Value, ir.Value] {
+    frame = self._error_frame;
+    if frame is not None and frame.function is b.function {
+        return frame.slots;
+    }
     i32 = ir.IntType(32);
-    context = self.builder.call(self._get_exception_context_fn(), []);
+    context = b.call(self._get_exception_context_fn(), []);
     fields = [
-        self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, i)])
-        for i in range(3)
+        b.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, i)]) for i in range(3)
     ];
     return (fields[0], fields[1], fields[2]);
 }
 
+impl NaIRGenPass._spill_error(
+    values: tuple[ir.Value, ir.Value, ir.Value]
+) -> tuple[ir.Value, ir.Value, ir.Value] {
+    slots: list[ir.Value] = [];
+    for (index, value) in enumerate(values) {
+        name = f"error.saved.{len(self.local_vars)}.{index}";
+        if index == 1 {
+            value = self.builder.bitcast(
+                value, self._get_error_record_type().as_pointer()
+            );
+        }
+        slot = self._entry_alloca(value.type, name);
+        if index == 1 {
+            owner_slot = slot;
+            owned_value = value;
+            if self._nogc_headerless() {
+                self.builder.store(value, slot);
+                owner_slot = self._entry_alloca(value.type, name + ".owner");
+                owned_value = self.builder.select(
+                    self.builder.load(self._error_owned_slot(self.builder)),
+                    value,
+                    ir.Constant(value.type, None)
+                );
+            }
+            self.local_vars[name + ".owner" if self._nogc_headerless() else name] = owner_slot;
+            old = self.builder.load(owner_slot);
+            self.builder.store(owned_value, owner_slot);
+            self._emit_rc_release_typed(old, op="scope_exit");
+        } else {
+            self.builder.store(value, slot);
+        }
+        slots.append(slot);
+    }
+    return (slots[0], slots[1], slots[2]);
+}
+
+impl NaIRGenPass._restore_error(values: tuple[ir.Value, ir.Value, ir.Value]) -> None {
+    record = self.builder.load(values[1]);
+    self._emit_rc_retain(record, op="reraise");
+    self.builder.store(
+        ir.Constant(ir.IntType(1), int(not self._nogc_headerless())),
+        self._error_owned_slot(self.builder)
+    );
+    (kind, owner, msg) = self._error_slots(self.builder);
+    self.builder.store(self.builder.load(values[0]), kind);
+    self.builder.store(self.builder.bitcast(record, ir.IntType(8).as_pointer()), owner);
+    self.builder.store(self.builder.load(values[2]), msg);
+}
+
+impl NaIRGenPass._clear_pending_error(b: ir.IRBuilder, release: bool = True) -> None {
+    (kind, owner, msg) = self._error_slots(b);
+    value = b.load(owner);
+    owned = b.load(self._error_owned_slot(b));
+    b.store(ir.Constant(ir.IntType(32), 0), kind);
+    b.store(ir.Constant(ir.IntType(8).as_pointer(), None), owner);
+    b.store(ir.Constant(ir.IntType(8).as_pointer(), None), msg);
+    b.store(ir.Constant(ir.IntType(1), 0), self._error_owned_slot(b));
+    if release {
+        drop = self._get_error_record_drop() if self._nogc_headerless() else None;
+        self._emit_rc_helpers();
+        released = b.select(
+            owned, value, ir.Constant(ir.IntType(8).as_pointer(), None)
+        );
+        b.call(drop if drop is not None else self.rc_release_simple_fn, [released]);
+    }
+}
+
 impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
     i8p = ir.IntType(8).as_pointer();
+    slots = self._error_slots(self.builder);
+    pending = [self.builder.load(slot) for slot in slots];
+    owns = self.builder.load(self._error_owned_slot(self.builder));
+    self._clear_pending_error(self.builder, release=False);
+    self._release_temporaries();
     for handler in reversed(self._slot_try_stack) {
         if handler.dispatch.parent is self.builder.function {
+            for (slot, value) in zip(slots, pending) {
+                self.builder.store(value, slot);
+            }
+            self.builder.store(owns, self._error_owned_slot(self.builder));
             self.builder.branch(handler.dispatch);
             return;
         }
     }
     func = self.builder.function;
-    if func.name == "jac_entry" {
-        (_tg, _og, mglob) = self._nogc_err_slot();
-        msg = self.builder.load(mglob, name="err.msg");
+    if self._nogc_headerless() and self._error_record_type is not None {
+        for slot in self.local_vars.values() {
+            if slot.pointee_type == self._error_record_type.as_pointer() {
+                value = self.builder.load(slot);
+                carries = self.builder.icmp_unsigned(
+                    "==", self.builder.bitcast(value, i8p), pending[1]
+                );
+                owns = self.builder.or_(owns, carries);
+                self.builder.store(
+                    self.builder.select(carries, ir.Constant(value.type, None), value),
+                    slot
+                );
+            }
+        }
+    }
+    self._emit_scope_cleanup(loc=loc or "err.propagate");
+    for (slot, value) in zip(slots, pending) {
+        self.builder.store(value, slot);
+    }
+    self.builder.store(owns, self._error_owned_slot(self.builder));
+    if self._gen_ctx is not None {
+        ip = self.builder.bitcast(self._gen_ctx.frame_i8, ir.IntType(64).as_pointer());
+        self.builder.store(ir.Constant(ir.IntType(64), -1), ip);
+    }
+    if self._error_frame is not None and self._error_frame.function is func {
+        unhandled = func.append_basic_block("err.unhandled");
+        propagate = func.append_basic_block("err.return");
+        self.builder.cbranch(
+            self.builder.icmp_signed(
+                "==",
+                self.builder.load(self._error_frame.depth),
+                ir.Constant(ir.IntType(32), 1)
+            ),
+            unhandled,
+            propagate
+        );
+        self.builder.position_at_end(unhandled);
         fmt = self._make_global_string(
             "jac: unhandled exception: %s\n", name_prefix=".err.unhandled"
         );
         self.builder.call(
-            self._get_printf(), [self.builder.bitcast(fmt, i8p, name="err.fmt"), msg]
+            self._get_printf(),
+            [self.builder.bitcast(fmt, i8p, name="err.fmt"), pending[2]]
         );
         abort_fn = self._get_or_declare_extern("abort", ir.VoidType(), []);
         self.builder.call(abort_fn, []);
         self.builder.unreachable();
-        return;
+        self.builder.position_at_end(propagate);
     }
-    self._emit_scope_cleanup(loc=loc or "err.propagate");
     rt = func.function_type.return_type;
     if isinstance(rt, ir.VoidType) {
         self.builder.ret_void();
@@ -696,14 +351,11 @@ impl NaIRGenPass._emit_err_check(callee: (uni.Ability | None)) -> None {
 }
 
 impl NaIRGenPass._emit_pending_error_check -> None {
-    if not self._slot_lowering_active() {
-        return;
-    }
     if self._builder is None or self.builder.block.is_terminated {
         return;
     }
     i32 = ir.IntType(32);
-    (tglob, _og, _mg) = self._nogc_err_slot();
+    (tglob, _og, _mg) = self._error_slots(self.builder);
     t = self.builder.load(tglob, name="err.type");
     is_err = self.builder.icmp_signed("!=", t, ir.Constant(i32, 0), name="err.set");
     func = self.builder.function;
@@ -716,22 +368,30 @@ impl NaIRGenPass._emit_pending_error_check -> None {
 }
 
 impl NaIRGenPass._codegen_raise_slot(
-    payload: ir.Value, type_id: int, msg: ir.Value
+    payload: ir.Value | None, type_id: int, msg: ir.Value
 ) -> None {
     i32 = ir.IntType(32);
-    (tglob, oglob, mglob) = self._nogc_err_slot();
-
+    record = self._new_error_record(payload, msg);
+    (tglob, oglob, mglob) = self._error_slots(self.builder);
+    self.builder.store(
+        ir.Constant(ir.IntType(1), 1), self._error_owned_slot(self.builder)
+    );
     self.builder.store(ir.Constant(i32, type_id + 1), tglob);
-    self.builder.store(payload, oglob);
-    self.builder.store(msg, mglob);
+    self.builder.store(self.builder.bitcast(record, ir.IntType(8).as_pointer()), oglob);
+    self.builder.store(
+        self.builder.load(
+            self.builder.gep(record, [ir.Constant(i32, 0), ir.Constant(i32, 1)])
+        ),
+        mglob
+    );
     self._emit_err_propagate(loc="raise");
 }
 
-impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
+impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     func = self.builder.function;
-    (tglob, oglob, mglob) = self._nogc_err_slot();
+    (tglob, oglob, mglob) = self._error_slots(self.builder);
     body_bb = func.append_basic_block("try.body");
     dispatch_bb = func.append_basic_block("except.dispatch");
     finally_bb = func.append_basic_block("finally");
@@ -803,8 +463,8 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
             self.builder.load(oglob),
             self.builder.load(mglob)
         );
-        self._caught_error_stack.append((func, caught_values));
-        self.builder.store(ir.Constant(i32, 0), tglob);
+        self._caught_error_stack.append((func, self._spill_error(caught_values)));
+        self._clear_pending_error(self.builder, release=False);
         if except_node.name is not None {
             var_name = except_node.name.value
                 if isinstance(except_node.name, uni.Name)
@@ -812,21 +472,34 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
             if caught is not None and caught in self.struct_types {
                 _exc_sp_ty = self.struct_types[caught].as_pointer();
                 typed_obj = self.builder.bitcast(
-                    self.builder.load(oglob, name="exc.bound.obj"),
+                    self.builder.load(
+                        self.builder.gep(
+                            self.builder.bitcast(
+                                caught_values[1],
+                                self._get_error_record_type().as_pointer()
+                            ),
+                            [ir.Constant(i32, 0), ir.Constant(i32, 0)]
+                        )
+                    ),
                     _exc_sp_ty,
                     name="exc.bound.typed"
                 );
                 alloca = self._entry_alloca(_exc_sp_ty, var_name);
+                self._emit_rc_retain(typed_obj, op="except.bind");
+                self._emit_rc_release_typed(self.builder.load(alloca), op="scope_exit");
                 self.builder.store(typed_obj, alloca);
             } else {
                 alloca = self._entry_alloca(i8p, var_name);
-                self.builder.store(
-                    self.builder.load(mglob, name="exc.bound.msg"), alloca
-                );
+                self._emit_rc_retain(caught_values[2], op="except.bind");
+                self._emit_rc_release_typed(self.builder.load(alloca), op="scope_exit");
+                self.builder.store(caught_values[2], alloca);
             }
         }
         if except_node.name is not None {
             self.local_vars[var_name] = alloca;
+            if self._nogc_headerless() {
+                self.nogc_no_free_vars.add(var_name);
+            }
         }
         if isinstance(except_node.body, (list, tuple)) {
             self._codegen_body(except_node.body);
@@ -845,16 +518,16 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     self.builder.store(ir.Constant(i32, 1), kind);
     self.builder.branch(finally_bb);
     self.builder.position_at_end(finally_bb);
-    pending = (
-        self.builder.load(tglob),
-        self.builder.load(oglob),
-        self.builder.load(mglob)
+    pending = self._spill_error(
+        (self.builder.load(tglob), self.builder.load(oglob), self.builder.load(mglob))
     );
-    self.builder.store(ir.Constant(i32, 0), tglob);
+    self._clear_pending_error(self.builder, release=False);
+    self._caught_error_stack.append((func, pending));
     if nd.finally_body is not None
         and isinstance(nd.finally_body.body, (list, tuple)) {
         self._codegen_body(nd.finally_body.body);
     }
+    self._caught_error_stack.pop();
     if not self.builder.block.is_terminated {
         k = self.builder.load(kind, name="try.kind.v");
         is_prop = self.builder.icmp_signed(
@@ -863,9 +536,7 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
         prop_bb = func.append_basic_block("try.propagate");
         self.builder.cbranch(is_prop, prop_bb, merge_bb);
         self.builder.position_at_end(prop_bb);
-        for (slot, value) in zip(self._nogc_err_slot(), pending) {
-            self.builder.store(value, slot);
-        }
+        self._restore_error(pending);
         self._emit_err_propagate(loc="try.propagate");
     }
     self.builder.position_at_end(merge_bb);
@@ -883,9 +554,6 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
             }
             self._finally_stack = saved_finalizers[:index];
             self._slot_try_stack = saved_handlers[:frame.handler_depth];
-            if frame.pop_handler {
-                self.builder.call(self._exc_pop_fn, []);
-            }
             if frame.body is not None and isinstance(frame.body.body, (list, tuple)) {
                 self._codegen_body(frame.body.body);
             }
@@ -900,85 +568,157 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
     }
 }
 
-impl NaIRGenPass._push_exception_handler(
-    dispatch: ir.Block, body: ir.Block
-) -> tuple[ir.Value, ir.Value] {
-    i32 = ir.IntType(32);
+impl NaIRGenPass._get_error_record_type -> ir.IdentifiedStructType {
+    if self._error_record_type is not None {
+        return self._error_record_type;
+    }
     i8p = ir.IntType(8).as_pointer();
-    state = self._stack_entry_alloca(self._get_exception_state_type(), "exc.state");
-    depth = self._stack_entry_alloca(ir.IntType(64), "rgn.depth.slot");
-    self.builder.call(self._exc_push_fn, [state]);
-    self.builder.store(self._region_depth(), depth);
-    env = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
-    result = self.builder.call(
-        self.extern_funcs["setjmp"], [self.builder.bitcast(env, i8p)]
+    import from jaclang.compiler.frontend.codeinfo { native_exception_symbol }
+    record = self.llvm_module.context.get_identified_type(
+        native_exception_symbol("record")
     );
-    self.builder.cbranch(
-        self.builder.icmp_signed("!=", result, ir.Constant(i32, 0)), dispatch, body
-    );
-    return (state, depth);
+    record.set_body(i8p, i8p, ir.FunctionType(ir.VoidType(), [i8p]).as_pointer());
+    self._error_record_type = record;
+    return record;
 }
 
-impl NaIRGenPass._exception_values(
-    state: ir.Value
-) -> tuple[ir.Value, ir.Value, ir.Value] {
+impl NaIRGenPass._new_error_record(
+    payload: ir.Value | None, msg: ir.Value
+) -> ir.Value {
+    self._emit_rc_helpers();
+    i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    values: list[ir.Value] = [];
-    for index in (2, 1, 4) {
-        slot = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, index)]);
-        values.append(self.builder.load(slot));
+    i64 = ir.IntType(64);
+    record_type = self._get_error_record_type();
+    drop_type = ir.FunctionType(ir.VoidType(), [i8p]);
+    self._get_error_record_drop();
+    payload_drop: ir.Value = ir.Constant(drop_type.as_pointer(), None);
+    payload_raw: ir.Value = ir.Constant(i8p, None);
+    if payload is not None {
+        drop_name = f"__jac_error_payload_drop_{str(payload.type)}";
+        try {
+            payload_drop = self.llvm_module.get_global(drop_name);
+        } except KeyError {
+            drop = self._define_function(drop_name, drop_type);
+            drop.linkage = "private";
+            state = self._enter_function(drop);
+            try {
+                self._emit_rc_release_typed(
+                    self.builder.bitcast(drop.args[0], payload.type), op="scope_exit"
+                );
+                self.builder.ret_void();
+            } finally {
+                self._leave_function(state);
+            }
+            payload_drop = drop;
+        }
+        self._emit_take_ref(payload, op="raise");
+        payload_raw = self.builder.bitcast(payload, i8p);
     }
-    return (values[0], values[1], values[2]);
+    view = self._str_view(msg);
+    length = self.builder.call(
+        self._get_or_declare_extern("strlen", i64, [i8p]), [view]
+    );
+    size = self.builder.add(length, ir.Constant(i64, 1));
+    message = self.builder.call(self.rc_alloc_fn, [size], name="error.message");
+    self.builder.call(
+        self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]),
+        [message, view, size]
+    );
+    self._release_owned_args([msg], op="call_arg");
+    raw = self.builder.call(
+        self.rc_alloc_fn,
+        [ir.Constant(i64, self._abi_sizeof(record_type))],
+        name="error.record"
+    );
+    record = self.builder.bitcast(raw, record_type.as_pointer());
+    for (index, value) in enumerate([payload_raw, message, payload_drop]) {
+        self.builder.store(
+            value,
+            self.builder.gep(record, [ir.Constant(i32, 0), ir.Constant(i32, index)])
+        );
+    }
+    if not self._nogc_headerless() {
+        destructor_slot = self.builder.bitcast(
+            self.builder.gep(raw, [ir.Constant(i64, HDR_DTOR_OFF)]),
+            drop_type.as_pointer().as_pointer()
+        );
+        self.builder.store(self._error_record_drop, destructor_slot);
+    }
+    return record;
 }
 
-impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
-    if self._exc_raise_fn is None {
-        self._declare_exception_runtime();
-    }
-    func = self.builder.function;
-    func.attributes.add("optnone");
-    func.attributes.add("noinline");
-    dispatch = func.append_basic_block("finally.error");
-    body = func.append_basic_block("finally.guard");
-    merge = func.append_basic_block("finally.merge");
-    (state, depth) = self._push_exception_handler(dispatch, body);
-    self.builder.position_at_end(body);
-    frame = NativeFinalizer(
-        body=nd.finally_body,
-        function=func,
-        loop_depth=len(self.loop_stack),
-        handler_depth=len(self._slot_try_stack),
-        pop_handler=True
+impl NaIRGenPass._get_error_clear_fn -> ir.Function {
+    import from jaclang.compiler.frontend.codeinfo { native_exception_symbol }
+    func = self._get_or_declare_extern(
+        native_exception_symbol("clear"), ir.VoidType(), []
     );
-    self._finally_stack.append(frame);
-    try {
-        self._codegen_try_unwind(nd, emit_finally=False);
-    } finally {
-        self._finally_stack.pop();
+    if not func.basic_blocks {
+        func.linkage = "weak";
+        b = ir.IRBuilder(func.append_basic_block("entry"));
+        self._clear_pending_error(b);
+        b.ret_void();
     }
-    if not self.builder.block.is_terminated {
-        self.builder.call(self._exc_pop_fn, []);
-        if nd.finally_body is not None
-            and isinstance(nd.finally_body.body, (list, tuple)) {
-            self._codegen_body(nd.finally_body.body);
-        }
-        if not self.builder.block.is_terminated {
-            self.builder.branch(merge);
-        }
+    return func;
+}
+
+impl NaIRGenPass._error_owned_slot(b: ir.IRBuilder) -> ir.Value {
+    frame = self._error_frame;
+    if frame is not None and frame.function is b.function {
+        return frame.owns_error;
     }
-    self.builder.position_at_end(dispatch);
-    self._region_unwind(self.builder.load(depth));
-    values = self._exception_values(state);
-    self.builder.call(self._exc_pop_fn, []);
-    self._caught_error_stack.append((func, values));
-    if nd.finally_body is not None
-        and isinstance(nd.finally_body.body, (list, tuple)) {
-        self._codegen_body(nd.finally_body.body);
+    context = b.call(self._get_exception_context_fn(), []);
+    return b.gep(
+        context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 4)]
+    );
+}
+
+impl NaIRGenPass._get_error_record_drop -> ir.Function {
+    if self._error_record_drop is not None {
+        return self._error_record_drop;
     }
-    self._caught_error_stack.pop();
-    if not self.builder.block.is_terminated {
-        self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);
-        self.builder.unreachable();
-    }
-    self.builder.position_at_end(merge);
+    self._emit_rc_helpers();
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    record_type = self._get_error_record_type();
+    drop_type = ir.FunctionType(ir.VoidType(), [i8p]);
+    drop = self._define_function("__jac_error_record_drop", drop_type);
+    drop.linkage = "private";
+    self._error_record_drop = drop;
+    b = ir.IRBuilder(drop.append_basic_block("entry"));
+    work = drop.append_basic_block("work");
+    done = drop.append_basic_block("done");
+    b.cbranch(b.icmp_unsigned("==", drop.args[0], ir.Constant(i8p, None)), done, work);
+    b.position_at_end(work);
+    record = b.bitcast(drop.args[0], record_type.as_pointer());
+    payload_drop = b.load(b.gep(record, [ir.Constant(i32, 0), ir.Constant(i32, 2)]));
+    release_payload = drop.append_basic_block("payload");
+    release_message = drop.append_basic_block("message");
+    b.cbranch(
+        b.icmp_unsigned("!=", payload_drop, ir.Constant(drop_type.as_pointer(), None)),
+        release_payload,
+        release_message
+    );
+    b.position_at_end(release_payload);
+    b.call(
+        payload_drop,
+        [b.load(b.gep(record, [ir.Constant(i32, 0), ir.Constant(i32, 0)]))]
+    );
+    b.branch(release_message);
+    b.position_at_end(release_message);
+    b.call(
+        self.free_fn if self._nogc_headerless() else self.rc_release_simple_fn,
+        [b.load(b.gep(record, [ir.Constant(i32, 0), ir.Constant(i32, 1)]))]
+    );
+    allocation = drop.args[0]
+        if self._nogc_headerless()
+        else b.gep(drop.args[0], [ir.Constant(i64, HDR_ALLOC_ID_OFF)]);
+    b.call(
+        self.free_fn if self._nogc_headerless() else self.rc_safe_free_fn, [allocation]
+    );
+    b.branch(done);
+    b.position_at_end(done);
+    b.ret_void();
+    return drop;
 }

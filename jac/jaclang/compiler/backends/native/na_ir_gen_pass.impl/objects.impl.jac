@@ -1968,6 +1968,9 @@ impl NaIRGenPass._codegen_instantiation(
         obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
     }
 
+    self.builder.store(ir.Constant(struct_type, None), obj_ptr);
+    self._protect_temporary(self._mark_owned(obj_ptr));
+
     vtable_global = self._vtable_global_for(type_name);
     if vtable_global is not None {
         vtable_base = self.builder.gep(

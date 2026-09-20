@@ -330,6 +330,20 @@ impl NaIRGenPass._codegen_delete_location(
 }
 
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
+    frame = self._error_frame;
+    if frame is None {
+        self._codegen_return_inner(nd);
+        return;
+    }
+    frame.temporaries.append([]);
+    try {
+        self._codegen_return_inner(nd);
+    } finally {
+        frame.temporaries.pop();
+    }
+}
+
+impl NaIRGenPass._codegen_return_inner(nd: uni.ReturnStmt) -> None {
     _gc = self._gen_ctx;
     if _gc is not None and self.builder.function is _gc.resume_fn {
         _gr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
@@ -341,9 +355,10 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 self._release_owned_args([_rv], op="gen_ret_val");
             }
         }
-        for _entry in self._gen_try_stack {
-            self.builder.call(self._exc_pop_fn, []);
+        if self._emit_finalizers() {
+            return;
         }
+        self._release_temporaries();
         self._emit_scope_cleanup(skip_var=None, loc=_gr_loc);
         _gr_i64 = ir.IntType(64);
         _gr_ip = self.builder.bitcast(
@@ -355,10 +370,14 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     }
     func_ret_type = self.builder.function.return_value.type;
     if nd.expr is not None and isinstance(func_ret_type, ir.VoidType) {
-        self._codegen_expr(nd.expr);
+        unused = self._codegen_expr(nd.expr);
+        if unused is not None {
+            self._release_owned_args([unused]);
+        }
         if self._emit_finalizers() {
             return;
         }
+        self._release_temporaries();
         self._emit_scope_cleanup(
             skip_var=None,
             loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
@@ -472,9 +491,17 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 );
                 self._mark_owned(val);
             }
+            if skip_var is not None and self._finally_stack {
+                self._emit_rc_retain(val, op="return.pending");
+                self._mark_owned(val);
+                skip_var = None;
+            }
+            self._protect_temporary(val);
             if self._emit_finalizers() {
                 return;
             }
+            self._consume_temporary(val);
+            self._release_temporaries();
             self._emit_scope_cleanup(
                 skip_var=skip_var,
                 ret_val=val,
@@ -490,6 +517,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     if self._emit_finalizers() {
         return;
     }
+    self._release_temporaries();
     self._emit_scope_cleanup(
         skip_var=None,
         loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line

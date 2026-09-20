@@ -95,16 +95,25 @@ obj NativeFinalizer {
     has body: uni.FinallyStmt | None,
         function: ir.Function,
         loop_depth: int,
-        handler_depth: int,
-        pop_handler: bool = False;
+        handler_depth: int;
 }
 
 obj NativeErrorHandler {
     has dispatch: ir.Block;
 }
 
-obj NativeGeneratorHandler(NativeErrorHandler) {
-    has state: ir.Value;
+obj NativeErrorFrame {
+    has function: ir.Function,
+        depth: ir.Value,
+        owns_error: ir.Value,
+        slots: tuple[ir.Value, ir.Value, ir.Value],
+        temporaries: list[list[NativeTemporary]] = [],
+        temporary_slots: list[str] = [];
+}
+
+obj NativeTemporary {
+    has value: ir.Value,
+        slot: ir.Value;
 }
 
 obj NativeGeneratorCellInit {
@@ -159,9 +168,9 @@ obj NativeFunctionState {
         loop_stack: list[tuple[ir.Block, ir.Block]],
         _self_owned: bool,
         _self_arch: str | None,
+        _error_frame: NativeErrorFrame | None,
         _di_current_sp: object,
         _gen_ctx: NativeGeneratorState | None,
-        _gen_try_stack: list[NativeGeneratorHandler],
         _slot_try_stack: list[NativeErrorHandler],
         _finally_stack: list[NativeFinalizer],
         _caught_error_stack:
@@ -181,6 +190,7 @@ walker NaIRGenPass {
         _slice_struct_type: (ir.IdentifiedStructType | None) = None,
         _jacval_type: (ir.IdentifiedStructType | None) = None,
         _builder: (ir.IRBuilder | None) = None,
+        _error_frame: NativeErrorFrame | None = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.Value] = {},
         param_vars: set[str] = set(),
@@ -290,10 +300,6 @@ walker NaIRGenPass {
         set_types: dict[str, ir.IdentifiedStructType] = {},
         set_helpers: dict[str, dict[str, any]] = {},
         _peer_container_ty: (ir.Type | None) = None,
-        _exc_state_type: (ir.Type | None) = None,
-        _exc_push_fn: (ir.Function | None) = None,
-        _exc_pop_fn: (ir.Function | None) = None,
-        _exc_raise_fn: (ir.Function | None) = None,
         _exc_type_registry: dict[str, int] = {"Exception": 0},
         _exc_type_counter: int = 1,
         _rt_error_msgs: dict[str, ir.GlobalVariable] = {},
@@ -315,6 +321,8 @@ walker NaIRGenPass {
         _rc_debug_codegen: bool = False,
         rc_helpers_emitted: bool = False,
         rc_alloc_fn: (ir.Function | None) = None,
+        _error_record_type: ir.IdentifiedStructType | None = None,
+        _error_record_drop: ir.Function | None = None,
         rc_retain_fn: (ir.Function | None) = None,
         rc_release_simple_fn: (ir.Function | None) = None,
         rc_release_impl_fn: (ir.Function | None) = None,
@@ -412,7 +420,6 @@ walker NaIRGenPass {
         _mono_mangle_map: (dict[str, str] | None) = None,
         _ct_bindings: dict[str, any] = {},
         _gen_ctx: NativeGeneratorState | None = None,
-        _gen_try_stack: list[NativeGeneratorHandler] = [],
         decorated_fns:
             dict[
                 str,
@@ -448,7 +455,13 @@ walker NaIRGenPass {
     ) -> tuple[ir.Function, ir.Function];
 
     def _get_exception_context_fn -> ir.Function;
-    def _exception_handler_slot(b: ir.IRBuilder) -> ir.Value;
+    def _get_error_record_type -> ir.IdentifiedStructType;
+    def _get_error_clear_fn -> ir.Function;
+    def _get_error_record_drop -> ir.Function;
+    def _error_owned_slot(b: ir.IRBuilder) -> ir.Value;
+    def _new_error_record(payload: ir.Value | None, msg: ir.Value) -> ir.Value;
+    def _restore_error(values: tuple[ir.Value, ir.Value, ir.Value]) -> None;
+    def _clear_pending_error(b: ir.IRBuilder, release: bool = True) -> None;
     def _region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value;
     def _region_ptr(val: ir.Value, name: str = "rgn.p") -> ir.Value;
     def _region_new_handle -> ir.Value;
@@ -1150,11 +1163,6 @@ walker NaIRGenPass {
         enum_name: str, runtime_val: ir.Value, use_name: bool
     ) -> (ir.Value | None);
 
-    def _get_exception_state_type -> ir.Type;
-    def _declare_exception_runtime -> None;
-    def _emit_exc_push_helper -> None;
-    def _emit_exc_pop_helper -> None;
-    def _emit_exc_raise_helper -> None;
     def _emit_runtime_raise(
         is_error: ir.Value,
         exc_type_name: str,
@@ -1165,9 +1173,12 @@ walker NaIRGenPass {
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
-    def _raise_has_frame_handler(nd: uni.RaiseStmt) -> bool;
     def _codegen_try(nd: uni.TryStmt) -> None;
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
+    def _codegen_expr_inner(nd: (uni.UniNode | None)) -> (ir.Value | None);
+    def _protect_temporary(value: ir.Value) -> None;
+    def _consume_temporary(value: ir.Value) -> None;
+    def _release_temporaries -> None;
     def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _current_fn_key -> (str | None);
     def _mark_local_unlowered(name: str) -> None;
@@ -2036,6 +2047,7 @@ walker NaIRGenPass {
 
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
+    def _codegen_return_inner(nd: uni.ReturnStmt) -> None;
     def _codegen_delete(nd: uni.DeleteStmt) -> None;
     def _codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -> None;
     def _del_target_holds_graph(target: uni.Expr) -> bool;
@@ -2449,21 +2461,20 @@ walker NaIRGenPass {
         val: ir.Value
     ) -> ir.IRBuilder;
 
-    def _slot_lowering_active -> bool;
-    def _nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value];
+    def _check_iter_error(b: ir.IRBuilder) -> None;
+    def _error_slots(b: ir.IRBuilder) -> tuple[ir.Value, ir.Value, ir.Value];
+    def _spill_error(
+        values: tuple[ir.Value, ir.Value, ir.Value]
+    ) -> tuple[ir.Value, ir.Value, ir.Value];
+
     def _emit_finalizers(loop_depth: int = 0) -> bool;
     def _emit_err_check(callee: (uni.Ability | None)) -> None;
     def _emit_pending_error_check -> None;
     def _emit_err_propagate(loc: str = "") -> None;
-    def _codegen_raise_slot(payload: ir.Value, type_id: int, msg: ir.Value) -> None;
-    def _codegen_try_slot(nd: uni.TryStmt) -> None;
-    def _codegen_try_unwind(nd: uni.TryStmt, emit_finally: bool = True) -> None;
-    def _codegen_finally_guard(nd: uni.TryStmt) -> None;
-    def _push_exception_handler(
-        dispatch: ir.Block, body: ir.Block
-    ) -> tuple[ir.Value, ir.Value];
+    def _codegen_raise_slot(
+        payload: ir.Value | None, type_id: int, msg: ir.Value
+    ) -> None;
 
-    def _exception_values(state: ir.Value) -> tuple[ir.Value, ir.Value, ir.Value];
     def _nogc_owned_param(p: uni.ParamVar) -> bool;
     def _emit_rc_gc_env_off_fn -> ir.Function;
     def _aos_elem_struct(type_key: str) -> (ir.Type | None);

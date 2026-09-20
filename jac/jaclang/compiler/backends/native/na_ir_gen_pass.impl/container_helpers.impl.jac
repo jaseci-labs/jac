@@ -137,6 +137,9 @@ impl NaIRGenPass._emit_elem_retain(
 impl NaIRGenPass._emit_elem_release(
     b: ir.IRBuilder, elem_type: ir.Type, val: ir.Value
 ) -> None {
+    if b is self._builder {
+        self._consume_temporary(val);
+    }
     _kind = self._elem_kind(elem_type);
     if _kind == "raw" or self._nogc_headerless() {
         return;

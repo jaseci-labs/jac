@@ -9,6 +9,7 @@ import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.dist.native_product { write_native_product }
 import from jaclang.runtime.interop_bridge { NativeLibrary, native_callable }
 
@@ -44,6 +45,57 @@ test "owned references transfer once and aliases clear before release" {
         release(value);
         clear_alias(value);
         assert take(identity(value)) is value;
+    }
+    assert sys.getrefcount(value) == before;
+}
+
+@functools.cache
+def unwind_fixture -> tuple[ExecutionEngine, Module] {
+    (native, module) = compile_native("native_unwind_cleanup.jac");
+    assert module.gen.llvm_ir is not None;
+    assert "setjmp" not in str(module.gen.llvm_ir);
+    assert "longjmp" not in str(module.gen.llvm_ir);
+    return (native, module);
+}
+
+def unwind_engine -> ExecutionEngine {
+    return unwind_fixture()[0];
+}
+
+test "native exceptions release references in intermediate frames" {
+    native = unwind_engine();
+    unwind = get_func(native, "unwind", None, ctypes.py_object);
+    value = object();
+    before = sys.getrefcount(value);
+    for _ in range(100) {
+        unwind(value);
+    }
+    assert sys.getrefcount(value) == before;
+}
+
+test "native exceptions propagate through iterators and suspended handlers" {
+    native = unwind_engine();
+    value = object();
+    before = sys.getrefcount(value);
+    for name in ["unwind_generator", "unwind_iterator", "unwind_map"] {
+        call = get_func(native, name, ctypes.c_int64, ctypes.py_object);
+        for _ in range(100) {
+            assert call(value) == 11 , name;
+        }
+        assert sys.getrefcount(value) == before , name;
+    }
+    for name in ["unwind_suspended_handler", "unwind_suspended_finally"] {
+        assert get_func(native, name, ctypes.c_int64)() == 11 , name;
+    }
+}
+
+test "native exceptions release previously evaluated call arguments" {
+    native = unwind_engine();
+    call = get_func(native, "unwind_argument", None, ctypes.py_object);
+    value = object();
+    before = sys.getrefcount(value);
+    for _ in range(100) {
+        call(value);
     }
     assert sys.getrefcount(value) == before;
 }
@@ -261,4 +313,76 @@ test "generated Python stubs preserve interpreter state and errors" {
     } except TypeError {} else {
         raise AssertionError("generated native stub lost the Python exception");
     }
+}
+
+test "native exceptions own dynamic messages and custom payloads" {
+    native = unwind_engine();
+    value = object();
+    before = sys.getrefcount(value);
+    for name in ["unwind_payload", "unwind_payload_bound"] {
+        call = get_func(native, name, None, ctypes.py_object);
+        for _ in range(100) {
+            call(value);
+        }
+        assert sys.getrefcount(value) == before , name;
+    }
+    call = get_func(
+        native, "unwind_payload_generator", ctypes.c_int64, ctypes.py_object
+    );
+    for _ in range(100) {
+        assert call(value) == 11;
+    }
+    assert sys.getrefcount(value) == before;
+    message = get_func(native, "unwind_message", ctypes.c_bool);
+    for _ in range(100) {
+        assert message();
+    }
+}
+
+test "native exceptions release partial construction and cancelled return values" {
+    native = unwind_engine();
+    value = object();
+    before = sys.getrefcount(value);
+    for name in [
+        "unwind_constructor",
+        "unwind_initializer",
+        "unwind_list",
+        "unwind_return"
+    ] {
+        call = get_func(native, name, None, ctypes.py_object);
+        for _ in range(100) {
+            call(value);
+        }
+        assert sys.getrefcount(value) == before , name;
+    }
+}
+
+test "native tests release their exception after copying the diagnostic" {
+    import gc;
+    import weakref;
+    import from jaclang.testing.test { invoke_native_test }
+    native = unwind_engine();
+    module = unwind_fixture()[1];
+    assert module.gen.native_layout is not None;
+    failing = module.gen.native_layout.tests[0];
+    class Witness {}
+    def run -> weakref.ReferenceType[object] {
+        value = Witness();
+        reference = weakref.ref(value);
+        get_func(native, "set_test_witness", None, ctypes.py_object)(value);
+        for _ in range(100) {
+            try {
+                invoke_native_test(native, failing.symbol, failing.name);
+            } except AssertionError as error {
+                assert "PayloadError" in str(error);
+            } else {
+                raise AssertionError("failing native test passed");
+            }
+        }
+        get_func(native, "set_test_witness", None, ctypes.c_uint64)(0);
+        return reference;
+    }
+    reference = run();
+    gc.collect();
+    assert reference() is None;
 }

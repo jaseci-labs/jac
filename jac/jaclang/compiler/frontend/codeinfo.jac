@@ -608,7 +608,11 @@ def native_wasm_stem(path: str) -> str {
     return stem;
 }
 
-glob NATIVE_ABI_VERSION: int = 1;
+glob NATIVE_ABI_VERSION: int = 2;
+
+def native_exception_symbol(suffix: str) -> str {
+    return f"__jac_exception_v{NATIVE_ABI_VERSION}_{suffix}";
+}
 
 obj NativeModuleLayout {
     has abi_version: int = NATIVE_ABI_VERSION,

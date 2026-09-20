@@ -597,6 +597,79 @@ impl NaIRGenPass._mark_owned(val: ir.Value) -> ir.Value {
     return val;
 }
 
+impl NaIRGenPass._protect_temporary(value: ir.Value) -> None {
+    frame = self._error_frame;
+    if frame is None
+        or not frame.temporaries
+        or frame.function is not self.builder.function
+        or not (self._is_owned(value) or any(value.na_tuple_owned or [])) {
+        return;
+    }
+    if not self._is_reference_type(value.type) and value.na_tuple_owned is None {
+        return;
+    }
+    for scope in reversed(frame.temporaries) {
+        for temporary in scope {
+            if temporary.value is value {
+                self.builder.store(value, temporary.slot);
+                return;
+            }
+        }
+    }
+    self._consume_temporary(value);
+    name = f"error.temporary.{len(frame.temporary_slots)}";
+    slot = self._entry_alloca(value.type, name);
+    self.builder.store(value, slot);
+    frame.temporary_slots.append(name);
+    frame.temporaries[-1].append(NativeTemporary(value=value, slot=slot));
+}
+
+impl NaIRGenPass._consume_temporary(value: ir.Value) -> None {
+    frame = self._error_frame;
+    if frame is None or frame.function is not self.builder.function {
+        return;
+    }
+    for scope in reversed(frame.temporaries) {
+        for temporary in reversed(scope) {
+            if temporary.value is value {
+                self.builder.store(ir.Constant(value.type, None), temporary.slot);
+                return;
+            }
+            if isinstance(value, ir.ExtractValue)
+                and temporary.value is value.aggregate
+                and temporary.value.na_tuple_owned is not None {
+                remaining = self.builder.insert_value(
+                    self.builder.load(temporary.slot),
+                    ir.Constant(value.type, None),
+                    value.indices
+                );
+                self.builder.store(remaining, temporary.slot);
+                return;
+            }
+        }
+    }
+    if isinstance(value, ir.CastInstr) {
+        self._consume_temporary(value.operands[0]);
+    } elif isinstance(value, ir.ExtractValue) {
+        self._consume_temporary(value.aggregate);
+    }
+}
+
+impl NaIRGenPass._release_temporaries -> None {
+    frame = self._error_frame;
+    if frame is None or frame.function is not self.builder.function {
+        return;
+    }
+    for scope in reversed(frame.temporaries) {
+        for temporary in reversed(scope) {
+            value = self.builder.load(temporary.slot, name="error.temporary");
+            value.na_tuple_owned = temporary.value.na_tuple_owned;
+            self.builder.store(ir.Constant(value.type, None), temporary.slot);
+            self._release_owned_args([self._mark_owned(value)], op="call_arg");
+        }
+    }
+}
+
 impl NaIRGenPass._mark_reference_owned(result: ir.Value) -> ir.Value {
     if self._is_reference_type(result.type) {
         return self._mark_owned(result);
@@ -1492,6 +1565,16 @@ impl NaIRGenPass._nogc_drop_op_active(op: str) -> bool {
 impl NaIRGenPass._emit_rc_release_simple(
     ptr: ir.Value, op: str = "", loc: str = ""
 ) -> None {
+    self._consume_temporary(ptr);
+    if self._nogc_headerless()
+        and self._error_record_type is not None
+        and ptr.type == self._error_record_type.as_pointer() {
+        drop = self._get_error_record_drop();
+        self.builder.call(
+            drop, [self.builder.bitcast(ptr, ir.IntType(8).as_pointer())]
+        );
+        return;
+    }
     _rls_owned = self._is_owned(ptr);
     if self._str_desc_ty is not None and ptr.type == self._str_desc_ty {
         ptr = self.builder.extract_value(ptr, 0, name="rc.desc.root");
@@ -1541,6 +1624,16 @@ impl NaIRGenPass._emit_rc_release_simple(
 impl NaIRGenPass._emit_rc_release_typed(
     val: ir.Value, op: str = "", loc: str = ""
 ) -> None {
+    self._consume_temporary(val);
+    if self._nogc_headerless()
+        and self._error_record_type is not None
+        and val.type == self._error_record_type.as_pointer() {
+        drop = self._get_error_record_drop();
+        self.builder.call(
+            drop, [self.builder.bitcast(val, ir.IntType(8).as_pointer())]
+        );
+        return;
+    }
     _rlt_owned = self._is_owned(val);
     if self._str_desc_ty is not None and val.type == self._str_desc_ty {
         val = self.builder.extract_value(val, 0, name="rc.desc.root");
@@ -2353,6 +2446,7 @@ impl NaIRGenPass._emit_slot_rebind(
         return;
     }
     if owned {
+        self._consume_temporary(value);
         self.rc_ops_elided += 1;
     } else {
         self._emit_take_ref(value, op=op, loc=loc);
@@ -2463,6 +2557,20 @@ impl NaIRGenPass._emit_scope_cleanup(
     }
     for (var_name, cell) in self.closure_cell_handles.items() {
         if isinstance(cell.type, ir.PointerType) {
+            if self._gen_ctx is not None {
+                for init in self._gen_ctx.cell_inits {
+                    if init.name == var_name {
+                        raw = self.builder.gep(
+                            self._gen_ctx.frame_i8,
+                            [ir.Constant(ir.IntType(64), init.slot_off)]
+                        );
+                        slot = self.builder.bitcast(raw, cell.type.as_pointer());
+                        cell = self.builder.load(slot);
+                        self.builder.store(ir.Constant(cell.type, None), slot);
+                        break;
+                    }
+                }
+            }
             self._emit_rc_release_typed(cell, op="scope_exit", loc=loc);
         }
     }
@@ -2555,6 +2663,7 @@ impl NaIRGenPass._bind_loop_coll_slot(val: ir.Value) -> (str | None) {
     self._loop_coll_seq += 1;
     _slot = self._entry_alloca(val.type, _name);
     self.local_vars[_name] = _slot;
+    self._consume_temporary(val);
     self.builder.store(val, _slot);
     return _name;
 }

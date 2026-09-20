@@ -355,6 +355,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     dict_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_dict_new_loc, name="dict.new"
     );
+    self._protect_temporary(self._mark_owned(dict_val));
     self._nogc_stamp_elem_drops(dict_val, self._nogc_type_arg_mangles(nd));
     _dinit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc

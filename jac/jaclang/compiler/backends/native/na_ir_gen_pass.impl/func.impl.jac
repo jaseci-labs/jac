@@ -538,20 +538,16 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
+    self._get_error_clear_fn();
     import from jaclang.compiler.frontend.codeinfo { native_test_symbol }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    if self._exc_raise_fn is None {
-        self._declare_exception_runtime();
-    }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
     symbol = native_test_symbol(test_name, line);
     fnty = ir.FunctionType(i8p, []);
     func = ir.Function(self.llvm_module, fnty, name=symbol);
 
-    func.attributes.add("optnone");
-    func.attributes.add("noinline");
     state = self._enter_function(func);
     try {
         body_bb = func.append_basic_block(name="test.body");
@@ -562,37 +558,28 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         }
         self._attach_di_subprogram(func, symbol, line);
 
-        exc_state = self.builder.alloca(self._exc_state_type, name="exc.state");
-        self.builder.call(self._exc_push_fn, [exc_state]);
-        env_ptr = self.builder.gep(
-            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
-        );
-        env_i8p = self.builder.bitcast(env_ptr, i8p, name="env.i8p");
-        setjmp_fn = self.extern_funcs["setjmp"];
-        setjmp_result = self.builder.call(setjmp_fn, [env_i8p], name="setjmp.result");
-        is_exception = self.builder.icmp_signed(
-            "!=", setjmp_result, ir.Constant(i32, 0), name="is.exception"
-        );
-        self.builder.cbranch(is_exception, fail_bb, body_bb);
-
+        self.builder.branch(body_bb);
         self.builder.position_at_end(body_bb);
-        self._codegen_body(nd.body);
+        self._slot_try_stack.append(NativeErrorHandler(dispatch=fail_bb));
+        try {
+            self._codegen_body(nd.body);
+        } finally {
+            self._slot_try_stack.pop();
+        }
         if not self.builder.block.is_terminated {
             self.builder.branch(success_bb);
         }
 
         self.builder.position_at_end(success_bb);
-        self.builder.call(self._exc_pop_fn, []);
         _tc_loc = f"{self.module.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
         self._emit_scope_cleanup(skip_var=None, loc=_tc_loc);
         self.builder.ret(ir.Constant(i8p, None));
 
         self.builder.position_at_end(fail_bb);
-        self.builder.call(self._exc_pop_fn, []);
-        exc_obj_ptr = self.builder.gep(
-            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
-        );
-        exc_msg = self.builder.load(exc_obj_ptr, name="exc.msg");
+        (error_type, error_object, error_message) = self._error_slots(self.builder);
+        exc_msg = self.builder.load(error_message, name="exc.msg");
+        self.builder.store(ir.Constant(i32, 0), error_type);
+        self._emit_scope_cleanup(loc="test.failure");
         self.builder.ret(exc_msg);
         self._finalize_di_locations(func, line);
     } finally {
@@ -1112,6 +1099,10 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
             if binding not in self.nogc_no_free_vars
                 and binding not in self.closure_cell_handles
         };
+        if self._error_frame is not None {
+            frame_bindings.update(self._error_frame.temporary_slots);
+        }
+        frame_bindings.update(f"__cell_{init.name}" for init in gc.cell_inits);
         cell_inits = list(gc.cell_inits);
     } finally {
         self._leave_function(state);
@@ -1210,8 +1201,7 @@ impl NaIRGenPass._emit_generator_drop_fn(
     state = self._enter_function(fn);
     try {
         for (sname, soff, stype) in slots {
-            if not self._is_reference_type(stype)
-                or (not isinstance(stype, ir.PointerType) and sname not in bindings) {
+            if not self._is_reference_type(stype) or sname not in bindings {
                 continue;
             }
             s_raw = self.builder.gep(

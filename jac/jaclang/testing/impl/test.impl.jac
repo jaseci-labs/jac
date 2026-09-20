@@ -119,6 +119,20 @@ impl invoke_native_test(
         raise RuntimeError(f"native test symbol missing: {symbol}");
     }
     native_fn = native_callable(addr, engine.requires_python, ctypes.c_char_p);
+    import from jaclang.compiler.frontend.codeinfo { native_exception_symbol }
+    clear_addr = engine.get_function_address(native_exception_symbol("clear"));
+    if clear_addr == 0 {
+        raise RuntimeError(f"native exception cleanup missing for {test_name}");
+    }
+    clear_error = native_callable(clear_addr, engine.requires_python, None);
+    def invoke -> bytes | None {
+        try {
+            return native_fn();
+        } finally {
+            clear_error();
+        }
+    }
+
     def run_glob_inits {
         done = engine?._jac_glob_inits_done;
         if done is None {
@@ -155,7 +169,7 @@ impl invoke_native_test(
     }
     if not mirrors {
         run_glob_inits();
-        msg = native_fn();
+        msg = invoke();
         if msg is not None {
             raise AssertionError(msg.decode("utf-8", "replace"));
         }
@@ -172,7 +186,7 @@ impl invoke_native_test(
     msg: any = None;
     try {
         run_glob_inits();
-        msg = native_fn();
+        msg = invoke();
     } finally {
         try {
             ctypes.CDLL(None).fflush(None);

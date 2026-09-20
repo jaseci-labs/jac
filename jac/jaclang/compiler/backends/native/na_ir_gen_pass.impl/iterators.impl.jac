@@ -143,7 +143,13 @@ impl NaIRGenPass._emit_iter_advance(
     if out_ptr.type != i8p {
         out_i8 = b.bitcast(out_ptr, i8p, name="adv.out.i8");
     }
-    return b.call(nf_ptr, [state, out_i8], name="adv.has");
+    result = b.call(nf_ptr, [state, out_i8], name="adv.has");
+    if b is self._builder {
+        self._emit_pending_error_check();
+    } else {
+        self._check_iter_error(b);
+    }
+    return result;
 }
 
 impl NaIRGenPass._list_iter_next_fn(
@@ -776,6 +782,7 @@ impl NaIRGenPass._make_map_iter(
         env = b.load(env_slot, name="map.env");
         uval = b.call(fnp, [tval, env], name="map.uval");
     }
+    self._check_iter_error(b);
     out_t = b.bitcast(nfn.args[1], out_type.as_pointer(), name="map.out");
     b.store(uval, out_t);
     b.ret(ir.Constant(i1, 1));
@@ -851,6 +858,7 @@ impl NaIRGenPass._make_filter_iter(
         env = b.load(env_slot, name="flt.env");
         keep = b.call(fnp, [tval, env], name="flt.keep");
     }
+    self._check_iter_error(b);
     keepb = b.icmp_unsigned("!=", keep, ir.Constant(keep.type, 0), name="flt.keepb");
     b.cbranch(keepb, emit, loop_bb);
     b.position_at_end(emit);
@@ -1062,77 +1070,44 @@ impl NaIRGenPass._user_iter_next_fn(
     if key in self._iter_next_fns {
         return self._iter_next_fns[key];
     }
-    if self._exc_raise_fn is None {
-        self._declare_exception_runtime();
-    }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i1 = ir.IntType(1);
-    exc_state_type = self._get_exception_state_type();
-
-    struct_ptr_type = next_method_fn.function_type.args[0];
     state_ptr_type = self.struct_types["UserIterState"].as_pointer();
-    nfty = ir.FunctionType(i1, [i8p, i8p]);
-    fn = ir.Function(self.llvm_module, nfty, name="__iter_next_user_" + iter_struct);
+    fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(i1, [i8p, i8p]),
+        name="__iter_next_user_" + iter_struct
+    );
     fn.linkage = "private";
-    fn.attributes.add("optnone");
-    fn.attributes.add("noinline");
-    fn.args[0].name = "state";
-    fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");
-    call_bb = fn.append_basic_block("call");
-    caught_bb = fn.append_basic_block("caught");
-    stop_bb = fn.append_basic_block("stop");
-    reraise_bb = fn.append_basic_block("reraise");
+    success = fn.append_basic_block("success");
+    failure = fn.append_basic_block("failure");
+    stop = fn.append_basic_block("stop");
+    propagate = fn.append_basic_block("propagate");
     b = ir.IRBuilder(entry_bb);
-    state = b.bitcast(fn.args[0], state_ptr_type, name="usr.state");
-    obj_i8 = b.load(
-        b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.obj.slot"),
-        name="usr.obj.i8"
+    state = b.bitcast(fn.args[0], state_ptr_type);
+    receiver = b.bitcast(
+        b.load(b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)])),
+        next_method_fn.function_type.args[0]
     );
-    recv = b.bitcast(obj_i8, struct_ptr_type, name="usr.obj");
-
-    exc_state = b.alloca(exc_state_type, name="usr.exc.state");
-    b.call(self._exc_push_fn, [exc_state]);
-    env_ptr = b.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.env.ptr"
-    );
-    env_i8p = b.bitcast(env_ptr, i8p, name="usr.env.i8p");
-    sj = b.call(self.extern_funcs["setjmp"], [env_i8p], name="usr.sj");
-    is_exc = b.icmp_signed("!=", sj, ir.Constant(i32, 0), name="usr.is.exc");
-    b.cbranch(is_exc, caught_bb, call_bb);
-
-    b.position_at_end(call_bb);
-    v = b.call(next_method_fn, [recv], name="usr.v");
-    b.call(self._exc_pop_fn, []);
-    out_t = b.bitcast(fn.args[1], elem_type.as_pointer(), name="usr.out");
-    b.store(v, out_t);
+    value = b.call(next_method_fn, [receiver]);
+    (error_type, error_object, error_message) = self._error_slots(b);
+    kind = b.load(error_type);
+    b.cbranch(b.icmp_signed("==", kind, ir.Constant(i32, 0)), success, failure);
+    b.position_at_end(success);
+    b.store(value, b.bitcast(fn.args[1], elem_type.as_pointer()));
     b.ret(ir.Constant(i1, 1));
-
-    b.position_at_end(caught_bb);
-    b.call(self._exc_pop_fn, []);
-    exc_type_ptr = b.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="usr.exc.type.ptr"
-    );
-    exc_type_val = b.load(exc_type_ptr, name="usr.exc.type");
+    b.position_at_end(failure);
     stop_id = self._get_or_register_exc_type("StopIteration");
-    is_stop = b.icmp_signed(
-        "==", exc_type_val, ir.Constant(i32, stop_id), name="usr.is.stop"
+    b.cbranch(
+        b.icmp_signed("==", kind, ir.Constant(i32, stop_id + 1)), stop, propagate
     );
-    b.cbranch(is_stop, stop_bb, reraise_bb);
-    b.position_at_end(stop_bb);
+    b.position_at_end(stop);
+    self._clear_pending_error(b);
+    b.branch(propagate);
+    b.position_at_end(propagate);
     b.ret(ir.Constant(i1, 0));
-    b.position_at_end(reraise_bb);
-    exc_obj_ptr = b.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="usr.exc.obj.ptr"
-    );
-    reraise_obj = b.load(exc_obj_ptr, name="usr.reraise.obj");
-    exc_msg_slot = b.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="usr.exc.msg.ptr"
-    );
-    reraise_msg = b.load(exc_msg_slot, name="usr.reraise.msg");
-    b.call(self._exc_raise_fn, [reraise_obj, exc_type_val, reraise_msg]);
-    b.unreachable();
     self._iter_next_fns[key] = fn;
     return fn;
 }
@@ -1176,6 +1151,7 @@ impl NaIRGenPass._make_user_iter_from_obj(
         return None;
     }
     it_obj = self.builder.call(iter_fn, [obj_val], name="usr.iter");
+    self._emit_pending_error_check();
     self._mark_owned(it_obj);
 
     inferred_struct = self._infer_type_name(it_obj);
@@ -1344,4 +1320,18 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
     }
     return True;
+}
+
+impl NaIRGenPass._check_iter_error(b: ir.IRBuilder) -> None {
+    (error_type, error_object, error_message) = self._error_slots(b);
+    failure = b.function.append_basic_block("iterator.error");
+    success = b.function.append_basic_block("iterator.continue");
+    b.cbranch(
+        b.icmp_signed("!=", b.load(error_type), ir.Constant(ir.IntType(32), 0)),
+        failure,
+        success
+    );
+    b.position_at_end(failure);
+    b.ret(ir.Constant(ir.IntType(1), 0));
+    b.position_at_end(success);
 }
