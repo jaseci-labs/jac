@@ -299,6 +299,10 @@ impl native_capability_violations(
         for item in stmt.items {
             (mod_name, _ok) = classify_native_import(item);
             if mod_name is not None and not _ok {
+                import from jaclang.compiler.native_imports { python_import_binding }
+                if python_import_binding(item, _base_dir) is not None {
+                    continue;
+                }
                 import from jaclang.compiler.frontend.codeinfo {
                     is_bundled_native_module,
                     resolve_native_module

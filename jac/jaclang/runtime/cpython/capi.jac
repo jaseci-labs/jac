@@ -18,13 +18,15 @@ enum builtin_kind {
 }
 
 import from c {
-    def jacpy_visit(value: u64, visitor: u64, context: u64) -> i32;  def jacpy_bytes_copy_to(
-        value: u64, target: bytes, size: i64
-    );  def jacpy_bytes_from_data(data: bytes, size: i64) -> u64;  def jacpy_dict_memory(
+    def PyErr_GivenExceptionMatches(error: u64, kind: u64) -> i32;  def jacpy_visit(
+        value: u64, visitor: u64, context: u64
+    ) -> i32;  def jacpy_bytes_copy_to(value: u64, target: bytes, size: i64);  def jacpy_bytes_from_data(
+        data: bytes, size: i64
+    ) -> u64;  def jacpy_dict_memory(value: u64) -> i64;  def jacpy_dict_items(
         value: u64
-    ) -> i64;  def jacpy_dict_items(value: u64) -> u64;  def jacpy_unicode_intern(
-        value: u64
-    ) -> u64;  def jacpy_exception_context(error: u64, cause: u64);  def jacpy_not_implemented -> u64;  def jacpy_ellipsis -> u64;  def jacpy_is_iterator(
+    ) -> u64;  def jacpy_unicode_intern(value: u64) -> u64;  def jacpy_exception_context(
+        error: u64, cause: u64
+    );  def jacpy_not_implemented -> u64;  def jacpy_ellipsis -> u64;  def jacpy_is_iterator(
         value: u64
     ) -> i64;  def jacpy_mapping_optional_item(mapping: u64, key: u64) -> u64;  def jacpy_audit_pickle_find(
         module: u64, name: u64

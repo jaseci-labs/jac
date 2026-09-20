@@ -1,0 +1,179 @@
+impl NaIRGenPass._python_value(ty: ir.Type) -> bool {
+    reference = self.struct_types.get("__JacPythonValue");
+    return reference is not None and ty == reference.as_pointer();
+}
+
+impl NaIRGenPass._python_expr(nd: uni.UniNode) -> bool {
+    if not self._python_imports {
+        return False;
+    }
+    if isinstance(nd, uni.Name) {
+        slot = self.local_vars.get(nd.value);
+        if slot is not None {
+            return self._python_value(slot.pointee_type);
+        }
+        return nd.value in self._python_imports;
+    }
+    if isinstance(nd, uni.AtomTrailer) or isinstance(nd, uni.FuncCall) {
+        return self._python_expr(nd.target);
+    }
+    return False;
+}
+
+impl NaIRGenPass._python_runtime(name: str, args: list[ir.Value]) -> ir.Value {
+    function = self.func_symtab["__jac_python_" + name];
+    coerced = [
+        self._coerce_borrowed(arg, param.type)
+        for (arg, param) in zip(args, function.args)
+    ];
+    result = self.builder.call(function, coerced);
+    self._emit_pending_error_check();
+    self._release_owned_args(
+        [
+            value
+            for (arg, value) in zip(args, coerced)
+            if value is not arg
+        ]
+    );
+    self._mark_reference_owned(result);
+    self._protect_temporary(result);
+    return result;
+}
+
+impl NaIRGenPass._python_box(value: ir.Value) -> ir.Value {
+    if self._python_value(value.type) {
+        return value;
+    }
+    if isinstance(value.type, ir.IntType) {
+        result = self._python_runtime(
+            "bool" if value.type.width == 1 else "int", [value]
+        );
+    } elif isinstance(value.type, (ir.DoubleType, ir.FloatType)) {
+        result = self._python_runtime("float", [value]);
+    } elif value.type == self._str_desc_ty
+        or value.type == ir.IntType(8).as_pointer() {
+        result = self._python_runtime("text", [value]);
+    } else {
+        raise ValueError(f"Unsupported Python object conversion: {value.type}");
+    }
+    self._release_owned_args([value]);
+    return result;
+}
+
+impl NaIRGenPass._python_import(binding: NativePythonImport) -> ir.Value {
+    imported = self._python_runtime(
+        "import", [self._make_global_string(binding.module)]
+    );
+    if binding.bind_module != binding.module {
+        self._release_owned_args([imported]);
+        imported = self._python_runtime(
+            "import", [self._make_global_string(binding.bind_module)]
+        );
+    }
+    if binding.attribute {
+        value = self._python_runtime(
+            "getattr", [imported, self._make_global_string(binding.attribute)]
+        );
+        self._release_owned_args([imported]);
+        return value;
+    }
+    return imported;
+}
+
+impl NaIRGenPass._python_call(nd: uni.FuncCall) -> ir.Value {
+    callable = self._codegen_required(nd.target);
+    assert callable is not None;
+    params = list(nd.params or []);
+    count = sum(
+        1
+        for param in params
+        if not isinstance(param, uni.KWPair)
+    );
+    positional = self._python_runtime("tuple", [ir.Constant(ir.IntType(64), count)]);
+    keywords = self._python_runtime("dict", []);
+    index = 0;
+    for param in params {
+        if isinstance(param, uni.KWPair) {
+            assert param.key is not None;
+            raw = self._codegen_required(param.value);
+            assert raw is not None;
+            value = self._python_box(raw);
+            key = self._python_runtime(
+                "text", [self._make_global_string(param.key.sym_name)]
+            );
+            self._python_runtime("setitem", [keywords, key, value]);
+            self._release_owned_args([key, value]);
+        } else {
+            raw = self._codegen_required(param);
+            assert raw is not None;
+            value = self._python_box(raw);
+            self._python_runtime(
+                "tuple_set", [positional, ir.Constant(ir.IntType(64), index), value]
+            );
+            self._release_owned_args([value]);
+            index += 1;
+        }
+    }
+    result = self._python_runtime("call", [callable, positional, keywords]);
+    self._release_owned_args([callable, positional, keywords]);
+    return result;
+}
+
+impl NaIRGenPass._python_attribute(nd: uni.AtomTrailer) -> ir.Value {
+    target = self._codegen_required(nd.target);
+    assert target is not None;
+    if nd.is_attr {
+        name = self._get_name(nd.right);
+        assert name is not None;
+        result = self._python_runtime(
+            "getattr", [target, self._make_global_string(name)]
+        );
+    } else {
+        assert isinstance(nd.right, uni.IndexSlice) and not nd.right.is_range;
+        index = self._codegen_required(nd.right.slices[0].start);
+        assert index is not None;
+        key = self._python_box(index);
+        result = self._python_runtime("getitem", [target, key]);
+        self._release_owned_args([key]);
+    }
+    self._release_owned_args([target]);
+    return result;
+}
+
+
+impl NaIRGenPass._python_error_payload(record: ir.Value) -> ir.Value {
+    typed = self.builder.bitcast(record, self._get_error_record_type().as_pointer());
+    payload = self.builder.load(
+        self.builder.gep(
+            typed, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)]
+        )
+    );
+    return self.builder.bitcast(
+        payload, self.struct_types["__JacPythonError"].as_pointer()
+    );
+}
+
+impl NaIRGenPass._python_error_matches(ex: uni.Expr) -> ir.Value {
+    slots = self._error_slots(self.builder);
+    saved = self._spill_error(tuple(self.builder.load(slot) for slot in slots));
+    self._clear_pending_error(self.builder, release=False);
+    if self._python_expr(ex) {
+        kind = self._codegen_required(ex);
+        assert kind is not None;
+    } else {
+        name = self._get_name(ex);
+        assert name is not None;
+        builtins = self._python_runtime(
+            "import", [self._make_global_string("builtins")]
+        );
+        kind = self._python_runtime(
+            "getattr", [builtins, self._make_global_string(name)]
+        );
+        self._release_owned_args([builtins]);
+    }
+    payload = self._python_error_payload(self.builder.load(saved[1]));
+    result = self._python_runtime("matches", [payload, kind]);
+    self._release_owned_args([kind]);
+    self._restore_error(saved);
+    return result;
+}

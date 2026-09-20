@@ -396,7 +396,8 @@ def bundled_stdlib_module_of(file_path: str) -> (str | None) {
 glob SHARED_RUNTIME_MODULES: tuple[str, ...] = (
          "jaclang.runtime.graph_fragment",
          "jaclang.runtime.cpython.capi",
-         "jaclang.runtime.cpython.references"
+         "jaclang.runtime.cpython.references",
+         "jaclang.runtime.cpython.provider"
      ),
      CLIENT_RUNTIME_SOURCE_PATHS: list[str] = [
          "client/client_runtime.jac",

@@ -1,8 +1,8 @@
 # Native standard library consolidation
 
-Status: shared runtime object API and ownership foundation implemented; ordinary
-import routing is not yet migrated. Initial audit: checkout `36c2d1d03` on Linux
-x86-64.
+Status: shared runtime object API, ownership and initial hosted import lowering
+implemented; the full stdlib migration and cleanup remain in progress. Initial
+audit: checkout `36c2d1d03` on Linux x86-64.
 
 ## Finding
 
@@ -63,10 +63,20 @@ The ownership regressions live in
 [native_unwind_cleanup.jac](../../jac/tests/compiler/backends/native/fixtures/native_unwind_cleanup.jac)
 and
 [test_native_python_references.jac](../../jac/tests/compiler/backends/native/test_native_python_references.jac).
-Original Python exceptions still cross the runtime boundary through owned
-`ObjectResult` values. The compiler's ordinary Python-object provider and its
-native `try`/`except` integration remain to be implemented; the transport change
-alone does not migrate imports or establish stdlib conformance.
+Hosted import lowering now uses `runtime/cpython/provider.jac`. Its internal
+Python value inherits the shared reference owner; generic imports, attributes,
+calls, indexing and scalar conversion use the retained CPython API. Python errors
+remain owned exception values while native locals and `finally` blocks clean up.
+The outer hosted entry restores the original interpreter exception. Native
+handlers match Python exception classes through CPython's exception matcher.
+
+The initial ordinary-import probe opens SQLite, executes a query, reads the row,
+and returns a checked native scalar. A repeated-error probe verifies native
+`except sqlite3.OperationalError` handling and propagation to the Python caller.
+This is not full stdlib conformance: existing `na_stdlib` routes still take
+precedence. Import initialization and binding state, remaining object protocols,
+containers, callbacks, exception bindings, hosted application packaging and
+bootstrap migration remain required before deleting the duplicate modules.
 
 ## Reproduce
 
@@ -119,8 +129,9 @@ entry additionally proves construction and consumption from native Jac itself.
 
 ## What prevents a resolver-only change
 
-An ordinary `import sqlite3` compiled with `jac build --native` currently fails
-with E5090, even though the equivalent generic native C API call succeeds.
+The initial audit found that an ordinary `import sqlite3` failed with E5090 even
+though the equivalent generic C API call succeeded. The hosted import path now
+lowers that probe. The remaining migration must address all of these boundaries:
 
 1. **Placement and imports.** The capability checker and placement solver reject
    Python modules outside their native allowlist. The shared resolver selects

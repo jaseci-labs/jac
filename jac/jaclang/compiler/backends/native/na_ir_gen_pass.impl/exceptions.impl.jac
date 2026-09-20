@@ -324,6 +324,35 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
             propagate
         );
         self.builder.position_at_end(unhandled);
+        if self._python_imports {
+            python_error = func.append_basic_block("err.python");
+            native_error = func.append_basic_block("err.native");
+            self.builder.cbranch(
+                self.builder.icmp_signed(
+                    "==",
+                    pending[0],
+                    ir.Constant(
+                        ir.IntType(32),
+                        self._get_or_register_exc_type("__JacPythonError") + 1
+                    )
+                ),
+                python_error,
+                native_error
+            );
+            self.builder.position_at_end(python_error);
+            self._clear_pending_error(self.builder, release=False);
+            self.builder.call(
+                self.func_symtab["__jac_python_restore"],
+                [self._python_error_payload(pending[1])]
+            );
+            for (slot, value) in zip(slots, pending) {
+                self.builder.store(value, slot);
+            }
+            self.builder.store(owns, self._error_owned_slot(self.builder));
+            self._clear_pending_error(self.builder);
+            self.builder.branch(propagate);
+            self.builder.position_at_end(native_error);
+        }
         fmt = self._make_global_string(
             "jac: unhandled exception: %s\n", name_prefix=".err.unhandled"
         );
@@ -439,6 +468,24 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
         }
         handler_bb = func.append_basic_block(f"except.handler.{i}");
         next_bb = func.append_basic_block(f"except.dispatch.{i + 1}");
+        if self._python_imports and ex is not None {
+            python_match = func.append_basic_block(f"except.python.{i}");
+            native_match = func.append_basic_block(f"except.native.{i}");
+            self.builder.cbranch(
+                self.builder.icmp_signed(
+                    "==",
+                    err_type,
+                    ir.Constant(
+                        i32, self._get_or_register_exc_type("__JacPythonError") + 1
+                    )
+                ),
+                python_match,
+                native_match
+            );
+            self.builder.position_at_end(python_match);
+            self.builder.cbranch(self._python_error_matches(ex), handler_bb, next_bb);
+            self.builder.position_at_end(native_match);
+        }
         if caught is None or caught in ("Exception", "BaseException") {
             self.builder.branch(handler_bb);
         } else {

@@ -1767,7 +1767,41 @@ impl NaIRGenPass._zero_const(ty: ir.Type) -> ir.Constant {
     return ir.Constant(ty, 0);
 }
 
+impl NaIRGenPass._coerce_borrowed(val: ir.Value, target_type: ir.Type) -> ir.Value {
+    """Adapt a borrowed argument without moving its caller's cleanup root.""";
+    owned = val.is_owned;
+    fields = val.na_tuple_owned;
+    try {
+        val.is_owned = False;
+        val.na_tuple_owned = None;
+        result = self._coerce_type(val, target_type);
+    } finally {
+        val.is_owned = owned;
+        val.na_tuple_owned = fields;
+    }
+    if result is not val {
+        self._protect_temporary(result);
+    }
+    return result;
+}
+
 impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
+    if self._python_imports
+        and self._python_value(val.type)
+        and target_type != val.type {
+        if isinstance(target_type, ir.IntType) {
+            converted = self._python_runtime(
+                "truth" if target_type.width == 1 else "as_int", [val]
+            );
+            self._release_owned_args([val]);
+            return self._coerce_type(converted, target_type);
+        }
+        if isinstance(target_type, (ir.DoubleType, ir.FloatType)) {
+            converted = self._python_runtime("as_float", [val]);
+            self._release_owned_args([val]);
+            return self._coerce_type(converted, target_type);
+        }
+    }
     _was_owned = self._is_owned(val);
     _result = self._coerce_type_inner(val, target_type);
     if _was_owned and _result is not val {

@@ -16,6 +16,7 @@ import from jaclang.compiler.backends.native.lowering {
     NativeLoweringKind
 }
 import from jaclang.runtime.scalars { ScalarShape }
+import from jaclang.compiler.native_imports { NativePythonImport }
 
 import from jaclang.compiler.frontend.codeinfo {
     HDR_ALLOC_ID_OFF,
@@ -401,6 +402,7 @@ walker NaIRGenPass {
         set_release_fns: dict[str, ir.Function] = {},
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        _python_imports: dict[str, NativePythonImport] = {},
         _native_module_imports: set[str] = set(),
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
@@ -610,6 +612,15 @@ walker NaIRGenPass {
     def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
     def _bytes_repr_fn -> ir.Function;
+    def _python_value(ty: ir.Type) -> bool;
+    def _python_error_payload(record: ir.Value) -> ir.Value;
+    def _python_error_matches(ex: uni.Expr) -> ir.Value;
+    def _python_expr(nd: uni.UniNode) -> bool;
+    def _python_runtime(name: str, args: list[ir.Value]) -> ir.Value;
+    def _python_box(value: ir.Value) -> ir.Value;
+    def _python_import(binding: NativePythonImport) -> ir.Value;
+    def _python_call(nd: uni.FuncCall) -> ir.Value;
+    def _python_attribute(nd: uni.AtomTrailer) -> ir.Value;
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_callable_value(
         nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]
@@ -2321,6 +2332,7 @@ walker NaIRGenPass {
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _zero_const(ty: ir.Type) -> ir.Constant;
     def _coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _coerce_borrowed(val: ir.Value, target_type: ir.Type) -> ir.Value;
     def _coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value;
     def _promote_to_float(
         left: ir.Value, right: ir.Value, unsigned: bool = False

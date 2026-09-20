@@ -562,6 +562,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         is_bundled_native_module
     }
 
+    import from jaclang.compiler.native_imports { python_import_binding }
     processed_modules: set[str] = set();
     imported_mods: list[tuple[str, uni.Module]] = [];
     manifest = self.module.gen.interop_manifest;
@@ -579,6 +580,17 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         _native_ids.add(id(_nested_imp));
     }
     wq: list[tuple[str, str, str | None]] = [];
+    for imp in ModuleFacts.iter_module_imports(self.module) + _nested_native {
+        for item in imp.items {
+            binding = python_import_binding(item, entry_base);
+            if binding is not None {
+                self._python_imports[binding.binding] = binding;
+            }
+        }
+    }
+    if self._python_imports {
+        wq.append(("jaclang.runtime.cpython.provider", entry_base, None));
+    }
     for imp in ModuleFacts.iter_module_imports(self.module) + _nested_native {
         mod_name = self._extract_import_module_name(imp);
         if not mod_name {

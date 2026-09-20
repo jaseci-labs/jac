@@ -558,6 +558,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         value = self.builder.load(alloca, name=var_name);
 
         if self._type_key_of(nd) == "str"
+            and not self._python_value(value.type)
             and isinstance(value.type, ir.PointerType)
             and value.type != ir.IntType(8).as_pointer() {
             return self.builder.bitcast(
@@ -565,6 +566,9 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
             );
         }
         return value;
+    }
+    if var_name in self._python_imports {
+        return self._python_import(self._python_imports[var_name]);
     }
     if var_name in self.func_symtab {
         return self.func_symtab[var_name];
@@ -1927,6 +1931,9 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
+    if self._python_expr(nd.target) {
+        return self._python_attribute(nd);
+    }
     if isinstance(nd.right, uni.FilterCompr) {
         return self._codegen_chained_filter(nd);
     }

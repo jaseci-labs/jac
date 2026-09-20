@@ -1453,6 +1453,9 @@ impl NaIRGenPass._codegen_synthetic_call(
 }
 
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
+    if self._python_expr(nd.target) {
+        return self._python_call(nd);
+    }
     import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
     import from jaclang.compiler.symbol_utils { erased_identity_call_arg }
     import from jaclang.compiler.field_semantics {
