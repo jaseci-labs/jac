@@ -54,3 +54,9 @@ def parse_ar_archive(data: bytes) -> list[ArMember];
 def parse_ar_symbol_index(data: bytes) -> dict[str, int];
 
 def select_ar_members(data: bytes, root_undef: list[str]) -> list[ArMember];
+# Native thread-local state needs libpthread separately before glibc 2.34.
+glob LINUX_RUNTIME_LIBRARIES: tuple[str, ...] = (
+         "libc.so.6",
+         "libm.so.6",
+         "libpthread.so.0"
+     );

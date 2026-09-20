@@ -260,11 +260,13 @@ impl native_build(
     if (shared or (_is_linux_exec and not _static_musl))
         and not is_macos
         and not is_windows {
-        if "libc.so.6" not in needed_libs {
-            needed_libs.append("libc.so.6");
+        import from jaclang.compiler.backends.native.linker_common {
+            LINUX_RUNTIME_LIBRARIES
         }
-        if "libm.so.6" not in needed_libs {
-            needed_libs.append("libm.so.6");
+        for library in LINUX_RUNTIME_LIBRARIES {
+            if library not in needed_libs {
+                needed_libs.append(library);
+            }
         }
     }
 

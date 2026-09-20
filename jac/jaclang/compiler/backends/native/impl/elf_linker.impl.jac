@@ -928,12 +928,11 @@ impl ElfLinker.build_executable -> bytes {
     dynstr_foff = cur_offset;
     cur_offset += len(dynstr_data);
     cur_offset = _align(cur_offset, 8);
-    rela_plt_foff = cur_offset;
-    cur_offset += len(extern_func_syms) * 24;
-    cur_offset = _align(cur_offset, 8);
     rela_dyn_foff = cur_offset;
     rela_dyn_size = len(extern_data_syms) * 24;
     cur_offset += rela_dyn_size;
+    rela_plt_foff = cur_offset;
+    cur_offset += len(extern_func_syms) * 24;
     cur_offset = _align(cur_offset, 16);
     plt_foff = cur_offset;
     cur_offset += plt_size;
@@ -1825,10 +1824,6 @@ impl ElfLinker.build_shared_object -> bytes {
     dynstr_foff = cur_offset;
     cur_offset += len(dynstr_data);
     cur_offset = _align(cur_offset, 8);
-    rela_plt_foff = cur_offset;
-    cur_offset += len(extern_func_syms) * 24;
-    cur_offset = _align(cur_offset, 8);
-
     data_abs_relocs: list[tuple[ElfRela, tuple[str, int]]] = [];
     for rela in self.relocations {
         if rela.rtype == arch.abs64_rtype and rela.target_sec in data_sections {
@@ -1847,6 +1842,8 @@ impl ElfLinker.build_shared_object -> bytes {
         + len(extern_data_syms);
     rela_dyn_foff = cur_offset;
     cur_offset += n_rela_dyn * 24;
+    rela_plt_foff = cur_offset;
+    cur_offset += len(extern_func_syms) * 24;
     cur_offset = _align(cur_offset, 16);
     plt_foff = cur_offset;
     cur_offset += plt_size;

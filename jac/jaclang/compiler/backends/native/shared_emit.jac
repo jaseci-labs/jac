@@ -435,6 +435,9 @@ def emit_shared_library(
             );
         } else {
             import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
+            import from jaclang.compiler.backends.native.linker_common {
+                LINUX_RUNTIME_LIBRARIES
+            }
             import from jaclang.compiler.backends.native.floor {
                 collect_floor_archives as _cfa_elf
             }
@@ -444,7 +447,7 @@ def emit_shared_library(
             ok = ElfLinker.link(
                 obj_bytes=obj_bytes,
                 output_path=output_path,
-                needed_libs=["libc.so.6", "libm.so.6"],
+                needed_libs=list(LINUX_RUNTIME_LIBRARIES),
                 crt_objects=[],
                 shared=True,
                 export_symbols=exports,
