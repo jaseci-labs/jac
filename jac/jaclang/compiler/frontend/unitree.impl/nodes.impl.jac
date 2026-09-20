@@ -1644,38 +1644,12 @@ impl ModulePath.base_module_name.getter -> str {
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     import from jaclang.project.modresolver { resolve_relative_path }
-    bundled = self.native_bundled_path();
-    if bundled is not None {
-        return bundled;
-    }
     spv = self.string_path_value;
     if spv is not None {
         return resolve_relative_path(spv, self.loc.mod_path, string_spec=True);
     }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
     return resolve_relative_path(target, self.loc.mod_path);
-}
-
-impl ModulePath.native_bundled_path -> (str | None) {
-    import os;
-    import from jaclang.compiler.frontend.codeinfo {
-        is_bundled_native_module,
-        resolve_native_module
-    }
-    mod_path = self.loc.mod_path if self.loc else None;
-    if not self.in_native_context() {
-        return None;
-    }
-    if mod_path and mod_path.endswith(".pyi") {
-        return None;
-    }
-    base = self.dot_path_str;
-    if not is_bundled_native_module(base) {
-        return None;
-    }
-    base_dir = os.path.dirname(mod_path) if mod_path else os.getcwd();
-    (_src, full_path) = resolve_native_module(base, base_dir);
-    return full_path;
 }
 
 impl ModulePath.resolve_relative_path_list -> list[str] {

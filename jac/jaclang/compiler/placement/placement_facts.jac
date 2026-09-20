@@ -5,8 +5,7 @@ glob SPACE_SERVER: str = 'server',
      SPACE_CLIENT: str = 'client',
      SPACE_NATIVE: str = 'native';
 
-glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
-     TOOLCHAIN_MIXED_NATIVE_REL: tuple[str, ...] = (
+glob TOOLCHAIN_MIXED_NATIVE_REL: tuple[str, ...] = (
          "client",
          "targets",
          "desktop",
@@ -168,10 +167,6 @@ def sealed_spaces_for(source_path: str) -> (set[str] | None) {
 
 def toolchain_native_by_policy(package_dir: str, source_path: str) -> bool {
     rel = os.path.relpath(os.path.abspath(source_path), os.path.abspath(package_dir));
-    native_only = os.path.join(*TOOLCHAIN_NATIVE_ONLY_REL) + os.sep;
-    if rel.startswith(native_only) {
-        return True;
-    }
     mixed = os.path.join(*TOOLCHAIN_MIXED_NATIVE_REL) + os.sep;
     if rel.startswith(mixed) {
         import from jaclang.compiler.placement.placement_solver {

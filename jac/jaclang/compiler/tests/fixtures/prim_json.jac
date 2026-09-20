@@ -1,19 +1,7 @@
-"""Bundled native `json` cross-backend equivalence fixture (issues #6404 / #6940).
+"""Json: compare native Python-object calls with the Python backend.
 
-The SAME `import from json { loads, dumps }` binds CPython's `json` on the sv
-(Python) backend and the bundled `na_stdlib/json.jac` Mechanism-B module on
-the na (native LLVM) backend. This fixture pins the two congruent on:
-
-  * loads -- values are extracted to SCALARS (int/float/str/bool/None) because the
-    cross-backend harness marshals a returned dict[str, any] (and nested dicts)
-    but reads a returned list as raw i64; so arrays are probed via len + indexed
-    element reads rather than returned whole.
-  * dumps -- compared as exact strings (CPython default `(', ', ': ')` separators,
-    insertion-ordered keys). Floats are intentionally NOT dumps-tested: native
-    `str(float)` is `%g`, not CPython's shortest-round-trip repr (gated on #6940
-    Phase 0.3 Ryu). Float PARSING is exact and is compared with a tolerance.
-
-ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from json { loads, dumps }

@@ -749,8 +749,8 @@ test "annotated block lambda tails are type-checked (#9158)" {
     ) , (f"mismatching lambda tail must be diagnosed: {errors}");
 }
 
-test "native call resolves bundled stdlib signature, not typeshed (#7037)" {
-    (eng, _) = compile_native("bundled_stdlib_sig.jac");
+test "native call uses the Python stdlib keyword signature" {
+    (eng, _) = compile_native("python_stdlib_signature.jac");
     pos = get_func(eng, "dumps_pos_len", ctypes.c_int64);
     kw = get_func(eng, "dumps_kw_len", ctypes.c_int64);
     pos_len = pos();
@@ -759,8 +759,8 @@ test "native call resolves bundled stdlib signature, not typeshed (#7037)" {
     assert kw_len == 4 , f"keyword dumps len {kw_len}";
 }
 
-test "native call fills omitted defaults from the bundled stdlib signature" {
-    (eng, _) = compile_native("bundled_stdlib_defaults.jac");
+test "native call delegates omitted defaults to the Python stdlib" {
+    (eng, _) = compile_native("python_stdlib_defaults.jac");
     adler = get_func(eng, "adler32_default_seed", ctypes.c_int64);
     hex_len = get_func(eng, "token_hex_default_len", ctypes.c_int64);
     adler_val = adler();

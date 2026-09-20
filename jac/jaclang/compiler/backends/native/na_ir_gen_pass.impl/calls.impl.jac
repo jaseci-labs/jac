@@ -1214,10 +1214,6 @@ impl NaIRGenPass._native_module_call_target(
         return None;
     }
 
-    if mod_name == "os.path" and method_name in NATIVE_OSPATH_FUNCS {
-        return None;
-    }
-
     if mod_name in self._native_module_imports {
         return (mod_name, method_name);
     }

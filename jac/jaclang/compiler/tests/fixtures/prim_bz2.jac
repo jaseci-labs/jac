@@ -1,23 +1,7 @@
-"""Bundled native ``bz2`` cross-backend equivalence fixture (#6978 Phase 2).
+"""Bz2: compare native Python-object calls with the Python backend.
 
-The SAME ``import from bz2 { compress, decompress }`` binds CPython's ``bz2`` on
-the sv (Python) backend and the bundled ``na_stdlib/bz2.jac`` Mechanism-F
-module -- a thin pure-Jac surface over ``libbz2`` (the FFI floor) -- on the na
-(native LLVM) backend. Under this in-process JIT harness the floor dlopens the
-system ``libbz2``; the bundled ``libbz2.a`` archive (staged by the generic
-name-derived floor mechanics of #6990) is only consumed by the AOT
-``nacompile`` pathway and is NOT linked by this fixture.
-
-The fixture pins the two implementations congruent on the one-shot bzip2
-surface: ``compress`` produces byte-identical output (poly digest + exact
-length, at the default and an explicit level), ``decompress`` round-trips,
-empty input is handled identically, and the error paths agree -- corrupt
-input, a truncated stream, and out-of-range compresslevels all raise on both
-backends (compared as flags: CPython raises OSError on corrupt data where the
-native surface raises ValueError, and native exception messages are not
-compared across the JIT boundary). The digest helper is duplicated inside the
-``na`` block because a plain ``def`` is a Python symbol native code could only
-reach through the JIT interop bridge. ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from bz2 { compress, decompress }

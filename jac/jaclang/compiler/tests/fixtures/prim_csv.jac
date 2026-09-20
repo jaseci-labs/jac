@@ -1,17 +1,7 @@
-"""Bundled native `csv` cross-backend equivalence fixture (#6978 Phase 3).
+"""Csv: compare native Python-object calls with the Python backend.
 
-The SAME `import from csv { reader }` binds CPython's `csv.reader` on the sv
-(Python) backend and the bundled `na_stdlib/csv.jac` Mechanism-B module on the
-na (native LLVM) backend. CPython's `reader` is a lazy iterator (materialized
-here with `list(...)`); the native `reader` is eager and returns the same
-`list[list[str]]`. Rows marshal as raw i64 across the harness, so every parsed
-record is probed through scalar cell reads and `len(...)`. Covers mid-field
-literal quotes, quote-after-close, unterminated quotes, embedded
-delimiter+newline inside a quoted field, and NUL pass-through (CPython >= 3.14
-parses NUL as an ordinary character -- the sv runtime is 3.14). The NUL row
-uses field counts, lengths and character codes to check its complete content
-without passing a NUL-bearing string through the ctypes result decoder.
-ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from csv { reader }

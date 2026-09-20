@@ -1,4 +1,4 @@
-"""A program's native stdlib dependencies live in that program, not in the
+"""A program's shared Python runtime dependencies live in that program, not in the
 process-global self-host program the running compiler keeps for its own
 modules."""
 import os;
@@ -12,15 +12,15 @@ def _pkg_path(rel: str) -> str {
 }
 
 
-test "a native stdlib module resolves into the program that imports it" {
+test "a shared Python runtime module resolves into the program that imports it" {
     prog = JacProgram();
     cache = prog._get_compiler().selfhost;
     assert not cache.is_selfhost(prog);
-    sock = _pkg_path("runtime/na_stdlib/socket.jac");
+    sock = _pkg_path("runtime/cpython/provider.jac");
     assert os.path.isfile(sock) , sock;
-    assert cache.owns(sock) , "the native stdlib ships inside the jaclang tree";
+    assert cache.owns(sock) , "the shared Python runtime ships inside the jaclang tree";
     assert cache.resolve(sock, prog) is prog , (
-        "a checked program's socket import was routed into the self-host hub,"
+        "a checked program's Python provider import was routed into the self-host hub,"
         " where its type memos would outlive this program's compile closure"
     );
 }
@@ -45,10 +45,10 @@ test "shared construction runtime resolves into its consumer program" {
 }
 
 
-test "the self-host program keeps its own native stdlib imports" {
+test "the self-host program keeps its own shared Python runtime imports" {
     prog = JacProgram();
     cache = prog._get_compiler().selfhost;
-    sock = _pkg_path("runtime/na_stdlib/socket.jac");
+    sock = _pkg_path("runtime/cpython/provider.jac");
     assert cache.resolve(sock, cache.program) is cache.program;
 }
 

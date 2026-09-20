@@ -1,22 +1,7 @@
-"""Cross-backend `socket` equivalence over the libc BSD-sockets floor
-(issue #6978 Phase 1, the network tier `ssl` + `http`/`urllib` build on).
+"""Socket equivalence: compare native Python-object calls with the Python backend.
 
-`import socket` binds the bundled `na_stdlib/socket.jac` Mechanism-A/F module
-(a pure-Jac TCP-client surface over the libc socket FFI floor) on the na
-backend; the sv reference is CPython's real `socket`. There is no live network:
-a loopback HTTP server is stood up on an ephemeral port, its port published in
-`JAC_SOCKET_TEST_PORT`, and the two client implementations are pinned congruent
-on a raw GET against the same server -- the HTTP status and the exact total
-response byte count (deterministic, hence byte-equal across backends).
-
-This is the executable Phase-1 socket guard: it exercises loopback DNS
-(`getaddrinfo`), `create_connection`/`connect`, `sendall`, and a `recv` drain to
-end-of-stream. The native functions return plain `int`s, driven directly through
-the JIT (`get_func`) -- the scalar shape the native pathway marshals across a
-module boundary reliably -- so this suite compares ints rather than going
-through `run_with_both`, exactly like `test_urllib_equivalence`. The sv
-reference is pinned with concrete asserts, so a regression in either backend is a
-hard failure. ES/JS opts out (no socket floor).
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import os;

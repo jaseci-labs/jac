@@ -1825,48 +1825,6 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
 
         if isinstance(target_expr, uni.AtomTrailer) and not target_expr.is_attr {
-            _env_sub_t = target_expr.target;
-            if (
-                isinstance(_env_sub_t, uni.AtomTrailer)
-                and _env_sub_t.is_attr
-                and self._get_name(_env_sub_t.target) == "os"
-                and self._get_name(_env_sub_t.right) == "environ"
-                and self?._native_stdlib_modules
-                and "os" in self._native_stdlib_modules
-                and nd.aug_op is None
-                and isinstance(target_expr.right, uni.IndexSlice)
-                and target_expr.right.slices
-            ) {
-                _env_slices: list[uni.Slice] = target_expr.right.slices or [];
-                _env_key: (ir.Value | None) = None;
-                if _env_slices {
-                    _env_key = self._codegen_expr(_env_slices[0]);
-                    if _env_key is None and _env_slices[0]?.start {
-                        _env_key = self._codegen_expr(_env_slices[0].start);
-                    }
-                }
-                _env_val_is_str = isinstance(value.type, ir.PointerType)
-                    or (
-                        self._str_desc_ty is not None
-                        and value.type == self._str_desc_ty
-                    );
-                if _env_key is not None and _env_val_is_str {
-                    _i8p_env = ir.IntType(8).as_pointer();
-                    _setenv_fn = self._get_or_declare_extern(
-                        "setenv", ir.IntType(32), [_i8p_env, _i8p_env, ir.IntType(32)]
-                    );
-                    self.builder.call(
-                        _setenv_fn,
-                        [
-                            self._coerce_type(_env_key, _i8p_env),
-                            self._coerce_type(value, _i8p_env),
-                            ir.Constant(ir.IntType(32), 1)
-                        ],
-                        name="environ.setitem"
-                    );
-                    continue;
-                }
-            }
             _idx_errs_before = len(self.ctx.errors_had);
             _idx_stored = False;
             idx_target_name = self._get_name(target_expr.target);

@@ -255,22 +255,19 @@ test "a consumer links a ClassVar-importing dependency" {
 }
 
 
-test "a from import of an na_stdlib-shimmed module lowers" {
+test "a from import of a Python standard-library module lowers" {
     assert _rejected_imports("from_import_shimmed_stdlib.jac") == [] , (
-        "`keyword` ships as Jac source under `runtime/na_stdlib`, so a "
-        "native unit supplies the name the import binds; classifying "
-        "`from`-import items must not read a shimmed module as Python"
+        "Python from-imports must bind through the shared object provider"
     );
     (prog, ir) = _compile_native("from_import_shimmed_stdlib.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , (
-        "no native IR for a module whose only import is a shimmed one"
+        "no native IR for a module importing Python stdlib"
     );
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "run" in layout.functions , (
-        "a shimmed module supplies the name natively, so nothing here "
-        f"demotes: {sorted(layout.functions)}"
+        f"Python stdlib import demoted the caller: {sorted(layout.functions)}"
     );
 }
 

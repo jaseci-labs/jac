@@ -695,8 +695,6 @@ impl NativeCompilePass._compile_and_link_native_imports(
     base_dir = os.path.dirname(module.loc.mod_path) if module.loc else ".";
     work_queue: list[tuple[str, str]] = [(source, base_dir) for source in sources];
 
-    import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
-    _bundled_stdlib_root = native_stdlib_root();
     queue_idx = 0;
     _lk_composed = 0;
     while queue_idx < len(work_queue) {

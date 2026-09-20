@@ -1,25 +1,7 @@
-"""Bundled native `ssl` cross-backend equivalence fixture (#6978 Phase 1).
+"""Ssl: compare native Python-object calls with the Python backend.
 
-`import ssl` binds the bundled `na_stdlib/ssl.jac` Mechanism-F module (a
-verifying TLS-client surface over the libssl/libcrypto FFI floor) on the na
-backend; the sv reference is CPython's real `ssl`. The owning
-`test_ssl_equivalence` suite stands up a loopback HTTPS server with a
-test-generated self-signed cert for `localhost`, publishes the port in
-`JAC_SSL_TEST_PORT` and the cert (used as the trust anchor) in
-`JAC_SSL_TEST_CAFILE`, and exercises the three cases that matter for a
-fail-closed TLS client:
-
-  - **positive**: trusting the cert + the right hostname -> the handshake
-    verifies and a GET returns the HTTP status.
-  - **untrusted chain**: the default system trust store does NOT contain the
-    self-signed cert -> `wrap_socket` must raise `SSLError` (fail closed).
-  - **hostname mismatch**: trusting the cert but asking for the wrong hostname
-    -> the in-handshake identity check must raise `SSLError` (fail closed).
-
-The native functions return plain `int`s, driven directly through the JIT
-(`get_func`) -- 1 means "the expected `SSLError` was raised and caught" -- so the
-suite asserts on the scalar the native pathway marshals reliably (mirroring
-`test_socket_equivalence`/`test_urllib_equivalence`). ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import os;

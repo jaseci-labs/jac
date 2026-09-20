@@ -1,13 +1,7 @@
-"""Bundled native `os.path` (posixpath) cross-backend equivalence fixture
-(issues #6404 / #6940).
+"""Ospath: compare native Python-object calls with the Python backend.
 
-The SAME `import from os.path { ... }` binds CPython's `posixpath` on the sv
-(Python) backend and the bundled `na_stdlib/os/path.jac` Mechanism-B module
-on the na (native LLVM) backend (the first module to ride the bundled native
-stdlib resolution keystone). This fixture pins the two implementations
-congruent on the pure-string POSIX path helpers, including the `normpath` /
-`splitext` / `split` edge cases (trailing-slash strip, all-slash heads). ES/JS
-opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from os.path {

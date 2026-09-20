@@ -1,20 +1,7 @@
-"""Bundled native `socket` cross-backend equivalence fixture (#6978 Phase 1).
+"""Socket: compare native Python-object calls with the Python backend.
 
-`import socket` binds the bundled `na_stdlib/socket.jac` Mechanism-A/F module
-(a pure-Jac client surface over the libc BSD-sockets FFI floor) on the na
-backend; the sv reference is CPython's real `socket`. There is no live network:
-the owning `test_socket_equivalence` suite stands up a loopback TCP/HTTP server
-on an ephemeral port, publishes it in `JAC_SOCKET_TEST_PORT`, and pins the two
-client implementations congruent on what a raw GET against the SAME server
-yields -- the HTTP status code and the exact total response byte count (both
-deterministic for a fixed server reply, so they must match to the byte).
-
-Both sides drive a blocking TCP client by hand -- `create_connection`,
-`sendall(request)`, then a `recv` loop to end-of-stream -- so the fixture
-exercises the whole client path: DNS (loopback resolution through
-`getaddrinfo`), `connect`, `send`, and a multi-`recv` read drain. The native
-functions return plain `int`s, driven directly through the JIT (`get_func`),
-mirroring `test_urllib_equivalence`. ES/JS opts out (no socket floor).
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import os;

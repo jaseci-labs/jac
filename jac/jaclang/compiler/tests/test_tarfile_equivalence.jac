@@ -1,18 +1,8 @@
-"""Cross-backend `tarfile` extraction over `ZstdFile` equivalence.
+"""Tarfile equivalence: compare native Python-object calls with the Python backend.
 
-Builds a PAX tar with CPython's `tarfile` (a >200-char path forcing a pax
-extended header, an exec-bit script, nested dirs, an empty file, and a >1 MiB
-file), wraps it in TWO concatenated zstd frames -- the single-binary launcher's
-payload shape -- and extracts it with the launcher's exact sequence:
-`ZstdFile(io.BytesIO(payload))` -> `tarfile.open(fileobj=..., mode="r|")` ->
-`extractall(dest)` (default `data` filter).
-
-The SAME fixture binds CPython's real modules on the sv reference and the
-bundled `na_stdlib` (`tarfile.jac` / `compression/zstd.jac` / `io.jac`) on the na
-backend, forced native (`default_codespace='native'`) so no `[placement.pins]`
-entry is needed. Both extract into their own temp tree; the test then walks both
-trees on the sv side and asserts an identical sorted listing of
-(relative path, size, `mode & 0o777`, sha256-of-contents). ES/JS opts out."""
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
+"""
 
 import ctypes;
 import hashlib;
@@ -137,7 +127,7 @@ test "tarfile extractall over ZstdFile (sv<->na congruent)" {
         py_count = run_py_fixture("prim_tarfile", "tarfile_extract_py");
         assert py_count == 7 , f"expected 7 members, got {py_count}";
 
-        # na: bundled na_stdlib, forced native, driven through the JIT.
+        # Native object calls through the JIT, using the same interpreter stdlib.
         (eng, ir) = _compile_native_forced("prim_tarfile.jac");
         init_addr = eng.get_function_address("jac_entry");
         if init_addr != 0 {

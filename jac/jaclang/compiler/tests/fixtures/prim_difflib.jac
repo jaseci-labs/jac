@@ -1,18 +1,7 @@
-"""Bundled native `difflib` cross-backend equivalence fixture (#6978 Phase 3).
+"""Difflib: compare native Python-object calls with the Python backend.
 
-The SAME `import from difflib { Match, SequenceMatcher, get_close_matches }` binds
-CPython's `difflib` on the sv (Python) backend and the bundled
-`na_stdlib/difflib.jac` Mechanism-B module on the na (native LLVM) backend.
-
-`ratio()` is exercised through its exact integer ingredients (sum of matching-
-block sizes `M` and `len(a)+len(b)`) rather than the raw float, and matching
-blocks / `get_close_matches` results are probed via `len(...)` and scalar reads,
-since lists marshal as raw i64 across the harness. The `aj*` keys pin the
-autojunk popular-element pruning against CPython on a `len(b) == 200` input
-where autojunk=True and autojunk=False genuinely differ (a popular run that no
-non-popular seed can extend into), `g4*` pins the equal-ratio tie-break
-(descending word order, per heapq.nlargest), `g5*` pins explicit n=/cutoff=
-keywords, and `err*` pin the ValueError paths. ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from difflib { Match, SequenceMatcher, get_close_matches }

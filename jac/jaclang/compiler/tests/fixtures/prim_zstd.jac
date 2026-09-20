@@ -1,21 +1,8 @@
-"""Bundled native ``compression.zstd`` cross-backend equivalence fixture.
+"""Zstd: compare native Python-object calls with the Python backend.
 
-The SAME ``import from compression.zstd { ... }`` binds CPython's real
-``compression.zstd`` (zstd 1.5.7) on the sv (Python) backend and the bundled
-``na_stdlib/compression/zstd.jac`` Mechanism-F surface -- a pure-Jac layer over
-the ``libzstd`` FFI floor (``_zstd_native.jac``) -- on the na (native LLVM)
-backend. ``io.BytesIO`` binds CPython's ``io`` on sv and the bundled
-``na_stdlib/io.jac`` on na.
-
-The fixture round-trips ``compress`` -> ``decompress`` at several levels, decodes
-a stream of TWO concatenated frames (as the single-binary launcher payload is)
-both one-shot and incrementally through ``ZstdDecompressor``, and streams the
-same two-frame payload through ``ZstdFile(BytesIO(...)).read(chunk)``. Outputs
-are pinned as lengths, a poly digest of decompressed bytes, and the incremental
-decompressor's ``eof``/``needs_input``/``unused_data`` flags -- all deterministic
-and byte-identical across backends. The digest helper is duplicated inside the
-``na`` variant because a plain ``def`` called from native code must itself be
-native. ES/JS opts out (no zstd floor)."""
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
+"""
 
 import from io { BytesIO }
 import from compression.zstd {

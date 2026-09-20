@@ -262,34 +262,19 @@ test "guardrail: starred tuple assignment is rejected" {
 # ─────────────────────────────────────────────────────────────────────
 # Import / builtin gaps (issue #6357)
 # ─────────────────────────────────────────────────────────────────────
-# Native compilation cannot import an ARBITRARY Python module: the import is
-# dropped, then `collections.OrderedDict(...)` lowers to nothing and the binary
-# prints empty output. That silent-wrong result is the worst failure mode --
-# reject it. (`math`/`time`/`sys`/`os`/`random` are lowered builtins, and the
-# bundled `na_stdlib` modules -- `hashlib`/`json`/`os.path`/... -- are now
-# whole-module-importable per #6978; so the rejection example must be a module
-# that is neither, i.e. a pure-Python one like `collections` that will never be
-# an FFI-floor target.)
-test "guardrail: Python module import is rejected" {
+test "ordinary Python module imports remain native through the object provider" {
     prog = compile_na_inline(
         "py_import_collections",
-        "import collections;\n" "with entry { print(collections.OrderedDict()); }\n"
+        "import collections;\nwith entry { print(collections.OrderedDict()); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'collections', got: {fmt_errors(
-        prog
-    )}";
+    assert not prog.errors_had , fmt_errors(prog);
 }
 
-# A dotted non-bundled Python import is equally unsupported (a dotted
-# bundled name like `os.path` now resolves, #6978; `collections.abc`
-# joined NATIVE_SUPPORTED_STDLIB with the unitree lowering coverage).
-test "guardrail: dotted Python module import is rejected" {
+test "dotted Python module imports remain native through the object provider" {
     prog = compile_na_inline(
-        "py_import_dotted", "import xml.etree;\n" "with entry { print(\"hi\"); }\n"
+        "py_import_dotted", "import xml.etree;\nwith entry { print(\"hi\"); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'xml.etree', got: {fmt_errors(
-        prog
-    )}";
+    assert not prog.errors_had , fmt_errors(prog);
 }
 
 # Builtins that are not lowered to the native subset (sum, min, max, ...)

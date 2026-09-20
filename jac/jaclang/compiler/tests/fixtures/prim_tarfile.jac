@@ -1,15 +1,8 @@
-"""Bundled native ``tarfile`` + ``compression.zstd`` + ``io`` extraction fixture.
+"""Tarfile: compare native Python-object calls with the Python backend.
 
-The SAME source binds CPython's real ``tarfile`` / ``compression.zstd`` / ``io``
-on the sv (Python) backend and the bundled ``na_stdlib`` modules on the na
-(native LLVM) backend. Both entry points perform the single-binary launcher's
-exact extraction sequence -- wrap the payload in ``ZstdFile(io.BytesIO(...))``,
-``tarfile.open(fileobj=..., mode="r|")``, ``extractall(dest)`` (default ``data``
-filter) -- reading the payload path and destination directory from the
-environment (``JAC_TARFILE_PAYLOAD`` / ``JAC_TARFILE_DEST_PY`` /
-``JAC_TARFILE_DEST_NA``). Each returns the number of members extracted; the
-owning ``test_tarfile_equivalence`` suite compares the two resulting trees on
-disk (relative path, size, ``mode & 0o777``, sha256). ES/JS opts out."""
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
+"""
 
 import os;
 import tarfile;

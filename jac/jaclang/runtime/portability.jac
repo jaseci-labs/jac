@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.codeinfo { NATIVE_SUPPORTED_STDLIB }
-
 glob PY_STDLIB_BY_KIND: dict[str, (set[str] | None)] = {
          "web-app": set(),
          "web-static": set(),
@@ -38,5 +36,5 @@ def client_supports_py_module(name: str, kind: str = "web-app") -> bool {
 }
 
 def native_supports_py_module(name: str) -> bool {
-    return py_root_module(name) in NATIVE_SUPPORTED_STDLIB;
+    return bool(name);
 }

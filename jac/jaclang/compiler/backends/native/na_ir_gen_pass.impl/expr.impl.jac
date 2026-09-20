@@ -2120,52 +2120,6 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         }
         if target_name is not None and right_name is not None {
             if (
-                module_name == "sys"
-                and self._native_stdlib_modules
-                and "sys" in self._native_stdlib_modules
-            ) {
-                if right_name == "argv" {
-                    return self._emit_sys_argv();
-                }
-                if right_name == "platform" {
-                    import platform as _plat;
-                    return self._make_global_string(_plat.system().lower());
-                }
-                if right_name == "maxsize" {
-                    return ir.Constant(ir.IntType(64), 0x7FFFFFFFFFFFFFFF);
-                }
-                if right_name == "byteorder" {
-                    import sys as _sys;
-                    return self._make_global_string(_sys.byteorder);
-                }
-                if right_name == "stdout" or right_name == "stderr" {
-                    return self._emit_sys_stream(right_name);
-                }
-            }
-
-            if (
-                module_name == "math"
-                and self._native_stdlib_modules
-                and "math" in self._native_stdlib_modules
-            ) {
-                _mc = self._emit_math_const(right_name);
-                if _mc is not None {
-                    return _mc;
-                }
-            }
-
-            if (
-                module_name == "os"
-                and self._native_stdlib_modules
-                and "os" in self._native_stdlib_modules
-            ) {
-                _oc = self._emit_os_const(right_name);
-                if _oc is not None {
-                    return _oc;
-                }
-            }
-
-            if (
                 module_name is not None
                 and module_name in self._native_module_imports
                 and right_name in self.global_vars

@@ -1,33 +1,7 @@
-"""Bundled native ``base64`` cross-backend equivalence fixture.
+"""Base64: compare native Python-object calls with the Python backend.
 
-The SAME ``import from base64 { ... }`` binds CPython's ``base64`` on the sv
-(Python) backend and the bundled ``na_stdlib/base64.jac`` Mechanism-B module
-on the na (native LLVM) backend. This fixture pins the two congruent.
-
-Outputs are compared via a custom FNV-1a digest (``_digest``) rather than as
-raw bytes because the cross-backend harness marshals a returned
-``dict[str, any]`` but cannot marshal raw ``bytes`` values across the sv/na
-boundary -- so each encoding is hashed to an int and its length is recorded,
-then the two backends are compared on those scalars. Round-trips (encode then
-decode back to the original) are compared as boolean flags, and error paths
-are compared on ``str(e)`` of the raised ``ValueError`` (``binascii.Error``
-subclasses ``ValueError``, so one ``except`` arm covers both backends).
-
-The case body is duplicated between the sv function and the ``na`` block
-because the native pathway compiles only the ``na { }`` region of a fixture:
-a module-level helper called from native code lowers to an unregistered
-interop stub and crashes the harness. On the na side the body is further
-split into small helpers, each mutating the shared result dict -- one
-function carrying the whole case body exceeds what the na backend can
-currently JIT reliably in a single function.
-
-Case inputs use CPython 3.14 semantics throughout: every expected value and
-error message below was probed against the embedded CPython 3.14.6 runtime
-(the sv backend), including 3.14's non-strict ``a2b_base64`` end-of-input
-padding rules (``Zg==Zg==`` concatenates data characters across padding;
-``Zm8=Zm8=`` is ``Incorrect padding``).
-
-ES/JS opts out (``base64_cl`` returns an empty dict).
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from base64 {

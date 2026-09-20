@@ -158,21 +158,10 @@ def native_safe_sym(src: str) -> str {
 }
 
 def native_library_function_symbol(mod_path: str, name: str) -> str {
-    import os;
     if is_shared_runtime_module(mod_path) {
         return f"__jac_lib_{native_safe_sym(module_dotted_name(mod_path))}_{name}";
     }
-    library_root = native_stdlib_root();
-    if library_root is None {
-        return name;
-    }
-    source = os.path.realpath(mod_path);
-    root_path = os.path.realpath(library_root) + os.sep;
-    if not source.startswith(root_path) {
-        return name;
-    }
-    module_name = source[len(root_path):].replace(os.sep, "/");
-    return f"__jac_lib_{native_safe_sym(module_name)}_{name}";
+    return name;
 }
 
 def module_dotted_name(mod_path: str, mod_name: str = "") -> str {
@@ -249,17 +238,7 @@ def install_native_static_init(
     engine.static_init_chained = {"jac_entry"};
 }
 
-glob NATIVE_SUPPORTED_STDLIB: set[str] = {
-         "sys",
-         "math",
-         "time",
-         "os",
-         "random",
-         "struct",
-         "enum",
-         "collections.abc"
-     },
-     _effective_codespace_ctx: ContextVar[str] = ContextVar(
+glob _effective_codespace_ctx: ContextVar[str] = ContextVar(
          "jac_effective_default_codespace"
      ),
      _closure_cap_ctx: ContextVar[int] = ContextVar("jac_native_closure_cap"),
@@ -345,57 +324,6 @@ def effective_native_closure_cap -> int {
     }
 }
 
-def native_stdlib_root -> (str | None) {
-    import os;
-    import jaclang;
-    if not jaclang?.__file__ {
-        return None;
-    }
-    stdlib_dir = os.path.join(
-        os.path.dirname(jaclang.__file__), "runtime", "na_stdlib"
-    );
-    return stdlib_dir if os.path.isdir(stdlib_dir) else None;
-}
-
-def is_native_by_location(file_path: str) -> bool {
-    import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
-        return False;
-    }
-    ap = os.path.abspath(file_path);
-    pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
-    return ap.startswith(os.path.join(pkg, "runtime", "na_stdlib") + os.sep);
-}
-
-def bundled_stdlib_module_of(file_path: str) -> (str | None) {
-    import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
-        return None;
-    }
-    ap = os.path.abspath(file_path);
-    pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
-    native_root = os.path.join(pkg, "runtime", "na_stdlib") + os.sep;
-    stub_root = os.path.join(pkg, "vendor", "typeshed", "stdlib") + os.sep;
-    if ap.startswith(native_root) and ap.endswith(".jac") {
-        rel = ap[len(native_root):-len(".jac")];
-        parts = rel.split(os.sep);
-
-        parts[-1] = parts[-1].split(".")[0];
-        return ".".join(parts);
-    }
-    if ap.startswith(stub_root) and ap.endswith(".pyi") {
-        rel = ap[len(stub_root):-len(".pyi")];
-        parts = rel.split(os.sep);
-        if parts[-1] == "__init__" {
-            parts = parts[:-1];
-        }
-        return ".".join(parts) if parts else None;
-    }
-    return None;
-}
-
 glob SHARED_RUNTIME_MODULES: tuple[str, ...] = (
          "jaclang.runtime.graph_fragment",
          "jaclang.runtime.cpython.capi",
@@ -446,16 +374,6 @@ def is_shared_runtime_module(file_path: str) -> bool {
         path == os.path.join(package, *module.split('.')[1:]) + '.jac'
         for module in SHARED_RUNTIME_MODULES
     );
-}
-
-def is_bundled_native_module(module_name: str) -> bool {
-    import os;
-    stdlib_dir = native_stdlib_root();
-    if stdlib_dir is None or not module_name {
-        return False;
-    }
-    path_name = module_name.lstrip('.').replace('.', os.sep);
-    return native_variant_path(os.path.join(stdlib_dir, path_name)) is not None;
 }
 
 def set_native_target_override(triple: str | None) -> (str | None) {
@@ -612,13 +530,6 @@ def resolve_native_module(
         }
     }
 
-    bundled_root = native_stdlib_root();
-    if bundled_root is not None {
-        bundled = native_variant_path(os.path.join(bundled_root, path_name));
-        if bundled is not None {
-            return (path_name, bundled);
-        }
-    }
     return (None, None);
 }
 

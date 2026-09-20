@@ -1,15 +1,7 @@
-"""Bundled native `secrets` cross-backend equivalence fixture (#6978 Phase 1).
+"""Secrets: compare native Python-object calls with the Python backend.
 
-The SAME `import secrets` binds CPython's `secrets` on the sv (Python) backend
-and the bundled `na_stdlib/secrets.jac` Mechanism-F module -- a thin pure-Jac
-surface over OpenSSL's `RAND_bytes` (the `_csprng_native.jac` FFI floor on the
-same bundled `libcrypto.a` as hashlib) -- on the na (native LLVM) backend.
-
-Because the outputs are RANDOM, this fixture pins the two implementations
-congruent on their deterministic *properties* rather than exact bytes: token
-lengths (`token_bytes`/`token_hex`/`token_urlsafe` sizes, including the empty
-case), `randbelow`'s degenerate `randbelow(1) == 0` and in-range bound, and that
-two draws differ. ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import secrets;

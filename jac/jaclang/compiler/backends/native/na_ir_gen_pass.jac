@@ -78,11 +78,6 @@ import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_SIZE,
     LIVE_NODE_TAG_OFF,
     LIVE_NODE_USER_OFF,
-    NATIVE_OS_FUNCS,
-    NATIVE_OSPATH_FUNCS,
-    NATIVE_RANDOM_FUNCS,
-    NATIVE_STRUCT_FUNCS,
-    NATIVE_TIME_FUNCS,
     RC_BUFFERED_BIT,
     RC_COLOR_BLACK,
     RC_COLOR_GRAY,
@@ -401,12 +396,10 @@ walker NaIRGenPass {
         dict_release_fns: dict[str, ir.Function] = {},
         set_release_fns: dict[str, ir.Function] = {},
         _struct_bodies_done: set[str] = set(),
-        _native_stdlib_modules: set[str] = set(),
         _python_imports: NativePythonImports = NativePythonImports(),
         _python_init_fn: ir.Function | None = None,
         _python_module_identity: ir.GlobalVariable | None = None,
         _native_module_imports: set[str] = set(),
-        _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[str, str] = {},
@@ -567,9 +560,6 @@ walker NaIRGenPass {
     ) -> (ir.Value | None);
 
     def _hl_view_base_licensed(base_node: object) -> bool;
-    def _emit_sys_argv -> (ir.Value | None);
-    def _emit_sys_stream(stream: str) -> (ir.Value | None);
-    def _emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None);
     def _emit_float_repr(fv: ir.Value) -> ir.Value;
     def _emit_opt_repr(opt_val: ir.Value) -> (ir.Value | None);
     def _float_repr_fn -> ir.Function;
@@ -578,14 +568,6 @@ walker NaIRGenPass {
     def _bytearray_src_of(val: ir.Value) -> (tuple[ir.Value, ir.Value] | None);
     def _dispatch_bytearray_method(
         method_name: str, recv: ir.Value, nd: uni.FuncCall
-    ) -> (ir.Value | None);
-
-    def _emit_struct_pack_into(
-        nd: uni.FuncCall,
-        params: Sequence[uni.Expr | uni.KWPair],
-        fields: list[tuple[str, int, bool]],
-        total: int,
-        little: bool
     ) -> (ir.Value | None);
 
     def _get_bytes_struct_type -> ir.Type;
@@ -1581,8 +1563,6 @@ walker NaIRGenPass {
         checked: bool = False
     ) -> ir.Value;
 
-    def _emit_math_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
-    def _emit_math_const(name: str) -> (ir.Value | None);
     def _emit_heap_object_alloc(
         nd: uni.UniNode, type_name: str, size: ir.Value, headerless: bool
     ) -> ir.Value;
@@ -1775,10 +1755,6 @@ walker NaIRGenPass {
     ) -> None;
 
     def _stack_alloc_target_ok(nd: uni.UniNode) -> bool;
-    def _emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
-    def _emit_os_const(name: str) -> (ir.Value | None);
-    def _emit_os_environ_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
-    def _emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _compute_osp_model(archetypes: list[uni.Archetype]) -> None;
     def _osp_static_edge_name(expr: uni.UniNode) -> (str | None);
@@ -1881,8 +1857,6 @@ walker NaIRGenPass {
         native_fields: dict[str, int]
     ) -> bool;
 
-    def _mt_ensure -> None;
-    def _emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | None);
     def _drop_fn_for(mangle: str) -> (ir.Function | None);
     def _drop_spec_for_mangle(mangle: str) -> (tuple[str, ir.Type] | None);
@@ -2208,41 +2182,6 @@ walker NaIRGenPass {
     ) -> None;
 
     def _emit_last_use_releases(stmt: uni.UniNode) -> None;
-    def _emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
-    def _emit_struct_pack(
-        nd: uni.FuncCall,
-        params: Sequence[uni.Expr | uni.KWPair],
-        fields: list[tuple[str, int, bool]],
-        total: int,
-        little: bool
-    ) -> (ir.Value | None);
-
-    def _emit_struct_unpack(
-        nd: uni.FuncCall,
-        params: Sequence[uni.Expr | uni.KWPair],
-        fields: list[tuple[str, int, bool]],
-        total: int,
-        little: bool
-    ) -> (ir.Value | None);
-
-    def _emit_struct_decode(
-        fields: list[tuple[str, int, bool]], little: bool, data: ir.Value
-    ) -> tuple[list[ir.Value], list[ir.Type]];
-
-    def _emit_struct_tuple(
-        values: list[ir.Value], elem_types: list[ir.Type]
-    ) -> ir.Value;
-
-    def _emit_struct_unpack_from(
-        nd: uni.FuncCall,
-        params: Sequence[uni.Expr | uni.KWPair],
-        fields: list[tuple[str, int, bool]],
-        total: int,
-        little: bool
-    ) -> (ir.Value | None);
-
-    def _emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
-    def _emit_clock_gettime(clock_id: int) -> tuple[ir.Value, ir.Value];
     def _emit_trace_fn(arch_name: str) -> None;
     def _register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool;
     def _finalize_trace_lookup -> None;

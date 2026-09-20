@@ -156,10 +156,10 @@ test "placement_pins imports stay within the documented allowlist" {
 }
 
 
-test "toolchain native policy matches na_stdlib and desktop native trees" {
+test "shared runtime location does not force native placement" {
     pkg = os.path.join(JAC_ROOT, "jaclang");
-    na = os.path.join(pkg, "runtime", "na_stdlib", "_bz2_native.jac");
-    assert toolchain_native_by_policy(pkg, na);
+    provider = os.path.join(pkg, "runtime", "cpython", "provider.jac");
+    assert not toolchain_native_by_policy(pkg, provider);
     other = os.path.join(pkg, "dist", "precompile_bytecode.jac");
     assert not toolchain_native_by_policy(pkg, other);
 }

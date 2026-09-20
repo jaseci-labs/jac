@@ -558,10 +558,7 @@ impl NaIRGenPass._ret_tuple_hints(
 
 impl NaIRGenPass._register_imported_struct_types -> None {
     import os;
-    import from jaclang.compiler.frontend.codeinfo {
-        resolve_native_module,
-        is_bundled_native_module
-    }
+    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
 
     import from jaclang.compiler.native_imports { python_import_binding }
     processed_modules: set[str] = set();
@@ -605,22 +602,20 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             if not _has_native_code {
                 continue;
             }
-            if not is_bundled_native_module(mod_name) {
-                _item0 = next(
-                    (
-                        i
-                        for i in imp.items
-                        if isinstance(i, uni.ModulePath)
-                    ),
-                    None
-                );
-                if (
-                    id(imp) not in _native_ids
-                    or _item0 is None
-                    or resolve_native_module(mod_name, entry_base)[1] is None
-                ) {
-                    continue;
-                }
+            _item0 = next(
+                (
+                    i
+                    for i in imp.items
+                    if isinstance(i, uni.ModulePath)
+                ),
+                None
+            );
+            if (
+                id(imp) not in _native_ids
+                or _item0 is None
+                or resolve_native_module(mod_name, entry_base)[1] is None
+            ) {
+                continue;
             }
         }
         wq.append((mod_name, entry_base, None));
@@ -918,8 +913,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
         _wl_abs = _wl_os2.path.abspath(imported_mod.loc.mod_path);
         _wl_jac_internal = not self.prog.options.native_required_for(_wl_abs)
             and imported_mod.decided_codespace != 'native'
-            and (_wl_os2.sep + "jaclang" + _wl_os2.sep) in _wl_abs
-            and (_wl_os2.sep + "na_stdlib" + _wl_os2.sep) not in _wl_abs;
+            and (_wl_os2.sep + "jaclang" + _wl_os2.sep) in _wl_abs;
         if _wl_jac_internal {
             try {
                 import from jaclang.jac0core { sealed as _wl_sealed }
@@ -1375,16 +1369,10 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                         classify_native_import
                     }
                     import from jaclang.compiler.frontend.codeinfo {
-                        is_bundled_native_module,
                         resolve_native_module
                     }
-                    (mod_name, _supported) = classify_native_import(item);
-                    if _supported and mod_name is not None {
-                        self._native_stdlib_modules.add(mod_name);
-                    } elif mod_name is not None
-                        and is_bundled_native_module(mod_name) {
-                        self._native_module_imports.add(mod_name);
-                    } elif (
+                    (mod_name, _) = classify_native_import(item);
+                    if (
                         mod_name is not None
                         and not stmt.is_absorb
                         and isinstance(item, uni.ModulePath)

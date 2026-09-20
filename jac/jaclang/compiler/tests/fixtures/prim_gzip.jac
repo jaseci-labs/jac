@@ -1,27 +1,7 @@
-"""Bundled native ``gzip`` cross-backend equivalence fixture (#6978 Phase 2).
+"""Gzip: compare native Python-object calls with the Python backend.
 
-The SAME ``import from gzip { compress, decompress }`` binds CPython's ``gzip``
-on the sv (Python) backend and the bundled ``na_stdlib/gzip.jac`` Mechanism-B
-module -- a pure-Jac surface that frames the raw DEFLATE body of the existing
-``zlib`` floor with the RFC 1952 gzip header/CRC-32/ISIZE wrapper (no new FFI) --
-on the na (native LLVM) backend.
-
-``mtime=0`` is pinned on both sides so the 10-byte header is deterministic and
-whole streams compare byte-for-byte (poly digest + exact length + XFL byte, at
-levels 0/1/6/9 and the default). ``decompress`` round-trips (including a
-level-0 stored-block stream), concatenates multi-member input like CPython,
-handles empty and header-flagged (FEXTRA/FNAME/FCOMMENT/FHCRC) input
-identically, and the error paths agree -- bad magic, a truncated stream, a
-bare header glued onto a trailer, a corrupt body, a bad CRC, a bad ISIZE, and
-trailing garbage all raise on both backends (compared as flags: CPython raises
-``gzip.BadGzipFile`` / ``EOFError`` / ``zlib.error`` where the native surface
-raises ``ValueError``, and native exception messages are not compared across
-the JIT boundary). The flagged inputs are hand-spliced the same way on both
-backends from ``compress`` output; the FHCRC bytes are the real
-``crc32(header) & 0xffff`` (0xab12 for this header), which neither backend
-verifies. The digest helper is duplicated inside the ``na`` block because a
-plain ``def`` is a Python symbol native code could only reach through the JIT
-interop bridge. ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from gzip { compress, decompress }

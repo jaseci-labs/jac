@@ -1,5 +1,5 @@
 """`payload pack`: `[stub][payload][trailer]` with the trailer encoded by the
-single-source-of-truth codec in na_stdlib/_fused/trailer.jac."""
+single-source-of-truth codec in dist/fused/trailer.jac."""
 
 import contextlib;
 import hashlib;

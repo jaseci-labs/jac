@@ -1,26 +1,7 @@
-"""Cross-backend `ssl` equivalence over the libssl/libcrypto TLS floor
-(issue #6978 Phase 1, the security-critical leg of the network tier).
+"""Ssl equivalence: compare native Python-object calls with the Python backend.
 
-`import ssl` binds the bundled `na_stdlib/ssl.jac` Mechanism-F module (a
-verifying TLS-client surface over OpenSSL's `libssl`/`libcrypto`) on the na
-backend; the sv reference is CPython's real `ssl`. A loopback HTTPS server is
-stood up with a test-generated self-signed cert for `localhost`; the cert path
-(the trust anchor) is published in `JAC_SSL_TEST_CAFILE` and the port in
-`JAC_SSL_TEST_PORT`.
-
-This is the executable **fail-closed** guard:
-
-  - trusting the cert + the right hostname -> the handshake verifies and the GET
-    returns 200 (congruent with CPython, pinned via `ssl_py`);
-  - the default trust store does NOT contain the self-signed cert -> the native
-    `wrap_socket` raises a catchable `SSLError` (untrusted chain rejected);
-  - trusting the cert but the WRONG hostname -> the in-handshake identity check
-    raises a catchable `SSLError` (hostname mismatch rejected).
-
-The native functions return plain `int`s driven through the JIT (`get_func`),
-1 == "the expected `SSLError` was raised", mirroring `test_socket_equivalence`.
-The cert is generated with the `openssl` CLI; the test skips cleanly where
-`openssl` is unavailable (no committed private key).
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import os;

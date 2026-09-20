@@ -51,7 +51,6 @@ import from jaclang.compiler.frontend.diagnostics {
     W6003,
     W6004
 }
-import from jaclang.compiler.frontend.codeinfo { NATIVE_SUPPORTED_STDLIB }
 
 glob NATIVE_REJECT_NODES: tuple[type[PyInlineCode]] = (PyInlineCode, );
 

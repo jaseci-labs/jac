@@ -1245,16 +1245,7 @@ impl ClassDetailsShared.same_class(other: ClassDetailsShared) -> bool {
         return False;
     }
     other_key = other.canonical_key();
-    if key == other_key {
-        return True;
-    }
-
-    if other_key is None or self.class_name != other.class_name {
-        return False;
-    }
-    import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
-    mod_name = bundled_stdlib_module_of(key[0]);
-    return mod_name is not None and mod_name == bundled_stdlib_module_of(other_key[0]);
+    return key == other_key;
 }
 
 impl TypeBase.is_class_instance -> bool {

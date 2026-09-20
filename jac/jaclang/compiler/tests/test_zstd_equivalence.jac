@@ -1,21 +1,8 @@
-"""Cross-backend `compression.zstd` + `io.BytesIO` equivalence.
+"""Zstd equivalence: compare native Python-object calls with the Python backend.
 
-`import from compression.zstd { ... }` binds the bundled
-`na_stdlib/compression/zstd.jac` Mechanism-F surface (over the `libzstd` FFI
-floor) on the na backend and CPython's real `compression.zstd` (zstd 1.5.7) on
-the sv reference; `io.BytesIO` binds the bundled `na_stdlib/io.jac` on na and
-CPython's `io` on sv. The fixture round-trips `compress`/`decompress` at levels
-1/3/9/19, decodes a payload of TWO concatenated frames (the launcher's payload
-shape) one-shot, incrementally through `ZstdDecompressor`, and streamed through
-`ZstdFile(BytesIO(...)).read(chunk)`, pinning lengths + a poly digest of the
-decompressed bytes.
-
-The na fixture is compiled with the native codespace forced on
-(`default_codespace='native'`), so no `[placement.pins]` entry is required, and
-its per-key output is asserted equal to the CPython reference (a regression in
-either backend is a hard failure). A second test pins the exact launcher decode
-path -- `ZstdFile(io.BytesIO(payload))` over two frames -- byte-for-byte with a
-sha256 on the sv side. ES/JS opts out (no zstd floor)."""
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
+"""
 
 import hashlib;
 import io;
@@ -35,7 +22,7 @@ import from jaclang.compiler.tests.xbackend_equiv {
 (engine, ir). Unlike the shared `compile_native`, this does not depend on a
 `[placement.pins]` entry in the fixtures `jac.toml`: `default_codespace='native'`
 plus `force_target_program` coerces the whole module into the native codespace,
-which is exactly what these bundled-stdlib fixtures need."""
+which is exactly what these stdlib fixtures need."""
 def _compile_native_forced(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     opts = CompileOptions(default_codespace="native", force_target_program=True);

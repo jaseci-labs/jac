@@ -1,15 +1,7 @@
-"""Bundled native `pprint` cross-backend equivalence fixture (#6978 Phase 3).
+"""Pprint: compare native Python-object calls with the Python backend.
 
-The SAME `import from pprint { pformat }` binds CPython's `pprint` on the sv
-(Python) backend and the bundled `na_stdlib/pprint.jac` Mechanism-B module on
-the na (native LLVM) backend. Test objects are built with `json.loads` so the
-two backends construct identical boxed structures (and so scalar `list[any]`
-elements box correctly). Every `pformat` result is compared as an exact string;
-inputs are compact (fit CPython's `width=80` on one line) and float-free, the
-documented scope. `p13`-`p19` pin Python repr string-escaping: backslash,
-\\n/\\t/\\r short forms, quote selection with either and both quote types, and
-\\xNN hex escapes for other C0 controls (U+0001) and DEL (U+007F), built via
-JSON \\uXXXX escapes so both backends construct identical strings. ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from json { loads }

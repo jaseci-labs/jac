@@ -757,13 +757,7 @@ impl JacCompiler.parse_str(
             parse_woven
         }
         codespace = '';
-        import from jaclang.compiler.frontend.codeinfo {
-            is_client_by_location as _cbl,
-            is_native_by_location as _nbl
-        }
-        if _nbl(file_path) {
-            codespace = 'native';
-        }
+        import from jaclang.compiler.frontend.codeinfo { is_client_by_location as _cbl }
         if not codespace and _cbl(file_path) {
             codespace = 'client';
         }
@@ -1031,10 +1025,7 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
 impl JacCompiler.stamp_boundary_facts(
     mod: uni.Module, target_program: JacProgram
 ) -> None {
-    import from jaclang.compiler.frontend.codeinfo {
-        is_bundled_native_module,
-        resolve_native_module
-    }
+    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
     import from jaclang.compiler.placement.placement_pins { config_module_pin }
 
     base_dir = '.';
@@ -1253,9 +1244,7 @@ impl JacCompiler.stamp_boundary_facts(
             for item in nd.items {
                 if (isinstance(item, uni.ModulePath) and item.path) {
                     whole_name = '.'.join(p.value for p in item.path);
-                    eligible = is_bundled_native_module(whole_name)
-                        or (item.alias is None and len(item.path) == 1);
-                    if (whole_name and eligible) {
+                    if whole_name {
                         na_intent = (
                             native_ctx
                             or in_native_mod

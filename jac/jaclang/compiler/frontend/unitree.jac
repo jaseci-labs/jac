@@ -927,7 +927,6 @@ node ModulePath(UniNode) {
 
     def resolve_relative_path(target_item: (str | None) = None) -> str;
     def resolve_relative_path_list -> list[str];
-    def native_bundled_path -> (str | None);
     def __repr__ -> str;
 }
 

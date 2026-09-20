@@ -98,11 +98,7 @@ impl classify_native_import(item: UniNode) -> tuple[((str | None), bool)] {
     import from jaclang.compiler.frontend.codeinfo { native_erased_import_names }
     mod_name: (str | None) = None;
     if isinstance(item, ModulePath) and item.path {
-        parts = [];
-        for pseg in item.path {
-            parts.append(pseg.value if isinstance(pseg, Name) else str(pseg));
-        }
-        mod_name = ".".join(parts);
+        mod_name = item.dot_path_str;
     } elif isinstance(item, ModuleItem) {
         _owner = item.parent;
         _from_loc = _owner.from_loc if isinstance(_owner, Import) else None;
@@ -114,7 +110,7 @@ impl classify_native_import(item: UniNode) -> tuple[((str | None), bool)] {
             }
         }
     }
-    return (mod_name, mod_name is not None and mod_name in NATIVE_SUPPORTED_STDLIB);
+    return (mod_name, False);
 }
 
 impl import_bound_name(item: UniNode) -> (str | None) {
@@ -303,13 +299,7 @@ impl native_capability_violations(
                 if python_import_binding(item, _base_dir) is not None {
                     continue;
                 }
-                import from jaclang.compiler.frontend.codeinfo {
-                    is_bundled_native_module,
-                    resolve_native_module
-                }
-                if is_bundled_native_module(mod_name) {
-                    continue;
-                }
+                import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
                 _plain_module = (
                     not stmt.is_absorb
                     and isinstance(item, ModulePath)
@@ -338,16 +328,10 @@ impl native_capability_violations(
                     continue;
                 }
                 if _stdlib_help is None {
-                    _supported_list = ", ".join(
-                        f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
-                    );
                     _stdlib_help = (
-                        f"Native compilation supports these stdlib imports: "
-                        f"{_supported_list}; C-library imports "
-                        f"(`import from \"lib\" {{...}}`); and other Jac "
-                        f"modules on the native pathway (`import mod` or "
-                        f"`import from mod {{...}}`). Move "
-                        f"Python-dependent code to a @sv/Python context."
+                        "Native code can import Python modules through the bundled interpreter, "
+                        "Jac modules on the native pathway, and declared C libraries. "
+                        "Use an ordinary Python import instead of absorbing Python module names."
                     );
                 }
                 out.append((item, "Python module import", mod_name, _stdlib_help));

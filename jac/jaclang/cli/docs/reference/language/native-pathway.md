@@ -577,160 +577,45 @@ The `map`, `filter`, `enumerate`, and `zip` builtins are lazy iterator adapters:
 
 ### Standard Library Modules
 
-Native Jac ships a growing, **Python-congruent** subset of the standard library:
-the *same* `import X` + `X.func(...)` source compiles and runs on both the
-Python/`sv` pathway and the native/`na` pathway, with the native side lowering
-to libc/libm. Where behavior can still diverge, it is noted per module below.
-
-| Module | Status | Lowering |
-|--------|--------|----------|
-| `math` | full (results match CPython to within floating-point ULP) | libm |
-| `time` | full | `clock_gettime` / `nanosleep` |
-| `sys` | subset | constants + argv/exit |
-| `os` / `os.path` | subset | libc |
-| `random` | seed-sequence faithful | CPython MT19937 |
-
-Anything not yet lowered is **rejected at compile time** (rather than silently
-producing a wrong binary), so an unsupported `import` or member fails loudly.
-
-#### `math` -- Floating-Point Math
-
-`import math` lowers to libm, so results are congruent with CPython (which also
-calls libm) to within floating-point ULP.
-
-| Group | Members |
-|-------|---------|
-| Constants | `pi`, `e`, `tau`, `inf`, `nan` |
-| Powers / roots | `sqrt`, `cbrt`, `pow` |
-| Trig + inverses | `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `hypot` |
-| Hyperbolic + inverses | `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh` |
-| Exp / log | `exp`, `expm1`, `log` (one- or two-arg), `log2`, `log10`, `log1p` |
-| Rounding (return `int`) | `floor`, `ceil`, `trunc` |
-| Misc | `fabs`, `fmod`, `copysign`, `remainder`, `degrees`, `radians` |
-| Special | `gamma`, `lgamma`, `erf`, `erfc` |
-| Predicates (return `bool`) | `isnan`, `isinf`, `isfinite` |
+Native Jac imports standard-library modules from its bundled Python interpreter.
+The same module supplies its classes, defaults, state, return objects, and
+exceptions on the Python and native pathways. There is no separate list of
+native implementations of `math`, `os`, `random`, or other stdlib modules.
 
 ```jac
 import math;
-
-with entry {
-    print(math.sqrt(16.0));        # 4.0
-    print(math.hypot(3.0, 4.0));   # 5.0
-    print(math.floor(2.7));        # 2  (int)
-    print(math.log(8.0, 2.0));     # 3.0
-}
-```
-
-#### `time` -- Clocks and Sleep
-
-`import time` lowers to POSIX clocks. Wall-clock values are inherently
-non-deterministic, but each reader is congruent with its CPython counterpart.
-
-| Feature | Notes |
-|---------|-------|
-| `time.time()` | Unix epoch seconds (`float`), `CLOCK_REALTIME` |
-| `time.monotonic()` / `time.perf_counter()` | Monotonic seconds (`float`) |
-| `time.time_ns()` / `time.monotonic_ns()` / `time.perf_counter_ns()` | Integer nanoseconds |
-| `time.sleep(secs)` | Suspend for `secs` (fractional seconds OK), via `nanosleep` |
-
-#### `sys` -- Interpreter and Process
-
-| Feature | Example |
-|---------|---------|
-| `sys.argv` | `args = sys.argv;` -- `list[str]`, `argv[0]` is the program name |
-| `sys.exit(code)` | `sys.exit(1);` -- exit with a status code |
-| `sys.maxsize` | `INT64_MAX` (native `int` is 64-bit) |
-| `sys.byteorder` | `"little"` / `"big"` (host arch) |
-| `sys.platform` | e.g. `"linux"` / `"darwin"` |
-
-`sys.argv` works both with `jac run` under a native default codespace and standalone binaries
-compiled via `jac build --native`.
-
-#### `os` and `os.path` -- Operating System
-
-`import os` lowers to libc. `os.getcwd()` / `os.getenv(name)` return strings
-(`getenv` returns `None` for an unset variable); the mutating calls operate on
-the real filesystem.
-
-| `os` | Notes |
-|------|-------|
-| `os.getpid()` | Process id (`int`) |
-| `os.getcwd()` | Current working directory (`str`) |
-| `os.getenv(name)` | Environment value or `None` |
-| `os.chdir(path)` | Change directory |
-| `os.mkdir(path)` / `os.rmdir(path)` | Create / remove a directory |
-| `os.remove(path)` / `os.unlink(path)` | Remove a file |
-| `os.rename(src, dst)` | Rename |
-| `os.system(cmd)` | Run a shell command, return the raw POSIX wait status (exit code x 256), as CPython does |
-
-| `os.path` | Notes |
-|-----------|-------|
-| `os.path.join(*parts)` | Join with `/`; an absolute part or trailing slash is handled |
-| `os.path.basename(p)` / `os.path.dirname(p)` | Final component / parent |
-| `os.path.realpath(p)` | Resolved absolute path (falls back to the input on failure) |
-| `os.path.exists(p)` | `access(F_OK)` |
-| `os.path.isfile(p)` / `os.path.isdir(p)` | `stat`-based |
-| `os.path.getsize(p)` | `stat`-based size in bytes; `-1` if the path cannot be stat'ed |
-
-Any other `os.path` member (`split`, `splitext`, `abspath`, `normpath`,
-`getmtime`, ...) is a compile error (`E5090`) naming the member -- unsupported
-stdlib never compiles silently.
-
-#### `random` -- Pseudo-Random Numbers
-
-`import random` uses a faithful re-implementation of CPython's **MT19937**, so
-`random.seed(n)` followed by the same calls produces the **same sequence** on
-the `sv` and `na` pathways (seed an integer first for reproducibility).
-
-| Feature | Notes |
-|---------|-------|
-| `random.seed(n)` | Seed from an integer (CPython `init_by_array`) |
-| `random.random()` | Float in `[0, 1)` (53-bit, `genrand_res53`) |
-| `random.getrandbits(k)` | `k` up to 64 |
-| `random.randint(a, b)` | Inclusive, via the `_randbelow` rejection loop |
-| `random.randrange(stop)` / `randrange(start, stop)` | Half-open |
-| `random.uniform(a, b)` | Float in `[a, b]` |
-
-```jac
 import random;
+import from pathlib { PureWindowsPath }
 
 with entry {
+    print(math.factorial(30));
+    print(PureWindowsPath("C:/reports/result.csv").suffix);
     random.seed(42);
-    print(random.random());        # matches CPython's seed(42) stream
-    print(random.randint(1, 100));
-}
-```
-
-```jac
-import sys;
-
-with entry {
-    args = sys.argv;
-    print("argc:", len(args));
-    for i in range(1, len(args)) {
-        print("arg:", args[i]);
-    }
-    if "--verbose" in args {
-        print("Verbose mode enabled");
+    print(random.random());
+    try {
+        math.sqrt(-1.0);
+    } except ValueError {
+        print("outside the real square-root domain");
     }
 }
 ```
 
-```bash
-$ jac build --native cli_tool.jac -o cli_tool
-$ ./cli_tool hello --verbose world
-argc: 4
-arg: hello
-arg: --verbose
-arg: world
-Verbose mode enabled
-```
+Imports and attribute lookups use the interpreter's module objects. For example,
+`random.seed` changes that interpreter's random generator, and `os.environ`
+mutates its real environment mapping. Python objects returned by these calls
+retain their Python representation until an explicit native conversion is needed.
+
+Using Python modules makes the native artifact depend on an initialized Python
+runtime. Hosted JIT calls and shared libraries retain the interpreter lock.
+Explicit C FFI remains available for code that must run before interpreter startup.
+Standalone hosted application packaging and the remaining object-boundary work
+are tracked in the native stdlib consolidation architecture document.
 
 ---
 
 ## C Library Interop
 
-Native Jac can call functions from any shared C library -- system libraries like libc and libm, or third-party libraries like [raylib](https://www.raylib.com/) -- using `import from`. (For plain math, prefer `import math` above, which lowers to libm for you; the example below shows the lower-level C-interop mechanism.)
+Native Jac can call functions from any shared C library -- system libraries like libc and libm, or third-party libraries like [raylib](https://www.raylib.com/) -- using `import from`. (For plain math, prefer `import math` above, which uses the interpreter’s math module; the example below shows the lower-level C-interop mechanism.)
 
 ```jac
 # Import math functions from libm

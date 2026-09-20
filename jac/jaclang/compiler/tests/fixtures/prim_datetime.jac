@@ -1,14 +1,7 @@
-"""Bundled native `datetime` cross-backend equivalence fixture (#6940 / #6951).
+"""Datetime: compare native Python-object calls with the Python backend.
 
-The SAME `import from datetime { datetime, timezone }` binds CPython's `datetime`
-on the sv (Python) backend and the bundled `na_stdlib/datetime.jac` Mechanism-B
-module on the na (native LLVM) backend. This is the consumer that exercises the
-static-method (`datetime.fromtimestamp` / `datetime.now`) + class-attribute
-(`timezone.utc`) capability from #6951.
-
-A fixed timestamp pins the civil-from-epoch conversion EXACTLY (date, time,
-weekday, isoformat). `now()` is non-deterministic, so only structural invariants
-(sane calendar ranges) are compared, like the time fixture. ES/JS opts out.
+Both pathways use the bundled interpreter standard library. Native execution
+must preserve its values, exceptions, signatures, and default arguments.
 """
 
 import from datetime { datetime, timezone }

@@ -29,7 +29,7 @@ import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.estree { Node as EsNode }
-import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+import from jaclang.runtime.interop_bridge { native_callable }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -223,8 +223,7 @@ def compile_native_errors(fixture: str) -> list[str] {
 def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
     addr = eng.get_function_address(name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
-    functype = ctypes.CFUNCTYPE(restype, *argtypes);
-    return functype(addr);
+    return native_callable(addr, eng.requires_python, restype, *argtypes);
 }
 
 class JacVal(ctypes.Structure) {
@@ -354,42 +353,7 @@ def run_native_function(
             ("order", ctypes.POINTER(ctypes.c_int64))
         ];
     }
-    # Run the module initializer first so module-level and `static has` globals
-    # whose values are not compile-time constants (strings, constructor calls)
-    # are populated before the fixture function reads them. Prefer jac_entry
-    # (chains __jac_glob_init across this module and every linked import); fall
-    # back to this module's __jac_glob_init when no `with entry` block emitted a
-    # jac_entry. Fixtures carry no entry block, so this only runs initializers.
-    init_addr = eng.get_function_address("jac_entry");
-    if init_addr != 0 {
-        ctypes.CFUNCTYPE(None)(init_addr)();
-    } else {
-        own_init = eng.get_function_address("__jac_glob_init");
-        if own_init != 0 {
-            ctypes.CFUNCTYPE(None)(own_init)();
-        }
-        # Without a jac_entry nothing has chained the glob inits of linked
-        # native imports (they are renamed to __jac_glob_init_<safe_sym> at
-        # link time), so run them here too -- otherwise an imported module's
-        # runtime-initialized globals (e.g. the bytes alphabets in
-        # na_stdlib/base64.jac) are read as null pointers and the JIT'd
-        # fixture segfaults.
-        manifest = ir.gen.interop_manifest if (ir is not None) else None;
-        sources = manifest.native_transitive_sources if manifest else [];
-        seen_srcs: set = set();
-        for src_mod in sources {
-            if src_mod is None or src_mod in seen_srcs {
-                continue;
-            }
-            seen_srcs.add(src_mod);
-            imp_init = eng.get_function_address(
-                "__jac_glob_init_" + native_safe_sym(src_mod)
-            );
-            if imp_init != 0 {
-                ctypes.CFUNCTYPE(None)(imp_init)();
-            }
-        }
-    }
+    # The engine initializes its dependency closure before handing out an address.
     f = get_func(eng, func_name, ctypes.POINTER(DictStruct));
     dict_ptr = f();
     result: dict[str, any] = {};

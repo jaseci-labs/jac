@@ -551,11 +551,7 @@ def scan_native_blockers(
     allow_pub: bool = False,
     hold_exempt: bool = False
 ) -> tuple[str, list[str]] {
-    import from jaclang.compiler.frontend.codeinfo {
-        NATIVE_SUPPORTED_STDLIB,
-        is_bundled_native_module,
-        resolve_native_module
-    }
+    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
     deps: list[str] = [];
     _held_path = (module.loc.mod_path if module.loc is not None else '') or '';
     if not hold_exempt {
@@ -666,12 +662,6 @@ def scan_native_blockers(
         for (name, path, is_bare, is_module_import) in targets {
             clean = name.lstrip('.') if name else '';
             if is_bare {
-                if clean and clean in NATIVE_SUPPORTED_STDLIB {
-                    continue;
-                }
-                if clean and is_bundled_native_module(clean) {
-                    continue;
-                }
                 if not (
                     is_module_import and path is not None and path.endswith('.jac')
                 ) {
@@ -688,12 +678,6 @@ def scan_native_blockers(
             }
             if path is not None and path.endswith('.jac') {
                 deps.append(os.path.abspath(path));
-                continue;
-            }
-            if clean and clean in NATIVE_SUPPORTED_STDLIB {
-                continue;
-            }
-            if clean and is_bundled_native_module(clean) {
                 continue;
             }
             if clean

@@ -559,15 +559,11 @@ assumed away.
   Sealed-lane producer caveats, all but one resolved. The builtin-name
   set and the ambient typing names are baked into `jcir_facts.jac` and
   pinned against their sources by `test_jcir_facts_sync.jac`;
-  `textwrap.dedent` lowers through the na_stdlib shim, which joins the
-  measured closure and contributes zero seams; the CPython minor joins
-  the same baked facts (section 10). What remains is `html.unescape` for
-  jsx text and string attributes, waived as
-  `_JCIR_ENTITY_SEAM_WAIVERS`. It clears with an na_stdlib `html` shim
-  carrying the full html5 entity table, pinned against `html.unescape`.
-  A reduced table is not acceptable: the two lanes must agree byte for
-  byte, so a missing entity is a silent divergence rather than a missing
-  feature.
+  the CPython minor joins the same baked facts (section 10). Ordinary
+  `textwrap.dedent` and `html.unescape` calls use the shared Python-object
+  provider. A Python-free seal must supply explicit native dependencies or
+  diagnose that runtime requirement; it must not restore partial stdlib
+  replacements or a reduced HTML entity table.
 
   The emitter is a **sealed** native seal root, with an empty reachable
   waived set. It was refused for three natively-reachable stubs and all
