@@ -1487,7 +1487,7 @@ impl NaIRGenPass._forward_declare_imported_ability(
         return;
     }
     _prev_def_mod = self._func_def_mod.get(name);
-    self._maybe_declare_ability(nd);
+    self._maybe_declare_ability(nd, imp_layout);
     self._record_linked_decl(self.func_symtab.get(name), nd);
     if _existing is not None {
         self.func_symtab[name] = _existing;

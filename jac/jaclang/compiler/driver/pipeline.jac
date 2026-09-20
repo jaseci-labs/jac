@@ -837,7 +837,14 @@ def compile_application(
             continue;
         }
         seen.add(identity);
-        module = program.compile(path, options=bound);
+        previous = context.options;
+        codegen_options = copy.copy(bound);
+        codegen_options.skip_native_engine = True;
+        try {
+            module = program.compile(path, options=codegen_options);
+        } finally {
+            context.options = previous;
+        }
         if path == entry_path and entry_module is None {
             entry_module = module;
         }

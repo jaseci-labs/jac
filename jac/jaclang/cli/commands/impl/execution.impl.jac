@@ -13,6 +13,7 @@ import from jaclang.server.assembly {
 import from jaclang.project.kinds { RunPlan }
 import type from jaclang.project.config { AppConfig, JacConfig }
 import type from importlib.metadata { EntryPoint }
+import type from jaclang.runtime.native_library { SharedNativeEngine }
 import type from jaclang.compiler.backends.native.llvm.binding.executionengine {
     ExecutionEngine
 }
@@ -186,7 +187,9 @@ def _default_codespace_is_native -> bool {
     return effective == 'native';
 }
 
-def _populate_native_argv(engine: ExecutionEngine, argv: list[str]) -> None {
+def _populate_native_argv(
+    engine: ExecutionEngine | SharedNativeEngine, argv: list[str]
+) -> None {
     import ctypes;
 
     argc_addr = int(engine.get_global_value_address("__jac_argc"));

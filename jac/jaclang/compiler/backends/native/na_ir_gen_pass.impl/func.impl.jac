@@ -39,7 +39,9 @@ impl NaIRGenPass._nogc_owned_param(p: uni.ParamVar) -> bool {
     return p.type_tag.ownership == OwnershipKind.OWN;
 }
 
-impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
+impl NaIRGenPass._maybe_declare_ability(
+    nd: uni.ElementStmt, imp_layout: any = None
+) -> None {
     if not isinstance(nd, uni.Ability) {
         return;
     }
@@ -80,6 +82,27 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     }
     self._sig_decl_kind = _saved_sig_kind;
 
+    local_type = ir.FunctionType(ret_type, param_types);
+    imported = imp_layout.functions.get(name) if imp_layout is not None else None;
+    if imported is not None and imp_layout.str_headerless != self._nogc_headerless() {
+        kind = "jacstr2" if imp_layout.str_headerless else "jacstr3";
+        carrier = self.llvm_module.context.get_identified_type(f"JacStr.{kind}");
+        if carrier.is_opaque {
+            carrier.set_body(
+                *[
+                    ir.IntType(64) if field == "len" else ir.IntType(8).as_pointer()
+                    for field in JACSTR_DESC_FIELDS[kind]
+                ]
+            );
+        }
+        param_types = [
+            carrier if encoded == kind else ty
+            for (ty, encoded) in zip(param_types, imported.param_types)
+        ];
+        if imported.ret_type == kind {
+            ret_type = carrier;
+        }
+    }
     fnty = ir.FunctionType(ret_type, param_types);
 
     _dec_names: list[str] = [];
@@ -119,6 +142,10 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     }
     self._apply_ownership_param_attrs(func, sig.get_parameters(), 0);
     self._record_linked_decl(func, nd);
+    if fnty != local_type {
+        func = self._imported_string_adapter(func, local_type);
+        self._record_linked_decl(func, nd);
+    }
     self.func_symtab[name] = func;
     _fdm = nd.find_parent_of_type(uni.Module);
     if _fdm is not None {
@@ -156,6 +183,70 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
             self._rename_demoted_symbol(name, func);
         }
     }
+}
+
+impl NaIRGenPass._imported_string_adapter(
+    func: ir.Function, local_type: ir.FunctionType
+) -> ir.Function {
+    wrapper = ir.Function(self.llvm_module, local_type, name=f"{func.name}.__str_abi");
+    wrapper.linkage = "private";
+    builder = ir.IRBuilder(wrapper.append_basic_block("entry"));
+    def convert(value: ir.Value, target: ir.Type) -> ir.Value {
+        if value.type == target {
+            return value;
+        }
+        source_type = value.type;
+        assert isinstance(source_type, ir.IdentifiedStructType);
+        assert isinstance(target, ir.IdentifiedStructType);
+        assert source_type.elements is not None;
+        assert target.elements is not None;
+        source_fields = JACSTR_DESC_FIELDS[
+            "jacstr2" if len(source_type.elements) == 2 else "jacstr3"
+        ];
+        target_fields = JACSTR_DESC_FIELDS[
+            "jacstr2" if len(target.elements) == 2 else "jacstr3"
+        ];
+        result: ir.Value = ir.Constant(target, None);
+        for (index, field) in enumerate(target_fields) {
+            if field in source_fields {
+                result = builder.insert_value(
+                    result,
+                    builder.extract_value(value, source_fields.index(field)),
+                    index
+                );
+            }
+        }
+        return result;
+    }
+    arguments = [
+        convert(arg, target)
+        for (arg, target) in zip(wrapper.args, func.function_type.args)
+    ];
+    result = builder.call(func, arguments);
+    if isinstance(local_type.return_type, ir.VoidType) {
+        builder.ret_void();
+    } elif result.type != local_type.return_type {
+        self._emit_str_len_helpers();
+        result_type = result.type;
+        assert isinstance(result_type, ir.IdentifiedStructType);
+        assert result_type.elements is not None;
+        fields = JACSTR_DESC_FIELDS[
+            "jacstr2" if len(result_type.elements) == 2 else "jacstr3"
+        ];
+        data = builder.extract_value(result, fields.index("data"));
+        size = builder.extract_value(result, fields.index("len"));
+        owned = builder.call(self.str_new_fn, [data, size]);
+        local: ir.Value = ir.Constant(local_type.return_type, None);
+        for (index, field) in enumerate(JACSTR_DESC_FIELDS[self._str_desc_kind()]) {
+            local = builder.insert_value(
+                local, size if field == "len" else owned, index
+            );
+        }
+        builder.ret(local);
+    } else {
+        builder.ret(result);
+    }
+    return wrapper;
 }
 
 impl NaIRGenPass._normalize_type_key(key: str) -> str {

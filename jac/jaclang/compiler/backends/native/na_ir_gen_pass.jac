@@ -1269,7 +1269,11 @@ walker NaIRGenPass {
     def _ensure_fmt_kernel -> bool;
     def _get_fmt_kernel_fn(name: str) -> (ir.Function | None);
     def _forward_declare_functions(module: uni.Module) -> None;
-    def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
+    def _maybe_declare_ability(nd: uni.ElementStmt, imp_layout: any = None) -> None;
+    def _imported_string_adapter(
+        func: ir.Function, local_type: ir.FunctionType
+    ) -> ir.Function;
+
     def _apply_ownership_param_attrs(
         func: ir.Function, params: list[uni.ParamVar], base: int
     ) -> None;

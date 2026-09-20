@@ -874,3 +874,31 @@ test "shared artifacts reject Python imports before publishing" {
         assert not Path(output).exists();
     }
 }
+
+test "imported strings keep their ABI across enforced and runtime units" {
+    if _can_link_host() {
+        with tempfile.TemporaryDirectory(prefix="jac-string-abi-") as root_dir {
+            (Path(root_dir) / "base.jac").write_text(
+                'def suffix(value: str) -> str { return value[1:] + "!"; }\n'
+            );
+            top = Path(root_dir) / "top.jac";
+            top.write_text(
+                'import from base { suffix }\n'
+                    + 'with entry { print(suffix("hello")); }\n'
+            );
+            for mode in (NATIVE_LINK_MODE_OBJECTS, NATIVE_LINK_MODE_BITCODE) {
+                options = _opts(mode);
+                options.memory_profile = "nogc";
+                options.memory_enforce = ["top"];
+                program = JacProgram();
+                program.options = options;
+                plan = build_link_plan(program, [str(top)], options, mode=mode);
+                output = os.path.join(root_dir, "program-" + mode);
+                link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+                run = subprocess.run([output], capture_output=True, text=True);
+                assert run.returncode == 0 , run.stderr;
+                assert run.stdout == "ello!\n" , run.stdout;
+            }
+        }
+    }
+}

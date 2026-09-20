@@ -3064,8 +3064,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         if nd.loc
                         else 0}"
                 );
-            } elif self._opt_ptr_payload_of(var_type) is not None
-                and not self._nogc_headerless() {
+            } elif self._opt_ptr_payload_of(var_type) is not None {
+                if self._nogc_borrow_local_assign(nd) {
+                    self.borrowed_vars.add(var_name);
+                }
                 _opt_asg_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}";

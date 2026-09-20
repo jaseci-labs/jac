@@ -9,7 +9,7 @@ pays both per step.
 import ctypes;
 import from tests.support { native_address }
 import re;
-import from tests.support { compile_native, compile_native_ir }
+import from tests.support { compile_native, compile_native_ir, unit_symbol }
 
 """The body of `name` in `ir`, from its define line to its closing brace."""
 def function_body(ir: str, name: str) -> str {
@@ -36,8 +36,8 @@ test "a borrowed walk answers what the owning walk answers" {
 test "the borrowed walk emits no retain and no release" {
     module = compile_native_ir("managed_borrow_walk.jac");
     ir = str(module.gen.llvm_ir);
-    borrowed = function_body(ir, "borrowed_walk");
-    owning = function_body(ir, "owning_walk");
+    borrowed = function_body(ir, re.escape(unit_symbol(module, "borrowed_walk")));
+    owning = function_body(ir, re.escape(unit_symbol(module, "owning_walk")));
     assert not re.findall(r"@\"?_*rc_retain", borrowed) , (
         "the borrowed walk still retains: " + borrowed
     );

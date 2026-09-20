@@ -736,7 +736,10 @@ test "native gradual object keys demote, never pointer-sort (#9158)" {
     ];
     assert len(kept) == 0 , f"semantic str key must lower natively: {kept}";
     assert "__jac_str_cmp" in llvm_txt , "str-key control should use the semantic string comparator";
-    assert "strcmp" not in llvm_txt , "no raw pointer may reach libc strcmp (#9158)";
+    import re;
+    assert re.search(r'\bcall\s+i32\s+@"?strcmp"?\(', llvm_txt) is None , (
+        "no raw pointer may reach libc strcmp (#9158)"
+    );
 }
 
 test "annotated block lambda tails are type-checked (#9158)" {

@@ -182,6 +182,15 @@ impl JacCompiler._get_bytecode(
             and not self.selfhost.is_selfhost(actual_program) {
             self._persist_module_cache(full_target, hit_mod, actual_program);
         }
+        native_artifact = actual_program.hub.artifacts.get(full_target);
+        if hit_mod.gen.llvm_ir is not None
+            and hit_mod.gen.native_engine is None
+            and (native_artifact is None or native_artifact.native_engine is None)
+            and self._wants_native_engine(full_target, actual_program) {
+            self._load_native_from_cache(
+                full_target, actual_program, self._build_interop_dict(hit_mod)
+            );
+        }
         return marshal.loads(codeobj) if isinstance(codeobj, `bytes) else None;
     }
 
@@ -343,7 +352,7 @@ impl JacCompiler._load_native_from_cache(
     if engine is None {
         return;
     }
-    gen = CodeGenTarget();
+    gen = target_program.hub.artifacts.get(full_target) or CodeGenTarget();
     self._restore_native_clibs(gen, cached_interop);
     gen.native_engine = engine;
     py_func_table: dict[str, Callable[..., object]] = {};
@@ -2002,6 +2011,13 @@ impl JacCompiler._get_client_artifact(
 ) -> (ClientArtifact | None) {
     full_target = JacProgram.hub_key(full_target);
     actual_program = self.selfhost.resolve(full_target, target_program);
+    previous = actual_program.hub.client_artifacts.get(full_target);
+    if previous is None {
+        previous = self._cached_client_artifact(full_target);
+    }
+    if previous is not None and not JacCompiler._client_deps_fresh(previous) {
+        actual_program.invalidate_module(full_target);
+    }
     ready = self.client_codegen_target(full_target, actual_program);
     if ready is not None {
         if not self.ensure_client_codegen(ready, actual_program) {

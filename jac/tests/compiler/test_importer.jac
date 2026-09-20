@@ -10,6 +10,7 @@ import subprocess;
 import marshal;
 import shutil;
 import tempfile;
+import from pathlib { Path }
 import time;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -522,7 +523,15 @@ NODE_SPECS entry by one field, which a fresh-mtime cache written under the old
 schema would then be decoded against, position by position."""
 test "fresh mtime does not admit a cache written under a different environment" {
     import jaclang.compiler.driver.jir as jir;
-    import from jaclang.compiler.driver.jir { is_module_cache_valid }
+    import from jaclang.compiler.driver.jir { is_module_cache_valid as cache_valid }
+    import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
+    program = JacProgram();
+    def is_module_cache_valid(path: str, cache: Path) -> bool {
+        actual = program_for(path, program);
+        with cache_scope(actual.options) {
+            return cache_valid(path, cache);
+        }
+    }
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
     ) as tmp {
@@ -534,8 +543,8 @@ test "fresh mtime does not admit a cache written under a different environment" 
     os.utime(jac_file, (past, past));
     try {
         compiler = JacCompiler();
-        assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
-        cache_path = artifact_cache_path(jac_file, JacProgram());
+        assert compiler.get_bytecode(jac_file, program) is not None;
+        cache_path = artifact_cache_path(jac_file, program);
         assert cache_path.exists() , "JIR cache was not written";
         assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
             "cache must be newer than source for the mtime fast path to apply"
@@ -590,7 +599,7 @@ test "fresh mtime does not admit a cache written under a different environment" 
         }
     } finally {
         os.unlink(jac_file);
-        cache_path2 = artifact_cache_path(jac_file, JacProgram());
+        cache_path2 = artifact_cache_path(jac_file, program);
         if cache_path2.exists() {
             cache_path2.unlink();
         }

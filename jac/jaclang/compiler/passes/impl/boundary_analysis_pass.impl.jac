@@ -1525,6 +1525,29 @@ impl BoundaryAnalysisPass.enter_atom_trailer with AtomTrailer entry {
         if isinstance(target_type, ClassType)
         else None;
     if isinstance(scope, Archetype) and scope.in_native_context() {
+        registry = self.prog._natives;
+        session = registry.session if registry is not None else None;
+        if session is not None {
+            import from jaclang.compiler.placement.placement_pins {
+                effective_pin_for,
+                config_kind_space
+            }
+            import from jaclang.compiler.placement.placement_facts { native_unit }
+            source = scope.loc.mod_path;
+            options = session.options;
+            source_program = session.registry.prog;
+            declared_native = (
+                options.force_codespace == "native"
+                or options.default_codespace == "native"
+                or options.native_required_for(source)
+                or effective_pin_for(source, scope.sym_name, source_program) == "native"
+                or native_unit(source, options.native_unit, source_program)
+                or config_kind_space(source, options.app_kind) == "native"
+            );
+            if not declared_native {
+                return;
+            }
+        }
         import from jaclang.compiler.frontend.diagnostics { E5112 }
         self.ctx.emit(E5112, node_override=here, name=scope.sym_name);
     }
