@@ -188,7 +188,6 @@ def build_runtime_closure(
         _runtime_dependencies(pkg_root, sources['jaclang'], 'jaclang', True)
     );
     processed: set[str] = {'jaclang'};
-    program = JacProgram();
     modules: list[dict[str, any]] = [];
     while pending {
         module = min(pending);
@@ -231,9 +230,14 @@ def build_runtime_closure(
             continue;
         }
         native: dict[str, any] = {};
-        source = _compile_runtime_module(
-            pkg_root, path, program, native, native_sources
-        );
+        program = JacProgram();
+        try {
+            source = _compile_runtime_module(
+                pkg_root, path, program, native, native_sources
+            );
+        } finally {
+            program._get_compiler().release_compile_state(program);
+        }
         tree = py_ast.parse(source, filename=str(path));
         sources[module] = tree;
         relative = module.removeprefix('jaclang.').replace('.', '/');
