@@ -35,6 +35,9 @@ def _resolve_path(relpath: str, root_env: str = "", root_prefix: str = "") -> Pa
 }
 
 impl Bucket.path -> Path {
+    if self.root_dir {
+        return Path(self.root_dir);
+    }
     return _resolve_path(self.relpath, self.root_env, self.root_prefix);
 }
 
@@ -53,8 +56,50 @@ impl Bucket.note_hit(item: Path) -> None {
     self.policy.note_hit(item);
 }
 
-impl bucket(name: str) -> Bucket {
+def _registered(name: str) -> Bucket | None {
     for b in BUCKETS {
+        if b.name == name {
+            return b;
+        }
+    }
+    return None;
+}
+
+impl project_bucket -> Bucket | None {
+    import from jaclang.project.config { get_config }
+    modules = _registered("jir-modules");
+    if modules is None {
+        return None;
+    }
+    try {
+        cfg = get_config();
+        if cfg is None or not cfg.is_valid() or cfg.project_root is None {
+            return None;
+        }
+        cache_dir = cfg.get_cache_dir();
+    } except Exception {
+        return None;
+    }
+    return Bucket(
+        name="project",
+        relpath="",
+        policy=modules.policy,
+        summary="this project's compiled modules (<project>/.jac/cache)",
+        root_dir=str(cache_dir)
+    );
+}
+
+impl all_buckets -> list[Bucket] {
+    found = list(BUCKETS);
+    local = project_bucket();
+    if local is not None {
+        found.append(local);
+    }
+    return found;
+}
+
+impl bucket(name: str) -> Bucket {
+    for b in all_buckets() {
         if b.name == name {
             return b;
         }
@@ -67,7 +112,7 @@ impl bucket(name: str) -> Bucket {
 impl managed_buckets -> list[Bucket] {
     return [
         b
-        for b in BUCKETS
+        for b in all_buckets()
         if not b.is_external()
     ];
 }
@@ -75,7 +120,7 @@ impl managed_buckets -> list[Bucket] {
 impl external_buckets -> list[Bucket] {
     return [
         b
-        for b in BUCKETS
+        for b in all_buckets()
         if b.is_external()
     ];
 }
@@ -98,7 +143,7 @@ def _entries(b: Bucket) -> list[CacheEntry] {
         b.policy,
         exclude={
             str(other.path())
-            for other in BUCKETS
+            for other in all_buckets()
             if other.name != b.name
         }
     );
@@ -106,7 +151,7 @@ def _entries(b: Bucket) -> list[CacheEntry] {
 
 impl status -> list[BucketStatus] {
     rows: list[BucketStatus] = [];
-    for b in BUCKETS {
+    for b in all_buckets() {
         p = b.path();
         exists = p.is_dir();
         found = [
@@ -161,6 +206,7 @@ def _unmanaged_children(parent: Path, owned: set[str], out: set[str]) {
 impl unmanaged -> list[tuple[str, int]] {
     base = cache_home();
     roots: set[str] = {str(base)};
+
     owned: set[str] = {str(b.path()) for b in BUCKETS};
     paths: set[str] = set();
     for b in BUCKETS {

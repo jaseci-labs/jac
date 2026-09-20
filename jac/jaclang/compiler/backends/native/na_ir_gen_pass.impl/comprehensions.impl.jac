@@ -90,7 +90,14 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
     self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd));
 
     self._codegen_compr_walk(
-        nd.compr, 0, "list", list_val, nd.out_expr, None, elem_type_name
+        NativeComprehension(
+            comprs=nd.compr,
+            kind="list",
+            acc=list_val,
+            key_expr=nd.out_expr,
+            spec=elem_type_name
+        ),
+        0
     );
 
     return list_val;
@@ -191,7 +198,15 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
     self._nogc_stamp_elem_drops(dict_val, self._nogc_type_arg_mangles(nd));
 
     self._codegen_compr_walk(
-        nd.compr, 0, "dict", dict_val, key_expr, val_expr, dict_key
+        NativeComprehension(
+            comprs=nd.compr,
+            kind="dict",
+            acc=dict_val,
+            key_expr=key_expr,
+            val_expr=val_expr,
+            spec=dict_key
+        ),
+        0
     );
 
     return dict_val;
@@ -280,19 +295,25 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
     self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd));
 
     self._codegen_compr_walk(
-        nd.compr, 0, "set", set_val, out_expr, None, elem_type_name
+        NativeComprehension(
+            comprs=nd.compr,
+            kind="set",
+            acc=set_val,
+            key_expr=out_expr,
+            spec=elem_type_name
+        ),
+        0
     );
 
     return set_val;
 }
 
-impl NaIRGenPass._emit_compr_element(
-    kind: str,
-    acc: ir.Value,
-    key_expr: uni.UniNode,
-    val_expr: (uni.UniNode | None),
-    spec: str
-) -> None {
+impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
+    kind = compr.kind;
+    acc = compr.acc;
+    key_expr = compr.key_expr;
+    val_expr = compr.val_expr;
+    spec = compr.spec;
     if kind == "dict" {
         key_val = self._str_norm_optional(self._codegen_expr(key_expr));
         value_val = self._str_norm_optional(self._codegen_expr(val_expr));
@@ -393,52 +414,58 @@ impl NaIRGenPass._emit_compr_element(
     }
 }
 
-impl NaIRGenPass._codegen_compr_walk(
-    comprs: list[uni.InnerCompr],
-    idx: int,
-    kind: str,
-    acc: ir.Value,
-    key_expr: uni.UniNode,
-    val_expr: (uni.UniNode | None),
-    spec: str
-) -> None {
-    if idx >= len(comprs) {
-        self._emit_compr_element(kind, acc, key_expr, val_expr, spec);
+impl NaIRGenPass._codegen_compr_walk(compr: NativeComprehension, idx: int) -> None {
+    if idx >= len(compr.comprs) {
+        self._emit_compr_element(compr);
         return;
     }
     state = self._enter_bindings(inherit=True);
     try {
-        self._codegen_compr_walk_body(comprs, idx, kind, acc, key_expr, val_expr, spec);
+        self._codegen_compr_walk_body(compr, idx);
     } finally {
         self._leave_bindings(state, release=True);
     }
 }
 
-impl NaIRGenPass._codegen_compr_walk_body(
-    comprs: list[uni.InnerCompr],
-    idx: int,
-    kind: str,
-    acc: ir.Value,
-    key_expr: uni.UniNode,
-    val_expr: (uni.UniNode | None),
-    spec: str
+impl NaIRGenPass._codegen_compr_step(
+    compr: NativeComprehension, idx: int, next_bb: ir.Block
 ) -> None {
-    inner = comprs[idx];
+    func = self.builder.function;
+    for cond in (compr.comprs[idx].conditional or []) {
+        cond_val = self._codegen_expr(cond);
+        if cond_val is None {
+            continue;
+        }
+        pass_bb = func.append_basic_block(name="compr.pass");
+        self.builder.cbranch(self._consume_bool(cond_val), pass_bb, next_bb);
+        self.builder.position_at_end(pass_bb);
+    }
+    self._codegen_compr_walk(compr, idx + 1);
+    if not self.builder.block.is_terminated {
+        self.builder.branch(next_bb);
+    }
+}
+
+impl NaIRGenPass._codegen_compr_walk_body(
+    compr: NativeComprehension, idx: int
+) -> None {
+    inner = compr.comprs[idx];
     loop_target = inner.target;
     collection = inner.collection;
-    conditionals: list[uni.Expr] = inner.conditional or [];
 
-    if isinstance(collection, uni.FuncCall) {
-        call_name = self._get_name(collection.target);
-
-        if call_name == "range" and collection.call_kind == "builtin" {
-            self._codegen_compr_range_walk(
-                inner, comprs, idx, kind, acc, key_expr, val_expr, spec, conditionals
-            );
-            return;
-        }
+    if isinstance(collection, uni.FuncCall)
+        and self._get_name(collection.target) == "range"
+        and collection.call_kind == "builtin"
+        and len(collection.params or []) <= 2 {
+        self._codegen_compr_range_walk(compr, idx);
+        return;
     }
 
+    source = self._iter_source(collection);
+    if source is not None {
+        self._codegen_compr_iter_walk(compr, idx, source);
+        return;
+    }
     coll_val = self._opt_unwrap_iterable(self._codegen_expr(collection));
     if coll_val is None {
         return;
@@ -457,12 +484,18 @@ impl NaIRGenPass._codegen_compr_walk_body(
     } else {
         coll_elem_type_name = self._infer_list_elem_type(coll_val);
         if coll_elem_type_name is None {
-            coll_elem_type_name = self._elem_spec_of(collection);
-        }
-        if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
-            coll_elem_type_name = "ptr";
-        }
-        if coll_elem_type_name is None {
+            built = self._make_iter_from_value(self._str_norm(coll_val), collection);
+            if built is not None {
+                self._codegen_compr_iter_walk(compr, idx, (built[0], built[2], True));
+            } else {
+                self.ctx.emit(
+                    E5092,
+                    node_override=collection,
+                    kind="expression",
+                    name="comprehension over a value with no native iterator",
+                    help_text="Native code iterates lists, dicts, sets, strings, bytes, ranges, iterators and archetypes that implement the iterator protocol."
+                );
+            }
             return;
         }
         coll_helpers = self.list_helpers.get(coll_elem_type_name);
@@ -471,26 +504,6 @@ impl NaIRGenPass._codegen_compr_walk_body(
         }
         coll_get = coll_helpers["get"];
         actual_elem_type = coll_helpers["elem_type"];
-        _coll_want = coll_helpers["len"].function_type.args[0];
-        if coll_val.type != _coll_want {
-            if self._spec_from_container_ptr(coll_val.type) is None {
-                self.ctx.emit(
-                    E5092,
-                    node_override=collection,
-                    kind="expression",
-                    name="comprehension over an element-erased collection",
-                    help_text="The collection unified to an untyped pointer, so which list layout to read it as is no longer recoverable. Give every branch producing it the same concrete element type."
-                );
-                return;
-            }
-            _coll_cast = self.builder.bitcast(
-                coll_val, _coll_want, name="compr.coll.cast"
-            );
-            if self._is_owned(coll_val) {
-                self._mark_owned(_coll_cast);
-            }
-            coll_val = _coll_cast;
-        }
     }
     unpack_target = loop_target if isinstance(loop_target, uni.TupleVal) else None;
     loop_var_name = self._get_name(loop_target);
@@ -583,36 +596,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
         }
         self.builder.store(elem_val, loop_alloca);
     }
-    if conditionals {
-        filter_bb = func.append_basic_block(name="compr.filter");
-        skip_bb = func.append_basic_block(name="compr.skip");
-        all_cond = self._codegen_expr(conditionals[0]);
-        if all_cond is not None {
-            all_cond = self._consume_bool(all_cond);
-            for i in range(1, len(conditionals)) {
-                next_cond = self._codegen_expr(conditionals[i]);
-                if next_cond is not None {
-                    next_cond = self._consume_bool(next_cond);
-                    all_cond = self.builder.and_(all_cond, next_cond, name="compr.and");
-                }
-            }
-            self.builder.cbranch(all_cond, filter_bb, skip_bb);
-        } else {
-            self.builder.branch(filter_bb);
-        }
-        self.builder.position_at_end(filter_bb);
-        self._codegen_compr_walk(comprs, idx + 1, kind, acc, key_expr, val_expr, spec);
-        if not self.builder.block.is_terminated {
-            self.builder.branch(skip_bb);
-        }
-        self.builder.position_at_end(skip_bb);
-        self.builder.branch(incr_bb);
-    } else {
-        self._codegen_compr_walk(comprs, idx + 1, kind, acc, key_expr, val_expr, spec);
-        if not self.builder.block.is_terminated {
-            self.builder.branch(incr_bb);
-        }
-    }
+    self._codegen_compr_step(compr, idx, incr_bb);
     self.builder.position_at_end(incr_bb);
     inc_idx = self.builder.load(idx_alloca, name="compr.inc.idx");
     next_idx = self.builder.add(inc_idx, ir.Constant(i64, 1), name="compr.next.idx");
@@ -626,17 +610,67 @@ impl NaIRGenPass._codegen_compr_walk_body(
     }
 }
 
-impl NaIRGenPass._codegen_compr_range_walk(
-    inner: uni.InnerCompr,
-    comprs: list[uni.InnerCompr],
-    idx: int,
-    kind: str,
-    acc: ir.Value,
-    key_expr: uni.UniNode,
-    val_expr: (uni.UniNode | None),
-    spec: str,
-    conditionals: list[uni.Expr]
+impl NaIRGenPass._codegen_compr_iter_walk(
+    compr: NativeComprehension, idx: int, source: tuple[ir.Value, ir.Type, bool]
 ) -> None {
+    inner = compr.comprs[idx];
+    (iter_val, elem_type, owns_iter) = source;
+    unpack_target = inner.target if isinstance(inner.target, uni.TupleVal) else None;
+    targets: list[uni.Expr] = list(unpack_target.values or [])
+        if unpack_target is not None
+        else [inner.target];
+    names: list[str] = [];
+    for target in targets {
+        name = self._get_name(target);
+        if name is not None {
+            names.append(name);
+        }
+    }
+    self._shadow_bindings(names);
+    i8p = ir.IntType(8).as_pointer();
+    elem_slot = self._entry_alloca(elem_type, "compr.iter.elem");
+    func = self.builder.function;
+    cond_bb = func.append_basic_block(name="compr.iter.cond");
+    body_bb = func.append_basic_block(name="compr.iter.body");
+    end_bb = func.append_basic_block(name="compr.iter.end");
+    self.builder.branch(cond_bb);
+    self.builder.position_at_end(cond_bb);
+    got = self._emit_iter_advance(
+        self.builder,
+        iter_val,
+        self.builder.bitcast(elem_slot, i8p, name="compr.iter.out")
+    );
+    self.builder.cbranch(got, body_bb, end_bb);
+    self.builder.position_at_end(body_bb);
+    yielded = self.builder.load(elem_slot, name="compr.iter.value");
+    if unpack_target is None {
+        yielded = self.builder.insert_value(
+            ir.Constant(ir.LiteralStructType([elem_type]), None),
+            yielded,
+            0,
+            name="compr.iter.binding"
+        );
+    }
+    if not self._codegen_tuple_unpack(targets, yielded, None) {
+        self.ctx.emit(
+            E5092,
+            node_override=inner.target,
+            kind="comprehension target",
+            name="tuple unpacking"
+        );
+        return;
+    }
+    self._codegen_compr_step(compr, idx, cond_bb);
+    self.builder.position_at_end(end_bb);
+    if owns_iter {
+        self._emit_rc_release_simple(iter_val, op="compr_iter", loc="");
+    }
+}
+
+impl NaIRGenPass._codegen_compr_range_walk(
+    compr: NativeComprehension, idx: int
+) -> None {
+    inner = compr.comprs[idx];
     collection = inner.collection;
     loop_target = inner.target;
     loop_var_name = self._get_name(loop_target);
@@ -652,7 +686,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     if len(params) == 1 {
         start_val = ir.Constant(ir.IntType(64), 0);
         stop_val = self._codegen_expr(params[0]);
-    } elif len(params) >= 2 {
+    } elif len(params) == 2 {
         start_val = self._codegen_expr(params[0]);
         stop_val = self._codegen_expr(params[1]);
     }
@@ -677,36 +711,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     cmp = self.builder.icmp_signed("<", i_val, stop_val, name="compr.range.cmp");
     self.builder.cbranch(cmp, body_bb, end_bb);
     self.builder.position_at_end(body_bb);
-    if conditionals {
-        filter_bb = func.append_basic_block(name="compr.range.filter");
-        skip_bb = func.append_basic_block(name="compr.range.skip");
-        all_cond = self._codegen_expr(conditionals[0]);
-        if all_cond is not None {
-            all_cond = self._consume_bool(all_cond);
-            for i in range(1, len(conditionals)) {
-                next_cond = self._codegen_expr(conditionals[i]);
-                if next_cond is not None {
-                    next_cond = self._consume_bool(next_cond);
-                    all_cond = self.builder.and_(all_cond, next_cond, name="compr.and");
-                }
-            }
-            self.builder.cbranch(all_cond, filter_bb, skip_bb);
-        } else {
-            self.builder.branch(filter_bb);
-        }
-        self.builder.position_at_end(filter_bb);
-        self._codegen_compr_walk(comprs, idx + 1, kind, acc, key_expr, val_expr, spec);
-        if not self.builder.block.is_terminated {
-            self.builder.branch(skip_bb);
-        }
-        self.builder.position_at_end(skip_bb);
-        self.builder.branch(incr_bb);
-    } else {
-        self._codegen_compr_walk(comprs, idx + 1, kind, acc, key_expr, val_expr, spec);
-        if not self.builder.block.is_terminated {
-            self.builder.branch(incr_bb);
-        }
-    }
+    self._codegen_compr_step(compr, idx, incr_bb);
     self.builder.position_at_end(incr_bb);
     i_cur = self.builder.load(loop_alloca, name="compr.range.cur");
     i_next = self.builder.add(i_cur, ir.Constant(i64, 1), name="compr.range.next");

@@ -47,10 +47,8 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
 
         if isinstance(val.type, ir.IntType) {
             if val.type.width == 1 {
-                t_g = self._make_global_string("True", name_prefix=".repr.true");
-                f_g = self._make_global_string("False", name_prefix=".repr.false");
                 fmt_parts.append("%s");
-                args.append(self.builder.select(val, t_g, f_g, name="print.bool"));
+                args.append(self._bool_text(self.builder, val, "print.bool"));
             } else {
                 _unsigned = self._is_unsigned_node(param);
                 if val.type.width < 64 {
@@ -611,9 +609,8 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 fmt_parts.append("%lld");
                 args.append(val);
             } elif isinstance(val.type, ir.IntType) and val.type.width == 1 {
-                val = self.builder.zext(val, ir.IntType(64));
-                fmt_parts.append("%lld");
-                args.append(val);
+                fmt_parts.append("%s");
+                args.append(self._bool_text(self.builder, val, "fstr.bool"));
             } elif isinstance(val.type, ir.DoubleType) {
                 fmt_parts.append("%s");
                 args.append(self._emit_float_repr(val));
@@ -1445,6 +1442,15 @@ impl NaIRGenPass._emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None) {
     return ir.Constant(ir.IntType(64), 0);
 }
 
+impl NaIRGenPass._bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value {
+    return b.select(
+        flag,
+        self._make_global_string("True", name_prefix=".repr.true"),
+        self._make_global_string("False", name_prefix=".repr.false"),
+        name=name
+    );
+}
+
 impl NaIRGenPass._emit_fstr_repr(
     val: ir.Value, part: uni.FormattedValue
 ) -> (ir.Value | None) {
@@ -1454,9 +1460,7 @@ impl NaIRGenPass._emit_fstr_repr(
         self._emit_rc_helpers();
     }
     if isinstance(val.type, ir.IntType) and val.type.width == 1 {
-        t_g = self._make_global_string("True", name_prefix=".repr.true");
-        f_g = self._make_global_string("False", name_prefix=".repr.false");
-        return self.builder.select(val, t_g, f_g, name="fstr.repr.bool");
+        return self._bool_text(self.builder, val, "fstr.repr.bool");
     }
     if isinstance(val.type, ir.IntType) {
         fn = self._repr_leaf_fn("int");
@@ -1572,9 +1576,7 @@ impl NaIRGenPass._emit_opt_repr(opt_val: ir.Value) -> (ir.Value | None) {
     payload = b.extract_value(opt_val, 1, name="opt.repr.pl");
     some_str: (ir.Value | None) = None;
     if isinstance(payload.type, ir.IntType) and payload.type.width == 1 {
-        t_g = self._make_global_string("True", name_prefix=".repr.true");
-        f_g = self._make_global_string("False", name_prefix=".repr.false");
-        some_str = b.select(payload, t_g, f_g, name="opt.repr.bool");
+        some_str = self._bool_text(b, payload, "opt.repr.bool");
     } elif isinstance(payload.type, ir.IntType) {
         fn = self._repr_leaf_fn("int");
         if fn is not None {
@@ -1740,4 +1742,205 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     self._builder = saved_builder;
     self._float_repr_function = fn;
     return fn;
+}
+
+impl NaIRGenPass._emit_whitespace_width(
+    text: ir.Value, cursor: ir.Value, length: ir.Value, reverse: bool
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    result = self._entry_alloca(i64, "space.width");
+    self.builder.store(ir.Constant(i64, 0), result);
+    byte_index = self.builder.sub(cursor, ir.Constant(i64, 1)) if reverse else cursor;
+    byte = self.builder.load(self.builder.gep(text, [byte_index]));
+    ascii_space = self.builder.or_(
+        self.builder.and_(
+            self.builder.icmp_unsigned(">=", byte, ir.Constant(i8, 9)),
+            self.builder.icmp_unsigned("<=", byte, ir.Constant(i8, 13))
+        ),
+        self.builder.and_(
+            self.builder.icmp_unsigned(">=", byte, ir.Constant(i8, 28)),
+            self.builder.icmp_unsigned("<=", byte, ir.Constant(i8, 32))
+        )
+    );
+    self.builder.store(
+        self.builder.select(ascii_space, ir.Constant(i64, 1), ir.Constant(i64, 0)),
+        result
+    );
+
+    codes = [133, 160, 5760]
+        + list(range(8192, 8203))
+        + [8232, 8233, 8239, 8287, 12288];
+    for cp in codes {
+        encoded = chr(cp).encode("utf-8");
+        width = len(encoded);
+        func = self.builder.function;
+        check = func.append_basic_block("space.utf8");
+        next = func.append_basic_block("space.next");
+        available = cursor if reverse else self.builder.sub(length, cursor);
+        self.builder.cbranch(
+            self.builder.icmp_unsigned(">=", available, ir.Constant(i64, width)),
+            check,
+            next
+        );
+        self.builder.position_at_end(check);
+        start = self.builder.sub(cursor, ir.Constant(i64, width))
+            if reverse
+            else cursor;
+        matches: ir.Value = ir.Constant(ir.IntType(1), 1);
+        for offset in range(width) {
+            part = self.builder.load(
+                self.builder.gep(
+                    text, [self.builder.add(start, ir.Constant(i64, offset))]
+                )
+            );
+            matches = self.builder.and_(
+                matches,
+                self.builder.icmp_unsigned("==", part, ir.Constant(i8, encoded[offset]))
+            );
+        }
+        self.builder.store(
+            self.builder.select(
+                matches, ir.Constant(i64, width), self.builder.load(result)
+            ),
+            result
+        );
+        self.builder.branch(next);
+        self.builder.position_at_end(next);
+    }
+    return self.builder.load(result);
+}
+
+impl NaIRGenPass._codegen_str_split_whitespace(
+    text: ir.Value, maxsplit: ir.Value | None = None, reverse: bool = False
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    i32 = ir.IntType(32);
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    length = self._call_str_len(self.builder, text);
+    self._emit_list_helpers("ptr", i8p);
+    helpers = self.list_helpers["ptr"];
+    result = self.builder.call(helpers["new"], []);
+    self._nogc_stamp_elem_drops(result, ["str"]);
+    cursor = self._entry_alloca(i64, "ws.cursor");
+    token = self._entry_alloca(i64, "ws.token");
+    budget = self._entry_alloca(i64, "ws.budget");
+    self.builder.store(length if reverse else zero, cursor);
+    self.builder.store(
+        self._coerce_type(maxsplit, i64)
+            if maxsplit is not None
+            else ir.Constant(i64, -1),
+        budget
+    );
+    func = self.builder.function;
+    skip_bb = func.append_basic_block("ws.skip_bb");
+    classify = func.append_basic_block("ws.classify");
+    advance = func.append_basic_block("ws.advance");
+    begin = func.append_basic_block("ws.begin");
+    remainder = func.append_basic_block("ws.remainder");
+    scan = func.append_basic_block("ws.scan");
+    inspect = func.append_basic_block("ws.inspect");
+    step = func.append_basic_block("ws.step");
+    emit = func.append_basic_block("ws.emit");
+    done = func.append_basic_block("ws.done");
+    self.builder.branch(skip_bb);
+    self.builder.position_at_end(skip_bb);
+    pos = self.builder.load(cursor);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(">", pos, zero)
+            if reverse
+            else self.builder.icmp_unsigned("<", pos, length),
+        classify,
+        done
+    );
+    self.builder.position_at_end(classify);
+    width = self._emit_whitespace_width(text, pos, length, reverse);
+    self.builder.cbranch(self.builder.icmp_unsigned("!=", width, zero), advance, begin);
+    self.builder.position_at_end(advance);
+    self.builder.store(
+        self.builder.sub(pos, width) if reverse else self.builder.add(pos, width),
+        cursor
+    );
+    self.builder.branch(skip_bb);
+    self.builder.position_at_end(begin);
+    self.builder.store(pos, token);
+    self.builder.cbranch(
+        self.builder.icmp_signed("==", self.builder.load(budget), zero), remainder, scan
+    );
+    self.builder.position_at_end(remainder);
+    self.builder.store(zero if reverse else length, cursor);
+    self.builder.branch(emit);
+    self.builder.position_at_end(scan);
+    current = self.builder.load(cursor);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(">", current, zero)
+            if reverse
+            else self.builder.icmp_unsigned("<", current, length),
+        inspect,
+        emit
+    );
+    self.builder.position_at_end(inspect);
+    whitespace = self._emit_whitespace_width(text, current, length, reverse);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned("!=", whitespace, zero), emit, step
+    );
+    self.builder.position_at_end(step);
+    self.builder.store(
+        self.builder.sub(current, one) if reverse else self.builder.add(current, one),
+        cursor
+    );
+    self.builder.branch(scan);
+    self.builder.position_at_end(emit);
+    finish = self.builder.load(cursor);
+    start = self.builder.load(token);
+    size = self.builder.sub(start, finish)
+        if reverse
+        else self.builder.sub(finish, start);
+    copy = self._str_alloc(self.builder, self.builder.add(size, one), name="ws.copy");
+    memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    self.builder.call(
+        memcpy, [copy, self.builder.gep(text, [finish if reverse else start]), size]
+    );
+    self._str_finish(self.builder, copy, size);
+    self._rc_call_with_ctx(helpers["append"], [result, copy], op="str_split");
+    self._emit_rc_release_simple(copy, op="str_split");
+    remaining = self.builder.load(budget);
+    self.builder.store(
+        self.builder.select(
+            self.builder.icmp_signed(">", remaining, zero),
+            self.builder.sub(remaining, one),
+            remaining
+        ),
+        budget
+    );
+    self.builder.branch(skip_bb);
+    self.builder.position_at_end(done);
+    if reverse {
+        z = ir.Constant(i32, 0);
+        data = self.builder.load(self.builder.gep(result, [z, ir.Constant(i32, 2)]));
+        count = self.builder.load(self.builder.gep(result, [z, z]));
+        index = self._entry_alloca(i64, "ws.reverse");
+        self.builder.store(zero, index);
+        check = func.append_basic_block("ws.reverse.check");
+        swap = func.append_basic_block("ws.reverse.swap");
+        end = func.append_basic_block("ws.reverse.end");
+        self.builder.branch(check);
+        self.builder.position_at_end(check);
+        left = self.builder.load(index);
+        right = self.builder.sub(self.builder.sub(count, one), left);
+        self.builder.cbranch(self.builder.icmp_signed("<", left, right), swap, end);
+        self.builder.position_at_end(swap);
+        lp = self.builder.gep(data, [left]);
+        rp = self.builder.gep(data, [right]);
+        lv = self.builder.load(lp);
+        rv = self.builder.load(rp);
+        self.builder.store(rv, lp);
+        self.builder.store(lv, rp);
+        self.builder.store(self.builder.add(left, one), index);
+        self.builder.branch(check);
+        self.builder.position_at_end(end);
+    }
+    return result;
 }

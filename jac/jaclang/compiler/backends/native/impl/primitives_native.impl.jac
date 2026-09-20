@@ -1204,23 +1204,27 @@ impl NativeStrEmitter.emit_removesuffix(
 impl NativeStrEmitter.emit_split(
     self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if args {
-        return ctx.pass_ref._codegen_str_split(
-            target, args[0], args[1] if len(args) > 1 else None
+    if not args or (isinstance(args[0], ir.Constant) and args[0].constant is None) {
+        return ctx.pass_ref._codegen_str_split_whitespace(
+            target, args[1] if len(args) > 1 else None
         );
     }
-    return None;
+    return ctx.pass_ref._codegen_str_split(
+        target, args[0], args[1] if len(args) > 1 else None
+    );
 }
 
 impl NativeStrEmitter.emit_rsplit(
     self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if args {
-        return ctx.pass_ref._codegen_str_split(
-            target, args[0], args[1] if len(args) > 1 else None, True
+    if not args or (isinstance(args[0], ir.Constant) and args[0].constant is None) {
+        return ctx.pass_ref._codegen_str_split_whitespace(
+            target, args[1] if len(args) > 1 else None, True
         );
     }
-    return None;
+    return ctx.pass_ref._codegen_str_split(
+        target, args[0], args[1] if len(args) > 1 else None, True
+    );
 }
 
 impl NativeStrEmitter.emit_splitlines(
@@ -4987,40 +4991,23 @@ impl NativeBuiltinEmitter.emit_sorted(
         return None;
     }
     p = ctx.pass_ref;
-    list_val = args[0];
-
-    helpers: (dict[str, any] | None) = None;
-    elem_key: (str | None) = None;
-    for (lk, lt) in p.list_types.items() {
-        if list_val.type == lt.as_pointer() {
-            helpers = p.list_helpers.get(lk);
-            elem_key = lk;
-            break;
-        }
-    }
-    if helpers is None {
-        return None;
-    }
+    items = self.emit_list(ctx, args);
+    elem_key = p._infer_list_elem_type(items) if items is not None else None;
     _le = p._native_emitters.get("list") if p?._native_emitters else None;
-    if not isinstance(_le, NativeListEmitter) {
+    if items is None or elem_key is None or not isinstance(_le, NativeListEmitter) {
         return None;
     }
     _ctx2 = ctx.__class__(
         pass_ref=p,
-        type_key=elem_key or "",
+        type_key=elem_key,
         call_kwargs=(ctx?.call_kwargs or {}),
         arg_nodes=ctx.arg_nodes,
         call_node=ctx.call_node
     );
-
-    sorted_copy = _le.emit_copy(_ctx2, list_val, []);
-    if sorted_copy is None {
+    if _le.emit_sort(_ctx2, items, []) is None and (ctx?.call_kwargs or {}) {
         return None;
     }
-    if _le.emit_sort(_ctx2, sorted_copy, []) is None and (ctx?.call_kwargs or {}) {
-        return None;
-    }
-    return sorted_copy;
+    return items;
 }
 
 impl NativeBuiltinEmitter.emit_reversed(
@@ -5372,9 +5359,7 @@ impl NativeBuiltinEmitter.emit_str(
     }
 
     if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
-        true_s = p._make_global_string("True", name_prefix=".str.true");
-        false_s = p._make_global_string("False", name_prefix=".str.false");
-        return b.select(arg_val, true_s, false_s, name="str.bool");
+        return p._bool_text(b, arg_val, "str.bool");
     }
 
     if isinstance(arg_val.type, ir.PointerType) {
@@ -5608,36 +5593,7 @@ impl NativeBuiltinEmitter.emit_list(
         if elem_type is None {
             return None;
         }
-        list_type = p._lower_list_for_elem(elem_type);
-        spec = p._spec_from_container_ptr(list_type);
-        if spec is None {
-            return None;
-        }
-        helpers = p.list_helpers.get(spec);
-        if helpers is None {
-            return None;
-        }
-        slot_type = ir.IntType(8).as_pointer()
-            if elem_type == p._str_desc_ty
-            else elem_type;
-        slot = p._entry_alloca(slot_type, "list.iter.element");
-        result = b.call(helpers["new"], [], name="list.iter.result");
-        func = b.basic_block.function;
-        condition = func.append_basic_block("list.iter.next");
-        body = func.append_basic_block("list.iter.append");
-        done = func.append_basic_block("list.iter.done");
-        b.branch(condition);
-        b.position_at_end(condition);
-        available = p._emit_iter_advance(b, val, slot);
-        b.cbranch(available, body, done);
-        b.position_at_end(body);
-        stored_type = helpers["elem_type"];
-        assert isinstance(stored_type, ir.Type);
-        element = p._coerce_type(b.load(slot), stored_type);
-        b.call(helpers["append"], [result, element]);
-        b.branch(condition);
-        b.position_at_end(done);
-        return result;
+        return p._list_from_iter(val, elem_type, elem_type);
     }
 
     if p._is_bytes_value(val) {
@@ -5725,7 +5681,19 @@ impl NativeBuiltinEmitter.emit_list(
             return _le3.emit_copy(_ctx3, _lv, []);
         }
     }
-    return None;
+    if source is None {
+        return None;
+    }
+    built = p._make_iter_from_value(p._str_norm(val), source);
+    if built is None {
+        return None;
+    }
+    (iter_val, _elem_name, elem_type) = built;
+    drained = p._list_from_iter(
+        iter_val, elem_type, p._list_elem_llvm_of(ctx.call_node) or elem_type
+    );
+    p._emit_rc_release_simple(iter_val, op="list_iter", loc="");
+    return drained;
 }
 
 impl NativeBuiltinEmitter.emit_dict(

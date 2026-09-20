@@ -351,6 +351,10 @@ Emitted by `OwnershipCheckPass` for `own`/`lin`/`imm`/`&`/`&mut` bindings and de
 | `E1317` | Cannot move '{name}' out of the element '{place}' |
 | `E1318` | Cannot call mutating method '{method}' through a shared borrow of '{name}' |
 | `E1319` | Invalid {operation} place: {reason} |
+| `E1320` | Cannot assign '{field}' through a shared borrow of '{name}' |
+| `E1321` | Cannot write '{field}' while the borrow '{name}' reads through it |
+| `E1322` | Call to '{callee}' may write '{field}' while the borrow '{name}' reads through it |
+| `E1323` | Borrow '{name}' must start at a parameter, `self`, an `own` value or another borrow |
 
 ### Zero-RC Enforcement Errors
 

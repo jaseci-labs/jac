@@ -885,7 +885,11 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
         }
     }
     op = nd.ops[0].name if isinstance(nd.ops[0], uni.Token) else str(nd.ops[0]);
-    return self._codegen_compare_link(op, left, right, nd.left, nd.rights[0]);
+    result = self._codegen_compare_link(op, left, right, nd.left, nd.rights[0]);
+    if result is not None and isinstance(result.type, ir.IntType) {
+        return self._to_bool(result);
+    }
+    return result;
 }
 
 impl NaIRGenPass._codegen_compare_link(

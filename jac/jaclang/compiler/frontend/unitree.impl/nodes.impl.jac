@@ -1406,6 +1406,8 @@ impl Module.postinit -> None {
     self.rc_move_in = _rc_move_in;
     _own_move_sites: set[int] = set();
     self.own_move_sites = _own_move_sites;
+    _managed_borrow_binds: set[int] = set();
+    self.managed_borrow_binds = _managed_borrow_binds;
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=self.name);
 }

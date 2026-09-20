@@ -240,7 +240,7 @@ test "bytecode and analysis sections share one merged cache JIR" {
     _check(main);
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     context = _context(main);
-    with cache_scope(context.context_key, context.options) {
+    with cache_scope(context.options) {
         wrote = write_module_cache(main, b"fake-bytecode");
     }
     assert wrote , "the merge write was refused";

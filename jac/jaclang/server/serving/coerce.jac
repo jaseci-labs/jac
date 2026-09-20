@@ -91,6 +91,68 @@ def _as_item_list(value: any) -> list[any] {
     return [value];
 }
 
+def is_upload_type(target: any) -> bool {
+    if target is None {
+        return False;
+    }
+    origin = get_origin(target);
+    if origin is list {
+        args = get_args(target);
+        return len(args) == 1 and is_upload_type(args[0]);
+    }
+    if origin is Union or origin is UnionType {
+        branches = [
+            arg
+            for arg in get_args(target)
+            if arg is not type(None)
+        ];
+        return len(branches) > 0 and all([is_upload_type(arg) for arg in branches]);
+    }
+    if isinstance(target, type) {
+        return issubclass(target, UploadFile) or target.__name__ == 'UploadFile';
+    }
+    return False;
+}
+
+def _accepts_upload(target: any) -> bool {
+    origin = get_origin(target);
+    if origin is Union or origin is UnionType {
+        return any([_accepts_upload(arg) for arg in get_args(target)]);
+    }
+    return is_upload_type(target);
+}
+
+def _accepts_upload_list(target: any) -> bool {
+    origin = get_origin(target);
+    if origin is Union or origin is UnionType {
+        return any([_accepts_upload_list(arg) for arg in get_args(target)]);
+    }
+    return origin is list and is_upload_type(target);
+}
+
+def _accepts_single_upload(target: any) -> bool {
+    origin = get_origin(target);
+    if origin is Union or origin is UnionType {
+        return any([_accepts_single_upload(arg) for arg in get_args(target)]);
+    }
+    return origin is not list and is_upload_type(target);
+}
+
+def _without_none(target: any) -> any {
+    origin = get_origin(target);
+    if origin is Union or origin is UnionType {
+        args = [
+            arg
+            for arg in get_args(target)
+            if arg is not type(None)
+        ];
+        if len(args) == 1 {
+            return args[0];
+        }
+    }
+    return target;
+}
+
 def coerce_value(value: any, target: any = None) -> any {
     if isinstance(value, UploadFile) {
         return value;
@@ -243,7 +305,7 @@ def _extract_raw(
     if param.kind == ParameterType.FILE {
         files = request.upload_files.get(param.name, []);
         if files {
-            target = _param_target(param);
+            target = _without_none(_param_target(param));
             if get_origin(target) is list {
                 return (True, files);
             }
@@ -261,6 +323,15 @@ def _extract_raw(
         }
         if isinstance(body_json, dict) and param.name in body_json {
             return (True, body_json[param.name]);
+        }
+        files = request.upload_files.get(param.name, []);
+        target = _param_target(param);
+        if files and _accepts_upload(target) {
+            if _accepts_upload_list(target)
+                and (len(files) > 1 or not _accepts_single_upload(target)) {
+                return (True, files);
+            }
+            return (True, files[0]);
         }
         return (False, None);
     }

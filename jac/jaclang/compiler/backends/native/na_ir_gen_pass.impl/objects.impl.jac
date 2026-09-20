@@ -1885,7 +1885,7 @@ impl NaIRGenPass._codegen_instantiation(
         if _tgt_asgn is not None
             and len(_tgt_asgn.target) == 1
             and isinstance(_tgt_asgn.target[0], uni.Name) {
-            self.nogc_no_free_vars.add(_tgt_asgn.target[0].sym_name);
+            self.borrowed_vars.add(_tgt_asgn.target[0].sym_name);
         }
     } elif _stack_ok {
         self.rc_stack_promotions += 1;

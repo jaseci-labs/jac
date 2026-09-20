@@ -17,6 +17,7 @@ import from jaclang.runtime.python.bindings.binascii { PyInit_binascii }
 import from jaclang.runtime.python.bindings.random { PyInit__random }
 import from jaclang.runtime.python.bindings.bisect { PyInit__bisect }
 import from jaclang.runtime.python.bindings.heapq { PyInit__heapq }
+import from jaclang.runtime.python.bindings.statistics { PyInit__statistics }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

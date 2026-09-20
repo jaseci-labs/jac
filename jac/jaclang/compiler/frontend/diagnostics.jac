@@ -1129,6 +1129,40 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " swap(&mut a, &mut b) requires two writable places of the same type."
          " Use pop() to move an owned container element out."
      ),
+     E1320 = _err(
+         "E1320",
+         Category.SEMANTIC,
+         "Cannot assign '{field}' through a shared borrow of '{name}'",
+         help="A `&` borrow is read-only. Take the borrow with `&mut`, or assign"
+         " through the owner directly."
+     ),
+     E1321 = _err(
+         "E1321",
+         Category.SEMANTIC,
+         "Cannot write '{field}' while the borrow '{name}' reads through it",
+         help="'{name}' was reached through a '{field}' field or element, and a"
+         " borrow does not keep its referent alive. Writing '{field}' on any"
+         " object while '{name}' is still used could release what it points at."
+         " Finish using '{name}' first, or hold it in an ordinary (owning) local."
+     ),
+     E1322 = _err(
+         "E1322",
+         Category.SEMANTIC,
+         "Call to '{callee}' may write '{field}' while the borrow '{name}' reads through it",
+         help="'{name}' was reached through '{field}', and '{callee}' may write"
+         " that field on some object (or the compiler cannot tell what it"
+         " writes), which could release what '{name}' points at. Finish using"
+         " '{name}' before the call, or hold it in an ordinary (owning) local."
+     ),
+     E1323 = _err(
+         "E1323",
+         Category.SEMANTIC,
+         "Borrow '{name}' must start at a parameter, `self`, an `own` value or another borrow",
+         help="A borrow does not keep its referent alive, so its starting point"
+         " must outlive it. An ordinary local or a module global can be released"
+         " while the borrow is still used. Borrow from the parameter the value"
+         " came from, or keep an ordinary (owning) local instead of a borrow."
+     ),
      W1310 = _warn(
          "W1310",
          Category.LINT,

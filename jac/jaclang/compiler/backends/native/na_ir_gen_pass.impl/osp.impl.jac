@@ -1545,18 +1545,17 @@ impl NaIRGenPass._codegen_visit(nd: uni.VisitStmt) -> None {
         }
     }
     _argtys = osp_visit_fn.function_type.args;
+    _visit_targets = self._coerce_type(_targets, _argtys[0]);
+    _visit_insert = self._coerce_type(_insert, _argtys[1]);
     _did = self.builder.call(
-        osp_visit_fn,
-        [
-            self._coerce_type(_targets, _argtys[0]),
-            self._coerce_type(_insert, _argtys[1])
-        ],
-        name="visit.did"
+        osp_visit_fn, [_visit_targets, _visit_insert], name="visit.did"
     );
 
-    if isinstance(_targets.type, ir.PointerType) and self._is_owned(_targets) {
+    _release_targets = _visit_targets if self._is_owned(_visit_targets) else _targets;
+    if isinstance(_release_targets.type, ir.PointerType)
+        and self._is_owned(_release_targets) {
         self._emit_rc_release_simple(
-            _targets, op="visit_targets", loc=getattr(_targets, 'jac_loc', '')
+            _release_targets, op="visit_targets", loc=getattr(_targets, 'jac_loc', '')
         );
     }
     if nd.else_body is None {

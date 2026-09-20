@@ -3,20 +3,19 @@
 Assert on the request byLLM actually sent, not on a rendered string.
 """
 
-import os;
 import from jaclang.byllm.lib { Image, Video }
 import from jaclang.byllm.lib { ConfigurationError, MockLLM }
-import from support_tests {
+import from jaclang.testing.requires { require_module }
+import from support {
     prompt_text,
     data_url,
+    fixture_path,
     media_blocks,
     need,
     roles,
     say,
     user_blocks
 }
-
-glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures");
 
 
 enum Personality { INTROVERT = "Introvert", EXTROVERT = "Extrovert" }
@@ -29,7 +28,7 @@ obj Person {
 
 
 test "an image argument is inlined in its own format, under a system prompt" {
-    need("PIL", "Pillow");
+    require_module("PIL");
     # (file, expected data-url mime). A webp must not be transcoded to jpeg.
     for (filename, mime) in [
         ("math_question.jpg", "data:image/jpeg;base64,"),
@@ -39,7 +38,7 @@ test "an image argument is inlined in its own format, under a system prompt" {
 
         def describe(question_img: Image) -> str by llm();
 
-        assert describe(Image(os.path.join(FIXTURE_DIR, filename))) == "answered";
+        assert describe(Image(fixture_path(filename))) == "answered";
         assert roles(llm) == ["system", "user"] , f"{filename}: got {roles(llm)}";
 
         blocks = user_blocks(llm);
@@ -62,7 +61,7 @@ test "an image argument is inlined in its own format, under a system prompt" {
 
 
 test "an image answer is parsed into its declared type" {
-    need("PIL", "Pillow");
+    require_module("PIL");
     llm = MockLLM(
         outputs=[
             {
@@ -75,9 +74,7 @@ test "an image answer is parsed into its declared type" {
 
     def get_person_info(image_content: Image) -> Person by llm();
 
-    person = get_person_info(
-        Image(os.path.join(FIXTURE_DIR, "webp_image_of_person.webp"))
-    );
+    person = get_person_info(Image(fixture_path("webp_image_of_person.webp")));
     assert person.full_name == "Albert Einstein" , f"got {person!r}";
     assert person.year_of_death == "1955" , f"got {person!r}";
     assert person.personality == Personality.EXTROVERT , f"got {person.personality!r}";
@@ -95,7 +92,7 @@ test "a video argument is sampled into several inlined frames" {
     def explain_the_video(video: Video) -> str by llm();
 
     result = explain_the_video(
-        Video(path=os.path.join(FIXTURE_DIR, "SampleVideo_1280x720_2mb.mp4"), fps=1)
+        Video(path=fixture_path("SampleVideo_1280x720_2mb.mp4"), fps=1)
     );
     assert result == explanation;
 
@@ -128,8 +125,8 @@ test "an image parameter carrying a sem still encodes, and the sem is dropped" {
     # message. A function-level sem does reach the prompt (test_prompting.jac
     # asserts that), so this is specific to parameter sems. Reported on #9002.
     # Flip the last assertion when that is fixed.
-    need("PIL", "Pillow");
-    result = _describe_image(Image(os.path.join(FIXTURE_DIR, "image.jpg")));
+    require_module("PIL");
+    result = _describe_image(Image(fixture_path("image.jpg")));
     assert "hot air balloon" in result.lower() , f"got {result!r}";
 
     images = media_blocks(_sem_llm);
@@ -146,12 +143,12 @@ test "an image parameter carrying a sem still encodes, and the sem is dropped" {
 
 
 test "every accepted image source becomes a usable url" {
-    need("PIL", "Pillow");
+    require_module("PIL");
     import base64;
     import io;
     import from pathlib { Path }
     import from PIL { Image as PILImage }
-    jpg = os.path.join(FIXTURE_DIR, "alan-m-turing.jpg");
+    jpg = fixture_path("alan-m-turing.jpg");
     pil = PILImage.open(jpg);
 
     def png_bytes -> bytes {
@@ -185,7 +182,7 @@ test "every accepted image source becomes a usable url" {
 
 
 test "an image return type is generated, not requested as chat" {
-    need("PIL", "Pillow");
+    require_module("PIL");
     import base64;
     import io;
     import from PIL { Image as PILImage }

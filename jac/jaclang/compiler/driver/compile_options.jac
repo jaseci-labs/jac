@@ -163,6 +163,20 @@ obj CompileOptions {
         return hashlib.sha256(self.analysis_identity().encode()).hexdigest()[:12];
     }
 
+    def module_projection -> str {
+        return ";".join(
+            [
+                self.analysis_identity(),
+                self.codegen_identity(),
+                f"aot={int(bool(self.aot_mode))}",
+                f"force_cs={self.force_codespace}",
+                f"default_cs={self.default_codespace}",
+                f"ui={self.ui}",
+                f"root={self.project_root or ''}"
+            ]
+        );
+    }
+
     def for_symbols(need_tree: bool = False) -> CompileOptions {
         import copy;
         result = copy.copy(self);

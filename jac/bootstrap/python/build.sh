@@ -233,6 +233,7 @@ _functools
 itertools
 array
 _pickle
+_statistics
 SETUP
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above

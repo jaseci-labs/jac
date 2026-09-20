@@ -638,7 +638,7 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
     if not isinstance(rhs, uni.Name) {
         return False;
     }
-    if rhs.value in self.closure_cell_handles {
+    if rhs.value in self.closure_cell_handles or rhs.value in self.borrowed_vars {
         return False;
     }
     src_alloca = self.local_vars.get(rhs.value);
@@ -660,6 +660,23 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
     }
     self.builder.store(ir.Constant(src_alloca.pointee_type, None), src_alloca);
     self.rc_ops_elided += 1;
+    return True;
+}
+
+impl NaIRGenPass._bind_borrowed(
+    nd: uni.Assignment, var_name: str, slot_ty: ir.Type
+) -> bool {
+    if id(nd) not in self.module.managed_borrow_binds
+        or self._gc_mode() == "none"
+        or var_name in self.region_handle_vars
+        or not (
+            self._elem_kind(slot_ty) == "rc_ptr"
+            or self._opt_ptr_payload_of(slot_ty) is not None
+        ) {
+        return False;
+    }
+    self.borrowed_vars.add(var_name);
+    self.rc_ops_elided += 2;
     return True;
 }
 
@@ -2227,7 +2244,7 @@ impl NaIRGenPass._nogc_elem_prep(
             and expr.sym_name in self.local_vars
             and expr.sym_name not in self.param_vars
             and not self._nogc_consume_local(expr) {
-            self.nogc_no_free_vars.add(expr.sym_name);
+            self.borrowed_vars.add(expr.sym_name);
         }
         return val;
     }
@@ -2390,7 +2407,7 @@ impl NaIRGenPass._emit_scope_cleanup(
         if var_name in self.param_vars {
             continue;
         }
-        if var_name in self.nogc_no_free_vars {
+        if var_name in self.borrowed_vars {
             continue;
         }
         if var_name in self.closure_cell_handles {
@@ -2482,7 +2499,7 @@ impl NaIRGenPass._emit_loop_iter_cleanup(
         if var_name == "self" or var_name in self.param_vars {
             continue;
         }
-        if var_name in self.nogc_no_free_vars {
+        if var_name in self.borrowed_vars {
             continue;
         }
         if var_name in self.closure_cell_handles {

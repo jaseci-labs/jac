@@ -13,13 +13,15 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 42 C files / 103,864 lines; 25 headers / 11,178 lines.
-#   Total: 67 files / 115,042 source lines.
+#   Excluded: 43 C files / 104,023 lines; 26 headers / 11,229 lines.
+#   Total: 69 files / 115,252 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
 #   so build-graph.patch detaches upstream rules that name them.
-#   Total: 26 files / 47,986 source lines.
+#   A path is pruned only when no supported platform's configure selects it
+#   and its outer #if has no #else that the retained build still links.
+#   Total: 29 files / 59,417 source lines.
 #
 # After each build, build.sh checks that no commented path came back, reading
 # the marker to decide which builds must lack it.
@@ -134,7 +136,7 @@ Python/dtoa.c
 Python/dynamic_annotations.c
 Python/dynload_shlib.c
 Python/errors.c
-Python/executor_cases.c.h
+# Python/executor_cases.c.h  # pruned: 7,163 source lines
 Python/fileutils.c
 # Python/flowgraph.c  # removed: 4,167 source lines
 Python/formatter_unicode.c
@@ -163,7 +165,7 @@ Python/initconfig.c
 Python/instrumentation.c
 Python/interpconfig.c
 Python/intrinsics.c
-Python/jit.c
+# Python/jit.c  # pruned: 523 source lines
 Python/legacy_tracing.c
 Python/lock.c
 Python/marshal.c
@@ -173,9 +175,9 @@ Python/mystrtoul.c
 Python/object_stack.c
 Python/opcode_targets.h
 Python/optimizer.c
-Python/optimizer_analysis.c
-Python/optimizer_cases.c.h
-Python/optimizer_symbols.c
+# Python/optimizer_analysis.c  # pruned: 664 source lines
+# Python/optimizer_cases.c.h  # pruned: 2,520 source lines
+# Python/optimizer_symbols.c  # pruned: 880 source lines
 Python/parking_lot.c
 Python/pathconfig.c
 Python/perf_jit_trampoline.c
@@ -327,7 +329,7 @@ Modules/_ctypes/clinic/_ctypes.c.h
 Modules/_ctypes/clinic/callproc.c.h
 Modules/_ctypes/clinic/cfield.c.h
 Modules/_ctypes/ctypes.h
-# Modules/_ctypes/malloc_closure.c  # pruned: 165 source lines
+Modules/_ctypes/malloc_closure.c
 Modules/_ctypes/stgdict.c
 Modules/_datetimemodule.c
 Modules/_decimal/_decimal.c
@@ -456,7 +458,7 @@ Modules/_ssl/debughelpers.c
 Modules/_ssl/misc.c
 Modules/_ssl_data_35.h
 Modules/_stat.c
-Modules/_statisticsmodule.c
+# Modules/_statisticsmodule.c  # removed: 159 source lines
 # Modules/_struct.c  # removed: 2,825 source lines
 Modules/_suggestions.c
 Modules/_sysconfig.c
@@ -464,7 +466,7 @@ Modules/_threadmodule.c
 Modules/_tracemalloc.c
 Modules/_typesmodule.c
 Modules/_typingmodule.c
-# Modules/_uuidmodule.c  # pruned: 154 source lines
+Modules/_uuidmodule.c
 Modules/_weakref.c
 Modules/_zoneinfo.c
 Modules/_zstd/_zstdmodule.c
@@ -524,7 +526,7 @@ Modules/clinic/_posixsubprocess.c.h
 # Modules/clinic/_randommodule.c.h  # removed: 177 source lines
 Modules/clinic/_remote_debugging_module.c.h
 Modules/clinic/_ssl.c.h
-Modules/clinic/_statisticsmodule.c.h
+# Modules/clinic/_statisticsmodule.c.h  # removed: 51 source lines
 # Modules/clinic/_struct.c.h  # removed: 461 source lines
 Modules/clinic/_suggestions.c.h
 Modules/clinic/_sysconfig.c.h

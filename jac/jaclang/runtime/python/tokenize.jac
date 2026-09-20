@@ -54,6 +54,11 @@ def _character_column(line: str, column: int) -> int {
     if column < 0 {
         return column;
     }
+    # Token columns are byte offsets and tokenize reports characters. On an
+    # ASCII line the two agree, so only a line with other text is counted.
+    if line.isascii() {
+        return min(column, len(line));
+    }
     data = line.encode("utf-8");
     result = 0;
     for index in range(min(column, len(data))) {

@@ -64,7 +64,7 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
         if (name == "self" and not self._self_owned) or name in self.param_vars {
             continue;
         }
-        if name in self.nogc_no_free_vars {
+        if name in self.borrowed_vars {
             continue;
         }
         alloca = self.local_vars.get(name);
@@ -401,6 +401,9 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 and nd.expr.sym_name in self.local_vars
                 and nd.expr.sym_name not in self.param_vars
                 and nd.expr.sym_name not in self.closure_cell_handles
+                and not (
+                    nd.expr.sym_name in self.borrowed_vars and self._gc_mode() != "none"
+                )
                 and not self._is_owned(val) {
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
@@ -1971,6 +1974,32 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                     if store_val is None {
                                         continue;
                                     }
+                                    if self._spec_of(
+                                        target_expr.target,
+                                        ("bytearray", ),
+                                        self.list_types
+                                    )
+                                        is not None {
+                                        if not isinstance(store_val.type, ir.IntType) {
+                                            return;
+                                        }
+                                        byte_int = self._coerce_type(
+                                            store_val, ir.IntType(64)
+                                        );
+                                        invalid_byte = self.builder.icmp_unsigned(
+                                            ">",
+                                            byte_int,
+                                            ir.Constant(ir.IntType(64), 255)
+                                        );
+                                        self._emit_runtime_raise(
+                                            invalid_byte,
+                                            "ValueError",
+                                            "byte must be in range(0, 256)"
+                                        );
+                                        store_val = self.builder.trunc(
+                                            byte_int, ir.IntType(8)
+                                        );
+                                    }
                                     self._codegen_index_set(
                                         target_val, idx_val, store_val, elem_type_name
                                     );
@@ -2393,7 +2422,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
 
             raw_int_ptr = self._is_raw_int_ptr(coerced);
             self._register_region_handle_var(nd, var_name);
-            if (
+            if self._bind_borrowed(nd, var_name, alloca.pointee_type) {} elif (
                 isinstance(alloca.pointee_type, ir.PointerType)
                 or (
                     self._elem_kind(alloca.pointee_type) == "str"
@@ -2417,7 +2446,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         and nd.value.sym.storage == uni.SymbolStorage.MODULE_GLOBAL
                     )
                         or self._nogc_borrow_local_assign(nd) {
-                        self.nogc_no_free_vars.add(var_name);
+                        self.borrowed_vars.add(var_name);
                     }
                     if not self._is_owned(coerced)
                         and not self._can_native_move_lower(nd) {
@@ -2436,8 +2465,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         and getattr(nd, 'na_overwrite_consumed', False)
                     )
                         and not (
-                            self._gc_mode() == "none"
-                            and var_name in self.nogc_no_free_vars
+                            self._gc_mode() == "none" and var_name in self.borrowed_vars
                         ) {
                         old_val = self.builder.load(alloca, name=f"{var_name}.old");
                         self._emit_rc_release_typed(
@@ -2498,7 +2526,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         self._nogc_headerless()
                         and getattr(nd, 'na_overwrite_consumed', False)
                     )
-                        and var_name not in self.nogc_no_free_vars {
+                        and var_name not in self.borrowed_vars {
                         _osr_old = self.builder.load(alloca, name=f"{var_name}.old");
                         self._nogc_str_free_owned(_osr_old);
                     }
@@ -2908,7 +2936,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 self.builder.position_at_end(_cur_bb);
             }
             self._register_region_handle_var(nd, var_name);
-            if var_name in self.region_handle_vars {} elif isinstance(
+            _borrowed_slot = (
+                not _mk_cell
+                and not _in_gen_frame
+                and self._bind_borrowed(nd, var_name, var_type)
+            );
+            if var_name in self.region_handle_vars or _borrowed_slot {} elif isinstance(
                 var_type, ir.PointerType
             )
                 or (self._str_desc_ty is not None and var_type == self._str_desc_ty) {
@@ -2934,7 +2967,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         and nd.value.sym.storage == uni.SymbolStorage.MODULE_GLOBAL
                     )
                         or self._nogc_borrow_local_assign(nd) {
-                        self.nogc_no_free_vars.add(var_name);
+                        self.borrowed_vars.add(var_name);
                     }
                     _moved_here = False;
                     if not self._is_owned(value) {
@@ -2986,8 +3019,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         and getattr(nd, 'na_overwrite_consumed', False)
                     )
                         and not (
-                            self._gc_mode() == "none"
-                            and var_name in self.nogc_no_free_vars
+                            self._gc_mode() == "none" and var_name in self.borrowed_vars
                         ) {
                         old_val = self.builder.load(alloca, name=f"{var_name}.old");
                         if _own_str_tgt {
@@ -3687,11 +3719,11 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
             _b_hdr = self._entry_alloca(
                 collection_type.pointee, f"{loop_var}.chunk.hdr"
             );
-            self.nogc_no_free_vars.add(loop_var);
+            self.borrowed_vars.add(loop_var);
         } else {
             _lv_alloca = self._entry_alloca(actual_elem_type, loop_var);
             if self._is_reference_type(actual_elem_type) {
-                self.nogc_no_free_vars.add(loop_var);
+                self.borrowed_vars.add(loop_var);
             }
         }
         self.local_vars[loop_var] = _lv_alloca;
@@ -4238,7 +4270,7 @@ impl NaIRGenPass._codegen_for_indexed(
             if rc_vars
                 and isinstance(vtype, ir.PointerType)
                 and self._gc_mode() == "none" {
-                self.nogc_no_free_vars.add(vname);
+                self.borrowed_vars.add(vname);
             }
             allocas.append(alloca);
         }
@@ -4539,7 +4571,7 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
     _hdr = self._entry_alloca(collection_type.pointee, f"{loop_var}.chunk.hdr");
     _lv_alloca = self._entry_alloca(coll.type, loop_var);
     self.local_vars[loop_var] = _lv_alloca;
-    self.nogc_no_free_vars.add(loop_var);
+    self.borrowed_vars.add(loop_var);
     _ci_slot = self._entry_alloca(i64, "chunk.ci");
     self.builder.store(ir.Constant(i64, 0), _ci_slot);
 

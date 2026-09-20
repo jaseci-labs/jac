@@ -75,7 +75,8 @@ if required_compiler is not None:
     import itertools
     import array
     import _pickle
-    for replacement in (_bisect, _heapq, _random, binascii, _operator, _queue, _json, _csv, _struct, cmath, math, _collections, _functools, itertools, array, _pickle):
+    import _statistics
+    for replacement in (_bisect, _heapq, _random, binascii, _operator, _queue, _json, _csv, _struct, cmath, math, _collections, _functools, itertools, array, _pickle, _statistics):
         assert replacement.__name__ in sys.builtin_module_names
         assert replacement.__spec__.origin == "built-in"
     # Startup imports itertools and functools; each native module must also
@@ -597,6 +598,45 @@ assert _heapq.heappop([1, 2, 3]) == 1
     heap = [1, 4, 2, 3]
     _heapq.heapify_max(heap)
     assert [_heapq.heappop_max(heap) for _ in range(4)] == [4, 3, 2, 1]
+    assert ctypes.pythonapi.jacpy_statistics_inv_cdf
+    # One case per AS241 branch, against the values the replaced C produced.
+    # The median is exact because its numerator carries a factor of q.
+    assert _statistics._normal_dist_inv_cdf(0.5, 100.0, 15.0) == 100.0
+    for probability, expected in (
+        (0.908789, 42.00000200956616),   # central, |q| <= 0.425
+        (0.99, 2.3263478740408408),      # near tail, r <= 5
+        (1e-9, -5.997807015007685),      # near tail, far from the centre
+        (1e-12, -7.034483825301132),     # far tail, r > 5
+    ):
+        mean = 40.0 if probability == 0.908789 else 0.0
+        deviation = 1.5 if probability == 0.908789 else 1.0
+        assert math.isclose(
+            _statistics._normal_dist_inv_cdf(probability, mean, deviation),
+            expected,
+            rel_tol=1e-12,
+        )
+    # A NaN probability compares false against both bounds and must reach the
+    # tail branch rather than raise.
+    assert math.isnan(_statistics._normal_dist_inv_cdf(float("nan"), 0.0, 1.0))
+    for outside in (0.0, 1.0, -0.1, 1.1):
+        try:
+            _statistics._normal_dist_inv_cdf(outside, 0.0, 1.0)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("inv_cdf must reject a probability outside (0, 1)")
+    statistics_needle = object()
+    statistics_refs = sys.getrefcount(statistics_needle)
+    for _ in range(100):
+        for bad in ((statistics_needle, 0.0, 1.0), (0.5, statistics_needle, 1.0), (0.5, 0.0)):
+            try:
+                _statistics._normal_dist_inv_cdf(*bad)
+            except TypeError:
+                pass
+            else:
+                raise AssertionError("Invalid native argument binding was accepted")
+    del bad
+    assert sys.getrefcount(statistics_needle) == statistics_refs
     assert required_compiler() == 1
     assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
     for retired in ("_jacpython_compile", "_jacpython_symtable", "_jacpython_tokenize", "_jacpython_image", "_jacpython_code"):
