@@ -31,28 +31,34 @@ obj NativePythonImports {
                         continue;
                     }
                     self.module_statements.append(assignment);
-                    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-                    annotation = assignment.type_tag.tag
-                        if assignment.type_tag
-                        else None;
-                    native_scalar = isinstance(annotation, (uni.Name, uni.BuiltinType))
-                        and (
-                            annotation.value in {"int", "float", "bool", "str", "bytes"}
-                            or JAC_TYPE_REGISTRY.is_sized(annotation.value)
-                        );
-                    if not native_scalar
-                        and assignment.value is not None
-                        and python_object_expression(assignment.value) {
-                        for target in assignment.target {
-                            if isinstance(target, uni.Name)
-                                and target.sym is not None {
-                                self.module_bindings.add(
-                                    (id(target.sym), target.value)
-                                );
-                            }
-                        }
-                    }
+                    self.plan_assignment(assignment);
                 }
+            } elif isinstance(statement, uni.ModuleCode) {
+                for assignment in statement.get_all_sub_nodes(uni.Assignment) {
+                    self.plan_assignment(assignment);
+                }
+            }
+        }
+    }
+
+    def plan_assignment(assignment: uni.Assignment) {
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+        annotation = assignment.type_tag.tag if assignment.type_tag else None;
+        native_scalar = isinstance(annotation, (uni.Name, uni.BuiltinType))
+            and (
+                annotation.value in {"int", "float", "bool", "str", "bytes"}
+                or JAC_TYPE_REGISTRY.is_sized(annotation.value)
+            );
+        if native_scalar
+            or assignment.value is None
+            or not python_object_expression(assignment.value) {
+            return;
+        }
+        for target in assignment.target {
+            if isinstance(target, uni.Name)
+                and target.sym is not None
+                and target.sym.storage == uni.SymbolStorage.MODULE_GLOBAL {
+                self.module_bindings.add((id(target.sym), target.value));
             }
         }
     }

@@ -167,6 +167,38 @@ def __jac_python_tuple_set(
     __jac_python_check();
 }
 
+def __jac_python_unpack(value: __JacPythonValue, count: int) -> __JacPythonValue {
+    iterator = __jac_python_result(jacpy_iter(value.value));
+    result = __jac_python_tuple(count);
+    for index in range(count) {
+        item = jacpy_iter_next(iterator.value);
+        if item == 0 {
+            __jac_python_check();
+            object_error(
+                "ValueError",
+                "not enough values to unpack (expected "
+                    + str(count)
+                    + ", got "
+                    + str(index)
+                    + ")"
+            );
+            __jac_python_check();
+        }
+        __jac_python_tuple_set(result, index, __jac_python_result(item));
+    }
+    extra = jacpy_iter_next(iterator.value);
+    if extra != 0 {
+        retained = __jac_python_result(extra);
+        object_error(
+            "ValueError", "too many values to unpack (expected " + str(count) + ")"
+        );
+        __jac_python_check();
+    }
+    __jac_python_check();
+    return result;
+}
+
+
 def __jac_python_dict -> __JacPythonValue {
     return __jac_python_result(jacpy_dict_new());
 }

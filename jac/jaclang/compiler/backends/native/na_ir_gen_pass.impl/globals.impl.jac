@@ -63,6 +63,9 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
                 ) {
                     continue;
                 }
+                if (id(target.sym), target.sym_name) in self._python_imports.module_bindings {
+                    continue;
+                }
                 var_name = self._get_name(target);
                 if (
                     var_name is None

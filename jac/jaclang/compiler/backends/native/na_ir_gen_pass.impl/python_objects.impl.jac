@@ -18,6 +18,12 @@ impl NaIRGenPass._python_expr(nd: uni.UniNode) -> bool {
                 or (id(nd.sym), nd.value) in self._python_imports.module_bindings
             );
     }
+    if isinstance(nd, uni.AtomTrailer) and isinstance(nd.type, ClassType) {
+        lowered = self._lower_class_type(nd.type);
+        if lowered is not None and self._python_value(lowered) {
+            return True;
+        }
+    }
     if isinstance(nd, uni.FuncCall) and self._python_builtin(nd) {
         return True;
     }

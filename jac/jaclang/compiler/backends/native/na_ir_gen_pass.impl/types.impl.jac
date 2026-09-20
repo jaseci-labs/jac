@@ -895,6 +895,12 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
         }
         return self._tuple_struct_of(elem_types).as_pointer();
     }
+    if self._python_imports.symbols {
+        source = t.shared.symbol_table.find_parent_of_type(uni.Module);
+        if t.shared.is_from_stdlib_stub or (source is not None and source.stub_only) {
+            return self.struct_types["__JacPythonValue"].as_pointer();
+        }
+    }
     return None;
 }
 
@@ -1833,6 +1839,9 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
             converted = self._python_runtime("as_bytes", [val]);
             self._release_owned_args([val]);
             return converted;
+        }
+        if target_type != self.jacval_type {
+            raise ValueError(f"Unsupported Python object conversion to native type: {target_type}");
         }
     }
     _was_owned = self._is_owned(val);

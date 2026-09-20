@@ -16,7 +16,7 @@ test "Python global initialization interleaves imports and retains object aliase
         assert engine.requires_python;
         assert get_func(engine, "ordered_values", ctypes.c_int64)() == 1122;
         native_value = get_func(engine, "native_scalar", ctypes.c_double)();
-        assert native_value == 22.0, str(native_value);
+        assert native_value == 22.0 , str(native_value);
         assert get_func(engine, "mutate", ctypes.c_int64)() == 3;
         assert get_func(engine, "replace", ctypes.c_int64)() == 13;
         assert get_func(engine, "context_default", ctypes.c_int64)() == 7;
@@ -84,4 +84,22 @@ test "Python global objects are isolated between interpreter instances" {
         }
     }
     assert mutate() == 4;
+}
+
+
+test "Python entry globals preserve objects across entry blocks" {
+    (engine, _) = compile_native("python_entry_globals.jac", required=True);
+    import io;
+    import from contextlib { redirect_stdout }
+    output = io.StringIO();
+    with redirect_stdout(output) {
+        get_func(engine, "jac_entry", None)();
+    }
+    assert output.getvalue().splitlines() == ["1", "3"];
+}
+
+
+test "Python class annotations retain identity through native fields and calls" {
+    (engine, _) = compile_native("python_class_values.jac", required=True);
+    assert get_func(engine, "check_values", ctypes.c_bool)();
 }

@@ -75,6 +75,26 @@ impl NaIRGenPass._codegen_tuple_unpack(
     tuple_val: ir.Value,
     tuple_node: (uni.UniNode | None)
 ) -> bool {
+    if self._python_value(tuple_val.type) {
+        unpacked = self._python_runtime(
+            "unpack", [tuple_val, ir.Constant(ir.IntType(64), len(targets))]
+        );
+        values: list[ir.Value] = [];
+        for index in range(len(targets)) {
+            key = self._python_runtime("int", [ir.Constant(ir.IntType(64), index)]);
+            values.append(self._python_runtime("getitem", [unpacked, key]));
+            self._release_owned_args([key]);
+        }
+        self._release_owned_args([unpacked, tuple_val]);
+        structure = ir.LiteralStructType([value.type for value in values]);
+        converted: ir.Value = ir.Constant(structure, ir.Undefined);
+        for (index, value) in enumerate(values) {
+            converted = self.builder.insert_value(converted, value, index);
+            self._consume_temporary(value);
+        }
+        converted.na_tuple_owned = [True for value in values];
+        return self._codegen_tuple_unpack(targets, converted, None);
+    }
     _elem_owned = tuple_val?.na_tuple_owned;
     _tu_opt = self._opt_payload_of(tuple_val.type);
     if _tu_opt is not None {
