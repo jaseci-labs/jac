@@ -1771,7 +1771,9 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
     _was_owned = self._is_owned(val);
     _result = self._coerce_type_inner(val, target_type);
     if _was_owned and _result is not val {
+        self._consume_temporary(val);
         self._mark_owned(_result);
+        self._protect_temporary(_result);
     }
     return _result;
 }
