@@ -237,8 +237,10 @@ impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     );
     ptr = self.builder.bitcast(raw, val.type.as_pointer(), name="tuple.box.ptr");
     self.builder.store(val, ptr);
+    self._consume_temporary(val);
 
     self._mark_owned(ptr);
+    self._protect_temporary(ptr);
 
     self._emit_set_type_tag(self.builder, raw, "tuple");
     if _rc_box {
@@ -270,6 +272,8 @@ impl NaIRGenPass._coerce_tuple_to_struct(
     _tc_owned = val?.na_tuple_owned;
     if _tc_owned is not None {
         out.na_tuple_owned = _tc_owned;
+        self._consume_temporary(val);
+        self._protect_temporary(out);
     }
     return out;
 }

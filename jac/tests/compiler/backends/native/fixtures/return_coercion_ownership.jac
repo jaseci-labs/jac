@@ -21,3 +21,27 @@ def check -> bool {
         and values[0] == "key50"
         and values[1] == "key51";
 }
+
+glob dropped = 0;
+obj Tracked {
+    has value: int;
+
+    def drop {
+        dropped += 1;
+    }
+}
+
+def boxed(value: Tracked) -> tuple[Tracked, int] {
+    return (value, 42);
+}
+
+def discard_box(value: Tracked) {
+    item = boxed(value);
+}
+
+def box_preserves_owner -> bool {
+    dropped = 0;
+    value = Tracked(42);
+    discard_box(value);
+    return dropped == 0 and value.value == 42;
+}
