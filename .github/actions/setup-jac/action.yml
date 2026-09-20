@@ -13,14 +13,6 @@ description: >
   be served -- which is why this is safe even though zig's own incremental cache
   stays disabled (it doesn't reliably invalidate on a jaclang/dist/payload change).
 inputs:
-  skip-precompile:
-    description: >
-      Skip the payload JIR precompile (~24 min cold). Only sane for dev-lane
-      fallbacks, whose runtime bypasses the bundled compiler entirely via the
-      [dev] jaclang_source loop; a skip-precompile binary is never saved to
-      the shared jac-bin cache.
-    required: false
-    default: "false"
   need-build-inputs:
     description: >
       Restore the source-built Python and the LLVMPY_* shim even when the
@@ -70,10 +62,21 @@ runs:
         # during `zig build` and ci.yml publishes them as an artifact for
         # the compiler suite. Without them here, a binary cache hit skips the
         # build and the upload step fails on a fresh checkout.
+        #
+        # .precompiled-build/jacpython rides WITH the binary, not beside it.
+        # ci.yml publishes that tree as the `jac-precompiled` artifact and every
+        # reroute lane runs against it under JAC_PRECOMPILE_REQUIRED=1, so a
+        # tree that does not match this checkout is a hard failure, not a slow
+        # lane. Keyed together, a hit restores the exact pair that was built;
+        # keyed apart, a hit on one with a restore-keys prefix hit on the other
+        # could ship a bundle one payload fingerprint stale. The read-mostly
+        # entry below stays prefix-matched, because seeding an incremental
+        # BUILD from a near-miss tree is exactly what it is for.
         path: |
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
-        key: jac-bin-v2-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
+          jac/.precompiled-build/jacpython
+        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
 
     - name: Restore cached typeshed stdlib stubs
       id: typeshed-cache
@@ -146,26 +149,41 @@ runs:
         key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
 
     # The JIR precompile is mkpayload's single most expensive stage (~24 min:
-    # it compiles every bundled jaclang module). Each .jir embeds a
-    # content-addressed module key (jaclang version + python version + source +
-    # annex hashes + the compiler-content digest of #8178), and mkpayload seeds
-    # site/_precompiled from jac/.precompiled-build, recompiling ONLY the
-    # modules whose key no longer matches. Within one compiler tree a stale or
-    # partial tree is therefore useful rather than dangerous -- which is why,
-    # unlike the binary cache, this one uses restore-keys: any prior build's
-    # tree turns the full precompile into a recompile of just the changed
-    # modules. Across compiler trees it is neither: every key misses, so the
-    # compiler fingerprint scopes the prefix and a compiler-touching commit
-    # starts cold rather than dragging a tree it cannot use.
+    # it compiles every bundled jaclang module). ONE tree per (code version,
+    # runtime variant) serves all of CI; nothing else may recompile it.
+    #
+    # No runner.os, no runner.arch: a precompiled unit is pure marshalled
+    # bytecode plus metadata, and its key folds only the jaclang version, the
+    # Python major.minor (packed little-endian, explicitly), FORMAT_VERSION,
+    # the source content hashes and the compiler digest -- see
+    # jir.jac _toolchain_env_fingerprint / compute_precompile_module_key, which
+    # short-circuit the project/target half of the fingerprint for every path
+    # under the jaclang package. Stored paths are relocatable through
+    # PRECOMPILE_SENTINEL (JirPaths.encode/resolve), so the Linux kit's tree
+    # loads unchanged on the macOS and aarch64 lanes.
+    #
+    # The `jacpython` token, by contrast, IS load-bearing and stays. Bytecode
+    # for a .jac module comes out of the HOST interpreter's `compile`
+    # (codegen_shim.compile_ir falls back to the builtin), which on JacPython is
+    # the native Jac compiler and on CPython is CPython's own. Equivalent
+    # behavior is not identical bytecode, and the module key has no variant
+    # axis to catch the difference, so the two variants must never share a tree.
+    #
+    # restore-keys stays: mkpayload re-validates every seeded .jir per module
+    # and recompiles only the mismatches, so a near-miss tree makes the BUILD
+    # incremental. The compiler digest scopes the prefix, so a compiler-touching
+    # commit starts cold rather than dragging a tree it cannot use. The exact
+    # pair that feeds the shared bundle comes from the binary cache above, not
+    # from here.
     - name: Restore cached JIR precompile tree
       id: precompiled-cache
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
         path: jac/.precompiled-build/jacpython
-        key: jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+        key: jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
         restore-keys: |
-          jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-
+          jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-
 
     # The payload's compressed deps-layer frame (mkpayload --layer-cache): the
     # level-19 zstd of the ~600 MB dependency layer, the pack's single most
@@ -258,10 +276,6 @@ runs:
           Linux/X64) TARGET_ARG=(-Dtarget=x86_64-linux-gnu.2.17) ;;
           Linux/ARM64) TARGET_ARG=(-Dtarget=aarch64-linux-gnu.2.17) ;;
         esac
-        PRE_ARG=()
-        if [ "${{ inputs.skip-precompile }}" = "true" ]; then
-          PRE_ARG=(-Dskip-precompile)
-        fi
         # Retried: the cold-store fetches time out transiently, and one
         # flake otherwise costs a whole run. A precompile failure is
         # deterministic, though, so it exits on the first attempt rather
@@ -269,7 +283,7 @@ runs:
         set -o pipefail
         LOG="$(mktemp)"
         for attempt in 1 2 3; do
-          if zig build "${TARGET_ARG[@]}" "${PRE_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
+          if zig build "${TARGET_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
             exit 0
           fi
           if grep -qE 'Seal aborted|Seal incomplete|seal-finalize failed' "$LOG"; then
@@ -287,14 +301,14 @@ runs:
     - name: Save jac binary cache (trusted refs only)
       if: >-
         github.ref == 'refs/heads/main' &&
-        steps.cache.outputs.cache-hit != 'true' &&
-        inputs.skip-precompile != 'true'
+        steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: |
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
-        key: jac-bin-v2-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
+          jac/.precompiled-build/jacpython
+        key: jac-bin-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.binary }}
 
     # Seed the shared read-mostly caches from trusted refs only (see the note
     # above the restore steps). Main runs seed
@@ -341,17 +355,23 @@ runs:
         key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
 
     # cache-hit is only 'true' on an exact-key match, so a restore-keys prefix
-    # hit still saves here -- that is what keeps a trusted ref's entry tracking
-    # HEAD (each run re-saves the refreshed tree under the new jaclang/** hash).
-    - name: Save JIR precompile cache (trusted refs only)
+    # hit still saves here -- that is what keeps the entry tracking HEAD (each
+    # run re-saves the refreshed tree under the new jaclang/** hash).
+    #
+    # NOT gated to main, unlike every other save in this action. The gate exists
+    # to keep ~0.1-0.6 GB entries from churning the 10 GB pool; this tree is
+    # ~55 MB and it is the expensive one to regenerate (~24 min cold). Gating it
+    # meant a PR iterating on the compiler paid a full cold precompile on every
+    # push and could not reuse its own previous one. One key per (compiler
+    # digest, payload), so a branch adds at most one entry per distinct tree.
+    - name: Save JIR precompile cache
       if: >-
-        github.ref == 'refs/heads/main' &&
         steps.cache.outputs.cache-hit != 'true' &&
         steps.precompiled-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: jac/.precompiled-build/jacpython
-        key: jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+        key: jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
 
     # Same prefix-hit re-save logic as the precompile cache above.
     - name: Save payload deps-layer cache (trusted refs only)

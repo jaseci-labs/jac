@@ -42,6 +42,23 @@ jobs:
         with:
           path: jac/.llvm-build
           key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+      # The one precompile of this code version, shared with setup-jac and
+      # build-binaries.yml. Without it these two legs each recompiled the whole
+      # ~1300-module tree from cold, on the slowest runners in CI, for a result
+      # byte-identical to the one ci.yml's build-kit already produced -- the
+      # unit key folds no platform axis, so an x86_64 Linux tree is exactly what
+      # the aarch64 and macOS legs need. Restore only: build-kit and the dev
+      # release legs seed it, and a nightly run has nothing newer to add.
+      - name: Restore the shared JIR precompile tree
+        uses: actions/cache/restore@v4
+        with:
+          path: jac/.precompiled-build/jacpython
+          key: jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          restore-keys: |
+            jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-
       - name: Build and smoke-test the native JacPython runtime
         working-directory: jac
         run: zig build build-python $DTARGET --summary all

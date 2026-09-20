@@ -776,11 +776,39 @@ def jir_cacheable_source_path(source_path: str) -> bool {
         or (source_path.endswith('.jac') and not source_path.endswith('.na.jac'));
 }
 
+glob ENV_TRUTHY: set[str] = {
+         '1',
+         'true',
+         'True',
+         'TRUE',
+         'yes',
+         'YES',
+         'on',
+         'ON'
+     };
+
 def cache_mode -> tuple[bool, bool] {
-    truthy: set = {'1', 'true', 'True', 'TRUE', 'yes', 'YES', 'on', 'ON'};
-    rebuild = os.environ.get('JAC_REBUILD', '') in truthy;
-    no_precompile = os.environ.get('JAC_NO_PRECOMPILE', '') in truthy;
+    rebuild = os.environ.get('JAC_REBUILD', '') in ENV_TRUTHY;
+    no_precompile = os.environ.get('JAC_NO_PRECOMPILE', '') in ENV_TRUTHY;
     return (rebuild, no_precompile);
+}
+
+def precompile_required -> bool {
+    return os.environ.get('JAC_PRECOMPILE_REQUIRED', '') in ENV_TRUTHY;
+}
+
+def bundle_dir_allowed(bundle_dir: str) -> bool {
+    dev = os.environ.get('JAC_DEV_SOURCE', '').strip();
+    if not dev {
+        return True;
+    }
+    try {
+        resolved = str(Path(bundle_dir).resolve());
+        dev_root = str(Path(dev).resolve());
+    } except OSError {
+        return False;
+    }
+    return resolved == dev_root or resolved.startswith(dev_root + os.sep);
 }
 
 glob _jaclang_pkg_dir: str = str(

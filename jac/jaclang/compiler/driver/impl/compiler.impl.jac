@@ -558,7 +558,9 @@ impl JacCompiler._get_precompiled_jir_bytecode(
         PRECOMPILE_SENTINEL,
         SEC_CTDEPS,
         absolutize_ct_deps_section,
-        cache_mode
+        bundle_dir_allowed,
+        cache_mode,
+        precompile_required
     }
     import from jaclang.jac0core { sealed as _sealed }
     (rebuild_flag, no_precompile) = cache_mode();
@@ -571,6 +573,9 @@ impl JacCompiler._get_precompiled_jir_bytecode(
     while True {
         bundle_dir = os.path.join(d, '_precompiled');
         if os.path.isdir(bundle_dir) {
+            if not bundle_dir_allowed(bundle_dir) {
+                break;
+            }
             norm_root = os.path.normpath(d);
             if not norm_file.startswith(norm_root + os.sep) {
                 break;
@@ -584,6 +589,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
                 break;
             }
             if os.path.isfile(jir_path) {
+                served: (tuple[bytes, bytes] | None) = None;
                 try {
                     jir_data = _Path(jir_path).read_bytes();
                     trusted = (
@@ -598,7 +604,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
                         bc = read_bytecode_only(jir_data);
                         if bc is not None {
                             _ct_raw = read_section_bytes(jir_data, SEC_CTDEPS);
-                            return (
+                            served = (
                                 patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, d),
                                 absolutize_ct_deps_section(_ct_raw, norm_root)
                                     if _ct_raw
@@ -608,6 +614,18 @@ impl JacCompiler._get_precompiled_jir_bytecode(
                         }
                     }
                 } except Exception {}
+                if served is not None {
+                    return served;
+                }
+                if precompile_required() {
+                    raise RuntimeError(
+                        f"JAC_PRECOMPILE_REQUIRED: {norm_file} has a bundled unit at "
+                        f"{jir_path} that this compiler will not reuse, so it would be "
+                        "recompiled from source. The bundle was built by a different "
+                        "compiler generation, jaclang version, Python minor or runtime "
+                        "variant than the one now running."
+                    );
+                }
             }
             break;
         }

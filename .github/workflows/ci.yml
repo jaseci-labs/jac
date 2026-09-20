@@ -1,14 +1,25 @@
 name: CI
 
-# One kit, one consumer shape. `build-kit` builds the binary from this
-# checkout and publishes the kit; every lane runs through that binary. Most
-# pin JAC_NO_DEV_SOURCE=1, so the compiler under test is the one the PR
-# would ship. The lanes that must see the checkout as the compiler's own
-# tree clear it instead ("" engages the repo's `[dev] jaclang_source`
-# reroute, root jac.toml): `jac-check`, the equivalence chunk, and the
-# in-package suites under jaclang/byllm and jaclang/scale (see
-# test-packages-and-docs). The whole darwin native lane lives in
-# nightly.yml; `macos-native` below reruns it on a `macos` label.
+# One kit, one precompile, one consumer shape. `build-kit` builds the binary
+# from this checkout and publishes two artifacts: `jac-kit` (the binary and its
+# floors) and `jac-precompiled` (the JIR tree that binary's payload was built
+# from). Every lane runs through that binary. Most pin JAC_NO_DEV_SOURCE=1, so
+# the compiler under test is the one the PR would ship. The lanes that must see
+# the checkout as the compiler's own tree clear it instead ("" engages the
+# repo's `[dev] jaclang_source` reroute, root jac.toml): `jac-check`, the
+# equivalence chunk of `test-compiler`, `test-launcher-jac`, and the in-package
+# suites under jaclang/byllm and jaclang/scale (`test-packages-and-docs`,
+# `test-scale`).
+#
+# A reroute lane compiles nothing. jac-kit seeds `jac-precompiled` into the
+# checkout at jac/jaclang/_precompiled and sets JAC_PRECOMPILE_REQUIRED=1, so a
+# bundled unit this compiler will not reuse fails the lane instead of quietly
+# recompiling the ~1300-module tree. Adding a reroute lane costs a download, not
+# a compile -- but adding one that needs a DIFFERENT compiler generation than
+# build-kit's will go red, which is the point.
+#
+# The whole darwin native lane lives in nightly.yml; `macos-native` below reruns
+# it on a `macos` label. Its lanes are all sealed, so it publishes no bundle.
 
 on:
   workflow_dispatch:
@@ -27,7 +38,11 @@ permissions:
 
 # JAC_NO_DEV_SOURCE is set per job, never globally: sealed lanes pin it to
 # "1" (test the shipped compiler); reroute lanes set it to "" so the root
-# jac.toml reroute engages and this checkout's compiler is what runs.
+# jac.toml reroute engages and this checkout's compiler is what runs. Always
+# state it explicitly -- an absent value reroutes by default, which is how
+# test-launcher-jac spent a full compiler rebuild per run without anyone
+# choosing it. jac-kit branches on this value, so a per-step override would set
+# up one lane and run another.
 
 jobs:
   # Path filter used ONLY to skip jobs on PRs; push/dispatch runs everything.
@@ -221,6 +236,32 @@ jobs:
             jac/.pbs-build/linux-x86_64/musl/lib
             jac/.pbs-build/linux-aarch64/musl/lib
             jac/.pbs-build/wasm32/libc
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+      # The one precompile of this code version. Either `zig build` just
+      # produced it (binary-cache miss) or it was restored in lockstep with the
+      # binary it belongs to -- setup-jac keys the two together for exactly this
+      # reason. Every reroute lane runs against this tree under
+      # JAC_PRECOMPILE_REQUIRED=1 and recompiles nothing.
+      - name: Verify the precompile bundle is complete
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          DIR="$(find .precompiled-build/jacpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
+          [ -n "$DIR" ] || { echo "::error::no .precompiled-build/jacpython/cpython-<ver> tree"; exit 1; }
+          [ -f .precompiled-build/jacpython/MANIFEST.json ] || {
+            echo "::error::precompile tree has no MANIFEST.json, so the seal did not finish"; exit 1; }
+          UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
+          [ "$UNITS" -ge 400 ] || { echo "::error::precompile tree has only $UNITS units"; exit 1; }
+          echo "precompile bundle: $UNITS units in $DIR"
+
+      - name: Upload the precompile bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-precompiled
+          path: jac/.precompiled-build/jacpython
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -502,7 +543,11 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
-      JAC_NO_DEV_SOURCE: "1"
+      # Per-leg, not per-step: jac-kit reads this to decide whether to seed the
+      # precompile bundle and pin the runtime cache, so a step-level override
+      # would set up the wrong lane and leave the equivalence chunk compiling
+      # the whole compiler into a throwaway HOME.
+      JAC_NO_DEV_SOURCE: ${{ matrix.sealed }}
     strategy:
       fail-fast: false
       matrix:
@@ -545,7 +590,6 @@ jobs:
       - name: Run ${{ matrix.chunk }} chunk
         working-directory: jac
         env:
-          JAC_NO_DEV_SOURCE: ${{ matrix.sealed }}
           JAC_IFACE_VERIFY: ${{ matrix.iface_verify || '' }}
         run: |
           set -uxo pipefail
@@ -932,6 +976,12 @@ jobs:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      # Reroute lane, stated rather than inherited: the in-package suites under
+      # jac/jaclang/compiler/tests resolve their fixtures from jaclang.__file__,
+      # which only lands in the checkout. This job used to carry no env at all
+      # and reroute by default, which worked but hid a full compiler recompile.
+      JAC_NO_DEV_SOURCE: ""
     steps:
       - uses: actions/checkout@v5
         with:

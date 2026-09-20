@@ -64,6 +64,7 @@ glob _EXCLUDE_ENV: set[str] = {
          "JAC_LLVM_SHIM",
          "JAC_DEV_SOURCE",
          "JAC_NO_PRECOMPILE",
+         "JAC_PRECOMPILE_REQUIRED",
          "JAC_EXECUTABLE"
      };
 
