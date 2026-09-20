@@ -1,4 +1,5 @@
 import platform;
+import from threading { RLock }
 import from ctypes {
     POINTER,
     c_char_p,
@@ -72,6 +73,8 @@ class ExecutionEngine(ffi.ObjectRef) {
         self._td: (targets.TargetData | None) = None;
         self.static_init_symbols: list[str] = [];
         self.static_init_chained = `set();
+        self._initializing = False;
+        self._init_lock = RLock();
         self._pinned = False;
         module._owned = True;
         ffi.ObjectRef.init(self, ptr);
@@ -85,12 +88,24 @@ class ExecutionEngine(ffi.ObjectRef) {
         a second call is a no-op.
         """
     def run_static_init(self: ExecutionEngine) -> object {
-        symbols = self.static_init_symbols;
-        self.static_init_symbols = [];
-        for symbol in symbols {
-            addr = ffi.lib.LLVMPY_GetFunctionAddress(self, symbol.encode("ascii"));
-            if addr {
-                native_callable(addr, self.requires_python, None)();
+        with self._init_lock {
+            if self._initializing {
+                return;
+            }
+            self._initializing = True;
+            try {
+                while self.static_init_symbols {
+                    symbol = self.static_init_symbols[0];
+                    addr = ffi.lib.LLVMPY_GetFunctionAddress(
+                        self, symbol.encode("ascii")
+                    );
+                    if addr {
+                        native_callable(addr, self.requires_python, None)();
+                    }
+                    self.static_init_symbols.pop(0);
+                }
+            } finally {
+                self._initializing = False;
             }
         }
     }

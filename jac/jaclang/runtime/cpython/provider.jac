@@ -1,6 +1,13 @@
 import from jaclang.runtime.cpython.references { ObjectRef, object_result }
 import from jaclang.runtime.cpython.capi {
     PyThreadState_Get,
+    PyInterpreterState_Get,
+    PyInterpreterState_GetDict,
+    jacpy_mapping_optional_item,
+    jacpy_contains,
+    jacpy_dict_clear,
+    jacpy_call_one,
+    jacpy_special_noargs,
     PyImport_ImportModuleLevelObject,
     _PyEval_ImportFrom,
     PyErr_GivenExceptionMatches,
@@ -181,4 +188,56 @@ def __jac_python_as_float(value: __JacPythonValue) -> float {
 
 def __jac_python_matches(error: __JacPythonError, kind: __JacPythonValue) -> bool {
     return PyErr_GivenExceptionMatches(error.reference.value, kind.value) != 0;
+}
+
+def __jac_python_module_state(identity: u64) -> __JacPythonValue {
+    interpreter = __jac_python_checked(
+        PyInterpreterState_GetDict(PyInterpreterState_Get())
+    );
+    key = __jac_python_tuple(2);
+    __jac_python_tuple_set(key, 0, __jac_python_text("__jac_native_module_v1"));
+    __jac_python_tuple_set(key, 1, __jac_python_int(int(identity)));
+    existing = jacpy_mapping_optional_item(interpreter, key.value);
+    __jac_python_check();
+    if existing != 0 {
+        return __jac_python_result(existing);
+    }
+    state = __jac_python_dict();
+    jacpy_setitem(interpreter, key.value, state.value);
+    __jac_python_check();
+    return state;
+}
+
+def __jac_python_module_begin(state: __JacPythonValue) -> bool {
+    marker = __jac_python_none();
+    present = jacpy_contains(state.value, marker.value);
+    __jac_python_check();
+    if present != 0 {
+        return False;
+    }
+    __jac_python_setitem(state, marker, marker);
+    return True;
+}
+
+def __jac_python_initialize(
+    identity: u64, initialize: Callable[[__JacPythonValue], None]
+) {
+    bootstrap = __jac_python_import("importlib._bootstrap");
+    get_lock = __jac_python_getattr(bootstrap, "_get_module_lock");
+    name = __jac_python_text("__jac_native_module_" + str(identity));
+    lock = __jac_python_result(jacpy_call_one(get_lock.value, name.value));
+    __jac_python_result(jacpy_special_noargs(lock.value, "acquire"));
+    try {
+        state = __jac_python_module_state(identity);
+        if __jac_python_module_begin(state) {
+            try {
+                initialize(state);
+            } except BaseException {
+                jacpy_dict_clear(state.value);
+                raise;
+            }
+        }
+    } finally {
+        __jac_python_result(jacpy_special_noargs(lock.value, "release"));
+    }
 }

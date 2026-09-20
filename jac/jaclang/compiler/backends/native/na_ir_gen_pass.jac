@@ -403,6 +403,9 @@ walker NaIRGenPass {
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
         _python_imports: dict[int, NativePythonImport] = {},
+        _python_globals: dict[tuple[int, str], NativePythonImport] = {},
+        _python_init_fn: ir.Function | None = None,
+        _python_module_identity: ir.GlobalVariable | None = None,
         _native_module_imports: set[str] = set(),
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
@@ -636,12 +639,17 @@ walker NaIRGenPass {
     def _python_bool_expr(nd: uni.BoolExpr, first: ir.Value) -> ir.Value;
     def _python_import(binding: NativePythonImport) -> ir.Value;
     def _python_import_statement(nd: uni.Import) -> None;
+    def _emit_python_module_init -> None;
+    def _python_ensure_module -> None;
+    def _python_module_state -> ir.Value;
+    def _python_global(name: str) -> ir.Value;
     def _python_call(nd: uni.FuncCall) -> ir.Value;
     def _python_builtin(nd: uni.FuncCall) -> bool;
     def _python_attribute(nd: uni.AtomTrailer) -> ir.Value;
     def _call_protocol_method(
         value: ir.Value, struct_name: str, method: str
     ) -> ir.Value | None;
+
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_callable_value(
         nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]

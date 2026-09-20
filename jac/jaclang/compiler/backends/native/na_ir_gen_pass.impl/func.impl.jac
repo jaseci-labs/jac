@@ -479,6 +479,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             }
         }
 
+        if nd.find_parent_of_type(uni.Module) is self.module {
+            self._python_ensure_module();
+        }
         if body is not None {
             _symtab_before_body = dict(self.func_symtab);
             self._codegen_body(body);
@@ -1245,6 +1248,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     self.func_symtab["__jac_glob_init"] = func;
     state = self._enter_function(func);
     try {
+        self._python_ensure_module();
         if self._global_init_nodes {
             self._scan_closure_escapes(
                 self.module, [t[1] for t in self._global_init_nodes]

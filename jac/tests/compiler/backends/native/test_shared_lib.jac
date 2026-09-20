@@ -211,21 +211,21 @@ test "_inject_shared_init emits the glob-init call for a quoted symbol" {
     # form and `__jac_shared_init` is emitted empty -- the glob-init never
     # runs and the .so's globals stay NULL. This locks in the fix directly on
     # the production emitter (no linking / no platform dependency).
-    ir_quoted = 'define void @\"__jac_glob_init\"()\n';
+    ir_quoted = 'define void @\"__jac_glob_init\"() { ret void }\n';
     (out_q, _e) = _inject_shared_init(ir_quoted, []);
     assert "call void @__jac_glob_init()" in out_q , (
         "_inject_shared_init dropped the own-module glob-init call on the "
         "quoted-symbol form (regression: globals never initialize in --lib)"
     );
     # The unquoted form must still match too.
-    ir_unquoted = 'define void @__jac_glob_init()\n';
+    ir_unquoted = 'define void @__jac_glob_init() { ret void }\n';
     (out_u, _e2) = _inject_shared_init(ir_unquoted, []);
     assert "call void @__jac_glob_init()" in out_u , (
         "_inject_shared_init dropped the own-module glob-init call on the "
         "unquoted-symbol form"
     );
     # A module with no glob-init must NOT inject the call.
-    (out_none, _e3) = _inject_shared_init("define void @foo()\n", []);
+    (out_none, _e3) = _inject_shared_init("define void @foo() { ret void }\n", []);
     assert "__jac_glob_init" not in out_none , (
         "_inject_shared_init injected a glob-init call for a module that has none"
     );
@@ -814,5 +814,73 @@ test "opaque native owners account for object and growing list allocations" {
         assert size(owner) >= before + 1000 * 8;
     } finally {
         release(owner);
+    }
+}
+
+test "hosted initializer failures stop dependent initialization and allow retry" {
+    import ctypes;
+    source = """
+        @calls = global i64 0
+        @fail = global i1 true
+        @empty = private constant [1 x i8] zeroinitializer
+        declare ptr @PyLong_FromString(ptr, ptr, i32)
+        define void @__jac_glob_init_dependency() {
+            %fail = load i1, ptr @fail
+            store i1 false, ptr @fail
+            br i1 %fail, label %error, label %done
+        error:
+            %result = call ptr @PyLong_FromString(ptr @empty, ptr null, i32 10)
+            br label %done
+        done:
+            ret void
+        }
+        define void @__jac_glob_init() {
+            %old = load i64, ptr @calls
+            %new = add i64 %old, 1
+            store i64 %new, ptr @calls
+            ret void
+        }
+        define i64 @answer() { ret i64 42 }
+    """;
+    (source, _) = _inject_shared_init(source, []);
+    llvm.initialize_native_target();
+    llvm.initialize_native_asmprinter();
+    for shared in [False, True] {
+        module = llvm.parse_assembly(source);
+        module.verify();
+        machine = llvm.Target.from_default_triple().create_target_machine();
+        engine = llvm.create_mcjit_compiler(module, machine);
+        engine.finalize_object();
+        address = engine.get_global_value_address("calls");
+        assert isinstance(address, int) and address != 0;
+        calls = ctypes.c_int64.from_address(address);
+        if not shared {
+            engine.static_init_symbols = [
+                "__jac_glob_init_dependency",
+                "__jac_glob_init"
+            ];
+        }
+        try {
+            if shared {
+                ctypes.PYFUNCTYPE(None)(
+                    engine.get_function_address("__jac_shared_init")
+                )();
+            } else {
+                engine.get_function_address("answer");
+            }
+            assert False , "initializer discarded its original Python exception";
+        } except ValueError as error {
+            assert "invalid literal" in str(error);
+        }
+        assert calls.value == 0 , "a dependent initializer ran after failure";
+        if shared {
+            ctypes.PYFUNCTYPE(None)(engine.get_function_address("__jac_shared_init"))();
+        } else {
+            assert engine.static_init_symbols
+                == ["__jac_glob_init_dependency", "__jac_glob_init"];
+            assert engine.get_function_address("answer") != 0;
+            assert not engine.static_init_symbols;
+        }
+        assert calls.value == 1;
     }
 }

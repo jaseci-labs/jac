@@ -155,3 +155,58 @@ test "jac_entry is exempt so it keeps chaining the initializers itself" {
     assert engine.static_init_symbols == ["__jac_glob_init"];
     install_native_static_init(None, None);
 }
+
+test "concurrent JIT entries wait for the initializer queue" {
+    import ctypes;
+    import from concurrent.futures { ThreadPoolExecutor }
+    import from threading { Event }
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    entered = Event();
+    release = Event();
+    second_started = Event();
+    calls: list[int] = [];
+    def initialize {
+        calls.append(1);
+        entered.set();
+        release.wait(10);
+    }
+    callback = ctypes.CFUNCTYPE(None)(initialize);
+    name = "jac_test_initializer_wait";
+    llvm.initialize_native_target();
+    llvm.initialize_native_asmprinter();
+    llvm.add_symbol(name, ctypes.cast(callback, ctypes.c_void_p).value);
+    module = llvm.parse_assembly(
+        f"declare void @{name}()\n"
+            + f"define void @initialize() {{ call void @{name}() ret void }}\n"
+            + "define i64 @ready() { ret i64 42 }\n"
+    );
+    machine = llvm.Target.from_default_triple().create_target_machine();
+    engine = llvm.create_mcjit_compiler(module, machine);
+    engine.finalize_object();
+    engine.static_init_symbols = ["initialize"];
+    def second -> int {
+        second_started.set();
+        return engine.get_function_address("ready");
+    }
+    try {
+        with ThreadPoolExecutor(max_workers=2) as pool {
+            first = pool.submit(engine.get_function_address, "ready");
+            try {
+                assert entered.wait(10);
+                other = pool.submit(second);
+                assert second_started.wait(10);
+                try {
+                    other.result(timeout=0.05);
+                    assert False , "JIT exposed code before initialization completed";
+                } except TimeoutError {}
+            } finally {
+                release.set();
+            }
+            assert first.result(timeout=10) == other.result(timeout=10);
+            assert calls == [1];
+        }
+    } finally {
+        engine.close();
+        llvm.add_symbol(name, 0);
+    }
+}

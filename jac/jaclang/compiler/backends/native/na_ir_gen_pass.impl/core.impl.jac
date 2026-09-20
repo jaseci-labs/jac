@@ -130,6 +130,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
 
     self._register_imported_struct_types();
     self._declare_pending_clib_abilities();
+    self._emit_python_module_init();
     self._register_globals(self.module);
     self._register_entry_globals(self.module);
 
@@ -578,17 +579,22 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         id(_s) for _s in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE)
     };
     _has_native_code: bool = len(_native_ids) > 0;
+    _module_imports = ModuleFacts.iter_module_imports(self.module);
+    _module_import_ids = {id(imp) for imp in _module_imports};
     _nested_native = ModuleFacts.iter_nested_imports(self.module, CodeContext.NATIVE);
     for _nested_imp in _nested_native {
         _native_ids.add(id(_nested_imp));
     }
     wq: list[tuple[str, str, str | None]] = [];
-    for imp in ModuleFacts.iter_module_imports(self.module) + _nested_native {
+    for imp in _module_imports + _nested_native {
         for item in imp.items {
             binding = python_import_binding(item, entry_base);
             symbol = python_import_symbol(item);
             if binding is not None and symbol is not None {
                 self._python_imports[id(symbol)] = binding;
+                if id(imp) in _module_import_ids {
+                    self._python_globals[(id(symbol), binding.binding)] = binding;
+                }
             }
         }
     }

@@ -83,7 +83,9 @@ def inject_heap_accounting(llvm_ir_str: str) -> tuple[str, list[str]] {
 }
 
 def inject_shared_init(llvm_ir_str: str, manifest: any) -> tuple[str, list[str]] {
-    init_calls: list[str] = [];
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
+    import from jaclang.runtime.interop_bridge { native_requires_python }
     transitive_sources: list[str] = [];
     if isinstance(manifest, list) {
         transitive_sources = list(manifest);
@@ -91,66 +93,73 @@ def inject_shared_init(llvm_ir_str: str, manifest: any) -> tuple[str, list[str]]
     } elif manifest {
         transitive_sources = list(manifest.native_transitive_sources);
     }
-
-    if ('@"__jac_glob_init"' in llvm_ir_str) or ("@__jac_glob_init(" in llvm_ir_str) {
-        init_calls.append("  call void @__jac_glob_init()");
+    with llvm.parse_assembly(llvm_ir_str) as module {
+        symbols = {function.name for function in module.functions};
+        definitions = [
+            function.name
+            for function in module.functions
+            if not function.is_declaration
+        ];
+        requires_python = native_requires_python(module.declaration_names());
     }
-    import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
-    import re as _re;
-
-    _defined: list[str] = [];
-    for _m in _re.finditer(
-        r'define[^@\n]*@"?(__jac_glob_init_[A-Za-z0-9_]+)"?\s*\(', llvm_ir_str
-    ) {
-        _dn = _m.group(1);
-        if _dn not in _defined {
-            _defined.append(_dn);
+    initializers: list[str] = [];
+    for source in transitive_sources {
+        name = native_glob_init_name(source, manifest);
+        if name in definitions and name not in initializers {
+            initializers.append(name);
         }
     }
-
-    _seen: set = set();
-    _ordered: list[str] = [];
-    for _src in transitive_sources {
-        if _src is None or _src in _seen {
-            continue;
-        }
-        _seen.add(_src);
-        _nm = native_glob_init_name(_src, manifest);
-        if _nm in _defined and _nm not in _ordered {
-            _ordered.append(_nm);
+    for name in definitions {
+        if name.startswith("__jac_glob_init_") and name not in initializers {
+            initializers.append(name);
         }
     }
-    for _dn in _defined {
-        if _dn not in _ordered {
-            _ordered.append(_dn);
-        }
-    }
-    for _nm in _ordered {
-        init_calls.append(f"  call void @{_nm}()");
+    if "__jac_glob_init" in definitions {
+        initializers.append("__jac_glob_init");
     }
     parts: list[str] = ["\n; --- injected shared-library init + RC wrappers ---"];
-    _body = ("\n".join(init_calls) + "\n") if init_calls else "";
+    body: list[str] = [];
+    if requires_python and initializers and "jacpy_error_pending" not in symbols {
+        parts.append("declare i64 @jacpy_error_pending()");
+    }
+    for (index, name) in enumerate(initializers) {
+        body.append(f"  call void @{name}()");
+        if requires_python {
+            body.extend(
+                [
+                    f"  %pending{index} = call i64 @jacpy_error_pending()",
+                    f"  %failed{index} = icmp ne i64 %pending{index}, 0",
+                    f"  br i1 %failed{index}, label %done, label %next{index}",
+                    f"next{index}:"
+                ]
+            );
+        }
+    }
+    if requires_python and initializers {
+        body.extend(["  br label %done", "done:"]);
+    }
     parts.append(
-        "define void @__jac_shared_init() {\nentry:\n" + _body + "  ret void\n}"
+        "define void @__jac_shared_init() {\nentry:\n"
+            + "\n".join(body)
+            + "\n  ret void\n}"
     );
     (llvm_ir_str, extra_exports) = inject_heap_accounting(llvm_ir_str);
 
-    if ("@__rc_retain(" in llvm_ir_str) or ('@"__rc_retain"(' in llvm_ir_str) {
+    if "__rc_retain" in symbols {
         parts.append(
             "define void @jac_retain(ptr %p) {\nentry:\n"
             "  call void @__rc_retain(ptr %p)\n  ret void\n}"
         );
         extra_exports.append("jac_retain");
     }
-    if ("@__rc_release_simple(" in llvm_ir_str)
-        or ('@"__rc_release_simple"(' in llvm_ir_str) {
+    if "__rc_release_simple" in symbols {
         parts.append(
             "define void @jac_release(ptr %p) {\nentry:\n"
             "  call void @__rc_release_simple(ptr %p)\n  ret void\n}"
         );
         extra_exports.append("jac_release");
     }
-    if ("@__jac_str_new(" in llvm_ir_str) or ('@"__jac_str_new"(' in llvm_ir_str) {
+    if "__jac_str_new" in symbols {
         parts.append(
             "define ptr @jac_str_new(ptr %d, i64 %n) {\nentry:\n"
             "  %r = call ptr @__jac_str_new(ptr %d, i64 %n)\n  ret ptr %r\n}"
@@ -159,11 +168,7 @@ def inject_shared_init(llvm_ir_str: str, manifest: any) -> tuple[str, list[str]]
     }
     import sys;
     _is_elf = not sys.platform.startswith("win") and sys.platform != "darwin";
-    _needs_atexit = (
-        _is_elf
-        and "define i32 @atexit" not in llvm_ir_str
-        and "define hidden i32 @atexit" not in llvm_ir_str
-    );
+    _needs_atexit = _is_elf and "atexit" not in definitions;
     if _needs_atexit {
         parts.append(
             "declare i32 @__cxa_atexit(ptr, ptr, ptr)\n"

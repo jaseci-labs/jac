@@ -249,3 +249,81 @@ impl NaIRGenPass._python_error_matches(ex: uni.Expr) -> ir.Value {
     self._restore_error(saved);
     return result;
 }
+
+impl NaIRGenPass._python_module_state -> ir.Value {
+    identity = self._python_module_identity;
+    assert identity is not None;
+    return self._python_runtime(
+        "module_state", [self.builder.ptrtoint(identity, ir.IntType(64))]
+    );
+}
+
+impl NaIRGenPass._python_ensure_module -> None {
+    initializer = self._python_init_fn;
+    if initializer is not None and self.builder.function is not initializer {
+        identity = self._python_module_identity;
+        assert identity is not None;
+        frame = self._error_frame;
+        assert frame is not None;
+        frame.temporaries.append([]);
+        try {
+            self._python_runtime(
+                "initialize",
+                [self.builder.ptrtoint(identity, ir.IntType(64)), initializer]
+            );
+        } finally {
+            frame.temporaries.pop();
+        }
+    }
+}
+
+impl NaIRGenPass._python_global(name: str) -> ir.Value {
+    self._python_ensure_module();
+    namespace = self._python_module_state();
+    key = self._python_runtime("text", [self._make_global_string(name)]);
+    value = self._python_runtime("getitem", [namespace, key]);
+    self._release_owned_args([namespace, key]);
+    return value;
+}
+
+impl NaIRGenPass._emit_python_module_init -> None {
+    if not self._python_globals {
+        return;
+    }
+    identity = ir.GlobalVariable(
+        self.llvm_module, ir.IntType(8), name="__jac_python_module_identity"
+    );
+    identity.linkage = "private";
+    identity.initializer = ir.Constant(ir.IntType(8), 0);
+    self._python_module_identity = identity;
+    initializer = self._define_function(
+        "__jac_python_module_init",
+        ir.FunctionType(
+            ir.VoidType(), [self.struct_types["__JacPythonValue"].as_pointer()]
+        )
+    );
+    initializer.linkage = "private";
+    self._python_init_fn = initializer;
+    previous = self._enter_function(initializer);
+    frame = self._error_frame;
+    assert frame is not None;
+    frame.temporaries.append([]);
+    try {
+        namespace = initializer.args[0];
+        self._bind_function_parameter("namespace", namespace);
+        for binding in self._python_globals.values() {
+            value = self._python_import(binding);
+            key = self._python_runtime(
+                "text", [self._make_global_string(binding.binding)]
+            );
+            self._python_runtime("setitem", [namespace, key, value]);
+            self._release_owned_args([key, value]);
+        }
+        self._release_temporaries();
+        self._emit_scope_cleanup(loc="python.module.init");
+        self.builder.ret_void();
+    } finally {
+        frame.temporaries.pop();
+        self._leave_function(previous);
+    }
+}

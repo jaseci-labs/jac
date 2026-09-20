@@ -87,13 +87,28 @@ Function-local imports execute at their statement and keep an owned local
 binding. Import recognition uses resolved symbol identity, preserving aliases
 with the same spelling in different scopes. From-imports reuse the pinned
 interpreter's import machinery, including its circular-import fallback and
-`ImportError` construction. Module-level binding state remains outstanding.
+`ImportError` construction.
+
+Module import bindings initialize eagerly and live in a namespace owned by the
+current interpreter. The namespace is keyed by a private, address-significant
+native module identity; the existing JIT engine pinning keeps escaped code and
+its identity alive. No process-global variable retains a Python object. A shared
+provider runs the generated import initializer under CPython's reentrant module
+lock and clears partial bindings after failure. Native `try`/`finally` handles
+lock release and preserves the original exception. Targeted tests cover distinct
+from-import aliases, failure/retry, concurrent and recursive entry, and sequential
+subinterpreters using the shared GIL. Independent-GIL concurrency is not yet
+established.
+
+JIT initializer queues retain failed and pending work for retry. Shared-library
+initializers run dependencies before their importer and stop immediately when an
+initializer restores a Python exception.
 
 The initial ordinary-import probe opens SQLite, executes a query, reads the row,
 and returns a checked native scalar. A repeated-error probe verifies native
 `except sqlite3.OperationalError` handling and propagation to the Python caller.
 This is not full stdlib conformance: existing `na_stdlib` routes still take
-precedence. Import initialization and binding state, remaining object protocols,
+precedence. General module-global initialization, remaining object protocols,
 containers, callbacks, exception bindings, hosted application packaging and
 bootstrap migration remain required before deleting the duplicate modules.
 
