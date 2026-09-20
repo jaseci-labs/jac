@@ -549,10 +549,18 @@ jobs:
         env:
           JAC_NO_DEV_SOURCE: ${{ matrix.sealed }}
           JAC_IFACE_VERIFY: ${{ matrix.iface_verify || '' }}
+          JAC_TEST_ARTIFACTS: ${{ runner.temp }}/native-test-artifacts
         run: |
           set -uxo pipefail
           WORK="$(mktemp -d)"
           HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
+      - name: Preserve failed native executables
+        if: failure() && matrix.chunk == 'passes-native'
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-test-failures
+          path: ${{ runner.temp }}/native-test-artifacts
+          if-no-files-found: ignore
       - name: Check JacPython native code-object boundary
         if: matrix.chunk == 'passes-native'
         run: jac run scripts/test_jacpython_native.jac
