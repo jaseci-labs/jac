@@ -1910,7 +1910,6 @@ walker NaIRGenPass {
     def _is_null_ptr_const(val: ir.Value) -> bool;
     def _print_stream_name(value: uni.Expr) -> (str | None);
     def _emit_print_call(stream: str, fmt_ptr: ir.Value, args: list[ir.Value]) -> None;
-
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
     def _bind_borrowed(nd: uni.Assignment, var_name: str, slot_ty: ir.Type) -> bool;
