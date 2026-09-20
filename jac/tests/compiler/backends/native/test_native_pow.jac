@@ -38,7 +38,7 @@ def pow_semantics_engine -> tuple[ExecutionEngine, uni.Module] {
         errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not prog.errors_had , f"Compilation errors in pow_semantics.jac: {errors}";
         eng = ir.gen.native_engine;
-        assert eng is not None , "No native engine produced for pow_semantics.jac";
+        assert isinstance(eng, ExecutionEngine) , "No native engine produced for pow_semantics.jac";
         _POW_SEMANTICS_ENG = eng;
         _POW_SEMANTICS_IR = ir;
     }

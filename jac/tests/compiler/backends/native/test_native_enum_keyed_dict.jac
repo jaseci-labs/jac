@@ -46,7 +46,7 @@ def compile_native(fixture: str) -> ExecutionEngine {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
     # The glob tables live in module globals; without jac_entry they are null
     # and every table read segfaults the JIT.
     entry_addr = native_address(eng, "jac_entry");

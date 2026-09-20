@@ -34,7 +34,7 @@ def compile_fixture -> tuple[ExecutionEngine, uni.Module] {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
     eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {FIXTURE}";
+    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {FIXTURE}";
     return (eng, ir);
 }
 

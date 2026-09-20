@@ -39,7 +39,7 @@ def sorted_engine -> ExecutionEngine {
     assert not errors , f"sorted_empty.jac did not lower: {errors}";
     assert ir.gen.llvm_ir , "no native IR for sorted_empty.jac";
     eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for sorted_empty.jac";
+    assert isinstance(eng, ExecutionEngine) , "no native engine for sorted_empty.jac";
     _ENGINE.append(eng);
     return eng;
 }

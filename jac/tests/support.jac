@@ -115,7 +115,7 @@ def native_str_func(eng: any, name: str, restype: type | None, *argtypes: type) 
     sn_addr = 0;
     for sn in ("jac_str_new", "__jac_str_new") {
         try {
-            sn_addr = eng.get_function_address(sn);
+            sn_addr = native_address(eng, sn);
         } except Exception {
             sn_addr = 0;
         }

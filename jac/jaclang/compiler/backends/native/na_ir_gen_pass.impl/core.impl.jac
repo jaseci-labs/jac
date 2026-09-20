@@ -1664,8 +1664,8 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         }
 
         if self._clib_paths {
-            module.gen._clib_paths = self._clib_paths;
-            module.gen._clib_symbol_lib = self._clib_symbol_lib;
+            self.module.gen._clib_paths = list(self._clib_paths);
+            self.module.gen._clib_symbol_lib = dict(self._clib_symbol_lib);
             self.has_native_code = True;
         }
     }

@@ -429,7 +429,7 @@ test "stored imported function pointers follow ASLR in executables and dylibs" {
             with tempfile.TemporaryDirectory() as directory {
                 out = os.path.join(directory, "probe.dylib" if shared else "probe");
                 assert MachOLinker.link(
-                    obj_bytes=relobj,
+                    objects=[relobj],
                     output_path=out,
                     shared=shared,
                     symbol_lib_map={

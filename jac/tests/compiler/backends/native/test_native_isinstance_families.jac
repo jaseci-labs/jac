@@ -58,7 +58,7 @@ def families_engine -> ExecutionEngine {
     assert not errors , f"isinstance_families.jac did not lower: {errors}";
     assert ir.gen.llvm_ir , "no native IR for isinstance_families.jac";
     eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for isinstance_families.jac";
+    assert isinstance(eng, ExecutionEngine) , "no native engine for isinstance_families.jac";
     _ENGINE.append(eng);
     return eng;
 }
