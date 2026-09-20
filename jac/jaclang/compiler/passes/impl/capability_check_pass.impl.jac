@@ -291,7 +291,7 @@ impl native_capability_violations(
         else '.';
     for stmt in ModuleFacts.iter_module_imports(mod, CodeContext.NATIVE)
         + ModuleFacts.iter_nested_imports(mod, CodeContext.NATIVE) {
-        if stmt.clib_decls or not stmt.items {
+        if stmt.clib_decls or stmt.is_typed or stmt.is_comptime or not stmt.items {
             continue;
         }
         _from_jac: (str | None) = None;

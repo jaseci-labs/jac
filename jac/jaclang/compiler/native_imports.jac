@@ -143,7 +143,11 @@ def python_import_binding(
         return None;
     }
     owner = item.parent;
-    if not isinstance(owner, uni.Import) or owner.clib_decls or owner.is_absorb {
+    if not isinstance(owner, uni.Import)
+        or owner.clib_decls
+        or owner.is_absorb
+        or owner.is_typed
+        or owner.is_comptime {
         return None;
     }
     if resolve_native_module(module, base_dir)[1] is not None {
