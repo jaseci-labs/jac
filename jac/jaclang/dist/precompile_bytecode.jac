@@ -109,7 +109,7 @@ def _nested_project_dirs(package_dir: str) -> list[str] {
 }
 
 def find_jac_files(package_dir: str) -> list[str] {
-    import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
+    import from jaclang.bootstrap_manifest { is_native_lowered }
     result: list[str] = [];
     pkg = Path(package_dir);
     for jac_file in sorted(pkg.rglob("*.jac")) {
@@ -119,11 +119,7 @@ def find_jac_files(package_dir: str) -> list[str] {
         rel_path = jac_file.relative_to(pkg);
         rel = str(rel_path);
 
-        if pkg.name == "jaclang"
-            and any(
-                rel.replace(os.sep, "/").startswith(prefix)
-                for prefix in SOURCE_ONLY_PATHS
-            ) {
+        if pkg.name == "jaclang" and is_native_lowered(rel) {
             continue;
         }
 

@@ -164,6 +164,58 @@ test "JacPython sources participate in the producing compiler identity" {
     }
 }
 
+test "a pruned staging resolves compiler identity from its recorded hashes" {
+    # The payload drops the natively lowered trees (they live in JacPython's
+    # native object, not as source), so a staged jaclang holds fewer files than
+    # the checkout it was built from. Identity must still describe the SAME
+    # compiler: the staging records what it dropped and the digest resolves
+    # those inputs from the record. Without the record it must refuse to report
+    # an identity at all -- silently reporting a smaller one is how a payload
+    # and its own checkout came to disagree.
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        write_compiler_identity
+    }
+    import shutil;
+    with tempfile.TemporaryDirectory() as tmp {
+        full = Path(tmp) / "full";
+        full.mkdir();
+        (full / "compiler_inputs.txt").write_text("compiler\nruntime\n");
+        for rel in (
+            "compiler/pass.jac",
+            "compiler/frontend/python/ast_input.jac",
+            "compiler/backends/py/jacpython/assembler.jac",
+            "runtime/python/bindings/heapq.jac"
+        ) {
+            f = full / rel;
+            f.parent.mkdir(parents=True, exist_ok=True);
+            f.write_text("def f -> int { return 1; }\n");
+        }
+        expected = compiler_source_digest(str(full));
+        pruned = Path(tmp) / "pruned";
+        shutil.copytree(full, pruned);
+        for prefix in (
+            "compiler/frontend/python",
+            "compiler/backends/py/jacpython",
+            "runtime/python"
+        ) {
+            shutil.rmtree(pruned / prefix);
+        }
+        raised = False;
+        try {
+            compiler_source_digest(str(pruned));
+        } except RuntimeError {
+            raised = True;
+        }
+        assert raised , "a pruned staging with no record reported an identity";
+        write_compiler_identity(str(full), str(pruned));
+        assert compiler_source_digest(str(pruned)) == expected;
+        # The record completes identity; it never overrides a present source.
+        (pruned / "compiler/pass.jac").write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(str(pruned)) != expected;
+    }
+}
+
 test "compiler identity excludes applications tests and generated artifacts" {
     import from jaclang.compiler.driver.jir { compiler_source_digest }
     with tempfile.TemporaryDirectory() as pkg {

@@ -154,16 +154,9 @@ impl skip_none(p: str) -> bool {
 }
 
 impl skip_jaclang(p: str) -> bool {
-    if p != "runtime/python/LICENSE.cpython" {
-        for replacement in (
-            "compiler/frontend/python",
-            "compiler/backends/py/jacpython",
-            "runtime/python"
-        ) {
-            if p == replacement or p.startswith(replacement + "/") {
-                return True;
-            }
-        }
+    import from jaclang.bootstrap_manifest { is_native_lowered }
+    if p != "runtime/python/LICENSE.cpython" and is_native_lowered(p) {
+        return True;
     }
     return (
         "__pycache__" in p
