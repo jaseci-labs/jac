@@ -577,6 +577,14 @@ test "a shipped jac.toml value the pods cannot resolve stops the deploy before p
         ),
         ("values the pod env supplies", {"jac.toml": pod_supplied}, []),
         (
+            "two unset variables in one value",
+            {"jac.toml": "[plugins.demo]\npair = \"${PAIR_ONE}/${PAIR_TWO}\"\n"},
+            [
+                "jac.toml: plugins.demo.pair: Environment variable PAIR_ONE is not set (every pod)",
+                "jac.toml: plugins.demo.pair: Environment variable PAIR_TWO is not set (every pod)"
+            ]
+        ),
+        (
             "a nested app project",
             {"lib/jac.toml": "[plugins.demo]\nroot = \"${LIB_ONLY}\"\n"},
             [

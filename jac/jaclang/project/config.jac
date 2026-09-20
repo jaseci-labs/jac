@@ -248,6 +248,8 @@ obj UnresolvedRef {
         raw: str = "",
         required: bool = False,
         message: str = "";
+
+    def describe -> str;
 }
 
 def interpolate_env_vars(

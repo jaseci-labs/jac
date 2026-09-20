@@ -28,18 +28,20 @@ impl interpolate_env_vars(
         if not var_name.isidentifier() {
             return `match.group(0);
         }
+        ref = UnresolvedRef(var=var_name, required=operator == ":?", message=operand);
         if sink is not None {
-            sink.append(
-                UnresolvedRef(var=var_name, required=operator == ":?", message=operand)
-            );
+            sink.append(ref);
             return `match.group(0);
         }
-        if operator == ":?" {
-            raise ValueError(f"Environment variable {var_name} is required: {operand}");
-        }
-        raise ValueError(f"Environment variable {var_name} is not set");
+        raise ValueError(ref.describe());
     }
     return re.sub(pattern, replace_env_var, value);
+}
+
+impl UnresolvedRef.describe -> str {
+    return f"Environment variable {self.var} is required: {self.message}"
+        if self.required
+        else f"Environment variable {self.var} is not set";
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
