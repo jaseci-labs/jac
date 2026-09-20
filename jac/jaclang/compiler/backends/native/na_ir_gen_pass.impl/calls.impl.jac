@@ -2242,7 +2242,14 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     func: ir.Function | None = self.func_symtab.get(func_name);
     declaration = self._callee_ability_of(nd);
+    foreign_declaration = declaration is not None
+        and isinstance(declaration.parent, uni.Import)
+        and declaration in declaration.parent.clib_decls;
     if declaration is not None and declaration.name_ref is not None {
+        if foreign_declaration {
+            func_name = declaration.name_ref.sym_name;
+            func = self.func_symtab.get(func_name);
+        }
         declaring_module = declaration.parent_scope;
         if isinstance(declaring_module, uni.Module) {
             declared_function = self._module_functions.get(
@@ -2256,7 +2263,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    if _mod_qual is not None {
+    if _mod_qual is not None and not foreign_declaration {
         import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
         (_, source) = resolve_native_module(
             _mod_qual, os.path.dirname(nd.loc.mod_path)
