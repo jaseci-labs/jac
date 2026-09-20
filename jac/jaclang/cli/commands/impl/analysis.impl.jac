@@ -209,7 +209,12 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
         result['success'] = False;
         return result;
     } finally {
-        prog.release_compile_closure(collect=bool(request.get("collect")));
+        if opts.get('closure') {
+            prog._get_compiler().release_compile_state(prog);
+            _CHECK_STATE['prog'] = None;
+        } else {
+            prog.release_compile_closure(collect=bool(request.get("collect")));
+        }
         _maybe_malloc_trim();
     }
 }
@@ -243,12 +248,9 @@ impl check(
     }
     import gc;
     import os;
-    import from jaclang.compiler.driver.compiler { COMPILE_GC_THRESHOLDS }
-    if (
-        not os.environ.get('JAC_GC_NO_COMPILE_BOOST')
-        and gc.get_threshold()[0] < COMPILE_GC_THRESHOLDS[0]
-    ) {
-        gc.set_threshold(*COMPILE_GC_THRESHOLDS);
+    import from jaclang.compiler.driver.compiler { CHECK_GC_THRESHOLDS }
+    if not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
+        gc.set_threshold(*CHECK_GC_THRESHOLDS);
     }
     if isinstance(paths, str) {
         paths = [paths];

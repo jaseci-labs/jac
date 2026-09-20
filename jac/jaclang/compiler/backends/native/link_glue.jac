@@ -245,6 +245,11 @@ def platform_entry_ir(spec: GlueSpec) -> str {
     if spec.shared or spec.platform in ("jit", "wasm") {
         return "";
     }
+    if spec.platform == "c" {
+        return argv_globals_ir()
+            + init_array_globals_ir()
+            + _main_body_with_init_array();
+    }
     if spec.platform == "pe" {
         return entry_pe_ir();
     }

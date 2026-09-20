@@ -1233,10 +1233,13 @@ impl JacCompiler.compile(
             if _depth_prev == 0 and not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
                 import gc;
                 _gc_prev = gc.get_threshold();
-                if _gc_prev[0] >= COMPILE_GC_THRESHOLDS[0] {
+                thresholds = CHECK_GC_THRESHOLDS
+                    if options.no_cgen or _gc_prev == CHECK_GC_THRESHOLDS
+                    else COMPILE_GC_THRESHOLDS;
+                if _gc_prev[0] >= thresholds[0] {
                     _gc_prev = None;
                 } else {
-                    gc.set_threshold(*COMPILE_GC_THRESHOLDS);
+                    gc.set_threshold(*thresholds);
                 }
             }
             _outer_opts: (CompileOptions | None) = None;

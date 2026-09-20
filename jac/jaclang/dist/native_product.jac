@@ -17,8 +17,7 @@ def write_native_product(
         ArtifactKind,
         build_link_plan,
         whole_program_module,
-        link_artifact,
-        _platform_of
+        link_artifact
     }
     if program is None {
         program = JacProgram();
@@ -42,7 +41,7 @@ def write_native_product(
     target.parent.mkdir(parents=True, exist_ok=True);
     if emit_source {
         import from jaclang.compiler.backends.native.c_emit { emit_c }
-        spec = plan.glue_spec(kind, _platform_of(plan.triple), False);
+        spec = plan.glue_spec(kind, "c", False);
         (merged, _) = whole_program_module(plan, spec);
         llvm_ir = str(merged);
         if memory == 'nogc' {
