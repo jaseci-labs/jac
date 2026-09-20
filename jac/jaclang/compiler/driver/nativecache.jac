@@ -77,12 +77,27 @@ obj NativeUnitRegistry {
 
     static def _source_key(path: str) -> (str | None) {
         import from jaclang.compiler.driver.compilation_context { cache_scope }
+        import from jaclang.compiler.frontend.codeinfo {
+            get_effective_default_codespace_override,
+            set_effective_default_codespace
+        }
+        import from jaclang.compiler.driver.compile_options {
+            push_native_target,
+            pop_native_target
+        }
+
+        prior_codespace = get_effective_default_codespace_override();
+        target_token = push_native_target('');
         try {
+            set_effective_default_codespace('native');
             with cache_scope() {
                 return module_cache_key(path);
             }
         } except OSError {
             return None;
+        } finally {
+            set_effective_default_codespace(prior_codespace);
+            pop_native_target(target_token);
         }
     }
 

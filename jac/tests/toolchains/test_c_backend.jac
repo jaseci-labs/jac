@@ -19,6 +19,47 @@ def c_compiler -> str {
     return cc;
 }
 
+test "C allocation attributes use the allocator argument positions" {
+    cc = c_compiler();
+    source = """
+declare ptr @malloc(i64) allocsize(0)
+declare ptr @realloc(ptr, i64) allocsize(1)
+declare ptr @calloc(i64, i64) allocsize(0, 1)
+declare void @free(ptr)
+define void @exercise(i64 %n) {
+  %a = call ptr @malloc(i64 %n)
+  %b = call ptr @realloc(ptr %a, i64 %n)
+  %c = call ptr @calloc(i64 2, i64 %n)
+  call void @free(ptr %b)
+  call void @free(ptr %c)
+  ret void
+}
+""";
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'allocators.c';
+        path.write_text(emit_c(source));
+        library = Path(tmp) / 'allocators.so';
+        built = subprocess.run(
+            [
+                cc,
+                '-shared',
+                '-fPIC',
+                '-Werror=attributes',
+                str(path),
+                '-o',
+                str(library)
+            ],
+            capture_output=True,
+            text=True
+        );
+        assert built.returncode == 0 , built.stderr;
+        exercise = ctypes.CDLL(str(library)).exercise;
+        exercise.argtypes = [ctypes.c_uint64];
+        exercise.restype = None;
+        exercise(8);
+    }
+}
+
 test "C projection preserves signed and unsigned three way comparisons" {
     cc = c_compiler();
     source = '';

@@ -686,6 +686,14 @@ test "unhandled errors in a qualified native entry fail the executable" {
 test "native source fingerprints are stable across caller cache contexts" {
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
+    import from jaclang.compiler.driver.compile_options {
+        push_native_target,
+        pop_native_target
+    }
     with tempfile.TemporaryDirectory() as work {
         source = Path(work) / "stable.jac";
         source.write_text("def value() -> int { return 1; }\n");
@@ -697,6 +705,17 @@ test "native source fingerprints are stable across caller cache contexts" {
         }
         assert before is not None;
         assert before == after;
+        prior_codespace = get_effective_default_codespace_override();
+        target_token = push_native_target('wasm32-unknown-unknown');
+        try {
+            for space in ['server', 'client', 'native'] {
+                set_effective_default_codespace(space);
+                assert NativeUnitRegistry._source_key(str(source)) == before;
+            }
+        } finally {
+            set_effective_default_codespace(prior_codespace);
+            pop_native_target(target_token);
+        }
         source.write_text("def value() -> int { return 2; }\n");
         assert NativeUnitRegistry._source_key(str(source)) != before;
     }

@@ -1142,7 +1142,7 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
 impl NaIRGenPass._walk_imported_module_abilities(
     imported_mod: uni.Module, with_fn_verdicts: bool = True
 ) -> None {
-    _imp_iface = self._dep_iface(imported_mod) if with_fn_verdicts else None;
+    _imp_iface = self._dep_iface(imported_mod);
     _imp_layout = _imp_iface.layout if _imp_iface is not None else None;
     if _imp_layout is None {
         _imp_layout = imported_mod.gen.native_layout;
