@@ -107,7 +107,7 @@ test "type to typeof and spawn operator" {
     assert 'typeof "world"' in mod.gen.js;
 
     # --- spawn operator supports positional and spread ---
-    spawn_code = "walker MixedWalker {\n    has label: str;\n    has count: int;\n    has meta: dict[any, any] = {};\n    can execute with Root entry;\n}\n\ndef spawn_client() -> dict[any, any] {\n    node_id = \"abcd\";\n    extra = {\"meta\": {\"source\": \"client\"}};\n    positional = node_id spawn MixedWalker(\"First\", 3);\n    spread = MixedWalker(\"Second\", 1, **extra) spawn root;\n    return {\"positional\": positional, \"spread\": spread};\n}\n";
+    spawn_code = "walker MixedWalker {\n    has label: str;\n    has count: int;\n    has meta: dict[any, any] = {};\n    can execute with Root entry { }\n}\n\ndef spawn_client() -> dict[any, any] {\n    node_id = \"abcd\";\n    extra = {\"meta\": {\"source\": \"client\"}};\n    positional = node_id spawn MixedWalker(\"First\", 3);\n    spread = MixedWalker(\"Second\", 1, **extra) spawn root;\n    return {\"positional\": positional, \"spread\": spread};\n}\n";
     mod2 = compile_inline(spawn_code, prog, client=True);
     js = mod2.gen.js;
     assert '__jacSpawn("MixedWalker", node_id, {"label": "First", "count": 3},' in js;

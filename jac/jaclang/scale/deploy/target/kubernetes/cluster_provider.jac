@@ -7,6 +7,7 @@ obj ClusterProvider {
     def service_url(
         lb_endpoint: (str | None), ingress_node_port: int
     ) -> (str | None) abst;
+
     def prometheus_scrape_port(container_port: int) -> int abst;
     def ingress_controller_service(
         service_name: str, namespace: str, controller_name: str, ingress_node_port: int

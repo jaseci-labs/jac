@@ -33,6 +33,7 @@ obj IdentityStorage {
     def _update_credentials(
         user_id: str, credentials: list[dict[str, any]]
     ) -> None abst;
+
     def _get_identities(user_id: str) -> list[dict[str, any]] abst;
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool abst;
     def _remove_sso_identity(user_id: str, platform: str) -> bool abst;

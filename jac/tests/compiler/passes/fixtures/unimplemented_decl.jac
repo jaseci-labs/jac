@@ -26,3 +26,15 @@ def implemented_fn(x: int) -> int;
 impl implemented_fn(x: int) -> int {
     return x;
 }
+
+obj Widget {
+    has label: str = "";
+
+    def render -> str;
+}
+
+impl Widget{
+    def render -> str {
+        return self.label;
+    }
+}

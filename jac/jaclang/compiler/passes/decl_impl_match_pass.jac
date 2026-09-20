@@ -42,7 +42,8 @@ walker DeclImplMatchPass {
 
     def _run_impl(ir_in: Module) -> Module;
     def _report_unimplemented(ir_in: Module) -> None;
-    def _impl_optional(ability: Ability) -> bool;
+    def _impl_optional(ability: Ability, supplied: dict[str, set[str]]) -> bool;
+    def _impl_block_members(ir_in: Module) -> dict[str, set[str]];
     can run_walk with Module entry;
     def defn_lookup(lookup: Symbol) -> (NameAtom | None);
     def _find_archetype_defn(lookup: Symbol) -> (NameAtom | None);
