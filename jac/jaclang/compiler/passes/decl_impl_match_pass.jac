@@ -31,7 +31,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E2016,
     E2017,
     E2026,
-    E2086,
+    E2087,
     W2080
 }
 

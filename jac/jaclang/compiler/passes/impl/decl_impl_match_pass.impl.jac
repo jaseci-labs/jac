@@ -23,7 +23,7 @@ impl DeclImplMatchPass._report_unimplemented(ir_in: Module) -> None {
         if not ability.needs_impl or self._impl_optional(ability, supplied) {
             continue;
         }
-        self.ctx.emit(E2086, node_override=ability.name_spec, name=ability.sym_name);
+        self.ctx.emit(E2087, node_override=ability.name_spec, name=ability.sym_name);
     }
 }
 

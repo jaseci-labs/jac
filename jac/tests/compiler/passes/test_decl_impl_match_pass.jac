@@ -354,15 +354,15 @@ test "E2026 bare re-declaring def in .impl.jac" {
     assert "Use an `impl` block" in errors_output;
 }
 
-test "E2086 declaration without implementation" {
+test "E2087 declaration without implementation" {
     (out := JacProgram()).compile(os.path.join(FIXTURES, "unimplemented_decl.jac"));
 
     e2086_errors = [
         e
         for e in out.errors_had
-        if e.code is not None and e.code.code == "E2086"
+        if e.code is not None and e.code.code == "E2087"
     ];
     reported = sorted([e.msg.split("'")[1] for e in e2086_errors]);
-    assert reported == ["doubled", "free_fn"] , (f"Unexpected E2086 set: {reported}");
+    assert reported == ["doubled", "free_fn"] , (f"Unexpected E2087 set: {reported}");
     assert "is declared but never implemented" in e2086_errors[0].pretty_print();
 }
