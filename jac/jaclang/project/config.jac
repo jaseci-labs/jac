@@ -190,6 +190,7 @@ obj LintConfig {
 obj CheckConfig {
     has print_errs: bool = True,
         lint: LintConfig = LintConfig(),
+        exclude: list[str] = [],
         suppress: list[str] = [],
         suppress_categories: list[str] = [],
         enforce_access: bool = False,

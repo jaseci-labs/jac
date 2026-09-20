@@ -254,7 +254,10 @@ impl check(
         paths = [paths];
     }
     start_time = time();
-    ignore_list = _normalize_ignore_patterns(ignore or []);
+    ignore_list = _normalize_ignore_patterns(
+        list(ignore or [])
+            + (_configured_check_excludes() if _is_project_wide_run(paths) else [])
+    );
     (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
         disable_error_code or []
     );
@@ -1243,6 +1246,7 @@ impl precommit(
     }
     targets: list[str] = [];
     rel_targets: list[str] = [];
+    check_targets: list[str] = [];
     git_root = "";
     if staged {
         try {
@@ -1277,8 +1281,15 @@ impl precommit(
             console.success("No staged '.jac' files to check.");
             return 0;
         }
+        gate = _normalize_ignore_patterns(_configured_check_excludes());
+        check_targets = [
+            abs_t
+            for (rel, abs_t) in zip(rel_targets, targets)
+            if not _should_ignore(rel, gate)
+        ];
     } elif paths {
         targets = list(paths);
+        check_targets = targets;
     } else {
         config = get_config();
         if config is not None and config.project_root {
@@ -1286,6 +1297,7 @@ impl precommit(
         } else {
             targets = ["."];
         }
+        check_targets = targets;
     }
 
     fmt_targets = targets;
@@ -1382,7 +1394,7 @@ impl precommit(
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
     console.print("[precommit] Running check...");
-    check_ret = check(targets);
+    check_ret = check(check_targets) if check_targets else 0;
 
     fixes_applied = (
         int(stats.get("changed", 0)) > 0
@@ -1806,6 +1818,26 @@ def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
 def _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
     import from jaclang.project.source { normalize_exclude_patterns }
     return normalize_exclude_patterns(ignore);
+}
+
+def _configured_check_excludes -> list[str] {
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    return list(config.check.exclude) if config is not None else [];
+}
+
+def _is_project_wide_run(paths: list[str]) -> bool {
+    import os;
+    import from jaclang.project.config { get_config }
+    if not paths {
+        return True;
+    }
+    config = get_config();
+    proj = str(config.project_root) if (config and config.project_root) else "";
+    if not proj or len(paths) != 1 {
+        return False;
+    }
+    return os.path.realpath(paths[0]) == os.path.realpath(proj);
 }
 
 def _drop_git_ignored(paths: list[str]) -> list[str] {
