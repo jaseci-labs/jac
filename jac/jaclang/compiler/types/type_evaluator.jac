@@ -454,6 +454,7 @@ walker TypeEvaluator {
     def push_symbol_resolution(symbol: Symbol) -> bool;
     def pop_symbol_resolution(symbol: Symbol) -> None;
     def get_type_of_symbol(symbol: Symbol) -> TypeBase;
+    def _published_class_type(symbol: Symbol) -> (TypeBase | None);
     def resolve_to_definition_symbol(symbol: Symbol) -> Symbol;
     def _widen_literal_for_declaration(ty: TypeBase) -> TypeBase;
     def _import_module_from_path(
