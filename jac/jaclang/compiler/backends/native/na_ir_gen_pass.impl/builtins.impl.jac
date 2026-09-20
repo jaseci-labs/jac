@@ -38,7 +38,13 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     for (i, param) in enumerate(params) {
         val = self._str_norm_optional(self._codegen_expr(param));
         if val is None {
-            continue;
+            self.ctx.emit(
+                E5092,
+                node_override=param,
+                kind="print argument",
+                name=type(param).__name__
+            );
+            return None;
         }
 
         if i > 0 {
@@ -78,6 +84,8 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
                     self._emit_rc_release_typed(val, op="print_obj_src", loc="");
                 }
                 val = obj_s;
+            } elif self._is_null_ptr_const(val) {
+                val = self._make_global_string("None", name_prefix=".repr.none");
             } else {
                 _pointee = val.type?.pointee;
                 _is_char_ptr = isinstance(_pointee, ir.IntType) and _pointee.width == 8;

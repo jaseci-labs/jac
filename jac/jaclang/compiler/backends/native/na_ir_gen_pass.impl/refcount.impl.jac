@@ -615,6 +615,14 @@ impl NaIRGenPass._finish_borrowed_read(
     return self._mark_reference_owned(value);
 }
 
+impl NaIRGenPass._is_null_ptr_const(val: ir.Value) -> bool {
+    return (
+        isinstance(val, ir.Constant)
+        and isinstance(val.type, ir.PointerType)
+        and val.constant is None
+    );
+}
+
 impl NaIRGenPass._is_owned(val: ir.Value) -> bool {
     return val.is_owned;
 }

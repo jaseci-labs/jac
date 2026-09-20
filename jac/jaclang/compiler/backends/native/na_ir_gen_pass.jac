@@ -1907,6 +1907,7 @@ walker NaIRGenPass {
 
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
+    def _is_null_ptr_const(val: ir.Value) -> bool;
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
     def _bind_borrowed(nd: uni.Assignment, var_name: str, slot_ty: ir.Type) -> bool;
