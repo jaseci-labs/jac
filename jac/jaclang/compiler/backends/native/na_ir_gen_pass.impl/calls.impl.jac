@@ -1681,6 +1681,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         _len_result = self._bytes_len_val(arg_val);
                     }
 
+                    if _len_result is None
+                        and self?.range_struct_type
+                        and arg_val.type == self.range_struct_type.as_pointer() {
+                        _len_result = self._emit_range_len(arg_val);
+                    }
+
                     if _len_result is None {
                         for (dict_key, helpers) in self.dict_helpers.items() {
                             dict_type = self.dict_types.get(dict_key);

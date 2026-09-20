@@ -579,6 +579,40 @@ impl NaIRGenPass._list_from_iter(
     return result;
 }
 
+impl NaIRGenPass._emit_range_len(range_val: ir.Value) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    b = self.builder;
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    fields: list[ir.Value] = [];
+    for (idx, name) in [(0, "start"), (1, "stop"), (2, "step")] {
+        fields.append(
+            b.load(
+                b.gep(
+                    range_val,
+                    [ir.Constant(i32, 0), ir.Constant(i32, idx)],
+                    name=f"rlen.{name}.p"
+                ),
+                name=f"rlen.{name}"
+            )
+        );
+    }
+    (start, stop, step) = (fields[0], fields[1], fields[2]);
+    up = b.icmp_signed(">", step, zero, name="rlen.up");
+    span = b.select(
+        up,
+        b.sub(stop, start, name="rlen.span.up"),
+        b.sub(start, stop, name="rlen.span.down"),
+        name="rlen.span"
+    );
+    stride = b.select(up, step, b.neg(step, name="rlen.neg"), name="rlen.stride");
+    reach = b.add(b.sub(span, one, name="rlen.span1"), stride, name="rlen.reach");
+    count = b.sdiv(reach, stride, name="rlen.count");
+    empty = b.icmp_signed("<=", span, zero, name="rlen.empty");
+    return b.select(empty, zero, count, name="rlen.len");
+}
+
 impl NaIRGenPass._make_iter_from_value(
     val: ir.Value, expr: uni.UniNode
 ) -> (tuple[ir.Value, str, ir.Type] | None) {
@@ -1275,6 +1309,16 @@ impl NaIRGenPass._iter_source(
     }
     elem_t = self._iter_elem_llvm_of(coll);
     if elem_t is None {
+        # A range carries no element type of its own; it iterates through
+        # the range iterator, which owns the handle it hands back.
+        if self._type_key_of(coll) == "range" {
+            rv = self._codegen_expr(coll);
+            if rv is None {
+                return None;
+            }
+            made = self._make_iter_from_value(rv, coll);
+            return None if made is None else (made[0], made[2], True);
+        }
         return None;
     }
     iv = self._codegen_expr(coll);
