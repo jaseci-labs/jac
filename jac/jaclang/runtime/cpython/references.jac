@@ -79,14 +79,21 @@ def borrowed_result(value: u64) -> ObjectResult {
 }
 
 obj ReferenceState(NativeState) {
-    has references: list[u64];
+    has references: list[u64],
+        _clearing: bool = False;
 
     def clear {
-        for index in range(len(self.references)) {
-            value = self.references[index];
-            self.references[index] = 0;
+        if self._clearing {
+            return;
+        }
+        self._clearing = True;
+        references = self.references;
+        for index in range(len(references)) {
+            value = references[index];
+            references[index] = 0;
             jacpy_release(value);
         }
+        self._clearing = False;
     }
 
     def traverse_refs(visitor: u64, context: u64) -> i32 {

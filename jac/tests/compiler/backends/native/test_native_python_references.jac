@@ -69,6 +69,8 @@ test "reference groups tolerate reentrant destruction" {
     );
     destroyed: list[int] = [];
     created: list[int] = [];
+    depth: list[int] = [0];
+    peak: list[int] = [0];
     class Tracked {
         has index: int = 0;
 
@@ -78,8 +80,14 @@ test "reference groups tolerate reentrant destruction" {
         }
 
         def __del__(self: Tracked) {
+            depth[0] += 1;
+            peak[0] = max(peak[0], depth[0]);
             destroyed.append(self.index);
-            clear();
+            try {
+                clear();
+            } finally {
+                depth[0] -= 1;
+            }
         }
     }
     for _ in range(100) {
@@ -88,6 +96,7 @@ test "reference groups tolerate reentrant destruction" {
     }
     assert len(created) == 300;
     assert destroyed == created;
+    assert peak[0] == 1;
 }
 
 test "error results release nested frames and preserve the original exception" {
