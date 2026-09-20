@@ -27,7 +27,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E2009,
     E2011,
     E2012,
-    W2013,
+    E2013,
     E2016,
     E2017,
     E2026,

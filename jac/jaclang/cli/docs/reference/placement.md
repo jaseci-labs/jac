@@ -22,7 +22,7 @@ the bytecode. The solver consumes summaries and owns every decision:
 | `root` access, node/edge/walker archetypes | server |
 | Python imports not covered by the portability table | server |
 | extern C declarations (clib imports) | native |
-| `def:pub` in a server-anchored module, **in an app whose kind has a server** | server (as an endpoint contract) |
+| `def:pub` / `def:protect` (and `walker:protect`), **in an app whose kind has a server** | server (as an endpoint contract) |
 | A `[placement.pins]` entry (base table or the selected app's `[apps.<name>.placement.pins]` overlay) | its pinned space (immovable) |
 | The entry file of a declared `service` app | server (the module is compiled in that app context) |
 
@@ -36,12 +36,13 @@ import. `jac check --placements` names the rule that fired, for example
 `NPM: npm dependency ([dependencies.npm])` or `PY: python import (python
 module shadows the undeclared npm package)`.
 
-`def:pub` is the one row that depends on the **app kind**, because `pub` means
-*export* client-side and *endpoint* server-side: it has no settled meaning until
-placement does. In a kind that has a server (`web-app`, `service`,
-`service-mesh`, and the default when no kind is declared) it is endpoint
-evidence, exactly as before -- an evidence-free `pub` there is deliberately an
-endpoint. In a kind with no server (`js-package`, whose codespace is `client`;
+`def:pub` and `def:protect` are the rows that depend on the **app kind**,
+because `pub` means *export* client-side and *endpoint* server-side: neither
+has a settled meaning until placement does. In a kind that has a server
+(`web-app`, `service`, `service-mesh`, and the default when no kind is
+declared) both are endpoint evidence -- an evidence-free `pub` or `protect`
+there is deliberately an endpoint (`pub` anonymous, `protect` authenticated).
+In a kind with no server (`js-package`, whose codespace is `client`;
 `web-static`, `mobile`, `desktop`, `cli`) there is no server for it to mean,
 so it is not evidence at all: everything lands client, `pub` means export, and
 code carrying genuine server evidence is `E5087` rather than a server
@@ -86,11 +87,11 @@ From those seeds, placement propagates along symbol references to a fixpoint:
 an element referenced by client code follows it into the bundle when its whole
 closure can (**pulled client**); requirement-free elements reached from both
 spaces compile into each (**dual emission**); and a reference whose closure
-cannot move **bridges** instead -- `def:pub` over RPC, archetypes as wire
+cannot move **bridges** instead -- exposed functions over RPC, archetypes as wire
 types, native elements over the wasm edge. Cross-module pulls happen before
 code generation, so `jac check` sees the same placements as `jac build`.
 
-The RPC bridge is a *binding*, not a call-site rewrite: a `def:pub` endpoint
+The RPC bridge is a *binding*, not a call-site rewrite: a `def:pub` or `def:protect` endpoint
 reachable from client code is emitted into the bundle as an `async` forwarder
 that calls it over HTTP, so the name works in every position -- called,
 passed as a callback, stored, returned, re-exported. Because the forwarder is
@@ -99,10 +100,12 @@ async, its result is a `Promise<T>` where the server function's is `T`, which
 binding can cover is `E5086` at build time rather than a `ReferenceError` at
 module load.
 
-Within one app, server-placed `def:priv` and `def:protect` functions also get
-client RPC forwarders, preserving their authenticated access rules without
-a module placement pin. This does not grant access from another app: the
-cross-app function surface remains `def:pub`.
+Exposure is decided by the declaration alone, in one place, and every stage
+reads the same verdict: `def:protect` is an authenticated endpoint and gets a
+client RPC forwarder like `def:pub`; a plain or `def:priv` function is private,
+is never served, and a client import of it is `E5082`. The same verdict governs
+cross-app imports (`E5106` for a private element). No pin or config entry
+changes it.
 
 The analysis proposes; lowering disposes. A module that prefers native but
 fails to lower is demoted to the server with a note naming the cause, and a
@@ -131,10 +134,9 @@ element is immovable and everything else re-solves around it. Pins are part
 of the program -- changing them invalidates the compilation cache, and the
 evidence chain reports them (`pinned 'server' ([placement.pins])`).
 
-A **module-level `"server"` pin** carries boundary semantics beyond
-placement: client imports of that module become full service-boundary
-imports -- non-`:pub` items stay callable with auth and boundary types are
-collected -- the trust-boundary shape.
+A pin is placement only. A **module-level `"server"` pin** anchors the module
+server-side; it does not change which of its elements are endpoints or who may
+call them -- that is the declaration's job (`:pub`, `:protect`, or private).
 
 Declaring that a module runs as its own **service** is a different fact with
 a different home: an `[apps.<name>]` table with `kind = "service"` and the
@@ -171,7 +173,7 @@ its verdict. The single query surface is
 - `pinned_module_space(path)` exposes the raw `[placement.pins]` *input*
   (base table merged with the selected app's overlay) for the few places that
   need explicit user intent rather than the solved verdict (app-kind
-  inference, trust-boundary import handling).
+  inference).
 - `compiler/placement/workspace.jac` is the compiler-side workspace reader:
   `app_for_path`, `serving_apps`, `app_fact_digest`. It
   parses `[apps]` permissively (validation is the project layer's job) and
@@ -190,7 +192,7 @@ Pins are never *placement* facts -- the solver can infer those. They are
 | Category | Why inference cannot decide | Surface |
 |---|---|---|
 | Trust boundaries | A pure function can be *placeable* client-side yet *unsafe* there (secrets, price computation, validation) | `[placement.pins]` entry -> `"server"` |
-| API contracts | An endpoint is a promise (auth, serialization, versioning) to parties outside the program | `def:pub` in a server-anchored module |
+| API contracts | An endpoint is a promise (auth, serialization, versioning) to parties outside the program | `def:pub` / `def:protect` on the declaration |
 | Stateful identity | Fork-per-space vs single-home for a mutable glob are different programs; both sound | home the glob with its writers via a pin (see W6006) |
 | Environment-dependent semantics | Clock / RNG / env / fs mean different things per space; dual emission changes observable behavior | pin an explicit home |
 | Foreign-boundary facts | Ecosystem portability is not program dataflow | portability table + clib declarations |
@@ -198,7 +200,7 @@ Pins are never *placement* facts -- the solver can infer those. They are
 | Stability pins | A correct placement flip can still be operationally disruptive | a pin to hold an element where it is |
 
 Punchline: placement syntax is unnecessary. What survives is the
-pin-as-trust-boundary, `def:pub`-as-contract, and state / environment / FFI
+pin-as-trust-boundary, `def:pub` / `def:protect`-as-contract, and state / environment / FFI
 declarations -- which were never placement markers to begin with.
 
 ## Related diagnostics

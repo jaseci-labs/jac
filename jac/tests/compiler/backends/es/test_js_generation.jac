@@ -327,6 +327,23 @@ test "cl only js command outputs js" {
     assert 'function greet(name = "World") {' in result.stdout;
 }
 
+test "dict literal with an expression key emits a computed property" {
+    temp_path = write_temp_jac(
+        "def build(k: str) -> dict {\n"
+        "    return {\"lit\": 2, (k + \"x\"): 3, k.upper(): 4};\n"
+        "}\n"
+    );
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "[(k + \"x\")]: 3" in js_code or "[k + \"x\"]: 3" in js_code , js_code;
+        assert "[k.toUpperCase()]: 4" in js_code , js_code;
+        assert "\"lit\": 2" in js_code or "lit: 2" in js_code , js_code;
+        assert "\"key\":" not in js_code and "key:" not in js_code , js_code;
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 test "empty file generates minimal js" {
     temp_path = write_temp_jac("\"\"\"Empty file for smoke testing.\"\"\"\n");
 

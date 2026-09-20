@@ -3,15 +3,15 @@ name: jac-sv-endpoints
 description: Expose functions and walkers as typed HTTP endpoints. Use for routes, response envelopes, uploads, and endpoint shape decisions.
 ---
 
-A Jac server exposes two endpoint shapes. **Functions** (`def:pub` / `def:priv` / plain `def`) are the natural fit for full-stack RPC - the jac client calls them like local functions and the return type is the wire format. **Walkers** (`walker:pub`) are the docs' primary pattern for pure API services consumed over raw REST: `has` fields are the request body, `report` values are the response. Both live in `main.jac` or any plain `.jac` server module (server is the default placement). Streaming endpoints (`-> Generator`, SSE): `jac-sv-streaming`.
+A Jac server exposes two endpoint shapes. **Functions** (`def:pub` / `def:protect`) are the natural fit for full-stack RPC - the jac client calls them like local functions and the return type is the wire format. **Walkers** (`walker:pub`) are the docs' primary pattern for pure API services consumed over raw REST: `has` fields are the request body, `report` values are the response. Both live in `main.jac` or any plain `.jac` server module (server is the default placement). Streaming endpoints (`-> Generator`, SSE): `jac-sv-streaming`.
 
 **Choose the shape by whether the endpoint walks: no `visit`, no walker.** A `walker:pub` whose only ability is one `can run with Root entry { ... report X; }` is a function in walker costume, and every caller pays the costume tax: `result.reports[0]` unwrapping instead of a typed return value, request params disguised as `has` fields, `report` bypassing return-type checking. Write it as a `def:pub` with a typed return instead - `root` binds identically (both shapes run in the caller's request context, so `root` / `root.shared` graph code moves over unchanged; verified against the serve runtime). Status probes, single-node CRUD, list queries, kick-off-a-job calls are all functions. Reserve `walker:pub` for endpoints that actually traverse: spawn, `visit` along edges, accumulate, report once.
 
 Auth/visibility is per-declaration (canonical semantics in `jac-sv-auth`):
 
 - **`def:pub` / `walker:pub`** - no auth required. Anonymous callers run on the shared guest graph (`root.shared`); a caller who *does* send a valid token runs on their own root.
-- **`def:priv` / plain `def` (and `walker:priv` / plain `walker`)** - JWT required; runs on the caller's own isolated root. Plain and `:priv` behave identically (verified against the live server).
-- **`def _helper(...)`** - underscore prefix keeps a function OFF the API. Underscore-prefixed *walkers* are NOT inert: they become middleware hooks (`_before_request`, `_authenticate`) that run around every request.
+- **`def:protect` / `walker:protect`** - JWT required; runs on the caller's own isolated root.
+- **Plain `def` / `def:priv` (and plain `walker` / `walker:priv`)** - private: not an endpoint at all. Helpers stay helpers with no naming convention, and a plain walker is only ever spawned in-process. `jac fix access` rewrites code that relied on plain meaning authenticated.
 
 ## Function endpoints (RPC style)
 
@@ -133,9 +133,9 @@ S3 backends and `get_url` presigning: `jac-sv-deploy`.
 - Give every endpoint an explicit return type - **the return type IS the wire format**. Use typed objs/nodes for domain data (the client gets dot access: `items[0].title`); an ad-hoc `dict` is fine for a one-off payload (`{"liked": True, "likes": ...}`).
 - **JSON-shaped `dict` returns: name the value type.** A bare `-> dict` is an error (E1036). Where a heterogeneous dict is genuinely the contract, write `-> dict[str, any]`; that draws W1037 (explicit any disables checking), which is the intended trade and is informational.
 - **`_jac_id` is volatile** - the runtime assigns a fresh one to the walker instance and to every freshly-constructed report obj on every response (persistent node jids are stable). Strip it before hashing, caching, or diffing responses.
-- Mixed visibility in one module is normal design: an anonymous `walker:pub` (public directory, trending) sits next to authenticated plain walkers.
+- Mixed visibility in one module is normal design: an anonymous `walker:pub` (public directory, trending) sits next to authenticated `walker:protect` walkers and private helpers.
 - Walker spawns take **keyword** arguments mapped to `has` fields (`{"title": ...}` in the body); function calls take the declared parameters. Don't pass nodes by reference across the wire - pass `jid(node)` strings.
-- **404/405 on a new endpoint = its name is not in the entry module's import.** Client-side import self-registration is unreliable per-name (jac#7695): adding a `def:pub` to a module `main.jac` already imports still 405s until the new name is added there too. Name every endpoint in the entry import. Full rule: `jac-fullstack-patterns`.
+- **404/405 on an endpoint = it is not exposed.** Registration comes from the declaration: every `:pub` / `:protect` function or walker in a module the app compiles is served, whether or not the entry imports it by name. A 404 means the declaration is plain (private), or the module is owned by another app (bridge to it instead).
 - `jac run` needs a `jac.toml` in the cwd (`Error: No jac.toml found`); boolean flags are hyphenated: `--no-client`, not `--no_client`.
 - **Invalid anchors after a change:** check the reference, selected app/store, and schema migration state. Follow `jac-debugging` and `jac-sv-persistence`; do not infer that an anchor error requires deleting project data.
 

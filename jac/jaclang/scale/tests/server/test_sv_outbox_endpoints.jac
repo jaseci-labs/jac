@@ -32,7 +32,7 @@ import from jaclang.server.serving.server { ServingServer }
 glob _PROVIDER_SRC: str = (
          "import uuid;\n"
          "\n"
-         "walker WhoAmI {\n"
+         "walker:protect WhoAmI {\n"
          "    can run with Root entry {\n"
          "        report str(here.__jac__.id);\n"
          "        report uuid.uuid4().hex;\n"

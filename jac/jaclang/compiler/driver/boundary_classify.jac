@@ -1,6 +1,10 @@
 import os;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
+import from jaclang.compiler.frontend.constant {
+    CodeContext,
+    Tokens as Tok,
+    SymbolAccess
+}
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.placement.placement_pins {
     BareImportVerdict,
@@ -435,24 +439,12 @@ def classify_client_import_item(
     if owner.code_context == CodeContext.CLIENT {
         return ClientImportVerdict.CLIENT;
     }
+    if isinstance(owner, (uni.Ability, uni.Archetype)) and owner.surface_kind {
+        return ClientImportVerdict.BRIDGED
+            if owner.exposure != SymbolAccess.PRIVATE
+            else ClientImportVerdict.DEAD;
+    }
     if isinstance(owner, uni.Ability) {
-        consumer = item.find_parent_of_type(uni.Module);
-        provider_app = module_app(source_mod);
-        authenticated_endpoint = (
-            owner.access is not None
-            and owner.access.tag.name in (Tok.KW_PRIV, Tok.KW_PROT)
-            and consumer is not None
-            and bool(provider_app)
-            and module_app(consumer) == provider_app
-            and same_workspace(consumer.loc.mod_path, source_mod.loc.mod_path)
-        );
-        if (
-            not owner.is_method
-            and owner.access is not None
-            and (owner.access.tag.name == Tok.KW_PUB or authenticated_endpoint)
-        ) {
-            return ClientImportVerdict.BRIDGED;
-        }
         return ClientImportVerdict.DEAD;
     }
     if isinstance(owner, (uni.Archetype, uni.Enum, uni.TypeAlias)) {

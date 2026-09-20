@@ -2,7 +2,11 @@ import os;
 import json;
 import from collections.abc { Callable }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
+import from jaclang.compiler.frontend.constant {
+    CodeContext,
+    SymbolAccess,
+    Tokens as Tok
+}
 
 glob PLACEMENT_SCHEMA: int = 2,
      PLACEMENT_SV_SIGNAL_NODES: tuple[tuple[str, type], ...] = (
@@ -190,12 +194,18 @@ def element_display_name(stmt: uni.UniNode) -> str {
     return f"<{type(stmt).__name__}>";
 }
 
-def _is_pub_element(stmt: uni.UniNode) -> bool {
-    return (
-        isinstance(stmt, (uni.Ability, uni.GlobalVars, uni.Archetype, uni.Enum))
-        and stmt.access is not None
-        and stmt.access.tag.name == Tok.KW_PUB
-    );
+def _endpoint_evidence(stmt: uni.UniNode) -> str {
+    if not isinstance(stmt, (uni.Ability, uni.GlobalVars, uni.Archetype, uni.Enum)) {
+        return '';
+    }
+    exposure = stmt.exposure;
+    if exposure == SymbolAccess.PUBLIC {
+        return 'pub access';
+    }
+    if exposure == SymbolAccess.PROTECTED and getattr(stmt, 'surface_kind', '') {
+        return 'protect access';
+    }
+    return '';
 }
 
 def project_kind_name(module: (uni.Module | None)) -> str {
@@ -327,9 +337,9 @@ def _element_reqs(stmt: uni.UniNode) -> list[list[str]] {
         and isinstance(stmt.signature, uni.EventSignature) {
         reqs.append(['SERVER', 'event ability outside an archetype']);
     }
-    if _is_pub_element(stmt)
-        and project_has_server(stmt.find_parent_of_type(uni.Module)) {
-        reqs.append(['ENDPOINT', 'pub access']);
+    endpoint = _endpoint_evidence(stmt);
+    if endpoint and project_has_server(stmt.find_parent_of_type(uni.Module)) {
+        reqs.append(['ENDPOINT', endpoint]);
     }
     return reqs;
 }
@@ -610,8 +620,9 @@ def scan_native_blockers(
             }
         }
 
-        if not allow_pub and _is_pub_element(stmt) {
-            return ("pub access", deps);
+        endpoint = _endpoint_evidence(stmt);
+        if not allow_pub and endpoint {
+            return (endpoint, deps);
         }
     }
     for imp in module.get_all_sub_nodes(uni.Import) {
@@ -736,7 +747,7 @@ def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSum
             import from jaclang.compiler.placement.placement_pins { effective_pin_for }
             es.pinned = effective_pin_for(ps.mod_path, es.name);
         }
-        es.is_pub = _is_pub_element(stmt);
+        es.is_pub = _endpoint_evidence(stmt) == 'pub access';
         es.reqs = _element_reqs(stmt);
         if isinstance(stmt, uni.Import) {
             _fill_import_facts(es, stmt);

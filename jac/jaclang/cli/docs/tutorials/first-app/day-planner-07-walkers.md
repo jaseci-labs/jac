@@ -6,7 +6,7 @@ Work through the examples in order. Partial snippets extend the current file; bl
 
 ## Part 7: Object-Spatial Programming with Walkers
 
-Your day planner is complete -- tasks persist in the graph, AI categorizes them, and you can generate shopping lists, all through `def:priv` functions that directly manipulate graph nodes. This final part reimplements the same backend with Jac's most distinctive feature: **Object-Spatial Programming (OSP)**, where **walkers** (mobile units of computation) travel through the graph and **abilities** fire as they arrive at nodes. The paradigm itself is covered in [Object-Spatial Programming](../language/osp.md); here you apply it to the app. The behavior stays identical, and the approach becomes increasingly valuable as your graphs grow deeper and more complex.
+Your day planner is complete -- tasks persist in the graph, AI categorizes them, and you can generate shopping lists, all through `def:protect` functions that directly manipulate graph nodes. This final part reimplements the same backend with Jac's most distinctive feature: **Object-Spatial Programming (OSP)**, where **walkers** (mobile units of computation) travel through the graph and **abilities** fire as they arrive at nodes. The paradigm itself is covered in [Object-Spatial Programming](../language/osp.md); here you apply it to the app. The behavior stays identical, and the approach becomes increasingly valuable as your graphs grow deeper and more complex.
 
 **What is a Walker?**
 
@@ -35,10 +35,10 @@ The core keywords:
 
 **Functions vs Walkers: Side by Side**
 
-The best way to understand walkers is to compare them directly with the functions you already know. Here's `add_task` as a `def:priv` function (what you built in Part 6):
+The best way to understand walkers is to compare them directly with the functions you already know. Here's `add_task` as a `def:protect` function (what you built in Part 6):
 
 ```jac
-def:priv add_task(title: str) -> Task {
+def:protect add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
     task = root ++> Task(title=title, category=category);
     return task;
@@ -144,7 +144,7 @@ Walker state persists across the entire traversal, which is what makes the accum
 Compare this to the function version:
 
 ```jac
-def:priv get_tasks -> list[Task] {
+def:protect get_tasks -> list[Task] {
     return [root-->][?:Task];
 }
 ```
@@ -287,7 +287,7 @@ walker ClearShoppingList {
 
 **Spawning Walkers from the Frontend**
 
-In the `def:priv` version, the frontend called server functions directly with `await add_task(title)`. With walkers, the frontend **spawns** them instead -- a different syntax but the same transparent client-server communication.
+In the `def:protect` version, the frontend called server functions directly with `await add_task(title)`. With walkers, the frontend **spawns** them instead -- a different syntax but the same transparent client-server communication.
 
 **Importing server walkers** works the same as importing server functions:
 
@@ -324,21 +324,21 @@ Since the walker reports typed `Task` objects, the client receives them with ful
 
     This avoids an index error on a fresh user with no data yet, and is the pattern the completed files below use.
 
-**walker:priv -- Per-User Data Isolation**
+**walker:protect -- Per-User Data Isolation**
 
-Just as `def:priv` gave functions per-user isolation, walkers can be marked with access modifiers for the same purpose:
+Just as `def:protect` gave functions per-user isolation, walkers can be marked with access modifiers for the same purpose:
 
 - **`walker AddTask`** -- public, anyone can spawn it
-- **`walker:priv AddTask`** -- private, requires authentication
+- **`walker:protect AddTask`** -- protected, requires authentication (a plain `walker` is private and not served)
 
-When you use `walker:priv`, the walker runs on the authenticated user's **own private root node**, giving the same per-user isolation as `def:priv`. The complete walker version above uses `:priv` on all walkers, combined with the authentication you learned in Part 6.
+When you use `walker:protect`, the walker runs on the authenticated user's **own private root node**, giving the same per-user isolation as `def:protect`. The complete walker version above uses `:priv` on all walkers, combined with the authentication you learned in Part 6.
 
 **The Complete Walker Version**
 
 !!! info "Same UI, different backend"
     The UI is identical to Part 6 -- so `frontend.jac`, `components/AuthForm.jac`, `components/Header.jac`, `components/TaskItem.jac`, `components/IngredientItem.jac`, and `styles.css` are all **unchanged** from Part 6. Only three files change:
 
-    - `main.jac` -- replaces `def:priv` functions with `walker:priv` declarations
+    - `main.jac` -- replaces `def:protect` functions with `walker:protect` declarations
     - `components/TasksPanel.jac` -- spawns walkers instead of calling functions
     - `components/ShoppingPanel.jac` -- same
 
@@ -355,7 +355,7 @@ You'll end up with the same file layout as Part 6:
 
 ```
 day-planner-v2/
-├── main.jac                       # Server: walkers (instead of def:priv functions)
+├── main.jac                       # Server: walkers (instead of def:protect functions)
 ├── frontend.jac                # Client orchestrator -- unchanged from Part 6
 ├── components/
 │   ├── AuthForm.jac            # Unchanged from Part 6
@@ -427,7 +427,7 @@ The three files that change are in the collapsible sections below. Copy the unch
 
     # --- Task Walkers ---
 
-    walker:priv AddTask {
+    walker:protect AddTask {
         has title: str,
             reports: list[Task] = [];
 
@@ -438,7 +438,7 @@ The three files that change are in the collapsible sections below. Copy the unch
         }
     }
 
-    walker:priv ListTasks {
+    walker:protect ListTasks {
         has results: list[Task] = [],
             reports: list[list[Task]] = [];
 
@@ -455,7 +455,7 @@ The three files that change are in the collapsible sections below. Copy the unch
         }
     }
 
-    walker:priv ToggleTask {
+    walker:protect ToggleTask {
         has task_id: str,
             reports: list[Task] = [];
 
@@ -470,7 +470,7 @@ The three files that change are in the collapsible sections below. Copy the unch
         }
     }
 
-    walker:priv DeleteTask {
+    walker:protect DeleteTask {
         has task_id: str;
 
         can search with Root entry { visit [-->]; }
@@ -486,7 +486,7 @@ The three files that change are in the collapsible sections below. Copy the unch
 
     # --- Shopping List Walkers ---
 
-    walker:priv GenerateShoppingList {
+    walker:protect GenerateShoppingList {
         has meal_description: str,
             reports: list[list[ShoppingItem]] = [];
 
@@ -510,7 +510,7 @@ The three files that change are in the collapsible sections below. Copy the unch
         }
     }
 
-    walker:priv GetShoppingList {
+    walker:protect GetShoppingList {
         has items: list[ShoppingItem] = [],
             reports: list[list[ShoppingItem]] = [];
 
@@ -523,7 +523,7 @@ The three files that change are in the collapsible sections below. Copy the unch
         can done with Root exit { report self.items; }
     }
 
-    walker:priv ClearShoppingList {
+    walker:protect ClearShoppingList {
         can collect with Root entry { visit [-->]; }
 
         can clear with ShoppingItem entry {
@@ -730,7 +730,7 @@ The three files that change are in the collapsible sections below. Copy the unch
 jac run main.jac    # builds and serves
 ```
 
-Open [http://localhost:8000](http://localhost:8000). You should see a login screen -- that's authentication working with `walker:priv`.
+Open [http://localhost:8000](http://localhost:8000). You should see a login screen -- that's authentication working with `walker:protect`.
 
 1. **Sign up** with any username and password
 2. **Add tasks** -- they auto-categorize just like Part 5
@@ -758,7 +758,7 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 - **`disengage`** -- stop traversal immediately
 - **`root spawn Walker()`** -- create and start a walker at a node
 - **`result.reports[0] if result.reports else []`** -- safe access to the walker's reported data (handles empty traversals)
-- **`walker:priv`** -- per-user walker with data isolation
+- **`walker:protect`** -- per-user walker with data isolation
 - **Importing server walkers** -- a plain import bridges walkers (and node types) into client code over HTTP
 
 **When to use each approach:**
@@ -766,9 +766,9 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 | Approach | Best For |
 |----------|----------|
 | `def:pub` functions | Public endpoints, simple CRUD, quick prototyping |
-| `def:priv` functions | Per-user data isolation with private root nodes |
+| `def:protect` functions | Per-user data isolation with private root nodes |
 | Walkers | Graph traversal, multi-step operations, deep/recursive graphs |
-| `walker:priv` | Per-user walker with data isolation via private root nodes |
+| `walker:protect` | Per-user walker with data isolation via private root nodes |
 | Node abilities | When the logic naturally belongs to the data type |
 | Walker abilities | When the logic naturally belongs to the traversal |
 

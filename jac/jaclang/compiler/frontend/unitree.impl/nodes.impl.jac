@@ -1119,6 +1119,17 @@ impl AstAccessNode.public_access.getter -> bool {
     return (self.access_type == SymbolAccess.PUBLIC);
 }
 
+impl AstAccessNode.exposure.getter -> SymbolAccess {
+    tag = self.access.tag.name if self.access else None;
+    if tag == Tok.KW_PUB {
+        return SymbolAccess.PUBLIC;
+    }
+    if tag == Tok.KW_PROT {
+        return SymbolAccess.PROTECTED;
+    }
+    return SymbolAccess.PRIVATE;
+}
+
 impl ContextAwareNode.postinit -> None {}
 
 impl ContextAwareNode.code_context.getter -> CodeContext {
@@ -1134,6 +1145,20 @@ impl ContextAwareNode.code_context.getter -> CodeContext {
 impl ContextAwareNode.code_context.setter(code_context: CodeContext) {
     del [edge self->:PlacedIn:->];
     self +>:PlacedIn:+> codespace_node(code_context.value);
+}
+
+impl ContextAwareNode.placement_name.getter -> str {
+    if self.codespace_dual {
+        return "dual";
+    }
+    ctx = self.code_context;
+    if ctx == CodeContext.CLIENT {
+        return "client";
+    }
+    if ctx == CodeContext.NATIVE {
+        return "native";
+    }
+    return "server";
 }
 
 impl Module.decided_codespace.getter -> str {
@@ -1796,6 +1821,16 @@ impl Archetype.is_abstract.getter -> bool {
     return `any((isinstance(i, Ability) and i.is_abstract) for i in body);
 }
 
+impl Archetype.surface_kind.getter -> str {
+    return "walker" if self.arch_type.name == Tok.KW_WALKER else "";
+}
+
+impl Archetype.served.getter -> bool {
+    return bool(self.surface_kind)
+        and self.exposure != SymbolAccess.PRIVATE
+        and self.placement_name != "client";
+}
+
 impl Archetype.arch_kind.getter -> (str | None) {
     kind_map: dict[SymbolType, str] = {
         SymbolType.NODE_ARCH: "node",
@@ -1992,6 +2027,16 @@ impl Ability.postinit -> None {
 
 impl Ability.is_method.getter -> bool {
     return (self.method_owner is not None);
+}
+
+impl Ability.surface_kind.getter -> str {
+    return "" if self.is_method else "function";
+}
+
+impl Ability.served.getter -> bool {
+    return bool(self.surface_kind)
+        and self.exposure != SymbolAccess.PRIVATE
+        and self.placement_name != "client";
 }
 
 impl Ability.is_cls_method.getter -> bool {

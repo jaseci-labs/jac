@@ -79,7 +79,7 @@ def:pub github_repositories(session_token: str, page: int = 1) -> GithubRepos {
     }
 }
 
-def verified_owner(full: str, session_token: str) -> bool {
+def:protect verified_owner(full: str, session_token: str) -> bool {
     external_id = github_id(session_token);
     if not external_id {
         return False;

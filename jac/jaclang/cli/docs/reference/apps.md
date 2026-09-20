@@ -173,10 +173,12 @@ boot first, so a cycle has no boot order. **`E5104`** names the cycle on the
 import that closes it. Break it by moving the code both apps need into shared
 code, or by folding one app into the other.
 
-The **bridge surface** of an app is one bit: a walker or a `def:pub` function
-is callable by any consumer app; everything else in the app is private to its
-own server. Bridging to a non-`pub` element is **`E5106`**. There are no
-per-app grants.
+The **bridge surface** of an app follows the declaration: a `walker:pub` /
+`def:pub` (anonymous) or `walker:protect` / `def:protect` (authenticated)
+element is callable by any consumer app; a plain or `:priv` walker or function
+is private to its own server and is not an endpoint at all. Bridging to a
+private element is **`E5106`**. There are no per-app grants, and no config
+entry changes exposure: `[placement.pins]` decides only where code runs.
 
 ## Routes
 
@@ -371,13 +373,13 @@ and [Kubernetes & Operations](plugins/jac-scale-kubernetes.md#service-apps-in-ku
 
 - `E2039` / `W2039` -- app isolation: a symbol of one app used from another
   outside the bridge surface.
-- `E5108` -- an app importing another app's node or edge; only walkers and
-  `def:pub` functions bridge, and an imported `obj` or `enum` mirrors as a
-  boundary type.
+- `E5108` -- an app importing another app's node or edge; only exposed
+  (`:pub` / `:protect`) walkers and functions bridge, and an imported `obj`
+  or `enum` mirrors as a boundary type.
 - `E5104` -- an app dependency cycle.
 - `E5105` -- a `.native.jac` variant disagrees with its base module's public
   surface.
-- `E5106` -- bridging to a non-`pub` element of another app.
+- `E5106` -- bridging to a private (plain or `:priv`) element of another app.
 - `E5087` -- an app whose kind has no server contains code that needs one.
 - `E1042` -- a bridged call that was not awaited.
 

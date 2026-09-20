@@ -48,8 +48,8 @@ obj RepoAnalysis {
     def jac_pct -> int;
 }
 
-def analyze(files: dict[str, str]) -> RepoAnalysis;
+def:protect analyze(files: dict[str, str]) -> RepoAnalysis;
 
 def belt_for(total: int) -> str;
 
-def score(meta: RepoMeta, an: RepoAnalysis) -> ScoreBreakdown;
+def:protect score(meta: RepoMeta, an: RepoAnalysis) -> ScoreBreakdown;

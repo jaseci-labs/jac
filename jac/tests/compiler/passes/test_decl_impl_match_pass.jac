@@ -40,6 +40,15 @@ def run_jac_import(target: str, base_path: str) -> str {
     return buf.getvalue();
 }
 
+test "parameter name mismatch is an error" {
+    (out := JacProgram()).compile(os.path.join(FIXTURES, "defn_decl_param_name.jac"));
+    msgs = [e.msg for e in out.errors_had];
+    assert any(
+        "Parameter name mismatch" in m and "'name'" in m and "'who'" in m for m in msgs
+    ) , msgs;
+    assert not any("Parameter name mismatch" in w.msg for w in out.warnings_had) , "must not be a warning";
+}
+
 test "parameter count mismatch" {
     (out := JacProgram()).compile(os.path.join(FIXTURES, "defn_decl_mismatch.jac"));
 

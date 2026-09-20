@@ -369,9 +369,7 @@ test "edge analysis visits modules registered while analyzing either hub" {
     def module(edges: list[any]) -> any {
         return SimpleNamespace(
             gen=SimpleNamespace(
-                interop_manifest=SimpleNamespace(
-                    app_edges=edges, walker_access={}, func_access={}
-                )
+                interop_manifest=SimpleNamespace(app_edges=edges, surface={})
             )
         );
     }
@@ -393,6 +391,10 @@ test "edge analysis visits modules registered while analyzing either hub" {
         JacProgram, "_search_hubs", return_value=[user_hub, compiler_hub]
     ), patch.object(JacProgram, "run_schedule", analyze) {
         edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
-        assert set(edges) == {("web", "orders"), ("orders", "db")};
+        assert set(edges) == {("web", "orders"), ("orders", "db")} , (
+            edges,
+            list(user_hub),
+            list(compiler_hub)
+        );
     }
 }

@@ -1335,35 +1335,36 @@ with entry {
 }
 ```
 
-### Secure-by-Default Endpoints
+### Private-by-Default Endpoints
 
-All walker and function endpoints are **protected by default** -- they require JWT authentication. You must explicitly opt-in to public access using the `:pub` modifier. This secure-by-default approach prevents accidentally exposing endpoints without authentication.
+A walker or function is an endpoint only when its declaration says so. Plain declarations are private: not served, not importable by client code, not bridgeable from another app. `:protect` opts in to an authenticated endpoint and `:pub` to an anonymous one.
 
 ```jac
-# Protected (default) -- requires JWT token, runs on the caller's own isolated root
-walker get_profile {
+# Private (default) -- an ordinary in-process symbol, never an endpoint
+walker internal_process {
+    can run with Root entry { }
+}
+
+# Protected -- served, requires JWT token, runs on the caller's own isolated root
+walker :protect get_profile {
     can fetch with Root entry { report [-->]; }
 }
 
-# Public -- no authentication required
+# Public -- served, no authentication required
 walker :pub health_check {
     can check with Root entry { report {"status": "ok"}; }
-}
-
-# Private -- identical to the default; `:priv` is the explicit spelling
-walker :priv internal_process {
-    can run with Root entry { }
 }
 ```
 
 ### Walker Access Levels
 
-Walkers have two access levels when served as API endpoints (`:priv` is the explicit spelling of the default):
+Walkers have three access levels, decided on the declaration (`:priv` is the explicit spelling of the default):
 
 | Access | Description |
 |--------|-------------|
-| Public (`:pub`) | Accessible without authentication. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
-| Default, Protected (`:protect`), and Private (`:priv`) | Require JWT authentication; per-user isolated (each user operates on their own graph). For endpoint auth these behave identically -- **only `:pub` is exempt**. `:protect` is _not_ a middle auth tier; its three-way gradient applies to source-level [visibility](../language/access-modifiers.md), not to authentication. |
+| Public (`:pub`) | Served without authentication. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
+| Protected (`:protect`) | Served; requires JWT authentication; per-user isolated (each user operates on their own graph). |
+| Default and Private (`:priv`) | Not served. A client import is `E5082` and a cross-app import is `E5106`. Run `jac fix access` to mark previously served plain walkers `:protect`. The three-way gradient also applies to source-level [visibility](../language/access-modifiers.md). |
 
 ### Permission Functions Reference
 
@@ -1616,7 +1617,7 @@ This walker will be accessible at `ws://localhost:8000/ws/EchoMessage`.
 
 #### Authenticated WebSocket Walker
 
-To create a private walker that requires JWT authentication, simply remove `: pub` from the walker definition.
+To require JWT authentication, declare the walker `:protect` instead of `:pub`. A walker with no tag is private and is not served at all.
 
 #### Broadcasting WebSocket Walker
 
@@ -1659,7 +1660,7 @@ To create a private broadcasting walker, remove `: pub` from the walker definiti
 
 ## Service Apps (cross-app bridging)
 
-A Jac workspace splits one codebase into **apps** (`[apps.<name>]` tables in `jac.toml`; see [Workspaces & Apps](../apps.md)). Every app boundary compiles as a cut: when server-side code in one app imports a walker or `def:pub` function that **another app owns**, the import generates a typed-async bridge stub at compile time, so the call becomes an RPC you `await` -- with no import form, no routes table, and no change at the call site whether the provider runs in the same process or on another machine.
+A Jac workspace splits one codebase into **apps** (`[apps.<name>]` tables in `jac.toml`; see [Workspaces & Apps](../apps.md)). Every app boundary compiles as a cut: when server-side code in one app imports an exposed (`:pub` or `:protect`) walker or function that **another app owns**, the import generates a typed-async bridge stub at compile time, so the call becomes an RPC you `await` -- with no import form, no routes table, and no change at the call site whether the provider runs in the same process or on another machine.
 
 ### Overview
 
@@ -1670,7 +1671,7 @@ A plain import bridges the boundary in two flavors depending on where the import
 
 In the app-to-app flavor, `orders/main.jac` (the `orders` app) doing `import from core.inventory { check_stock }` -- with `core/inventory.jac` the entry file of `[apps.inventory]` -- does not load the inventory code into its own process as an ordinary import would. Calling `await check_stock(sku)` issues `POST /function/check_stock` against the inventory app (or invokes it directly when colocated) and returns the typed result. The same source runs unchanged colocated (`jac run orders`), as a local fleet (`jac run orders --fleet`), or deployed (`jac scale deploy`).
 
-Both `def:pub` functions and walkers can cross the boundary. Function imports POST to `/function/<name>` and return the function's value. Walker imports POST to `/walker/<name>` and return the rehydrated walker instance with its `has` fields populated and `reports` attached, so call sites read the result the same way they would after a local spawn. See [Walker Imports](#walker-imports) for the wire shape and ergonomics.
+Exposed functions and walkers (`:pub` or `:protect`) can cross the boundary. Function imports POST to `/function/<name>` and return the function's value. Walker imports POST to `/walker/<name>` and return the rehydrated walker instance with its `has` fields populated and `reports` attached, so call sites read the result the same way they would after a local spawn. See [Walker Imports](#walker-imports) for the wire shape and ergonomics.
 
 For a step-by-step walkthrough that covers project setup, running both apps, and watching the round-trip, see the [Service Apps tutorial](../../tutorials/production/microservices.md). The rest of this section is a reference for the ownership and discovery rules, the wire contract, and the `sv_client` surface.
 
@@ -1679,7 +1680,7 @@ For a step-by-step walkthrough that covers project setup, running both apps, and
 A few preconditions for cross-app calls to work:
 
 - **The provider is another app.** The imported element must be owned by a different `[apps.<name>]` entry than the importing module -- a file-rooted `service` app (`entry-point = "<file>"`), or a server-placed shared module whose single serving owner is another app. An import within one app, or of shared code with no server placement, is an ordinary in-process import.
-- **`pub` on the bridge surface.** An app's bridge surface is its walkers and its `def:pub` functions; a call to anything else is `E5106` at compile time. Non-public functions are not endpoints on the provider either.
+- **Exposure on the bridge surface.** An app's bridge surface is its `:pub` and `:protect` walkers and functions; a call to a plain or `:priv` element is `E5106` at compile time. Private elements are not endpoints on the provider either.
 - **`await` the call.** Bridge stubs are coroutines in every context; a missing `await` is `E1042` from `jac check`.
 - **No cycles.** The app graph (consumer → provider edges) must be a DAG; `E5104` names a cycle.
 - **jac-scale for a fleet.** Colocation, explicit URLs and env vars work with any jaclang install. Running service apps as separate local processes (`--fleet`) and deploying them is provided by the built-in `scale` subsystem.
@@ -1873,7 +1874,7 @@ JAC_APP_INVENTORY_URL=http://host-a:8001 jac run orders --port 8000
 If an endpoint reports an invalid anchor, check its ID, the selected app and store, and recent schema changes. Run `jac guide jac-debugging --section diagnose-state-and-cache-errors` for the diagnostic sequence. Preserve existing data until you have identified the cause and chosen a repair.
 
 - **`BridgeUnavailable: app 'x' is not registered`.** The provider app is neither colocated nor reachable: the served app has no `[apps.x]` table to colocate, or in a fleet/multi-host setup `JAC_APP_X_URL` is unset.
-- **`BridgeRejected` with status 404 / 401.** The element is not on the provider's bridge surface (`jac check` reports `E5106` for the compile-time half), or the hop carried no usable `Authorization` for a `:priv` endpoint.
+- **`BridgeRejected` with status 404 / 401.** The element is not on the provider's bridge surface (`jac check` reports `E5106` for the compile-time half), or the hop carried no usable `Authorization` for a `:protect` endpoint.
 - **`E1042` at a call you did not think was remote.** The imported element is owned by another app; add `await` (and make the enclosing function `async`).
 
 ### Testing

@@ -314,7 +314,7 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
             serving = archive.extractfile(".jac/serve_manifest.json");
             assert serving is not None;
             serve_manifest = json.loads(serving.read());
-            assert serve_manifest["func_access"][func] is False , label;
+            assert serve_manifest["surface"][func]["exposure"] == "public" , label;
             for boot_file in boots {
                 assert boot_file in serve_manifest["module_manifests"] , (
                     label,
@@ -406,14 +406,15 @@ test "sealing includes bytecode imports and serving exports despite client place
         (base / ".jac" / "serve_manifest.json").write_text(
             json.dumps(
                 {
-                    "cross_bindings": [
-                        {
-                            "src": "exported.jac",
-                            "name": "exposed",
-                            "kind": "def",
-                            "auth": False
+                    "surface": {
+                        "exposed": {
+                            "kind": "function",
+                            "exposure": "public",
+                            "placement": "server",
+                            "module": "",
+                            "src": "exported.jac"
                         }
-                    ]
+                    }
                 }
             )
         );

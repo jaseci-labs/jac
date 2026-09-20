@@ -3965,8 +3965,6 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
         import from jaclang.compiler.symbol_utils {
             ClientImportVerdict,
             classify_client_import_item,
-            decl_has_access,
-            import_target_pinned_server,
             resolve_import_source_module
         }
         for imp in mod.get_all_sub_nodes(Import) {
@@ -3984,7 +3982,6 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
             source_mod = (
                 resolve_import_source_module(self.program, imp) if is_boundary else None
             );
-            pinned_server = import_target_pinned_server(imp) if is_boundary else False;
             for item in imp.items {
                 if not (
                     isinstance(item, ModuleItem)
@@ -4019,15 +4016,7 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                         continue;
                     }
                     verdict = classify_client_import_item(source_mod, item);
-                    is_stub = verdict == ClientImportVerdict.BRIDGED
-                        or (
-                            pinned_server
-                            and (
-                                verdict != ClientImportVerdict.DEAD
-                                or decl_has_access(source_mod, item)
-                            )
-                        );
-                    if not is_stub {
+                    if verdict != ClientImportVerdict.BRIDGED {
                         continue;
                     }
                 }

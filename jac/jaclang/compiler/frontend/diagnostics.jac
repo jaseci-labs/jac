@@ -1393,10 +1393,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2011", Category.SEMANTIC, "Parameter count mismatch for ability {name}."
      ),
      E2012 = _err("E2012", Category.SEMANTIC, "From the declaration of {name}."),
-     W2013 = _warn(
-         "W2013",
+     E2013 = _err(
+         "E2013",
          Category.SEMANTIC,
-         "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'."
+         "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'.",
+         help="An `impl` must use the same parameter names as its declaration: callers bind keyword arguments by the declared names, and the server, bridge stubs and tool schemas are generated from the declaration."
      ),
      W2014 = _warn(
          "W2014",
@@ -2068,7 +2069,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5082",
          Category.CODEGEN,
          "Client code imports '{name}' from '{module}', but '{name}' has no client-side presence",
-         help="A plain import into client code can only reference client declarations; server `def:pub` endpoints bridge automatically over RPC. Make '{name}' a `def:pub` endpoint, mark it (or its module) client, or move it into client code."
+         help="A plain import into client code can only reference client declarations or exposed server endpoints. `def:protect` / `walker:protect` (authenticated) and `def:pub` / `walker:pub` (anonymous) bridge automatically over RPC; a plain or `:priv` declaration is private to its server and never bridges. Mark '{name}' `:protect` or `:pub`, mark it (or its module) client, or move it into client code."
      ),
      E5085 = _err(
          "E5085",
@@ -2175,8 +2176,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5106 = _err(
          "E5106",
          Category.CODEGEN,
-         "App '{consumer}' bridges to '{name}', which is not a pub element of app '{provider}'",
-         help="An app's bridge surface is its walkers and its `def:pub` functions; everything else is private to the app's own server. Make '{name}' a walker or mark it `:pub` in app '{provider}' to expose it, or move it into shared code if both apps need it in-process.",
+         "App '{consumer}' bridges to '{name}', which is private to app '{provider}'",
+         help="An app's bridge surface is its exposed declarations: `def:protect` / `walker:protect` (authenticated) and `def:pub` / `walker:pub` (anonymous). Plain and `:priv` declarations are private to the app's own server. Mark '{name}' `:protect` or `:pub` in app '{provider}' to expose it, or move it into shared code if both apps need it in-process.",
          blocks_codegen=True
      ),
      E5089 = _err(
