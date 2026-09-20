@@ -1,0 +1,2 @@
+- **Fix: Native parent-relative imports**: Preserve leading-dot import levels when resolving native dependencies, so objects imported from parent modules retain their signature types. Explicit relative imports no longer select same-named sibling or bundled modules.
+- **Fix: Shared native region TLS state**: Preserve coalescing linkage for region-kernel globals so TLS accessors and initialization use the same key, avoiding crashes when allocating imported objects.

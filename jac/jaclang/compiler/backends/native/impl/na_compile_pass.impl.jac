@@ -1344,6 +1344,7 @@ impl NativeCompilePass._references_undefined_region_kernel(
 }
 
 impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
+    import from jaclang.compiler.backends.native.llvm.binding.value { Linkage }
     _gc = str(getattr(self.prog?.options, "na_gc_mode", "cycles") or "cycles");
     _enf = bool(getattr(self.prog?.options, "nogc_enforce_all", False))
         or bool(getattr(self.module.gen, "nogc_enforced", False));
@@ -1364,7 +1365,15 @@ impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
         kmod = llvm.parse_assembly(ir_str);
         kmod.verify();
         for _gv in _mod_globals(kmod) {
-            if not _gv.is_declaration {
+            if not _gv.is_declaration
+                and _gv.linkage
+                    not in (
+                        Linkage.weak_any,
+                        Linkage.weak_odr,
+                        Linkage.linkonce_any,
+                        Linkage.linkonce_odr,
+                        Linkage.common
+                    ) {
                 _gv.linkage = "internal";
             }
         }
