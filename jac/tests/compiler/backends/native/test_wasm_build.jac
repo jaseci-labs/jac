@@ -65,6 +65,20 @@ def fixture_ir -> str {
 }
 
 # ─── tests ───────────────────────────────────────────────────────────────────
+test "wasm links retain their target in a host application context" {
+    import from jaclang.compiler.driver.pipeline_runner { wasm_ir }
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    prog = JacProgram();
+    prog.options = CompileOptions(native_target="");
+    context_program(prog, prog.options);
+    for attempt in range(2) {
+        (llvm_ir, _) = wasm_ir(prog, os.path.join(FIXTURES, FIXTURE));
+        assert 'target triple = "wasm32-unknown-unknown"' in llvm_ir;
+        assert "pthread_key_create" not in llvm_ir;
+        assert "pthread_getspecific" not in llvm_ir;
+    }
+}
+
 test "libc folds in-module; the host surface is jac_host1 only" {
     _require_libc();
     mod = emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
