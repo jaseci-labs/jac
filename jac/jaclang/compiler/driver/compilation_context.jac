@@ -8,7 +8,10 @@ import from contextvars { ContextVar }
 import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { Module }
+import from jaclang.compiler.frontend.diagnostics { E0111 }
+import from jaclang.compiler.frontend.roles { Kid }
+import from jaclang.compiler.frontend.srcloc { Span }
+import from jaclang.compiler.frontend.unitree { Module, Source, UniNode }
 import from jaclang.compiler.passes.context { Alert }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
@@ -44,6 +47,29 @@ obj SourceUnit {
         warnings: list[Alert];
 }
 
+def _too_deeply_nested(span: Span) -> Alert {
+    return Alert(
+        E0111.format_message(), span, SourceStore, code=E0111, help_text=E0111.help_text
+    );
+}
+
+def _deepest_node(tree: UniNode) -> UniNode {
+    deepest = tree;
+    best = 0;
+    stack: list[tuple[UniNode, int]] = [(tree, 0)];
+    while stack {
+        (cur, depth) = stack.pop();
+        if depth > best {
+            best = depth;
+            deepest = cur;
+        }
+        for kid in [cur->:Kid:->] {
+            stack.append((kid, depth + 1));
+        }
+    }
+    return deepest;
+}
+
 obj SourceStore {
     has units: dict[str, SourceUnit] = {},
         revisions: dict[str, str] = {},
@@ -59,7 +85,13 @@ obj SourceStore {
         unit = self.units.get(key);
         if unit is None {
             diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
+            try {
+                (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
+            } except RecursionError {
+                start = Span.make(path, source, (1, 1), (0, 0), (0, 0));
+                program.errors_had.append(_too_deeply_nested(start));
+                return (Module.make_stub(path, Source(source, path)), True);
+            }
             unit = SourceUnit(
                 syntax,
                 failed,
@@ -76,7 +108,13 @@ obj SourceStore {
         } else {
             self.hits += 1;
         }
-        syntax = copy.deepcopy(unit.syntax);
+        try {
+            syntax = copy.deepcopy(unit.syntax);
+        } except RecursionError {
+            deepest = _deepest_node(unit.syntax);
+            program.errors_had.append(_too_deeply_nested(Span.from_loc(deepest.loc)));
+            return (Module.make_stub(path, Source(source, path)), True);
+        }
         assert isinstance(syntax, Module);
         program.errors_had.extend(unit.errors);
         program.warnings_had.extend(unit.warnings);

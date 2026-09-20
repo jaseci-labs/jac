@@ -150,7 +150,8 @@ import from jaclang.compiler.frontend.constant {
     ParamKind
 }
 
-glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
+glob MAX_NESTING: int = 200,
+     TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.INT: Tok.INT.value,
          TokenKind.HEX: Tok.HEX.value,
          TokenKind.BIN: Tok.BIN.value,
@@ -389,7 +390,9 @@ obj Parser {
         source: Source postinit,
         diags: list[SrcDiag] = [],
         _view_body_depth: int = 0,
-        _gen_test_idx: int = 0;
+        _gen_test_idx: int = 0,
+        _nest_depth: int = 0,
+        _too_deep: bool = False;
 
     def postinit;
     def current -> LexToken;
@@ -437,6 +440,8 @@ obj Parser {
     def parse -> Module;
     def parse_module -> Module;
     def parse_expression(allow_cast: bool = True) -> Expr;
+    def _nest_enter -> bool;
+    def _nest_bail -> Expr;
     def _check_js_arrow_fault -> bool;
     def _recover_js_arrow_fault(left: Expr) -> Expr;
     def _recover_removed_marker -> ElementStmt | EmptyToken | None;
