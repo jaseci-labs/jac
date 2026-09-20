@@ -16,7 +16,8 @@ import from tests.support { jac_command, NATIVE_FIXTURES }
 glob NONE_FIXTURE = os.path.join(
          NATIVE_FIXTURES, "print_none_and_unlowerable.jac"
      ),
-     DEMOTE_FIXTURE = os.path.join(NATIVE_FIXTURES, "print_unlowerable_arg.jac");
+     DEMOTE_FIXTURE = os.path.join(NATIVE_FIXTURES, "print_unlowerable_arg.jac"),
+     STREAM_FIXTURE: str = os.path.join(NATIVE_FIXTURES, "print_streams.jac");
 
 
 def _build_and_run(fixture: str, name: str) -> str {
@@ -52,4 +53,26 @@ test "an argument that cannot lower declines the lowering" {
     );
     assert ran.returncode == 0 , ran.stderr;
     assert "start\nb'HI'\nend\n" in ran.stdout , ran.stdout;
+}
+
+
+test "file= picks the stream instead of being dropped" {
+    # The argument loop used to skip a keyword it could not lower, so
+    # `file=sys.stderr` was ignored and its text went to stdout.
+    with tempfile.TemporaryDirectory() as tmp {
+        out_bin = os.path.join(tmp, "print_streams");
+        built = subprocess.run(
+            jac_command("build", "--native", STREAM_FIXTURE) + ["-o", out_bin],
+            capture_output=True,
+            text=True
+        );
+        assert built.returncode == 0 , built.stderr;
+        assert "demoting run_cases" not in built.stdout + built.stderr , (
+            "file=sys.stderr must lower natively, not demote"
+        );
+        ran = subprocess.run([out_bin], capture_output=True, text=True);
+        assert ran.returncode == 0 , ran.stderr;
+        assert ran.stdout == "out one\nout two\n" , ran.stdout;
+        assert ran.stderr == "err one\nerr two 42\n" , ran.stderr;
+    }
 }
