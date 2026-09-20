@@ -362,6 +362,7 @@ impl NaIRGenPass._codegen_closure_call(
     } else {
         result = self.builder.call(fn_ptr, coerced + [env], name="ccall");
     }
+    self._emit_pending_error_check();
     for a in raw_args {
         if isinstance(a.type, ir.PointerType) and self._is_owned(a) {
             self._emit_rc_release_simple(a, op="ccall_arg", loc="");

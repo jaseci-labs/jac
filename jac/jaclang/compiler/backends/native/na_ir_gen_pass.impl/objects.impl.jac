@@ -2667,6 +2667,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                     }
                 }
                 _r = self.builder.call(_fnp, _cargs, name=f"icall.{method_name}");
+                if not _is_clib {
+                    self._emit_pending_error_check();
+                }
                 if isinstance(_fn_ty.return_type, ir.VoidType) {
                     return None;
                 }

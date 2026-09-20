@@ -34,3 +34,25 @@ def check -> bool {
     }
     return False;
 }
+
+def fail -> int {
+    held = Resource();
+    raise ValueError("callback failure");
+}
+
+def invoke_callback(callback: Callable[[], int]) -> int {
+    result = callback();
+    continued += 1;
+    return result;
+}
+
+def callback_check -> bool {
+    dropped = 0;
+    continued = 0;
+    try {
+        invoke_callback(fail);
+    } except ValueError {
+        return dropped == 1 and continued == 0;
+    }
+    return False;
+}
