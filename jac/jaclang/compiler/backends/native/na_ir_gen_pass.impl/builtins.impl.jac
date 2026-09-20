@@ -1,20 +1,93 @@
 impl NaIRGenPass._get_or_declare_extern(
     name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
 ) -> ir.Function {
-    if name in self.extern_funcs {
-        return self.extern_funcs[name];
-    }
-
-    for gv in self.llvm_module.global_values {
-        if isinstance(gv, ir.Function) and gv.name == name {
-            self.extern_funcs[name] = gv;
-            return gv;
+    wanted = ir.FunctionType(ret_type, arg_types, var_arg=var_arg);
+    existing: (ir.Function | None) = self.extern_funcs.get(name);
+    if existing is None {
+        for gv in self.llvm_module.global_values {
+            if isinstance(gv, ir.Function) and gv.name == name {
+                existing = gv;
+                break;
+            }
         }
     }
-    fnty = ir.FunctionType(ret_type, arg_types, var_arg=var_arg);
-    func = ir.Function(self.llvm_module, fnty, name=name);
-    self.extern_funcs[name] = func;
-    return func;
+    if existing is None {
+        existing = ir.Function(self.llvm_module, wanted, name=name);
+    }
+    self.extern_funcs[name] = existing;
+    actual = existing.function_type;
+    if actual == wanted {
+        return existing;
+    }
+    key = name + ":" + str(wanted);
+    if key in self.extern_funcs {
+        return self.extern_funcs[key];
+    }
+    if actual.var_arg or var_arg or len(actual.args) != len(arg_types) {
+        raise ValueError(
+            f"Incompatible native extern declaration for {name}: {actual} versus {wanted}"
+        );
+    }
+    pairs = list(zip(arg_types, actual.args));
+    pairs.append((actual.return_type, ret_type));
+    for (source, target) in pairs {
+        if source == target {
+            continue;
+        }
+        pointer_pair = isinstance(source, ir.PointerType)
+            and isinstance(target, ir.PointerType)
+            and source.addrspace == target.addrspace;
+        address_pair = (
+            isinstance(source, ir.PointerType)
+            and source.addrspace == 0
+            and target == ir.IntType(64)
+        )
+            or (
+                source == ir.IntType(64)
+                and isinstance(target, ir.PointerType)
+                and target.addrspace == 0
+            );
+        if not pointer_pair and not address_pair {
+            raise ValueError(
+                f"Incompatible native extern declaration for {name}: {actual} versus {wanted}"
+            );
+        }
+    }
+    adapter = ir.Function(
+        self.llvm_module,
+        wanted,
+        name=self.llvm_module.scope.deduplicate(name + ".jac_abi")
+    );
+    adapter.linkage = "internal";
+    adapter.attributes.add("alwaysinline");
+    builder = ir.IRBuilder(adapter.append_basic_block("entry"));
+    converted: list[ir.Value] = [];
+    for (value, target) in zip(adapter.args, actual.args) {
+        converted.append(self._extern_address_cast(builder, value, target));
+    }
+    result = builder.call(existing, converted);
+    if isinstance(ret_type, ir.VoidType) {
+        builder.ret_void();
+    } else {
+        builder.ret(self._extern_address_cast(builder, result, ret_type));
+    }
+    self.extern_funcs[key] = adapter;
+    return adapter;
+}
+
+impl NaIRGenPass._extern_address_cast(
+    builder: ir.IRBuilder, value: ir.Value, target: ir.Type
+) -> ir.Value {
+    if value.type == target {
+        return value;
+    }
+    if isinstance(value.type, ir.PointerType) and isinstance(target, ir.IntType) {
+        return builder.ptrtoint(value, target);
+    }
+    if isinstance(value.type, ir.IntType) and isinstance(target, ir.PointerType) {
+        return builder.inttoptr(value, target);
+    }
+    return builder.bitcast(value, target);
 }
 
 impl NaIRGenPass._get_printf -> ir.Function {

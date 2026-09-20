@@ -492,6 +492,10 @@ walker NaIRGenPass {
         name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
     ) -> ir.Function;
 
+    def _extern_address_cast(
+        builder: ir.IRBuilder, value: ir.Value, target: ir.Type
+    ) -> ir.Value;
+
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
