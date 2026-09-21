@@ -793,7 +793,7 @@ test "run snippet prints hello" {
     result = CompilerBridge.run_snippet("with entry { print(\"hello\"); }");
     assert "stdout" in result;
     assert "exit_code" in result;
-    assert result["exit_code"] == 0;
+    assert result["exit_code"] == 0 , result;
     assert "hello" in result["stdout"];
 }
 
@@ -981,7 +981,7 @@ test "run jac prints output" {
     );
     assert "stdout" in result;
     assert "exit_code" in result;
-    assert result["exit_code"] == 0;
+    assert result["exit_code"] == 0 , result;
     assert "hello world" in result["stdout"];
 }
 
