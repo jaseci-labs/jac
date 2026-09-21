@@ -104,7 +104,9 @@ def exercise(shared: bool, evolve: bool = False) {
                 store=PgStore(conninfo=connection, auto_schema=True),
                 target_path=applications[0].entry
             );
+            import from uuid { UUID }
             root_anchor = Root().__jac__;
+            root_anchor.id = UUID("00000000-0000-0000-0000-000000000000");
             root_anchor.persistent = True;
             instance.__jac__.persistent = True;
             edge_anchor = EdgeAnchor(

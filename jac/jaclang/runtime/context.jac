@@ -39,7 +39,9 @@ obj ExecutionContext {
     ) -> ExecutionContext {
         import from jaclang.runtime.prepared { application_of }
         application = application_of(target);
-        if application is None or application.entry == parent.full_target_path {
+        if application is None
+            or not parent.full_target_path
+            or application.entry == parent.full_target_path {
             context = ExecutionContext(_parent=parent);
         } else {
             context = ExecutionContext(

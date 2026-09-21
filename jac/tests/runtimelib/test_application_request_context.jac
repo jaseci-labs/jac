@@ -72,3 +72,21 @@ test "closing an async stream before its first item releases the provider sessio
         close.assert_called_once();
     }
 }
+
+
+test "an unbound embedding context retains its supplied session" {
+    import from jaclang.runtime.prepared { PreparedApplication }
+    parent = ExecutionContext(base_path_dir='', full_target_path='');
+    root_id = str(parent.user_root.ensure_id());
+    application = PreparedApplication('/application', '/application/service.jac');
+    with patch('jaclang.runtime.prepared.application_of', return_value=application), patch.object(
+        parent.mem, 'new_session'
+    ) as new_session {
+        child = asyncio.run(ExecutionContext.for_target(object(), parent, root_id));
+        assert child.mem is parent.mem;
+        assert child.user_root is parent.user_root;
+        new_session.assert_not_called();
+        child.close();
+        assert parent.mem.get(parent.user_root.ensure_id()) is parent.user_root;
+    }
+}
