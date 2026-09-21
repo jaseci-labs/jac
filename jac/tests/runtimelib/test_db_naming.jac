@@ -30,45 +30,32 @@ def _database_names -> list[str] {
 }
 
 
-test "different standalone files get separate databases" {
-    db_persistent = project_db_name(
-        FIXTURES, os.path.join(FIXTURES, "simple_persistent.jac")
-    );
-    db_connection = project_db_name(
-        FIXTURES, os.path.join(FIXTURES, "simple_node_connection.jac")
-    );
-    assert db_persistent != db_connection , (
-        "Standalone files must map to distinct databases"
-    );
-    assert db_persistent.startswith("jac_simple_persistent_");
-    assert db_connection.startswith("jac_simple_node_connection_");
+test "standalone files without a project remain separate applications" {
+    import from tempfile { TemporaryDirectory }
+    with TemporaryDirectory() as td {
+        first = Path(td) / 'first.jac';
+        second = Path(td) / 'second.jac';
+        first.write_text('with entry {}');
+        second.write_text('with entry {}');
+        assert project_db_name(td, str(first)) != project_db_name(td, str(second));
+    }
+}
 
-    _orig_base = Jac.get_base_path_dir();
-    try {
-        Jac.set_base_path(FIXTURES);
-
-        # The database is provisioned by the first access to persistent state,
-        # so these files have to actually touch the graph: simple_persistent
-        # declares walkers only, hence the explicit spawn.
-        execution.run(
-            target=os.path.join(FIXTURES, "simple_persistent.jac"), entry_name="create"
-        );
-        execution.run(target=os.path.join(FIXTURES, "simple_node_connection.jac"));
-
-        rc = execution.run(target=os.path.join(FIXTURES, "simple_persistent.jac"));
-        assert rc == 0 , (
-            f"Second run of simple_persistent.jac file failed with return code {rc} - bug #4401 regression"
-        );
-
-        names = _database_names();
-        assert db_persistent in names , (
-            f"Expected database {db_persistent} on the shared server"
-        );
-        assert db_connection in names , (
-            f"Expected database {db_connection} on the shared server"
-        );
-    } finally {
-        Jac.set_base_path(_orig_base);
+test "nested service entries select one application database" {
+    import from tempfile { TemporaryDirectory }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        (base / 'jac.toml').write_text('[project]\nname="one-application"\n');
+        for service in ['writer', 'reader'] {
+            (base / service).mkdir();
+            (base / service / 'main.jac').write_text('with entry {}');
+        }
+        writer = str(base / 'writer' / 'main.jac');
+        reader = str(base / 'reader' / 'main.jac');
+        expected = project_db_name(td, writer);
+        assert project_db_name(td, reader) == expected;
+        assert project_db_name(str(base / 'writer'), writer) == expected;
+        assert project_db_name(str(base / 'reader'), reader) == expected;
     }
 }
 

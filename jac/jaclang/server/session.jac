@@ -136,6 +136,19 @@ obj Session(Memory) {
         _version_seen: dict[UUID, int] postinit,
         _foreign_refs: set[UUID] postinit;
 
+    override def new_session(target_path: str) -> Session {
+        if self.store is None {
+            raise RuntimeError(
+                'Cannot create a provider session without a bound store'
+            );
+        }
+        return Session(
+            store=self.store.new_session(),
+            base_path=self.base_path,
+            target_path=target_path
+        );
+    }
+
     override def preserve_unresolved_ref(id: UUID) -> bool {
         return id in self._foreign_refs;
     }

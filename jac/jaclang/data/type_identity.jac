@@ -26,7 +26,7 @@ glob _scope: ContextVar[ResolutionScope | None] = ContextVar(
      _lock: threading.RLock = threading.RLock();
 
 def module_identity(facts: tuple[str, ...]) -> str {
-    return 'jac:' + json.dumps([facts[0], facts[2], facts[3]], separators=(',', ':'));
+    return 'jac:' + json.dumps(list(facts), separators=(',', ':'));
 }
 
 def class_facts(cls: type) -> tuple[str, ...] {
@@ -38,7 +38,7 @@ def class_facts(cls: type) -> tuple[str, ...] {
         return ();
     }
     if isinstance(facts, tuple)
-        and len(facts) == 5
+        and len(facts) == 2
         and all(isinstance(x, str) for x in facts) {
         return facts;
     }
@@ -84,14 +84,14 @@ def resolve_type(module_name: str, name: str) -> type {
     scope = _scope.get();
     application = scope.application if scope is not None else None;
     if application is not None and module_name not in application.persistence_modules {
-        domain = identity_domain(module_name);
-        if domain in application.persistence_domains {
+        namespace = identity_namespace(module_name);
+        if namespace in application.persistence_namespaces {
             raise UnavailableType(
                 f'Persistent schema module {module_name} is missing from the active application'
             );
         }
         raise ForeignType(
-            f'Persistent type {key} is outside the active app persistence domains'
+            f'Persistent type {key} is outside the active application namespace'
         );
     }
     with _lock {
@@ -148,7 +148,7 @@ def resolution_required -> bool {
 }
 
 
-def identity_domain(module_name: str) -> str {
+def identity_namespace(module_name: str) -> str {
     try {
         parts = json.loads(module_name[4:]);
     } except ValueError {
@@ -157,25 +157,25 @@ def identity_domain(module_name: str) -> str {
         );
     }
     if not isinstance(parts, list)
-        or len(parts) != 3
+        or len(parts) != 2
         or not all(isinstance(p, str) and p for p in parts) {
         raise TypeResolutionError(
             f'Malformed persistent module identity: {module_name}'
         );
     }
-    return json.dumps(parts[:2], separators=(',', ':'));
+    return str(parts[0]);
 }
 
 def index_application(application: PreparedApplication) {
     modules: dict[str, str] = {};
-    domains: set[str] = set();
+    namespaces: set[str] = set();
     for (source, metadata) in application.manifests.items() {
         facts = metadata.get('persistence', ());
         if not facts {
             continue;
         }
         if not isinstance(facts, (tuple, list))
-            or len(facts) != 5
+            or len(facts) != 2
             or not all(isinstance(p, str) and p for p in facts) {
             raise TypeResolutionError(
                 f'Invalid compiled persistence metadata for {source}; rebuild the application'
@@ -188,8 +188,8 @@ def index_application(application: PreparedApplication) {
             );
         }
         modules[identity] = source;
-        domains.add(identity_domain(identity));
+        namespaces.add(identity_namespace(identity));
     }
     application.persistence_modules = modules;
-    application.persistence_domains = domains;
+    application.persistence_namespaces = namespaces;
 }

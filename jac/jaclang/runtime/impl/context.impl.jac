@@ -10,9 +10,11 @@ import from jaclang.runtime.memory { Memory }
 impl ExecutionContext.postinit -> None {
     import from jaclang.runtime.runtime { JacRuntime }
     if self._parent is not None {
-        self.mem = self._parent.mem;
         self.base_path_dir = self._parent.base_path_dir;
-        self.full_target_path = self._parent.full_target_path;
+        self.full_target_path = self.full_target_path or self._parent.full_target_path;
+        self.mem = self._parent.mem.new_session(self.full_target_path or '')
+            if self._own_session
+            else self._parent.mem;
         return;
     }
 
@@ -52,7 +54,7 @@ impl ExecutionContext._resolve_roots -> None {
         return;
     }
     outer = self._parent;
-    if outer is not None {
+    if outer is not None and self.mem is outer.mem {
         self._system_root = outer.system_root;
         self._user_root = outer.user_root;
         self._entry_node = outer.entry_node;
@@ -100,7 +102,7 @@ impl ExecutionContext.set_entry_node(entry_node: (str | None)) -> None {
 }
 
 impl ExecutionContext.close -> None {
-    if self._parent is not None {
+    if self._parent is not None and self.mem is self._parent.mem {
         return;
     }
 

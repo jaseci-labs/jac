@@ -31,6 +31,10 @@ obj Memory {
         self._on_commit = [];
     }
 
+    def new_session(target_path: str) -> Memory {
+        return self;
+    }
+
     def is_available -> bool {
         return True;
     }

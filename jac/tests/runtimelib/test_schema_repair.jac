@@ -11,6 +11,7 @@ test_persistence_migration.jac (fingerprints).
 import os;
 import from jaclang.runtime.archetype { NodeAnchor, Root }
 import from jaclang.data.serializer { Serializer }
+import from jaclang.data.type_identity { type_module }
 import from jaclang.data.schema_rules {
     SchemaRules,
     merged_rules_for,
@@ -92,7 +93,7 @@ test "rules are collected from __jac_schema__ at class registration" {
 
 
 test "schema_was registers a class alias to the defining class" {
-    mod = getattr(_DriftUser, '__module__');
+    mod = type_module(_DriftUser);
     assert Serializer._aliases.get("oldapp.models._DriftOldUser")
         == f"{mod}._DriftUser" , (f"was-alias not registered: {Serializer._aliases}");
 }
@@ -103,7 +104,7 @@ test "field rules are inherited by subclasses; was-rules are definer-only" {
     assert rules is not None , "subclass did not inherit field rules";
     assert any(a.new_name == 'name' for a in rules.aliases);
     # The was-alias must still point at the definer, not the subclass.
-    mod = getattr(_DriftUser, '__module__');
+    mod = type_module(_DriftUser);
     assert Serializer._aliases.get("oldapp.models._DriftOldUser")
         == f"{mod}._DriftUser";
 }

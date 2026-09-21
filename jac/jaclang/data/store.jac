@@ -84,6 +84,7 @@ obj ChannelMessage {
 
 
 obj Store {
+    def new_session -> Store abst;
     def is_available -> bool abst;
     def server_version -> int abst;
     def ensure_schema(promotions: dict[str, list[str]]) -> None abst;
@@ -121,6 +122,15 @@ obj Store {
 
 
 obj PgStore(Store) {
+    override def new_session -> PgStore {
+        return PgStore(
+            conninfo=self.conninfo,
+            ensure_cb=self.ensure_cb,
+            promotions=dict(self.promotions),
+            auto_schema=self.auto_schema
+        );
+    }
+
     has conninfo: ConnInfo,
         ensure_cb: (any | None) = None,
         promotions: dict[str, list[str]] = {},

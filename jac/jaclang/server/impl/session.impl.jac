@@ -53,9 +53,21 @@ impl shared_pg_data_dir -> str {
 impl project_db_name(base_path: str, target_path: (str | None)) -> str {
     import hashlib;
     import from jaclang.runtime.graph_utils { get_name }
-    name = get_name(target_path=target_path) or 'main';
+    import from jaclang.project.workspace { workspace_for_path }
+    workspace = workspace_for_path(target_path or base_path);
+    database_root = os.path.realpath(base_path);
+    if workspace is not None {
+        project_root = os.path.realpath(workspace.project_root);
+        if database_root == project_root
+            or database_root.startswith(project_root + os.sep) {
+            database_root = project_root;
+        }
+        name = workspace.persistence.namespace;
+    } else {
+        name = get_name(target_path=target_path) or 'main';
+    }
     safe = ''.join((ch if (ch.isalnum() or ch == '_') else '_') for ch in name.lower());
-    digest = hashlib.sha1(os.path.realpath(base_path).encode('utf-8')).hexdigest()[:8];
+    digest = hashlib.sha1(database_root.encode('utf-8')).hexdigest()[:8];
     return f"jac_{safe[:40]}_{digest}";
 }
 

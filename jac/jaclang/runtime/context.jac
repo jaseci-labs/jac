@@ -28,6 +28,7 @@ obj ExecutionContext {
         base_path_dir: (str | None) = None,
         full_target_path: (str | None) = None,
         _parent: (ExecutionContext | None) = None,
+        _own_session: bool = False,
         _system_root: (NodeAnchor | None) = None,
         _user_root: (NodeAnchor | None) = None,
         _entry_node: (NodeAnchor | None) = None;
@@ -37,15 +38,12 @@ obj ExecutionContext {
         target: object, parent: ExecutionContext, user_root_id: str
     ) -> ExecutionContext {
         import from jaclang.runtime.prepared { application_of }
-        import from jaclang.runtime.runtime { JacRuntime }
         application = application_of(target);
         if application is None or application.entry == parent.full_target_path {
             context = ExecutionContext(_parent=parent);
         } else {
-            context = JacRuntime.create_j_context(
-                user_root=None,
-                base_path_dir=application.root,
-                full_target_path=application.entry
+            context = ExecutionContext(
+                _parent=parent, _own_session=True, full_target_path=application.entry
             );
         }
         try {

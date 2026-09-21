@@ -1374,7 +1374,7 @@ impl _parse_toml_data(
     }
     import from jaclang.project.persistence { parse_persistence }
     config.persistence = parse_persistence(
-        data.get("persistence", {}), config.project.name, list(config.apps)
+        data.get("persistence", {}), config.project.name
     );
     return config;
 }

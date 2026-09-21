@@ -2125,13 +2125,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Constructing '{cls}' would run '{owner}.postinit' on a Python shadow the native object cannot see",
          help="A native class over a Python-side base owns two halves: its own slots live in the native struct, the base's live on a Python shadow instance the bridge keeps beside it. Construction runs the base's `__post_init__` on that shadow, where the subclass's native slots do not exist and its method overrides are not on the shadow's class -- so a store the base initializer makes is invisible natively, and a call it dispatches reaches the base's body rather than the override. The object comes out with its declared defaults and nothing says so. Give '{cls}' a `postinit` of its own -- it suppresses the base's and can chain into it with `super.postinit()`, which does bridge -- or bring the base into the native unit so the whole chain lowers."
      ),
-     E5113 = _err(
-         "E5113",
-         Category.CODEGEN,
-         "Invalid persistence domain access: {details}",
-         help="Declare the app as a participant in the persistence domain, or call the owning app's public operations instead of importing its persistent model.",
-         blocks_codegen=True
-     ),
      E5112 = _err(
          "E5112",
          Category.CODEGEN,

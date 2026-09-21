@@ -1023,10 +1023,8 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
         app = ws.apps.get(opts.target_app);
     }
     mod.app = app.name if app is not None else None;
-    mod.persistence = list(
-        ws.persistence.module_facts(ws.module_dot_path(mod_path), app.name)
-    )
-        if ws is not None and app is not None
+    mod.persistence = list(ws.persistence.module_facts(ws.module_dot_path(mod_path)))
+        if ws is not None
         else [];
     if ws is None {
         import os;
@@ -1038,13 +1036,7 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
             os.path.realpath(source_root) + os.sep
         ) {
             implicit = base_stem(entry_path);
-            mod.persistence = [
-                implicit,
-                implicit,
-                'app:' + implicit,
-                module_dot_path(mod_path, source_root),
-                implicit
-            ];
+            mod.persistence = [implicit, module_dot_path(mod_path, source_root)];
         }
     }
     mod.app_root = ws.project_root if (app is not None and ws is not None) else None;

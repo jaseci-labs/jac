@@ -7,7 +7,7 @@ import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
 import type from jaclang.compiler.frontend { unitree as uni }
-glob _FORMAT: int = 6,
+glob _FORMAT: int = 7,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {

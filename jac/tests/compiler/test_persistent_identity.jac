@@ -33,17 +33,19 @@ def exercise(shared: bool, evolve: bool = False) {
             '[project]\nname="identity-test"\ndefault-app="writer"\n'
                 + '[apps.writer]\nkind="service"\nentry-point="writer"\n'
                 + '[apps.reader]\nkind="service"\nentry-point="reader"\n'
-                + (
-                    '[persistence.domains.records]\nowner="writer"\n'
-                        + 'apps=["writer", "reader"]\nmodules=["shared.models"]\n'
-                        if shared
-                        else ''
-                )
         );
         applications: list[PreparedApplication] = [];
         modules: list[any] = [];
         try {
             for name in ['writer', 'reader'] {
+                if not shared and name == 'reader' {
+                    manifest = base / 'jac.toml';
+                    manifest.write_text(
+                        manifest.read_text().replace(
+                            'identity-test', 'other-application'
+                        )
+                    );
+                }
                 path = base / (name + '.jac');
                 path.write_text('import from shared.models { Thing, values }\n');
                 app = prepare_application(str(path), JacProgram(), td);
@@ -119,9 +121,20 @@ def exercise(shared: bool, evolve: bool = False) {
             }
             root_id = root_anchor.ensure_id();
             writing.commit();
-            writing.close();
-            reader_store = PgStore(conninfo=connection, auto_schema=True);
-            reading = Session(store=reader_store, target_path=applications[1].entry);
+            import asyncio;
+            import from jaclang.runtime.context { ExecutionContext }
+            parent = ExecutionContext(
+                base_path_dir='', full_target_path=applications[0].entry
+            );
+            parent.mem = writing;
+            provider = asyncio.run(
+                ExecutionContext.for_target(reader.Thing, parent, str(root_id))
+            );
+            reading = cast(Session, provider.mem);
+            reader_store = cast(PgStore, reading.store);
+            assert reading is not writing;
+            assert reader_store.conninfo.database == connection.database;
+            assert provider.user_root.ensure_id() == root_id;
             try {
                 loaded_root: any = reading.get(root_id);
                 assert loaded_root is not None;
@@ -157,7 +170,8 @@ def exercise(shared: bool, evolve: bool = False) {
                 assert reader_store.rows('SELECT count(*) FROM quarantine', {})[0][0]
                     == 0;
             } finally {
-                reading.close();
+                provider.close();
+                writing.close();
             }
 
             if shared {
@@ -199,11 +213,11 @@ def exercise(shared: bool, evolve: bool = False) {
     }
 }
 
-test "declared shared types materialize as the consuming app class" {
+test "services automatically share stored types and the application database" {
     exercise(True);
 }
 
-test "foreign app-owned types neither quarantine nor heal-prune" {
+test "unrelated application types neither quarantine nor heal-prune" {
     exercise(False);
 }
 
@@ -254,8 +268,6 @@ test "durable identity survives a different app process and checkout location" {
                 '[project]\nname="portable"\ndefault-app="writer"\n'
                     + '[apps.writer]\nkind="service"\nentry-point="writer"\n'
                     + '[apps.reader]\nkind="service"\nentry-point="reader"\n'
-                    + '[persistence.domains.records]\nowner="writer"\n'
-                    + 'apps=["writer", "reader"]\nmodules=["shared.models"]\n'
             );
             (project / 'shared' / 'models.jac').write_text(
                 'node Thing { has v: str = ""; }'

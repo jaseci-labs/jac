@@ -131,7 +131,7 @@ test "traversal skips an edge whose target node was deleted (ghost endpoint)" {
                 SELECT id FROM anchors
                 WHERE kind = 'NodeAnchor' AND arch_type = :type LIMIT 1
                 """,
-                {'type': 'jac:["ghost_endpoint","app:ghost_endpoint","app"].Thing'}
+                {'type': 'jac:["ghost_endpoint","app"].Thing'}
             )[0][0]
         );
         st.rows("DELETE FROM anchors WHERE id = CAST(:i AS uuid)", {'i': ghost});

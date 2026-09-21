@@ -13,7 +13,7 @@ obj PreparedApplication {
         semantic: dict[str, dict[str, Info]] = {},
         origins: dict[str, str] = {},
         persistence_modules: dict[str, str] = {},
-        persistence_domains: set[str] = set(),
+        persistence_namespaces: set[str] = set(),
         name: str = '',
         namespace: str = '',
         scope_imports: bool = True,
