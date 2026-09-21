@@ -247,11 +247,19 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
             path = base / f'{package_name}.jac';
             package_init = base / '__init__.jac';
             package_init.write_text('');
-            path.write_text("def:pub hello -> str { return 'sealed'; }\n");
+            path.write_text(
+                "def:pub hello -> str { return 'sealed'; }\nnode Record { has value: str = 'stored'; }\n"
+            );
             try {
                 source_program = JacProgram();
                 first = prepare_application(
                     str(path), source_program, tmp, services=[str(package_init)]
+                );
+                import from jaclang.data.serializer { Serializer }
+                import from jaclang.data.type_identity { resolution_scope }
+                source_module: any = initialize_application(first);
+                payload: any = Serializer.serialize(
+                    source_module.Record().__jac__, include_type=True
                 );
                 import from jaclang.compiler.driver.compilation_context {
                     artifact_cache_path
@@ -327,6 +335,11 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 assert module.__name__.endswith('.' + package_name);
                 assert sys.modules['site'] is site_before;
                 assert module.hello() == 'sealed';
+                with resolution_scope(prepared) {
+                    restored: any = Serializer.deserialize(payload);
+                    assert isinstance(restored.archetype, module.Record);
+                    assert restored.archetype.value == 'stored';
+                }
                 assert sealed.image_for_bundle_dir(bundle) is not None;
                 assert prepared.client_compiler is None;
                 assert client_dist_for(str(path)) == dist;

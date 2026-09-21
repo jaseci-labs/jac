@@ -92,6 +92,61 @@ def exercise(shared: bool, evolve: bool = False) {
                 assert got is not None;
                 assert isinstance(got.archetype, reader.Thing);
                 assert got.archetype.v == 'hello';
+                # Both application sessions use the same physical store, but each
+                # must hydrate its own class, including SQL type-filtered reads.
+                import from jaclang.server.session { runtime_for_base }
+                import from jaclang.data.store { PgStore }
+                import from jaclang.runtime.archetype { Root, EdgeAnchor, GenericEdge }
+                import from jaclang.runtime.graph_query { GraphQuery, QHop }
+                import from jaclang.data.query_planner { resolve_query }
+                runtime = runtime_for_base(td, applications[0].entry).runtime;
+                connection = runtime.ensure();
+                writing = Session(
+                    store=PgStore(conninfo=connection, auto_schema=True),
+                    target_path=applications[0].entry
+                );
+                root_anchor = Root().__jac__;
+                root_anchor.persistent = True;
+                instance.__jac__.persistent = True;
+                edge_anchor = EdgeAnchor(
+                    archetype=cast(any, GenericEdge()),
+                    source=root_anchor,
+                    target=instance.__jac__,
+                    is_undirected=False
+                );
+                edge_anchor.persistent = True;
+                root_anchor.edges.append(edge_anchor);
+                instance.__jac__.edges.append(edge_anchor);
+                for anchor in [root_anchor, instance.__jac__, edge_anchor] {
+                    writing.put(anchor);
+                }
+                root_id = root_anchor.ensure_id();
+                writing.commit();
+                writing.close();
+                reader_store = PgStore(conninfo=connection, auto_schema=True);
+                reading = Session(
+                    store=reader_store, target_path=applications[1].entry
+                );
+                try {
+                    loaded_root: any = reading.get(root_id);
+                    assert loaded_root is not None;
+                    found = resolve_query(
+                        reading,
+                        GraphQuery(
+                            loaded_root.archetype, hops=[QHop(dir=2, nd=reader.Thing)]
+                        )
+                    );
+                    assert len(found) == 1;
+                    assert isinstance(found[0], reader.Thing);
+                    assert found[0].v == 'hello';
+                    assert reader_store.rows('SELECT count(*) FROM quarantine', {})[0][
+                        0
+                    ]
+                        == 0;
+                } finally {
+                    reading.close();
+                }
+
                 if evolve {
                     assert got.archetype.generation == 2;
                 }

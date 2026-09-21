@@ -117,7 +117,7 @@ def containing_application(
 }
 
 def load_prepared_module(
-    path: str, application: PreparedApplication | None = None
+    path: str, application: PreparedApplication | None = None, as_main: bool = False
 ) -> types.ModuleType {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.sealed { image_for_bundle_dir }
@@ -140,7 +140,12 @@ def load_prepared_module(
     if application is not None {
         image = image_for_bundle_dir(Path(application.root) / '_precompiled');
         if image is None {
-            return import_prepared(path, application);
+            if not as_main {
+                return import_prepared(path, application);
+            }
+            ensure_namespace(application);
+            target = qualified_module(path, application);
+            base = application.root;
         }
         if image is not None {
             relative = Path(path).relative_to(application.root).as_posix();
@@ -165,9 +170,17 @@ def load_prepared_module(
             }
         }
     }
-    modules = Jac.jac_import(target=target, base_path=base, lng='jac');
+    modules = Jac.jac_import(
+        target=target,
+        base_path=base,
+        lng='jac',
+        override_name='__main__' if as_main else None
+    );
     if not modules {
         raise RuntimeError(f'Prepared module did not initialize: {path}');
+    }
+    if as_main {
+        sys.modules[target] = modules[0];
     }
     return modules[0];
 }
@@ -342,6 +355,10 @@ def execute_module(module: types.ModuleType, application: PreparedApplication) {
         raise ImportError(f'Prepared module {module.__name__} has no source path');
     }
     source = os.path.realpath(filename);
+    if module.__name__ == '__main__' {
+        import sys;
+        sys.modules[qualified_module(source, application)] = module;
+    }
     code = application.code.get(source);
     if code is None {
         raise ImportError(f'No prepared executable artifact for {source}');

@@ -191,7 +191,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                 }
             }
         }
-        wrapped = stream();
+        wrapped: Generator[any, None, None] = stream();
         next(wrapped);
         return wrapped;
     }
@@ -226,7 +226,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                 }
             }
         }
-        wrapped_async = astream();
+        wrapped_async: AsyncGenerator[any, None] = astream();
         await wrapped_async.__anext__();
         return wrapped_async;
     }

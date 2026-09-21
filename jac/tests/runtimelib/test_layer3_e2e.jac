@@ -1,6 +1,6 @@
 """Layer 3 end-to-end tests: archetype rename via alias, plus type-change drift.
 
-Each test writes a v1 .jac file, runs `jac enter` to persist data, then
+Each test writes a v1 .jac file, runs `jac run --entry` to persist data, then
 rewrites the file to a v2 that either (a) renames the archetype class but
 keeps an alias to the old name, or (b) changes a field's declared type and
 relies on the coercion table to load the stored value correctly.
@@ -11,6 +11,7 @@ with a fresh class registry.
 """
 
 import from tests.support { jac_command }
+import from jaclang.data.store { PgStore }
 
 import os;
 import subprocess;
@@ -18,7 +19,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
 
-"""Run `jac enter <file> <entrypoint>` and return (rc, stdout, stderr)."""
+"""Run `jac run --entry <file> <entrypoint>` and return (rc, stdout, stderr)."""
 def _jac_enter(cwd: str, app_path: str, entrypoint: str) -> tuple[any, ...] {
     result = subprocess.run(
         jac_command("run", "--entry", entrypoint, app_path),
@@ -41,6 +42,30 @@ def _seed_dev_source(tmpdir: str, name: str) {
 }
 
 
+def _project_store(tmpdir: str) -> PgStore {
+    import hashlib;
+    import from jaclang.data.pgembed { PgRuntime }
+    import from jaclang.server.session { shared_pg_data_dir }
+    import from jaclang.data.store { PgStore, TxnIsolation }
+    digest = hashlib.sha1(os.path.realpath(tmpdir).encode('utf-8')).hexdigest()[:8];
+    admin_rt = PgRuntime(data_dir=shared_pg_data_dir(), database='postgres');
+    admin = PgStore(conninfo=admin_rt.ensure());
+    admin.begin(TxnIsolation.READ_COMMITTED);
+    names = [
+        str(r[0])
+        for r in admin.rows(
+            "SELECT datname FROM pg_database WHERE datname LIKE :p",
+            {'p': f"%_{digest}"}
+        )
+    ];
+    admin.commit();
+    admin.close();
+    assert names , f"no project database found for digest {digest}";
+    rt = PgRuntime(data_dir=shared_pg_data_dir(), database=names[0]);
+    st = PgStore(conninfo=rt.ensure());
+    return st;
+}
+
 # --- Alias: class rename ----------------------------------------------------
 glob V1_RENAME = "node LegacyPerson {\n"
      "    has name: str;\n"
@@ -54,7 +79,7 @@ glob V1_RENAME = "node LegacyPerson {\n"
      # v2: renames LegacyPerson -> Person, declares an alias so old
      # stored anchors resolve instead of quarantining. `archetype_alias`
      # is an ambient Jac builtin; no import needed.
-     V2_RENAME_WITH_ALIAS = "@archetype_alias(\"__main__.LegacyPerson\")\n"
+     V2_RENAME_WITH_ALIAS = "@archetype_alias(\"jac:[\\\"layer3\\\",\\\"app:layer3\\\",\\\"app\\\"].LegacyPerson\")\n"
      "node Person {\n"
      "    has name: str;\n"
      "}\n"
@@ -63,7 +88,7 @@ glob V1_RENAME = "node LegacyPerson {\n"
      "    can p with Person entry { print(f\"renamed:{here.name}\"); }\n"
      "}\n",
      # v2_no_alias: same rename but WITHOUT an alias — stored anchors
-     # should fall through to quarantine, and the dump walker finds nothing.
+     # must fail explicitly while leaving stored rows and references intact.
      V2_RENAME_WITHOUT_ALIAS = "node Person {\n"
      "    has name: str;\n"
      "}\n"
@@ -86,20 +111,14 @@ test "archetype_alias resolves a renamed class back to the new class" {
         assert rc == 0 , f"v2 dump failed: {err}";
         assert "renamed:alice" in out , f"alice lost on rename: {out}";
         assert "renamed:bob" in out , f"bob lost on rename: {out}";
-        # No row should have been quarantined — the alias covers the rename.
-        import sqlite3;
-        data_dir = Path(tmpdir) / ".jac" / "data";
-        for db in sorted(data_dir.`glob("*.db")) {
-            conn = sqlite3.connect(str(db));
-            q = conn.execute("SELECT count(*) FROM anchors_quarantine").fetchone()[0];
-            conn.close();
-            assert q == 0 , f"aliased rename should not quarantine; got {q} in {db.name}";
-        }
+        st = _project_store(tmpdir);
+        assert st.rows('SELECT count(*) FROM quarantine', {})[0][0] == 0;
+        st.close();
     }
 }
 
 
-test "rename without alias quarantines the stored anchors (control)" {
+test "rename without alias fails and preserves the stored anchors" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
@@ -107,44 +126,18 @@ test "rename without alias quarantines the stored anchors (control)" {
         app.write_text(V1_RENAME);
         (rc, _, err) = _jac_enter(tmpdir, str(app), "create");
         assert rc == 0 , f"v1 create failed: {err}";
-        # v2 has Person but NO alias back to LegacyPerson. Running the dump
-        # walker may exit non-zero when it encounters an unresolvable stub
-        # (orphan traversal semantics aren't in scope for Layer 3 — what
-        # matters is that the data IS quarantined, not silently deleted).
         app.write_text(V2_RENAME_WITHOUT_ALIAS);
-        _jac_enter(tmpdir, str(app), "dump");
-        # Without alias: old data must NOT silently disappear; the failed
-        # loads are filed in the store's quarantine table (the rows
-        # themselves also survive untouched). This is the core invariant.
-        import hashlib;
-        import from jaclang.data.pgembed { PgRuntime }
-        import from jaclang.server.session { shared_pg_data_dir }
-        import from jaclang.data.store { PgStore, TxnIsolation }
-        digest = hashlib.sha1(os.path.realpath(tmpdir).encode('utf-8')).hexdigest()[:8];
-        admin_rt = PgRuntime(data_dir=shared_pg_data_dir(), database='postgres');
-        admin = PgStore(conninfo=admin_rt.ensure());
-        admin.begin(TxnIsolation.READ_COMMITTED);
-        names = [
-            str(r[0])
-            for r in admin.rows(
-                "SELECT datname FROM pg_database WHERE datname LIKE :p",
-                {'p': f"%_{digest}"}
-            )
-        ];
-        admin.commit();
-        admin.close();
-        assert names , f"no project database found for digest {digest}";
-        rt = PgRuntime(data_dir=shared_pg_data_dir(), database=names[0]);
-        st = PgStore(conninfo=rt.ensure());
+        (rc, _, err) = _jac_enter(tmpdir, str(app), "dump");
+        assert rc != 0 , "missing local schema must fail explicitly";
+        assert "Cannot resolve persistent type" in err , err;
+        st = _project_store(tmpdir);
         total_q = st.rows('SELECT count(*) FROM quarantine', {})[0][0];
         surviving = st.rows(
-            "SELECT count(*) FROM anchors WHERE arch_type = 'LegacyPerson'", {}
+            "SELECT count(*) FROM anchors WHERE arch_type = :t",
+            {'t': 'jac:["layer3","app:layer3","app"].LegacyPerson'}
         )[0][0];
         st.close();
-        assert total_q >= 2 , (
-            "expected at least 2 quarantined anchors (alice, bob) after "
-            f"un-aliased rename; got {total_q}"
-        );
+        assert total_q == 0 , f"unavailable schema is not corrupt data: {total_q}";
         assert surviving == 2 , (
             f"the stored rows themselves must survive, got {surviving}"
         );
@@ -194,16 +187,8 @@ test "field type int->str coerces on load without quarantine" {
         assert "coerced:two:2:str" in out , (
             f"int->str coercion did not apply to count for item 'two': {out}"
         );
-        # No quarantine expected for type-change handled by coercion.
-        import sqlite3;
-        data_dir = Path(tmpdir) / ".jac" / "data";
-        for db in sorted(data_dir.`glob("*.db")) {
-            conn = sqlite3.connect(str(db));
-            q = conn.execute("SELECT count(*) FROM anchors_quarantine").fetchone()[0];
-            conn.close();
-            assert q == 0 , (
-                f"coercible type change should not quarantine; got {q} in {db.name}"
-            );
-        }
+        st = _project_store(tmpdir);
+        assert st.rows('SELECT count(*) FROM quarantine', {})[0][0] == 0;
+        st.close();
     }
 }

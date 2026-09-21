@@ -392,8 +392,9 @@ async def _local_call(app: str, fn: str, kwargs: dict[str, any]) -> any {
     import from jaclang.runtime.runtime { JacRuntime }
     import from jaclang.runtime.context { ExecutionContext }
     parent = JacRuntime.get_context();
-    ctx = ExecutionContext.for_target(target, parent);
-    await ctx.aset_user_root(str(parent.user_root.ensure_id()));
+    ctx = await ExecutionContext.for_target(
+        target, parent, str(parent.user_root.ensure_id())
+    );
     token = JacRuntime.push_request_context(ctx);
     streaming = False;
     try {
@@ -427,8 +428,9 @@ async def _local_spawn(app: str, walker_name: str, kwargs: dict[str, any]) -> an
         );
     }
     parent = JacRuntime.get_context();
-    req_ctx = ExecutionContext.for_target(walker_cls, parent);
-    await req_ctx.aset_user_root(str(parent.user_root.ensure_id()));
+    req_ctx = await ExecutionContext.for_target(
+        walker_cls, parent, str(parent.user_root.ensure_id())
+    );
     token = JacRuntime.push_request_context(req_ctx);
     try {
         mem = req_ctx.mem;

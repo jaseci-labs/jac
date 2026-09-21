@@ -40,8 +40,7 @@ async def _begin_request_context(
 ) -> tuple[(ExecutionContext, any)] {
     import from jaclang.runtime.osp_kernel_sv { isolate_request_walk_stack }
     parent = Jac.get_context();
-    req_ctx = ExecutionContext.for_target(target, parent);
-    await req_ctx.aset_user_root(user_root_id);
+    req_ctx = await ExecutionContext.for_target(target, parent, user_root_id);
     token = Jac.push_request_context(req_ctx);
 
     isolate_request_walk_stack();

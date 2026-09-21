@@ -2,7 +2,7 @@ import from contextvars { ContextVar }
 import from jaclang.runtime.object_model { MISSING }
 import from logging { getLogger }
 import from queue { Queue }
-import from typing { cast }
+import from typing { cast, Generator, AsyncGenerator }
 import from uuid { UUID }
 
 import from jaclang.runtime.archetype { NodeAnchor, PermissionDenied, Root }
@@ -33,20 +33,29 @@ obj ExecutionContext {
         _entry_node: (NodeAnchor | None) = None;
 
     def postinit -> None;
-    static def for_target(
-        target: object, parent: ExecutionContext
+    static async def for_target(
+        target: object, parent: ExecutionContext, user_root_id: str
     ) -> ExecutionContext {
         import from jaclang.runtime.prepared { application_of }
         import from jaclang.runtime.runtime { JacRuntime }
         application = application_of(target);
         if application is None or application.entry == parent.full_target_path {
-            return ExecutionContext(_parent=parent);
+            context = ExecutionContext(_parent=parent);
+        } else {
+            context = JacRuntime.create_j_context(
+                user_root=None,
+                base_path_dir=application.root,
+                full_target_path=application.entry
+            );
         }
-        return JacRuntime.create_j_context(
-            user_root=None,
-            base_path_dir=application.root,
-            full_target_path=application.entry
-        );
+        try {
+            await context.aset_user_root(user_root_id);
+        } except BaseException {
+            context.mem.abort();
+            context.close();
+            raise;
+        }
+        return context;
     }
 
     has system_root: NodeAnchor { getter; }

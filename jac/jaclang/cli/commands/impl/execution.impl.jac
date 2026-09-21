@@ -733,6 +733,17 @@ def _resolve_plan(
     return (plan, cfg, app, file, 0);
 }
 
+def _load_executable(filename: str, base: str, main: bool) -> types.ModuleType {
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { load_prepared_module }
+    import from jaclang.project.config { get_config }
+    cfg = get_config();
+    project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
+    prepared = prepare_application(filename, Jac.get_program(), project_root);
+    return load_prepared_module(prepared.entry, prepared, as_main=main);
+}
+
 def _invoke_entrypoint(
     filename: str, entrypoint: str, args: list[str], main: bool, root_id: str, nd: str
 ) -> int {
@@ -745,32 +756,25 @@ def _invoke_entrypoint(
     }
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
-
-    if root_id {
-        mach.set_user_root(root_id);
-    }
-    ret_module = Jac.jac_import(
-        target=mod, base_path=base, override_name='__main__' if main else None
-    );
-    if not ret_module {
+    try {
+        loaded_mod = _load_executable(filename, base, main);
+        if root_id {
+            mach.set_user_root(root_id);
+        }
+        archetype = getattr(loaded_mod, entrypoint)(*args);
+        mach.set_entry_node(nd);
+        if (
+            isinstance(archetype, WalkerArchetype)
+            and Jac.check_read_access(mach.entry_node)
+        ) {
+            Jac.`spawn(mach.entry_node.archetype, archetype);
+        }
+    } except BaseException {
+        mach.mem.abort();
+        raise;
+    } finally {
         mach.close();
-        return 0;
     }
-    (loaded_mod, ) = ret_module;
-    if not loaded_mod {
-        console.error('Errors occurred while importing the module.');
-        mach.close();
-        return 1;
-    }
-    archetype = getattr(loaded_mod, entrypoint)(*args);
-    mach.set_entry_node(nd);
-    if (
-        isinstance(archetype, WalkerArchetype)
-        and Jac.check_read_access(mach.entry_node)
-    ) {
-        Jac.`spawn(mach.entry_node.archetype, archetype);
-    }
-    mach.close();
     return 0;
 }
 
@@ -1039,32 +1043,7 @@ def _exec_file(
                 }
             }
             if not native_executed {
-                if backend == "python" {
-                    import from jaclang.compiler.driver.compile_options {
-                        CompileOptions
-                    }
-                    program = Jac.get_program();
-                    program.compile(
-                        file_path=os.path.abspath(filename),
-                        options=CompileOptions(
-                            force_codespace="server",
-                            default_codespace="server",
-                            force_target_program=True
-                        )
-                    );
-                    if program.errors_had {
-                        for error in program.errors_had {
-                            console.error(error.pretty_print());
-                        }
-                        return 1;
-                    }
-                }
-                Jac.jac_import(
-                    target=mod,
-                    base_path=base,
-                    override_name='__main__' if main else None,
-                    lng=lng
-                );
+                _load_executable(filename, base, main);
             }
         } else {
             Jac.jac_import(
