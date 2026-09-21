@@ -2069,3 +2069,10 @@ test "bug_selfovl1_receiver_selects_the_self_typed_overload" {
         e.pretty_print() for e in program.errors_had
     );
 }
+
+test "assignment narrowing preserves contextual container element types" {
+    program = compile_and_check("checker_contextual_container_assignment.jac");
+    errors = [e.pretty_print() for e in program.errors_had];
+    assert len(errors) == 1 , '\n'.join(errors);
+    assert 'not a Base' in errors[0] , errors[0];
+}
