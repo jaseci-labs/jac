@@ -361,17 +361,17 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
                 );
                 assert result.returncode == 0 , result.stdout + result.stderr;
                 assert endpoint in result.stdout , (label, boot_file, result.stdout);
-                assert "Loading sealed application artifacts" in result.stdout , (
+                assert "Loading sealed application artifacts" in result.stderr , (
                     label,
                     boot_file,
-                    result.stdout
+                    result.stderr
                 );
-                assert "Compiling server modules" not in result.stdout , (
+                assert "Compiling server modules" not in result.stderr , (
                     label,
                     boot_file,
-                    result.stdout
+                    result.stderr
                 );
-                assert "Preparing dynamically imported module" not in result.stdout;
+                assert "Preparing dynamically imported module" not in result.stderr;
             }
         }
     }

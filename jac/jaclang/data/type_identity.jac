@@ -1,8 +1,3 @@
-"""Durable type names and app-local resolution. Runtime import names stay private.
-
-The compiler embeds module facts in executable code and prepared manifests.
-No configuration or source files are read while resolving stored data.
-"""
 import json;
 import sys;
 import type from jaclang.runtime.prepared { PreparedApplication }
@@ -126,8 +121,6 @@ def resolve_type(module_name: str, name: str) -> type {
     );
 }
 
-# SQL type filters and ancestry use the same identity as serialized archetypes.
-# Runtime builtins and external Python classes retain their established names.
 def storage_type(cls: type) -> str {
     return type_module(cls) + '.' + cls.__name__ if class_facts(cls) else cls.__name__;
 }

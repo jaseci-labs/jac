@@ -6,6 +6,12 @@ test "project name is the default persistence namespace" {
     assert config.module_facts('shared.models') == ('example', 'shared.models');
 }
 
+test "an absent or blank project name uses the standalone namespace" {
+    for name in ['', '   '] {
+        assert parse_persistence({}, name).namespace == 'main';
+    }
+}
+
 test "an explicit namespace is independent of deployment and service names" {
     config = parse_persistence({'namespace': 'com.example.accounts'}, 'deployment');
     assert config.module_facts('shared.models')
@@ -15,6 +21,7 @@ test "an explicit namespace is independent of deployment and service names" {
 test "invalid namespaces and obsolete domain declarations are rejected" {
     for raw in [
         {'namespace': ''},
+        {'namespace': '   '},
         {'namespace': 1},
         {'unexpected': True},
         {'domains': {}}

@@ -576,7 +576,7 @@ def _prepare(
         revision.native[path] = compiler.get_native_interop_setup(path, program);
         pending.update((runtime_sources(code, path, `root) - revision.code.keys()));
     }
-    # Every executable module carries identity, including helpers with no endpoints.
+
     for (path, mod) in _project_modules(program, `root).items() {
         if path in revision.code {
             revision.manifests.setdefault(

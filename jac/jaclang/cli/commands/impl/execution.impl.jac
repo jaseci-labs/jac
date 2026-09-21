@@ -738,9 +738,22 @@ def _load_executable(filename: str, base: str, main: bool) -> types.ModuleType {
     import from jaclang.compiler.driver.application { prepare_application }
     import from jaclang.runtime.prepared { load_prepared_module }
     import from jaclang.project.config { get_config }
+    program = Jac.get_program();
+    compiler = program._get_compiler();
+    if compiler.selfhost.is_selfhost(compiler.selfhost.resolve(filename, program)) {
+        modules = Jac.jac_import(
+            target=os.path.splitext(os.path.basename(filename))[0],
+            base_path=base,
+            override_name='__main__' if main else None
+        );
+        if not modules or not isinstance(modules[0], types.ModuleType) {
+            raise RuntimeError(f'No executable module produced for {filename}');
+        }
+        return modules[0];
+    }
     cfg = get_config();
     project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
-    prepared = prepare_application(filename, Jac.get_program(), project_root);
+    prepared = prepare_application(filename, program, project_root);
     return load_prepared_module(prepared.entry, prepared, as_main=main);
 }
 
