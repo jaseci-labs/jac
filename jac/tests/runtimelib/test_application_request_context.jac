@@ -14,7 +14,7 @@ test "stream resumes in its provider context and releases its session" {
         yield 'second';
     }
     with patch.object(context.mem, 'close') as close {
-        stream: any = context.bind_stream(chunks());
+        stream: any = asyncio.run(context.bind_stream(chunks()));
         assert next(stream) == 'first';
         assert JacRuntime.peek_context() is caller;
         assert next(stream) == 'second';
@@ -34,11 +34,38 @@ test "async stream restores the caller context between chunks" {
     }
     async def consume {
         caller = JacRuntime.peek_context();
-        stream: any = context.bind_stream(chunks());
+        stream: any = await context.bind_stream(chunks());
         assert await stream.__anext__() == 'first';
         assert JacRuntime.peek_context() is caller;
         await stream.aclose();
         assert JacRuntime.peek_context() is caller;
+    }
+    with patch.object(context.mem, 'close') as close {
+        asyncio.run(consume());
+        close.assert_called_once();
+    }
+}
+
+test "closing a stream before its first item releases the provider session" {
+    context = ExecutionContext(base_path_dir='', full_target_path='');
+    def chunks -> Generator[str, None, None] {
+        yield 'unused';
+    }
+    with patch.object(context.mem, 'close') as close {
+        stream: any = asyncio.run(context.bind_stream(chunks()));
+        stream.close();
+        close.assert_called_once();
+    }
+}
+
+test "closing an async stream before its first item releases the provider session" {
+    context = ExecutionContext(base_path_dir='', full_target_path='');
+    async def chunks -> AsyncGenerator[str, None] {
+        yield 'unused';
+    }
+    async def consume {
+        stream: any = await context.bind_stream(chunks());
+        await stream.aclose();
     }
     with patch.object(context.mem, 'close') as close {
         asyncio.run(consume());

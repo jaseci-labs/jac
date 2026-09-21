@@ -163,6 +163,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
     if inspect.isgenerator(value) {
         def stream -> Generator[any, None, None] {
             try {
+                yield None;
                 while True {
                     token = JacRuntime.push_request_context(context);
                     try {
@@ -178,18 +179,26 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                 context.mem.abort();
                 raise;
             } finally {
+                token = JacRuntime.push_request_context(context);
                 try {
-                    value.close();
+                    try {
+                        value.close();
+                    } finally {
+                        context.close();
+                    }
                 } finally {
-                    context.close();
+                    JacRuntime.reset_request_context(token);
                 }
             }
         }
-        return stream();
+        wrapped = stream();
+        next(wrapped);
+        return wrapped;
     }
     if inspect.isasyncgen(value) {
         async def astream -> AsyncGenerator[any, None] {
             try {
+                yield None;
                 while True {
                     token = JacRuntime.push_request_context(context);
                     try {
@@ -205,14 +214,21 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                 context.mem.abort();
                 raise;
             } finally {
+                token = JacRuntime.push_request_context(context);
                 try {
-                    await value.aclose();
+                    try {
+                        await value.aclose();
+                    } finally {
+                        context.close();
+                    }
                 } finally {
-                    context.close();
+                    JacRuntime.reset_request_context(token);
                 }
             }
         }
-        return astream();
+        wrapped_async = astream();
+        await wrapped_async.__anext__();
+        return wrapped_async;
     }
     return value;
 }

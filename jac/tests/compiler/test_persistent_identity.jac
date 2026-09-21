@@ -15,7 +15,8 @@ import from jaclang.data.serializer { Serializer }
 import from jaclang.data.type_identity {
     resolution_scope,
     type_module,
-    TypeResolutionError
+    TypeResolutionError,
+    UnavailableType
 }
 import from jaclang.data.store { AnchorRow, Store }
 import from jaclang.server.session { Session }
@@ -75,6 +76,18 @@ def exercise(shared: bool, evolve: bool = False) {
             );
             got = session._materialize(row);
             store.quarantine.assert_not_called();
+            with resolution_scope(applications[1]) {
+                try {
+                    Serializer._get_class(
+                        type_module(reader.Thing).replace(
+                            'shared.models', 'removed.models'
+                        ),
+                        'Thing'
+                    );
+                    assert False , 'a missing local schema was mistaken for foreign data';
+                } except UnavailableType {}
+            }
+
             if shared {
                 assert got is not None;
                 assert isinstance(got.archetype, reader.Thing);
@@ -117,6 +130,7 @@ def exercise(shared: bool, evolve: bool = False) {
 test "declared shared types materialize as the consuming app class" {
     exercise(True);
 }
+
 test "foreign app-owned types neither quarantine nor heal-prune" {
     exercise(False);
 }
@@ -158,7 +172,7 @@ test "missing local schema fails without quarantine" {
 
 test "durable identity survives a different app process and checkout location" {
     import subprocess;
-    import from tests.support { jac_command }
+    import from tests.support { compiler_python_command }
     with TemporaryDirectory() as td {
         base = Path(td);
         for directory in ['build-machine', 'deployment'] {
@@ -206,8 +220,8 @@ test "durable identity survives a different app process and checkout location" {
             ('deployment', 'reader')
         ] {
             result = subprocess.run(
-                jac_command(
-                    '-c', script, str(base / directory), app, str(base / 'row.json')
+                compiler_python_command(
+                    script, str(base / directory), app, str(base / 'row.json')
                 ),
                 capture_output=True,
                 text=True,

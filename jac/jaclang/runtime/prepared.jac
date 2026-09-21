@@ -12,6 +12,8 @@ obj PreparedApplication {
         manifests: dict[str, dict[str, any]] = {},
         semantic: dict[str, dict[str, Info]] = {},
         origins: dict[str, str] = {},
+        persistence_modules: dict[str, str] = {},
+        persistence_domains: set[str] = set(),
         name: str = '',
         namespace: str = '',
         scope_imports: bool = True,
@@ -32,8 +34,11 @@ def publish(application: PreparedApplication) {
     if not any(isinstance(finder, PreparedFinder) for finder in sys.meta_path) {
         sys.meta_path.insert(0, PreparedFinder());
     }
+    import from jaclang.data.type_identity { index_application }
+    index_application(application);
     _applications[os.path.realpath(application.entry)] = application;
     for child in application.applications {
+        index_application(child);
         _applications[os.path.realpath(child.entry)] = child;
     }
 }
@@ -355,6 +360,10 @@ def execute_module(module: types.ModuleType, application: PreparedApplication) {
     }
     if callbacks is not None {
         module.__dict__['__jac_interop_py_funcs__'] = callbacks;
+    }
+    facts = application.manifests.get(source, {}).get('persistence', ());
+    if facts {
+        module.__dict__['__jac_persistence__'] = tuple(facts);
     }
     module.__dict__['__builtins__'] = module_builtins(application, source);
     exec(code, module.__dict__);

@@ -1028,6 +1028,25 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
     )
         if ws is not None and app is not None
         else ();
+    if ws is None {
+        import os;
+        import from jaclang.jac0core.ext_registry { base_stem }
+        import from jaclang.project.placement { module_dot_path }
+        entry_path = opts.entry_point or mod_path;
+        source_root = opts.project_root or os.path.dirname(entry_path);
+        if os.path.realpath(mod_path).startswith(
+            os.path.realpath(source_root) + os.sep
+        ) {
+            implicit = base_stem(entry_path);
+            mod.persistence = (
+                implicit,
+                implicit,
+                'app:' + implicit,
+                module_dot_path(mod_path, source_root),
+                implicit
+            );
+        }
+    }
     mod.app_root = ws.project_root if (app is not None and ws is not None) else None;
     target_kind = opts.app_kind if (opts is not None and opts.app_kind) else '';
     if app is not None {

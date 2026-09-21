@@ -216,7 +216,7 @@ async def _run_function_with_occ(
                 ctx.mem.unit_exit();
                 settled = True;
                 streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
-                return ctx.bind_stream(outcome) if streaming else outcome;
+                return await ctx.bind_stream(outcome) if streaming else outcome;
             } except ReadOnlyRetry as rr {
                 settled = False;
                 if ctx.mem.unit_depth() == 0 {

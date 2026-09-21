@@ -401,7 +401,7 @@ async def _local_call(app: str, fn: str, kwargs: dict[str, any]) -> any {
         ctx.mem.commit();
         import inspect;
         streaming = inspect.isgenerator(result) or inspect.isasyncgen(result);
-        return ctx.bind_stream(result) if streaming else result;
+        return await ctx.bind_stream(result) if streaming else result;
     } except BaseException {
         ctx.mem.abort();
         raise;

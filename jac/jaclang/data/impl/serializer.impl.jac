@@ -1,4 +1,7 @@
 impl Serializer._type_info(`obj: object, `include: bool) -> dict[str, object] {
+    if `include {
+        register_type(type(`obj));
+    }
     return {'__type__': type(`obj).__name__, '__module__': type_module(type(`obj))}
         if `include
         else {};

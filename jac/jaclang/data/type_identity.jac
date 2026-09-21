@@ -16,8 +16,7 @@ class ForeignType(TypeResolutionError) {}
 class UnavailableType(TypeResolutionError) {}
 
 obj ResolutionScope {
-    has modules: set[str] = set(),
-        application: PreparedApplication | None = None;
+    has application: PreparedApplication | None = None;
 }
 
 glob _scope: ContextVar[ResolutionScope | None] = ContextVar(
@@ -69,16 +68,7 @@ def register_type(cls: type) {
 
 @contextmanager
 def resolution_scope(application: PreparedApplication | None) -> Iterator[None] {
-    modules: set[str] = set();
-    if application is not None {
-        for metadata in application.manifests.values() {
-            facts = metadata.get('persistence', ());
-            if facts {
-                modules.add(module_identity(tuple(facts)));
-            }
-        }
-    }
-    token = _scope.set(ResolutionScope(modules, application));
+    token = _scope.set(ResolutionScope(application));
     try {
         yield ;
     } finally {
@@ -89,9 +79,14 @@ def resolution_scope(application: PreparedApplication | None) -> Iterator[None] 
 def resolve_type(module_name: str, name: str) -> type {
     key = module_name + '.' + name;
     scope = _scope.get();
-    if scope is not None
-        and scope.application is not None
-        and module_name not in scope.modules {
+    application = scope.application if scope is not None else None;
+    if application is not None and module_name not in application.persistence_modules {
+        domain = identity_domain(module_name);
+        if domain in application.persistence_domains {
+            raise UnavailableType(
+                f'Persistent schema module {module_name} is missing from the active application'
+            );
+        }
         raise ForeignType(
             f'Persistent type {key} is outside the active app persistence domains'
         );
@@ -103,23 +98,15 @@ def resolve_type(module_name: str, name: str) -> type {
             if getattr(sys.modules.get(runtime_module), cls.__name__, None) is cls
         };
     }
-    if scope is not None and scope.application is not None {
-        # Lazy imports are resolved only from this app's compiled manifest.
-        application = scope.application;
-        if application is not None {
-            import from jaclang.runtime.prepared { load_prepared_module }
-            for (source, metadata) in application.manifests.items() {
-                facts = metadata.get('persistence', ());
-                if facts and module_identity(tuple(facts)) == module_name {
-                    module = load_prepared_module(source, application);
-                    candidate = getattr(module, name, None);
-                    if isinstance(candidate, type)
-                        and type_module(candidate) == module_name {
-                        register_type(candidate);
-                        return candidate;
-                    }
-                }
-            }
+    if application is not None {
+        import from jaclang.runtime.prepared { load_prepared_module }
+        module = load_prepared_module(
+            application.persistence_modules[module_name], application
+        );
+        candidate = getattr(module, name, None);
+        if isinstance(candidate, type) and type_module(candidate) == module_name {
+            register_type(candidate);
+            return candidate;
         }
     } elif len(candidates) == 1 {
         return next(iter(candidates.values()));
@@ -153,4 +140,51 @@ def schema_type(value: object) -> str {
 
 def resolution_required -> bool {
     return _scope.get() is not None;
+}
+
+
+def identity_domain(module_name: str) -> str {
+    try {
+        parts = json.loads(module_name[4:]);
+    } except ValueError {
+        raise TypeResolutionError(
+            f'Malformed persistent module identity: {module_name}'
+        );
+    }
+    if not isinstance(parts, list)
+        or len(parts) != 3
+        or not all(isinstance(p, str) and p for p in parts) {
+        raise TypeResolutionError(
+            f'Malformed persistent module identity: {module_name}'
+        );
+    }
+    return json.dumps(parts[:2], separators=(',', ':'));
+}
+
+def index_application(application: PreparedApplication) {
+    modules: dict[str, str] = {};
+    domains: set[str] = set();
+    for (source, metadata) in application.manifests.items() {
+        facts = metadata.get('persistence', ());
+        if not facts {
+            continue;
+        }
+        if not isinstance(facts, (tuple, list))
+            or len(facts) != 5
+            or not all(isinstance(p, str) and p for p in facts) {
+            raise TypeResolutionError(
+                f'Invalid compiled persistence metadata for {source}; rebuild the application'
+            );
+        }
+        identity = module_identity(tuple(facts));
+        if identity in modules and modules[identity] != source {
+            raise TypeResolutionError(
+                f'Duplicate persistent module identity {identity}'
+            );
+        }
+        modules[identity] = source;
+        domains.add(identity_domain(identity));
+    }
+    application.persistence_modules = modules;
+    application.persistence_domains = domains;
 }
