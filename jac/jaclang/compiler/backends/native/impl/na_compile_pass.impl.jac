@@ -384,13 +384,16 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         assert isinstance(target_machine, llvm.TargetMachine);
 
         manifest = module.gen.interop_manifest;
-        native_imports = manifest.native_imports;
+        native_imports = manifest.callable_native_imports;
         if native_imports {
             import from jaclang.runtime.interop_bridge { register_py_callbacks }
             py_func_table: dict[str, Callable[..., object]] = {};
             callbacks_list: list[object] = [];
             register_py_callbacks(
-                manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol
+                manifest.callable_native_imports,
+                py_func_table,
+                callbacks_list,
+                llvm.add_symbol
             );
             module.gen.interop_py_funcs = py_func_table;
             module.gen._interop_callbacks = callbacks_list;

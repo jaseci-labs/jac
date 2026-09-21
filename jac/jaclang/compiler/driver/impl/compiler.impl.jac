@@ -356,9 +356,9 @@ impl JacCompiler._load_native_from_cache(
             import from jaclang.runtime.interop_bridge { register_py_callbacks }
             manifest = self._deserialize_interop_table(cached_interop);
             gen.interop_manifest = manifest;
-            if manifest.native_imports {
+            if manifest.callable_native_imports {
                 register_py_callbacks(
-                    manifest.native_imports,
+                    manifest.callable_native_imports,
                     py_func_table,
                     callbacks_list,
                     llvm.add_symbol
@@ -430,9 +430,12 @@ impl JacCompiler._load_native_from_bitcode(
         import from jaclang.runtime.interop_bridge { register_py_callbacks }
         manifest = self._deserialize_interop_table(cached_interop);
         gen.interop_manifest = manifest;
-        if manifest.native_imports {
+        if manifest.callable_native_imports {
             register_py_callbacks(
-                manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol
+                manifest.callable_native_imports,
+                py_func_table,
+                callbacks_list,
+                llvm.add_symbol
             );
         }
     }
@@ -1070,6 +1073,7 @@ impl JacCompiler.stamp_boundary_facts(
                 and _default_codespace_for(target_program) == 'native'
             )
         );
+    mod.gen.native_codespace = in_native_mod;
 
     def resolve_native(module_name: str, inferred_ok: bool) -> (str | None) {
         (src_mod_str, full_path) = resolve_native_module(
@@ -1204,7 +1208,11 @@ impl JacCompiler.stamp_boundary_facts(
                     facts.from_loc_resolved = None;
                 }
                 facts.is_service = nd.is_service_import;
-                if (nd.items and not facts.is_service and nd.in_client_context()) {
+                if (
+                    nd.items
+                    and not facts.is_service
+                    and (nd.in_client_context() or native_ctx or in_native_mod)
+                ) {
                     resolved = facts.from_loc_resolved;
                     if (resolved is not None and resolved.endswith('.jac')) {
                         try {
