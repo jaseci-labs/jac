@@ -5832,6 +5832,36 @@ impl NativeBuiltinEmitter.emit_set(
     i64 = ir.IntType(64);
     val = args[0];
 
+    if p._is_bytes_value(val) {
+        (key_spec, key_size) = p._hash_key_spec(i64);
+        p._emit_set_helpers(key_spec, i64, key_size);
+        helpers = p.set_helpers.get(key_spec);
+        if helpers is None {
+            return None;
+        }
+        count = p._bytes_len_val(val);
+        data = p._bytes_data_ptr(val);
+        result = b.call(helpers["new"], [], name="b2s.new");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="b2s.loop");
+        body_bb = func.append_basic_block(name="b2s.body");
+        done_bb = func.append_basic_block(name="b2s.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        index = b.phi(i64, name="b2s.idx");
+        index.add_incoming(ir.Constant(i64, 0), entry_bb);
+        b.cbranch(b.icmp_unsigned(">=", index, count), done_bb, body_bb);
+        b.position_at_start(body_bb);
+        byte = b.load(b.gep(data, [index]), name="b2s.byte");
+        b.call(helpers["add"], [result, b.zext(byte, i64, name="b2s.value")]);
+        next_index = b.add(index, ir.Constant(i64, 1));
+        index.add_incoming(next_index, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+        return result;
+    }
+
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
