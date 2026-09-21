@@ -2931,11 +2931,11 @@ impl NaIRGenPass._emit_isinstance_core(
         allocated_end = b.block;
         b.branch(done);
         b.position_at_end(done);
-        result = b.phi(i1, name="buffer.match");
-        result.add_incoming(ir.Constant(i1, 0), buffer_entry);
-        result.add_incoming(literal_hit, literal);
-        result.add_incoming(hit, allocated_end);
-        return result;
+        buffer_match = b.phi(i1, name="buffer.match");
+        buffer_match.add_incoming(ir.Constant(i1, 0), buffer_entry);
+        buffer_match.add_incoming(literal_hit, literal);
+        buffer_match.add_incoming(hit, allocated_end);
+        return buffer_match;
     }
     source_members = source_type.types
         if isinstance(source_type, UnionType)
