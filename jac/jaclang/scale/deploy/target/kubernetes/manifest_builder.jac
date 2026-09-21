@@ -15,6 +15,9 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.autoscale.http_activation_config {
     build_http_activation_spec
 }
+import from jaclang.scale.runtime.context.service_routing {
+    resolve_http_activation_config
+}
 import from enum { StrEnum }
 
 
@@ -705,6 +708,37 @@ obj ManifestBuilder {
         );
     }
 
+    def _check_deploy_settings_resolve {
+        import from pathlib { Path }
+        import from jaclang.project.config { get_config_for_path, report_env_findings }
+        config = get_config_for_path(Path(self.project_dir));
+        if config is None {
+            return;
+        }
+        shipped: set = set();
+        for value in self.secrets.values() {
+            if isinstance(value, str) {
+                shipped.add(value);
+            }
+        }
+        for value in self.k8s_config.to_dict().values() {
+            if isinstance(value, str) {
+                shipped.add(value);
+            }
+        }
+        report_env_findings(
+            [
+                ref
+                for ref in config.unresolved
+                if ref.raw in shipped
+            ],
+            "jac.toml reads environment variables this machine does not have, so the "
+            "deploy would ship these settings as literal ${...} text:",
+            hint="Export each one or put it in the project .env, "
+            "or give it a ${VAR:-default}."
+        );
+    }
+
     def _check_pod_config_resolves(
         deployments: dict[str, dict[str, any]], user_secret: dict[str, any] | None
     ) {
@@ -716,6 +750,7 @@ obj ManifestBuilder {
             unresolved_toml_references
         }
         base = Path(self.project_dir);
+        self._check_deploy_settings_resolve();
         base_toml = sanitized_jac_toml(base);
         if base_toml is None {
             return;
@@ -1192,6 +1227,9 @@ obj ManifestBuilder {
             if peer_name == svc_name or peer_name == GATEWAY_NAME {
                 continue;
             }
+            if self._get_http_activation_config(peer_name) is not None {
+                continue;
+            }
             key = sv_client.peer_url_env_key(peer_name);
             if key in seen_peer_keys {
                 continue;
@@ -1562,14 +1600,9 @@ obj ManifestBuilder {
     }
 
     def _get_http_activation_config(svc_name: str) -> dict[str, any] | None {
-        svc: dict[str, any] = self._service_config(svc_name);
-        per_service: dict[str, any] = svc.get("http_activation", {});
-        merged: dict[str, any] = dict(self.k8s_config.http_activation);
-        merged.update(per_service);
-        if not merged.get("enabled", False) {
-            return None;
-        }
-        return merged;
+        return resolve_http_activation_config(
+            dict(self.k8s_config.http_activation), self._service_config(svc_name)
+        );
     }
 
     def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {

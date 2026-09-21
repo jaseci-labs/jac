@@ -4,6 +4,7 @@ Tests that Jac files can be unparsed consistently.
 Parametrized roundtrip tests are in tests/compiler/test_micro_suite.jac.
 """
 
+import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import from difflib { unified_diff }
 import from tests.support { JAC_ROOT }
@@ -44,7 +45,7 @@ test "unparse prepares role-only tokens" {
     expr.set_kids(
         [
             kid
-            for kid in expr.kid
+            for kid in [expr->:Kid:->]
             if kid is not expr.op
         ]
     );

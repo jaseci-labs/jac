@@ -43,19 +43,19 @@ node ShoppingItem {
 }
 
 """Add a task with AI categorization."""
-def:priv add_task(title: str) -> Task {
+def:protect add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
     task = root ++> Task(title=title, category=category);
     return task;
 }
 
 """Get all tasks."""
-def:priv get_tasks -> list[Task] {
+def:protect get_tasks -> list[Task] {
     return [root-->][?:Task];
 }
 
 """Toggle a task's done status."""
-def:priv toggle_task(id: str) -> Task | None {
+def:protect toggle_task(id: str) -> Task | None {
     for task in [root-->][?:Task] {
         if jid(task) == id {
             task.done = not task.done;
@@ -66,7 +66,7 @@ def:priv toggle_task(id: str) -> Task | None {
 }
 
 """Delete a task."""
-def:priv delete_task(id: str) -> dict[str, str] {
+def:protect delete_task(id: str) -> dict[str, str] {
     for task in [root-->][?:Task] {
         if jid(task) == id {
             del task;
@@ -77,7 +77,7 @@ def:priv delete_task(id: str) -> dict[str, str] {
 }
 
 """Generate a shopping list from a meal description."""
-def:priv generate_list(meal: str) -> list[ShoppingItem] {
+def:protect generate_list(meal: str) -> list[ShoppingItem] {
     for item in [root-->][?:ShoppingItem] {
         del item;
     }
@@ -95,12 +95,12 @@ def:priv generate_list(meal: str) -> list[ShoppingItem] {
 }
 
 """Get the current shopping list."""
-def:priv get_shopping_list -> list[ShoppingItem] {
+def:protect get_shopping_list -> list[ShoppingItem] {
     return [root-->][?:ShoppingItem];
 }
 
 """Clear the shopping list."""
-def:priv clear_shopping_list -> dict[str, bool] {
+def:protect clear_shopping_list -> dict[str, bool] {
     for item in [root-->][?:ShoppingItem] {
         del item;
     }

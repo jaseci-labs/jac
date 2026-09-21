@@ -78,15 +78,15 @@ obj ProjectResult {
         project: Project | None = None;
 }
 
-edge Follow {}
-edge Post {}
-edge Member {}
-edge ChannelPost {}
-edge HasAvatar {}
-edge Owns {}
+edge Follow: Profile --> Profile {}
+edge Post: Profile --> Tweet {}
+edge Member: Profile --> Channel {}
+edge ChannelPost: Channel --> Tweet {}
+edge HasAvatar: Profile --> Avatar {}
+edge Owns: Profile --> Project {}
 
-edge Studies {}
-edge PublishesAs {}
+edge Studies: GeniusMemory --> GeniusTopic {}
+edge PublishesAs: GeniusTopic --> Profile {}
 
 node GeniusMemory {
     has last_posted: str = "",
@@ -270,7 +270,7 @@ node Channel {
     }
 }
 
-def clean_github(raw: str) -> FieldCheck {
+def:protect clean_github(raw: str) -> FieldCheck {
     v = raw.strip();
     if v == "" {
         return FieldCheck(value="");
@@ -288,7 +288,7 @@ def clean_github(raw: str) -> FieldCheck {
     return FieldCheck(value=v);
 }
 
-def clean_website(raw: str) -> FieldCheck {
+def:protect clean_website(raw: str) -> FieldCheck {
     v = raw.strip();
     if v == "" {
         return FieldCheck(value="");
@@ -302,7 +302,7 @@ def clean_website(raw: str) -> FieldCheck {
     return FieldCheck(value=v);
 }
 
-def clean_text(raw: str, limit: int, label: str) -> FieldCheck {
+def:protect clean_text(raw: str, limit: int, label: str) -> FieldCheck {
     v = raw.strip();
     if len(v) > limit {
         return FieldCheck(
@@ -312,7 +312,7 @@ def clean_text(raw: str, limit: int, label: str) -> FieldCheck {
     return FieldCheck(value=v);
 }
 
-def decode_avatar(data_url: str) -> AvatarCheck {
+def:protect decode_avatar(data_url: str) -> AvatarCheck {
     m = re.`match(
         r"^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=\s]+)$", data_url.strip()
     );
@@ -340,7 +340,7 @@ def decode_avatar(data_url: str) -> AvatarCheck {
     return AvatarCheck(ok=True, mime="image/" + kind, data=payload);
 }
 
-def find_profile_by_username(username: str) -> Profile | None {
+def:protect find_profile_by_username(username: str) -> Profile | None {
     wanted = username.strip().lower();
     if wanted == "" {
         return None;
@@ -355,7 +355,7 @@ def find_profile_by_username(username: str) -> Profile | None {
     return None;
 }
 
-def apply_score(proj: Project, payload: ScoredPayload) {
+def:protect apply_score(proj: Project, payload: ScoredPayload) {
     if not payload.ok {
         proj.status = "error";
         proj.error = payload.error or "internal";
@@ -400,7 +400,7 @@ def apply_score(proj: Project, payload: ScoredPayload) {
     proj.error = "";
 }
 
-async def score_project(proj: Project) {
+async def:protect score_project(proj: Project) {
     try {
         apply_score(proj, await fetch_and_score(proj.owner, proj.name));
     } except Exception as e {
@@ -412,7 +412,7 @@ async def score_project(proj: Project) {
     }
 }
 
-walker setup_profile {
+walker:protect setup_profile {
     has username: str = "",
         bio: str = "",
         reports: list[ProfileBundle] = [];
@@ -436,7 +436,7 @@ walker setup_profile {
     }
 }
 
-walker update_profile {
+walker:protect update_profile {
     has display_name: str = "",
         bio: str = "",
         location: str = "",
@@ -473,7 +473,7 @@ walker update_profile {
     }
 }
 
-walker get_profile {
+walker:protect get_profile {
     has reports: list[ProfileBundle] = [];
 
     can run with Root entry {
@@ -499,7 +499,7 @@ walker:pub get_user_profile {
     }
 }
 
-walker set_avatar {
+walker:protect set_avatar {
     has data_url: str = "",
         reports: list[AvatarResult] = [];
 
@@ -532,7 +532,7 @@ walker set_avatar {
     }
 }
 
-walker clear_avatar {
+walker:protect clear_avatar {
     has reports: list[AvatarResult] = [];
 
     can run with Root entry {
@@ -590,7 +590,7 @@ walker:pub get_all_profiles {
     }
 }
 
-def import_legacy {
+def:protect import_legacy {
     for archive_root in allroots() {
         entries = [archive_root-->[?:BoardHub]->:OnBoard:->[?:RepoEntry]];
         if not entries {
@@ -695,7 +695,7 @@ walker:pub get_all_projects {
     }
 }
 
-async walker add_project {
+async walker:protect add_project {
     has url: str = "",
         session_token: str = "",
         reports: list[ProjectResult] = [];
@@ -748,7 +748,7 @@ async walker add_project {
     }
 }
 
-walker find_project {
+walker:protect find_project {
     has project_id: str = "";
 
     can run with Root entry {
@@ -761,7 +761,7 @@ walker find_project {
     }
 }
 
-walker remove_project(find_project) {
+walker:protect remove_project(find_project) {
     has reports: list[ProjectResult] = [];
 
     can act with Project entry {
@@ -778,7 +778,7 @@ walker remove_project(find_project) {
     }
 }
 
-async walker rescore_project(find_project) {
+async walker:protect rescore_project(find_project) {
     has reports: list[ProjectResult] = [];
 
     async can act with Project entry {
@@ -802,7 +802,7 @@ async walker rescore_project(find_project) {
     }
 }
 
-walker get_trending {
+walker:protect get_trending {
     has counts: dict[str, int] = {},
         seen: dict[str, bool] = {},
         reports: list[list[TrendingTag]] = [];
@@ -834,7 +834,7 @@ walker get_trending {
     }
 }
 
-walker load_feed {
+walker:protect load_feed {
     has search_query: str = "",
         feed: list[Tweet] = [],
         reports: list[list[Tweet]] = [];
@@ -867,7 +867,7 @@ walker load_feed {
     }
 }
 
-walker get_channels {
+walker:protect get_channels {
     has seen: dict[str, bool] = {},
         results: list[ChannelBundle] = [],
         reports: list[list[ChannelBundle]] = [];
@@ -894,7 +894,7 @@ walker get_channels {
     }
 }
 
-walker create_tweet {
+walker:protect create_tweet {
     has content: str,
         reports: list[Tweet | PostingDenied] = [];
 
@@ -919,7 +919,7 @@ walker create_tweet {
     }
 }
 
-walker create_channel {
+walker:protect create_channel {
     has name: str,
         description: str = "";
 
@@ -939,7 +939,7 @@ walker create_channel {
     }
 }
 
-walker find_profile {
+walker:protect find_profile {
     has target_id: str = "";
 
     can run with Root entry {
@@ -952,7 +952,7 @@ walker find_profile {
     }
 }
 
-walker follow_user(find_profile) {
+walker:protect follow_user(find_profile) {
     can act with Profile entry {
         if jid(here) == self.target_id {
             me = [root-->[?:Profile]][0];
@@ -963,7 +963,7 @@ walker follow_user(find_profile) {
     }
 }
 
-walker unfollow_user(find_profile) {
+walker:protect unfollow_user(find_profile) {
     can act with Profile entry {
         if jid(here) == self.target_id {
             me = [root-->[?:Profile]][0];
@@ -977,7 +977,7 @@ walker unfollow_user(find_profile) {
     }
 }
 
-walker find_tweet {
+walker:protect find_tweet {
     has tweet_id: str = "",
         actor: str = "";
 
@@ -995,7 +995,7 @@ walker find_tweet {
     }
 }
 
-walker like_tweet(find_tweet) {
+walker:protect like_tweet(find_tweet) {
     can act with Tweet entry {
         if jid(here) == self.tweet_id {
             if self.actor in here.likes {
@@ -1014,7 +1014,7 @@ walker like_tweet(find_tweet) {
     }
 }
 
-walker delete_tweet(find_tweet) {
+walker:protect delete_tweet(find_tweet) {
     can act with Tweet entry {
         if jid(here) == self.tweet_id and here.author_username == self.actor {
             del here;
@@ -1024,7 +1024,7 @@ walker delete_tweet(find_tweet) {
     }
 }
 
-walker add_comment(find_tweet) {
+walker:protect add_comment(find_tweet) {
     has content: str = "";
 
     can act with Tweet entry {
@@ -1052,7 +1052,7 @@ walker add_comment(find_tweet) {
     }
 }
 
-walker find_channel {
+walker:protect find_channel {
     has channel_id: str = "";
 
     can run with Root entry {
@@ -1065,7 +1065,7 @@ walker find_channel {
     }
 }
 
-walker join_channel(find_channel) {
+walker:protect join_channel(find_channel) {
     can act with Channel entry {
         if jid(here) == self.channel_id {
             me = [root-->[?:Profile]][0];
@@ -1078,7 +1078,7 @@ walker join_channel(find_channel) {
     }
 }
 
-walker leave_channel(find_channel) {
+walker:protect leave_channel(find_channel) {
     can act with Channel entry {
         if jid(here) == self.channel_id {
             me = [root-->[?:Profile]][0];
@@ -1092,7 +1092,7 @@ walker leave_channel(find_channel) {
     }
 }
 
-walker get_channel_detail(find_channel) {
+walker:protect get_channel_detail(find_channel) {
     has reports: list[ChannelBundle] = [];
 
     can act with Channel entry {
@@ -1103,7 +1103,7 @@ walker get_channel_detail(find_channel) {
     }
 }
 
-walker create_channel_tweet(find_channel) {
+walker:protect create_channel_tweet(find_channel) {
     has content: str = "";
 
     can act with Channel entry {

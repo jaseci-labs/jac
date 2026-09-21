@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import ast as ast3;
 import builtins;
 import html;
@@ -131,7 +132,7 @@ def node_to_dict(nd: UniNode) -> dict[(str, str)] {
         'kid': str(
             [
                 node_to_dict(x)
-                for x in nd.kid
+                for x in [nd->:Kid:->]
                 if x
             ]
         ),
@@ -191,7 +192,7 @@ def printgraph_ast_tree(
         return f"[label={label}]";
     }
     dot_lines.append(f"{gen_node_id(root_node)} {gen_node_parameters(root_node)};");
-    for i in root_node.kid {
+    for i in [root_node->:Kid:->] {
         dot_lines.append(f"{gen_node_id(root_node)}  -> {gen_node_id(i)};");
         printgraph_ast_tree(i, dot_lines);
     }
@@ -355,7 +356,7 @@ def print_ast_tree(
                 if x.is_raised_from_py
             ];
         } else {
-            kids = root_node.kid;
+            kids = [root_node->:Kid:->];
         }
         for (i, child) in enumerate(kids) {
             is_last = i == (len(kids) - 1);

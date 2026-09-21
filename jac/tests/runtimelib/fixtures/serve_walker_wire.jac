@@ -4,7 +4,7 @@ walker Inner {
     }
 }
 
-walker Outer {
+walker:protect Outer {
     has tag: str = "outer";
 
     can go with Root entry {
@@ -13,7 +13,7 @@ walker Outer {
     }
 }
 
-walker CountThings {
+walker:protect CountThings {
     has total: int = 0;
 
     can go with Root entry {
@@ -21,7 +21,7 @@ walker CountThings {
     }
 }
 
-walker SelfReporter {
+walker:protect SelfReporter {
     has tag: str = "me";
 
     can go with Root entry {
@@ -29,19 +29,19 @@ walker SelfReporter {
     }
 }
 
-def list_things(n: int = 2) -> list[dict[str, any]] {
+def:protect list_things(n: int = 2) -> list[dict[str, any]] {
     return [{"name": f"t{i}", "idx": i} for i in range(n)];
 }
 
-def nothing -> None {
+def:protect nothing -> None {
     return None;
 }
 
-def spawn_inside(tag: str = "x") -> dict[str, any] {
+def:protect spawn_inside(tag: str = "x") -> dict[str, any] {
     w = root spawn Outer(tag=tag);
     return {"tag": w.tag, "seen": len(w.reports)};
 }
 
-def spawn_and_return_walker(tag: str = "y") -> Outer {
+def:protect spawn_and_return_walker(tag: str = "y") -> Outer {
     return root spawn Outer(tag=tag);
 }

@@ -12,7 +12,7 @@ walker counts outgoing E edges at each visited node: a=2, b=1, c=0, d=0 -> 3.
 node N {
     has v: int = 0;
 }
-edge E {
+edge E : N --> N {
     has w: int = 0;
 }
 

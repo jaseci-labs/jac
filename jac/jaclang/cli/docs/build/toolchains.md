@@ -35,6 +35,15 @@ platform cache root (`~/.cache/jac/toolchains` on Linux). Set
 `JAC_TOOLCHAIN_DIR=/path/to/cache` to relocate them; a project-local `.jac/toolchains`
 path works for isolated builds. Generated app projects remain under `.jac/`.
 
+Everything there lives in one of three managed buckets that `jac cache status`
+reports and `jac cache gc` reclaims by last use: `downloads/` (verified archives,
+kept 14 days), `installed/` (extracted toolchains and tools installed in place
+such as CocoaPods, kept 90 days) and `build/` (builds keyed by source digest,
+including the LLVM C backend, kept 90 days). A cache hit refreshes the entry, so
+a toolchain in regular use is never reclaimed. Gradle's home (`gradle/`) and the
+Android SDK (`android-sdk/`) belong to their own tools: they are reported but
+never collected.
+
 Downloads report the tool, version, platform, bytes received, and percentage when
 the server supplies a length. Jac verifies checksums before publishing downloads,
 extracts into temporary directories, and serializes concurrent installations.

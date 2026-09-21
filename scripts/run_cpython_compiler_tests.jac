@@ -103,9 +103,9 @@ def main -> int {
     parser.add_argument("--ast-api", action="store_true", help=argparse.SUPPRESS);
     args = parser.parse_args();
     bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
-    if bridge is None or bridge() != 3 {
+    if bridge is None or bridge() != 4 {
         raise RuntimeError(
-            "Use a current Jac binary with the native compiler bridge (version 3)"
+            "Use a current Jac binary with the native compiler bridge (version 4)"
         );
     }
     for name in args.native_modules {

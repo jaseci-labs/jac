@@ -499,10 +499,20 @@ test "assemble_site bundles a content-keyed shim under the canonical name" {
         keyed = os.path.join(base, f"libjacllvm-{host_os_arch()}-deadbeefcafe.{ext}");
         wf(base, os.path.basename(keyed), b"prebuilt-shim-bytes");
 
+        for example in ["jaclang_org", "tiny_jacyac"] {
+            wf(repo, f"examples/{example}/jac.toml", b"template-config\n");
+            wf(repo, f"examples/{example}/web.jac", b"template-entry\n");
+            wf(repo, f"examples/{example}/.jac/generated", b"build-output\n");
+        }
         site = os.path.join(base, "site");
         os.makedirs(site, exist_ok=True);
         assemble_site(repo, site, MkPayloadOpts(shim_so=keyed));
 
+        for template in ["awesome_template", "awetiny_template"] {
+            assert rf(os.path.join(site, template, "jac.toml")) == b"template-config\n";
+            assert rf(os.path.join(site, template, "web.jac")) == b"template-entry\n";
+            assert not os.path.exists(os.path.join(site, template, ".jac"));
+        }
         # Exactly the path _find_shim() scans for on every sys.path entry.
         llvm_dir = os.path.join(
             site, "jaclang", "compiler", "backends", "native", "llvm"

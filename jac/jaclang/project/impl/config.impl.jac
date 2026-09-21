@@ -1,4 +1,8 @@
-impl interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> str {
+impl interpolate_env_vars(
+    value: str,
+    environ: dict[str, str] | None = None,
+    sink: list[UnresolvedRef] | None = None
+) -> str {
     import os;
     import re;
     if not isinstance(value, str) {
@@ -20,15 +24,24 @@ impl interpolate_env_vars(value: str, environ: dict[str, str] | None = None) -> 
 
         if operator == ":-" {
             return operand;
-        } elif operator == ":?" {
-            raise ValueError(f"Environment variable {var_name} is required: {operand}");
         }
         if not var_name.isidentifier() {
             return `match.group(0);
         }
-        raise ValueError(f"Environment variable {var_name} is not set");
+        ref = UnresolvedRef(var=var_name, required=operator == ":?", message=operand);
+        if sink is not None {
+            sink.append(ref);
+            return `match.group(0);
+        }
+        raise ValueError(ref.describe());
     }
     return re.sub(pattern, replace_env_var, value);
+}
+
+impl UnresolvedRef.describe -> str {
+    return f"Environment variable {self.var} is required: {self.message}"
+        if self.required
+        else f"Environment variable {self.var} is not set";
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
@@ -277,7 +290,8 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         return;
     }
     data: dict[str, any] = read_toml_with_encoding(str(toml_path));
-    data = _interpolate_recursive(data);
+    (data, refs) = resolve_env_refs(data);
+    self.unresolved = self.unresolved + refs;
     section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in data {
@@ -1037,8 +1051,9 @@ impl _parse_toml_data(
 ) -> JacConfig {
     import copy;
     raw = data;
-    data = _interpolate_recursive(raw);
+    (data, refs) = resolve_env_refs(raw);
     config = JacConfig();
+    config.unresolved = refs;
     config._raw_data = raw;
     config._base_data = copy.deepcopy(raw);
     if toml_path {
@@ -1251,6 +1266,7 @@ impl _parse_toml_data(
         config.check = CheckConfig(
             print_errs=check_data.get("print_errs", True),
             lint=lint_config,
+            exclude=check_data.get("exclude", []),
             suppress=check_data.get("suppress", []),
             suppress_categories=check_data.get("suppress_categories", []),
             enforce_access=check_data.get("enforce_access", False),
@@ -1360,18 +1376,48 @@ impl _parse_toml_data(
 }
 
 impl _interpolate_recursive(`obj: any) -> any {
-    if isinstance(`obj, str) {
-        try {
-            return interpolate_env_vars(`obj);
-        } except ValueError {
-            return `obj;
+    (resolved, _) = resolve_env_refs(`obj);
+    return resolved;
+}
+
+impl resolve_env_refs(
+    data: any, environ: dict[str, str] | None = None, path: str = ""
+) -> tuple[any, list[UnresolvedRef]] {
+    refs: list[UnresolvedRef] = [];
+    def walk(item: any, at: str) -> any {
+        if isinstance(item, str) {
+            found: list[UnresolvedRef] = [];
+            resolved = interpolate_env_vars(item, environ, found);
+            for ref in found {
+                ref.path = at;
+                ref.raw = resolved;
+                refs.append(ref);
+            }
+            return resolved;
+        } elif isinstance(item, dict) {
+            return {
+                k: walk(v, f"{at}.{k}" if at else str(k)) for (k, v) in item.items()
+            };
+        } elif isinstance(item, list) {
+            return [walk(v, f"{at}[{i}]") for (i, v) in enumerate(item)];
         }
-    } elif isinstance(`obj, dict) {
-        return {k: _interpolate_recursive(v) for (k, v) in `obj.items()};
-    } elif isinstance(`obj, list) {
-        return [_interpolate_recursive(item) for item in `obj];
+        return item;
     }
-    return `obj;
+    return (walk(data, path), refs);
+}
+
+impl report_env_findings(
+    refs: list[UnresolvedRef], context: str, hint: str = ""
+) -> None {
+    if not refs {
+        return;
+    }
+    lines = [
+        f"  {ref.path}: {ref.var} is not set"
+            + (f" ({ref.message})" if ref.message else "") for ref in refs
+    ];
+    tail = f"\n{hint}" if hint else "";
+    raise ValueError(context + "\n" + "\n".join(lines) + tail);
 }
 
 impl get_config(

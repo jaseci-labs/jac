@@ -6,22 +6,33 @@
 # Unlisted archive contents are discarded before configure/make. Missing,
 # overlapping, or incorrectly typed entries fail the build.
 #
-# Commented source paths record exclusions for the JacPython replacement.
-# Counts use pinned CPython 3.14.6 source lines, including comments and blanks.
-# Excluded: 42 C files / 103,864 lines; 25 headers / 11,178 lines.
-# Total: 67 files / 115,042 source lines excluded from every shipped runtime.
-# A separate build-only CPython host restores these marked entries to produce
-# the native object. The shipped JacPython runtime includes none of them.
+# A commented path carries a marker saying which builds must lack it. Counts
+# use pinned CPython 3.14.6 source lines, including comments and blanks.
+#
+#   "# path  # removed: N source lines"
+#   Replaced by the native Jac implementation. A separate build-only CPython
+#   host restores these to produce the native object; no shipped runtime has
+#   them, and compiler-bridge.patch detaches upstream rules that name them.
+#   Excluded: 43 C files / 104,023 lines; 26 headers / 11,229 lines.
+#   Total: 69 files / 115,252 source lines.
+#
+#   "# path  # pruned: N source lines"
+#   Not needed by any build. Neither the host nor a shipped runtime has them,
+#   so build-graph.patch detaches upstream rules that name them.
+#   A path is pruned only when no supported platform's configure selects it
+#   and its outer #if has no #else that the retained build still links.
+#   Total: 29 files / 59,417 source lines.
+#
+# After each build, build.sh checks that no commented path came back, reading
+# the marker to decide which builds must lack it.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
 # Split a directory entry before removing only part of its contents.
 # CI hashes this manifest and rebuilds/verifies Python when it changes.
 # This list covers CPython; sources.json also pins its external dependencies.
 # Generated headers, build prerequisites and licenses remain necessary even
-# when they are not directly compiled. _testembed.c is built by upstream's
-# default make target, despite --disable-test-modules; no test suite is copied.
-# Its frozen header and Modules/xxmodule.c are also make/install prerequisites.
-# The mimalloc WASI source and older SSL tables are unconditional make
-# prerequisites even when the selected platform/library does not use them.
+# when they are not directly compiled. The mimalloc WASI source is an
+# unconditional make prerequisite even when the selected platform does not
+# use it.
 
 # Build, install and license inputs
 Grammar/
@@ -31,18 +42,18 @@ Misc/platform_triplet.c
 Misc/python-config.in
 Misc/python-config.sh.in
 Misc/python-embed.pc.in
-Misc/python.man
+# Misc/python.man  # pruned: 768 source lines
 Misc/python.pc.in
 Programs/_bootstrap_python.c
 Programs/_freeze_module.c
 Programs/_freeze_module.py
-Programs/_testembed.c
+# Programs/_testembed.c  # pruned: 2,641 source lines
 Programs/python.c
-Programs/test_frozenmain.h
-README.rst
+# Programs/test_frozenmain.h  # pruned: 39 source lines
+# README.rst  # pruned: 235 source lines
 Tools/build/
 Tools/freeze/flag.py
-Tools/gdb/libpython.py
+# Tools/gdb/libpython.py  # pruned: 2,190 source lines
 Tools/scripts/idle3
 Tools/scripts/pydoc3
 aclocal.m4
@@ -96,7 +107,7 @@ Python/ast_unparse.c
 Python/bltinmodule.c
 Python/bootstrap_hash.c
 Python/brc.c
-Python/bytecodes.c
+# Python/bytecodes.c  # pruned: 5,549 source lines
 Python/ceval.c
 Python/ceval_gil.c
 Python/ceval_macros.h
@@ -125,7 +136,7 @@ Python/dtoa.c
 Python/dynamic_annotations.c
 Python/dynload_shlib.c
 Python/errors.c
-Python/executor_cases.c.h
+# Python/executor_cases.c.h  # pruned: 7,163 source lines
 Python/fileutils.c
 # Python/flowgraph.c  # removed: 4,167 source lines
 Python/formatter_unicode.c
@@ -154,7 +165,7 @@ Python/initconfig.c
 Python/instrumentation.c
 Python/interpconfig.c
 Python/intrinsics.c
-Python/jit.c
+# Python/jit.c  # pruned: 523 source lines
 Python/legacy_tracing.c
 Python/lock.c
 Python/marshal.c
@@ -164,9 +175,9 @@ Python/mystrtoul.c
 Python/object_stack.c
 Python/opcode_targets.h
 Python/optimizer.c
-Python/optimizer_analysis.c
-Python/optimizer_cases.c.h
-Python/optimizer_symbols.c
+# Python/optimizer_analysis.c  # pruned: 664 source lines
+# Python/optimizer_cases.c.h  # pruned: 2,520 source lines
+# Python/optimizer_symbols.c  # pruned: 880 source lines
 Python/parking_lot.c
 Python/pathconfig.c
 Python/perf_jit_trampoline.c
@@ -195,9 +206,9 @@ Python/suggestions.c
 # Python/symtable.c  # removed: 3,272 source lines
 Python/sysmodule.c
 Python/thread.c
-Python/thread_nt.h
+# Python/thread_nt.h  # pruned: 532 source lines
 Python/thread_pthread.h
-Python/thread_pthread_stubs.h
+# Python/thread_pthread_stubs.h  # pruned: 191 source lines
 Python/traceback.c
 Python/tracemalloc.c
 Python/uniqueid.c
@@ -439,15 +450,15 @@ Modules/_sre/sre_lib.h
 Modules/_sre/sre_targets.h
 Modules/_ssl.c
 Modules/_ssl.h
-Modules/_ssl_data_111.h
-Modules/_ssl_data_300.h
+# Modules/_ssl_data_111.h  # pruned: 6,543 source lines
+# Modules/_ssl_data_300.h  # pruned: 8,588 source lines
 Modules/_ssl/cert.c
 Modules/_ssl/clinic/cert.c.h
 Modules/_ssl/debughelpers.c
 Modules/_ssl/misc.c
 Modules/_ssl_data_35.h
 Modules/_stat.c
-Modules/_statisticsmodule.c
+# Modules/_statisticsmodule.c  # removed: 159 source lines
 # Modules/_struct.c  # removed: 2,825 source lines
 Modules/_suggestions.c
 Modules/_sysconfig.c
@@ -515,7 +526,7 @@ Modules/clinic/_posixsubprocess.c.h
 # Modules/clinic/_randommodule.c.h  # removed: 177 source lines
 Modules/clinic/_remote_debugging_module.c.h
 Modules/clinic/_ssl.c.h
-Modules/clinic/_statisticsmodule.c.h
+# Modules/clinic/_statisticsmodule.c.h  # removed: 51 source lines
 # Modules/clinic/_struct.c.h  # removed: 461 source lines
 Modules/clinic/_suggestions.c.h
 Modules/clinic/_sysconfig.c.h
@@ -595,8 +606,8 @@ Modules/timemodule.c
 Modules/unicodedata.c
 Modules/unicodedata_db.h
 Modules/unicodename_db.h
-Modules/winreparse.h
-Modules/xxmodule.c
+# Modules/winreparse.h  # pruned: 59 source lines
+# Modules/xxmodule.c  # pruned: 413 source lines
 Modules/zlibmodule.c
 
 # Python standard library (no test or GUI packages)
@@ -627,7 +638,7 @@ Lib/_threading_local.py
 Lib/_weakrefset.py
 Lib/abc.py
 Lib/annotationlib.py
-Lib/antigravity.py
+# Lib/antigravity.py  # pruned: 17 source lines
 Lib/argparse.py
 Lib/ast.py
 Lib/asyncio/
@@ -653,7 +664,7 @@ Lib/copy.py
 Lib/copyreg.py
 Lib/csv.py
 Lib/ctypes/
-Lib/curses/
+# Lib/curses/  # pruned: 604 source lines
 Lib/dataclasses.py
 Lib/datetime.py
 Lib/dbm/
@@ -722,7 +733,7 @@ Lib/pty.py
 Lib/py_compile.py
 Lib/pyclbr.py
 Lib/pydoc.py
-Lib/pydoc_data/
+# Lib/pydoc_data/  # pruned: 14,979 source lines
 Lib/queue.py
 Lib/quopri.py
 Lib/random.py
@@ -759,7 +770,7 @@ Lib/tabnanny.py
 Lib/tarfile.py
 Lib/tempfile.py
 Lib/textwrap.py
-Lib/this.py
+# Lib/this.py  # pruned: 28 source lines
 Lib/threading.py
 Lib/timeit.py
 Lib/token.py
@@ -769,7 +780,7 @@ Lib/trace.py
 Lib/traceback.py
 Lib/tracemalloc.py
 Lib/tty.py
-Lib/turtle.py
+# Lib/turtle.py  # pruned: 4,291 source lines
 Lib/types.py
 Lib/typing.py
 Lib/unittest/

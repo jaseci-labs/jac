@@ -21,6 +21,8 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
     SEC_CTDEPS,
+    SEC_NATIVE_OBJ,
+    SEC_LLVM_IR,
     precompiled_jir_matches_source,
     read_section_bytes
 }
@@ -29,14 +31,9 @@ import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
 import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }
+import from tests.support { cache_env }
 
-glob CACHE_HOME_VARS: tuple[any, ...] = (
-         "HOME",
-         "USERPROFILE",
-         "XDG_CACHE_HOME",
-         "LOCALAPPDATA"
-     ),
-     SPEC_SRC: str = "obj Spec {\n    has name: str,\n        help: str;\n}\n",
+glob SPEC_SRC: str = "obj Spec {\n    has name: str,\n        help: str;\n}\n",
      OTHER_SRC: str = "def helper -> int {\n    return 1;\n}\n",
      OTHER_SRC_EDIT: str = "def helper -> int {\n    return 2;\n}\n",
      CONSUMER_SRC: str = (
@@ -51,7 +48,7 @@ glob CACHE_HOME_VARS: tuple[any, ...] = (
      );
 
 def _isolated(tmp: str) -> any {
-    env: dict[str, str] = {var: tmp for var in CACHE_HOME_VARS};
+    env = cache_env(os.path.join(tmp, "cache"));
     env["JAC_REBUILD"] = "";
     env["JAC_NO_PRECOMPILE"] = "";
     return patch.dict(os.environ, env);
@@ -177,11 +174,19 @@ test "the comptime producers are recorded on the consumer's cache" {
     }
 }
 
-test "an edit to a module no fold read leaves the consumer's cache alone" {
+test "an ordinary runtime import leaves a server consumer's fold cache alone" {
     paths = _project();
+    # Dynamic imports do not bake the dependency body into this artifact.
+    # Native consumers do, and must invalidate on an imported body edit.
+    _write(
+        os.path.join(paths["root"], "jac.toml"),
+        '[project]\nname = "fold-cache"\n[placement.pins]\nconsmod = "server"\n'
+    );
     with _isolated(paths["root"]) {
         _folded(paths["consmod"]);
         cache = artifact_cache_path(paths["consmod"], JacProgram());
+        assert read_section_bytes(cache.read_bytes(), SEC_NATIVE_OBJ) is None;
+        assert read_section_bytes(cache.read_bytes(), SEC_LLVM_IR) is None;
         stamp = os.path.getmtime(cache);
         _write(paths["othermod"], OTHER_SRC_EDIT);
         _folded(paths["consmod"]);

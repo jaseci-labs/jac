@@ -193,7 +193,9 @@ impl native_unit_demotions(
                         _ud_meta = _ud_json.loads(_ud_mf.read());
                     }
                     _ud_cached = _ud_meta.get("demoted_symbols");
-                    if _ud_cached is not None {
+                    import from jaclang.compiler.driver.jir { ct_dep_text_fresh }
+                    if _ud_cached is not None
+                        and ct_dep_text_fresh(_ud_meta.get("ct_deps", "")) {
                         return set(_ud_cached);
                     }
                 }
@@ -352,7 +354,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         if clib_paths {
             for lib_path in clib_paths {
                 try {
-                    if not self._jit_load_clib(lib_path) {
+                    if not load_jit_clib(lib_path) {
                         self.ctx.emit(W5021, path=lib_path);
                     }
                 } except Exception as lib_err {
@@ -450,14 +452,10 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         if _native_debug {
             _opt_level = 0;
         }
-        if _opt_level > 0 {
-            pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
-            pb = llvm.create_pass_builder(target_machine, pto);
-            assert isinstance(pb, llvm.PassBuilder);
-            opt_mpm = pb.getModulePassManager();
-            assert isinstance(opt_mpm, llvm.ModulePassManager);
-            opt_mpm.run(mod, pb);
+        import from jaclang.compiler.backends.native.shared_emit {
+            optimize_native_module
         }
+        optimize_native_module(mod, target_machine, _opt_level);
 
         _dump_path = _compile_opts.dump_ir_path or "";
         if _dump_path {
@@ -556,7 +554,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
     return ir_in;
 }
 
-impl NativeCompilePass._jit_load_clib(lib_path: str) -> bool {
+impl load_jit_clib(lib_path: str) -> bool {
     import os;
     import sys;
     import ctypes.util;
@@ -1053,7 +1051,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
         if not _link_opts.aot_mode {
             for dep_lib_path in meta.clib_paths {
                 try {
-                    self._jit_load_clib(dep_lib_path);
+                    load_jit_clib(dep_lib_path);
                 } except Exception {}
             }
         }
@@ -1348,6 +1346,7 @@ impl NativeCompilePass._references_undefined_region_kernel(
 }
 
 impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
+    import from jaclang.compiler.backends.native.llvm.binding.value { Linkage }
     _gc = str(getattr(self.prog?.options, "na_gc_mode", "cycles") or "cycles");
     _enf = bool(getattr(self.prog?.options, "nogc_enforce_all", False))
         or bool(getattr(self.module.gen, "nogc_enforced", False));
@@ -1368,7 +1367,15 @@ impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
         kmod = llvm.parse_assembly(ir_str);
         kmod.verify();
         for _gv in _mod_globals(kmod) {
-            if not _gv.is_declaration {
+            if not _gv.is_declaration
+                and _gv.linkage
+                    not in (
+                        Linkage.weak_any,
+                        Linkage.weak_odr,
+                        Linkage.linkonce_any,
+                        Linkage.linkonce_odr,
+                        Linkage.common
+                    ) {
                 _gv.linkage = "internal";
             }
         }

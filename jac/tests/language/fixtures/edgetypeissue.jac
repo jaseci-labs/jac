@@ -1,6 +1,6 @@
 node x {}
 
-edge e {
+edge e : Root --> x {
     has name: str;
 }
 

@@ -10,15 +10,12 @@ Note: MTIR extraction from compiled code is tested in:
   jac/tests/compiler/passes/test_mtir_gen_pass.py
 """
 
-import io;
-import os;
 import sys;
 import tempfile;
 import from jaclang.runtime.object_interop { fields }
 import from pathlib { Path }
 
 import from jaclang { JacRuntime }
-import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.runtime.semantic {
     ClassInfo,
     EnumInfo,
@@ -26,19 +23,12 @@ import from jaclang.runtime.semantic {
     FunctionInfo,
     MethodInfo,
     ParamInfo,
+    fetch_mtir,
     mk_dict,
     mk_list,
 }
 import from jaclang.compiler.driver.program { JacProgram }
-
-glob jac_import = Jac.jac_import,
-     FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures");
-
-"""Get absolute path of a fixture from fixtures directory."""
-def fixture_path(fixture: str) -> str {
-    file_path = os.path.join(FIXTURE_DIR, fixture);
-    return os.path.abspath(file_path);
-}
+import from support { fixture_path, load_fixture, need_outside_jaclang }
 
 # =============================================================================
 # Schema Generation Data Structure Tests
@@ -487,28 +477,28 @@ test "scope name generation algorithm" {
 }
 
 test "imported function scope resolution" {
-    captured_output = io.StringIO();
-    sys.stdout = captured_output;
+    need_outside_jaclang(fixture_path("importer_main.jac"));
+    importer = load_fixture("importer_main");
 
-    try {
-        jac_import("importer_main", base_path=FIXTURE_DIR + "/");
-    } finally {
-        sys.stdout = sys.__stdout__;
-    }
-
-    stdout_value = captured_output.getvalue();
-
-    assert "MTIR_TEST: Found scopes:" in stdout_value , f"MTIR test did not run or find scopes. Output:\n{stdout_value}";
-
-    assert (
-        "MTIR_TEST: Has correct scope with 'importable_schema': True" in stdout_value
-    ) , (
-        f"MTIR scope does not contain 'importable_schema'. "
-        f"This indicates the module name 'importable_schema' (ending with 'a') "
-        f"was truncated during compilation. Output:\n{stdout_value}"
+    assert JacRuntime.program is not None;
+    mtir_map = JacRuntime.program.mtir_map;
+    scopes = [
+        scope
+        for scope in mtir_map
+        if "get_imported_data" in scope
+    ];
+    assert scopes , (
+        f"get_imported_data has no MTIR entry. Scopes: {list(mtir_map.keys())}"
     );
-
-    assert "MTIR retrieval test: PASSED" in stdout_value , f"MTIR retrieval test failed. Output:\n{stdout_value}";
+    assert any("importable_schema" in scope for scope in scopes) , (
+        f"the scope must keep the whole module name 'importable_schema' (ending in 'a'), "
+        f"not a truncated one; got {scopes}"
+    );
+    # The call site finds the entry the compiler registered, through the importer.
+    found = fetch_mtir(importer.get_imported_data);
+    assert found is not None and any(found is mtir_map[s] for s in scopes) , (
+        f"fetch_mtir missed the registered entry; scopes: {scopes}"
+    );
 }
 
 # =============================================================================
@@ -738,55 +728,41 @@ test "enum semstrings are extracted" {
 }
 
 test "enum in schema generation" {
-    captured_output = io.StringIO();
-    sys.stdout = captured_output;
+    import jaclang.byllm.schema as schema;
 
-    try {
-        jac_import("enum_with_semstr", base_path=FIXTURE_DIR + "/");
+    person_schema = schema.type_to_schema(
+        load_fixture("enum_with_semstr").Person, info=None
+    );
 
-        import from enum_with_semstr { Person }
-        import jaclang.byllm.schema as schema;
+    assert "json_schema" in person_schema;
+    assert "schema" in person_schema["json_schema"];
+    inner_schema = person_schema["json_schema"]["schema"];
 
-        person_schema = schema.type_to_schema(Person, info=None);
+    assert "properties" in inner_schema;
+    assert "personality" in inner_schema["properties"];
 
-        assert "json_schema" in person_schema;
-        assert "schema" in person_schema["json_schema"];
-        inner_schema = person_schema["json_schema"]["schema"];
+    personality_schema = inner_schema["properties"]["personality"];
 
-        assert "properties" in inner_schema;
-        assert "personality" in inner_schema["properties"];
+    assert "type" in personality_schema;
+    assert personality_schema["type"] == "integer";
 
-        personality_schema = inner_schema["properties"]["personality"];
+    assert "description" in personality_schema;
+    desc = personality_schema["description"];
+    assert "INTROVERT" in desc or "EXTROVERT" in desc or "AMBIVERT" in desc;
+    assert "[1, 2, 3]" in desc or "1" in desc;
 
-        assert "type" in personality_schema;
-        assert personality_schema["type"] == "integer";
-
-        assert "description" in personality_schema;
-        desc = personality_schema["description"];
-        assert "INTROVERT" in desc or "EXTROVERT" in desc or "AMBIVERT" in desc;
-        assert "[1, 2, 3]" in desc or "1" in desc;
-
-        assert "status" in inner_schema["properties"];
-        status_schema = inner_schema["properties"]["status"];
-        assert status_schema["type"] == "string";
-        assert "PENDING" in status_schema["description"];
-    } finally {
-        sys.stdout = sys.__stdout__;
-    }
+    assert "status" in inner_schema["properties"];
+    status_schema = inner_schema["properties"]["status"];
+    assert status_schema["type"] == "string";
+    assert "PENDING" in status_schema["description"];
 }
 
 # =============================================================================
 # Scope Resolution Consistency Tests (Runtime vs Compile-time)
 # =============================================================================
 test "same function name different files resolve distinctly" {
-    captured_output = io.StringIO();
-    sys.stdout = captured_output;
-
-    try {
-        jac_import("scope_main", base_path=FIXTURE_DIR + "/");
-    } finally {
-        sys.stdout = sys.__stdout__;
-    }
+    need_outside_jaclang(fixture_path("scope_main.jac"));
+    load_fixture("scope_main");
 
     assert JacRuntime.program is not None;
     mtir_map = JacRuntime.program.mtir_map;
@@ -829,6 +805,7 @@ test "same function name different files resolve distinctly" {
 }
 
 test "submodule MTIR keyed by import fullname" {
+    need_outside_jaclang(fixture_path("scope_main.jac"));
     # Force re-execution so our exec_module rename fires against the fresh program.
     for name in [
         "scope_main",
@@ -839,14 +816,7 @@ test "submodule MTIR keyed by import fullname" {
         sys.modules.pop(name, None);
     }
 
-    captured_output = io.StringIO();
-    sys.stdout = captured_output;
-
-    try {
-        jac_import("scope_main", base_path=FIXTURE_DIR + "/");
-    } finally {
-        sys.stdout = sys.__stdout__;
-    }
+    main = load_fixture("scope_main");
 
     assert JacRuntime.program is not None;
     mtir_map = JacRuntime.program.mtir_map;
@@ -857,6 +827,15 @@ test "submodule MTIR keyed by import fullname" {
     assert "scope_dir.module_beta.process_data" in mtir_map , f"Expected fullname-keyed MTIR entry for module_beta. Keys: {list(
         mtir_map.keys()
     )}";
+    # The call sites look up the same keys at runtime, through the aliases.
+    for (alias, key) in [
+        ("alpha_process", "scope_dir.module_alpha.process_data"),
+        ("beta_process", "scope_dir.module_beta.process_data")
+    ] {
+        assert fetch_mtir(getattr(main, alias)) is mtir_map[key] , (
+            f"fetch_mtir({alias}) did not return the entry at {key}"
+        );
+    }
 }
 
 test "runtime scope resolution matches compile time" {

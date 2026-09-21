@@ -32,7 +32,7 @@ node OItem {
         tag: str = "";
 }
 
-edge OHas {}
+edge OHas: OBoard --> OItem {}
 
 
 def _as_any(v: any) -> any {

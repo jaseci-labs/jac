@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import ast as py_ast;
@@ -35,6 +36,7 @@ import from jaclang.compiler.driver.jir {
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.frontend.codeinfo {
     ClientArtifact,
+    CodeGenTarget,
     NativeModuleLayout
 }
 import from jaclang.project.source { read_file_with_encoding }
@@ -174,6 +176,10 @@ obj JacCompiler {
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _build_interop_dict(result: uni.Module) -> dict[str, any];
+    def _restore_native_clibs(
+        gen: CodeGenTarget, cached_interop: (dict[str, any] | None)
+    ) -> None;
+
     def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def parse_str(
         source_str: str,

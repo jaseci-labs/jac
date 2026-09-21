@@ -4,7 +4,7 @@ impl OwnershipCheckPass._flow_for_stmts -> list[InForStmt] {
     import from jaclang.compiler.frontend.constant { Tokens as Tok }
     out: list[InForStmt] = [];
     for lp in self.module.get_all_sub_nodes(InForStmt) {
-        for k in lp.kid {
+        for k in [lp->:Kid:->] {
             if isinstance(k, Token) and k.name == Tok.KW_FLOW {
                 out.append(lp);
                 break;

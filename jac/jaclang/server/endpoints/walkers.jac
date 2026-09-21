@@ -6,6 +6,7 @@ import from typing { AsyncGenerator, get_type_hints }
 import from jaclang.data.serializer { Serializer }
 import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.runtime.builtin { APIProtocol }
+import from jaclang.server.serving.coerce { is_upload_type }
 import from jaclang.server.serving.datatypes { Request, Response, StreamingResponse }
 import from jaclang.server.serving.endpoint {
     APIParameter,
@@ -94,12 +95,20 @@ def _failure(result: dict[str, any], fallback: str) -> TransportResponse {
 
 
 def _param_kind(
-    field_name: str, field_type: str, path_names: list[str], method: HTTPMethod
+    field_name: str,
+    field_type: str,
+    path_names: list[str],
+    method: HTTPMethod,
+    type_obj: any = None
 ) -> ParameterType {
     if field_name in path_names {
         return ParameterType.PATH;
     }
-    if 'UploadFile' in field_type or 'uploadfile' in field_type.lower() {
+    if type_obj is not None and not isinstance(type_obj, str) {
+        if is_upload_type(type_obj) {
+            return ParameterType.FILE;
+        }
+    } elif 'UploadFile' in field_type or 'uploadfile' in field_type.lower() {
         return ParameterType.FILE;
     }
     if method == HTTPMethod.GET {
@@ -130,15 +139,15 @@ def walker_parameters(
             continue;
         }
         field_type = fields[field_name]['type'];
-        kind = ParameterType.PATH
-            if field_name == '_jac_spawn_node'
-            else _param_kind(field_name, field_type, path_names, method);
         type_obj = fields[field_name].get('type_obj')
             if isinstance(fields[field_name], dict)
             else None;
         if type_obj is None {
             type_obj = hints.get(field_name);
         }
+        kind = ParameterType.PATH
+            if field_name == '_jac_spawn_node'
+            else _param_kind(field_name, field_type, path_names, method, type_obj);
         parameters.append(
             APIParameter(
                 name='nd' if field_name == '_jac_spawn_node' else field_name,
@@ -287,7 +296,7 @@ def function_parameters(
                 required=fields[field_name]['required'],
                 default_value=fields[field_name]['default'],
                 description=f"Field {field_name} for function {func_name}",
-                kind=_param_kind(field_name, field_type, path_names, method)
+                kind=_param_kind(field_name, field_type, path_names, method, type_obj)
             )
         );
     }

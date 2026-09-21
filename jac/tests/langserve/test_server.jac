@@ -1420,7 +1420,7 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
 
         # Sanity: cache should exist and be valid right now.
         assert cache_path.exists() , "module cache was not written";
-        with cache_scope(program.context_key, program.options) {
+        with cache_scope(program.options) {
             assert is_module_cache_valid(dep_src, cache_path) , "Fresh cache should be valid";
         }
 
@@ -1431,7 +1431,7 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
         cache_path.write_bytes(bytes(data));
 
         # The cache should now be rejected.
-        with cache_scope(program.context_key, program.options) {
+        with cache_scope(program.options) {
             assert not is_module_cache_valid(dep_src, cache_path) , (
                 "Cache with mismatched jaclang_version_hash should be invalid"
             );

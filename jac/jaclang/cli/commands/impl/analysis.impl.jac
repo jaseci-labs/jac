@@ -3,7 +3,7 @@ import from fnmatch { fnmatch }
 import from jaclang.cli.console { console }
 import from jaclang.cli.check_report {
     print_file_progress,
-    print_failures,
+    print_section,
     print_failed_summary,
     print_final_summary,
     print_native_coverage,
@@ -255,7 +255,10 @@ impl check(
         paths = [paths];
     }
     start_time = time();
-    ignore_list = _normalize_ignore_patterns(ignore or []);
+    ignore_list = _normalize_ignore_patterns(
+        list(ignore or [])
+            + (_configured_check_excludes() if _is_project_wide_run(paths) else [])
+    );
     (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
         disable_error_code or []
     );
@@ -468,6 +471,7 @@ impl check(
 
     multi = len({r['label'] for r in results}) > 1;
     failed_results: list[dict[str, any]] = [];
+    warning_results: list[dict[str, any]] = [];
     total_errors = failed_files=0;
     for res in results {
         errs = _wire_list(res.get('errors'));
@@ -482,18 +486,12 @@ impl check(
             }
         }
         total_errors += len(errs);
+        path = (f"[{res['label']}] " if multi else '') + str(res.get('path'));
         if not res.get('success') {
             failed_files += 1;
-        }
-        if not res.get('success') or (len(warns) > 0 and not nowarn) {
-            failed_results.append(
-                {
-                    'path': (f"[{res['label']}] " if multi else '')
-                        + str(res.get('path')),
-                    'errors': errs,
-                    'warnings': warns
-                }
-            );
+            failed_results.append({'path': path, 'errors': errs, 'warnings': warns});
+        } elif len(warns) > 0 {
+            warning_results.append({'path': path, 'warnings': warns});
         }
     }
     if native_coverage {
@@ -503,10 +501,13 @@ impl check(
         print_placement_report(placement_report);
     }
     if print_errs and len(failed_results) > 0 {
-        print_failures(failed_results, nowarn);
+        print_section("FAILURES", failed_results, nowarn);
     }
     if failed_files > 0 {
         print_failed_summary(failed_results);
+    }
+    if print_errs and len(warning_results) > 0 {
+        print_section("WARNINGS", warning_results, nowarn);
     }
 
     elapsed = time() - start_time;
@@ -1177,16 +1178,7 @@ impl format(
     }
 
     if failed_results {
-        import from jaclang.cli.check_report { separator }
-        console.print("");
-        console.print(separator("FAILURES"));
-        for r in failed_results {
-            console.print(separator(str(r['path']), char='_'));
-            for e in r['errors'] {
-                console.error(e);
-            }
-            console.print("");
-        }
+        print_section("FAILURES", failed_results);
         print_failed_summary(failed_results);
     }
 
@@ -1255,6 +1247,7 @@ impl precommit(
     }
     targets: list[str] = [];
     rel_targets: list[str] = [];
+    check_targets: list[str] = [];
     git_root = "";
     if staged {
         try {
@@ -1289,8 +1282,15 @@ impl precommit(
             console.success("No staged '.jac' files to check.");
             return 0;
         }
+        gate = _normalize_ignore_patterns(_configured_check_excludes());
+        check_targets = [
+            abs_t
+            for (rel, abs_t) in zip(rel_targets, targets)
+            if not _should_ignore(rel, gate)
+        ];
     } elif paths {
         targets = list(paths);
+        check_targets = targets;
     } else {
         config = get_config();
         if config is not None and config.project_root {
@@ -1298,6 +1298,7 @@ impl precommit(
         } else {
             targets = ["."];
         }
+        check_targets = targets;
     }
 
     fmt_targets = targets;
@@ -1394,7 +1395,7 @@ impl precommit(
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
     console.print("[precommit] Running check...");
-    check_ret = check(targets);
+    check_ret = check(check_targets) if check_targets else 0;
 
     fixes_applied = (
         int(stats.get("changed", 0)) > 0
@@ -1823,6 +1824,26 @@ def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
 def _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
     import from jaclang.project.source { normalize_exclude_patterns }
     return normalize_exclude_patterns(ignore);
+}
+
+def _configured_check_excludes -> list[str] {
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    return list(config.check.exclude) if config is not None else [];
+}
+
+def _is_project_wide_run(paths: list[str]) -> bool {
+    import os;
+    import from jaclang.project.config { get_config }
+    if not paths {
+        return True;
+    }
+    config = get_config();
+    proj = str(config.project_root) if (config and config.project_root) else "";
+    if not proj or len(paths) != 1 {
+        return False;
+    }
+    return os.path.realpath(paths[0]) == os.path.realpath(proj);
 }
 
 def _drop_git_ignored(paths: list[str]) -> list[str] {

@@ -263,10 +263,7 @@ impl NaIRGenPass._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | N
         (fname, ftype)
         for (fname, ftype) in field_types.items()
         if fname not in foreign_fields
-            and (
-                self._elem_kind(ftype) != "raw"
-                or self._opt_ptr_payload_of(ftype) is not None
-            )
+            and self._is_reference_type(ftype)
             and field_indices.get(fname, -1) >= 0
     ];
     if _hook is None and not _ptr_fields {

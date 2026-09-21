@@ -581,6 +581,51 @@ class IRBuilder(object) {
     }
 
     """
+        Atomically load from pointer with the given memory ordering:
+            name = load atomic *ptr
+        LLVM requires an explicit alignment on atomic accesses.
+        """
+    def load_atomic(
+        self: IRBuilder,
+        ptr: any,
+        ordering: str,
+        align: int,
+        name: any = '',
+        typ: any = None
+    ) -> values.Value {
+        if not isinstance(ptr.type, types.PointerType) {
+            msg = "cannot load from value of type %s (%r): not a pointer";
+            raise TypeError((msg % (ptr.type, str(ptr))));
+        }
+        ld = instructions.LoadAtomicInstr(
+            self.block, ptr, ordering, align, name, typ=typ
+        );
+        self._insert(ld);
+        return ld;
+    }
+
+    """
+        Atomically store value to pointer with the given memory ordering:
+            store atomic value, *ptr
+        """
+    def store_atomic(
+        self: IRBuilder, value: any, ptr: any, ordering: str, align: int
+    ) -> values.Value {
+        if not isinstance(ptr.type, types.PointerType) {
+            msg = "cannot store to value of type %s (%r): not a pointer";
+            raise TypeError((msg % (ptr.type, str(ptr))));
+        }
+        if (not ptr.type.is_opaque and (ptr.type.pointee != value.type)) {
+            raise TypeError(
+                ("cannot store %s to %s: mismatching types" % (value.type, ptr.type))
+            );
+        }
+        st = instructions.StoreAtomicInstr(self.block, value, ptr, ordering, align);
+        self._insert(st);
+        return st;
+    }
+
+    """
         Unconditional branch to *target*.
         """
     def branch(self: IRBuilder, target: any) -> values.Value {

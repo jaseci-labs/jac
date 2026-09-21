@@ -261,6 +261,23 @@ impl Model._raise_mapped_provider_error(e: Exception) -> None {
     raise;
 }
 
+impl Model.model_call_image(params: dict[str, any]) -> dict[str, any] {
+    if self.proxy or self.http_client {
+        raise ConfigurationError(
+            "Image generation goes through litellm; the proxy and http_client "
+            "transports do not carry it."
+        );
+    }
+    require_optional("litellm", "llm");
+    response: object;
+    try {
+        response = litellm.image_generation(api_key=self.api_key or None, **params);
+    } except Exception as e {
+        self._raise_mapped_provider_error(e);
+    }
+    return response_dict(response);
+}
+
 impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
     response: object;
     try {

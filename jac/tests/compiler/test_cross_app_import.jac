@@ -92,10 +92,18 @@ test "server-context import of another serving app is SERVICE_BRIDGE" {
     assert greet is not None and greet.provider_app == "social";
     walker_binding = manifest.bindings.get("Greet");
     assert walker_binding is not None and walker_binding.kind == "walker" , (
-        "a plain (non-:pub) walker bridges like any archetype"
+        "an exposed (:protect) walker bridges like a :pub one"
     );
     assert "E5106" not in codes(prog) , f"{[str(e) for e in prog.errors_had]}";
     assert "E5104" not in codes(prog);
+}
+
+test "bridging to a plain (private) walker of another app is E5106" {
+    (prog, mod) = compile_fixture(fixture("web", "bad_walker_bridge.jac"));
+    found = codes(prog);
+    assert "E5106" in found , (
+        f"expected E5106 for a private walker, got {[str(e) for e in prog.errors_had]}"
+    );
 }
 
 test "SERVICE_BRIDGE stubs are typed-async and keyed by the owner app" {

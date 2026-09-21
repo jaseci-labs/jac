@@ -60,6 +60,49 @@ def _assert_kind(kind: str, entry_name: str, action: str) {
     assert plan.app == "" , "an implicit app plans without an app name";
 }
 
+test "create --awetiny preserves the workspace and renames the project" {
+    initialize_template_registry();
+    with tempfile.TemporaryDirectory() as folder {
+        os.chdir(folder);
+        try {
+            assert project.create(name="tiny", awetiny=True, `skip=True) == 0;
+            proj = Path(folder) / "tiny";
+            cfg = JacConfig.discover(start_path=proj);
+            assert cfg is not None and cfg.is_workspace;
+            assert cfg.project.name == "tiny";
+            assert cfg.resolve_app("").name == "web";
+            for (name, kind) in [
+                ("web", "web-app"),
+                ("mobile", "mobile"),
+                ("desktop", "desktop"),
+                ("cli", "cli"),
+                ("feed", "service"),
+                ("scoring", "service")
+            ] {
+                assert cfg.resolve_app(name).kind == kind;
+            }
+            assert (proj / "core" / "feed.jac").is_file();
+            assert (proj / "core" / "scoring.jac").is_file();
+            assert (
+                proj / "docs" / "screenshots" / "web-desktop.png"
+            ).read_bytes().startswith(
+                b"\x89PNG"
+            );
+            config = (proj / "jac.toml").read_text();
+            assert "[dev]" not in config and "[jacpack]" not in config;
+        } finally {
+            os.chdir(_orig_cwd);
+        }
+    }
+}
+
+test "create --awetiny rejects conflicting scaffold selectors" {
+    assert project.create(awetiny=True, awesome=True, `skip=True) == 1;
+    assert project.create(awetiny=True, kind="cli", `skip=True) == 1;
+    assert project.create(awetiny=True, use="custom", `skip=True) == 1;
+    assert project.create(awetiny=True, app="mobile", `skip=True) == 1;
+}
+
 test "create --kind cli" {
     _assert_kind("cli", "main.jac", "execute");
     _cleanup();

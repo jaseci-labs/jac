@@ -215,7 +215,7 @@ test "guardrail: field access on an untyped (any) node-ref element demotes the a
     (prog, ir, log) = compile_na_inline_demote(
         "node_ref_any_field",
         "node N { has tag: int = 0; }\n"
-        "edge Portal {}\n"
+        "edge Portal: any --> any {}\n"
         "walker W {\n"
         "    has v: int = 0;\n"
         "    can go with N entry {\n"
@@ -709,7 +709,7 @@ test "guardrail: list-endpoint disconnect lowers; list plus predicate stays loud
     )}";
     prog2 = compile_na_inline(
         "disconnect_pred_list",
-        "edge E { has w: int = 0; }\n"
+        "edge E: N --> N { has w: int = 0; }\n"
         "node N {}\n"
         "walker W {\n"
         "    can go with N entry {\n"
@@ -769,7 +769,7 @@ test "osp gate: connect-only module (no walker) lowers without E5090" {
     prog = compile_na_inline(
         "connect_no_walker",
         "node Area { has tag: int = 0; }\n"
-        "edge In {}\n"
+        "edge In: Area --> Area {}\n"
         "with entry {\n"
         "    a = Area(tag=1);\n"
         "    b = Area(tag=2);\n"
@@ -937,6 +937,32 @@ test "check rejects a native def with an unknown return type" {
         "native_unknown_ret", "def make_it(x: int) -> some_handle { return x; }\n"
     );
     assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native return type 'some_handle', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# An unresolved type in an `as` cast is the same silent-i64 hazard as an
+# unresolved annotation: native lowering reads the cast type to pick a layout.
+test "check rejects a native cast to an unknown type" {
+    prog = check_na_inline(
+        "native_unknown_cast",
+        "def widen(n: int) -> int {\n    v = n as uint32_t;\n    return v;\n}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native cast type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Nesting depth is not a boundary of the language: an unresolved annotation is
+# an error however deep the generic arguments go.
+test "check rejects an unknown type nested deep in a native annotation" {
+    prog = check_na_inline(
+        "native_unknown_deep",
+        "def take(xs: dict[str, dict[str, dict[str, list[uint32_t]]]]) -> int {\n"
+        "    return 0;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for a deeply nested unknown native type 'uint32_t', got: {fmt_errors(
         prog
     )}";
 }

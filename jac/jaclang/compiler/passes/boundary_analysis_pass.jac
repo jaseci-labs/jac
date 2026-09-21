@@ -124,5 +124,5 @@ walker BoundaryAnalysisPass(TreeWalker) {
 
     def _literal_default(expr: (UniNode | None)) -> tuple[(bool, any)];
     can finish with exit;
-    def _record_access_levels(manifest: any) -> None;
+    def _record_surface(manifest: any) -> None;
 }

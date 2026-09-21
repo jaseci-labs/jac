@@ -371,7 +371,7 @@ node Room {
     has name: str;
 }
 
-edge Door {}
+edge Door: Room --> Room {}
 
 test "graph connections" {
     kitchen = Room(name="Kitchen");

@@ -71,28 +71,34 @@ test "an artifact store leaves another compiler generation's artifact alone" {
     os.remove(mine);
 }
 
-test "a superseded generation's artifacts retire once they go untouched" {
+test "a superseded generation's units and artifacts retire once they go untouched" {
     import time;
-    import from jaclang.compiler.backends.common.kernel_units { _RETIRED_UNITS }
+    import from jaclang.compiler.backends.common.kernel_units { retire_stale_units }
     unit = osp_core_unit_path('cl');
     units_dir = os.path.dirname(unit);
     aged = os.path.join(
         units_dir, "osp_core_cl.0123456789abcdef.feedfacefeedface.canary"
     );
+    aged_unit = os.path.join(units_dir, "osp_core_cl.0123456789abcdef.jac");
     recent = os.path.join(
         units_dir, "osp_core_cl.fedcba9876543210.cafebabecafebabe.canary"
     );
-    for stray in [aged, recent] {
+    for stray in [aged, aged_unit, recent] {
         with open(stray, "w") as f {
             f.write("; superseded\n");
         }
     }
     old_stamp = time.time() - (40.0 * 86400.0);
     os.utime(aged, (old_stamp, old_stamp));
-    _RETIRED_UNITS.discard("osp_core_cl");
-    osp_core_unit_path('cl');
+    os.utime(aged_unit, (old_stamp, old_stamp));
+    # The live unit is kept by its digest, never by its age.
+    os.utime(unit, (old_stamp, old_stamp));
+    assert retire_stale_units(force=True) , "the retirement sweep did not run";
     assert not os.path.exists(aged) , (
         "an untouched superseded artifact was not retired"
+    );
+    assert not os.path.exists(aged_unit) , (
+        "an untouched superseded unit source was not retired"
     );
     assert os.path.exists(recent) , (
         "a superseded artifact still in use was retired too eagerly"

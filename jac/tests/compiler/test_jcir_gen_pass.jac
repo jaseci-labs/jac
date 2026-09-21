@@ -751,7 +751,7 @@ node Spot {
     has name: str = "";
 }
 
-edge Road {}
+edge Road : Spot --> Spot {}
 
 walker Traveler {
     has seen: list[str] = [],

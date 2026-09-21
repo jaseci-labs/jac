@@ -6,6 +6,16 @@
 #include "internal/pycore_unicodeobject.h"
 #include "internal/pycore_bytesobject.h"
 #include "internal/pycore_pyerrors.h"
+#include "internal/pycore_ast.h"
+#include "internal/pycore_ast_state.h"
+#include "internal/pycore_pystate.h"
+#include "internal/pycore_code.h"
+
+/* libpython is built with hidden visibility, so only marked symbols reach a
+ * native library that dlopens into this runtime. These entry points ARE that
+ * boundary -- a separately built native unit calls them -- so export them. */
+#pragma GCC visibility push(default)
+
 
 /* Exception identity belongs to the retained runtime, not the caller's
  * mutable builtins dictionary. Shared by compiler and extension boundaries. */
@@ -99,30 +109,129 @@ uint64_t jacpy_parse_float(const char *source, int64_t size) {
 double jacpy_float_value(uint64_t handle) { return PyFloat_AS_DOUBLE((PyObject *)(uintptr_t)handle); }
 
 /* AST constructors and attributes are retained CPython value operations.
- * Traversal, node selection, and field conversion live in native Jac. */
-uint64_t jacpy_ast_new(const char *name) {
-    PyObject *module = PyImport_ImportModule("_ast");
-    if (module == NULL) return 0;
-    PyObject *type = PyObject_GetAttrString(module, name);
-    Py_DECREF(module);
-    if (type == NULL) return 0;
+ * Traversal, node selection, and field conversion live in native Jac.
+ * Kinds are numbered in the order of `ast_kind`
+ * (jaclang/compiler/frontend/python/ast_nodes.jac); types and the shared
+ * context/operator singletons come from the interpreter's AST state, as in
+ * CPython's own ast2obj/obj2ast. */
+#define JAC_AST_KINDS(NODE, SINGLETON) \
+    NODE(Module) NODE(Interactive) NODE(Expression) NODE(FunctionType) \
+    NODE(FunctionDef) NODE(AsyncFunctionDef) NODE(ClassDef) NODE(Return) \
+    NODE(Delete) NODE(Assign) NODE(TypeAlias) NODE(AugAssign) NODE(AnnAssign) \
+    NODE(For) NODE(AsyncFor) NODE(While) NODE(If) NODE(With) NODE(AsyncWith) \
+    NODE(Match) NODE(Raise) NODE(Try) NODE(TryStar) NODE(Assert) NODE(Import) \
+    NODE(ImportFrom) NODE(Global) NODE(Nonlocal) NODE(Expr) NODE(Pass) NODE(Break) \
+    NODE(Continue) NODE(BoolOp) NODE(NamedExpr) NODE(BinOp) NODE(UnaryOp) \
+    NODE(Lambda) NODE(IfExp) NODE(Dict) NODE(Set) NODE(ListComp) NODE(SetComp) \
+    NODE(DictComp) NODE(GeneratorExp) NODE(Await) NODE(Yield) NODE(YieldFrom) \
+    NODE(Compare) NODE(Call) NODE(FormattedValue) NODE(Interpolation) \
+    NODE(JoinedStr) NODE(TemplateStr) NODE(Constant) NODE(Attribute) NODE(Subscript) \
+    NODE(Starred) NODE(Name) NODE(List) NODE(Tuple) NODE(Slice) SINGLETON(Load) \
+    SINGLETON(Store) SINGLETON(Del) SINGLETON(And) SINGLETON(Or) SINGLETON(Add) \
+    SINGLETON(Sub) SINGLETON(Mult) SINGLETON(MatMult) SINGLETON(Div) SINGLETON(Mod) \
+    SINGLETON(Pow) SINGLETON(LShift) SINGLETON(RShift) SINGLETON(BitOr) \
+    SINGLETON(BitXor) SINGLETON(BitAnd) SINGLETON(FloorDiv) SINGLETON(Invert) \
+    SINGLETON(Not) SINGLETON(UAdd) SINGLETON(USub) SINGLETON(Eq) SINGLETON(NotEq) \
+    SINGLETON(Lt) SINGLETON(LtE) SINGLETON(Gt) SINGLETON(GtE) SINGLETON(Is) \
+    SINGLETON(IsNot) SINGLETON(In) SINGLETON(NotIn) NODE(comprehension) \
+    NODE(ExceptHandler) NODE(arguments) NODE(arg) NODE(keyword) NODE(alias) \
+    NODE(withitem) NODE(match_case) NODE(MatchValue) NODE(MatchSingleton) \
+    NODE(MatchSequence) NODE(MatchMapping) NODE(MatchClass) NODE(MatchStar) \
+    NODE(MatchAs) NODE(MatchOr) NODE(TypeIgnore) NODE(TypeVar) NODE(ParamSpec) \
+    NODE(TypeVarTuple)
+
+typedef struct { ptrdiff_t type; ptrdiff_t singleton; } jac_ast_kind_slots;
+#define JAC_AST_NODE(name) {offsetof(struct ast_state, name##_type), -1},
+#define JAC_AST_SINGLETON(name) \
+    {offsetof(struct ast_state, name##_type), offsetof(struct ast_state, name##_singleton)},
+static const jac_ast_kind_slots jac_ast_kinds[] = {JAC_AST_KINDS(JAC_AST_NODE, JAC_AST_SINGLETON)};
+#undef JAC_AST_NODE
+#undef JAC_AST_SINGLETON
+#define JAC_AST_KIND_COUNT ((int64_t)(sizeof(jac_ast_kinds) / sizeof(jac_ast_kinds[0])))
+
+static struct ast_state *jac_ast_state(void) {
+    /* PyAST_Check initializes the interpreter's AST types on first use. */
+    if (PyAST_Check(Py_None) < 0) return NULL;
+    return &_PyInterpreterState_GET()->ast;
+}
+static PyObject *jac_ast_slot(struct ast_state *state, ptrdiff_t offset) {
+    return *(PyObject **)((char *)state + offset);
+}
+/* Exact types resolve by identity; subclasses take the first kind in
+ * declaration order, like obj2ast's isinstance chain. -1: not a concrete
+ * node, -2: the AST state could not be initialized. */
+int64_t jacpy_ast_kind(uint64_t handle) {
+    struct ast_state *state = jac_ast_state();
+    if (state == NULL) return -2;
+    PyTypeObject *type = Py_TYPE((PyObject *)(uintptr_t)handle);
+    for (int64_t kind = 0; kind < JAC_AST_KIND_COUNT; kind++) {
+        if ((PyObject *)type == jac_ast_slot(state, jac_ast_kinds[kind].type)) return kind;
+    }
+    for (int64_t kind = 0; kind < JAC_AST_KIND_COUNT; kind++) {
+        if (PyType_IsSubtype(type, (PyTypeObject *)jac_ast_slot(state, jac_ast_kinds[kind].type))) return kind;
+    }
+    return -1;
+}
+uint64_t jacpy_ast_new(int64_t kind) {
+    struct ast_state *state = jac_ast_state();
+    if (state == NULL) return 0;
+    if (jac_ast_kinds[kind].singleton >= 0)
+        return (uint64_t)(uintptr_t)Py_NewRef(jac_ast_slot(state, jac_ast_kinds[kind].singleton));
     /* All fields are filled by Jac before publication; invoking __init__
      * here would warn about fields that have not yet crossed the boundary. */
-    if (!PyType_Check(type)) {
-        Py_DECREF(type);
-        PyErr_SetString(PyExc_TypeError, "invalid retained AST type");
-        return 0;
-    }
-    PyObject *result = PyType_GenericAlloc((PyTypeObject *)type, 0);
-    Py_DECREF(type);
-    return (uint64_t)(uintptr_t)result;
+    PyTypeObject *type = (PyTypeObject *)jac_ast_slot(state, jac_ast_kinds[kind].type);
+    return (uint64_t)(uintptr_t)PyType_GenericAlloc(type, 0);
 }
-int64_t jacpy_set_owned(uint64_t target, const char *name, uint64_t value) {
+/* Field names are the interned identifiers of the same AST state, numbered in
+ * the order of `ast_field` (jaclang/compiler/frontend/python/ast_nodes.jac). */
+#define JAC_AST_FIELDS(FIELD) \
+    FIELD(annotation) FIELD(arg) FIELD(args) FIELD(argtypes) FIELD(asname) \
+    FIELD(attr) FIELD(bases) FIELD(body) FIELD(bound) FIELD(cases) FIELD(cause) \
+    FIELD(cls) FIELD(col_offset) FIELD(comparators) FIELD(context_expr) \
+    FIELD(conversion) FIELD(ctx) FIELD(decorator_list) FIELD(default_value) \
+    FIELD(defaults) FIELD(elt) FIELD(elts) FIELD(end_col_offset) FIELD(end_lineno) \
+    FIELD(exc) FIELD(finalbody) FIELD(format_spec) FIELD(func) FIELD(generators) \
+    FIELD(guard) FIELD(handlers) FIELD(id) FIELD(ifs) FIELD(is_async) FIELD(items) \
+    FIELD(iter) FIELD(key) FIELD(keys) FIELD(keywords) FIELD(kind) \
+    FIELD(kw_defaults) FIELD(kwarg) FIELD(kwd_attrs) FIELD(kwd_patterns) \
+    FIELD(kwonlyargs) FIELD(left) FIELD(level) FIELD(lineno) FIELD(lower) \
+    FIELD(module) FIELD(msg) FIELD(name) FIELD(names) FIELD(op) FIELD(operand) \
+    FIELD(ops) FIELD(optional_vars) FIELD(orelse) FIELD(pattern) FIELD(patterns) \
+    FIELD(posonlyargs) FIELD(rest) FIELD(returns) FIELD(right) FIELD(simple) \
+    FIELD(slice) FIELD(step) FIELD(str) FIELD(subject) FIELD(tag) FIELD(target) \
+    FIELD(targets) FIELD(test) FIELD(type) FIELD(type_comment) FIELD(type_ignores) \
+    FIELD(type_params) FIELD(upper) FIELD(value) FIELD(values) FIELD(vararg)
+
+#define JAC_AST_FIELD(name) offsetof(struct ast_state, name),
+static const ptrdiff_t jac_ast_fields[] = {JAC_AST_FIELDS(JAC_AST_FIELD)};
+#undef JAC_AST_FIELD
+
+static PyObject *jac_ast_field_name(int64_t field) {
+    struct ast_state *state = jac_ast_state();
+    return state == NULL ? NULL : jac_ast_slot(state, jac_ast_fields[field]);
+}
+int64_t jacpy_set_owned(uint64_t target, int64_t field, uint64_t value) {
     if (!value) return -1;
     PyObject *item = (PyObject *)(uintptr_t)value;
-    int status = PyObject_SetAttrString((PyObject *)(uintptr_t)target, name, item);
+    PyObject *name = jac_ast_field_name(field);
+    int status = name == NULL ? -1 : PyObject_SetAttr((PyObject *)(uintptr_t)target, name, item);
     Py_DECREF(item);
     return status;
+}
+uint64_t jacpy_field(uint64_t handle, int64_t field) {
+    PyObject *name = jac_ast_field_name(field);
+    PyObject *value = NULL;
+    if (name == NULL || PyObject_GetOptionalAttr((PyObject *)(uintptr_t)handle, name, &value) < 0) return 0;
+    if (value == NULL)
+        PyErr_Format(PyExc_TypeError, "required field \"%U\" missing from %s", name,
+                     Py_TYPE((PyObject *)(uintptr_t)handle)->tp_name);
+    return (uint64_t)(uintptr_t)value;
+}
+uint64_t jacpy_optional_field(uint64_t handle, int64_t field) {
+    PyObject *name = jac_ast_field_name(field);
+    PyObject *value = NULL;
+    if (name == NULL || PyObject_GetOptionalAttr((PyObject *)(uintptr_t)handle, name, &value) < 0) return 0;
+    return (uint64_t)(uintptr_t)(value != NULL ? value : Py_NewRef(Py_None));
 }
 uint64_t jacpy_list_new(void) { return (uint64_t)(uintptr_t)PyList_New(0); }
 int64_t jacpy_list_append_owned(uint64_t target, uint64_t value) {
@@ -141,9 +250,37 @@ uint64_t jacpy_buffer_new(int64_t size) { return (uint64_t)(uintptr_t)PyBytes_Fr
 void jacpy_buffer_set(uint64_t handle, int64_t index, int64_t value) {
     PyBytes_AS_STRING((PyObject *)(uintptr_t)handle)[index] = (char)value;
 }
-uint64_t jacpy_unmarshal(uint64_t handle) {
-    PyObject *bytes = (PyObject *)(uintptr_t)handle;
-    return (uint64_t)(uintptr_t)PyMarshal_ReadObjectFromString(PyBytes_AS_STRING(bytes), PyBytes_GET_SIZE(bytes));
+/* Code objects are assembled by native Jac and constructed through the same
+ * validated constructor marshal uses. Handles are borrowed. */
+uint64_t jacpy_code_new(int64_t argcount, int64_t posonlyargcount, int64_t kwonlyargcount,
+                        int64_t stacksize, int64_t flags, uint64_t code, uint64_t consts,
+                        uint64_t names, uint64_t localsplusnames, uint64_t localspluskinds,
+                        uint64_t filename, uint64_t name, uint64_t qualname,
+                        int64_t firstlineno, uint64_t linetable, uint64_t exceptiontable) {
+    struct _PyCodeConstructor con = {
+        .filename = (PyObject *)(uintptr_t)filename,
+        .name = (PyObject *)(uintptr_t)name,
+        .qualname = (PyObject *)(uintptr_t)qualname,
+        .flags = (int)flags,
+        .code = (PyObject *)(uintptr_t)code,
+        .firstlineno = (int)firstlineno,
+        .linetable = (PyObject *)(uintptr_t)linetable,
+        .consts = (PyObject *)(uintptr_t)consts,
+        .names = (PyObject *)(uintptr_t)names,
+        .localsplusnames = (PyObject *)(uintptr_t)localsplusnames,
+        .localspluskinds = (PyObject *)(uintptr_t)localspluskinds,
+        .argcount = (int)argcount,
+        .posonlyargcount = (int)posonlyargcount,
+        .kwonlyargcount = (int)kwonlyargcount,
+        .stacksize = (int)stacksize,
+        .exceptiontable = (PyObject *)(uintptr_t)exceptiontable,
+    };
+    if (_PyCode_Validate(&con) < 0) return 0;
+    return (uint64_t)(uintptr_t)_PyCode_New(&con);
+}
+uint64_t jacpy_slice_new(uint64_t start, uint64_t stop, uint64_t step) {
+    return (uint64_t)(uintptr_t)PySlice_New((PyObject *)(uintptr_t)start, (PyObject *)(uintptr_t)stop,
+                                            (PyObject *)(uintptr_t)step);
 }
 
 int64_t jacpy_value_kind(uint64_t handle) {
@@ -167,34 +304,12 @@ uint64_t jacpy_marshal(uint64_t handle) {
 uint64_t jacpy_utf8(uint64_t handle) {
     return (uint64_t)(uintptr_t)PyUnicode_AsEncodedString((PyObject *)(uintptr_t)handle,"utf-8","surrogatepass");
 }
-uint64_t jacpy_bytes_copy(uint64_t handle) { return (uint64_t)(uintptr_t)Py_NewRef((PyObject *)(uintptr_t)handle); }
 double jacpy_real(uint64_t handle) { return PyComplex_RealAsDouble((PyObject *)(uintptr_t)handle); }
 double jacpy_imag(uint64_t handle) { return PyComplex_ImagAsDouble((PyObject *)(uintptr_t)handle); }
 uint64_t jacpy_sequence(uint64_t handle) { return (uint64_t)(uintptr_t)PySequence_List((PyObject *)(uintptr_t)handle); }
 int64_t jacpy_sequence_size(uint64_t handle) { return PyList_GET_SIZE((PyObject *)(uintptr_t)handle); }
 uint64_t jacpy_sequence_item(uint64_t handle, int64_t index) {
     return (uint64_t)(uintptr_t)Py_NewRef(PyList_GET_ITEM((PyObject *)(uintptr_t)handle,index));
-}
-uint64_t jacpy_field(uint64_t handle, const char *name) {
-    PyObject *value = NULL;
-    if (PyObject_GetOptionalAttrString((PyObject *)(uintptr_t)handle,name,&value) < 0) return 0;
-    if (value == NULL) PyErr_Format(PyExc_TypeError,"required field \"%s\" missing from %s",name,Py_TYPE((PyObject *)(uintptr_t)handle)->tp_name);
-    return (uint64_t)(uintptr_t)value;
-}
-uint64_t jacpy_optional_field(uint64_t handle, const char *name) {
-    PyObject *value = NULL;
-    if (PyObject_GetOptionalAttrString((PyObject *)(uintptr_t)handle,name,&value) < 0) return 0;
-    return (uint64_t)(uintptr_t)(value != NULL ? value : Py_NewRef(Py_None));
-}
-int64_t jacpy_ast_is(uint64_t handle, const char *name) {
-    PyObject *module = PyImport_ImportModule("_ast");
-    if (module == NULL) return -1;
-    PyObject *type = PyObject_GetAttrString(module,name);
-    Py_DECREF(module);
-    if (type == NULL) return -1;
-    int result = PyObject_IsInstance((PyObject *)(uintptr_t)handle,type);
-    Py_DECREF(type);
-    return result;
 }
 int64_t jacpy_is_list(uint64_t handle) { return PyList_Check((PyObject *)(uintptr_t)handle); }
 int64_t jacpy_integer_value(uint64_t handle) { return PyLong_AsLongLong((PyObject *)(uintptr_t)handle); }
@@ -210,6 +325,21 @@ uint64_t jacpy_take_error_text(void) {
     PyObject *text = PyObject_Str(error);
     Py_DECREF(error);
     return utf8_result(text);
+}
+/* Compiler failures keep CPython's argument shape: SyntaxError subclasses take
+ * (message, (filename, lineno, offset, text, end_lineno, end_offset)). */
+void jacpy_raise_compiler_error(const char *kind, uint64_t message, uint64_t location) {
+    PyObject *type = jacpy_exception_type(kind);
+    if (type == NULL) {
+        PyErr_Format(PyExc_SystemError, "unknown native diagnostic %s", kind);
+        return;
+    }
+    if (location != 0 && PyObject_IsSubclass(type, PyExc_SyntaxError) > 0) {
+        PyObject *args = PyTuple_Pack(2, (PyObject *)(uintptr_t)message, (PyObject *)(uintptr_t)location);
+        if (args != NULL) { PyErr_SetObject(type, args); Py_DECREF(args); }
+        return;
+    }
+    PyErr_SetObject(type, (PyObject *)(uintptr_t)message);
 }
 int64_t jacpy_error_is(const char *name) {
     PyObject *type = jacpy_exception_type(name);
@@ -321,7 +451,7 @@ int64_t jacpy_source_kind(uint64_t handle) {
     PyObject *value=(PyObject *)(uintptr_t)handle;
     if (PyUnicode_Check(value)) return 0;
     if (PyObject_CheckBuffer(value)) return 1;
-    int64_t is_ast=jacpy_ast_is(handle,"AST");
+    int is_ast=PyAST_Check(value);
     return is_ast > 0 ? 2 : -1;
 }
 int64_t jacpy_codec_valid(const char *name) {
@@ -354,3 +484,4 @@ void jacpy_raise_error(const char *kind, const char *message, int64_t size) {
 /* Initialize Jac native module storage before CPython starts importing. */
 extern void __jac_shared_init(void);
 __attribute__((constructor)) static void jacpy_initialize(void) { __jac_shared_init(); }
+#pragma GCC visibility pop

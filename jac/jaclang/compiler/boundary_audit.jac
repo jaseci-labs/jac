@@ -13,9 +13,15 @@ def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, a
             }
         }
     }
+    surface: dict[str, dict[str, any]] = {};
     for manifest in manifests {
         if not manifest {
             continue;
+        }
+        for (name, rec) in (manifest.get("surface") or {}).items() {
+            module = str(rec.get("module") or "");
+            key = f"{module}:{name}" if module else name;
+            surface.setdefault(key, dict(rec));
         }
         effects.update(manifest["endpoint_effects"]);
         host_imports.update(manifest["native_host_imports"]);
@@ -53,8 +59,9 @@ def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, a
         }
     }
     return {
-        "version": 1,
+        "version": 2,
         "boundaries": boundaries,
+        "surface": surface,
         "effects": effects,
         "native_host_imports": host_imports
     };

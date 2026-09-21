@@ -109,6 +109,7 @@ class JacClientCompiler {
         self: JacClientCompiler, scanner: RouteScanner
     ) -> None;
 
+    def _warn_unrouted_pages(self: JacClientCompiler, scanner: RouteScanner) -> None;
     def _generate_routes_manifest(self: JacClientCompiler) -> bool;
     def _write_source_map(
         self: JacClientCompiler,

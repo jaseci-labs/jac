@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
@@ -249,7 +250,7 @@ obj OspAnalysis {
                     and (nd.op.name == Tok.KW_SPAWN) {
                     return True;
                 }
-                for k in nd.kid {
+                for k in [nd->:Kid:->] {
                     work.append(k);
                 }
             }

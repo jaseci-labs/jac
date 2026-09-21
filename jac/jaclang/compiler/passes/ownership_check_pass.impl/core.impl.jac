@@ -89,6 +89,7 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self.owned_decl = {};
     self.consumed_syms = set();
     self.borrow_meta = {};
+    self.declared_borrows = set();
     self.e1304_borrow_ids = set();
     self.in_consumed = {};
     self.in_live_borrows = {};
@@ -105,6 +106,7 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self.view_syms = set();
     self.view_elision_fns = {};
     ir_in.own_move_sites = set();
+    ir_in.managed_borrow_binds = set();
     self.receiver_modes = {};
     self.receiver_probe = set();
     self.arch_view_syms = set();
@@ -112,7 +114,9 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self._build_index(ir_in);
     self._stamp_receiver_modes();
     self._stamp_raises_effects();
+    self._stamp_write_effects();
     self._stamp_ownership();
+    self._stamp_managed_borrows();
     self._stamp_loop_borrows();
     self._stamp_region_borrows();
     self._stamp_arch_view_bindings();
@@ -148,6 +152,8 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self._emit_element_space_conflicts();
     self._emit_move_while_borrowed(cfg_nodes);
     self._emit_escape_diagnostics();
+    self._emit_shared_write_diagnostics();
+    self._emit_managed_borrow_diagnostics(cfg_nodes);
     self._emit_view_diagnostics();
     self._emit_region_escape_diagnostics();
     self._emit_sendability_diagnostics();
@@ -285,6 +291,7 @@ impl OwnershipCheckPass._stamp_ownership -> None {
             self.borrow_meta[sid] = BorrowMeta(
                 name=borrow_target.sym_name, is_mut=is_mut
             );
+            self.declared_borrows.add(sid);
             self.borrow_created_at[sid] = nd;
         }
         tag = nd.type_tag;
@@ -320,6 +327,7 @@ impl OwnershipCheckPass._stamp_ownership -> None {
                 if is_mut
                 else OwnershipKind.BORROW;
             self.borrow_meta[sid] = BorrowMeta(name=name.sym_name, is_mut=is_mut);
+            self.declared_borrows.add(sid);
             self.borrow_created_at[sid] = param;
         } elif tag.ownership == OwnershipKind.OWN {
             name.sym.ownership = OwnershipKind.OWN;
@@ -986,7 +994,9 @@ impl OwnershipCheckPass._borrow_assign_kill_gen(
         if target is not None {
             borrow_id = self._name_sym_id(target);
             kill.add(borrow_id);
+            meta = self.borrow_meta.get(borrow_id);
             if self._borrow_source_owner(nd) is not None
+                or (meta is not None and meta.managed and self._is_place_borrow(nd))
                 or (
                     borrow_id in self.arch_view_syms
                     and self.borrow_created_at.get(borrow_id) is nd
@@ -2006,6 +2016,10 @@ impl OwnershipCheckPass._escaping_borrow_owner(nd: Expr | None) -> (str | None) 
         return None;
     }
     borrow_id = self._borrow_sym_of(nd);
+    meta = self.borrow_meta.get(borrow_id) if borrow_id is not None else None;
+    if meta is not None and meta.managed {
+        return None;
+    }
     if borrow_id is not None and isinstance(nd, Name) {
         owner_id = self._borrow_owner_of(borrow_id);
         if owner_id is not None {

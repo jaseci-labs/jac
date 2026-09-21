@@ -8,6 +8,7 @@ is present, and compares the materialized tree against the store parser's
 tree for the same source.
 """
 
+import from jaclang.compiler.frontend.roles { Kid }
 import os;
 
 glob SHAPE_EXPORTED: set[str] = {"BodyRole", "SpecRole", "AccessorsRole"};
@@ -89,7 +90,7 @@ def _profile(nd: any) -> list[any] {
             row.append(v);
         }
         out.append(row);
-        kids = list(cur.kid);
+        kids = list([cur->:Kid:->]);
         kids.reverse();
         for k in kids {
             stack.append(k);

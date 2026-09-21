@@ -400,6 +400,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def outs(nd: UniNode) -> list[CgItem];
     def set_out(nd: UniNode, items: list[CgItem]) -> None;
     def _apply_coercion(nd: Expr) -> None;
+    def _distinct_base_ast(nd: TypeAlias) -> (CgNode | None);
     def _apply_fw(nd: Expr) -> None;
     def _fw_helper(name: str) -> CgNode;
     def _fw_call_node(

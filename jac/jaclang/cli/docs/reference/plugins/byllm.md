@@ -1773,6 +1773,73 @@ For a step-by-step walkthrough, see the [Multimodal AI Tutorial](../../tutorials
 
 ---
 
+## Generating Images
+
+An `Image` return type makes the call an image-generation call instead of a chat
+completion. The prompt is the same prompt byLLM builds for any other function -
+the docstring, the `sem` strings and the argument values - and the provider's
+image is handed back as an `Image`:
+
+```jac
+import from jaclang.byllm.lib { Image, Model }
+
+glob painter = Model(model_name="dall-e-3");
+
+"""A flat vector poster, bold shapes, no text."""
+def draw_poster(subject: str, mood: str) -> Image by painter();
+
+with entry {
+    poster = draw_poster("a hot air balloon over Kandy", "calm");
+    print(poster.url);
+}
+```
+
+The returned `Image` is an ordinary `Image`, so it can be passed straight into a
+vision call, saved, or served.
+
+Return `list[Image]` to keep every image the provider sent:
+
+```jac
+def draw_variants(subject: str) -> list[Image] by painter(n=3);
+```
+
+### Generation Parameters
+
+These `by` parameters are forwarded to the provider when set; anything left
+unset takes the provider's default:
+
+| Parameter | Description |
+|-----------|-------------|
+| `n` | How many images to generate |
+| `size` | Pixel size, e.g. `"1024x1024"` |
+| `quality` | Provider quality tier, e.g. `"hd"` |
+| `style` | Provider style, e.g. `"vivid"` |
+| `response_format` | `"b64_json"` (default) or `"url"` |
+| `user` | End-user identifier for provider-side abuse tracking |
+| `timeout` | Request timeout in seconds |
+
+byLLM asks for `b64_json` by default, so the returned `Image` carries the bytes
+as a data URL rather than a provider URL that expires. Pass
+`response_format="url"` to keep the provider's hosted URL instead.
+
+`system_prompt`, from `jac.toml` or from the call, is prepended to the prompt.
+byLLM's built-in chat persona is dropped for an image return, so it does not
+steer the image model. A custom `base_url` is honoured the same way it is on a
+completion.
+
+### Generation Limits
+
+- The model must be an image model. An image return on a chat model fails at the
+  provider, not in byLLM.
+- Image generation takes one call, so `tools=` and `stream=` are refused with a
+  `ConfigurationError`.
+- An `Image` or `Video` argument cannot be sent with an image return: the
+  generation endpoint takes text only, and byLLM has no image-editing path yet.
+- Generation goes through LiteLLM. The `proxy` and `http_client` transports do
+  not carry it.
+
+---
+
 ## Context Methods
 
 ### incl_info
@@ -2082,7 +2149,7 @@ test "outputs come back typed, and the request is recorded" {
 }
 ```
 
-Outputs are consumed in order, one per model call, so a tool loop takes one per step. `llm.seen` holds every request, `llm.sent(key)` one field across them (`"messages"`, `"tools"`, `"response_format"`), and `llm.seen_prompts` the prompt text of each call. `model_name` defaults to `mockllm`, and `config={"outputs": [...]}` still works in place of `outputs=`.
+Outputs are consumed in order, one per model call, so a tool loop takes one per step. `llm.seen` holds every request, `llm.sent(key)` one field across them (`"messages"`, `"tools"`, `"response_format"`), and `llm.seen_prompts` the prompt text of each call. `model_name` defaults to `mockllm`, and `config={"outputs": [...]}` still works in place of `outputs=`. A stream sends text, and each tool call's arguments, in pieces of `chunk_size` characters (12 by default). `logging_obj=` is attached to the stream `model_call_with_stream` returns, as litellm attaches its own.
 
 #### What each output becomes
 
@@ -2092,8 +2159,8 @@ Outputs are consumed in order, one per model call, so a tool loop takes one per 
 | any other value: a number, an enum member, an object, a list | that value as the typed answer, encoded the way a model sends it (enums by value) |
 | `MockToolCall(tool=fn, args={...})` | a tool call; `tool` is the function or its name, resolved against the tools the call offers, as for a real model |
 | a list of `MockToolCall` | several tool calls in one turn |
-| `MockRawResponse(content=..., tool_calls=[...], usage=..., finish_reason=...)` | one full turn as the provider sends it; `content` alone is delivered verbatim |
-| `MockError(error=..., content="", after=0)` | the provider raising `error`; on a stream, `content` arrives first and the error fires after `after` chunks |
+| `MockRawResponse(content=..., tool_calls=[...], usage=..., finish_reason=..., model=..., unnamed_fragments=False)` | one full turn as the provider sends it; `content` alone is delivered verbatim; `model` names the model that answered, as after a fallback; `unnamed_fragments=True` streams tool-call arguments with no id or name |
+| `MockError(error=..., content="", after=0, reply=None)` | the provider raising `error`; on a stream, the first `after` chunks of `content` arrive before it (`after=0` sends none), or else the whole `reply`, which is any other output in this table and does not combine with `content` or `after` |
 | `(entry, usage_dict)` | the entry, with token usage attached |
 
 #### Token usage (for compaction tests)

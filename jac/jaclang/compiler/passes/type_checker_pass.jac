@@ -18,6 +18,7 @@ import from jaclang.compiler.frontend.unitree {
     EdgeRefTrailer,
     Enum,
     EventSignature,
+    Except,
     Expr,
     ExprAsItem,
     FilterCompr,
@@ -37,6 +38,7 @@ import from jaclang.compiler.frontend.unitree {
     LambdaExpr,
     ListVal,
     Literal,
+    MatchAs,
     ModuleCode,
     ModuleItem,
     ModulePath,
@@ -62,12 +64,13 @@ import from jaclang.compiler.frontend.unitree {
     ElseIf,
     WhileStmt,
     WithStmt,
-    YieldExpr
+    YieldExpr,
+    find_python_scope_node_of
 }
 import from jaclang.compiler.passes.context { CompileContext }
 
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
+import from jaclang.compiler.frontend.constant { ImmutabilityKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.types.ct_value { CT_DEFERRED, CtValue }
 import from jaclang.compiler.types.types {
@@ -131,8 +134,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E1119,
     E1124,
     E1132,
-    E5095,
     E1133,
+    E1135,
     E1036,
     W1036,
     W1037,
@@ -161,6 +164,7 @@ walker TypeCheckPass(TreeWalker) {
         module: Module,
         prog: JacProgram,
         evaluator: TypeEvaluator postinit,
+        _deferred_writes: list[tuple[Expr, (UniNode | None)]] postinit,
         _lambda_depth: int = 0;
 
     def postinit -> None;
@@ -190,7 +194,6 @@ walker TypeCheckPass(TreeWalker) {
     def _diag_erased_membership(nd: CompareExpr, hay: Expr, op_text: str) -> None;
     can exit_func_call with FuncCall exit;
     can exit_gen_compr with GenCompr exit;
-    def _check_intrinsic_call(nd: FuncCall) -> None;
     def _check_intrinsic_collision(nd: Ability) -> None;
     can exit_jsx_element with JsxElement exit;
     can exit_filter_compr with FilterCompr exit;
@@ -203,6 +206,8 @@ walker TypeCheckPass(TreeWalker) {
     can exit_has_var with HasVar exit;
     can exit_in_for_stmt with InForStmt exit;
     can exit_raise_stmt with RaiseStmt exit;
+    can exit_except with Except exit;
+    can exit_match_as with MatchAs exit;
     can enter_with_stmt with WithStmt entry;
     can exit_with_stmt with WithStmt exit;
     can enter_if_stmt with IfStmt entry;
@@ -222,6 +227,19 @@ walker TypeCheckPass(TreeWalker) {
     can exit_impl_def with ImplDef exit;
     can exit_sub_tag with SubTag exit;
     def _eval_unpacking_names(container: Expr) -> None;
+    def _write_leaves(target: (Expr | None)) -> list[Expr];
+    def _check_immutable_write(
+        target: (Expr | None), rebind_scope: (UniNode | None) = None
+    ) -> None;
+
+    def _flush_immutable_writes -> None;
+    def _judge_immutable_write(
+        target: (Expr | None), rebind_scope: (UniNode | None) = None
+    ) -> None;
+
+    def _rebound_enclosing_symbol(scope: UniNode, leaf: Name) -> (Symbol | None);
+    def _is_initializer_write(target: Expr, decl_sym: Symbol) -> bool;
+    def _is_self_ref(base: Name, method: Ability) -> bool;
     def _body_always_returns(body: list[CodeBlockStmt]) -> bool;
     def _check_bare_generic(
         ann_node: UniNode,

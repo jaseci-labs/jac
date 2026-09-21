@@ -28,3 +28,26 @@ test "runtime values cannot fill compile-time type parameter slots" {
     messages = "\n".join(error.pretty_print() for error in program.errors_had);
     assert "E0033" in messages , messages;
 }
+
+"""A comptime import binds a name for the compiler, so a type is not a runtime use.
+
+`comptime import` is resolved while compiling and emits no runtime binding, and
+an annotation or an `as` cast is read by the checker for the same reason: both
+are gone before the program runs. Naming such an import in a type position is
+therefore what it is for, not a compile-time value escaping into runtime code.
+"""
+test "a comptime-imported name used only as a type is not a runtime use" {
+    program = JacProgram();
+    program.compile(
+        file_path="comptime_import_type_position.jac",
+        use_str="comptime import from pathlib { Path }\n"
+            + "def name_of(p: Path) -> str { return str(p); }\n"
+            + "def widen(raw: any) -> str { return name_of(raw as Path); }\n",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    messages = "\n".join(error.pretty_print() for error in program.errors_had);
+    assert "E0033" not in messages , (
+        "a comptime import named in an annotation or an `as` cast is consumed "
+        f"by the checker, not at runtime:\n{messages}"
+    );
+}

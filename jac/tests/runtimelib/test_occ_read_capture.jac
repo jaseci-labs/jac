@@ -43,7 +43,7 @@ node Tag {
     has name: str = "";
 }
 
-edge Owns {}
+edge Owns: any --> any {}
 
 
 """Persistent ExecutionContext so `refs` resolves via the storage-owned

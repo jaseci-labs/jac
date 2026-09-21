@@ -1,22 +1,21 @@
-"""Image and video inputs: how a media argument reaches the model.
+"""Image and video media: how it reaches the model, and how it comes back.
 
-Assert on the message blocks byLLM actually sent, not on a rendered string.
+Assert on the request byLLM actually sent, not on a rendered string.
 """
 
-import os;
 import from jaclang.byllm.lib { Image, Video }
-import from jaclang.byllm.lib { MockLLM }
-import from support_tests {
+import from jaclang.byllm.lib { ConfigurationError, MockLLM }
+import from jaclang.testing.requires { require_module }
+import from support {
     prompt_text,
     data_url,
+    fixture_path,
     media_blocks,
     need,
     roles,
     say,
     user_blocks
 }
-
-glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures");
 
 
 enum Personality { INTROVERT = "Introvert", EXTROVERT = "Extrovert" }
@@ -29,7 +28,7 @@ obj Person {
 
 
 test "an image argument is inlined in its own format, under a system prompt" {
-    need("PIL", "Pillow");
+    require_module("PIL");
     # (file, expected data-url mime). A webp must not be transcoded to jpeg.
     for (filename, mime) in [
         ("math_question.jpg", "data:image/jpeg;base64,"),
@@ -39,7 +38,7 @@ test "an image argument is inlined in its own format, under a system prompt" {
 
         def describe(question_img: Image) -> str by llm();
 
-        assert describe(Image(os.path.join(FIXTURE_DIR, filename))) == "answered";
+        assert describe(Image(fixture_path(filename))) == "answered";
         assert roles(llm) == ["system", "user"] , f"{filename}: got {roles(llm)}";
 
         blocks = user_blocks(llm);
@@ -62,7 +61,7 @@ test "an image argument is inlined in its own format, under a system prompt" {
 
 
 test "an image answer is parsed into its declared type" {
-    need("PIL", "Pillow");
+    require_module("PIL");
     llm = MockLLM(
         outputs=[
             {
@@ -75,9 +74,7 @@ test "an image answer is parsed into its declared type" {
 
     def get_person_info(image_content: Image) -> Person by llm();
 
-    person = get_person_info(
-        Image(os.path.join(FIXTURE_DIR, "webp_image_of_person.webp"))
-    );
+    person = get_person_info(Image(fixture_path("webp_image_of_person.webp")));
     assert person.full_name == "Albert Einstein" , f"got {person!r}";
     assert person.year_of_death == "1955" , f"got {person!r}";
     assert person.personality == Personality.EXTROVERT , f"got {person.personality!r}";
@@ -95,7 +92,7 @@ test "a video argument is sampled into several inlined frames" {
     def explain_the_video(video: Video) -> str by llm();
 
     result = explain_the_video(
-        Video(path=os.path.join(FIXTURE_DIR, "SampleVideo_1280x720_2mb.mp4"), fps=1)
+        Video(path=fixture_path("SampleVideo_1280x720_2mb.mp4"), fps=1)
     );
     assert result == explanation;
 
@@ -128,8 +125,8 @@ test "an image parameter carrying a sem still encodes, and the sem is dropped" {
     # message. A function-level sem does reach the prompt (test_prompting.jac
     # asserts that), so this is specific to parameter sems. Reported on #9002.
     # Flip the last assertion when that is fixed.
-    need("PIL", "Pillow");
-    result = _describe_image(Image(os.path.join(FIXTURE_DIR, "image.jpg")));
+    require_module("PIL");
+    result = _describe_image(Image(fixture_path("image.jpg")));
     assert "hot air balloon" in result.lower() , f"got {result!r}";
 
     images = media_blocks(_sem_llm);
@@ -146,12 +143,12 @@ test "an image parameter carrying a sem still encodes, and the sem is dropped" {
 
 
 test "every accepted image source becomes a usable url" {
-    need("PIL", "Pillow");
+    require_module("PIL");
     import base64;
     import io;
     import from pathlib { Path }
     import from PIL { Image as PILImage }
-    jpg = os.path.join(FIXTURE_DIR, "alan-m-turing.jpg");
+    jpg = fixture_path("alan-m-turing.jpg");
     pil = PILImage.open(jpg);
 
     def png_bytes -> bytes {
@@ -181,4 +178,106 @@ test "every accepted image source becomes a usable url" {
         url = str(Image(source).url);
         assert url.startswith(prefix) , f"{label}: expected {prefix}, got {url[:48]!r}";
     }
+}
+
+
+test "an image return type is generated, not requested as chat" {
+    require_module("PIL");
+    import base64;
+    import io;
+    import from PIL { Image as PILImage }
+    buf = io.BytesIO();
+    PILImage.new("RGB", (8, 8), (200, 30, 30)).save(buf, format="PNG");
+    png = buf.getvalue();
+
+    # A byte string queued on MockLLM comes back the way a provider returns
+    # b64_json; a string comes back as a url.
+    llm = MockLLM(outputs=[png]);
+
+    def draw_poster(subject: str) -> Image by llm();
+
+    poster = draw_poster("a hot air balloon over Kandy");
+
+    assert isinstance(poster, Image) , f"got a {type(poster).__name__}";
+    assert str(poster.url).startswith("data:image/png;base64,") , (
+        f"got {str(poster.url)[:48]!r}"
+    );
+    assert base64.b64decode(str(poster.url).split(",", 1)[1]) == png , (
+        "the generated bytes must survive the round trip"
+    );
+
+    sent = llm.seen[0];
+    assert "messages" not in sent , (
+        f"an image return is a generation call, not a chat completion: got {sorted(
+            sent
+        )}"
+    );
+    assert "hot air balloon over Kandy" in sent["prompt"] , f"got {sent['prompt']!r}";
+    assert "draw_poster" in sent["prompt"] , (
+        f"the caller name frames the prompt, got {sent['prompt']!r}"
+    );
+}
+
+
+test "a list[Image] return type carries every image the provider sent" {
+    urls = ["https://cdn.example.com/a.png", "https://cdn.example.com/b.png"];
+    llm = MockLLM(outputs=[urls]);
+
+    def draw_variants(subject: str) -> list[Image] by llm(n=2, size="512x512");
+
+    shots = draw_variants("a tuk-tuk in the rain");
+    assert [str(s.url) for s in shots] == urls , f"got {[str(s.url) for s in shots]}";
+
+    sent = llm.seen[0];
+    assert sent.get("n") == 2 , f"n must reach the provider, got {sent.get('n')!r}";
+    assert sent.get("size") == "512x512" , (
+        f"size must reach the provider, got {sent.get('size')!r}"
+    );
+}
+
+
+test "an image return type is refused with tools, which it cannot use" {
+    llm = MockLLM(outputs=[]);
+
+    def lookup(q: str) -> str {
+        return q;
+    }
+    def draw_with_tools(subject: str) -> Image by llm(tools=[lookup]);
+
+    try {
+        draw_with_tools("a kingfisher");
+    } except ConfigurationError as e {
+        assert "tool" in str(e).lower() , f"got {e}";
+        return;
+    }
+    assert False , "an Image return with tools must raise ConfigurationError";
+}
+
+
+test "an image call keeps the configured endpoint and the system prompt" {
+    # Subject: the generation call is built beside make_model_params, not by it,
+    # so both have to be carried across deliberately. A custom gateway that the
+    # completion path honours must reach the image call too, and a system prompt
+    # is the only place a house style can be stated.
+    llm = MockLLM(
+        outputs=["https://cdn.example.com/a.png"],
+        config={"base_url": "https://gateway.example/v1"}
+    );
+
+    def draw_badge(subject: str) -> Image by llm(
+        system_prompt="House style: flat vector, one colour, no text."
+    );
+
+    draw_badge("a kingfisher");
+
+    sent = llm.seen[0];
+    assert sent.get("api_base") == "https://gateway.example/v1" , (
+        f"a custom gateway must serve the image call too, got {sent.get('api_base')!r}"
+    );
+    assert "House style: flat vector, one colour, no text." in sent["prompt"] , (
+        f"the system prompt must reach the image prompt, got {sent['prompt']!r}"
+    );
+    assert "only the result" not in sent["prompt"] , (
+        f"the chat persona must not steer an image model, got {sent['prompt']!r}"
+    );
 }

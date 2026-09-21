@@ -137,7 +137,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._register_archetypes(self.module);
     self._register_enum_methods(self.module, declare=False);
 
-    _entry_nodes: list[uni.UniNode] = [];
+    _entry_nodes: list[uni.ModuleCode] = [];
     for stmt in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE) {
         if (
             isinstance(stmt, uni.Ability)
@@ -665,6 +665,14 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             continue;
         }
         self._ensure_dep_inference(imported_mod);
+
+        _dep_path = os.path.realpath(full_path);
+        if _dep_path not in self.module.ct_file_deps {
+            self.module.ct_file_deps.append(_dep_path);
+        }
+        if _dep_path not in self.module.ct_body_deps {
+            self.module.ct_body_deps.append(_dep_path);
+        }
         processed_modules.add(abs_key);
         _canon_src[abs_key] = _kernel_owner or os.path.realpath(full_path);
         imported_mods.append((_canon_src[abs_key], imported_mod));

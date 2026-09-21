@@ -39,6 +39,22 @@ const pins = @import("bootstrap/pins.zig");
 // (the build then fails at mkpayload with a "run `zig build fetch-llvm`"
 // message).
 const LLVM_CACHE_BASE = ".llvm-build";
+const SHIM_PLACE_DIR = "jaclang/compiler/backends/native/llvm";
+fn shimFileName(target: std.Build.ResolvedTarget) []const u8 {
+    return switch (target.result.os.tag) {
+        .windows => "jacllvm.dll",
+        .macos => "libjacllvm.dylib",
+        else => "libjacllvm.so",
+    };
+}
+// prepare_native.py resolves the shim from its in-tree place path, so one put
+// there by an earlier build (or restored from cache) works even when nothing in
+// this build could produce it.
+fn shimPlacedInTree(b: *std.Build, target: std.Build.ResolvedTarget) bool {
+    const rel = b.fmt("{s}/{s}", .{ SHIM_PLACE_DIR, shimFileName(target) });
+    b.build_root.handle.access(b.graph.io, rel, .{}) catch return false;
+    return true;
+}
 fn llvmCacheDir(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
     const rel = pins.llvmRelease(b, osArchString(target.result)) orelse return null;
     return b.fmt("{s}/{s}", .{ LLVM_CACHE_BASE, rel.dirname });
@@ -168,7 +184,18 @@ pub fn build(b: *std.Build) void {
     const ts_seed = b.addExecutable(.{ .name = "fetch_typeshed", .root_module = ts_seed_mod });
     const fetch_ts = b.addRunArtifact(ts_seed);
     fetch_host.step.dependOn(&fetch_ts.step);
-    if (jacllvm) |shim| fetch_host.step.dependOn(shim.place);
+    // JacPython's SDK runs prepare_native.py, which lowers the compiler through
+    // the shim. Dropping the dependency when jacllvm is null lets every consumer
+    // (the payload tool, vendor-musl, ...) rebuild the SDK for minutes and then
+    // die inside the compiler on a missing libjacllvm.so.
+    if (jacllvm) |shim| {
+        fetch_host.step.dependOn(shim.place);
+    } else if (jacpython and !shimPlacedInTree(b, target)) {
+        fetch_host.step.dependOn(&b.addFail(
+            "the JacPython runtime needs the LLVMPY_* shim: run `zig build fetch-llvm` " ++
+                "first (or pass -Dshim-bin=<path to libjacllvm.so>)",
+        ).step);
+    }
     fetch_ts.addArg(b.pathFromRoot("jaclang/vendor/typeshed"));
     // has_side_effects: the output lands in the source tree, not the cache, so
     // the step must run even when its (unchanging) argv would otherwise cache
@@ -432,6 +459,8 @@ pub fn build(b: *std.Build) void {
         // --link-source arg itself is the cache key for that mode.
         if (link_dir == null) {
             addTreeInputs(b, mk, "jaclang");
+            addTreeInputs(b, mk, "examples/jaclang_org");
+            addTreeInputs(b, mk, "examples/tiny_jacyac");
             mk.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
             mk.addFileInput(b.path("jaclang/vendor/typeshed/TARBALL_SHA256"));
         }
@@ -475,6 +504,7 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
     defer walker.deinit();
     while (walker.next(io) catch @panic("tree inputs: walk failed")) |entry| {
         if (entry.kind != .file) continue;
+        if (std.mem.startsWith(u8, entry.path, ".jac/")) continue;
         if (std.mem.indexOf(u8, entry.path, "__pycache__") != null) continue;
         if (std.mem.indexOf(u8, entry.path, "node_modules") != null) continue;
         if (std.mem.endsWith(u8, entry.path, ".pyc")) continue;
@@ -529,11 +559,7 @@ fn osArchString(t: std.Target) ?[]const u8 {
     };
 }
 fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) ?Shim {
-    const shim_file = switch (target.result.os.tag) {
-        .windows => "jacllvm.dll",
-        .macos => "libjacllvm.dylib",
-        else => "libjacllvm.so",
-    };
+    const shim_file = shimFileName(target);
 
     // -Dshim-bin: bundle a PREBUILT shim (path relative to jac/ or absolute),
     // skipping the LLVM fetch and the static link entirely -- the shim is the
@@ -546,7 +572,7 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     if (b.option([]const u8, "shim-bin", "Prebuilt LLVMPY_* shim to bundle (skips the LLVM fetch + link)")) |p| {
         const bin: std.Build.LazyPath = .{ .cwd_relative = p };
         const place = b.addUpdateSourceFiles();
-        place.addCopyFileToSource(bin, b.fmt("jaclang/compiler/backends/native/llvm/{s}", .{shim_file}));
+        place.addCopyFileToSource(bin, b.fmt("{s}/{s}", .{ SHIM_PLACE_DIR, shim_file }));
         const jacllvm_step = b.step("jacllvm", "Build the LLVMPY_* shim (jac/native), static-link LLVM, place it in-tree");
         jacllvm_step.dependOn(&b.addInstallLibFile(bin, shim_file).step);
         jacllvm_step.dependOn(&place.step);
@@ -597,7 +623,7 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     // fetch-typeshed materializes gitignored stubs into the tree. mkpayload's
     // jaclang copy skips this file (it ships the shim via --shim instead).
     const place = b.addUpdateSourceFiles();
-    place.addCopyFileToSource(bin, b.fmt("jaclang/compiler/backends/native/llvm/{s}", .{shim_file}));
+    place.addCopyFileToSource(bin, b.fmt("{s}/{s}", .{ SHIM_PLACE_DIR, shim_file }));
 
     const jacllvm_step = b.step("jacllvm", "Build the LLVMPY_* shim (jac/native), static-link LLVM, place it in-tree");
     jacllvm_step.dependOn(&b.addInstallLibFile(bin, shim_file).step);

@@ -14,7 +14,6 @@ import from jaclang.compiler.frontend.unitree {
     Enum as UniEnum,
     Expr,
     FuncCall,
-    FuncSignature,
     GlobalVars,
     HasVar,
     Import,
@@ -25,12 +24,12 @@ import from jaclang.compiler.frontend.unitree {
     Name,
     NameAtom,
     ParamVar,
-    SubTag,
     Symbol,
     Token,
     UniNode,
     UniScopeNode,
-    ability_of_symbol
+    ability_of_symbol,
+    in_type_position
 }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
@@ -335,38 +334,6 @@ def resolve_import_source_module(prog: any, nd: Import) -> (Module | None) {
     }
 }
 
-def import_target_pinned_server(nd: Import) -> bool {
-    if nd.from_loc is None {
-        return False;
-    }
-    try {
-        target = nd.from_loc.resolve_relative_path();
-        if isinstance(target, str) and target.endswith('.jac') {
-            import from jaclang.compiler.placement.placement_facts {
-                pinned_module_space
-            }
-            return pinned_module_space(target) == 'server';
-        }
-    } except Exception {
-        return False;
-    }
-    return False;
-}
-
-def decl_has_access(source_mod: Module, item: ModuleItem) -> bool {
-    nm = item.name.value if isinstance(item.name, Name) else '';
-    if not nm or source_mod.sym_tab is None {
-        return False;
-    }
-    sym = source_mod.sym_tab.lookup(nm, deep=True);
-    if not (sym and sym.defn) {
-        return False;
-    }
-    decl = sym.defn[0];
-    owner = decl.parent if (isinstance(decl, NameAtom) and decl.parent) else decl;
-    return owner?.access is not None;
-}
-
 def _already_reported(
     program: JacProgram, reporter: any, diag: DiagnosticInfo, nd: UniNode
 ) -> bool {
@@ -417,23 +384,6 @@ def report_client_bare_import_uses(reporter: any, mod: Module) {
             _report_client_bare_import_uses(reporter, mod, stmt);
         }
     }
-}
-
-def _in_annotation_position(nm: Name, stop: UniNode) -> bool {
-    cur = nm.parent;
-    while cur is not None and cur is not stop {
-        if isinstance(cur, SubTag) {
-            return True;
-        }
-        if isinstance(cur, ParamVar) {
-            return False;
-        }
-        if isinstance(cur, FuncSignature) {
-            return True;
-        }
-        cur = cur.parent;
-    }
-    return False;
 }
 
 def _bare_py_import_bindings(mod: Module) -> dict[str, tuple[ModuleItem, Import]] {
@@ -511,7 +461,7 @@ def _report_client_bare_import_uses(reporter: any, mod: Module, stmt: UniNode) {
         if _shadows_bare_import(nm) {
             continue;
         }
-        if _in_annotation_position(nm, stmt) {
+        if in_type_position(nm, include_subscripts=False) {
             continue;
         }
         (item, imp) = hit;
@@ -643,7 +593,7 @@ def client_value_ref_targets(
             if (isinstance(par, KWPair) and par.key is nm) {
                 continue;
             }
-            if _in_annotation_position(nm, stmt) {
+            if in_type_position(nm, include_subscripts=False) {
                 continue;
             }
             sym = nm.sym;
@@ -715,7 +665,7 @@ def _import_used_as_value(mod: Module, imp: Import) -> bool {
             if (isinstance(par, AtomTrailer) and par.is_attr and par.right is nm) {
                 continue;
             }
-            if _in_annotation_position(nm, stmt) {
+            if in_type_position(nm, include_subscripts=False) {
                 continue;
             }
             return True;

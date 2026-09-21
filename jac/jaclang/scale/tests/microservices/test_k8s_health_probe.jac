@@ -86,6 +86,22 @@ test "probe marks a live upstream healthy and a ghost unhealthy" {
     }
 }
 
+test "interceptor-routed entry is trusted, not probed" {
+    reg = ServiceRegistry();
+    unreachable_port = get_free_port();
+    `entry = _entry("worker", "/worker", f"http://127.0.0.1:{unreachable_port}");
+    `entry.host_override = "worker.default.svc.cluster.local";
+    reg.register(`entry);
+    pm = ServiceProcessManager(registry=reg);
+    for _ in range(5) {
+        pm.check_all_health();
+    }
+    assert reg.entries["worker"].status == ServiceStatus.HEALTHY , (
+        f"host_override entry demoted despite never being probed: "
+        f"{reg.entries['worker'].status}"
+    );
+}
+
 test "healthz roll-up is computed, not a literal" {
     reg = ServiceRegistry();
     reg.register(_entry("a", "/a", "http://127.0.0.1:1"));

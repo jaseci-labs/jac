@@ -97,6 +97,7 @@ No API keys needed. `MockLLM` replaces only the network call, so byLLM still bui
 - Outputs are consumed in order, one per model call; a tool loop takes one per step.
 - For a typed return, queue the value (`Priority.HIGH`, `[Task(...)]`). A bare string is the answer when the return type allows a string (a union with `str`, a string enum), otherwise it is parsed like model text.
 - `MockToolCall(tool=fn_or_name, args={...})` must name a tool the function offers.
+- `MockRawResponse(model=...)` answers as another model, as after a fallback; `MockError(error=..., reply=...)` fails a stream after sending a reply.
 - Assert on what was sent with `llm.sent("messages")` or `llm.sent("tools")`.
 
 ```jac
@@ -132,6 +133,26 @@ def describe_clip(v: Video) -> str by llm();
 # Call as parse_receipt(Image("receipt.jpg")) - Image also accepts URLs, raw bytes, PIL images.
 # Video(path="clip.mp4", fps=1): fps = frames sampled/sec; needs `jac install 'byllm[video]'`.
 # Requires a vision-capable model (e.g. gpt-4o, claude-sonnet-4-6).
+```
+
+`Image` is also a RETURN type, which makes the call an image-generation call:
+
+```jac
+import from jaclang.byllm.lib { Image, Model }
+
+glob painter = Model(model_name="dall-e-3");
+
+def draw_poster(subject: str) -> Image by painter();         # one image
+def draw_variants(subject: str) -> list[Image] by painter(n=3);
+
+# Generation options forwarded when set: n, size, quality, style, response_format,
+# user, timeout. response_format defaults to "b64_json", so the returned Image
+# carries the bytes as a data url rather than an expiring provider url.
+# system_prompt is prepended to the prompt; byLLM's built-in chat persona is
+# dropped for an image return so it cannot steer the image model.
+# Needs an image model, not a chat model. tools= and stream= raise
+# ConfigurationError, and an Image/Video argument cannot be sent with an Image
+# return (no image-editing path yet).
 ```
 
 ## Pitfalls

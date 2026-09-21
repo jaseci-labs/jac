@@ -65,7 +65,7 @@ def _write(path: any, value: any) {
 def _sections(path: any, program: any) -> dict[int, bytes] {
     import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
     actual = program_for(path, program);
-    with cache_scope(actual.context_key, actual.options) {
+    with cache_scope(actual.options) {
         return _context_sections(path);
     }
 }
@@ -114,7 +114,6 @@ def _semantic_metadata(revision: PreparedApplication, program: any) {
 
 def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str, any] {
     import from jaclang.compiler.frontend { unitree as uni }
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     mod = mod if (mod is not None) else program.find_module(path);
     if (mod is None) {
         raise RuntimeError(f'Preparation did not produce metadata for {path}');
@@ -129,50 +128,41 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
             }
         }
     }
-    (funcs, walkers, effects) = ({}, {}, {});
     import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
     for source in sources {
         manifest = source.gen.interop_manifest;
-        if (manifest and not (manifest.func_access or manifest.walker_access)) {
+        if not (manifest and manifest.surface) {
             require_product(program, source, CompilationProduct.BOUNDARIES);
-            manifest = source.gen.interop_manifest;
-        }
-        if manifest {
-            for (name, access) in manifest.func_access.items() {
-                funcs.setdefault(name, access);
-            }
-            for (name, access) in manifest.walker_access.items() {
-                walkers.setdefault(name, access);
-            }
         }
     }
-    (cross, seen) = ([], `set());
-    for source in _project_modules(program, `root).values() {
+    surface: dict[str, dict[str, any]] = {};
+    effects: dict[str, dict[str, any]] = {};
+    own_app = mod.app or '';
+    ordered = list(sources)
+        + [
+            m
+            for m in _project_modules(program, `root).values()
+            if m not in sources
+        ];
+    for source in ordered {
         manifest = source.gen.interop_manifest;
         if not manifest {
             continue;
         }
         effects.update(manifest.endpoint_effects);
-        for binding in manifest.server_exports_to_client {
-            `node = binding.ast_node;
-            if ((`node is None) or ((binding.name, binding.kind) in seen)) {
+        if not manifest.surface or (source.app or '') != own_app {
+            continue;
+        }
+        src_path = source.loc.mod_path if source.loc else '';
+        if not src_path {
+            continue;
+        }
+        rel = os.path.relpath(os.path.realpath(src_path), `root).replace(os.sep, '/');
+        for (name, rec) in manifest.surface.items() {
+            if name in surface or not rec.is_served() {
                 continue;
             }
-            src = `node.loc.mod_path;
-            if (not src or not os.path.realpath(src).startswith((`root + os.sep))) {
-                continue;
-            }
-            access = `node?.access;
-            auth = not ((access is not None) and (access.tag.name == Tok.KW_PUB));
-            seen.add((binding.name, binding.kind));
-            cross.append(
-                `dict(
-                    name=binding.name,
-                    kind=binding.kind,
-                    src=os.path.relpath(src, `root),
-                    auth=auth
-                )
-            );
+            surface[name] = {** rec.to_dict(), 'src': rel};
         }
     }
     client = mod.gen.client_manifest;
@@ -188,10 +178,8 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
         )
             if client
             else {},
-        func_access=funcs,
-        walker_access=walkers,
-        endpoint_effects=effects,
-        cross_bindings=cross
+        surface=surface,
+        endpoint_effects=effects
     );
 }
 
@@ -252,10 +240,13 @@ def _prepare_sealed(
         }
     }
     pending = set(entries);
-    pending.update(
-        os.path.realpath(os.path.join(image_root, binding['src']))
-        for binding in manifest.get('cross_bindings', [])
-    );
+    for metadata in list(manifest['module_manifests'].values()) + [manifest] {
+        for rec in (metadata.get('surface') or {}).values() {
+            if rec.get('src') {
+                pending.add(os.path.realpath(os.path.join(image_root, rec['src'])));
+            }
+        }
+    }
     for path in list(pending) {
         parent = Path(path).parent;
         while parent.is_relative_to(image_root) {
@@ -551,8 +542,10 @@ def _prepare(
         pending.update(package_sources(path, `root));
     }
     for manifest in revision.manifests.values() {
-        for binding in manifest['cross_bindings'] {
-            pending.add(os.path.realpath(os.path.join(`root, binding['src'])));
+        for rec in (manifest.get('surface') or {}).values() {
+            if rec.get('src') {
+                pending.add(os.path.realpath(os.path.join(`root, rec['src'])));
+            }
         }
     }
     while pending {

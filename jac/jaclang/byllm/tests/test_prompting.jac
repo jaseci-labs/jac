@@ -4,13 +4,9 @@ sem strings, incl_info, temperature and receiver state on the way out; typed
 returns, enums and scalars on the way back. Assert on both directions.
 """
 
-import os;
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.lib { MockLLM }
-import from support_tests { call, prompt_text, roles, say, tool_names }
-
-
-glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures");
+import from support { call, fixture_path, prompt_text, roles, say, tool_names }
 
 
 enum _Sentiment { POSITIVE, NEGATIVE, NEUTRAL }
@@ -416,8 +412,7 @@ test "a jac.toml system prompt reaches the model, and a per-call one extends it"
     # The fixture sits beside its own jac.toml because byLLM resolves config
     # from the module's location, so this cannot be done by patching a dict.
     mod = Jac.jac_import(
-        "direct_http_model_call",
-        base_path=os.path.join(FIXTURE_DIR, "system_prompt_override/")
+        "direct_http_model_call", base_path=fixture_path("system_prompt_override/")
     )[0];
     llm = MockLLM(
         outputs=[

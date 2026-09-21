@@ -141,19 +141,96 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     program.hub.client_artifacts.pop(path, None);
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     import from jaclang.compiler.driver.jir { get_module_cache_path }
-    identity = ''
+    owner_options = None
         if program._get_compiler().selfhost.is_selfhost(program)
-        else program.context_key;
-    with cache_scope(identity, program.options) {
+        else program.options;
+    with cache_scope(owner_options) {
         try {
             get_module_cache_path(path).unlink(missing_ok=True);
         } except OSError {}
     }
 }
 
-def require_product(
+glob PRODUCT_READY_FACTS: dict[CompilationProduct, tuple[AnalysisFact, ...]] = {
+         CompilationProduct.FLOW: (AnalysisFact.CFG_SUCC, ),
+         CompilationProduct.ANALYSIS: (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ),
+         CompilationProduct.CLIENT: (AnalysisFact.TYPE_OF, ),
+         CompilationProduct.NATIVE_IR: (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ),
+
+     },
+     PRODUCT_PREREQUISITES: dict[CompilationProduct, tuple[CompilationProduct, ...]] = {
+         CompilationProduct.ANALYSIS: (CompilationProduct.FLOW, ),
+         CompilationProduct.CLIENT: (CompilationProduct.ANALYSIS, ),
+         CompilationProduct.NATIVE_IR: (
+             CompilationProduct.FLOW,
+             CompilationProduct.ANALYSIS,
+
+         )
+     };
+
+def product_ready(
     program: JacProgram, module: Module, product: CompilationProduct
 ) -> bool {
+    for fact in PRODUCT_READY_FACTS.get(product, ()) {
+        if not program.analysis.analyses_run.provides(module, fact) {
+            return False;
+        }
+    }
+    tasks = program.analysis.product_tasks.get(id(module));
+    task = tasks.get(product) if tasks is not None else None;
+    return task is None or task.state == TaskState.SUCCEEDED;
+}
+
+def providers_of_product(
+    product: CompilationProduct, visiting: (set[CompilationProduct] | None) = None
+) -> set[AnalysisFact] {
+    if visiting is None {
+        visiting = set();
+    }
+    if product in visiting {
+        raise RuntimeError(f"product prerequisite cycle through {product.value}");
+    }
+    visiting.add(product);
+    facts = set(providers_of(product_pipeline(product)));
+    for prereq in PRODUCT_PREREQUISITES.get(product, ()) {
+        facts |= providers_of_product(prereq, visiting);
+    }
+    visiting.discard(product);
+    return facts;
+}
+
+def prereq_provides(product: CompilationProduct) -> set[AnalysisFact] {
+    facts: set[AnalysisFact] = set();
+    for prereq in PRODUCT_PREREQUISITES.get(product, ()) {
+        facts |= providers_of_product(prereq);
+    }
+    return facts;
+}
+
+def validate_product_specs {
+    for product in PRODUCT_READY_FACTS {
+        available = providers_of_product(product);
+        for fact in PRODUCT_READY_FACTS[product] {
+            if fact not in available {
+                raise RuntimeError(
+                    f"product {product.value} declares readiness fact "
+                    f"'{fact.value}' that neither its pipeline nor its "
+                    f"prerequisites provide"
+                );
+            }
+        }
+    }
+}
+
+def require_product(
+    program: JacProgram,
+    module: Module,
+    product: CompilationProduct,
+    cancel_token: (Event | None) = None
+) -> bool {
+    active_cancel = cancel_token
+        if cancel_token is not None
+        else program.options.cancel_token;
     program.analysis.retain_tasks(module);
     tasks = program.analysis.product_tasks.setdefault(id(module), {});
     task = tasks.get(product);
@@ -163,28 +240,32 @@ def require_product(
                 f"Compilation dependency cycle: {product.value} of {module.loc.mod_path}"
             );
         }
-        return task.state == TaskState.SUCCEEDED;
+        if task.state == TaskState.SUCCEEDED {
+            if product_ready(program, module, product) {
+                return True;
+            }
+        } elif task.state == TaskState.FAILED
+            or (active_cancel is not None and active_cancel.is_set()) {
+            return False;
+        }
+        task.state = TaskState.RUNNING;
+    } else {
+        task = ProductTask(product, TaskState.RUNNING);
+        tasks[product] = task;
     }
-    task = ProductTask(product, TaskState.RUNNING);
-    tasks[product] = task;
     start = time.perf_counter();
     before = len(program.errors_had);
     try {
-        if product in (CompilationProduct.ANALYSIS, CompilationProduct.NATIVE_IR)
-            and not program.analysis.analyses_run.provides(
-                module, AnalysisFact.CFG_SUCC
-            ) {
-            if not require_product(program, module, CompilationProduct.FLOW) {
-                task.state = TaskState.FAILED;
-                return False;
+        for prereq in PRODUCT_PREREQUISITES.get(product, ()) {
+            if product_ready(program, module, prereq) {
+                continue;
             }
-        }
-        if product in (CompilationProduct.CLIENT, CompilationProduct.NATIVE_IR)
-            and not program.analysis.analyses_run.provides(
-                module, AnalysisFact.TYPE_OF
+            if not require_product(
+                program, module, prereq, cancel_token=active_cancel
             ) {
-            if not require_product(program, module, CompilationProduct.ANALYSIS) {
-                task.state = TaskState.FAILED;
+                task.state = TaskState.CANCELLED
+                    if active_cancel is not None and active_cancel.is_set()
+                    else TaskState.FAILED;
                 return False;
             }
         }
@@ -196,16 +277,22 @@ def require_product(
                 return False;
             }
         } else {
-            program.run_schedule(module, product_pipeline(product));
-        }
-        task.state = TaskState.CANCELLED
-            if program.options.cancel_token is not None
-                and program.options.cancel_token.is_set()
-            else (
-                TaskState.SUCCEEDED
-                    if len(program.errors_had) == before
-                    else TaskState.FAILED
+            schedule = product_pipeline(product);
+            if not schedule {
+                task.state = TaskState.PENDING;
+                return False;
+            }
+            module = execute_passes(
+                program, module, schedule, cancel_token=active_cancel
             );
+        }
+        if active_cancel is not None and active_cancel.is_set() {
+            task.state = TaskState.CANCELLED;
+        } elif len(program.errors_had) != before {
+            task.state = TaskState.FAILED;
+        } else {
+            task.state = TaskState.SUCCEEDED;
+        }
         return task.state == TaskState.SUCCEEDED;
     } except Exception {
         task.state = TaskState.FAILED;
@@ -578,7 +665,7 @@ def get_analysis_sched -> list[type] {
                 PortabilityWarnPass,
                 JacLintCheckPass
             ],
-            preprovided={AnalysisFact.CFG_SUCC},
+            preprovided=prereq_provides(CompilationProduct.ANALYSIS),
             origin='analysis schedule'
         );
     } except ImportError as e {
@@ -659,7 +746,9 @@ def get_py_code_gen(
         passes.append(FreezeStructurePass);
         return validate_schedule(
             passes,
-            preprovided={AnalysisFact.CFG_SUCC} if provided is None else provided,
+            preprovided=providers_of_product(CompilationProduct.ANALYSIS)
+                if provided is None
+                else provided,
             origin='codegen schedule'
         );
     } except ImportError as e {
@@ -733,7 +822,7 @@ def execute_passes(
             continue;
         }
         if cancel_token is not None and cancel_token.is_set() {
-            break;
+            return module;
         }
         module = run_pass(
             step, module, program, cancel_token=cancel_token, policy=policy
@@ -741,6 +830,8 @@ def execute_passes(
         provided.update(pass_provides(step));
         if cancel_token is None or not cancel_token.is_set() {
             completed.add(step.__name__);
+        } else {
+            return module;
         }
     }
     return module;

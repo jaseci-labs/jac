@@ -9,13 +9,13 @@ node QB {
     has tag: str = "";
 }
 
-edge QE {
+edge QE: any --> any {
     has weight: int = 0;
 }
 
-edge QLight {}
+edge QLight: QA --> QA | QB {}
 
-edge QLightSub(QLight) {}
+edge QLightSub(QLight): QA --> QA {}
 
 
 test "lightweight filtered hops match the general traversal" {

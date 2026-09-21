@@ -1108,7 +1108,8 @@ A `jac scale deploy` reads the same file when it stages the app bundle, so a par
 | Variable | Description |
 |----------|-------------|
 | `JAC_DB_URL` | Postgres connection URL for **this process** (overrides `[scale.database].url` at runtime). A deploy ignores it: what database the deployed app gets is decided by `[scale.kubernetes]` `database_mode` / `database_url`, then `[scale.database]` `url`, then provisioning |
-| `JAC_CACHE_HOME` | Root of the machine-wide jac cache; the shared embedded Postgres cluster lives in `<JAC_CACHE_HOME>/pg/main` (default `~/.cache/jac`) |
+| `JAC_CACHE_HOME` | Root of the machine-wide jac cache, every bucket included (`jac cache status`); the shared embedded Postgres cluster lives in `<JAC_CACHE_HOME>/pg/main`. Unset, the root is `XDG_CACHE_HOME/jac` when that is set, else `~/.cache/jac` (Linux), `~/Library/Caches/jac` (macOS) or `%LOCALAPPDATA%\jac\cache` (Windows) |
+| `JAC_CACHE_TTL_DAYS` | Overrides every cache bucket's "unused for N days" retention at once (`0` turns the age sweep off); `JAC_CACHE_GENERATION_TTL_DAYS` still wins for the compiled-module generations |
 | `JAC_DB_RETENTION_DAYS` | Drop databases unused for this many days when the embedded cluster starts; overrides `[database] retention_days`, unset means never |
 | `JAC_DB_ORPHAN_GRACE_HOURS` | How long a project database's directory must have been missing before a cluster start drops it (default `24`; the first start to notice marks it, a later start past the grace drops it; `0` means the next start after the mark) |
 | `JAC_DB_SCRATCH` | `1` makes this process open one throwaway database that is dropped when it exits, instead of a per-project one (used by the test runner for its per-file bases and by deploy staging) |

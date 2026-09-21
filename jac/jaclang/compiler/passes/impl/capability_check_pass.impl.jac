@@ -175,12 +175,8 @@ impl base_expr_is_erased(base: UniNode) -> bool {
     return isinstance(_tail, Name) and _tail.value in NATIVE_ERASED_BASES;
 }
 
-impl name_in_type_position(name_nd: UniNode) -> bool {
-    if name_nd.find_parent_of_type(SubTag) is not None {
-        return True;
-    }
-    sig = name_nd.find_parent_of_type(FuncSignature);
-    if sig is not None and node_within(name_nd, sig.return_type) {
+impl name_erased_natively(name_nd: UniNode) -> bool {
+    if in_type_position(name_nd, include_subscripts=False) {
         return True;
     }
     for _decl in [
@@ -281,7 +277,7 @@ impl native_capability_violations(
             if _nm.find_parent_of_type(Import) is not None {
                 continue;
             }
-            if name_in_type_position(_nm) {
+            if name_erased_natively(_nm) {
                 _type_used.add(_nm.value);
             } else {
                 _runtime_used.add(_nm.value);
@@ -648,7 +644,7 @@ impl native_capability_violations(
                     continue;
                 }
             }
-            for k in nd.kid {
+            for k in [nd->:Kid:->] {
                 work.append(k);
             }
         }

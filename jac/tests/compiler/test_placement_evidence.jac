@@ -34,7 +34,7 @@ def _proj(files: dict[str, any], pins: str = "") -> str {
 }
 
 test "authenticated endpoints bridge within their app without placement pins" {
-    for access in ["priv", "protect"] {
+    for access in ["protect"] {
         d = _proj(
             {
                 "api.jac": "def:"
@@ -56,10 +56,40 @@ test "authenticated endpoints bridge within their app without placement pins" {
             provider = JacProgram().compile(
                 os.path.join(d, "api.jac"), options=CompileOptions(no_ir_cache=True)
             );
-            assert provider.gen.interop_manifest.func_access["read_value"];
+            assert provider.gen.interop_manifest.surface["read_value"].requires_auth();
         } finally {
             shutil.rmtree(d, ignore_errors=True);
         }
+    }
+}
+
+test "a :priv function is private: client imports do not bridge it" {
+    d = _proj(
+        {
+            "api.jac": "def:priv read_value -> int { ::py::\nvalue = 1\n::py::\nreturn 1; }\n",
+            "main.jac": "import from .api { read_value }\n"
+                + "def:pub app -> JsxElement { return <div>{read_value()}</div>; }\n"
+        }
+    );
+    try {
+        prog = JacProgram();
+        prog.compile(
+            os.path.join(d, "main.jac"), options=CompileOptions(no_ir_cache=True)
+        );
+        found = [
+            e.code.code
+            for e in prog.errors_had
+            if e.code is not None
+        ];
+        assert "E5082" in found , [str(e) for e in prog.errors_had];
+        provider = JacProgram().compile(
+            os.path.join(d, "api.jac"), options=CompileOptions(no_ir_cache=True)
+        );
+        assert not provider.gen.interop_manifest.surface["read_value"].is_served();
+        assert provider.gen.interop_manifest.surface["read_value"].exposure
+            == "private";
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
     }
 }
 
@@ -95,7 +125,7 @@ test "rootless graph archetypes follow a client pin" {
         {
             "model.jac": (
                 "node Block {\n    has opcode: str = \"\";\n}\n"
-                + "edge NextOf {}\n"
+                + "edge NextOf: Block --> Block {}\n"
                 + "def make_pair() -> Block {\n"
                 + "    a = Block(opcode=\"a\");\n"
                 + "    b = Block(opcode=\"b\");\n"

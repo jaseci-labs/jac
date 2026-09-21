@@ -10,7 +10,7 @@ import from jaclang.byllm.exceptions { ConfigurationError }
 import from jaclang.byllm.telemetry { _current_invocation_id }
 import from jaclang.byllm.lib { Model }
 import from jaclang.byllm.lib { MockLLM }
-import from support_tests {
+import from support {
     call,
     chunk_text,
     event_types,
@@ -288,8 +288,10 @@ test "a mid-stream drop is retried only when the error is transient" {
             # A reset discards what was already delivered, so the caller sees
             # the retry's output once, not the partial prepended to it.
             buf: list[str] = [];
+            discarded = "";
             for ev in events {
                 if ev.event_type == "stream_reset" {
+                    discarded += "".join(buf);
                     buf = [];
                 } elif ev.event_type == "chunk" {
                     buf.append(ev.data.get("content", ""));
@@ -297,6 +299,10 @@ test "a mid-stream drop is retried only when the error is transient" {
             }
             assert "stream_reset" in [ev.event_type for ev in events] , (
                 f"{label}: a retry must surface stream_reset"
+            );
+            # Otherwise "the partial is gone" would pass on a partial never sent.
+            assert discarded and "PARTIAL-DISCARDED ".startswith(discarded) , (
+                f"{label}: the partial must reach the caller before the reset, got {discarded!r}"
             );
             assert "".join(buf) == text , f"{label}: got {''.join(buf)!r}";
         } else {

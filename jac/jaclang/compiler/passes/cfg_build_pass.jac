@@ -130,6 +130,7 @@ walker CFGBuildPass(TreeWalker) {
     can exit_gen_compr with GenCompr exit;
     can exit_dict_compr with DictCompr exit;
     def _wire_compr_filters(target_node: UniCFGNode, comprs: list[InnerCompr]) -> None;
+    def _link_on_pass(step: UniCFGNode, nxt: UniCFGNode) -> None;
     can exit_ctrl_stmt with CtrlStmt exit;
     can exit_try_stmt with TryStmt exit;
     can exit_except with Except exit;

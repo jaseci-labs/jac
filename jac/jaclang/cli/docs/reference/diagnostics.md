@@ -295,6 +295,10 @@ Emitted by the type checker and type evaluator.
 | `E1097` | Connection right operand must be a node instance |
 | `E1098` | Connection type must be an edge instance |
 | `E1099` | Cannot access attribute "{attr}" for type "{type}"; attribute is missing from {missing} |
+| `E1136` | Connection {side} operand is "{actual}", but edge "{edge_name}" declares its {side} endpoint as "{declared}" |
+| `E1137` | Traversal origin is "{actual}", but edge "{edge_name}" declares its {side} endpoint as "{declared}", so this traversal can never match |
+| `W2081` | Connection {side} operand is "{actual}", which cannot be checked against the {side} endpoint "{declared}" declared by edge "{edge_name}" |
+| `W2082` | Traversal origin is "{actual}", which cannot be checked against the {side} endpoint "{declared}" declared by edge "{edge_name}" |
 
 ### mobUI-Project JSX Host Tags
 
@@ -347,6 +351,10 @@ Emitted by `OwnershipCheckPass` for `own`/`lin`/`imm`/`&`/`&mut` bindings and de
 | `E1317` | Cannot move '{name}' out of the element '{place}' |
 | `E1318` | Cannot call mutating method '{method}' through a shared borrow of '{name}' |
 | `E1319` | Invalid {operation} place: {reason} |
+| `E1320` | Cannot assign '{field}' through a shared borrow of '{name}' |
+| `E1321` | Cannot write '{field}' while the borrow '{name}' reads through it |
+| `E1322` | Call to '{callee}' may write '{field}' while the borrow '{name}' reads through it |
+| `E1323` | Borrow '{name}' must start at a parameter, `self`, an `own` value or another borrow |
 
 ### Zero-RC Enforcement Errors
 
@@ -485,6 +493,8 @@ An app's walkers and `def:pub` functions form its public boundary. Other declara
 | `W2010` | Abstract ability {name} should not have a definition |
 | `E2011` | Parameter count mismatch for ability {name} |
 | `E2012` | From the declaration of {name} |
+| `E2013` | Parameter name mismatch: declaration has {decl_name} but implementation has {impl_name} |
+| `E2087` | '{name}' is declared but never implemented |
 
 ### JSX Slot Body Rules
 
@@ -500,6 +510,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 | `E2024` | 'has' is not allowed inside a JSX slot body. A slot body is a statement template that re-runs on every render; declaring reactive state there would compile to a conditional 'useState' and violate React's rules of hooks. Declare 'has'-fields at the component scope (the enclosing 'def -> JsxElement' body). |
 | `E2025` | A 'has'-field of type 'Ref[...]' must be constructed with an initializer: write '= Ref()' for a DOM ref, or '= Ref(initial)' for a value ref. It lowers to React's 'useRef', so a bare declaration has no ref object to hold -- '.current' would never be defined. This mirrors how every other 'has'-field carries a value. |
 | `E2027` | Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}' |
+| `E2086` | Edge '{name}' declares no endpoints, so every traversal through it widens to 'any' |
 | `E2084` | An expression without a trailing ';' is only treated as an implicit return when it is the final statement of a function, ability, or lambda body. |
 | `W2019` | 'while' loop in a JSX slot renders JSX without a 'key' attribute -- add 'key=' so siblings keep their identity across re-renders. |
 | `W2020` | 'awaiting' is not yet implemented on the '{target}' target -- the 'awaiting' clause body will be ignored at runtime. Only the 'cl' (react/preact) target currently lowers 'awaiting' to a Suspense fallback. |
@@ -622,7 +633,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 | `E5087` | App kind '{kind}' has no server, but '{name}' needs one ({reason}) |
 | `E5101` | Client codegen emitted '{name}', which the module never binds |
 
-`E5082` fires when a plain client import references a server symbol that does not bridge: server `def:pub` endpoints bridge automatically over RPC, so the fix is to make the symbol a `def:pub` endpoint, pin it (or its module) `"client"` via `[placement.pins]`, or move it into client code.
+`E5082` fires when a plain client import references a server symbol that does not bridge: exposed endpoints (`def:pub` / `def:protect`, `walker:pub` / `walker:protect`) bridge automatically over RPC, while plain and `:priv` declarations are private. Mark the symbol `:protect` (authenticated) or `:pub` (anonymous), pin it (or its module) `"client"` via `[placement.pins]`, or move it into client code.
 
 `E5084` is the bare-import sibling. A bare name resolves across the module universe in a fixed order -- a local Jac module first, then a name declared in jac.toml `[dependencies.npm]` or owned by the active framework (`react`, `react-dom`, ...), then a Python module the importing file can import, and only then whatever is merely installed under `.jac/client/node_modules` -- so `import from react { useRef }` works unquoted, while a transitive npm package that shares a name with a Python module (`dotenv`, `argparse`) never captures that import. When the name resolves to none of the client-reachable worlds, placement pins the import server-side, the bundle never binds the symbol, and the page would fail at runtime with a ReferenceError -- so client use fails the build instead. Install or declare the package in `[dependencies.npm]` (or quote the module to pin the npm form), or keep the use server-side behind a `def:pub` endpoint. Annotation-only uses do not fire it, since ES output erases type annotations; imports whose uses are all server-side prune silently as before.
 
@@ -640,14 +651,14 @@ Emitted by the driver and the boundary passes from the app facts of a workspace 
 |------|---------|
 | `E5104` | App dependency cycle: {cycle} |
 | `E5105` | Variant '{variant}' disagrees with '{base}' on '{name}': {detail} |
-| `E5106` | App '{consumer}' bridges to '{name}', which is not a pub element of app '{provider}' |
+| `E5106` | App '{consumer}' bridges to '{name}', which is private to app '{provider}' |
 | `E5108` | App '{consumer}' imports '{name}', a {kind} owned by app '{provider}'; nodes and edges never cross an app boundary |
 
 `E5104`: apps bridge to their providers over the wire and providers boot first, so the app graph has to be a DAG. It is reported on the import that closes the cycle. Break it by moving the code both apps need into a shared module, or by folding one of the apps into the other.
 
 `E5105`: a `.native.jac` variant stands in for its sibling module on a mobile app's native platforms (android / ios), so the two have to expose the same public surface -- the same names, the same kinds of declaration, the same parameters and annotations, the same `has` fields. Bring the variant's declaration in line with the base module, or remove it from both. Reported on the variant, once per disagreement.
 
-`E5106`: an app's bridge surface is its walkers and its `def:pub` functions; everything else is private to the app's own server. Make the element a walker or mark it `:pub` in the provider app, or move it into shared code if both apps need it in-process.
+`E5106`: an app's bridge surface is its exposed declarations (`:pub` or `:protect` functions and walkers); plain and `:priv` declarations are private to the app's own server. Mark the element `:protect` or `:pub` in the provider app, or move it into shared code if both apps need it in-process.
 
 `E5108`: a node or edge lives in the graph of the app that owns it, so another app cannot construct or hold one. Spawn one of the provider's walkers and work with what it reports, or move the type into shared code as an obj. An `obj` or `enum` imported across the boundary mirrors locally as a boundary type instead.
 

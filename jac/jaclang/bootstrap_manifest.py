@@ -31,9 +31,30 @@ with open(os.path.join(os.path.dirname(__file__), "compiler_inputs.txt")) as _in
         if line.strip() and not line.lstrip().startswith("#")
     )
 
-# JacPython now implements the running interpreter's compiler APIs. Its sources
-# participate in the producing compiler identity and the sealed release image.
-SOURCE_ONLY_PATHS: tuple[str, ...] = ()
+# Inputs the build LOWERS into JacPython's native object (prepare_native.py)
+# instead of shipping as source. They are compiler identity exactly like every
+# other declared input; a staging that omits their sources carries their hashes
+# in COMPILER_IDENTITY_NAME so its digest still covers them. This tuple is the
+# only place the set is named: the payload stager prunes by it and the digest
+# resolver completes by it, so the two can no longer disagree (they did, and a
+# pruned payload silently reported a different, smaller compiler identity than
+# the checkout it was built from).
+NATIVE_LOWERED_PATHS: tuple[str, ...] = (
+    "compiler/frontend/python",
+    "compiler/backends/py/jacpython",
+    "runtime/python",
+)
+
+# Written into a staged jaclang tree at pack time, from the COMPLETE source
+# tree, before any pruning. Its `inputs` map covers every declared input so a
+# consumer can resolve the ones this staging does not carry as source.
+COMPILER_IDENTITY_NAME: str = "compiler_identity.json"
+
+
+def is_native_lowered(rel: str) -> bool:
+    """Is ``rel`` (POSIX-style, package-relative) a natively lowered input?"""
+    rel = rel.replace(os.sep, "/")
+    return any(rel == p or rel.startswith(p + "/") for p in NATIVE_LOWERED_PATHS)
 
 # Everything the jac0 tier compiles. Directory entries cover subtrees.
 # compiler/passes/ and compiler/backends/ are deliberately listed file by

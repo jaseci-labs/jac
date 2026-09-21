@@ -3,7 +3,7 @@
 name) or W1051 (unresolved type) warnings, and the generated Python must
 include `from typing import ...` for every ambient name actually used."""
 
-def take_callback(cb: Callable[[], None]) -> None {
+def take_callback(cb: Callable[[], None]) {
     cb();
 }
 
@@ -20,7 +20,7 @@ def sum_iter(items: Iterable[int]) -> int {
 }
 
 obj Greeter(Protocol) {
-    def greet() -> str;
+    def greet -> str abst;
 }
 
 with entry {

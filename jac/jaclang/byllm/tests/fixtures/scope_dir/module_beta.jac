@@ -1,4 +1,4 @@
-"""Fixture module_beta with process_data function for scope resolution test."""
+"""module_beta's `process_data`, which shares its name with module_alpha's."""
 
 import from jaclang.byllm.lib { MockLLM }
 
@@ -7,8 +7,8 @@ obj BetaResult {
 }
 
 glob llm = MockLLM(
-    model_name="mockllm",
-    config={"outputs": [BetaResult(value="beta_result")], "verbose": False}
-);
+         model_name="mockllm",
+         config={"outputs": [BetaResult(value="beta_result")], "verbose": False}
+     );
 
 def process_data -> BetaResult by llm();

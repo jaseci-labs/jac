@@ -57,7 +57,8 @@ def collect_client_graph(
             if missing {
                 raise ClientBundleError(
                     f"{path}: runtime import(s) {', '.join(missing)} are not exported "
-                    f"by {target}. Use :pub for runtime values; annotation-only "
+                    f"by {target}. Only exposed declarations (`:protect` or `:pub`) "
+                    "and client-placed values cross into the bundle; annotation-only "
                     "references must not produce runtime imports."
                 );
             }

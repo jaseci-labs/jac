@@ -424,6 +424,36 @@ test "type uses of an import-type binding are accepted in a server module" {
     }
 }
 
+glob GRAPH_SRC: str = "node Pt {\n" "    has x: int = 0;\n" "}\n",
+     GRAPH_TYPE_USES_SRC: str = (
+         "import type from .graph { Pt }\n\n"
+         "edge Link: Pt --> Pt {}\n\n"
+         "type Anchor = Pt;\n\n"
+         "def:pub reach[T: Pt](seed: T) -> int {\n"
+         "    return 0;\n"
+         "}\n"
+     );
+
+test "an edge declaration's endpoints are type position, not value use" {
+    with TemporaryDirectory() as td {
+        proj_root = Path(cast(str, td));
+        (proj_root / "jac.toml").write_text(
+            '[project]\nname = "typeonlygraph"\nversion = "0.1.0"\n'
+            'entry-point = "graphuses"\n'
+        );
+        (proj_root / "graph.jac").write_text(GRAPH_SRC);
+        f = proj_root / "graphuses.jac";
+        f.write_text(GRAPH_TYPE_USES_SRC);
+        (prog, _mod) = compile_module(f);
+        assert "E1132" not in codes_of(prog.errors_had) , (
+            f"an `edge A --> B` endpoint, a `type` alias and a generic bound "
+            f"are all type position: no runtime binding is read; got {codes_of(
+                prog.errors_had
+            )}"
+        );
+    }
+}
+
 # ---------------------------------------------------------------------------
 # 5. Guard: the bridged-import stub path still skips archetypes, keeps functions
 # ---------------------------------------------------------------------------

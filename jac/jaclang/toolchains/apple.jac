@@ -4,7 +4,13 @@ import shutil;
 import subprocess;
 import from pathlib { Path }
 import from jaclang.toolchains.host { host_platform, run_step }
-import from jaclang.toolchains.store { cache_root, InstallLock, offline }
+import from jaclang.toolchains.store {
+    InstallLock,
+    install_slot,
+    offline,
+    publish_install_slot,
+    slot_installed
+}
 
 def ensure_apple -> dict[str, str] {
     if not host_platform().startswith("mac-") {
@@ -32,13 +38,13 @@ def ensure_apple -> dict[str, str] {
         / RUBY_VERSION;
     ruby = str(ruby_dir / "bin" / "ruby");
     gem = str(ruby_dir / "bin" / "gem");
-    home = cache_root() / "cocoapods" / host_platform() / RUBY_VERSION / "1.16.2";
+    home = install_slot("cocoapods", "1.16.2", f"{host_platform()}-ruby{RUBY_VERSION}");
     env["PATH"] = str(ruby_dir / "bin") + os.pathsep + env.get("PATH", "");
     env["GEM_HOME"] = str(home);
     env["GEM_PATH"] = str(home);
     env["PATH"] = str(home / "bin") + os.pathsep + env.get("PATH", "");
     with InstallLock(home.with_suffix(".lock")) {
-        if not (home / "bin" / "pod").is_file() {
+        if not ((home / "bin" / "pod").is_file() and slot_installed(home)) {
             if offline() {
                 raise RuntimeError(
                     "CocoaPods is missing from the offline cache. Run setup online first."
@@ -58,6 +64,15 @@ def ensure_apple -> dict[str, str] {
                 ],
                 home,
                 env
+            );
+            publish_install_slot(
+                home,
+                {
+                    "name": "cocoapods",
+                    "version": "1.16.2",
+                    "platform": host_platform(),
+                    "ruby": RUBY_VERSION
+                }
             );
         }
     }
