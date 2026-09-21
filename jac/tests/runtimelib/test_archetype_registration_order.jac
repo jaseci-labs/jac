@@ -51,6 +51,10 @@ def _publish_home_module -> (object | None) {
     setattr(shim, '_EarlyNode', _EarlyNode);
     setattr(shim, '_EarlyChild', _EarlyChild);
     previous = sys.modules.get(_EarlyNode.__module__);
+    facts = getattr(previous, '__jac_persistence__', ());
+    if facts {
+        setattr(shim, '__jac_persistence__', facts);
+    }
     sys.modules[_EarlyNode.__module__] = shim;
     return previous;
 }

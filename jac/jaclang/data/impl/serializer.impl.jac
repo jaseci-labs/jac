@@ -667,7 +667,12 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
         );
     }
     if module_name.startswith('jac:') {
-        return resolve_type(module_name, class_name);
+        resolved = resolve_type(module_name, class_name);
+        runtime_key = f'{resolved.__module__}.{resolved.__name__}';
+        if Serializer._registry.get(runtime_key) is not resolved {
+            Serializer.register(resolved);
+        }
+        return resolved;
     }
     if module_name.startswith('_jac_app_') {
         raise TypeResolutionError(
