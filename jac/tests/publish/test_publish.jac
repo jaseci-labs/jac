@@ -708,6 +708,13 @@ test "WheelBuilder vendors the jac runtime when transpiled code needs it" {
             names = zf.namelist();
             assert "vendemo/_jac_vendor/jaclang/__init__.py" in names;
             assert "vendemo/_jac_vendor/jaclang/lib/jaclib.py" in names;
+            assert "vendemo/_jac_vendor/jaclang/runtime/surface.py" in names;
+            assert "vendemo/_jac_vendor/jaclang/compiler/frontend/codeinfo.py"
+                not in names;
+            assert not any(
+                name.startswith("vendemo/_jac_vendor/jaclang/compiler/driver/")
+                for name in names
+            ) , "serving metadata must not pull the compiler into a runtime wheel";
             init_py = zf.read("vendemo/__init__.py").decode("utf-8");
             top_level = zf.read("vendemo-0.1.0.dist-info/top_level.txt").decode(
                 "utf-8"
