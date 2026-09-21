@@ -661,7 +661,7 @@ node Module(AstDocNode, UniScopeNode) {
         app: (str | None) = None,
         app_root: (str | None) = None,
         app_kind: str = "",
-        persistence: tuple[str, ...] = (),
+        persistence: list[str] postinit,
         ct_resolved: bool = False,
         ct_file_deps: list[str] postinit,
         ct_body_deps: list[str] postinit,
