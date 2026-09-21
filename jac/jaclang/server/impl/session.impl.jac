@@ -459,6 +459,7 @@ impl Session.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
             try {
                 self.read_barrier();
                 loaded = self.store.load_full(missing);
+                self._foreign_refs.difference_update(missing);
                 for (rid, row) in loaded.items() {
                     anchor = self._materialize(row);
                     if anchor is not None {
@@ -894,6 +895,7 @@ impl Session._serialize(anchor: Anchor) -> AnchorRow {
 impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
     import from functools { partial }
     import from jaclang.data.serializer { Serializer }
+    self._foreign_refs.discard(row.id);
     existing = self.__mem__.get(row.id);
     if existing is not None and existing.is_populated() {
         return existing;

@@ -44,3 +44,19 @@ test "genuinely dangling references are still healed" {
     assert got is None;
     fake_ctx.mem.quarantine_ref.assert_called_once();
 }
+
+test "a deleted foreign row becomes eligible for normal reference healing" {
+    import from uuid { uuid4 }
+    import from typing { cast }
+    import from jaclang.data.store { Store }
+    import from jaclang.server.session { Session }
+    store = unittest.mock.MagicMock();
+    store.load_full.return_value = {};
+    session = Session(store=cast(Store, store));
+    id = uuid4();
+    session._foreign_refs.add(id);
+    with unittest.mock.patch.object(session, 'read_barrier') {
+        assert session.batch_get([id]) == {};
+    }
+    assert not session.preserve_unresolved_ref(id);
+}
