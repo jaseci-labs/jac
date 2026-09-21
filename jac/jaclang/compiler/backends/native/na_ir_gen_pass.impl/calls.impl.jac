@@ -1905,6 +1905,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             arg_vals: list[ir.Value] = [];
             arg_nodes: list[uni.UniNode] = [];
             for param in params_l {
+                if isinstance(param, uni.KWPair) {
+                    continue;
+                }
                 v = self._codegen_expr(param);
                 if v is not None {
                     arg_vals.append(v);
@@ -1913,7 +1916,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             if arg_vals {
                 result = self._dispatch_builtin(
-                    func_name, arg_vals, arg_nodes=arg_nodes
+                    func_name,
+                    arg_vals,
+                    arg_nodes=arg_nodes,
+                    kwargs=self._split_call_kwargs(nd),
+                    kw_node=nd
                 );
 
                 self._release_owned_args(arg_vals, op="builtin_arg");
