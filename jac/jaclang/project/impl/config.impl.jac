@@ -1372,6 +1372,8 @@ impl _parse_toml_data(
         app = implicit_app(config);
         config.apps = {app.name: app};
     }
+    import from jaclang.project.persistence { parse_persistence }
+    config.persistence = parse_persistence(data.get("persistence", {}), config.project.name, list(config.apps));
     return config;
 }
 

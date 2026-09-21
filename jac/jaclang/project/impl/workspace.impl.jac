@@ -206,7 +206,10 @@ impl _build_workspace(
     if not default_app and len(apps) == 1 {
         default_app = next(iter(apps));
     }
+    import from jaclang.project.persistence { parse_persistence }
+    persistence = parse_persistence(doc.get("persistence", {}), str(project.get("name", "")), list(apps));
     h = hashlib.sha256();
+    h.update(json.dumps(doc.get("persistence", {}), sort_keys=True).encode());
     h.update(
         json.dumps(
             [explicit, default_app, [app_fact_digest(a) for a in apps.values()]],
@@ -220,6 +223,7 @@ impl _build_workspace(
         default_app=default_app,
         explicit=explicit,
         digest=h.hexdigest()[:12],
+        persistence=persistence,
         base_pins=base_pins,
         base_npm_names=base_npm
     );

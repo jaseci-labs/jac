@@ -169,6 +169,7 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
     return `dict(
         `root=`root,
         app=mod.app or '',
+        persistence=mod.persistence,
         client=`dict(
             exports=`list(client.exports),
             globals=`list(client.globals),

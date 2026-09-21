@@ -161,6 +161,15 @@ impl JcirGenPass.exit_module with Module exit {
             self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc)
         );
     }
+    if here.persistence {
+        body_items.append(self.nod('Assign', ['targets', 'value'], [
+            [self.nod('Name', ['id', 'ctx'], ['__jac_persistence__', self.nod('Store', [], [])])],
+            self.nod('Tuple', ['elts', 'ctx'], [
+                [self.nod('Constant', ['value'], [part]) for part in here.persistence],
+                self.nod('Load', [], [])
+            ])
+        ]));
+    }
     body_items.extend(self.preamble);
     body_items.extend(self._drain_module_hoists());
     stub_node = self._interop_stub_node;
