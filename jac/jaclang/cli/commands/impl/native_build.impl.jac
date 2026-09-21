@@ -102,59 +102,27 @@ impl native_build(
         }
     }
 
-    console.print(f"Compiling {filename} to native binary");
-
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_linked_ir_text
-    }
-
-    try {
-        prog = JacProgram();
-        import from jaclang.compiler.driver.pipeline_runner { native_application }
-        (ir_module, options) = native_application(
-            prog, filename, _triple or '', memory, debug, no_ir_cache
-        );
-    } except Exception as e {
-        console.error(f"Jac compilation failed: {e}");
-        import traceback;
-        traceback.print_exc();
+    ctx = NativeBuildContext(
+        filename=filename,
+        triple=_triple,
+        is_wasm=is_wasm,
+        is_windows=is_windows,
+        is_macos=is_macos,
+        is_linux_target=is_linux_target,
+        auto_promote=auto_promote,
+        memory=memory,
+        debug=debug,
+        no_ir_cache=no_ir_cache
+    );
+    if not _compile_native_module(ctx) {
         return 1;
     }
-
-    if prog.errors_had {
-        for _err in prog.errors_had {
-            console.print(_err.pretty_print());
-        }
-        return 1;
-    }
-
-    if ir_module is None or ir_module.gen.llvm_ir is None {
-        if auto_promote
-            and not (ir_module and ir_module.decided_codespace == 'native') {
-            console.error(
-                "This .jac file is not compatible with native compilation.\n"
-                "  It may use walkers, nodes, edges, async, lambdas, or other\n"
-                "  constructs not supported by the native backend.\n"
-                "  Remove the incompatible constructs it names."
-            );
-        } else {
-            console.error(
-                f"Native compilation produced no LLVM IR for {filename} and no\n"
-                "  diagnostic explains why; this is a compiler bug -- please report it."
-            );
-        }
-        for _warn in prog.warnings_had {
-            console.print(_warn.pretty_print());
-        }
-        return 1;
-    }
-
-    if auto_promote {
-        console.print("  Auto-promoted to native compilation.");
-    }
+    ir_module = ctx.ir_module;
 
     if is_wasm {
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            native_linked_ir_text
+        }
         import from jaclang.compiler.backends.native.wasm_build {
             emit_wasm_from_ir,
             app_declared_imports
@@ -181,8 +149,22 @@ impl native_build(
         return 0;
     }
 
+    return _link_native_artifact(ctx, output, shared);
+}
+
+def _link_native_artifact(ctx: NativeBuildContext, output: str, shared: bool) -> int {
+    """Finalize, codegen, and link one native artifact from a prepared compile.
+
+    Holds the per-artifact half of the pipeline (IR finalization, verification,
+    optimization, object emission, linking) so several artifacts can be
+    produced from a single Jac compilation.
+    """;
+    ir_module = ctx.ir_module;
+    options = ctx.options;
+    is_windows = ctx.is_windows;
+    is_macos = ctx.is_macos;
     try {
-        llvm_ir_str = validate_native_application(ir_module, shared, memory);
+        llvm_ir_str = validate_native_application(ir_module, shared, ctx.memory);
     } except ValueError as error {
         console.error(str(error));
         return 1;
@@ -433,6 +415,81 @@ impl native_build(
         console.print(f"  Run with: ./{output}");
     }
     return 0;
+}
+
+
+obj NativeBuildContext {
+    has filename: str = "",
+        triple: str = "",
+        is_wasm: bool = False,
+        is_windows: bool = False,
+        is_macos: bool = False,
+        is_linux_target: bool = False,
+        auto_promote: bool = False,
+        memory: str = "managed",
+        debug: bool = False,
+        no_ir_cache: bool = False,
+        ir_module: any = None,
+        options: any = None;
+}
+
+def _compile_native_module(ctx: NativeBuildContext) -> bool {
+    """Run the Jac-to-LLVM-IR compilation once, stashing results on ctx.
+
+    The compile is the expensive half of `native_build`; separating it from
+    `_link_native_artifact` lets one compilation serve several artifacts.
+    """;
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.pipeline_runner { native_application }
+
+    console.print(f"Compiling {ctx.filename} to native binary");
+    try {
+        prog = JacProgram();
+        (_ir_module, _options) = native_application(
+            prog, ctx.filename, ctx.triple or '', ctx.memory, ctx.debug, ctx.no_ir_cache
+        );
+        ctx.ir_module = _ir_module;
+        ctx.options = _options;
+    } except Exception as e {
+        console.error(f"Jac compilation failed: {e}");
+        import traceback;
+        traceback.print_exc();
+        return False;
+    }
+
+    if prog.errors_had {
+        for _err in prog.errors_had {
+            console.print(_err.pretty_print());
+        }
+        return False;
+    }
+
+    if ctx.ir_module is None or ctx.ir_module.gen.llvm_ir is None {
+        if ctx.auto_promote
+            and not (ctx.ir_module and ctx.ir_module.decided_codespace == 'native') {
+            console.error(
+                "This .jac file is not compatible with native compilation.\n"
+                "  It may use walkers, nodes, edges, async, lambdas, or other\n"
+                "  constructs not supported by the native backend.\n"
+                "  Remove the incompatible constructs it names."
+            );
+        } else {
+            console.error(
+                f"Native compilation produced no LLVM IR for {ctx.filename} "
+                "and no\n  diagnostic explains why; this is a compiler bug -- "
+                "please report it."
+            );
+        }
+        for _warn in prog.warnings_had {
+            console.print(_warn.pretty_print());
+        }
+        return False;
+    }
+
+    if ctx.auto_promote {
+        console.print("  Auto-promoted to native compilation.");
+    }
+    return True;
 }
 
 

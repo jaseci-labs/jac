@@ -1,6 +1,6 @@
 import struct;
 import os;
-import from jaclang.cli.console { console }
+import sys;
 import from jaclang.compiler.backends.native.linker_common {
     _align,
     _build_strtab,
@@ -1340,9 +1340,9 @@ impl ElfLinker.build_executable -> bytes {
         }
         if _unhandled_debug_relocs {
             for (_ut, _usec) in sorted(_unhandled_debug_relocs) {
-                console.warning(
-                    f"unhandled DWARF relocation type {_ut} in "
-                    f"{_usec}; some debug info may be incomplete."
+                sys.stderr.write(
+                    f"  Warning: unhandled DWARF relocation type {_ut} in "
+                    f"{_usec}; some debug info may be incomplete.\n"
                 );
             }
         }
@@ -3140,9 +3140,10 @@ impl ElfLinker.build_static_executable -> bytes {
         }
     }
     if missing {
-        console.warning(
-            "static link left undefined references resolved to 0: "
+        sys.stderr.write(
+            "  Warning: static link left undefined references resolved to 0: "
                 + ", ".join(sorted(missing))
+                + "\n"
         );
     }
 

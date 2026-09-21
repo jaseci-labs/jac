@@ -92,6 +92,9 @@ impl BoundaryAnalysisPass._extract_type_name(expr: (UniNode | None)) -> str {
 }
 
 impl BoundaryAnalysisPass._in_native_module -> bool {
+    if (self.module.gen.native_codespace) {
+        return True;
+    }
     if not (self.module and self.module.loc) {
         return False;
     }
@@ -177,6 +180,19 @@ impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
     }
 }
 
+impl BoundaryAnalysisPass._caller_context(
+    nd: Import, import_context: InteropContext
+) -> InteropContext {
+    """Interop context of the caller site: client wins, then native.""";
+    if (nd.in_client_context()) {
+        return InteropContext.CLIENT;
+    }
+    if (import_context == InteropContext.NATIVE or self._in_native_module()) {
+        return InteropContext.NATIVE;
+    }
+    return InteropContext.SERVER;
+}
+
 impl BoundaryAnalysisPass.enter_import with Import entry {
     import_context = self._get_context(here);
     facts = here.boundary_facts;
@@ -200,8 +216,9 @@ impl BoundaryAnalysisPass.enter_import with Import entry {
             }
             if here.items and not is_sv {
                 if (facts and facts.pinned_server) {
+                    _pin_caller = self._caller_context(here, import_context);
                     self._register_sv_import(
-                        here, from_loc.base_module_name, InteropContext.CLIENT
+                        here, from_loc.base_module_name, _pin_caller
                     );
                 } elif (facts and facts.client_native_edge) {
                     self._register_na_client_import(here);
@@ -344,7 +361,7 @@ impl BoundaryAnalysisPass._register_sv_import(
             ability_node = self._find_ability(parsed_mod, sym_name);
         }
         if ability_node is None
-            and (cross_app or caller_ctx == InteropContext.CLIENT) {
+            and (cross_app or caller_ctx != InteropContext.SERVER) {
             type_mod = (
                 provider_mod
                     if (provider_mod is not None and not provider_mod.stub_only)
@@ -1366,6 +1383,7 @@ impl BoundaryAnalysisPass.finish with exit {
         crosses_ctypes = (
             binding.source_context == InteropContext.SERVER
             and InteropContext.NATIVE in binding.callers
+            and binding.kind != 'type'
         );
         if not crosses_ctypes {
             continue;

@@ -21,7 +21,7 @@ def write_native_product(
     }
     manifest = module.gen.interop_manifest;
     llvm_ir = validate_native_application(module, shared, memory);
-    bindings = manifest.native_imports if shared else [];
+    bindings = manifest.callable_native_imports if shared else [];
     output = relative.with_suffix('.so' if shared else '');
     source = relative.with_suffix('.c');
     target = directory / (source if emit_source else output);
