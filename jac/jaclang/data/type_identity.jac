@@ -42,6 +42,11 @@ def class_facts(cls: type) -> tuple[str, ...] {
         and all(isinstance(x, str) for x in facts) {
         return facts;
     }
+    if facts {
+        raise UnavailableType(
+            f'Type {cls.__module__}.{cls.__name__} has obsolete persistence metadata; rebuild the application'
+        );
+    }
     return ();
 }
 

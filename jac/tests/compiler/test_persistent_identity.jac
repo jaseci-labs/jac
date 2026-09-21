@@ -358,3 +358,23 @@ test "repeated main execution keeps prior module globals and type identities" {
         }
     }
 }
+
+
+test "obsolete compiled persistence metadata requires a rebuild" {
+    obsolete = type(
+        'Obsolete',
+        (),
+        {
+            '__module__': __name__,
+            '__jac_persistence__': ('old', 'service', 'domain', 'models', 'owner')
+        }
+    );
+    rejected = False;
+    try {
+        type_module(obsolete);
+    } except UnavailableType as error {
+        rejected = True;
+        assert 'rebuild' in str(error);
+    }
+    assert rejected;
+}

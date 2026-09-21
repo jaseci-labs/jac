@@ -13,7 +13,7 @@ import from jaclang.bootstrap_manifest {
 }
 
 glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 26,
+     FORMAT_VERSION: int = 27,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
