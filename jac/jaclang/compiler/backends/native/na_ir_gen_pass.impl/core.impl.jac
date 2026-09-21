@@ -1600,7 +1600,9 @@ impl NaIRGenPass._dispatch_primitive_method(
     if _emit_fn is None {
         return None;
     }
-    if kwargs and method_name not in ("sort", ) {
+    if kwargs
+        and method_name not in ("sort", )
+        and not (type_name == "str" and method_name == "splitlines") {
         self.ctx.emit(
             E5092,
             node_override=kw_node,

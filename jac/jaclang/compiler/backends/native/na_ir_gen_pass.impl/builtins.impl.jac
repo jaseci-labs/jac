@@ -2090,3 +2090,96 @@ impl NaIRGenPass._codegen_str_split_whitespace(
     }
     return result;
 }
+
+impl NaIRGenPass._codegen_str_splitlines(
+    text: ir.Value, keepends: ir.Value | None = None
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    b = self.builder;
+    length = self._call_str_len(b, text);
+    keep = self._coerce_type(keepends, ir.IntType(1))
+        if keepends is not None
+        else ir.Constant(ir.IntType(1), 0);
+    self._emit_list_helpers("ptr", i8p);
+    helpers = self.list_helpers["ptr"];
+    result = b.call(helpers["new"], []);
+    self._nogc_stamp_elem_drops(result, ["str"]);
+    cursor = self._entry_alloca(i64, "lines.cursor");
+    start = self._entry_alloca(i64, "lines.start");
+    width_slot = self._entry_alloca(i64, "lines.width");
+    b.store(zero, cursor);
+    b.store(zero, start);
+    func = b.function;
+    scan = func.append_basic_block("lines.scan");
+    inspect = func.append_basic_block("lines.inspect");
+    advance = func.append_basic_block("lines.advance");
+    emit = func.append_basic_block("lines.emit");
+    tail = func.append_basic_block("lines.tail");
+    done = func.append_basic_block("lines.done");
+    b.branch(scan);
+    b.position_at_end(scan);
+    pos = b.load(cursor);
+    b.cbranch(b.icmp_unsigned("<", pos, length), inspect, tail);
+    b.position_at_end(inspect);
+    byte = b.load(b.gep(text, [pos]));
+    ascii_break: ir.Value = b.icmp_unsigned("==", byte, ir.Constant(i8, 10));
+    for code in [11, 12, 13, 28, 29, 30] {
+        ascii_break = b.or_(
+            ascii_break, b.icmp_unsigned("==", byte, ir.Constant(i8, code))
+        );
+    }
+    b.store(b.select(ascii_break, one, zero), width_slot);
+
+    for sequence in [[13, 10], [194, 133], [226, 128, 168], [226, 128, 169]] {
+        check = func.append_basic_block("lines.sequence");
+        next_check = func.append_basic_block("lines.next");
+        sequence_size = ir.Constant(i64, len(sequence));
+        b.cbranch(
+            b.and_(
+                b.icmp_unsigned("==", byte, ir.Constant(i8, sequence[0])),
+                b.icmp_unsigned("<=", sequence_size, b.sub(length, pos))
+            ),
+            check,
+            next_check
+        );
+        b.position_at_end(check);
+        matches: ir.Value = ir.Constant(ir.IntType(1), 1);
+        for offset in range(1, len(sequence)) {
+            part = b.load(b.gep(text, [b.add(pos, ir.Constant(i64, offset))]));
+            matches = b.and_(
+                matches, b.icmp_unsigned("==", part, ir.Constant(i8, sequence[offset]))
+            );
+        }
+        b.store(b.select(matches, sequence_size, b.load(width_slot)), width_slot);
+        b.branch(next_check);
+        b.position_at_end(next_check);
+    }
+    b.cbranch(b.icmp_unsigned("!=", b.load(width_slot), zero), emit, advance);
+    b.position_at_end(advance);
+    b.store(b.add(pos, one), cursor);
+    b.branch(scan);
+    b.position_at_end(tail);
+    b.store(zero, width_slot);
+    b.cbranch(b.icmp_unsigned("<", b.load(start), length), emit, done);
+    b.position_at_end(emit);
+    finish = b.load(cursor);
+    width = b.load(width_slot);
+    begin = b.load(start);
+    end = b.add(finish, width);
+    size = b.sub(b.select(keep, end, finish), begin);
+    copy = self._str_alloc(b, b.add(size, one), name="lines.copy");
+    memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    b.call(memcpy, [copy, b.gep(text, [begin]), size]);
+    self._str_finish(b, copy, size);
+    self._rc_call_with_ctx(helpers["append"], [result, copy], op="str_splitlines");
+    self._emit_rc_release_simple(copy, op="str_splitlines");
+    b.store(end, start);
+    b.store(end, cursor);
+    b.branch(scan);
+    b.position_at_end(done);
+    return result;
+}

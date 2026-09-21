@@ -534,6 +534,10 @@ walker NaIRGenPass {
         text: ir.Value, maxsplit: ir.Value | None = None, reverse: bool = False
     ) -> ir.Value;
 
+    def _codegen_str_splitlines(
+        text: ir.Value, keepends: ir.Value | None = None
+    ) -> ir.Value;
+
     def _codegen_str_split(
         str_val: ir.Value,
         sep_val: ir.Value,
