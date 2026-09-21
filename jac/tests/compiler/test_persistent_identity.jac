@@ -304,3 +304,42 @@ test "durable identity survives a different app process and checkout location" {
         }
     }
 }
+
+
+test "repeated main execution keeps prior module globals and type identities" {
+    previous = sys.modules.get('__main__');
+    with TemporaryDirectory() as td {
+        applications: list[PreparedApplication] = [];
+        modules: list[any] = [];
+        try {
+            for name in ['first', 'second'] {
+                path = Path(td) / (name + '.jac');
+                path.write_text(
+                    f'glob marker: str = "{name}";\n'
+                        + 'node Record { has value: str = "saved"; }\n'
+                        + 'def read_marker -> str { return marker; }\n'
+                );
+                app = prepare_application(str(path), JacProgram(), td);
+                applications.append(app);
+                modules.append(load_prepared_module(app.entry, app, as_main=True));
+            }
+            (first, second) = modules;
+            assert first is not second;
+            assert first.read_marker() == 'first';
+            assert second.read_marker() == 'second';
+            assert type_module(first.Record) != type_module(second.Record);
+            payload = Serializer.serialize(first.Record(), include_type=True);
+            with resolution_scope(applications[0]) {
+                restored = Serializer.deserialize(cast(dict[str, object], payload));
+                assert type(restored) is first.Record;
+            }
+        } finally {
+            for app in applications {
+                forget(app.entry);
+            }
+            if previous is not None {
+                sys.modules['__main__'] = previous;
+            }
+        }
+    }
+}

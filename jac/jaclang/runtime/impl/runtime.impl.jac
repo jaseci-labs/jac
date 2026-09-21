@@ -755,25 +755,15 @@ impl JacModule.jac_import(
             if (not spec or not spec.origin) {
                 raise ImportError(f"Cannot find module {module_name}");
             }
-            if (('__main__' in sys.modules) and not reload_module) {
-                module = sys.modules['__main__'];
-                to_keep = {
-                    k: v
-                    for (k, v) in module.__dict__.items()
-                    if k.startswith('__')
-                };
-                module.__dict__.update(to_keep);
-            } else {
-                module = types.ModuleType('__main__');
-                sys.modules['__main__'] = module;
-            }
+            module = types.ModuleType('__main__');
+            sys.modules['__main__'] = module;
             module.__file__ = spec.origin;
             module.__name__ = '__main__';
             module.__spec__ = spec;
             if spec.submodule_search_locations {
                 module.__path__ = spec.submodule_search_locations;
             }
-            JacRuntimeInterface.load_module('__main__', module);
+            JacRuntimeInterface.load_module('__main__', module, force=True);
 
             if spec.origin and spec.origin.endswith('.py') {
                 with open(spec.origin, encoding='utf-8') as stream {

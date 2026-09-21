@@ -1058,26 +1058,19 @@ test "custom access validation" {
 }
 
 test "run persistent reuse" {
-    import json;
-    import sqlite3;
-
     _tmpdir = mkdtemp();
     _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         # The project's rows live in its database on the shared embedded
         # server; inspect them out-of-band through a fresh store connection.
-        import from jaclang.data.pgembed { PgRuntime }
-        import from jaclang.server.session { project_db_name, shared_pg_data_dir }
+        import from jaclang.server.session { runtime_for_base }
         import from jaclang.data.store { PgStore, TxnIsolation }
 
         def _db_counts -> tuple[any, ...] {
-            rt = PgRuntime(
-                data_dir=shared_pg_data_dir(),
-                database=project_db_name(
-                    _tmpdir, os.path.join(FIXTURES, "simple_node_connection.jac")
-                )
-            );
+            rt = runtime_for_base(
+                _tmpdir, os.path.join(FIXTURES, "simple_node_connection.jac")
+            ).runtime;
             st = PgStore(conninfo=rt.ensure());
             st.begin(TxnIsolation.READ_COMMITTED);
             rows = st.rows(

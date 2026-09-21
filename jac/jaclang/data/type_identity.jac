@@ -31,7 +31,9 @@ def module_identity(facts: tuple[str, ...]) -> str {
 
 def class_facts(cls: type) -> tuple[str, ...] {
     module = sys.modules.get(cls.__module__);
-    facts = getattr(module, '__jac_persistence__', ());
+    facts = cls.__dict__.get(
+        '__jac_persistence__', getattr(module, '__jac_persistence__', ())
+    );
     if cls.__module__.startswith('jaclang.') {
         return ();
     }
@@ -59,6 +61,7 @@ def type_module(cls: type) -> str {
 def register_type(cls: type) {
     facts = class_facts(cls);
     if facts {
+        setattr(cls, '__jac_persistence__', facts);
         key = module_identity(facts) + '.' + cls.__name__;
         with _lock {
             _types.setdefault(key, WeakValueDictionary())[cls.__module__] = cls;
@@ -92,14 +95,13 @@ def resolve_type(module_name: str, name: str) -> type {
         );
     }
     with _lock {
-        candidates = {
-            runtime_module: candidate
-            for runtime_module in _types.get(key, {})
-            if isinstance(
-                candidate := getattr(sys.modules.get(runtime_module), name, None), type
-            )
-                and type_module(candidate) == module_name
-        };
+        candidates: dict[str, type] = {};
+        for (runtime_module, registered) in _types.get(key, {}).items() {
+            candidate = getattr(sys.modules.get(runtime_module), name, None);
+            candidates[runtime_module] = candidate
+                if isinstance(candidate, type) and type_module(candidate) == module_name
+                else registered;
+        }
     }
     if application is not None {
         import from jaclang.runtime.prepared { load_prepared_module }
