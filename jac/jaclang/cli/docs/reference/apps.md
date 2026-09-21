@@ -188,7 +188,6 @@ the namespace, domain or logical declaration name is a persistent schema rename,
 not a deployment setting. Absolute checkout paths and deployment locations do not
 participate in persistent identity.
 
-
 No workspace consumer scan or app context cache is needed. `default-app` chooses a
 CLI default; placement pins choose codespaces. Neither assigns shared code to a
 global app context, and the former E5107 ambiguity gate has been removed.
