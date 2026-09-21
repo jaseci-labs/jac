@@ -108,7 +108,7 @@ test "a pod target downloads real manylinux2014-only wheels from PyPI" {
 }
 
 
-test "an sdist-only dep is built on the host and ships when its wheel fits the pod" {
+test "a parent version range vendors its sdist-only dependency for the pod" {
     require_network();
     target = WheelTarget(arch="aarch64", python_version="3.12", glibc=POD_GLIBC);
     with tempfile.TemporaryDirectory(prefix="jac-pod-sdist-") as tmp {
@@ -116,7 +116,7 @@ test "an sdist-only dep is built on the host and ships when its wheel fits the p
         os.environ["PIP_CACHE_DIR"] = str(Path(tmp) / "pip-cache");
         try {
             result = download_wheels(
-                ["http-ece==1.2.1"], Path(tmp) / "wheels", target=target
+                ["pywebpush>=2.0.0"], Path(tmp) / "wheels", target=target
             );
         } finally {
             if saved_cache is None {
@@ -129,6 +129,7 @@ test "an sdist-only dep is built on the host and ships when its wheel fits the p
         wheels = sorted([p.name for p in (Path(tmp) / "wheels").`glob("*.whl")]);
     }
     assert "http_ece-1.2.1-py2.py3-none-any.whl" in wheels , wheels;
+    assert any([w.startswith("pywebpush-") for w in wheels]) , wheels;
     crypto = [
         w
         for w in wheels
@@ -305,5 +306,29 @@ test "pack_jab seals a prebuilt venv unless JAC_SEAL_SKIP_VENV opts out" {
     assert records , venv_names[:40];
     for rec in records {
         assert "../" not in _member(raw, rec).decode("utf-8") , rec;
+    }
+}
+
+
+test "vendoring passes a platform tag understood by older seal scripts" {
+    import from unittest.mock { patch }
+    import jaclang.scale.injector.bundle as bundle;
+    with tempfile.TemporaryDirectory() as tmp {
+        stage = Path(tmp) / "app";
+        (stage / "_vendor").mkdir(parents=True);
+        (stage / "_vendor" / "VENDOR.json").write_text("{}");
+        old_script = Path(tmp) / "old-vendor.jac";
+        with patch.object(bundle, "_child_tree_script", return_value=old_script), patch(
+            "subprocess.run"
+        ) as mock_run {
+            mock_run.return_value.returncode = 0;
+            mock_run.return_value.stdout = "";
+            mock_run.return_value.stderr = "";
+            bundle._vendor_stage(stage, b"binary", "arm64");
+            argv = mock_run.call_args[0][0];
+            assert argv[-1] == "manylinux_2_36_aarch64" , argv;
+            assert argv[2] == str(old_script);
+            assert pod_arch_from_argv(argv[-1]) == "aarch64";
+        }
     }
 }

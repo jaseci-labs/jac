@@ -2207,3 +2207,26 @@ test "install_specs honors the sealed-venv marker" {
         }
     }
 }
+
+
+test "standalone pip ignores inherited Python paths and user site" {
+    import from jaclang.project.pyvenv { pip_env }
+    inherited = {
+        "JAC_STANDALONE": "1",
+        "PYTHONPATH": "/foreign/site",
+        "PYTHONHOME": "/foreign/python",
+        "PYTHONUSERBASE": "/foreign/user",
+        "PIP_INDEX_URL": "https://example.invalid/simple"
+    };
+    with patch.dict(os.environ, inherited, clear=True) {
+        env = pip_env();
+        assert "PYTHONPATH" not in env;
+        assert "PYTHONHOME" not in env;
+        assert "PYTHONUSERBASE" not in env;
+        assert env["PYTHONNOUSERSITE"] == "1";
+        assert env["PIP_INDEX_URL"] == inherited["PIP_INDEX_URL"];
+        assert os.environ["PYTHONPATH"] == "/foreign/site";
+        os.environ.pop("JAC_STANDALONE");
+        assert pip_env()["PYTHONPATH"] == "/foreign/site";
+    }
+}

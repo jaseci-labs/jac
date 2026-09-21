@@ -376,7 +376,7 @@ def missing_capability_dists(capability: str) -> list[str] {
 def ensure_global_capability(capability: str) -> bool {
     import importlib;
     import subprocess;
-    import from jaclang.project.pyvenv { pip_command, pip_python }
+    import from jaclang.project.pyvenv { pip_command, pip_python, pip_env }
     missing = missing_capability_dists(capability);
     if not missing {
         return get_capability(capability) is not None;
@@ -384,7 +384,8 @@ def ensure_global_capability(capability: str) -> bool {
     result = subprocess.run(
         pip_command(pip_python(), ["install", "--quiet"] + missing),
         capture_output=True,
-        text=True
+        text=True,
+        env=pip_env()
     );
     importlib.invalidate_caches();
     if result.returncode != 0 {

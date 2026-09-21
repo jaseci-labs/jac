@@ -878,7 +878,11 @@ def _vendor_stage(stage: Path, seal_binary: bytes, pod_arch: str = "") {
     );
     cmd = [str(jac_path), "run", str(script), str(stage)];
     if pod_arch {
-        cmd.append(pod_arch);
+        import from jaclang.scale.utils.vendor_wheels { pod_wheel_target }
+        target = pod_wheel_target(pod_arch);
+        if target is not None {
+            cmd.append(target.platform_tag());
+        }
     }
     try {
         result = subprocess.run(
