@@ -1,4 +1,6 @@
 import os;
+import from _user_home { user_home }
+
 
 glob sep: str = "/",
      extsep: str = ".",
@@ -226,4 +228,27 @@ def:pub normpath(p: str) -> str {
         return ".";
     }
     return out;
+}
+
+
+def:pub expanduser(path: str) -> str {
+    if not path.startswith("~") {
+        return path;
+    }
+    end = path.find("/");
+    if end < 0 {
+        end = len(path);
+    }
+    home: str | None = None;
+    if end == 1 {
+        home = os.getenv("HOME");
+    }
+    if home is None {
+        home = user_home(path[1:end]);
+    }
+    if home is None {
+        return path;
+    }
+    expanded = _rstrip_slashes(home) + path[end:];
+    return expanded or "/";
 }
