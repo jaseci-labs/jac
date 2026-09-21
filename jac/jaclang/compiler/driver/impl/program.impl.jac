@@ -322,10 +322,7 @@ impl JacProgram.release_native_dep_units(self: JacProgram) -> None {
         } except Exception {
             continue;
         }
-        gen.native_engine = None;
-        gen.llvm_ir = None;
-        gen.native_linked_ir = None;
-        gen.native_bitcode = None;
+        gen.clear_codegen_artifacts();
     }
     self.scratch.na_dep_units.clear();
     self.scratch.na_unverified_live.clear();

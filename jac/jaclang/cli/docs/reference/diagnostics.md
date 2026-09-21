@@ -135,6 +135,23 @@ All three block code generation for the module that reports them.
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
 | `E0052` | Parameter '{name}' is missing a type annotation |
 
+### Duplicate Declaration Errors
+
+| Code | Message |
+|------|---------|
+| `E0075` | Duplicate base class '{name}' |
+| `E0076` | Duplicate method '{name}' in class body |
+| `E0077` | Duplicate declaration of '{name}' (already declared as {kind}) |
+| `E0078` | Duplicate function '{name}' in module |
+
+`E0078` rejects duplicate top-level functions. A module may define a
+function name once; every intentional overload must be declared with
+`@overload`. Mixing decorated overload declarations with a plain
+declaration of the same name is rejected regardless of declaration
+order, so a plain function can never silently shadow an overload (or
+vice versa). Modules parsed from Python source keep Python's own
+overload semantics and are not checked.
+
 ### Property Declaration Errors
 
 | Code | Message |

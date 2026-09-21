@@ -325,6 +325,13 @@ impl NativeCompilePass.postinit -> None {
 }
 
 impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
+    """Lower the module to native codegen artifacts.
+
+    Single artifact invariant for every exit path: a native compile that
+    ends with errors_had publishes nothing unless `committed` -- full JIT
+    success, or the AOT return, which deliberately keeps its bitcode even
+    when errors_had because the caller inspects errors_had itself.
+    """;
     module = ir_in;
     if module.gen.llvm_ir is None {
         return ir_in;
@@ -336,6 +343,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         return ir_in;
     }
     llvm_ir_str = str(module.gen.llvm_ir);
+    committed = False;
     try {
         import ctypes as _ct;
         import ctypes.util;
@@ -405,6 +413,10 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             module.gen.llvm_ir = mod;
         }
 
+        if self.ctx.errors_had {
+            return ir_in;
+        }
+
         if _compile_opts.native_required_for(module.loc.mod_path) {
             require_native_ir(str(mod));
         }
@@ -445,6 +457,9 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             _kernel_linked = True;
         }
         module.gen.native_linked_ir = str(mod) if _kernel_linked else None;
+        if self.ctx.errors_had {
+            return ir_in;
+        }
 
         import os as _os;
         _opt_level = int(_compile_opts.opt_level or 0);
@@ -492,6 +507,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         }
 
         if _compile_opts.aot_mode {
+            committed = True;
             return ir_in;
         }
 
@@ -548,8 +564,13 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
                 } else {}
             } except Exception as _sym_err {}
         }
+        committed = True;
     } except Exception as e {
         self.ctx.emit(E5020, error=str(e));
+    } finally {
+        if not committed and self.ctx.errors_had {
+            module.gen.clear_codegen_artifacts();
+        }
     }
     return ir_in;
 }

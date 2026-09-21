@@ -84,6 +84,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E0071,
     E0075,
     E0076,
+    E0078,
     E0082,
     E0083,
     E2019,
@@ -105,6 +106,8 @@ walker ASTValidationPass(TreeWalker) {
     can exit_walk with UniNode exit {
         self.ctx.exit_node(here);
     }
+
+    can enter_module with Module entry;
 
     has ctx: CompileContext,
         module: Module;
@@ -136,6 +139,7 @@ walker ASTValidationPass(TreeWalker) {
     can enter_global_vars with GlobalVars entry;
     can enter_func_call with FuncCall entry;
     can enter_archetype with Archetype entry;
+    def _is_overload(ability: Ability) -> bool;
     can enter_jsx_slot with JsxSlot entry;
     can enter_expr_stmt with ExprStmt entry;
     def _check_slot_body(stmts: list[UniNode], in_loop: bool, loop_kw: str) -> None;

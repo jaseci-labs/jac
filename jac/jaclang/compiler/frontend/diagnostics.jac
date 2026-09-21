@@ -310,6 +310,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Duplicate declaration of '{name}' (already declared as {kind})",
          help="Jac supports decl/impl separation, not decl/decl. Either inline the body into the first `obj/node/edge/walker/enum` block, or split into a body-less declaration plus an `impl` block."
      ),
+     E0078 = _err(
+         "E0078",
+         Category.SYNTAX,
+         "Duplicate function '{name}' in module",
+         help="A module may define a function name once. Add `@overload` to each intentional overload, or rename the duplicate function.",
+         blocks_codegen=True
+     ),
      E0080 = _err(
          "E0080",
          Category.SYNTAX,

@@ -963,3 +963,76 @@ test "E2085 rejects plain client functions and lambdas inside async tests" {
     );
     assert count_diagnostic_code(prog, "E2085") == 2;
 }
+
+
+# ── E0078: duplicate module functions ──────────────────────────────
+
+test "E0078: mixed overload set reports duplicates (decorated first)" {
+    (_, prog) = parse_and_validate(
+        "@overload\n"
+        "def collide(x: int) -> int;\n"
+        "def collide(x: str) -> str { return x; }\n"
+    );
+    assert has_diagnostic_code(prog, "E0078");
+    # Same redefinition path under the qualified spelling, which parses to
+    # an AtomTrailer rather than a bare Name.
+    (_, prog_q) = parse_and_validate(
+        "@typing.overload\n"
+        "def collide(x: int) -> int;\n"
+        "def collide(x: str) -> str { return x; }\n"
+    );
+    assert has_diagnostic_code(prog_q, "E0078");
+}
+
+test "E0078: mixed overload set reports duplicates (plain first)" {
+    (_, prog) = parse_and_validate(
+        "def collide(x: str) -> str { return x; }\n"
+        "@overload\n"
+        "def collide(x: int) -> int;\n"
+    );
+    assert has_diagnostic_code(prog, "E0078");
+}
+
+test "E0078: fully decorated overload set is allowed" {
+    # Bare @overload and qualified @typing.overload must both count as
+    # overloads: the qualified form parses to an AtomTrailer, not a bare
+    # Name, and an unrecognized spelling would false-positive E0078 here.
+    (_, prog) = parse_and_validate(
+        "@overload\n"
+        "def collide(x: int) -> int;\n"
+        "@typing.overload\n"
+        "def collide(x: str) -> str;\n"
+        "@typing.overload\n"
+        "def collide(x: bool) -> bool;\n"
+        "def unrelated() -> int { return 1; }\n"
+    );
+    assert not has_diagnostic_code(prog, "E0078");
+}
+
+test "E0078: two plain duplicates still report once per redefinition" {
+    (_, prog) = parse_and_validate(
+        "def collide(x: int) -> int { return x; }\n"
+        "def collide(x: str) -> str { return x; }\n"
+        "def collide(x: bool) -> bool { return x; }\n"
+    );
+    assert count_diagnostic_code(prog, "E0078") == 2;
+}
+
+test "E0078: skips Python-derived modules with mixed overload idiom" {
+    src = (
+        "@overload\n"
+        "def collide(x: int) -> int;\n"
+        "def collide(x: str) -> str { return x; }\n"
+    );
+    (module, had_error) = parse(src, "/tmp/test_py_module.jac");
+    assert not had_error;
+    module.is_raised_from_py = True;
+    prog = JacProgram();
+    run_pass(ASTValidationPass, module, prog);
+    assert not has_diagnostic_code(prog, "E0078");
+
+    (module2, _) = parse(src, "/tmp/test_jac_module.jac");
+    prog2 = JacProgram();
+    run_pass(ASTValidationPass, module2, prog2);
+    assert has_diagnostic_code(prog2, "E0078");
+}

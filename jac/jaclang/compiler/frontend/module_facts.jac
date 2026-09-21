@@ -47,6 +47,22 @@ obj ModuleFacts {
         return False;
     }
 
+    static def ability_is_overload(ability: Ability) -> bool {
+        """Syntax-only mirror of TypeUtils.is_overload_sym, which
+        additionally resolves the decorated name's origin via
+        origin_of_local_name (aliased imports of ``overload`` remain a
+        known gap here). The frontend cannot import types/, so origin
+        resolution stays there; do not dedupe one into the other.
+        """;
+        for dec in (ability.decorators or []) {
+            tail = dec.right if isinstance(dec, AtomTrailer) else dec;
+            if isinstance(tail, Name) and tail.value == "overload" {
+                return True;
+            }
+        }
+        return False;
+    }
+
     static def literal_exports(module: Module) -> set[str] | None {
         assignments: list[Assignment] = [];
         for stmt in module.body {

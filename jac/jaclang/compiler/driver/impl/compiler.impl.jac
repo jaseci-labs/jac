@@ -1834,13 +1834,7 @@ impl JacCompiler._scrub_native_artifacts_on_error(
     if not JacCompiler._module_scoped_errors(target_program, mod_path) {
         return False;
     }
-    gen = mod.gen;
-    gen.py_bytecode = None;
-    gen.llvm_ir = None;
-    gen.native_linked_ir = None;
-    gen.native_engine = None;
-    gen.native_bitcode = None;
-    gen.native_layout = None;
+    mod.gen.clear_codegen_artifacts();
     return True;
 }
 

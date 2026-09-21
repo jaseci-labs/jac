@@ -138,6 +138,17 @@ impl CodeGenTarget.interop_manifest.setter(value: InteropManifest) -> None {
     self._interop_manifest = value;
 }
 
+impl CodeGenTarget.clear_codegen_artifacts -> None {
+    self.py_bytecode = None;
+    self.llvm_ir = None;
+    self.native_linked_ir = None;
+    self.native_engine = None;
+    self.native_bitcode = None;
+    self.native_layout = None;
+    self.interop_py_funcs = {};
+    self._interop_callbacks = [];
+}
+
 impl ClientArtifact.to_bytes -> bytes {
     import pickle;
     return pickle.dumps(

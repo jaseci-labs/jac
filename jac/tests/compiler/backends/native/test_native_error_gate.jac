@@ -152,3 +152,124 @@ test "clean na module still publishes artifacts and caches" {
         "clean na module must still be written to the jir cache"
     );
 }
+
+test "duplicate module functions refuse native codegen" {
+    src = write_module(
+        "gate_duplicate.jac",
+        "def collide(x: int) -> int { return x; }\n"
+        "def collide(x: int) -> int { return x + 1; }\n"
+        "with entry { print(collide(1)); }\n"
+    );
+    prog = JacProgram();
+    mod = prog.compile(file_path=src, options=native_force_opts());
+    assert has_error_code(prog, "E0078") , (
+        f"Expected E0078 for duplicate module functions, got: {fmt_errors(prog)}"
+    );
+    assert mod.gen.llvm_ir is None , ("duplicate functions must not publish native IR");
+    assert mod.gen.native_engine is None , (
+        "duplicate functions must not publish a native engine"
+    );
+}
+
+test "undefined native names refuse codegen instead of emitting a hole" {
+    src = write_module(
+        "gate_undefined_name.jac",
+        "def probe() -> int { return NATIVE_KIND_PARSE_ESTREE; }\n"
+        "with entry { print(probe()); }\n"
+    );
+    prog = JacProgram();
+    mod = prog.compile(file_path=src, options=native_force_opts());
+    assert prog.errors_had , (
+        "an unresolved name in native code must produce a compiler diagnostic"
+    );
+    assert mod.gen.llvm_ir is None , (
+        "an unresolved native name must not publish native IR"
+    );
+    assert mod.gen.native_engine is None , (
+        "an unresolved native name must not publish a native engine"
+    );
+}
+
+test "native compile failure clears every artifact including layout" {
+    # Drives NativeCompilePass directly -- the same invocation
+    # pipeline_runner.native_checks makes, with no driver-level scrub as a
+    # safety net. A poisoned llvm_ir forces the unexpected-exception gate
+    # (E5020); every native artifact must be dropped, including
+    # native_layout, which later native lowering consumes: a stale layout
+    # would silently feed a subsequent compilation of the same module.
+    src = write_module("gate_clear_all.jac", GOOD_NA_SOURCE);
+    prog = JacProgram();
+    mod = prog.compile(file_path=src, options=native_force_opts());
+    assert not prog.errors_had , f"unexpected errors: {fmt_errors(prog)}";
+    assert mod.gen.native_layout is not None , (
+        "good module must publish a native layout before the failure injection"
+    );
+    holder: any = mod.gen;
+    holder.llvm_ir = "definitely not llvm ir";
+    import from jaclang.compiler.backends.native { NativeCompilePass }
+    import from jaclang.compiler.driver.pass_driver {
+        run_pass,
+        build_diagnostic_policy
+    }
+    run_pass(NativeCompilePass, mod, prog, policy=build_diagnostic_policy(prog));
+    assert has_error_code(prog, "E5020") , (
+        f"poisoned IR must trip the native compile gate, got: {fmt_errors(prog)}"
+    );
+    assert mod.gen.llvm_ir is None , ("failed native compile must not publish llvm ir");
+    assert mod.gen.native_linked_ir is None , (
+        "failed native compile must not publish linked native IR"
+    );
+    assert mod.gen.native_bitcode is None , (
+        "failed native compile must not publish native bitcode"
+    );
+    assert mod.gen.native_engine is None , (
+        "failed native compile must not publish a jit engine"
+    );
+    assert mod.gen.py_bytecode is None , (
+        "failed native compile must not publish python bytecode"
+    );
+    assert mod.gen.native_layout is None , (
+        "failed native compile must not leave native_layout behind for later lowering"
+    );
+}
+
+test "native compile failure drops registered interop callbacks" {
+    # A module whose native side calls back into server code gets ctypes
+    # trampolines registered (into the LLVM symbol table and
+    # gen._interop_callbacks) the moment lowering succeeds past IR
+    # parsing. A failure AFTER that point must drop the table too:
+    # get_native_interop_setup returns interop_py_funcs even when
+    # native_engine is None, and meta_importer injects whatever dict it
+    # finds -- a stale table would hand the next import of this module
+    # the previous compile's callbacks and pin their closures forever.
+    import from tests.support { TESTS_DIR }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    src = os.path.join(
+        TESTS_DIR, "compiler", "backends", "native", "fixtures", "na_py_interop.jac"
+    );
+    prog = JacProgram();
+    mod = prog.compile(src, options=CompileOptions(default_codespace="server"));
+    assert not prog.errors_had , f"unexpected errors: {fmt_errors(prog)}";
+    old_callbacks = mod.gen._interop_callbacks;
+    assert old_callbacks , (
+        "fixture must register native->server callbacks before the failure"
+    );
+    holder: any = mod.gen;
+    holder.llvm_ir = "definitely not llvm ir";
+    import from jaclang.compiler.backends.native { NativeCompilePass }
+    import from jaclang.compiler.driver.pass_driver {
+        run_pass,
+        build_diagnostic_policy
+    }
+    run_pass(NativeCompilePass, mod, prog, policy=build_diagnostic_policy(prog));
+    assert has_error_code(prog, "E5020") , (
+        f"poisoned IR must trip the native compile gate, got: {fmt_errors(prog)}"
+    );
+    assert not mod.gen.interop_py_funcs , (
+        "failed native compile must drop the registered callback table, not keep "
+        "stale callbacks attached to the module"
+    );
+    assert not mod.gen._interop_callbacks , (
+        "failed native compile must not keep ctypes callbacks alive"
+    );
+}

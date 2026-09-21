@@ -271,6 +271,10 @@ test "a verdict query's dep units do not outlive the compile that asked" {
             unit.gen.llvm_ir is not None
             or unit.gen.native_engine is not None
             or unit.gen.native_bitcode is not None
+            or unit.gen.native_layout is not None
+            or unit.gen.py_bytecode is not None
+            or unit.gen.interop_py_funcs
+            or unit.gen._interop_callbacks
         ) {
             stranded.append(os.path.basename(path));
         }

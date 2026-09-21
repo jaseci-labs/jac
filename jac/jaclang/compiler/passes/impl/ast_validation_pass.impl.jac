@@ -345,6 +345,53 @@ impl ASTValidationPass.enter_func_call with FuncCall entry {
     }
 }
 
+impl ASTValidationPass._is_overload(ability: Ability) -> bool {
+    """Pass-local mirror of ModuleFacts.ability_is_overload. This pass
+    impl is natively lowered during the self-build (jac build --native
+    --lib jc_unit.jac), and a static call into module_facts -- a module
+    the native lane does not lower -- hard-fails with E5092 there. Keep
+    in sync, including the AtomTrailer unwrap for the qualified
+    @typing.overload spelling.
+    """;
+    for dec in (ability.decorators or []) {
+        tail = dec.right if isinstance(dec, AtomTrailer) else dec;
+        if isinstance(tail, Name) and tail.value == "overload" {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl ASTValidationPass.enter_module with Module entry {
+    if here.is_raised_from_py or here.stub_only {
+        return;
+    }
+    overload_names: set[str] = set();
+    for item in (here.body or []) {
+        if not (isinstance(item, Ability) and isinstance(item.name_ref, Name)) {
+            continue;
+        }
+        if self._is_overload(item) {
+            overload_names.add(item.name_ref.value);
+        }
+    }
+    plain_seen: set[str] = set();
+    for item in (here.body or []) {
+        if not (isinstance(item, Ability) and isinstance(item.name_ref, Name)) {
+            continue;
+        }
+        if self._is_overload(item) {
+            continue;
+        }
+        name = item.name_ref.value;
+        if name in plain_seen or name in overload_names {
+            self.ctx.emit(E0078, node_override=item.name_ref, name=name);
+        } else {
+            plain_seen.add(name);
+        }
+    }
+}
+
 impl ASTValidationPass.enter_archetype with Archetype entry {
     if here.base_classes is not None {
         seen_bases: set[str] = set();
@@ -400,14 +447,12 @@ impl ASTValidationPass.enter_archetype with Archetype entry {
         if not (isinstance(item, Ability) and item.name_ref is not None) {
             continue;
         }
-        has_overload = False;
+        has_overload = self._is_overload(item);
         accessor_kind: (str | None) = None;
         accessor_target: (str | None) = None;
         if item.decorators is not None {
             for dec in item.decorators {
-                if isinstance(dec, Name) and dec.value == "overload" {
-                    has_overload = True;
-                } elif (
+                if (
                     isinstance(dec, AtomTrailer)
                     and isinstance(dec.right, Name)
                     and dec.right.value in ("setter", "getter", "deleter")

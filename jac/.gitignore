@@ -88,7 +88,7 @@ jaclang/client/_bun/
 # committed -- only the PIN / TARBALL_SHA256 / LICENSE / PROVENANCE.md beside
 # the stubs are tracked.
 jaclang/vendor/typeshed/stdlib
-.llvm-build/
+.llvm-build
 # CI staging dir for a cache-restored prebuilt shim (setup-jac -Dshim-bin).
 .shim-build/
 # Persistent JIR precompile cache: mkpayload seeds site/_precompiled from it
@@ -112,6 +112,10 @@ libjac_*.so
 libjac_*.dylib
 libjac_*.so.layout.json
 libjac_*.dylib.layout.json
+libjc_*.so
+libjc_*.dylib
+libjc_*.so.layout.json
+libjc_*.dylib.layout.json
 # Zig-built libjacpyembed desktop shim, placed in-tree per host platform.
 libjacpyembed.so
 libjacpyembed.dylib

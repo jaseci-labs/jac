@@ -966,15 +966,8 @@ impl TypeCheckPass.exit_ability with Ability exit {
         and len(here.body) > 0
         and not here.is_abstract
     ) {
-        is_overload = False;
-        for decor in (here.decorators or []) {
-            if isinstance(decor, Name) and decor.value == "overload" {
-                is_overload = True;
-                break;
-            }
-        }
-
         import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+        is_overload = ModuleFacts.ability_is_overload(here);
         is_generator = ModuleFacts.ability_is_generator(here);
 
         body_stmts: list[CodeBlockStmt] = [
