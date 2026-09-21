@@ -93,9 +93,12 @@ def resolve_type(module_name: str, name: str) -> type {
     }
     with _lock {
         candidates = {
-            runtime_module: cls
-            for (runtime_module, cls) in _types.get(key, {}).items()
-            if getattr(sys.modules.get(runtime_module), cls.__name__, None) is cls
+            runtime_module: candidate
+            for runtime_module in _types.get(key, {})
+            if isinstance(
+                candidate := getattr(sys.modules.get(runtime_module), name, None), type
+            )
+                and type_module(candidate) == module_name
         };
     }
     if application is not None {

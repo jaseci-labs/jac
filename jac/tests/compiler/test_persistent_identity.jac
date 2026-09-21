@@ -137,8 +137,8 @@ def exercise(shared: bool, evolve: bool = False) {
                         )
                     );
                     assert len(found) == 1;
-                    assert isinstance(found[0], reader.Thing);
-                    assert found[0].v == 'hello';
+                    assert isinstance(found[0].archetype, reader.Thing);
+                    assert found[0].archetype.v == 'hello';
                     assert reader_store.rows('SELECT count(*) FROM quarantine', {})[0][
                         0
                     ]
