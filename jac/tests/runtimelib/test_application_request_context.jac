@@ -76,7 +76,9 @@ test "closing an async stream before its first item releases the provider sessio
 
 test "an unbound embedding context retains its supplied session" {
     import from jaclang.runtime.prepared { PreparedApplication }
-    parent = ExecutionContext(base_path_dir='', full_target_path='');
+    parent = ExecutionContext(
+        base_path_dir='', full_target_path='/embedding/runner.jac'
+    );
     root_id = str(parent.user_root.ensure_id());
     application = PreparedApplication('/application', '/application/service.jac');
     with patch('jaclang.runtime.prepared.application_of', return_value=application), patch.object(

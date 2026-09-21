@@ -37,11 +37,10 @@ obj ExecutionContext {
     static async def for_target(
         target: object, parent: ExecutionContext, user_root_id: str
     ) -> ExecutionContext {
-        import from jaclang.runtime.prepared { application_of }
+        import from jaclang.runtime.prepared { application_of, application_for }
         application = application_of(target);
-        if application is None
-            or not parent.full_target_path
-            or application.entry == parent.full_target_path {
+        caller = application_for(parent.full_target_path or '');
+        if application is None or caller is None or application is caller {
             context = ExecutionContext(_parent=parent);
         } else {
             context = ExecutionContext(
