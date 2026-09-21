@@ -952,7 +952,7 @@ impl ElfLinker.build_executable -> bytes {
     cur_offset = _align(cur_offset, 8);
     data_got_foff = cur_offset;
 
-    data_got_size = (len(extern_data_syms) + len(local_got_syms)) * 8;
+    data_got_size = (2 * len(extern_data_syms) + len(local_got_syms)) * 8;
     cur_offset += data_got_size;
     cur_offset = _align(cur_offset, 8);
     dynamic_foff = cur_offset;
@@ -1061,13 +1061,18 @@ impl ElfLinker.build_executable -> bytes {
             + plt0_size
             + plt_idx * plt_entry_size;
     }
+    extern_data_addr: dict[str, int] = {};
     extern_got_addr: dict[str, int] = {};
     for got_idx in range(len(extern_data_syms)) {
-        extern_got_addr[extern_data_syms[got_idx]] = data_got_vaddr + got_idx * 8;
+        copy_addr = data_got_vaddr + got_idx * 8;
+        got_offset = (len(extern_data_syms) + got_idx) * 8;
+        extern_data_addr[extern_data_syms[got_idx]] = copy_addr;
+        extern_got_addr[extern_data_syms[got_idx]] = data_got_vaddr + got_offset;
+        struct.pack_into("<Q", data_got_data, got_offset, copy_addr);
     }
 
     local_got_slot: dict[str, int] = {};
-    _lg_base = len(extern_data_syms);
+    _lg_base = 2 * len(extern_data_syms);
     for lg_idx in range(len(local_got_syms)) {
         _lg_name = local_got_syms[lg_idx];
         local_got_slot[_lg_name] = data_got_vaddr + (_lg_base + lg_idx) * 8;
@@ -1092,7 +1097,7 @@ impl ElfLinker.build_executable -> bytes {
     for rela in self.relocations {
         sym_addr = 0;
         is_func_extern = rela.sym_name in extern_plt_addr;
-        is_data_extern = rela.sym_name in extern_got_addr;
+        is_data_extern = rela.sym_name in extern_data_addr;
 
         if rela.rtype in arch.gotpcrel_rtypes {
             if is_data_extern {
@@ -1106,7 +1111,7 @@ impl ElfLinker.build_executable -> bytes {
         } elif is_func_extern {
             sym_addr = extern_plt_addr[rela.sym_name];
         } elif is_data_extern {
-            sym_addr = extern_got_addr[rela.sym_name];
+            sym_addr = extern_data_addr[rela.sym_name];
         } else {
             local = local_sym_map.get(rela.sym_name) if rela.sym_name else None;
             if local is None {
