@@ -448,14 +448,16 @@ test "inspection and purge include staging while unknown JIR content remains vis
         with patch(
             "jaclang.cache.policy.temporary_owner", return_value=WriterState.INACTIVE
         ) {
-            dry = purge(dry_run=True);
+            # Lazy compiler imports can populate other buckets in this private root.
+            # Account for the fixture buckets only, including the unmanaged JIR.
+            dry = purge(["toolchains-installed", "rt", "jir-digests"], dry_run=True);
         }
         assert dry.reclaimed_bytes == 2048;
         assert install.exists() and runtime.exists();
         with patch(
             "jaclang.cache.policy.temporary_owner", return_value=WriterState.INACTIVE
         ) {
-            result = purge();
+            result = purge(["toolchains-installed", "rt", "jir-digests"]);
         }
         assert result.reclaimed_bytes == 2048;
         assert not install.exists() and not runtime.exists();
