@@ -328,7 +328,7 @@ def prepare_application(
     import from jaclang.server.sealed_serve { sealed_root_for }
     image_root = sealed_root_for(`entry);
     if image_root is not None {
-        console.print('  Loading sealed application artifacts');
+        console.print('  Loading sealed application artifacts', file=sys.stderr);
         return _prepare_sealed(`entry, program, image_root, entries);
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
@@ -357,7 +357,7 @@ def prepare_application(
     previous = get_effective_default_codespace_override();
     set_effective_default_codespace('server');
     try {
-        with console.status('Preparing application...') as status {
+        with console.status('Preparing application...', file=sys.stderr) as status {
             status.update(progress);
             with compile_progress.listen(begin, finish) {
                 import from jaclang.compiler.driver.compilation_context {
@@ -462,7 +462,7 @@ def _prepare(
         revision.client_dist = str(revision.client_compiler.vite_bundler.output_dir);
     }
     if (record is not None) {
-        console.print('  Restoring prepared application');
+        console.print('  Restoring prepared application', file=sys.stderr);
         if not record['has_client'] {
             revision.client_compiler = None;
             revision.client_dist = '';
@@ -492,7 +492,9 @@ def _prepare(
         _semantic_metadata(revision, program);
         return revision;
     }
-    console.print('  Compiling server modules and placement metadata...');
+    console.print(
+        '  Compiling server modules and placement metadata...', file=sys.stderr
+    );
     before = len(program.errors_had);
     import copy;
     modules: dict[str, uni.Module] = {};
@@ -512,7 +514,7 @@ def _prepare(
         );
     if has_client {
         assert revision.client_compiler is not None;
-        console.print('  Compiling client and native artifacts...');
+        console.print('  Compiling client and native artifacts...', file=sys.stderr);
         revision.client_compiler.compile(None, Path(`entry));
         if not dev {
             bundler = revision.client_compiler.vite_bundler;
@@ -681,7 +683,7 @@ def prepare_dynamic_module(
     path: str, program: any, application: PreparedApplication
 ) -> PreparedApplication {
     import from jaclang.cli.console { console }
-    console.print(f'Preparing dynamically imported module: {path}');
+    console.print(f'Preparing dynamically imported module: {path}', file=sys.stderr);
     import from jaclang.compiler.driver.compilation_context { program_for }
     import from jaclang.runtime.prepared { publish }
     actual = program_for(application.entry, program);

@@ -126,12 +126,12 @@ def _table_border(widths: list[int], left: str, mid: str, right: str, h: str) ->
     return left + mid.join(segs) + right;
 }
 
-def _make_spinner(use_color: bool, use_emoji: bool, text: str) -> any {
+def _make_spinner(use_color: bool, use_emoji: bool, text: str, stream: any) -> any {
     if not use_color {
         return None;
     }
     try {
-        if not sys.stdout.isatty() {
+        if not stream.isatty() {
             return None;
         }
     } except Exception {
@@ -140,7 +140,7 @@ def _make_spinner(use_color: bool, use_emoji: bool, text: str) -> any {
     frames = _SPINNER_FRAMES if use_emoji else _SPINNER_FRAMES_ASCII;
     prefix = str(_ANSI_ROLES.get('highlight') or "");
     return _Spinner(
-        text=text, stream=sys.stdout, frames=frames, style_prefix=prefix, reset=RESET
+        text=text, stream=stream, frames=frames, style_prefix=prefix, reset=RESET
     );
 }
 
@@ -387,10 +387,11 @@ impl ConsoleRenderer.status_ctx(args: list[object], kwargs: dict[str, any]) -> o
     if args {
         text = args[0] if isinstance(args[0], str) else str(args[0]);
     }
-    sp = _make_spinner(self.use_color, self.use_emoji, text);
+    stream = kwargs.get('file') or sys.stdout;
+    sp = _make_spinner(self.use_color, self.use_emoji, text, stream);
     if sp is None {
         if text {
-            self.emit([Span(text, 'muted')]);
+            self.emit([Span(text, 'muted')], stream);
         }
         yield _NullStatus();
     } else {
