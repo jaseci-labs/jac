@@ -811,13 +811,13 @@ test "serve update username cannot update other users" {
     }
 }
 
-test "serve update username already exists" {
+test "serve identity values are refused only when another account holds them" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response1 = client.post(
             "/user/register",
             json={
-                "identities": [{"type": "username", "value": "user_a"}],
+                "identities": [{"type": "username", "value": "user_a@example.com"}],
                 "credential": {"type": "password", "password": "pass1"}
             }
         );
@@ -826,18 +826,51 @@ test "serve update username already exists" {
         client.post(
             "/user/register",
             json={
-                "identities": [{"type": "username", "value": "user_b"}],
+                "identities": [
+                    {"type": "username", "value": "user_b"},
+                    {"type": "email", "value": "user_b@example.com"}
+                ],
                 "credential": {"type": "password", "password": "pass2"}
             }
         );
-        # Try to update user_a to user_b (already exists)
         client.set_auth_token(token);
-        response = client.put(
-            "/user/username",
-            json={"current_username": "user_a", "new_username": "user_b"}
-        );
-        assert not response.ok;
-        assert response.status_code == 400;
+        own_email = {"type": "email", "value": "user_a@example.com"};
+        steps = [
+            ("PUT", "/user/username", {"new_username": "user_b"}, 400),
+            ("PUT", "/user/username", {"new_username": "user_b@example.com"}, 400),
+            (
+                "POST",
+                "/user/add-identity",
+                {"identity": {"type": "email", "value": "user_b@example.com"}},
+                409
+            ),
+            ("POST", "/user/add-identity", {"identity": own_email}, 200),
+            ("POST", "/user/add-identity", {"identity": own_email}, 409),
+            ("PUT", "/user/username", {"new_username": "user_a"}, 200),
+            (
+                "POST",
+                "/user/login",
+                {
+                    "identity": own_email,
+                    "credential": {"type": "password", "password": "pass1"}
+                },
+                200
+            ),
+            ("PUT", "/user/username", {"new_username": "user_a@example.com"}, 200),
+            (
+                "POST",
+                "/user/login",
+                {
+                    "identity": {"type": "username", "value": "user_a"},
+                    "credential": {"type": "password", "password": "pass1"}
+                },
+                401
+            )
+        ];
+        for (method, path, body, status) in steps {
+            response = client.request(method, path, json=body);
+            assert response.status_code == status , f"{method} {path} {body}: {response.status_code} {response.json()}";
+        }
         client.close();
     }
 }

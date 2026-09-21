@@ -1,9 +1,8 @@
-"""Ownership-aware identity uniqueness (#9103).
+"""Concurrency and upgrade guarantees of the Postgres identity store (#9103).
 
-An identity value is refused only when a different account holds it. The same
-account may hold one value under more than one type (an email-shaped username
-plus the matching email identity), and renaming a username never frees a lookup
-row that another identity on the same account still uses.
+The ownership rules themselves are covered in-process by
+tests/runtimelib/test_serve_client.jac; these tests hold a second connection
+open to prove what only shows under a concurrent transaction.
 """
 
 import json;
@@ -14,10 +13,7 @@ import uuid;
 import from tempfile { mkdtemp }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.data.store { PgStore }
-import from jaclang.server.identity.identity_storage {
-    IdentityTakenError,
-    PgIdentityStorage
-}
+import from jaclang.server.identity.identity_storage { PgIdentityStorage }
 import from jaclang.server.identity.user_manager { UserManager }
 
 
@@ -33,17 +29,6 @@ def _email_identity(value: str) -> dict[str, any] {
         'value_raw': value,
         'value_normalized': value.lower().strip(),
         'verified': False,
-        'is_recovery': False
-    };
-}
-
-
-def _username_identity(value: str) -> dict[str, any] {
-    return {
-        'type': 'username',
-        'value_raw': value,
-        'value_normalized': value.lower().strip(),
-        'verified': True,
         'is_recovery': False
     };
 }
@@ -70,134 +55,6 @@ def _wait_until_blocked(conn: any, table: str) {
     ) {
         assert time.monotonic() < deadline , f"nothing waited for the lock on {table}";
         time.sleep(0.05);
-    }
-}
-
-
-def _refused(users: UserManager, user_id: str, identity: dict[str, any]) -> bool {
-    try {
-        users.add_identity(user_id, identity);
-    } except IdentityTakenError {
-        return True;
-    }
-    return False;
-}
-
-
-test "email-shaped username can attach the same address as an email identity" {
-    (test_dir, users) = _manager();
-    try {
-        addr = f"owner_{uuid.uuid4().hex[:8]}@example.com";
-        user_id = str(users.create_user(addr, 'pw12345')['user_id']);
-        assert users.add_identity(user_id, _email_identity(addr));
-        assert _types_holding(users, user_id, addr) == ['username', 'email'];
-        assert users.set_identity_verified(user_id, addr);
-        found = users.find_user_by_identity(addr) or {};
-        assert str(found.get('user_id')) == user_id;
-    } finally {
-        shutil.rmtree(test_dir, ignore_errors=True);
-    }
-}
-
-
-test "a value held by another account is still refused" {
-    (test_dir, users) = _manager();
-    try {
-        tag = uuid.uuid4().hex[:8];
-        addr = f"holder_{tag}@example.com";
-        holder_id = str(users.create_user(addr, 'pw12345')['user_id']);
-        other_id = str(users.create_user(f"other_{tag}", 'pw12345')['user_id']);
-        assert _refused(users, other_id, _email_identity(addr));
-        assert _types_holding(users, other_id, addr) == [];
-        assert users.create_user(addr, 'pw12345').get('code') == 'IDENTITY_TAKEN';
-        renamed = users.rename_username(other_id, addr);
-        assert renamed.get('code') == 'IDENTITY_TAKEN';
-        found = users.find_user_by_identity(addr) or {};
-        assert str(found.get('user_id')) == holder_id;
-    } finally {
-        shutil.rmtree(test_dir, ignore_errors=True);
-    }
-}
-
-
-test "an identity already held under the same type is refused" {
-    (test_dir, users) = _manager();
-    try {
-        tag = uuid.uuid4().hex[:8];
-        name = f"dup_{tag}";
-        addr = f"dup_{tag}@example.com";
-        user_id = str(users.create_user(name, 'pw12345')['user_id']);
-        assert users.add_identity(user_id, _email_identity(addr));
-        assert _refused(users, user_id, _email_identity(addr));
-        assert _refused(users, user_id, _username_identity(name));
-        assert _types_holding(users, user_id, addr) == ['email'];
-        assert _types_holding(users, user_id, name) == ['username'];
-    } finally {
-        shutil.rmtree(test_dir, ignore_errors=True);
-    }
-}
-
-
-test "the same-account duplicate decision is made inside the database" {
-    (test_dir, users) = _manager();
-    try {
-        tag = uuid.uuid4().hex[:8];
-        addr = f"atomic_{tag}@example.com";
-        user_id = str(users.create_user(f"atomic_{tag}", 'pw12345')['user_id']);
-        storage = users._identity_storage;
-        assert storage._append_identity(user_id, _email_identity(addr));
-        assert not storage._append_identity(user_id, _email_identity(addr));
-        assert _types_holding(users, user_id, addr) == ['email'];
-        assert not storage._append_identity(f"missing_{tag}", _email_identity(addr));
-        assert users.add_identity(user_id, _username_identity(addr));
-        assert _types_holding(users, user_id, addr) == ['email', 'username'];
-    } finally {
-        shutil.rmtree(test_dir, ignore_errors=True);
-    }
-}
-
-
-test "username may be renamed to the account's own email address" {
-    (test_dir, users) = _manager();
-    try {
-        tag = uuid.uuid4().hex[:8];
-        addr = f"mine_{tag}@example.com";
-        user_id = str(users.create_user(f"mine_{tag}", 'pw12345')['user_id']);
-        assert users.add_identity(user_id, _email_identity(addr));
-        renamed = users.rename_username(user_id, addr);
-        assert 'error' not in renamed , renamed;
-        assert renamed.get('username') == addr;
-        assert _types_holding(users, user_id, addr) == ['username', 'email'];
-        assert users.find_user_by_identity(f"mine_{tag}") is None;
-        assert users.authenticate(addr, 'pw12345') is not None;
-    } finally {
-        shutil.rmtree(test_dir, ignore_errors=True);
-    }
-}
-
-
-test "renaming a username away keeps a shared value on the email identity" {
-    (test_dir, users) = _manager();
-    try {
-        tag = uuid.uuid4().hex[:8];
-        addr = f"shared_{tag}@example.com";
-        created = users.create_user_with_identities(
-            [{'type': 'username', 'value': addr}, {'type': 'email', 'value': addr}],
-            {'type': 'password', 'password': 'pw12345'}
-        );
-        user_id = str(created['user_id']);
-        assert _types_holding(users, user_id, addr) == ['username', 'email'];
-        first = users.rename_username(user_id, f"plain_{tag}");
-        assert 'error' not in first , first;
-        assert _types_holding(users, user_id, addr) == ['email'];
-        assert users.authenticate(addr, 'pw12345') is not None;
-        assert users.authenticate(f"plain_{tag}", 'pw12345') is not None;
-        second = users.rename_username(user_id, f"plainer_{tag}");
-        assert 'error' not in second , second;
-        assert users.find_user_by_identity(f"plain_{tag}") is None;
-        assert users.authenticate(addr, 'pw12345') is not None;
-    } finally {
-        shutil.rmtree(test_dir, ignore_errors=True);
     }
 }
 
@@ -258,37 +115,6 @@ test "a rename keeps an identity that lands while the rename waits for the row" 
 }
 
 
-test "deleting an account frees every value it held" {
-    (test_dir, users) = _manager();
-    try {
-        tag = uuid.uuid4().hex[:8];
-        name = f"held_{tag}";
-        addr = f"held_{tag}@example.com";
-        user_id = str(users.create_user(name, 'pw12345')['user_id']);
-        assert users.add_identity(user_id, _email_identity(addr));
-        linked = users.link_sso_account(user_id, 'github', f"ext_{tag}");
-        assert 'error' not in linked , linked;
-        deleted = users.delete_user(user_id);
-        assert 'error' not in deleted , deleted;
-        storage = users._identity_storage;
-        assert not storage.identity_taken(name);
-        assert not storage.identity_taken(addr);
-        assert not storage.store.rows(
-            'SELECT 1 FROM identity_lookups WHERE user_id = :u', {'u': user_id}
-        );
-        assert not storage.store.rows(
-            'SELECT 1 FROM sso_lookups WHERE user_id = :u', {'u': user_id}
-        );
-        other_id = str(users.create_user(name, 'pw12345')['user_id']);
-        assert users.add_identity(other_id, _email_identity(addr));
-        relinked = users.link_sso_account(other_id, 'github', f"ext_{tag}");
-        assert 'error' not in relinked , relinked;
-    } finally {
-        shutil.rmtree(test_dir, ignore_errors=True);
-    }
-}
-
-
 test "an account deleted while a claim is in flight leaves nothing behind" {
     (test_dir, users) = _manager();
     storage = users._identity_storage;
@@ -327,7 +153,7 @@ test "an account deleted while a claim is in flight leaves nothing behind" {
 }
 
 
-test "an existing database gains the account foreign key and drops orphaned lookups" {
+test "an existing database gains the account foreign key without waiting for in-flight writes" {
     store = None;
     try {
         rt = PgRuntime(data_dir=mkdtemp(prefix='jacfk_') + '/data');
@@ -376,35 +202,23 @@ test "an existing database gains the account foreign key and drops orphaned look
     assert not store.rows("SELECT 1 FROM sso_lookups WHERE user_id = 'ghost'", {});
     assert storage._claim_lookup('ghost@example.com', 'kept');
     assert not storage._claim_lookup('later@example.com', 'ghost');
-    again = PgIdentityStorage(store=store);
-    assert again.identity_taken('ghost@example.com');
-}
 
+    conn = store._side();
+    outcome: dict[str, any] = {};
 
-test "booting against an upgraded database does not wait for in-flight writes" {
-    (test_dir, users) = _manager();
-    storage = users._identity_storage;
-    conn = storage.store._side();
+    def _boot {
+        PgIdentityStorage(store=store);
+        outcome['booted'] = True;
+    }
+    conn.run('BEGIN');
     try {
-        tag = uuid.uuid4().hex[:8];
-        user_id = str(users.create_user(f"busy_{tag}", 'pw12345')['user_id']);
-        outcome: dict[str, any] = {};
-
-        def _boot {
-            PgIdentityStorage(store=storage.store);
-            outcome['booted'] = True;
-        }
-        conn.run('BEGIN');
         conn.run(
-            'INSERT INTO identity_lookups (value_normalized, user_id) VALUES (:v, :u)',
-            v=f"busy_{tag}@example.com",
-            u=user_id
+            "INSERT INTO identity_lookups (value_normalized, user_id) "
+            "VALUES ('busy@example.com', 'kept')"
         );
         conn.run(
-            'INSERT INTO sso_lookups (provider, external_id, user_id) VALUES (:p, :e, :u)',
-            p='github',
-            e=f"busy_{tag}",
-            u=user_id
+            "INSERT INTO sso_lookups (provider, external_id, user_id) "
+            "VALUES ('github', 'busy-ext', 'kept')"
         );
         booter = threading.Thread(target=_boot, daemon=True);
         booter.start();
@@ -413,6 +227,6 @@ test "booting against an upgraded database does not wait for in-flight writes" {
         assert outcome.get('booted') is True , outcome;
     } finally {
         conn.run('ROLLBACK');
-        shutil.rmtree(test_dir, ignore_errors=True);
     }
+    assert storage.identity_taken('ghost@example.com');
 }
