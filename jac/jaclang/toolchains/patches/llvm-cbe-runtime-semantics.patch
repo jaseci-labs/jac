@@ -86,6 +86,17 @@
        << "#define __emulate_i128\n"
        << "#endif\n\n";
  }
+@@ -2431,2 +2433,10 @@
+ void CWriter::generateHeader(Module &M) {
++  for (const Function &F : M) {
++    StringRef Name = F.getName();
++    if (F.isDeclaration() &&
++        (Name == "setjmp" || Name == "longjmp" || Name == "_setjmp" ||
++         Name == "sigsetjmp" || Name == "siglongjmp"))
++      headerUseSetjmp();
++  }
++
+   // Keep track of which functions are static ctors/dtors so they can have
 @@ -2457,8 +2459,6 @@
    // Support for integers with explicit sizes. This one isn't conditional
    // because virtually all CBE output will use it.
@@ -404,6 +415,13 @@
  
            default:
              // All other intrinsic calls we must lower.
+@@ -5047,4 +5024,4 @@
+-    if (Name == "sigsetjmp")
++    if (Name == "sigsetjmp" || Name == "siglongjmp")
+       Out << "*(sigjmp_buf*)";
+-    else if (Name == "setjmp")
++    else if (Name == "setjmp" || Name == "_setjmp" || Name == "longjmp")
+       Out << "*(jmp_buf*)";
 @@ -5086,6 +5055,21 @@
    case Intrinsic::dbg_declare:
    case Intrinsic::dbg_assign:
