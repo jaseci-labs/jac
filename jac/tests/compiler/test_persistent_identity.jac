@@ -23,7 +23,7 @@ import from jaclang.data.store { AnchorRow, Store }
 import from jaclang.server.session { Session }
 
 def exercise(shared: bool, evolve: bool = False) {
-    with TemporaryDirectory() as td {
+    with TemporaryDirectory() as td, TemporaryDirectory() as storage {
         base = Path(td);
         (base / 'shared').mkdir();
         (base / 'shared' / 'models.jac').write_text(
@@ -98,7 +98,7 @@ def exercise(shared: bool, evolve: bool = False) {
             import from jaclang.runtime.archetype { Root, EdgeAnchor, GenericEdge }
             import from jaclang.runtime.graph_query { GraphQuery, QHop }
             import from jaclang.data.query_planner { resolve_query }
-            runtime = runtime_for_base(td, applications[0].entry).runtime;
+            runtime = runtime_for_base(storage, applications[0].entry).runtime;
             connection = runtime.ensure();
             writing = Session(
                 store=PgStore(conninfo=connection, auto_schema=True),
@@ -128,6 +128,7 @@ def exercise(shared: bool, evolve: bool = False) {
             parent = ExecutionContext(
                 base_path_dir='', full_target_path=applications[0].entry
             );
+            parent.base_path_dir = storage;
             parent.mem = writing;
             provider = asyncio.run(
                 ExecutionContext.for_target(reader.Thing, parent, str(root_id))
