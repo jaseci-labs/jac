@@ -154,3 +154,65 @@ impl ExecutionContext.aset_user_root(root_id: str) -> None {
     self._user_root = await self._aget_anchor(root_id);
     self._entry_node = self._user_root;
 }
+
+
+impl ExecutionContext.bind_stream(value: any) -> any {
+    import inspect;
+    import from jaclang.runtime.runtime { JacRuntime }
+    context = self;
+    if inspect.isgenerator(value) {
+        def stream -> Generator[any, None, None] {
+            try {
+                while True {
+                    token = JacRuntime.push_request_context(context);
+                    try {
+                        item = next(value);
+                    } except StopIteration {
+                        return;
+                    } finally {
+                        JacRuntime.reset_request_context(token);
+                    }
+                    yield item;
+                }
+            } except BaseException {
+                context.mem.abort();
+                raise;
+            } finally {
+                try {
+                    value.close();
+                } finally {
+                    context.close();
+                }
+            }
+        }
+        return stream();
+    }
+    if inspect.isasyncgen(value) {
+        async def astream -> AsyncGenerator[any, None] {
+            try {
+                while True {
+                    token = JacRuntime.push_request_context(context);
+                    try {
+                        item = await value.__anext__();
+                    } except StopAsyncIteration {
+                        return;
+                    } finally {
+                        JacRuntime.reset_request_context(token);
+                    }
+                    yield item;
+                }
+            } except BaseException {
+                context.mem.abort();
+                raise;
+            } finally {
+                try {
+                    await value.aclose();
+                } finally {
+                    context.close();
+                }
+            }
+        }
+        return astream();
+    }
+    return value;
+}

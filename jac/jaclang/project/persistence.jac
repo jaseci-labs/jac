@@ -22,14 +22,22 @@ obj PersistenceConfig {
                         f"domain '{domain.name}' without being a declared participant"
                     );
                 }
-                return (self.namespace, app, 'domain:' + domain.name, module, domain.owner);
+                return (
+                    self.namespace,
+                    app,
+                    'domain:' + domain.name,
+                    module,
+                    domain.owner
+                );
             }
         }
         return (self.namespace, app, 'app:' + app, module, app);
     }
 }
 
-def parse_persistence(raw: any, project_name: str, apps: list[str]) -> PersistenceConfig {
+def parse_persistence(
+    raw: any, project_name: str, apps: list[str]
+) -> PersistenceConfig {
     if (not isinstance(raw, dict) or set(raw) - {'namespace', 'domains'}) {
         raise ValueError('[persistence] accepts only namespace and domains');
     }
@@ -44,31 +52,50 @@ def parse_persistence(raw: any, project_name: str, apps: list[str]) -> Persisten
     }
     claimed: dict[str, str] = {};
     for (name, table) in domains.items() {
-        if (not isinstance(table, dict) or set(table) != {'owner', 'apps', 'modules'}) {
-            raise ValueError(f'[persistence.domains.{name}] requires owner, apps and modules');
+        if (
+            not isinstance(table, dict) or set(table) != {'owner', 'apps', 'modules'}
+        ) {
+            raise ValueError(
+                f'[persistence.domains.{name}] requires owner, apps and modules'
+            );
         }
         owner = table['owner'];
         members = table['apps'];
         modules = table['modules'];
         if not isinstance(owner, str) or owner not in apps {
-            raise ValueError(f"Persistence domain '{name}' has unknown owner '{owner}'");
+            raise ValueError(
+                f"Persistence domain '{name}' has unknown owner '{owner}'"
+            );
         }
-        if not isinstance(members, list) or not members or any(
-            not isinstance(member, str) or member not in apps for member in members
-        ) or owner not in members or len(set(members)) != len(members) {
-            raise ValueError(f"Persistence domain '{name}' apps must name unique declared apps including its owner");
+        if not isinstance(members, list)
+            or not members
+            or any(
+                not isinstance(member, str) or member not in apps for member in members
+            )
+            or owner not in members
+            or len(set(members)) != len(members) {
+            raise ValueError(
+                f"Persistence domain '{name}' apps must name unique declared apps including its owner"
+            );
         }
         if not isinstance(modules, list) or not modules {
-            raise ValueError(f"Persistence domain '{name}' modules must be a nonempty list");
+            raise ValueError(
+                f"Persistence domain '{name}' modules must be a nonempty list"
+            );
         }
         for module in modules {
-            if not isinstance(module, str) or not all(
-                part.isidentifier() for part in module.split('.')
-            ) {
-                raise ValueError(f"Persistence domain '{name}' requires exact dotted module names");
+            if not isinstance(module, str)
+                or not all(part.isidentifier() for part in module.split('.')) {
+                raise ValueError(
+                    f"Persistence domain '{name}' requires exact dotted module names"
+                );
             }
             if module in claimed {
-                raise ValueError(f"Persistence module '{module}' is already declared in '{claimed[module]}'");
+                raise ValueError(
+                    f"Persistence module '{module}' is already declared in '{claimed[
+                        module
+                    ]}'"
+                );
             }
             claimed[module] = name;
         }

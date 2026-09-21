@@ -111,7 +111,9 @@ def containing_application(
     return max(candidates, key=lambda (a: any) { len(a.root); }, `default=None);
 }
 
-def load_prepared_module(path: str, application: PreparedApplication | None = None) -> types.ModuleType {
+def load_prepared_module(
+    path: str, application: PreparedApplication | None = None
+) -> types.ModuleType {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.sealed { image_for_bundle_dir }
     import from pathlib { Path }

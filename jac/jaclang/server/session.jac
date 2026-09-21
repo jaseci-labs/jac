@@ -136,7 +136,7 @@ obj Session(Memory) {
         _version_seen: dict[UUID, int] postinit,
         _foreign_refs: set[UUID] postinit;
 
-    override def is_recoverable_quarantine(id: UUID) -> bool {
+    override def preserve_unresolved_ref(id: UUID) -> bool {
         return id in self._foreign_refs;
     }
 

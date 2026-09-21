@@ -1,65 +1,7 @@
-"""Shared-store reads from a sibling service must not quarantine peer anchors.
-
-In microservice mode every service shares one anchor store, but each process
-only registers its own module's archetype classes. Reading a peer service's
-anchor is therefore *expected* to be unresolvable in-process. Under
-JAC_SV_SIBLING=1 such reads must be skipped without mutating the shared store
--- quarantining would poison the graph for the owning service too (one
-curious reader, e.g. /graph/data, permanently breaks every service's view).
-
-Outside sibling mode, quarantine-on-read stays intact: it is the designed
-schema-rename workflow (`jac db alias add` + `jac db recover-all`).
-"""
-
-import json;
-import os;
-import sqlite3;
+"""Reference healing respects the memory provider's resolution outcome."""
 import unittest.mock;
-import from tempfile { mkdtemp }
-import from uuid { UUID, uuid4 }
 
-
-"""Insert a raw anchor row whose archetype class only a peer service has."""
-def _seed_foreign_anchor(db: str) -> str {
-    anchor_id = str(uuid4());
-    payload = {
-        "__type__": "NodeAnchor",
-        "__module__": "jaclang.runtime.archetype",
-        "id": anchor_id,
-        "root": anchor_id,
-        "persistent": True,
-        "access": {"all": -1, "roots": {"anchors": {}}},
-        "archetype": {"__type__": "GhostNode", "__module__": "peer_service"},
-        "edges": []
-    };
-    conn = sqlite3.connect(db);
-    conn.execute(
-        "INSERT INTO anchors (id, type, arch_module, arch_type, fingerprint,"
-        " data, format_version) VALUES (?, ?, ?, ?, ?, ?, 1)",
-        (
-            anchor_id,
-            "NodeAnchor",
-            "peer_service",
-            "GhostNode",
-            "fp",
-            json.dumps(payload)
-        )
-    );
-    conn.commit();
-    conn.close();
-    return anchor_id;
-}
-
-
-def _table_ids(db: str, table: str) -> list[any] {
-    conn = sqlite3.connect(db);
-    rows = [r[0] for r in conn.execute(f"SELECT id FROM {table}")];
-    conn.close();
-    return rows;
-}
-
-
-test "sibling resolve_ref skips a peer's ref without heal-pruning" {
+test "foreign references are preserved without deployment flags" {
     import from uuid { uuid4 as _uuid4 }
     import from jaclang.runtime.archetype { EdgeAnchor }
     import from jaclang.runtime.runtime { JacRuntimeInterface, resolve_ref }
@@ -69,23 +11,19 @@ test "sibling resolve_ref skips a peer's ref without heal-pruning" {
 
     fake_ctx = unittest.mock.MagicMock();
     fake_ctx.mem.get = unittest.mock.MagicMock(return_value=None);
-    fake_ctx.mem.is_recoverable_quarantine = unittest.mock.MagicMock(
-        return_value=False
-    );
+    fake_ctx.mem.preserve_unresolved_ref = unittest.mock.MagicMock(return_value=True);
 
     with unittest.mock.patch.object(
         JacRuntimeInterface, "get_context", return_value=fake_ctx
     ) {
-        with unittest.mock.patch.dict(os.environ, {"JAC_SV_SIBLING": "1"}) {
-            got = resolve_ref(stub, None);
-        }
+        got = resolve_ref(stub, None);
     }
 
     assert got is None;
     fake_ctx.mem.quarantine_ref.assert_not_called();
 }
 
-test "non-sibling resolve_ref still heals a genuine dangler" {
+test "genuinely dangling references are still healed" {
     import from uuid { uuid4 as _uuid4 }
     import from jaclang.runtime.archetype { EdgeAnchor }
     import from jaclang.runtime.runtime { JacRuntimeInterface, resolve_ref }
@@ -95,11 +33,8 @@ test "non-sibling resolve_ref still heals a genuine dangler" {
 
     fake_ctx = unittest.mock.MagicMock();
     fake_ctx.mem.get = unittest.mock.MagicMock(return_value=None);
-    fake_ctx.mem.is_recoverable_quarantine = unittest.mock.MagicMock(
-        return_value=False
-    );
+    fake_ctx.mem.preserve_unresolved_ref = unittest.mock.MagicMock(return_value=False);
 
-    os.environ.pop("JAC_SV_SIBLING", None);
     with unittest.mock.patch.object(
         JacRuntimeInterface, "get_context", return_value=fake_ctx
     ) {

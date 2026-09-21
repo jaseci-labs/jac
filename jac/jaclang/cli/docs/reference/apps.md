@@ -161,6 +161,34 @@ separate provider context. Import that entry when multiple apps need the same
 service or store. Colocated apps load distinct copies of ordinary shared-source
 modules, so module globals are app-local.
 
+Persistent type identity is independent of these runtime module names. By default,
+node and edge types belong to the importing app. Apps that intentionally access
+the same stored schema must declare a shared persistence domain:
+
+```toml
+[persistence]
+namespace = "com.example.accounts" # defaults to the project name
+
+[persistence.domains.profiles]
+owner = "accounts"
+apps = ["accounts", "reader"]
+modules = ["shared.profiles"]
+```
+
+The owner coordinates schema evolution; every participant must be a declared app.
+Modules are exact dotted names and cannot belong to multiple domains. Importing a
+domain module from an undeclared app produces E5113. Each app still has its own
+classes and globals, and reads instantiate its local version of the shared type.
+This does not permit passing live nodes through service bridges or spanning one
+transaction across apps. For service-owned data, keep read/write operations in
+the owner and call its public functions or walkers instead.
+
+Use a stable, unique namespace when multiple projects share a database. Changing
+the namespace, domain or logical declaration name is a persistent schema rename,
+not a deployment setting. Absolute checkout paths and deployment locations do not
+participate in persistent identity.
+
+
 No workspace consumer scan or app context cache is needed. `default-app` chooses a
 CLI default; placement pins choose codespaces. Neither assigns shared code to a
 global app context, and the former E5107 ambiguity gate has been removed.

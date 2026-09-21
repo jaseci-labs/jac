@@ -148,7 +148,7 @@ obj Memory {
         self.__mem__.pop(stub.ensure_id(), None);
     }
 
-    def is_recoverable_quarantine(id: UUID) -> bool {
+    def preserve_unresolved_ref(id: UUID) -> bool {
         return False;
     }
 

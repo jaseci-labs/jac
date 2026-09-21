@@ -353,8 +353,8 @@ impl Serializer.deserialize(data: dict[str, object]) -> (object | None) {
             }
             return instance;
         } except TypeResolutionError {
-        raise;
-    } except Exception as e {
+            raise;
+        } except Exception as e {
             if (
                 n
                 := Serializer._warn_occurrence(
@@ -456,7 +456,9 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
     }
     prior = Serializer._aliases.get(old_name);
     if prior is not None and prior != new_name {
-        raise ValueError(f'Persistent type alias {old_name} has conflicting targets: {prior} and {new_name}');
+        raise ValueError(
+            f'Persistent type alias {old_name} has conflicting targets: {prior} and {new_name}'
+        );
     }
     cursor = new_name;
     seen = {old_name};
@@ -644,6 +646,7 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
         return None;
     }
     key = f"{module_name}.{class_name}";
+    original_key = key;
     visited: set[str] = set();
     while key in Serializer._aliases {
         if key in visited {
@@ -653,11 +656,20 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
         key = Serializer._aliases[key];
         (module_name, class_name) = key.rsplit('.', 1);
     }
+    if key != original_key
+        and (n := Serializer._warn_occurrence("alias-resolved", original_key)) {
+        logger.info(
+            f"Serializer: resolving aliased class {original_key} -> {key}"
+                + Serializer._occurrence_note(n)
+        );
+    }
     if module_name.startswith('jac:') {
         return resolve_type(module_name, class_name);
     }
     if module_name.startswith('_jac_app_') {
-        raise TypeResolutionError('Legacy path-derived persistent type identity; declare an explicit schema alias and migrate the store before serving it');
+        raise TypeResolutionError(
+            'Legacy path-derived persistent type identity; declare an explicit schema alias and migrate the store before serving it'
+        );
     }
     if (cls := Serializer._registry.get(key)) {
         return cls;
@@ -681,6 +693,11 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
             "registered and could not be resolved from its own module "
             "(enable DEBUG on this logger for the resolution attempt)."
                 + Serializer._occurrence_note(n)
+        );
+    }
+    if resolution_required() {
+        raise UnavailableType(
+            f'Persistent class {key} is unavailable; load its schema or declare an explicit alias'
         );
     }
     return None;

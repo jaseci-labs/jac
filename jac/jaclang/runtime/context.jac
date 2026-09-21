@@ -33,6 +33,21 @@ obj ExecutionContext {
         _entry_node: (NodeAnchor | None) = None;
 
     def postinit -> None;
+    static def for_target(
+        target: object, parent: ExecutionContext
+    ) -> ExecutionContext {
+        import from jaclang.runtime.prepared { application_of }
+        import from jaclang.runtime.runtime { JacRuntime }
+        application = application_of(target);
+        if application is None or application.entry == parent.full_target_path {
+            return ExecutionContext(_parent=parent);
+        }
+        return JacRuntime.create_j_context(
+            user_root=None,
+            base_path_dir=application.root,
+            full_target_path=application.entry
+        );
+    }
 
     has system_root: NodeAnchor { getter; }
     has user_root: NodeAnchor { getter; }
@@ -43,6 +58,7 @@ obj ExecutionContext {
     def set_user_root(root_id: str) -> None;
     def set_entry_node(entry_node: (str | None)) -> None;
     def close -> None;
+    def bind_stream(value: any) -> any;
     def on_commit(callback: Callable) -> None;
     def run_pending_effects -> None;
     def note_traversal_reads(origins: list[NodeAnchor]) -> None;

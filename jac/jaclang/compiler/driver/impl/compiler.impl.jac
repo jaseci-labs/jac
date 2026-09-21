@@ -1023,8 +1023,11 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
         app = ws.apps.get(opts.target_app);
     }
     mod.app = app.name if app is not None else None;
-    mod.persistence = ws.persistence.module_facts(ws.module_dot_path(mod_path), app.name)
-        if ws is not None and app is not None else ();
+    mod.persistence = ws.persistence.module_facts(
+        ws.module_dot_path(mod_path), app.name
+    )
+        if ws is not None and app is not None
+        else ();
     mod.app_root = ws.project_root if (app is not None and ws is not None) else None;
     target_kind = opts.app_kind if (opts is not None and opts.app_kind) else '';
     if app is not None {

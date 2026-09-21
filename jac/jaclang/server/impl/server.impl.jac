@@ -35,10 +35,12 @@ impl ExecutionManager.report_collector(
     }
 }
 
-async def _begin_request_context(user_root_id: str) -> tuple[(ExecutionContext, any)] {
+async def _begin_request_context(
+    user_root_id: str, target: object | None = None
+) -> tuple[(ExecutionContext, any)] {
     import from jaclang.runtime.osp_kernel_sv { isolate_request_walk_stack }
     parent = Jac.get_context();
-    req_ctx = ExecutionContext(_parent=parent);
+    req_ctx = ExecutionContext.for_target(target, parent);
     await req_ctx.aset_user_root(user_root_id);
     token = Jac.push_request_context(req_ctx);
 
@@ -47,7 +49,7 @@ async def _begin_request_context(user_root_id: str) -> tuple[(ExecutionContext, 
 }
 
 async def _abegin_user_request_context(
-    user_manager: UserManager, username: str
+    user_manager: UserManager, username: str, target: object | None = None
 ) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue] {
     import from jaclang.runtime.exceptions { MissingAnchorError }
     root_id = await user_manager.aget_root_id(username);
@@ -64,7 +66,7 @@ async def _abegin_user_request_context(
         }
     }
     try {
-        (ctx, token) = await _begin_request_context(root_id);
+        (ctx, token) = await _begin_request_context(root_id, target);
         return (ctx, token, root_id);
     } except MissingAnchorError {
         if username != Con.GUEST.value {
@@ -84,7 +86,7 @@ async def _abegin_user_request_context(
         if not healed_id {
             return {'error': 'User not found'};
         }
-        (ctx, token) = await _begin_request_context(healed_id);
+        (ctx, token) = await _begin_request_context(healed_id, target);
         return (ctx, token, healed_id);
     }
 }
@@ -186,15 +188,17 @@ async def _run_function_with_occ(
     username: str,
     run_attempt: Callable,
     deserialize_args: bool = True,
-    unit_key: (str | None) = None
+    unit_key: (str | None) = None,
+    target: object | None = None
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
-    resolved = await _abegin_user_request_context(mgr.user_manager, username);
+    resolved = await _abegin_user_request_context(mgr.user_manager, username, target);
     if isinstance(resolved, dict) {
         return resolved;
     }
     (ctx, req_token, root_id) = resolved;
     ctx.mem.unit_enter(unit_key);
     settled = False;
+    streaming = False;
     try {
         if deserialize_args {
             _deserialize_wire_args(args);
@@ -211,7 +215,8 @@ async def _run_function_with_occ(
                 outcome = await run_attempt(call_state, ctx);
                 ctx.mem.unit_exit();
                 settled = True;
-                return outcome;
+                streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
+                return ctx.bind_stream(outcome) if streaming else outcome;
             } except ReadOnlyRetry as rr {
                 settled = False;
                 if ctx.mem.unit_depth() == 0 {
@@ -275,7 +280,13 @@ async def _run_function_with_occ(
                 f"unit exit failed: {type(ue).__name__}: {ue}"
             );
         }
-        Jac.reset_request_context(req_token);
+        try {
+            if not streaming {
+                ctx.close();
+            }
+        } finally {
+            Jac.reset_request_context(req_token);
+        }
     }
 }
 
@@ -312,7 +323,7 @@ impl ExecutionManager.execute_function_sync(
         return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
-        self, args, username, run_attempt, unit_key=_unit_key_for(func)
+        self, args, username, run_attempt, unit_key=_unit_key_for(func), target=func
     );
 }
 
@@ -329,7 +340,7 @@ impl ExecutionManager.execute_function_async(
         return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
-        self, args, username, run_attempt, unit_key=_unit_key_for(func)
+        self, args, username, run_attempt, unit_key=_unit_key_for(func), target=func
     );
 }
 
@@ -374,7 +385,8 @@ impl ExecutionManager.spawn_walker_sync(
         username,
         run_attempt,
         deserialize_args=False,
-        unit_key=_unit_key_for(walker_cls)
+        unit_key=_unit_key_for(walker_cls),
+        target=walker_cls
     );
 }
 
@@ -411,7 +423,8 @@ impl ExecutionManager.spawn_walker_async(
         username,
         run_attempt,
         deserialize_args=False,
-        unit_key=_unit_key_for(walker_cls)
+        unit_key=_unit_key_for(walker_cls),
+        target=walker_cls
     );
 }
 

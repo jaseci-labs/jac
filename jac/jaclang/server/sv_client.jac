@@ -385,7 +385,35 @@ async def _local_call(app: str, fn: str, kwargs: dict[str, any]) -> any {
     if target is None or not callable(target) {
         raise BridgeError(app=app, name=fn, detail=f"no function '{fn}'", status=404);
     }
-    return await _await_if_needed(target(**kwargs));
+    import from jaclang.runtime.prepared { application_of }
+    if application_of(target) is None {
+        return await _await_if_needed(target(**kwargs));
+    }
+    import from jaclang.runtime.runtime { JacRuntime }
+    import from jaclang.runtime.context { ExecutionContext }
+    parent = JacRuntime.get_context();
+    ctx = ExecutionContext.for_target(target, parent);
+    await ctx.aset_user_root(str(parent.user_root.ensure_id()));
+    token = JacRuntime.push_request_context(ctx);
+    streaming = False;
+    try {
+        result = await _await_if_needed(target(**kwargs));
+        ctx.mem.commit();
+        import inspect;
+        streaming = inspect.isgenerator(result) or inspect.isasyncgen(result);
+        return ctx.bind_stream(result) if streaming else result;
+    } except BaseException {
+        ctx.mem.abort();
+        raise;
+    } finally {
+        try {
+            if not streaming {
+                ctx.close();
+            }
+        } finally {
+            JacRuntime.reset_request_context(token);
+        }
+    }
 }
 
 async def _local_spawn(app: str, walker_name: str, kwargs: dict[str, any]) -> any {
@@ -398,21 +426,10 @@ async def _local_spawn(app: str, walker_name: str, kwargs: dict[str, any]) -> an
             app=app, name=walker_name, detail=f"no walker '{walker_name}'", status=404
         );
     }
-    current = JacRuntime.peek_context();
-    owns_ctx = current is None or current is JacRuntime.exec_ctx;
-    req_ctx = current;
-    token: any = None;
-    if owns_ctx {
-        parent = JacRuntime.get_context();
-        req_ctx = ExecutionContext(_parent=parent);
-        req_ctx.set_user_root(str(parent.system_root.id));
-        token = JacRuntime.push_request_context(req_ctx);
-    }
-    if req_ctx is None {
-        raise BridgeUnavailable(
-            app=app, name=walker_name, detail="no execution context"
-        );
-    }
+    parent = JacRuntime.get_context();
+    req_ctx = ExecutionContext.for_target(walker_cls, parent);
+    await req_ctx.aset_user_root(str(parent.user_root.ensure_id()));
+    token = JacRuntime.push_request_context(req_ctx);
     try {
         mem = req_ctx.mem;
         session = mem if mem?.run_request else None;
@@ -435,8 +452,13 @@ async def _local_spawn(app: str, walker_name: str, kwargs: dict[str, any]) -> an
             } except Exception {}
         }
         return walked;
+    } except BaseException {
+        req_ctx.mem.abort();
+        raise;
     } finally {
-        if owns_ctx and token is not None {
+        try {
+            req_ctx.close();
+        } finally {
             JacRuntime.reset_request_context(token);
         }
     }

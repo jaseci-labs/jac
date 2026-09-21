@@ -577,9 +577,10 @@ def _prepare(
     # Every executable module carries identity, including helpers with no endpoints.
     for (path, mod) in _project_modules(program, `root).items() {
         if path in revision.code {
-            revision.manifests.setdefault(path, {
-                'root': `root, 'app': mod.app or '', 'persistence': mod.persistence
-            });
+            revision.manifests.setdefault(
+                path,
+                {'root': `root, 'app': mod.app or '', 'persistence': mod.persistence}
+            );
         }
     }
     outputs = {};
