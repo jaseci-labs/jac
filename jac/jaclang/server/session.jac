@@ -133,7 +133,12 @@ obj Session(Memory) {
         _ro_units: int postinit,
         _unit_stack: list[tuple[(str | None), bool]] postinit,
         _snapshot_reads: set[UUID] postinit,
-        _version_seen: dict[UUID, int] postinit;
+        _version_seen: dict[UUID, int] postinit,
+        _foreign_refs: set[UUID] postinit;
+
+    override def is_recoverable_quarantine(id: UUID) -> bool {
+        return id in self._foreign_refs;
+    }
 
     def postinit -> None;
     def data_location -> (str | None);

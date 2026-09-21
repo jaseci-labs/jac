@@ -1,3 +1,4 @@
+import from jaclang.data.type_identity { type_module, register_type, resolve_type, TypeResolutionError }
 import importlib;
 import logging;
 import sys;

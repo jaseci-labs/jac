@@ -11,7 +11,13 @@ walker AppContextPass {
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
-        self.prog._get_compiler().stamp_app_facts(here, self.prog);
+        import from jaclang.project.persistence { PersistenceAccessError }
+        import from jaclang.compiler.frontend.diagnostics { E5113 }
+        try {
+            self.prog._get_compiler().stamp_app_facts(here, self.prog);
+        } except PersistenceAccessError as error {
+            self.ctx.emit(E5113, node_override=here, details=str(error));
+        }
         self.prog._get_compiler().stamp_access_check_facts(here);
     }
 }

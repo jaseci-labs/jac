@@ -1,5 +1,5 @@
 impl Serializer._type_info(`obj: object, `include: bool) -> dict[str, object] {
-    return {'__type__': type(`obj).__name__, '__module__': type(`obj).__module__}
+    return {'__type__': type(`obj).__name__, '__module__': type_module(type(`obj))}
         if `include
         else {};
 }
@@ -293,6 +293,8 @@ impl Serializer._deserialize_jac_ref(data: dict[str, object]) -> (object | None)
                 return anchor.archetype;
             }
         }
+    } except TypeResolutionError {
+        raise;
     } except Exception as e {
         logger.warning(f"Failed to resolve $ref {id_str} from context: {e}");
     }
@@ -350,7 +352,9 @@ impl Serializer.deserialize(data: dict[str, object]) -> (object | None) {
                 }
             }
             return instance;
-        } except Exception as e {
+        } except TypeResolutionError {
+        raise;
+    } except Exception as e {
             if (
                 n
                 := Serializer._warn_occurrence(
@@ -413,6 +417,7 @@ impl Serializer._deserialize_value(val: object) -> object {
 }
 
 impl Serializer.register(cls: type) -> None {
+    register_type(cls);
     Serializer._registry[f"{cls.__module__}.{cls.__name__}"] = cls;
     import from jaclang.runtime.typecache {
         invalidate as _invalidate_typecache,
@@ -444,10 +449,26 @@ impl Serializer.is_auto_registered_module(module_name: str) -> bool {
 }
 
 impl Serializer.register_alias(old_name: str, cls: type) -> None {
-    new_name = f"{cls.__module__}.{cls.__name__}";
+    new_name = f"{type_module(cls)}.{cls.__name__}";
     if old_name == new_name {
         logger.debug(f"archetype_alias: {old_name} == current name; alias is a no-op");
         return;
+    }
+    prior = Serializer._aliases.get(old_name);
+    if prior is not None and prior != new_name {
+        raise ValueError(f'Persistent type alias {old_name} has conflicting targets: {prior} and {new_name}');
+    }
+    cursor = new_name;
+    seen = {old_name};
+    while cursor in Serializer._aliases {
+        if cursor in seen {
+            raise ValueError(f'Persistent type alias cycle involving {old_name}');
+        }
+        seen.add(cursor);
+        cursor = Serializer._aliases[cursor];
+    }
+    if cursor == old_name {
+        raise ValueError(f'Persistent type alias cycle involving {old_name}');
     }
     Serializer._aliases[old_name] = new_name;
 }
@@ -604,14 +625,16 @@ impl Serializer.coerce(val: object, target_type: object) -> tuple[object, bool] 
 }
 
 impl Serializer.fingerprint(cls: type) -> str {
+    import from jaclang.data.type_identity { schema_type }
+    field_types = get_field_types(cls);
     field_pairs: list[list[str]] = [];
     if is_record(cls) {
         for f in fields(cls) {
-            field_pairs.append([f.name, str(f.type)]);
+            field_pairs.append([f.name, schema_type(field_types.get(f.name, f.type))]);
         }
     }
     field_pairs.sort(key=lambda (p: list[str]) { p[0]; });
-    payload = {'module': cls.__module__, 'name': cls.__name__, 'fields': field_pairs};
+    payload = {'module': type_module(cls), 'name': cls.__name__, 'fields': field_pairs};
     encoded = _json_dumps(payload, sort_keys=True, `default=str).encode('utf-8');
     return sha256(encoded).hexdigest()[:FINGERPRINT_LENGTH];
 }
@@ -621,40 +644,25 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
         return None;
     }
     key = f"{module_name}.{class_name}";
+    visited: set[str] = set();
+    while key in Serializer._aliases {
+        if key in visited {
+            raise TypeResolutionError(f'Persistent type alias cycle involving {key}');
+        }
+        visited.add(key);
+        key = Serializer._aliases[key];
+        (module_name, class_name) = key.rsplit('.', 1);
+    }
+    if module_name.startswith('jac:') {
+        return resolve_type(module_name, class_name);
+    }
+    if module_name.startswith('_jac_app_') {
+        raise TypeResolutionError('Legacy path-derived persistent type identity; declare an explicit schema alias and migrate the store before serving it');
+    }
     if (cls := Serializer._registry.get(key)) {
         return cls;
     }
 
-    if (aliased_key := Serializer._aliases.get(key)) {
-        aliased = Serializer._registry.get(aliased_key);
-        if aliased is None and '.' in aliased_key {
-            alias_parts = aliased_key.rsplit('.', 1);
-            aliased = Serializer._resolve_class_by_import(
-                alias_parts[0], alias_parts[1]
-            );
-            if aliased is not None {
-                Serializer.register(cast(type, aliased));
-            }
-        }
-        if aliased is not None {
-            if (n := Serializer._warn_occurrence("alias-resolved", key)) {
-                logger.info(
-                    f"Serializer: resolving aliased class {key} -> {aliased_key}"
-                        + Serializer._occurrence_note(n)
-                );
-            }
-            return aliased;
-        }
-
-        if (n := Serializer._warn_occurrence("alias-missing", key)) {
-            logger.warning(
-                f"Serializer: alias {key} -> {aliased_key} has no registered "
-                "target; cannot resolve."
-                    + Serializer._occurrence_note(n)
-            );
-        }
-        return None;
-    }
     if (resolved := Serializer._resolve_class_by_import(module_name, class_name)) {
         Serializer.register(resolved);
         if (n := Serializer._warn_occurrence("import-resolved", key)) {
@@ -1019,6 +1027,8 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
 
         anchor.hash = Serializer._compute_hash(anchor);
         return anchor;
+    } except TypeResolutionError {
+        raise;
     } except Exception as e {
         failed_arch = data.get('archetype');
         arch_id = (
@@ -1233,6 +1243,8 @@ impl Serializer._deserialize_archetype(
         }
         setattr(arch, '__jac__', anchor);
         return arch;
+    } except TypeResolutionError {
+        raise;
     } except Exception as e {
         if (
             n

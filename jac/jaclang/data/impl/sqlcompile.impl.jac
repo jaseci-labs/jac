@@ -273,7 +273,8 @@ impl compile_query(
         pfx_e = f"h{n}e";
         econds: list[str] = [];
         if hop.`edge is not None {
-            names = _type_names(hop.`edge.__name__, store, types);
+            import from jaclang.data.type_identity { storage_type }
+            names = _type_names(storage_type(hop.`edge), store, types);
             econds.append(_type_cond('e', names, params, pfx_e));
         }
         edge_names = (
@@ -290,7 +291,8 @@ impl compile_query(
         joins.append(_edge_join(e, fid, hop.dir, econds));
         nconds = [f"{nd_alias}.id = {e}.other", f"{nd_alias}.kind = 'NodeAnchor'"];
         for (k, nt) in enumerate(_nd_types(hop)) {
-            tname = str(getattr(nt, '__name__', ''));
+            import from jaclang.data.type_identity { storage_type }
+            tname = storage_type(nt);
             if tname {
                 names = _type_names(tname, store, types);
                 nconds.append(_type_cond(nd_alias, names, params, f"h{n}n{k}"));

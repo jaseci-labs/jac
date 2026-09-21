@@ -61,6 +61,14 @@ def application_for(path: str, module_name: str = "") -> (PreparedApplication | 
     return None;
 }
 
+def application_of(target: object) -> PreparedApplication | None {
+    import sys;
+    name = getattr(target, '__module__', '');
+    module = sys.modules.get(name);
+    source = getattr(module, '__file__', '');
+    return application_for(source, name) if source else None;
+}
+
 def prepared_code(path: str) -> (types.CodeType | None) {
     application = application_for(path);
     return application.code.get(os.path.realpath(path)) if application else None;
@@ -103,7 +111,7 @@ def containing_application(
     return max(candidates, key=lambda (a: any) { len(a.root); }, `default=None);
 }
 
-def load_prepared_module(path: str) -> types.ModuleType {
+def load_prepared_module(path: str, application: PreparedApplication | None = None) -> types.ModuleType {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.sealed { image_for_bundle_dir }
     import from pathlib { Path }
@@ -112,7 +120,7 @@ def load_prepared_module(path: str) -> types.ModuleType {
     if (prepared_code(path) is None) {
         raise RuntimeError(f'No prepared executable artifact for {path}');
     }
-    application = application_for(path);
+    application = application or application_for(path);
     base = os.path.dirname(path);
     target = base_stem(path);
     if application is not None and path != application.entry {

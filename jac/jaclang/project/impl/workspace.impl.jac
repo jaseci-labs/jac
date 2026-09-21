@@ -209,6 +209,7 @@ impl _build_workspace(
     import from jaclang.project.persistence { parse_persistence }
     persistence = parse_persistence(doc.get("persistence", {}), str(project.get("name", "")), list(apps));
     h = hashlib.sha256();
+    h.update(persistence.namespace.encode());
     h.update(json.dumps(doc.get("persistence", {}), sort_keys=True).encode());
     h.update(
         json.dumps(

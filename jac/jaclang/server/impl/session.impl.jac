@@ -266,7 +266,8 @@ def _ancestry_of(arch: (object | None)) -> list[str] {
         if c in stops {
             break;
         }
-        out.append(c.__name__);
+        import from jaclang.data.type_identity { storage_type }
+        out.append(storage_type(c));
     }
     return out;
 }
@@ -323,6 +324,7 @@ impl Session.postinit -> None {
     self._unit_stack = [];
     self._snapshot_reads = set();
     self._version_seen = {};
+    self._foreign_refs = set();
     if self.store is None and self.base_path {
         url = os.environ.get('JAC_DB_URL', '');
         promos = promotions_for(self.base_path);
@@ -856,8 +858,10 @@ impl Session._serialize(anchor: Anchor) -> AnchorRow {
     arch_module = '';
     fingerprint = '';
     if anchor.is_populated() and arch is not None {
-        arch_type = type(arch).__name__;
-        arch_module = type(arch).__module__;
+        import from jaclang.data.type_identity { storage_type }
+        arch_type = storage_type(type(arch));
+        import from jaclang.data.type_identity { type_module }
+        arch_module = type_module(type(arch));
         fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) else '';
     }
@@ -894,7 +898,17 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
     if existing is not None and existing.is_populated() {
         return existing;
     }
-    got = Serializer.deserialize(row.props);
+    import from jaclang.data.type_identity { resolution_scope, ForeignType }
+    import from jaclang.runtime.prepared { application_for }
+    application = application_for(self.target_path) if self.target_path else None;
+    try {
+        with resolution_scope(application) {
+            got = Serializer.deserialize(row.props);
+        }
+    } except ForeignType {
+        self._foreign_refs.add(row.id);
+        return None;
+    }
     if not isinstance(got, Anchor) {
         logger.warning(
             f"could not materialize anchor {row.id} ({row.arch_type}); skipping"

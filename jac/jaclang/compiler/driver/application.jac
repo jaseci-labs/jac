@@ -7,7 +7,7 @@ import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
 import type from jaclang.compiler.frontend { unitree as uni }
-glob _FORMAT: int = 5,
+glob _FORMAT: int = 6,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {
@@ -573,6 +573,14 @@ def _prepare(
         sections[path] = _sections(path, program);
         revision.native[path] = compiler.get_native_interop_setup(path, program);
         pending.update((runtime_sources(code, path, `root) - revision.code.keys()));
+    }
+    # Every executable module carries identity, including helpers with no endpoints.
+    for (path, mod) in _project_modules(program, `root).items() {
+        if path in revision.code {
+            revision.manifests.setdefault(path, {
+                'root': `root, 'app': mod.app or '', 'persistence': mod.persistence
+            });
+        }
     }
     outputs = {};
     if has_client {

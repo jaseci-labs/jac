@@ -1,5 +1,7 @@
 """Project declarations for durable graph identity, independent of deployment."""
 
+class PersistenceAccessError(ValueError) {}
+
 obj PersistenceDomain {
     has name: str,
         owner: str,
@@ -15,7 +17,7 @@ obj PersistenceConfig {
         for domain in self.domains.values() {
             if module in domain.modules {
                 if app not in domain.apps {
-                    raise ValueError(
+                    raise PersistenceAccessError(
                         f"App '{app}' imports persistence module '{module}' in "
                         f"domain '{domain.name}' without being a declared participant"
                     );
