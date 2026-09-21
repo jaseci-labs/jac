@@ -1659,7 +1659,7 @@ impl NaIRGenPass._dispatch_builtin(
     if _emit_fn is None {
         return None;
     }
-    if kwargs and func_name not in ("sorted", ) {
+    if kwargs and func_name not in ("sorted", "min", "max") {
         self.ctx.emit(
             E5092,
             node_override=kw_node,

@@ -1502,6 +1502,14 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_extreme(
+        self: NativeBuiltinEmitter,
+        ctx: NativeEmitCtx,
+        args: list[ir.Value],
+        op: str,
+        name: str
+    ) -> (ir.Value | None);
+
     def emit_sum(
         self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None);
