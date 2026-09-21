@@ -4757,7 +4757,9 @@ impl TypeEvaluator._get_type_from_flow_node(
                 narrowed_from_assignment: TypeBase | None = None;
                 assigned_type: TypeBase | None = None;
                 if flat_target_matched {
-                    assigned_type = self.get_type_of_expression(pred.value);
+                    assigned_type = self.get_type_of_expression(
+                        pred.value, expected_type=target.declared_type
+                    );
                 } elif destructure_path is not None and len(destructure_path) > 0 {
                     assigned_type = self._extract_tuple_element_type_path(
                         self.get_type_of_expression(pred.value), destructure_path
