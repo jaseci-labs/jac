@@ -36,8 +36,10 @@ test "sealing retains each colocated service's access metadata" {
             modules = manifest['module_manifests'];
             assert modules['main.jac']['app'] == 'web';
             assert modules['scoring.jac']['app'] == 'scoring';
-            assert modules['scoring.jac']['walker_access']['Score'] is False;
-            assert modules['scoring.jac']['func_access']['private_score'] is True;
+            assert modules['scoring.jac']['surface']['Score']['exposure'] == 'public';
+            assert 'private_score' not in modules['scoring.jac']['surface'] , (
+                "the served surface lists only exposed declarations"
+            );
         } finally {
             forget(str(path));
         }
@@ -146,8 +148,8 @@ test "preparation does not execute modules and warm restoration does not compile
         first = prepare_application(str(path), JacProgram(), tmp);
         assert not marker.exists();
         assert str(path) in first.code;
-        assert first.manifests[str(path)]['func_access']['hello'] is False;
-        assert first.manifests[str(path)]['func_access']['message'] is False;
+        assert first.manifests[str(path)]['surface']['hello']['exposure'] == 'public';
+        assert first.manifests[str(path)]['surface']['message']['exposure'] == 'public';
         forget(str(path));
         with patch.object(
             JacCompiler,
@@ -182,7 +184,9 @@ test "source changes invalidate a prepared revision and replace its access metad
         prepare_application(str(path), JacProgram(), tmp);
         path.write_text("def hello -> str { return 'changed'; }\n");
         updated = prepare_application(str(path), JacProgram(), tmp);
-        assert updated.manifests[str(path)]['func_access']['hello'] is True;
+        assert 'hello' not in updated.manifests[str(path)]['surface'] , (
+            "dropping :pub makes hello private, so it leaves the served surface"
+        );
         assert prepared_manifest(str(path)) == updated.manifests[str(path)];
     } finally {
         forget(str(Path(tmp) / 'main.jac'));

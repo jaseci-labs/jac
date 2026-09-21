@@ -7,7 +7,15 @@ obj Profile {
         score: int = 0;
 }
 
-walker Greet {
+walker:protect Greet {
+    has name: str;
+
+    can go with Root entry {
+        report Profile(name=self.name);
+    }
+}
+
+walker Housekeep {
     has name: str;
 
     can go with Root entry {

@@ -599,8 +599,9 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict[str, any] {
         };
     }
 
-    interop_data['func_access'] = dict(manifest.func_access);
-    interop_data['walker_access'] = dict(manifest.walker_access);
+    interop_data['surface'] = {
+        name: rec.to_dict() for (name, rec) in manifest.surface.items()
+    };
     interop_data['endpoint_effects'] = dict(manifest.endpoint_effects);
     interop_data['native_host_imports'] = dict(manifest.native_host_imports);
     interop_data['app_edges'] = list(manifest.app_edges);
@@ -646,8 +647,13 @@ impl JacCompiler._deserialize_interop_table(
         );
         manifest.bindings[name] = binding;
     }
-    manifest.func_access.update(cached_interop.get('func_access', {}));
-    manifest.walker_access.update(cached_interop.get('walker_access', {}));
+    import from jaclang.compiler.frontend.codeinfo { SurfaceEntry }
+    manifest.surface.update(
+        {
+            str(name): SurfaceEntry.from_dict(str(name), dict(rec))
+            for (name, rec) in dict(cached_interop.get('surface', {}) or {}).items()
+        }
+    );
     manifest.endpoint_effects.update(cached_interop.get('endpoint_effects', {}));
     manifest.native_host_imports.update(cached_interop['native_host_imports']);
     manifest.app_edges.extend(cached_interop['app_edges']);
@@ -1111,22 +1117,7 @@ impl JacCompiler.stamp_boundary_facts(
                     facts.from_loc_resolved = None;
                 }
                 facts.is_service = nd.is_service_import;
-                if (nd.items and not facts.is_service and nd.in_client_context()) {
-                    resolved = facts.from_loc_resolved;
-                    if (resolved is not None and resolved.endswith('.jac')) {
-                        try {
-                            facts.pinned_server = (
-                                config_module_pin(resolved) == 'server'
-                            );
-                        } except Exception {
-                            facts.pinned_server = False;
-                        }
-                    }
-                }
-                if (
-                    (facts.is_service and not facts.native_from_path)
-                    or (nd.items and not facts.is_service and facts.pinned_server)
-                ) {
+                if (facts.is_service and not facts.native_from_path) {
                     stamp_sv_decls(nd, facts);
                 }
                 if (cl_na_edge and nd.items) {
@@ -1135,7 +1126,6 @@ impl JacCompiler.stamp_boundary_facts(
                 if (
                     nd.items
                     and not facts.is_service
-                    and not facts.pinned_server
                     and not cl_na_edge
                     and is_client_boundary_import(nd)
                 ) {

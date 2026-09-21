@@ -334,38 +334,6 @@ def resolve_import_source_module(prog: any, nd: Import) -> (Module | None) {
     }
 }
 
-def import_target_pinned_server(nd: Import) -> bool {
-    if nd.from_loc is None {
-        return False;
-    }
-    try {
-        target = nd.from_loc.resolve_relative_path();
-        if isinstance(target, str) and target.endswith('.jac') {
-            import from jaclang.compiler.placement.placement_facts {
-                pinned_module_space
-            }
-            return pinned_module_space(target) == 'server';
-        }
-    } except Exception {
-        return False;
-    }
-    return False;
-}
-
-def decl_has_access(source_mod: Module, item: ModuleItem) -> bool {
-    nm = item.name.value if isinstance(item.name, Name) else '';
-    if not nm or source_mod.sym_tab is None {
-        return False;
-    }
-    sym = source_mod.sym_tab.lookup(nm, deep=True);
-    if not (sym and sym.defn) {
-        return False;
-    }
-    decl = sym.defn[0];
-    owner = decl.parent if (isinstance(decl, NameAtom) and decl.parent) else decl;
-    return owner?.access is not None;
-}
-
 def _already_reported(
     program: JacProgram, reporter: any, diag: DiagnosticInfo, nd: UniNode
 ) -> bool {

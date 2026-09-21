@@ -16,7 +16,7 @@ node LocalTask {
 }
 
 # Local walker definition
-walker LocalCreateTask {
+walker:protect LocalCreateTask {
     has task_title: str;
 
     can create with Root entry {
@@ -26,11 +26,11 @@ walker LocalCreateTask {
 }
 
 # Local function definition
-def local_add(x: int, y: int) -> int {
+def:protect local_add(x: int, y: int) -> int {
     return x + y;
 }
 
 # Another local function
-def local_greet(name: str = "Guest") -> str {
+def:protect local_greet(name: str = "Guest") -> str {
     return f"Welcome, {name}!";
 }

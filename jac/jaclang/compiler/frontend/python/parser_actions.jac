@@ -132,6 +132,11 @@ import from jaclang.compiler.frontend.python.token_model { mk_diag, tok_loc }
 # The characters a backslash may escape in a str literal, as code points.
 glob VALID_ESCAPE_POINTS: set[int] = {
          ord(c) for c in "\\\"'abfnrtv\n\r01234567xuUN"
+     },
+     # A bytes literal takes the same set without the three that name a code
+     # point: \u, \U and \N are str-only, so a bytes literal warns on them.
+     VALID_BYTES_ESCAPE_POINTS: set[int] = {
+         ord(c) for c in "\\\"'abfnrtv\n\r01234567x"
      };
 
 obj pa_cmpop_expr_pair {
@@ -210,7 +215,7 @@ def pa_name_from_token(tok: peg_token | None) -> Name | None {
     );
 }
 
-def pa_warn_escape(escape: str, tok: peg_token | None) {
+def pa_warn_escape(escape: str, tok: peg_token | None, line_offset: int = 0) {
     if tok is not None and tok.warned {
         return;
     }
@@ -230,8 +235,44 @@ def pa_warn_escape(escape: str, tok: peg_token | None) {
     warn(
         message,
         tok.filename if tok is not None else "<unknown>",
-        tok.lineno if tok is not None else 1
+        (tok.lineno if tok is not None else 1) + line_offset
     );
+}
+
+# CPython reports the line the escape sits on, not the line the literal
+# opens on, so a triple-quoted body carries the newlines before the escape.
+# Counted only when a warning fires -- at most once per token -- so the
+# decode run loop pays nothing for it.
+def pa_escape_line_offset(data: bytes, upto: int) -> int {
+    lines = 0;
+    k = 0;
+    while k < upto {
+        if data[k] == 10 {
+            lines += 1;
+        }
+        k += 1;
+    }
+    return lines;
+}
+
+# One backslash escape, judged against the set its literal kind allows.
+def pa_check_escape(
+    data: bytes, i: int, size: int, valid: set[int], tok: peg_token | None
+) {
+    following = data[i + 1];
+    if following not in valid {
+        pa_warn_escape(chr(following), tok, pa_escape_line_offset(data, i));
+    } elif following >= ord("4")
+        and following <= ord("7")
+        and i + 3 < size
+        and data[i + 2] >= ord("0")
+        and data[i + 2] <= ord("7")
+        and data[i + 3] >= ord("0")
+        and data[i + 3] <= ord("7") {
+        pa_warn_escape(
+            data[i + 1:i + 4].decode("utf-8"), tok, pa_escape_line_offset(data, i)
+        );
+    }
 }
 
 # Escape decoding uses the retained string/bytes object runtime, just as
@@ -253,18 +294,7 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
     while i < size {
         c = data[i];
         if c == ord("\\") and i + 1 < size and data[i + 1] < 128 {
-            following = data[i + 1];
-            if following not in VALID_ESCAPE_POINTS {
-                pa_warn_escape(chr(following), tok);
-            } elif following >= ord("4")
-                and following <= ord("7")
-                and i + 3 < size
-                and data[i + 2] >= ord("0")
-                and data[i + 2] <= ord("7")
-                and data[i + 3] >= ord("0")
-                and data[i + 3] <= ord("7") {
-                pa_warn_escape(data[i + 1:i + 4].decode("utf-8"), tok);
-            }
+            pa_check_escape(data, i, size, VALID_ESCAPE_POINTS, tok);
             i += 2;
             continue;
         }
@@ -290,13 +320,28 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
     return decode_unicode("".join(parts));
 }
 
-def pa_decode_bytes_escape_body(body: str, raw: bool) -> list[int] {
+def pa_decode_bytes_escape_body(
+    body: str, raw: bool, tok: peg_token | None = None
+) -> list[int] {
     import from jaclang.runtime.python.native_services { decode_bytes }
     if not body.isascii() {
         raise syntax_failure("bytes can only contain ASCII literal characters");
     }
     if raw {
         return list(body.encode("utf-8"));
+    }
+    # A raw literal escapes nothing, so only the cooked body is judged. The
+    # decode itself is the runtime's, so the scan is the warning's own pass.
+    data = body.encode("utf-8");
+    size = len(data);
+    i = 0;
+    while i < size {
+        if data[i] == ord("\\") and i + 1 < size {
+            pa_check_escape(data, i, size, VALID_BYTES_ESCAPE_POINTS, tok);
+            i += 2;
+            continue;
+        }
+        i += 1;
     }
     return decode_bytes(body);
 }
@@ -350,7 +395,7 @@ def pa_decode_string_literal_spelling(
     }
     body = spelling[start:end];
     if is_bytes {
-        return pa_decode_bytes_escape_body(body, raw);
+        return pa_decode_bytes_escape_body(body, raw, tok);
     }
     if raw {
         return body;

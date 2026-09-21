@@ -936,6 +936,65 @@ obj BoundaryTypeInfo {
         nested_types: list[str] = [];
 }
 
+obj SurfaceEntry {
+    has name: str,
+        kind: str,
+        exposure: str = "private",
+        placement: str = "server",
+        module: str = "",
+        src: str = "";
+
+    def is_exposed -> bool {
+        return self.exposure != "private";
+    }
+
+    def requires_auth -> bool {
+        return self.exposure != "public";
+    }
+
+    def is_served -> bool {
+        return self.is_exposed() and self.placement != "client";
+    }
+
+    def to_dict -> dict[str, str] {
+        return {
+            "kind": self.kind,
+            "exposure": self.exposure,
+            "placement": self.placement,
+            "module": self.module,
+            "src": self.src
+        };
+    }
+
+    static def from_dict(name: str, rec: dict[str, any]) -> SurfaceEntry {
+        return SurfaceEntry(
+            name=str(name),
+            kind=str(rec.get("kind") or ""),
+            exposure=str(rec.get("exposure") or "private"),
+            placement=str(rec.get("placement") or "server"),
+            module=str(rec.get("module") or ""),
+            src=str(rec.get("src") or "")
+        );
+    }
+
+    static def from_node(decl: any, module: any = None) -> (SurfaceEntry | None) {
+        kind = getattr(decl, "surface_kind", "") or "";
+        name = getattr(decl, "sym_name", "") or "";
+        if not kind or not name {
+            return None;
+        }
+        loc = module.loc if module is not None else None;
+        mod_path = getattr(loc, "mod_path", "") if loc is not None else "";
+        return SurfaceEntry(
+            name=str(name),
+            kind=str(kind),
+            exposure=str(decl.exposure.value),
+            placement=str(decl.placement_name),
+            module=str(mod_path or "")
+        );
+    }
+}
+
 obj InteropBinding {
     has name: str,
         source_context: InteropContext,
@@ -960,8 +1019,7 @@ obj InteropManifest {
         boundary_types: dict[(str, BoundaryTypeInfo)] = {},
         boundary_type_names: dict[str, dict[str, str]] = {},
         endpoint_effects: dict[(str, dict[str, any])] = {},
-        func_access: dict[(str, bool)] = {},
-        walker_access: dict[(str, bool)] = {},
+        surface: dict[(str, SurfaceEntry)] = {},
         app_edges: list[tuple[(str, str)]] = [],
         provider_routes: dict[(str, str)] = {};
 

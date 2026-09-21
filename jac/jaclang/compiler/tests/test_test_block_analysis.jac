@@ -117,3 +117,68 @@ test "a standalone test module still lowers its test-block calls (stopgap retire
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+# A `.test.jac` runs inside its module's namespace, so importing from that
+# module re-enters it while it is still initializing: `jac check` was green and
+# `jac test` failed with "cannot import name ... from partially initialized
+# module". The checker now says so at the import.
+def _module_with_test(test_src: str) -> tuple[str, str] {
+    base = tempfile.mkdtemp(prefix="jac_test_selfimport_");
+    with open(os.path.join(base, "widget.jac"), "w") as f {
+        f.write(
+            "glob LIMIT: int = 3;\n\ndef:pub clamp(n: int) -> int {\n    return min(n, LIMIT);\n}\n"
+        );
+    }
+    with open(os.path.join(base, "other.jac"), "w") as f {
+        f.write("def:pub twice(n: int) -> int {\n    return n * 2;\n}\n");
+    }
+    with open(os.path.join(base, "widget.test.jac"), "w") as f {
+        f.write(test_src);
+    }
+    return (base, os.path.join(base, "widget.jac"));
+}
+
+
+def _error_codes(prog: JacProgram) -> list[str] {
+    return [
+        e.code.code
+        for e in prog.errors_had
+        if e.code
+    ];
+}
+
+
+test "a test file importing from its own module is an error at the import" {
+    (base, mod_path) = _module_with_test(
+        "import from widget { clamp, LIMIT }\n\ntest \"clamp caps at the limit\" {\n    assert clamp(10) == LIMIT;\n}\n"
+    );
+    try {
+        prog = JacProgram();
+        prog.compile(mod_path);
+        self_imports = [
+            str(e)
+            for e in prog.errors_had
+            if e.code and e.code.code == "E1139"
+        ];
+        assert len(self_imports) == 1 , f"expected one E1139, got {_error_codes(prog)}";
+        assert "widget" in self_imports[0]
+            and "widget.test.jac" in self_imports[0] , self_imports;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a test file importing a sibling module is not flagged" {
+    (base, mod_path) = _module_with_test(
+        "import from other { twice }\n\ntest \"twice doubles\" {\n    assert twice(2) == 4;\n}\n"
+    );
+    try {
+        prog = JacProgram();
+        prog.compile(mod_path);
+        assert "E1139" not in _error_codes(prog) , _error_codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}

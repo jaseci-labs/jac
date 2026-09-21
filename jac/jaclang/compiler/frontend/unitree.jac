@@ -402,6 +402,7 @@ node AstAccessNode(UniNode) {
     has access: (SubTag[Token] | None) { getter; }
     has access_type: SymbolAccess { getter; }
     has public_access: bool { getter; }
+    has exposure: SymbolAccess { getter; }
 
     def init(
         *, access: (SubTag[Token] | None) = None, kid: Sequence[UniNode] = []
@@ -413,6 +414,7 @@ node AstAccessNode(UniNode) {
 node ContextAwareNode(UniNode) {
     has codespace_dual: bool = False;
     has code_context: CodeContext { getter; setter(code_context: CodeContext); }
+    has placement_name: str { getter; }
 
     def init(*, codespace_dual: bool = False, kid: Sequence[UniNode] = []) -> None;
     def postinit -> None;
@@ -849,7 +851,6 @@ obj ImportBoundaryFacts {
     has native_from_path: (str | None) = None,
         from_loc_resolved: (str | None) = None,
         is_service: bool = False,
-        pinned_server: bool = False,
         client_native_edge: bool = False,
         sv_abilities: dict[(str, Ability)] = {},
         sv_walkers: dict[(str, Archetype)] = {},
@@ -984,6 +985,8 @@ node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImpl
 
     has is_abstract: bool { getter; }
     has arch_kind: (str | None) { getter; }
+    has surface_kind: str { getter; }
+    has served: bool { getter; }
 
     def get_has_vars -> list[HasVar];
     def get_methods -> list[Ability];
@@ -1105,6 +1108,8 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
     has is_def: bool { getter; }
     has method_owner: Archetype | Enum | None { getter; }
     has is_genai_ability: bool { getter; }
+    has surface_kind: str { getter; }
+    has served: bool { getter; }
 
     def py_resolve_name -> str;
     def event_trigger_type_names -> (list[str] | None);

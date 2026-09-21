@@ -323,7 +323,7 @@ impl DeclImplMatchPass.validate_params_match(
                 impl_name = defn_param.name.value;
                 if decl_name != impl_name {
                     self.ctx.emit(
-                        W2013,
+                        E2013,
                         node_override=defn_param.name,
                         decl_name=decl_name,
                         impl_name=impl_name

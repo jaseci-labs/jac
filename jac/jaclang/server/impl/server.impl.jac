@@ -455,11 +455,9 @@ impl ModuleIntrospector.load(force_reload: bool = False) -> None {
     }
     self._module = module;
     self._load_manifest();
-    self._extract_access_levels();
+    self._load_surface();
     self._functions = self._collect_functions();
     self._walkers = self._collect_walkers();
-
-    self._collect_cross_boundary_endpoints();
     self._invalidate_bundle();
 }
 
@@ -482,87 +480,76 @@ impl ModuleIntrospector._load_manifest -> None {
     self._client_manifest['endpoint_effects'] = manifest.get('endpoint_effects', {});
 }
 
-impl ModuleIntrospector._extract_access_levels -> None {
+impl ModuleIntrospector._load_surface -> None {
     import from jaclang.server.sealed_serve { serve_manifest_for }
+    import from jaclang.compiler.frontend.codeinfo { SurfaceEntry }
     path: str = getattr(self._module, '__file__', '') if self._module else '';
     manifest = serve_manifest_for(path) if path else None;
     if manifest is None {
         raise RuntimeError(f"No prepared access metadata for '{path}'.");
     }
-    self._function_access = dict(manifest.get('func_access', {}) or {});
-    self._walker_access = dict(manifest.get('walker_access', {}) or {});
+    self._surface = {
+        str(name): SurfaceEntry.from_dict(str(name), dict(rec))
+        for (name, rec) in dict(manifest.get('surface', {}) or {}).items()
+    };
+    self._manifest_root = str(manifest.get('root') or '');
 }
 
-
-impl ModuleIntrospector._register_prepared_bindings(
-    sm: dict[str, any], img_root: str
-) -> None {
-    import from jaclang.runtime.constructs { WalkerArchetype }
-
-    def resolve_prepared(src_path: str, name: str) -> any {
-        for loaded in list(Jac.loaded_modules.values()) {
-            f = loaded?.__file__;
-            if f and os.path.abspath(f) == os.path.abspath(src_path) {
-                sym = getattr(loaded, name, None);
-                if sym is not None {
-                    return sym;
-                }
-            }
-        }
-        import from jaclang.runtime.prepared { load_prepared_module }
-        module = load_prepared_module(src_path);
-        return getattr(module, name);
-    }
-
-    for b in sm.get('cross_bindings', []) or [] {
-        name = b.get('name');
-        rel = b.get('src');
-        if not name or not rel {
-            continue;
-        }
-        auth = bool(b.get('auth', True));
-        src_path = os.path.join(img_root, rel);
-        import from jaclang.runtime.prepared { application_for, source_for_origin }
-        application = application_for(self._module.__file__, self._module.__name__)
-            if self._module is not None
-            else None;
-        if application is not None {
-            src_path = source_for_origin(application, rel);
-        }
-        if name in self._walkers or name in self._functions {
-            continue;
-        }
+impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.server.sealed_serve { sealed_root_for }
+    own_file: str = getattr(self._module, '__file__', '') if self._module else '';
+    img_root = self._manifest_root
+        or (sealed_root_for(own_file) if own_file else '')
+        or '';
+    src_path = os.path.join(img_root, rel)
+        if (img_root and not os.path.isabs(rel))
+        else rel;
+    import from jaclang.runtime.prepared { application_for, source_for_origin }
+    application = application_for(own_file, self._module.__name__)
+        if self._module is not None
+        else None;
+    if application is not None {
         try {
-            target = resolve_prepared(src_path, name);
-        } except Exception {
-            logger.exception('Could not load endpoint %s from %s', name, src_path);
-            continue;
-        }
-        if b.get('kind') == 'walker' {
-            if isinstance(target, type) and issubclass(target, WalkerArchetype) {
-                self._walkers[name] = target;
-                self._walker_access[name] = auth;
+            src_path = source_for_origin(application, rel);
+        } except Exception {}
+    }
+    if own_file and os.path.abspath(src_path) == os.path.abspath(own_file) {
+        return getattr(self._module, name, None);
+    }
+    for loaded in list(Jac.loaded_modules.values()) {
+        f = loaded?.__file__;
+        if f and os.path.abspath(f) == os.path.abspath(src_path) {
+            sym = getattr(loaded, name, None);
+            if sym is not None {
+                return sym;
             }
-        } elif callable(target) {
-            self._functions[name] = target;
-            self._function_access[name] = auth;
         }
     }
+    import from jaclang.runtime.prepared { load_prepared_module }
+    module = load_prepared_module(src_path);
+    return getattr(module, name, None);
 }
 
-impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
-    if not (self.discover_endpoints and self._module) {
-        return;
+impl ModuleIntrospector.scheduled_members -> list[tuple[str, any, bool]] {
+    import from jaclang.runtime.constructs { WalkerArchetype }
+    import from jaclang.server.task_scheduler { ScheduleSpec }
+    found: list[tuple[str, any, bool]] = [];
+    if not self._module {
+        return found;
     }
-    import from jaclang.server.sealed_serve { serve_manifest_for, sealed_root_for }
-    path: str = getattr(self._module, '__file__', '');
-    manifest = serve_manifest_for(path) if path else None;
-    if manifest is None {
-        raise RuntimeError(f"No prepared boundary metadata for '{path}'.");
+    for (name, member) in inspect.getmembers(self._module) {
+        spec = member?.schedule_spec;
+        if not isinstance(spec, ScheduleSpec) {
+            continue;
+        }
+        if isinstance(member, type) and issubclass(member, WalkerArchetype) {
+            found.append((name, member, True));
+        } elif inspect.isfunction(member) {
+            found.append((name, member, False));
+        }
     }
-    self._register_prepared_bindings(
-        manifest, manifest.get('root') or sealed_root_for(path) or ""
-    );
+    return found;
 }
 
 
@@ -571,24 +558,27 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., any)]] {
         return {};
     }
     functions: dict[(str, Callable[(..., any)])] = {};
-    export_names = set(self._client_manifest.get('exports', []));
-    for (name, `obj) in inspect.getmembers(self._module) {
-        if (inspect.isfunction(`obj) and not name.startswith('_')) {
-            if getattr(`obj, '__module__', '').startswith('jaclang.') {
-                continue;
-            }
-            functions[name] = `obj;
-            if (name in export_names) {
-                self._client_functions[name] = `obj;
-            }
+    for (name, rec) in self._surface.items() {
+        if rec.kind != 'function' or not rec.is_served() {
+            continue;
+        }
+        try {
+            target = self._resolve_declared(rec.src, name);
+        } except Exception {
+            logger.exception('Could not load endpoint %s from %s', name, rec.src);
+            continue;
+        }
+        if callable(target) {
+            functions[name] = target;
         }
     }
-    for name in export_names {
-        if ((name not in self._client_functions) and hasattr(self._module, name)) {
-            attr = getattr(self._module, name);
-            if callable(attr) {
-                self._client_functions[name] = attr;
-            }
+    for name in self._client_manifest.get('exports', []) {
+        if not hasattr(self._module, name) {
+            continue;
+        }
+        attr = getattr(self._module, name);
+        if callable(attr) {
+            self._client_functions[name] = attr;
         }
     }
     return functions;
@@ -600,13 +590,18 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
         return {};
     }
     walkers: dict[(str, type[WalkerArchetype])] = {};
-    for (name, `obj) in inspect.getmembers(self._module) {
-        if (
-            isinstance(`obj, type)
-            and issubclass(`obj, WalkerArchetype)
-            and (`obj is not WalkerArchetype)
-        ) {
-            walkers[name] = `obj;
+    for (name, rec) in self._surface.items() {
+        if rec.kind != 'walker' or not rec.is_served() {
+            continue;
+        }
+        try {
+            target = self._resolve_declared(rec.src, name);
+        } except Exception {
+            logger.exception('Could not load walker %s from %s', name, rec.src);
+            continue;
+        }
+        if isinstance(target, type) and issubclass(target, WalkerArchetype) {
+            walkers[name] = target;
         }
     }
     return walkers;
@@ -622,10 +617,9 @@ impl ModuleIntrospector._check_module_freshness -> None {
     if (current_module is not None and current_module is not self._module) {
         self._module = current_module;
         self._load_manifest();
-        self._extract_access_levels();
+        self._load_surface();
         self._functions = self._collect_functions();
         self._walkers = self._collect_walkers();
-        self._collect_cross_boundary_endpoints();
         self._invalidate_bundle();
         return;
     }
@@ -646,10 +640,9 @@ impl ModuleIntrospector._check_module_freshness -> None {
     }
     if needs_refresh {
         self._load_manifest();
-        self._extract_access_levels();
+        self._load_surface();
         self._functions = self._collect_functions();
         self._walkers = self._collect_walkers();
-        self._collect_cross_boundary_endpoints();
         self._invalidate_bundle();
     }
 }
@@ -950,11 +943,13 @@ impl ModuleIntrospector._spa_route_matches(pattern: str, segments: list[str]) ->
 }
 
 impl ModuleIntrospector.is_auth_required_for_function(func_name: str) -> bool {
-    return self._function_access.get(func_name, True);
+    rec = self._surface.get(func_name);
+    return rec.requires_auth() if rec is not None else True;
 }
 
 impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
-    return self._walker_access.get(walker_name, True);
+    rec = self._surface.get(walker_name);
+    return rec.requires_auth() if rec is not None else True;
 }
 
 
@@ -1410,13 +1405,22 @@ impl JacAPIServer._ensure_internal_users -> None {
 impl JacAPIServer._scheduled_targets -> list[tuple[str, any, bool]] {
     import from jaclang.server.task_scheduler { ScheduleSpec }
     found: list[tuple[str, any, bool]] = [];
+    seen: set[str] = set();
+    for (name, member, is_walker) in self.introspector.scheduled_members() {
+        spec = member?.schedule_spec;
+        if isinstance(spec, ScheduleSpec) {
+            seen.add(name);
+            found.append((name, spec, is_walker));
+        }
+    }
     for (registry, is_walker) in [
         (dict(self.introspector._walkers), True),
         (dict(self.introspector._functions), False)
     ] {
         for (name, item) in registry.items() {
             spec = item?.schedule_spec;
-            if isinstance(spec, ScheduleSpec) {
+            if isinstance(spec, ScheduleSpec) and name not in seen {
+                seen.add(name);
                 found.append((name, spec, is_walker));
             }
         }

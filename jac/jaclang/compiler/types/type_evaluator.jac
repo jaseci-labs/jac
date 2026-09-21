@@ -256,6 +256,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1134,
     E1136,
     E1137,
+    E1139,
     E0049,
     E5094,
     W1050,
@@ -369,7 +370,9 @@ enum NarrowingKind {
     LITERAL_NE = "literal_ne",
     HASATTR = "hasattr",
     TYPE_IS = "type_is",
-    TYPE_GUARD = "type_guard"
+    TYPE_GUARD = "type_guard",
+    MEMBERSHIP_IN = "membership_in",
+    MEMBERSHIP_NOT_IN = "membership_not_in"
 }
 
 enum EndpointVerdict {
@@ -461,6 +464,7 @@ walker TypeEvaluator {
     def push_symbol_resolution(symbol: Symbol) -> bool;
     def pop_symbol_resolution(symbol: Symbol) -> None;
     def get_type_of_symbol(symbol: Symbol) -> TypeBase;
+    def _published_class_type(symbol: Symbol) -> (TypeBase | None);
     def resolve_to_definition_symbol(symbol: Symbol) -> Symbol;
     def _widen_literal_for_declaration(ty: TypeBase) -> TypeBase;
     def _import_module_from_path(
@@ -472,6 +476,7 @@ walker TypeEvaluator {
     def _resolve_from_path(from_mod: ModulePath) -> Path;
     def _resolve_client_npm_module(node_: ModulePath) -> (str | None);
     def _relative_import_must_resolve(node_: ModulePath) -> bool;
+    def _imports_own_module(node_: ModulePath, mod_path: str) -> bool;
     def _import_error_is_handled(imp: Import) -> bool;
     def _client_npm_base(spec: str, mod_path: str) -> (str | None);
     def _client_entry_mod_path -> (str | None);

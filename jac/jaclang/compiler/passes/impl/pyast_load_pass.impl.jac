@@ -74,7 +74,9 @@ impl PyastBuildPass.proc_keyword(nd: py_ast.keyword) -> KWPair {
     }
     value = self.convert(nd.value);
     if isinstance(value, Expr) {
-        return KWPair(key=arg, value=value, kid=[arg, value] if arg else [value]);
+        return KWPair(
+            key=arg, value=value, kid=[arg, value] if arg is not None else [value]
+        );
     } else {
         raise RuntimeError(self.ctx.ice());
     }

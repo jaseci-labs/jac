@@ -921,8 +921,11 @@ def seal_runtime_closure(
 
     serving = pkg_path / SERVE_MANIFEST_REL;
     if serving.is_file() {
-        for binding in json.loads(serving.read_text()).get("cross_bindings", []) {
-            if not add_dependency(str((pkg_path / binding["src"]).resolve())) {
+        for rec in (json.loads(serving.read_text()).get("surface") or {}).values() {
+            if not rec.get("src") {
+                continue;
+            }
+            if not add_dependency(str((pkg_path / rec["src"]).resolve())) {
                 return False;
             }
         }

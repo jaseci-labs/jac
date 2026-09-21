@@ -1,20 +1,93 @@
 impl NaIRGenPass._get_or_declare_extern(
     name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
 ) -> ir.Function {
-    if name in self.extern_funcs {
-        return self.extern_funcs[name];
-    }
-
-    for gv in self.llvm_module.global_values {
-        if isinstance(gv, ir.Function) and gv.name == name {
-            self.extern_funcs[name] = gv;
-            return gv;
+    wanted = ir.FunctionType(ret_type, arg_types, var_arg=var_arg);
+    existing: (ir.Function | None) = self.extern_funcs.get(name);
+    if existing is None {
+        for gv in self.llvm_module.global_values {
+            if isinstance(gv, ir.Function) and gv.name == name {
+                existing = gv;
+                break;
+            }
         }
     }
-    fnty = ir.FunctionType(ret_type, arg_types, var_arg=var_arg);
-    func = ir.Function(self.llvm_module, fnty, name=name);
-    self.extern_funcs[name] = func;
-    return func;
+    if existing is None {
+        existing = ir.Function(self.llvm_module, wanted, name=name);
+    }
+    self.extern_funcs[name] = existing;
+    actual = existing.function_type;
+    if actual == wanted {
+        return existing;
+    }
+    key = name + ":" + str(wanted);
+    if key in self.extern_funcs {
+        return self.extern_funcs[key];
+    }
+    if actual.var_arg or var_arg or len(actual.args) != len(arg_types) {
+        raise ValueError(
+            f"Incompatible native extern declaration for {name}: {actual} versus {wanted}"
+        );
+    }
+    pairs = list(zip(arg_types, actual.args));
+    pairs.append((actual.return_type, ret_type));
+    for (source, target) in pairs {
+        if source == target {
+            continue;
+        }
+        pointer_pair = isinstance(source, ir.PointerType)
+            and isinstance(target, ir.PointerType)
+            and source.addrspace == target.addrspace;
+        address_pair = (
+            isinstance(source, ir.PointerType)
+            and source.addrspace == 0
+            and target == ir.IntType(64)
+        )
+            or (
+                source == ir.IntType(64)
+                and isinstance(target, ir.PointerType)
+                and target.addrspace == 0
+            );
+        if not pointer_pair and not address_pair {
+            raise ValueError(
+                f"Incompatible native extern declaration for {name}: {actual} versus {wanted}"
+            );
+        }
+    }
+    adapter = ir.Function(
+        self.llvm_module,
+        wanted,
+        name=self.llvm_module.scope.deduplicate(name + ".jac_abi")
+    );
+    adapter.linkage = "internal";
+    adapter.attributes.add("alwaysinline");
+    builder = ir.IRBuilder(adapter.append_basic_block("entry"));
+    converted: list[ir.Value] = [];
+    for (value, target) in zip(adapter.args, actual.args) {
+        converted.append(self._extern_address_cast(builder, value, target));
+    }
+    result = builder.call(existing, converted);
+    if isinstance(ret_type, ir.VoidType) {
+        builder.ret_void();
+    } else {
+        builder.ret(self._extern_address_cast(builder, result, ret_type));
+    }
+    self.extern_funcs[key] = adapter;
+    return adapter;
+}
+
+impl NaIRGenPass._extern_address_cast(
+    builder: ir.IRBuilder, value: ir.Value, target: ir.Type
+) -> ir.Value {
+    if value.type == target {
+        return value;
+    }
+    if isinstance(value.type, ir.PointerType) and isinstance(target, ir.IntType) {
+        return builder.ptrtoint(value, target);
+    }
+    if isinstance(value.type, ir.IntType) and isinstance(target, ir.PointerType) {
+        return builder.inttoptr(value, target);
+    }
+    return builder.bitcast(value, target);
 }
 
 impl NaIRGenPass._get_printf -> ir.Function {
@@ -25,11 +98,31 @@ impl NaIRGenPass._get_printf -> ir.Function {
 
 impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     printf = self._get_printf();
-    params: Sequence[any] = nd.params or [];
+    raw: Sequence[any] = nd.params or [];
+    params: list[any] = [];
+    stream = "stdout";
+    for param in raw {
+        if not isinstance(param, uni.KWPair) {
+            params.append(param);
+            continue;
+        }
+        key = param.key.sym_name if param.key is not None else None;
+        named = self._print_stream_name(param.value) if key == "file" else None;
+        if named is None {
+            self.ctx.emit(
+                E5092,
+                node_override=param,
+                kind="print keyword",
+                name=f"{key or '**'}=..."
+            );
+            return None;
+        }
+        stream = named;
+    }
     if not params {
         fmt = self._get_fmt_string("");
         fmt_ptr = self.builder.bitcast(fmt, ir.IntType(8).as_pointer());
-        self.builder.call(printf, [fmt_ptr]);
+        self._emit_print_call(stream, fmt_ptr, []);
         return ir.Constant(ir.IntType(64), 0);
     }
 
@@ -38,7 +131,13 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     for (i, param) in enumerate(params) {
         val = self._str_norm_optional(self._codegen_expr(param));
         if val is None {
-            continue;
+            self.ctx.emit(
+                E5092,
+                node_override=param,
+                kind="print argument",
+                name=type(param).__name__
+            );
+            return None;
         }
 
         if i > 0 {
@@ -78,6 +177,8 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
                     self._emit_rc_release_typed(val, op="print_obj_src", loc="");
                 }
                 val = obj_s;
+            } elif self._is_null_ptr_const(val) {
+                val = self._make_global_string("None", name_prefix=".repr.none");
             } else {
                 _pointee = val.type?.pointee;
                 _is_char_ptr = isinstance(_pointee, ir.IntType) and _pointee.width == 8;
@@ -147,7 +248,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         fmt_str = "".join(fmt_parts);
         fmt = self._get_fmt_string(fmt_str);
         fmt_ptr = self.builder.bitcast(fmt, ir.IntType(8).as_pointer());
-        self.builder.call(printf, [fmt_ptr] + args);
+        self._emit_print_call(stream, fmt_ptr, args);
 
         for _parg in args {
             if isinstance(_parg.type, ir.PointerType) and self._is_owned(_parg) {
@@ -156,6 +257,51 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     return ir.Constant(ir.IntType(64), 0);
+}
+
+impl NaIRGenPass._print_stream_name(value: uni.Expr) -> (str | None) {
+    if not isinstance(value, uni.AtomTrailer) {
+        return None;
+    }
+    chain = value.as_attr_list;
+    if len(chain) != 2 or chain[0].sym_name != "sys" {
+        return None;
+    }
+    if chain[1].sym_name == "stdout" {
+        return "stdout";
+    }
+    if chain[1].sym_name == "stderr" {
+        return "stderr";
+    }
+    return None;
+}
+
+impl NaIRGenPass._emit_print_call(
+    stream: str, fmt_ptr: ir.Value, args: list[ir.Value]
+) -> None {
+    if stream == "stdout" {
+        self.builder.call(self._get_printf(), [fmt_ptr] + args);
+        return;
+    }
+    i32 = ir.IntType(32);
+    i8p = ir.IntType(8).as_pointer();
+    libc_name = "stderr";
+    import platform as _plat;
+    if _plat.system() == "Darwin" {
+        libc_name = "__stderrp";
+    }
+    if libc_name not in self.llvm_module.globals {
+        _gv = ir.GlobalVariable(self.llvm_module, i8p, name=libc_name);
+        _gv.linkage = "external";
+        if "windows" in str(self.llvm_module.triple or "") {
+            _gv.storage_class = "dllimport";
+        }
+    }
+    handle = self.builder.load(
+        self.llvm_module.get_global(libc_name), name="print.stderr"
+    );
+    fprintf = self._get_or_declare_extern("fprintf", i32, [i8p, i8p], var_arg=True);
+    self.builder.call(fprintf, [handle, fmt_ptr] + args);
 }
 
 impl NaIRGenPass._get_fmt_string(fmt: str) -> ir.GlobalVariable {

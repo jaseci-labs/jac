@@ -46,4 +46,4 @@ def corpus_stale(bundle: DocBundle) -> bool;
 def ingest(bundle: DocBundle);
 
 @schedule(trigger=ScheduleTrigger.STATIC, interval=SYNC_TICK_S)
-def docs_sync_tick;
+def:protect docs_sync_tick;

@@ -139,20 +139,26 @@ include utils;  # Merges utils.jac into current scope
 ### Export and Visibility
 
 ```jac
-# Public by default
+# Private by default: an in-process helper, never an endpoint
 def helper -> int { return 42; }
 
-# Explicitly public
+# Anonymous endpoint, exported to client code
 def:pub api_function -> None { }
 
-# Private to module
+# Authenticated endpoint, importable by client code of this project
+def:protect user_function -> None { }
+
+# Explicitly private (same as the default for endpoints)
 def:priv internal_helper -> None { }
 
-# Public walker (becomes API endpoint with jac run)
+# Public walker (anonymous API endpoint with jac run)
 walker:pub GetUsers { }
 
-# Private walker
-walker:priv InternalProcess { }
+# Protected walker (authenticated API endpoint)
+walker:protect SyncUser { }
+
+# Private walker (not served)
+walker InternalProcess { }
 ```
 
 ---

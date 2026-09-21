@@ -408,20 +408,21 @@ test "jac impl err" {
     assert f'"{path_to_file}", line 2' in stdout_value;
 }
 
-test "param name diff warns" {
+test "param name diff is an error" {
     import from jaclang.compiler.driver.program { JacProgram }
     prog = JacProgram();
     prog.compile(fixture_path("decl_defn_param_name.jac"), no_cgen=True);
-    warn_msgs = [str(w) for w in prog.warnings_had];
+    err_msgs = [str(e) for e in prog.errors_had];
     assert any(
-        "'some_long_paramenter_name'" in m and "'short_name'" in m for m in warn_msgs
-    ) , (f"Expected param name mismatch warning for method1, got: {warn_msgs}");
-    assert any("'param1'" in m and "'p1'" in m for m in warn_msgs) , (
-        f"Expected param name mismatch warning for method2 param1, got: {warn_msgs}"
+        "'some_long_paramenter_name'" in m and "'short_name'" in m for m in err_msgs
+    ) , (f"Expected param name mismatch error for method1, got: {err_msgs}");
+    assert any("'param1'" in m and "'p1'" in m for m in err_msgs) , (
+        f"Expected param name mismatch error for method2 param1, got: {err_msgs}"
     );
-    assert any("'param2'" in m and "'p2'" in m for m in warn_msgs) , (
-        f"Expected param name mismatch warning for method2 param2, got: {warn_msgs}"
+    assert any("'param2'" in m and "'p2'" in m for m in err_msgs) , (
+        f"Expected param name mismatch error for method2 param2, got: {err_msgs}"
     );
+    assert not any("Parameter name mismatch" in str(w) for w in prog.warnings_had);
 }
 
 test "jac test err" {

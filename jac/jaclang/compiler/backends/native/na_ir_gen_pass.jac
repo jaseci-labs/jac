@@ -504,6 +504,10 @@ walker NaIRGenPass {
         name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
     ) -> ir.Function;
 
+    def _extern_address_cast(
+        builder: ir.IRBuilder, value: ir.Value, target: ir.Type
+    ) -> ir.Value;
+
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
@@ -1959,6 +1963,9 @@ walker NaIRGenPass {
 
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
+    def _is_null_ptr_const(val: ir.Value) -> bool;
+    def _print_stream_name(value: uni.Expr) -> (str | None);
+    def _emit_print_call(stream: str, fmt_ptr: ir.Value, args: list[ir.Value]) -> None;
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
     def _bind_borrowed(nd: uni.Assignment, var_name: str, slot_ty: ir.Type) -> bool;

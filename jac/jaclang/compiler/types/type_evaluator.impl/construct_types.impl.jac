@@ -593,11 +593,6 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
     }
 
     type_params = self._extract_type_params(node_);
-    base_classes: list[TypeBase] = [];
-    for base_class in node_.base_classes or [] {
-        base_class_type = self.get_type_of_expression(base_class);
-        base_classes.append(base_class_type);
-    }
 
     parent_module = node_.find_parent_of_type(Module);
     mod_flags = compute_module_source_flags(
@@ -605,6 +600,30 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
     );
     is_builtin_class = mod_flags.is_builtin_stub;
     is_from_stdlib_stub = mod_flags.is_stdlib_stub;
+    is_data_class = node_.sym_category != SymbolType.TYPE;
+
+    cls_type = ClassType(
+        _shared=self._intern_shared(
+            ClassDetailsShared(
+                class_name=node_.name_spec.sym_name,
+                symbol_table=node_,
+                type_params=type_params,
+                ct_params=self._extract_ct_params(node_),
+                base_classes=[],
+                is_builtin_class=is_builtin_class,
+                is_from_stdlib_stub=is_from_stdlib_stub,
+                is_data_class=is_data_class,
+            )
+        ),
+        flags=TypeFlags.Instantiable,
+    );
+    node_.name_spec.type = cls_type;
+
+    base_classes: list[TypeBase] = [];
+    for base_class in node_.base_classes or [] {
+        base_class_type = self.get_type_of_expression(base_class);
+        base_classes.append(base_class_type);
+    }
 
     if not base_classes and self.prefetch {
         if (
@@ -635,7 +654,7 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
         }
     }
 
-    is_data_class = node_.sym_category != SymbolType.TYPE;
+    cls_type.shared.base_classes = base_classes;
 
     is_enum_class = any(
         isinstance(base, ClassType)
@@ -662,34 +681,18 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
         for base in base_classes
     )
         or self._has_typeddict_special_form_base(node_);
-    enum_members: dict[str, EnumMemberInfo] | None = None;
-    enum_value_type: TypeBase | None = None;
+
+    cls_type.shared.is_enum_class = is_enum_class;
+    cls_type.shared.is_namedtuple = is_namedtuple;
+    cls_type.shared.is_typeddict = is_typeddict;
+
     if is_enum_class {
         enum_value_type = get_special_enum_value_type_from_bases(
             base_classes, self.prefetch
         );
-        enum_members = build_enum_members(node_, self, enum_value_type);
+        cls_type.shared.enum_value_type = enum_value_type;
+        cls_type.shared.enum_members = build_enum_members(node_, self, enum_value_type);
     }
-    cls_type = ClassType(
-        _shared=self._intern_shared(
-            ClassDetailsShared(
-                class_name=node_.name_spec.sym_name,
-                symbol_table=node_,
-                type_params=type_params,
-                ct_params=self._extract_ct_params(node_),
-                base_classes=base_classes,
-                is_builtin_class=is_builtin_class,
-                is_from_stdlib_stub=is_from_stdlib_stub,
-                is_data_class=is_data_class,
-                is_namedtuple=is_namedtuple,
-                is_typeddict=is_typeddict,
-                is_enum_class=is_enum_class,
-                enum_value_type=enum_value_type,
-                enum_members=enum_members,
-            )
-        ),
-        flags=TypeFlags.Instantiable,
-    );
 
     if any(
         isinstance(base, UnknownType) and not base.is_diagnosed for base in base_classes
@@ -702,7 +705,6 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
         cls_type.shared.typeddict_fields = self._build_typeddict_fields(cls_type);
     }
 
-    node_.name_spec.type = cls_type;
     return cls_type;
 }
 

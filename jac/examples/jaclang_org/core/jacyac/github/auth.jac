@@ -4,7 +4,7 @@ import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.scale.sso.github { GithubSSOProvider }
 import from jaclang.scale.sso.oauth_session { OAuthSession, OAuthStart, OAuthLogin }
 
-def users -> UserManager {
+def:protect users -> UserManager {
     return JacRuntime.get_user_manager(JacRuntime.get_base_path_dir() or ".");
 }
 
