@@ -22,6 +22,7 @@ glob logger = logging.getLogger(__name__),
      PG_RUN_USERS = ['jac', 'postgres', 'nobody'],
      PG_MAX_PRED_LOCKS_PER_TXN = 1024,
      PG_IDLE_IN_TXN_TIMEOUT_MS = 300000,
+     SWEEP_DROP_BUDGET_SECONDS = 20,
      ZONKY_BASE = (
          'https://repo1.maven.org/maven2/io/zonky/test/postgres/'
          'embedded-postgres-binaries-'
@@ -36,6 +37,7 @@ glob logger = logging.getLogger(__name__),
          'PG_RUN_USERS',
          'PG_MAX_PRED_LOCKS_PER_TXN',
          'PG_IDLE_IN_TXN_TIMEOUT_MS',
+         'SWEEP_DROP_BUDGET_SECONDS',
          'pg_tuning_settings',
          'pinned_major',
          'dist_cache_dir',
@@ -77,6 +79,7 @@ obj PgRuntime {
         owner_path: str = '',
         kind: DbKind = DbKind.PROJECT,
         retention_days: int = 0,
+        owner_pid: int = 0,
         _bin_dir: (str | None) postinit,
         _proc: (any | None) postinit,
         _lock: threading.RLock postinit,
@@ -112,5 +115,6 @@ obj PgRuntime {
     def _wait_ready(timeout: float = 60.0) -> None;
     def _ensure_database -> None;
     def _reap_scratch(conn: any) -> int;
+    def _reap(conn: any, records: list[DbRecord]) -> int;
     def _sweep_on_start -> None;
 }

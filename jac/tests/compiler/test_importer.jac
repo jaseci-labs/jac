@@ -587,7 +587,7 @@ test "editing placement pins in jac.toml invalidates the module cache" {
         cache_path = artifact_cache_path(jac_file, JacProgram());
         cache_program = program_for(jac_file, JacProgram());
         try {
-            with cache_scope(cache_program.context_key, cache_program.options) {
+            with cache_scope(cache_program.options) {
                 assert cache_path.exists() , "JIR cache was not written";
                 assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
                     "cache must be newer than source for the mtime fast path to apply"

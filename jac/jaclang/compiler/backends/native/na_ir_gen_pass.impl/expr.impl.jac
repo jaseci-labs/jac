@@ -177,6 +177,20 @@ impl NaIRGenPass._current_fn_key -> (str | None) {
     return _fn.name if _fn is not None else None;
 }
 
+impl NaIRGenPass._mark_targets_unlowered(targets: list[uni.UniNode]) -> None {
+    pending = list(targets);
+    while pending {
+        target = pending.pop();
+        if isinstance(target, uni.Name) {
+            self._mark_local_unlowered(target.value);
+        } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+            pending.extend(target.values or []);
+        } elif isinstance(target, uni.UnaryExpr) {
+            pending.append(target.operand);
+        }
+    }
+}
+
 impl NaIRGenPass._mark_local_unlowered(name: str) -> None {
     _key = self._current_fn_key();
     if _key is None {
@@ -593,20 +607,28 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
         slot_type = alloca.pointee_type;
-        value = self._coerce_type(value, slot_type);
+        value = self._coerce_container_element(value, slot_type)
+            if slot_type == self.jacval_type
+            else self._coerce_type(value, slot_type);
         if isinstance(slot_type, ir.PointerType) {
             if not self._is_owned(value) {
                 self._emit_rc_retain(value, op="walrus", loc=_loc);
             }
             old_val = self.builder.load(alloca, name=f"{var_name}.old");
             self._emit_rc_release_typed(old_val, op="overwrite", loc=_loc);
+        } elif self._is_reference_type(slot_type) {
+            self._emit_slot_rebind(
+                alloca, value, owned=self._is_owned(value), op="walrus", loc=_loc
+            );
         }
         self.builder.store(value, alloca);
     } else {
         var_type = value.type;
         alloca = self._entry_alloca(var_type, var_name);
-        if isinstance(var_type, ir.PointerType) and not self._is_owned(value) {
-            self._emit_rc_retain(value, op="walrus", loc=_loc);
+        if self._is_reference_type(var_type) {
+            self._emit_slot_rebind(
+                alloca, value, owned=self._is_owned(value), op="walrus", loc=_loc
+            );
         }
         self.builder.store(value, alloca);
         self.local_vars[var_name] = alloca;
@@ -863,7 +885,11 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
         }
     }
     op = nd.ops[0].name if isinstance(nd.ops[0], uni.Token) else str(nd.ops[0]);
-    return self._codegen_compare_link(op, left, right, nd.left, nd.rights[0]);
+    result = self._codegen_compare_link(op, left, right, nd.left, nd.rights[0]);
+    if result is not None and isinstance(result.type, ir.IntType) {
+        return self._to_bool(result);
+    }
+    return result;
 }
 
 impl NaIRGenPass._codegen_compare_link(
@@ -888,10 +914,22 @@ impl NaIRGenPass._codegen_compare_link(
             _left_node = _left_node.expr;
         }
         if left.type == self.jacval_type and isinstance(_right_node, uni.Null) {
-            return self._jacval_is_none(left, _none_negate);
+            return self._compare_result(
+                self._jacval_is_none(left, _none_negate),
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_is_none"
+            );
         }
         if right.type == self.jacval_type and isinstance(_left_node, uni.Null) {
-            return self._jacval_is_none(right, _none_negate);
+            return self._compare_result(
+                self._jacval_is_none(right, _none_negate),
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_is_none"
+            );
         }
     }
 
@@ -917,7 +955,13 @@ impl NaIRGenPass._codegen_compare_link(
                 ir.Constant(ir.IntType(8), 0),
                 name="opt.cmp.none"
             );
-            return self.builder.zext(_ocmp, ir.IntType(64), name="opt.cmp.i64");
+            return self._compare_result(
+                self.builder.zext(_ocmp, ir.IntType(64), name="opt.cmp.i64"),
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_opt_none"
+            );
         }
     }
 
@@ -938,17 +982,22 @@ impl NaIRGenPass._codegen_compare_link(
             name="is.jv.pv.eq"
         );
         _jv_same = self.builder.and_(_jv_tag_eq, _jv_pv_eq, name="is.jv.same");
-        if op == Tok.KW_ISN {
-            return self.builder.not_(_jv_same, name="is.jv.diff");
-        }
-        return _jv_same;
+        return self._compare_result(
+            self.builder.not_(_jv_same, name="is.jv.diff")
+                if op == Tok.KW_ISN
+                else _jv_same,
+            _cmp_left_orig,
+            _cmp_right_orig,
+            release_operands,
+            "cmp_is_jacval"
+        );
     }
 
     if op == Tok.KW_IN or op == Tok.KW_NIN {
         result: ir.Value;
         is_not_in = op == Tok.KW_NIN;
-        left = self._str_norm(left);
-        right = self._str_norm(right);
+        left = self._str_view(left);
+        right = self._str_view(right);
         right = self._unwrap_opt_container(right);
         _in_key_nd = left_node.expr
             if isinstance(left_node, uni.CfgExpr)
@@ -997,12 +1046,13 @@ impl NaIRGenPass._codegen_compare_link(
                     );
                 }
 
-                if release_operands {
-                    self._release_owned_operands(
-                        left_coerced, _cmp_right_orig, op="cmp_in_dict"
-                    );
-                }
-                return result;
+                return self._compare_result(
+                    result,
+                    _cmp_left_orig,
+                    _cmp_right_orig,
+                    release_operands,
+                    "cmp_in_dict"
+                );
             }
         }
 
@@ -1037,12 +1087,13 @@ impl NaIRGenPass._codegen_compare_link(
                     );
                 }
 
-                if release_operands {
-                    self._release_owned_operands(
-                        left_coerced, _cmp_right_orig, op="cmp_in_set"
-                    );
-                }
-                return result;
+                return self._compare_result(
+                    result,
+                    _cmp_left_orig,
+                    _cmp_right_orig,
+                    release_operands,
+                    "cmp_in_set"
+                );
             }
         }
 
@@ -1139,12 +1190,13 @@ impl NaIRGenPass._codegen_compare_link(
                     result = self.builder.zext(result, i64, name="notin.i64");
                 }
 
-                if release_operands {
-                    self._release_owned_operands(
-                        left_coerced, _cmp_right_orig, op="cmp_in_list"
-                    );
-                }
-                return result;
+                return self._compare_result(
+                    result,
+                    _cmp_left_orig,
+                    _cmp_right_orig,
+                    release_operands,
+                    "cmp_in_list"
+                );
             }
         }
 
@@ -1195,7 +1247,13 @@ impl NaIRGenPass._codegen_compare_link(
                     );
                     result = self.builder.zext(result, i64, name="tuple.notin.i64");
                 }
-                return result;
+                return self._compare_result(
+                    result,
+                    _cmp_left_orig,
+                    _cmp_right_orig,
+                    release_operands,
+                    "cmp_in_tuple"
+                );
             }
         }
 
@@ -1241,7 +1299,13 @@ impl NaIRGenPass._codegen_compare_link(
                 );
                 result = self.builder.zext(result, i64, name="rin.notin.i64");
             }
-            return result;
+            return self._compare_result(
+                result,
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_in_range"
+            );
         }
 
         if self._is_bytes_value(left) and self._is_bytes_value(right) {
@@ -1254,7 +1318,13 @@ impl NaIRGenPass._codegen_compare_link(
                 );
                 result = self.builder.zext(result, i64, name="by.notin.i64");
             }
-            return result;
+            return self._compare_result(
+                result,
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_in_bytes"
+            );
         }
 
         if isinstance(right.type, ir.PointerType)
@@ -1298,7 +1368,13 @@ impl NaIRGenPass._codegen_compare_link(
                     );
                     result = self.builder.zext(result, i64, name="notin.i64");
                 }
-                return result;
+                return self._compare_result(
+                    result,
+                    _cmp_left_orig,
+                    _cmp_right_orig,
+                    release_operands,
+                    "cmp_in_str"
+                );
             }
             self.ctx.emit(
                 E5092,
@@ -1351,9 +1427,21 @@ impl NaIRGenPass._codegen_compare_link(
 
         if isinstance(left.type, ir.IntType)
             and isinstance(right.type, ir.PointerType) {
-            return ir.Constant(ir.IntType(1), 0);
+            return self._compare_result(
+                ir.Constant(ir.IntType(1), 0),
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_is"
+            );
         }
-        return self._to_bool(left);
+        return self._compare_result(
+            self._to_bool(left),
+            _cmp_left_orig,
+            _cmp_right_orig,
+            release_operands,
+            "cmp_is"
+        );
     }
     if op == Tok.KW_ISN {
         if isinstance(left.type, ir.PointerType)
@@ -1372,9 +1460,21 @@ impl NaIRGenPass._codegen_compare_link(
 
         if isinstance(left.type, ir.IntType)
             and isinstance(right.type, ir.PointerType) {
-            return ir.Constant(ir.IntType(1), 1);
+            return self._compare_result(
+                ir.Constant(ir.IntType(1), 1),
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_isn"
+            );
         }
-        return self._to_bool(left);
+        return self._compare_result(
+            self._to_bool(left),
+            _cmp_left_orig,
+            _cmp_right_orig,
+            release_operands,
+            "cmp_isn"
+        );
     }
     is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
         or isinstance(right.type, (ir.DoubleType, ir.FloatType));

@@ -735,6 +735,43 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " element types cannot be verified — use \"{type}[NodeType]\" or pass a"
          " concrete list of nodes instead"
      ),
+     E1136 = _err(
+         "E1136",
+         Category.TYPE,
+         "Connection {side} operand is \"{actual}\", but edge \"{edge_name}\" declares its"
+         " {side} endpoint as \"{declared}\"",
+         help="A declared endpoint is what lets a traversal through this edge infer"
+         " a node type instead of `any`, so a connection that contradicts it makes"
+         " that inference wrong. Connect nodes that match the declaration, or widen"
+         " the edge's endpoints."
+     ),
+     W2081 = _warn(
+         "W2081",
+         Category.TYPE,
+         "Connection {side} operand is \"{actual}\", which cannot be checked against"
+         " the {side} endpoint \"{declared}\" declared by edge \"{edge_name}\"",
+         help="Give the operand a concrete node type to have this verified, or"
+         " declare the edge's endpoints as `any --> any` if it is meant to accept"
+         " any node."
+     ),
+     E1137 = _err(
+         "E1137",
+         Category.TYPE,
+         "Traversal origin is \"{actual}\", but edge \"{edge_name}\" declares its {side}"
+         " endpoint as \"{declared}\", so this traversal can never match",
+         help="An edge only connects the node types it declares, so traversing it"
+         " from an unrelated node yields nothing. Start from a node that matches the"
+         " declaration, or widen the edge's endpoints."
+     ),
+     W2082 = _warn(
+         "W2082",
+         Category.TYPE,
+         "Traversal origin is \"{actual}\", which cannot be checked against the {side}"
+         " endpoint \"{declared}\" declared by edge \"{edge_name}\"",
+         help="Give the origin a concrete node type to have this verified, or declare"
+         " the edge's endpoints as `any --> any` if it is meant to start from any"
+         " node."
+     ),
      E1119 = _err(
          "E1119",
          Category.TYPE,
@@ -913,6 +950,37 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " not checked here, since another toolchain resolves it.",
          blocks_codegen=True
      ),
+     E1135 = _err(
+         "E1135",
+         Category.TYPE,
+         "Cannot assign to '{name}': it is declared {kind}",
+         help="A binding annotated with 'Final' (or a 'readonly' member of an"
+         " imported TypeScript interface) can only be set at its declaration,"
+         " or in the 'init'/'postinit' of the object that declares it when the"
+         " declaration has no initializer."
+     ),
+     E1138 = _err(
+         "E1138",
+         Category.IMPORT,
+         "Module '{module}' is not installed, but '{package}' is declared in jac.toml",
+         help="The project declares '{package}' as a dependency, so this import"
+         " is expected to resolve, but no installed module named '{module}' was"
+         " found. Every name imported from it is typed Unknown, so nothing that"
+         " flows from it was type-checked. Run 'jac install' (or install"
+         " '{package}' into the environment jac uses) and check again. An"
+         " import inside a try that catches ImportError stays a warning, since"
+         " that is how an optional dependency is written."
+     ),
+     E1139 = _err(
+         "E1139",
+         Category.IMPORT,
+         "A test file imports from its own module '{module}'",
+         help="A .test.jac runs inside the namespace of the module it sits"
+         " beside, so the names of '{module}' are already in scope here."
+         " Importing them re-enters the module while it is still initializing,"
+         " which fails at run time with 'cannot import name ... from partially"
+         " initialized module'. Remove the import and use the names directly."
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
@@ -1082,6 +1150,40 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="take(place) requires an optional local or field and leaves None."
          " swap(&mut a, &mut b) requires two writable places of the same type."
          " Use pop() to move an owned container element out."
+     ),
+     E1320 = _err(
+         "E1320",
+         Category.SEMANTIC,
+         "Cannot assign '{field}' through a shared borrow of '{name}'",
+         help="A `&` borrow is read-only. Take the borrow with `&mut`, or assign"
+         " through the owner directly."
+     ),
+     E1321 = _err(
+         "E1321",
+         Category.SEMANTIC,
+         "Cannot write '{field}' while the borrow '{name}' reads through it",
+         help="'{name}' was reached through a '{field}' field or element, and a"
+         " borrow does not keep its referent alive. Writing '{field}' on any"
+         " object while '{name}' is still used could release what it points at."
+         " Finish using '{name}' first, or hold it in an ordinary (owning) local."
+     ),
+     E1322 = _err(
+         "E1322",
+         Category.SEMANTIC,
+         "Call to '{callee}' may write '{field}' while the borrow '{name}' reads through it",
+         help="'{name}' was reached through '{field}', and '{callee}' may write"
+         " that field on some object (or the compiler cannot tell what it"
+         " writes), which could release what '{name}' points at. Finish using"
+         " '{name}' before the call, or hold it in an ordinary (owning) local."
+     ),
+     E1323 = _err(
+         "E1323",
+         Category.SEMANTIC,
+         "Borrow '{name}' must start at a parameter, `self`, an `own` value or another borrow",
+         help="A borrow does not keep its referent alive, so its starting point"
+         " must outlive it. An ordinary local or a module global can be released"
+         " while the borrow is still used. Borrow from the parameter the value"
+         " came from, or keep an ordinary (owning) local instead of a borrow."
      ),
      W1310 = _warn(
          "W1310",
@@ -1291,6 +1393,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}'"
      ),
+     E2086 = _err(
+         "E2086",
+         Category.SEMANTIC,
+         "Edge '{name}' declares no endpoints, so every traversal through it widens to 'any'",
+         help="Name the node types this edge connects: `edge {name}: Src --> Tgt {{}}`."
+         " To keep accepting any node, say so -- `any --> any` preserves the gradual"
+         " behaviour exactly, and `Node --> Node` asks for a node without naming which."
+     ),
      E2009 = _err(
          "E2009",
          Category.SEMANTIC,
@@ -1305,10 +1415,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2011", Category.SEMANTIC, "Parameter count mismatch for ability {name}."
      ),
      E2012 = _err("E2012", Category.SEMANTIC, "From the declaration of {name}."),
-     W2013 = _warn(
-         "W2013",
+     E2013 = _err(
+         "E2013",
          Category.SEMANTIC,
-         "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'."
+         "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'.",
+         help="An `impl` must use the same parameter names as its declaration: callers bind keyword arguments by the declared names, and the server, bridge stubs and tool schemas are generated from the declaration."
      ),
      W2014 = _warn(
          "W2014",
@@ -1516,6 +1627,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "'await' is only valid inside an 'async' function or ability",
          help="Mark the enclosing function or ability 'async' (e.g. `async def` or `async can`) so it compiles to a coroutine capable of `await`; otherwise remove the `await` and call it synchronously."
+     ),
+     E2087 = _err(
+         "E2087",
+         Category.SEMANTIC,
+         "'{name}' is declared but never implemented",
+         help="A declaration without a body needs an `impl {name} { ... }` in this"
+         " module or one of its annexes. Without one the call returns the return"
+         " type's default value. Write the implementation, mark the declaration"
+         " `abst` if a subclass is meant to supply it, or delete the declaration."
      ),
      W3001 = _warn(
          "W3001",
@@ -1971,7 +2091,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5082",
          Category.CODEGEN,
          "Client code imports '{name}' from '{module}', but '{name}' has no client-side presence",
-         help="A plain import into client code can only reference client declarations; server `def:pub` endpoints bridge automatically over RPC. Make '{name}' a `def:pub` endpoint, mark it (or its module) client, or move it into client code."
+         help="A plain import into client code can only reference client declarations or exposed server endpoints. `def:protect` / `walker:protect` (authenticated) and `def:pub` / `walker:pub` (anonymous) bridge automatically over RPC; a plain or `:priv` declaration is private to its server and never bridges. Mark '{name}' `:protect` or `:pub`, mark it (or its module) client, or move it into client code."
      ),
      E5085 = _err(
          "E5085",
@@ -2078,8 +2198,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5106 = _err(
          "E5106",
          Category.CODEGEN,
-         "App '{consumer}' bridges to '{name}', which is not a pub element of app '{provider}'",
-         help="An app's bridge surface is its walkers and its `def:pub` functions; everything else is private to the app's own server. Make '{name}' a walker or mark it `:pub` in app '{provider}' to expose it, or move it into shared code if both apps need it in-process.",
+         "App '{consumer}' bridges to '{name}', which is private to app '{provider}'",
+         help="An app's bridge surface is its exposed declarations: `def:protect` / `walker:protect` (authenticated) and `def:pub` / `walker:pub` (anonymous). Plain and `:priv` declarations are private to the app's own server. Mark '{name}' `:protect` or `:pub` in app '{provider}' to expose it, or move it into shared code if both apps need it in-process.",
          blocks_codegen=True
      ),
      E5089 = _err(

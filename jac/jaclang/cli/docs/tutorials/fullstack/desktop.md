@@ -19,9 +19,11 @@ macOS, WebView2 on Windows) or Chromium Embedded Framework (CEF).
 >
 > - Completed: [Project Setup](setup.md) - you have a working `jac run` web app
 > - The full-stack client and desktop framework ships with `jaclang` core -- nothing extra to install
-> - On Linux, the WebKitGTK system libraries: a bundled helper script offers to
->   install them on first build. To install them manually on Debian/Ubuntu:
+> - On Linux, the WebKitGTK system libraries: Jac offers to install them on the
+>   first build. To install them manually on Debian/Ubuntu:
 >   `sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev`
+> - On macOS, the Xcode Command Line Tools (`xcode-select --install`): the
+>   WebKit framework they ship is the webview.
 > - **No Rust toolchain required.**
 
 ---
@@ -47,6 +49,7 @@ Then add a `[desktop]` section to your `jac.toml` (all fields optional):
 [desktop]
 name = "my-app"
 engine = "native"  # "native" or "cef"
+icon = "assets/icon.png"  # .icns or .png; the macOS bundle carries it
 
 [desktop.window]
 title = "My App"
@@ -71,17 +74,37 @@ This:
    port and renders it in the OS webview,
 3. compiles the host with `jac build --native` into a single binary.
 
-The output lands in `.jac/client/desktop/`:
+The output lands in `.jac/client/desktop/`. On Linux:
 
 ```
 .jac/client/desktop/
-  my-app          # the native binary
-  dist/           # the served cl bundle
-  libwebview.so   # the OS-webview wrapper (resolved via $ORIGIN)
+  my-app             # the native binary
+  my-app-launch.sh   # launcher that wires in the project venv
+  app.jab            # the sealed app image the host serves (embedded backend)
+  dist/              # the served cl bundle
+  libwebview.so      # the WebKitGTK wrapper (resolved via $ORIGIN)
 ```
 
-The directory is relocatable - the binary finds its sibling `dist/` and
-`libwebview.so` relative to itself.
+On macOS the same pieces form an application bundle, so Finder and the Dock
+treat it as an app:
+
+```
+.jac/client/desktop/
+  my-app-launch.sh
+  my-app.app/
+    Contents/
+      Info.plist              # from [desktop] name, identifier and version
+      MacOS/my-app            # the native binary
+      MacOS/libwebview.dylib  # the WKWebView wrapper (resolved via @loader_path)
+      Resources/app.jab       # embedded backend only
+      Resources/dist/
+      Resources/AppIcon.icns  # when [desktop] icon is set
+```
+
+The directory is relocatable: the binary finds `dist/`, the image and the
+webview library relative to itself. A macOS app keeps its graph and session
+under `~/Library/Application Support/<identifier>`, since a bundle stays
+read-only; Linux keeps them beside the binary. `JAC_DATA_PATH` overrides both.
 
 To build with Chromium Embedded Framework instead of the OS webview, set
 `engine = "cef"`:
@@ -114,7 +137,7 @@ HMR, so `jac run --dev` needs `engine = "native"`). Or run the built binary
 directly:
 
 ```bash
-(cd .jac/client/desktop && ./my-app)
+(cd .jac/client/desktop && ./my-app-launch.sh)   # macOS: `open my-app.app` works too
 ```
 
 A native window opens showing your `cl` UI, served in-process - no localhost you

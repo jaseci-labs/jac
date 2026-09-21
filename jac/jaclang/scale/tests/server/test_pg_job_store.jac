@@ -18,12 +18,7 @@ import from jaclang.data.store { PgStore }
 import from jaclang.scale.scheduler.scheduler { PgJobStore }
 import from jaclang.scale.webhook.webhook { ApiKeyManager }
 
-glob _holder: dict[str, any] = {},
-     _DOCS_DDL = (
-         'CREATE TABLE IF NOT EXISTS jac_docs ('
-         'collection text NOT NULL, id text NOT NULL, doc jsonb NOT NULL, '
-         'PRIMARY KEY (collection, id))'
-     );
+glob _holder: dict[str, any] = {};
 
 
 def _store -> (PgStore | None) {
@@ -32,7 +27,7 @@ def _store -> (PgStore | None) {
             _holder['rt'] = PgRuntime(data_dir=mkdtemp(prefix='jacjs_') + '/data');
         }
         store = PgStore(conninfo=_holder['rt'].ensure());
-        store.rows(_DOCS_DDL, {});
+        store.ensure_schema({});
         return store;
     } except Exception as e {
         print(f"[skip] embedded postgres unavailable: {e}");
@@ -188,4 +183,127 @@ test "api key create, list, resolve shape, and revoke over SQL" {
     refused_error = refused.error;
     assert refused_error is not None , 'refusal must carry an error';
     assert refused_error.code == 'FORBIDDEN';
+}
+
+
+def _active_for(store: PgStore, collection: str, creator: str) -> int {
+    rows = store.rows(
+        "SELECT count(*) FROM jac_docs WHERE collection = :c "
+        "AND doc->>'status' = 'active' AND doc->>'created_by' = :u",
+        {'c': collection, 'u': creator}
+    );
+    return int(rows[0][0]);
+}
+
+
+test "concurrent creates for one account stay under the cap" {
+    # Two threads on one pod share its job store, a third is another pod.
+    # The count and the insert must be one decision per account, on a
+    # connection nothing else writes through, or two of them fit under a cap of 1.
+    store_a = _store();
+    if store_a is None {
+        return;
+    }
+    store_b = _store();
+    pod_a = PgJobStore(store=store_a, _collection='jobs_quota');
+    pod_b = PgJobStore(store=store_b, _collection='jobs_quota');
+    try {
+        for rnd in range(8) {
+            creator = f"racer-{rnd}";
+            gate = threading.Barrier(3);
+            won: list[bool] = [];
+            errors: list[str] = [];
+            guard = threading.Lock();
+            def create(js: PgJobStore, n: int) {
+                gate.`wait();
+                try {
+                    ok = js.insert_within_quota(
+                        _job(f"q-{rnd}-{n}", created_by=creator), creator, 1
+                    );
+                    with guard {
+                        won.append(ok);
+                    }
+                } except Exception as e {
+                    with guard {
+                        errors.append(f"{type(e).__name__}: {e}");
+                    }
+                }
+            }
+            workers = [
+                threading.Thread(target=create, args=(pod_a, 0)),
+                threading.Thread(target=create, args=(pod_a, 1)),
+                threading.Thread(target=create, args=(pod_b, 2))
+            ];
+            for t in workers {
+                t.start();
+            }
+            for t in workers {
+                t.join();
+            }
+            assert errors == [] , errors;
+            assert sorted(won) == [False, False, True] , f"round {rnd}: {won}";
+            assert _active_for(store_a, 'jobs_quota', creator) == 1;
+        }
+    } finally {
+        pod_a.close();
+        pod_b.close();
+    }
+}
+
+
+test "a quota write commits on its own, whatever the shared connection is doing" {
+    # The shared store carries other traffic. A transaction left open on it
+    # must neither absorb the quota write nor take it down on rollback.
+    shared = _store();
+    if shared is None {
+        return;
+    }
+    js = PgJobStore(store=shared, _collection='jobs_own_txn');
+    try {
+        shared.begin();
+        assert js.insert_within_quota(_job('own-1', created_by='solo'), 'solo', 5);
+        shared.rollback();
+        assert js.find_active_one('own-1') is not None , "the rollback took the job with it";
+    } finally {
+        js.close();
+    }
+}
+
+
+test "a creator's job cap counts the jobs in this service only" {
+    # Services share one collection. Counting a creator's rows across all of
+    # them let a job in one service use up the cap in another.
+    store = _store();
+    if store is None {
+        return;
+    }
+    orders = PgJobStore(store=store, _collection='jobs_svc_quota', _service='orders');
+    billing = PgJobStore(store=store, _collection='jobs_svc_quota', _service='billing');
+    try {
+        assert orders.insert_within_quota(
+            _job('o-1', created_by='cap-user', service='orders'), 'cap-user', 1
+        );
+        assert billing.insert_within_quota(
+            _job('b-1', created_by='cap-user', service='billing'), 'cap-user', 1
+        ) , "a job in orders must not use billing's cap";
+        assert not orders.insert_within_quota(
+            _job('o-2', created_by='cap-user', service='orders'), 'cap-user', 1
+        );
+        assert not billing.insert_within_quota(
+            _job('b-2', created_by='cap-user', service='billing'), 'cap-user', 1
+        );
+
+        # A row written before jobs carried a service is visible to every
+        # service's scoped reads, so it counts against every service's cap.
+        orders.insert(_job('legacy-1', created_by='old-user'));
+        assert not orders.insert_within_quota(
+            _job('o-3', created_by='old-user', service='orders'), 'old-user', 1
+        );
+        assert not billing.insert_within_quota(
+            _job('b-3', created_by='old-user', service='billing'), 'old-user', 1
+        );
+    } finally {
+        orders.close();
+        billing.close();
+    }
 }

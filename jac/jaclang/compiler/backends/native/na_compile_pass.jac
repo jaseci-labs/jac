@@ -89,7 +89,6 @@ walker NativeCompilePass {
         target_machine: TargetMachine
     ) -> None;
 
-    def _jit_load_clib(lib_path: str) -> bool;
     def _link_osp_kernel(main_mod: ModuleRef) -> None;
     def _references_undefined_osp_kernel(main_mod: ModuleRef) -> bool;
     def _link_fmt_kernel(main_mod: ModuleRef) -> None;
@@ -98,3 +97,5 @@ walker NativeCompilePass {
     def _references_undefined_region_kernel(main_mod: ModuleRef) -> bool;
     def _module_defines(main_mod: ModuleRef, name: str) -> bool;
 }
+
+def load_jit_clib(lib_path: str) -> bool;

@@ -7,11 +7,11 @@ node Place {
     has name: str = "x";
 }
 
-edge MyEdge {
+edge MyEdge : Place --> Place {
     has weight: int = 1;
 }
 
-edge OtherEdge {
+edge OtherEdge : any --> any {
     has tag: str = "t";
 }
 

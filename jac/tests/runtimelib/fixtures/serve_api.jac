@@ -15,7 +15,7 @@ node User {
 }
 
 # Define a walker to create tasks
-walker CreateTask {
+walker:protect CreateTask {
     has title: str,
         priority: int = 1;
 
@@ -30,7 +30,7 @@ walker CreateTask {
 }
 
 # Define a walker to list all tasks
-walker ListTasks {
+walker:protect ListTasks {
     has tasks: list[any] = [];
 
     can collect with Root entry {
@@ -45,7 +45,7 @@ walker ListTasks {
 }
 
 # Define a walker to List completed Tasks
-walker ListCompletedTasks {
+walker:protect ListCompletedTasks {
     has completed_tasks: list[any] = [];
 
     can collect with Root entry {
@@ -60,14 +60,14 @@ walker ListCompletedTasks {
     }
 }
 
-walker GetTask {
+walker:protect GetTask {
     can fetch with Task entry {
         report here;
     }
 }
 
 # Define a walker to mark tasks as complete
-walker CompleteTask {
+walker:protect CompleteTask {
     has title: str;
 
     can search with Root entry {
@@ -83,7 +83,7 @@ walker CompleteTask {
 }
 
 """Function to add two numbers together."""
-def add_numbers(a: int, b: int) -> int {
+def:protect add_numbers(a: int, b: int) -> int {
     return a + b;
 }
 

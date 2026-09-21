@@ -205,6 +205,17 @@ impl JcirGenPass.exit_type_param with TypeParam exit {
     );
 }
 
+impl JcirGenPass._distinct_base_ast(nd: TypeAlias) -> (CgNode | None) {
+    base = nd.distinct_base;
+    if base is None {
+        return None;
+    }
+    if base in self._get_builtin_names() {
+        self.builtin_imports.add(base);
+    }
+    return self.name_load(base, nd);
+}
+
 impl JcirGenPass.exit_type_alias with TypeAlias exit {
     type_param_asts: list[CgNode] = [];
     for tp in here.type_params {
@@ -225,7 +236,7 @@ impl JcirGenPass.exit_type_alias with TypeAlias exit {
                         [here.name.sym_name, self.nod('Store', [], [])]
                     )
                 ],
-                value_ast
+                self._distinct_base_ast(here) or value_ast
             ]
         );
         self.set_out(here, [assign]);
@@ -465,11 +476,7 @@ impl JcirGenPass.exit_import with Import exit {
             )
         );
     } elif not here.from_loc {
-        mod_paths = [
-            k
-            for k in here.kid
-            if isinstance(k, ModulePath)
-        ];
+        mod_paths = [here->:Kid:->[?:ModulePath]];
         names_list = [x for p in mod_paths for x in self.outs(p)]
             if mod_paths
             else [x for item in here.items for x in self.outs(item)];

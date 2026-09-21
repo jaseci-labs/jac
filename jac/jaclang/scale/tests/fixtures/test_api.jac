@@ -3,15 +3,15 @@
 # ============================================================================
 # Test Functions
 # ============================================================================
-def add_numbers(a: int, b: int) -> int {
+def:protect add_numbers(a: int, b: int) -> int {
     return a + b;
 }
 
-def greet(name: str = "World") -> str {
+def:protect greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
-def multiply(x: int, y: int) -> int {
+def:protect multiply(x: int, y: int) -> int {
     return x * y;
 }
 
@@ -35,7 +35,7 @@ node TaskList {
 # ============================================================================
 # Test Walkers
 # ============================================================================
-walker CreateTask {
+walker:protect CreateTask {
     has title: str,
         priority: int = 1;
 
@@ -45,14 +45,14 @@ walker CreateTask {
     }
 }
 
-walker ListTasks {
+walker:protect ListTasks {
     can list with Root entry {
         tasks = [-->];
         report tasks;
     }
 }
 
-walker CompleteTask {
+walker:protect CompleteTask {
     has title: str;
 
     can complete with Root entry {
@@ -69,13 +69,13 @@ walker CompleteTask {
     }
 }
 
-walker GetTask {
+walker:protect GetTask {
     can get with Task entry {
         report here;
     }
 }
 
-walker:priv PrivateCreateTask {
+walker:protect PrivateCreateTask {
     has title: str,
         priority: int = 1;
 
@@ -125,7 +125,7 @@ walker:pub WalkerStream {
 
 import from typing { Generator }
 # Streaming function test
-def:pub FunctionStream(count: int = 3) -> None {
+def:pub FunctionStream(count: int = 3) {
     import time;
     def stream -> Generator {
         for i in range(count) {
@@ -140,7 +140,7 @@ def:pub FunctionStream(count: int = 3) -> None {
 import asyncio;
 
 """Async walker that creates a task with simulated async delay."""
-async walker AsyncCreateTask {
+async walker:protect AsyncCreateTask {
     has title: str,
         delay_ms: int = 100;
 
@@ -161,7 +161,7 @@ async walker AsyncCreateTask {
 import from jaclang.server.serving.datatypes { UploadFile }
 
 """Walker that handles single file upload."""
-walker UploadSingleFile {
+walker:protect UploadSingleFile {
     has myfile: UploadFile,
         description: str = "";
 
@@ -176,7 +176,7 @@ walker UploadSingleFile {
 }
 
 """Walker with file upload that requires authentication (private by default)."""
-walker SecureFileUpload {
+walker:protect SecureFileUpload {
     has document: UploadFile,
         notes: str = "";
 
@@ -205,13 +205,72 @@ walker:pub PublicFileUpload {
     }
 }
 
+"""Walker that takes several files under one field name."""
+walker:protect UploadManyFiles {
+    has files: list[UploadFile];
+
+    can process with Root entry {
+        report {"filenames": [f.filename for f in self.files]};
+    }
+}
+
+"""Walker whose file list may be empty."""
+walker:protect UploadManyFilesOptional {
+    has files: list[UploadFile] = [];
+
+    can process with Root entry {
+        report {"count": len(self.files)};
+    }
+}
+
+"""Walker whose single file may be absent."""
+walker:protect UploadOptionalFile {
+    has attachment: UploadFile | None = None;
+
+    can process with Root entry {
+        report {
+            "filename": self.attachment.filename
+                if self.attachment is not None
+                else None
+        };
+    }
+}
+
+"""Walker whose field takes a file or a plain string."""
+walker:protect UploadNoteOrText {
+    has note: UploadFile | str;
+
+    can process with Root entry {
+        report {
+            "kind": "file" if isinstance(self.note, UploadFile) else "text",
+            "value": self.note.filename
+                if isinstance(self.note, UploadFile)
+                else self.note
+        };
+    }
+}
+
+"""Walker whose field takes several files or a plain string."""
+walker:protect UploadDocsOrText {
+    has docs: list[UploadFile] | str;
+
+    can process with Root entry {
+        report {
+            "files": [f.filename for f in self.docs]
+                if isinstance(self.docs, list)
+                else None,
+            "text": self.docs if isinstance(self.docs, str) else None
+        };
+    }
+}
+
 # ============================================================================
 # Webhook Walkers
 # ============================================================================
 """Test 1: Webhook walker with multiple fields using @restspec(protocol=APIProtocol.WEBHOOK).
 This walker should be accessible ONLY via /webhook/PaymentReceived endpoint."""
 @restspec(protocol=APIProtocol.WEBHOOK)
-walker PaymentReceived {
+walker:protect PaymentReceived {
     has payment_id: str,
         order_id: str,
         amount: float,
@@ -232,7 +291,7 @@ walker PaymentReceived {
 
 """Test 2: Normal walker without @restspec(protocol=APIProtocol.WEBHOOK) (defaults to HTTP).
 This walker should be accessible via /walker/NormalPayment endpoint, NOT /webhook/."""
-walker NormalPayment {
+walker:protect NormalPayment {
     has payment_id: str,
         order_id: str,
         amount: float,
@@ -255,7 +314,7 @@ walker NormalPayment {
 """Test 3: Minimal webhook walker with ONLY @restspec(protocol=APIProtocol.WEBHOOK).
 This walker should be accessible ONLY via /webhook/MinimalWebhook endpoint."""
 @restspec(protocol=APIProtocol.WEBHOOK)
-walker MinimalWebhook {
+walker:protect MinimalWebhook {
     can process with Root entry {
         report {
             "status": "received",
@@ -301,7 +360,7 @@ async walker:pub MinimalWebSocket {
 """Test 3: Private WebSocket walker (requires JWT auth).
 This walker requires token authentication - no `: pub` modifier."""
 @restspec(protocol=APIProtocol.WEBSOCKET)
-async walker PrivateWebSocket {
+async walker:protect PrivateWebSocket {
     has message: str = "";
 
     async can process with Root entry {
@@ -334,7 +393,7 @@ async walker:pub BroadcastChat {
 """Test 5: Private WebSocket walker with broadcasting (auth + broadcast).
 Authenticated chat room where all messages are broadcast to authenticated users."""
 @restspec(protocol=APIProtocol.WEBSOCKET, broadcast=True)
-async walker PrivateBroadcastChat {
+async walker:protect PrivateBroadcastChat {
     has message: str,
         room: str = "general";
 
@@ -366,7 +425,7 @@ def:pub ws_echo(message: str, client_id: str = "anonymous") -> dict[str, any] {
 
 """Public streaming WebSocket function; yields chunk frames over the socket."""
 @restspec(protocol=APIProtocol.WEBSOCKET)
-def:pub ws_stream(count: int = 3) -> None {
+def:pub ws_stream(count: int = 3) {
     def stream -> Generator {
         for i in range(count) {
             yield {"index": i, "label": f"chunk-{i}"};
@@ -377,7 +436,7 @@ def:pub ws_stream(count: int = 3) -> None {
 
 """Private WebSocket function (requires JWT auth); no `: pub` modifier."""
 @restspec(protocol=APIProtocol.WEBSOCKET)
-def ws_private_echo(message: str = "") -> dict[str, any] {
+def:protect ws_private_echo(message: str = "") -> dict[str, any] {
     return {"status": "success", "message": message, "authenticated": True};
 }
 
@@ -432,14 +491,14 @@ def static_date_func {
 }
 
 @schedule(trigger=ScheduleTrigger.DYNAMIC)
-walker DynamicScheduledWalker {
+walker:protect DynamicScheduledWalker {
     can run with Root entry {
         execution_log.append("dynamic-walker");
     }
 }
 
 @schedule(trigger=ScheduleTrigger.DYNAMIC)
-def dynamic_scheduled_func {
+def:protect dynamic_scheduled_func {
     execution_log.append("dynamic-func");
 }
 
@@ -449,12 +508,12 @@ walker:pub NormalWalker {
     }
 }
 
-def normal_func -> dict[str, any] {
+def:protect normal_func -> dict[str, any] {
     return {"message": "normal function endpoint"};
 }
 
 # Exposes the in-memory execution_log so tests can verify scheduled tasks
 # actually fired (not just that they were registered).
-def get_execution_log -> dict[str, any] {
+def:protect get_execution_log -> dict[str, any] {
     return {"log": list(execution_log)};
 }

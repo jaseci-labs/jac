@@ -7,7 +7,7 @@ node N {
     has v: int = 0;
 }
 
-edge E {
+edge E : any --> any {
     has weight: int = 0;
 }
 

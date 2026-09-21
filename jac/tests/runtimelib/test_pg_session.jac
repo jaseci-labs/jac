@@ -26,7 +26,7 @@ node SItem {
     has tag: str = "";
 }
 
-edge SRel {
+edge SRel: any --> any {
     has w: int = 0;
 }
 

@@ -8,7 +8,7 @@ import from contextlib { suppress }
 glob logger: logging.Logger = logging.getLogger(__name__);
 import from enum { StrEnum }
 import from io { BytesIO }
-import from typing { IO, get_type_hints }
+import from typing { IO, get_args, get_origin, get_type_hints }
 
 import from jaclang.byllm._optdeps.pillow { PILImageCls, open_image }
 import from jaclang.byllm._optdeps.litellm { LiteLLMMessage }
@@ -93,13 +93,16 @@ obj MockRawResponse {
     has content: str = "",
         tool_calls: list[MockToolCall] = [],
         usage: dict[str, any] | None = None,
-        finish_reason: str = "";
+        finish_reason: str = "",
+        model: str = "",
+        unnamed_fragments: bool = False;
 }
 
 obj MockError {
     has error: Exception,
         content: str = "",
-        after: int = 0;
+        after: int = 0,
+        reply: object = None;
 }
 
 obj CompletionResult {
@@ -167,6 +170,17 @@ obj Video(Media) {
     def postinit -> None;
     def load_frames -> None;
     def to_dict -> list[dict[str, any]];
+}
+
+
+def image_resp_kind(resp_type: type | None) -> str {
+    if resp_type is Image {
+        return "one";
+    }
+    if get_origin(resp_type) is list and get_args(resp_type) == (Image, ) {
+        return "many";
+    }
+    return "";
 }
 
 

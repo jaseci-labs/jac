@@ -19,7 +19,7 @@ walker MyWalker {
     pass
 }
 
-edge MyEdge {
+edge MyEdge : any --> any {
     pass
 }
 

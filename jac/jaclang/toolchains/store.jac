@@ -12,7 +12,8 @@ import from http.client { HTTPResponse }
 import from urllib.request { Request, urlopen }
 import from urllib.parse { urlsplit }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+import from jaclang.cache.registry { bucket, maybe_sweep }
+import from jaclang.cache.locking { FileLock }
 
 obj Artifact {
     has name: str,
@@ -40,66 +41,32 @@ obj Artifact {
     }
 }
 
-def cache_root -> Path {
-    custom = os.environ.get("JAC_TOOLCHAIN_DIR", "");
-    return Path(custom).expanduser().resolve()
-        if custom
-        else get_jir_cache_dir().parent / "toolchains";
-}
-
 def offline -> bool {
     return os.environ.get("JAC_OFFLINE", "").lower() in ["1", "true", "yes"];
 }
 
-obj InstallLock {
-    has path: Path,
-        handle: int = -1;
-
+obj InstallLock(FileLock) {
     def __enter__ -> InstallLock {
-        self.path.parent.mkdir(parents=True, exist_ok=True);
-        self.handle = os.open(str(self.path), os.O_CREAT | os.O_RDWR, 0o600);
-        try {
-            if os.name == "nt" and os.fstat(self.handle).st_size == 0 {
-                os.write(self.handle, b"0");
+        start = time.monotonic();
+        announced = False;
+        while not self.acquire() {
+            if not announced {
+                console.print(
+                    f"Waiting for another build to finish using {self.path.name}",
+                    style="muted"
+                );
+                announced = True;
             }
-            start = time.monotonic();
-            announced = False;
-            while True {
-                try {
-                    if os.name == "nt" {
-                        import msvcrt;
-                        os.lseek(self.handle, 0, 0);
-                        msvcrt.locking(self.handle, msvcrt.LK_NBLCK, 1);
-                    } else {
-                        import fcntl;
-                        fcntl.flock(self.handle, fcntl.LOCK_EX | fcntl.LOCK_NB);
-                    }
-                    break;
-                } except OSError {
-                    if not announced {
-                        console.print(
-                            f"Waiting for another build to finish using {self.path.name}",
-                            style="muted"
-                        );
-                        announced = True;
-                    }
-                    if time.monotonic() - start > 1800 {
-                        raise TimeoutError(f"Timed out waiting for {self.path}");
-                    }
-                    time.sleep(0.1);
-                }
+            if time.monotonic() - start > 1800 {
+                raise TimeoutError(f"Timed out waiting for {self.path}");
             }
-        } except Exception {
-            os.close(self.handle);
-            self.handle = -1;
-            raise;
+            time.sleep(0.1);
         }
         return self;
     }
 
     def __exit__(_exc_type: object, _exc_value: object, _traceback: object) {
-        os.close(self.handle);
-        self.handle = -1;
+        self.release();
     }
 }
 
@@ -113,12 +80,16 @@ def file_digest(path: Path, algorithm: str = "sha256") -> str {
     return digest.hexdigest();
 }
 
-def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
+def fetch(
+    artifact: Artifact,
+    destination: Path | None = None,
+    bucket_name: str = "toolchains-downloads"
+) -> Path {
     artifact.key();
     if destination is None {
-        destination = cache_root()
-            / "downloads"
+        destination = bucket("toolchains-downloads").path()
             / f"{artifact.algorithm}-{artifact.digest}";
+        bucket_name = "toolchains-downloads";
     }
     with InstallLock(destination.with_suffix(".lock")) {
         if destination.is_file()
@@ -126,6 +97,7 @@ def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
             console.print(
                 f"Using cached {artifact.name} {artifact.version}", style="muted"
             );
+            bucket(bucket_name).note_hit(destination);
             return destination;
         }
         if offline() {
@@ -136,7 +108,7 @@ def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
         if not allowed_url(artifact.url) {
             raise ValueError("Toolchain downloads require HTTPS");
         }
-        part = destination.with_suffix(".part");
+        part = destination.with_name(f"{destination.name}.tmp.{os.getpid()}");
         for attempt in range(3) {
             console.print(
                 f"Downloading {artifact.name} {artifact.version} ({artifact.platform})"
@@ -191,6 +163,7 @@ def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
                     f"Verified {artifact.name}: {format_size(received)}",
                     style="success"
                 );
+                maybe_sweep(bucket_name);
                 return destination;
             } except Exception {
                 part.unlink(missing_ok=True);
@@ -243,13 +216,12 @@ def extract(archive: Path, destination: Path) {
 
 def install(artifact: Artifact, required: str) -> Path {
     key = artifact.key();
-    destination = cache_root() / "installed" / key;
+    destination = bucket("toolchains-installed").path() / key;
     if Path(required).is_absolute() or ".." in Path(required).parts {
         raise ValueError("Installation marker must be a relative path");
     }
     with InstallLock(destination.with_suffix(".lock")) {
-        if (destination / ".jac-install.json").is_file()
-            and (destination / required).exists() {
+        if (destination / required).exists() and slot_installed(destination) {
             console.print(
                 f"Using {artifact.name} {artifact.version} at {destination}",
                 style="muted"
@@ -259,7 +231,7 @@ def install(artifact: Artifact, required: str) -> Path {
         archive = fetch(artifact);
         destination.parent.mkdir(parents=True, exist_ok=True);
         with tempfile.TemporaryDirectory(
-            prefix=".install-", dir=destination.parent
+            prefix=f".tmp.{os.getpid()}.", dir=destination.parent
         ) as tmp {
             staged = Path(tmp) / "payload";
             console.print(
@@ -269,7 +241,7 @@ def install(artifact: Artifact, required: str) -> Path {
             if not (staged / required).exists() {
                 raise RuntimeError(f"{artifact.name} archive is missing {required}");
             }
-            (staged / ".jac-install.json").write_text(
+            (staged / _marker("toolchains-installed")).write_text(
                 json.dumps(
                     {
                         "name": artifact.name,
@@ -288,8 +260,52 @@ def install(artifact: Artifact, required: str) -> Path {
             staged.replace(destination);
         }
         console.print(f"Ready: {artifact.name} {artifact.version}", style="success");
+        maybe_sweep("toolchains-installed");
     }
     return destination;
+}
+
+def _marker(bucket_name: str) -> str {
+    return bucket(bucket_name).policy.markers[0];
+}
+
+def build_slot(name: str, host: str, digest: str) -> Path {
+    return bucket("toolchains-build").path() / name / host / digest;
+}
+
+def slot_ready(slot: Path) -> bool {
+    if not (slot / _marker("toolchains-build")).is_file() {
+        return False;
+    }
+    bucket("toolchains-build").note_hit(slot);
+    return True;
+}
+
+def publish_build_slot(staged: Path, slot: Path) {
+    (staged / _marker("toolchains-build")).touch();
+    slot.parent.mkdir(parents=True, exist_ok=True);
+    if slot.exists() {
+        shutil.rmtree(slot);
+    }
+    staged.replace(slot);
+    maybe_sweep("toolchains-build");
+}
+
+def install_slot(name: str, version: str, platform: str) -> Path {
+    return bucket("toolchains-installed").path() / name / version / platform;
+}
+
+def slot_installed(slot: Path) -> bool {
+    if not (slot / _marker("toolchains-installed")).is_file() {
+        return False;
+    }
+    bucket("toolchains-installed").note_hit(slot);
+    return True;
+}
+
+def publish_install_slot(slot: Path, meta: dict[str, str]) {
+    (slot / _marker("toolchains-installed")).write_text(json.dumps(meta, indent=2));
+    maybe_sweep("toolchains-installed");
 }
 
 

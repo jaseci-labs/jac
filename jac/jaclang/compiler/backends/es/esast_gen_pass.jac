@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import json;
 import from typing { cast }
 import jaclang.compiler.backends.es.estree as es;
@@ -522,7 +523,10 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.Statement;
 
     def _push_loop_label(nd: uni.UniNode) -> None;
-    def _finish_loop(nd: uni.UniNode, loop_stmt: es.Statement) -> es.Statement;
+    def _finish_loop(
+        nd: (uni.InForStmt | uni.IterForStmt | uni.WhileStmt), loop_stmt: es.Statement
+    ) -> es.Statement;
+
     def _innermost_breakable(nd: uni.CtrlStmt) -> (uni.UniNode | None);
     def _match_break_label(nd: uni.MatchStmt) -> str;
     def _view_chain_open(nd: uni.UniNode) -> None;
@@ -597,6 +601,10 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _match_arch_field_order(pat: uni.MatchArch) -> (list[str] | None);
     def _match_subj_member(subj: es.Expression, field: str) -> es.Expression;
     def _ensure_emitters -> None;
+    def _primitive_type_ref(
+        name: str, jac_node: uni.UniNode
+    ) -> (es.Expression | None);
+
     def _resolve_primitive_type_name(_obj_type: TypeBase | None) -> str;
     def _try_primitive_op(
         expr_node: uni.UniNode,

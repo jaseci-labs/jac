@@ -13,11 +13,11 @@ node Note {
     has text: str = "";
 }
 
-def whoami -> dict[str, str] {
+def:protect whoami -> dict[str, str] {
     return {"who": "authenticated"};
 }
 
-walker save_note {
+walker:protect save_note {
     has text: str = "";
 
     can run with Root entry {
@@ -26,7 +26,7 @@ walker save_note {
     }
 }
 
-walker list_notes {
+walker:protect list_notes {
     can run with Root entry {
         for n in [-->[?:Note]] {
             report {"text": n.text};

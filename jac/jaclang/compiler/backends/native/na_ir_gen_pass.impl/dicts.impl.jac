@@ -127,6 +127,7 @@ impl NaIRGenPass._emit_dict_helpers(
         "set_ph": core["insert_ph"],
         "get": core["get"],
         "get_ph": core["get_ph"],
+        "lookup": core["lookup"],
         "len": len_fn,
         "contains": core["contains"],
         "contains_ph": core["contains_ph"],
@@ -145,99 +146,81 @@ impl NaIRGenPass._emit_dict_helpers(
 
 impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     value = self._str_norm(value);
-    b = self.builder;
-    i8 = ir.IntType(8);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-
-    if self?.jacval_type and value.type == self.jacval_type {
+    if self.jacval_type is not None and value.type == self.jacval_type {
         return value;
     }
-    jv_alloca = self._entry_alloca(self.jacval_type, "jacval");
-    tag_ptr = b.gep(
-        jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="jv.tag.ptr"
-    );
-    payload_ptr = b.gep(
-        jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="jv.payload.ptr"
-    );
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    tag: ir.Value = ir.Constant(i8, 8);
+    payload: ir.Value = ir.Constant(i64, 0);
     if isinstance(value.type, ir.IntType) and value.type.width == 1 {
-        b.store(ir.Constant(i8, 7), tag_ptr);
-        ext = b.zext(value, i64, name="jv.bext");
-        b.store(ext, payload_ptr);
+        tag = ir.Constant(i8, 7);
+        payload = b.zext(value, i64, name="jv.bext");
     } elif isinstance(value.type, ir.IntType) {
-        b.store(ir.Constant(i8, 0), tag_ptr);
+        tag = ir.Constant(i8, 0);
         if value.type.width == 64 {
-            b.store(value, payload_ptr);
+            payload = value;
         } elif value?.jac_signed {
-            b.store(b.sext(value, i64, name="jv.iext"), payload_ptr);
+            payload = b.sext(value, i64, name="jv.iext");
         } else {
-            b.store(b.zext(value, i64, name="jv.iext"), payload_ptr);
+            payload = b.zext(value, i64, name="jv.iext");
         }
     } elif isinstance(value.type, ir.DoubleType) {
-        b.store(ir.Constant(i8, 1), tag_ptr);
+        tag = ir.Constant(i8, 1);
         payload = b.bitcast(value, i64, name="jv.f2i");
-        b.store(payload, payload_ptr);
     } elif isinstance(value.type, ir.PointerType) {
-        ptr_tag = 2;
-        for (_, ltype) in self.list_types.items() {
-            if value.type == ltype.as_pointer() {
-                ptr_tag = 3;
-                break;
-            }
-        }
-        if ptr_tag == 2 {
-            for (_, dtype) in self.dict_types.items() {
-                if value.type == dtype.as_pointer() {
-                    ptr_tag = 4;
-                    break;
-                }
-            }
-        }
-        if ptr_tag == 2 {
-            for (_, stype) in self.set_types.items() {
-                if value.type == stype.as_pointer() {
-                    ptr_tag = 5;
-                    break;
-                }
-            }
-        }
-        if ptr_tag == 2 {
-            for (_, structt) in self.struct_types.items() {
-                if value.type == structt.as_pointer() {
-                    ptr_tag = 6;
-                    break;
-                }
-            }
-        }
         payload = b.ptrtoint(value, i64, name="jv.p2i");
-        is_null = b.icmp_unsigned("==", payload, ir.Constant(i64, 0), name="jv.isnone");
-        tag_val = b.select(
-            is_null, ir.Constant(i8, 8), ir.Constant(i8, ptr_tag), name="jv.nonetag",
+        tag = b.select(
+            b.icmp_unsigned("==", payload, ir.Constant(i64, 0), name="jv.isnone"),
+            ir.Constant(i8, 8),
+            ir.Constant(i8, self._jacval_pointer_tag(value.type)),
+            name="jv.nonetag"
         );
-        b.store(tag_val, tag_ptr);
-        b.store(payload, payload_ptr);
     } elif self._opt_payload_of(value.type) is not None {
-        opt_flag = b.extract_value(value, 0, name="jv.optflag");
-        opt_pay = b.extract_value(value, 1, name="jv.optpay");
-        inner = self._box_to_jacval(opt_pay);
-        inner_tag = b.extract_value(inner, 0, name="jv.opt.itag");
-        inner_pay = b.extract_value(inner, 1, name="jv.opt.ipay");
-        opt_none = b.icmp_unsigned(
-            "==", opt_flag, ir.Constant(i8, 0), name="jv.opt.isnone"
+        inner = self._box_to_jacval(b.extract_value(value, 1, name="jv.optpay"));
+        absent = b.icmp_unsigned(
+            "==",
+            b.extract_value(value, 0, name="jv.optflag"),
+            ir.Constant(i8, 0),
+            name="jv.opt.isnone"
         );
-        opt_tag = b.select(opt_none, ir.Constant(i8, 8), inner_tag, name="jv.opt.tag");
-        opt_out = b.select(opt_none, ir.Constant(i64, 0), inner_pay, name="jv.opt.pay");
-        b.store(opt_tag, tag_ptr);
-        b.store(opt_out, payload_ptr);
-    } elif isinstance(value.type, ir.VoidType) {
-        b.store(ir.Constant(i8, 8), tag_ptr);
-        b.store(ir.Constant(i64, 0), payload_ptr);
-    } else {
+        tag = b.select(
+            absent,
+            ir.Constant(i8, 8),
+            b.extract_value(inner, 0, name="jv.opt.itag"),
+            name="jv.opt.tag"
+        );
+        payload = b.select(
+            absent,
+            ir.Constant(i64, 0),
+            b.extract_value(inner, 1, name="jv.opt.ipay"),
+            name="jv.opt.pay"
+        );
+    } elif not isinstance(value.type, ir.VoidType) {
         self.ctx.emit(E5092, kind="expression", name=f"`any` box of {value.type}");
-        b.store(ir.Constant(i8, 0), tag_ptr);
-        b.store(ir.Constant(i64, 0), payload_ptr);
+        tag = ir.Constant(i8, 0);
     }
-    return b.load(jv_alloca, name="jacval");
+    boxed = b.insert_value(
+        ir.Constant(self.jacval_type, None), tag, 0, name="jacval.tag"
+    );
+    return b.insert_value(boxed, payload, 1, name="jacval");
+}
+
+impl NaIRGenPass._jacval_pointer_tag(pointer_type: ir.Type) -> int {
+    for (families, tag) in (
+        (self.list_types, 3),
+        (self.dict_types, 4),
+        (self.set_types, 5),
+        (self.struct_types, 6)
+    ) {
+        for family in families.values() {
+            if pointer_type == family.as_pointer() {
+                return tag;
+            }
+        }
+    }
+    return 2;
 }
 
 impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value {

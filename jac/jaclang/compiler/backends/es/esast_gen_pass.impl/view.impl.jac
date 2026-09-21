@@ -44,7 +44,7 @@ impl EsastGenPass._push_loop_label(nd: uni.UniNode) -> None {
 }
 
 impl EsastGenPass._finish_loop(
-    nd: uni.UniNode, loop_stmt: es.Statement
+    nd: (uni.InForStmt | uni.IterForStmt | uni.WhileStmt), loop_stmt: es.Statement
 ) -> es.Statement {
     label = '';
     if self._loop_label_stack {

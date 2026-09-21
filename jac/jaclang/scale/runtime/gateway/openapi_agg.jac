@@ -39,8 +39,12 @@ async def fetch_service_spec(
     import json;
     import from jaclang.scale.runtime.transport.http_forward { raw_forward }
 
+    headers: dict[str, str] = {};
+    if service_entry.host_override {
+        headers["Host"] = service_entry.host_override;
+    }
     result = await raw_forward(
-        "GET", f"{service_entry.url}/openapi.json", {}, b"", timeout=int(timeout)
+        "GET", f"{service_entry.url}/openapi.json", headers, b"", timeout=int(timeout)
     );
     if result is None {
         return SpecFetch();

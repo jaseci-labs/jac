@@ -575,3 +575,24 @@ test "callable interface enforces its call-signature return type" {
         f"\n{pretty_checker_errors(program)}";
     }
 }
+
+test "readonly interface member rejects reassignment" {
+    with TemporaryDirectory() as td {
+        proj = make_iface_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "ro_member.jac";
+        f.write_text(
+            'import from "cfgpkg" { getConfig }\n\n'
+            'def:pub bad() -> None {\n'
+            '    c = getConfig();\n'
+            '    c.label = "x";\n'
+            '    c.theme = "ok";\n'
+            '}\n'
+        );
+        (program, _, _) = check_npm_file(f);
+        errors = [e.pretty_print() for e in program.errors_had];
+        assert errors
+            and all("'label': it is declared read-only" in e for e in errors) , pretty_checker_errors(
+            program
+        );
+    }
+}

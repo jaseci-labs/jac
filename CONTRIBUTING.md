@@ -214,7 +214,7 @@ Verify the active compiler and exercise Python source and AST compilation:
 ```bash
 JAC_NO_DEV_SOURCE=1 "$JACPYTHON_BIN" -c '
 import ast, ctypes, sys
-assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
 assert not hasattr(sys, "_jacpython_compile")
 assert not hasattr(sys, "_jacpython_image")
 print("Python compiler: native JacPython")

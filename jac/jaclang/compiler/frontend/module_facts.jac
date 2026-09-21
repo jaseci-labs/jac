@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -30,7 +31,7 @@ import from jaclang.compiler.frontend.constant {
 
 obj ModuleFacts {
     static def ability_is_generator(ability: Ability) -> bool {
-        pending = list(ModuleFacts.unwrap_body(ability) or []);
+        pending: list[UniNode] = list(ModuleFacts.unwrap_body(ability) or []);
         while pending {
             current = pending.pop();
             if current.ct_pruned {
@@ -40,7 +41,7 @@ obj ModuleFacts {
                 return True;
             }
             if not isinstance(current, (Ability, ImplDef, Archetype, LambdaExpr)) {
-                pending.extend(current.kid);
+                pending.extend([current->:Kid:->]);
             }
         }
         return False;

@@ -4,7 +4,7 @@ node Item {
     has value: int = 1;
 }
 
-edge Checking {}
+edge Checking : any --> any {}
 
 walker Creator {
     has count: int = 0;

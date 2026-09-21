@@ -22,7 +22,9 @@ glob _TOML: str = (
 
 
 def _workspace -> str {
-    d = tempfile.mkdtemp(prefix="jac_desktop_ws_");
+    # Canonical from the start: macOS mounts its temp dir behind /private, and
+    # the target resolves project paths canonically.
+    d = os.path.realpath(tempfile.mkdtemp(prefix="jac_desktop_ws_"));
     for app in ("web", "shell", "kiosk") {
         os.makedirs(os.path.join(d, app), exist_ok=True);
         with open(os.path.join(d, app, "main.jac"), "w") as f {
@@ -89,7 +91,7 @@ test "each desktop app builds under its own client dir" {
 
 test "a single-app project keeps .jac/client/desktop" {
     import from jaclang.client.targets.desktop.desktop_target { DesktopTarget }
-    d = tempfile.mkdtemp(prefix="jac_desktop_single_");
+    d = os.path.realpath(tempfile.mkdtemp(prefix="jac_desktop_single_"));
     try {
         with open(os.path.join(d, "jac.toml"), "w") as f {
             f.write("[project]\nname = \"solo\"\nkind = \"desktop\"\n");
@@ -139,6 +141,41 @@ test "[desktop] backend is embedded by default, a URL when remote, nothing else"
         reset_desktop_config();
         set_config(None);
         Jac.set_full_target_path("");
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "remote desktop staging needs no local program in build or dev" {
+    import from jaclang.client.targets.desktop.desktop_build { stage_program }
+    import from unittest.mock { patch }
+    import jaclang.dist.seal as seal;
+    d = _workspace();
+    try {
+        base = Path(d);
+        assets = base / "shell" / "assets";
+        assets.mkdir();
+        (assets / "logo.svg").write_text("<svg>desktop</svg>");
+        with patch.object(
+            seal,
+            "build_jab",
+            side_effect=AssertionError("remote desktops must not seal a local app")
+        ) {
+            for dist in [None, base / "dist"] {
+                assert stage_program(
+                    base / "shell" / "main.jac",
+                    base,
+                    base / "out",
+                    "https://example.invalid",
+                    dist
+                )
+                    == {};
+            }
+        }
+        assert (base / "out" / "dist" / "assets" / "logo.svg").read_text()
+            == "<svg>desktop</svg>";
+    } finally {
+        set_config(None);
         shutil.rmtree(d, ignore_errors=True);
     }
 }

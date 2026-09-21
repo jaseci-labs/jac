@@ -26,8 +26,8 @@ obj SSOUserInfo {
 }
 
 obj SSOProvider {
-    async def initiate_auth(state: str | None = None) -> Response;
-    async def handle_callback(request: Request) -> SSOUserInfo;
+    async def initiate_auth(state: str | None = None) -> Response abst;
+    async def handle_callback(request: Request) -> SSOUserInfo abst;
 }
 
 def decode_jwt_payload_unverified(token: str) -> dict[str, any] {

@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.frontend.unitree {
     Module,
     TreeWalker,
@@ -199,7 +200,7 @@ walker EndpointEffectPass(TreeWalker) {
             }
         }
 
-        for child in nd.kid {
+        for child in [nd->:Kid:->] {
             if child {
                 self._scan(child);
             }

@@ -89,7 +89,7 @@ def _sibling_response(request: Request, dist: Path, rel: str) -> Response {
 def register_page_endpoints(server: JacAPIServer) {
     settings = server.resolved_settings();
     config = get_config();
-    root_app = server.introspector.resolve_root_app();
+    root_app = "" if settings.static_only else server.introspector.resolve_root_app();
     asset_dist = settings.client_dist;
     if not asset_dist {
         import from jaclang.server.sealed_serve { client_dist_for }

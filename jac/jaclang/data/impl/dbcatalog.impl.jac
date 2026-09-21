@@ -162,7 +162,9 @@ impl ensure_registry(conn: any) -> bool {
 }
 
 
-impl record_database(conn: any, database: str, kind: DbKind, owner_path: str) -> None {
+impl record_database(
+    conn: any, database: str, kind: DbKind, owner_path: str, pid: int = 0
+) -> None {
     if not is_jac_database(database) {
         return;
     }
@@ -187,7 +189,7 @@ impl record_database(conn: any, database: str, kind: DbKind, owner_path: str) ->
         'kind': str(kind.value),
         'owner': owner_path,
         'host': this_host(),
-        'pid': os.getpid()
+        'pid': pid or os.getpid()
     };
     try {
         conn.run(sql, **params);
@@ -321,11 +323,35 @@ impl process_alive(host: str, pid: int) -> bool {
 }
 
 
-impl dead_scratch_databases(records: list[DbRecord]) -> list[str] {
+impl reclaimable_databases(records: list[DbRecord]) -> list[str] {
     return [
         rec.database
         for rec in records
-        if rec.is_dead_scratch()
+        if rec.is_reclaimable()
+    ];
+}
+
+
+impl owned_databases(conn: any, pid: int) -> list[str] {
+    if pid <= 0 or not ensure_registry(conn) {
+        return [];
+    }
+    rows = conn.run(
+        f"""
+        SELECT r.database FROM {REGISTRY_TABLE} r
+        JOIN pg_database d ON d.datname = r.database
+        WHERE r.kind = :kind AND r.pid = :pid AND r.host = :host
+        ORDER BY r.database
+        """,
+        kind=DbKind.SCRATCH.value,
+        pid=pid,
+        host=this_host()
+    )
+        or [];
+    return [
+        str(row[0])
+        for row in rows
+        if is_jac_database(str(row[0]))
     ];
 }
 
@@ -346,10 +372,10 @@ impl touch_heartbeat(conn: any, database: str) -> bool {
 }
 
 
-impl condemn_stale_scratch(conn: any, records: list[DbRecord]) -> list[str] {
+impl condemn_abandoned(conn: any, records: list[DbRecord]) -> list[str] {
     marked: list[str] = [];
     for rec in records {
-        if not rec.looks_abandoned() or rec.condemned_age_seconds >= 0 {
+        if not rec.condemnable() or rec.condemned_age_seconds >= 0 {
             continue;
         }
         try {
@@ -367,18 +393,40 @@ impl condemn_stale_scratch(conn: any, records: list[DbRecord]) -> list[str] {
 }
 
 
+impl pardon_recovered(conn: any, records: list[DbRecord]) -> list[str] {
+    pardoned: list[str] = [];
+    for rec in records {
+        if not rec.pardonable() {
+            continue;
+        }
+        try {
+            conn.run(
+                f"UPDATE {REGISTRY_TABLE} SET condemned_at = NULL WHERE database = :db",
+                db=rec.database
+            );
+            pardoned.append(rec.database);
+        } except Exception as e {
+            logger.debug(f"could not pardon {rec.database}: {e}");
+        }
+    }
+    return pardoned;
+}
+
+
 impl drop_if_still_dead(conn: any, database: str) -> bool {
     fresh = load_record(conn, database);
     if fresh is None {
         return False;
     }
-    if not fresh.is_dead_scratch() {
+    if not fresh.is_reclaimable() {
         logger.info(
             f"left {database} alone; its owner accounted for it before the drop"
         );
         return False;
     }
-    return drop_database(conn, database, force=fresh.pid_confirmed_dead());
+    return drop_database(
+        conn, database, force=fresh.is_scratch() and fresh.pid_confirmed_dead()
+    );
 }
 
 
@@ -552,11 +600,114 @@ impl DbRecord.dead_scratch_reason -> str {
 }
 
 
+glob _grace_memo: dict[str, int] = {};
+
+
+impl orphan_grace_seconds -> int {
+    raw = os.environ.get(ORPHAN_GRACE_ENV, '').strip();
+    known = _grace_memo.get(raw);
+    if known is not None {
+        return known;
+    }
+    hours = ORPHAN_GRACE_HOURS;
+    if raw {
+        try {
+            hours = max(0, int(raw));
+        } except ValueError {
+            logger.warning(
+                f"ignoring {ORPHAN_GRACE_ENV}={raw!r}: not a whole number of "
+                f"hours; using {ORPHAN_GRACE_HOURS}"
+            );
+        }
+    }
+    _grace_memo[raw] = hours * 3600;
+    return hours * 3600;
+}
+
+
+def _span(seconds: int) -> str {
+    if seconds >= 86400 * 2 {
+        return f"{seconds // 86400}d";
+    }
+    if seconds >= 3600 {
+        return f"{(seconds + 3599) // 3600}h";
+    }
+    if seconds >= 60 {
+        return f"{(seconds + 59) // 60}m";
+    }
+    return f"{max(seconds, 0)}s";
+}
+
+
 impl DbRecord.is_orphaned -> bool {
     if not self.recorded or self.is_scratch() or not self.owner_path {
         return False;
     }
     return not os.path.isdir(self.owner_path);
+}
+
+
+impl DbRecord.is_reclaimable_orphan -> bool {
+    return self.is_orphaned()
+        and not self.has_sessions
+        and self.condemned_age_seconds >= 0
+        and self.condemned_age_seconds >= orphan_grace_seconds();
+}
+
+
+impl DbRecord.is_reclaimable -> bool {
+    return self.is_dead_scratch() or self.is_reclaimable_orphan();
+}
+
+
+impl DbRecord.condemnable -> bool {
+    return self.looks_abandoned() or self.is_orphaned();
+}
+
+
+impl DbRecord.pardonable -> bool {
+    return not self.is_scratch()
+        and self.condemned_age_seconds >= 0
+        and not self.is_orphaned();
+}
+
+
+impl DbRecord.reclaim_reason -> str {
+    if self.is_scratch() {
+        return f"scratch store, {self.dead_scratch_reason()}";
+    }
+    gone = f"owner {self.owner_path} is gone";
+    grace = _span(orphan_grace_seconds());
+    if self.has_sessions {
+        return f"{gone} (something is still connected to it)";
+    }
+    if self.condemned_age_seconds < 0 {
+        return (
+            f"{gone} (not yet marked; the next cluster start marks it and "
+            f"reclaims it {grace} later)"
+        );
+    }
+    marked = _span(self.condemned_age_seconds);
+    if self.is_reclaimable_orphan() {
+        return f"{gone} (marked {marked} ago; the next cluster start reclaims it)";
+    }
+    left = _span(orphan_grace_seconds() - self.condemned_age_seconds);
+    return f"{gone} (marked {marked} ago; a cluster start reclaims it in {left})";
+}
+
+
+impl DbRecord.condemn_reason -> str {
+    if self.is_scratch() {
+        return (
+            'its heartbeat stopped, so a later prune will reclaim it if it is '
+            'still silent and unused by then'
+        );
+    }
+    return (
+        f"its owner {self.owner_path} is gone, so a cluster start reclaims it "
+        f"once it has been gone for {_span(orphan_grace_seconds())} and nothing "
+        'is connected to it'
+    );
 }
 
 
@@ -573,5 +724,18 @@ impl DbRecord.state -> str {
     if not self.owner_path {
         return 'unknown owner';
     }
-    return 'orphaned' if self.is_orphaned() else 'live';
+    if not self.is_orphaned() {
+        return 'live';
+    }
+    if self.has_sessions {
+        return 'orphaned, in use';
+    }
+    if self.condemned_age_seconds < 0 {
+        return 'orphaned';
+    }
+    if self.is_reclaimable_orphan() {
+        return 'orphaned, reclaimable';
+    }
+    left = orphan_grace_seconds() - self.condemned_age_seconds;
+    return f"orphaned, reclaim in {_span(left)}";
 }

@@ -1,8 +1,19 @@
 # Managed build toolchains
 
-Jac provisions external build tools through `jaclang.toolchains`. Normal native
-builds request their dependencies automatically. Provision tools ahead of time
-without creating a project:
+Jac provisions external build tools through `jaclang.toolchains`. "Ensure" is
+the universal verb: every `jac run` and `jac build` asks its client target for
+readiness first and provisions whatever is missing, narrating each step. That
+covers the per-target prerequisites (the Expo scaffold and its packages for a
+mobile app) as well as the toolchains themselves (JDK, Android SDK, Node,
+CocoaPods, the webview and CEF shells). Steps that need consent keep their
+prompt: Android SDK licenses ask on a TTY and otherwise stop with the exact
+command and `JAC_ACCEPT_ANDROID_LICENSES=1`; Linux desktop packages go through
+`sudo` (`sudo -n` when there is no TTY). Nothing is ever half-provisioned
+silently: a step that cannot proceed fails with the command to run.
+
+`jac setup` is the explicit pre-provision for CI images, offline preparation,
+and anyone who wants the tools in place before the first run. Provision tools
+ahead of time without creating a project:
 
 ```bash
 jac setup --toolchain android
@@ -12,9 +23,10 @@ jac setup --toolchain cef
 ```
 
 For a workspace app, `jac setup mobile --platform android` provisions the native
-toolchain and synchronizes the Expo project. `jac build mobile --platform android`
-then builds the APK. Gradle reports progress while installing the platform, build
-tools, NDK, and CMake versions requested by the generated project.
+toolchain and synchronizes the Expo project; `jac build mobile --platform android`
+does the same on demand and then builds the APK. Gradle reports progress while
+installing the platform, build tools, NDK, and CMake versions requested by the
+generated project.
 
 ## Installation and storage
 
@@ -22,6 +34,15 @@ Large downloads and tool installations are shared between projects under Jac's
 platform cache root (`~/.cache/jac/toolchains` on Linux). Set
 `JAC_TOOLCHAIN_DIR=/path/to/cache` to relocate them; a project-local `.jac/toolchains`
 path works for isolated builds. Generated app projects remain under `.jac/`.
+
+Everything there lives in one of three managed buckets that `jac cache status`
+reports and `jac cache gc` reclaims by last use: `downloads/` (verified archives,
+kept 14 days), `installed/` (extracted toolchains and tools installed in place
+such as CocoaPods, kept 90 days) and `build/` (builds keyed by source digest,
+including the LLVM C backend, kept 90 days). A cache hit refreshes the entry, so
+a toolchain in regular use is never reclaimed. Gradle's home (`gradle/`) and the
+Android SDK (`android-sdk/`) belong to their own tools: they are reported but
+never collected.
 
 Downloads report the tool, version, platform, bytes received, and percentage when
 the server supplies a length. Jac verifies checksums before publishing downloads,

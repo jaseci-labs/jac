@@ -67,6 +67,9 @@ def _compile_cef_host(host_src: str) -> tuple[any, ...] {
 
 """The embedded-CPython CEF host (cef runtime model) links both libs."""
 test "cef embedded-python host compiles and links libcef_dispatch and libpython" {
+    if sys.platform != "linux" {
+        testskip("CEF hosts link ELF shared objects; a Linux-only build");
+    }
     soname = sysconfig.get_config_var("INSTSONAME")
         or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0";
     stem = soname.split(".so")[0].encode();
@@ -105,6 +108,9 @@ test "cef embedded-python host compiles and links libcef_dispatch and libpython"
 
 """A host that uses the CefBrowser API links libcef_dispatch.so via $ORIGIN."""
 test "cef binding host compiles and links libcef_dispatch.so" {
+    if sys.platform != "linux" {
+        testskip("CEF hosts link ELF shared objects; a Linux-only build");
+    }
     src = (
         "import from cef { CefBrowser, new_cef_browser, cef_cleanup }\n"
         "with entry {\n"
@@ -234,7 +240,7 @@ test "cef host source boots the runtime host in cef mode with its app image" {
     # host_boot owns the cef wiring: it binds the plugin host to CEF and serves
     # the app image on the same loopback server the webview host uses.
     host_boot_src = (_cef_dir().parent / "host_boot.jac").read_text();
-    assert "host.setup_cef()" in host_boot_src;
+    assert "host.setup_cef(" in host_boot_src;
     assert "prepare_inprocess_runtime(" in host_boot_src;
     assert "transport_kind=\"listener\"" in host_boot_src;
 }

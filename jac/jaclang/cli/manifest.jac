@@ -11,6 +11,7 @@ comptime import from jaclang.cli.commands.analysis {
 }
 comptime import from jaclang.cli.commands.browse { SPEC_BROWSE }
 comptime import from jaclang.cli.commands.build { SPEC_BUILD }
+comptime import from jaclang.cli.commands.cache { SPEC_CACHE }
 comptime import from jaclang.cli.commands.code { SPEC_CODE }
 comptime import from jaclang.cli.commands.config { SPEC_CONFIG }
 comptime import from jaclang.cli.commands.db { SPEC_DB }
@@ -57,6 +58,7 @@ comptime VERB_BUDGET: int = 26,
          "py2jac": "jac tool py2jac <file>",
          "jac2js": "jac tool jac2js <file>",
          "grammar": "jac tool grammar",
+         "purge": "jac cache purge",
          "destroy": "jac scale destroy <file.jac>",
          "status": "jac scale status <file.jac>"
      },
@@ -98,6 +100,7 @@ comptime def _route(spec: CommandSpec) -> CommandSpec {
 comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_BROWSE),
          _route(SPEC_BUILD),
+         _route(SPEC_CACHE),
          _route(SPEC_CHECK),
          _route(SPEC_CLEAN),
          _route(SPEC_CODE),

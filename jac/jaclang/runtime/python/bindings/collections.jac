@@ -14,6 +14,7 @@ import from jaclang.runtime.python.bindings.type {
     TypeDefinition,
     TypeHooks,
     TypeFlags,
+    PropertyCallbacks,
     PropertyDefinition,
     jacpy_binding_typeof,
     jacpy_binding_owner,
@@ -1153,7 +1154,7 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
              repeat=deque_repeat,
              inplace_repeat=deque_irepeat
          ),
-         [PropertyDefinition("maxlen", deque_maxlen)],
+         [PropertyDefinition("maxlen", PropertyCallbacks(read=deque_maxlen))],
          unhashable=True
      ),
      default_type = TypeDefinition(
@@ -1203,7 +1204,8 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          ),
          [
              PropertyDefinition(
-                 "default_factory", default_factory, write=default_set_factory
+                 "default_factory",
+                 PropertyCallbacks(read=default_factory, write=default_set_factory)
              )
          ]
      ),
@@ -1225,7 +1227,11 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
              dealloc=getter_dealloc,
              repr=getter_repr
          ),
-         [PropertyDefinition("__doc__", getter_doc, write=getter_set_doc)]
+         [
+             PropertyDefinition(
+                 "__doc__", PropertyCallbacks(read=getter_doc, write=getter_set_doc)
+             )
+         ]
      );
 
 def:priv execute(module: u64) -> i32 {

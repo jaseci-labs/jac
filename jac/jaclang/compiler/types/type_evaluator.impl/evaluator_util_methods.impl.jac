@@ -130,7 +130,10 @@ impl TypeEvaluator._build_field_params(
             if has_var.type_tag {
                 var_type_expr = has_var.type_tag.tag;
                 type_cls = self.get_type_of_expression(var_type_expr);
-                param_type = self._convert_to_instance(type_cls);
+                param_type = self._final_declared_type(
+                    type_cls, has_var.name.sym, has_var.value
+                )
+                    or self._convert_to_instance(type_cls);
             }
             initialization = field_initialization(has_var);
             if skip_deferred and not initialization.participates_in_init {
@@ -463,6 +466,16 @@ impl TypeEvaluator._is_type_subscript(class_type: ClassType) -> bool {
     );
 }
 
+impl TypeEvaluator._subscript_index_expr(right: Expr) -> Expr {
+    if isinstance(right, IndexSlice)
+        and not right.is_range
+        and right.slices
+        and right.slices[0].start is not None {
+        return right.slices[0].start;
+    }
+    return right;
+}
+
 impl TypeEvaluator._get_type_for_member_lookup(object_type: ClassType) -> ClassType {
     if self._is_type_subscript(object_type) {
         inner_type = object_type.private.type_args[0];
@@ -644,6 +657,10 @@ impl TypeEvaluator._synthesize_enum_metaclass_attr(
 }
 
 impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
+    if final_form := self._as_final_form(jtype) {
+        type_args = final_form.private.type_args;
+        return self._convert_to_instance(type_args[0]) if type_args else UnknownType();
+    }
     return convert_to_instance(jtype);
 }
 
@@ -664,7 +681,7 @@ impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
         if not isinstance(arch, Archetype) {
             continue;
         }
-        for kid in arch.kid {
+        for kid in [arch->:Kid:->] {
             if (
                 isinstance(kid, KWPair)
                 and kid.key is not None
@@ -681,29 +698,39 @@ impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
     return None;
 }
 
-impl TypeEvaluator._edge_endpoint_type(
-    edge_type: ClassType, edge_dir: EdgeDir
-) -> TypeBase | None {
-    for cls in edge_type.shared.mro {
-        arch = cls.shared.symbol_table;
-        if not isinstance(arch, Archetype) {
-            continue;
-        }
-        endpoint: Expr | None = None;
-        if edge_dir == EdgeDir.OUT {
-            endpoint = arch.tgt_endpoint;
-        } elif edge_dir == EdgeDir.IN {
-            endpoint = arch.src_endpoint;
-        }
-        if endpoint is not None {
-            ep_type = self.get_type_of_expression(endpoint);
-            if isinstance(ep_type, ClassType) {
-                return ep_type;
-            }
-            return None;
-        }
+impl TypeEvaluator._declared_metaclass_member(
+    cls_type: ClassType, name: str
+) -> (ClassMember | None) {
+    if not cls_type.is_instantiable_class() {
+        return None;
     }
-    return None;
+    meta_cls = self._metaclass_of(cls_type);
+    if meta_cls is None {
+        return None;
+    }
+    member = self._lookup_class_member(meta_cls, name);
+    if member is None or member.class_type.shared.class_name in ("type", "object") {
+        return None;
+    }
+    return member;
+}
+
+impl TypeEvaluator._report_rejected_method_call(
+    receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
+) -> None {
+    method = self.get_type_of_symbol(member.symbol);
+    if member.overloads or not isinstance(method, FunctionType) {
+        self.emit_diag(E1055, site, method=member.symbol.sym_name);
+        return;
+    }
+    method = method.specialize(receiver);
+    arg_match = self.match_args_to_params(args, site, method);
+    if not arg_match.argument_errors {
+        self.validate_arg_types(
+            arg_match,
+            solved_type_vars=self._receiver_type_var_bindings(method, receiver)
+        );
+    }
 }
 
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
@@ -926,6 +953,58 @@ impl TypeEvaluator._get_enclosing_method(nd: UniNode) -> Ability | None {
         return enclosing_fn;
     }
     return None;
+}
+
+impl TypeEvaluator._in_function_body(nd: UniNode) -> bool {
+    child: UniNode = nd;
+    cur = nd.parent;
+    while cur is not None {
+        if isinstance(cur, (Archetype, Enum)) {
+            return False;
+        }
+        if isinstance(cur, Ability) {
+            if child is not cur.signature
+                and child is not cur.name_ref
+                and child not in (cur.decorators or []) {
+                return True;
+            }
+        } elif isinstance(cur, ImplDef) {
+            if child is not cur.spec
+                and child not in (cur.decorators or [])
+                and child not in (cur.target or []) {
+                return True;
+            }
+        } elif isinstance(cur, LambdaExpr) {
+            if child is not cur.signature {
+                return True;
+            }
+        }
+        child = cur;
+        cur = cur.parent;
+    }
+    return False;
+}
+
+impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool {
+    def enclosing_fn(n: UniNode) -> (UniNode | None) {
+        cur = n.parent;
+        while cur is not None and not isinstance(cur, (Ability, ImplDef, LambdaExpr)) {
+            cur = cur.parent;
+        }
+        return cur;
+    }
+    fn = enclosing_fn(nd);
+    if fn is None {
+        return False;
+    }
+    for use in symbol.uses {
+        if isinstance(use, Name)
+            and use.expr_ctx == ExprCtx.STORE
+            and enclosing_fn(use) is fn {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl TypeEvaluator._get_enclosing_return_scope(
@@ -1391,7 +1470,7 @@ impl TypeEvaluator._invalidate_expr_type_cache(node_: UniNode) -> None {
         node_.type = None;
         node_.ct_value = None;
     }
-    for kid in node_.kid {
+    for kid in [node_->:Kid:->] {
         self._invalidate_expr_type_cache(kid);
     }
 }

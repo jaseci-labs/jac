@@ -1,4 +1,4 @@
-edge MyEdge {
+edge MyEdge : NodeA --> NodeB {
     has id: int;
 }
 

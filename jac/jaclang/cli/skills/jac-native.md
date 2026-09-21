@@ -106,7 +106,7 @@ These pure-compute functions carry no FFI seed, and the `json` import anchors th
 def square(x: int) -> int { return x * x; }
 ```
 
-```jac
+```
 # app.jac - imports link at the IR level; no dynamic library involved
 import from math_utils { square }
 

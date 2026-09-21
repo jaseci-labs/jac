@@ -94,7 +94,7 @@ obj NativeFieldInfo {
         is_func_ptr: bool = False,
         func_param_types: (list[str] | None) = None,
         func_ret_type: (str | None) = None,
-        elem_keys: (list[str] | None) = None,
+        elem_keys: (list[str | None] | None) = None,
         foreign: bool = False;
 }
 
@@ -125,7 +125,7 @@ obj NativeFuncLayout {
         ret_struct_name: (str | None) = None,
         ret_tuple_layout: (NativeTupleLayout | None) = None,
         ret_enum_type: (str | None) = None,
-        ret_elem_keys: (list[str] | None) = None;
+        ret_elem_keys: (list[str | None] | None) = None;
 }
 
 obj NativeTestLayout {
@@ -245,6 +245,8 @@ def install_native_static_init(
     engine.static_init_symbols = native_glob_init_symbols(manifest);
     engine.static_init_chained = {"jac_entry"};
 }
+
+glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"};
 
 glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "sys",
@@ -449,7 +451,8 @@ def is_bundled_native_module(module_name: str) -> bool {
     if stdlib_dir is None or not module_name {
         return False;
     }
-    path_name = module_name.lstrip('.').replace('.', os.sep);
+    clean = module_name.lstrip('.');
+    path_name = NATIVE_STDLIB_EXTENSIONS.get(clean, clean).replace('.', os.sep);
     return _native_variant_path(os.path.join(stdlib_dir, path_name)) is not None;
 }
 
@@ -527,6 +530,26 @@ def resolve_native_module(
     clean = module_name.lstrip('.');
     path_name = clean.replace('.', os.sep);
 
+    level = len(module_name) - len(clean);
+    if level > 0 {
+        if not allow_inferred {
+            return (None, None);
+        }
+        search = os.path.abspath(base_dir);
+        for _ in range(level - 1) {
+            search = os.path.dirname(search);
+        }
+        candidate = os.path.join(search, path_name);
+        if os.path.isdir(candidate) {
+            candidate = os.path.join(candidate, '__init__');
+        }
+        local = _inferred_native_path(_native_variant_path(candidate));
+        if local is not None {
+            return (str(os.path.relpath(local, os.path.abspath(base_dir))), local);
+        }
+        return (None, None);
+    }
+
     if clean.startswith('jaclang.') {
         import from jaclang.project.modresolver { resolve_module }
         import from jaclang.compiler.native_scope {
@@ -588,7 +611,8 @@ def resolve_native_module(
 
     bundled_root = native_stdlib_root();
     if bundled_root is not None {
-        bundled = _native_variant_path(os.path.join(bundled_root, path_name));
+        bundled_name = NATIVE_STDLIB_EXTENSIONS.get(clean, path_name);
+        bundled = _native_variant_path(os.path.join(bundled_root, bundled_name));
         if bundled is not None {
             return (path_name, bundled);
         }
@@ -709,6 +733,65 @@ obj BoundaryTypeInfo {
         nested_types: list[str] = [];
 }
 
+obj SurfaceEntry {
+    has name: str,
+        kind: str,
+        exposure: str = "private",
+        placement: str = "server",
+        module: str = "",
+        src: str = "";
+
+    def is_exposed -> bool {
+        return self.exposure != "private";
+    }
+
+    def requires_auth -> bool {
+        return self.exposure != "public";
+    }
+
+    def is_served -> bool {
+        return self.is_exposed() and self.placement != "client";
+    }
+
+    def to_dict -> dict[str, str] {
+        return {
+            "kind": self.kind,
+            "exposure": self.exposure,
+            "placement": self.placement,
+            "module": self.module,
+            "src": self.src
+        };
+    }
+
+    static def from_dict(name: str, rec: dict[str, any]) -> SurfaceEntry {
+        return SurfaceEntry(
+            name=str(name),
+            kind=str(rec.get("kind") or ""),
+            exposure=str(rec.get("exposure") or "private"),
+            placement=str(rec.get("placement") or "server"),
+            module=str(rec.get("module") or ""),
+            src=str(rec.get("src") or "")
+        );
+    }
+
+    static def from_node(decl: any, module: any = None) -> (SurfaceEntry | None) {
+        kind = getattr(decl, "surface_kind", "") or "";
+        name = getattr(decl, "sym_name", "") or "";
+        if not kind or not name {
+            return None;
+        }
+        loc = module.loc if module is not None else None;
+        mod_path = getattr(loc, "mod_path", "") if loc is not None else "";
+        return SurfaceEntry(
+            name=str(name),
+            kind=str(kind),
+            exposure=str(decl.exposure.value),
+            placement=str(decl.placement_name),
+            module=str(mod_path or "")
+        );
+    }
+}
+
 obj InteropBinding {
     has name: str,
         source_context: InteropContext,
@@ -733,8 +816,7 @@ obj InteropManifest {
         boundary_types: dict[(str, BoundaryTypeInfo)] = {},
         boundary_type_names: dict[str, dict[str, str]] = {},
         endpoint_effects: dict[(str, dict[str, any])] = {},
-        func_access: dict[(str, bool)] = {},
-        walker_access: dict[(str, bool)] = {},
+        surface: dict[(str, SurfaceEntry)] = {},
         app_edges: list[tuple[(str, str)]] = [],
         provider_routes: dict[(str, str)] = {},
         native_module_imports: dict[(str, NativeModuleInfo)] = {},
@@ -760,7 +842,7 @@ obj NodeComments {
 }
 
 obj CodeGenTarget {
-    has py: str = '',
+    has _py: (str | None) = None,
         jac: str = '',
         _doc_ir: (Doc | None) = None,
         js: str = '',
@@ -790,6 +872,7 @@ obj CodeGenTarget {
         _exported_symbols: list[str] = [],
         doc_comments: (NodeComments | None) = None;
 
+    has py: str { getter; setter(value: str); }
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }

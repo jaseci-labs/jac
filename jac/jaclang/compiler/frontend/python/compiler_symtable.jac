@@ -7,6 +7,7 @@ import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_co
 # Codegen consumes sym_facts; product_compile runs this after validation.
 
 import from jaclang.compiler.frontend.python.ast_nodes {
+    ast_node,
     Module,
     expr,
     stmt,
@@ -110,8 +111,98 @@ glob DEF_GLOBAL: int = 1,
      SCOPE_FREE: int = 4,
      SCOPE_CELL: int = 5;
 
+enum scope_kind { MODULE = 0, CLASS = 1, FUNCTION = 2 }
+
+enum comprehension_kind { NONE = 0, GENERATOR = 1, LIST = 2, SET = 3, DICT = 4 }
+
+# Expression scopes that reject binding forms (CPython ste_scope_info).
+enum scope_info_kind {
+    NONE = 0,
+    ANNOTATION = 1,
+    TYPE_ALIAS = 2,
+    GENERIC_DEFINITION = 3,
+    TYPEVAR_BOUND = 4,
+    TYPEVAR_CONSTRAINT = 5,
+    TYPEVAR_DEFAULT = 6,
+    PARAMSPEC_DEFAULT = 7,
+    TYPEVARTUPLE_DEFAULT = 8
+}
+
+# A scope is identified by the AST node that introduces it, as CPython keys
+# st_blocks by node address. One node can introduce several scopes.
+enum scope_role { BODY = 0, TYPE_PARAMETERS = 1, ANNOTATIONS = 2, DEFAULT_VALUE = 3 }
+
+def scope_key(origin: ast_node, role: scope_role = scope_role.BODY) -> int {
+    return id(origin) * 4 + role.value;
+}
+
+def comprehension_name(kind: comprehension_kind) -> str {
+    if kind == comprehension_kind.GENERATOR {
+        return "genexpr";
+    }
+    if kind == comprehension_kind.LIST {
+        return "listcomp";
+    }
+    if kind == comprehension_kind.SET {
+        return "setcomp";
+    }
+    return "dictcomp";
+}
+
+def comprehension_description(kind: comprehension_kind) -> str {
+    if kind == comprehension_kind.GENERATOR {
+        return "generator expression";
+    }
+    if kind == comprehension_kind.LIST {
+        return "list comprehension";
+    }
+    if kind == comprehension_kind.SET {
+        return "set comprehension";
+    }
+    return "dict comprehension";
+}
+
+def scope_info_text(info: scope_info_kind) -> str {
+    if info == scope_info_kind.ANNOTATION {
+        return "an annotation";
+    }
+    if info == scope_info_kind.TYPE_ALIAS {
+        return "a type alias";
+    }
+    if info == scope_info_kind.GENERIC_DEFINITION {
+        return "the definition of a generic";
+    }
+    if info == scope_info_kind.TYPEVAR_BOUND {
+        return "a TypeVar bound";
+    }
+    if info == scope_info_kind.TYPEVAR_CONSTRAINT {
+        return "a TypeVar constraint";
+    }
+    if info == scope_info_kind.TYPEVAR_DEFAULT {
+        return "a TypeVar default";
+    }
+    if info == scope_info_kind.PARAMSPEC_DEFAULT {
+        return "a ParamSpec default";
+    }
+    if info == scope_info_kind.TYPEVARTUPLE_DEFAULT {
+        return "a TypeVarTuple default";
+    }
+    return "";
+}
+
+def is_type_variable_info(info: scope_info_kind) -> bool {
+    return info
+        in (
+            scope_info_kind.TYPEVAR_BOUND,
+            scope_info_kind.TYPEVAR_CONSTRAINT,
+            scope_info_kind.TYPEVAR_DEFAULT,
+            scope_info_kind.PARAMSPEC_DEFAULT,
+            scope_info_kind.TYPEVARTUPLE_DEFAULT
+        );
+}
+
 obj sym_block {
-    has block_type: str,
+    has kind: scope_kind,
         name: str,
         lineno: int,
         context: compile_context = compile_context(),
@@ -128,7 +219,7 @@ obj sym_block {
         # Any module-top symbol entry for "super" (CPython codegen.c checks
         # _PyST_GetScope(st_top, "super") != 0 before optimizing super calls).
         top_has_super: bool = False,
-        comprehension: str | None = None,
+        comprehension: comprehension_kind = comprehension_kind.NONE,
         inlined: bool = False,
         inlined_class: bool = False,
         class_free_names: list[str] = [],
@@ -139,13 +230,22 @@ obj sym_block {
         directive_lineno: dict[str, int] = {},
         directive_col: dict[str, int] = {},
         children: list[sym_block] = [],
-        type_parameter_key: int = 0,
-        function_annotation_key: int = 0,
+        scopes: dict[int, sym_block] = {},
         annotation_scope: sym_block | None = None,
         unevaluated_annotation: bool = False,
         generic_parameters: bool = False,
-        annotation_kind: str = "",
+        scope_info: scope_info_kind = scope_info_kind.NONE,
         mangled_names: set[str] | None = None;
+
+    def child_scope(
+        origin: ast_node, role: scope_role = scope_role.BODY
+    ) -> sym_block | None {
+        key = scope_key(origin, role);
+        if key in self.scopes {
+            return self.scopes[key];
+        }
+        return None;
+    }
 }
 
 obj symtable_result {
@@ -319,7 +419,7 @@ obj sym_builder {
             );
         }
         directive = flags & (DEF_GLOBAL | DEF_NONLOCAL);
-        if not directive and flags & DEF_ANNOT and self.cur.block_type != "module" {
+        if not directive and flags & DEF_ANNOT and self.cur.kind != scope_kind.MODULE {
             directive = cur_flags & (DEF_GLOBAL | DEF_NONLOCAL);
         }
         if directive and (cur_flags | flags) & DEF_ANNOT {
@@ -342,12 +442,13 @@ obj sym_builder {
             self.cur.directive_lineno[mangled] = lineno;
             self.cur.directive_col[mangled] = col_offset;
         }
-        if self.cur.block_type == "module" {
+        if self.cur.kind == scope_kind.MODULE {
             self.module_global[mangled] = self.cur.symbols[mangled];
         }
         if sym_flag_set(flags, DEF_PARAM) {
             self.cur.varnames.append(mangled);
-        } elif self.cur.block_type == "function" and flags & (DEF_LOCAL | DEF_IMPORT) {
+        } elif self.cur.kind == scope_kind.FUNCTION
+            and flags & (DEF_LOCAL | DEF_IMPORT) {
             if not cur_flags & DEF_BOUND {
                 self.cur.local_varnames.append(mangled);
             }
@@ -362,25 +463,34 @@ obj sym_builder {
         return True;
     }
 
+    # A detached scope is analyzed for diagnostics but is not part of the
+    # parent's executable scopes (annotations under `from __future__`).
     def push_block(
-        block_type: str,
+        kind: scope_kind,
         name: str,
+        key: int,
         lineno: int,
+        col_offset: int,
         nested: bool,
         can_see_class_scope: bool = False,
-        col_offset: int = -1
+        attached: bool = True
     ) -> bool {
         child = sym_block(
-            block_type=block_type,
+            kind=kind,
             context=self.cur.context,
             name=name,
             lineno=lineno,
             col_offset=col_offset,
             nested=nested,
             can_see_class_scope=can_see_class_scope,
-            mangled_names=self.cur.mangled_names if block_type != "class" else None
+            mangled_names=self.cur.mangled_names if kind != scope_kind.CLASS else None
         );
-        self.cur.children.append(child);
+        if attached {
+            self.cur.children.append(child);
+            if key not in self.cur.scopes {
+                self.cur.scopes[key] = child;
+            }
+        }
         self.stack.append(self.cur);
         self.cur = child;
         return True;
@@ -396,47 +506,11 @@ obj sym_builder {
 }
 
 def sym_allows_async(block: sym_block) -> bool {
-    return (block.block_type == "module" and bool(block.context.flags & 0x2000))
+    return (block.kind == scope_kind.MODULE and bool(block.context.flags & 0x2000))
         or (
-            block.block_type == "function"
-            and (block.coroutine or bool(block.comprehension))
+            block.kind == scope_kind.FUNCTION
+            and (block.coroutine or block.comprehension != comprehension_kind.NONE)
         );
-}
-
-def sym_visit_comprehension_generators(
-    b: sym_builder, generators: list[comprehension]
-) -> bool {
-    if len(generators) == 0 {
-        return True;
-    }
-    outer = generators[0];
-    if not sym_visit_load_expr(b, outer.iter) {
-        return False;
-    }
-    gi = 0;
-    while gi < len(generators) {
-        g = generators[gi];
-        if g.is_async {
-            b.cur.coroutine = True;
-        }
-        if gi > 0 {
-            if not sym_visit_load_expr(b, g.iter) {
-                return False;
-            }
-        }
-        if not sym_visit_comp_store_target(b, g.target) {
-            return False;
-        }
-        fi = 0;
-        while fi < len(g.ifs) {
-            if not sym_visit_load_expr(b, g.ifs[fi]) {
-                return False;
-            }
-            fi = fi + 1;
-        }
-        gi = gi + 1;
-    }
-    return True;
 }
 
 def sym_visit_inline_comprehension(
@@ -445,7 +519,7 @@ def sym_visit_inline_comprehension(
     generators: list[comprehension],
     elt: expr,
     value: expr | None,
-    kind: str
+    kind: comprehension_kind
 ) -> bool {
     if not generators {
         return True;
@@ -455,14 +529,14 @@ def sym_visit_inline_comprehension(
     if not sym_visit_load_expr(b, generators[0].iter) {
         return False;
     }
-    in_class = b.cur.block_type == "class" or b.cur.inlined_class;
+    in_class = b.cur.kind == scope_kind.CLASS or b.cur.inlined_class;
     if not b.push_block(
-        "function",
-        kind,
+        scope_kind.FUNCTION,
+        comprehension_name(kind),
+        scope_key(expression),
         expression.lineno,
-        sym_compute_nested(b),
-        False,
-        expression.col_offset
+        expression.col_offset,
+        sym_compute_nested(b)
     ) {
         return False;
     }
@@ -517,14 +591,17 @@ def sym_visit_genexp(b: sym_builder, e: GeneratorExp) -> bool {
     if not sym_visit_load_expr(b, outer.iter) {
         return False;
     }
-    nested = sym_compute_nested(b);
-    in_class = False;
     if not b.push_block(
-        "function", "genexpr", e.lineno, nested, in_class, e.col_offset
+        scope_kind.FUNCTION,
+        comprehension_name(comprehension_kind.GENERATOR),
+        scope_key(e),
+        e.lineno,
+        e.col_offset,
+        sym_compute_nested(b)
     ) {
         return False;
     }
-    b.cur.comprehension = "gen";
+    b.cur.comprehension = comprehension_kind.GENERATOR;
     b.cur.coroutine = any(gen.is_async for gen in e.generators);
     dot0 = arg(
         arg=".0",
@@ -582,18 +659,17 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         else "yield expression"
             if isinstance(e, (Yield, YieldFrom))
             else "await expression" if isinstance(e, Await) else "";
-    if forbidden and b.cur.annotation_kind {
+    if forbidden and b.cur.scope_info != scope_info_kind.NONE {
         return b.fail(
             "SyntaxError",
-            forbidden + " cannot be used within " + b.cur.annotation_kind,
+            forbidden + " cannot be used within " + scope_info_text(b.cur.scope_info),
             e.lineno,
             e.col_offset
         );
     }
-    if isinstance(e, (Yield, YieldFrom)) and b.cur.comprehension {
-        description = "generator expression"
-            if b.cur.comprehension == "gen"
-            else b.cur.comprehension.removesuffix("comp") + " comprehension";
+    if isinstance(e, (Yield, YieldFrom))
+        and b.cur.comprehension != comprehension_kind.NONE {
+        description = comprehension_description(b.cur.comprehension);
         return b.fail(
             "SyntaxError", "'yield' inside " + description, e.lineno, e.col_offset
         );
@@ -760,11 +836,12 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
     }
     if isinstance(e, NamedExpr) {
         ne = e as NamedExpr;
-        if b.cur.comprehension is not None and isinstance(ne.target, Name) {
+        if b.cur.comprehension != comprehension_kind.NONE
+            and isinstance(ne.target, Name) {
             name = sym_mangle_name(b.private, b.cur, ne.target.id);
             owner: sym_block | None = None;
             for block in reversed(b.stack + [b.cur]) {
-                if block.comprehension is not None {
+                if block.comprehension != comprehension_kind.NONE {
                     if sym_flag_set(
                         sym_dict_get(block.symbols, name, 0), DEF_COMP_ITER
                     ) {
@@ -777,12 +854,12 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
                             ne.col_offset
                         );
                     }
-                } elif block.annotation_kind != "an annotation" {
+                } elif block.scope_info != scope_info_kind.ANNOTATION {
                     owner = block;
                     break;
                 }
             }
-            if owner is None or owner.block_type == "class" {
+            if owner is None or owner.kind == scope_kind.CLASS {
                 return b.fail(
                     "SyntaxError",
                     "assignment expression within a comprehension cannot be used in a class body",
@@ -790,17 +867,18 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
                     ne.col_offset
                 );
             }
-            if owner.annotation_kind and owner.annotation_kind != "an annotation" {
+            if owner.scope_info
+                not in (scope_info_kind.NONE, scope_info_kind.ANNOTATION) {
                 return b.fail(
                     "SyntaxError",
                     "assignment expression within a comprehension cannot be used in "
-                        + owner.annotation_kind,
+                        + scope_info_text(owner.scope_info),
                     ne.lineno,
                     ne.col_offset
                 );
             }
             owner_flags = sym_dict_get(owner.symbols, name, 0);
-            global_binding = owner.block_type == "module"
+            global_binding = owner.kind == scope_kind.MODULE
                 or sym_flag_set(owner_flags, DEF_GLOBAL);
             current = b.cur;
             b.cur = owner;
@@ -831,19 +909,19 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
     if isinstance(e, ListComp) {
         lc = e as ListComp;
         return sym_visit_inline_comprehension(
-            b, lc, lc.generators, lc.elt, None, "listcomp"
+            b, lc, lc.generators, lc.elt, None, comprehension_kind.LIST
         );
     }
     if isinstance(e, SetComp) {
         sc = e as SetComp;
         return sym_visit_inline_comprehension(
-            b, sc, sc.generators, sc.elt, None, "setcomp"
+            b, sc, sc.generators, sc.elt, None, comprehension_kind.SET
         );
     }
     if isinstance(e, DictComp) {
         dc = e as DictComp;
         if not sym_visit_inline_comprehension(
-            b, dc, dc.generators, dc.key, dc.value, "dictcomp"
+            b, dc, dc.generators, dc.key, dc.value, comprehension_kind.DICT
         ) {
             return False;
         }
@@ -857,10 +935,13 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         if not sym_visit_arg_defaults(b, lam.args) {
             return False;
         }
-        nested = sym_compute_nested(b);
-        in_class = False;
         if not b.push_block(
-            "function", "lambda", lam.lineno, nested, in_class, lam.col_offset
+            scope_kind.FUNCTION,
+            "lambda",
+            scope_key(lam),
+            lam.lineno,
+            lam.col_offset,
+            sym_compute_nested(b)
         ) {
             return False;
         }
@@ -889,7 +970,7 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
             return b.fail(
                 "SyntaxError",
                 "'await' outside async function"
-                    if b.cur.block_type == "function"
+                    if b.cur.kind == scope_kind.FUNCTION
                     else "'await' outside function",
                 e.lineno,
                 e.col_offset
@@ -1070,7 +1151,7 @@ def sym_visit_params(b: sym_builder, args: arguments) -> bool {
 }
 
 def sym_is_function_like(block: sym_block) -> bool {
-    return block.block_type == "function";
+    return block.kind == scope_kind.FUNCTION;
 }
 
 def sym_compute_nested(b: sym_builder) -> bool {
@@ -1263,22 +1344,29 @@ def sym_visit_type_parameters(b: sym_builder, parameters: list[type_param]) -> b
                 continue;
             }
             in_class = b.cur.can_see_class_scope;
+            role = scope_role.DEFAULT_VALUE if index else scope_role.BODY;
             if not b.push_block(
-                "function", name, value.lineno, True, in_class, value.col_offset
+                scope_kind.FUNCTION,
+                name,
+                scope_key(tp, role),
+                value.lineno,
+                value.col_offset,
+                True,
+                in_class
             ) {
                 return False;
             }
-            b.cur.type_parameter_key = id(tp) * 2 + index;
-            type_name = "TypeVarTuple"
-                if isinstance(tp, TypeVarTuple)
-                else "ParamSpec" if isinstance(tp, ParamSpec) else "TypeVar";
-            b.cur.annotation_kind = "a "
-                + type_name
-                + (
-                    " default"
-                        if index
-                        else " constraint" if isinstance(value, Tuple) else " bound"
-                );
+            info = scope_info_kind.TYPEVAR_BOUND;
+            if index {
+                info = scope_info_kind.TYPEVARTUPLE_DEFAULT
+                    if isinstance(tp, TypeVarTuple)
+                    else scope_info_kind.PARAMSPEC_DEFAULT
+                        if isinstance(tp, ParamSpec)
+                        else scope_info_kind.TYPEVAR_DEFAULT;
+            } elif isinstance(value, Tuple) {
+                info = scope_info_kind.TYPEVAR_CONSTRAINT;
+            }
+            b.cur.scope_info = info;
             if not b.add_def(".format", DEF_PARAM, value.lineno, value.col_offset) {
                 return False;
             }
@@ -1301,22 +1389,21 @@ def sym_visit_assignment_annotation(b: sym_builder, an: AnnAssign) -> bool {
     owner = b.cur;
     scope = owner.annotation_scope;
     if scope is None {
-        in_class = owner.block_type == "class" and not future;
+        in_class = owner.kind == scope_kind.CLASS and not future;
         if not b.push_block(
-            "function",
+            scope_kind.FUNCTION,
             "__annotate__",
+            scope_key(an, scope_role.ANNOTATIONS),
             an.lineno,
+            an.col_offset,
             sym_compute_nested(b),
             in_class,
-            an.col_offset
+            attached=not future
         ) {
             return False;
         }
         owner.annotation_scope = b.cur;
-        if future {
-            owner.children.pop();
-        }
-        b.cur.annotation_kind = "an annotation";
+        b.cur.scope_info = scope_info_kind.ANNOTATION;
         if not b.add_def(".format", DEF_PARAM, an.lineno, an.col_offset) {
             return False;
         }
@@ -1327,7 +1414,7 @@ def sym_visit_assignment_annotation(b: sym_builder, an: AnnAssign) -> bool {
         b.stack.append(owner);
         b.cur = scope;
     }
-    b.cur.unevaluated_annotation = owner.block_type == "function";
+    b.cur.unevaluated_annotation = owner.kind == scope_kind.FUNCTION;
     if not sym_visit_load_expr(b, an.annotation) {
         return False;
     }
@@ -1357,19 +1444,20 @@ def sym_visit_function_annotations(
     if fd.returns is not None {
         annotations.append(fd.returns);
     }
-    in_class = b.cur.block_type == "class" or b.cur.can_see_class_scope;
-    owner = b.cur;
-    nested = sym_compute_nested(b);
+    in_class = b.cur.kind == scope_kind.CLASS or b.cur.can_see_class_scope;
     if not b.push_block(
-        "function", "__annotate__", fd.lineno, nested, in_class, fd.col_offset
+        scope_kind.FUNCTION,
+        "__annotate__",
+        scope_key(fd, scope_role.ANNOTATIONS),
+        fd.lineno,
+        fd.col_offset,
+        sym_compute_nested(b),
+        in_class,
+        attached=not future
     ) {
         return False;
     }
-    b.cur.function_annotation_key = id(fd);
-    if future {
-        owner.children.pop();
-    }
-    b.cur.annotation_kind = "an annotation";
+    b.cur.scope_info = scope_info_kind.ANNOTATION;
     if not b.add_def(".format", DEF_PARAM, fd.lineno, fd.col_offset) {
         return False;
     }
@@ -1389,20 +1477,20 @@ def sym_visit_function_annotations(
 def sym_enter_generic_definition(
     b: sym_builder, definition: FunctionDef | AsyncFunctionDef | ClassDef
 ) -> bool {
-    in_class = b.cur.block_type == "class" or b.cur.can_see_class_scope;
-    nested = sym_compute_nested(b);
+    in_class = b.cur.kind == scope_kind.CLASS or b.cur.can_see_class_scope;
     if not b.push_block(
-        "function",
+        scope_kind.FUNCTION,
         "<generic parameters of " + definition.name + ">",
+        scope_key(definition, scope_role.TYPE_PARAMETERS),
         definition.lineno,
-        nested,
-        in_class,
-        definition.col_offset
+        definition.col_offset,
+        sym_compute_nested(b),
+        in_class
     ) {
         return False;
     }
     b.cur.generic_parameters = True;
-    b.cur.annotation_kind = "the definition of a generic";
+    b.cur.scope_info = scope_info_kind.GENERIC_DEFINITION;
     if in_class and not b.add_use("__classdict__") {
         return False;
     }
@@ -1473,7 +1561,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
                 if not b.add_def(tn, flags, an.lineno, an.col_offset) {
                     return False;
                 }
-                if an.simple and b.cur.block_type == "module" {
+                if an.simple and b.cur.kind == scope_kind.MODULE {
                     if not b.add_use("__conditional_annotations__") {
                         return False;
                     }
@@ -1567,7 +1655,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
     }
     if isinstance(s, Nonlocal) {
         nl = s as Nonlocal;
-        if b.cur.block_type == "module" {
+        if b.cur.kind == scope_kind.MODULE {
             return b.fail(
                 "SyntaxError",
                 "nonlocal declaration not allowed at module level",
@@ -1769,7 +1857,12 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
             return False;
         }
         if not b.push_block(
-            "function", fd.name, fd.lineno, nested, False, fd.col_offset
+            scope_kind.FUNCTION,
+            fd.name,
+            scope_key(fd),
+            fd.lineno,
+            fd.col_offset,
+            nested
         ) {
             return False;
         }
@@ -1806,7 +1899,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
             di = di + 1;
         }
         saved_private = b.private;
-        nested = b.cur.block_type != "module";
+        nested = b.cur.kind != scope_kind.MODULE;
         generic = bool(cd.type_params);
         if generic and not sym_enter_generic_definition(b, cd) {
             return False;
@@ -1826,7 +1919,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
             }
         }
         if not b.push_block(
-            "class", cd.name, cd.lineno, nested, False, cd.col_offset
+            scope_kind.CLASS, cd.name, scope_key(cd), cd.lineno, cd.col_offset, nested
         ) {
             return False;
         }
@@ -1867,22 +1960,23 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
             return False;
         }
         nested = sym_compute_nested(b);
-        in_class = b.cur.block_type == "class" or b.cur.can_see_class_scope;
+        in_class = b.cur.kind == scope_kind.CLASS or b.cur.can_see_class_scope;
         if len(tps) > 0 {
             # PEP 695: the hidden <generic parameters of X> scope binds each
             # type var as a cell; the lazy value function closes over them.
             if not b.push_block(
-                "function",
+                scope_kind.FUNCTION,
                 "<generic parameters of " + type_alias_name.id + ">",
+                scope_key(ta, scope_role.TYPE_PARAMETERS),
                 ta.lineno,
+                ta.col_offset,
                 nested,
-                in_class,
-                ta.col_offset
+                in_class
             ) {
                 return False;
             }
             b.cur.generic_parameters = True;
-            b.cur.annotation_kind = "the definition of a generic";
+            b.cur.scope_info = scope_info_kind.GENERIC_DEFINITION;
             if in_class and not b.add_use("__classdict__") {
                 return False;
             }
@@ -1890,11 +1984,17 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
                 return False;
             }
             if not b.push_block(
-                "function", type_alias_name.id, ta.lineno, True, in_class, ta.col_offset
+                scope_kind.FUNCTION,
+                type_alias_name.id,
+                scope_key(ta),
+                ta.lineno,
+                ta.col_offset,
+                True,
+                in_class
             ) {
                 return False;
             }
-            b.cur.annotation_kind = "a type alias";
+            b.cur.scope_info = scope_info_kind.TYPE_ALIAS;
             if in_class and not b.add_use("__classdict__") {
                 return False;
             }
@@ -1911,11 +2011,17 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         # Non-generic: the lazy value scope's only parameter is .format.
         if not b.push_block(
-            "function", type_alias_name.id, ta.lineno, nested, in_class, ta.col_offset
+            scope_kind.FUNCTION,
+            type_alias_name.id,
+            scope_key(ta),
+            ta.lineno,
+            ta.col_offset,
+            nested,
+            in_class
         ) {
             return False;
         }
-        b.cur.annotation_kind = "a type alias";
+        b.cur.scope_info = scope_info_kind.TYPE_ALIAS;
         if in_class and not b.add_use("__classdict__") {
             return False;
         }
@@ -1945,7 +2051,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         while ni < len(imp_from.names) {
             bind = sym_import_bind_name(imp_from.names[ni]);
             if bind == "*" {
-                if b.cur.block_type != "module" {
+                if b.cur.kind != scope_kind.MODULE {
                     return b.fail(
                         "SyntaxError",
                         "import * only allowed at module level",
@@ -2098,7 +2204,7 @@ def sym_analyze_name(
         scopes[name] = SCOPE_GLOBAL_IMPLICIT;
         return None;
     }
-    if block.block_type == "module" {
+    if block.kind == scope_kind.MODULE {
         scopes[name] = SCOPE_GLOBAL_IMPLICIT;
         return None;
     }
@@ -2150,17 +2256,17 @@ def sym_analyze_block(
     newbound: dict[str, int] = {};
     if sym_is_function_like(block) {
         newbound = sym_set_union(newbound, local);
-    } elif block.block_type == "class" {
+    } elif block.kind == scope_kind.CLASS {
         for dunder in ["__class__", "__classdict__"] {
             sym_set_add(newbound, dunder);
         }
     }
-    child_bound = enclosing_bound if block.block_type == "class" else bound;
+    child_bound = enclosing_bound if block.kind == scope_kind.CLASS else bound;
     if child_bound is not None {
         newbound = sym_set_union(newbound, child_bound);
     }
-    child_globals = inherited_global if block.block_type == "class" else global_set;
-    if block.block_type != "class" {
+    child_globals = inherited_global if block.kind == scope_kind.CLASS else global_set;
+    if block.kind != scope_kind.CLASS {
         for name in local {
             if block.symbols[name] & 1024 {
                 type_parameters[name] = 1;
@@ -2179,7 +2285,7 @@ def sym_analyze_block(
         child_class: sym_block | None = None;
         if child.can_see_class_scope {
             child_class = class_entry;
-            if block.block_type == "class" {
+            if block.kind == scope_kind.CLASS {
                 child_class = block;
             }
         }
@@ -2194,7 +2300,7 @@ def sym_analyze_block(
         ci = ci + 1;
     }
     child_free = sym_set_union(child_free, free);
-    if block.block_type == "class" {
+    if block.kind == scope_kind.CLASS {
         # CPython drop_class_free: the implicit class-scope names never pass a
         # class boundary as free variables; __class__ instead becomes the
         # implicit cell (needs_class_closure) consumed by the body prologue and
@@ -2215,7 +2321,7 @@ def sym_analyze_block(
     fi = 0;
     while fi < len(fk_names) {
         fname = fk_names[fi];
-        if block.block_type == "class" {
+        if block.kind == scope_kind.CLASS {
             if sym_set_contains(newbound, fname)
                 and fname not in block.class_free_names {
                 block.class_free_names.append(fname);
@@ -2272,7 +2378,7 @@ def build_module_symtable(
     body: list[stmt], context: compile_context | None = None
 ) -> symtable_result {
     top = sym_block(
-        block_type="module",
+        kind=scope_kind.MODULE,
         name="top",
         lineno=0,
         nested=False,

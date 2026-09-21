@@ -42,6 +42,23 @@ jobs:
         with:
           path: jac/.llvm-build
           key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+      # The one precompile of this code version, shared with setup-jac and
+      # build-binaries.yml. Without it these two legs each recompiled the whole
+      # ~1300-module tree from cold, on the slowest runners in CI, for a result
+      # byte-identical to the one ci.yml's build-kit already produced -- the
+      # unit key folds no platform axis, so an x86_64 Linux tree is exactly what
+      # the aarch64 and macOS legs need. Restore only: build-kit and the dev
+      # release legs seed it, and a nightly run has nothing newer to add.
+      - name: Restore the shared JIR precompile tree
+        uses: actions/cache/restore@v4
+        with:
+          path: jac/.precompiled-build/jacpython
+          key: jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          restore-keys: |
+            jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-
       - name: Build and smoke-test the native JacPython runtime
         working-directory: jac
         run: zig build build-python $DTARGET --summary all
@@ -53,7 +70,7 @@ jobs:
           zig build $DTARGET --summary all
           zig-out/bin/jac -c '
           import ast, ctypes, sys
-          assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+          assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
           assert not hasattr(sys, "_jacpython_compile")
           assert not hasattr(sys, "_jacpython_image")
           assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42
@@ -69,14 +86,14 @@ jobs:
           if [ -x zig-out/bin/jac ]; then
             lldb --batch -o 'settings set target.disable-aslr false' -o run \
               -k 'thread backtrace all' -k 'image list -o -f' \
-              -- zig-out/bin/jac -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+              -- zig-out/bin/jac -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
           elif [ -x .python-build/jacpython/macos-aarch64/python/install/bin/python3.14 ]; then
             cold_cache=$(mktemp -d)
             lldb --batch -o 'settings set target.disable-aslr false' -o run \
               -k 'thread backtrace all' -k 'image list -o -f' \
               -- .python-build/jacpython/macos-aarch64/python/install/bin/python3.14 \
               -I -S -B -X faulthandler -X "pycache_prefix=$cold_cache" -OO \
-              -c 'import ast, ctypes, encodings, sys; assert eval("6 * 7") == 42; assert isinstance(ast.parse("x=1"), ast.Module); assert encodings.search_function.__code__.co_filename == encodings.__file__; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3'
+              -c 'import ast, ctypes, encodings, sys; assert eval("6 * 7") == 42; assert isinstance(ast.parse("x=1"), ast.Module); assert encodings.search_function.__code__.co_filename == encodings.__file__; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4'
           fi
       - uses: actions/upload-artifact@v4
         if: failure()

@@ -30,6 +30,7 @@ tests: each one names the structure, the thing it must not hold, and the
 seam that releases it.
 """
 
+import from jaclang.compiler.frontend.roles { Kid }
 import gc;
 import os;
 import tempfile;
@@ -95,7 +96,7 @@ def type_census(mod: uni.Module) -> tuple[(int, int, int)] {
                 n_narrowed += 1;
             }
         }
-        for k in cur.kid {
+        for k in [cur->:Kid:->] {
             stack.append(k);
         }
     }

@@ -93,7 +93,11 @@ obj ModuleCompilation {
     }
 
     def analysis {
-        import from jaclang.compiler.driver.pipeline { get_analysis_sched }
+        import from jaclang.compiler.driver.pipeline {
+            require_product,
+            product_ready,
+            CompilationProduct
+        }
         import from jaclang.compiler.frontend.constant { CodeContext as _CodeCtx }
         self.native = self.module is not None
             and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
@@ -123,16 +127,17 @@ obj ModuleCompilation {
                 or not module_import_in_flight(self.path)
             );
 
-        if _analyze {
-            if not self.program.analysis.analyses_run.provides(
-                self.module, AnalysisFact.TYPE_OF
+        if _analyze
+            and not product_ready(
+                self.program, self.module, CompilationProduct.ANALYSIS
             ) {
-                self.compiler.run_schedule(
-                    mod=self.module,
-                    target_program=self.program,
-                    passes=get_analysis_sched(),
-                    cancel_token=self.options.cancel_token
-                );
+            if not require_product(
+                self.program,
+                self.module,
+                CompilationProduct.ANALYSIS,
+                cancel_token=self.options.cancel_token
+            ) {
+                self.blocked = True;
             }
         }
 
@@ -160,6 +165,11 @@ obj ModuleCompilation {
     }
 
     def native_checks {
+        import from jaclang.compiler.driver.pipeline {
+            require_product,
+            product_ready,
+            CompilationProduct
+        }
         if (
             self.options.no_cgen
             and (
@@ -169,20 +179,17 @@ obj ModuleCompilation {
             and not self.options.symtab_ir_only
             and not self.parse_failed
             and not self.blocked
-            and self.program.analysis.analyses_run.provides(
-                self.module, AnalysisFact.TYPE_OF
-            )
+            and product_ready(self.program, self.module, CompilationProduct.ANALYSIS)
         ) {
             import from jaclang.compiler.frontend.module_facts {
                 ModuleFacts as _PtyMcp
             }
             if self.native or _PtyMcp.has_native_context_stmts(self.module) {
-                import from jaclang.compiler.driver.pipeline {
-                    require_product,
-                    CompilationProduct
-                }
                 lowered = require_product(
-                    self.program, self.module, CompilationProduct.NATIVE_IR
+                    self.program,
+                    self.module,
+                    CompilationProduct.NATIVE_IR,
+                    cancel_token=self.options.cancel_token
                 );
                 if lowered and self.options.native_required_for(self.path) {
                     import copy;
@@ -310,13 +317,20 @@ obj ModuleCompilation {
                 require_product,
                 CompilationProduct
             }
-            require_product(self.program, self.module, CompilationProduct.INTERFACE);
+            require_product(
+                self.program,
+                self.module,
+                CompilationProduct.INTERFACE,
+                cancel_token=self.options.cancel_token
+            );
         }
     }
 
     def codegen {
         import from jaclang.compiler.driver.pipeline {
-            get_analysis_sched,
+            require_product,
+            product_ready,
+            CompilationProduct,
             get_py_code_gen
         }
         if (
@@ -330,17 +344,19 @@ obj ModuleCompilation {
             import from jaclang.compiler.frontend.module_facts { ModuleFacts }
             needs_native = self.native
                 or ModuleFacts.has_native_context_stmts(self.module);
-
             if needs_native
-                and not self.program.analysis.analyses_run.provides(
-                    self.module, AnalysisFact.TYPE_OF
+                and not product_ready(
+                    self.program, self.module, CompilationProduct.ANALYSIS
                 ) {
-                self.compiler.run_schedule(
-                    mod=self.module,
-                    target_program=self.program,
-                    passes=get_analysis_sched(),
+                if not require_product(
+                    self.program,
+                    self.module,
+                    CompilationProduct.ANALYSIS,
                     cancel_token=self.options.cancel_token
-                );
+                ) {
+                    self.blocked = True;
+                    return;
+                }
             }
             self.compiler.run_schedule(
                 mod=self.module,

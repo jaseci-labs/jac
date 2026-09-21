@@ -443,7 +443,7 @@ import_items ::=
 archetype ::=
     ("@" atomic_chain)* "async"? ("obj" | "node" | "edge" | "walker" | "class")
     access_tag (NAME | KWESC_NAME) ("[" type_params "]")?
-    ("(" (call_arg ("," call_arg)*)? ")")? (":" atomic_chain "-->" atomic_chain)?
+    ("(" (call_arg ("," call_arg)*)? ")")? (":" pipe "-->" pipe)?
     ("{" archetype_member* "}" | ";")
 
 archetype_member ::=

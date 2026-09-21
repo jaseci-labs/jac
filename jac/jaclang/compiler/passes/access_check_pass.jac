@@ -46,6 +46,5 @@ walker AccessCheckPass {
     def _check_member(use_node: AstSymbolNode, sym: Symbol, owner: Archetype) -> None;
     def _declaring_archetype(sym: Symbol) -> (Archetype | None);
     def _declaring_module(sym: Symbol) -> (Module | None);
-    def _base_archetype(expr: UniNode) -> (Archetype | None);
     def _is_subclass_of(child: Archetype, ancestor: Archetype) -> bool;
 }

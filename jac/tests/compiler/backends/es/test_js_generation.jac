@@ -327,6 +327,23 @@ test "cl only js command outputs js" {
     assert 'function greet(name = "World") {' in result.stdout;
 }
 
+test "dict literal with an expression key emits a computed property" {
+    temp_path = write_temp_jac(
+        "def build(k: str) -> dict {\n"
+        "    return {\"lit\": 2, (k + \"x\"): 3, k.upper(): 4};\n"
+        "}\n"
+    );
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "[(k + \"x\")]: 3" in js_code or "[k + \"x\"]: 3" in js_code , js_code;
+        assert "[k.toUpperCase()]: 4" in js_code , js_code;
+        assert "\"lit\": 2" in js_code or "lit: 2" in js_code , js_code;
+        assert "\"key\":" not in js_code and "key:" not in js_code , js_code;
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 test "empty file generates minimal js" {
     temp_path = write_temp_jac("\"\"\"Empty file for smoke testing.\"\"\"\n");
 
@@ -3578,4 +3595,69 @@ test "del on a plain local in a graphless module is a no-op, not an error" {
         "a graphless module must not pull in the OSP driver"
     );
     assert_balanced_syntax(js_code, DEL_PLAIN_FIXTURE);
+}
+
+test "a distinct brand binds the primitive it erases to" {
+    js_code = compile_fixture_to_js("distinct_brand_value.jac", FIXTURES);
+    for (brand, prim) in [("Brand", "int"), ("Tag", "str")] {
+        assert "const " + brand + " = _jac.types." + prim in js_code , (
+            f"a brand is callable wherever the primitive it erases to is, so "
+            f"the module must bind {brand} to {prim}; got:\n{js_code}"
+        );
+    }
+}
+
+
+test "client codegen accepts a module that brands a value" {
+    prog = JacProgram();
+    prog.compile(file_path=os.path.join(FIXTURES, "distinct_brand_value.jac"));
+    unbound = [
+        str(e)
+        for e in prog.errors_had
+        if "never binds" in str(e)
+    ];
+    assert not unbound , (
+        f"a brand read as a free identifier makes client codegen refuse the "
+        f"whole module: {unbound}"
+    );
+}
+
+test "a brand behaves like its primitive when the client output runs" {
+    js_code = compile_fixture_to_js("distinct_brand_runtime.jac", FIXTURES);
+    wrapper = (
+        js_code
+        + "\nconsole.log(JSON.stringify({"
+        + "  brand_call: brand_call(\"42\"),"
+        + "  tag_call: tag_call(5),"
+        + "  brand_all: brand_all([\"1\", \"2\", \"3\"]),"
+        + "  brands_from_list: brands_from_list(5)"
+        + "}));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "a brand is not callable in the emitted module:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    assert got["brand_call"] == 42 , (
+        f"Brand(x) must coerce like the primitive it erases to: {got['brand_call']}"
+        f"\njs:\n{js_code}"
+    );
+    assert got["tag_call"] == "5" , (
+        f"Tag(x) must coerce like str: {got['tag_call']}\njs:\n{js_code}"
+    );
+    assert got["brand_all"] == [1, 2, 3] , (
+        f"map(Brand, xs) must keep Python's one-argument call contract, or the "
+        f"index leaks into the coercion: {got['brand_all']}\njs:\n{js_code}"
+    );
+    assert got["brands_from_list"] == [5, "5"] , (
+        f"a brand stored in a collection and called out of it must still "
+        f"coerce: {got['brands_from_list']}\njs:\n{js_code}"
+    );
+    assert_balanced_syntax(js_code, "distinct_brand_runtime.jac");
 }

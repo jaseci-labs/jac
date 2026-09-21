@@ -75,7 +75,7 @@ node PublicNode {
     }
 }
 
-edge PublicEdge {
+edge PublicEdge: PublicNode --> PublicNode {
     def __jac_access__ -> AccessLevel {
         return AccessLevel.READ;
     }
@@ -112,15 +112,15 @@ node DocPage(PublicNode) {
         toc: list[TocEntry] = [];
 }
 
-edge HasHub(PublicEdge) {}
+edge HasHub(PublicEdge): Node --> DocsHub {}
 
-edge HasVersion(PublicEdge) {}
+edge HasVersion(PublicEdge): DocsHub --> DocVersion {}
 
-edge Contains(PublicEdge) {}
+edge Contains(PublicEdge): DocContainer --> DocContainer | DocPage {}
 
-edge NextPage(PublicEdge) {}
+edge NextPage(PublicEdge): DocPage --> DocPage {}
 
-walker trace_route {
+walker:protect trace_route {
     has segs: list[str] = [];
 
     can name_page with DocPage entry;
@@ -179,7 +179,7 @@ def _get_hub -> DocsHub | None;
 
 def _version_list -> list[VersionInfo];
 
-walker place_page {
+walker:protect place_page {
     has segs: list[str] = [],
         name: str = "",
         title: str = "",
@@ -190,7 +190,7 @@ walker place_page {
     can place with DocContainer entry;
 }
 
-walker collect_tree {
+walker:protect collect_tree {
     has folded: dict[str, TreeNode] = {},
         folded_seq: dict[str, list[DocPage]] = {},
         tree: list[TreeNode] = [],

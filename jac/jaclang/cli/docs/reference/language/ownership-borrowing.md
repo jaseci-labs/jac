@@ -152,6 +152,34 @@ with entry {
 }
 ```
 
+## Borrowing through managed values
+
+`&` also borrows a place reached from a **managed** value, which is what ordinary (RC/GC) code is made of. The binding is a local view: it does not hold its referent alive, so reading it costs no refcount traffic, and a walk that rebinds it costs none either:
+
+```jac
+def check(p: parser, rule_type: int) -> memo | None {
+    head: &memo | None = &p.tokens[p.mark].memo_head;
+    while head is not None {
+        if head.rule_type == rule_type {
+            p.mark = head.end_mark;
+            return head;            # handed back as an ordinary managed value
+        }
+        head = &head.next;          # reborrow along the same path
+    }
+    return None;
+}
+```
+
+Three rules make that safe, and the checker enforces them:
+
+1. **The borrow starts where the value outlives it.** The start of the path is a parameter, `self`, an `own` or `imm` binding, or another borrow. An ordinary local or a module global can be released while the borrow is still in use, so starting there is [`E1323`](../diagnostics.md#ownership-borrow-errors).
+2. **Nothing writes the fields the borrow was reached through.** The borrow above walked `tokens`, an element, `memo_head` and `next`. While it is live, assigning any of those fields, on any object, is [`E1321`](../diagnostics.md#ownership-borrow-errors), and a call that may write one of them is [`E1322`](../diagnostics.md#ownership-borrow-errors). What a function writes is inferred from its body and its callees; a call the compiler cannot resolve is assumed to write anything. Fields off the path, such as `p.mark` above, are free to change.
+3. **`&` stays read-only.** Assigning a field through a shared borrow is [`E1320`](../diagnostics.md#ownership-borrow-errors); take the borrow with `&mut` when the walk writes what it finds.
+
+Handing the borrowed value where a managed value is expected, such as the `return head` above or a store into a field, gives back an ordinary managed reference. That is not an escape ([`E1306`](../diagnostics.md#ownership-borrow-errors) is about borrows of owners, which cannot outlive them).
+
+The payoff is in walks over managed structures: on the native backend a borrowed local holds no reference, so rebinding it emits no retain and no release, and only the value that leaves the function is retained.
+
 ## Escaping borrows
 
 Borrows cannot escape their owners: a `&`/`&mut` value may not be returned from a local owner or stored into longer-lived storage. Borrow-containing local views and borrowed-parameter returns follow the rules below; other escapes are rejected ([`E1306`](../diagnostics.md#ownership-borrow-errors)):

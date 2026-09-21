@@ -7,15 +7,15 @@ obj Alpha(Node) {}
 obj Beta(Node) {}
 
 obj Carrier[T: Node, R: Node] {
-    static def build(x: T) -> R;
-    def move(x: T) -> R;
+    static def build(x: T) -> R abst;
+    def move(x: T) -> R abst;
 }
 
 obj Mid(Carrier[Alpha, Beta]) {}
 
 obj Leaf(Mid) {}
 
-def use(lf: Leaf, b: Beta) -> None {
+def use(lf: Leaf, b: Beta) {
     lf.move(b);
     Leaf.build(b);
 }

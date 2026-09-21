@@ -3,7 +3,7 @@ import from fnmatch { fnmatch }
 import from jaclang.cli.console { console }
 import from jaclang.cli.check_report {
     print_file_progress,
-    print_failures,
+    print_section,
     print_failed_summary,
     print_final_summary,
     print_native_coverage,
@@ -149,6 +149,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 native_parity=True,
                 force_target_program=True,
                 iface_ok=True,
+                strict_dependencies=True,
                 suppress_codes=list(opts.get("suppress_codes") or []),
                 target_app=str(opts.get("target_app") or ""),
                 app_kind=str(opts.get("app_kind") or ""),
@@ -162,6 +163,26 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 compile_application(prog, file_path, compile_options);
             } else {
                 prog.compile(file_path, options=compile_options);
+                if opts.get("named") {
+                    project_dir = os.path.realpath(
+                        str(opts["project_root"])
+                            if opts.get("project_root")
+                            else os.path.dirname(file_path)
+                    );
+                    checked = os.path.realpath(file_path);
+                    result['reached'] = sorted(
+                        {
+                            real
+                            for real in [
+                                os.path.realpath(str(key)) for key in prog.mod.hub
+                            ]
+                            if real.endswith(".jac")
+                                and not real.endswith((".impl.jac", ".test.jac"))
+                                and real.startswith(project_dir + os.sep)
+                                and real != checked
+                        }
+                    );
+                }
             }
         }
         if opts.get("placements") {
@@ -255,7 +276,10 @@ impl check(
         paths = [paths];
     }
     start_time = time();
-    ignore_list = _normalize_ignore_patterns(ignore or []);
+    ignore_list = _normalize_ignore_patterns(
+        list(ignore or [])
+            + (_configured_check_excludes() if _is_project_wide_run(paths) else [])
+    );
     (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
         disable_error_code or []
     );
@@ -347,15 +371,15 @@ impl check(
                     selected_app = next(iter(f_ws.apps.values()), None);
                 }
             }
-            units.append(
-                _check_unit(
-                    f,
-                    selected_app.name if selected_app is not None else '',
-                    selected_app.kind if selected_app is not None else '',
-                    selected_app.name if selected_app is not None else '',
-                    f_ws.project_root if f_ws is not None else ''
-                )
+            file_unit = _check_unit(
+                f,
+                selected_app.name if selected_app is not None else '',
+                selected_app.kind if selected_app is not None else '',
+                selected_app.name if selected_app is not None else '',
+                f_ws.project_root if f_ws is not None else ''
             );
+            file_unit['named'] = os.path.realpath(f) in named_files;
+            units.append(file_unit);
         }
     }
     cfg = get_config();
@@ -398,6 +422,7 @@ impl check(
             job_opts['app_kind'] = unit['kind'];
             job_opts['project_root'] = unit['root_dir'];
             job_opts['closure'] = unit['closure'];
+            job_opts['named'] = bool(unit.get('named'));
             return {'opts': job_opts, 'collect': (not use_pool) and (idx < total - 1)};
         }
 
@@ -468,6 +493,7 @@ impl check(
 
     multi = len({r['label'] for r in results}) > 1;
     failed_results: list[dict[str, any]] = [];
+    warning_results: list[dict[str, any]] = [];
     total_errors = failed_files=0;
     for res in results {
         errs = _wire_list(res.get('errors'));
@@ -482,18 +508,12 @@ impl check(
             }
         }
         total_errors += len(errs);
+        path = (f"[{res['label']}] " if multi else '') + str(res.get('path'));
         if not res.get('success') {
             failed_files += 1;
-        }
-        if not res.get('success') or (len(warns) > 0 and not nowarn) {
-            failed_results.append(
-                {
-                    'path': (f"[{res['label']}] " if multi else '')
-                        + str(res.get('path')),
-                    'errors': errs,
-                    'warnings': warns
-                }
-            );
+            failed_results.append({'path': path, 'errors': errs, 'warnings': warns});
+        } elif len(warns) > 0 {
+            warning_results.append({'path': path, 'warnings': warns});
         }
     }
     if native_coverage {
@@ -503,10 +523,38 @@ impl check(
         print_placement_report(placement_report);
     }
     if print_errs and len(failed_results) > 0 {
-        print_failures(failed_results, nowarn);
+        print_section("FAILURES", failed_results, nowarn);
     }
     if failed_files > 0 {
         print_failed_summary(failed_results);
+    }
+    if print_errs and len(warning_results) > 0 {
+        print_section("WARNINGS", warning_results, nowarn);
+    }
+
+    file_units = [
+        r
+        for r in results
+        if r['_unit'].get('named')
+    ];
+    reached: set[str] = set();
+    for r in file_units {
+        reached.update(_wire_list(r.get('reached')));
+    }
+    reached -= {os.path.realpath(str(r['path'])) for r in file_units};
+    if reached and not parse_only {
+        count = len(file_units);
+        n = len(reached);
+        files_word = "file" if count == 1 else "files";
+        own_word = "its" if count == 1 else "their";
+        modules_word = "module" if n == 1 else "modules";
+        them_word = "it" if n == 1 else "them";
+        console.print(
+            f"Checked {count} {files_word} on {own_word} own; {n} imported "
+                + f"{modules_word} read as interfaces only, so type errors inside "
+                + f"{them_word} are not reported. Run 'jac check' with no paths in "
+                + "the project root to check the whole program."
+        );
     }
 
     elapsed = time() - start_time;
@@ -1177,16 +1225,7 @@ impl format(
     }
 
     if failed_results {
-        import from jaclang.cli.check_report { separator }
-        console.print("");
-        console.print(separator("FAILURES"));
-        for r in failed_results {
-            console.print(separator(str(r['path']), char='_'));
-            for e in r['errors'] {
-                console.error(e);
-            }
-            console.print("");
-        }
+        print_section("FAILURES", failed_results);
         print_failed_summary(failed_results);
     }
 
@@ -1255,6 +1294,7 @@ impl precommit(
     }
     targets: list[str] = [];
     rel_targets: list[str] = [];
+    check_targets: list[str] = [];
     git_root = "";
     if staged {
         try {
@@ -1289,8 +1329,15 @@ impl precommit(
             console.success("No staged '.jac' files to check.");
             return 0;
         }
+        gate = _normalize_ignore_patterns(_configured_check_excludes());
+        check_targets = [
+            abs_t
+            for (rel, abs_t) in zip(rel_targets, targets)
+            if not _should_ignore(rel, gate)
+        ];
     } elif paths {
         targets = list(paths);
+        check_targets = targets;
     } else {
         config = get_config();
         if config is not None and config.project_root {
@@ -1298,6 +1345,7 @@ impl precommit(
         } else {
             targets = ["."];
         }
+        check_targets = targets;
     }
 
     fmt_targets = targets;
@@ -1394,7 +1442,7 @@ impl precommit(
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
     console.print("[precommit] Running check...");
-    check_ret = check(targets);
+    check_ret = check(check_targets) if check_targets else 0;
 
     fixes_applied = (
         int(stats.get("changed", 0)) > 0
@@ -1823,6 +1871,26 @@ def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
 def _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
     import from jaclang.project.source { normalize_exclude_patterns }
     return normalize_exclude_patterns(ignore);
+}
+
+def _configured_check_excludes -> list[str] {
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    return list(config.check.exclude) if config is not None else [];
+}
+
+def _is_project_wide_run(paths: list[str]) -> bool {
+    import os;
+    import from jaclang.project.config { get_config }
+    if not paths {
+        return True;
+    }
+    config = get_config();
+    proj = str(config.project_root) if (config and config.project_root) else "";
+    if not proj or len(paths) != 1 {
+        return False;
+    }
+    return os.path.realpath(paths[0]) == os.path.realpath(proj);
 }
 
 def _drop_git_ignored(paths: list[str]) -> list[str] {

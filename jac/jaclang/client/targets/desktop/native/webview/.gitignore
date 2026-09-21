@@ -1,4 +1,5 @@
-# Outputs of build_libwebview.sh, built on the first desktop build.
+# Outputs of the desktop toolchain's webview build (jaclang/toolchains/desktop.jac).
 .build/
 libwebview.so
 .webkit_module
+libwebview.dylib

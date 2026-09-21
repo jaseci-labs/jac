@@ -41,7 +41,7 @@ The tutorial is split into seven parts. Each builds on the last:
 | [3](day-planner-03-backend.md#part-3-building-the-backend-api) | [Backend API](day-planner-03-backend.md#part-3-building-the-backend-api) | `def:pub`, `jid()`, collections, list comprehensions |
 | [4](day-planner-04-frontend.md#part-4-a-reactive-frontend) | [Working frontend](day-planner-04-frontend.md#part-4-a-reactive-frontend) | Client-side code, lambdas, JSX, reactive state |
 | [5](day-planner-05-ai.md#part-5-making-it-smart-with-ai) | [AI features](day-planner-05-ai.md#part-5-making-it-smart-with-ai) | `by llm()`, `obj`, `sem`, structured output |
-| [6](day-planner-06-auth.md#part-6-authentication-and-multi-file-organization) | [Authentication](day-planner-06-auth.md#part-6-authentication-and-multi-file-organization) | Login, signup, `def:priv`, per-user data, multi-file |
+| [6](day-planner-06-auth.md#part-6-authentication-and-multi-file-organization) | [Authentication](day-planner-06-auth.md#part-6-authentication-and-multi-file-organization) | Login, signup, `def:protect`, per-user data, multi-file |
 | [7](day-planner-07-walkers.md#part-7-object-spatial-programming-with-walkers) | [Walkers & OSP](day-planner-07-walkers.md#part-7-object-spatial-programming-with-walkers) | Walkers, abilities, graph traversal |
 
 ---
@@ -82,7 +82,7 @@ Over seven parts, you progressed from basic syntax to a complete full-stack appl
 |-------|----------------|-----------------|
 | 1–4 | Working day planner | Core syntax, graph data, reactive frontend |
 | 5 | + AI features | AI delegation, structured output, semantic types |
-| 6 | + Auth & multi-file | Authentication, `def:priv`, per-user isolation, declaration/implementation split |
+| 6 | + Auth & multi-file | Authentication, `def:protect`, per-user isolation, declaration/implementation split |
 | 7 | OSP reimplementation | Walkers, abilities, graph traversal |
 
 The concepts you've learned are interconnected. Types constrain AI output. Graphs eliminate databases. `root` enables per-user isolation. Walkers provide an alternative to functions for graph-heavy logic. Here's a quick reference of every Jac concept covered in this tutorial:
@@ -91,7 +91,7 @@ The concepts you've learned are interconnected. Types constrain AI output. Graph
 
 **Graph:** `root`, `++>` (create + connect), `+>: Edge :+>` (typed edge), `[root-->]` (query), `[?:Type]` (filter), `jid()` (node identity), `del` (delete)
 
-**Functions:** `def`, `def:pub`, `def:priv`, `by llm()`, `lambda`, `async`/`await`
+**Functions:** `def`, `def:pub`, `def:protect`, `by llm()`, `lambda`, `async`/`await`
 
 **Walkers:** `walker`, `walker:priv`, `can with Type entry/exit`, `visit`, `here`, `self`, `visitor`, `report`, `disengage`, `spawn`
 

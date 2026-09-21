@@ -1,4 +1,31 @@
-glob _SCHEMA_SQL = [
+glob OUTBOX_SCHEMA_SQL: list[str] = [
+         """
+    CREATE TABLE IF NOT EXISTS jac_outbox (
+        id              TEXT PRIMARY KEY,
+        app             TEXT NOT NULL,
+        walker          TEXT NOT NULL,
+        kwargs          TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        attempts        INTEGER NOT NULL DEFAULT 0,
+        created_at      DOUBLE PRECISION NOT NULL,
+        status          TEXT NOT NULL,
+        last_error      TEXT NOT NULL DEFAULT '',
+        next_attempt_at DOUBLE PRECISION NOT NULL DEFAULT 0
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_jac_outbox_due
+        ON jac_outbox (status, next_attempt_at)
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS jac_outbox_seen (
+        idempotency_key TEXT PRIMARY KEY,
+        result          TEXT NOT NULL DEFAULT '',
+        expires_at      DOUBLE PRECISION NOT NULL
+    )
+    """
+     ],
+     _SCHEMA_SQL: list[str] = [
          """
     CREATE TABLE IF NOT EXISTS anchors (
         id             uuid PRIMARY KEY,
@@ -56,8 +83,21 @@ glob _SCHEMA_SQL = [
         created_at  timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY (missing_id, kind)
     )
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS jac_docs (
+        collection text NOT NULL,
+        id         text NOT NULL,
+        doc        jsonb NOT NULL,
+        PRIMARY KEY (collection, id)
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS jac_docs_user_id_idx
+        ON jac_docs (collection, (doc->>'user_id'))
     """
-     ];
+     ]
+         + OUTBOX_SCHEMA_SQL;
 
 
 impl ConnInfo.dsn -> str {
@@ -363,10 +403,37 @@ impl PgStore._main -> any {
 
 impl PgStore._side -> any {
     self._ensure_ready();
-    if self._side_conn is None {
-        self._side_conn = self._connect();
+    cached: any = self._side_conn;
+    if cached is not None and not getattr(cached, '_closed', False) {
+        return cached;
     }
-    return self._side_conn;
+    fresh: any = self._connect();
+    self._side_conn = fresh;
+    if self._side_listened {
+        for lst in list(self._listeners) {
+            fresh.run(f"LISTEN {_quote_channel(lst.ident)}");
+        }
+    }
+    return fresh;
+}
+
+
+impl PgStore._side_run(sql: str, params: dict[str, any]) -> list[any] {
+    with self._lock {
+        conn: any = self._side();
+        try {
+            return conn.run(sql, **params) or [];
+        } except Exception as e {
+            if not _conn_dead(e) {
+                raise;
+            }
+            try {
+                conn.close();
+            } except Exception {}
+            self._side_conn = None;
+            return self._side().run(sql, **params) or [];
+        }
+    }
 }
 
 
@@ -505,16 +572,15 @@ impl PgStore.ensure_schema(promotions: dict[str, list[str]]) -> None {
 impl PgStore.ensure_schema_once(promotions: dict[str, list[str]]) -> None {
     self._ensure_ready();
     ns = _store_ns(self.conninfo);
-    key = _schema_extension_key();
-    if _schema_ready.get(ns) == key {
+    if ns in _schema_ready {
         return;
     }
     with _schema_gate {
-        if _schema_ready.get(ns) == key {
+        if ns in _schema_ready {
             return;
         }
         self.ensure_schema(promotions);
-        _schema_ready[ns] = key;
+        _schema_ready.add(ns);
     }
 }
 
@@ -632,11 +698,6 @@ impl PgStore._apply_schema_ddl -> None {
         }
         self._apply_promotions();
         self._property_graph_ddl();
-        for name in sorted(_schema_extensions) {
-            for stmt in _schema_extensions[name] {
-                self._run(stmt, {});
-            }
-        }
     } finally {
         self._run('SET lock_timeout = DEFAULT', {});
     }
@@ -660,12 +721,6 @@ impl PgStore._schema_fingerprint -> str {
     }
     for col in sorted(self._promotion_columns()) {
         h.update(str(col).encode());
-    }
-    for name in sorted(_schema_extensions) {
-        h.update(name.encode());
-        for stmt in _schema_extensions[name] {
-            h.update(stmt.encode());
-        }
     }
     return f"{SCHEMA_VERSION}:{h.hexdigest()[:24]}";
 }
@@ -1078,24 +1133,17 @@ impl PgStore.kv_put(key: str, value: str) -> None {
 
 
 impl PgStore.kv_put_ttl(key: str, value: str, ttl_seconds: int) -> None {
-    with self._lock {
-        conn: any = self._side();
-        conn.run(
-            """
-            INSERT INTO kv_state (key, value, expires_at, updated_at)
-            VALUES (
-                :k, :v, now() + make_interval(secs => CAST(:ttl AS int)), now()
-            )
-            ON CONFLICT (key) DO UPDATE SET
-                value = EXCLUDED.value,
-                expires_at = EXCLUDED.expires_at,
-                updated_at = now()
-            """,
-            k=key,
-            v=value,
-            ttl=ttl_seconds
-        );
-    }
+    self._side_run(
+        """
+        INSERT INTO kv_state (key, value, expires_at, updated_at)
+        VALUES (:k, :v, now() + make_interval(secs => CAST(:ttl AS int)), now())
+        ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            expires_at = EXCLUDED.expires_at,
+            updated_at = now()
+        """,
+        {'k': key, 'v': value, 'ttl': ttl_seconds}
+    );
 }
 
 
@@ -1105,41 +1153,51 @@ impl PgStore.kv_delete(key: str) -> None {
 
 
 impl PgStore.kv_acquire_lease(key: str, ttl_seconds: int, owner: str) -> bool {
-    with self._lock {
-        conn: any = self._side();
-        rows = conn.run(
-            """
-            INSERT INTO kv_state (key, value, expires_at, updated_at)
-            VALUES (
-                :k, :o, now() + make_interval(secs => CAST(:ttl AS int)), now()
-            )
-            ON CONFLICT (key) DO UPDATE SET
-                value = EXCLUDED.value,
-                expires_at = EXCLUDED.expires_at,
-                updated_at = now()
-            WHERE kv_state.value = :o
-                  OR kv_state.expires_at IS NULL
-                  OR kv_state.expires_at <= now()
-            RETURNING key
-            """,
-            k=f"lease:{key}",
-            o=owner,
-            ttl=ttl_seconds
-        );
-    }
+    rows = self._side_run(
+        """
+        INSERT INTO kv_state (key, value, expires_at, updated_at)
+        VALUES (:k, :o, now() + make_interval(secs => CAST(:ttl AS int)), now())
+        ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            expires_at = EXCLUDED.expires_at,
+            updated_at = now()
+        WHERE kv_state.value = :o
+              OR kv_state.expires_at IS NULL
+              OR kv_state.expires_at <= now()
+        RETURNING key
+        """,
+        {'k': f"lease:{key}", 'o': owner, 'ttl': ttl_seconds}
+    );
     return bool(rows);
 }
 
 
 impl PgStore.kv_release_lease(key: str, owner: str) -> bool {
-    with self._lock {
-        conn: any = self._side();
-        rows = conn.run(
-            'DELETE FROM kv_state WHERE key = :k AND value = :o RETURNING key',
-            k=f"lease:{key}",
-            o=owner
-        );
-    }
+    rows = self._side_run(
+        'DELETE FROM kv_state WHERE key = :k AND value = :o RETURNING key',
+        {'k': f"lease:{key}", 'o': owner}
+    );
+    return bool(rows);
+}
+
+
+impl PgStore.kv_claim_tick(key: str, tick: int) -> bool {
+    rows = self._side_run(
+        """
+        INSERT INTO kv_state (key, value, expires_at, updated_at)
+        VALUES (:k, CAST(:t AS bigint)::text, NULL, now())
+        ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            updated_at = now()
+        WHERE CASE
+            WHEN kv_state.value ~ '^[0-9]+$'
+            THEN kv_state.value::bigint < CAST(:t AS bigint)
+            ELSE true
+        END
+        RETURNING key
+        """,
+        {'k': f"tick:{key}", 't': int(tick)}
+    );
     return bool(rows);
 }
 
@@ -1166,15 +1224,11 @@ impl PgStore.quarantine(
 
 
 impl PgStore.notify(channel: str, payload: str) -> None {
-    with self._lock {
-        ident = _channel_ident(channel);
-        conn: any = self._side();
-        conn.run(
-            'SELECT pg_notify(:c, :p)',
-            c=ident,
-            p=_channel_wire_payload(channel, ident, payload)
-        );
-    }
+    ident = _channel_ident(channel);
+    self._side_run(
+        'SELECT pg_notify(:c, :p)',
+        {'c': ident, 'p': _channel_wire_payload(channel, ident, payload)}
+    );
 }
 
 

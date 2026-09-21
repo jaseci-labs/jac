@@ -160,12 +160,37 @@ def _child_env(cluster: Cluster, scratch: bool) -> dict[str, any] {
     env["JAC_CACHE_HOME"] = cluster.cache_home;
     env["JAC_PG_DIST"] = cluster.bin_dir;
     env.pop("JAC_DB_URL", None);
+    # The test runner exports itself as the owner of every database its
+    # children create; these fixtures model a child outside any runner.
+    env.pop("JAC_DB_SCRATCH_OWNER", None);
     if scratch {
         env["JAC_DB_SCRATCH"] = "1";
     } else {
         env.pop("JAC_DB_SCRATCH", None);
     }
     return env;
+}
+
+
+"""Stop the cluster and start it again, which runs the start-time sweep."""
+def _restart(cluster: Cluster, retention_days: int = 0) {
+    cluster.rt.stop();
+    rt = PgRuntime(
+        data_dir=cluster.data_dir, database="postgres", retention_days=retention_days
+    );
+    rt.ensure();
+    cluster.rt = rt;
+}
+
+
+def _condemned(cluster: Cluster, database: str) -> bool {
+    import from jaclang.data.dbcatalog { REGISTRY_TABLE }
+    rows = _query(
+        cluster,
+        f"SELECT condemned_at IS NOT NULL FROM {REGISTRY_TABLE} "
+        f"WHERE database = '{database}'"
+    );
+    return bool(rows and rows[0][0]);
 }
 
 
@@ -483,15 +508,15 @@ test "db prune --empty reclaims pre-tracking databases that hold no data" {
     try {
         (with_data, data_db) = _project_database(cluster, "legacydata");
         (no_data, bare_db) = _project_database(cluster, "legacybare", app=BARE_APP);
-        # A store whose only content is a plugin's own table (jac-scale keeps
+        # A store whose only content is plugin rows (jac-scale keeps
         # identities and jobs in jac_docs) is not empty either.
         (plugin, plugin_db) = _project_database(cluster, "legacyplugin", app=BARE_APP);
         _exec_in(
             cluster,
             plugin_db,
-            "CREATE TABLE IF NOT EXISTS jac_docs (id text PRIMARY KEY)"
+            "INSERT INTO jac_docs (collection, id, doc) "
+            "VALUES ('users', 'user1', '{}')"
         );
-        _exec_in(cluster, plugin_db, "INSERT INTO jac_docs (id) VALUES ('user1')");
         # Databases created before owner tracking have no registry row at all.
         _exec(
             cluster,
@@ -569,20 +594,12 @@ test "the retention sweep is off by default and sweeps when configured" {
             f"WHERE database = '{db_name}'"
         );
 
-        cluster.rt.stop();
-        plain = PgRuntime(data_dir=cluster.data_dir, database="postgres");
-        plain.ensure();
-        cluster.rt = plain;
+        _restart(cluster);
         assert db_name in _jac_databases(cluster) , (
             f"{db_name} was swept even though retention defaults to off"
         );
 
-        plain.stop();
-        sweeping = PgRuntime(
-            data_dir=cluster.data_dir, database="postgres", retention_days=30
-        );
-        sweeping.ensure();
-        cluster.rt = sweeping;
+        _restart(cluster, retention_days=30);
         assert db_name not in _jac_databases(cluster) , (
             f"{db_name} is 90 days stale and retention_days=30 must sweep it"
         );
@@ -970,5 +987,262 @@ test "retention days come from [database] retention_days, off by default" {
         }
     } finally {
         shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a start marks a project database whose directory is gone and reclaims it after the grace" {
+    import from jaclang.cli.commands { db }
+    import from jaclang.data.dbcatalog { REGISTRY_TABLE }
+    cluster = _start_cluster();
+    try {
+        (gone, gone_db) = _project_database(cluster, "reapgone");
+        shutil.rmtree(gone, ignore_errors=True);
+
+        # The first start to find the directory missing only marks the
+        # database: a directory that is moved and moved back, or briefly
+        # unmounted, looks exactly like this.
+        _restart(cluster);
+        assert gone_db in _jac_databases(cluster) , (
+            f"the first sweep to find {gone} missing must not drop {gone_db}"
+        );
+        assert _condemned(cluster, gone_db) , (
+            f"the sweep recorded no mark on {gone_db}, so no grace period can run"
+        );
+        (code, text) = _capture(
+            lambda { db.db(action="list", data_dir=cluster.data_dir); }
+        );
+        assert code == 0 , f"db list failed: {text}";
+        assert "orphaned, reclaim in" in text , (
+            f"db list must show when the sweep will reclaim {gone_db}: {text}"
+        );
+        (code, text) = _capture(
+            lambda { db.db(action="prune", data_dir=cluster.data_dir); }
+        );
+        assert code == 0 , f"db prune (dry run) failed: {text}";
+        assert gone_db in text and "reclaim" in text , (
+            f"the dry run must report the same grace state as the sweep: {text}"
+        );
+
+        # The grace elapses with the directory still missing, so a later
+        # start is looking at a second, separated observation.
+        _exec(
+            cluster,
+            f"UPDATE {REGISTRY_TABLE} SET condemned_at = now() - interval '2 days' "
+            f"WHERE database = '{gone_db}'"
+        );
+        _restart(cluster);
+        assert gone_db not in _jac_databases(cluster) , (
+            f"{gone_db} has had no directory for longer than the grace and must "
+            "be reclaimed by the start-time sweep"
+        );
+    } finally {
+        _stop_cluster(cluster);
+    }
+}
+
+
+test "the start sweep never touches a database whose directory exists" {
+    cluster = _start_cluster();
+    try {
+        (kept, kept_db) = _project_database(cluster, "reapkept");
+        _restart(cluster);
+        _restart(cluster);
+        assert kept_db in _jac_databases(cluster) , (
+            f"{kept_db} still has its directory {kept} and must never be swept"
+        );
+        assert not _condemned(cluster, kept_db) , (
+            "a database whose directory exists must never be marked"
+        );
+        shutil.rmtree(kept, ignore_errors=True);
+    } finally {
+        _stop_cluster(cluster);
+    }
+}
+
+
+test "a directory that returns inside the grace clears the mark on its database" {
+    cluster = _start_cluster();
+    try {
+        (proj, db_name) = _project_database(cluster, "reapback");
+        shutil.rmtree(proj, ignore_errors=True);
+        _restart(cluster);
+        assert _condemned(cluster, db_name) , "the missing directory was not marked";
+
+        # The project is back (moved back, remounted, restored from backup).
+        os.makedirs(proj, exist_ok=True);
+        _restart(cluster);
+        assert db_name in _jac_databases(cluster) , (
+            f"{db_name} was dropped although its directory came back"
+        );
+        assert not _condemned(cluster, db_name) , (
+            "a directory that came back must clear the mark, or the next time "
+            "it goes missing the old mark would make the drop immediate"
+        );
+
+        # Gone again: the clock starts over, so the database survives a start
+        # even though the first mark would by now be old enough.
+        shutil.rmtree(proj, ignore_errors=True);
+        _restart(cluster);
+        _restart(cluster);
+        assert db_name in _jac_databases(cluster) , (
+            f"{db_name} was reclaimed on a fresh mark, before the grace elapsed"
+        );
+    } finally {
+        _stop_cluster(cluster);
+    }
+}
+
+
+test "orphan reclamation waits out the grace and never covers a database in use" {
+    import from jaclang.data.dbcatalog {
+        DbKind,
+        DbRecord,
+        ORPHAN_GRACE_ENV,
+        ORPHAN_GRACE_HOURS,
+        orphan_grace_seconds,
+        this_host
+    }
+    missing = tempfile.mkdtemp(prefix="jac-orphan-");
+    shutil.rmtree(missing, ignore_errors=True);
+    present = tempfile.mkdtemp(prefix="jac-owned-");
+
+    def rec(
+        owner: str, condemned_age: int = -1, has_sessions: bool = False
+    ) -> DbRecord {
+        return DbRecord(
+            database="jac_app_1a2b3c4d",
+            recorded=True,
+            kind=DbKind.PROJECT.value,
+            owner_path=owner,
+            host=this_host(),
+            pid=1,
+            has_sessions=has_sessions,
+            condemned_age_seconds=condemned_age
+        );
+    }
+    try {
+        grace = orphan_grace_seconds();
+        assert grace == ORPHAN_GRACE_HOURS * 3600 , (
+            f"the default grace must be the documented {ORPHAN_GRACE_HOURS}h"
+        );
+        # An orphan nobody has marked yet is a candidate, never a drop.
+        fresh = rec(missing);
+        assert fresh.is_orphaned() and not fresh.is_reclaimable_orphan();
+        assert fresh.state() == "orphaned" , fresh.state();
+        # Marked recently: the sweep is waiting.
+        waiting = rec(missing, condemned_age=60);
+        assert not waiting.is_reclaimable_orphan();
+        assert waiting.state().startswith("orphaned, reclaim in ") , waiting.state();
+        # Marked longer ago than the grace: reclaimable.
+        ripe = rec(missing, condemned_age=grace + 60);
+        assert ripe.is_reclaimable_orphan();
+        assert ripe.state() == "orphaned, reclaimable" , ripe.state();
+        # Something is connected: the directory being gone changes nothing.
+        busy = rec(missing, condemned_age=grace + 60, has_sessions=True);
+        assert not busy.is_reclaimable_orphan();
+        assert busy.state() == "orphaned, in use" , busy.state();
+        # A directory that exists is live, whatever the mark says.
+        live = rec(present, condemned_age=grace + 60);
+        assert not live.is_orphaned() and not live.is_reclaimable_orphan();
+        assert live.state() == "live" , live.state();
+        # Scratch stores are reaped by pid and heartbeat, never as orphans.
+        scratch = rec(missing, condemned_age=grace + 60);
+        scratch.kind = DbKind.SCRATCH.value;
+        assert not scratch.is_orphaned() and not scratch.is_reclaimable_orphan();
+
+        # The grace is a knob: hours in the environment, 0 meaning "drop on
+        # the first start after the one that marked it".
+        os.environ[ORPHAN_GRACE_ENV] = "0";
+        try {
+            assert orphan_grace_seconds() == 0;
+            assert rec(missing, condemned_age=0).is_reclaimable_orphan();
+            assert not rec(missing).is_reclaimable_orphan() , (
+                "even with no grace an unmarked orphan needs one sweep to mark it"
+            );
+            os.environ[ORPHAN_GRACE_ENV] = "2";
+            assert orphan_grace_seconds() == 7200;
+            os.environ[ORPHAN_GRACE_ENV] = "soon";
+            assert orphan_grace_seconds() == ORPHAN_GRACE_HOURS * 3600 , (
+                "a value that is not a number must fall back to the default"
+            );
+        } finally {
+            os.environ.pop(ORPHAN_GRACE_ENV, None);
+        }
+        assert orphan_grace_seconds() == ORPHAN_GRACE_HOURS * 3600;
+    } finally {
+        shutil.rmtree(present, ignore_errors=True);
+    }
+}
+
+
+test "the test runner owns every database its children create" {
+    import from jaclang.data.dbcatalog { process_alive, this_host }
+    import from jaclang.server.session { SCRATCH_OWNER_ENV, scratch_owner_pid }
+    # Every jac process a test spawns (jac run, jac serve, jac test) used to
+    # create a permanent project database keyed to its temp directory; the
+    # cluster on a developer machine filled with thousands of them. The runner
+    # now exports its own pid as the owner of everything its descendants
+    # create, and the record it leaves is reaped once that pid is gone.
+    pid = scratch_owner_pid();
+    assert pid > 0 , f"the test runner must export {SCRATCH_OWNER_ENV}";
+    assert process_alive(this_host(), pid) , (
+        f"{SCRATCH_OWNER_ENV}={pid} names a process that is not running"
+    );
+}
+
+
+test "a jac process under the runner creates a database owned by the runner" {
+    import from jaclang.data.dbcatalog { REGISTRY_TABLE }
+    import from jaclang.server.session { SCRATCH_OWNER_ENV, drop_owned_databases }
+    cluster = _start_cluster();
+    proj = _seed_project("childown");
+    env = _child_env(cluster, scratch=False);
+    env[SCRATCH_OWNER_ENV] = str(os.getpid());
+    try {
+        before = _jac_databases(cluster);
+        for expected in ("items 1", "items 2") {
+            res = subprocess.run(
+                jac_command("run", os.path.join(proj, "app.jac")),
+                cwd=proj,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=600
+            );
+            assert res.returncode == 0 , f"run in {proj} failed: {res.stderr}";
+            # The database keeps its project name, so a fixture's data still
+            # survives from one child process to the next.
+            assert expected in res.stdout , (
+                f"a run under the runner must see the previous run's data: "
+                f"{res.stdout!r}"
+            );
+        }
+        created = _jac_databases(cluster) - before;
+        assert len(created) == 1 , f"expected one new database, got {created}";
+        db_name = sorted(created)[0];
+        assert db_name.startswith("jac_childown_") , (
+            f"the database must keep its project name, not a scratch one: {db_name}"
+        );
+        rows = _query(
+            cluster,
+            f"SELECT kind, pid FROM {REGISTRY_TABLE} WHERE database = '{db_name}'"
+        );
+        assert rows and str(rows[0][0]) == "scratch" , (
+            f"a database created under the runner must be scratch-kind: {rows}"
+        );
+        assert int(rows[0][1]) == os.getpid() , (
+            f"the record must name the runner as its owner, not the child: {rows}"
+        );
+
+        # The runner drops what it owns when it exits.
+        dropped = drop_owned_databases(data_dir=cluster.data_dir);
+        assert dropped == 1 , f"the owner reclaimed {dropped} database(s), not 1";
+        assert db_name not in _jac_databases(cluster) , (
+            f"{db_name} outlived its owner"
+        );
+    } finally {
+        shutil.rmtree(proj, ignore_errors=True);
+        _stop_cluster(cluster);
     }
 }

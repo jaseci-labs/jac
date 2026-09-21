@@ -17,6 +17,10 @@ obj MobileTarget(ClientTarget) {
         config_section: str = "react_native";
 
     override def setup(project_dir: Path) -> None;
+    override def ensure_ready(
+        project_dir: Path, platform: Optional[str] = None
+    ) -> None;
+
     override def build(
         entry_file: Path, project_dir: Path, platform: Optional[str] = None
     ) -> Path;
@@ -29,5 +33,6 @@ obj MobileTarget(ClientTarget) {
         entry_file: Path, project_dir: Path, api_port: int = 8000
     ) -> None;
 
+    def:priv _provision(project_dir: Path, rn_dir: Path) -> None;
     def:priv _compile_native_jac_modules(entry_file: Path) -> tuple[(any, Path)];
 }

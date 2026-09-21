@@ -8,10 +8,10 @@ sorted tag numbering makes the two agree without recompiling this body."""
 node Area {
     has tag: int = 0;
 }
-edge Portal {
+edge Portal : any --> any {
     has w: int = 0;
 }
-edge In {}
+edge In : any --> any {}
 
 walker Counter {
     has seen: int = 0,

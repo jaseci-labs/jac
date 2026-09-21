@@ -9,7 +9,7 @@ obj Emailer {
         body_text: str,
         body_html: (str | None) = None,
         from_addr: (str | None) = None
-    ) -> bool;
+    ) -> bool abst;
 
     def is_ready -> bool {
         return self.enabled;

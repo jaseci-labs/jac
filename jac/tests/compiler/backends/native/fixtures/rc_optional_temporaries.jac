@@ -70,6 +70,21 @@ def dict_optional_get(key: int) -> int {
     return value.value if value is not None else -1;
 }
 
+def dict_stored_none(key: int) -> int {
+    values: dict[int, Item | None] = {1: None};
+    value = values.get(key, Item(9));
+    return value.value if value is not None else -1;
+}
+
+def dict_stored_zero(key: int) -> int {
+    value = {1: 0}.get(key);
+    return value if value is not None else -1;
+}
+
+def dict_zero_default(key: int) -> int {
+    return {1: 0}.get(key, 9);
+}
+
 def dict_list_get(key: int) -> int {
     value = {1: [Item(3)]}.get(key, [Item(4)]);
     return value[0].value;

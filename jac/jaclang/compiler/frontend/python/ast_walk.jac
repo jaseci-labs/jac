@@ -86,597 +86,608 @@ import from jaclang.compiler.frontend.python.ast_nodes {
     unaryop,
 }
 
-obj ast_child {
-    has field: str,
-        value: ast_node;
+# Receives the direct children of one node in field order, so traversals
+# allocate no per-node child lists.
+obj ast_child_visitor {
+    def child(field: str, value: ast_node) abst;
 }
 
-def ast_children(value: ast_node) -> list[ast_child] {
-    children: list[ast_child] = [];
+# One node's children, collected into storage reused across a traversal for
+# worklists that push them in reverse. Not reentrant.
+obj ast_child_buffer(ast_child_visitor) {
+    has fields: list[str] = [],
+        nodes: list[ast_node] = [];
+
+    def child(field: str, value: ast_node) {
+        self.fields.append(field);
+        self.nodes.append(value);
+    }
+
+    def collect(value: ast_node) -> int {
+        self.fields.clear();
+        self.nodes.clear();
+        visit_ast_children(value, self);
+        return len(self.nodes);
+    }
+}
+
+def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
     if isinstance(value, Module) {
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.type_ignores {
-            children.append(ast_child(field="type_ignores", value=child));
+            visitor.child("type_ignores", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Interactive) {
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Expression) {
-        children.append(ast_child(field="body", value=value.body));
-        return children;
+        visitor.child("body", value.body);
+        return;
     }
     if isinstance(value, FunctionType) {
         for child in value.argtypes {
-            children.append(ast_child(field="argtypes", value=child));
+            visitor.child("argtypes", child);
         }
-        children.append(ast_child(field="returns", value=value.returns));
-        return children;
+        visitor.child("returns", value.returns);
+        return;
     }
     if isinstance(value, FunctionDef) {
-        children.append(ast_child(field="args", value=value.args));
+        visitor.child("args", value.args);
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.decorator_list {
-            children.append(ast_child(field="decorator_list", value=child));
+            visitor.child("decorator_list", child);
         }
         if value.returns is not None {
-            children.append(ast_child(field="returns", value=value.returns));
+            visitor.child("returns", value.returns);
         }
         for child in value.type_params {
-            children.append(ast_child(field="type_params", value=child));
+            visitor.child("type_params", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, AsyncFunctionDef) {
-        children.append(ast_child(field="args", value=value.args));
+        visitor.child("args", value.args);
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.decorator_list {
-            children.append(ast_child(field="decorator_list", value=child));
+            visitor.child("decorator_list", child);
         }
         if value.returns is not None {
-            children.append(ast_child(field="returns", value=value.returns));
+            visitor.child("returns", value.returns);
         }
         for child in value.type_params {
-            children.append(ast_child(field="type_params", value=child));
+            visitor.child("type_params", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, ClassDef) {
         for child in value.bases {
-            children.append(ast_child(field="bases", value=child));
+            visitor.child("bases", child);
         }
         for child in value.keywords {
-            children.append(ast_child(field="keywords", value=child));
+            visitor.child("keywords", child);
         }
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.decorator_list {
-            children.append(ast_child(field="decorator_list", value=child));
+            visitor.child("decorator_list", child);
         }
         for child in value.type_params {
-            children.append(ast_child(field="type_params", value=child));
+            visitor.child("type_params", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Return) {
         if value.value is not None {
-            children.append(ast_child(field="value", value=value.value));
+            visitor.child("value", value.value);
         }
-        return children;
+        return;
     }
     if isinstance(value, Delete) {
         for child in value.targets {
-            children.append(ast_child(field="targets", value=child));
+            visitor.child("targets", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Assign) {
         for child in value.targets {
-            children.append(ast_child(field="targets", value=child));
+            visitor.child("targets", child);
         }
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, TypeAlias) {
-        children.append(ast_child(field="name", value=value.name));
+        visitor.child("name", value.name);
         for child in value.type_params {
-            children.append(ast_child(field="type_params", value=child));
+            visitor.child("type_params", child);
         }
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, AugAssign) {
-        children.append(ast_child(field="target", value=value.target));
-        children.append(ast_child(field="op", value=value.op));
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("target", value.target);
+        visitor.child("op", value.op);
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, AnnAssign) {
-        children.append(ast_child(field="target", value=value.target));
-        children.append(ast_child(field="annotation", value=value.annotation));
+        visitor.child("target", value.target);
+        visitor.child("annotation", value.annotation);
         if value.value is not None {
-            children.append(ast_child(field="value", value=value.value));
+            visitor.child("value", value.value);
         }
-        return children;
+        return;
     }
     if isinstance(value, For) {
-        children.append(ast_child(field="target", value=value.target));
-        children.append(ast_child(field="iter", value=value.iter));
+        visitor.child("target", value.target);
+        visitor.child("iter", value.iter);
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.orelse {
-            children.append(ast_child(field="orelse", value=child));
+            visitor.child("orelse", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, AsyncFor) {
-        children.append(ast_child(field="target", value=value.target));
-        children.append(ast_child(field="iter", value=value.iter));
+        visitor.child("target", value.target);
+        visitor.child("iter", value.iter);
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.orelse {
-            children.append(ast_child(field="orelse", value=child));
+            visitor.child("orelse", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, While) {
-        children.append(ast_child(field="test", value=value.`test));
+        visitor.child("test", value.`test);
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.orelse {
-            children.append(ast_child(field="orelse", value=child));
+            visitor.child("orelse", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, If) {
-        children.append(ast_child(field="test", value=value.`test));
+        visitor.child("test", value.`test);
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.orelse {
-            children.append(ast_child(field="orelse", value=child));
+            visitor.child("orelse", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, With) {
         for child in value.items {
-            children.append(ast_child(field="items", value=child));
+            visitor.child("items", child);
         }
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, AsyncWith) {
         for child in value.items {
-            children.append(ast_child(field="items", value=child));
+            visitor.child("items", child);
         }
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Match) {
-        children.append(ast_child(field="subject", value=value.subject));
+        visitor.child("subject", value.subject);
         for child in value.cases {
-            children.append(ast_child(field="cases", value=child));
+            visitor.child("cases", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Raise) {
         if value.exc is not None {
-            children.append(ast_child(field="exc", value=value.exc));
+            visitor.child("exc", value.exc);
         }
         if value.cause is not None {
-            children.append(ast_child(field="cause", value=value.cause));
+            visitor.child("cause", value.cause);
         }
-        return children;
+        return;
     }
     if isinstance(value, Try) {
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.handlers {
-            children.append(ast_child(field="handlers", value=child));
+            visitor.child("handlers", child);
         }
         for child in value.orelse {
-            children.append(ast_child(field="orelse", value=child));
+            visitor.child("orelse", child);
         }
         for child in value.finalbody {
-            children.append(ast_child(field="finalbody", value=child));
+            visitor.child("finalbody", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, TryStar) {
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
         for child in value.handlers {
-            children.append(ast_child(field="handlers", value=child));
+            visitor.child("handlers", child);
         }
         for child in value.orelse {
-            children.append(ast_child(field="orelse", value=child));
+            visitor.child("orelse", child);
         }
         for child in value.finalbody {
-            children.append(ast_child(field="finalbody", value=child));
+            visitor.child("finalbody", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Assert) {
-        children.append(ast_child(field="test", value=value.`test));
+        visitor.child("test", value.`test);
         if value.msg is not None {
-            children.append(ast_child(field="msg", value=value.msg));
+            visitor.child("msg", value.msg);
         }
-        return children;
+        return;
     }
     if isinstance(value, Import) {
         for child in value.names {
-            children.append(ast_child(field="names", value=child));
+            visitor.child("names", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, ImportFrom) {
         for child in value.names {
-            children.append(ast_child(field="names", value=child));
+            visitor.child("names", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Expr) {
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, BoolOp) {
-        children.append(ast_child(field="op", value=value.op));
+        visitor.child("op", value.op);
         for child in value.values {
-            children.append(ast_child(field="values", value=child));
+            visitor.child("values", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, NamedExpr) {
-        children.append(ast_child(field="target", value=value.target));
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("target", value.target);
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, BinOp) {
-        children.append(ast_child(field="left", value=value.left));
-        children.append(ast_child(field="op", value=value.op));
-        children.append(ast_child(field="right", value=value.right));
-        return children;
+        visitor.child("left", value.left);
+        visitor.child("op", value.op);
+        visitor.child("right", value.right);
+        return;
     }
     if isinstance(value, UnaryOp) {
-        children.append(ast_child(field="op", value=value.op));
-        children.append(ast_child(field="operand", value=value.operand));
-        return children;
+        visitor.child("op", value.op);
+        visitor.child("operand", value.operand);
+        return;
     }
     if isinstance(value, Lambda) {
-        children.append(ast_child(field="args", value=value.args));
-        children.append(ast_child(field="body", value=value.body));
-        return children;
+        visitor.child("args", value.args);
+        visitor.child("body", value.body);
+        return;
     }
     if isinstance(value, IfExp) {
-        children.append(ast_child(field="test", value=value.`test));
-        children.append(ast_child(field="body", value=value.body));
-        children.append(ast_child(field="orelse", value=value.orelse));
-        return children;
+        visitor.child("test", value.`test);
+        visitor.child("body", value.body);
+        visitor.child("orelse", value.orelse);
+        return;
     }
     if isinstance(value, Dict) {
         for child in value.keys {
             if child is None {
                 continue;
             }
-            children.append(ast_child(field="keys", value=child));
+            visitor.child("keys", child);
         }
         for child in value.values {
-            children.append(ast_child(field="values", value=child));
+            visitor.child("values", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Set) {
         for child in value.elts {
-            children.append(ast_child(field="elts", value=child));
+            visitor.child("elts", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, ListComp) {
-        children.append(ast_child(field="elt", value=value.elt));
+        visitor.child("elt", value.elt);
         for child in value.generators {
-            children.append(ast_child(field="generators", value=child));
+            visitor.child("generators", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, SetComp) {
-        children.append(ast_child(field="elt", value=value.elt));
+        visitor.child("elt", value.elt);
         for child in value.generators {
-            children.append(ast_child(field="generators", value=child));
+            visitor.child("generators", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, DictComp) {
-        children.append(ast_child(field="key", value=value.key));
-        children.append(ast_child(field="value", value=value.value));
+        visitor.child("key", value.key);
+        visitor.child("value", value.value);
         for child in value.generators {
-            children.append(ast_child(field="generators", value=child));
+            visitor.child("generators", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, GeneratorExp) {
-        children.append(ast_child(field="elt", value=value.elt));
+        visitor.child("elt", value.elt);
         for child in value.generators {
-            children.append(ast_child(field="generators", value=child));
+            visitor.child("generators", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Await) {
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, Yield) {
         if value.value is not None {
-            children.append(ast_child(field="value", value=value.value));
+            visitor.child("value", value.value);
         }
-        return children;
+        return;
     }
     if isinstance(value, YieldFrom) {
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, Compare) {
-        children.append(ast_child(field="left", value=value.left));
+        visitor.child("left", value.left);
         for child in value.ops {
-            children.append(ast_child(field="ops", value=child));
+            visitor.child("ops", child);
         }
         for child in value.comparators {
-            children.append(ast_child(field="comparators", value=child));
+            visitor.child("comparators", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Call) {
-        children.append(ast_child(field="func", value=value.func));
+        visitor.child("func", value.func);
         for child in value.args {
-            children.append(ast_child(field="args", value=child));
+            visitor.child("args", child);
         }
         for child in value.keywords {
-            children.append(ast_child(field="keywords", value=child));
+            visitor.child("keywords", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, FormattedValue) {
-        children.append(ast_child(field="value", value=value.value));
+        visitor.child("value", value.value);
         if value.format_spec is not None {
-            children.append(ast_child(field="format_spec", value=value.format_spec));
+            visitor.child("format_spec", value.format_spec);
         }
-        return children;
+        return;
     }
     if isinstance(value, Interpolation) {
-        children.append(ast_child(field="value", value=value.value));
+        visitor.child("value", value.value);
         if value.format_spec is not None {
-            children.append(ast_child(field="format_spec", value=value.format_spec));
+            visitor.child("format_spec", value.format_spec);
         }
-        return children;
+        return;
     }
     if isinstance(value, JoinedStr) {
         for child in value.values {
-            children.append(ast_child(field="values", value=child));
+            visitor.child("values", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, TemplateStr) {
         for child in value.values {
-            children.append(ast_child(field="values", value=child));
+            visitor.child("values", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, Attribute) {
-        children.append(ast_child(field="value", value=value.value));
-        children.append(ast_child(field="ctx", value=value.ctx));
-        return children;
+        visitor.child("value", value.value);
+        visitor.child("ctx", value.ctx);
+        return;
     }
     if isinstance(value, Subscript) {
-        children.append(ast_child(field="value", value=value.value));
-        children.append(ast_child(field="slice", value=value.slice));
-        children.append(ast_child(field="ctx", value=value.ctx));
-        return children;
+        visitor.child("value", value.value);
+        visitor.child("slice", value.slice);
+        visitor.child("ctx", value.ctx);
+        return;
     }
     if isinstance(value, Starred) {
-        children.append(ast_child(field="value", value=value.value));
-        children.append(ast_child(field="ctx", value=value.ctx));
-        return children;
+        visitor.child("value", value.value);
+        visitor.child("ctx", value.ctx);
+        return;
     }
     if isinstance(value, Name) {
-        children.append(ast_child(field="ctx", value=value.ctx));
-        return children;
+        visitor.child("ctx", value.ctx);
+        return;
     }
     if isinstance(value, List) {
         for child in value.elts {
-            children.append(ast_child(field="elts", value=child));
+            visitor.child("elts", child);
         }
-        children.append(ast_child(field="ctx", value=value.ctx));
-        return children;
+        visitor.child("ctx", value.ctx);
+        return;
     }
     if isinstance(value, Tuple) {
         for child in value.elts {
-            children.append(ast_child(field="elts", value=child));
+            visitor.child("elts", child);
         }
-        children.append(ast_child(field="ctx", value=value.ctx));
-        return children;
+        visitor.child("ctx", value.ctx);
+        return;
     }
     if isinstance(value, Slice) {
         if value.lower is not None {
-            children.append(ast_child(field="lower", value=value.lower));
+            visitor.child("lower", value.lower);
         }
         if value.upper is not None {
-            children.append(ast_child(field="upper", value=value.upper));
+            visitor.child("upper", value.upper);
         }
         if value.step is not None {
-            children.append(ast_child(field="step", value=value.step));
+            visitor.child("step", value.step);
         }
-        return children;
+        return;
     }
     if isinstance(value, comprehension) {
-        children.append(ast_child(field="target", value=value.target));
-        children.append(ast_child(field="iter", value=value.iter));
+        visitor.child("target", value.target);
+        visitor.child("iter", value.iter);
         for child in value.ifs {
-            children.append(ast_child(field="ifs", value=child));
+            visitor.child("ifs", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, excepthandler) {
         if value.type is not None {
-            children.append(ast_child(field="type", value=value.type));
+            visitor.child("type", value.type);
         }
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, ExceptHandler) {
         if value.type is not None {
-            children.append(ast_child(field="type", value=value.type));
+            visitor.child("type", value.type);
         }
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, arguments) {
         for child in value.posonlyargs {
-            children.append(ast_child(field="posonlyargs", value=child));
+            visitor.child("posonlyargs", child);
         }
         for child in value.args {
-            children.append(ast_child(field="args", value=child));
+            visitor.child("args", child);
         }
         if value.vararg is not None {
-            children.append(ast_child(field="vararg", value=value.vararg));
+            visitor.child("vararg", value.vararg);
         }
         for child in value.kwonlyargs {
-            children.append(ast_child(field="kwonlyargs", value=child));
+            visitor.child("kwonlyargs", child);
         }
         for child in value.kw_defaults {
             if child is None {
                 continue;
             }
-            children.append(ast_child(field="kw_defaults", value=child));
+            visitor.child("kw_defaults", child);
         }
         if value.kwarg is not None {
-            children.append(ast_child(field="kwarg", value=value.kwarg));
+            visitor.child("kwarg", value.kwarg);
         }
         for child in value.defaults {
-            children.append(ast_child(field="defaults", value=child));
+            visitor.child("defaults", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, arg) {
         if value.annotation is not None {
-            children.append(ast_child(field="annotation", value=value.annotation));
+            visitor.child("annotation", value.annotation);
         }
-        return children;
+        return;
     }
     if isinstance(value, keyword) {
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, withitem) {
-        children.append(ast_child(field="context_expr", value=value.context_expr));
+        visitor.child("context_expr", value.context_expr);
         if value.optional_vars is not None {
-            children.append(
-                ast_child(field="optional_vars", value=value.optional_vars)
-            );
+            visitor.child("optional_vars", value.optional_vars);
         }
-        return children;
+        return;
     }
     if isinstance(value, match_case) {
-        children.append(ast_child(field="pattern", value=value.pattern));
+        visitor.child("pattern", value.pattern);
         if value.guard is not None {
-            children.append(ast_child(field="guard", value=value.guard));
+            visitor.child("guard", value.guard);
         }
         for child in value.body {
-            children.append(ast_child(field="body", value=child));
+            visitor.child("body", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, MatchValue) {
-        children.append(ast_child(field="value", value=value.value));
-        return children;
+        visitor.child("value", value.value);
+        return;
     }
     if isinstance(value, MatchSequence) {
         for child in value.patterns {
-            children.append(ast_child(field="patterns", value=child));
+            visitor.child("patterns", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, MatchMapping) {
         for child in value.keys {
-            children.append(ast_child(field="keys", value=child));
+            visitor.child("keys", child);
         }
         for child in value.patterns {
-            children.append(ast_child(field="patterns", value=child));
+            visitor.child("patterns", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, MatchClass) {
-        children.append(ast_child(field="cls", value=value.cls));
+        visitor.child("cls", value.cls);
         for child in value.patterns {
-            children.append(ast_child(field="patterns", value=child));
+            visitor.child("patterns", child);
         }
         for child in value.kwd_patterns {
-            children.append(ast_child(field="kwd_patterns", value=child));
+            visitor.child("kwd_patterns", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, MatchAs) {
         if value.pattern is not None {
-            children.append(ast_child(field="pattern", value=value.pattern));
+            visitor.child("pattern", value.pattern);
         }
-        return children;
+        return;
     }
     if isinstance(value, MatchOr) {
         for child in value.patterns {
-            children.append(ast_child(field="patterns", value=child));
+            visitor.child("patterns", child);
         }
-        return children;
+        return;
     }
     if isinstance(value, TypeVar) {
         if value.bound is not None {
-            children.append(ast_child(field="bound", value=value.bound));
+            visitor.child("bound", value.bound);
         }
         if value.default_value is not None {
-            children.append(
-                ast_child(field="default_value", value=value.default_value)
-            );
+            visitor.child("default_value", value.default_value);
         }
-        return children;
+        return;
     }
     if isinstance(value, ParamSpec) {
         if value.default_value is not None {
-            children.append(
-                ast_child(field="default_value", value=value.default_value)
-            );
+            visitor.child("default_value", value.default_value);
         }
-        return children;
+        return;
     }
     if isinstance(value, TypeVarTuple) {
         if value.default_value is not None {
-            children.append(
-                ast_child(field="default_value", value=value.default_value)
-            );
+            visitor.child("default_value", value.default_value);
         }
-        return children;
+        return;
     }
-    return children;
+    return;
 }
 
 # A typed visitor can rewrite child fields without Python getattr/setattr.

@@ -30,4 +30,4 @@ node RepoEntry {
         scored_at: str = "";
 }
 
-edge OnBoard {}
+edge OnBoard: BoardHub --> RepoEntry {}

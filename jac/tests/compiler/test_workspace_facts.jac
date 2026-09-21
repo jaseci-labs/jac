@@ -50,7 +50,7 @@ test "workspace probes scale with modules within a compilation request" {
         workspace(base);
         path = str(base / 'shared.jac');
         options = CompileOptions(project_root=td, target_app='web');
-        with compilation_scope('web', options) {
+        with compilation_scope(options) {
             with patch('os.lstat', wraps=os.lstat) as probe {
                 app = context_app(path);
                 assert app is not None and app.name == 'web';
@@ -63,9 +63,7 @@ test "workspace probes scale with modules within a compilation request" {
                         - first} extra filesystem probes'
                 );
             }
-            with compilation_scope(
-                'api', CompileOptions(project_root=td, target_app='api')
-            ) {
+            with compilation_scope(CompileOptions(project_root=td, target_app='api')) {
                 other = context_app(path);
                 assert other is not None and other.name == 'api';
             }
@@ -75,7 +73,7 @@ test "workspace probes scale with modules within a compilation request" {
         stamp = os.path.getmtime(toml) + 2.0;
         toml.write_text(CONFIG.replace('web-app', 'desktop'));
         os.utime(toml, (stamp, stamp));
-        with compilation_scope('web', options) {
+        with compilation_scope(options) {
             refreshed = context_app(path);
             assert refreshed is not None and refreshed.kind == 'desktop' , (
                 f'workspace edit was not observed: {refreshed}'
@@ -91,7 +89,7 @@ test "application identity scopes observe workspace edits between requests" {
         workspace(base);
         path = str(base / 'shared.jac');
         options = CompileOptions(project_root=td, target_app='web');
-        with cache_scope('web', options) {
+        with cache_scope(options) {
             first = context_app(path);
             assert first is not None and first.kind == 'web-app';
             toml = base / 'jac.toml';
@@ -172,7 +170,7 @@ test "contextual artifacts cannot overwrite another app cache slot" {
                 str(base / (name + '.jac')), program, CompileOptions()
             );
             selected = context_program(program, options);
-            with cache_scope(selected.context_key) {
+            with cache_scope(selected.options) {
                 slots.append(get_module_cache_path(str(base / 'shared.jac')));
             }
         }

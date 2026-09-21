@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.types.builtin_extensions { install_builtin_extensions }
 import os;
@@ -118,6 +119,8 @@ import from jaclang.compiler.frontend.constant {
     TOKEN_MAP,
     BindingKind,
     CodeContext,
+    ExprCtx,
+    ImmutabilityKind,
     SymbolType,
     Tokens as Tok,
     SymbolAccess,
@@ -222,6 +225,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1052,
     E1053,
     E1054,
+    E1055,
     E1056,
     E1057,
     E1062,
@@ -250,6 +254,10 @@ import from jaclang.compiler.frontend.diagnostics {
     E1129,
     E1131,
     E1134,
+    E1136,
+    E1137,
+    E1138,
+    E1139,
     E0049,
     E5094,
     W1050,
@@ -257,7 +265,9 @@ import from jaclang.compiler.frontend.diagnostics {
     W1053,
     W1100,
     W1101,
-    W1102
+    W1102,
+    W2081,
+    W2082
 }
 
 obj PrefetchedTypes {
@@ -304,6 +314,36 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
+glob MAX_LISTED_OVERLOADS: int = 4,
+     MAX_TYPE_TEXT: int = 80;
+
+obj CallableMismatch {}
+
+obj GradualSourceMismatch(CallableMismatch) {}
+
+obj ParameterMismatch(CallableMismatch) {
+    has src_param: Parameter,
+        dest_param: Parameter;
+}
+
+obj ArityMismatch(CallableMismatch) {
+    has src_count: int,
+        dest_count: int;
+}
+
+obj ReturnMismatch(CallableMismatch) {
+    has src_return: TypeBase,
+        dest_return: TypeBase;
+}
+
+obj ArgTypeMismatch {
+    has param_name: str,
+        value: Expr,
+        actual: TypeBase,
+        param_type: TypeBase,
+        bindings: dict[str, TypeBase];
+}
+
 obj NarrowingTarget {
     has key: str,
         declared_type: TypeBase,
@@ -331,7 +371,15 @@ enum NarrowingKind {
     LITERAL_NE = "literal_ne",
     HASATTR = "hasattr",
     TYPE_IS = "type_is",
-    TYPE_GUARD = "type_guard"
+    TYPE_GUARD = "type_guard",
+    MEMBERSHIP_IN = "membership_in",
+    MEMBERSHIP_NOT_IN = "membership_not_in"
+}
+
+enum EndpointVerdict {
+    CONFORMS = "conforms",
+    VIOLATES = "violates",
+    UNPROVEN = "unproven"
 }
 
 obj ConditionInfo {
@@ -411,6 +459,7 @@ walker TypeEvaluator {
     def push_symbol_resolution(symbol: Symbol) -> bool;
     def pop_symbol_resolution(symbol: Symbol) -> None;
     def get_type_of_symbol(symbol: Symbol) -> TypeBase;
+    def _published_class_type(symbol: Symbol) -> (TypeBase | None);
     def resolve_to_definition_symbol(symbol: Symbol) -> Symbol;
     def _widen_literal_for_declaration(ty: TypeBase) -> TypeBase;
     def _import_module_from_path(
@@ -422,6 +471,8 @@ walker TypeEvaluator {
     def _resolve_from_path(from_mod: ModulePath) -> Path;
     def _resolve_client_npm_module(node_: ModulePath) -> (str | None);
     def _relative_import_must_resolve(node_: ModulePath) -> bool;
+    def _declared_missing_dependency(node_: ModulePath) -> (str | None);
+    def _imports_own_module(node_: ModulePath, mod_path: str) -> bool;
     def _import_error_is_handled(imp: Import) -> bool;
     def _client_npm_base(spec: str, mod_path: str) -> (str | None);
     def _client_entry_mod_path -> (str | None);
@@ -471,7 +522,11 @@ walker TypeEvaluator {
     ) -> (TypeBase | None);
 
     def _install_synth_member(
-        scope: UniScopeNode, synth_src: Source, mname: str, member_type: TypeBase
+        scope: UniScopeNode,
+        synth_src: Source,
+        mname: str,
+        member_type: TypeBase,
+        immutability: ImmutabilityKind = ImmutabilityKind.NONE
     ) -> None;
 
     def _ts_synth_class_types(
@@ -495,6 +550,14 @@ walker TypeEvaluator {
     ) -> Symbol | None;
 
     def _metaclass_of(cls_type: ClassType) -> (ClassType | None);
+    def _declared_metaclass_member(
+        cls_type: ClassType, name: str
+    ) -> (ClassMember | None);
+
+    def _report_rejected_method_call(
+        receiver: ClassType, member: ClassMember, args: list[Expr], site: UniNode
+    ) -> None;
+
     def _extract_type_params(node_: Archetype) -> list[TypeVarType];
     def _type_var_from_param(node_: TypeParam) -> TypeVarType;
     def _extract_ct_params(node_: Archetype) -> (list[str] | None);
@@ -538,6 +601,8 @@ walker TypeEvaluator {
     ) -> bool;
 
     def _extern_scalar_type(type_expr: Expr | None) -> TypeBase;
+    def _intrinsic_function_type(name: str) -> (FunctionType | None);
+    def _intrinsic_spec_type(spec: str) -> TypeBase;
     def _check_extern_ctor_args(expr: FuncCall, arch: Archetype) -> None;
     def _extern_member_type(arch: Archetype, name: str) -> TypeBase;
     def _extern_field_type(field: HasVar) -> TypeBase;
@@ -564,6 +629,10 @@ walker TypeEvaluator {
         src_func: FunctionType, dest_func: FunctionType, strict: bool = False
     ) -> bool;
 
+    def _callable_mismatch(
+        src_func: FunctionType, dest_func: FunctionType, strict: bool = False
+    ) -> CallableMismatch | None;
+
     def _is_ability_classmethod(node_: Ability) -> bool;
     def _is_ability_staticmethod(node_: Ability) -> bool;
     def _classify_property_symbol(symbol: Symbol) -> PropertyWriteKind;
@@ -581,6 +650,11 @@ walker TypeEvaluator {
 
     def _get_type_of_symbol(symbol: Symbol) -> TypeBase;
     def _get_type_of_symbol_decl(symbol: Symbol, decl: NameAtom) -> TypeBase;
+    def _as_final_form(ty: TypeBase) -> (ClassType | None);
+    def _final_declared_type(
+        annotation_type: TypeBase, symbol: (Symbol | None), value: (Expr | None)
+    ) -> (TypeBase | None);
+
     def _get_enum_member_type_for_decl(node_: Name) -> (EnumMemberType | None);
     def get_type_of_member(member: ClassMember, class_type: ClassType) -> TypeBase;
     def declaring_class_of(symbol: Symbol, base_type: ClassType) -> (ClassType | None);
@@ -607,6 +681,8 @@ walker TypeEvaluator {
     def _is_expr_super(expr: Expr) -> bool;
     def _get_enclosing_function(nd: UniNode) -> Ability | None;
     def _get_enclosing_return_scope(nd: UniNode) -> Ability | LambdaExpr | None;
+    def _in_function_body(nd: UniNode) -> bool;
+    def _stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool;
     def _get_declared_return_type(scope: Ability | LambdaExpr) -> TypeBase | None;
     def _infer_lambda_block_return_type(body: Sequence[CodeBlockStmt]) -> TypeBase;
     def _collect_return_types(
@@ -642,9 +718,44 @@ walker TypeEvaluator {
 
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
+    def _edge_endpoint_declared(
+        edge_type: ClassType, want_src: bool
+    ) -> TypeBase | None;
+
     def _edge_endpoint_type(
         edge_type: ClassType, edge_dir: EdgeDir
     ) -> TypeBase | None;
+
+    def _edge_endpoint_verdict(
+        actual: TypeBase, declared: TypeBase
+    ) -> EndpointVerdict;
+
+    def _connected_node_type(operand: TypeBase) -> TypeBase;
+    def _report_endpoint_verdict(
+        at: UniNode,
+        violation: DiagnosticInfo,
+        unproven: DiagnosticInfo,
+        edge_type: ClassType,
+        side: str,
+        actual: TypeBase,
+        declared: TypeBase
+    ) -> None;
+
+    def _check_connect_endpoints(
+        conn_type: TypeBase,
+        edge_dir: EdgeDir,
+        left: Expr,
+        left_type: TypeBase,
+        right: Expr,
+        right_type: TypeBase
+    ) -> None;
+
+    def _check_traversal_origin(
+        edge_type: ClassType,
+        edge_dir: EdgeDir,
+        origin_type: TypeBase | None,
+        at: UniNode
+    ) -> None;
 
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
@@ -673,6 +784,7 @@ walker TypeEvaluator {
     def _bind_filter_member(target: Name, filter_type: ClassType) -> None;
     def _filter_order_name(expr: Expr) -> (Name | None);
     def _is_type_subscript(class_type: ClassType) -> bool;
+    def _subscript_index_expr(right: Expr) -> Expr;
     def _get_type_for_member_lookup(object_type: ClassType) -> ClassType;
     def _get_getattr_return_type(base_type: ClassType) -> TypeBase | None;
     def _resolve_enum_value_type(enum_type: ClassType) -> TypeBase | None;
@@ -692,7 +804,6 @@ walker TypeEvaluator {
     def validate_call_args(expr: FuncCall) -> TypeBase;
     def _validate_call_type(expr: FuncCall, caller_type: TypeBase) -> TypeBase;
     def _container_value_type(value_type: TypeBase, at: Expr) -> TypeBase;
-    def _unannotated_lambda_arg_name(expr: FuncCall) -> str | None;
     def _make_coroutine_type(inner: TypeBase) -> TypeBase;
     def _is_awaitable_type(t: TypeBase) -> bool;
     def _unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBase;
@@ -700,9 +811,16 @@ walker TypeEvaluator {
     def validate_arg_types(
         args: MatchArgsToParamsResult,
         checking_overload: bool = False,
+        mismatches: list[ArgTypeMismatch] | None = None,
         solved_type_vars: (dict[str, TypeBase] | None) = None
     ) -> bool;
 
+    def _callable_reason(arg_type: TypeBase, expected: TypeBase) -> str | None;
+    def _describe_overload_rejections(
+        rejections: list[tuple[int, ArgTypeMismatch]], overload_count: int
+    ) -> str | None;
+
+    def _shown_expected(mismatch: ArgTypeMismatch) -> TypeBase;
     def _merge_catalog_field_params(
         tab: CatScope, param_map: dict[str, Parameter], skip_deferred: bool
     ) -> None;
@@ -868,6 +986,7 @@ walker TypeEvaluator {
     def _type_guard_form_of(ty: TypeBase) -> str | None;
     def _unwrap_type_guard_return(ty: TypeBase) -> TypeBase;
     def _extract_callable_info(condition: Expr) -> str | None;
+    def _extract_literal_operand_type(operand: Expr) -> TypeBase | None;
     def _extract_hasattr_info(condition: Expr) -> tuple[str, str] | None;
     def _type_has_attribute(t: TypeBase, attr_name: str) -> bool;
     def _filter_union_for_hasattr(

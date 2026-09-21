@@ -118,7 +118,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
     }
 
-    system_content = SYSTEM_PERSONA;
+    return_type = get_type_hints(caller).get("return");
+    image_kind = image_resp_kind(return_type);
+    system_content = "" if image_kind else SYSTEM_PERSONA;
     try {
         import from jaclang.project.config { find_project_root }
         import from pathlib { Path }
@@ -142,7 +144,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
     }
     if call_system_prompt {
-        system_content += "\n\n" + str(call_system_prompt);
+        system_content = f"{system_content}\n\n{call_system_prompt}"
+            if system_content
+            else str(call_system_prompt);
     }
 
     conv_arg = call_params.get("conversation");
@@ -177,7 +181,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     );
     messages: list[MessageType] = [sys_msg, *conv_msgs, user_msg];
 
-    return_type = get_type_hints(caller).get("return");
     is_streaming = bool(call_params.get("stream", False));
     if is_streaming
         and return_type is not str
@@ -187,6 +190,13 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             "Pass a stream_handler to receive stream events for a structured "
             "return type (e.g. `visit [-->] by model(stream=True, "
             "stream_handler=fn)`)."
+        );
+    }
+    if image_kind and (is_streaming or len(tools) > 0) {
+        raise ConfigurationError(
+            "An Image return type is served by one image-generation call, which "
+            "takes no tools and does not stream. Drop tools= and stream= from "
+            "this `by` call, or return text and generate the image from a tool."
         );
     }
     if len(tools) > 0 {

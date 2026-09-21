@@ -9,7 +9,7 @@ node Item {
     has value: int;
 }
 
-edge Next {}
+edge Next : any --> any {}
 
 walker Traverse {
     has count: int = 0;

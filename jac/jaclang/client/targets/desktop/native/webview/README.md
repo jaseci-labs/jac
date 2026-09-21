@@ -1,6 +1,9 @@
 # Native webview binding
 
-`webview.jac` binds the upstream webview C API. Linux builds use WebKitGTK.
+`webview.jac` binds the upstream webview C API. Linux builds link WebKitGTK;
+macOS builds link the WebKit framework (WKWebView) of the Xcode Command Line
+Tools. Both compile the same pinned header into `libwebview.<so|dylib>` beside
+the host binary; the recipes live in `jaclang/toolchains/desktop.jac`.
 
 Run `jac setup --toolchain desktop` to prepare the build tools, or build a desktop
 app and let Jac provision them automatically. The adapter in

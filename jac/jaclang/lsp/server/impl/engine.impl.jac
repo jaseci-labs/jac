@@ -668,7 +668,7 @@ impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
-    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
+    import from jaclang.compiler.placement.placement_pins { in_client_npm_world }
     try {
         resolved = mp.resolve_relative_path();
         if os.path.isfile(resolved) {
@@ -683,7 +683,7 @@ impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
         return None;
     }
     try {
-        if is_client_npm_import(spec, src_path) {
+        if in_client_npm_world(spec, src_path) {
             return (
                 resolve_client_npm_declarations(spec, src_path)
                 or resolve_client_npm_package(spec, src_path)
@@ -702,7 +702,7 @@ impl JacLangServer._npm_item_location(
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
-    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
+    import from jaclang.compiler.placement.placement_pins { in_client_npm_world }
     def at_file(path_: str, rng: Optional[lspt.Range]) -> Optional[lspt.Location] {
         path_uri = uris.from_fs_path(path_);
         if path_uri is None {
@@ -719,7 +719,7 @@ impl JacLangServer._npm_item_location(
     }
     spec = from_loc.string_path_value or from_loc.dot_path_str;
     src_path = from_loc.loc.mod_path if from_loc.loc else None;
-    if not spec or not src_path or not is_client_npm_import(spec, src_path) {
+    if not spec or not src_path or not in_client_npm_world(spec, src_path) {
         return None;
     }
     dts = resolve_client_npm_declarations(spec, src_path);

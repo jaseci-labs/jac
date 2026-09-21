@@ -27,13 +27,13 @@ def fetch(
     url: str, agent: str, accept_json: bool = False, timeout: int = 10
 ) -> bytes | None;
 
-def parse_repo_url(url: str) -> tuple[str, str] | None;
+def:protect parse_repo_url(url: str) -> tuple[str, str] | None;
 
-def repo_meta(repo: str, agent: str) -> RepoMeta | None;
+def:protect repo_meta(repo: str, agent: str) -> RepoMeta | None;
 
-def head_sha(repo: str, ref: str, agent: str) -> str;
+def:protect head_sha(repo: str, ref: str, agent: str) -> str;
 
-def download_tarball(
+def:protect download_tarball(
     repo: str,
     ref: str,
     agent: str,
@@ -48,7 +48,7 @@ def _wanted(
     names: list[str] | None
 ) -> bool;
 
-def untar(
+def:protect untar(
     data: bytes,
     prefixes: list[str] | None = None,
     suffixes: list[str] | None = None,
@@ -56,8 +56,8 @@ def untar(
     max_member_bytes: int = 0
 ) -> dict[str, bytes];
 
-def code_breakdown(data: bytes) -> tuple[int, int];
+def:protect code_breakdown(data: bytes) -> tuple[int, int];
 
-def text_of(blob: bytes) -> str;
+def:protect text_of(blob: bytes) -> str;
 
 def mb_of(byte_count: int) -> str;

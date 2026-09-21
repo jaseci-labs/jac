@@ -1,4 +1,7 @@
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+import from jaclang.compiler.frontend.python.syntax_error {
+    syntax_failure,
+    source_line_bytes
+}
 # P0.7 parser action helpers (PLAN.md).
 #
 # Lowers CPython grammar actions (_PyAST_*, _PyPegen_*) into ast_nodes.jac
@@ -126,6 +129,16 @@ import from jaclang.compiler.frontend.python.peg_runtime {
 }
 import from jaclang.compiler.frontend.python.token_model { mk_diag, tok_loc }
 
+# The characters a backslash may escape in a str literal, as code points.
+glob VALID_ESCAPE_POINTS: set[int] = {
+         ord(c) for c in "\\\"'abfnrtv\n\r01234567xuUN"
+     },
+     # A bytes literal takes the same set without the three that name a code
+     # point: \u, \U and \N are str-only, so a bytes literal warns on them.
+     VALID_BYTES_ESCAPE_POINTS: set[int] = {
+         ord(c) for c in "\\\"'abfnrtv\n\r01234567x"
+     };
+
 obj pa_cmpop_expr_pair {
     has cmpop: cmpop,
         expr: expr;
@@ -202,7 +215,7 @@ def pa_name_from_token(tok: peg_token | None) -> Name | None {
     );
 }
 
-def pa_warn_escape(escape: str, tok: peg_token | None) {
+def pa_warn_escape(escape: str, tok: peg_token | None, line_offset: int = 0) {
     if tok is not None and tok.warned {
         return;
     }
@@ -222,72 +235,113 @@ def pa_warn_escape(escape: str, tok: peg_token | None) {
     warn(
         message,
         tok.filename if tok is not None else "<unknown>",
-        tok.lineno if tok is not None else 1
+        (tok.lineno if tok is not None else 1) + line_offset
     );
+}
+
+# CPython reports the line the escape sits on, not the line the literal
+# opens on, so a triple-quoted body carries the newlines before the escape.
+# Counted only when a warning fires -- at most once per token -- so the
+# decode run loop pays nothing for it.
+def pa_escape_line_offset(data: bytes, upto: int) -> int {
+    lines = 0;
+    k = 0;
+    while k < upto {
+        if data[k] == 10 {
+            lines += 1;
+        }
+        k += 1;
+    }
+    return lines;
+}
+
+# One backslash escape, judged against the set its literal kind allows.
+def pa_check_escape(
+    data: bytes, i: int, size: int, valid: set[int], tok: peg_token | None
+) {
+    following = data[i + 1];
+    if following not in valid {
+        pa_warn_escape(chr(following), tok, pa_escape_line_offset(data, i));
+    } elif following >= ord("4")
+        and following <= ord("7")
+        and i + 3 < size
+        and data[i + 2] >= ord("0")
+        and data[i + 2] <= ord("7")
+        and data[i + 3] >= ord("0")
+        and data[i + 3] <= ord("7") {
+        pa_warn_escape(
+            data[i + 1:i + 4].decode("utf-8"), tok, pa_escape_line_offset(data, i)
+        );
+    }
 }
 
 # Escape decoding uses the retained string/bytes object runtime, just as
 # CPython's string_parser.c does. No parser or compiler API is called here.
+#
+# The body goes to the unicode-escape codec, which reproduces ASCII as written,
+# including a backslash escape of an ASCII character. That source is copied in
+# runs; only a character the codec cannot take as written breaks a run: a
+# non-ASCII character, spelled as a \U escape, and a backslash in front of one,
+# spelled as an escaped backslash.
 def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
-    import from jaclang.runtime.python.characters {
-        point_width,
-        point_char,
-        unicode_point
-    }
+    import from jaclang.runtime.python.characters { point_width, point_at }
     import from jaclang.runtime.python.native_services { decode_unicode }
     data = body.encode("utf-8");
-    encoded: list[str] = [];
+    size = len(data);
+    parts: list[str] = [];
+    run = 0;
     i = 0;
-    while i < len(data) {
-        ch = point_char(data, i);
-        width = point_width(data, i);
-        if ch == "\\" and i + 1 < len(data) {
-            following = point_char(data, i + 1);
-            if data[i + 1] < 128 {
-                if following not in "\\\"'abfnrtv\n\r01234567xuUN" {
-                    pa_warn_escape(following, tok);
-                } elif following in "4567" and i + 3 < len(data) {
-                    tail = data[i + 1:i + 4].decode("utf-8");
-                    if data[i + 2] >= 48
-                        and data[i + 2] <= 55
-                        and data[i + 3] >= 48
-                        and data[i + 3] <= 55 {
-                        pa_warn_escape(tail, tok);
-                    }
-                }
-                encoded.append(ch + following);
-                i += 2;
-                continue;
-            }
-            encoded.append("\\u005c");
-        } elif data[i] >= 128 {
-            point = unicode_point(ch);
-            digits = "0123456789abcdef";
-            escape = "\\U";
-            for shift in range(7, -1, -1) {
-                escape += digits[(point >> (shift * 4)) & 15];
-            }
-            encoded.append(escape);
-        } else {
-            encoded.append(ch);
+    while i < size {
+        c = data[i];
+        if c == ord("\\") and i + 1 < size and data[i + 1] < 128 {
+            pa_check_escape(data, i, size, VALID_ESCAPE_POINTS, tok);
+            i += 2;
+            continue;
         }
-        i += width;
+        if c < 128 and not (c == ord("\\") and i + 1 < size) {
+            i += 1;
+            continue;
+        }
+        if run < i {
+            parts.append(data[run:i].decode("utf-8"));
+        }
+        if c == ord("\\") {
+            parts.append("\\u005c");
+            i += 1;
+        } else {
+            parts.append("\\U" + format(point_at(data, i), "08x"));
+            i += point_width(data, i);
+        }
+        run = i;
     }
-    return decode_unicode("".join(encoded));
+    if run < size {
+        parts.append(data[run:size].decode("utf-8"));
+    }
+    return decode_unicode("".join(parts));
 }
 
-def pa_decode_bytes_escape_body(body: str, raw: bool) -> list[int] {
+def pa_decode_bytes_escape_body(
+    body: str, raw: bool, tok: peg_token | None = None
+) -> list[int] {
     import from jaclang.runtime.python.native_services { decode_bytes }
-    data = body.encode("utf-8");
-    values: list[int] = [];
-    for item in data {
-        if item >= 128 {
-            raise syntax_failure("bytes can only contain ASCII literal characters");
-        }
-        values.append(item);
+    if not body.isascii() {
+        raise syntax_failure("bytes can only contain ASCII literal characters");
     }
     if raw {
-        return values;
+        return list(body.encode("utf-8"));
+    }
+    # A raw literal escapes nothing, so only the cooked body is judged. The
+    # decode itself is the runtime's, so the scan is the warning's own pass.
+    data = body.encode("utf-8");
+    size = len(data);
+    i = 0;
+    while i < size {
+        if data[i] == ord("\\") and i + 1 < size {
+            pa_check_escape(data, i, size, VALID_BYTES_ESCAPE_POINTS, tok);
+            i += 2;
+            continue;
+        }
+        i += 1;
     }
     return decode_bytes(body);
 }
@@ -341,7 +395,7 @@ def pa_decode_string_literal_spelling(
     }
     body = spelling[start:end];
     if is_bytes {
-        return pa_decode_bytes_escape_body(body, raw);
+        return pa_decode_bytes_escape_body(body, raw, tok);
     }
     if raw {
         return body;
@@ -2304,23 +2358,7 @@ def interpolation_text(
         end_col = format.col_offset;
     }
     if not p.source_lines {
-        data = p.tok.source.encode("utf-8");
-        start_byte = 0;
-        end_byte = 0;
-        while end_byte < len(data) {
-            byte = data[end_byte];
-            end_byte += 1;
-            if byte == 13 and end_byte < len(data) and data[end_byte] == 10 {
-                end_byte += 1;
-            }
-            if byte == 10 or byte == 13 {
-                p.source_lines.append(data[start_byte:end_byte]);
-                start_byte = end_byte;
-            }
-        }
-        if start_byte < len(data) {
-            p.source_lines.append(data[start_byte:]);
-        }
+        p.source_lines = source_line_bytes(p.tok.data);
     }
     lines = p.source_lines;
     text = b"";

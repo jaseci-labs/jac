@@ -105,6 +105,9 @@ test "the mobile kind resolves to the mobile target" {
     assert hasattr(target, "build");
     assert hasattr(target, "dev");
     assert hasattr(target, "start");
+    assert hasattr(target, "ensure_ready") , (
+        "ensure_ready is the universal readiness verb on every client target"
+    );
     assert target.output_dir is None;
     # Kinds without a client are a hard error, not a fallback to web.
     for kind in ["cli", "service", "py-package", "banana"] {
@@ -168,34 +171,279 @@ test "mobile build rejects platforms outside android, ios and web" {
     }
 }
 
-test "mobile dev fails fast when scaffold is missing" {
-    # The Metro Fast Refresh loop is wired into dev, so `dev` no longer raises
-    # NotImplementedError. Instead, calling it without a scaffold must
-    # raise a RuntimeError pointing the user at `jac setup <app>`
-    # — the contract is "explicit failure, never silent partial work".
-    import tempfile;
-    import from jaclang.client.targets.registry { target_for_kind }
+"""Stub the two provisioning steps and the compile step so a dev/build/setup
+call exercises `ensure_ready` and nothing after it. The scaffold writer records
+its target dir and lays down the files `ensure_ready` checks for, the deps
+installer records its dir, and the compile step stops the pipeline before
+Metro, Gradle or a device is touched. Returns the message of the RuntimeError
+the action raised, or "" when it returned normally."""
+def _run_with_mobile_stubs(target: any, calls: list[str], action: any) -> str {
+    import unittest.mock;
 
-    _register_client_targets();
-    with tempfile.TemporaryDirectory() as tmp {
-        target = target_for_kind("mobile", Path(tmp));
+    def _fake_scaffold(
+        rn_dir: Path, project_root: Path, **kwargs: dict[str, any]
+    ) -> bool {
+        calls.append(f"scaffold:{rn_dir}");
+        rn_dir.mkdir(parents=True, exist_ok=True);
+        (rn_dir / "package.json").write_text('{"name": "stub"}\n', encoding="utf-8");
+        (rn_dir / "app.json").write_text('{"expo": {"extra": {}}}\n', encoding="utf-8");
+        return True;
+    }
+
+    def _fake_deps(rn_dir: Path) {
+        calls.append(f"deps:{rn_dir}");
+    }
+
+    def _stop_compile(entry_file: Path) -> tuple[(any, Path)] {
+        calls.append("compile");
+        raise RuntimeError("stop after ensure_ready");
+    }
+
+    with unittest.mock.patch(
+        "jaclang.client.targets.mobile_target.write_expo_scaffold",
+        side_effect=_fake_scaffold
+    ), unittest.mock.patch(
+        "jaclang.client.targets.mobile_target.ensure_native_deps_installed",
+        side_effect=_fake_deps
+    ), unittest.mock.patch.object(
+        target, "_compile_native_jac_modules", side_effect=_stop_compile
+    ) {
         try {
-            target.dev(Path(tmp) / "main.jac", Path(tmp));
-            assert False , "expected dev() to raise when scaffold is missing";
-        } except NotImplementedError as e {
-            assert False , (
-                "dev() should no longer raise NotImplementedError now "
-                f"that the new dev flow is in place; got: {e}"
-            );
+            action();
         } except RuntimeError as e {
-            assert "jac setup <app>" in str(e) , (
-                f"missing-scaffold error must point at setup command: {e}"
-            );
-            assert "--client" not in str(e) , (
-                f"the --client flag is gone; the hint must not mention it: {e}"
-            );
+            return str(e);
         }
     }
+    return "";
+}
+
+"""A throwaway mobile project: jac.toml plus the env that keeps dev off the
+network (no LAN probe) and online (JAC_OFFLINE cleared unless asked for)."""
+def _mobile_project(tmp: str, offline: bool = False) -> Path {
+    project_dir = Path(tmp);
+    (project_dir / "jac.toml").write_text(
+        "[project]\nname = \"t\"\nversion = \"1.0\"\nkind = \"mobile\"\n"
+        "entry-point = \"main\"\n",
+        encoding="utf-8"
+    );
+    os.environ["JAC_RN_DEV_HOST"] = "127.0.0.1";
+    if offline {
+        os.environ["JAC_OFFLINE"] = "1";
+    } else {
+        os.environ.pop("JAC_OFFLINE", None);
+    }
+    return project_dir;
+}
+
+def _restore_mobile_env(prev_host: str | None, prev_offline: str | None) {
+    if prev_host is None {
+        os.environ.pop("JAC_RN_DEV_HOST", None);
+    } else {
+        os.environ["JAC_RN_DEV_HOST"] = prev_host;
+    }
+    if prev_offline is None {
+        os.environ.pop("JAC_OFFLINE", None);
+    } else {
+        os.environ["JAC_OFFLINE"] = prev_offline;
+    }
+}
+
+test "mobile dev provisions a missing scaffold and proceeds" {
+    # The contract is "explicit, never silent partial work": every provisioning
+    # step is narrated and anything that cannot proceed fails loudly. A
+    # missing scaffold is not a refusal any more: `jac run --dev <app>` writes
+    # the Expo scaffold, installs its deps, and carries on into the pipeline.
+    import tempfile;
+    import from jaclang.client.targets.registry { target_for_kind }
+    import from jaclang.client.targets.react_native.common { resolve_rn_project_dir }
+
+    _register_client_targets();
+    prev_host = os.environ.get("JAC_RN_DEV_HOST");
+    prev_offline = os.environ.get("JAC_OFFLINE");
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            project_dir = _mobile_project(tmp);
+            target = target_for_kind("mobile", project_dir);
+            rn_dir = resolve_rn_project_dir(project_dir);
+            assert not (rn_dir / "package.json").exists();
+            calls: list[str] = [];
+            def _dev {
+                target.dev(project_dir / "main.jac", project_dir);
+            }
+            msg = _run_with_mobile_stubs(target, calls, _dev);
+            assert msg == "stop after ensure_ready" , (
+                f"dev must provision and continue into the pipeline, got: {msg!r}"
+            );
+            assert calls == [f"scaffold:{rn_dir}", f"deps:{rn_dir}", "compile"] , (
+                f"scaffold, then deps, then the pipeline; got {calls}"
+            );
+            assert (rn_dir / "package.json").exists();
+        }
+    } finally {
+        _restore_mobile_env(prev_host, prev_offline);
+    }
+}
+
+test "mobile dev refreshes native deps on an existing scaffold" {
+    # An existing scaffold with stale or missing node_modules used to fail
+    # later inside Metro: dev never called ensure_native_deps_installed. Now
+    # ensure_ready leaves the scaffold alone and runs the (stamp-gated) deps
+    # sync before the pipeline.
+    import tempfile;
+    import from jaclang.client.targets.registry { target_for_kind }
+    import from jaclang.client.targets.react_native.common { resolve_rn_project_dir }
+
+    _register_client_targets();
+    prev_host = os.environ.get("JAC_RN_DEV_HOST");
+    prev_offline = os.environ.get("JAC_OFFLINE");
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            project_dir = _mobile_project(tmp);
+            target = target_for_kind("mobile", project_dir);
+            rn_dir = resolve_rn_project_dir(project_dir);
+            rn_dir.mkdir(parents=True, exist_ok=True);
+            (rn_dir / "package.json").write_text('{"name": "existing"}\n');
+            (rn_dir / "app.json").write_text('{"expo": {"extra": {}}}\n');
+            calls: list[str] = [];
+            def _dev {
+                target.dev(project_dir / "main.jac", project_dir);
+            }
+            msg = _run_with_mobile_stubs(target, calls, _dev);
+            assert msg == "stop after ensure_ready" , msg;
+            assert calls == [f"deps:{rn_dir}", "compile"] , (
+                f"an existing scaffold is kept; only deps are synced; got {calls}"
+            );
+            assert (rn_dir / "package.json").read_text() == '{"name": "existing"}\n' , (
+                "ensure_ready must not rewrite an existing scaffold"
+            );
+        }
+    } finally {
+        _restore_mobile_env(prev_host, prev_offline);
+    }
+}
+
+test "mobile dev under JAC_OFFLINE refuses to provision a missing scaffold" {
+    # Provisioning needs the network. Offline, a missing scaffold is the one
+    # case that still stops with the explicit command, and nothing is written.
+    import tempfile;
+    import from jaclang.client.targets.registry { target_for_kind }
+    import from jaclang.client.targets.react_native.common { resolve_rn_project_dir }
+
+    _register_client_targets();
+    prev_host = os.environ.get("JAC_RN_DEV_HOST");
+    prev_offline = os.environ.get("JAC_OFFLINE");
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            project_dir = _mobile_project(tmp, offline=True);
+            target = target_for_kind("mobile", project_dir);
+            rn_dir = resolve_rn_project_dir(project_dir);
+            calls: list[str] = [];
+            def _dev {
+                target.dev(project_dir / "main.jac", project_dir);
+            }
+            msg = _run_with_mobile_stubs(target, calls, _dev);
+            assert "jac setup <app>" in msg , (
+                f"offline with no scaffold must name the exact command: {msg!r}"
+            );
+            assert "JAC_OFFLINE" in msg , f"the error must say why: {msg!r}";
+            assert "--client" not in msg;
+            assert calls == [] , f"nothing may be provisioned offline; got {calls}";
+            assert not rn_dir.exists() , "no partial scaffold may be written offline";
+        }
+    } finally {
+        _restore_mobile_env(prev_host, prev_offline);
+    }
+}
+
+test "mobile build provisions a missing scaffold before compiling" {
+    # build and dev share one readiness path (ensure_ready); build keeps its
+    # platform validation ahead of it so a bad --platform never provisions.
+    import tempfile;
+    import from jaclang.client.targets.registry { target_for_kind }
+    import from jaclang.client.targets.react_native.common { resolve_rn_project_dir }
+
+    _register_client_targets();
+    prev_host = os.environ.get("JAC_RN_DEV_HOST");
+    prev_offline = os.environ.get("JAC_OFFLINE");
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            project_dir = _mobile_project(tmp);
+            target = target_for_kind("mobile", project_dir);
+            rn_dir = resolve_rn_project_dir(project_dir);
+            calls: list[str] = [];
+            def _build {
+                target.build(project_dir / "main.jac", project_dir, platform="android");
+            }
+            msg = _run_with_mobile_stubs(target, calls, _build);
+            assert msg == "stop after ensure_ready" , msg;
+            assert calls == [f"scaffold:{rn_dir}", f"deps:{rn_dir}", "compile"] , calls;
+        }
+    } finally {
+        _restore_mobile_env(prev_host, prev_offline);
+    }
+}
+
+test "explicit setup and lazy ensure_ready share one provisioning path" {
+    # `jac setup <app>` is the explicit pre-provision; it runs the same
+    # scaffold + deps sequence ensure_ready runs lazily, and only the explicit
+    # path prints the "Next steps" block. There is exactly one call site for
+    # the scaffold writer and the ad-hoc present-checks are gone.
+    import tempfile;
+    import from jaclang.client.targets.registry { target_for_kind }
+    import from jaclang.client.targets.react_native.common { resolve_rn_project_dir }
+
+    _register_client_targets();
+    prev_host = os.environ.get("JAC_RN_DEV_HOST");
+    prev_offline = os.environ.get("JAC_OFFLINE");
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            project_dir = _mobile_project(tmp);
+            target = target_for_kind("mobile", project_dir);
+            rn_dir = resolve_rn_project_dir(project_dir);
+            calls: list[str] = [];
+            def _setup {
+                target.setup(project_dir);
+            }
+            msg = _run_with_mobile_stubs(target, calls, _setup);
+            assert msg == "" , f"setup must complete without compiling: {msg!r}";
+            assert calls == [f"scaffold:{rn_dir}", f"deps:{rn_dir}"] , calls;
+            # Second pass: ensure_ready on a provisioned project only syncs
+            # deps; it never rewrites a present scaffold.
+            def _ready {
+                target.ensure_ready(project_dir);
+            }
+            msg = _run_with_mobile_stubs(target, calls, _ready);
+            assert msg == "" , msg;
+            assert calls[-1] == f"deps:{rn_dir}" , calls;
+            assert calls.count(f"scaffold:{rn_dir}") == 1 , (
+                "ensure_ready must not rewrite a present scaffold"
+            );
+        }
+    } finally {
+        _restore_mobile_env(prev_host, prev_offline);
+    }
+
+    impl_content = (_targets_dir / "impl" / "mobile_target.impl.jac").read_text();
+    assert impl_content.count("write_expo_scaffold(") == 1 , (
+        "one scaffold-writing call site, shared by setup and ensure_ready"
+    );
+    assert "Scaffold not found" not in impl_content , (
+        "the ad-hoc present-check in build is replaced by ensure_ready"
+    );
+    assert "before `jac run --dev <app>`" not in impl_content , (
+        "dev no longer refuses when the scaffold is missing"
+    );
+    assert "impl MobileTarget.ensure_ready" in impl_content;
+    ready_section = impl_content.split("impl MobileTarget.ensure_ready")[1].split(
+        "impl MobileTarget.setup"
+    )[0];
+    assert "Next steps" not in ready_section , (
+        "the Next steps block belongs to the explicit `jac setup` path only"
+    );
+    setup_section = impl_content.split("impl MobileTarget.setup")[1].split(
+        "impl MobileTarget.build"
+    )[0];
+    assert "Next steps" in setup_section;
 }
 
 test "mobile build source includes iOS, web and release wiring" {
@@ -1330,6 +1578,75 @@ test "node tooling runs installs and tools on the bundled bun only" {
         assert cmd[0] != "npm" and cmd[0] != "npx" and cmd[0] != "bunx" , (
             f"system JS tooling must never be invoked, got: {cmd}"
         );
+    }
+}
+
+test "run_manifest_install skips bun install while the stamp is current" {
+    # ensure_ready runs on every `jac run` / `jac build`, so the deps sync must
+    # be cheap when nothing changed: the online path is stamp-gated like the
+    # offline one (manifest + lockfile signature, and every declared package
+    # present under node_modules) and only shells out when that check fails.
+    import tempfile;
+    import unittest.mock;
+    import from jaclang.client.targets.node_tooling_common { run_manifest_install }
+
+    calls: list[list[str]] = [];
+
+    def _fake_run(cmd: list[str], **kwargs: dict[str, any]) -> object {
+        class _Res {
+            has returncode: int = 0,
+                stdout: str = "",
+                stderr: str = "";
+        }
+        calls.append(cmd);
+        return _Res();
+    }
+
+    def _fake_get_bun -> str {
+        return "/opt/jac/_bun/bun";
+    }
+
+    prev_offline = os.environ.pop("JAC_OFFLINE", None);
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            project_dir = Path(tmp);
+            (project_dir / "package.json").write_text(
+                '{"dependencies": {"expo": "1.0.0"}}\n', encoding="utf-8"
+            );
+            with unittest.mock.patch("subprocess.run", side_effect=_fake_run), unittest.mock.patch(
+                "jaclang.client.targets.node_tooling_common.get_bun",
+                side_effect=_fake_get_bun
+            ) {
+                run_manifest_install(project_dir);
+                assert calls == [["/opt/jac/_bun/bun", "install"]] , calls;
+                assert (project_dir / ".jac-dependencies.sha256").is_file() , (
+                    "a successful install writes the stamp"
+                );
+                # The stamp matches but node_modules is empty (the fake install
+                # wrote nothing): still not current, so install runs again.
+                run_manifest_install(project_dir);
+                assert len(calls) == 2 , (
+                    f"a stamp without the packages on disk is not current: {calls}"
+                );
+                (project_dir / "node_modules" / "expo").mkdir(parents=True);
+                run_manifest_install(project_dir);
+                assert len(calls) == 2 , (
+                    f"stamp current and packages present: no install; got {calls}"
+                );
+                # Editing the manifest invalidates the stamp.
+                (project_dir / "package.json").write_text(
+                    '{"dependencies": {"expo": "1.0.1"}}\n', encoding="utf-8"
+                );
+                run_manifest_install(project_dir);
+                assert len(calls) == 3 , (
+                    f"a changed manifest must reinstall; got {calls}"
+                );
+            }
+        }
+    } finally {
+        if prev_offline is not None {
+            os.environ["JAC_OFFLINE"] = prev_offline;
+        }
     }
 }
 

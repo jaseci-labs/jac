@@ -26,7 +26,7 @@ impl CommentAttachPass._run_impl(ir_in: uni.Module) -> uni.Module {
                 tree_tokens.append(nd);
             }
         } else {
-            for k in nd.kid {
+            for k in [nd->:Kid:->] {
                 if k is not None {
                     stack.append(k);
                 }
