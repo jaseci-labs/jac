@@ -362,6 +362,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     release_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, ir.IntType(1)]);
     release_fn = ir.Function(self.llvm_module, release_fnty, name="__rc_release_impl");
     release_fn.linkage = "private";
+    release_fn.attributes.add("nounwind");
     release_fn.args[0].name = "ptr";
     release_fn.args[1].name = "may_cycle";
     entry_bb = release_fn.append_basic_block("entry");
@@ -575,6 +576,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _pub_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     _pub_fn = ir.Function(self.llvm_module, _pub_fnty, name="__rc_release_simple");
     _pub_fn.linkage = "private";
+    _pub_fn.attributes.add("nounwind");
     _pub_fn.args[0].name = "ptr";
     _pub_bb = _pub_fn.append_basic_block("entry");
     _pub_b = ir.IRBuilder(_pub_bb);
@@ -1647,6 +1649,7 @@ impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
     fnty = ir.FunctionType(ir.VoidType(), [i8p]);
     fn = ir.Function(self.llvm_module, fnty, name=f"__drop_{type_name}");
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "self";
     self.struct_drop_fns[type_name] = fn;
 
@@ -1816,6 +1819,7 @@ impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None)
     _safe = cont_name.replace(".", "_");
     fn = ir.Function(self.llvm_module, fnty, name=f"__drop_{_safe}");
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "self";
     self.container_drop_fns[cont_name] = fn;
 
@@ -2101,6 +2105,7 @@ impl NaIRGenPass._emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | N
         self.llvm_module, fnty, name=f"__jacval_drop_{native_safe_sym(elem_mangle)}"
     );
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "slot";
     self.container_drop_fns[_key] = fn;
     entry_bb = fn.append_basic_block("entry");

@@ -2681,6 +2681,508 @@ impl NaIRGenPass._codegen_float_floor_mod(left: ir.Value, right: ir.Value) -> ir
     return self.builder.fsub(left, prod, name="fmod");
 }
 
+impl NaIRGenPass._emit_str_repeat_fn -> ir.Function {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    _name = "__jac_str_repeat";
+    try {
+        _old = self.llvm_module.get_global(_name);
+        if isinstance(_old, ir.Function) and _old.blocks {
+            return _old;
+        }
+    } except KeyError {}
+    fn = self._emit_slow_path_helper(_name, i8p, [i8p, i64]);
+    fn.args[0].name = "str";
+    fn.args[1].name = "count";
+    state = self._enter_function(fn);
+    try {
+        slen = self._call_str_len(self.builder, fn.args[0], name="repeat.len");
+        neg = self.builder.icmp_signed(
+            "<", fn.args[1], ir.Constant(i64, 0), name="repeat.neg"
+        );
+        count = self.builder.select(
+            neg, ir.Constant(i64, 0), fn.args[1], name="repeat.count"
+        );
+        total = self.builder.mul(slen, count, name="repeat.total");
+        alloc = self.builder.add(total, ir.Constant(i64, 1), name="repeat.alloc");
+        self._set_rc_ctx("str_repeat", "");
+        buf = self._str_alloc(self.builder, alloc, name="repeat.buf");
+        self._clear_rc_ctx();
+        entry_bb = self.builder.basic_block;
+        loop = fn.append_basic_block("repeat.loop");
+        body = fn.append_basic_block("repeat.body");
+        done = fn.append_basic_block("repeat.done");
+        self.builder.branch(loop);
+        self.builder.position_at_start(loop);
+        offset = self.builder.phi(i64, name="repeat.offset");
+        n = self.builder.phi(i64, name="repeat.n");
+        offset.add_incoming(ir.Constant(i64, 0), entry_bb);
+        n.add_incoming(ir.Constant(i64, 0), entry_bb);
+        at_end = self.builder.icmp_unsigned(">=", n, count, name="repeat.atend");
+        self.builder.cbranch(at_end, done, body);
+        self.builder.position_at_start(body);
+        dst = self.builder.gep(buf, [offset], name="repeat.dst");
+        memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+        self.builder.call(memcpy, [dst, fn.args[0], slen]);
+        next_offset = self.builder.add(offset, slen, name="repeat.next.offset");
+        next_n = self.builder.add(n, ir.Constant(i64, 1), name="repeat.next.n");
+        offset.add_incoming(next_offset, body);
+        n.add_incoming(next_n, body);
+        self.builder.branch(loop);
+        self.builder.position_at_end(done);
+        self._str_finish(self.builder, buf, total);
+        self.builder.ret(buf);
+    } finally {
+        self._leave_function(state);
+    }
+    return fn;
+}
+
+impl NaIRGenPass._emit_list_repeat_fn(
+    list_key: str, list_ptr_type: ir.Type, helpers: dict[str, any]
+) -> ir.Function {
+    i64 = ir.IntType(64);
+    _safe = list_key.replace(":", "_").replace("[", "_").replace("]", "_").replace(
+        ",", "_"
+    );
+    _name = "__list_repeat_" + _safe;
+    try {
+        _old = self.llvm_module.get_global(_name);
+        if isinstance(_old, ir.Function) and _old.blocks {
+            return _old;
+        }
+    } except KeyError {}
+    fn = self._emit_slow_path_helper(_name, list_ptr_type, [list_ptr_type, i64]);
+    fn.args[0].name = "list";
+    fn.args[1].name = "count";
+    state = self._enter_function(fn);
+    try {
+        out = self.builder.call(helpers["new"], [], name="repeat.new");
+        src_len = self.builder.call(helpers["len"], [fn.args[0]], name="repeat.len");
+        entry_bb = self.builder.basic_block;
+        outer = fn.append_basic_block("repeat.outer");
+        inner_init = fn.append_basic_block("repeat.inner.init");
+        inner = fn.append_basic_block("repeat.inner");
+        inner_body = fn.append_basic_block("repeat.inner.body");
+        outer_next = fn.append_basic_block("repeat.outer.next");
+        done = fn.append_basic_block("repeat.done");
+        self.builder.branch(outer);
+        self.builder.position_at_start(outer);
+        rep = self.builder.phi(i64, name="repeat.rep");
+        rep.add_incoming(ir.Constant(i64, 0), entry_bb);
+        rep_done = self.builder.icmp_signed(
+            ">=", rep, fn.args[1], name="repeat.rep.done"
+        );
+        self.builder.cbranch(rep_done, done, inner_init);
+        self.builder.position_at_start(inner_init);
+        self.builder.branch(inner);
+        self.builder.position_at_start(inner);
+        index = self.builder.phi(i64, name="repeat.index");
+        index.add_incoming(ir.Constant(i64, 0), inner_init);
+        index_done = self.builder.icmp_unsigned(
+            ">=", index, src_len, name="repeat.index.done"
+        );
+        self.builder.cbranch(index_done, outer_next, inner_body);
+        self.builder.position_at_start(inner_body);
+        elem = self.builder.call(
+            helpers["get"], [fn.args[0], index], name="repeat.elem"
+        );
+        self._rc_call_with_ctx(helpers["append"], [out, elem], op="list_mul");
+        next_index = self.builder.add(
+            index, ir.Constant(i64, 1), name="repeat.next.index"
+        );
+        index.add_incoming(next_index, inner_body);
+        self.builder.branch(inner);
+        self.builder.position_at_start(outer_next);
+        next_rep = self.builder.add(rep, ir.Constant(i64, 1), name="repeat.next.rep");
+        rep.add_incoming(next_rep, outer_next);
+        self.builder.branch(outer);
+        self.builder.position_at_end(done);
+        self.builder.ret(out);
+    } finally {
+        self._leave_function(state);
+    }
+    return fn;
+}
+
+impl NaIRGenPass._emit_list_concat_fn(
+    list_key: str, list_ptr_type: ir.Type, helpers: dict[str, any]
+) -> ir.Function {
+    i64 = ir.IntType(64);
+    _safe = list_key.replace(":", "_").replace("[", "_").replace("]", "_").replace(
+        ",", "_"
+    );
+    _name = "__list_concat_" + _safe;
+    try {
+        _old = self.llvm_module.get_global(_name);
+        if isinstance(_old, ir.Function) and _old.blocks {
+            return _old;
+        }
+    } except KeyError {}
+    fn = self._emit_slow_path_helper(
+        _name, list_ptr_type, [list_ptr_type, list_ptr_type]
+    );
+    fn.args[0].name = "left";
+    fn.args[1].name = "right";
+    state = self._enter_function(fn);
+    try {
+        out = self.builder.call(helpers["new"], [], name="concat.new");
+        left_len = self.builder.call(
+            helpers["len"], [fn.args[0]], name="concat.left.len"
+        );
+        entry_bb = self.builder.basic_block;
+        left_loop = fn.append_basic_block("concat.left.loop");
+        left_body = fn.append_basic_block("concat.left.body");
+        right_init = fn.append_basic_block("concat.right.init");
+        right_loop = fn.append_basic_block("concat.right.loop");
+        right_body = fn.append_basic_block("concat.right.body");
+        done = fn.append_basic_block("concat.done");
+        self.builder.branch(left_loop);
+        self.builder.position_at_start(left_loop);
+        left_i = self.builder.phi(i64, name="concat.left.i");
+        left_i.add_incoming(ir.Constant(i64, 0), entry_bb);
+        left_end = self.builder.icmp_unsigned(
+            ">=", left_i, left_len, name="concat.left.end"
+        );
+        self.builder.cbranch(left_end, right_init, left_body);
+        self.builder.position_at_start(left_body);
+        left_elem = self.builder.call(
+            helpers["get"], [fn.args[0], left_i], name="concat.left.elem"
+        );
+        self._rc_call_with_ctx(helpers["append"], [out, left_elem], op="list_cat");
+        left_next = self.builder.add(
+            left_i, ir.Constant(i64, 1), name="concat.left.next"
+        );
+        left_i.add_incoming(left_next, left_body);
+        self.builder.branch(left_loop);
+        self.builder.position_at_start(right_init);
+        right_len = self.builder.call(
+            helpers["len"], [fn.args[1]], name="concat.right.len"
+        );
+        self.builder.branch(right_loop);
+        self.builder.position_at_start(right_loop);
+        right_i = self.builder.phi(i64, name="concat.right.i");
+        right_i.add_incoming(ir.Constant(i64, 0), right_init);
+        right_end = self.builder.icmp_unsigned(
+            ">=", right_i, right_len, name="concat.right.end"
+        );
+        self.builder.cbranch(right_end, done, right_body);
+        self.builder.position_at_start(right_body);
+        right_elem = self.builder.call(
+            helpers["get"], [fn.args[1], right_i], name="concat.right.elem"
+        );
+        self._rc_call_with_ctx(helpers["append"], [out, right_elem], op="list_cat");
+        right_next = self.builder.add(
+            right_i, ir.Constant(i64, 1), name="concat.right.next"
+        );
+        right_i.add_incoming(right_next, right_body);
+        self.builder.branch(right_loop);
+        self.builder.position_at_end(done);
+        self.builder.ret(out);
+    } finally {
+        self._leave_function(state);
+    }
+    return fn;
+}
+
+impl NaIRGenPass._emit_list_contains_fn(
+    list_key: str,
+    list_ptr_type: ir.Type,
+    elem_type: ir.Type,
+    helpers: dict[str, any],
+    is_str: bool
+) -> ir.Function {
+    i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
+    _safe = list_key.replace(":", "_").replace("[", "_").replace("]", "_").replace(
+        ",", "_"
+    );
+    _name = "__list_contains_" + _safe;
+    try {
+        _old = self.llvm_module.get_global(_name);
+        if isinstance(_old, ir.Function) and _old.blocks {
+            return _old;
+        }
+    } except KeyError {}
+    fn = self._emit_slow_path_helper(_name, i64, [elem_type, list_ptr_type]);
+    fn.args[0].name = "needle";
+    fn.args[1].name = "list";
+    state = self._enter_function(fn);
+    try {
+        length = self.builder.call(helpers["len"], [fn.args[1]], name="contains.len");
+        entry_bb = self.builder.basic_block;
+        loop = fn.append_basic_block("contains.loop");
+        body = fn.append_basic_block("contains.body");
+        found = fn.append_basic_block("contains.found");
+        next_bb = fn.append_basic_block("contains.next");
+        done = fn.append_basic_block("contains.done");
+        self.builder.branch(loop);
+        self.builder.position_at_start(loop);
+        index = self.builder.phi(i64, name="contains.index");
+        index.add_incoming(ir.Constant(i64, 0), entry_bb);
+        at_end = self.builder.icmp_unsigned(">=", index, length, name="contains.end");
+        self.builder.cbranch(at_end, done, body);
+        self.builder.position_at_start(body);
+        elem = self.builder.call(
+            helpers["get"], [fn.args[1], index], name="contains.elem"
+        );
+        if is_str and isinstance(elem_type, ir.PointerType) {
+            i8p = ir.IntType(8).as_pointer();
+            cmp = self._call_str_cmp(
+                self.builder,
+                self.builder.bitcast(fn.args[0], i8p, name="contains.needle"),
+                self.builder.bitcast(elem, i8p, name="contains.elem.i8"),
+                name="contains.strcmp"
+            );
+            eq = self.builder.icmp_signed("==", cmp, ir.Constant(ir.IntType(32), 0));
+        } elif self?.jacval_type and elem_type == self.jacval_type {
+            eq = self._emit_jacval_eq(fn.args[0], elem);
+        } elif isinstance(elem_type, (ir.DoubleType, ir.FloatType)) {
+            eq = self.builder.fcmp_ordered("==", fn.args[0], elem);
+        } elif isinstance(elem_type, ir.IntType) {
+            eq = self.builder.icmp_signed("==", fn.args[0], elem);
+        } elif isinstance(elem_type, ir.PointerType) {
+            eq = self.builder.icmp_unsigned("==", fn.args[0], elem);
+        } else {
+            _eq = self._emit_comparison(Tok.EE, fn.args[0], elem, False);
+            eq = _eq if _eq is not None else ir.Constant(i1, 0);
+        }
+        self.builder.cbranch(eq, found, next_bb);
+        self.builder.position_at_start(found);
+        self.builder.ret(ir.Constant(i64, 1));
+        self.builder.position_at_start(next_bb);
+        next_index = self.builder.add(index, ir.Constant(i64, 1), name="contains.next");
+        index.add_incoming(next_index, next_bb);
+        self.builder.branch(loop);
+        self.builder.position_at_end(done);
+        self.builder.ret(ir.Constant(i64, 0));
+    } finally {
+        self._leave_function(state);
+    }
+    return fn;
+}
+
+impl NaIRGenPass._emit_list_compare_fn(
+    list_key: str,
+    list_ptr_type: ir.Type,
+    elem_type: ir.Type,
+    helpers: dict[str, any],
+    op: str,
+    elem_unsigned: bool = False,
+    unsigned: bool = False,
+    elem_key: any = None
+) -> ir.Function {
+    i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
+    _safe = list_key.replace(":", "_").replace("[", "_").replace("]", "_").replace(
+        ",", "_"
+    );
+    _op_name = (
+        "eq"
+            if op == Tok.EE
+            else (
+                "ne"
+                    if op == Tok.NE
+                    else (
+                        "lt"
+                            if op == Tok.LT
+                            else (
+                                "gt"
+                                    if op == Tok.GT
+                                    else ("lte" if op == Tok.LTE else "gte")
+                            )
+                    )
+            )
+    );
+    _name = "__list_compare_" + _safe + "_" + _op_name;
+    try {
+        _old = self.llvm_module.get_global(_name);
+        if isinstance(_old, ir.Function) and _old.blocks {
+            return _old;
+        }
+    } except KeyError {}
+    fn = self._emit_slow_path_helper(_name, i1, [list_ptr_type, list_ptr_type]);
+    fn.args[0].name = "left";
+    fn.args[1].name = "right";
+    state = self._enter_function(fn);
+    try {
+        left_len = self.builder.call(
+            helpers["len"], [fn.args[0]], name="compare.left.len"
+        );
+        right_len = self.builder.call(
+            helpers["len"], [fn.args[1]], name="compare.right.len"
+        );
+        entry_bb = self.builder.basic_block;
+        loop = fn.append_basic_block("compare.loop");
+        body = fn.append_basic_block("compare.body");
+        next_bb = fn.append_basic_block("compare.next");
+        end = fn.append_basic_block("compare.end");
+        true_bb = fn.append_basic_block("compare.true");
+        false_bb = fn.append_basic_block("compare.false");
+        if op in (Tok.EE, Tok.NE) {
+            same_len = self.builder.icmp_unsigned(
+                "==", left_len, right_len, name="compare.same.len"
+            );
+            self.builder.cbranch(same_len, loop, false_bb if op == Tok.EE else true_bb);
+            self.builder.position_at_start(loop);
+            index = self.builder.phi(i64, name="compare.index");
+            index.add_incoming(ir.Constant(i64, 0), entry_bb);
+            at_end = self.builder.icmp_unsigned(
+                ">=", index, left_len, name="compare.end"
+            );
+            self.builder.cbranch(at_end, true_bb if op == Tok.EE else false_bb, body);
+            self.builder.position_at_start(body);
+            left_elem = self.builder.call(
+                helpers["get"], [fn.args[0], index], name="compare.left"
+            );
+            right_elem = self.builder.call(
+                helpers["get"], [fn.args[1], index], name="compare.right"
+            );
+            if self?.jacval_type and elem_type == self.jacval_type {
+                equal = self._emit_jacval_eq(left_elem, right_elem);
+            } elif isinstance(elem_type, ir.DoubleType) {
+                equal = self.builder.fcmp_ordered(
+                    "==", left_elem, right_elem, name="compare.eq"
+                );
+            } elif isinstance(elem_type, ir.FloatType) {
+                equal = self.builder.fcmp_ordered(
+                    "==", left_elem, right_elem, name="compare.eq"
+                );
+            } elif isinstance(elem_type, ir.IntType) {
+                equal = self.builder.icmp_signed(
+                    "==", left_elem, right_elem, name="compare.eq"
+                );
+            } elif isinstance(elem_type, ir.PointerType) {
+                _eq = self._emit_comparison(Tok.EE, left_elem, right_elem, False);
+                equal = _eq if _eq is not None else ir.Constant(i1, 0);
+            } else {
+                _eq = self._emit_comparison(Tok.EE, left_elem, right_elem, False);
+                equal = _eq if _eq is not None else ir.Constant(i1, 0);
+            }
+            self.builder.cbranch(equal, next_bb, false_bb if op == Tok.EE else true_bb);
+            self.builder.position_at_start(next_bb);
+            next_index = self.builder.add(
+                index, ir.Constant(i64, 1), name="compare.next.index"
+            );
+            index.add_incoming(next_index, next_bb);
+            self.builder.branch(loop);
+        } else {
+            self.builder.branch(loop);
+            self.builder.position_at_start(loop);
+            index = self.builder.phi(i64, name="compare.index");
+            index.add_incoming(ir.Constant(i64, 0), entry_bb);
+            limit = self.builder.select(
+                self.builder.icmp_unsigned("<", left_len, right_len),
+                left_len,
+                right_len,
+                name="compare.limit"
+            );
+            at_end = self.builder.icmp_unsigned(">=", index, limit, name="compare.end");
+            self.builder.cbranch(at_end, end, body);
+            self.builder.position_at_start(body);
+            left_elem = self.builder.call(
+                helpers["get"], [fn.args[0], index], name="compare.left"
+            );
+            right_elem = self.builder.call(
+                helpers["get"], [fn.args[1], index], name="compare.right"
+            );
+            if isinstance(elem_type, ir.IntType) {
+                (less, greater) = self._int_lt_gt_pair(
+                    left_elem, right_elem, elem_unsigned, "compare"
+                );
+            } elif isinstance(elem_type, (ir.DoubleType, ir.FloatType)) {
+                less = self.builder.fcmp_ordered(
+                    "<", left_elem, right_elem, name="compare.lt"
+                );
+                greater = self.builder.fcmp_ordered(
+                    ">", left_elem, right_elem, name="compare.gt"
+                );
+            } elif isinstance(elem_type, ir.PointerType)
+                and (list_key == "str" or list_key.startswith("str")) {
+                _cmp = self._call_str_cmp(
+                    self.builder,
+                    self.builder.bitcast(left_elem, ir.IntType(8).as_pointer()),
+                    self.builder.bitcast(right_elem, ir.IntType(8).as_pointer()),
+                    name="compare.strcmp"
+                );
+                less = self.builder.icmp_signed(
+                    "<", _cmp, ir.Constant(ir.IntType(32), 0)
+                );
+                greater = self.builder.icmp_signed(
+                    ">", _cmp, ir.Constant(ir.IntType(32), 0)
+                );
+            } elif isinstance(elem_type, ir.PointerType) {
+                _ord = self._emit_order_pair(
+                    left_elem, right_elem, False, unsigned, "list element", elem_key
+                );
+                if _ord is None {
+                    less = ir.Constant(i1, 0);
+                    greater = ir.Constant(i1, 0);
+                } else {
+                    (less, greater) = _ord;
+                }
+            } else {
+                _ord = self._emit_order_pair(
+                    left_elem,
+                    right_elem,
+                    isinstance(elem_type, ir.FloatType),
+                    unsigned,
+                    "list element",
+                    elem_key
+                );
+                if _ord is None {
+                    less = ir.Constant(i1, 0);
+                    greater = ir.Constant(i1, 0);
+                } else {
+                    (less, greater) = _ord;
+                }
+            }
+            equal = self.builder.not_(
+                self.builder.or_(less, greater, name="compare.ordered"),
+                name="compare.equal"
+            );
+            order_bb = fn.append_basic_block("compare.order");
+            greater_bb = fn.append_basic_block("compare.greater");
+            less_bb = fn.append_basic_block("compare.less");
+            self.builder.cbranch(equal, next_bb, order_bb);
+            self.builder.position_at_start(order_bb);
+            self.builder.cbranch(less, less_bb, greater_bb);
+            self.builder.position_at_start(less_bb);
+            self.builder.ret(ir.Constant(i1, 1 if op in (Tok.LT, Tok.LTE) else 0));
+            self.builder.position_at_start(greater_bb);
+            self.builder.cbranch(
+                greater, true_bb if op in (Tok.GT, Tok.GTE) else false_bb, next_bb
+            );
+            self.builder.position_at_start(end);
+            _len_op = (
+                "<"
+                    if op == Tok.LT
+                    else ("<=" if op == Tok.LTE else (">" if op == Tok.GT else ">="))
+            );
+            self.builder.cbranch(
+                self.builder.icmp_unsigned(
+                    _len_op, left_len, right_len, name="compare.len"
+                ),
+                true_bb,
+                false_bb
+            );
+            self.builder.position_at_start(next_bb);
+            next_index = self.builder.add(
+                index, ir.Constant(i64, 1), name="compare.next.index"
+            );
+            index.add_incoming(next_index, next_bb);
+            self.builder.branch(loop);
+        }
+        self.builder.position_at_start(true_bb);
+        self.builder.ret(ir.Constant(i1, 1));
+        self.builder.position_at_start(false_bb);
+        self.builder.ret(ir.Constant(i1, 0));
+    } finally {
+        self._leave_function(state);
+    }
+    return fn;
+}
+
 impl NaIRGenPass._emit_binary_op(
     op: str,
     left: ir.Value,
@@ -2773,47 +3275,11 @@ impl NaIRGenPass._emit_binary_op(
             int_val = left;
         }
         if str_val is not None and int_val is not None {
-            i8 = ir.IntType(8);
-            i8p = i8.as_pointer();
-            i64 = ir.IntType(64);
-            memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-            slen = self._call_str_len(self.builder, str_val, name="rep.slen");
-
-            _rep_neg = self.builder.icmp_signed(
-                "<", int_val, ir.Constant(i64, 0), name="rep.neg"
+            _repeat_fn = self._emit_str_repeat_fn();
+            _repeat_count = self._coerce_type(int_val, ir.IntType(64));
+            return self._mark_owned(
+                self.builder.call(_repeat_fn, [str_val, _repeat_count], name="rep")
             );
-            int_val = self.builder.select(
-                _rep_neg, ir.Constant(i64, 0), int_val, name="rep.n"
-            );
-            total = self.builder.mul(slen, int_val, name="rep.total");
-            alloc = self.builder.add(total, ir.Constant(i64, 1), name="rep.alloc");
-            self._set_rc_ctx("str_repeat", "");
-            buf = self._str_alloc(self.builder, alloc, name="rep.buf");
-            self._clear_rc_ctx();
-            func = self.builder.basic_block.function;
-            entry_bb = self.builder.basic_block;
-            loop_bb = func.append_basic_block(name="rep.loop");
-            body_bb = func.append_basic_block(name="rep.body");
-            done_bb = func.append_basic_block(name="rep.done");
-            self.builder.branch(loop_bb);
-            self.builder.position_at_start(loop_bb);
-            offset = self.builder.phi(i64, name="rep.off");
-            count = self.builder.phi(i64, name="rep.cnt");
-            offset.add_incoming(ir.Constant(i64, 0), entry_bb);
-            count.add_incoming(ir.Constant(i64, 0), entry_bb);
-            at_end = self.builder.icmp_unsigned(">=", count, int_val, name="rep.atend");
-            self.builder.cbranch(at_end, done_bb, body_bb);
-            self.builder.position_at_start(body_bb);
-            dst = self.builder.gep(buf, [offset], name="rep.dst");
-            self.builder.call(memcpy_fn, [dst, str_val, slen]);
-            new_off = self.builder.add(offset, slen, name="rep.newoff");
-            new_cnt = self.builder.add(count, ir.Constant(i64, 1), name="rep.newcnt");
-            offset.add_incoming(new_off, body_bb);
-            count.add_incoming(new_cnt, body_bb);
-            self.builder.branch(loop_bb);
-            self.builder.position_at_start(done_bb);
-            self._str_finish(self.builder, buf, total);
-            return buf;
         }
     }
 
@@ -2835,56 +3301,15 @@ impl NaIRGenPass._emit_binary_op(
                 lmul_int = left;
             }
             if lmul_list is not None and lmul_int is not None {
-                i64 = ir.IntType(64);
-                lmul_new = self.builder.call(lmul_helpers["new"], [], name="lmul.new");
-                lmul_len = self.builder.call(
-                    lmul_helpers["len"], [lmul_list], name="lmul.len"
+                _repeat_fn = self._emit_list_repeat_fn(
+                    lmul_key, lmul_type.as_pointer(), lmul_helpers
                 );
-                func = self.builder.basic_block.function;
-                lmul_entry_bb = self.builder.basic_block;
-                lmul_outer_bb = func.append_basic_block(name="lmul.outer");
-                lmul_iinit_bb = func.append_basic_block(name="lmul.iinit");
-                lmul_inner_bb = func.append_basic_block(name="lmul.inner");
-                lmul_ibody_bb = func.append_basic_block(name="lmul.ibody");
-                lmul_onext_bb = func.append_basic_block(name="lmul.onext");
-                lmul_done_bb = func.append_basic_block(name="lmul.done");
-                self.builder.branch(lmul_outer_bb);
-                self.builder.position_at_start(lmul_outer_bb);
-                lmul_rep = self.builder.phi(i64, name="lmul.rep");
-                lmul_rep.add_incoming(ir.Constant(i64, 0), lmul_entry_bb);
-                lmul_rend = self.builder.icmp_signed(
-                    ">=", lmul_rep, lmul_int, name="lmul.rend"
+                _repeat_count = self._coerce_type(lmul_int, ir.IntType(64));
+                return self._mark_owned(
+                    self.builder.call(
+                        _repeat_fn, [lmul_list, _repeat_count], name="lmul"
+                    )
                 );
-                self.builder.cbranch(lmul_rend, lmul_done_bb, lmul_iinit_bb);
-                self.builder.position_at_start(lmul_iinit_bb);
-                self.builder.branch(lmul_inner_bb);
-                self.builder.position_at_start(lmul_inner_bb);
-                lmul_ei = self.builder.phi(i64, name="lmul.ei");
-                lmul_ei.add_incoming(ir.Constant(i64, 0), lmul_iinit_bb);
-                lmul_eend = self.builder.icmp_unsigned(
-                    ">=", lmul_ei, lmul_len, name="lmul.eend"
-                );
-                self.builder.cbranch(lmul_eend, lmul_onext_bb, lmul_ibody_bb);
-                self.builder.position_at_start(lmul_ibody_bb);
-                lmul_elem = self.builder.call(
-                    lmul_helpers["get"], [lmul_list, lmul_ei], name="lmul.elem"
-                );
-                self._rc_call_with_ctx(
-                    lmul_helpers["append"], [lmul_new, lmul_elem], op="list_mul"
-                );
-                lmul_ne = self.builder.add(
-                    lmul_ei, ir.Constant(i64, 1), name="lmul.ne"
-                );
-                lmul_ei.add_incoming(lmul_ne, lmul_ibody_bb);
-                self.builder.branch(lmul_inner_bb);
-                self.builder.position_at_start(lmul_onext_bb);
-                lmul_nr = self.builder.add(
-                    lmul_rep, ir.Constant(i64, 1), name="lmul.nr"
-                );
-                lmul_rep.add_incoming(lmul_nr, lmul_onext_bb);
-                self.builder.branch(lmul_outer_bb);
-                self.builder.position_at_start(lmul_done_bb);
-                return self._mark_owned(lmul_new);
             }
         }
     }
@@ -2895,55 +3320,12 @@ impl NaIRGenPass._emit_binary_op(
             if list_type is not None
                 and left.type == list_type.as_pointer()
                 and right.type == list_type.as_pointer() {
-                i64 = ir.IntType(64);
-                new_list = self.builder.call(helpers["new"], [], name="lcat.new");
-
-                left_len = self.builder.call(helpers["len"], [left], name="lcat.llen");
-                func = self.builder.basic_block.function;
-                entry_bb = self.builder.basic_block;
-                loop1_bb = func.append_basic_block(name="lcat.l1");
-                body1_bb = func.append_basic_block(name="lcat.b1");
-                mid_bb = func.append_basic_block(name="lcat.mid");
-                loop2_bb = func.append_basic_block(name="lcat.l2");
-                body2_bb = func.append_basic_block(name="lcat.b2");
-                done_bb = func.append_basic_block(name="lcat.done");
-                self.builder.branch(loop1_bb);
-                self.builder.position_at_start(loop1_bb);
-                i1 = self.builder.phi(i64, name="lcat.i1");
-                i1.add_incoming(ir.Constant(i64, 0), entry_bb);
-                end1 = self.builder.icmp_unsigned(">=", i1, left_len, name="lcat.end1");
-                self.builder.cbranch(end1, mid_bb, body1_bb);
-                self.builder.position_at_start(body1_bb);
-                e1 = self.builder.call(helpers["get"], [left, i1], name="lcat.e1");
-                self._rc_call_with_ctx(
-                    helpers["append"], [new_list, e1], op="list_cat"
+                _concat_fn = self._emit_list_concat_fn(
+                    list_key, list_type.as_pointer(), helpers
                 );
-                n1 = self.builder.add(i1, ir.Constant(i64, 1), name="lcat.n1");
-                i1.add_incoming(n1, body1_bb);
-                self.builder.branch(loop1_bb);
-
-                self.builder.position_at_start(mid_bb);
-                right_len = self.builder.call(
-                    helpers["len"], [right], name="lcat.rlen"
+                return self._mark_owned(
+                    self.builder.call(_concat_fn, [left, right], name="lcat")
                 );
-                self.builder.branch(loop2_bb);
-                self.builder.position_at_start(loop2_bb);
-                i2 = self.builder.phi(i64, name="lcat.i2");
-                i2.add_incoming(ir.Constant(i64, 0), mid_bb);
-                end2 = self.builder.icmp_unsigned(
-                    ">=", i2, right_len, name="lcat.end2"
-                );
-                self.builder.cbranch(end2, done_bb, body2_bb);
-                self.builder.position_at_start(body2_bb);
-                e2 = self.builder.call(helpers["get"], [right, i2], name="lcat.e2");
-                self._rc_call_with_ctx(
-                    helpers["append"], [new_list, e2], op="list_cat"
-                );
-                n2 = self.builder.add(i2, ir.Constant(i64, 1), name="lcat.n2");
-                i2.add_incoming(n2, body2_bb);
-                self.builder.branch(loop2_bb);
-                self.builder.position_at_start(done_bb);
-                return self._mark_owned(new_list);
             }
         }
     }
@@ -3756,214 +4138,35 @@ impl NaIRGenPass._emit_comparison(
                 if lcmp_h is None {
                     break;
                 }
-                i64 = ir.IntType(64);
-                i1_t = ir.IntType(1);
-                lcmp_la = self.builder.call(lcmp_h["len"], [left], name="lcmp.la");
-                lcmp_lb = self.builder.call(lcmp_h["len"], [right], name="lcmp.lb");
-                func = self.builder.basic_block.function;
-                lcmp_entry_bb = self.builder.basic_block;
                 lcmp_et = lcmp_h["elem_type"];
-                if op == Tok.EE or op == Tok.NE {
-                    lcmp_len_eq = self.builder.icmp_unsigned(
-                        "==", lcmp_la, lcmp_lb, name="lcmp.leq"
+                if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE)
+                    and self?.jacval_type
+                    and lcmp_et == self.jacval_type {
+                    self.ctx.emit(
+                        E5092,
+                        kind="comparison",
+                        name="ordering on tagged-element lists"
                     );
-                    lcmp_chk_bb = func.append_basic_block(name="lcmp.eq.chk");
-                    lcmp_false_bb = func.append_basic_block(name="lcmp.eq.false");
-                    lcmp_loop_bb = func.append_basic_block(name="lcmp.eq.loop");
-                    lcmp_body_bb = func.append_basic_block(name="lcmp.eq.body");
-                    lcmp_ne_bb = func.append_basic_block(name="lcmp.eq.ne");
-                    lcmp_next_bb = func.append_basic_block(name="lcmp.eq.next");
-                    lcmp_done_bb = func.append_basic_block(name="lcmp.eq.done");
-                    self.builder.cbranch(lcmp_len_eq, lcmp_chk_bb, lcmp_false_bb);
-                    self.builder.position_at_start(lcmp_chk_bb);
-                    self.builder.branch(lcmp_loop_bb);
-                    self.builder.position_at_start(lcmp_loop_bb);
-                    lcmp_i = self.builder.phi(i64, name="lcmp.eq.i");
-                    lcmp_i.add_incoming(ir.Constant(i64, 0), lcmp_chk_bb);
-                    lcmp_iend = self.builder.icmp_unsigned(
-                        ">=", lcmp_i, lcmp_la, name="lcmp.eq.iend"
-                    );
-                    self.builder.cbranch(lcmp_iend, lcmp_done_bb, lcmp_body_bb);
-                    self.builder.position_at_start(lcmp_body_bb);
-                    lcmp_ea = self.builder.call(
-                        lcmp_h["get"], [left, lcmp_i], name="lcmp.ea"
-                    );
-                    lcmp_eb = self.builder.call(
-                        lcmp_h["get"], [right, lcmp_i], name="lcmp.eb"
-                    );
-                    if isinstance(lcmp_et, ir.IntType) {
-                        lcmp_elem_ne = self.builder.icmp_signed(
-                            "!=", lcmp_ea, lcmp_eb, name="lcmp.ene"
-                        );
-                    } elif isinstance(lcmp_et, ir.DoubleType) {
-                        lcmp_elem_ne = self.builder.fcmp_ordered(
-                            "!=", lcmp_ea, lcmp_eb, name="lcmp.ene"
-                        );
-                    } elif self?.jacval_type and lcmp_et == self.jacval_type {
-                        lcmp_elem_ne = self.builder.not_(
-                            self._emit_jacval_eq(lcmp_ea, lcmp_eb), name="lcmp.ene"
-                        );
-                    } else {
-                        _lsub_eq: (ir.Value | None) = self._emit_comparison(
-                            Tok.EE, lcmp_ea, lcmp_eb, isinstance(lcmp_et, ir.FloatType)
-                        );
-                        if _lsub_eq is None {
-                            self.ctx.emit(
-                                E5090,
-                                kind="comparison",
-                                name="list element",
-                                help_text="This list element does not lower to a comparable representation."
-                            );
-                            return None;
-                        }
-                        lcmp_elem_ne = self.builder.not_(_lsub_eq, name="lcmp.ene");
-                    }
-                    self.builder.cbranch(lcmp_elem_ne, lcmp_ne_bb, lcmp_next_bb);
-                    self.builder.position_at_start(lcmp_ne_bb);
-                    self.builder.branch(lcmp_false_bb);
-                    self.builder.position_at_start(lcmp_next_bb);
-                    lcmp_ni = self.builder.add(
-                        lcmp_i, ir.Constant(i64, 1), name="lcmp.ni"
-                    );
-                    lcmp_i.add_incoming(lcmp_ni, lcmp_next_bb);
-                    self.builder.branch(lcmp_loop_bb);
-                    self.builder.position_at_start(lcmp_false_bb);
-                    self.builder.branch(lcmp_done_bb);
-                    self.builder.position_at_start(lcmp_done_bb);
-                    lcmp_result = self.builder.phi(i1_t, name="lcmp.eq.result");
-                    lcmp_result.add_incoming(ir.Constant(i1_t, 1), lcmp_loop_bb);
-                    lcmp_result.add_incoming(ir.Constant(i1_t, 0), lcmp_false_bb);
-                    if op == Tok.NE {
-                        return self.builder.not_(lcmp_result, name="lcmp.ne");
-                    }
-                    return lcmp_result;
+                    return None;
                 }
-
-                if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
-                    if self?.jacval_type and lcmp_et == self.jacval_type {
-                        self.ctx.emit(
-                            E5092,
-                            kind="comparison",
-                            name="ordering on tagged-element lists"
-                        );
-                        return None;
-                    }
-                    lcmp_lt_len = self.builder.icmp_unsigned(
-                        "<", lcmp_la, lcmp_lb, name="lcmp.lex.ltl"
-                    );
-                    lcmp_min = self.builder.select(
-                        lcmp_lt_len, lcmp_la, lcmp_lb, name="lcmp.min"
-                    );
-                    lcmp_lex_loop = func.append_basic_block(name="lcmp.lex.loop");
-                    lcmp_lex_body = func.append_basic_block(name="lcmp.lex.body");
-                    lcmp_lex_lbody = func.append_basic_block(name="lcmp.lex.lbody");
-                    lcmp_lex_next = func.append_basic_block(name="lcmp.lex.next");
-                    lcmp_lex_after = func.append_basic_block(name="lcmp.lex.after");
-                    lcmp_lex_true = func.append_basic_block(name="lcmp.lex.true");
-                    lcmp_lex_false = func.append_basic_block(name="lcmp.lex.false");
-                    lcmp_lex_done = func.append_basic_block(name="lcmp.lex.done");
-                    self.builder.branch(lcmp_lex_loop);
-                    self.builder.position_at_start(lcmp_lex_loop);
-                    lcmp_li = self.builder.phi(i64, name="lcmp.lex.i");
-                    lcmp_li.add_incoming(ir.Constant(i64, 0), lcmp_entry_bb);
-                    lcmp_lend = self.builder.icmp_unsigned(
-                        ">=", lcmp_li, lcmp_min, name="lcmp.lex.lend"
-                    );
-                    self.builder.cbranch(lcmp_lend, lcmp_lex_after, lcmp_lex_body);
-                    self.builder.position_at_start(lcmp_lex_body);
-                    lcmp_lea = self.builder.call(
-                        lcmp_h["get"], [left, lcmp_li], name="lcmp.lex.ea"
-                    );
-                    lcmp_leb = self.builder.call(
-                        lcmp_h["get"], [right, lcmp_li], name="lcmp.lex.eb"
-                    );
-                    _largs: list[TypeBase] = self._agg_key_args(key_ret, "list") or [];
-                    _lelem_unsigned = (
-                        self._key_elem_unsigned(_largs[0]) if _largs else False
-                    );
-                    if isinstance(lcmp_et, ir.IntType) {
-                        (lcmp_lea, lcmp_leb) = self._unify_int_widths(
-                            lcmp_lea, lcmp_leb
-                        );
-                        (lcmp_lex_lt, lcmp_lex_gt) = self._int_lt_gt_pair(
-                            lcmp_lea, lcmp_leb, _lelem_unsigned, "lcmp.lex"
-                        );
-                    } elif isinstance(lcmp_et, ir.DoubleType) {
-                        lcmp_lex_lt = self.builder.fcmp_ordered(
-                            "<", lcmp_lea, lcmp_leb, name="lcmp.lex.lt"
-                        );
-                        lcmp_lex_gt = self.builder.fcmp_ordered(
-                            ">", lcmp_lea, lcmp_leb, name="lcmp.lex.gt"
-                        );
-                    } else {
-                        _lst_ord = self._emit_order_pair(
-                            lcmp_lea,
-                            lcmp_leb,
-                            isinstance(lcmp_et, ir.FloatType),
-                            unsigned,
-                            "list element",
-                            _largs[0] if _largs else None
-                        );
-                        if _lst_ord is None {
-                            return None;
-                        }
-                        (lcmp_lex_lt, lcmp_lex_gt) = _lst_ord;
-                    }
-
-                    if op == Tok.LT or op == Tok.LTE {
-                        self.builder.cbranch(
-                            lcmp_lex_lt, lcmp_lex_true, lcmp_lex_lbody
-                        );
-                        self.builder.position_at_start(lcmp_lex_lbody);
-                        self.builder.cbranch(
-                            lcmp_lex_gt, lcmp_lex_false, lcmp_lex_next
-                        );
-                    } else {
-                        self.builder.cbranch(
-                            lcmp_lex_gt, lcmp_lex_true, lcmp_lex_lbody
-                        );
-                        self.builder.position_at_start(lcmp_lex_lbody);
-                        self.builder.cbranch(
-                            lcmp_lex_lt, lcmp_lex_false, lcmp_lex_next
-                        );
-                    }
-                    self.builder.position_at_start(lcmp_lex_next);
-                    lcmp_lni = self.builder.add(
-                        lcmp_li, ir.Constant(i64, 1), name="lcmp.lni"
-                    );
-                    lcmp_li.add_incoming(lcmp_lni, lcmp_lex_next);
-                    self.builder.branch(lcmp_lex_loop);
-                    self.builder.position_at_start(lcmp_lex_after);
-
-                    if op == Tok.LT {
-                        lcmp_len_res = self.builder.icmp_unsigned(
-                            "<", lcmp_la, lcmp_lb, name="lcmp.llen"
-                        );
-                    } elif op == Tok.GT {
-                        lcmp_len_res = self.builder.icmp_unsigned(
-                            ">", lcmp_la, lcmp_lb, name="lcmp.llen"
-                        );
-                    } elif op == Tok.LTE {
-                        lcmp_len_res = self.builder.icmp_unsigned(
-                            "<=", lcmp_la, lcmp_lb, name="lcmp.llen"
-                        );
-                    } else {
-                        lcmp_len_res = self.builder.icmp_unsigned(
-                            ">=", lcmp_la, lcmp_lb, name="lcmp.llen"
-                        );
-                    }
-                    self.builder.cbranch(lcmp_len_res, lcmp_lex_true, lcmp_lex_false);
-                    self.builder.position_at_start(lcmp_lex_true);
-                    self.builder.branch(lcmp_lex_done);
-                    self.builder.position_at_start(lcmp_lex_false);
-                    self.builder.branch(lcmp_lex_done);
-                    self.builder.position_at_start(lcmp_lex_done);
-                    lcmp_lex_res = self.builder.phi(i1_t, name="lcmp.lex.res");
-                    lcmp_lex_res.add_incoming(ir.Constant(i1_t, 1), lcmp_lex_true);
-                    lcmp_lex_res.add_incoming(ir.Constant(i1_t, 0), lcmp_lex_false);
-                    return lcmp_lex_res;
-                }
-                break;
+                _largs: list[TypeBase] = self._agg_key_args(key_ret, "list") or [];
+                _lelem_key = _largs[0] if _largs else None;
+                _lelem_unsigned = (
+                    self._key_elem_unsigned(_lelem_key)
+                        if _lelem_key is not None
+                        else False
+                );
+                _cmp_fn = self._emit_list_compare_fn(
+                    lcmp_key,
+                    lcmp_type.as_pointer(),
+                    lcmp_et,
+                    lcmp_h,
+                    op,
+                    _lelem_unsigned,
+                    unsigned,
+                    _lelem_key
+                );
+                return self.builder.call(_cmp_fn, [left, right], name="lcmp");
             }
         }
 
