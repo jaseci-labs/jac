@@ -79,7 +79,7 @@ glob V1_RENAME = "node LegacyPerson {\n"
      # v2: renames LegacyPerson -> Person, declares an alias so old
      # stored anchors resolve instead of quarantining. `archetype_alias`
      # is an ambient Jac builtin; no import needed.
-     V2_RENAME_WITH_ALIAS = "@archetype_alias(\"jac:[\\\"layer3\\\",\\\"app:layer3\\\",\\\"app\\\"].LegacyPerson\")\n"
+     V2_RENAME_WITH_ALIAS = "@archetype_alias(\"jac:[\\\"layer3\\\",\\\"app\\\"].LegacyPerson\")\n"
      "node Person {\n"
      "    has name: str;\n"
      "}\n"
@@ -134,7 +134,7 @@ test "rename without alias fails and preserves the stored anchors" {
         total_q = st.rows('SELECT count(*) FROM quarantine', {})[0][0];
         surviving = st.rows(
             "SELECT count(*) FROM anchors WHERE arch_type = :t",
-            {'t': 'jac:["layer3","app:layer3","app"].LegacyPerson'}
+            {'t': 'jac:["layer3","app"].LegacyPerson'}
         )[0][0];
         st.close();
         assert total_q == 0 , f"unavailable schema is not corrupt data: {total_q}";
