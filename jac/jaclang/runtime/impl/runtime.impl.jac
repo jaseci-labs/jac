@@ -1787,9 +1787,21 @@ impl JacModule.create_archetype_from_source(
 impl JacModule.update_walker(
     module_name: str, items: (dict[(str, str | str | None)] | None)
 ) -> tuple[(types.ModuleType, ...)] {
-    if (module_name in JacRuntime.loaded_modules) {
+    import from jaclang.runtime.prepared { application_for, module_builtins }
+    context = JacRuntime.get_context();
+    application = application_for(context.full_target_path or '');
+    old_module = JacRuntime.loaded_modules.get(module_name);
+    if application is not None {
+        imported = module_builtins(application, application.entry)['__import__'](
+            module_name, fromlist=('*', )
+        );
+        module_name = imported.__spec__.name
+            if imported.__spec__ is not None
+            else imported.__name__;
+        old_module = imported;
+    }
+    if old_module is not None {
         try {
-            old_module = JacRuntime.loaded_modules[module_name];
             result = JacRuntimeInterface.jac_import(
                 target=module_name,
                 base_path=(JacRuntime.get_base_path_dir() or os.getcwd()),

@@ -356,8 +356,8 @@ def execute_module(module: types.ModuleType, application: PreparedApplication) {
     }
     source = os.path.realpath(filename);
     if module.__name__ == '__main__' {
-        import sys;
-        sys.modules[qualified_module(source, application)] = module;
+        import from jaclang.runtime.runtime { JacRuntime as Jac }
+        Jac.load_module(qualified_module(source, application), module, force=True);
     }
     code = application.code.get(source);
     if code is None {
