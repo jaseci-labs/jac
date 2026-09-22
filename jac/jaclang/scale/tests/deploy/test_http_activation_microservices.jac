@@ -278,6 +278,26 @@ test "_resolve_scaling: a plain service with the default hpa is METRIC, not acti
         "worker", _dep("worker-deployment"), _svc("worker-service")
     )["replica_floor"]
         == 1;
+
+    # The resolved idle_replicas rides on the plan, so the ScaledObject KEDA
+    # gets and the floor every status reader trusts cannot drift apart.
+    worker_plan = keda._resolve_scaling(
+        "worker", _dep("worker-deployment"), _svc("worker-service")
+    );
+    assert worker_plan["idle_replicas"] == 0;
+    assert hpa._resolve_scaling(
+        "worker", _dep("worker-deployment"), _svc("worker-service")
+    )["idle_replicas"]
+        is None;
+
+    # ...and the gateway is exempt from idle_replicas=0 for the same reason it
+    # is exempt from http_activation: nothing wakes the ingress entry point.
+    gw_plan = keda._resolve_scaling(
+        GATEWAY_NAME, _dep("gateway-deployment"), _svc("gateway-service")
+    );
+    assert gw_plan["replica_floor"] == gw_plan["autoscaler"]["min"] , gw_plan;
+    assert gw_plan["replica_floor"] >= 1 , gw_plan;
+    assert gw_plan["idle_replicas"] is None , gw_plan;
 }
 
 
@@ -496,17 +516,37 @@ test "generate_manifests raises when two services inherit the shared catch-all r
 }
 
 
-# --- Section F: _apply_or_replace's patch_body contract ---------------------
-# HTTP activation's "a redeploy doesn't reset a scaled-to-zero target" guarantee
-# depends entirely on _apply_or_replace sending patch_body (with replicas
-# stripped) to `update` instead of the full manifest, while a fresh `create`
-# still gets the full manifest. Pin that contract directly so a future change
-# to _apply_or_replace can't silently break it.
+# --- Section F: who owns spec.replicas, and the patch_body contract ---------
+# The "a redeploy doesn't reset a scaled-to-zero target" guarantee has two
+# halves: autoscaler_owns_replicas deciding that a patch_body is needed at all,
+# and _apply_or_replace sending that patch_body (with replicas stripped) to
+# `update` instead of the full manifest while a fresh `create` still gets the
+# full manifest. Pin both, so neither half can silently go back to being keyed
+# to HTTP activation alone.
 
 def _target -> KubernetesTarget {
     return KubernetesTarget(config=KubernetesConfig(app_name="t", namespace="t-ns"));
 }
 
+
+test "every autoscaled mode gives up spec.replicas, not just HTTP activation" {
+    manifest = {
+        "metadata": {"name": "svc-deployment"},
+        "spec": {"replicas": 3, "template": {}}
+    };
+    # A bundle read back from JSON carries the mode as its string value.
+    for mode in [ScalingMode.METRIC, ScalingMode.HTTP_ACTIVATION, "metric"] {
+        body = _target()._deployment_patch_body(manifest, {"mode": mode});
+        assert body is not None , mode;
+        assert "replicas" not in body["spec"] , mode;
+        assert body["spec"]["template"] == {} , mode;
+    }
+    # No autoscaler, or no plan at all: the manifest still owns the field.
+    assert _target()._deployment_patch_body(manifest, {"mode": ScalingMode.NONE})
+        is None;
+    assert _target()._deployment_patch_body(manifest, {}) is None;
+    assert "replicas" in manifest["spec"] , "the source manifest must not be mutated";
+}
 
 test "_apply_or_replace sends patch_body, not the full manifest, to update when the target exists" {
     mock_api = unittest.mock.MagicMock();

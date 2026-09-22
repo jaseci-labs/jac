@@ -26,7 +26,10 @@ obj ResourceStatusInfo {
     }
 
     def is_serving -> bool {
-        return self.status == ResourceStatus.INACTIVE or self.ready_replicas >= 1;
+        if self.status == ResourceStatus.DEGRADED {
+            return False;
+        }
+        return self.is_settled() or self.ready_replicas >= 1;
     }
 }
 

@@ -786,6 +786,11 @@ Status values:
 
 The same verdict backs `ScaleClient.resource_status`, the fleet-ready gate at the end of `jac scale deploy`, and the Ops Console's `/admin/ops/deploy` endpoint, so all four agree about a workload. Scaling intent is read from the `jac-scale.replica-floor` annotation that `jac scale deploy` stamps on each Deployment; a Deployment applied before this annotation existed is treated as having a floor of 1 until it is redeployed.
 
+A Deployment whose replicas an autoscaler owns is redeployed with `spec.replicas` left out of the update, so the count the HPA, ScaledObject or HTTP interceptor set survives. Two consequences follow:
+
+- A service already idled to zero stays at zero through a redeploy, so `jac scale deploy` finishes without ever starting the new revision. The deploy log names those services: the image is unverified until the first request wakes one. Deploy a warm service, or set `idle_replicas` above zero, when a deploy has to prove the new build boots.
+- `idle_replicas` is a fleet-wide setting and the gateway is exempt from it, for the reason it is already exempt from `http_activation`: it is the ingress entry point, and nothing wakes it once it sleeps. Put `http_activation` on the services that should sleep instead.
+
 ---
 
 ### Resource Tagging
