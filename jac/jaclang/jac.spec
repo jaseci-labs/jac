@@ -260,6 +260,7 @@ element_stmt ::=
     | ability
     | global_var
     | comptime_element
+    | impl_import
     | impl_def
     | sem_def
     | PYNLINE
@@ -534,3 +535,29 @@ type_params ::=
 visit_stmt ::= "visit" (":" expression ":")? expression (else_stmt | ";")?
 
 report_stmt ::= "report" expression ";"
+
+impl_import ::= "impl" "import" wire_module_path?? "{" (import_rule | import_wire)* "}"
+
+wire_module_path ::=
+    (STRING | (NAME | KWESC_NAME) ("." (NAME | KWESC_NAME))*)
+    ("as" (NAME | KWESC_NAME))?
+
+module_pattern ::= "any" | "*" | wire_module_path ("." "*")?
+
+import_rule ::=
+    "edge" (NAME | KWESC_NAME) ":" module_pattern ("|" module_pattern)* module_pattern
+    ("|" module_pattern)* (wire_payload | ";")
+
+import_wire ::=
+    "comptime"? ("include" | "type")? (
+        "any"
+        | "*"
+        | wire_module_path (
+              "."
+              | "|"
+              | ("any" | "*" | STRING | wire_module_path ("." | "|")?)
+                (wire_payload | ";")
+          )
+    )
+
+wire_payload ::= "{" (("*" | NAME | KWESC_NAME) ("as" (NAME | KWESC_NAME))? ","?)* "}"

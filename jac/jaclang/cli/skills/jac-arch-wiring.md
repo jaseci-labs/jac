@@ -5,7 +5,7 @@ description: Declare a project's module graph in arch.jac with impl import wires
 
 `arch.jac` beside `jac.toml` holds `impl import [scope] { ... }` blocks. A **wire** `provider --> consumer { names }` (or `provider --> consumer;`) generates that import into the consumer at compile time; a **rule** `edge Name: pattern --> pattern [{ names }]` says what may flow where.
 
-```jac
+```
 impl import {
     edge CoreInternal: core.* --> core.*;
     edge AppOverCore: core.* --> web.* | cli.*;
