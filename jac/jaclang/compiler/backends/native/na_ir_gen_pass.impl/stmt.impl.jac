@@ -2089,9 +2089,25 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             or self._is_sized_node(nd.value)
                     );
                 }
-                coerced = self._coerce_type(value, current.type);
+                _is_cplx_lhs = current.type == self.complex_struct_type.as_pointer();
+                _cplx_aug: (ir.Value | None) = None;
+                if _scalar_aug is None and _is_cplx_lhs {
+                    _aug_tok = self._complex_aug_token(aug_op_val);
+                    if _aug_tok is not None {
+                        if _aug_tok == Tok.STAR_POW {
+                            _cplx_aug = self._codegen_complex_pow(current, value);
+                        } else {
+                            _cplx_aug = self._emit_binary_op(_aug_tok, current, value);
+                        }
+                    }
+                }
+                coerced = (
+                    value if _is_cplx_lhs else self._coerce_type(value, current.type)
+                );
                 if _scalar_aug is not None {
                     value = _scalar_aug;
+                } elif _cplx_aug is not None {
+                    value = _cplx_aug;
                 } elif aug_op_val == "+=" {
                     if isinstance(current.type, ir.IntType) {
                         value = self.builder.add(
@@ -3287,6 +3303,38 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     _coll_memo: (ir.Value | None) = self._opt_unwrap_iterable(
         self._str_norm_optional(self._codegen_expr(nd.collection))
     );
+
+    if _coll_memo is not None
+        and self?.range_struct_type
+        and _coll_memo.type == self.range_struct_type.as_pointer() {
+        _rv_i32 = ir.IntType(32);
+        _rv_parts: list[ir.Value] = [];
+        for (_rv_idx, _rv_name) in [(0, "start"), (1, "stop"), (2, "step")] {
+            _rv_parts.append(
+                self.builder.load(
+                    self.builder.gep(
+                        _coll_memo,
+                        [ir.Constant(_rv_i32, 0), ir.Constant(_rv_i32, _rv_idx)],
+                        name=f"forrv.{_rv_name}.p"
+                    ),
+                    name=f"forrv.{_rv_name}"
+                )
+            );
+        }
+        self._codegen_for_indexed(
+            nd,
+            kind="range",
+            collection_val=_rv_parts[1],
+            helpers=None,
+            var_names=[loop_var_name],
+            var_types=[ir.IntType(64)],
+            rc_vars=False,
+            coll_release_op="",
+            range_start=_rv_parts[0],
+            range_step=_rv_parts[2]
+        );
+        return;
+    }
 
     dict_type_key: (str | None) = self._dict_key_of(nd.collection);
     if _coll_memo is not None {

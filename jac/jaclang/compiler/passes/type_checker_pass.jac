@@ -96,7 +96,9 @@ import from jaclang.compiler.types.operations {
     AUG_TO_BINARY_MAP,
     BINARY_OPERATOR_MAP,
     BITWISE_OPERATORS,
+    COMPLEX_ARITH_OPS,
     SHIFT_OPERATORS,
+    get_complex_arith_result_type,
     get_numeric_promotion_type,
     get_pow_result_type
 }

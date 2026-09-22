@@ -334,15 +334,23 @@ impl native_capability_violations(
                     continue;
                 }
                 if _stdlib_help is None {
+                    import from jaclang.compiler.frontend.codeinfo {
+                        bundled_native_module_names
+                    }
                     _supported_list = ", ".join(
                         f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
+                    );
+                    _bundled_list = ", ".join(
+                        f"`import {m}`" for m in bundled_native_module_names()
                     );
                     _stdlib_help = (
                         f"Native compilation supports these stdlib imports: "
                         f"{_supported_list}; C-library imports "
                         f"(`import from \"lib\" {{...}}`); and other Jac "
                         f"modules on the native pathway (`import mod` or "
-                        f"`import from mod {{...}}`). Move "
+                        f"`import from mod {{...}}`). The bundled native "
+                        f"standard library also provides "
+                        f"{_bundled_list}. Move "
                         f"Python-dependent code to a @sv/Python context."
                     );
                 }
@@ -497,10 +505,16 @@ impl native_capability_violations(
                     );
                     continue;
                 }
+                _vp_mod = nd.find_parent_of_type(Module);
                 if (
                     _vp_encl is not None
                     and _vp_encl.access is not None
                     and _vp_encl.access.tag.name == Tok.KW_PUB
+                    and not (
+                        _vp_mod is not None
+                        and _vp_mod.loc
+                        and is_native_by_location(_vp_mod.loc.mod_path)
+                    )
                 ) {
                     out.append(
                         (

@@ -374,32 +374,16 @@ impl NativeBoolEmitter.emit_op_xor(
 impl NativeComplexEmitter._load_parts(
     self: NativeComplexEmitter, ctx: NativeEmitCtx, val: ir.Value
 ) -> (tuple[ir.Value, ir.Value] | None) {
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    z0 = ir.Constant(i32, 0);
-    z1 = ir.Constant(i32, 1);
-    r = b.load(b.gep(val, [z0, z0], name="cx.rp"), name="cx.r");
-    im = b.load(b.gep(val, [z0, z1], name="cx.ip"), name="cx.i");
-    return (r, im);
+    return ctx.pass_ref._load_complex_parts(val);
 }
 
 impl NativeComplexEmitter._make_complex(
     self: NativeComplexEmitter, ctx: NativeEmitCtx, real: ir.Value, imag: ir.Value
 ) -> ir.Value {
     p = ctx.pass_ref;
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    z0 = ir.Constant(i32, 0);
-    z1 = ir.Constant(i32, 1);
-    ctype = p.complex_struct_type;
     p._set_rc_ctx("complex_new", "");
-    raw = b.call(p.rc_alloc_fn, [ir.Constant(i64, 16)], name="cx.raw");
+    ptr = p._emit_complex_value(real, imag);
     p._clear_rc_ctx();
-    ptr = b.bitcast(raw, ctype.as_pointer(), name="cx.ptr");
-    b.store(real, b.gep(ptr, [z0, z0], name="cx.srp"));
-    b.store(imag, b.gep(ptr, [z0, z1], name="cx.sip"));
     return ptr;
 }
 
@@ -5831,6 +5815,36 @@ impl NativeBuiltinEmitter.emit_set(
     b = get_builder(p);
     i64 = ir.IntType(64);
     val = args[0];
+
+    if p._is_bytes_value(val) {
+        (key_spec, key_size) = p._hash_key_spec(i64);
+        p._emit_set_helpers(key_spec, i64, key_size);
+        helpers = p.set_helpers.get(key_spec);
+        if helpers is None {
+            return None;
+        }
+        count = p._bytes_len_val(val);
+        data = p._bytes_data_ptr(val);
+        result = b.call(helpers["new"], [], name="b2s.new");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="b2s.loop");
+        body_bb = func.append_basic_block(name="b2s.body");
+        done_bb = func.append_basic_block(name="b2s.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        index = b.phi(i64, name="b2s.idx");
+        index.add_incoming(ir.Constant(i64, 0), entry_bb);
+        b.cbranch(b.icmp_unsigned(">=", index, count), done_bb, body_bb);
+        b.position_at_start(body_bb);
+        byte = b.load(b.gep(data, [index]), name="b2s.byte");
+        b.call(helpers["add"], [result, b.zext(byte, i64, name="b2s.value")]);
+        next_index = b.add(index, ir.Constant(i64, 1));
+        index.add_incoming(next_index, body_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+        return result;
+    }
 
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);

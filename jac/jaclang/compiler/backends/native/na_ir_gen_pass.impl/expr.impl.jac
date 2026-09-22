@@ -1628,28 +1628,10 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             }
             return self.builder.neg(operand, name="neg");
         } elif operand.type == self.complex_struct_type.as_pointer() {
-            f64 = ir.DoubleType();
-            i64 = ir.IntType(64);
-            i32 = ir.IntType(32);
-            z0 = ir.Constant(i32, 0);
-            z1 = ir.Constant(i32, 1);
-            r = self.builder.load(
-                self.builder.gep(operand, [z0, z0], name="cneg.rp"), name="cneg.r"
-            );
-            im = self.builder.load(
-                self.builder.gep(operand, [z0, z1], name="cneg.ip"), name="cneg.i"
-            );
+            (r, im) = self._load_complex_parts(operand);
             nr = self.builder.fneg(r, name="cneg.nr");
             ni = self.builder.fneg(im, name="cneg.ni");
-            raw = self.builder.call(
-                self.rc_alloc_fn, [ir.Constant(i64, 16)], name="cneg.raw"
-            );
-            ptr = self.builder.bitcast(
-                raw, self.complex_struct_type.as_pointer(), name="cneg.ptr"
-            );
-            self.builder.store(nr, self.builder.gep(ptr, [z0, z0], name="cneg.srp"));
-            self.builder.store(ni, self.builder.gep(ptr, [z0, z1], name="cneg.sip"));
-            return ptr;
+            return self._emit_complex_value(nr, ni);
         }
     } elif op == Tok.NOT {
         if isinstance(operand.type, ir.IntType) and operand.type.width == 1 {
@@ -2088,17 +2070,6 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
 
             if (
-                module_name == "math"
-                and self._native_stdlib_modules
-                and "math" in self._native_stdlib_modules
-            ) {
-                _mc = self._emit_math_const(right_name);
-                if _mc is not None {
-                    return _mc;
-                }
-            }
-
-            if (
                 module_name == "os"
                 and self._native_stdlib_modules
                 and "os" in self._native_stdlib_modules
@@ -2199,6 +2170,16 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             obj_val = self._codegen_expr(nd.target);
             if obj_val is None {
                 return None;
+            }
+            if right_name in ("real", "imag")
+                and obj_val.type == self.complex_struct_type.as_pointer() {
+                i32 = ir.IntType(32);
+                z0 = ir.Constant(i32, 0);
+                fidx = ir.Constant(i32, 0 if right_name == "real" else 1);
+                ptr = self.builder.gep(
+                    obj_val, [z0, fidx], name=f"complex.{right_name}.ptr"
+                );
+                return self.builder.load(ptr, name=f"complex.{right_name}");
             }
             if _property_parts is not None
                 and any(

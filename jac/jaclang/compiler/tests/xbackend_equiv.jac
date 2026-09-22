@@ -419,6 +419,12 @@ def compare_results(
     for key in sorted(common_keys) {
         py_val = py_result[key];
         bk_val = backend_result[key];
+        if not label.endswith("[ES]")
+            and isinstance(py_val, float) != isinstance(bk_val, float) {
+            assert False , (
+                f"[{label}] Type mismatch on '{key}': py={py_val!r} backend={bk_val!r}"
+            );
+        }
         if isinstance(py_val, float) or isinstance(bk_val, float) {
             assert abs(float(py_val) - float(bk_val)) < tolerance , (
                 f"[{label}] Float mismatch on '{key}': py={py_val} backend={bk_val}"

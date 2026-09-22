@@ -110,7 +110,17 @@ glob STR_NA_GAPS: list[any] = [
              "prim_complex.jac",
              "complex_ops_py",
              "complex_ops_cl",
-             "complex_ops_na"
+             "complex_ops_na",
+             ["na"]
+         ),
+         ("cmath", "prim_cmath.jac", "cmath_py", "cmath_cl", "cmath_na", ["na"]),
+         (
+             "complex mixed scalar ops",
+             "prim_complex_mixed.jac",
+             "cmixed_py",
+             "cmixed_cl",
+             "cmixed_na",
+             ["na"]
          ),
          ("str", "prim_str.jac", "str_py", "str_cl", "str_na", ["na"], STR_NA_GAPS),
          (

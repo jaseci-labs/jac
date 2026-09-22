@@ -241,8 +241,10 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
     images_before = list(sealed._images);
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     import from jaclang.server.sealed_serve { client_dist_for }
+    import from jaclang.cli.console { console }
     for package_name in ['prepared_sealed_test', 'site'] {
-        with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as tmp {
+        with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as raw_tmp {
+            tmp = os.path.realpath(raw_tmp);
             base = Path(tmp);
             path = base / f'{package_name}.jac';
             package_init = base / '__init__.jac';
@@ -314,6 +316,20 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 dist = base / '.jac' / 'client' / 'dist';
                 dist.mkdir(parents=True);
                 (dist / 'arena.wasm').write_bytes(b'baked wasm');
+                unlisted = base / 'unlisted.jac';
+                unlisted.write_text("def:pub other -> str { return 'source'; }\n");
+                with patch.object(console, 'print') as printed {
+                    prepare_application(str(unlisted), JacProgram(), tmp);
+                }
+                lines = [
+                    str(call.args[0])
+                    for call in printed.call_args_list
+                    if call.args
+                ];
+                assert f'  Sealed image at {tmp} does not list unlisted.jac; preparing from source'
+                    in lines , lines;
+                assert '  Loading sealed application artifacts' not in lines , lines;
+                forget(str(unlisted));
                 path.write_text('retained source must never be analyzed');
                 package_init.write_text('retained initializer must never be analyzed');
                 with patch.object(
@@ -344,6 +360,14 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 assert prepared.client_compiler is None;
                 assert client_dist_for(str(path)) == dist;
                 assert (dist / 'arena.wasm').read_bytes() == b'baked wasm';
+                (base / '.jac' / 'serve_manifest.json').unlink();
+                caught = '';
+                try {
+                    prepare_application(str(path), JacProgram(), tmp, dev=False);
+                } except RuntimeError as e {
+                    caught = str(e);
+                }
+                assert 'Sealed application has no serving manifest' in caught , caught;
             } finally {
                 for (name, loaded) in list(sys.modules.items()) {
                     if str(getattr(loaded, '__file__', '') or '').startswith(
@@ -420,7 +444,6 @@ test "prepared services with the same entry filename load independently" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
-
 
 test "preparation leaves compiler dependencies in their canonical runtime" {
     import jaclang;
@@ -501,5 +524,48 @@ test "changes to consumed sources still reject a torn prepared revision" {
             forget(str(path));
         }
         assert failed;
+    }
+}
+
+
+test "prepare warns about unmarked endpoints on cold and cached applications" {
+    import from jaclang.cli.console { console }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / 'jac.toml').write_text(
+            '[project]\nname="migration"\ndefault-app="api"\n'
+                + '[apps.api]\nkind="service"\nentry-point="main"\n'
+        );
+        path = base / 'main.jac';
+        path.write_text(
+            'include helpers;\n'
+                + 'def plain -> int { return 1; }\n'
+                + 'def:priv intentional -> int { return 2; }\n'
+                + 'def _helper -> int { return 0; }\n'
+                + 'def:pub exposed -> int { return 3; }\n'
+                + 'walker PlainWalker {}\n'
+        );
+        (base / 'helpers.jac').write_text('def included -> int { return 4; }\n');
+        try {
+            for iteration in range(2) {
+                with patch.object(console, 'warning') as warning {
+                    prepared = prepare_application(str(path), JacProgram(), tmp);
+                    messages = '\n'.join(
+                        str(call.args[0]) for call in warning.call_args_list
+                    );
+                    assert 'main.jac:plain' in messages , messages;
+                    assert 'main.jac:PlainWalker' in messages , messages;
+                    assert 'helpers.jac:included' in messages , messages;
+                    assert 'jac fix access --dry-run' in messages , messages;
+                    assert 'intentional' not in messages , messages;
+                    assert '_helper' not in messages , messages;
+                    assert 'main.jac:exposed' not in messages , messages;
+                    assert len(warning.call_args_list) == 1 , messages;
+                    assert 'plain' not in prepared.manifests[str(path)]['surface'];
+                }
+            }
+        } finally {
+            forget(str(path));
+        }
     }
 }

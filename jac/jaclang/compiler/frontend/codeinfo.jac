@@ -1,4 +1,5 @@
 import hashlib;
+import from jaclang.runtime.surface { SurfaceEntry }
 import from collections.abc { Sequence }
 import from contextvars { ContextVar }
 import from jaclang.compiler.frontend.constant {
@@ -250,7 +251,6 @@ glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"};
 
 glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "sys",
-         "math",
          "time",
          "os",
          "random",
@@ -354,6 +354,26 @@ def native_stdlib_root -> (str | None) {
         os.path.dirname(jaclang.__file__), "runtime", "na_stdlib"
     );
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
+}
+
+def bundled_native_module_names -> list[str] {
+    import os;
+    stdlib_root = native_stdlib_root();
+    if stdlib_root is None {
+        return [];
+    }
+    names: set[str] = set();
+    for item in os.listdir(stdlib_root) {
+        if item.startswith("_") or item.startswith(".") {
+            continue;
+        }
+        if os.path.isdir(os.path.join(stdlib_root, item)) {
+            names.add(item);
+        } elif item.endswith(".jac") {
+            names.add(item.split(".")[0]);
+        }
+    }
+    return sorted(names);
 }
 
 def is_native_by_location(file_path: str) -> bool {
@@ -498,8 +518,25 @@ def native_target_os -> str {
     return "linux";
 }
 
+def native_target_arch -> str {
+    import platform;
+    _t = effective_native_target();
+    machine = (_t.split("-")[0] if _t else platform.machine()).lower();
+    if machine in ("arm64", "aarch64") or machine.startswith("arm64") {
+        return "aarch64";
+    }
+    if machine in ("x86_64", "amd64", "x64") {
+        return "x86_64";
+    }
+    return machine;
+}
+
 def _native_variant_path(base_no_ext: str) -> (str | None) {
     import os;
+    _archv = f"{base_no_ext}.{native_target_arch()}.jac";
+    if os.path.exists(_archv) {
+        return _archv;
+    }
     _osv = os.path.join(f"{base_no_ext}.{native_target_os()}.jac");
     if os.path.exists(_osv) {
         return _osv;
@@ -733,64 +770,6 @@ obj BoundaryTypeInfo {
         nested_types: list[str] = [];
 }
 
-obj SurfaceEntry {
-    has name: str,
-        kind: str,
-        exposure: str = "private",
-        placement: str = "server",
-        module: str = "",
-        src: str = "";
-
-    def is_exposed -> bool {
-        return self.exposure != "private";
-    }
-
-    def requires_auth -> bool {
-        return self.exposure != "public";
-    }
-
-    def is_served -> bool {
-        return self.is_exposed() and self.placement != "client";
-    }
-
-    def to_dict -> dict[str, str] {
-        return {
-            "kind": self.kind,
-            "exposure": self.exposure,
-            "placement": self.placement,
-            "module": self.module,
-            "src": self.src
-        };
-    }
-
-    static def from_dict(name: str, rec: dict[str, any]) -> SurfaceEntry {
-        return SurfaceEntry(
-            name=str(name),
-            kind=str(rec.get("kind") or ""),
-            exposure=str(rec.get("exposure") or "private"),
-            placement=str(rec.get("placement") or "server"),
-            module=str(rec.get("module") or ""),
-            src=str(rec.get("src") or "")
-        );
-    }
-
-    static def from_node(decl: any, module: any = None) -> (SurfaceEntry | None) {
-        kind = getattr(decl, "surface_kind", "") or "";
-        name = getattr(decl, "sym_name", "") or "";
-        if not kind or not name {
-            return None;
-        }
-        loc = module.loc if module is not None else None;
-        mod_path = getattr(loc, "mod_path", "") if loc is not None else "";
-        return SurfaceEntry(
-            name=str(name),
-            kind=str(kind),
-            exposure=str(decl.exposure.value),
-            placement=str(decl.placement_name),
-            module=str(mod_path or "")
-        );
-    }
-}
 
 obj InteropBinding {
     has name: str,

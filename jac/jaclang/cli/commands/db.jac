@@ -48,12 +48,27 @@ comptime SPEC_DB: CommandSpec = CommandSpec(
                  ),
                  short=""
              ),
+             Arg.create(
+                 "entry",
+                 dest="entry_file",
+                 `default="",
+                 help=(
+                     "The app's entry file, which names its database the way the "
+                     "server does; needed only when the directory holds several "
+                     ".jac files and jac.toml sets no [project] name"
+                 ),
+                 short=""
+             ),
 
          ],
          examples=[
              ("jac db status", "Show the project store's server state and row counts"),
              ("jac db inspect", "Summarize anchors by kind and archetype"),
              ("jac db sql \"SELECT count(*) FROM anchors\"", "Run one SQL statement"),
+             (
+                 "jac db status --entry main.jac",
+                 "Open the database of the app whose entry is main.jac"
+             ),
              ("jac db list", "List every jac database in the shared cluster"),
              ("jac db prune", "Report databases whose project is gone (drops nothing)"),
              ("jac db prune -y", "Drop them"),
@@ -76,5 +91,6 @@ def db(
     data_dir: str = "",
     port: int = 5432,
     yes: bool = False,
-    empty: bool = False
+    empty: bool = False,
+    entry_file: str = ""
 ) -> int;

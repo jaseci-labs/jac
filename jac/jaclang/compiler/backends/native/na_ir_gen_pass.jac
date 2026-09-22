@@ -203,6 +203,7 @@ walker NaIRGenPass {
         _interned_strs: dict[str, ir.GlobalVariable] = {},
         extern_funcs: dict[str, ir.Function] = {},
         clib_extern_names: set[str] = set(),
+        clib_extern_fns: dict[str, ir.Function] = {},
         _pending_clib_abilities: list[uni.Ability] = [],
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
@@ -270,6 +271,7 @@ walker NaIRGenPass {
         _struct_source_name: dict[str, str] = {},
         _enum_source_name: dict[str, str] = {},
         _native_skipped_methods: set[str] = set(),
+        _native_skipped_import_origin: dict[str, set[str]] = {},
         _capability_demotions:
             dict[int, list[tuple[uni.UniNode, str, str, str | None]]] = {},
         _claimed_capability_demotions: set[int] = set(),
@@ -1165,6 +1167,7 @@ walker NaIRGenPass {
 
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
+    def _exception_handler_ids(ex: uni.Expr | None) -> list[int];
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
     def _raise_has_frame_handler(nd: uni.RaiseStmt) -> bool;
     def _codegen_try(nd: uni.TryStmt) -> None;
@@ -1520,16 +1523,46 @@ walker NaIRGenPass {
     ) -> ir.Value;
 
     def _emit_pow_zero_guard(base: ir.Value) -> None;
+    def _emit_make_complex(v: ir.Value) -> (ir.Value | None);
+    def _emit_complex_value(re: ir.Value, im: ir.Value) -> ir.Value;
+    def _load_complex_parts(ptr: ir.Value) -> tuple[(ir.Value, ir.Value)];
+    def _skip_is_other_module(
+        nd: uni.FuncCall, func_name: str, mod_qual: (str | None)
+    ) -> bool;
+
+    def _target_fuses_fp -> bool;
+    def _emit_fmadd(a: ir.Value, b: ir.Value, c: ir.Value) -> ir.Value;
+    def _fp_fabs(v: ir.Value) -> ir.Value;
+    def _fp_copysign(mag: ir.Value, sgn: ir.Value) -> ir.Value;
+    def _fp_isnan(v: ir.Value) -> ir.Value;
+    def _fp_isinf(v: ir.Value) -> ir.Value;
+    def _fp_isfinite(v: ir.Value) -> ir.Value;
+    def _emit_c_prod(
+        ar: ir.Value, ai: ir.Value, br: ir.Value, bi: ir.Value
+    ) -> tuple[(ir.Value, ir.Value)];
+
+    def _emit_c_quot(
+        ar: ir.Value, ai: ir.Value, br: ir.Value, bi: ir.Value
+    ) -> tuple[(ir.Value, ir.Value)];
+
+    def _emit_rc_quot(
+        x: ir.Value, br: ir.Value, bi: ir.Value
+    ) -> tuple[(ir.Value, ir.Value)];
+
+    def _emit_complex_binop(
+        op: str, left: ir.Value, right: ir.Value
+    ) -> (ir.Value | None);
+
+    def _codegen_complex_pow(base: ir.Value, exp: ir.Value) -> (ir.Value | None);
+    def _complex_aug_token(aug_op: str) -> (str | None);
     def _codegen_pow(
         base: ir.Value,
         exp: ir.Value,
         exp_node: (uni.Expr | None) = None,
         unsigned: bool = False,
         checked: bool = False
-    ) -> ir.Value;
+    ) -> (ir.Value | None);
 
-    def _emit_math_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
-    def _emit_math_const(name: str) -> (ir.Value | None);
     def _emit_heap_object_alloc(
         nd: uni.UniNode, type_name: str, size: ir.Value, headerless: bool
     ) -> ir.Value;

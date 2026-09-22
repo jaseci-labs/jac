@@ -146,9 +146,14 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 }
             }
 
+            import from jaclang.compiler.frontend.codeinfo {
+                native_library_function_symbol
+            }
+            _gv_path = self.module.loc.mod_path if self.module?.loc else "";
+            _gv_sym = native_library_function_symbol(_gv_path, var_name);
             try {
                 global_var = ir.GlobalVariable(
-                    self.llvm_module, var_type, name=var_name
+                    self.llvm_module, var_type, name=_gv_sym
                 );
             } except Exception as _dup_err {
                 _cur_path = self.module.loc.mod_path
@@ -172,9 +177,9 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
 
             _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
-            if _is_pub and self.module?.gen and var_name.isidentifier() {
-                if var_name not in self.module.gen._exported_symbols {
-                    self.module.gen._exported_symbols.append(var_name);
+            if _is_pub and self.module?.gen and _gv_sym.isidentifier() {
+                if _gv_sym not in self.module.gen._exported_symbols {
+                    self.module.gen._exported_symbols.append(_gv_sym);
                 }
             }
 

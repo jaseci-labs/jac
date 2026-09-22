@@ -1169,30 +1169,40 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
 
 
 def _mergeable_sections(
-    cache_path: Path, key_sections: dict[int, bytes]
-) -> tuple[dict[int, bytes], int] {
+    cache_path: Path,
+    key_sections: dict[int, bytes],
+    incoming: (dict[int, bytes] | None) = None
+) -> tuple[dict[int, bytes], int, bool] {
     try {
         if not cache_path.exists() {
-            return ({}, 0, );
+            return ({}, 0, False);
         }
         data: bytes = cache_path.read_bytes();
         header = parse_header(data[:HEADER_SIZE]);
         if header is None or not header.is_compatible() {
-            return ({}, 0, );
+            return ({}, 0, False);
         }
         magic: any = SECTIONS_MAGIC;
         pos = data.find(magic, HEADER_SIZE);
         if pos < 0 {
-            return ({}, 0, );
+            return ({}, 0, False);
         }
         secs = read_sections(data, pos + len(magic));
         if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY)
             or secs.get(SEC_ENVKEY) != key_sections.get(SEC_ENVKEY) {
-            return ({}, 0, );
+            return ({}, 0, False);
         }
-        return (secs, header.flags, );
+        stale_code = not ct_deps_fresh(data);
+        if incoming is not None {
+            for kind in [SEC_CTDEPS, SEC_INTEROP] {
+                if kind in incoming and incoming[kind] != secs.get(kind, b"") {
+                    stale_code = True;
+                }
+            }
+        }
+        return (secs, header.flags, stale_code);
     } except Exception {
-        return ({}, 0, );
+        return ({}, 0, False);
     }
 }
 
@@ -1209,9 +1219,23 @@ def write_module_cache(
     try {
         cache_path = get_module_cache_path(resolved_path);
         key_sections = module_jir_key_sections(resolved_path);
-        (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
+        (existing, existing_flags, stale_code) = _mergeable_sections(
+            cache_path, key_sections, extra_sections
+        );
         sections: dict[int, bytes] = {};
         sections.update(existing);
+        if stale_code {
+            for kind in [
+                SEC_BYTECODE,
+                SEC_NATIVE_OBJ,
+                SEC_LLVM_IR,
+                SEC_INTEROP,
+                SEC_MTIR,
+                SEC_CLIENT
+            ] {
+                sections.pop(kind, None);
+            }
+        }
         sections.update(key_sections);
         if bytecode is not None {
             sections[SEC_BYTECODE] = bytecode;
@@ -1219,6 +1243,14 @@ def write_module_cache(
         if extra_sections is not None {
             for (k, v) in extra_sections.items() {
                 sections[k] = v;
+            }
+
+            if SEC_NATIVE_OBJ in extra_sections or SEC_LLVM_IR in extra_sections {
+                for kind in [SEC_NATIVE_OBJ, SEC_LLVM_IR] {
+                    if kind not in extra_sections {
+                        sections.pop(kind, None);
+                    }
+                }
             }
         }
         merged_flags = flags | existing_flags;
