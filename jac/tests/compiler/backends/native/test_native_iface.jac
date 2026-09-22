@@ -263,3 +263,24 @@ test "native products and relocatable paths coexist in one JIR" {
     assert paths.resolve("/build/package/dependency.jac")
         == "/installed/package/dependency.jac";
 }
+
+test "a unit's layout keeps a function named like a dependency's foreign symbol" {
+    scratch = tempfile.mkdtemp(prefix="jac-niface-foreign-");
+    _scratch_copy(
+        "helper.jac",
+        "import from m { def sqrt(x: f64) -> f64; }\n"
+            + "def:pub m_sqrt(x: float) -> float {\n    return sqrt(f64(x));\n}\n",
+        scratch
+    );
+    lib_path = _scratch_copy(
+        "lib.jac",
+        "import from helper { m_sqrt }\n"
+            + "def sqrt(x: float) -> float {\n    return m_sqrt(x);\n}\n",
+        scratch
+    );
+    iface = _iface_of(lib_path);
+    assert "sqrt" in iface.clib_symbol_lib , sorted(iface.clib_symbol_lib.keys());
+    assert "sqrt" in iface.exports , sorted(iface.exports.keys());
+    assert iface.layout is not None;
+    assert "sqrt" in iface.layout.functions , sorted(iface.layout.functions.keys());
+}

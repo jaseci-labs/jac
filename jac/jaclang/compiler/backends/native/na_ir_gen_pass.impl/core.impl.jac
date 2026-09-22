@@ -650,7 +650,11 @@ impl NaIRGenPass._export_native_layout -> None {
         if str(func.linkage) in ("internal", "private") {
             continue;
         }
-        if fname in self._clib_symbol_lib {
+        if fname in self._clib_symbol_lib and self.clib_extern_fns.get(fname) is func {
+            """Only the unit's own foreign extern stays out of the layout. A
+            dependency's foreign symbol map reaches this unit too, and a Jac
+            function of the same name (cmath's sqrt beside libm's) is this
+            unit's export.""";
             continue;
         }
         param_types = [self._llvm_type_str(a) for a in func.function_type.args];
