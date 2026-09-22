@@ -75,6 +75,23 @@ def module_has_client_top(module: (uni.Module | None)) -> bool {
     return False;
 }
 
+def ability_delegates_to_model(ab: uni.Ability) -> bool {
+    if isinstance(ab.body, uni.Expr) {
+        return True;
+    }
+    if isinstance(ab.body, uni.ImplDef) and isinstance(ab.body.body, uni.Expr) {
+        return True;
+    }
+    sig = ab.signature;
+    return (
+        isinstance(sig, uni.FuncSignature)
+        and sig.return_type is not None
+        and isinstance(sig.return_type, uni.BinaryExpr)
+        and isinstance(sig.return_type.op, uni.Token)
+        and sig.return_type.op.name == Tok.KW_BY
+    );
+}
+
 def is_server_anchored_module(module: (uni.Module | None)) -> bool {
     if module is None {
         return True;
@@ -93,6 +110,11 @@ def is_server_anchored_module(module: (uni.Module | None)) -> bool {
     }
     for stmt in module.body {
         if isinstance(stmt, uni.TypedCtxBlock) {
+            return True;
+        }
+    }
+    for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ability_delegates_to_model(ab) {
             return True;
         }
     }
