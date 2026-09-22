@@ -342,7 +342,10 @@ obj IfaceRegistry {
     }
 
     def _entry_fresh(ent: IfaceEntry) -> bool {
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
+        import from jaclang.compiler.driver.bccache {
+            discover_annex_files,
+            discover_wiring_file
+        }
         try {
             if os.path.getmtime(ent.path) > ent.stamp {
                 return False;
@@ -351,6 +354,10 @@ obj IfaceRegistry {
                 if os.path.getmtime(related) > ent.stamp {
                     return False;
                 }
+            }
+            wiring = discover_wiring_file(ent.path);
+            if wiring is not None and os.path.getmtime(wiring) > ent.stamp {
+                return False;
             }
             return True;
         } except OSError {

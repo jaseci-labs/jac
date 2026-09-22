@@ -851,13 +851,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="A pattern that matches nothing constrains nothing. Check the"
          " spelling, or remove the rule if the modules it governed are gone."
      ),
-     W2084 = _warn(
-         "W2084",
-         Category.SEMANTIC,
-         "This arch.jac is not beside jac.toml, so it is ignored",
-         help="Only the arch.jac at the project root ('{root}') wires the project."
-         " Move these blocks there; per-package arch files are not read yet."
-     ),
      E1119 = _err(
          "E1119",
          Category.TYPE,
@@ -1760,9 +1753,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2088 = _err(
          "E2088",
          Category.SEMANTIC,
-         "'impl import' is only valid in arch.jac",
+         "'impl import' is only valid in the arch.jac beside jac.toml",
          help="A wiring block generates imports for other modules, so it lives in"
-         " one place: the arch.jac beside jac.toml. Move this block there."
+         " one place: the arch.jac at the project root. Move this block there;"
+         " an arch.jac elsewhere is an ordinary module, and per-package wiring"
+         " files are not read yet."
      ),
      E2089 = _err(
          "E2089",
@@ -1795,6 +1790,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Edge rule '{name}' is declared more than once",
          help="Rule names carry the diagnostics that cite them, so each name is"
          " declared once. Merge the two rules or rename one."
+     ),
+     E2093 = _err(
+         "E2093",
+         Category.SEMANTIC,
+         "arch.jac has syntax errors, so the wiring for '{consumer}' may be"
+         " incomplete",
+         help="Only the wires that still parsed were applied to this module. Fix"
+         " the errors reported for arch.jac and check again."
      ),
      W3001 = _warn(
          "W3001",

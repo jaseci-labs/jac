@@ -22,7 +22,7 @@ impl TypeCheckPass.exit_name with Name exit {
             return;
         }
 
-        if isinstance(here.parent, ModulePath) {
+        if isinstance(here.parent, (ModulePath, ImportRule, WireItem)) {
             return;
         }
         if isinstance(here.parent, JsxElementName) {

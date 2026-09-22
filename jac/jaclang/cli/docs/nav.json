@@ -175,6 +175,7 @@
             {"title": "Placement", "page": "reference/placement.md"},
             {"title": "Errors & Warnings", "page": "reference/diagnostics.md"},
             {"title": "Code Organization", "page": "reference/code-organization.md"},
+            {"title": "Project Wiring", "page": "reference/wiring.md"},
             {"title": "Testing", "page": "reference/testing.md"}
           ]
         },

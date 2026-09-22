@@ -2,6 +2,7 @@ import from jaclang.compiler.frontend.unitree { TreeWalker }
 import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.tools.reactive_use_walk { ReactiveUseWalker }
 import keyword;
+import os;
 import jaclang.compiler.frontend.unitree as uni;
 
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
@@ -36,9 +37,13 @@ import from jaclang.compiler.frontend.diagnostics {
     W3042,
     W3043,
     W3050,
-    W3051
+    W3051,
+    W3052,
+    W3053
 }
 import type from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.wiring { WiringSpec, is_arch_file, wiring_for_path }
+import from jaclang.compiler.driver.bccache { discover_base_file }
 import from jaclang.compiler.frontend.roles {
     Kid,
     AssignmentsRole,
@@ -195,6 +200,9 @@ walker JacAutoLintPass(TreeWalker) {
 
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
     def _strip_usestate_imports(nd: uni.Module) -> None;
+    def _prune_import_items(stmt: uni.Import, doomed: set[int]) -> bool;
+    def _strip_wired_imports(nd: uni.Module) -> None;
+    def _strip_duplicate_wires(nd: uni.Module) -> None;
     can exit_expr_stmt with uni.ExprStmt exit;
     can exit_module with uni.Module exit;
     def _strip_noise(nd: uni.Module) -> None;

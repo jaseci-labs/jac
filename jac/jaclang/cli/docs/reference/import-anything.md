@@ -27,6 +27,8 @@ Every import follows the same template. Square brackets mark optional parts:
 
 A plain whole-module import (`import os;`) takes a trailing semicolon. The `import from ... { ... }` brace form does not.
 
+A project can also declare its imports between its own modules once, in an `arch.jac` beside `jac.toml`, where a wire such as `core.github --> core.scoring_service { RepoMeta }` generates the import into the consumer at compile time and checks the module against it. External imports stay in the module file. See [Project Wiring](wiring.md).
+
 ---
 
 ## Choosing the codespace

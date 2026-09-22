@@ -40,6 +40,7 @@ import from jaclang.compiler.frontend.unitree {
     Literal,
     MatchAs,
     ModuleCode,
+    ImportRule,
     ModuleItem,
     ModulePath,
     MultiString,
@@ -65,7 +66,8 @@ import from jaclang.compiler.frontend.unitree {
     WhileStmt,
     WithStmt,
     YieldExpr,
-    find_python_scope_node_of
+    find_python_scope_node_of,
+    WireItem
 }
 import from jaclang.compiler.passes.context { CompileContext }
 

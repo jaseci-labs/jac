@@ -601,6 +601,8 @@ def compute_module_key(source_path: str) -> str {
         h.update(rel.encode());
         h.update(digest.encode());
     }
+    import from jaclang.compiler.driver.wiring { wiring_digest_for }
+    h.update(wiring_digest_for(source_path).encode());
     return h.hexdigest();
 }
 
@@ -1118,7 +1120,8 @@ def read_debug_source(data: bytes) -> (str | None) {
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
     import from jaclang.compiler.driver.bccache {
         discover_annex_files,
-        discover_style_annex
+        discover_style_annex,
+        discover_wiring_file
     }
     if not cache_path.exists() {
         return False;
@@ -1142,6 +1145,10 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         style = discover_style_annex(source_path);
         if style is not None {
             related.append(style);
+        }
+        wiring = discover_wiring_file(source_path);
+        if wiring is not None {
+            related.append(wiring);
         }
         fresh = cache_mtime > os.path.getmtime(source_path);
         if fresh {

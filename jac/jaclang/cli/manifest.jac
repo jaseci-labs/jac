@@ -9,6 +9,7 @@ comptime import from jaclang.cli.commands.analysis {
     SPEC_PRECOMMIT,
     SPEC_TEST
 }
+comptime import from jaclang.cli.commands.arch { SPEC_ARCH }
 comptime import from jaclang.cli.commands.browse { SPEC_BROWSE }
 comptime import from jaclang.cli.commands.build { SPEC_BUILD }
 comptime import from jaclang.cli.commands.cache { SPEC_CACHE }
@@ -99,6 +100,7 @@ comptime def _route(spec: CommandSpec) -> CommandSpec {
 
 comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_BROWSE),
+         _route(SPEC_ARCH),
          _route(SPEC_BUILD),
          _route(SPEC_CACHE),
          _route(SPEC_CHECK),
