@@ -59,12 +59,10 @@ obj PreparedFinder(MetaPathFinder) {
             }
             for source in application.code {
                 if qualified_module(source, application) == fullname {
-                    if target is not None {
-                        import from jaclang.compiler.driver.application {
-                            prepare_dynamic_module
-                        }
+                    if target is not None and application.dev {
+                        import from jaclang.runtime.build_services { build_services }
                         import from jaclang.runtime.runtime { JacRuntime }
-                        application = prepare_dynamic_module(
+                        application = build_services().prepare_dynamic_module(
                             source, JacRuntime.get_program(), application
                         );
                     }

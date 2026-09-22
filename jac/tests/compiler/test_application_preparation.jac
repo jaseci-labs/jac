@@ -445,6 +445,39 @@ test "prepared services with the same entry filename load independently" {
     }
 }
 
+test "frozen application modules reload their artifacts without compiler services" {
+    import importlib;
+    import jaclang.runtime.build_services as services;
+    import from jaclang.runtime.prepared {
+        PreparedApplication,
+        publish,
+        load_prepared_module
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        source = str(Path(tmp) / 'frozen.jac');
+        application = PreparedApplication(
+            tmp,
+            source,
+            code={source: compile('def answer(): return 42', source, 'exec')},
+            dev=False
+        );
+        try {
+            publish(application);
+            with patch.object(
+                services,
+                'build_services',
+                side_effect=AssertionError('artifact reload requested a compiler')
+            ) {
+                module = load_prepared_module(source, application);
+                assert importlib.reload(module).answer() == 42;
+            }
+        } finally {
+            forget(source);
+        }
+    }
+}
+
+
 test "preparation leaves compiler dependencies in their canonical runtime" {
     import jaclang;
     import from jaclang.runtime.prepared { load_prepared_module }
