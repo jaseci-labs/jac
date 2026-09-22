@@ -738,9 +738,26 @@ def _load_executable(filename: str, base: str, main: bool) -> types.ModuleType {
     import from jaclang.compiler.driver.application { prepare_application }
     import from jaclang.runtime.prepared { load_prepared_module }
     import from jaclang.project.workspace { workspace_for_path }
+    import from jaclang.project.config { get_config_for_path }
     program = Jac.get_program();
     compiler = program._get_compiler();
-    if compiler.selfhost.is_selfhost(compiler.selfhost.resolve(filename, program)) {
+    compiler_owned = compiler.selfhost.is_selfhost(
+        compiler.selfhost.resolve(filename, program)
+    );
+    config = get_config_for_path(Path(filename));
+    if config is not None
+        and config.project_root is not None
+        and config.dev.jaclang_source {
+        source_root = (
+            config.project_root / config.dev.jaclang_source / 'jaclang'
+        ).resolve();
+        compiler_owned = compiler_owned
+            or (
+                source_root.is_relative_to(config.project_root.resolve())
+                and Path(filename).resolve().is_relative_to(source_root)
+            );
+    }
+    if compiler_owned {
         modules = Jac.jac_import(
             target=os.path.splitext(os.path.basename(filename))[0],
             base_path=base,
