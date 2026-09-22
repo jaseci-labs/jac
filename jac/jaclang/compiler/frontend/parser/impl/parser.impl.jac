@@ -4179,8 +4179,7 @@ impl Parser.parse_try_stmt -> TryStmt {
         awaiting_lb = self.consume_uni(TokenKind.LBRACE);
         awaiting_stmts = self.parse_code_block_stmts();
         awaiting_rb = self.consume_uni(TokenKind.RBRACE);
-        awaiting_kid: list[UniNode] = [];
-        awaiting_kid.extend([awaiting_uni, awaiting_lb]);
+        awaiting_kid: list[UniNode] = [awaiting_uni, awaiting_lb];
         awaiting_kid.extend(awaiting_stmts);
         awaiting_kid.append(awaiting_rb);
         awaiting_body = AwaitingClause(body=awaiting_stmts, kid=awaiting_kid);
@@ -4199,8 +4198,7 @@ impl Parser.parse_try_stmt -> TryStmt {
         fin_lb = self.consume_uni(TokenKind.LBRACE);
         finally_stmts = self.parse_code_block_stmts();
         fin_rb = self.consume_uni(TokenKind.RBRACE);
-        fin_kid: list[UniNode] = [];
-        fin_kid.extend([fin_uni, fin_lb]);
+        fin_kid: list[UniNode] = [fin_uni, fin_lb];
         fin_kid.extend(finally_stmts);
         fin_kid.append(fin_rb);
         finally_body = FinallyStmt(body=finally_stmts, kid=fin_kid);
