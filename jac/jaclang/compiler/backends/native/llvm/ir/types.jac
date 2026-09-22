@@ -639,7 +639,7 @@ class IdentifiedStructType(BaseStructType) {
         return "%{name}".format(name=_wrapname(self.name));
     }
 
-    def get_declaration(self: IdentifiedStructType) -> object {
+    def get_declaration(self: IdentifiedStructType) -> str {
         if self.is_opaque {
             out = "{strrep} = type opaque".format(strrep=str(self));
         } else {

@@ -256,14 +256,22 @@ impl run_child(argv: list[str], env: dict[str, str] | None, allow_fail: bool) ->
     return ok;
 }
 
-impl strip_best_effort(path: str) {
+impl strip_best_effort(path: str, args: list[str] | None = None) {
     before = file_size_or_zero(path);
     if before == 0 {
         return;
     }
+
+    if sys.platform == "darwin" {
+        mapped: list[str] = [];
+        for a in (args or []) {
+            mapped.append("-S" if a == "--strip-debug" else a);
+        }
+        args = mapped;
+    }
     try {
         subprocess.run(
-            ["strip", path],
+            ["strip"] + (args or []) + [path],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
