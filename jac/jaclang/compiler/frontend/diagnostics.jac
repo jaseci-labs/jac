@@ -959,6 +959,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " or in the 'init'/'postinit' of the object that declares it when the"
          " declaration has no initializer."
      ),
+     E1138 = _err(
+         "E1138",
+         Category.IMPORT,
+         "Module '{module}' is not installed, but '{package}' is declared in jac.toml",
+         help="The project declares '{package}' as a dependency, so this import"
+         " is expected to resolve, but no installed module named '{module}' was"
+         " found. Every name imported from it is typed Unknown, so nothing that"
+         " flows from it was type-checked. Run 'jac install' (or install"
+         " '{package}' into the environment jac uses) and check again. An"
+         " import inside a try that catches ImportError stays a warning, since"
+         " that is how an optional dependency is written."
+     ),
      E1139 = _err(
          "E1139",
          Category.IMPORT,

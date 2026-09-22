@@ -777,12 +777,36 @@ test "bug_subscript_index_narrowing" {
 test "bug_subscript_index_narrowing_negative" {
     program = compile_and_check("checker_bug_subscript_key_narrowing_neg.jac");
 
-    assert len(program.errors_had) >= 5 , (
-        "Variable index, range slice, and post-narrow subscript writes "
-        "(items[0]=, items[-1]=, config[\"host\"]=) must all error. "
-        "Expected at least 5 E1099 errors but got "
-        f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
+    # The reads after a range slice and after each subscript write
+    # (items[0]=, items[-1]=, config["host"]=) are re-widened and must error.
+    # The writes themselves are valid: the container accepts `Other`, so a
+    # narrowed read type must not reject them (#9286). The variable-index read
+    # (`items[i].value`) is not flagged yet; before #9286 the count below was
+    # met only because the three writes were wrongly rejected.
+    e1099 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1099"
+    ];
+    lines = sorted(
+        [
+            e.loc.first_line
+            for e in e1099
+            if e.loc
+        ]
     );
+    for expected in [13, 22, 30, 38] {
+        assert expected in lines , (
+            f"Range slice and post-narrow subscript reads must error: no E1099 at "
+            f"line {expected}; got {[str(e) for e in program.errors_had]}"
+        );
+    }
+    write_errors = [
+        e
+        for e in program.errors_had
+        if "Cannot assign Other to Item" in str(e)
+    ];
+    assert not write_errors , f"writes to a narrowed slot were rejected: {write_errors}";
 }
 
 test "bug_cast_union_instance" {

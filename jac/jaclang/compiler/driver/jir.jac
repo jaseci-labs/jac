@@ -53,6 +53,13 @@ glob NATIVE_SECTIONS: tuple[int, ...] = (
      NATIVE_STAMP_MAGIC: bytes = b"JNS1",
      NATIVE_VARIANTS_MAGIC: bytes = b"JNV1";
 
+glob STALE_CODE_SECTIONS: tuple[int, ...] = (
+    SEC_BYTECODE,
+    SEC_INTEROP,
+    SEC_MTIR,
+    SEC_CLIENT
+);
+
 obj NativeStamp {
     has compiler_digest: str = "",
         codegen_identity: str = "",
@@ -1354,37 +1361,53 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
 
 
 def _mergeable_sections(
-    cache_path: Path, key_sections: dict[int, bytes]
-) -> tuple[dict[int, bytes], int] {
+    cache_path: Path,
+    key_sections: dict[int, bytes],
+    incoming: (dict[int, bytes] | None) = None
+) -> tuple[dict[int, bytes], int, bool] {
+    """The sections a writer may carry forward, their flags, and whether the
+    carried Python-lane products are stale. A different environment key keeps
+    only the stamped native sections: each validates its own compile-time
+    inputs when it is read, so nothing carried here can make one look fresh.
+    `incoming` is the provenance the writer brings; a changed compile-time
+    dependency record or interop manifest makes the carried bytecode stale.""";
     try {
         if not cache_path.exists() {
-            return ({}, 0, );
+            return ({}, 0, False);
         }
         data: bytes = cache_path.read_bytes();
         header = parse_header(data[:HEADER_SIZE]);
         if header is None or not header.is_compatible() {
-            return ({}, 0, );
+            return ({}, 0, False);
         }
         magic: any = SECTIONS_MAGIC;
         pos = data.find(magic, HEADER_SIZE);
         if pos < 0 {
-            return ({}, 0, );
+            return ({}, 0, False);
         }
         secs = read_sections(data, pos + len(magic));
         if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY) {
-            return ({}, 0, );
+            return ({}, 0, False);
         }
-        if secs.get(SEC_ENVKEY) == key_sections.get(SEC_ENVKEY) {
-            return (secs, header.flags, );
+        if secs.get(SEC_ENVKEY) != key_sections.get(SEC_ENVKEY) {
+            native_only: dict[int, bytes] = {
+                sec: secs[sec]
+                for sec in NATIVE_SECTIONS
+                if sec in secs
+            };
+            return (native_only, 0, False);
         }
-        native_only: dict[int, bytes] = {
-            sec: secs[sec]
-            for sec in NATIVE_SECTIONS
-            if sec in secs
-        };
-        return (native_only, 0, );
+        stale_code = not ct_deps_fresh(data);
+        if incoming is not None {
+            for kind in [SEC_CTDEPS, SEC_INTEROP] {
+                if kind in incoming and incoming[kind] != secs.get(kind, b"") {
+                    stale_code = True;
+                }
+            }
+        }
+        return (secs, header.flags, stale_code);
     } except Exception {
-        return ({}, 0, );
+        return ({}, 0, False);
     }
 }
 
@@ -1429,6 +1452,12 @@ def write_module_cache(
     extra_sections: (dict[int, bytes] | None) = None,
     flags: int = 0
 ) -> bool {
+    """Merge one producer's sections into the module's JIR under the shared
+    file lock. A full compile (one carrying bytecode) and a Python-lane
+    metadata refresh judge the carried products by the provenance they bring.
+    A native unit persisting only its stamped products leaves the Python
+    lane's interop manifest to the compile that produced the bytecode, and
+    fills it in only when none exists.""";
     resolved_path = str(Path(source_path).resolve());
     if not jir_cacheable_source_path(resolved_path) {
         return False;
@@ -1437,21 +1466,35 @@ def write_module_cache(
         cache_path = get_module_cache_path(resolved_path);
         key_sections = module_jir_key_sections(resolved_path);
         _sweep_once(_module_cache_root(resolved_path));
+        native_write = extra_sections is not None
+            and any(tag in extra_sections for tag in NATIVE_SECTIONS);
+        native_only_write = native_write and bytecode is None;
         with FileLock(cache_path.with_suffix(".lock")) {
-            (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
+            (existing, existing_flags, stale_code) = _mergeable_sections(
+                cache_path, key_sections, None if native_only_write else extra_sections
+            );
             sections: dict[int, bytes] = {};
             sections.update(existing);
+            if stale_code {
+                for kind in STALE_CODE_SECTIONS {
+                    sections.pop(kind, None);
+                }
+            }
             sections.update(key_sections);
             if bytecode is not None {
                 sections[SEC_BYTECODE] = bytecode;
             }
             if extra_sections is not None {
                 for (k, v) in extra_sections.items() {
-                    if k not in NATIVE_SECTIONS {
-                        sections[k] = v;
+                    if k in NATIVE_SECTIONS {
+                        continue;
                     }
+                    if k == SEC_INTEROP and native_only_write and k in sections {
+                        continue;
+                    }
+                    sections[k] = v;
                 }
-                if any(tag in extra_sections for tag in NATIVE_SECTIONS) {
+                if native_write {
                     sections.update(merge_native_sections(existing, extra_sections));
                 }
             }

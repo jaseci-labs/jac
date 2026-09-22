@@ -171,9 +171,9 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 self._record_export(var_name, _symbol, "global", _is_pub);
             }
 
-            if _is_pub and self.module?.gen and var_name.isidentifier() {
-                if var_name not in self.module.gen._exported_symbols {
-                    self.module.gen._exported_symbols.append(var_name);
+            if _is_pub and self.module?.gen and _symbol.isidentifier() {
+                if _symbol not in self.module.gen._exported_symbols {
+                    self.module.gen._exported_symbols.append(_symbol);
                 }
             }
 

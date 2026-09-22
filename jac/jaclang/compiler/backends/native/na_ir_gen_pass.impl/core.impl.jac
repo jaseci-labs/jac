@@ -80,9 +80,11 @@ impl NaIRGenPass.postinit -> None {
         "JacComplex"
     );
     self.complex_struct_type.set_body(ir.DoubleType(), ir.DoubleType());
+    self.type_map["complex"] = self.complex_struct_type.as_pointer();
 
     self._range_struct_type = self.llvm_module.context.get_identified_type("JacRange");
     self.range_struct_type.set_body(ir.IntType(64), ir.IntType(64), ir.IntType(64));
+    self.type_map["range"] = self.range_struct_type.as_pointer();
 
     self._slice_struct_type = self.llvm_module.context.get_identified_type("JacSlice");
     self.slice_struct_type.set_body(ir.IntType(64), ir.IntType(64), ir.IntType(64));
@@ -1462,6 +1464,11 @@ impl NaIRGenPass._forward_declare_imported_ability(
             if _existing is None {
                 self._native_skipped_methods.add(name);
             }
+            if _owner is not None {
+                self._native_skipped_import_origin.setdefault(name, set()).add(
+                    os.path.realpath(_owner.source.file_path)
+                );
+            }
             return;
         }
     }
@@ -1549,6 +1556,9 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                     (mod_name, _supported) = classify_native_import(item);
                     if _supported and mod_name is not None {
                         self._native_stdlib_modules.add(mod_name);
+                        if is_bundled_native_module(mod_name) {
+                            self._native_module_imports.add(mod_name);
+                        }
                     } elif mod_name is not None
                         and is_bundled_native_module(mod_name) {
                         self._native_module_imports.add(mod_name);
@@ -1833,7 +1843,7 @@ impl NaIRGenPass._dispatch_builtin(
     if _emit_fn is None {
         return None;
     }
-    if kwargs and func_name not in ("sorted", ) {
+    if kwargs and func_name not in ("sorted", "min", "max") {
         self.emit(
             E5092,
             node_override=kw_node,

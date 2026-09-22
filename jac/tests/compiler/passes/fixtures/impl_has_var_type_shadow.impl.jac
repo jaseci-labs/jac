@@ -9,5 +9,5 @@ impl TaskManager.add_task(task: str) -> None {
 }
 
 impl TaskManager.get_tasks -> list[any] {
-    return tasks;
+    return self.tasks;
 }

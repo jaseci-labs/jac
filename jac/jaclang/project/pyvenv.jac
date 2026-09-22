@@ -129,6 +129,25 @@ def _bundled_runtime_python -> str | None {
 }
 
 
+def pip_python -> str {
+    import sys;
+    return _bundled_runtime_python() or sys.executable;
+}
+
+
+def pip_env -> dict[str, str] {
+    import os;
+    env = dict(os.environ);
+    if env.get("JAC_STANDALONE") {
+        for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE") {
+            env.pop(key, None);
+        }
+        env["PYTHONNOUSERSITE"] = "1";
+    }
+    return env;
+}
+
+
 def _is_fused_venv(venv_dir: Path) -> bool {
     import sys;
     py = Path(venv_python(venv_dir));

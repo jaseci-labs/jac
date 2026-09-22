@@ -788,9 +788,31 @@ impl OwnershipCheckPass._handled_by_enclosing_try(
         if isinstance(cur, TryStmt) and child in list(cur.body) {
             for handler in cur.excepts {
                 ex = handler.ex_type;
-                caught = ex.sym_name if isinstance(ex, Name) else None;
-                if caught in (exc, "Exception", "BaseException") {
+                if ex is None {
                     return True;
+                }
+                members = list(ex.values) if isinstance(ex, TupleVal) else [ex];
+                for member in members {
+                    caught: str | None = None;
+                    if isinstance(member, Name) {
+                        caught = member.sym_name;
+                    } elif isinstance(member, AtomTrailer)
+                        and isinstance(member.right, Name) {
+                        caught = member.right.sym_name;
+                    }
+                    import from jaclang.compiler.types.types { ClassType }
+                    if isinstance(member, Expr)
+                        and isinstance(member.type, ClassType) {
+                        caught = member.type.shared.class_name;
+                    }
+                    if caught in (exc, "Exception", "BaseException") {
+                        return True;
+                    }
+                    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+                    if caught is not None
+                        and exc in JAC_TYPE_REGISTRY.exception_descendants(caught) {
+                        return True;
+                    }
                 }
             }
         }

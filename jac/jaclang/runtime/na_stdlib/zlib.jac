@@ -34,8 +34,14 @@ def:pub compress(data: bytes, level: int = -1) -> bytes {
 }
 
 
-def:pub decompress(data: bytes) -> bytes {
-    source_len: int = len(data);
+def:pub decompress(data: bytes | bytearray) -> bytes {
+    source: bytes;
+    if isinstance(data, bytearray) {
+        source = bytes(data);
+    } else {
+        source = data;
+    }
+    source_len: int = len(source);
     if source_len == 0 {
         return b"";
     }
@@ -48,7 +54,7 @@ def:pub decompress(data: bytes) -> bytes {
     while True {
         dest = b"\x00" * cap;
         dest_len = cap.to_bytes(8, "little");
-        rc: int = z_uncompress(dest, dest_len, data, source_len);
+        rc: int = z_uncompress(dest, dest_len, source, source_len);
         if rc == Z_OK {
             return dest[0:int.from_bytes(dest_len, "little")];
         }

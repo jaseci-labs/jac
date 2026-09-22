@@ -113,10 +113,12 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
         );
         close_fn = self._get_or_declare_extern("closedir", i32, [i8p]);
         errno_fn = self._get_or_declare_extern(
-            "__error" if darwin else "__errno_location", i32.as_pointer(), []
+            "__error" if darwin else "__errno_location", i64, []
         );
         directory = self.builder.call(open_fn, [path]);
-        errptr = self.builder.call(errno_fn, []);
+        errptr = self.builder.inttoptr(
+            self.builder.call(errno_fn, []), i32.as_pointer()
+        );
         err = self.builder.load(errptr);
         failed = self.builder.icmp_unsigned("==", directory, ir.Constant(i8p, None));
         self._emit_runtime_raise(

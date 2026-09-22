@@ -398,6 +398,24 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              ]
          ),
          (
+             "subscript_guard_assignment",
+             "checker",
+             "checker_subscript_guard_assignment.jac",
+             3,
+             True,
+             []
+         ),
+         (
+             "sum_element_type",
+             "checker",
+             "checker_sum_element_type.jac",
+             1,
+             True,
+             [(0, """
+    Cannot assign list[float] to Iterable[int]
+    """)]
+         ),
+         (
              "kwargs_literal_overload",
              "checker",
              "checker_kwargs_literal_overload.jac",
@@ -5580,4 +5598,40 @@ test "client cleanup returns only warn when ignored" {
     ];
     assert len(ignored) == 2 , str(ignored);
     assert [w.loc.first_line for w in ignored] == [7, 10];
+}
+
+test "a bare name in a method body skips the class scope" {
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_name_skips_class_scope.jac")
+    );
+    errors = [str(e) for e in prog.errors_had];
+    assert not errors , f"Expected no errors, got: {errors}";
+    w2001 = [
+        w
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W2001"
+    ];
+    names = [w.msg for w in w2001];
+    for bound in ["'lookup'", "'Part'", "'T'", "'seed'"] {
+        assert not any(bound in m for m in names) , f"{bound} should resolve: {names}";
+    }
+    helper = [
+        w
+        for w in w2001
+        if "'helper'" in w.msg
+    ];
+    assert len(helper) == 1 , f"Expected one W2001 for 'helper', got: {names}";
+    hint = str(helper[0].help_text or "");
+    assert "self.helper" in hint and "Toolbox" in hint , f"Hint should name the class and `self.helper`: {hint!r}";
+    make_hints = sorted(
+        [
+            str(w.help_text or "")
+            for w in w2001
+            if "'make'" in w.msg
+        ]
+    );
+    assert len(make_hints) == 2 , f"Expected W2001 for 'make' in both methods, got: {names}";
+    assert any("`Toolbox.make`" in h for h in make_hints) , f"static method hint: {make_hints}";
+    assert any("`cls.make`" in h for h in make_hints) , f"class method hint: {make_hints}";
 }

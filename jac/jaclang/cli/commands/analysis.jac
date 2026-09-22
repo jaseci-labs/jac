@@ -53,7 +53,7 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
                  "paths",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Paths to .jac files or directories (none = the workspace gate)"
+                 help="Paths to .jac files or directories (none = the workspace gate, which checks each app as a whole program; a file on its own reads its imports as interfaces only)"
              ),
              Arg.create(
                  "print_errs",
@@ -133,10 +133,13 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
          examples=[
              (
                  "jac check",
-                 "Check every app of the workspace, then the files no app reaches"
+                 "Check every app of the workspace as a whole program, then the files no app reaches"
              ),
              ("jac check --app web", "Check one app of the workspace"),
-             ("jac check myprogram.jac", "Check a single file"),
+             (
+                 "jac check myprogram.jac",
+                 "Check a single file; its imports are read as interfaces only"
+             ),
              (
                  "jac check . --native-coverage",
                  "Rank modules by native compile outcome"

@@ -781,9 +781,11 @@ test "concurrent JIR writers preserve every native variant and bytecode" {
         barrier = Barrier(8);
         original = jir._mergeable_sections;
         def slow_read(
-            path: Path, keys: dict[int, bytes]
-        ) -> tuple[dict[int, bytes], int] {
-            snapshot = original(path, keys);
+            path: Path,
+            keys: dict[int, bytes],
+            incoming: (dict[int, bytes] | None) = None
+        ) -> tuple[dict[int, bytes], int, bool] {
+            snapshot = original(path, keys, incoming);
             time.sleep(0.02);
             return snapshot;
         }

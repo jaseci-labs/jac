@@ -19,6 +19,9 @@ enum DbAction(StrEnum) {
 }
 
 
+class DbEntryError(Exception) {}
+
+
 obj PruneCandidate {
     has record: DbRecord,
         reason: str,
@@ -45,20 +48,46 @@ def _project_data_dir(explicit: str) -> str {
 }
 
 
-def _project_database -> str {
-    import from jaclang.server.session { project_db_name }
-    base = str(Path.cwd());
+def _project_target(entry_file: str) -> tuple[str, (str | None)] {
+    import from jaclang.runtime.graph_utils { get_name }
+    if entry_file {
+        path = Path(entry_file).expanduser().resolve();
+        if not path.is_file() {
+            raise DbEntryError(f"--entry {entry_file}: no such file");
+        }
+        return (str(path.parent), str(path));
+    }
+    cwd = Path.cwd();
     jacs = sorted(
         p
-        for p in Path.cwd().`glob("*.jac")
+        for p in cwd.`glob("*.jac")
         if p.is_file()
     );
-    target = str(jacs[0]) if len(jacs) == 1 else None;
+    if not jacs {
+        return (str(cwd), None);
+    }
+    if len({get_name(target_path=str(p)) for p in jacs}) > 1 {
+        listed = ', '.join(p.name for p in jacs);
+        raise DbEntryError(
+            "cannot tell which app's database to open: this directory holds "
+            f"{len(jacs)} .jac files ({listed}) and jac.toml sets no [project] "
+            f"name; pass the entry file, e.g. `jac db status --entry {jacs[0].name}`"
+        );
+    }
+    return (str(cwd), str(jacs[0]));
+}
+
+
+def _project_database(entry_file: str) -> str {
+    import from jaclang.server.session { project_db_name }
+    (base, target) = _project_target(entry_file);
     return project_db_name(base, target);
 }
 
 
-def _runtime_for(data_dir: str, tcp: bool = False, port: int = 5432) -> any {
+def _runtime_for(
+    data_dir: str, database: str, tcp: bool = False, port: int = 5432
+) -> any {
     import from jaclang.data.dbcatalog { DbKind }
     import from jaclang.data.pgembed { PgRuntime }
     import from jaclang.server.session { scratch_owner_pid }
@@ -67,7 +96,7 @@ def _runtime_for(data_dir: str, tcp: bool = False, port: int = 5432) -> any {
         data_dir=data_dir,
         tcp=tcp,
         port=port,
-        database=_project_database(),
+        database=database,
         owner_path=str(Path.cwd()),
         kind=DbKind.SCRATCH if owner else DbKind.PROJECT,
         owner_pid=owner
@@ -84,6 +113,19 @@ def _catalog_runtime(data_dir: str) -> any {
 def _open_store(rt: any) -> any {
     import from jaclang.data.store { PgStore }
     store = PgStore(conninfo=rt.ensure());
+    store.ensure_schema_once({});
+    return store;
+}
+
+
+def _open_project_store(data_dir: str, entry_file: str) -> any {
+    import from jaclang.data.store { PgStore }
+    import from jaclang.server.session { conninfo_from_url }
+    url = os.environ.get('JAC_DB_URL', '');
+    if not url {
+        return _open_store(_runtime_for(data_dir, _project_database(entry_file)));
+    }
+    store = PgStore(conninfo=conninfo_from_url(url));
     store.ensure_schema_once({});
     return store;
 }
@@ -111,16 +153,26 @@ def _cluster_missing(data_dir: str) -> bool {
 }
 
 
-def _db_status(data_dir: str) -> int {
-    rt = _runtime_for(data_dir);
-    running = rt.is_running();
-    console.print(f"data dir : {data_dir}");
-    console.print(f"running  : {running}");
-    if not running and not os.path.isdir(data_dir) {
-        console.print("state    : no store yet (created on first `jac run`)");
-        return 0;
+def _db_status(data_dir: str, entry_file: str) -> int {
+    url = os.environ.get('JAC_DB_URL', '');
+    if url {
+        import from jaclang.server.session { conninfo_from_url }
+        info = conninfo_from_url(url);
+        console.print(
+            f"database : {info.database} at {info.host}:{info.port} (JAC_DB_URL)"
+        );
+    } else {
+        rt = _runtime_for(data_dir, _project_database(entry_file));
+        running = rt.is_running();
+        console.print(f"data dir : {data_dir}");
+        console.print(f"database : {rt.database}");
+        console.print(f"running  : {running}");
+        if not running and not os.path.isdir(data_dir) {
+            console.print("state    : no store yet (created on first `jac run`)");
+            return 0;
+        }
     }
-    store = _open_store(rt);
+    store = _open_project_store(data_dir, entry_file);
     try {
         store.begin(TxnIsolation.READ_COMMITTED);
         rows = store.rows(
@@ -138,9 +190,8 @@ def _db_status(data_dir: str) -> int {
 }
 
 
-def _db_inspect(data_dir: str) -> int {
-    rt = _runtime_for(data_dir);
-    store = _open_store(rt);
+def _db_inspect(data_dir: str, entry_file: str) -> int {
+    store = _open_project_store(data_dir, entry_file);
     try {
         store.begin(TxnIsolation.READ_COMMITTED);
         rows = store.rows(
@@ -163,13 +214,12 @@ def _db_inspect(data_dir: str) -> int {
 }
 
 
-def _db_sql(data_dir: str, query: str) -> int {
+def _db_sql(data_dir: str, query: str, entry_file: str) -> int {
     if not query {
         console.error("usage: jac db sql \"<statement>\"");
         return 1;
     }
-    rt = _runtime_for(data_dir);
-    store = _open_store(rt);
+    store = _open_project_store(data_dir, entry_file);
     try {
         store.begin(TxnIsolation.READ_COMMITTED);
         for row in store.rows(query, {}) {
@@ -195,7 +245,7 @@ def _db_serve(data_dir: str, port: int) -> int {
     serve_dir = data_dir or os.environ.get('JAC_PGDATA') or '/var/lib/jac/pgdata';
     serve_port = int(os.environ.get('JAC_DB_PORT', str(port)));
     console.print(f"serving postgres from {serve_dir} on :{serve_port}");
-    rt = _runtime_for(serve_dir, tcp=True, port=serve_port);
+    rt = _runtime_for(serve_dir, MAINTENANCE_DB, tcp=True, port=serve_port);
     return rt.serve();
 }
 
@@ -403,7 +453,8 @@ impl db(
     data_dir: str = "",
     port: int = 5432,
     yes: bool = False,
-    empty: bool = False
+    empty: bool = False,
+    entry_file: str = ""
 ) -> int {
     verb = _parse_action(action);
     if verb is None {
@@ -417,14 +468,19 @@ impl db(
         return _db_fetch();
     }
     dd = _project_data_dir(data_dir);
-    if verb == DbAction.STATUS {
-        return _db_status(dd);
-    }
-    if verb == DbAction.INSPECT {
-        return _db_inspect(dd);
-    }
-    if verb == DbAction.SQL {
-        return _db_sql(dd, query);
+    try {
+        if verb == DbAction.STATUS {
+            return _db_status(dd, entry_file);
+        }
+        if verb == DbAction.INSPECT {
+            return _db_inspect(dd, entry_file);
+        }
+        if verb == DbAction.SQL {
+            return _db_sql(dd, query, entry_file);
+        }
+    } except DbEntryError as err {
+        console.error(str(err));
+        return 1;
     }
     if verb == DbAction.LIST {
         return _db_list(dd);
@@ -435,7 +491,7 @@ impl db(
     if verb == DbAction.PRUNE {
         return _db_prune(dd, yes, empty);
     }
-    rt = _runtime_for(dd);
+    rt = _catalog_runtime(dd);
     if rt.is_running() {
         rt.stop();
         console.print("stopped");

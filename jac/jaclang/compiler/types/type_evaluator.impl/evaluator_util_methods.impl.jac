@@ -955,6 +955,58 @@ impl TypeEvaluator._get_enclosing_method(nd: UniNode) -> Ability | None {
     return None;
 }
 
+impl TypeEvaluator._in_function_body(nd: UniNode) -> bool {
+    child: UniNode = nd;
+    cur = nd.parent;
+    while cur is not None {
+        if isinstance(cur, (Archetype, Enum)) {
+            return False;
+        }
+        if isinstance(cur, Ability) {
+            if child is not cur.signature
+                and child is not cur.name_ref
+                and child not in (cur.decorators or []) {
+                return True;
+            }
+        } elif isinstance(cur, ImplDef) {
+            if child is not cur.spec
+                and child not in (cur.decorators or [])
+                and child not in (cur.target or []) {
+                return True;
+            }
+        } elif isinstance(cur, LambdaExpr) {
+            if child is not cur.signature {
+                return True;
+            }
+        }
+        child = cur;
+        cur = cur.parent;
+    }
+    return False;
+}
+
+impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool {
+    def enclosing_fn(n: UniNode) -> (UniNode | None) {
+        cur = n.parent;
+        while cur is not None and not isinstance(cur, (Ability, ImplDef, LambdaExpr)) {
+            cur = cur.parent;
+        }
+        return cur;
+    }
+    fn = enclosing_fn(nd);
+    if fn is None {
+        return False;
+    }
+    for use in symbol.uses {
+        if isinstance(use, Name)
+            and use.expr_ctx == ExprCtx.STORE
+            and enclosing_fn(use) is fn {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl TypeEvaluator._get_enclosing_return_scope(
     nd: UniNode
 ) -> Ability | LambdaExpr | None {

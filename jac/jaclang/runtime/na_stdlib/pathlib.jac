@@ -1,5 +1,6 @@
 import os;
 import from _directory_native { directory_names }
+import from _file_native { read_file_bytes }
 
 def _root_of(p: str) -> str {
     if p.startswith("//") and not p.startswith("///") {
@@ -91,6 +92,10 @@ obj:pub Path {
 
     def is_dir -> bool {
         return os.path.isdir(self._p);
+    }
+
+    def read_bytes -> bytes {
+        return read_file_bytes(self._p);
     }
 
     def iterdir -> Iterator[Path] {

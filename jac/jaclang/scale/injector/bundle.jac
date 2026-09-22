@@ -867,15 +867,7 @@ def seal_timeout_setting(project_dir: str) -> int {
 }
 
 
-def _pod_wheel_platform(pod_arch: str) -> str {
-    if not pod_arch {
-        return "";
-    }
-    return f"manylinux_2_36_{pod_arch}";
-}
-
-
-def _vendor_stage(stage: Path, seal_binary: bytes, platform_tag: str = "") {
+def _vendor_stage(stage: Path, seal_binary: bytes, pod_arch: str = "") {
     jac_path = stage.parent / ".seal-jac";
     jac_path.write_bytes(seal_binary);
     jac_path.chmod(0o755);
@@ -887,8 +879,12 @@ def _vendor_stage(stage: Path, seal_binary: bytes, platform_tag: str = "") {
         Path(str(__file__)).parent.parent / "utils" / "vendor_wheels.jac"
     );
     cmd = [str(jac_path), "run", str(script), str(stage)];
-    if platform_tag {
-        cmd.append(platform_tag);
+    if pod_arch {
+        import from jaclang.scale.utils.vendor_wheels { pod_wheel_target }
+        target = pod_wheel_target(pod_arch);
+        if target is not None {
+            cmd.append(target.platform_tag());
+        }
     }
     try {
         result = subprocess.run(
@@ -1064,7 +1060,7 @@ def pack_jab(
         (fat, fat_explicit) = fat_bundle_setting(project_dir);
         if fat {
             try {
-                _vendor_stage(staged, seal_binary, _pod_wheel_platform(pod_arch));
+                _vendor_stage(staged, seal_binary, pod_arch);
             } except Exception as exc {
                 if fat_explicit {
                     raise;

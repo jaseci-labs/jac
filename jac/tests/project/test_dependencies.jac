@@ -22,6 +22,7 @@ import from jaclang.project.pyvenv {
     make_git_spec,
     make_pip_spec,
     pip_command,
+    pip_python,
     remove_venv_from_path,
     summarize_pip_failure,
     _bundled_runtime_python,
@@ -248,6 +249,21 @@ test "bundled runtime python is None outside standalone" {
     with patch.dict(os.environ, {}, clear=False) {
         os.environ.pop("JAC_STANDALONE", None);
         assert _bundled_runtime_python() is None;
+    }
+}
+
+test "pip runs on the bundled CPython in a sealed runtime, else sys.executable" {
+    with patch.dict(os.environ, {}, clear=False) {
+        os.environ.pop("JAC_STANDALONE", None);
+        assert pip_python() == sys.executable;
+    }
+    with patch(
+        "jaclang.project.pyvenv._bundled_runtime_python",
+        return_value="/fake/rt/python/bin/python3.14"
+    ) {
+        assert pip_python() == "/fake/rt/python/bin/python3.14";
+        assert pip_command(pip_python(), ["wheel"])
+            == ["/fake/rt/python/bin/python3.14", "-m", "pip", "wheel"];
     }
 }
 
@@ -2189,5 +2205,28 @@ test "install_specs honors the sealed-venv marker" {
             shutil.rmtree(tmp, ignore_errors=True);
             reset_config();
         }
+    }
+}
+
+
+test "standalone pip ignores inherited Python paths and user site" {
+    import from jaclang.project.pyvenv { pip_env }
+    inherited = {
+        "JAC_STANDALONE": "1",
+        "PYTHONPATH": "/foreign/site",
+        "PYTHONHOME": "/foreign/python",
+        "PYTHONUSERBASE": "/foreign/user",
+        "PIP_INDEX_URL": "https://example.invalid/simple"
+    };
+    with patch.dict(os.environ, inherited, clear=True) {
+        env = pip_env();
+        assert "PYTHONPATH" not in env;
+        assert "PYTHONHOME" not in env;
+        assert "PYTHONUSERBASE" not in env;
+        assert env["PYTHONNOUSERSITE"] == "1";
+        assert env["PIP_INDEX_URL"] == inherited["PIP_INDEX_URL"];
+        assert os.environ["PYTHONPATH"] == "/foreign/site";
+        os.environ.pop("JAC_STANDALONE");
+        assert pip_env()["PYTHONPATH"] == "/foreign/site";
     }
 }

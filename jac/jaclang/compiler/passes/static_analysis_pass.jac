@@ -280,6 +280,7 @@ walker StaticAnalysisPass {
     def _check_unused_symbols(scope: UniScopeNode) -> None;
     def _check_undefined_names(mod: Module) -> None;
     def _literal_case_suggestion(name: str) -> (str | None);
+    def _enclosing_class_member(name_nd: Name) -> (str | None);
     def _osp_shape_position(name_nd: Name) -> (str | None);
     def _native_type_position(name_nd: Name) -> (str | None);
     def _check_unreachable_code(mod: Module) -> None;
