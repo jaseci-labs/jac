@@ -1005,6 +1005,7 @@ walker NaIRGenPass {
     def _ret_tuple_hints(fname: str, ret_tuple: any) -> (list[str | None] | None);
     def _ensure_emitters -> dict[str, object];
     def _primitive_method_names(type_name: str) -> set[str];
+    def _primitive_method_takes_kwargs(type_name: str, method_name: str) -> bool;
     def _dispatch_primitive_method(
         type_name: str,
         method_name: str,
