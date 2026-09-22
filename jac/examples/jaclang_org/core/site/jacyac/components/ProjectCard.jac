@@ -7,25 +7,6 @@ import from "lucide-react" {
     AlertTriangle,
     FolderGit2
 }
-import from core.site.ui.button { Button }
-import from core.site.ui.badge { Badge }
-import from core.site.ui.avatar { Avatar, AvatarImage, AvatarFallback }
-import from core.site.ui.alert_dialog {
-    AlertDialog,
-    AlertDialogTrigger,
-    AlertDialogContent,
-    AlertDialogHeader,
-    AlertDialogFooter,
-    AlertDialogTitle,
-    AlertDialogDescription,
-    AlertDialogAction,
-    AlertDialogCancel
-}
-import from core.utils { cn }
-import from core.leaderboard.format { belt_class, belt_label, time_ago }
-import from core.social_graph { Project }
-import from core.jacyac.identity { avatar_of, project_error_message }
-import from core.jacyac.format { handle_of, initial_of }
 
 def:pub ProjectCard(
     project: Project,

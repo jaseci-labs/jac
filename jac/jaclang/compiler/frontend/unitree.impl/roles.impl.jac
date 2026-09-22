@@ -30,6 +30,7 @@ import from jaclang.compiler.frontend.roles {
     ConditionalRole,
     ConnAssignRole,
     ConnTypeRole,
+    ConsumersRole,
     CountByRole,
     CtrlRole,
     DecoratorsRole,
@@ -77,14 +78,18 @@ import from jaclang.compiler.frontend.roles {
     ParamsRole,
     PartsRole,
     PathRole,
+    PatternPathRole,
     PatternRole,
     PatternsRole,
     PosonlyParamsRole,
+    ProviderRole,
     ReturnTypeRole,
     RightRole,
     RightsRole,
+    ScopeRole,
     SignatureRole,
     SlicesRole,
+    SourcesRole,
     SpecRole,
     SrcEndpointRole,
     StartRole,
@@ -92,6 +97,7 @@ import from jaclang.compiler.frontend.roles {
     StopRole,
     StringsRole,
     TargetRole,
+    TargetsRole,
     TgtEndpointRole,
     TokRole,
     TypeCtxRole,
@@ -327,7 +333,7 @@ impl Import.from_loc.getter -> (ModulePath | None) {
 }
 
 impl Import.items.getter -> Sequence[(ModuleItem | ModulePath)] {
-    return [self->:ItemsRole:->];
+    return ([self->:ItemsRole:->]) as Sequence[(ModuleItem | ModulePath)];
 }
 
 impl Import.clib_decls.getter -> (Sequence[UniNode] | None) {
@@ -366,6 +372,84 @@ impl ModuleItem.alias.getter -> (Name | None) {
 }
 
 impl ModuleItem.__repr__ -> str {
+    return f"{type(self).__name__}";
+}
+
+impl ImplImport.scope.getter -> (ModulePath | None) {
+    found = [self->:ScopeRole:->];
+    return found[0] if found else None;
+}
+
+impl ImplImport.body.getter -> Sequence[ImportWire | ImportRule] {
+    return ([self->:BodyRole:->]) as Sequence[ImportWire | ImportRule];
+}
+
+impl ImplImport.__repr__ -> str {
+    return f"{type(self).__name__}";
+}
+
+impl ImportWire.provider.getter -> ModulePath {
+    return ([self->:ProviderRole:->][0]) as ModulePath;
+}
+
+impl ImportWire.consumers.getter -> Sequence[ModulePath] {
+    return ([self->:ConsumersRole:->]) as Sequence[ModulePath];
+}
+
+impl ImportWire.items.getter -> Sequence[WireItem] {
+    return ([self->:ItemsRole:->]) as Sequence[WireItem];
+}
+
+impl ImportWire.__repr__ -> str {
+    return f"{type(self).__name__}";
+}
+
+impl ImportRule.name.getter -> Name {
+    return ([self->:NameRole:->][0]) as Name;
+}
+
+impl ImportRule.sources.getter -> Sequence[ModulePattern] {
+    return ([self->:SourcesRole:->]) as Sequence[ModulePattern];
+}
+
+impl ImportRule.targets.getter -> Sequence[ModulePattern] {
+    return ([self->:TargetsRole:->]) as Sequence[ModulePattern];
+}
+
+impl ImportRule.items.getter -> Sequence[WireItem] {
+    return ([self->:ItemsRole:->]) as Sequence[WireItem];
+}
+
+impl ImportRule.__repr__ -> str {
+    return f"{type(self).__name__}";
+}
+
+impl ModulePattern.path.getter -> (ModulePath | None) {
+    found = [self->:PatternPathRole:->];
+    return found[0] if found else None;
+}
+
+impl ModulePattern.__repr__ -> str {
+    return f"{type(self).__name__}";
+}
+
+impl WireItem.init(
+    *, name: (Name | Token), alias: (Name | None), kid: Sequence[UniNode] = []
+) -> None {
+    self._link(kid, {NameRole: name, AliasRole: alias});
+    self.postinit();
+}
+
+impl WireItem.name.getter -> (Name | Token) {
+    return ([self->:NameRole:->][0]) as (Name | Token);
+}
+
+impl WireItem.alias.getter -> (Name | None) {
+    found = [self->:AliasRole:->];
+    return (found[0] if found else None) as (Name | None);
+}
+
+impl WireItem.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
@@ -1903,6 +1987,71 @@ impl ModuleItem.init(
     *, name: (Name | Token), alias: (Name | None), kid: Sequence[UniNode] = []
 ) -> None {
     self._link(kid, {NameRole: name, AliasRole: alias});
+    self.postinit();
+}
+
+impl ImplImport.init(
+    *,
+    doc: (String | None) = None,
+    scope: (ModulePath | None),
+    body: Sequence[ImportWire | ImportRule],
+    kid: Sequence[UniNode] = []
+) -> None {
+    self._link(kid, {DocRole: doc, ScopeRole: scope, BodyRole: body});
+    self.postinit();
+}
+
+impl ImportWire.init(
+    *,
+    provider: ModulePath,
+    consumers: Sequence[ModulePath],
+    items: (Sequence[WireItem] | None),
+    is_absorb: bool = False,
+    is_typed: bool = False,
+    is_comptime: bool = False,
+    kid: Sequence[UniNode] = []
+) -> None {
+    self.is_absorb = is_absorb;
+    self.is_typed = is_typed;
+    self.is_comptime = is_comptime;
+    self.is_module_form = items is None;
+    self._link(
+        kid, {ProviderRole: provider, ConsumersRole: consumers, ItemsRole: items or []}
+    );
+    self.postinit();
+}
+
+impl ImportRule.init(
+    *,
+    name: Name,
+    sources: Sequence[ModulePattern],
+    targets: Sequence[ModulePattern],
+    items: (Sequence[WireItem] | None),
+    kid: Sequence[UniNode] = []
+) -> None {
+    self.is_open = items is None;
+    self._link(
+        kid,
+        {
+            NameRole: name,
+            SourcesRole: sources,
+            TargetsRole: targets,
+            ItemsRole: items or []
+        }
+    );
+    self.postinit();
+}
+
+impl ModulePattern.init(
+    *,
+    path: (ModulePath | None),
+    is_glob: bool = False,
+    is_any: bool = False,
+    kid: Sequence[UniNode] = []
+) -> None {
+    self.is_glob = is_glob;
+    self.is_any = is_any;
+    self._link(kid, {PatternPathRole: path});
     self.postinit();
 }
 

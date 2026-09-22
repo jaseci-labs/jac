@@ -1804,6 +1804,90 @@ impl ModuleItem.resolve_relative_path -> str {
     return self.from_mod_path.resolve_relative_path(target_item=item_name);
 }
 
+impl ImplImport.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl ImplImport.scope_prefix.getter -> str {
+    sc = self.scope;
+    return sc.dot_path_str if sc is not None else "";
+}
+
+impl ImportWire.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl ImportWire.block.getter -> ImplImport {
+    if (not self.parent or not isinstance(self.parent, ImplImport)) {
+        raise ValueError('ImplImport parent not found. Not Possible.');
+    }
+    return self.parent;
+}
+
+impl ImportWire.provider_path.getter -> str {
+    return ModulePattern.join_scope(
+        self.block.scope_prefix, self.provider.dot_path_str
+    );
+}
+
+impl ImportWire.consumer_paths.getter -> list[str] {
+    return [c.dot_path_str for c in self.consumers];
+}
+
+impl ImportRule.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl ImportRule.block.getter -> ImplImport {
+    if (not self.parent or not isinstance(self.parent, ImplImport)) {
+        raise ValueError('ImplImport parent not found. Not Possible.');
+    }
+    return self.parent;
+}
+
+impl ImportRule.item_names.getter -> set[str] {
+    return set() if self.is_open else {i.name.value for i in self.items};
+}
+
+impl ModulePattern.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl ModulePattern.dotted.getter -> str {
+    p = self.path;
+    return p.dot_path_str if p is not None else "";
+}
+
+impl ModulePattern.join_scope(prefix: str, name: str) -> str {
+    if not prefix {
+        return name;
+    }
+    if not name {
+        return prefix;
+    }
+    return prefix + "." + name;
+}
+
+impl WireItem.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl WireItem.binding.getter -> str {
+    al = self.alias;
+    return al.value if al is not None else self.name.value;
+}
+
+impl ModulePattern.matches(module: str, prefix: str = "") -> bool {
+    if self.is_any {
+        return True;
+    }
+    base = ModulePattern.join_scope(prefix, self.dotted);
+    if self.is_glob {
+        return (not base) or module == base or module.startswith(base + ".");
+    }
+    return module == base;
+}
+
 impl Archetype.postinit -> None {
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(

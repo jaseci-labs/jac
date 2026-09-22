@@ -1,9 +1,4 @@
 import from "lucide-react" { AlertCircle }
-import from core.site.ui.button { Button }
-import from core.site.ui.input { Input }
-import from core.site.ui.textarea { Textarea }
-import from core.site.ui.field { Field, FieldLabel }
-import from core.social_graph { Profile }
 
 def:pub ProfileEditor(
     profile: Profile,

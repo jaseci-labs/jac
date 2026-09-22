@@ -953,6 +953,117 @@ node ModuleItem(UniNode) {
     def __repr__ -> str;
 }
 
+node ImplImport(ElementStmt) {
+    has scope: (ModulePath | None) { getter; }
+    has body: Sequence[ImportWire | ImportRule] { getter; }
+
+    def init(
+        *,
+        doc: (String | None) = None,
+        scope: (ModulePath | None),
+        body: Sequence[ImportWire | ImportRule],
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has scope_prefix: str { getter; }
+
+    def __repr__ -> str;
+}
+
+node ImportWire(UniNode) {
+    has is_absorb: bool = False,
+        is_typed: bool = False,
+        is_comptime: bool = False,
+        is_module_form: bool = False;
+
+    has provider: ModulePath { getter; }
+    has consumers: Sequence[ModulePath] { getter; }
+    has items: Sequence[WireItem] { getter; }
+
+    def init(
+        *,
+        provider: ModulePath,
+        consumers: Sequence[ModulePath],
+        items: (Sequence[WireItem] | None),
+        is_absorb: bool = False,
+        is_typed: bool = False,
+        is_comptime: bool = False,
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has block: ImplImport { getter; }
+    has provider_path: str { getter; }
+    has consumer_paths: list[str] { getter; }
+
+    def __repr__ -> str;
+}
+
+node ImportRule(UniNode) {
+    has is_open: bool = False;
+    has name: Name { getter; }
+    has sources: Sequence[ModulePattern] { getter; }
+    has targets: Sequence[ModulePattern] { getter; }
+    has items: Sequence[WireItem] { getter; }
+
+    def init(
+        *,
+        name: Name,
+        sources: Sequence[ModulePattern],
+        targets: Sequence[ModulePattern],
+        items: (Sequence[WireItem] | None),
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has block: ImplImport { getter; }
+    has item_names: set[str] { getter; }
+
+    def __repr__ -> str;
+}
+
+node ModulePattern(UniNode) {
+    has is_glob: bool = False,
+        is_any: bool = False;
+
+    has path: (ModulePath | None) { getter; }
+
+    def init(
+        *,
+        path: (ModulePath | None),
+        is_glob: bool = False,
+        is_any: bool = False,
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has dotted: str { getter; }
+
+    static def join_scope(prefix: str, name: str) -> str;
+    def matches(module: str, prefix: str = "") -> bool;
+    def __repr__ -> str;
+}
+
+node WireItem(UniNode) {
+    has name: (Name | Token) { getter; }
+    has alias: (Name | None) { getter; }
+
+    def init(
+        *, name: (Name | Token), alias: (Name | None), kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has binding: str { getter; }
+
+    def __repr__ -> str;
+}
+
 node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
     has name: Name { getter; }
     has arch_type: Token { getter; }

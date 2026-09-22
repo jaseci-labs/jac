@@ -1,6 +1,3 @@
-import from core.social_graph { Project }
-import from core.jacyac.state { JacYacState }
-import from core.jacyac.github.repos { GithubRepo, github_repositories }
 import from "@jac/runtime" { __getLocalStorage }
 
 obj Scores {

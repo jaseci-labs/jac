@@ -38,7 +38,10 @@ import type from jaclang.compiler.frontend.unitree {
     HasVar,
     IfElseExpr,
     ImplDef,
+    ImplImport,
     Import,
+    ImportRule,
+    ImportWire,
     IndexSlice,
     InnerCompr,
     IterForStmt,
@@ -57,6 +60,7 @@ import type from jaclang.compiler.frontend.unitree {
     Module,
     ModuleItem,
     ModulePath,
+    ModulePattern,
     MultiString,
     Name,
     NameAtom,
@@ -75,7 +79,8 @@ import type from jaclang.compiler.frontend.unitree {
     TypedCtxBlock,
     UnaryExpr,
     UniNode,
-    VisitStmt
+    VisitStmt,
+    WireItem
 }
 
 edge Role: UniNode --> UniNode {}
@@ -140,6 +145,8 @@ edge ConnAssignRole(Role): ConnectOp --> AssignCompr {}
 
 edge ConnTypeRole(Role): ConnectOp --> Expr {}
 
+edge ConsumersRole(Role): ImportWire --> ModulePath {}
+
 edge CountByRole(Role): IterForStmt --> Assignment {}
 
 edge CtrlRole(Role): CtrlStmt --> Token {}
@@ -194,7 +201,9 @@ edge HintRole(Role): Import --> SubTag[Token] {}
 
 edge InsertLocRole(Role): VisitStmt --> Expr {}
 
-edge ItemsRole(Role): Import --> ModuleItem | ModulePath {}
+edge ItemsRole(Role): Import | ImportRule | ImportWire --> ModuleItem
+    | ModulePath
+    | WireItem {}
 
 edge IterRole(Role): IterForStmt --> Assignment {}
 
@@ -234,11 +243,15 @@ edge PartsRole(Role): UniNode --> FormattedValue | Token {}
 
 edge PathRole(Role): ModulePath --> Name | String {}
 
+edge PatternPathRole(Role): ModulePattern --> ModulePath {}
+
 edge PatternRole(Role): UniNode --> MatchPattern {}
 
 edge PatternsRole(Role): MatchOr --> MatchPattern {}
 
 edge PosonlyParamsRole(Role): FuncSignature --> ParamVar {}
+
+edge ProviderRole(Role): ImportWire --> ModulePath {}
 
 edge ReturnTypeRole(Role): FuncSignature --> Expr {}
 
@@ -246,9 +259,13 @@ edge RightRole(Role): UniNode --> Expr {}
 
 edge RightsRole(Role): CompareExpr --> Expr {}
 
+edge ScopeRole(Role): ImplImport --> ModulePath {}
+
 edge SignatureRole(Role): UniNode --> EventSignature | FuncSignature {}
 
 edge SlicesRole(Role): IndexSlice --> Slice {}
+
+edge SourcesRole(Role): ImportRule --> ModulePattern {}
 
 edge SpecRole(Role): ImplDef --> EventSignature | Expr | FuncSignature {}
 
@@ -263,6 +280,8 @@ edge StopRole(Role): Slice --> Expr {}
 edge StringsRole(Role): MultiString --> FString | String {}
 
 edge TargetRole(Role): UniNode --> Expr {}
+
+edge TargetsRole(Role): ImportRule --> ModulePattern {}
 
 edge TgtEndpointRole(Role): Archetype --> Expr {}
 

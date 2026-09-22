@@ -66,7 +66,10 @@ import from jaclang.compiler.frontend.unitree {
     IfElseExpr,
     IfStmt,
     ImplDef,
+    ImplImport,
     Import,
+    ImportRule,
+    ImportWire,
     InForStmt,
     IndexSlice,
     InnerCompr,
@@ -104,6 +107,7 @@ import from jaclang.compiler.frontend.unitree {
     ModuleCode,
     ModuleItem,
     ModulePath,
+    ModulePattern,
     MultiString,
     Name,
     NameAtom,
@@ -135,6 +139,7 @@ import from jaclang.compiler.frontend.unitree {
     UnaryExpr,
     UniNode,
     VisitStmt,
+    WireItem,
     WhileStmt,
     WithStmt,
     YieldExpr,
@@ -598,6 +603,14 @@ obj Parser {
     def _is_impl_enum_body -> bool;
     def parse_impl_target_name -> NameAtom;
     def parse_impl_enum_body -> tuple[(list[Assignment], list[Token])];
+    def parse_impl_import -> ImplImport;
+    def parse_import_rule -> ImportRule | None;
+    def parse_import_wire -> ImportWire | None;
+    def parse_module_pattern -> ModulePattern;
+    def parse_wire_module_path(context: str) -> ModulePath;
+    def parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireItem];
+    def _expect_wire_arrow(kid: list[UniNode]) -> bool;
+    def _skip_wiring_stmt -> None;
     def parse_sem_def -> SemDef;
     def parse_type_alias -> TypeAlias;
     def parse_type_params -> tuple[(list[TypeParam], list[Token])];

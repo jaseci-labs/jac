@@ -28,7 +28,8 @@ def cache_scope(options: CompileOptions | None = None) -> Iterator[None] {
 @contextmanager
 def compilation_scope(options: CompileOptions | None = None) -> Iterator[None] {
     import from jaclang.project.workspace { workspace_scope }
-    with cache_scope(options), workspace_scope() {
+    import from jaclang.compiler.driver.wiring { wiring_scope }
+    with cache_scope(options), workspace_scope(), wiring_scope() {
         yield ;
     }
 }

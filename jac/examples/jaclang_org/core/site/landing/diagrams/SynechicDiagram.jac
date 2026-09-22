@@ -1,4 +1,3 @@
-import from .motion { view_once }
 import from "motion/react" { motion }
 
 glob MPath: any = motion.path,

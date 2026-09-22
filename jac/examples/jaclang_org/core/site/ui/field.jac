@@ -1,8 +1,5 @@
 import from "react" { useMemo }
 import from "class-variance-authority" { cva }
-import from ....core.utils { cn }
-import from .label { Label }
-import from .separator { Separator }
 
 glob _fieldVariants: any = cva(
          "data-[invalid=true]:text-destructive gap-2 data-[invalid=true]:text-destructive gap-2 group/field flex w-full",

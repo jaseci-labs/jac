@@ -1,6 +1,3 @@
-import from core.github { parse_repo_url }
-import from core.leaderboard.scoring { RepoFeatures, ScoreBreakdown }
-
 node BoardHub {
     has created_at: str = "";
 }

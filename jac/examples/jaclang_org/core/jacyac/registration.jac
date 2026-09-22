@@ -1,7 +1,6 @@
 import from "@jac/runtime" { __getApiBaseUrl }
 import from "@noble/hashes/sha2.js" { sha256 }
 import from "@noble/hashes/utils.js" { utf8ToBytes, bytesToHex }
-import from core.async_utils { sleep }
 
 async def:pub register_with_challenge(username: str, password: str) -> str {
     base = __getApiBaseUrl();

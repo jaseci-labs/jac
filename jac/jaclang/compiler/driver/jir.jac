@@ -732,6 +732,8 @@ def compute_module_key(source_path: str) -> str {
         h.update(rel.encode());
         h.update(digest.encode());
     }
+    import from jaclang.compiler.driver.wiring { wiring_digest_for }
+    h.update(wiring_digest_for(source_path).encode());
     return h.hexdigest();
 }
 

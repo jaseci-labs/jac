@@ -1,6 +1,5 @@
 import from mermaid { default as mermaid }
 import type from mermaid { Mermaid }
-import from core.site.ui.CodeBlock { CodeLines }
 
 glob _mm: Mermaid = mermaid as Mermaid,
      _mm_ready: bool = False,

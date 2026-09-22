@@ -1,5 +1,3 @@
-import from core.jacyac.github.auth { github_callback_mode, complete_native_github }
-import from core.jacyac.github.login { complete_web_login }
 import from "@jac/runtime" { Link }
 
 def:pub GithubCallback -> JsxElement {

@@ -1,12 +1,4 @@
 import from "@jac/mobui" { View, Text, Pressable, ScrollView }
-import from core.social_graph { Profile, TrendingTag }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from core.jacyac.identity { name_of }
-import from core.jacyac.format { handle_of }
-import from core.jacyac.native.icon { Icon }
-import from core.jacyac.native.components.Avatar { Avatar }
-import from core.jacyac.native.components.StatusView { EmptyState, LoadingRows }
 
 def:pub ExploreScreen(
     avatars: dict[str, str],

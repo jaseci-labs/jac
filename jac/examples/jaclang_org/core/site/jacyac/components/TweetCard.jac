@@ -1,28 +1,4 @@
 import from "lucide-react" { Heart, MessageCircle, Trash2, Repeat2, Send }
-import from core.site.ui.avatar { Avatar, AvatarImage, AvatarFallback }
-import from core.site.ui.button { Button }
-import from core.site.ui.input { Input }
-import from core.site.ui.tooltip {
-    TooltipProvider,
-    Tooltip,
-    TooltipTrigger,
-    TooltipContent
-}
-import from core.site.ui.alert_dialog {
-    AlertDialog,
-    AlertDialogTrigger,
-    AlertDialogContent,
-    AlertDialogHeader,
-    AlertDialogFooter,
-    AlertDialogTitle,
-    AlertDialogDescription,
-    AlertDialogAction,
-    AlertDialogCancel
-}
-import from core.utils { cn }
-import from core.social_graph { Tweet }
-import from core.jacyac.identity { avatar_of }
-import from core.jacyac.format { handle_of, initial_of }
 
 def:pub TweetCard(
     tweet: Tweet,

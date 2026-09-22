@@ -1,7 +1,4 @@
-import from core.social_graph { create_tweet, load_feed }
-import from core.jacyac.limits { PostingDenied }
 import from jaclang.server.bridge { BridgeError }
-import from .common { EXIT_OK, EXIT_USAGE, EXIT_REJECTED, explain_bridge_error, warn }
 
 obj FeedLine {
     has author: str = "",

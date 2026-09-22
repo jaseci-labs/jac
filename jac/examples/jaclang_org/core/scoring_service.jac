@@ -1,15 +1,4 @@
 import os;
-import from core.ai { optional_review }
-import from core.github {
-    RepoMeta,
-    code_breakdown,
-    download_tarball,
-    head_sha,
-    repo_meta,
-    text_of,
-    untar
-}
-import from core.leaderboard.scoring { RepoAnalysis, ScoreBreakdown, analyze, score }
 
 glob USER_AGENT: str = "jaclang.org ninja leaderboard",
      MAX_TAR_BYTES: int = 52428800,

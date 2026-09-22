@@ -1,5 +1,3 @@
-import from core.jacyac.format { handle_of }
-
 glob PROJECT_ERRORS: dict[str, str] = {
          "bad_url": "That is not a GitHub repository. Paste a github.com/owner/repo link.",
          "duplicate": "That repository is already one of your projects.",

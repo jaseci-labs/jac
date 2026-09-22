@@ -1,6 +1,3 @@
-import from core.site.ui.badge { Badge }
-import from core.site.ui.button { Button }
-import from .Reveal { Reveal }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { GameController01Icon, PlayIcon }
 
