@@ -370,6 +370,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             "sret": sysv_sret
         };
         self.func_symtab[name] = sysv_func;
+        self.clib_extern_fns[name] = sysv_func;
         self.has_native_code = True;
         return;
     }
@@ -401,6 +402,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self.func_symtab[name] = func;
+    self.clib_extern_fns[name] = func;
     self.has_native_code = True;
 }
 
@@ -422,7 +424,10 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     }
 
     if name in self.clib_extern_names {
-        return;
+        _cb = ModuleFacts.unwrap_body(nd);
+        if _cb is None or len(_cb) == 0 {
+            return;
+        }
     }
 
     _pre_viols = self._capability_demotions.get(id(nd));

@@ -374,32 +374,16 @@ impl NativeBoolEmitter.emit_op_xor(
 impl NativeComplexEmitter._load_parts(
     self: NativeComplexEmitter, ctx: NativeEmitCtx, val: ir.Value
 ) -> (tuple[ir.Value, ir.Value] | None) {
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    z0 = ir.Constant(i32, 0);
-    z1 = ir.Constant(i32, 1);
-    r = b.load(b.gep(val, [z0, z0], name="cx.rp"), name="cx.r");
-    im = b.load(b.gep(val, [z0, z1], name="cx.ip"), name="cx.i");
-    return (r, im);
+    return ctx.pass_ref._load_complex_parts(val);
 }
 
 impl NativeComplexEmitter._make_complex(
     self: NativeComplexEmitter, ctx: NativeEmitCtx, real: ir.Value, imag: ir.Value
 ) -> ir.Value {
     p = ctx.pass_ref;
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    z0 = ir.Constant(i32, 0);
-    z1 = ir.Constant(i32, 1);
-    ctype = p.complex_struct_type;
     p._set_rc_ctx("complex_new", "");
-    raw = b.call(p.rc_alloc_fn, [ir.Constant(i64, 16)], name="cx.raw");
+    ptr = p._emit_complex_value(real, imag);
     p._clear_rc_ctx();
-    ptr = b.bitcast(raw, ctype.as_pointer(), name="cx.ptr");
-    b.store(real, b.gep(ptr, [z0, z0], name="cx.srp"));
-    b.store(imag, b.gep(ptr, [z0, z1], name="cx.sip"));
     return ptr;
 }
 

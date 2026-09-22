@@ -224,7 +224,8 @@ class JacPersistence {
     static def get_object(id: str) -> (Archetype | None);
     static async def aget_object(id: str) -> (Archetype | None);
     static def object_ref(`obj: Archetype) -> str;
-    static def save(`obj: (Archetype | Anchor)) -> None;
+    static def save(`obj: (Archetype | Anchor), owner: (UUID | None) = None) -> None;
+    static def owner_of(`obj: (Archetype | Anchor)) -> (UUID | None);
     static def destroy(objs: any, strict: bool = False) -> None;
     static def _destroy_anchors(objs: any, strict: bool) -> list[Anchor];
     static def peek_attr(`obj: any, name: str) -> any;

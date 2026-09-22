@@ -1444,6 +1444,11 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             registry: dict[str, any] = (
                 dict(intro._walkers) if is_walker else dict(intro._functions)
             );
+            for (member_name, member, member_is_walker) in intro.scheduled_members() {
+                if member_is_walker == is_walker {
+                    registry[member_name] = member;
+                }
+            }
             if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }

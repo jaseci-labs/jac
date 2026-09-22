@@ -132,7 +132,14 @@ def _has_gradual_type_args(t: TypeBase) -> bool {
     return False;
 }
 
-glob BITWISE_OPERATORS: set[str] = {Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR},
+glob COMPLEX_ARITH_OPS: set[str] = {
+         Tok.PLUS,
+         Tok.MINUS,
+         Tok.STAR_MUL,
+         Tok.DIV,
+         Tok.STAR_POW
+     },
+     BITWISE_OPERATORS: set[str] = {Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR},
      SHIFT_OPERATORS: set[str] = {Tok.LSHIFT, Tok.RSHIFT};
 
 def get_numeric_promotion_type(
@@ -188,6 +195,29 @@ def is_int_kind_type(t: TypeBase) -> bool {
         and JAC_TYPE_REGISTRY.numeric_kind_of(name) == NumericKind.IntKind;
 }
 
+def _is_builtin_instance_named(t: TypeBase, name: str) -> bool {
+    return isinstance(t, ClassType)
+        and t.is_builtin()
+        and t.is_instance()
+        and t.shared.class_name == name;
+}
+
+def get_complex_arith_result_type(
+    left_type: TypeBase, right_type: TypeBase
+) -> TypeBase | None {
+    l_complex = _is_builtin_instance_named(left_type, "complex");
+    r_complex = _is_builtin_instance_named(right_type, "complex");
+    if not (l_complex or r_complex) {
+        return None;
+    }
+    other = right_type if l_complex else left_type;
+    if _is_builtin_instance_named(other, "complex")
+        or numeric_name_of(other) is not None {
+        return left_type if l_complex else right_type;
+    }
+    return None;
+}
+
 def get_pow_result_type(
     evaluator: TypeEvaluator,
     left_type: TypeBase,
@@ -198,6 +228,10 @@ def get_pow_result_type(
 ) -> (TypeBase | None) {
     import from jaclang.compiler.frontend.const_fold { fold_const }
     float_class = evaluator.prefetch.float_class;
+    complex_type = get_complex_arith_result_type(left_type, right_type);
+    if complex_type is not None {
+        return complex_type;
+    }
     if float_class is None or not both_numeric(left_type, right_type) {
         return None;
     }
@@ -383,6 +417,12 @@ def get_type_of_binary_operation(
         if expr.op.name in ARITHMETIC_OPERATORS
             or expr.op.name in BITWISE_OPERATORS
             or expr.op.name in SHIFT_OPERATORS {
+            if expr.op.name in COMPLEX_ARITH_OPS and expr.op.name != Tok.STAR_POW {
+                complex_type = get_complex_arith_result_type(left_type, right_type);
+                if complex_type is not None {
+                    return complex_type;
+                }
+            }
             if expr.op.name == Tok.STAR_POW {
                 pow_type = get_pow_result_type(
                     evaluator, left_type, right_type, expr.right, expr.left, expr

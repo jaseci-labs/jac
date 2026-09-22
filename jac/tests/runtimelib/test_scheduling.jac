@@ -342,6 +342,60 @@ class _Records(logging.Handler) {
 }
 
 
+# The server registers a scheduled walker as a closure that runs the walker
+# itself and returns nothing. _execute used to spawn that return value, so every
+# tick logged "Invalid walker object" after the walker had already run. The
+# closure must also find a walker that is scheduled but not an endpoint.
+test "a served scheduled walker runs each tick without an error record" {
+    import sys;
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.testing.testing { JacTestClient }
+    with TemporaryDirectory() as tmpdir {
+        client = JacTestClient.from_file(
+            str(Path(FIXTURES) / "scheduled_tasks.jac"), base_path=tmpdir
+        );
+        records = _Records();
+        logs = [
+            logging.getLogger("jaclang.server.task_scheduler"),
+            logging.getLogger("jaclang.serve")
+        ];
+        for log in logs {
+            log.addHandler(records);
+        }
+        try {
+            server: any = client.server;
+            server._register_scheduled_tasks();
+            task = [
+                t
+                for t in server.scheduler._tasks
+                if t.name == "IntervalWalker"
+            ][0];
+            walker_cls = [
+                m
+                for (n, m, w) in server.introspector.scheduled_members()
+                if n == "IntervalWalker"
+            ][0];
+            served_log = sys.modules[walker_cls.__module__].execution_log;
+            before = served_log.count("interval-walker");
+            server.scheduler._execute(task);
+            server.scheduler._execute(task);
+            assert served_log.count("interval-walker") == before + 2 , served_log;
+            errors = [
+                m
+                for m in records.messages
+                if m.startswith("ERROR")
+            ];
+            assert not errors , errors;
+        } finally {
+            for log in logs {
+                log.removeHandler(records);
+            }
+            client.close();
+        }
+    }
+}
+
+
 test "every @schedule spec the issue lists is refused or warned about by name" {
     # #9031: each of these was accepted, and ran as a busy loop, starved
     # other tasks, was dropped without a word, or crashed boot.
