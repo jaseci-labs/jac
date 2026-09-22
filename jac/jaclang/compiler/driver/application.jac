@@ -7,7 +7,7 @@ import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
 import type from jaclang.compiler.frontend { unitree as uni }
-glob _FORMAT: int = 7,
+glob _FORMAT: int = 8,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {
@@ -88,9 +88,12 @@ def _context_sections(path: any) -> dict[int, bytes] {
 
 def _project_modules(program: any, `root: any) -> dict[str, uni.Module] {
     result: dict[str, uni.Module] = {};
+    selfhost = program._get_compiler().selfhost;
     for hub in program._search_hubs() {
         for (path, module) in `list(hub.items()) {
-            if (module and os.path.realpath(path).startswith((`root + os.sep))) {
+            if module
+                and os.path.realpath(path).startswith((`root + os.sep))
+                and not selfhost.is_selfhost(selfhost.resolve(path, program)) {
                 result[os.path.realpath(path)] = module;
             }
         }
@@ -122,7 +125,11 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
     for item in mod.body {
         if (isinstance(item, uni.Import) and item.is_jac and item.from_loc) {
             source = item.from_loc.resolve_relative_path();
-            imported = program.find_module(source) if source else None;
+            selfhost = program._get_compiler().selfhost;
+            imported = program.find_module(source)
+                if source
+                    and not selfhost.is_selfhost(selfhost.resolve(source, program))
+                else None;
             if (imported is not None) {
                 sources.append(imported);
             }
@@ -409,6 +416,14 @@ def prepare_application(
     }
 }
 
+def _capture_input(path: str, inputs: dict[str, str]) {
+    import from jaclang.compiler.driver.jir { ct_dep_digest }
+    path = os.path.realpath(path);
+    if path not in inputs {
+        inputs[path] = ct_dep_digest(path, with_annexes=True);
+    }
+}
+
 def _prepare(
     `entry: any,
     program: any,
@@ -418,9 +433,50 @@ def _prepare(
     dev: any,
     console: any
 ) -> PreparedApplication {
+    import from jaclang.compiler.driver.pass_driver { compile_progress }
+    inputs: dict[str, str] = {};
+    selfhost = program._get_compiler().selfhost;
+    def capture(path: str) {
+        if not selfhost.is_selfhost(selfhost.resolve(path, program)) {
+            _capture_input(path, inputs);
+        }
+    }
+    _capture_input(str(Path(`root) / 'jac.toml'), inputs);
+    for config in Path(`root).`glob('jac*.toml') {
+        _capture_input(str(config), inputs);
+    }
+    for path in entries {
+        capture(path);
+    }
+    with compile_progress.listen(capture) {
+        return _prepare_revision(
+            `entry, program, `root, entries, client, dev, console, inputs
+        );
+    }
+}
+
+def _prepare_revision(
+    `entry: any,
+    program: any,
+    `root: any,
+    entries: any,
+    client: any,
+    dev: any,
+    console: any,
+    inputs: dict[str, str]
+) -> PreparedApplication {
     import from jaclang.runtime.prepared { PreparedApplication, publish }
-    inventory = _inventory(`root, inputs=True);
-    key = (_FORMAT, _identity(), inventory, entries, client, dev);
+    import from jaclang.compiler.driver.jir { ct_dep_digest }
+    inventory = _inventory(`root, inputs=True) if client else {};
+    key = (
+        _FORMAT,
+        _identity(),
+        inventory,
+        sorted(inputs.items()),
+        entries,
+        client,
+        dev
+    );
     slot = hashlib.sha256(repr((`entry, entries, client, dev)).encode()).hexdigest()[:20];
     cache = Path(`root) / '.jac' / 'cache' / 'applications' / f'{slot}.bin';
     compiler = program._get_compiler();
@@ -443,10 +499,8 @@ def _prepare(
                 ) for (path, stamp) in candidate['outputs'].items()
             )
             and all(
-                (
-                    Path(path).is_file()
-                    and ((os.stat(path).st_mtime_ns, os.stat(path).st_size) == stamp)
-                ) for (path, stamp) in candidate['dependencies'].items()
+                (ct_dep_digest(path, with_annexes=True) == digest)
+                for (path, digest) in candidate['dependencies'].items()
             )
         ) {
             record = candidate;
@@ -553,9 +607,16 @@ def _prepare(
     }
     while pending {
         path = pending.pop();
-        if (path in revision.code) {
+        if path in revision.code
+            or (
+                path not in entries
+                and compiler.selfhost.is_selfhost(
+                    compiler.selfhost.resolve(path, program)
+                )
+            ) {
             continue;
         }
+        _capture_input(path, inputs);
         code = compiler.get_bytecode(path, program);
         _check(program, before);
         if (code is None) {
@@ -597,23 +658,19 @@ def _prepare(
             }
         }
     }
-    dependencies = {};
     for path in revision.code {
-        if (path not in inventory) {
-            stat = os.stat(path);
-            dependencies[path] = (stat.st_mtime_ns, stat.st_size);
-        }
+        _capture_input(path, inputs);
     }
-    for hub in program._search_hubs() {
-        for path in hub {
-            if (
-                os.path.isfile(path)
-                and not os.path.realpath(path).startswith((`root + os.sep))
-            ) {
-                stat = os.stat(path);
-                dependencies[path] = (stat.st_mtime_ns, stat.st_size);
-            }
-        }
+    for path in _project_modules(program, `root) {
+        _capture_input(path, inputs);
+    }
+    if any(
+        ct_dep_digest(path, with_annexes=True) != digest
+        for (path, digest) in inputs.items()
+    ) {
+        raise RuntimeError(
+            'Sources changed during preparation; retry with the new revision.'
+        );
     }
     if `any(
         (
@@ -642,7 +699,7 @@ def _prepare(
             manifests=revision.manifests,
             sections=sections,
             outputs=outputs,
-            dependencies=dependencies
+            dependencies=inputs
         )
     );
     _semantic_metadata(revision, program);

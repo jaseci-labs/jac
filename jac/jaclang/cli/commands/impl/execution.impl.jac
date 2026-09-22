@@ -737,7 +737,7 @@ def _load_executable(filename: str, base: str, main: bool) -> types.ModuleType {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.compiler.driver.application { prepare_application }
     import from jaclang.runtime.prepared { load_prepared_module }
-    import from jaclang.project.config { get_config }
+    import from jaclang.project.workspace { workspace_for_path }
     program = Jac.get_program();
     compiler = program._get_compiler();
     if compiler.selfhost.is_selfhost(compiler.selfhost.resolve(filename, program)) {
@@ -751,8 +751,8 @@ def _load_executable(filename: str, base: str, main: bool) -> types.ModuleType {
         }
         return modules[0];
     }
-    cfg = get_config();
-    project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
+    workspace = workspace_for_path(filename);
+    project_root = workspace.project_root if workspace is not None else base;
     prepared = prepare_application(filename, program, project_root);
     return load_prepared_module(prepared.entry, prepared, as_main=main);
 }

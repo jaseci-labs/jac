@@ -420,3 +420,86 @@ test "prepared services with the same entry filename load independently" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+
+test "preparation leaves compiler dependencies in their canonical runtime" {
+    import jaclang;
+    import from jaclang.runtime.prepared { load_prepared_module }
+    compiler_root = Path(str(jaclang.__file__)).resolve().parent;
+    with tempfile.TemporaryDirectory(dir=compiler_root.parent) as tmp {
+        path = Path(tmp) / 'probe.jac';
+        path.write_text('import from jaclang.compiler.driver.program { JacProgram }\n');
+        try {
+            prepared = prepare_application(
+                str(path), JacProgram(), str(compiler_root.parent)
+            );
+            assert not any(
+                Path(source).is_relative_to(compiler_root) for source in prepared.code
+            );
+            module = load_prepared_module(str(path), prepared);
+            assert module.JacProgram is JacProgram;
+        } finally {
+            forget(str(path));
+        }
+    }
+}
+
+
+test "unrelated source changes do not invalidate a prepared dependency closure" {
+    import jaclang.compiler.driver.application as preparation;
+    with tempfile.TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        unrelated = Path(tmp) / 'other.jac';
+        path.write_text('def hello -> int { return 1; }\n');
+        unrelated.write_text('def other -> int { return 1; }\n');
+        original = preparation._manifest;
+        def changing_manifest(*args: any, **kwargs: any) -> dict[str, any] {
+            unrelated.write_text('def other -> int { return 2; }\n');
+            return original(*args, **kwargs);
+        }
+        try {
+            with patch.object(
+                preparation, '_manifest', side_effect=changing_manifest
+            ) {
+                prepare_application(str(path), JacProgram(), tmp);
+            }
+            unrelated.write_text('def other -> int { return 3; }\n');
+            with patch.object(
+                JacCompiler,
+                '_compile_pipeline',
+                side_effect=AssertionError('unrelated source invalidated preparation')
+            ) {
+                prepare_application(str(path), JacProgram(), tmp);
+            }
+        } finally {
+            forget(str(path));
+        }
+    }
+}
+
+
+test "changes to consumed sources still reject a torn prepared revision" {
+    import jaclang.compiler.driver.application as preparation;
+    with tempfile.TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        path.write_text('def hello -> int { return 1; }\n');
+        original = preparation._manifest;
+        def changing_manifest(*args: any, **kwargs: any) -> dict[str, any] {
+            path.write_text('def hello -> int { return 2; }\n');
+            return original(*args, **kwargs);
+        }
+        failed = False;
+        try {
+            with patch.object(
+                preparation, '_manifest', side_effect=changing_manifest
+            ) {
+                prepare_application(str(path), JacProgram(), tmp);
+            }
+        } except RuntimeError as error {
+            failed = 'Sources changed during preparation' in str(error);
+        } finally {
+            forget(str(path));
+        }
+        assert failed;
+    }
+}
