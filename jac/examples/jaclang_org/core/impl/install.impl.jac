@@ -1,7 +1,5 @@
 import os;
 import hashlib;
-import from core.github { fetch }
-import from core.timefmt { now_iso, seconds_since }
 
 impl _get_meta -> InstallMeta | None {
     metas = [root.shared-->[?:InstallMeta]];

@@ -1,5 +1,3 @@
-import from core.async_utils { sleep }
-
 impl DocsShell.load(want_version: str, want_path: str) -> None {
     loading = True;
     if len(versions) == 0 {

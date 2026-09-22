@@ -1,4 +1,3 @@
-import from core.github { RepoMeta }
 import from core.timefmt { now_iso }
 
 glob SAMPLE: dict[str, str] = {

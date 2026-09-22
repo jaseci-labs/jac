@@ -82,7 +82,7 @@ impl WiringSpec.module_name(path: str) -> (str | None) {
         return None;
     }
     for part in parts {
-        if not part or "." in part or not (part[0].isalpha() or part[0] == "_") {
+        if not part.isidentifier() {
             return None;
         }
     }

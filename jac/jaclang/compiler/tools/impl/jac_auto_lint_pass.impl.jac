@@ -2479,6 +2479,9 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         return;
     }
     own_path = nd.loc.mod_path;
+    if self._is_file_excluded(own_path) {
+        return;
+    }
     spec = wiring_for_path(own_path);
     if spec is None {
         return;
@@ -2499,7 +2502,8 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         if (
             not isinstance(stmt, uni.Import)
             or not (
-                stmt.loc.mod_path == own_path or stmt.loc.mod_path.endswith(".impl.jac")
+                stmt.loc.mod_path == own_path
+                or stmt.loc.mod_path.endswith((".impl.jac", ".test.jac"))
             )
         ) {
             new_body.append(stmt);
@@ -2591,7 +2595,7 @@ impl JacAutoLintPass._strip_duplicate_wires(nd: uni.Module) -> None {
         return;
     }
     path = nd.loc.mod_path;
-    if not is_arch_file(path) {
+    if not is_arch_file(path) or self._is_file_excluded(path) {
         return;
     }
     spec = wiring_for_path(path);

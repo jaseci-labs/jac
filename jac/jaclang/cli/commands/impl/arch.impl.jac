@@ -26,6 +26,8 @@ import from jaclang.compiler.frontend.unitree {
 
 enum ArchAction(StrEnum) { INIT = "init", SYNC = "sync", GRAPH = "graph" }
 
+glob WIRE_LINE_WIDTH: int = 88;
+
 obj WireRow {
     has provider: str,
         form: str,
@@ -91,9 +93,14 @@ def _empty_spec(root_dir: str) -> WiringSpec {
 
 def _module_files(spec: WiringSpec) -> list[tuple[str, str]] {
     cfg = get_config();
-    patterns = normalize_exclude_patterns(
-        list(cfg.check.exclude) if cfg is not None and cfg.check is not None else []
-    );
+    raw: list[str] = [];
+    if cfg is not None and cfg.check is not None {
+        raw.extend(cfg.check.exclude);
+        if cfg.check.lint is not None {
+            raw.extend(cfg.check.lint.exclude);
+        }
+    }
+    patterns = normalize_exclude_patterns(raw);
     out: list[tuple[str, str]] = [];
     for name in spec.project_modules() {
         path = spec.module_file(name);
@@ -198,7 +205,10 @@ def _collect_rows(
     }
     out: list[WireRow] = [];
     for row in rows.values() {
-        if len(row.consumers) <= 3 {
+        if (
+            len(row.consumers) == 1
+            or len(row.text(_scope_of(row.provider))) + 4 <= WIRE_LINE_WIDTH
+        ) {
             out.append(row);
             continue;
         }
@@ -253,13 +263,20 @@ def _format_source(text: str, path: str) -> str {
 def _strip_modules(paths: list[str]) -> int {
     changed = 0;
     for path in paths {
-        for target in [path, *discover_annex_files(path, ".impl.jac")] {
+        annexes = [
+            *discover_annex_files(path, ".impl.jac"),
+            *discover_annex_files(path, ".test.jac")
+        ];
+        for target in [path, *annexes] {
             prog = JacProgram.jac_file_formatter(target, auto_lint=True);
-            if prog.errors_had or prog.mod.main is None {
+            format_failed = any(
+                [e.code is not None and e.code.code == "E5051" for e in prog.errors_had]
+            );
+            if format_failed or prog.mod.main is None {
                 continue;
             }
             formatted = prog.mod.main.gen.jac;
-            if formatted != prog.mod.main.source.code {
+            if formatted and formatted != prog.mod.main.source.code {
                 with open(target, "w") as f {
                     f.write(formatted);
                 }

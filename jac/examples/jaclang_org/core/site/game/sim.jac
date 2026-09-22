@@ -1,5 +1,3 @@
-import from gmath { Rng, jcos, jsin, jsqrt, rand01, rand_range, rand_sign, DEG2RAD }
-
 glob TICK_DT: float = 0.016666666666666666,
      TICK_MAX_CATCHUP: float = 0.1,
      MAX_ENEMIES: int = 8,

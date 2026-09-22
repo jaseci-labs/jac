@@ -1,13 +1,4 @@
 import from "lucide-react" { Search, X, TrendingUp }
-import from core.site.ui.input { Input }
-import from core.site.ui.button { Button }
-import from core.site.ui.card { Card, CardHeader, CardTitle, CardContent }
-import from core.site.ui.avatar { Avatar, AvatarImage, AvatarFallback }
-import from core.site.ui.badge { Badge }
-import from core.site.ui.hover_card { HoverCard, HoverCardTrigger, HoverCardContent }
-import from core.social_graph { Profile, TrendingTag }
-import from core.jacyac.identity { name_of, avatar_of }
-import from core.jacyac.format { handle_of, initial_of }
 
 def:pub RightSidebar(
     searchQuery: str,

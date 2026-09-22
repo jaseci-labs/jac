@@ -1,17 +1,7 @@
-import from core.jacyac.validation { valid_post }
-import from core.jacyac.genius { GuideSample, random_guide, optional_fact }
-import from core.jacyac.limits { PostingDenied, posting_limit }
 import re;
 import base64;
 import datetime;
 import logging;
-import from core.timefmt { now_iso, seconds_since }
-import from core.github { parse_repo_url }
-import from core.scoring_service { ScoredPayload, fetch_and_score }
-import from core.leaderboard.scoring { ScoreBreakdown }
-import from core.leaderboard.board { BoardHub, RepoEntry, OnBoard }
-import from core.jacyac.github.auth { users }
-import from core.jacyac.github.repos { verified_owner }
 
 def _now -> str {
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat() + "Z";

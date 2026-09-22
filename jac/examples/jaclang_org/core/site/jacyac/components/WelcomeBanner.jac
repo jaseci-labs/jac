@@ -1,5 +1,4 @@
 import from "lucide-react" { Sparkles, X }
-import from core.site.ui.button { Button }
 
 def:pub WelcomeBanner(onDismiss: Callable[[], None]) -> JsxElement {
     <div

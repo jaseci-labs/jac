@@ -1,5 +1,4 @@
 import from "class-variance-authority" { cva }
-import from ....core.utils { cn }
 
 glob _emptyMediaVariants: any = cva(
          "mb-2 flex shrink-0 items-center justify-center [&_svg]:pointer-events-none [&_svg]:shrink-0",

@@ -1,8 +1,6 @@
 import from jaclang.data.contracts { JsonEndpoint }
-import from core.github_contracts { GithubRepository, GithubUser }
+
 import from urllib.parse { quote }
-import from core.github { fetch }
-import from .auth { github_id }
 
 obj GithubRepo {
     has full: str,

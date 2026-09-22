@@ -1,5 +1,3 @@
-import from core.source.files { source_span, SourceSpan }
-import from core.site.ui.CodeBlock { CodeLines }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { ArrowUpRight01Icon }
 

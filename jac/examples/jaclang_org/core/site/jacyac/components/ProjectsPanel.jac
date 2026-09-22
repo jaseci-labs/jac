@@ -1,8 +1,4 @@
 import from "lucide-react" { FolderGit2, Plus, AlertCircle, CheckCircle2 }
-import from core.site.ui.button { Button }
-import from core.site.ui.input { Input }
-import from .ProjectCard { ProjectCard }
-import from core.social_graph { Project }
 
 def:pub ProjectsPanel(
     projects: list[Project],

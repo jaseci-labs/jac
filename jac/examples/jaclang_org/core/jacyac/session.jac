@@ -6,9 +6,6 @@ import from "@jac/runtime" {
     __setLocalStorage,
     __removeLocalStorage
 }
-import from core.jacyac.github.auth { github_enabled }
-import from core.jacyac.github.login { github_login }
-import from core.jacyac.registration { register_with_challenge }
 
 obj Session {
     has loggedIn: bool,

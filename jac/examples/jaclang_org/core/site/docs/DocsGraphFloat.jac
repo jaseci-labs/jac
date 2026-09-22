@@ -1,5 +1,3 @@
-import from core.docs.graph { TreeNode }
-
 glob ROW_H: float = 16.0,
      COL_W: float = 44.0,
      PAD_X: float = 8.0,
