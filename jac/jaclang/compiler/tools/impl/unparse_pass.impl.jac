@@ -1237,7 +1237,7 @@ impl UnparsePass.exit_import_wire with uni.ImportWire exit {
     parts.append(here.provider.gen.jac);
     parts.append("-->");
     consumers = " | ".join([c.gen.jac for c in here.consumers]);
-    if here.items is not None {
+    if not here.is_module_form {
         parts.append(consumers);
         parts.append("{ " + self._comma_sep(here.items) + " }");
     } else {
@@ -1251,7 +1251,7 @@ impl UnparsePass.exit_import_rule with uni.ImportRule exit {
     parts.append(" | ".join([s.gen.jac for s in here.sources]));
     parts.append("-->");
     targets = " | ".join([t.gen.jac for t in here.targets]);
-    if here.items is not None {
+    if not here.is_open {
         parts.append(targets);
         parts.append("{ " + self._comma_sep(here.items) + " }");
     } else {

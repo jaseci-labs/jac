@@ -973,11 +973,12 @@ node ImplImport(ElementStmt) {
 node ImportWire(UniNode) {
     has is_absorb: bool = False,
         is_typed: bool = False,
-        is_comptime: bool = False;
+        is_comptime: bool = False,
+        is_module_form: bool = False;
 
     has provider: ModulePath { getter; }
     has consumers: Sequence[ModulePath] { getter; }
-    has items: (Sequence[WireItem] | None) { getter; }
+    has items: Sequence[WireItem] { getter; }
 
     def init(
         *,
@@ -993,7 +994,6 @@ node ImportWire(UniNode) {
     def postinit -> None;
 
     has block: ImplImport { getter; }
-    has is_module_form: bool { getter; }
     has provider_path: str { getter; }
     has consumer_paths: list[str] { getter; }
 
@@ -1001,10 +1001,11 @@ node ImportWire(UniNode) {
 }
 
 node ImportRule(UniNode) {
+    has is_open: bool = False;
     has name: Name { getter; }
     has sources: Sequence[ModulePattern] { getter; }
     has targets: Sequence[ModulePattern] { getter; }
-    has items: (Sequence[WireItem] | None) { getter; }
+    has items: Sequence[WireItem] { getter; }
 
     def init(
         *,
@@ -1018,7 +1019,6 @@ node ImportRule(UniNode) {
     def postinit -> None;
 
     has block: ImplImport { getter; }
-    has is_open: bool { getter; }
     has item_names: set[str] { getter; }
 
     def __repr__ -> str;

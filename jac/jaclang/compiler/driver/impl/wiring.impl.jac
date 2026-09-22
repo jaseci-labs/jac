@@ -271,8 +271,7 @@ impl WiringSpec.digest_for(consumer: str) -> str {
 
 impl WiringSpec.wire_bindings(wire: ImportWire) -> list[WireBinding] {
     provider = wire.provider_path;
-    items = wire.items;
-    if items is None {
+    if wire.is_module_form {
         alias = wire.provider.alias;
         return [
             WireBinding(
@@ -293,7 +292,7 @@ impl WiringSpec.wire_bindings(wire: ImportWire) -> list[WireBinding] {
             form=form,
             name=item.name.value,
             alias=item.alias.value if item.alias is not None else ""
-        ) for item in items
+        ) for item in wire.items
     ];
 }
 

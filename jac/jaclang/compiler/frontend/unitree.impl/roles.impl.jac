@@ -396,8 +396,8 @@ impl ImportWire.consumers.getter -> Sequence[ModulePath] {
     return ([self->:ConsumersRole:->]) as Sequence[ModulePath];
 }
 
-impl ImportWire.items.getter -> (Sequence[WireItem] | None) {
-    return self._role_shaped(ItemsRole, [self->:ItemsRole:->]);
+impl ImportWire.items.getter -> Sequence[WireItem] {
+    return ([self->:ItemsRole:->]) as Sequence[WireItem];
 }
 
 impl ImportWire.__repr__ -> str {
@@ -416,8 +416,8 @@ impl ImportRule.targets.getter -> Sequence[ModulePattern] {
     return ([self->:TargetsRole:->]) as Sequence[ModulePattern];
 }
 
-impl ImportRule.items.getter -> (Sequence[WireItem] | None) {
-    return self._role_shaped(ItemsRole, [self->:ItemsRole:->]);
+impl ImportRule.items.getter -> Sequence[WireItem] {
+    return ([self->:ItemsRole:->]) as Sequence[WireItem];
 }
 
 impl ImportRule.__repr__ -> str {
@@ -2014,8 +2014,9 @@ impl ImportWire.init(
     self.is_absorb = is_absorb;
     self.is_typed = is_typed;
     self.is_comptime = is_comptime;
+    self.is_module_form = items is None;
     self._link(
-        kid, {ProviderRole: provider, ConsumersRole: consumers, ItemsRole: items}
+        kid, {ProviderRole: provider, ConsumersRole: consumers, ItemsRole: items or []}
     );
     self.postinit();
 }
@@ -2028,9 +2029,15 @@ impl ImportRule.init(
     items: (Sequence[WireItem] | None),
     kid: Sequence[UniNode] = []
 ) -> None {
+    self.is_open = items is None;
     self._link(
         kid,
-        {NameRole: name, SourcesRole: sources, TargetsRole: targets, ItemsRole: items}
+        {
+            NameRole: name,
+            SourcesRole: sources,
+            TargetsRole: targets,
+            ItemsRole: items or []
+        }
     );
     self.postinit();
 }

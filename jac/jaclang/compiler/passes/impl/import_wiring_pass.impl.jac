@@ -84,9 +84,8 @@ impl ImportWiringPass._check_wire(spec: WiringSpec, wire: ImportWire) -> None {
         self.ctx.emit(E1141, node_override=wire.provider, module=provider);
     }
     names: (list[tuple[str, UniNode]] | None) = None;
-    items = wire.items;
-    if items is not None {
-        names = [(item.name.value, item) for item in items];
+    if not wire.is_module_form {
+        names = [(item.name.value, item) for item in wire.items];
     }
     for consumer_node in wire.consumers {
         consumer = consumer_node.dot_path_str;

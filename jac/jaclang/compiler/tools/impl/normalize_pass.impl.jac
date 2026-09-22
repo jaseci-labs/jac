@@ -1773,11 +1773,12 @@ impl NormalizePass.enter_impl_import with uni.ImplImport entry {
 }
 
 impl NormalizePass._wiring_payload_kids(
-    items: (Sequence[uni.WireItem] | None),
+    items: Sequence[uni.WireItem],
+    open_form: bool,
     new_kid: list[uni.UniNode],
     owner: uni.UniNode
 ) -> None {
-    if items is None {
+    if open_form {
         new_kid.append(owner.gen_token(Tok.SEMI));
         return;
     }
@@ -1809,7 +1810,7 @@ impl NormalizePass.enter_import_wire with uni.ImportWire entry {
             new_kid.append(here.gen_token(Tok.BW_OR));
         }
     }
-    self._wiring_payload_kids(here.items, new_kid, here);
+    self._wiring_payload_kids(here.items, here.is_module_form, new_kid, here);
     here.set_kids(nodes=new_kid);
 }
 
@@ -1832,7 +1833,7 @@ impl NormalizePass.enter_import_rule with uni.ImportRule entry {
             new_kid.append(here.gen_token(Tok.BW_OR));
         }
     }
-    self._wiring_payload_kids(here.items, new_kid, here);
+    self._wiring_payload_kids(here.items, here.is_open, new_kid, here);
     here.set_kids(nodes=new_kid);
 }
 

@@ -136,7 +136,8 @@ walker NormalizePass(TreeWalker) {
     can enter_module_pattern with uni.ModulePattern entry;
     can enter_wire_item with uni.WireItem entry;
     def _wiring_payload_kids(
-        items: (Sequence[uni.WireItem] | None),
+        items: Sequence[uni.WireItem],
+        open_form: bool,
         new_kid: list[uni.UniNode],
         owner: uni.UniNode
     ) -> None;

@@ -1799,10 +1799,6 @@ impl ImportWire.block.getter -> ImplImport {
     return self.parent;
 }
 
-impl ImportWire.is_module_form.getter -> bool {
-    return self.items is None;
-}
-
 impl ImportWire.provider_path.getter -> str {
     return ModulePattern.join_scope(
         self.block.scope_prefix, self.provider.dot_path_str
@@ -1824,13 +1820,8 @@ impl ImportRule.block.getter -> ImplImport {
     return self.parent;
 }
 
-impl ImportRule.is_open.getter -> bool {
-    return self.items is None;
-}
-
 impl ImportRule.item_names.getter -> set[str] {
-    items = self.items;
-    return {i.name.value for i in items} if items else set();
+    return set() if self.is_open else {i.name.value for i in self.items};
 }
 
 impl ModulePattern.postinit -> None {

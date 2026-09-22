@@ -427,11 +427,10 @@ def _render_mermaid(spec: WiringSpec) -> str {
         lines.append("    end");
     }
     for wire in spec.wires {
-        items = wire.items;
         label = (
-            ", ".join([item.name.value for item in items])
-                if items is not None
-                else "module"
+            "module"
+                if wire.is_module_form
+                else ", ".join([item.name.value for item in wire.items])
         );
         for consumer in wire.consumer_paths {
             lines.append(
@@ -448,17 +447,19 @@ def _render_json(spec: WiringSpec) -> str {
             "provider": wire.provider_path,
             "consumers": list(wire.consumer_paths),
             "form": WiringSpec.import_form(
-                wire.is_absorb, wire.is_typed, wire.is_comptime, wire.items is not None
+                wire.is_absorb, wire.is_typed, wire.is_comptime, not wire.is_module_form
             ),
             "names": (
-                [
-                    {
-                        "name": item.name.value,
-                        "alias": item.alias.value if item.alias is not None else None
-                    } for item in wire.items
-                ]
-                    if wire.items is not None
-                    else None
+                None
+                    if wire.is_module_form
+                    else [
+                        {
+                            "name": item.name.value,
+                            "alias": item.alias.value
+                                if item.alias is not None
+                                else None
+                        } for item in wire.items
+                    ]
             )
         } for wire in spec.wires
     ];
