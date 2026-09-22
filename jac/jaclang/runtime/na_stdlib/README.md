@@ -42,6 +42,13 @@ native layout records the emitted name separately from its source-level key.
   `getsize`, and `getmtime`) expose typed entry points backed by the existing
   native OS primitives. These declarations keep direct and aliased imports
   consistent with calls through `os.path`.
+  `expanduser` supports string paths on 64-bit Linux and Darwin: bare `~`
+  honors `HOME` (including an empty value), falls back to the current user's
+  account when unset, and `~name` looks up that user independently of `HOME`.
+  Unknown users leave the path unchanged. The reentrant account lookup uses
+  platform-specific `struct passwd` layouts and grows its buffer on `ERANGE`.
+  Qualified `os.path` calls and direct/aliased imports use the same bundled
+  implementation; no Python runtime is required.
 - **`json.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
   `any` (dict/list/str/int/float/bool/None) plus a `dumps` serializer matching
   CPython's default `(', ', ': ')` separators and insertion-ordered keys.

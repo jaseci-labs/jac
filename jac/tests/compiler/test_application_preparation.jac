@@ -241,8 +241,10 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
     images_before = list(sealed._images);
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     import from jaclang.server.sealed_serve { client_dist_for }
+    import from jaclang.cli.console { console }
     for package_name in ['prepared_sealed_test', 'site'] {
-        with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as tmp {
+        with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as raw_tmp {
+            tmp = os.path.realpath(raw_tmp);
             base = Path(tmp);
             path = base / f'{package_name}.jac';
             package_init = base / '__init__.jac';
@@ -306,6 +308,20 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 dist = base / '.jac' / 'client' / 'dist';
                 dist.mkdir(parents=True);
                 (dist / 'arena.wasm').write_bytes(b'baked wasm');
+                unlisted = base / 'unlisted.jac';
+                unlisted.write_text("def:pub other -> str { return 'source'; }\n");
+                with patch.object(console, 'print') as printed {
+                    prepare_application(str(unlisted), JacProgram(), tmp);
+                }
+                lines = [
+                    str(call.args[0])
+                    for call in printed.call_args_list
+                    if call.args
+                ];
+                assert f'  Sealed image at {tmp} does not list unlisted.jac; preparing from source'
+                    in lines , lines;
+                assert '  Loading sealed application artifacts' not in lines , lines;
+                forget(str(unlisted));
                 path.write_text('retained source must never be analyzed');
                 package_init.write_text('retained initializer must never be analyzed');
                 with patch.object(
@@ -331,6 +347,14 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 assert prepared.client_compiler is None;
                 assert client_dist_for(str(path)) == dist;
                 assert (dist / 'arena.wasm').read_bytes() == b'baked wasm';
+                (base / '.jac' / 'serve_manifest.json').unlink();
+                caught = '';
+                try {
+                    prepare_application(str(path), JacProgram(), tmp, dev=False);
+                } except RuntimeError as e {
+                    caught = str(e);
+                }
+                assert 'Sealed application has no serving manifest' in caught , caught;
             } finally {
                 for (name, loaded) in list(sys.modules.items()) {
                     if str(getattr(loaded, '__file__', '') or '').startswith(

@@ -5,3 +5,5 @@ def:pub replace(
 ) {
     replace_file(src, dst, src_dir_fd, dst_dir_fd);
 }
+
+import os.path;
