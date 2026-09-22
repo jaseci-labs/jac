@@ -3,6 +3,7 @@ import json;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 def _pkg_root -> Path {
     import jaclang;
@@ -155,6 +156,25 @@ def _compile_runtime_module(
 }
 
 
+def _runtime_module_options(path: Path) -> CompileOptions {
+    """A vendored runtime module takes the codespace the running compiler gives
+    its own package: the server codespace, unless the module is native by policy
+    (a bundled native library or a shared runtime module), which keeps the
+    placement an application gives it. Placement inference over the rest of the
+    package would try to lower every runtime module the application reaches, and
+    almost none of them can.""";
+    import from jaclang.compiler.frontend.codeinfo {
+        is_native_by_location,
+        is_shared_runtime_module
+    }
+    import from jaclang.compiler.placement.placement_facts { SPACE_SERVER }
+    source = str(path);
+    if is_native_by_location(source) or is_shared_runtime_module(source) {
+        return CompileOptions();
+    }
+    return CompileOptions(default_codespace=SPACE_SERVER);
+}
+
 def build_runtime_closure(
     user_codes: list[str],
     include_byllm: bool = False,
@@ -231,6 +251,7 @@ def build_runtime_closure(
         }
         native: dict[str, any] = {};
         program = JacProgram();
+        program.options = _runtime_module_options(path);
         try {
             source = _compile_runtime_module(
                 pkg_root, path, program, native, native_sources

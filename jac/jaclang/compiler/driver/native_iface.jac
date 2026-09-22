@@ -277,16 +277,36 @@ obj NativeIface {
     }
 
     static def from_bytes(raw: (bytes | None)) -> (NativeIface | None) {
+        """A stored interface is trusted only when its body hashes to the digest
+        it is prefixed with: a truncated or corrupted entry decodes to nothing and
+        its unit is recompiled, instead of one reader taking the prefix and
+        another the body.""";
         if raw is None or len(raw) <= NIFACE_HASH_LEN {
             return None;
         }
+        recorded = NativeIface.read_digest(raw);
+        if recorded is None {
+            return None;
+        }
         try {
-            return NativeIface.from_dict(
+            iface = NativeIface.from_dict(
                 json.loads(raw[NIFACE_HASH_LEN:].decode("utf-8"))
             );
         } except Exception {
             return None;
         }
+        if iface is None or iface.digest() != recorded {
+            return None;
+        }
+        return iface;
+    }
+
+    static def verified_digest(raw: (bytes | None)) -> (str | None) {
+        """The recorded digest of a stored interface whose body agrees with it.""";
+        if NativeIface.from_bytes(raw) is None {
+            return None;
+        }
+        return NativeIface.read_digest(raw);
     }
 
     static def read_digest(raw: (bytes | None)) -> (str | None) {

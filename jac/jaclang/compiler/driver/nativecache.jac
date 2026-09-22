@@ -481,7 +481,7 @@ obj NativeUnitRegistry {
                 f"NA_DEBUG known_digest {resolved}: no native interface for {self.stamp_for().key()}\n"
             );
         }
-        return NativeIface.read_digest(payload) or "";
+        return NativeIface.verified_digest(payload) or "";
     }
 
     def object_for(

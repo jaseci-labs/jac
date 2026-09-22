@@ -25,11 +25,14 @@ the same file, under `MODKEY`. Each native section holds a map of stamped varian
 The stamp (`NativeStamp`) names the compiler digest, the codegen identity
 (gc mode, target, opt level and the rest of `CompileOptions.codegen_identity`)
 and the triple. Readers select the matching variant; different options and
-targets coexist without evicting one another. A compiler upgrade discards
-obsolete compiler variants. Only a native compile writes these five sections;
+targets coexist without evicting one another. A native write prunes every native
+section's variants to the compiler digests it carries, so a compiler upgrade
+discards obsolete products instead of accumulating them. Only a native compile writes these five sections;
 a bytecode compile of the same file merges around them. The shared bootstrap-safe
 file lock covers the complete JIR read/merge/replace transaction, so concurrent
-writers preserve one another’s products. JIR format 29 makes this a clean
+writers preserve one another’s products. The lock files form a small pool under
+the cache generation directory, keyed by the entry's name, rather than one lock
+beside every entry. JIR format 29 makes this a clean
 cache-format break. That is why the native
 digests have their own section: when they lived in `SEC_DEPS`, every
 bytecode compile of a unit rewrote the rows without them and the next link
@@ -49,7 +52,10 @@ initializer moves it and rebuilds dependents. Default expressions are part of th
 contract because callers embed them; binary signature equality alone is not
 enough. Imported generic bodies use the shared compile-time dependency
 encoding in stamped `SEC_NCTDEPS`, including their implementation annexes. Codegen options never enter
-the digest: the stamp carries them.
+the digest: the stamp carries them. A stored interface is accepted only when
+its body hashes to the digest it is prefixed with, and the plan's staleness
+checks read that same verified digest, so a corrupted entry is recompiled
+rather than trusted.
 
 Symbols that are not `:pub` are module-qualified, `<prefix>.<name>`, where
 the prefix is the native-safe form of the module key; `:pub` symbols keep
@@ -98,6 +104,16 @@ plan's check, and checking it from inside every consumer nested a fresh
 compile of every cycle member on every visit. The plan's own walk does
 check records (`check_deps=True`), so a dependent whose recorded digest
 moved is recompiled during the walk.
+
+### Lowering diagnostics
+
+A lowering diagnostic is a routing fact before it is a report. The IR
+generator records every code its lowering hits, suppressed or not, because
+the demotion of a function is decided by those records; the pass driver
+applies the suppression policy when it delivers alerts, so a suppressed code
+never reaches a user. Outside a demotion window a suppressed lowering error
+still withholds the unit: suppression silences the report, not the fact that
+the body did not lower, and the unit's failure names the diagnostic.
 
 ## The link plan
 
@@ -300,7 +316,12 @@ visited a body first.
 
 The build session owns its `JacProgram`, module hub, evaluator and hydrated
 catalog objects. Source analysis never borrows mutable trees from the
-process-global program used to execute the compiler itself. A `StubCatalog`
+process-global program used to execute the compiler itself. The compiler's own
+package is therefore no longer a special input: a tool that compiles runtime
+modules on an application's behalf, such as runtime vendoring for a source
+export, gives them the codespace the running compiler gives its package (the
+server codespace unless the module is native by policy) instead of letting the
+application's placement default infer native placement over the whole runtime. A `StubCatalog`
 session shares immutable catalog bytes and their backing storage, while its
 memo tables and hydrated types belong to that session. Releasing a compile
 closure drops the evaluator, every module (including stubs), and the catalog.

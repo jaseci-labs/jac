@@ -39,7 +39,9 @@ test "serve manifests analyze native imports without loading their libraries or 
             set_config(JacConfig.load(project_dir / "jac.toml"));
             manifest = build_serve_manifest(entry_file, project_dir);
             assert manifest is not None;
-            assert manifest["walker_access"]["Greeting"] == False;
+            greeting = manifest["surface"]["Greeting"];
+            assert greeting["kind"] == "walker" , greeting;
+            assert greeting["exposure"] == "public" , greeting;
             assert runtime_program.mod.hub == runtime_modules;
         } finally {
             set_config(None);

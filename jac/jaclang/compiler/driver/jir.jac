@@ -53,12 +53,14 @@ glob NATIVE_SECTIONS: tuple[int, ...] = (
      NATIVE_STAMP_MAGIC: bytes = b"JNS1",
      NATIVE_VARIANTS_MAGIC: bytes = b"JNV1";
 
+glob LOCK_POOL_SIZE: int = 64;
+
 glob STALE_CODE_SECTIONS: tuple[int, ...] = (
-    SEC_BYTECODE,
-    SEC_INTEROP,
-    SEC_MTIR,
-    SEC_CLIENT
-);
+         SEC_BYTECODE,
+         SEC_INTEROP,
+         SEC_MTIR,
+         SEC_CLIENT
+     );
 
 obj NativeStamp {
     has compiler_digest: str = "",
@@ -1414,6 +1416,13 @@ def _mergeable_sections(
 def merge_native_sections(
     existing: dict[int, bytes], incoming: dict[int, bytes]
 ) -> dict[int, bytes] {
+    """Fold one producer's stamped native sections into the entry's variants. A
+    replaced bitcode variant invalidates the object emitted from the old one. A
+    native write carries the running compiler's digest on every stamped section
+    it brings, so variants of any native section under another compiler digest
+    are obsolete and pruned: a compiler upgrade replaces products instead of
+    accumulating them, while other targets and codegen identities under the
+    same compiler coexist.""";
     merged: dict[int, bytes] = {};
     before = native_section_variants(existing.get(SEC_NBITCODE));
     after = native_section_variants(incoming.get(SEC_NBITCODE));
@@ -1422,6 +1431,14 @@ def merge_native_sections(
         for (key, value) in after.items()
         if before.get(key) != value
     };
+    digests: set[str] = set();
+    for tag in NATIVE_SECTIONS {
+        if tag in incoming {
+            digests |= {
+                key.split("\x1f")[0] for key in native_section_variants(incoming[tag])
+            };
+        }
+    }
     for tag in NATIVE_SECTIONS {
         variants = native_section_variants(existing.get(tag));
         if tag == SEC_NOBJ {
@@ -1429,21 +1446,33 @@ def merge_native_sections(
                 variants.pop(key, None);
             }
         }
-        if tag in incoming {
-            updates = native_section_variants(incoming[tag]);
-            digests = {key.split("\x1f")[0] for key in updates};
+        if digests {
             variants = {
                 key: value
                 for (key, value) in variants.items()
                 if key.split("\x1f")[0] in digests
             };
-            variants.update(updates);
+        }
+        if tag in incoming {
+            variants.update(native_section_variants(incoming[tag]));
         }
         if tag in existing or tag in incoming {
             merged[tag] = pack_native_variants(variants);
         }
     }
     return merged;
+}
+
+def _module_lock_path(cache_path: Path) -> Path {
+    """One lock per module would leave a permanent zero-byte sibling beside every
+    cache entry. Writers share a small pool of lock files under the generation
+    directory instead, keyed by the entry's name: two entries that land in one
+    slot serialize briefly, and a generation sweep removes the pool along with the
+    entries it guarded.""";
+    pool = cache_path.parent / ".locks";
+    pool.mkdir(parents=True, exist_ok=True);
+    slot = int(hashlib.sha256(cache_path.name.encode("utf-8")).hexdigest()[:8], 16);
+    return pool / f"{slot % LOCK_POOL_SIZE:02d}.lock";
 }
 
 def write_module_cache(
@@ -1469,7 +1498,7 @@ def write_module_cache(
         native_write = extra_sections is not None
             and any(tag in extra_sections for tag in NATIVE_SECTIONS);
         native_only_write = native_write and bytecode is None;
-        with FileLock(cache_path.with_suffix(".lock")) {
+        with FileLock(_module_lock_path(cache_path)) {
             (existing, existing_flags, stale_code) = _mergeable_sections(
                 cache_path, key_sections, None if native_only_write else extra_sections
             );

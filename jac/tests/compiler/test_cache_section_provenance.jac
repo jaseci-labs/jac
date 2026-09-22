@@ -223,3 +223,53 @@ test "a native unit fills in the manifest when no bytecode compile wrote one" {
         assert read_section_bytes(fixture.data(), SEC_INTEROP) == b"native interop";
     }
 }
+
+glob OTHER_CODEGEN: NativeStamp = NativeStamp(
+         compiler_digest="c" * 64, codegen_identity="gc=none", triple="x86_64-linux"
+     ),
+     OTHER_COMPILER: NativeStamp = NativeStamp(
+         compiler_digest="d" * 64, codegen_identity="gc=rc", triple="x86_64-linux"
+     );
+
+test "stamped variants for another codegen identity coexist" {
+    with TemporaryDirectory() as directory {
+        fixture = fixture_in(directory);
+        write_module_cache(
+            str(fixture.source),
+            None,
+            extra_sections={SEC_NBITCODE: OTHER_CODEGEN.pack(b"nogc bitcode")}
+        );
+        raw = read_section_bytes(fixture.data(), SEC_NBITCODE);
+        assert native_section_payload(raw, STAMP) == b"old native bitcode";
+        assert native_section_payload(raw, OTHER_CODEGEN) == b"nogc bitcode";
+        assert fixture.native(SEC_NOBJ) == b"old native object";
+    }
+}
+
+test "a native write prunes every section's variants from another compiler" {
+    with TemporaryDirectory() as directory {
+        fixture = fixture_in(directory);
+        write_module_cache(
+            str(fixture.source),
+            None,
+            extra_sections={SEC_NBITCODE: OTHER_COMPILER.pack(b"upgraded bitcode")}
+        );
+        raw = read_section_bytes(fixture.data(), SEC_NBITCODE);
+        assert native_section_payload(raw, OTHER_COMPILER) == b"upgraded bitcode";
+        assert native_section_payload(raw, STAMP) is None;
+        assert fixture.native(SEC_NOBJ) is None;
+        assert read_section_bytes(fixture.data(), SEC_BYTECODE) == b"old bytecode";
+    }
+}
+
+test "module cache writes lock through a pool instead of a sibling per entry" {
+    with TemporaryDirectory() as directory {
+        fixture = fixture_in(directory);
+        cache_path = get_module_cache_path(str(fixture.source));
+        assert cache_path.is_file();
+        assert not cache_path.with_suffix(".lock").exists();
+        pool = cache_path.parent / ".locks";
+        assert pool.is_dir();
+        assert all(lock_file.suffix == ".lock" for lock_file in pool.iterdir());
+    }
+}
