@@ -2823,10 +2823,25 @@ impl NativeListEmitter.emit_remove(
     at_end = b.icmp_unsigned(">=", fi, list_len, name="rem.atend");
     b.cbranch(at_end, done_bb, find_body);
     b.position_at_start(find_body);
-    elem = b.call(helpers["get"], [target, fi], name="rem.elem");
-    eq = b.icmp_signed("==", elem, search_val, name="rem.eq");
+    elem: ir.Value = b.call(helpers["get"], [target, fi], name="rem.elem");
+    if ctx.receiver_node is not None {
+        restored_elem = p._restore_list_read(elem, ctx.receiver_node);
+        restored_search = p._restore_list_read(search_val, ctx.receiver_node);
+        if restored_elem is None or restored_search is None {
+            return None;
+        }
+        elem = restored_elem;
+        search_val = restored_search;
+    }
+    eq = p._emit_comparison(
+        Tok.EE, elem, search_val, isinstance(elem.type, (ir.DoubleType, ir.FloatType))
+    );
+    if eq is None {
+        return None;
+    }
+    compare_end = b.basic_block;
     next_fi = b.add(fi, ir.Constant(i64, 1), name="rem.nextfi");
-    fi.add_incoming(next_fi, find_body);
+    fi.add_incoming(next_fi, compare_end);
     b.cbranch(eq, found_bb, find_bb);
 
     b.position_at_start(found_bb);
@@ -3033,11 +3048,26 @@ impl NativeListEmitter.emit_index(
     at_end = b.icmp_unsigned(">=", idx, list_len, name="idx.atend");
     b.cbranch(at_end, done_bb, check_bb);
     b.position_at_start(check_bb);
-    elem = b.call(helpers["get"], [target, idx], name="idx.elem");
-    eq = b.icmp_signed("==", elem, search_val, name="idx.eq");
+    elem: ir.Value = b.call(helpers["get"], [target, idx], name="idx.elem");
+    if ctx.receiver_node is not None {
+        restored_elem = p._restore_list_read(elem, ctx.receiver_node);
+        restored_search = p._restore_list_read(search_val, ctx.receiver_node);
+        if restored_elem is None or restored_search is None {
+            return None;
+        }
+        elem = restored_elem;
+        search_val = restored_search;
+    }
+    eq = p._emit_comparison(
+        Tok.EE, elem, search_val, isinstance(elem.type, (ir.DoubleType, ir.FloatType))
+    );
+    if eq is None {
+        return None;
+    }
+    compare_end = b.basic_block;
     next_idx = b.add(idx, ir.Constant(i64, 1), name="idx.next");
     b.cbranch(eq, found_bb, loop_bb);
-    idx.add_incoming(next_idx, check_bb);
+    idx.add_incoming(next_idx, compare_end);
     b.position_at_start(found_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
@@ -3084,12 +3114,27 @@ impl NativeListEmitter.emit_count(
     at_end = b.icmp_unsigned(">=", idx, list_len, name="cnt.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
-    elem = b.call(helpers["get"], [target, idx], name="cnt.elem");
-    eq = b.icmp_signed("==", elem, search_val, name="cnt.eq");
+    elem: ir.Value = b.call(helpers["get"], [target, idx], name="cnt.elem");
+    if ctx.receiver_node is not None {
+        restored_elem = p._restore_list_read(elem, ctx.receiver_node);
+        restored_search = p._restore_list_read(search_val, ctx.receiver_node);
+        if restored_elem is None or restored_search is None {
+            return None;
+        }
+        elem = restored_elem;
+        search_val = restored_search;
+    }
+    eq = p._emit_comparison(
+        Tok.EE, elem, search_val, isinstance(elem.type, (ir.DoubleType, ir.FloatType))
+    );
+    if eq is None {
+        return None;
+    }
+    compare_end = b.basic_block;
     next_idx = b.add(idx, ir.Constant(i64, 1), name="cnt.next");
     b.cbranch(eq, inc_bb, loop_bb);
-    idx.add_incoming(next_idx, body_bb);
-    count.add_incoming(count, body_bb);
+    idx.add_incoming(next_idx, compare_end);
+    count.add_incoming(count, compare_end);
     b.position_at_start(inc_bb);
     new_count = b.add(count, ir.Constant(i64, 1), name="cnt.inc");
     next_idx2 = b.add(idx, ir.Constant(i64, 1), name="cnt.next2");
