@@ -550,7 +550,10 @@ def _prepare_revision(
 ) -> PreparedApplication {
     import from jaclang.runtime.prepared { PreparedApplication, publish }
     import from jaclang.compiler.driver.jir { ct_dep_digest }
-    inventory = _inventory(`root, inputs=True) if client else {};
+    inventory_root = `root
+        if client
+        else os.path.join(os.path.dirname(`entry), 'pages');
+    inventory = _inventory(inventory_root, inputs=True);
     key = (
         _FORMAT,
         _identity(),
@@ -755,12 +758,11 @@ def _prepare_revision(
             'Sources changed during preparation; retry with the new revision.'
         );
     }
-    if `any(
-        (
-            not os.path.isfile(path)
-            or ((os.stat(path).st_mtime_ns, os.stat(path).st_size) != stamp)
-        ) for (path, stamp) in inventory.items()
-    ) {
+    current_inventory = _inventory(inventory_root, inputs=True);
+    if (not client and current_inventory != inventory)
+        or any(
+            current_inventory.get(path) != stamp for (path, stamp) in inventory.items()
+        ) {
         raise RuntimeError(
             'Sources changed during preparation; retry with the new revision.'
         );
