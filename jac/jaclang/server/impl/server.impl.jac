@@ -482,11 +482,17 @@ impl ModuleIntrospector._load_manifest -> None {
 
 impl ModuleIntrospector._load_surface -> None {
     import from jaclang.server.sealed_serve { serve_manifest_for }
-    import from jaclang.compiler.frontend.codeinfo { SurfaceEntry }
+    import from jaclang.runtime.surface { SurfaceEntry }
     path: str = getattr(self._module, '__file__', '') if self._module else '';
     manifest = serve_manifest_for(path) if path else None;
     if manifest is None {
         raise RuntimeError(f"No prepared access metadata for '{path}'.");
+    }
+    if not isinstance(manifest.get('surface'), dict) {
+        raise RuntimeError(
+            f"Prepared access metadata for '{path}' has no valid surface. "
+                + "Rebuild and reseal the application with the current Jac version."
+        );
     }
     self._surface = {
         str(name): SurfaceEntry.from_dict(str(name), dict(rec))

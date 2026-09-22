@@ -1,6 +1,11 @@
 import os;
 
-import from jaclang.dist.payload.fsutil { die, read_bytes, sha256_hex }
+import from jaclang.dist.payload.fsutil {
+    die,
+    read_bytes,
+    sha256_hex,
+    strip_best_effort
+}
 import from jaclang.dist.fused.trailer {
     MAGIC,
     REGION_ALIGN,
@@ -12,6 +17,7 @@ import from jaclang.dist.fused.trailer {
 
 impl pack(stub: str, payload: str, out: str, stubcat: str | None = None) {
     try {
+        strip_best_effort(stub);
         stub_bytes = read_bytes(stub);
         payload_bytes = read_bytes(payload);
     } except OSError as e {

@@ -57,6 +57,10 @@ Sealing is **mandatory**: if the app cannot be sealed into a valid image, the de
 
 If a module in your project cannot be sealed (for example, a file that fails to compile), the deploy aborts with the seal error. Fix the offending module, or park its tree in `.jacignore` if it is not part of the served app, and redeploy.
 
+**Fat bundles.** By default the `.jab` also carries the app's Python dependency closure as wheels under `_vendor/wheels/`, resolved by the seal binary (the same jac version pods run) so pods install their dependencies offline at boot with no PyPI access. The wheels are resolved for the **pod platform**, not the deploy host: CPython of the pod binary, the node architecture (`x86_64` or `aarch64`, see `JAC_NODE_ARCH`), and Linux with glibc 2.36 or newer, which is what the official pod images provide. pip is asked for every tag such a pod accepts, `manylinux2014_<arch>` and each `manylinux_2_17` through `manylinux_2_36` PEP 600 tag, so compiled wheels (`cryptography`, `grpcio`, `bcrypt`, `watchdog`) resolve the same way they would on the pod itself. A dependency that publishes no wheel at all is built on the deploy host with `pip wheel`; the result ships only when it fits the pod (a pure-Python `none-any` wheel always does, a bare Linux compiled wheel only when the host is Linux on the same architecture and its detected glibc is no newer than the pod floor; unknown libc versions and musl hosts are rejected).
+
+`[scale] fat_bundle` in `jac.toml` controls the outcome when a dependency still has no usable wheel: unset, the deploy logs a warning naming the packages and ships a thin bundle whose pods install from PyPI at boot; `fat_bundle = true` makes that a deploy failure; `fat_bundle = false` skips vendoring entirely.
+
 ---
 
 ### Naming & Namespace
