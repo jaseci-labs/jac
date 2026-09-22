@@ -56,8 +56,7 @@ def _seed_project(tmpdir: str, name: str) {
 }
 
 
-"""A jac.toml that points at the source tree but sets no [project] name, so
-each .jac file would name its own database."""
+"""An unnamed project uses the default application persistence namespace."""
 def _seed_unnamed_project(tmpdir: str) {
     import jaclang;
     src = str(Path(jaclang.__file__).parent.parent);
@@ -168,7 +167,7 @@ test "db opens the server's database when jac.toml names a project beside severa
 }
 
 
-test "db keeps the file-named database for a single file without a project name" {
+test "db uses the application database for an unnamed project" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         (Path(tmpdir) / "app.jac").write_text(APP);
@@ -178,7 +177,7 @@ test "db keeps the file-named database for a single file without a project name"
             assert rc == 0 , f"create failed: {err}";
             (rc, out, err) = _jac(tmpdir, ["db", "status"]);
             assert rc == 0 , f"status failed: {err}";
-            assert "database : jac_app_" in out , out;
+            assert "database : jac_main_" in out , out;
             (rc, out, err) = _jac(tmpdir, ["db", "sql", COUNT_NODES]);
             assert rc == 0 , f"sql failed: {err}";
             assert out.strip() == "3" , out;
@@ -189,7 +188,7 @@ test "db keeps the file-named database for a single file without a project name"
 }
 
 
-test "db refuses to guess between several files with no project name, and --entry picks" {
+test "db entries in an unnamed project share one database" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         (Path(tmpdir) / "alpha.jac").write_text(APP);
@@ -197,24 +196,48 @@ test "db refuses to guess between several files with no project name, and --entr
         _seed_unnamed_project(tmpdir);
         try {
             (rc, out, err) = _jac(tmpdir, ["db", "status"]);
-            assert rc == 1 , f"expected a refusal, got rc={rc}: {out}{err}";
-            said = out + err;
-            assert "alpha.jac" in said and "beta.jac" in said , said;
-            assert "--entry" in said , said;
+            assert rc == 0 , f"status failed: {out}{err}";
+            assert "database : jac_main_" in out , out;
             (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", "alpha.jac"]);
             assert rc == 0 , f"create failed: {err}";
+            (rc, out, err) = _jac(tmpdir, ["db", "sql", COUNT_NODES]);
+            assert rc == 0 , f"sql failed: {err}";
+            assert out.strip() == "3" , out;
             (rc, out, err) = _jac(
-                tmpdir, ["db", "sql", COUNT_NODES, "--entry", "alpha.jac"]
+                tmpdir, ["db", "sql", COUNT_NODES, "--entry", "beta.jac"]
             );
             assert rc == 0 , f"sql failed: {err}";
             assert out.strip() == "3" , out;
-            (rc, out, err) = _jac(tmpdir, ["db", "status", "--entry", "beta.jac"]);
-            assert rc == 0 , f"status failed: {err}";
-            assert "database : jac_beta_" in out , out;
             (rc, out, err) = _jac(tmpdir, ["db", "status", "--entry", "gamma.jac"]);
             assert rc == 1 and "gamma.jac" in out + err , out + err;
         } finally {
             _stop_db(tmpdir);
+        }
+    }
+}
+
+
+test "db standalone files with separate databases require an entry" {
+    import from unittest.mock { patch }
+    import from jaclang.cli.commands.db { _project_target, DbEntryError }
+    with TemporaryDirectory() as tmpdir {
+        for name in ['alpha', 'beta'] {
+            (Path(tmpdir) / f'{name}.jac').write_text(APP);
+        }
+        with patch('os.getcwd', return_value=str(tmpdir)) {
+            refused = False;
+            try {
+                _project_target('');
+            } except DbEntryError as error {
+                message = str(error);
+                refused = 'alpha.jac' in message
+                    and 'beta.jac' in message
+                    and '--entry' in message;
+            }
+            assert refused;
+            (base, target) = _project_target(str(Path(tmpdir) / 'beta.jac'));
+            assert base == str(Path(tmpdir).resolve());
+            assert target == str(Path(tmpdir).resolve() / 'beta.jac');
         }
     }
 }
