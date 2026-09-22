@@ -1491,11 +1491,19 @@ impl BoundaryAnalysisPass._record_surface(manifest: any) -> None {
     if not (self.module and self.module.body) {
         return;
     }
-    import from jaclang.compiler.frontend.codeinfo { SurfaceEntry }
+    import from jaclang.runtime.surface { SurfaceEntry }
     for item in self.module.body {
-        rec = SurfaceEntry.from_node(item, self.module);
-        if rec is not None {
-            manifest.surface[rec.name] = rec;
+        if isinstance(item, (Ability, Archetype))
+            and item.surface_kind
+            and item.sym_name {
+            manifest.surface[item.sym_name] = SurfaceEntry(
+                name=item.sym_name,
+                kind=item.surface_kind,
+                exposure=item.exposure.value,
+                placement=item.placement_name,
+                module=self.module.loc.mod_path,
+                explicit_access=item.access is not None
+            );
         }
     }
 }
