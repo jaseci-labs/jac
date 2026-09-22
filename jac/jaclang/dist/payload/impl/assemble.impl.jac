@@ -417,6 +417,7 @@ impl stage_python_bin(python_dir: str, stage: str) {
     dst = os.path.join(bin_dst, bare);
     copy_file(py, dst);
     os.chmod(dst, 0o755);
+    strip_best_effort(dst);
     log(f"==> staged project venv interpreter -> python/bin/{bare}");
 }
 
@@ -438,6 +439,14 @@ impl stage_tree(
     strip_best_effort(staged_lib);
 
     stage_stdlib(python_lib, lib_dst);
+    dynload = os.path.join(lib_dst, f"python{py_ver()}", "lib-dynload");
+    if os.path.isdir(dynload) {
+        for name in sorted(os.listdir(dynload)) {
+            if name.endswith(".so") {
+                strip_best_effort(os.path.join(dynload, name), ["--strip-debug"]);
+            }
+        }
+    }
 
     copy_tree(site, os.path.join(stage, "site"), skip_stage_site);
     strip_best_effort(site_shim_path(os.path.join(stage, "site")));
@@ -525,7 +534,9 @@ impl stage_floor(python_dir: str, stage: str) {
         if not file_exists(src) {
             continue;
         }
-        copy_file(src, os.path.join(floor_dst, name));
+        dst = os.path.join(floor_dst, name);
+        copy_file(src, dst);
+        strip_best_effort(dst, ["--strip-debug"]);
         staged += 1;
     }
     log(f"==> staged {staged} C-floor archive(s) -> python/floor/{osarch}");
