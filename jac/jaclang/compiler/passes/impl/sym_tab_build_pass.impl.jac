@@ -208,7 +208,11 @@ impl SymTabBuildPass.exit_module_path with ModulePath exit {
             );
         }
     } else {}
-    if (here.path and (here.is_import_from or here.alias)) {
+    if (
+        here.path
+        and isinstance(here.parent, Import)
+        and (here.is_import_from or here.alias)
+    ) {
         self._bind_import_path_symbols(here);
     }
 }
