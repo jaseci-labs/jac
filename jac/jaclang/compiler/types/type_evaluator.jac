@@ -61,6 +61,7 @@ import from jaclang.compiler.frontend.unitree {
     JsxComment,
     JsxElement,
     JsxElementName,
+    JsxExpression,
     JsxNormalAttribute,
     JsxSpreadAttribute,
     JsxText,
