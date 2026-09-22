@@ -407,3 +407,45 @@ test "prepared services with the same entry filename load independently" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+test "prepare warns about unmarked endpoints on cold and cached applications" {
+    import from jaclang.cli.console { console }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / 'jac.toml').write_text(
+            '[project]\nname="migration"\ndefault-app="api"\n'
+                + '[apps.api]\nkind="service"\nentry-point="main"\n'
+        );
+        path = base / 'main.jac';
+        path.write_text(
+            'include helpers;\n'
+                + 'def plain -> int { return 1; }\n'
+                + 'def:priv intentional -> int { return 2; }\n'
+                + 'def _helper -> int { return 0; }\n'
+                + 'def:pub exposed -> int { return 3; }\n'
+                + 'walker PlainWalker {}\n'
+        );
+        (base / 'helpers.jac').write_text('def included -> int { return 4; }\n');
+        try {
+            for iteration in range(2) {
+                with patch.object(console, 'warning') as warning {
+                    prepared = prepare_application(str(path), JacProgram(), tmp);
+                    messages = '\n'.join(
+                        str(call.args[0]) for call in warning.call_args_list
+                    );
+                    assert 'main.jac:plain' in messages , messages;
+                    assert 'main.jac:PlainWalker' in messages , messages;
+                    assert 'helpers.jac:included' in messages , messages;
+                    assert 'jac fix access --dry-run' in messages , messages;
+                    assert 'intentional' not in messages , messages;
+                    assert '_helper' not in messages , messages;
+                    assert 'main.jac:exposed' not in messages , messages;
+                    assert len(warning.call_args_list) == 1 , messages;
+                    assert 'plain' not in prepared.manifests[str(path)]['surface'];
+                }
+            }
+        } finally {
+            forget(str(path));
+        }
+    }
+}

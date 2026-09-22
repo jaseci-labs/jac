@@ -108,6 +108,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
     "runtime/constants.jac",
+    "runtime/surface.jac",
     "runtime/build_services.jac",
     "runtime/prepared.jac",
     "runtime/prepared_loader.jac",

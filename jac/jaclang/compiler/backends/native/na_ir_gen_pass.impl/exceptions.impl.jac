@@ -244,6 +244,46 @@ impl NaIRGenPass._get_exc_descendants(type_name: str) -> list[str] {
     return descendants;
 }
 
+impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
+    if ex is None {
+        return [0];
+    }
+    members = list(ex.values) if isinstance(ex, uni.TupleVal) else [ex];
+    ids: list[int] = [];
+    for member in members {
+        name: str | None = None;
+        if isinstance(member, uni.Name) {
+            name = member.value;
+        } elif isinstance(member, uni.AtomTrailer)
+            and isinstance(member.right, uni.Name) {
+            name = member.right.value;
+        }
+        if name is None {
+            self.ctx.emit(
+                E5090,
+                node_override=member,
+                kind="exception handler",
+                name="dynamic exception type"
+            );
+            continue;
+        }
+        import from jaclang.compiler.types.types { ClassType }
+        if isinstance(member, uni.Expr) and isinstance(member.type, ClassType) {
+            name = member.type.shared.class_name;
+        }
+        if name in ("Exception", "BaseException") {
+            return [0];
+        }
+        for candidate in [name] + self._get_exc_descendants(name) {
+            tid = self._get_or_register_exc_type(candidate);
+            if tid not in ids {
+                ids.append(tid);
+            }
+        }
+    }
+    return ids;
+}
+
 impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -478,7 +518,7 @@ impl NaIRGenPass._codegen_try_unwind(
             }
 
             caught_type_name = self._get_name(except_node.ex_type) or "Exception";
-            caught_type_id = self._get_or_register_exc_type(caught_type_name);
+            caught_ids = self._exception_handler_ids(except_node.ex_type);
 
             if i > 0 {
                 self.builder.position_at_end(current_dispatch_bb);
@@ -487,27 +527,18 @@ impl NaIRGenPass._codegen_try_unwind(
                 exc_obj_val = self.builder.load(exc_obj_ptr, name=f"exc.obj.{i}");
             }
 
-            if caught_type_id == 0 {
+            if 0 in caught_ids {
                 self.builder.branch(handler_bb);
             } else {
-                descendants = self._get_exc_descendants(caught_type_name);
-                does_match = self.builder.icmp_signed(
-                    "==",
-                    exc_type_val,
-                    ir.Constant(i32, caught_type_id),
-                    name=f"exc.match.{i}"
-                );
-                for desc_name in descendants {
-                    desc_id = self._get_or_register_exc_type(desc_name);
-                    desc_match = self.builder.icmp_signed(
+                does_match: ir.Value = ir.Constant(ir.IntType(1), 0);
+                for tid in caught_ids {
+                    matches = self.builder.icmp_signed(
                         "==",
                         exc_type_val,
-                        ir.Constant(i32, desc_id),
-                        name=f"exc.match.{i}.{desc_name}"
+                        ir.Constant(i32, tid),
+                        name=f"exc.match.{i}.{tid}"
                     );
-                    does_match = self.builder.or_(
-                        does_match, desc_match, name=f"exc.or.{i}.{desc_name}"
-                    );
+                    does_match = self.builder.or_(does_match, matches);
                 }
                 if next_dispatch_bb is not None {
                     self.builder.cbranch(does_match, handler_bb, next_dispatch_bb);
@@ -771,29 +802,22 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     err_type = self.builder.load(tglob, name="err.type");
     for (i, except_node) in enumerate(nd.excepts or []) {
         ex = except_node.ex_type;
-        caught: (str | None) = None;
-        if isinstance(ex, uni.Name) {
-            caught = ex.value;
-        } elif isinstance(ex, uni.AtomTrailer) and isinstance(ex.right, uni.Name) {
+        caught = ex.value if isinstance(ex, uni.Name) else None;
+        if isinstance(ex, uni.AtomTrailer) and isinstance(ex.right, uni.Name) {
             caught = ex.right.value;
         }
+        ids = self._exception_handler_ids(ex);
         handler_bb = func.append_basic_block(f"except.handler.{i}");
         next_bb = func.append_basic_block(f"except.dispatch.{i + 1}");
-        if caught is None or caught in ("Exception", "BaseException") {
+        if 0 in ids {
             self.builder.branch(handler_bb);
         } else {
-            ids = [self._get_or_register_exc_type(caught)];
-            for desc in self._get_exc_descendants(caught) {
-                ids.append(self._get_or_register_exc_type(desc));
-            }
-            does_match: (ir.Value | None) = None;
+            does_match: ir.Value = ir.Constant(ir.IntType(1), 0);
             for tid in ids {
                 cmp = self.builder.icmp_signed(
                     "==", err_type, ir.Constant(i32, tid + 1), name=f"exc.is.{tid}"
                 );
-                does_match = cmp
-                    if does_match is None
-                    else self.builder.or_(does_match, cmp, name="exc.match");
+                does_match = self.builder.or_(does_match, cmp, name="exc.match");
             }
             self.builder.cbranch(does_match, handler_bb, next_bb);
         }

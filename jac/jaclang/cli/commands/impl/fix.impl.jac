@@ -643,9 +643,9 @@ def _priv_top_decls(mod: any) -> dict[str, any] {
     return out;
 }
 
-def _resolve_project_import(imp: any, importer: str, proj_root: str) -> str {
+def _resolve_project_import(module_path: any, importer: str, proj_root: str) -> str {
     try {
-        resolved = imp.from_loc.resolve_relative_path();
+        resolved = module_path.resolve_relative_path();
         if isinstance(resolved, str)
             and resolved.endswith('.jac')
             and os.path.isfile(resolved) {
@@ -653,8 +653,8 @@ def _resolve_project_import(imp: any, importer: str, proj_root: str) -> str {
         }
     } except Exception {}
     try {
-        dotted = imp.from_loc.dot_path_str;
-        level = imp.from_loc.level;
+        dotted = module_path.dot_path_str;
+        level = module_path.level;
     } except Exception {
         return '';
     }
@@ -742,14 +742,14 @@ def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
             continue;
         }
         entry_path = os.path.realpath(entry_path);
-        visited: set[str] = set();
-        queue: list[str] = [entry_path];
+        visited: set[tuple[str, bool]] = set();
+        queue: list[tuple[str, bool]] = [(entry_path, True)];
         while queue {
-            path = queue.pop(0);
-            if path in visited {
+            (path, is_entry) = queue.pop(0);
+            if (path, is_entry) in visited {
                 continue;
             }
-            visited.add(path);
+            visited.add((path, is_entry));
             mod = _parse_module(path);
             if mod is None {
                 notes.append(f"{path}: does not parse, skipped");
@@ -768,7 +768,6 @@ def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
                     "Change it to :protect if it was meant to be an endpoint (left unchanged)."
                 );
             }
-            is_entry = path == entry_path;
             for (name, decl) in plain.items() {
                 if isinstance(decl, uni.Ability) {
                     if is_entry {
@@ -789,10 +788,17 @@ def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
                 }
             }
             for imp in mod.get_all_sub_nodes(uni.Import) {
-                if not (imp.is_jac and imp.from_loc is not None) {
+                if not imp.is_jac {
                     continue;
                 }
-                target = _resolve_project_import(imp, path, ws.project_root);
+                module_path = imp.from_loc;
+                if imp.is_absorb and imp.items {
+                    module_path = imp.items[0];
+                }
+                if module_path is None {
+                    continue;
+                }
+                target = _resolve_project_import(module_path, path, ws.project_root);
                 if not target
                     or not target.startswith(
                         os.path.realpath(ws.project_root) + os.sep
@@ -817,7 +823,8 @@ def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
                         }
                     }
                 }
-                queue.append(target);
+
+                queue.append((target, is_entry and imp.is_absorb));
             }
         }
     }
