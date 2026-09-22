@@ -209,6 +209,12 @@ def build_runtime_closure(
     );
     processed: set[str] = {'jaclang'};
     modules: list[dict[str, any]] = [];
+    """One program serves the whole closure: a fresh program per module
+    re-hydrates the type catalog and evaluator for every runtime module, which
+    turned a ten-minute export into an hour. The program's options change per
+    module (server codespace unless native by policy) and the compile state
+    is released once the closure is complete.""";
+    program = JacProgram();
     while pending {
         module = min(pending);
         pending.remove(module);
@@ -250,17 +256,10 @@ def build_runtime_closure(
             continue;
         }
         native: dict[str, any] = {};
-        program = JacProgram();
         program.options = _runtime_module_options(path);
-        try {
-            source = _compile_runtime_module(
-                pkg_root, path, program, native, native_sources
-            );
-        } finally {
-            if program.contexts {
-                program._get_compiler().release_compile_state(program);
-            }
-        }
+        source = _compile_runtime_module(
+            pkg_root, path, program, native, native_sources
+        );
         tree = py_ast.parse(source, filename=str(path));
         sources[module] = tree;
         relative = module.removeprefix('jaclang.').replace('.', '/');
@@ -304,6 +303,9 @@ def build_runtime_closure(
         pending.update(
             _runtime_dependencies(pkg_root, tree, module, package) - processed
         );
+    }
+    if program.contexts {
+        program._get_compiler().release_compile_state(program);
     }
     for relative in [
         name
