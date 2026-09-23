@@ -4,6 +4,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     AssertStmt,
     Assignment,
+    AstImplNeedingNode,
     AtomTrailer,
     AtomUnit,
     BinaryExpr,
@@ -79,6 +80,7 @@ import from jaclang.compiler.types.ct_value {
     CtBound,
     CtBuiltin,
     CtBytes,
+    CtCaller,
     CtDeferred,
     CtDeferredSignal,
     CtDict,
@@ -160,6 +162,7 @@ import from jaclang.compiler.types.types {
     TypeBase,
     UnknownType
 }
+import from jaclang.compiler.types.stubcat.reader { CatModule }
 import from jaclang.compiler.types.type_utils { lookup_symtab }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 
@@ -250,9 +253,16 @@ def _scope_of(nd: UniNode) -> (UniScopeNode | None) {
 }
 
 def _impl_body(nd: UniNode) -> list[UniNode] {
-    body = nd?.body;
+    if not isinstance(nd, AstImplNeedingNode) {
+        return [];
+    }
+    body = nd.body;
     if isinstance(body, ImplDef) {
-        body = body.body;
+        inner = body.body;
+        if isinstance(inner, list) {
+            return inner;
+        }
+        return [];
     }
     if isinstance(body, list) {
         return body;
@@ -266,7 +276,7 @@ def _is_builtin_name(name: str) -> bool {
         or name in CT_BUILTIN_FUNCS;
 }
 
-obj CtEvaluator {
+obj CtEvaluator(CtCaller) {
     has evaluator: TypeEvaluator,
         env: CtEnvironment = CtEnvironment(),
         fuel: int = CT_FUEL_DEFAULT,
@@ -928,7 +938,7 @@ obj CtEvaluator {
     def _demand_tree(sym: Symbol) -> Symbol {
         decl = sym.decl;
         home = decl.find_parent_of_type(Module) if decl is not None else None;
-        if home is None or not hasattr(home, "cat_kids") {
+        if home is None or not isinstance(home, CatModule) {
             return sym;
         }
         path = _norm_path(home.loc.mod_path if home.loc else "");
@@ -946,7 +956,7 @@ obj CtEvaluator {
         } except Exception {
             return sym;
         }
-        if real is None or hasattr(real, "cat_kids") {
+        if real is None or isinstance(real, CatModule) {
             return sym;
         }
         target: UniScopeNode = real;
@@ -1700,7 +1710,7 @@ obj CtEvaluator {
             if isinstance(v, CtRecord) and v.home {
                 return mk_str(v.home);
             }
-            first = (nd.params or [None])[0];
+            first: (UniNode | None) = nd.params[0] if nd.params else None;
             bound = isinstance(first, Name)
                 and self.frame_lookup(first.value) is not None;
             home = self._defining_module_of(first)
@@ -2248,14 +2258,20 @@ obj CtEvaluator {
             if hv.accessors {
                 continue;
             }
-            inner: (tuple[int, int] | None) = None;
+            sz = 8;
+            al = 8;
             ftype = self._field_type_of(hv);
             if ftype is not None {
                 inner = self._scalar_size_align(ftype);
+                if inner is not None {
+                    sz = inner[0];
+                    al = inner[1];
+                }
             }
-            (sz, al) = inner if inner is not None else (8, 8, );
             off = (off + al - 1) // al * al + sz;
-            top = max(top, al);
+            if al > top {
+                top = al;
+            }
         }
         return ((off + top - 1) // top * top, top, );
     }

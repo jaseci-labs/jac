@@ -44,7 +44,9 @@ import from jaclang.compiler.types.ct_value {
     CtValue,
     CtView,
     CtDeferredSignal,
+    CtRaise,
     as_ct_int,
+    bytes_has,
     ct_eq,
     ct_exc,
     ct_exc_value,
@@ -511,7 +513,7 @@ def to_float_operand(v: CtValue) -> (float | None) {
     return None;
 }
 
-def _unsupported(sym: str, l: CtValue, r: CtValue) -> Exception {
+def _unsupported(sym: str, l: CtValue, r: CtValue) -> CtRaise {
     return ct_exc(
         "TypeError",
         f"unsupported operand type(s) for {sym}: '{ct_type_name(l)}' and '{ct_type_name(
@@ -916,7 +918,7 @@ def ct_contains(container: CtValue, item: CtValue) -> bool {
             if n < 0 or n > 255 {
                 raise ct_exc("ValueError", "byte must be in range(0, 256)");
             }
-            return n in container.value;
+            return bytes_has(container.value, n);
         }
         if isinstance(item, CtBytes) {
             return item.value in container.value;

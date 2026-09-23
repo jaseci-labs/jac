@@ -14,6 +14,7 @@ import from jaclang.compiler.types.ct_int {
 }
 import from jaclang.compiler.types.ct_value {
     CT_FALSE,
+    CtCaller,
     CT_NONE,
     CT_TRUE,
     CtBool,
@@ -98,7 +99,6 @@ import from jaclang.compiler.types.ct_format {
     ct_str_format,
     pad_text
 }
-import type from jaclang.compiler.types.ct_eval { CtEvaluator }
 
 glob CT_BUILTIN_FUNCS: frozenset[str] = frozenset(
          {
@@ -491,7 +491,7 @@ def _str_list(items: list[str]) -> CtList {
 }
 
 def ct_sort(
-    ev: CtEvaluator, items: list[CtValue], key: (CtValue | None), reverse: bool
+    ev: CtCaller, items: list[CtValue], key: (CtValue | None), reverse: bool
 ) -> list[CtValue] {
     keys: list[CtValue] = [];
     for item in items {
@@ -545,7 +545,7 @@ def ct_sort(
 }
 
 def _minmax(
-    ev: CtEvaluator, fname: str, args: list[CtValue], kwargs: dict[str, CtValue]
+    ev: CtCaller, fname: str, args: list[CtValue], kwargs: dict[str, CtValue]
 ) -> CtValue {
     key: (CtValue | None) = None;
     dflt: (CtValue | None) = None;
@@ -778,7 +778,7 @@ def _reversed(v: CtValue) -> CtList {
 }
 
 def ct_call_builtin(
-    ev: CtEvaluator, name: str, args: list[CtValue], kwargs: dict[str, CtValue]
+    ev: CtCaller, name: str, args: list[CtValue], kwargs: dict[str, CtValue]
 ) -> CtValue {
     if name.startswith("math.") {
         return ct_call_math(name[5:], args, kwargs);
@@ -1162,7 +1162,7 @@ def ct_construct_builtin(
             if biv.mag or biv.small > 100000000 {
                 raise CtError("comptime bytes() size is too large");
             }
-            return mk_bytes(bytes(biv.small));
+            return mk_bytes(bytes([0] * biv.small));
         }
         vals: list[int] = [];
         for item in ct_iter(bsrc) {
@@ -1310,7 +1310,7 @@ def ct_type_attr(type_name: str, attr: str) -> CtValue {
 }
 
 def ct_call_method_value(
-    ev: CtEvaluator, m: CtMethod, args: list[CtValue], kwargs: dict[str, CtValue]
+    ev: CtCaller, m: CtMethod, args: list[CtValue], kwargs: dict[str, CtValue]
 ) -> CtValue {
     if m.recv is not None {
         return ct_call_method(ev, m.recv, m.name, args, kwargs);
@@ -1354,7 +1354,7 @@ def ct_call_method_value(
 }
 
 def ct_call_method(
-    ev: CtEvaluator,
+    ev: CtCaller,
     recv: CtValue,
     name: str,
     args: list[CtValue],
@@ -1480,6 +1480,15 @@ def _str_method(
     if name in ("strip", "lstrip", "rstrip") {
         slots = _arity(name, args, kwargs, ["chars"], 0);
         chars = _opt_str(slots[0], f"{name} arg must be None or str, not ");
+        if chars is None {
+            if name == "strip" {
+                return mk_str(s.strip());
+            }
+            if name == "lstrip" {
+                return mk_str(s.lstrip());
+            }
+            return mk_str(s.rstrip());
+        }
         if name == "strip" {
             return mk_str(s.strip(chars));
         }
@@ -1492,16 +1501,14 @@ def _str_method(
         slots2 = _arity(name, args, kwargs, ["sep", "maxsplit"], 0);
         sep = _opt_str(slots2[0], "must be str or None, not ");
         maxsplit = _opt_small(slots2[1]);
-        if maxsplit is None {
-            maxsplit = -1;
+        limit = maxsplit if maxsplit is not None else -1;
+        if sep is None {
+            return _str_list(str_split_ws(s, limit, name == "rsplit"));
         }
-        if sep is not None and sep == "" {
+        if sep == "" {
             raise ct_exc("ValueError", "empty separator");
         }
-        if name == "split" {
-            return _str_list(s.split(sep, maxsplit));
-        }
-        return _str_list(s.rsplit(sep, maxsplit));
+        return _str_list(str_split_sep(s, sep, limit, name == "rsplit"));
     }
     if name == "splitlines" {
         slots3 = _arity(name, args, kwargs, ["keepends"], 0);
@@ -1553,10 +1560,7 @@ def _str_method(
             );
         }
         for c in cands {
-            hit = s.startswith(c, start, end)
-                if name == "startswith"
-                else s.endswith(c, start, end);
-            if hit {
+            if str_tailmatch(s, c, start, end, name == "endswith") {
                 return CT_TRUE;
             }
         }
@@ -1565,21 +1569,25 @@ def _str_method(
     if name in ("find", "rfind", "index", "rindex", "count") {
         slots6 = _arity(name, args, kwargs, ["sub", "start", "end"], 1);
         sub = _as_str(slots6[0], "must be str, not ");
-        start2 = _opt_small(slots6[1]);
-        end2 = _opt_small(slots6[2]);
-        if name == "find" {
-            return mk_int(s.find(sub, start2, end2));
-        }
-        if name == "rfind" {
-            return mk_int(s.rfind(sub, start2, end2));
-        }
+        (lo, hi) = adjust_indices(len(s), _opt_small(slots6[1]), _opt_small(slots6[2]));
         if name == "count" {
-            return mk_int(s.count(sub, start2, end2));
+            if hi - lo < len(sub) {
+                return mk_int(0);
+            }
+            return mk_int(s[lo:hi].count(sub));
         }
-        pos = s.find(sub, start2, end2)
-            if name == "index"
-            else s.rfind(sub, start2, end2);
-        if pos < 0 {
+        pos = -1;
+        if hi - lo >= len(sub) {
+            window = s[lo:hi];
+            found = window.find(sub);
+            if name in ("rfind", "rindex") {
+                found = window.rfind(sub);
+            }
+            if found >= 0 {
+                pos = found + lo;
+            }
+        }
+        if pos < 0 and name in ("index", "rindex") {
             raise ct_exc("ValueError", "substring not found");
         }
         return mk_int(pos);
@@ -1671,20 +1679,24 @@ def _bytes_method(
     }
     if name in ("upper", "lower") {
         _no_args(name, args, kwargs);
-        return mk_bytes(b.upper() if name == "upper" else b.lower());
+        if name == "upper" {
+            return mk_bytes(b.upper());
+        }
+        return mk_bytes(b.lower());
     }
     if name in ("startswith", "endswith") {
         probe = _as_bytes_arg(_one_arg(name, args, kwargs));
-        return mk_bool(
-            b.startswith(probe) if name == "startswith" else b.endswith(probe)
-        );
+        if name == "startswith" {
+            return mk_bool(b.startswith(probe));
+        }
+        return mk_bool(b.endswith(probe));
     }
     if name in ("find", "rfind", "index", "count") {
         sub = _as_bytes_arg(_one_arg(name, args, kwargs));
         if name == "count" {
             return mk_int(b.count(sub));
         }
-        pos = b.rfind(sub) if name == "rfind" else b.find(sub);
+        pos = bytes_find(b, sub, name == "rfind");
         if name == "index" and pos < 0 {
             raise ct_exc("ValueError", "subsection not found");
         }
@@ -1778,7 +1790,7 @@ def _seq_index_count(
 }
 
 def _list_method(
-    ev: CtEvaluator,
+    ev: CtCaller,
     recv: CtList,
     name: str,
     args: list[CtValue],
@@ -2193,6 +2205,34 @@ def ct_call_math(
     name: str, args: list[CtValue], kwargs: dict[str, CtValue]
 ) -> CtValue {
     if name in ("log", "log2", "log10") {
+        return _math_log(name, args, kwargs);
+    }
+    if name in ("gcd", "lcm", "factorial", "isqrt", "comb", "perm") {
+        return _math_integer(name, args, kwargs);
+    }
+    if name in ("prod", "fsum") {
+        return _math_reduce(name, args, kwargs);
+    }
+    if name in ("floor", "ceil", "trunc", "isnan", "isinf", "isfinite", "isclose") {
+        return _math_classify(name, args, kwargs);
+    }
+    if name in ("hypot", "ldexp", "frexp", "modf") {
+        return _math_parts(name, args, kwargs);
+    }
+    if name in ("atan2", "copysign", "fmod", "remainder", "pow") {
+        if len(args) != 2 or kwargs {
+            raise ct_exc("TypeError", f"{name} expected 2 arguments, got {len(args)}");
+        }
+        x2 = _math_float(args[0]);
+        y2 = _math_float(args[1]);
+        return mk_float(_math2(name, x2, y2));
+    }
+    return mk_float(_math1(name, _math_float(_one_arg(name, args, kwargs))));
+}
+
+
+def _math_log(name: str, args: list[CtValue], kwargs: dict[str, CtValue]) -> CtValue {
+    if name in ("log", "log2", "log10") {
         if kwargs {
             raise ct_exc("TypeError", f"{name}() takes no keyword arguments");
         }
@@ -2206,6 +2246,12 @@ def ct_call_math(
         }
         return mk_float(_log_of(_one_arg(name, args, kwargs), name));
     }
+    raise CtError(f"math.{name} is not available in comptime code");
+}
+
+def _math_integer(
+    name: str, args: list[CtValue], kwargs: dict[str, CtValue]
+) -> CtValue {
     if name in ("gcd", "lcm") {
         if kwargs {
             raise ct_exc("TypeError", f"{name}() takes no keyword arguments");
@@ -2286,6 +2332,12 @@ def ct_call_math(
         }
         return result;
     }
+    raise CtError(f"math.{name} is not available in comptime code");
+}
+
+def _math_reduce(
+    name: str, args: list[CtValue], kwargs: dict[str, CtValue]
+) -> CtValue {
     if name == "prod" {
         slots = _arity("prod", args, {}, ["iterable"], 1);
         acc2: CtValue = CtInt(small=1);
@@ -2314,6 +2366,12 @@ def ct_call_math(
             raise ct_exc("ValueError", str(e));
         }
     }
+    raise CtError(f"math.{name} is not available in comptime code");
+}
+
+def _math_classify(
+    name: str, args: list[CtValue], kwargs: dict[str, CtValue]
+) -> CtValue {
     if name in ("floor", "ceil", "trunc") {
         v3 = _one_arg(name, args, kwargs);
         iv = as_ct_int(v3);
@@ -2350,6 +2408,10 @@ def ct_call_math(
         }
         return mk_bool(math.isclose(a, b, rel_tol=rel, abs_tol=abs_tol));
     }
+    raise CtError(f"math.{name} is not available in comptime code");
+}
+
+def _math_parts(name: str, args: list[CtValue], kwargs: dict[str, CtValue]) -> CtValue {
     if name == "hypot" {
         if kwargs {
             raise ct_exc("TypeError", "hypot() takes no keyword arguments");
@@ -2402,15 +2464,7 @@ def ct_call_math(
         (frac, whole) = math.modf(f4);
         return mk_tuple([mk_float(frac), mk_float(whole)]);
     }
-    if name in ("atan2", "copysign", "fmod", "remainder", "pow") {
-        if len(args) != 2 or kwargs {
-            raise ct_exc("TypeError", f"{name} expected 2 arguments, got {len(args)}");
-        }
-        x2 = _math_float(args[0]);
-        y2 = _math_float(args[1]);
-        return mk_float(_math2(name, x2, y2));
-    }
-    return mk_float(_math1(name, _math_float(_one_arg(name, args, kwargs))));
+    raise CtError(f"math.{name} is not available in comptime code");
 }
 
 def _factorial(n: CtInt) -> CtInt {
@@ -2551,4 +2605,161 @@ def _math1(name: str, x: float) -> float {
         return math.cbrt(x);
     }
     raise CtError(f"math.{name} is not available in comptime code");
+}
+
+def adjust_indices(n: int, start: (int | None), end: (int | None)) -> tuple[int, int] {
+    hi = n if end is None else end;
+    if hi > n {
+        hi = n;
+    } elif hi < 0 {
+        hi += n;
+        if hi < 0 {
+            hi = 0;
+        }
+    }
+    lo = 0 if start is None else start;
+    if lo < 0 {
+        lo += n;
+        if lo < 0 {
+            lo = 0;
+        }
+    }
+    return (lo, hi);
+}
+
+def str_tailmatch(
+    s: str, sub: str, start: (int | None), end: (int | None), suffix: bool
+) -> bool {
+    (lo, hi) = adjust_indices(len(s), start, end);
+    if hi - len(sub) < lo {
+        return False;
+    }
+    if suffix {
+        return s[hi - len(sub):hi] == sub;
+    }
+    return s[lo:lo + len(sub)] == sub;
+}
+
+def str_split_ws(s: str, maxsplit: int, from_right: bool) -> list[str] {
+    out: list[str] = [];
+    n = len(s);
+    count = 0;
+    if not from_right {
+        i = 0;
+        while maxsplit < 0 or count < maxsplit {
+            while i < n and s[i].isspace() {
+                i += 1;
+            }
+            if i == n {
+                break;
+            }
+            j = i;
+            i += 1;
+            while i < n and not s[i].isspace() {
+                i += 1;
+            }
+            out.append(s[j:i]);
+            count += 1;
+        }
+        if i < n {
+            while i < n and s[i].isspace() {
+                i += 1;
+            }
+            if i != n {
+                out.append(s[i:n]);
+            }
+        }
+        return out;
+    }
+    k = n - 1;
+    while maxsplit < 0 or count < maxsplit {
+        while k >= 0 and s[k].isspace() {
+            k -= 1;
+        }
+        if k < 0 {
+            break;
+        }
+        j = k;
+        k -= 1;
+        while k >= 0 and not s[k].isspace() {
+            k -= 1;
+        }
+        out.append(s[k + 1:j + 1]);
+        count += 1;
+    }
+    if k >= 0 {
+        while k >= 0 and s[k].isspace() {
+            k -= 1;
+        }
+        if k >= 0 {
+            out.append(s[0:k + 1]);
+        }
+    }
+    out.reverse();
+    return out;
+}
+
+def str_split_sep(s: str, sep: str, maxsplit: int, from_right: bool) -> list[str] {
+    out: list[str] = [];
+    count = 0;
+    if not from_right {
+        i = 0;
+        while maxsplit < 0 or count < maxsplit {
+            pos = s[i:].find(sep);
+            if pos < 0 {
+                break;
+            }
+            out.append(s[i:i + pos]);
+            i = i + pos + len(sep);
+            count += 1;
+        }
+        out.append(s[i:]);
+        return out;
+    }
+    j = len(s);
+    while maxsplit < 0 or count < maxsplit {
+        pos = s[:j].rfind(sep);
+        if pos < 0 {
+            break;
+        }
+        out.append(s[pos + len(sep):j]);
+        j = pos;
+        count += 1;
+    }
+    out.append(s[:j]);
+    out.reverse();
+    return out;
+}
+
+def _bytes_match_at(b: bytes, sub: bytes, at: int) -> bool {
+    for k in range(len(sub)) {
+        if b[at + k] != sub[k] {
+            return False;
+        }
+    }
+    return True;
+}
+
+def bytes_find(b: bytes, sub: bytes, from_right: bool) -> int {
+    n = len(b);
+    m = len(sub);
+    if m > n {
+        return -1;
+    }
+    if from_right {
+        i = n - m;
+        while i >= 0 {
+            if _bytes_match_at(b, sub, i) {
+                return i;
+            }
+            i -= 1;
+        }
+        return -1;
+    }
+    for j in range(n - m + 1) {
+        if _bytes_match_at(b, sub, j) {
+            return j;
+        }
+    }
+    return -1;
 }

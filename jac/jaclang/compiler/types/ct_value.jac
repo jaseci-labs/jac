@@ -147,6 +147,14 @@ obj CtExc(CtValue) {
         args: list[CtValue] = [];
 }
 
+obj CtCaller {
+    def call_value(
+        callee: CtValue, args: list[CtValue], kwargs: dict[str, CtValue]
+    ) -> CtValue abst;
+
+    def ct_isinstance(v: CtValue, t: CtValue) -> bool abst;
+}
+
 obj CtRaise(Exception) {
     has exc: CtExc,
         user: bool = False;
@@ -845,9 +853,18 @@ def int_cmp(a: CtInt, b: CtInt) -> int {
     return -c if an else c;
 }
 
+def bytes_has(data: bytes, byte: int) -> bool {
+    for b in data {
+        if b == byte {
+            return True;
+        }
+    }
+    return False;
+}
+
 def bytes_repr(data: bytes) -> str {
     quote = "'";
-    if 39 in data and 34 not in data {
+    if bytes_has(data, 39) and not bytes_has(data, 34) {
         quote = "\"";
     }
     out = "b" + quote;
