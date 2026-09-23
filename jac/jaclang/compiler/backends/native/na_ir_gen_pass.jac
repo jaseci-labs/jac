@@ -819,6 +819,7 @@ walker NaIRGenPass {
     ) -> (ir.Value | None);
 
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
+    def _is_boolean_result_expr(nd: (uni.UniNode | None)) -> bool;
     def _codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None);
     def _codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None);
     def _emit_compr_element(compr: NativeComprehension) -> None;
