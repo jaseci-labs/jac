@@ -69,6 +69,7 @@ def datetime_py -> dict[any, any] {
         "strptime": parsed.isoformat(),
         "strptime_z": datetime.strptime("2020-02-29 +0130", "%Y-%m-%d %z").isoformat(),
         "fromiso": ioff_s,
+        "fromiso_naive": datetime.fromisoformat("2020-02-29 13:45:07").isoformat(),
         "strftime_full": dt.strftime("%Y-%m-%d %H:%M:%S"),
         "strftime_names": d.strftime("%A %B %j"),
         "minyear": MINYEAR,
@@ -84,6 +85,8 @@ def datetime_py -> dict[any, any] {
         "zi_key": ny.key,
         "zi_utc_conv": aware.astimezone(timezone.utc).isoformat(),
         "zi_tokyo": aware.astimezone(ZoneInfo("Asia/Tokyo")).isoformat(),
+        "naive_ts": datetime.fromtimestamp(1700000000.0).isoformat(),
+        "naive_neg_ts": datetime.fromtimestamp(-86401.0).isoformat(),
 
     };
 }
@@ -145,6 +148,7 @@ def datetime_na -> dict[str, any] {
         "strptime": parsed.isoformat(),
         "strptime_z": datetime.strptime("2020-02-29 +0130", "%Y-%m-%d %z").isoformat(),
         "fromiso": ioff_s,
+        "fromiso_naive": datetime.fromisoformat("2020-02-29 13:45:07").isoformat(),
         "strftime_full": dt.strftime("%Y-%m-%d %H:%M:%S"),
         "strftime_names": d.strftime("%A %B %j"),
         "minyear": MINYEAR,
@@ -160,6 +164,8 @@ def datetime_na -> dict[str, any] {
         "zi_key": ny.key,
         "zi_utc_conv": aware.astimezone(timezone.utc).isoformat(),
         "zi_tokyo": aware.astimezone(ZoneInfo("Asia/Tokyo")).isoformat(),
+        "naive_ts": datetime.fromtimestamp(1700000000.0).isoformat(),
+        "naive_neg_ts": datetime.fromtimestamp(-86401.0).isoformat(),
 
     };
 }
