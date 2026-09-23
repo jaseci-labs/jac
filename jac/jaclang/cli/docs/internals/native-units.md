@@ -97,6 +97,11 @@ recompile the importer, and a compile that could not see the unit at all
 (mid-build in a cycle) records no digest for it and is recompiled once it
 can. A type-only import of a Python-lane module is no link edge.
 
+A consumer that only analyzes (a check) asks for a dependency's interface
+without products: the dependency is lowered, which records its interface and
+layouts, but it is not optimized, emitted or persisted; a build that later
+needs the products compiles it again.
+
 Two lookups feed the walk. A consumer declaring its calls takes the
 dependency's interface as it stands, whether or not the dependency's own
 records are current (`ensure(..., check_deps=False)`): that agreement is the
@@ -149,7 +154,11 @@ callers, and the plan knows nothing about any of them.
    list and the source key in the `<artifact>.layout.json` sidecar.
 
 The JIT is the same plan rooted at the module, always in bitcode mode, with
-the merged module optimized whole-program before MCJIT sees it. Its target
+the merged module optimized whole-program before MCJIT sees it. The optimized
+merged image is written under the `jir-jit` cache bucket keyed by the plan
+digest, so a later run of an unchanged plan parses that image instead of
+merging and optimizing again; debug builds, IR dumps and cache bypasses never
+reuse one. Its target
 machine is llvmlite's default for `jit=True`: with the position-independent
 small-model pair the linked artifacts use, MCJIT's AArch64 stubs branch into
 the GOT instead of through it.

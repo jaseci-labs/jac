@@ -1284,11 +1284,55 @@ def load_jit_library(lib_path: str) -> ctypes.CDLL {
     raise LinkPlanError(f"C library not found for JIT: {lib_path}");
 }
 
+def _jit_image_path(plan: LinkPlan) -> (str | None) {
+    """Where the optimized whole-program image for this plan lives. The plan
+    digest covers the units (content and interface), the mode, the triple,
+    the codegen identity and the compiler, which is everything the merged
+    and optimized module depends on. Debug builds, IR dumps and cache
+    bypasses never reuse an image.""";
+    import from jaclang.compiler.driver.jir { cache_mode, get_jir_cache_dir }
+    (rebuild, _) = cache_mode();
+    if rebuild
+        or plan.options.no_ir_cache
+        or plan.options.native_debug
+        or plan.options.dump_ir_path {
+        return None;
+    }
+    h = hashlib.sha256();
+    h.update(b"jit-image-1\x1f");
+    h.update(plan.plan_digest().encode());
+    return os.path.join(str(get_jir_cache_dir()), "jit", h.hexdigest()[:32] + ".bc");
+}
+
 def jit_engine(plan: LinkPlan) -> ExecutionEngine {
     tm = _target_machine(plan, ArtifactKind.JIT);
-    spec = plan.glue_spec(ArtifactKind.JIT, _platform_of(plan.triple), False);
-    (merged, _exports) = whole_program_module(plan, spec);
-    optimize_whole_program(plan, merged, ArtifactKind.JIT, tm);
+    registry = plan.prog.native_units();
+    image = _jit_image_path(plan);
+    merged: (ModuleRef | None) = None;
+    if image is not None and os.path.isfile(image) {
+        try {
+            with open(image, "rb") as f {
+                cached = llvm.parse_bitcode(f.read());
+            }
+            assert isinstance(cached, llvm.ModuleRef);
+            merged = cached;
+            registry._event("jit_image_hit");
+        } except Exception {
+            merged = None;
+        }
+    }
+    if merged is None {
+        spec = plan.glue_spec(ArtifactKind.JIT, _platform_of(plan.triple), False);
+        (merged, _exports) = whole_program_module(plan, spec);
+        optimize_whole_program(plan, merged, ArtifactKind.JIT, tm);
+        registry._event("jit_image_build");
+        if image is not None {
+            try {
+                atomic_write(image, merged.as_bitcode());
+            } except Exception {}
+        }
+    }
+    assert merged is not None;
     if env_na_debug() {
         sys.stderr.write(
             f"[jit] {len(plan.units)} unit(s), inits {plan.init_symbols()}, "

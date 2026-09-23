@@ -75,6 +75,12 @@ glob RETIRED: tuple[str, ...] = (
              summary="pre-resolved typeshed catalogs"
          ),
          Bucket(
+             name="jir-jit",
+             relpath="jir/jit",
+             policy=Policy(ttl_days=14.0, pattern="*.bc"),
+             summary="optimized whole-program images for the in-process JIT, one per link plan"
+         ),
+         Bucket(
              name="jir-digests",
              relpath="jir",
              policy=Policy(ttl_days=14.0, pattern="compiler_digest.*.json"),

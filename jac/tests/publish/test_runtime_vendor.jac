@@ -43,3 +43,24 @@ test "vendored runtime modules compile in the server codespace unless native by 
         assert space == expected , f"{path}: {space}";
     }
 }
+
+test "source products of package-owned modules come from the compiler's own program" {
+    import os;
+    import jaclang;
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.source_products { python_source }
+    path = os.path.join(
+        os.path.dirname(os.path.realpath(str(jaclang.__file__))),
+        "runtime",
+        "surface.jac"
+    );
+    program = JacProgram();
+    (source, module) = python_source(path, program);
+    assert source;
+    assert module is not None;
+    cache = program._get_compiler().selfhost;
+    assert cache.owns(path);
+    assert os.path.realpath(path) not in program.mod.hub , (
+        "the caller's program must not analyze the compiler's own module"
+    );
+}

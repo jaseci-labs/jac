@@ -923,3 +923,64 @@ test "imported strings keep their ABI across enforced and runtime units" {
         }
     }
 }
+
+test "the JIT reuses the optimized image of an unchanged link plan" {
+    import ctypes;
+    import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
+    with tempfile.TemporaryDirectory(prefix="jac-jit-image-") as cache_dir {
+        source = str(Path(cache_dir) / "reuse.jac");
+        Path(source).write_text("def:pub answer -> int { return 42; }\n");
+        opts = _opts(NATIVE_LINK_MODE_BITCODE);
+        first = JacProgram();
+        first.options = opts;
+        engine = jit_engine_for_cached(first, source, opts);
+        assert engine is not None;
+        events = first.analysis.cache_events;
+        assert events.get("jit_image_build", 0) == 1 , dict(events);
+        second = JacProgram();
+        second.options = opts;
+        again = jit_engine_for_cached(second, source, opts);
+        assert again is not None;
+        events = second.analysis.cache_events;
+        assert events.get("jit_image_hit", 0) == 1 , dict(events);
+        assert events.get("jit_image_build", 0) == 0 , dict(events);
+        address = again.get_function_address("answer");
+        assert address;
+        assert ctypes.CFUNCTYPE(ctypes.c_int64)(address)() == 42;
+    }
+}
+
+test "an analysis-only consumer records a dependency's interface without emitting its products" {
+    import from jaclang.compiler.driver.jir {
+        get_module_cache_path,
+        read_section_bytes,
+        SEC_NBITCODE,
+        SEC_NOBJ
+    }
+    tmp = _diamond_copy();
+    top = os.path.join(tmp, "top.jac");
+    prog = JacProgram();
+    opts = CompileOptions(
+        no_cgen=True,
+        native_required=True,
+        default_codespace='native',
+        skip_native_engine=True
+    );
+    prog.compile(file_path=top, options=opts);
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    events = prog.analysis.cache_events;
+    assert events.get("native_unit_analysis_only", 0) >= 1 , dict(events);
+    registry = prog.native_units();
+    for name in ["base.jac", "left.jac", "right.jac", "extra.jac"] {
+        dep = os.path.realpath(os.path.join(tmp, name));
+        ent = registry.entries.get(dep);
+        assert ent is not None and ent.iface is not None , name;
+        assert ent.bitcode is None and ent.object_bytes is None , name;
+        cache_path = get_module_cache_path(dep);
+        if cache_path.exists() {
+            data = cache_path.read_bytes();
+            assert read_section_bytes(data, SEC_NBITCODE) is None , name;
+            assert read_section_bytes(data, SEC_NOBJ) is None , name;
+        }
+    }
+}

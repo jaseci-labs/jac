@@ -8,7 +8,12 @@ def python_source(path: str, program: JacProgram) -> tuple[str, Module | None] {
         return (Path(path).read_text(encoding='utf-8'), None);
     }
     import from jaclang.compiler.driver.compilation_context { program_for }
-    actual = program_for(path, program);
+    """A module the running compiler package owns compiles where the compiler
+    compiles its own package: a source export of the runtime reads the trees
+    the compiler already holds instead of analyzing the package again in a
+    program of its own. Every other module keeps the caller's program.""";
+    owner = program._get_compiler().selfhost.resolve(path, program);
+    actual = program_for(path, owner);
     options = copy.copy(actual.options);
     options.need_full_ast = True;
     options.no_cgen = False;

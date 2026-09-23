@@ -432,7 +432,11 @@ impl NaIRGenPass._dep_iface(imported_mod: uni.Module) -> (NativeIface | None) {
     }
     opts = self.prog.options;
     ent = self.prog.native_units().ensure(
-        imported_mod.loc.mod_path, compile_on_miss=True, options=opts, check_deps=False
+        imported_mod.loc.mod_path,
+        compile_on_miss=True,
+        options=opts,
+        check_deps=False,
+        products=not opts.no_cgen
     );
     return ent.iface if ent is not None else None;
 }

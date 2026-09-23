@@ -299,7 +299,8 @@ obj NativeUnitRegistry {
         path: str,
         compile_on_miss: bool = True,
         options: (CompileOptions | None) = None,
-        check_deps: bool = True
+        check_deps: bool = True,
+        products: bool = True
     ) -> (NativeUnitEntry | None) {
         options = options if options is not None else self._options();
         resolved = os.path.realpath(path);
@@ -343,7 +344,7 @@ obj NativeUnitRegistry {
         if self.not_native.get(resolved) == NativeUnitRegistry._source_key(resolved) {
             return None;
         }
-        return self.compile_unit(resolved, options);
+        return self.compile_unit(resolved, options, products=products);
     }
 
     def known_native_deps(path: str, options: CompileOptions) -> list[str] {
@@ -410,8 +411,15 @@ obj NativeUnitRegistry {
     }
 
     def compile_unit(
-        path: str, options: (CompileOptions | None) = None, use_str: (str | None) = None
+        path: str,
+        options: (CompileOptions | None) = None,
+        use_str: (str | None) = None,
+        products: bool = True
     ) -> (NativeUnitEntry | None) {
+        """Lower a unit and, when `products` is set, optimize, emit and persist
+        its products. An analysis-only consumer needs the interface and
+        layouts that lowering records; a build that later needs the products
+        compiles the unit again through `bitcode_for` or `object_for`.""";
         if self.session is not None {
             return self.session.lower(path, use_str);
         }
@@ -426,6 +434,10 @@ obj NativeUnitRegistry {
                 return None;
             }
             plan = build_link_plan(self.prog, [resolved], opts);
+            if not products {
+                self._event("native_unit_analysis_only");
+                return self.entries.get(resolved);
+            }
             session.finish([unit.path for unit in plan.units]);
             return self.entries.get(resolved);
         } except Exception as exc {
