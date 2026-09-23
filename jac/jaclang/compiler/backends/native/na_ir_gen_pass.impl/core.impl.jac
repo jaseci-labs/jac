@@ -392,7 +392,7 @@ impl NaIRGenPass._export_native_layout -> None {
         if ".__jacp_" in str(func.name) {
             continue;
         }
-        if fname in self._clib_symbol_lib {
+        if fname in self._clib_symbol_lib and self.clib_extern_fns.get(fname) is func {
             continue;
         }
         param_types = [self._llvm_type_str(a) for a in func.function_type.args];
