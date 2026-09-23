@@ -5,8 +5,8 @@ import from jaclang.compiler.driver.pipeline_types { AnalysisFact, CompilationPh
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.project.source { read_file_with_encoding }
 import from jaclang.compiler.driver.source_failures { module_import_in_flight }
+import from jaclang.compiler.frontend.host { active_host }
 
 obj ModuleAnalysis {
     has program: JacProgram,
@@ -38,7 +38,7 @@ obj ModuleAnalysis {
         }
         keep_str = self.source
             if self.source is not None
-            else read_file_with_encoding(self.path);
+            else active_host().read_source(self.path);
         errors_before = len(self.program.errors_had);
         self.module = self.program.parse_source(
             keep_str, self.path, cancel_token=self.options.cancel_token
@@ -105,7 +105,6 @@ obj ModuleAnalysis {
             or str(self.path).endswith('.py')
             or (self.module is not None and self.module.stub_only)
             or (self.module is not None and self.module.is_raised_from_py);
-        import from jaclang.compiler.frontend.host { active_host }
         host = active_host();
         _annex_of_base = host.path_facts(self.path).is_annex
             and host.base_file(str(self.path)) is not None;

@@ -157,6 +157,12 @@ obj HostServices {
         return PathFacts();
     }
 
+    def read_source(path: str) -> str {
+        with open(path) as handle {
+            return handle.read();
+        }
+    }
+
     def annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
         return [];
     }

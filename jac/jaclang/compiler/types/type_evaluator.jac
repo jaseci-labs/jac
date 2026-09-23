@@ -151,7 +151,6 @@ import from jaclang.compiler.types.types {
     UnknownType,
     create_callable_type
 }
-import from jaclang.project.source { read_file_with_encoding }
 
 import type from jaclang.compiler.driver.program { JacProgram }
 

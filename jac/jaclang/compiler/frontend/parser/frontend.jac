@@ -181,11 +181,12 @@ def annex_paths(file_path: str) -> list[str] {
 }
 
 def annex_sources(file_path: str) -> list[WovenAnnex] {
-    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.compiler.frontend.host { active_host }
+    host = active_host();
     out: list[WovenAnnex] = [];
     for pth in annex_paths(file_path) {
         try {
-            out.append(WovenAnnex(source=read_file_with_encoding(pth), path=pth));
+            out.append(WovenAnnex(source=host.read_source(pth), path=pth));
         } except Exception {
             continue;
         }

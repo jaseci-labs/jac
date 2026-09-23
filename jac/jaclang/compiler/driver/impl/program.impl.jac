@@ -187,8 +187,7 @@ impl JacProgram.load_dependency_module(
             import from jaclang.compiler.driver.pass_driver { run_pass }
             import from jaclang.compiler.frontend.host { active_host }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-            import from jaclang.project.source { read_file_with_encoding }
-            src = use_str or read_file_with_encoding(source_path);
+            src = use_str or active_host().read_source(source_path);
             (mod, _stub_errors) = active_host().parse_python(src, source_path, self);
             mod.stub_only = True;
 

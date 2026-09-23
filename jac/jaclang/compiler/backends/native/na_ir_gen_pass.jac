@@ -1614,6 +1614,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (tuple[ir.Value, str, ir.Type] | None);
 
     def _codegen_next(nd: uni.FuncCall) -> (ir.Value | None);
+    def _next_loaded(out_slot: ir.Value, elem_type: ir.Type) -> ir.Value;
     def _make_map_iter(
         up: tuple[ir.Value, str, ir.Type], callee: NativeIterCallback
     ) -> (tuple[ir.Value, str, ir.Type] | None);

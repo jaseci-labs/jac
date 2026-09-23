@@ -54,9 +54,9 @@ import from jaclang.compiler.driver.pass_driver {
     build_diagnostic_policy,
     compile_progress,
     deliver_alerts,
-    run_pass,
-    setup_progress
+    run_pass
 }
+import from jaclang.compiler.driver.setup_progress { setup_progress }
 import from jaclang.compiler.driver.pipeline {
     get_analysis_sched,
     get_boundary_analysis_sched,

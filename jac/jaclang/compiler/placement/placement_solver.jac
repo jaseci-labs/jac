@@ -48,7 +48,6 @@ def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
     import from jaclang.compiler.placement.placement_pins { module_native_demoted }
-    import from jaclang.project.source { read_file_with_encoding }
     import from jaclang.compiler.driver.program { JacProgram }
     if module_native_demoted(os.path.realpath(path)) {
         return ("previously-demoted", []);
@@ -78,7 +77,7 @@ def _native_dep_scan(
         base_dir = os.path.dirname(os.path.abspath(path)) or '.';
         for f in files {
             try {
-                src = read_file_with_encoding(f);
+                src = active_host().read_source(f);
             } except Exception {
                 sv_reason = "unreadable annex";
                 break;

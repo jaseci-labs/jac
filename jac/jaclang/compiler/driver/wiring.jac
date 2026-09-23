@@ -19,7 +19,6 @@ import from jaclang.compiler.frontend.unitree {
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.roles { BodyRole, Kid }
 import from jaclang.compiler.frontend.host { active_host }
-import from jaclang.project.source { read_file_with_encoding }
 import from jaclang.compiler.passes.annex_weave { WovenAnnex, import_form }
 
 glob ARCH_FILE_NAME: str = "arch.jac";

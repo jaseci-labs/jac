@@ -62,6 +62,7 @@ obj ProjectHost(HostServices) {
 
     def ct_environment -> CtEnvironment;
     def path_facts(path: str) -> PathFacts;
+    def read_source(path: str) -> str;
     def annex_files(path: str, suffix: str = ".impl.jac") -> list[str];
     def base_file(annex_path: str) -> (str | None);
     def is_annex_path_of(candidate: str, base: str) -> bool;

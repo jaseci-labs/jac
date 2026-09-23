@@ -1,5 +1,4 @@
 import from jaclang.compiler.driver.compilation_context { context_app }
-import json;
 import os;
 import from jaclang.compiler.frontend.host { active_host }
 import type from jaclang.compiler.driver.nativecache { NativeVerdict }
@@ -93,7 +92,8 @@ def pins_digest(source_path: str) -> str {
     if not pins and not facts {
         return '';
     }
-    return json.dumps(pins, sort_keys=True) + facts;
+    return ";".join(f"{name}={space}" for (name, space) in sorted(pins.items()))
+        + facts;
 }
 
 

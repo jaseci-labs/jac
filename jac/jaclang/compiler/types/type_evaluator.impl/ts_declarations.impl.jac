@@ -88,13 +88,11 @@ impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | 
     if dts_path in self._ts_decl_cache {
         return self._ts_decl_cache[dts_path];
     }
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.types.ts_decl_parser { parse_dts }
     decls: (dict[str, TsDecl] | None) = None;
     try {
-        with open(dts_path, 'r', encoding='utf-8', errors='replace') as f {
-            source = f.read();
-        }
-        decls = parse_dts(source);
+        decls = parse_dts(active_host().read_source(dts_path));
     } except Exception {
         decls = None;
     }

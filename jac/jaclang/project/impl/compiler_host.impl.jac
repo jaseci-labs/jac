@@ -362,6 +362,11 @@ impl ProjectHost.path_facts(path: str) -> PathFacts {
     );
 }
 
+impl ProjectHost.read_source(path: str) -> str {
+    import from jaclang.project.source { read_file_with_encoding }
+    return read_file_with_encoding(path);
+}
+
 impl ProjectHost.annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
     import from jaclang.compiler.driver.bccache { discover_annex_files }
     return discover_annex_files(path, suffix);

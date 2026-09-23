@@ -440,7 +440,7 @@ impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
         return cached[1];
     }
     spec = WiringSpec(
-        root_dir=root_dir, path=arch_path, source=read_file_with_encoding(arch_path)
+        root_dir=root_dir, path=arch_path, source=active_host().read_source(arch_path)
     );
     _spec_cache[key] = (stamp, spec);
     return spec;

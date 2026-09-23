@@ -1348,14 +1348,13 @@ impl JacAutoLintPass._base_decl_archetypes(annex_path: str) -> list[uni.Archetyp
     self._base_decls_loaded = True;
     import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.frontend.parser { parse as rd_parse }
-    import from jaclang.project.source { read_file_with_encoding }
     import from jaclang.compiler.driver.program { JacProgram }
     base_path = active_host().base_file(annex_path);
     if base_path is None {
         return self._base_decl_cache;
     }
     try {
-        source_str = read_file_with_encoding(base_path);
+        source_str = active_host().read_source(base_path);
 
         (base_mod, _had_error) = rd_parse(source_str, base_path, prog=JacProgram());
     } except Exception {

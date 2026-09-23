@@ -1259,15 +1259,33 @@ impl NaIRGenPass._make_user_iter_from_obj(
 }
 
 impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
+    """`next(it)` / `next(it, default)`. An argument that is not already an
+    iterator (a list, a generator expression, a user iterable) gets a
+    temporary iterator, released once the element is taken.""";
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
-    if len(params) != 1 {
+    if not params
+        or len(params) > 2
+        or any(isinstance(p, uni.KWPair) for p in params) {
         self._emit_unsupported_builtin_call(nd, "next");
         return None;
     }
     arg = params[0];
     elem_type = self._iter_elem_llvm_of(arg);
-    iter_val = self._codegen_expr(arg);
-    if iter_val is None or elem_type is None {
+    owns_iter = elem_type is None;
+    iter_val: (ir.Value | None) = None;
+    if owns_iter {
+        built = self._build_iter_from_expr(arg);
+        if built is not None {
+            (iter_val, _kind, elem_type) = built;
+        }
+    } else {
+        iter_val = self._codegen_expr(arg);
+    }
+    result_type: (ir.Type | None) = elem_type;
+    if len(params) == 2 {
+        result_type = self._lower_type(nd.type) if nd.type is not None else None;
+    }
+    if iter_val is None or elem_type is None or result_type is None {
         self._emit_unsupported_builtin_call(nd, "next");
         return None;
     }
@@ -1283,13 +1301,60 @@ impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
     is_stop = self.builder.icmp_unsigned(
         "==", got, ir.Constant(i1, 0), name="next.stop"
     );
-    self._emit_runtime_raise(is_stop, "StopIteration", "");
-    _next_val = self.builder.load(out_slot, name="next.val");
-    if _out_is_desc {
-        _next_val = self._coerce_type(_next_val, elem_type);
+    if len(params) == 1 {
+        self._emit_runtime_raise(is_stop, "StopIteration", "");
+        taken = self._next_loaded(out_slot, elem_type);
+        if owns_iter {
+            self._emit_rc_release_simple(iter_val, op="next_iter");
+        }
+        return self._mark_reference_owned(taken);
     }
-    self._emit_take_ref(_next_val, op="next");
-    return self._mark_reference_owned(_next_val);
+    fn = self.builder.function;
+    got_bb = fn.append_basic_block("next.got");
+    default_bb = fn.append_basic_block("next.default");
+    merge_bb = fn.append_basic_block("next.merge");
+    self.builder.cbranch(is_stop, default_bb, got_bb);
+
+    self.builder.position_at_end(got_bb);
+    got_val = self._coerce_type(self._next_loaded(out_slot, elem_type), result_type);
+    if owns_iter {
+        self._emit_rc_release_simple(iter_val, op="next_iter");
+    }
+    got_end = self.builder.block;
+    self.builder.branch(merge_bb);
+
+    self.builder.position_at_end(default_bb);
+    if owns_iter {
+        self._emit_rc_release_simple(iter_val, op="next_iter");
+    }
+    default_val = self._codegen_expr(params[1]);
+    if default_val is None {
+        self._emit_unsupported_builtin_call(nd, "next");
+        return None;
+    }
+    self._emit_take_ref(default_val, op="next_default");
+    default_val = self._coerce_type(default_val, result_type);
+    default_end = self.builder.block;
+    self.builder.branch(merge_bb);
+
+    self.builder.position_at_end(merge_bb);
+    joined = self.builder.phi(result_type, name="next.result");
+    joined.add_incoming(got_val, got_end);
+    joined.add_incoming(default_val, default_end);
+    if self._is_reference_type(result_type)
+        or self._opt_ptr_payload_of(result_type) is not None {
+        return self._mark_owned(joined);
+    }
+    return joined;
+}
+
+impl NaIRGenPass._next_loaded(out_slot: ir.Value, elem_type: ir.Type) -> ir.Value {
+    value = self.builder.load(out_slot, name="next.val");
+    if self._str_desc_ty is not None and elem_type == self._str_desc_ty {
+        value = self._coerce_type(value, elem_type);
+    }
+    self._emit_take_ref(value, op="next");
+    return value;
 }
 
 impl NaIRGenPass._iter_source(
