@@ -81,6 +81,7 @@ import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_TAG_OFF,
     LIVE_NODE_USER_OFF,
     NATIVE_CONTAINER_CODES,
+    NATIVE_COPY_FUNCS,
     NATIVE_OS_FUNCS,
     NATIVE_OSPATH_FUNCS,
     NATIVE_RANDOM_FUNCS,
@@ -471,6 +472,7 @@ walker NaIRGenPass(CompilerPass) {
         _gen_ctx: NativeGeneratorState | None = None,
         _gen_try_stack: list[NativeGeneratorHandler] = [],
         _ctxmgr_call_ok: int = 0,
+        _copy_fns: dict[str, ir.Function] = {},
         decorated_fns:
             dict[
                 str,
@@ -2047,6 +2049,67 @@ walker NaIRGenPass(CompilerPass) {
 
     def _mt_ensure -> None;
     def _emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _copy_call_kind(nd: uni.FuncCall) -> (str | None);
+    def _emit_copy_refusal(nd: uni.UniNode, kind: str, why: str) -> None;
+    def _emit_copy_call(kind: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _copy_memo_helpers -> dict[str, any];
+    def _copy_hint_name(hint: (TypeBase | None)) -> str;
+    def _copy_concrete(ty: ir.Type, hint: (TypeBase | None)) -> ir.Type;
+    def _copy_shape(ty: ir.Type, hint: (TypeBase | None)) -> tuple[str, any];
+    def _copy_is_atomic(ty: ir.Type, hint: (TypeBase | None), deep: bool) -> bool;
+    def _copy_type_label(ty: ir.Type, hint: (TypeBase | None)) -> str;
+    def _copy_refusal(
+        ty: ir.Type, hint: (TypeBase | None), deep: bool, seen: set[str], top: bool
+    ) -> (str | None);
+
+    def _copy_candidates(arch: str) -> list[str];
+    def _copy_field_hints(arch: str) -> dict[str, (TypeBase | None)];
+    def _copy_class_refusal(arch: str, deep: bool, seen: set[str]) -> (str | None);
+    def _copy_retain(ty: ir.Type, val: ir.Value) -> None;
+    def _copy_release(ty: ir.Type, val: ir.Value) -> None;
+    def _copy_value(
+        val: ir.Value,
+        hint: (TypeBase | None),
+        deep: bool,
+        memo: (ir.Value | None),
+        nd: uni.UniNode,
+        kind: str
+    ) -> ir.Value;
+
+    def _copy_optional(
+        val: ir.Value,
+        payload_ty: ir.Type,
+        hint: (TypeBase | None),
+        deep: bool,
+        memo: (ir.Value | None),
+        nd: uni.UniNode,
+        kind: str
+    ) -> ir.Value;
+
+    def _emit_copy_dispatch(
+        val: ir.Value,
+        arch: str,
+        deep: bool,
+        memo: (ir.Value | None),
+        nd: uni.UniNode,
+        kind: str
+    ) -> ir.Value;
+
+    def _copy_body_fn(arch: str, deep: bool, nd: uni.UniNode) -> ir.Function;
+    def _copy_memo_record(memo: ir.Value, src: ir.Value, dst: ir.Value) -> None;
+    def _deepcopy_fn(
+        ty: ir.Type, hint: (TypeBase | None), nd: uni.UniNode
+    ) -> ir.Function;
+
+    def _deepcopy_container(
+        shape: str,
+        spec: str,
+        src: ir.Value,
+        memo: ir.Value,
+        type_args: list[TypeBase],
+        nd: uni.UniNode
+    ) -> ir.Value;
+
     def _emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | None);
     def _drop_fn_for(mangle: str) -> (ir.Function | None);
     def _drop_spec_for_mangle(mangle: str) -> (tuple[str, ir.Type] | None);

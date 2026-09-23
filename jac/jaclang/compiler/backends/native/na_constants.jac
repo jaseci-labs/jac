@@ -8,6 +8,7 @@ glob NATIVE_TIME_FUNCS: set[str] = {
          "sleep",
 
      };
+glob NATIVE_COPY_FUNCS: set[str] = {"copy", "deepcopy"};
 glob NATIVE_OS_FUNCS: set[str] = {
          "getpid",
          "listdir",
