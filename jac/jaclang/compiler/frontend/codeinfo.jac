@@ -173,6 +173,92 @@ def native_library_function_symbol(mod_path: str, name: str) -> str {
     return f"__jac_lib_{native_safe_sym(module_name)}_{name}";
 }
 
+glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = frozenset(
+         [
+             f"{base}{suffix}"
+             for base in (
+                 "acos asin atan atan2 cos sin tan acosh asinh atanh cosh sinh tanh exp exp2 "
+                 "exp10 expm1 frexp ilogb ldexp log log10 log1p log2 logb modf scalbn scalbln "
+                 "cbrt fabs hypot pow sqrt erf erfc lgamma tgamma ceil floor nearbyint rint "
+                 "lrint llrint round lround llround trunc fmod remainder remquo copysign nan "
+                 "nextafter nexttoward fdim fmax fmin fma sincos "
+             ).split() for suffix in ("", "f", "l")
+         ]
+             + (
+                 "isalnum isalpha isblank iscntrl isdigit isgraph islower isprint ispunct "
+                 "isspace isupper isxdigit tolower toupper "
+                 "feclearexcept fegetexceptflag feraiseexcept fesetexceptflag fetestexcept "
+                 "fegetround fesetround fegetenv feholdexcept fesetenv feupdateenv "
+                 "setlocale localeconv setjmp longjmp _setjmp _longjmp sigsetjmp siglongjmp "
+                 "signal raise kill "
+                 "remove rename renameat tmpfile tmpnam fclose fflush fopen freopen fdopen "
+                 "fileno setbuf setvbuf "
+                 "fprintf fscanf printf scanf snprintf sprintf sscanf dprintf vfprintf "
+                 "vfscanf vprintf vscanf vsnprintf vsprintf vsscanf "
+                 "fgetc fgets fputc fputs getc getchar putc putchar puts ungetc fread fwrite "
+                 "fgetpos fseek fseeko fsetpos ftell ftello rewind clearerr feof ferror "
+                 "perror getline getdelim popen pclose "
+                 "stdin stdout stderr __stdinp __stdoutp __stderrp "
+                 "atof atoi atol atoll strtod strtof strtold strtol strtoll strtoul strtoull "
+                 "rand srand "
+                 "aligned_alloc calloc free malloc realloc posix_memalign malloc_size "
+                 "malloc_usable_size "
+                 "abort atexit at_quick_exit exit _exit _Exit quick_exit getenv setenv "
+                 "unsetenv putenv system realpath mkstemp bsearch qsort "
+                 "abs labs llabs div ldiv lldiv mblen mbtowc wctomb mbstowcs wcstombs "
+                 "memcpy memmove memset memcmp memchr memmem memccpy strcpy strncpy stpcpy "
+                 "stpncpy strcat strncat strcmp strncmp strcasecmp strncasecmp strcoll "
+                 "strxfrm "
+                 "strchr strrchr strcspn strpbrk strspn strstr strtok strtok_r strerror "
+                 "strerror_r strlen strnlen strdup strndup bcmp bcopy bzero "
+                 "clock difftime mktime time timespec_get asctime ctime gmtime gmtime_r "
+                 "localtime localtime_r strftime clock_gettime nanosleep sleep usleep "
+                 "open openat creat close read pread write lseek stat fstat lstat access "
+                 "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
+                 "opendir readdir closedir getpid getpwuid_r getpwnam_r errno __error "
+                 "__errno_location environ _NSGetExecutablePath "
+                 "pthread_create pthread_join pthread_key_create pthread_getspecific "
+                 "pthread_setspecific "
+                 "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
+                 "dlopen dlsym dlclose dlerror "
+                 "main _start __libc_start_main __getmainargs mainCRTStartup "
+                 "compress2 uncompress uncompress2 compressBound crc32_z adler32_z "
+                 "BZ2_bzBuffToBuffCompress BZ2_bzBuffToBuffDecompress "
+                 "ZSTD_isError ZSTD_getErrorName ZSTD_compressBound ZSTD_freeCCtx "
+                 "ZSTD_CCtx_setParameter ZSTD_compress2 ZSTD_freeDCtx ZSTD_DCtx_setParameter "
+                 "ZSTD_decompressStream_simpleArgs ZSTD_getFrameContentSize "
+                 "ZSTD_getDictID_fromFrame "
+                 "RAND_bytes EVP_MD_CTX_free EVP_DigestInit_ex EVP_DigestUpdate "
+                 "EVP_DigestFinal_ex HMAC_CTX_free HMAC_Init_ex HMAC_Update HMAC_Final "
+                 "SSL_CTX_new SSL_CTX_set_verify SSL_CTX_load_verify_locations "
+                 "SSL_CTX_set_default_verify_paths SSL_CTX_free SSL_new SSL_set_fd SSL_ctrl "
+                 "SSL_set1_host SSL_connect SSL_get_verify_result SSL_get_error SSL_read "
+                 "SSL_write SSL_shutdown SSL_free X509_verify_cert_error_string "
+                 "ERR_reason_error_string "
+                 "Py_DecRef PyBool_FromLong PyBytes_AsString PyDict_New PyDict_SetItemString "
+                 "PyErr_Print PyFloat_AsDouble PyFloat_FromDouble PyGILState_Ensure "
+                 "PyGILState_Release PyImport_ImportModule PyLong_AsLongLong "
+                 "PyLong_FromLongLong PyObject_Call PyObject_GetAttrString PyObject_IsTrue "
+                 "PyObject_SetAttrString PyTuple_New PyTuple_SetItem PyUnicode_AsUTF8String "
+                 "PyUnicode_FromString "
+                 "__mt_genrand_u32 __mt_getrandbits __mt_init_by_array __mt_randbelow "
+                 "GC_malloc "
+             ).split()
+     );
+
+def native_def_symbol(mod_path: str, name: str) -> str {
+    if mod_path {
+        library_symbol = native_library_function_symbol(mod_path, name);
+        if library_symbol != name {
+            return library_symbol;
+        }
+    }
+    if name in NATIVE_RESERVED_C_SYMBOLS {
+        return f"__jac_def_{name}";
+    }
+    return name;
+}
+
 def module_dotted_name(mod_path: str, mod_name: str = "") -> str {
     import os;
     path = mod_path.replace("\\", "/");

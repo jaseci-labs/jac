@@ -42,7 +42,13 @@ def write_native_product(
             raise ValueError('Binary runtime products must be shared libraries');
         }
         exports = list(module.gen._exported_symbols);
-        exports.extend(binding.name for binding in manifest.native_exports);
+        import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
+        exports.extend(
+            native_def_symbol(
+                module.loc.mod_path if binding.source_module is None else "",
+                binding.name
+            ) for binding in manifest.native_exports
+        );
         exports.extend('__jac_bind_' + binding.name for binding in bindings);
         (ok, error) = emit_shared_library(
             llvm_ir,

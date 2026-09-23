@@ -559,7 +559,11 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         }
         return value;
     }
-    if var_name in self.func_symtab {
+    if var_name in self.func_symtab
+        and not (
+            var_name in self.global_vars
+            and self.func_symtab[var_name] is self.clib_extern_fns.get(var_name)
+        ) {
         return self.func_symtab[var_name];
     }
 
