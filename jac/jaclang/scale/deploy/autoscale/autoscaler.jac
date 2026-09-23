@@ -1,3 +1,5 @@
+import from jaclang.scale.models.resource_status { ResourceStatus, assess_workload }
+
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50,
      DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
 
@@ -28,6 +30,97 @@ obj AutoscalerSpec {
         scale_up_stabilization: int = 60,
         scale_up_max_pods: int = 2,
         behavior_overlay: dict[str, any] = {};
+}
+
+
+obj AutoscalerRuntimeStatus {
+    has state: ResourceStatus,
+        scale_target_name: str = "",
+        namespace: str = "",
+        engine: str = "",
+        autoscaler_name: (str | None) = None,
+        desired_replicas: int = 0,
+        current_replicas: int = 0,
+        ready_replicas: int = 0,
+        replica_floor: int = 1,
+        trigger_active: (bool | None) = None,
+        scaler_ready: (bool | None) = None,
+        conditions: list[dict[str, any]] = [],
+        resource_version: (str | None) = None,
+        reason: str = "",
+        message: (str | None) = None;
+
+    def is_settled -> bool {
+        return self.state in (ResourceStatus.ACTIVE, ResourceStatus.INACTIVE);
+    }
+}
+
+
+def normalize_conditions(raw: any) -> list[dict[str, any]] {
+    """Kubernetes conditions as plain dicts, whatever shape they arrived in.
+
+    A ScaledObject read through CustomObjectsApi is dicts; an HPA read through
+    a typed client is objects with snake_case attributes. Both collapse here so
+    a caller never branches on which client produced them.
+    """;
+    out: list[dict[str, any]] = [];
+    for cond in (raw or []) {
+        if isinstance(cond, dict) {
+            get = lambda (k: str) { cond.get(k) or cond.get(_snake(k)); };
+        } else {
+            get = lambda (k: str) { getattr(cond, _snake(k), None); };
+        }
+        out.append(
+            {
+                "type": str(get("type") or ""),
+                "status": str(get("status") or ""),
+                "reason": str(get("reason") or ""),
+                "message": str(get("message") or "")
+            }
+        );
+    }
+    return out;
+}
+
+
+def _snake(key: str) -> str {
+    import re;
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", key).lower();
+}
+
+
+def condition(conditions: list[dict[str, any]], kind: str) -> (dict[str, any] | None) {
+    for cond in conditions {
+        if cond.get("type") == kind {
+            return cond;
+        }
+    }
+    return None;
+}
+
+
+def tristate(conditions: list[dict[str, any]], kind: str) -> (bool | None) {
+    """A Kubernetes condition as True, False, or None when it is absent.
+
+    Kubernetes conditions are tri-state on purpose: "Unknown" and "not reported
+    yet" both mean the controller has not decided, and collapsing either to
+    False would read as "broken". This is why AutoscalerRuntimeStatus carries
+    `trigger_active` and `scaler_ready` as (bool | None): an HPA has no trigger
+    concept at all, and a ScaledObject that could not be read leaves both
+    unknown rather than claiming the scaler failed.
+    """;
+    cond = condition(conditions, kind);
+    if cond is None {
+        return None;
+    }
+    status = cond.get("status", "");
+    if status == "True" {
+        return True;
+    }
+    if status == "False" {
+        return False;
+    }
+    return None;
 }
 
 
@@ -92,6 +185,81 @@ class Autoscaler {
 
     def preflight(self: Autoscaler) -> list[str] {
         return [];
+    }
+
+    def read_workload(
+        self: Autoscaler,
+        scale_target_name: str,
+        namespace: str,
+        apps_api: (any | None) = None
+    ) -> (any | None) {
+        import from jaclang.scale._optdeps.kubernetes { client, ApiException }
+        api = apps_api or client.AppsV1Api();
+        try {
+            return api.read_namespaced_deployment(
+                name=scale_target_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                return None;
+            }
+            raise;
+        }
+    }
+
+    def get_runtime_status(
+        self: Autoscaler,
+        scale_target_name: str,
+        namespace: str,
+        autoscaler_name: (str | None) = None
+    ) -> AutoscalerRuntimeStatus {
+        """The scale target's normalized state, point in time.
+
+        The engine-neutral answer is the workload's own, so an engine that
+        cannot be read, or a third-party engine that never implements this,
+        still reports the same vocabulary as `ScaleClient.resource_status`
+        rather than nothing. A concrete engine overrides to add what only it
+        knows: whether a trigger is firing, and whether its scaler is healthy.
+
+        `autoscaler_name` is optional because a caller that had to supply it
+        would first have to work out which of the engine's resource names
+        exists for this target, which is the derivation this method is here to
+        do for them.
+        """;
+        return self.workload_runtime_status(scale_target_name, namespace);
+    }
+
+    def workload_runtime_status(
+        self: Autoscaler,
+        scale_target_name: str,
+        namespace: str,
+        replica_floor: (int | None) = None,
+        apps_api: (any | None) = None
+    ) -> AutoscalerRuntimeStatus {
+        """The workload half, shared by every engine.
+
+        Delegates to assess_workload so an autoscaler's view of a Deployment
+        and `jac scale status`' view can never drift apart.
+        """;
+        deployment = self.read_workload(scale_target_name, namespace, apps_api);
+        health = assess_workload(deployment, replica_floor=replica_floor);
+        version = None;
+        if deployment is not None {
+            version = deployment?.metadata?.resource_version;
+        }
+        return AutoscalerRuntimeStatus(
+            state=health.status,
+            scale_target_name=scale_target_name,
+            namespace=namespace,
+            desired_replicas=health.replicas,
+            current_replicas=health.replicas,
+            ready_replicas=health.ready_replicas,
+            replica_floor=health.replica_floor,
+            conditions=normalize_conditions(deployment?.status?.conditions),
+            resource_version=str(version) if version is not None else None,
+            reason=health.reason,
+            message=health.message
+        );
     }
 
     def resource_name_for(self: Autoscaler, target: str) -> str {

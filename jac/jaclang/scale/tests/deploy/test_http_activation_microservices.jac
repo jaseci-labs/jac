@@ -21,6 +21,7 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     Trigger,
     TriggerAuth
 }
+import from jaclang.scale.models.resource_status { ResourceStatus }
 import from jaclang.scale.deploy.autoscale.http_activation {
     HTTPRoutingRule,
     HTTPPathMatch,
@@ -1492,4 +1493,230 @@ test "discover_capabilities caches per (cluster, service-address, client-identit
         raised = True;
     }
     assert not raised , "preflight must report a 403 as a warning, not an unhandled exception";
+}
+
+
+# --- Section H: get_runtime_status -- what the Deployment alone cannot say ---
+# The Deployment reports how many pods exist, never why. These drive the real
+# KEDAAutoscaler.get_runtime_status against a mocked API client and pin the
+# three answers only the ScaledObject and its HPA carry: a scaler that cannot
+# reach its metric, a trigger that has fired before any pod is up, and the
+# replica floor the controller is actually enforcing.
+def _so(
+    ready: str = "True",
+    active: str = "False",
+    idle: (int | None) = 0,
+    hpa_name: str = "",
+    ready_reason: str = "ScaledObjectReady",
+    ready_message: str = ""
+) -> dict[str, any] {
+    spec: dict[str, any] = {"minReplicaCount": 1, "maxReplicaCount": 5};
+    if idle is not None {
+        spec["idleReplicaCount"] = idle;
+    }
+    status: dict[str, any] = {
+        "conditions": [
+            {
+                "type": "Ready",
+                "status": ready,
+                "reason": ready_reason,
+                "message": ready_message
+            },
+            {"type": "Active", "status": active, "reason": "", "message": ""}
+        ]
+    };
+    if hpa_name {
+        status["hpaName"] = hpa_name;
+    }
+    return {
+        "metadata": {"name": "worker-scaledobject", "resourceVersion": "4211"},
+        "spec": spec,
+        "status": status
+    };
+}
+
+
+def _dep_at(replicas: int, ready: int, annotated: bool = False) -> any {
+    meta = unittest.mock.MagicMock();
+    meta.resource_version = "991";
+    meta.generation = 2;
+    meta.annotations = {"jac-scale.replica-floor": "1"} if annotated else None;
+    dep = unittest.mock.MagicMock();
+    dep.metadata = meta;
+    dep.spec.replicas = replicas;
+    dep.status.observed_generation = 2;
+    dep.status.replicas = replicas;
+    dep.status.ready_replicas = ready;
+    dep.status.available_replicas = ready;
+    dep.status.updated_replicas = replicas;
+    dep.status.conditions = [];
+    return dep;
+}
+
+
+def _status_apis(
+    scaled_object: (dict[str, any] | None), dep: any, so_error: (int | None) = None
+) -> tuple[any, any, any] {
+    custom = unittest.mock.MagicMock();
+    if so_error is not None {
+        custom.get_namespaced_custom_object.side_effect = ApiException(status=so_error);
+    } else {
+        custom.get_namespaced_custom_object.return_value = scaled_object;
+    }
+    apps = unittest.mock.MagicMock();
+    apps.read_namespaced_deployment.return_value = dep;
+    return (custom, apps, unittest.mock.MagicMock());
+}
+
+
+test "a scaler that cannot reach its metric reads degraded, not idle" {
+    # This is the failure the Deployment cannot express: zero pods at the floor
+    # looks exactly like a healthy sleeping app.
+    (custom, apps, v2) = _status_apis(
+        _so(
+            ready="False",
+            ready_reason="ScalerFailed",
+            ready_message="prometheus scaler: dial tcp: no such host"
+        ),
+        _dep_at(0, 0)
+    );
+    keda = KEDAAutoscaler(_custom_api=custom, _apps_api=apps, _v2_api=v2);
+    out = keda.get_runtime_status("worker-deployment", "ns");
+
+    assert out.state == ResourceStatus.DEGRADED , out.state;
+    assert out.reason == "ScalerFailed" , out.reason;
+    assert "no such host" in (out.message or "") , out.message;
+    assert out.scaler_ready == False;
+    assert not out.is_settled();
+}
+
+
+test "a fired trigger with no pod yet is activating, not inactive" {
+    (custom, apps, v2) = _status_apis(_so(active="True"), _dep_at(0, 0));
+    keda = KEDAAutoscaler(_custom_api=custom, _apps_api=apps, _v2_api=v2);
+    out = keda.get_runtime_status("worker-deployment", "ns");
+
+    assert out.state == ResourceStatus.ACTIVATING , out.state;
+    assert out.trigger_active == True;
+    assert out.reason == "ScalerActivating";
+
+    # ...while a quiet trigger at a zero floor is the resting state.
+    (custom2, apps2, v22) = _status_apis(_so(active="False"), _dep_at(0, 0));
+    idle_out = KEDAAutoscaler(
+        _custom_api=custom2, _apps_api=apps2, _v2_api=v22
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+    assert idle_out.state == ResourceStatus.INACTIVE , idle_out.state;
+    assert idle_out.trigger_active == False;
+    assert idle_out.is_settled();
+}
+
+
+test "the live ScaledObject is the floor, so an unannotated Deployment still reads right" {
+    # Without reading the ScaledObject this same Deployment reports
+    # DEGRADED / ScaledBelowFloor, because a missing annotation defaults to 1.
+    (custom, apps, v2) = _status_apis(_so(idle=0), _dep_at(0, 0, annotated=False));
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=v2
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+    assert out.replica_floor == 0 , out.replica_floor;
+    assert out.state == ResourceStatus.INACTIVE , out.state;
+
+    # No idleReplicaCount means the floor is minReplicaCount, so zero is wrong.
+    (c2, a2, v2b) = _status_apis(_so(idle=None), _dep_at(0, 0, annotated=False));
+    warm = KEDAAutoscaler(_custom_api=c2, _apps_api=a2, _v2_api=v2b).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+    assert warm.replica_floor == 1 , warm.replica_floor;
+    assert warm.state == ResourceStatus.DEGRADED , warm.state;
+    assert warm.reason == "ScaledBelowFloor";
+}
+
+
+test "the caller passes a target, not an autoscaler name, whichever ScaledObject is live" {
+    # An HTTP-activated target's ScaledObject has a different name. A caller
+    # that had to supply the name would first have to derive the scaling mode,
+    # which is the derivation get_runtime_status exists to do.
+    custom = unittest.mock.MagicMock();
+    http_so = _so(idle=0);
+    http_so["metadata"]["name"] = "worker-deployment-http-scaledobject";
+
+    def _by_name(**kwargs: any) -> dict[str, any] {
+        if kwargs["name"] == "worker-deployment-http-scaledobject" {
+            return http_so;
+        }
+        raise ApiException(status=404);
+    }
+    custom.get_namespaced_custom_object.side_effect = _by_name;
+    apps = unittest.mock.MagicMock();
+    apps.read_namespaced_deployment.return_value = _dep_at(0, 0);
+
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=unittest.mock.MagicMock()
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+
+    assert out.autoscaler_name == "worker-deployment-http-scaledobject" , out.autoscaler_name;
+    assert out.state == ResourceStatus.INACTIVE , out.state;
+    tried = [c[1]["name"] for c in custom.get_namespaced_custom_object.call_args_list];
+    assert tried
+        == [
+            "worker-deployment-scaledobject",
+            "worker-deployment-http-scaledobject"
+        ] , tried;
+}
+
+
+test "RBAC denial falls back to the workload's own state instead of failing" {
+    # A pod whose Role predates the keda.sh rule gets a 403 here, and a status
+    # read must degrade to the Deployment-only verdict rather than raise.
+    (custom, apps, v2) = _status_apis(
+        None, _dep_at(2, 2, annotated=True), so_error=403
+    );
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=v2
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+
+    assert out.state == ResourceStatus.ACTIVE , out.state;
+    assert out.scaler_ready is None , "a 403 is not evidence the scaler failed";
+    assert out.trigger_active is None;
+}
+
+
+test "a failed external metric on the HPA overrides KEDA's own Ready condition" {
+    # KEDA can report Ready while its generated HPA cannot fetch the metric, so
+    # the HPA has to be consulted rather than trusted to agree.
+    (custom, apps, v2) = _status_apis(
+        _so(ready="True", hpa_name="keda-hpa-worker"), _dep_at(1, 1, annotated=True)
+    );
+    hpa = unittest.mock.MagicMock();
+    hpa.status.desired_replicas = 1;
+    hpa.status.conditions = [
+        unittest.mock.MagicMock(
+            type="ScalingActive",
+            status="False",
+            reason="FailedGetExternalMetric",
+            message="unable to get external metric"
+        )
+    ];
+    v2.read_namespaced_horizontal_pod_autoscaler.return_value = hpa;
+
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=v2
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+
+    assert out.state == ResourceStatus.DEGRADED , out.state;
+    assert out.reason == "FailedGetExternalMetric" , out.reason;
+    assert out.scaler_ready == False;
+    # The HPA name comes from KEDA's own status, never rebuilt from a convention.
+    assert v2.read_namespaced_horizontal_pod_autoscaler.call_args[1]["name"]
+        == "keda-hpa-worker";
 }
