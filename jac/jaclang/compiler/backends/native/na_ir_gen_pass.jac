@@ -71,6 +71,19 @@ import from jaclang.compiler.types.types {
     FunctionType as SemanticFunctionType
 }
 import from jaclang.compiler.frontend.const_fold { fold_const }
+import from jaclang.compiler.types.ct_value {
+    CtBool,
+    CtBytes,
+    CtFloat,
+    CtInt,
+    CtNone,
+    CtStr,
+    CtValue,
+    ct_iter,
+    ct_mangle,
+    ct_truthy
+}
+import type from jaclang.compiler.types.ct_eval { CtEvaluator }
 import type from jaclang.compiler.passes.osp_analysis { OspSlot }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.driver.program { JacProgram }
@@ -459,7 +472,7 @@ walker NaIRGenPass(CompilerPass) {
         _mono_fns: dict[str, ir.Function] = {},
         _mono_solution: (dict[str, TypeBase] | None) = None,
         _mono_mangle_map: (dict[str, str] | None) = None,
-        _ct_bindings: dict[str, any] = {},
+        _ct_bindings: dict[str, CtValue] = {},
         _gen_ctx: NativeGeneratorState | None = None,
         _gen_try_stack: list[NativeGeneratorHandler] = [],
         decorated_fns:
@@ -1422,18 +1435,18 @@ walker NaIRGenPass(CompilerPass) {
         tag: ir.Value
     ) -> None;
 
-    def _ct_eval -> any;
-    def _ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, any];
-    def _ct_native_const(v: any, nd: uni.Expr) -> (ir.Value | None);
+    def _ct_eval -> CtEvaluator;
+    def _ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, (CtValue | None)];
+    def _ct_native_const(v: CtValue, nd: uni.Expr) -> (ir.Value | None);
     def _ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _ct_origin(nd: uni.Expr) -> bool;
     def _ct_only_name(nd: uni.Name) -> bool;
     def _ability_has_ct_params(ability: uni.Ability) -> bool;
     def _solve_ct_args(
         ability: uni.Ability, nd: uni.FuncCall
-    ) -> (dict[str, any] | None);
+    ) -> (dict[str, CtValue] | None);
 
-    def _bind_ct_target(tgt: uni.UniNode, v: any) -> None;
+    def _bind_ct_target(tgt: uni.UniNode, v: CtValue) -> None;
     def _mangled_of(t: any) -> (str | None);
     def _syntactic_bind_type_params(
         tag_node: (uni.UniNode | None),

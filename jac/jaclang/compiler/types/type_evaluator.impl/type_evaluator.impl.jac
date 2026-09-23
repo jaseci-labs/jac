@@ -4321,7 +4321,7 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
 }
 
 impl TypeEvaluator.postinit -> None {
-    self.ct_eval = CtEvaluator(evaluator=self);
+    self.ct_eval = CtEvaluator(evaluator=self, env=host_ct_environment());
     self._BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
     );

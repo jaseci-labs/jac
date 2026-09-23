@@ -74,7 +74,14 @@ import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 import from jaclang.compiler.frontend.constant { ImmutabilityKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
-import from jaclang.compiler.types.ct_value { CT_DEFERRED, CtValue }
+import from jaclang.compiler.types.ct_value {
+    CT_DEFERRED,
+    CtValue,
+    ct_is_iterable,
+    ct_str,
+    ct_truthy,
+    ct_type_name
+}
 import from jaclang.compiler.types.types {
     AnyType,
     ClassType,

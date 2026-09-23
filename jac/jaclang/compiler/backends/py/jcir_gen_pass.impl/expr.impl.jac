@@ -33,7 +33,7 @@ impl JcirGenPass.exit_assignment with Assignment exit {
         and here.is_comptime
         and init_cv is not None
         and self._ct_concrete(here.value) {
-        value = self._materialize(init_cv.v, here.value);
+        value = self._materialize(init_cv, here.value);
         if value is None {
             value = self.val(here.value);
         }
@@ -908,7 +908,7 @@ impl JcirGenPass.exit_name with Name exit {
     if name_cv is not None
         and self._ct_concrete(here)
         and here.expr_ctx == ExprCtx.LOAD {
-        cv = name_cv.v;
+        cv = name_cv;
         if self._is_comptime_only_name(here)
             or self._ct_kind(cv) in ("scalar", "CtEnumMember") {
             folded = self._materialize(cv, here);
