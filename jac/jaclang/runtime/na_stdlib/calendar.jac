@@ -612,23 +612,29 @@ glob _EPOCH_ORD: int = 719163;
 
 
 def:pub timegm(t: (list[int] | struct_time)) -> int {
-    seq: list[int] = [];
+    year: int;
+    month: int;
+    day: int;
+    hour: int;
+    minute: int;
+    second: int;
     if isinstance(t, struct_time) {
         st: struct_time = t as struct_time;
-        i: int = 0;
-        while i < 6 {
-            seq.append(st[i]);
-            i += 1;
-        }
+        year = st.tm_year;
+        month = st.tm_mon;
+        day = st.tm_mday;
+        hour = st.tm_hour;
+        minute = st.tm_min;
+        second = st.tm_sec;
     } else {
-        seq = t as list[int];
+        lst: list[int] = t as list[int];
+        year = lst[0];
+        month = lst[1];
+        day = lst[2];
+        hour = lst[3];
+        minute = lst[4];
+        second = lst[5];
     }
-    year: int = seq[0];
-    month: int = seq[1];
-    day: int = seq[2];
-    hour: int = seq[3];
-    minute: int = seq[4];
-    second: int = seq[5];
     days: int = date(year, month, 1).toordinal() - _EPOCH_ORD + day - 1;
     return ((days * 24 + hour) * 60 + minute) * 60 + second;
 }
