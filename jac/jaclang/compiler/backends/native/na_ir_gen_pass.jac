@@ -319,6 +319,7 @@ walker NaIRGenPass {
         _bytes_repr_function: (ir.Function | None) = None,
         _float_repr_function: (ir.Function | None) = None,
         _repr_fns: dict[str, ir.Function] = {},
+        _eq_fns: dict[str, ir.Function] = {},
         _jac_iter_type: (ir.Type | None) = None,
         _iter_structs_registered: bool = False,
         _iter_next_fns: dict[str, ir.Function] = {},
@@ -2411,6 +2412,7 @@ walker NaIRGenPass {
     ) -> (list[TypeBase] | None);
 
     def _key_elem_unsigned(et: (TypeBase | None)) -> bool;
+    def _container_class_name(ty: (TypeBase | None)) -> (str | None);
     def _emit_jacval_ordering(
         op: str, jv: ir.Value, peer: ir.Value, jv_on_left: bool
     ) -> (ir.Value | None);
@@ -2424,6 +2426,39 @@ walker NaIRGenPass {
     ) -> (ir.Value | None);
 
     def _emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value;
+    def _cmp_static_type(
+        left_node: uni.UniNode, right_node: uni.UniNode
+    ) -> (TypeBase | None);
+
+    def _restore_erased_cmp_operands(
+        left: ir.Value, right: ir.Value, ty: (TypeBase | None)
+    ) -> tuple[ir.Value, ir.Value];
+
+    def _emit_arch_eq(op: str, left: ir.Value, right: ir.Value) -> (ir.Value | None);
+    def _eq_fn_new(cache_key: str, left_ty: ir.Type, right_ty: ir.Type) -> ir.Function;
+    def _eq_fn_prologue(fn: ir.Function) -> tuple[ir.Block, ir.Block];
+    def _emit_dict_eq(
+        left: ir.Value, right: ir.Value, dict_key: str, val_ty: (TypeBase | None)
+    ) -> (ir.Value | None);
+
+    def _dict_eq_fn(dict_key: str, val_ty: (TypeBase | None)) -> (ir.Function | None);
+    def _emit_view_eq(
+        op: str,
+        left: ir.Value,
+        right: ir.Value,
+        left_node: uni.UniNode,
+        right_node: uni.UniNode
+    ) -> (ir.Value | None);
+
+    def _setlike_eq_fn(
+        left_ty: ir.Type, right_ty: ir.Type, view_ty: TypeBase
+    ) -> (ir.Function | None);
+
+    def _view_item_pair(view_ty: TypeBase) -> (ir.LiteralStructType | None);
+    def _setlike_elem_eq(
+        x: ir.Value, y: ir.Value, view_ty: TypeBase
+    ) -> (ir.Value | None);
+
     def _opt_membership_operand(
         left: ir.Value, slot_type: ir.Type
     ) -> tuple[ir.Value, ir.Value | None];
