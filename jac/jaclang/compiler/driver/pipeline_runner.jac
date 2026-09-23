@@ -224,9 +224,7 @@ obj ModuleCompilation {
             cb_paths: list[str] = [];
 
             cb_opts = CompileOptions(
-                no_cgen=True,
-                force_target_program=True,
-                cancel_token=self.options.cancel_token
+                no_cgen=True, cancel_token=self.options.cancel_token
             );
             cb_reg = self.program.iface_registry();
             while cb_worklist or cb_paths {
@@ -354,7 +352,8 @@ obj ModuleCompilation {
             import from jaclang.compiler.frontend.module_facts { ModuleFacts }
             needs_native = self.native
                 or ModuleFacts.has_native_context_stmts(self.module);
-            if needs_native
+            if self.full_head
+                and needs_native
                 and not product_ready(
                     self.program, self.module, CompilationProduct.ANALYSIS
                 ) {
@@ -374,7 +373,9 @@ obj ModuleCompilation {
                 passes=get_py_code_gen(
                     native=needs_native,
                     provided=self.program.analysis.analyses_run.provided(self.module)
-                ),
+                )
+                    if self.full_head
+                    else get_bootstrap_code_gen(),
                 cancel_token=self.options.cancel_token
             );
             if self.module.decided_codespace == 'native' {
@@ -408,19 +409,17 @@ def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
         before = len(program.errors_had);
+        options = CompileOptions(
+            aot_mode=True,
+            default_codespace='native',
+            na_gc_mode=gc_mode,
+            memory_enforce=enf_mods,
+            memory_exempt=enf_grand,
+            native_target="wasm32-unknown-unknown"
+        );
         na_coverage_begin();
         try {
-            ir = program.compile(
-                file_path=os.path.abspath(file_path),
-                options=CompileOptions(
-                    aot_mode=True,
-                    default_codespace='native',
-                    na_gc_mode=gc_mode,
-                    memory_enforce=enf_mods,
-                    memory_exempt=enf_grand,
-                    native_target="wasm32-unknown-unknown"
-                )
-            );
+            ir = program.compile(file_path=os.path.abspath(file_path), options=options);
         } finally {
             coverage = na_coverage_end();
         }
@@ -444,16 +443,19 @@ def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
                 f"native lowering produced no IR for '{file_path}': {reason}"
             );
         }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            native_linked_ir_text
+        import from jaclang.compiler.backends.native.link_plan {
+            build_link_plan,
+            wasm_program_ir
         }
-        llvm_ir_str = native_linked_ir_text(ir);
-        app_imports = app_declared_imports(ir);
+        plan = build_link_plan(program, [ir.loc.mod_path], options);
+        llvm_ir_str = wasm_program_ir(plan);
+        app_ir_str = str(ir.gen.llvm_ir);
+        app_imports = app_declared_imports(ir, plan);
     } finally {
         pop_native_target(prev);
     }
     if gc_mode == "none" {
-        _assert_ir_rc_free(llvm_ir_str, file_path);
+        _assert_ir_rc_free(app_ir_str, file_path);
     }
     return (llvm_ir_str, app_imports);
 }
@@ -483,7 +485,6 @@ def native_application(
         options = CompileOptions(
             aot_mode=True,
             default_codespace='native',
-            force_target_program=True,
             memory_profile=memory or None,
             native_target=target or None,
             native_debug=True if debug else None,

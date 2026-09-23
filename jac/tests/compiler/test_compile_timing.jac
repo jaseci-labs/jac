@@ -521,7 +521,9 @@ glob PRECOMPILE_GATE: str = os.path.join(
      ),
      # Context, absorbed-import and boundary/native fact work is now counted
      # as explicit passes: 140 runs that previously lived inside the driver.
-     GATE_COLD_MAX_RUNS: int = 760,
+     # Each of the seven client units also runs the head schedule on the client
+     # runtime it imports, 7 runs (recorded 767 with the wiring pass).
+     GATE_COLD_MAX_RUNS: int = 780,
      GATE_COLD_MAX_RATIO: float = 0.6;
 
 def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], float] {

@@ -20,6 +20,10 @@ mirroring `test_urllib_equivalence`. ES/JS opts out (no socket floor).
 import os;
 import socket;
 
+def socket_ipv6_family_na -> int {
+    return socket.AF_INET6;
+}
+
 
 """The fixed request both clients send (HTTP/1.0 + close so the server drains
 and shuts the connection, ending the recv loop deterministically)."""

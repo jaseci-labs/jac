@@ -301,7 +301,7 @@ obj CatalogWriter {
         pending_syms: list[int] postinit,
         type_ids: dict[any, int] postinit,
         _ident_visiting: set[int] postinit,
-        _type_ident_memo: dict[int, any] postinit,
+        _type_ident_memo: dict[int, tuple[TypeBase, any]] postinit,
         _canonical_paths: dict[str, str] postinit,
         types: list[TypeBase] postinit,
         pending_types: list[int] postinit,
@@ -416,7 +416,7 @@ obj CatalogWriter {
             return id(scope);
         }
         mod = module_of(scope);
-        if mod is None or not self.in_boundary(mod) {
+        if mod is None {
             return id(scope);
         }
         loc = scope.loc;
@@ -440,7 +440,7 @@ obj CatalogWriter {
         }
         home = home_scope(sym);
         mod = module_of(home);
-        if home is None or mod is None or not self.in_boundary(mod) {
+        if home is None or mod is None {
             return id(sym);
         }
         loc = sym.decl.loc if sym.decl else None;
@@ -467,8 +467,17 @@ obj CatalogWriter {
             tab = None;
         }
         mod = module_of(tab) if tab is not None else None;
-        if tab is None or mod is None or not self.in_boundary(mod) {
+        if tab is None or mod is None {
             return id(shared);
+        }
+        if not self.in_boundary(mod) {
+            return (
+                "xref",
+                self._mod_ident(mod),
+                self.scope_dotted_path(tab),
+                shared.class_name,
+                shared.canonical_key()
+            );
         }
         return (self._scope_ident(tab), shared.class_name, );
     }
@@ -760,7 +769,7 @@ obj CatalogWriter {
         }
         memo = self._type_ident_memo.get(tid);
         if memo is not None {
-            return memo;
+            return memo[1];
         }
         if tid in self._ident_visiting {
             return tid;
@@ -771,7 +780,7 @@ obj CatalogWriter {
         } finally {
             self._ident_visiting.discard(tid);
         }
-        self._type_ident_memo[tid] = key;
+        self._type_ident_memo[tid] = (t, key);
         return key;
     }
 
@@ -1587,17 +1596,29 @@ obj CatalogWriter {
 
 class IncoherentInterface(RuntimeError) {
     has mod_path: str,
-        orphans: list[str];
+        orphans: list[str],
+        failures: list[str];
 
-    def init(self: IncoherentInterface, mod_path: str, orphans: list[str]) {
+    def init(
+        self: IncoherentInterface,
+        mod_path: str,
+        orphans: list[str],
+        failures: list[str] | None = None
+    ) {
         RuntimeError.__init__(
             self,
             f"interface of {mod_path} references {len(orphans)} class scope(s) "
             "with no live module: "
                 + ", ".join(orphans)
+                + (
+                    "; type evaluation failed: " + "; ".join(failures)
+                        if failures
+                        else ""
+                )
         );
         self.mod_path = mod_path;
         self.orphans = list(orphans);
+        self.failures = list(failures or []);
     }
 }
 
@@ -1615,8 +1636,8 @@ def build_module_iface(
     writer.force_all();
     key = mod.loc.mod_path if mod.loc else dotted;
     body = writer.emit(writer.rel_of(key), {});
-    if writer.orphans {
-        raise IncoherentInterface(key, writer.orphans);
+    if writer.orphans or writer.failures {
+        raise IncoherentInterface(key, writer.orphans, writer.failure_log);
     }
     digest = hashlib.sha256(body).hexdigest();
     return digest.encode("utf-8") + body;

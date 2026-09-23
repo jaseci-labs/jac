@@ -8,7 +8,7 @@ with a structured error — never dropped.
 """
 
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -61,7 +61,7 @@ def compile_fixture(fixture: str) -> any {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
-    gi_addr = eng.get_function_address("__jac_glob_init");
+    gi_addr = native_address(eng, "__jac_glob_init");
     if gi_addr {
         ctypes.CFUNCTYPE(None)(gi_addr)();
     }
@@ -71,7 +71,7 @@ def compile_fixture(fixture: str) -> any {
 """Get a ctypes-callable function from the JIT engine."""
 def get_func(eng: any, name: str, restype: any, *argtypes: any) -> any {
     import ctypes;
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);

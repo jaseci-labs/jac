@@ -278,7 +278,8 @@ node Symbol {
         na_stack_ok: bool = False,
         _in_stub_scope: (bool | None) = None,
         _binding_kind: (BindingKind | None) = None,
-        provider: SymbolProvider | None = None;
+        provider: SymbolProvider | None = None,
+        imported_from: Symbol | None = None;
 
     def init(
         defn: NameAtom,
@@ -702,6 +703,7 @@ node Module(AstDocNode, UniScopeNode) {
     has annexable_by: (str | None) { getter; }
 
     def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
+    def record_comptime_dependency(path: str, body: bool = False) -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {
