@@ -724,8 +724,13 @@ def _owner_projection -> str {
 }
 
 def compute_module_key(source_path: str) -> str {
+    """A module the running compiler package owns is keyed canonically,
+    whatever compilation scope is active: the package's precompile, the
+    compiler's bootstrap, a consumer's analysis and a native build session
+    all read and write the same entry for it.""";
     h = hashlib.sha256();
-    h.update(_owner_projection().encode());
+    projection = '' if is_compiler_source_path(source_path) else _owner_projection();
+    h.update(projection.encode());
     h.update(_env_fingerprint_for(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
@@ -1162,7 +1167,8 @@ def _get_module_cache_dir(source_path: str) -> Path {
 def get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
-    path_hash = hashlib.sha256((str(source) + _owner_projection()).encode()).hexdigest()[:8];
+    projection = '' if is_compiler_source_path(str(source)) else _owner_projection();
+    path_hash = hashlib.sha256((str(source) + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }

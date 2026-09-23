@@ -82,6 +82,39 @@ test "the consumer's memory model and policy still shape a package module" {
     assert bound.default_codespace == "native" and bound.force_codespace == "native";
 }
 
+test "a package module's cache key ignores the active compilation scope" {
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    import from jaclang.compiler.driver.jir { get_module_cache_path, module_cache_key }
+    package_path = _pkg("cli/command.jac");
+    with cache_scope(None) {
+        canonical = module_cache_key(package_path);
+        canonical_file = get_module_cache_path(package_path);
+    }
+    scoped = CompileOptions(
+        default_codespace="client", target_app="web", project_root="/tmp/app"
+    );
+    with cache_scope(scoped) {
+        assert module_cache_key(package_path) == canonical , (
+            "a consumer's scope must not fork the package module's cache entry"
+        );
+        assert get_module_cache_path(package_path) == canonical_file , (
+            "nor where that entry lives"
+        );
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        source = Path(directory) / "page.jac";
+        source.write_text("def page -> int { return 1; }\n");
+        with cache_scope(None) {
+            plain = module_cache_key(str(source));
+        }
+        with cache_scope(scoped) {
+            assert module_cache_key(str(source)) != plain , (
+                "an application module still keys by its scope"
+            );
+        }
+    }
+}
+
 test "a unit's native stamp ignores policy entries that name other modules" {
     registry = JacProgram().native_units();
     path = _pkg("runtime/region_native.jac");
