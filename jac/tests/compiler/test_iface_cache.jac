@@ -978,7 +978,7 @@ test "short lived types cannot alias memoized interface identities" {
 test "failed type evaluation cannot publish an interface" {
     import from unittest.mock { patch }
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-    import from jaclang.compiler.types.stubcat.modiface {
+    import from jaclang.compiler.types.stubcat.writer {
         build_module_iface,
         IncoherentInterface
     }
@@ -1040,7 +1040,7 @@ test "special variable method names retain their signatures across cache hydrati
 
 test "interface identity normalizes relative and absolute source paths" {
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-    import from jaclang.compiler.types.stubcat.modiface { build_module_iface }
+    import from jaclang.compiler.types.stubcat.writer { build_module_iface }
     (main, dep) = _project();
     pkg = jaclang_pkg_dir();
     payloads: list[bytes] = [];
@@ -1058,7 +1058,7 @@ test "equivalent external class references have one interface identity" {
     import from copy { copy }
     import from jaclang.compiler.types.types { ClassType, FunctionType }
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-    import from jaclang.compiler.types.stubcat.modiface { build_module_iface }
+    import from jaclang.compiler.types.stubcat.writer { build_module_iface }
     (main, dep) = _project("obj Foreign {}\n");
     Path(main).write_text(
         "import from depmod { Foreign }\n"

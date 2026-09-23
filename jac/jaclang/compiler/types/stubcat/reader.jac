@@ -42,6 +42,7 @@ import from jaclang.compiler.types.types {
     UnionType,
     UnknownType
 }
+import from jaclang.compiler.types.stubcat.resolver { CatalogResolver }
 import from jaclang.compiler.types.stubcat.format {
     ACCESS_PRIVATE,
     ACCESS_PROTECTED,
@@ -91,18 +92,6 @@ import from jaclang.compiler.types.stubcat.format {
 
 def keep_path(rel: str) -> str {
     return rel;
-}
-
-obj CatalogResolver {
-    def resolve_module(path: str) -> (Module | None) {
-        return None;
-    }
-
-    def resolve_shared(
-        module_path: str, dotted: str, class_name: str
-    ) -> (ClassDetailsShared | None) {
-        return None;
-    }
 }
 
 obj CatProvider(SymbolProvider) {

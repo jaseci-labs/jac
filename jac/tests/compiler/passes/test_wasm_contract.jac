@@ -48,7 +48,7 @@ def host_errors(
                 package = jaclang_pkg_dir();
                 payload = build_module_iface(module, evaluator, package);
                 catalog = open_module_iface(
-                    payload, package, resolver=program.iface_registry().resolve_module
+                    payload, package, resolver=program.iface_registry()
                 );
                 assert catalog is not None;
                 cached = iface_module(catalog);

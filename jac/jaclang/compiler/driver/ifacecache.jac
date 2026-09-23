@@ -5,6 +5,8 @@ import os;
 import time;
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.types.types { ClassDetailsShared }
+import from jaclang.compiler.types.stubcat.resolver { CatalogResolver }
 import from jaclang.compiler.driver.jir {
     DepRow,
     SEC_CTDEPS,
@@ -185,7 +187,7 @@ obj EncodedInterface {
         paths: JirPaths | None = None;
 }
 
-obj IfaceRegistry {
+obj IfaceRegistry(CatalogResolver) {
     has prog: any,
         entries: dict[str, IfaceEntry] = {},
         building: set[str] postinit,
@@ -1122,7 +1124,7 @@ obj IfaceRegistry {
         return edges;
     }
 
-    def resolve_module(path: str) -> any {
+    def resolve_module(path: str) -> (Module | None) {
         if not path {
             return None;
         }
@@ -1140,7 +1142,9 @@ obj IfaceRegistry {
         }
     }
 
-    def resolve_shared(module_path: str, dotted: str, class_name: str) -> any {
+    def resolve_shared(
+        module_path: str, dotted: str, class_name: str
+    ) -> (ClassDetailsShared | None) {
         mod = self.resolve_module(module_path);
         if mod is None or not dotted {
             return None;

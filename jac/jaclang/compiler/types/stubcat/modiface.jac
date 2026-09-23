@@ -1,6 +1,7 @@
 import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.types.stubcat.format { IFACE_HASH_LEN }
-import from jaclang.compiler.types.stubcat.reader { CatalogResolver, StubCatalog }
+import from jaclang.compiler.types.stubcat.reader { StubCatalog }
+import from jaclang.compiler.types.stubcat.resolver { CatalogResolver }
 
 def read_iface_hash(section: (bytes | None)) -> (str | None) {
     if section is None or len(section) <= IFACE_HASH_LEN {

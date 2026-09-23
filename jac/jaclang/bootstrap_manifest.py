@@ -69,6 +69,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/frontend/diagnostics.jac",
     "compiler/frontend/helpers.jac",
     "compiler/frontend/host.jac",
+    "compiler/types/stubcat/resolver.jac",
     "compiler/frontend/impl/",
     "compiler/frontend/module_facts.jac",
     "compiler/frontend/parser/",

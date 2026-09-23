@@ -1,6 +1,5 @@
 import from jaclang.compiler.frontend.constant { SymbolType }
 import from jaclang.compiler.field_semantics { field_initialization }
-import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
 
 glob CLASS_CTOR_BUCKETS: int = 256,
      CLASS_CTOR_REGISTRY: str = "__jac_class_ctors",
@@ -50,7 +49,8 @@ impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
         }
     } elif isinstance(target, uni.AtomTrailer) {
         if target.is_attr {
-            sym = resolve_expr_symbol(target);
+            attr = target.right;
+            sym = attr.sym if isinstance(attr, uni.AstSymbolNode) else None;
             if sym is None or sym.sym_type in CLASS_REFERENCE_SYMBOLS {
                 return False;
             }
