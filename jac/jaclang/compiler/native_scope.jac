@@ -68,7 +68,8 @@ def scope_allows_inferred_path(mod_path: str) -> bool {
     identity = native_unit_identity(mod_path);
     if identity.startswith("jaclang/")
         and not identity.startswith("jaclang/runtime/") {
-        return in_native_scope_path(mod_path);
+        import from jaclang.compiler.placement.placement_facts { native_unit }
+        return native_unit(mod_path, native_unit_compile=True);
     }
     return True;
 }
