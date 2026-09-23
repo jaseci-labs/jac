@@ -278,10 +278,12 @@ obj _ZoneData {
         fixed_offset: bool = False;
 }
 
+glob _EMPTY_ZONE_DATA: _ZoneData = _ZoneData();
+
 
 obj:pub ZoneInfo(tzinfo) {
     has key: (str | None) = None,
-        _data: _ZoneData = _ZoneData();
+        _data: _ZoneData = _EMPTY_ZONE_DATA;
 
     def init(key: str = "", _raw: bool = False) {
         if _raw {
