@@ -1227,17 +1227,43 @@ impl TypeEvaluator.resolve_imported_symbols(sym: Symbol) -> Symbol {
         mod_item = sym.decl.find_parent_of_type(ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
-        if isinstance(mod_item.name, Name) and mod_item.name.sym {
-            return mod_item.name.sym;
+        provided = self._provided_import_item_symbol(mod_item);
+        if provided is not None {
+            return provided;
         }
 
-        self.get_type_of_module_item(mod_item);
+        if self.push_symbol_resolution(sym) {
+            try {
+                self.get_type_of_module_item(mod_item);
+            } finally {
+                self.pop_symbol_resolution(sym);
+            }
+        }
+        provided = self._provided_import_item_symbol(mod_item);
+        if provided is not None {
+            return provided;
+        }
         if isinstance(mod_item.name, Name) and mod_item.name.sym {
             return mod_item.name.sym;
         }
         return sym;
     }
     return sym;
+}
+
+impl TypeEvaluator._provided_import_item_symbol(node_: ModuleItem) -> (Symbol | None) {
+    if not isinstance(node_.name, Name) {
+        return None;
+    }
+    bound = node_.name.sym;
+    if bound is None {
+        return None;
+    }
+    decl = bound.decl;
+    if decl is not None and decl.find_parent_of_type(ModuleItem) is node_ {
+        return None;
+    }
+    return bound;
 }
 
 impl TypeEvaluator._set_module_item_symbol_and_type(
