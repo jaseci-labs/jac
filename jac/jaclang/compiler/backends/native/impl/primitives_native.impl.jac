@@ -1214,9 +1214,17 @@ impl NativeStrEmitter.emit_rsplit(
 impl NativeStrEmitter.emit_splitlines(
     self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    p = ctx.pass_ref;
-    nl_sep = p._make_global_string("\n", name_prefix=".nl.sep");
-    return p._codegen_str_split(target, nl_sep);
+    kwargs = ctx?.call_kwargs or {};
+    if len(args) > 1
+        or any(k != "keepends" for k in kwargs)
+        or (args and "keepends" in kwargs) {
+        return None;
+    }
+    keepends = args[0] if args else None;
+    if "keepends" in kwargs {
+        keepends = ctx.pass_ref._codegen_expr(kwargs["keepends"]);
+    }
+    return ctx.pass_ref._codegen_str_splitlines(target, keepends);
 }
 
 impl NativeStrEmitter.emit_join(
