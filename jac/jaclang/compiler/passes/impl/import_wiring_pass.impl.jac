@@ -277,9 +277,7 @@ impl ImportWiringPass._check_import(
         provider = project_provider
             if project_provider is not None
             else from_loc.dot_path_str;
-        form = WiringSpec.import_form(
-            imp.is_absorb, imp.is_typed, imp.is_comptime, True
-        );
+        form = import_form(imp.is_absorb, imp.is_typed, imp.is_comptime, True);
         names: list[tuple[str, UniNode]] = [];
         for item in imp.items {
             if not isinstance(item, ModuleItem) {
@@ -317,7 +315,7 @@ impl ImportWiringPass._check_import(
         self._check_edge(spec, provider, consumer, names, imp);
         return;
     }
-    form = WiringSpec.import_form(imp.is_absorb, imp.is_typed, imp.is_comptime, False);
+    form = import_form(imp.is_absorb, imp.is_typed, imp.is_comptime, False);
     for item in imp.items {
         if not isinstance(item, ModulePath) {
             continue;

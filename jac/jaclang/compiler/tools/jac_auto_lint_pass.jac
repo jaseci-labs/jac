@@ -43,6 +43,7 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.wiring { WiringSpec, is_arch_file, wiring_for_path }
+import from jaclang.compiler.passes.annex_weave { import_form }
 import from jaclang.compiler.driver.bccache { discover_base_file }
 import from jaclang.compiler.frontend.roles {
     Kid,

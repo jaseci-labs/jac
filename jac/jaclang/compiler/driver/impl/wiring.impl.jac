@@ -218,23 +218,6 @@ impl WiringSpec.is_sealed(module: str) -> bool {
     return self.is_mentioned(module) or self.is_closed(module);
 }
 
-impl WiringSpec.import_form(
-    is_absorb: bool, is_typed: bool, is_comptime: bool, from_form: bool
-) -> str {
-    words: list[str] = [];
-    if is_comptime {
-        words.append("comptime");
-    }
-    words.append("include" if is_absorb else "import");
-    if is_typed {
-        words.append("type");
-    }
-    if from_form {
-        words.append("from");
-    }
-    return " ".join(words);
-}
-
 impl WiringSpec.pattern_text(pattern: ModulePattern) -> str {
     if pattern.is_any {
         return "any";
@@ -253,9 +236,7 @@ impl WiringSpec._wire_text(wire: ImportWire) -> list[tuple[int, int, str]] {
     first = wire.loc.first_tok;
     line0 = first.line_no - 1;
     col = self._column_of(first.pos_start);
-    head_form = WiringSpec.import_form(
-        wire.is_absorb, wire.is_typed, wire.is_comptime, False
-    );
+    head_form = import_form(wire.is_absorb, wire.is_typed, wire.is_comptime, False);
     if wire.is_module_form {
         alias = wire.provider.alias;
         text = head_form
@@ -349,16 +330,14 @@ impl WiringSpec.wire_bindings(wire: ImportWire) -> list[WireBinding] {
         return [
             WireBinding(
                 provider=provider,
-                form=WiringSpec.import_form(
+                form=import_form(
                     wire.is_absorb, wire.is_typed, wire.is_comptime, False
                 ),
                 alias=alias.value if alias is not None else ""
             )
         ];
     }
-    form = WiringSpec.import_form(
-        wire.is_absorb, wire.is_typed, wire.is_comptime, True
-    );
+    form = import_form(wire.is_absorb, wire.is_typed, wire.is_comptime, True);
     return [
         WireBinding(
             provider=provider,
@@ -521,96 +500,7 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     return spec;
 }
 
-impl dedupe_generated_imports(mod: Module) -> None {
-    spec = wiring_for_path(mod.loc.mod_path, policy=False);
-    if spec is None {
-        return;
-    }
-    written: set[tuple[str, str, str, str]] = set();
-    generated: list[Import] = [];
-    for stmt in mod.body {
-        if not isinstance(stmt, Import) {
-            continue;
-        }
-        if stmt.loc.mod_path == spec.path {
-            generated.append(stmt);
-            continue;
-        }
-        written |= _import_keys(stmt);
-    }
-    if not generated or not written {
-        return;
-    }
-    consumer = spec.module_name(mod.loc.mod_path) or "";
-    removed: set[int] = set();
-    for stmt in generated {
-        doomed: set[int] = set();
-        for (key, item) in _import_items(stmt) {
-            if key in written or _relative_twin(key, consumer) in written {
-                doomed.add(id(item));
-            }
-        }
-        if doomed and stmt.prune_items(doomed) {
-            removed.add(id(stmt));
-        }
-    }
-    if removed {
-        mod._role_set(
-            BodyRole,
-            [
-                s
-                for s in mod.body
-                if id(s) not in removed
-            ]
-        );
-        mod.set_kids(
-            nodes=[
-                k
-                for k in [mod->:Kid:->]
-                if id(k) not in removed
-            ]
-                or [EmptyToken()]
-        );
-        mod._invalidate_sub_node_tab();
-    }
-}
-
-impl _import_items(stmt: Import) -> list[tuple[tuple[str, str, str, str], UniNode]] {
-    from_loc = stmt.from_loc;
-    form = WiringSpec.import_form(
-        stmt.is_absorb, stmt.is_typed, stmt.is_comptime, from_loc is not None
-    );
-    out: list[tuple[tuple[str, str, str, str], UniNode]] = [];
-    for item in stmt.items {
-        alias = item.alias.value if item.alias is not None else "";
-        if isinstance(item, ModuleItem) and from_loc is not None {
-            out.append(((from_loc.dot_path_str, form, item.name.value, alias), item));
-        } elif isinstance(item, ModulePath) {
-            out.append(((item.dot_path_str, form, "", alias), item));
-        }
-    }
-    return out;
-}
-
-impl _import_keys(stmt: Import) -> set[tuple[str, str, str, str]] {
-    return {key for (key, _item) in _import_items(stmt)};
-}
-
-impl _relative_twin(
-    key: tuple[str, str, str, str], consumer: str
-) -> tuple[str, str, str, str] {
-    (provider, form, name, alias) = key;
-    if "." not in consumer {
-        return key;
-    }
-    package = consumer.rsplit(".", 1)[0] + ".";
-    if provider.startswith(package) {
-        return ("." + provider[len(package):], form, name, alias);
-    }
-    return key;
-}
-
-impl wiring_annex_for(file_path: str) -> (tuple[str, str] | None) {
+impl wiring_annex_for(file_path: str) -> (WovenAnnex | None) {
     if is_arch_file(file_path) {
         return None;
     }
@@ -626,7 +516,7 @@ impl wiring_annex_for(file_path: str) -> (tuple[str, str] | None) {
     if not text {
         return None;
     }
-    return (text, spec.path);
+    return WovenAnnex(source=text, path=spec.path, consumer=consumer);
 }
 
 impl wiring_digest_for(file_path: str) -> str {

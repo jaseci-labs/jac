@@ -2470,9 +2470,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         from_loc = stmt.from_loc;
         if from_loc is not None {
             provider = spec.import_provider(from_loc);
-            form = WiringSpec.import_form(
-                stmt.is_absorb, stmt.is_typed, stmt.is_comptime, True
-            );
+            form = import_form(stmt.is_absorb, stmt.is_typed, stmt.is_comptime, True);
             for item in stmt.items {
                 if provider is None or not isinstance(item, uni.ModuleItem) {
                     continue;
@@ -2491,9 +2489,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
                 }
             }
         } else {
-            form = WiringSpec.import_form(
-                stmt.is_absorb, stmt.is_typed, stmt.is_comptime, False
-            );
+            form = import_form(stmt.is_absorb, stmt.is_typed, stmt.is_comptime, False);
             for item in stmt.items {
                 if not isinstance(item, uni.ModulePath) {
                     continue;

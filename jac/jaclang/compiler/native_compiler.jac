@@ -6,6 +6,7 @@ import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.passes.context { Alert, PassResult }
 import type from jaclang.compiler.frontend.parser.tokens { CommentData, SrcDiag }
+import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
@@ -88,11 +89,10 @@ class NativeCompiler {
         L.jac_str_new.restype = c_void_p;
         L.jac_release.argtypes = [c_void_p];
         L.jac_release.restype = None;
-        for name in ("jc_run", "jc_annex") {
-            fn = getattr(L, name);
-            fn.argtypes = [c_void_p, c_void_p, c_int64, c_void_p, c_void_p, c_int64];
-            fn.restype = c_int64;
-        }
+        L.jc_run.argtypes = [c_void_p, c_void_p, c_int64] * 2;
+        L.jc_run.restype = c_int64;
+        L.jc_annex.argtypes = [c_void_p, c_void_p, c_int64] * 3;
+        L.jc_annex.restype = c_int64;
         for name in ("jc_probe", "jc_err_count", "jc_lex_errs", "jc_mz_skipped") {
             fn = getattr(L, name);
             fn.argtypes = [];
@@ -398,34 +398,31 @@ class NativeCompiler {
         );
     }
 
-    def _call_str2(self: NativeCompiler, name: str, a: str, b: str) -> int {
+    def _call_strs(self: NativeCompiler, name: str, *texts: str) -> int {
         fn = getattr(self.lib, name);
-        ab = a.encode();
-        bb = b.encode();
-        pa = self.lib.jac_str_new(ab, len(ab));
-        pb = None;
+        handles: list[int] = [];
+        args: list[object] = [];
         try {
-            pb = self.lib.jac_str_new(bb, len(bb));
-            return fn(
-                c_void_p(pa),
-                c_void_p(pa),
-                c_int64(len(ab)),
-                c_void_p(pb),
-                c_void_p(pb),
-                c_int64(len(bb))
-            );
+            for text in texts {
+                data = text.encode();
+                handle = self.lib.jac_str_new(data, len(data));
+                handles.append(handle);
+                args.extend([c_void_p(handle), c_void_p(handle), c_int64(len(data))]);
+            }
+            return fn(*args);
         } finally {
-            self.lib.jac_release(pb);
-            self.lib.jac_release(pa);
+            for handle in handles {
+                self.lib.jac_release(handle);
+            }
         }
     }
 
-    def annex(self: NativeCompiler, annex_src: str, annex_path: str) -> int {
-        return self._call_str2("jc_annex", annex_src, annex_path);
+    def annex(self: NativeCompiler, annex: WovenAnnex) -> int {
+        return self._call_strs("jc_annex", annex.source, annex.path, annex.consumer);
     }
 
     def run(self: NativeCompiler, source: str, path: str) -> int {
-        return self._call_str2("jc_run", source, path);
+        return self._call_strs("jc_run", source, path);
     }
 
     def prepare_early(self: NativeCompiler, context: str) {

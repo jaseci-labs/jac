@@ -21,6 +21,7 @@ import from jaclang.compiler.driver.wiring {
     wiring_for_path
 }
 import from jaclang.project.source { pascal_to_snake }
+import from jaclang.compiler.passes.annex_weave { import_form }
 import from jaclang.compiler.frontend.diagnostics {
     E1140,
     E1141,

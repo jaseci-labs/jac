@@ -31,6 +31,10 @@ import from jaclang.compiler.passes.early_passes {
     JsxIntrinsicGuardPass
 }
 import from jaclang.compiler.passes.context { Alert }
+import from jaclang.compiler.passes.annex_weave {
+    merge_annex_into,
+    prune_generated_imports
+}
 
 obj JcState {
     has p_errs: int = 0,
@@ -47,8 +51,7 @@ obj JcState {
 }
 
 glob _JC: JcState = JcState(),
-     _ANNEX_SRC: list[str] = [],
-     _ANNEX_PATH: list[str] = [];
+     _ANNEXES: list[tuple[str, str, str]] = [];
 
 def:pub jc_probe -> int {
     return 44061;
@@ -112,33 +115,22 @@ def:pub jc_take_pass_alerts(index: int, warnings: int) -> int {
     return h;
 }
 
-def _clear_annexes {
-    while _ANNEX_SRC {
-        _ANNEX_SRC.pop();
-    }
-    while _ANNEX_PATH {
-        _ANNEX_PATH.pop();
-    }
-}
-
-def:pub jc_annex(src: str, path: str) -> int {
-    _ANNEX_SRC.append(src);
-    _ANNEX_PATH.append(path);
+def:pub jc_annex(source: str, path: str, consumer: str) -> int {
+    _ANNEXES.append((source, path, consumer));
     return 0;
 }
 
-def _weave(r: Region, main_mod: Module, annex_src: str, annex_path: str) -> int {
-    (a_mod, a_errs, _pd, _cm, _ld, a_lex_errs) = parse_program(annex_src, annex_path);
-    if a_errs > 0 or a_lex_errs > 0 {
-        return 1;
+def _weave(r: Region, mod: Module) -> int {
+    for (source, path, _consumer) in _ANNEXES {
+        (a_mod, a_errs, _pd, _cm, _ld, a_lex_errs) = parse_program(source, path);
+        if a_errs > 0 or a_lex_errs > 0 {
+            return 1;
+        }
+        merge_annex_into(mod, a_mod);
     }
-    stmts = list(a_mod.body);
-    if stmts {
-        main_mod.absorb_annex_body(stmts);
-        for sub in a_mod._in_mod_nodes {
-            if sub is not a_mod {
-                main_mod._in_mod_nodes.append(sub);
-            }
+    for (_source, path, consumer) in _ANNEXES {
+        if consumer {
+            prune_generated_imports(mod, path, consumer);
         }
     }
     return 0;
@@ -285,12 +277,7 @@ def _run_in_region(src: str, path: str) -> int {
         _JC.p_errs = p_errs;
         _JC.lex_errs = lex_errs;
         if p_errs == 0 and lex_errs == 0 {
-            i = 0;
-            n = len(_ANNEX_SRC);
-            while i < n and status == 0 {
-                status = _weave(r, mod, _ANNEX_SRC[i], _ANNEX_PATH[i]);
-                i += 1;
-            }
+            status = _weave(r, mod);
         }
         if status == 0 {
             status = _finish_unit(r, mod, p_diags, comments, lex_diags);
@@ -302,7 +289,7 @@ def _run_in_region(src: str, path: str) -> int {
 def:pub jc_run(src: str, path: str) -> int {
     _clear_results();
     status = _run_in_region(src, path);
-    _clear_annexes();
+    _ANNEXES.clear();
     _JC.early_context = 0;
     return status;
 }

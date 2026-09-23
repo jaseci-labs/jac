@@ -28,6 +28,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(
              module="jaclang.compiler.passes.sym_tab_build_pass", strict=True
          ),
+         NativeScopeEntry(module="jaclang.compiler.passes.annex_weave", strict=True),
          NativeScopeEntry(module="jaclang.compiler.passes.early_passes", strict=True),
          NativeScopeEntry(
              module="jaclang.compiler.passes.graph_lowering_pass", strict=True
