@@ -1947,9 +1947,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
 
-        if func_name == "bytearray" and not (nd.params or []) {
+        if func_name in ("bytes", "bytearray") and not (nd.params or []) {
             _ba_empty = self._dispatch_builtin(
-                "bytearray", [], kwargs=self._split_call_kwargs(nd), kw_node=nd
+                func_name, [], kwargs=self._split_call_kwargs(nd), kw_node=nd
             );
             if _ba_empty is not None {
                 return _ba_empty;

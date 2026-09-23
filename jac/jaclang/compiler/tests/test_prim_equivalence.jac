@@ -160,6 +160,14 @@ glob STR_NA_GAPS: list[any] = [
              "bytes_test_na"
          ),
          (
+             "bytes constructors",
+             "prim_bytearray.jac",
+             "bytes_ctor_py",
+             "bytes_ctor_cl",
+             "bytes_ctor_na",
+             ["na"]
+         ),
+         (
              "bytearray core",
              "prim_bytearray.jac",
              "bytearray_core_py",

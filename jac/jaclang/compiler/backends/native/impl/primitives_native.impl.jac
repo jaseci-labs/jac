@@ -5835,14 +5835,14 @@ impl NativeBuiltinEmitter.emit_list(
         return p._list_from_iter(val, elem_type, elem_type);
     }
 
-    if p._is_bytes_value(val) {
+    _byte_src = p._bytearray_src_of(val);
+    if _byte_src is not None {
         p._emit_list_helpers("i64", i64);
         helpers = p.list_helpers.get("i64");
         if helpers is None {
             return None;
         }
-        count = p._bytes_len_val(val);
-        data = p._bytes_data_ptr(val);
+        (data, count) = _byte_src;
         result = b.call(helpers["new"], [], name="b2l.new");
         func = b.basic_block.function;
         entry_bb = b.basic_block;
@@ -6082,31 +6082,65 @@ impl NativeBuiltinEmitter.emit_frozenset(
 impl NativeBuiltinEmitter.emit_bytes(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
     p = ctx.pass_ref;
+    i64 = ir.IntType(64);
+    if not args {
+        return p._bytes_alloc(ir.Constant(i64, 0));
+    }
+    val = args[0];
+    if isinstance(val.type, ir.IntType) {
+        return _emit_zeroed_bytes(p, val);
+    }
+    _src = p._bytearray_src_of(val);
+    if _src is not None {
+        return p._bytes_from_raw(_src[0], _src[1]);
+    }
+    return _emit_bytes_from_int_list(p, val, "bytes must be in range(0, 256)", []);
+}
+
+def _emit_zeroed_bytes(p: NaIRGenPass, count: ir.Value) -> ir.Value {
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    n = p._coerce_type(count, i64);
+    p._emit_runtime_raise(
+        b.icmp_signed("<", n, ir.Constant(i64, 0), name="bytes.neg"),
+        "ValueError",
+        "negative count"
+    );
+    bv = p._bytes_alloc(n);
+    memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, i32, i64]);
+    b.call(memset_fn, [p._bytes_data_ptr(bv), ir.Constant(i32, 0), n]);
+    return bv;
+}
+
+def _emit_bytes_from_int_list(
+    p: NaIRGenPass, val: ir.Value, message: str, release_on_error: list[ir.Value]
+) -> (ir.Value | None) {
     b = get_builder(p);
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
-    val = args[0];
-    if ("u8" in p.list_types and val.type == p.list_types["u8"].as_pointer()) {
-        _src = p._bytearray_src_of(val);
-        if _src is not None {
-            return p._bytes_from_raw(_src[0], _src[1]);
-        }
-    }
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
-        if ltype is not None and val.type == ltype.as_pointer() {
-            list_len = b.call(lhelpers["len"], [val], name="bytes.len");
-            bv = p._bytes_alloc(list_len);
-            data = p._bytes_data_ptr(bv);
+        if ltype is None or val.type != ltype.as_pointer() {
+            continue;
+        }
+        elem_type = lhelpers["elem_type"];
+        if not isinstance(elem_type, ir.IntType) or elem_type.width > 64 {
+            return None;
+        }
+        list_len = b.call(lhelpers["len"], [val], name="bytes.len");
+        bv: (ir.Value | None) = None;
+        for phase in ("check", "copy") {
+            if phase == "copy" {
+                bv = p._bytes_alloc(list_len);
+            }
             func = b.basic_block.function;
             entry_bb = b.basic_block;
-            loop_bb = func.append_basic_block(name="bytes.loop");
-            body_bb = func.append_basic_block(name="bytes.body");
-            done_bb = func.append_basic_block(name="bytes.done");
+            loop_bb = func.append_basic_block(name=f"bytes.{phase}.loop");
+            body_bb = func.append_basic_block(name=f"bytes.{phase}.body");
+            done_bb = func.append_basic_block(name=f"bytes.{phase}.done");
             b.branch(loop_bb);
             b.position_at_start(loop_bb);
             idx = b.phi(i64, name="bytes.idx");
@@ -6115,15 +6149,29 @@ impl NativeBuiltinEmitter.emit_bytes(
             b.cbranch(at_end, done_bb, body_bb);
             b.position_at_start(body_bb);
             elem = b.call(lhelpers["get"], [val, idx], name="bytes.elem");
-            byte_val = b.trunc(elem, i8, name="bytes.trunc");
-            bp = b.gep(data, [idx], name="bytes.bp");
-            b.store(byte_val, bp);
+            if phase == "check" {
+                p._emit_runtime_raise(
+                    b.icmp_unsigned(
+                        ">",
+                        p._coerce_type(elem, i64),
+                        ir.Constant(i64, 255),
+                        name="bytes.range"
+                    ),
+                    "ValueError",
+                    message,
+                    release_on_error=[val, *release_on_error]
+                );
+            } else {
+                assert bv is not None , "the copy phase allocates the result";
+                bp = b.gep(p._bytes_data_ptr(bv), [idx], name="bytes.bp");
+                b.store(b.trunc(p._coerce_type(elem, i64), i8, name="bytes.trunc"), bp);
+            }
             nidx = b.add(idx, ir.Constant(i64, 1), name="bytes.nidx");
-            idx.add_incoming(nidx, body_bb);
+            idx.add_incoming(nidx, b.basic_block);
             b.branch(loop_bb);
             b.position_at_start(done_bb);
-            return bv;
         }
+        return bv;
     }
     return None;
 }
@@ -6133,11 +6181,19 @@ impl NativeBuiltinEmitter.emit_bytearray(
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
     b = get_builder(p);
-    i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     p._ensure_bytearray_type();
     fns = p._bytearray_runtime_fns();
+    n: (ir.Value | None) = None;
+    if args and isinstance(args[0].type, ir.IntType) {
+        n = p._coerce_type(args[0], i64);
+        p._emit_runtime_raise(
+            b.icmp_signed("<", n, ir.Constant(i64, 0), name="ba.neg"),
+            "ValueError",
+            "negative count"
+        );
+    }
     buf = p._rc_call_with_ctx(
         p.list_helpers["u8"]["new"], [], op="new", loc="", name="ba.new"
     );
@@ -6145,8 +6201,7 @@ impl NativeBuiltinEmitter.emit_bytearray(
         return buf;
     }
     a0 = args[0];
-    if isinstance(a0.type, ir.IntType) {
-        n = p._coerce_type(a0, i64);
+    if n is not None {
         b.call(fns["reserve"], [buf, n], name="");
         data_p = b.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ba.z.data.p"
@@ -6165,7 +6220,7 @@ impl NativeBuiltinEmitter.emit_bytearray(
         return buf;
     }
 
-    _bv = self.emit_bytes(ctx, [a0]);
+    _bv = _emit_bytes_from_int_list(p, a0, "byte must be in range(0, 256)", [buf]);
     if _bv is not None and p._is_bytes_value(_bv) {
         _bsrc = p._bytearray_src_of(_bv);
         if _bsrc is not None {
