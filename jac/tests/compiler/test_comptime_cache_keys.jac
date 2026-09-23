@@ -27,10 +27,8 @@ import from jaclang.compiler.driver.jir {
     read_section_bytes
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compilation_context {
-    artifact_cache_path,
-    program_for
-}
+import from jaclang.compiler.driver.compilation_context { program_for }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }

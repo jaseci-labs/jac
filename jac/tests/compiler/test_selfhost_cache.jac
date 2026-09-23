@@ -43,10 +43,10 @@ def _reset_selfhost {
 
 def _forget_verdict(path: str) {
     import from jaclang.compiler.driver.compilation_context {
-        artifact_cache_path,
         bind_options,
         context_program
     }
+    import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
     prog = JacProgram();
     options = bind_options(
         path, prog, CompileOptions(no_cgen=True, native_parity=True, iface_ok=True)

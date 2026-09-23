@@ -89,6 +89,10 @@ obj HostServices {
         return ("", "");
     }
 
+    def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None) {
+        return None;
+    }
+
     def is_path_alias(target: str, base_path: str) -> bool {
         return False;
     }

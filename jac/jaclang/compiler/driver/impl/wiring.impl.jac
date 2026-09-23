@@ -109,7 +109,7 @@ impl WiringSpec.module_file(name: str) -> (str | None) {
     if any([not p for p in parts]) {
         return None;
     }
-    found = resolve_local_module(self.root_dir, parts);
+    found = active_host().resolve_local_module(self.root_dir, parts);
     if found is None or found[1] not in ("jac", "py") {
         return None;
     }

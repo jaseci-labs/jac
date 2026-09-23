@@ -23,7 +23,6 @@ import from jaclang.runtime.semantic {
     FunctionInfo,
     MethodInfo,
     ParamInfo,
-    fetch_mtir,
     mk_dict,
     mk_list,
 }
@@ -142,8 +141,7 @@ test "tool extraction from compiled code" {
     prog.compile(fixture_path("tool_function.jac"));
     assert not prog.errors_had;
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     func_with_tools: FunctionInfo | None = None;
     for (scope, info) in mtir_map.items() {
@@ -177,8 +175,7 @@ test "method tool in class" {
     prog.compile(fixture_path("tool_method.jac"));
     assert not prog.errors_had;
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     method_scope: str | None = None;
     for scope in mtir_map {
@@ -301,8 +298,7 @@ test "basic fixture compiles" {
     prog.compile(fixture_path("basic_compile.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
     assert len(mtir_map) > 0 , "MTIR map should have entries";
 
     found_generate_person = False;
@@ -325,8 +321,7 @@ test "scope name with trailing a" {
     prog.compile(fixture);
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     scopes_with_generate_data = [
         scope
@@ -357,8 +352,7 @@ test "scope name with trailing c" {
     prog.compile(fixture);
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     scopes_with_get_basic = [
         scope
@@ -387,8 +381,7 @@ test "scope name with trailing j" {
     prog.compile(fixture);
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     scopes_with_create_proj = [
         scope
@@ -423,8 +416,7 @@ test "all stored scopes are retrievable" {
         prog.compile(fixture_path(fixture_name));
         assert not prog.errors_had , f"Compilation errors for {fixture_name}: {prog.errors_had}";
 
-        assert JacRuntime.program is not None;
-        mtir_map = JacRuntime.program.mtir_map;
+        mtir_map = prog.mtir_map;
 
         expected_scope_pattern = f"{module_name}.{func_name}";
 
@@ -495,7 +487,7 @@ test "imported function scope resolution" {
         f"not a truncated one; got {scopes}"
     );
     # The call site finds the entry the compiler registered, through the importer.
-    found = fetch_mtir(importer.get_imported_data);
+    found = JacRuntime.fetch_mtir(importer.get_imported_data);
     assert found is not None and any(found is mtir_map[s] for s in scopes) , (
         f"fetch_mtir missed the registered entry; scopes: {scopes}"
     );
@@ -528,8 +520,7 @@ test "enum with int values extraction" {
     prog.compile(fixture_path("enum_with_semstr.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     func_scope: str | None = None;
     for scope in mtir_map {
@@ -579,8 +570,7 @@ test "enum with string values extraction" {
     prog.compile(fixture_path("enum_with_semstr.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     func_scope: str | None = None;
     for scope in mtir_map {
@@ -627,8 +617,7 @@ test "enum without values extraction" {
     prog.compile(fixture_path("enum_no_value.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     func_scope: str | None = None;
     for scope in mtir_map {
@@ -664,8 +653,7 @@ test "enum semstrings are extracted" {
     prog.compile(fixture_path("enum_with_semstr.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     func_scope = None;
     for scope in mtir_map {
@@ -832,8 +820,8 @@ test "submodule MTIR keyed by import fullname" {
         ("alpha_process", "scope_dir.module_alpha.process_data"),
         ("beta_process", "scope_dir.module_beta.process_data")
     ] {
-        assert fetch_mtir(getattr(main, alias)) is mtir_map[key] , (
-            f"fetch_mtir({alias}) did not return the entry at {key}"
+        assert JacRuntime.fetch_mtir(getattr(main, alias)) is mtir_map[key] , (
+            f"JacRuntime.fetch_mtir({alias}) did not return the entry at {key}"
         );
     }
 }
@@ -844,8 +832,7 @@ test "runtime scope resolution matches compile time" {
     prog.compile(fixture);
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     expected_stem = Path(fixture).stem;
 
@@ -873,8 +860,7 @@ test "scope portable across paths" {
     prog.compile(fixture);
     assert not prog.errors_had;
 
-    assert JacRuntime.program is not None;
-    mtir_map = JacRuntime.program.mtir_map;
+    mtir_map = prog.mtir_map;
 
     for scope in mtir_map {
         assert not scope.startswith("/") , f"Scope '{scope}' should not start with absolute path";

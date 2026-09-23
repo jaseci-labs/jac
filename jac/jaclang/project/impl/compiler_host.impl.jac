@@ -320,3 +320,10 @@ impl ProjectHost.native_parse(
     }
     return (module, had_error);
 }
+
+impl ProjectHost.resolve_local_module(
+    base: str, parts: list[str]
+) -> (tuple[str, str] | None) {
+    import from jaclang.project.modresolver { resolve_local_module }
+    return resolve_local_module(base, parts);
+}

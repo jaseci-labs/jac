@@ -255,9 +255,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 first = prepare_application(
                     str(path), source_program, tmp, services=[str(package_init)]
                 );
-                import from jaclang.compiler.driver.compilation_context {
-                    artifact_cache_path
-                }
+                import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
                 data = artifact_cache_path(str(path), source_program).read_bytes();
                 init_data = artifact_cache_path(
                     str(package_init), source_program

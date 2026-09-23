@@ -1,4 +1,5 @@
 import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
+import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -62,7 +63,10 @@ glob PRIMITIVE_TYPES: list[str] = [
          + JAC_TYPE_REGISTRY.sized_scalar_names();
 
 walker MTIRGenPass(CompilerPass) {
-    has _class_info_cache: dict[int, ClassInfo] = {};
+    has prog: JacProgram,
+        _class_info_cache: dict[int, ClassInfo] = {};
+
+    static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
