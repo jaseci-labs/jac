@@ -544,9 +544,33 @@ def _analysis_fingerprint_for(source_path: str) -> str {
     ).analysis_fingerprint();
 }
 
+def _check_policy_digest(source_path: str) -> str {
+    import json;
+    cfg: any = None;
+    try {
+        cfg = _config_for_module(Path(source_path).resolve());
+    } except Exception {
+        cfg = None;
+    }
+    check = cfg.check if cfg is not None else None;
+    if check is None {
+        return "";
+    }
+    lint = check.lint;
+    policy = {
+        "suppress": sorted(check.suppress),
+        "categories": sorted(check.suppress_categories),
+        "select": sorted(lint.select) if lint is not None else [],
+        "ignore": sorted(lint.ignore) if lint is not None else [],
+        "exclude": sorted(lint.exclude) if lint is not None else []
+    };
+    return hashlib.sha256(json.dumps(policy, sort_keys=True).encode()).hexdigest();
+}
+
 def _project_env_fingerprint(source_path: str) -> str {
     h = hashlib.sha256();
     h.update(_module_codespace_mode(source_path).encode());
+    h.update(_check_policy_digest(source_path).encode());
     import from jaclang.compiler.placement.placement_pins {
         pins_digest,
         config_kind_space

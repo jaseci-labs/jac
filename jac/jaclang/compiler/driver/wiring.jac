@@ -48,8 +48,10 @@ obj WiringSpec {
         _lines: list[str] = [],
         _by_consumer: dict[str, list[ImportWire]] = {},
         _annex_cache: dict[str, str] = {},
-        _rules_digest: str = "",
-        _project_modules: (list[str] | None) = None;
+        closed_patterns: list[str] = [],
+        _policy_digest: str = "",
+        _project_modules: (list[str] | None) = None,
+        _mentioned: (set[str] | None) = None;
 
     def postinit -> None;
     def module_name(path: str) -> (str | None);
@@ -58,6 +60,11 @@ obj WiringSpec {
     def project_modules -> list[str];
     def consumer_wires(consumer: str) -> list[ImportWire];
     def is_covered(consumer: str) -> bool;
+    def is_project_module(module: str) -> bool;
+    def is_mentioned(module: str) -> bool;
+    def is_closed(module: str) -> bool;
+    def is_sealed(module: str) -> bool;
+    static def pattern_matches(pattern: str, module: str) -> bool;
     def annex_source(consumer: str) -> (str | None);
     def digest_for(consumer: str) -> str;
     def wire_bindings(wire: ImportWire) -> list[WireBinding];
@@ -78,7 +85,8 @@ obj WiringSpec {
     def _column_of(pos: int) -> int;
 }
 
-glob _spec_cache: dict[str, tuple[tuple[float, int], WiringSpec]] = {},
+glob _spec_cache:
+         dict[str, tuple[tuple[float, int, tuple[str, ...]], WiringSpec]] = {},
      _resolution: ContextVar[dict[str, WiringSpec | None] | None] = ContextVar(
          'jac_wiring_resolution', `default=None
      ),
@@ -103,4 +111,5 @@ def arch_file_for(path: str) -> (str | None);
 def wiring_for_path(path: str) -> (WiringSpec | None);
 def wiring_annex_for(file_path: str) -> (tuple[str, str] | None);
 def wiring_digest_for(file_path: str) -> str;
-def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
+def _load_spec(root_dir: str, arch_path: str, closed: list[str]) -> WiringSpec;
+def _closed_patterns_for(root_dir: str) -> list[str];

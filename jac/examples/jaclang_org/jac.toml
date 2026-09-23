@@ -72,6 +72,8 @@ exclude = [
     "core/site/source/FloatingSource.jac",
     "core/site/landing/Reveal.jac",
     "core/site/game/webgl_host.jac",
+    "core/site/game/arena.jac",
+    "core/site/game/sim.jac",
     "core/async_utils.jac",
     "core/leaderboard/format.jac",
 ]

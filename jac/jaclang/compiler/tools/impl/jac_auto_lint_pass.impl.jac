@@ -2491,7 +2491,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         head = discover_base_file(own_path);
         consumer = spec.module_name(head) if head else None;
     }
-    if consumer is None or not spec.is_covered(consumer) {
+    if consumer is None or not spec.is_sealed(consumer) {
         return;
     }
     provided = spec.consumer_bindings(consumer);

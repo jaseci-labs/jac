@@ -165,6 +165,24 @@ impl ImportWiringPass._check_edge(
 ) -> None {
     constrained = spec.rules_for_provider(provider);
     if not constrained {
+        if spec.is_project_module(provider) and spec.is_sealed(provider) {
+            self.ctx.emit(
+                E2090,
+                node_override=at,
+                provider=provider,
+                consumer=consumer,
+                rules="no rule",
+                help_text=(
+                    f"'{provider}' is sealed: arch.jac names it, or [arch] closed in"
+                    " jac.toml covers it, so it flows only where an edge rule admits,"
+                    " and no rule names it as a provider yet. Add one, for example"
+                    f" `edge {ImportWiringPass._rule_name_for(provider)}:"
+                    f" {ImportWiringPass._package_pattern(provider)} -->"
+                    f" {ImportWiringPass._package_pattern(consumer)};`, or run"
+                    " `jac arch sync` to derive one from the current imports."
+                )
+            );
+        }
         return;
     }
     admitting = spec.rules_admitting(provider, consumer);
@@ -219,17 +237,26 @@ impl ImportWiringPass._check_module(mod: Module, spec: WiringSpec) -> None {
     if consumer is None {
         return;
     }
-    covered = spec.is_covered(consumer);
-    if covered and spec.parse_failed {
+    sealed = spec.is_sealed(consumer);
+    if sealed and spec.parse_failed {
         self.ctx.emit(E2093, node_override=mod, consumer=consumer);
     }
-    provided = spec.consumer_bindings(consumer) if covered else {};
+    provided = spec.consumer_bindings(consumer) if sealed else {};
     for imp in ModuleFacts.iter_module_imports(mod) {
-        self._check_import(spec, imp, consumer, provided, covered);
+        self._check_import(spec, imp, consumer, provided, sealed);
     }
     for imp in ModuleFacts.iter_nested_imports(mod) {
-        self._check_import(spec, imp, consumer, provided, False);
+        self._check_import(spec, imp, consumer, provided, False, nested=sealed);
     }
+}
+
+impl ImportWiringPass._package_pattern(module: str) -> str {
+    return module.rsplit(".", 1)[0] + ".*" if "." in module else module;
+}
+
+impl ImportWiringPass._rule_name_for(module: str) -> str {
+    head = module.split(".")[0];
+    return "".join([part.capitalize() for part in head.split("_")]) + "Flows";
 }
 
 impl ImportWiringPass._check_import(
@@ -237,7 +264,8 @@ impl ImportWiringPass._check_import(
     imp: Import,
     consumer: str,
     provided: dict[tuple[str, str, str, str], ImportWire],
-    enforce: bool
+    enforce: bool,
+    nested: bool = False
 ) -> None {
     src = imp.loc.mod_path;
     if src == spec.path or src.endswith(".test.jac") {
@@ -259,6 +287,14 @@ impl ImportWiringPass._check_import(
             }
             alias = item.alias.value if item.alias is not None else "";
             names.append((item.name.value, item));
+            if nested and project_provider is not None {
+                self.ctx.emit(
+                    E2094,
+                    node_override=item,
+                    module=project_provider,
+                    consumer=consumer
+                );
+            }
             if enforce and project_provider is not None {
                 key = (project_provider, form, item.name.value, alias);
                 if key not in provided {
@@ -291,6 +327,11 @@ impl ImportWiringPass._check_import(
             if project_provider is not None
             else item.dot_path_str;
         alias = item.alias.value if item.alias is not None else "";
+        if nested and project_provider is not None {
+            self.ctx.emit(
+                E2094, node_override=item, module=project_provider, consumer=consumer
+            );
+        }
         if enforce and project_provider is not None {
             key = (project_provider, form, "", alias);
             if key not in provided {
