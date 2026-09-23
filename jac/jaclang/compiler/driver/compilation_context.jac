@@ -1,6 +1,6 @@
 import copy;
 import from pathlib { Path }
-import type from jaclang.project.workspace { AppSpec }
+import type from jaclang.project.workspace_model { AppSpec }
 import hashlib;
 import os;
 import from contextlib { contextmanager }
@@ -25,9 +25,8 @@ def cache_scope(options: CompileOptions | None = None) -> Iterator[None] {
 
 @contextmanager
 def compilation_scope(options: CompileOptions | None = None) -> Iterator[None] {
-    import from jaclang.project.workspace { workspace_scope }
-    import from jaclang.compiler.driver.wiring { wiring_scope }
-    with cache_scope(options), workspace_scope(), wiring_scope() {
+    import from jaclang.compiler.frontend.host { active_host }
+    with cache_scope(options), active_host().session() {
         yield ;
     }
 }
@@ -79,7 +78,7 @@ def owner_scope_options(
 def bind_options(
     path: str, program: JacProgram, options: CompileOptions
 ) -> CompileOptions {
-    import from jaclang.project.workspace { workspace_for_path }
+    import from jaclang.compiler.frontend.host { active_host }
     if program._get_compiler().selfhost.owns(path)
         and not (
             options.native_unit
@@ -119,11 +118,11 @@ def bind_options(
     bound.entry_point = bound.entry_point
         or program.options.entry_point
         or os.path.realpath(path);
-    workspace = workspace_for_path(path);
+    workspace = active_host().workspace(path);
     if workspace is None {
         return bound;
     }
-    declared = workspace.app_for_path(path);
+    declared = active_host().app_for_path(path);
     if declared is None and not workspace.explicit and not bound.target_app {
         implicit = next(iter(workspace.apps.values()), None);
         if implicit is not None {
@@ -189,12 +188,12 @@ def program_for(path: str, program: JacProgram) -> JacProgram {
 }
 
 def context_app(path: str) -> AppSpec | None {
-    import from jaclang.project.workspace { workspace_for_path }
-    workspace = workspace_for_path(path);
+    import from jaclang.compiler.frontend.host { active_host }
+    workspace = active_host().workspace(path);
     if workspace is None {
         return None;
     }
-    declared = workspace.app_for_path(path);
+    declared = active_host().app_for_path(path);
     if declared is not None {
         return declared;
     }

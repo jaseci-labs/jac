@@ -1,12 +1,8 @@
 import from jaclang.compiler.driver.compilation_context { context_app }
 import json;
 import os;
-import from jaclang.project.modresolver { find_jac_project_root }
-import from jaclang.project.workspace {
-    app_fact_digest,
-    kind_codespace,
-    workspace_for_path
-}
+import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.project.app_kinds { kind_codespace }
 
 import from jaclang.project.placement { validate_pins, match_pin }
 
@@ -14,7 +10,7 @@ def config_pins_for(source_path: str) -> dict[str, str] {
     if not source_path {
         return {};
     }
-    ws = workspace_for_path(source_path);
+    ws = active_host().workspace(source_path);
     if ws is None {
         return {};
     }
@@ -28,7 +24,7 @@ def config_pin_for(source_path: str, element_name: str) -> str {
     if not source_path {
         return '';
     }
-    ws = workspace_for_path(source_path);
+    ws = active_host().workspace(source_path);
     if ws is None {
         return '';
     }
@@ -99,7 +95,8 @@ def config_kind_space(source_path: str, fallback_kind: str = '') -> str {
 
 def pins_digest(source_path: str) -> str {
     pins = config_pins_for(source_path);
-    facts = app_fact_digest(context_app(source_path)) if source_path else '';
+    app = context_app(source_path) if source_path else None;
+    facts = app.fact_digest if app is not None else '';
     if not pins and not facts {
         return '';
     }
@@ -111,7 +108,7 @@ def npm_dependency_names(source_path: str) -> set[str] {
     if not source_path {
         return set();
     }
-    ws = workspace_for_path(source_path);
+    ws = active_host().workspace(source_path);
     if ws is None {
         return set();
     }
@@ -119,42 +116,9 @@ def npm_dependency_names(source_path: str) -> set[str] {
     return set(app.npm_names) if app is not None else set(ws.base_npm_names);
 }
 
-glob _framework_cache: dict[str, tuple[float, str]] = {};
-
-
 def client_framework(source_path: str) -> str {
-    if not source_path {
-        return "react";
-    }
-    root_dir = find_jac_project_root(source_path);
-    if not root_dir {
-        return "react";
-    }
-    toml_path = os.path.join(root_dir, "jac.toml");
-    try {
-        mtime = os.path.getmtime(toml_path);
-    } except OSError {
-        return "react";
-    }
-    cached = _framework_cache.get(root_dir);
-    if cached is not None and cached[0] == mtime {
-        return cached[1];
-    }
-    import tomllib;
-    fw = "react";
-    try {
-        with open(toml_path, "rb") as f {
-            doc = tomllib.load(f);
-        }
-        client = doc.get("client", {});
-        if isinstance(client, dict) {
-            fw = str(client.get("framework", "react"));
-        }
-    } except Exception {
-        fw = "react";
-    }
-    _framework_cache[root_dir] = (mtime, fw);
-    return fw;
+    facts = active_host().project_facts(source_path) if source_path else None;
+    return facts.client_framework if facts is not None else "react";
 }
 
 glob _FRAMEWORK_PACKAGES: dict[str, set[str]] = {
@@ -171,8 +135,22 @@ obj BareImportVerdict {
 }
 
 
+def npm_package_root(spec: str) -> str {
+    parts = [
+        p
+        for p in spec.split('/')
+        if p
+    ];
+    if not parts {
+        return spec;
+    }
+    if (spec.startswith('@') and len(parts) >= 2) {
+        return parts[0] + '/' + parts[1];
+    }
+    return parts[0];
+}
+
 def _declared_npm_rule(spec: str, source_path: str) -> str {
-    import from jaclang.project.modresolver { npm_package_root }
     pkg_root = npm_package_root(spec);
     if pkg_root in npm_dependency_names(source_path) {
         return 'npm dependency ([dependencies.npm])';
@@ -186,8 +164,7 @@ def _declared_npm_rule(spec: str, source_path: str) -> str {
 
 
 def _installed_npm_rule(spec: str, source_path: str) -> str {
-    import from jaclang.project.modresolver { has_client_npm_package }
-    if has_client_npm_package(spec, source_path) {
+    if active_host().has_npm_package(spec, source_path) {
         return 'npm dependency (installed under .jac/client/node_modules)';
     }
     return '';
@@ -208,11 +185,10 @@ def classify_bare_import(spec: str, source_path: str) -> BareImportVerdict {
     if not spec {
         return BareImportVerdict();
     }
-    import from jaclang.project.modresolver { resolve_module }
     path = '';
     lang = '';
     try {
-        (path, lang) = resolve_module(spec, source_path);
+        (path, lang) = active_host().resolve_module(spec, source_path);
     } except Exception {
         path = '';
     }

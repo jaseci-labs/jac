@@ -847,19 +847,12 @@ obj IfaceRegistry {
     def analysis_profile(options: any) -> str {
         import hashlib;
         import json;
-        import from jaclang.compiler.driver.pass_driver {
-            config_for_app,
-            diagnostic_policy_for
-        }
-        config: any = None;
-        try {
-            import from jaclang.project.config { get_config }
-            config = get_config();
-        } except Exception {
-            config = None;
-        }
-        config = config_for_app(config, getattr(options, 'target_app', '') or '');
-        pol = diagnostic_policy_for(config, list(options.suppress_codes or []));
+        import from jaclang.compiler.driver.pass_driver { diagnostic_policy_for }
+        import from jaclang.compiler.frontend.host { active_host }
+        pol = diagnostic_policy_for(
+            active_host().check_settings(getattr(options, 'target_app', '') or ''),
+            list(options.suppress_codes or [])
+        );
         ident = json.dumps(
             {
                 "no_cgen": bool(options.no_cgen),

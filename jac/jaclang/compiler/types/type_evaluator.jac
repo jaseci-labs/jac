@@ -433,7 +433,6 @@ walker TypeEvaluator {
         _ts_decl_cache: dict[str, (dict[str, TsDecl] | None)] = {},
         _ts_decl_path_cache: dict[str, (str | None)] = {},
         _ts_synth_class_cache: dict[int, (dict[str, ClassType] | None)] = {},
-        _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: Module postinit,
         types_module: Module postinit,
         enum_module: Module postinit,

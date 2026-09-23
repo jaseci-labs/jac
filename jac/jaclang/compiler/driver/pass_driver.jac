@@ -5,32 +5,14 @@ import sys;
 import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
 import from jaclang.compiler.passes.context { Alert, DiagnosticPolicy }
+import from jaclang.compiler.frontend.host { CheckSettings, active_host }
 import from jaclang.compiler.driver.program { JacProgram }
 
 def diagnostic_policy_for(
-    config: any, extra_suppress_tokens: (list[str] | None) = None
+    check: CheckSettings, extra_suppress_tokens: (list[str] | None) = None
 ) -> DiagnosticPolicy {
     import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-    tokens: list[str] = [];
-    categories: list[str] = [];
-    lint_active = False;
-    lint_select: list[str] = [];
-    lint_ignore: list[str] = [];
-    check = config.check if (config and config.check) else None;
-    if check is not None {
-        if check.suppress {
-            tokens = list(check.suppress);
-        }
-        if check.suppress_categories {
-            categories = list(check.suppress_categories);
-        }
-        lint = check.lint;
-        if lint {
-            lint_active = True;
-            lint_select = list(lint.select);
-            lint_ignore = list(lint.ignore);
-        }
-    }
+    tokens: list[str] = list(check.suppress);
     if extra_suppress_tokens {
         tokens.extend(extra_suppress_tokens);
     }
@@ -40,42 +22,20 @@ def diagnostic_policy_for(
     }
     return DiagnosticPolicy(
         suppress_codes=resolved,
-        suppress_categories=categories,
-        lint_active=lint_active,
-        lint_select=lint_select,
-        lint_ignore=lint_ignore
+        suppress_categories=list(check.suppress_categories),
+        lint_active=check.lint_active,
+        lint_select=list(check.lint_select),
+        lint_ignore=list(check.lint_ignore)
     );
-}
-
-def config_for_app(config: any, app_name: str) -> any {
-    if config is None or not app_name {
-        return config;
-    }
-    apps = config?.apps;
-    if not isinstance(apps, dict) or app_name not in apps {
-        return config;
-    }
-    try {
-        return config.effective_for_app(app_name);
-    } except Exception {
-        return config;
-    }
 }
 
 def build_diagnostic_policy(prog: JacProgram) -> DiagnosticPolicy {
-    config: any = None;
-    try {
-        import from jaclang.project.config { get_config }
-        config = get_config();
-    } except Exception {
-        config = None;
-    }
     opts = prog.options;
-    config = config_for_app(config, opts.target_app if opts is not None else '');
+    check = active_host().check_settings(opts.target_app if opts is not None else '');
     extra: list[str] = (
         list(opts.suppress_codes) if (opts is not None and opts.suppress_codes) else []
     );
-    return diagnostic_policy_for(config, extra);
+    return diagnostic_policy_for(check, extra);
 }
 
 def _alert_in_internal_stub(loc_path: str) -> bool {

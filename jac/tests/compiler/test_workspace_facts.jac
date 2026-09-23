@@ -9,11 +9,7 @@ import from jaclang.compiler.driver.compilation_context {
     cache_scope
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.project.workspace {
-    app_for_path,
-    workspace_for_path,
-    app_fact_digest
-}
+import from jaclang.project.workspace { app_for_path, workspace_for_path }
 
 glob CONFIG: str = '[project]\nname="contexts"\ndefault-app="web"\n[apps.web]\nkind="web-app"\nentry-point="web"\n[apps.api]\nkind="service"\nentry-point="api"\n';
 
@@ -35,7 +31,7 @@ test "only declared entries have a filesystem app identity" {
         assert app_for_path(str(base / 'shared.jac')) is None;
         assert web.effective_route() == '/api/web';
         assert api.effective_route() == '/api/api';
-        assert app_fact_digest(web) != app_fact_digest(api);
+        assert web.fact_digest != api.fact_digest;
     }
 }
 

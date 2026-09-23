@@ -48,15 +48,11 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
     _pats: list[str] = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
     _grand: list[str] = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
     if not _pats {
-        try {
-            import from jaclang.project { get_config }
-            _cfg = get_config();
-            if _cfg {
-                _pats = list(_cfg.memory.enforce);
-                _grand = list(_cfg.memory.exempt);
-            }
-        } except Exception {
-            return None;
+        import from jaclang.compiler.frontend.host { active_host }
+        _project = active_host().project_defaults();
+        if _project is not None {
+            _pats = list(_project.memory_enforce);
+            _grand = list(_project.memory_exempt);
         }
     }
     if not _pats {
@@ -628,15 +624,11 @@ impl OwnershipCheckPass._nogc_module_enforced(mod_name: str) -> bool {
     _pats: list[str] = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
     _grand: list[str] = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
     if not _pats {
-        try {
-            import from jaclang.project { get_config }
-            _cfg = get_config();
-            if _cfg {
-                _pats = list(_cfg.memory.enforce);
-                _grand = list(_cfg.memory.exempt);
-            }
-        } except Exception {
-            return False;
+        import from jaclang.compiler.frontend.host { active_host }
+        _project = active_host().project_defaults();
+        if _project is not None {
+            _pats = list(_project.memory_enforce);
+            _grand = list(_project.memory_exempt);
         }
     }
     import fnmatch;

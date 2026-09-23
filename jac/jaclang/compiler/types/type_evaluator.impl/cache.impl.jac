@@ -15,7 +15,6 @@ impl TypeEvaluator.release_compile_caches -> None {
     self._ts_decl_cache.clear();
     self._ts_decl_path_cache.clear();
     self._ts_synth_class_cache.clear();
-    self._untyped_external_cfg_cache.clear();
     self._shared_intern.clear();
     self.symbol_resolution_stack.clear();
 }

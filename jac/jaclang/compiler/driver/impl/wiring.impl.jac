@@ -414,7 +414,7 @@ impl is_arch_file(path: str) -> bool {
 }
 
 impl arch_file_for(path: str) -> (str | None) {
-    root_dir = find_jac_project_root(path);
+    root_dir = active_host().project_root(path);
     if not root_dir {
         return None;
     }
@@ -423,17 +423,8 @@ impl arch_file_for(path: str) -> (str | None) {
 }
 
 impl _closed_patterns_for(root_dir: str) -> list[str] {
-    import from jaclang.project.config { get_config_for_path }
-    import from pathlib { Path }
-    try {
-        cfg = get_config_for_path(Path(root_dir));
-    } except Exception {
-        return [];
-    }
-    if cfg is None {
-        return [];
-    }
-    return list(cfg.arch.closed);
+    facts = active_host().project_facts(root_dir);
+    return list(facts.arch_closed) if facts is not None else [];
 }
 
 impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
@@ -460,10 +451,12 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
         return None;
     }
     import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
-    if os.path.realpath(path).startswith(os.path.realpath(jaclang_pkg_root()) + os.sep) {
+    if os.path.realpath(path).startswith(
+        os.path.realpath(jaclang_pkg_root()) + os.sep
+    ) {
         return None;
     }
-    root_dir = find_jac_project_root(path);
+    root_dir = active_host().project_root(path);
     if not root_dir {
         return None;
     }

@@ -32,8 +32,8 @@ impl JacCompiler.note_stub_tree_served(path: str, program: JacProgram) -> None {
     if self.stub_catalog() is not None {
         return;
     }
-    import from jaclang.project.modresolver { _in_typeshed_tree }
-    if _in_typeshed_tree(path) {
+    import from jaclang.compiler.frontend.host { active_host }
+    if active_host().in_typeshed_tree(path) {
         program._stub_trees_served = True;
     }
 }
@@ -717,9 +717,7 @@ impl JacCompiler._deserialize_interop_table(
     return manifest;
 }
 
-impl JacCompiler.declared_codespace(
-    file_path: str, target_program: JacProgram
-) -> str {
+impl JacCompiler.declared_codespace(file_path: str, target_program: JacProgram) -> str {
     import from jaclang.compiler.frontend.codeinfo { is_client_by_location }
     import from jaclang.compiler.placement.placement_facts { native_only, native_unit }
     import from jaclang.compiler.placement.placement_pins {
@@ -755,7 +753,9 @@ impl JacCompiler.declared_codespace(
     if forced {
         return forced;
     }
-    kind_space = config_kind_space(file_path, opts.app_kind if opts is not None else '');
+    kind_space = config_kind_space(
+        file_path, opts.app_kind if opts is not None else ''
+    );
     return kind_space if kind_space in ('client', 'native') else '';
 }
 
@@ -931,17 +931,9 @@ impl JacCompiler.resolve_absorb_imports(
 }
 
 impl JacCompiler.stamp_access_check_facts(mod: uni.Module) -> None {
-    enforce = False;
-    try {
-        import from jaclang.project.config { get_config }
-        config = get_config();
-        if (config and config.check) {
-            enforce = config.check.enforce_access;
-        }
-    } except Exception {
-        enforce = False;
-    }
-    mod.access_enforced = enforce;
+    import from jaclang.compiler.frontend.host { active_host }
+    project = active_host().project_defaults();
+    mod.access_enforced = bool(project is not None and project.check.enforce_access);
 }
 
 impl JacCompiler.stamp_native_import_facts(
@@ -960,13 +952,13 @@ impl JacCompiler.stamp_native_import_facts(
 }
 
 impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) -> None {
-    import from jaclang.project.modresolver { find_jac_project_root }
-    import from jaclang.project.workspace { workspace_for_path }
+    import from jaclang.compiler.frontend.host { active_host }
+    host = active_host();
     opts = target_program.options;
     mod_path = mod.loc.mod_path if mod.loc else '';
-    mod.jac_project_root = find_jac_project_root(mod_path) if mod_path else None;
-    ws = workspace_for_path(mod_path) if mod_path else None;
-    app = ws.app_for_path(mod_path) if ws is not None else None;
+    mod.jac_project_root = host.project_root(mod_path) if mod_path else None;
+    ws = host.workspace(mod_path) if mod_path else None;
+    app = host.app_for_path(mod_path) if ws is not None else None;
     if app is None and ws is not None and opts.target_app {
         app = ws.apps.get(opts.target_app);
     }
@@ -980,7 +972,7 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
     } else {
         mod.app_kind = '';
     }
-    import from jaclang.project.workspace { UI_MOBUI }
+    import from jaclang.project.app_kinds { UI_MOBUI }
     override_ui = opts.ui if (opts is not None and opts.ui) else '';
     ui = override_ui or (app.ui if app is not None else '');
     if ui == UI_MOBUI {

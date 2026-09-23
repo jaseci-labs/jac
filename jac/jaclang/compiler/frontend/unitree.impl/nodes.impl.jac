@@ -1734,17 +1734,19 @@ impl ModulePath.base_module_name.getter -> str {
 }
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
-    import from jaclang.project.modresolver { resolve_relative_path }
+    import from jaclang.compiler.frontend.host { active_host }
     bundled = self.native_bundled_path();
     if bundled is not None {
         return bundled;
     }
     spv = self.string_path_value;
     if spv is not None {
-        return resolve_relative_path(spv, self.loc.mod_path, string_spec=True);
+        return active_host().resolve_module(spv, self.loc.mod_path, string_spec=True)[
+            0
+        ];
     }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
-    return resolve_relative_path(target, self.loc.mod_path);
+    return active_host().resolve_module(target, self.loc.mod_path)[0];
 }
 
 impl ModulePath.native_bundled_path -> (str | None) {

@@ -10,7 +10,8 @@ import from jaclang.compiler.placement.placement_pins {
     BareImportVerdict,
     classify_bare_import
 }
-import from jaclang.project.workspace { AppSpec, app_for_path, workspace_for_path }
+import from jaclang.compiler.frontend.host { active_host }
+import type from jaclang.project.workspace_model { AppSpec }
 
 def _coerce_module(module: uni.Module, context: CodeContext) {
     module.set_code_context(context);
@@ -297,11 +298,10 @@ def bridgeable_import_target(nd: uni.Import) -> (str | None) {
 }
 
 def is_service_app_entry(path: str) -> bool {
-    import from jaclang.project.workspace { app_for_path }
     if not path {
         return False;
     }
-    app = app_for_path(path);
+    app = active_host().app_for_path(path);
     return app is not None and app.has_server;
 }
 
@@ -317,8 +317,9 @@ def import_consumer_app(nd: uni.Import) -> (str | None) {
 }
 
 def same_workspace(consumer_path: str, provider_path: str) -> bool {
-    cws = workspace_for_path(consumer_path);
-    pws = workspace_for_path(provider_path);
+    host = active_host();
+    cws = host.workspace(consumer_path);
+    pws = host.workspace(provider_path);
     if cws is None or pws is None {
         return False;
     }
@@ -334,7 +335,7 @@ def import_provider_spec(nd: uni.Import) -> (AppSpec | None) {
     if not consumer_path or not same_workspace(consumer_path, resolved) {
         return None;
     }
-    provider_app = app_for_path(resolved);
+    provider_app = active_host().app_for_path(resolved);
     if provider_app is None or not provider_app.has_server {
         return None;
     }

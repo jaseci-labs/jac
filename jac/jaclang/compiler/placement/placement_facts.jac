@@ -16,8 +16,8 @@ glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
 
 
 def project_root_of(source_path: str) -> (str | None) {
-    import from jaclang.project.modresolver { find_jac_project_root }
-    return find_jac_project_root(source_path);
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().project_root(source_path);
 }
 
 

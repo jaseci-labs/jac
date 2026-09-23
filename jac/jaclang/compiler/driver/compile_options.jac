@@ -1,20 +1,3 @@
-glob _config_probe: dict[str, bool] = {"active": False};
-
-def _project_config -> any {
-    if _config_probe["active"] {
-        return None;
-    }
-    _config_probe["active"] = True;
-    try {
-        config_mod = __import__("jaclang.project.config", fromlist=["get_config"]);
-        return config_mod.get_config();
-    } except Exception {
-        return None;
-    } finally {
-        _config_probe["active"] = False;
-    }
-}
-
 obj CompileOptions {
     has symtab_ir_only: bool = False,
         no_cgen: bool = False,
@@ -58,14 +41,13 @@ obj CompileOptions {
         cancel_token: any = None;
 
     def postinit {
-        cfg = _project_config();
-        mem_cfg = cfg.memory if cfg is not None else None;
-        native_cfg = cfg.native if cfg is not None else None;
+        import from jaclang.compiler.frontend.host { active_host }
+        project = active_host().project_defaults();
         if self.native_require is None {
-            self.native_require = list(native_cfg.require) if native_cfg else [];
+            self.native_require = list(project.native_require) if project else [];
         }
         if self.memory_profile is None {
-            self.memory_profile = mem_cfg.profile if mem_cfg else "managed";
+            self.memory_profile = project.memory_profile if project else "managed";
         }
         if self.memory_profile not in ("managed", "rc", "nogc") {
             raise ValueError(
@@ -81,26 +63,26 @@ obj CompileOptions {
             self.nogc_enforce_all = self.memory_profile == "nogc";
         }
         if self.memory_enforce is None {
-            self.memory_enforce = list(mem_cfg.enforce) if mem_cfg else [];
+            self.memory_enforce = list(project.memory_enforce) if project else [];
         }
         if self.memory_exempt is None {
-            self.memory_exempt = list(mem_cfg.exempt) if mem_cfg else [];
+            self.memory_exempt = list(project.memory_exempt) if project else [];
         }
         if self.native_target is None {
             import from jaclang.compiler.frontend.codeinfo { effective_native_target }
             self.native_target = effective_native_target();
         }
         if self.native_debug is None {
-            self.native_debug = native_cfg.debug if native_cfg else False;
+            self.native_debug = project.native_debug if project else False;
         }
         if self.rc_debug_codegen is None {
             self.rc_debug_codegen = bool(self.native_debug);
         }
         if self.opt_level is None {
-            self.opt_level = native_cfg.opt if native_cfg else 2;
+            self.opt_level = project.native_opt if project else 2;
         }
         if self.native_threads is None {
-            self.native_threads = native_cfg.threads if native_cfg else 4;
+            self.native_threads = project.native_threads if project else 4;
         }
         if self.dump_ir_path is None {
             self.dump_ir_path = "";
@@ -118,7 +100,7 @@ obj CompileOptions {
             self.na_debug = env_na_debug();
         }
         if self.native_link_mode is None {
-            self.native_link_mode = native_cfg.link_mode if native_cfg else "objects";
+            self.native_link_mode = project.native_link_mode if project else "objects";
         }
         if self.native_link_mode not in NATIVE_LINK_MODES {
             raise ValueError(

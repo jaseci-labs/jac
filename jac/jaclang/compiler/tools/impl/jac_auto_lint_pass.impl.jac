@@ -27,7 +27,8 @@ impl JacAutoLintPass.postinit -> None {
             if (_opts is not None and _opts.suppress_codes)
             else []
     );
-    self.ctx.policy = diagnostic_policy_for(config, _extra);
+    import from jaclang.compiler.frontend.host { check_settings_of }
+    self.ctx.policy = diagnostic_policy_for(check_settings_of(config.check), _extra);
     if config.check?.lint {
         self._exclude_patterns = config.check.lint.exclude;
         self._project_root = str(config.project_root) if config.project_root else "";

@@ -406,7 +406,7 @@ def resolve_module(
         }
         actual_parts = parts[level:];
 
-        if not _in_typeshed_tree(base_path) {
+        if not in_typeshed_tree(base_path) {
             res = resolve_local_module(base_dir, actual_parts);
             if res {
                 return res;
@@ -701,21 +701,6 @@ def has_client_npm_package(spec: str, base_path: str) -> bool {
     return _find_npm_package(spec, base_path) is not None;
 }
 
-def npm_package_root(spec: str) -> str {
-    parts = [
-        p
-        for p in spec.split('/')
-        if p
-    ];
-    if not parts {
-        return spec;
-    }
-    if (spec.startswith('@') and len(parts) >= 2) {
-        return parts[0] + '/' + parts[1];
-    }
-    return parts[0];
-}
-
 def resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
     found = _find_npm_package(spec, base_path);
     if found is None {
@@ -1002,7 +987,7 @@ def get_typeshed_paths -> list[str] {
     return paths;
 }
 
-def _in_typeshed_tree(path: str) -> bool {
+def in_typeshed_tree(path: str) -> bool {
     return "/vendor/typeshed/" in path.replace("\\", "/");
 }
 

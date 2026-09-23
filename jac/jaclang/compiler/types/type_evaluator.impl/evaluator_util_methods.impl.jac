@@ -1919,24 +1919,24 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
     if not mod_path {
         return None;
     }
-    import from jaclang.project.modresolver { resolve_client_npm_package }
+    import from jaclang.compiler.frontend.host { active_host }
     base = self._client_npm_base(spec, mod_path);
     if base is None {
         return None;
     }
-    return resolve_client_npm_package(spec, base);
+    return active_host().resolve_npm_package(spec, base);
 }
 
 impl TypeEvaluator._client_npm_base(spec: str, mod_path: str) -> (str | None) {
-    import from jaclang.project.modresolver { has_client_npm_package }
-    if has_client_npm_package(spec, mod_path) {
+    import from jaclang.compiler.frontend.host { active_host }
+    if active_host().has_npm_package(spec, mod_path) {
         return mod_path;
     }
     entry_path = self._client_entry_mod_path();
     if (
         entry_path
         and entry_path != mod_path
-        and has_client_npm_package(spec, entry_path)
+        and active_host().has_npm_package(spec, entry_path)
     ) {
         return entry_path;
     }

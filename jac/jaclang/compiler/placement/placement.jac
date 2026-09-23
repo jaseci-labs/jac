@@ -226,7 +226,7 @@ def project_kind_name(module: (uni.Module | None)) -> str {
 }
 
 def project_has_server(module: (uni.Module | None)) -> bool {
-    import from jaclang.project.workspace { kind_codespace }
+    import from jaclang.project.app_kinds { kind_codespace }
     return kind_codespace(project_kind_name(module)) != 'client';
 }
 

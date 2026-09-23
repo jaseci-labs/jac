@@ -381,16 +381,9 @@ def effective_default_codespace -> str {
     if cur {
         return cur;
     }
-    try {
-        import from jaclang.project.config { get_config, PlacementConfig }
-        cfg = get_config();
-        if cfg is not None {
-            return cfg.placement.default_codespace;
-        }
-        return PlacementConfig().default_codespace;
-    } except Exception {
-        return "server";
-    }
+    import from jaclang.compiler.frontend.host { active_host }
+    project = active_host().project_defaults();
+    return project.default_codespace if project is not None else "server";
 }
 
 def set_native_unit_compile(value: bool) -> bool {
@@ -420,16 +413,9 @@ def effective_native_closure_cap -> int {
     if cur > 0 {
         return cur;
     }
-    try {
-        import from jaclang.project.config { get_config, BuildConfig }
-        cfg = get_config();
-        if cfg is not None {
-            return cfg.build.native_closure_cap;
-        }
-        return BuildConfig().native_closure_cap;
-    } except Exception {
-        return 256;
-    }
+    import from jaclang.compiler.frontend.host { active_host }
+    project = active_host().project_defaults();
+    return project.native_closure_cap if project is not None else 256;
 }
 
 def native_stdlib_root -> (str | None) {
@@ -575,13 +561,9 @@ def effective_native_target -> str {
     if cur is not None {
         return cur;
     }
-    try {
-        import from jaclang.project.config { get_config }
-        cfg = get_config();
-        return cfg.native.target if cfg is not None else "";
-    } except Exception {
-        return "";
-    }
+    import from jaclang.compiler.frontend.host { active_host }
+    project = active_host().project_defaults();
+    return project.native_target if project is not None else "";
 }
 
 def native_target_os -> str {
@@ -686,9 +668,11 @@ def resolve_native_module(
     }
 
     if clean.startswith('jaclang.') {
-        import from jaclang.project.modresolver { resolve_module }
+        import from jaclang.compiler.frontend.host { active_host }
         import from jaclang.compiler.native_scope { in_native_scope_path }
-        (candidate, language) = resolve_module(clean, os.path.join(base_dir, ""));
+        (candidate, language) = active_host().resolve_module(
+            clean, os.path.join(base_dir, "")
+        );
         if language != 'jac' or not candidate.endswith('.jac') {
             return (None, None);
         }
@@ -1064,10 +1048,11 @@ obj CodeGenTarget {
 
 def endpoint_descriptor(module: any, kind: str, name: str) -> dict[str, str] {
     import os;
-    import from jaclang.project.workspace { workspace_for_path }
+    import from jaclang.compiler.frontend.host { active_host }
     path = module.loc.mod_path;
-    workspace = workspace_for_path(path);
-    owner = workspace.app_for_path(path) if workspace else None;
+    host = active_host();
+    workspace = host.workspace(path);
+    owner = host.app_for_path(path) if workspace else None;
     app = owner.name if owner is not None else "";
     source = os.path.relpath(path, workspace.project_root)
         if workspace

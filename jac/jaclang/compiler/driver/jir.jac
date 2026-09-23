@@ -706,15 +706,12 @@ def _project_env_fingerprint(source_path: str) -> str {
         pins_digest,
         config_kind_space
     }
-    import from jaclang.project.workspace {
-        app_fact_digest,
-        app_for_path,
-        workspace_for_path
-    }
+    import from jaclang.compiler.frontend.host { active_host }
     h.update(pins_digest(source_path).encode());
     h.update(config_kind_space(source_path).encode());
-    h.update(app_fact_digest(app_for_path(source_path)).encode());
-    _ws = workspace_for_path(source_path);
+    _ws = active_host().workspace(source_path);
+    _app = active_host().app_for_path(source_path) if _ws is not None else None;
+    h.update((_app.fact_digest if _app is not None else '').encode());
     h.update((_ws.digest if _ws is not None else '').encode());
     h.update(_analysis_fingerprint_for(source_path).encode());
     return h.hexdigest();

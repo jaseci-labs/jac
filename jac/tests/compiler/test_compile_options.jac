@@ -728,9 +728,10 @@ test "native import handoff preserves memory policy and generated thread default
 test "native link mode uses project configuration without changing unit codegen" {
     import from unittest.mock { patch }
     import from jaclang.project.config { JacConfig }
+    import from jaclang.compiler.frontend.host { HostServices, project_defaults_of }
     cfg = JacConfig.from_toml_str('[native]\nlink_mode = "bitcode"\n');
-    with patch(
-        "jaclang.compiler.driver.compile_options._project_config", return_value=cfg
+    with patch.object(
+        HostServices, "project_defaults", return_value=project_defaults_of(cfg)
     ) {
         configured = CompileOptions();
         explicit = CompileOptions(native_link_mode="objects");
