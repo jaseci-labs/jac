@@ -21,6 +21,21 @@ glob OSP_CORE_PARTS: list[str] = [
          "__jac_region_owns": (True, 1)
      };
 
+glob KERNEL_UNIT_PARTS: dict[str, list[str]] = {
+         "osp_kernel": OSP_CORE_PARTS,
+         "fmt_kernel": FMT_KERNEL_PARTS,
+         "region_kernel": REGION_KERNEL_PARTS
+     };
+
+def kernel_unit_paths(owner: str) -> list[str] {
+    """Source files of the named kernel unit.""";
+    base = _jaclang_dir();
+    return [
+        os.path.join(base, part.replace("/", os.sep))
+        for part in KERNEL_UNIT_PARTS.get(owner, [])
+    ];
+}
+
 def _jaclang_dir -> str {
     import jaclang;
     return os.path.dirname(str(jaclang.__file__));

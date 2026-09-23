@@ -418,9 +418,16 @@ impl native_build(
     if shared {
         console.print(f"  Shared library written to {output} ({file_size} bytes).");
         if ir_module.gen.jc_layout is not None {
+            import json;
+            import from jaclang.compiler.native_compiler { kernel_source_stamp }
+            import from jaclang.compiler.backends.native.na_compile_pass {
+                native_link_sources
+            }
+            _layout = json.loads(ir_module.gen.jc_layout);
+            _layout["sources"] = kernel_source_stamp(native_link_sources(ir_module));
             _lay_path = f"{output}.layout.json";
             with open(_lay_path, "w") as _lf {
-                _lf.write(ir_module.gen.jc_layout);
+                json.dump(_layout, _lf);
             }
             console.print(f"  Class layout written to {_lay_path}.");
         }

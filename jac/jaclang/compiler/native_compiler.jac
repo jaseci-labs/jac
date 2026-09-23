@@ -516,6 +516,61 @@ class NativeCompiler {
 glob _KERNEL_CELL: list[NativeCompiler] = [],
      _RESOLVED: list[None] = [];
 
+def _package_root -> str {
+    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)));
+}
+
+def kernel_source_stamp(sources: list[str]) -> dict[str, str] {
+    """Content digests of the compiler sources a kernel build lowered.
+
+    Keys are paths inside the jaclang package, so a checkout can verify the
+    kernel it holds was built from the sources it is about to run. Annex
+    files are part of their module's source.
+    """;
+    import from jaclang.compiler.driver.jir { compute_content_sha256 }
+    import from jaclang.compiler.frontend.parser.frontend { annex_paths }
+    package = _package_root() + os.sep;
+    stamp: dict[str, str] = {};
+    for source in sources {
+        for path in [source, *annex_paths(source)] {
+            real = os.path.realpath(path);
+            if real.startswith(package) {
+                stamp[real[len(package):].replace(os.sep, "/")] = compute_content_sha256(
+                    real
+                );
+            }
+        }
+    }
+    return dict(sorted(stamp.items()));
+}
+
+def _stale_sources(lib_path: str) -> list[str] {
+    import from jaclang.compiler.driver.jir { compute_content_sha256 }
+    with open(lib_path + ".layout.json") as f {
+        stamp: dict[str, str] = json.load(f).get("sources", {});
+    }
+    if not stamp {
+        return ["<unstamped kernel>"];
+    }
+    package = _package_root();
+    stale: list[str] = [];
+    for (rel, digest) in stamp.items() {
+        path = os.path.join(package, rel);
+        if not os.path.isfile(path) or compute_content_sha256(path) != digest {
+            stale.append(rel);
+        }
+    }
+    return stale;
+}
+
+def _bytecode_tier_notice(reason: str) {
+    sys.stderr.write(
+        f"jac: {reason}; this checkout parses with the bytecode frontend. Rebuild: "
+        f"jac build jac/jaclang/compiler/jc_unit.jac --native --lib --output "
+        f"jac/jaclang/compiler/{_lib_name()}\n"
+    );
+}
+
 def _lib_name -> str {
     if sys.platform == "darwin" {
         return "libjac_compiler.dylib";
@@ -562,10 +617,23 @@ def _find_lib -> (str | None) {
     name = _lib_name();
     here = os.path.dirname(os.path.abspath(__file__));
     cand = os.path.join(here, name);
+    dev = bool(os.environ.get("JAC_DEV_SOURCE"));
     if os.path.isfile(cand) and os.path.isfile(cand + ".layout.json") {
-        return cand;
+        if not dev {
+            return cand;
+        }
+        stale = _stale_sources(cand);
+        if not stale {
+            return cand;
+        }
+        _bytecode_tier_notice(
+            f"the compiler kernel is stale ({len(stale)} changed source(s), e.g. "
+            f"{stale[0]})"
+        );
+        return None;
     }
-    if os.environ.get("JAC_DEV_SOURCE") {
+    if dev {
+        _bytecode_tier_notice("no compiler kernel is built");
         return None;
     }
     for p in sys.path {

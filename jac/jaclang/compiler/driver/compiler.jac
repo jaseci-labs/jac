@@ -181,6 +181,8 @@ obj JacCompiler {
     ) -> None;
 
     def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
+    def declared_codespace(file_path: str, target_program: JacProgram) -> str;
+    def infers_native_codespace(file_path: str, target_program: JacProgram) -> bool;
     def parse_str(
         source_str: str,
         file_path: str,

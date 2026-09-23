@@ -8,8 +8,6 @@ import from contextvars { ContextVar }
 import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.passes.context { Alert }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
@@ -36,53 +34,6 @@ def compilation_scope(options: CompileOptions | None = None) -> Iterator[None] {
 
 def active_options -> CompileOptions | None {
     return _active_options.get();
-}
-
-obj SourceUnit {
-    has syntax: Module,
-        failed: bool,
-        errors: list[Alert],
-        warnings: list[Alert];
-}
-
-obj SourceStore {
-    has units: dict[str, SourceUnit] = {},
-        revisions: dict[str, str] = {},
-        parses: int = 0,
-        hits: int = 0;
-
-    def parse(
-        source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
-    ) -> tuple[Module, bool] {
-        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
-        import from jaclang.compiler.driver.program { JacProgram }
-        key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
-        unit = self.units.get(key);
-        if unit is None {
-            diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
-            unit = SourceUnit(
-                syntax,
-                failed,
-                list(diagnostics.errors_had),
-                list(diagnostics.warnings_had)
-            );
-            previous = self.revisions.get(path);
-            if previous is not None {
-                self.units.pop(previous, None);
-            }
-            self.revisions[path] = key;
-            self.units[key] = unit;
-            self.parses += 1;
-        } else {
-            self.hits += 1;
-        }
-        syntax = copy.deepcopy(unit.syntax);
-        assert isinstance(syntax, Module);
-        program.errors_had.extend(unit.errors);
-        program.warnings_had.extend(unit.warnings);
-        return (syntax, unit.failed);
-    }
 }
 
 def bind_options(
@@ -168,7 +119,6 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
         selected = JacProgram();
         selected.context_root = context_root;
         selected._compiler = context_root._get_compiler();
-        selected.source_store = context_root.source_store;
         selected.options = options;
     }
     selected.options = options;

@@ -49,6 +49,7 @@ def native_dep_cache_paths(real_path: str, options: CompileOptions) -> tuple[str
 def native_demoted_ir_symbols(llvm_ir_text: str) -> list[str];
 def require_native_ir(llvm_ir_text: str) -> None;
 def native_linked_ir_text(module: uni.Module) -> str;
+def native_link_sources(module: uni.Module) -> list[str];
 def native_ir_live_externs(llvm_ir_text: str) -> set[str];
 def native_prune_live_record(
     pending: dict[str, list[str]] | dict[str, set[str]], declared: set[str]

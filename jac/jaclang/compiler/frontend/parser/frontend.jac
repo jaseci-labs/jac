@@ -188,7 +188,7 @@ def parse_woven(
     return (module, had_error);
 }
 
-def annex_sources(file_path: str) -> list[tuple[str, str]] {
+def annex_paths(file_path: str) -> list[str] {
     if not file_path.endswith(".jac") {
         return [];
     }
@@ -197,24 +197,23 @@ def annex_sources(file_path: str) -> list[tuple[str, str]] {
             discover_annex_files,
             discover_base_file
         }
-        import from jaclang.project.source { read_file_with_encoding }
         if discover_base_file(file_path) is not None {
             return [];
         }
-        paths: list[str] = [
+        found: list[str] = [
             *discover_annex_files(file_path, ".impl.jac"),
             *discover_annex_files(file_path, ".test.jac")
         ];
     } except Exception {
         return [];
     }
+    return list(dict.fromkeys(found));
+}
+
+def annex_sources(file_path: str) -> list[tuple[str, str]] {
+    import from jaclang.project.source { read_file_with_encoding }
     out: list[tuple[str, str]] = [];
-    seen: set[str] = set();
-    for pth in paths {
-        if pth in seen {
-            continue;
-        }
-        seen.add(pth);
+    for pth in annex_paths(file_path) {
         try {
             out.append((read_file_with_encoding(pth), pth, ));
         } except Exception {

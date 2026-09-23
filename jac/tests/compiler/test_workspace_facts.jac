@@ -124,7 +124,6 @@ test "a normal import inherits its app and an entry import changes context" {
         api = context_program(web, api_options);
         assert api is not web and api.options.target_app == 'api';
         assert bind_options(str(base / 'api.jac'), web, web.options).ui == '';
-        assert api.source_store is web.source_store;
         assert bind_options(str(base / 'shared.jac'), api, CompileOptions()).target_app
             == 'api';
         assert context_program(api, web_options) is web;
@@ -153,7 +152,6 @@ test "shared syntax produces distinct app facts in either request order" {
             assert modules[0] is not modules[1];
             assert modules[0].app == names[0];
             assert modules[1].app == names[1];
-            assert program.source_store.hits > 0;
         }
     }
 }
@@ -233,7 +231,6 @@ test "application traversal checks imported bodies on cold and warm requests" {
         cold = JacProgram();
         compile_application(cold, entry_path, options);
         assert not cold.errors_had;
-        assert cold.source_store.parses == 2;
         (base / 'helper.jac').write_text('def count -> int { return "bad"; }\n');
         for iteration in range(2) {
             checked = JacProgram();

@@ -109,6 +109,19 @@ impl native_linked_ir_text(module: uni.Module) -> str {
     return str(module.gen.llvm_ir);
 }
 
+impl native_link_sources(module: uni.Module) -> list[str] {
+    import from jaclang.compiler.backends.common.kernel_units { kernel_unit_paths }
+    sources: list[str] = [module.loc.mod_path];
+    manifest = module.gen.interop_manifest;
+    for info in manifest.native_module_imports.values() {
+        sources.append(info.mod_path);
+    }
+    for unit in manifest.native_transitive_sources {
+        sources.extend(kernel_unit_paths(unit));
+    }
+    return list(dict.fromkeys(sources));
+}
+
 impl native_ir_live_externs(llvm_ir_text: str) -> set[str] {
     import re as _dc_re;
     _dc_decl = _dc_re.compile(

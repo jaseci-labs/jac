@@ -14,8 +14,6 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._iface: any = None;
-    import from jaclang.compiler.driver.compilation_context { SourceStore }
-    self.source_store = SourceStore();
     self.context_root = None;
     self.context_key = "";
     self.contexts = {};
@@ -364,8 +362,6 @@ impl JacProgram.release_compile_closure(
         }
         self.contexts.clear();
         self.context_key = '';
-        self.source_store.units.clear();
-        self.source_store.revisions.clear();
     }
     self.release_native_dep_units();
     self.hub.reset(retain_stubs=retain_stubs);

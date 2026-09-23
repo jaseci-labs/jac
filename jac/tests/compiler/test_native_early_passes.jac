@@ -175,3 +175,28 @@ test "native validation diagnostics retain inline suppression" {
         }
     }
 }
+
+test "application modules run their early passes in the kernel" {
+    import from tempfile { TemporaryDirectory }
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    kernel = ensure_loaded();
+    if kernel is not None {
+        with TemporaryDirectory() as td {
+            path = Path(td) / "app.jac";
+            path.write_text("def double(x: int) -> int { return x * 2; }\n");
+            prog = JacProgram();
+            recorded: list[str] = [];
+            record = prog.analysis.record_early;
+            def spy(module: Module, results: dict[str, any]) -> None {
+                recorded.extend(results.keys());
+                record(module, results);
+            }
+            prog.analysis.record_early = spy;
+            prog.compile(str(path), options=CompileOptions(no_cgen=True));
+            assert not prog.errors_had;
+            assert "ASTValidationPass" in recorded and "SymTabBuildPass" in recorded;
+            assert not prog.analysis.early_passes;
+        }
+    }
+}
