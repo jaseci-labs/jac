@@ -1,5 +1,5 @@
 import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchSpec,
@@ -94,10 +94,7 @@ def partition_native_capability_violations(
     )
 ];
 
-walker PortabilityWarnPass {
-    has ctx: CompileContext,
-        module: Module;
-
+walker PortabilityWarnPass(CompilerPass) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _check_js_globals(mod: Module) -> None;
@@ -107,18 +104,12 @@ walker PortabilityWarnPass {
     def _check_js_properties(mod: Module) -> None;
 }
 
-walker NativeCapabilityCheckPass {
-    has ctx: CompileContext,
-        module: Module;
-
+walker NativeCapabilityCheckPass(CompilerPass) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }
 
-walker ClientCapabilityCheckPass {
-    has ctx: CompileContext,
-        module: Module;
-
+walker ClientCapabilityCheckPass(CompilerPass) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }

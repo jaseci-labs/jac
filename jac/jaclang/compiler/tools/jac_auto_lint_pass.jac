@@ -1,5 +1,5 @@
 import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from jaclang.compiler.tools.reactive_use_walk { ReactiveUseWalker }
 import keyword;
 import os;
@@ -65,18 +65,8 @@ import from jaclang.compiler.frontend.roles {
     VarsRole
 }
 
-walker JacAutoLintPass(TreeWalker) {
-    can enter_walk with uni.UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with uni.UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: uni.Module,
-        prog: JacProgram,
+walker JacAutoLintPass(TreePass) {
+    has prog: JacProgram,
         lint_enabled: bool = True,
         report_only: bool = False,
         main_module: (uni.Module | None) = None,

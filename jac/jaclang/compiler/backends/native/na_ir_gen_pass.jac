@@ -1,5 +1,5 @@
 import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;
@@ -186,10 +186,8 @@ obj NativeFunctionState {
             list[tuple[ir.Function, tuple[ir.Value, ir.Value, ir.Value]]];
 }
 
-walker NaIRGenPass {
-    has ctx: CompileContext,
-        prog: JacProgram;
-
+walker NaIRGenPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
     has module: uni.Module,
         _llvm_module: (ir.Module | None) = None,

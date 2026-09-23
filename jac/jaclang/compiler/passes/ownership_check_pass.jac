@@ -1,5 +1,5 @@
 import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from enum { Enum }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -103,10 +103,8 @@ obj BorrowMeta {
     }
 }
 
-walker OwnershipCheckPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: Module,
+walker OwnershipCheckPass(CompilerPass) {
+    has prog: JacProgram,
         owned_decl: dict[SymId, Name] = {},
         linear_decl: dict[SymId, Name] = {},
         consumed_syms: set[SymId] = set(),

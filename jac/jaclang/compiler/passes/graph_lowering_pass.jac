@@ -1,22 +1,12 @@
 import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0084, E0085 }
 
-walker GraphLoweringPass(TreeWalker) {
-    can enter_walk with uni.UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with uni.UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: uni.Module,
-        _serial: int = 0,
+walker GraphLoweringPass(TreePass) {
+    has _serial: int = 0,
         _names: set[str] = set(),
         _builder_type: str = "",
         _ports_type: str = "",

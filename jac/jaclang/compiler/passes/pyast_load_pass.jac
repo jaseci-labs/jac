@@ -92,7 +92,7 @@ import from jaclang.compiler.frontend.unitree {
     WithStmt,
     YieldExpr
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import ast as py_ast;
 import os;
 import re;
@@ -122,9 +122,8 @@ glob PyPositioned: TypeAlias = py_ast.stmt
          | py_ast.SetComp
          | py_ast.GeneratorExp;
 
-walker PyastBuildPass {
-    has ctx: CompileContext,
-        module: UniNode,
+walker PyastBuildPass(CompilerPass) {
+    has module: UniNode,
         mod_path: str postinit,
         orig_src: Source postinit,
         _source_lines: list[str] postinit,

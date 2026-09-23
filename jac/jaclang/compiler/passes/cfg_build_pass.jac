@@ -53,21 +53,10 @@ import from jaclang.compiler.frontend.unitree {
     WhileStmt,
     WithStmt
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from typing { cast }
 
-walker CFGBuildPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module;
-
+walker CFGBuildPass(TreePass) {
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
     def _link_sequential(body: Sequence[CodeBlockStmt]) -> None;
     def _exit_wired(nd: UniCFGNode) -> bool;

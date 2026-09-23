@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.passes.scope_walk { ScopeWalker }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -269,11 +269,8 @@ walker UnusedSymbolWalker(ScopeWalker) {
     }
 }
 
-walker StaticAnalysisPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: Module;
-
+walker StaticAnalysisPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;

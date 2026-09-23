@@ -189,7 +189,7 @@ test "application modules run their early passes in the kernel" {
             prog = JacProgram();
             recorded: list[str] = [];
             record = prog.analysis.record_early;
-            def spy(module: Module, results: dict[str, any]) -> None {
+            def spy(module: Module, results: dict[str, any]) {
                 recorded.extend(results.keys());
                 record(module, results);
             }

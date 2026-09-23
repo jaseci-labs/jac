@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
@@ -953,11 +953,8 @@ def demote_client_pulled_elements(
     return True;
 }
 
-walker PlacementApplyPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: uni.Module;
-
+walker PlacementApplyPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;

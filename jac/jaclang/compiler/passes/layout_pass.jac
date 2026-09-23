@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchHas,
@@ -624,10 +624,8 @@ obj LayoutRegistry {
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 
-walker LayoutPass {
-    has ctx: CompileContext,
-        module: Module,
-        registry: LayoutRegistry postinit,
+walker LayoutPass(CompilerPass) {
+    has registry: LayoutRegistry postinit,
         isinstance_targets: set[str] postinit;
 
     def postinit -> None;

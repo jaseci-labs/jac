@@ -362,7 +362,7 @@ impl UniNode.set_kids(nodes: Sequence[UniNode], pos_update: bool = True) -> UniN
 
 impl UniNode.replace_kid(old: UniNode, new: UniNode) -> UniNode {
     self._assert_thawed();
-    roles: list[type] = [];
+    roles: list[type[Role]] = [];
     for e in [edge self->:Role:->] {
         if `type(e) not in roles {
             roles.append(`type(e));

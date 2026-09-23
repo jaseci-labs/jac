@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Assignment,
@@ -117,10 +117,8 @@ def loop_body_locals(body: (Sequence[UniNode] | None)) -> list[str] {
     return out;
 }
 
-walker RcFactsPass {
-    has ctx: CompileContext,
-        module: Module,
-        _node_use: dict[int, set[SymId]] = {},
+walker RcFactsPass(CompilerPass) {
+    has _node_use: dict[int, set[SymId]] = {},
         _node_def: dict[int, set[SymId]] = {};
 
     def _run_impl(ir_in: Module) -> Module;

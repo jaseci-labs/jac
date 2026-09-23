@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompilerPass }
 import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
@@ -6,7 +7,7 @@ import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPas
 import from jaclang.compiler.passes.sem_def_match_pass { SemDefMatchPass }
 import from jaclang.compiler.passes.jsx_intrinsic_guard_pass { JsxIntrinsicGuardPass }
 
-glob EARLY_PASSES: tuple[type, ...] = (
+glob EARLY_PASSES: tuple[type[CompilerPass], ...] = (
          GraphLoweringPass,
          ASTValidationPass,
          SymTabBuildPass,

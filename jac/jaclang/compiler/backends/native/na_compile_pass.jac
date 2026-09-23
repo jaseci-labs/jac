@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
@@ -73,11 +73,8 @@ def native_verdict_blast_guard(
     prog: JacProgram, composed: int, aot_lane: bool = False
 ) -> str;
 
-walker NativeCompilePass {
-    has ctx: CompileContext,
-        module: uni.Module,
-        prog: JacProgram;
-
+walker NativeCompilePass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     def postinit -> None;
