@@ -32,10 +32,17 @@ answering to the name `root`.
 precedence ladder `get` implements -- a set value, then the call's own
 default, then the constructor default, then `LookupError` -- so the sv run
 answers out of CPython's own `contextvars` and the na run out of the bundled
-shim. The type argument is an archetype because a generic archetype is
-type-erased natively: `ContextVar[int]` is refused rather than lowered
-(#8229), and the last test pins that refusal, since it is the shim's scope
-line rather than a defect.
+shim.
+
+`contextvars_scalar.jac` runs the same ladder at `int`, `bool`, `str`,
+`float` and optional type arguments (#8229). A generic archetype is laid out
+once, so a slot typed by its parameter is a pointer; a by-value argument
+boxes into it and unboxes at the access site, so `0`, `False` and `""` stay
+distinct from the null that spells None. The explicit `default=None` and
+`get(None)` it exercises are CPython's "a default was passed" case, which the
+shim tells apart from an omitted default with a marker rather than `None`.
+A tagged `any` value has no box, so `ContextVar[int | str]` is still refused
+naming the instantiation, and a test pins that refusal.
 
 `contextvars_token.jac` pins the `Token` protocol against the Python
 backend: `set` returns a token carrying `var` and the previous value,
@@ -141,7 +148,13 @@ test "native contextvars answers what CPython's contextvars answers" {
     _same_lines(sv_out, na_out, "contextvars");
 }
 
-test "a ContextVar at a scalar type argument is refused, not lowered" {
+test "native ContextVar at scalar and optional type arguments answers like CPython" {
+    py_out = python_run(os.path.join(FIXTURES, "contextvars_scalar.jac"));
+    (na_out, _na_err) = _na_run("contextvars_scalar.jac");
+    _same_lines(py_out, na_out, "contextvars scalar");
+}
+
+test "a ContextVar at a mixed by-value union type argument is refused, not lowered" {
     src = os.path.join(FIXTURES, "contextvars_unsupported.jac");
     out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
     comp = subprocess.run(
@@ -151,8 +164,8 @@ test "a ContextVar at a scalar type argument is refused, not lowered" {
         timeout=900
     );
     combined = (comp.stdout or "") + (comp.stderr or "");
-    assert comp.returncode != 0 , f"an erased scalar slot compiled silently: {combined[-600:]}";
-    assert "ContextVar[int]" in combined , f"diagnostic does not name the instantiation: {combined[-600:]}";
+    assert comp.returncode != 0 , f"an unboxable erased slot compiled silently: {combined[-600:]}";
+    assert "ContextVar[int | str]" in combined , f"diagnostic does not name the instantiation: {combined[-600:]}";
 }
 
 test "native ContextVar.set returns a Token that reset honors like CPython" {

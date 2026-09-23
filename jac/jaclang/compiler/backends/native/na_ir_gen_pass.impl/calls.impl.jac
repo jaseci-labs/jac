@@ -464,6 +464,18 @@ impl NaIRGenPass._codegen_bound_args(
                     else None;
             }
             if val is not None {
+                if isinstance(expected_type, ir.PointerType)
+                    and not isinstance(val.type, ir.PointerType)
+                    and self._erased_decl(sp.type) {
+                    _owner_t = nd.type;
+                    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+                        _owner_t = nd.target.target.type;
+                    }
+                    val = self._erased_box(
+                        val,
+                        self._erased_want(self._erased_decl_names(sp.type), _owner_t)
+                    );
+                }
                 args.append(val);
             } else {
                 args.append(self._default_arg_fallback(expected_type));

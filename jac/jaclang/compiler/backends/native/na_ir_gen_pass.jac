@@ -2459,6 +2459,20 @@ walker NaIRGenPass(CompilerPass) {
     def _typevar_optional_field(tb: any) -> bool;
     def _erased_typevar_names(tb: any) -> list[str];
     def _erased_seq_type(tb: any) -> (ir.Type | None);
+    def _erased_decl(tb: any) -> bool;
+    def _erased_field(type_name: str, fname: str) -> bool;
+    def _erased_boxable(t: (ir.Type | None)) -> bool;
+    def _erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value;
+    def _erased_want(tv_names: list[str], owner: any) -> (ir.Type | None);
+    def _erased_decl_names(tb: any) -> list[str];
+    def _erased_unbox(
+        ptr: ir.Value, want: (ir.Type | None), owned: bool = False
+    ) -> (ir.Value | None);
+
+    def _erased_call_result(
+        nd: uni.FuncCall, func: ir.Function, result: ir.Value
+    ) -> ir.Value;
+
     def _type_base_is_unknown(tb: any) -> bool;
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     def _lower_type(t: any) -> (ir.Type | None);
