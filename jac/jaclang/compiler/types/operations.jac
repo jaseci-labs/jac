@@ -36,6 +36,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1118
 }
 import from .fixed_width {
+    arithmetic_result_type,
     both_numeric,
     folded_number,
     numeric_name_of,
@@ -162,9 +163,10 @@ def get_numeric_promotion_type(
         if not is_int_kind_type(left_type) or not is_int_kind_type(right_type) {
             return None;
         }
-        return shift_result_type(
+        shifted = shift_result_type(
             evaluator, left_type, right_type, left_node, right_node
         );
+        return None if shifted is None else arithmetic_result_type(evaluator, shifted);
     }
     if op in BITWISE_OPERATORS
         and not (is_int_kind_type(left_type) and is_int_kind_type(right_type)) {
@@ -185,7 +187,10 @@ def get_numeric_promotion_type(
     if op == Tok.DIV {
         return evaluator._convert_to_instance(float_class);
     }
-    return unified;
+    if op in BITWISE_OPERATORS {
+        return unified;
+    }
+    return arithmetic_result_type(evaluator, unified);
 }
 
 def is_int_kind_type(t: TypeBase) -> bool {

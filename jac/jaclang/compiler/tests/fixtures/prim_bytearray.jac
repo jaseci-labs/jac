@@ -213,3 +213,81 @@ def bytearray_unpack_na -> dict[str, any] {
 
     };
 }
+
+def bytes_ctor_py -> dict[any, any] {
+    zeroed = bytes(6);
+    empty = bytes();
+    listed = bytes([104, 105, 0, 255]);
+    buf = bytearray(b"seed");
+    buf[0] = 83;
+    frozen = bytes(buf);
+    copied = bytes(frozen);
+    sized = bytearray(3);
+    negative = "";
+    try {
+        negative = repr(bytes(-2));
+    } except ValueError as err {
+        negative = str(err);
+    }
+    out_of_range = "";
+    try {
+        out_of_range = repr(bytes([7, 300]));
+    } except ValueError as err {
+        out_of_range = str(err);
+    }
+    return {
+        "zeroed_len": len(zeroed),
+        "zeroed_ok": zeroed == b"\x00\x00\x00\x00\x00\x00",
+        "empty_len": len(empty),
+        "empty_ok": empty == b"",
+        "listed_ok": listed == b"hi\x00\xff",
+        "listed_last": listed[3],
+        "frozen_ok": frozen == b"Seed",
+        "copied_ok": copied == frozen,
+        "sized_list_sum": sum(list(sized)),
+        "sized_bytes_ok": list(bytearray(b"xy")) == [120, 121],
+        "negative": negative,
+        "out_of_range": out_of_range
+    };
+}
+
+def bytes_ctor_cl -> dict[any, any] {
+    return {};
+}
+
+def bytes_ctor_na -> dict[str, any] {
+    zeroed = bytes(6);
+    empty = bytes();
+    listed = bytes([104, 105, 0, 255]);
+    buf = bytearray(b"seed");
+    buf[0] = 83;
+    frozen = bytes(buf);
+    copied = bytes(frozen);
+    sized = bytearray(3);
+    negative = "";
+    try {
+        negative = repr(bytes(-2));
+    } except ValueError as err {
+        negative = str(err);
+    }
+    out_of_range = "";
+    try {
+        out_of_range = repr(bytes([7, 300]));
+    } except ValueError as err {
+        out_of_range = str(err);
+    }
+    return {
+        "zeroed_len": len(zeroed),
+        "zeroed_ok": zeroed == b"\x00\x00\x00\x00\x00\x00",
+        "empty_len": len(empty),
+        "empty_ok": empty == b"",
+        "listed_ok": listed == b"hi\x00\xff",
+        "listed_last": listed[3],
+        "frozen_ok": frozen == b"Seed",
+        "copied_ok": copied == frozen,
+        "sized_list_sum": sum(list(sized)),
+        "sized_bytes_ok": list(bytearray(b"xy")) == [120, 121],
+        "negative": negative,
+        "out_of_range": out_of_range
+    };
+}

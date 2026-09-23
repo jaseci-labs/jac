@@ -126,6 +126,12 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         if first_val is None {
             return None;
         }
+        first_val = self._box_value_tuple(
+            first_val,
+            loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
+                else 0}"
+        );
     }
 
     elem_size = 0;
@@ -191,12 +197,18 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         );
     } else {
         first_val = self._nogc_elem_prep(nd.values[0], first_val);
+        if first_val is None {
+            return None;
+        }
         (_add_fn, _kh) = self._static_key_op(helpers, "add", nd.values[0]);
         _add_args = [set_val, first_val];
         if _kh is not None {
             _add_args.append(_kh);
         }
         self._rc_call_with_ctx(_add_fn, _add_args, op="set_init", loc=_sinit_loc);
+        if isinstance(first_val.type, ir.PointerType) and self._is_owned(first_val) {
+            self._emit_rc_release_simple(first_val, op="set_init", loc=_sinit_loc);
+        }
     }
 
     for i in range(1, len(nd.values)) {
@@ -244,6 +256,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
             );
             return None;
         }
+        val = self._box_value_tuple(val, loc=_sinit_loc);
         val = self._nogc_elem_prep(nd.values[i], val);
         if val is None {
             return None;

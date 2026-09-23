@@ -374,6 +374,7 @@ walker NaIRGenPass(CompilerPass) {
         _binary_file_helpers_emitted: bool = False,
         _bytes_struct_type: (ir.Type | None) = None,
         _bytes_repr_function: (ir.Function | None) = None,
+        _bytes_search_function: (ir.Function | None) = None,
         _float_repr_function: (ir.Function | None) = None,
         _repr_fns: dict[str, ir.Function] = {},
         _eq_fns: dict[str, ir.Function] = {},
@@ -570,6 +571,7 @@ walker NaIRGenPass(CompilerPass) {
     def _fstring_spec_text(spec: uni.Expr) -> (str | None);
     def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple[str, str] | None);
     def _bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value;
+    def _int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value;
     def _emit_fstr_repr(val: ir.Value, part: uni.FormattedValue) -> (ir.Value | None);
     def _emit_dyn_spec_format(
         val: ir.Value, spec_val: ir.Value, part: uni.FormattedValue
@@ -669,6 +671,15 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
     def _bytes_repr_fn -> ir.Function;
+    def _bytes_search_fn -> ir.Function;
+    def _emit_bytes_needle(
+        needle: ir.Value
+    ) -> (tuple[ir.Value, ir.Value, ir.Value] | None);
+
+    def _emit_bytes_search(
+        target: ir.Value, args: list[ir.Value], mode: str, missing: str = ""
+    ) -> (ir.Value | None);
+
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_callable_value(
         nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]
@@ -2678,6 +2689,7 @@ walker NaIRGenPass(CompilerPass) {
         left: ir.Value, right: ir.Value
     ) -> tuple[(ir.Value, ir.Value)];
 
+    def _emit_int_bitwise(op: str, left: ir.Value, right: ir.Value) -> ir.Value;
     def _to_float_type(val: ir.Value, target: ir.Type, unsigned: bool) -> ir.Value;
     def _emit_arch_dunder_binop(
         op: str, left: ir.Value, right: ir.Value
@@ -2892,6 +2904,7 @@ walker NaIRGenPass(CompilerPass) {
     def _is_move_site(expr: uni.UniNode | None) -> bool;
     def _nogc_consume_local(expr: uni.UniNode | None) -> bool;
     def _drop_hook_for(type_name: str) -> (ir.Function | None);
+    def _drop_member_of(owner: str) -> (uni.Ability | None);
     def _nogc_drop_fn_for(
         ptr_ty: ir.PointerType, self_type: str = ""
     ) -> (ir.Function | None);

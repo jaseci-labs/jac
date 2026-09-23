@@ -29,7 +29,9 @@ glob _MOVE_EXEMPT_CALLS: tuple[str, ...] = (
          "ord",
          "hex",
          "oct",
-         "bin"
+         "bin",
+         "bytes",
+         "bytearray"
      ),
      _NONRETAINING_METHOD_CALLS: tuple[str, ...] = (
          "find",
