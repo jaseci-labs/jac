@@ -12,7 +12,8 @@ import from zoneinfo { ZoneInfo }
 
 
 def emit(label: str, n: int, t0: datetime) {
-    us: float = (datetime.now() - t0).total_seconds() * 1000000.0 / n;
+    us: float = ((datetime.now() - t0) as timedelta).total_seconds()
+        * 1000000.0 / n;
     print(label, "|", us, "|us/op");
 }
 
