@@ -284,27 +284,31 @@ native layout records the emitted name separately from its source-level key.
 
 - **`contextvars.jac`** (#8201, held back by #8220 until #8229 and #8230
   landed) -- `ContextVar[T]` as a single process-wide cell: `ContextVar(name)`
-  and `` ContextVar(name, `default=...) ``, `.name`, `.get()`, `.get(default)`
-  and `.set(value)`. `get` walks CPython's precedence -- the value last `set`,
-  else the default the call passed, else the default the constructor took,
-  else `LookupError(name)`.
-  SCOPE: `None` is the sentinel for *both* "no value" and "no default", where
-  CPython keys the second step on whether the argument was **passed**, so an
-  explicit `get(None)` reads as an omitted argument: on an unset variable it
-  answers the constructor default, or raises, where CPython answers `None`.
-  (A variadic `get(*fallback: T)` would carry the presence bit exactly, but a
+  and `` ContextVar(name, `default=...) ``, `.name`, `.get()`, `.get(default)`,
+  `.set(value)` and `.reset(token)`. `get` walks CPython's precedence -- the
+  value last `set`, else the default the call passed, else the default the
+  constructor took, else `LookupError(name)`. `set` returns a `Token[T]`
+  carrying `.var` and `.old_value`, and `reset(token)` restores the value the
+  variable held before that `set`, or unsets it when it held none. As in
+  CPython, a token can be used once (`RuntimeError` on the second `reset`),
+  only by the variable that made it (`ValueError` otherwise), and as a
+  context manager that resets on exit.
+  SCOPE: `None` is the sentinel for "no default" in `get`, where CPython
+  keys that step on whether the argument was **passed**, so an explicit
+  `get(None)` reads as an omitted argument: on an unset variable it answers
+  the constructor default, or raises, where CPython answers `None`. (A
+  variadic `get(*fallback: T)` would carry the presence bit exactly, but a
   variadic parameter of the erased type segfaults the native binary, so this
-  waits on that gap.) `None` is likewise the unset marker in the value slot,
-  so `set(None)` on a `ContextVar[X | None]` reads back as unset.
+  waits on that gap.) For the same reason `Token.old_value` answers `None`
+  where CPython answers `Token.MISSING` for a variable that had no value.
   There is also one cell per variable rather than one per context, because
   the native pathway has neither asyncio tasks nor threads to separate them,
-  so `copy_context`, `Context.run`, and the `Token` that `set` returns
-  (with `reset`) are not provided -- `set` answers `None`. A reference type
+  so `copy_context` and `Context.run` are not provided. A reference type
   argument (an archetype, `list`, `dict`) lowers; a **scalar** one
   (`int`, `float`, `bool`, and `str`, which is a by-value descriptor
-  natively) is refused at the construction site with `E5092` naming the
-  instantiation, because a generic archetype is laid out once for every
-  instantiation and its `T` slot is a raw pointer (#8229).
+  natively) or an optional one is refused at the construction site with
+  `E5092` naming the instantiation, because a generic archetype is laid out
+  once for every instantiation and its `T` slot is a raw pointer (#8229).
 
 - **`io.jac`** (Mechanism B) -- `BytesIO` (the CPython `io.BytesIO` value
   model: `read`/`read1`/`write`/`seek`/`tell`/`getvalue`/`seek`-relative

@@ -36,9 +36,16 @@ shim. The type argument is an archetype because a generic archetype is
 type-erased natively: `ContextVar[int]` is refused rather than lowered
 (#8229), and the last test pins that refusal, since it is the shim's scope
 line rather than a defect.
+
+`contextvars_token.jac` pins the `Token` protocol against the Python
+backend: `set` returns a token carrying `var` and the previous value,
+`reset` restores it (or unsets the variable when it had no value), a
+second `reset` of one token raises `RuntimeError`, a token from another
+variable raises `ValueError`, and a token used as a context manager
+resets on exit.
 """
 
-import from tests.support { jac_command }
+import from tests.support { jac_command, python_run }
 
 import os;
 import subprocess;
@@ -146,4 +153,10 @@ test "a ContextVar at a scalar type argument is refused, not lowered" {
     combined = (comp.stdout or "") + (comp.stderr or "");
     assert comp.returncode != 0 , f"an erased scalar slot compiled silently: {combined[-600:]}";
     assert "ContextVar[int]" in combined , f"diagnostic does not name the instantiation: {combined[-600:]}";
+}
+
+test "native ContextVar.set returns a Token that reset honors like CPython" {
+    py_out = python_run(os.path.join(FIXTURES, "contextvars_token.jac"));
+    (na_out, _na_err) = _na_run("contextvars_token.jac");
+    _same_lines(py_out, na_out, "contextvars token");
 }
