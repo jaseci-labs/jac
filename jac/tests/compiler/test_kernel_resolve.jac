@@ -219,6 +219,68 @@ test "a kernel built elsewhere is accepted by its units' content, not by its fol
     }
 }
 
+test "the kit's kernel is adopted although the kit stripped it after its sidecar was written" {
+    import sys;
+    import from unittest.mock { patch }
+    import jaclang.compiler.backends.native.kernel_resolve as kernel_resolve;
+    import from jaclang.compiler.backends.native.kernel_resolve { _adopt_bundled }
+    import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
+    import from jaclang.compiler.driver.jir { running_compiler_digest }
+    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-") as tmp {
+        unit = os.path.join(tmp, "unit.jac");
+        Path(unit).write_text("def one -> int {\n    return 1;\n}\n");
+        kit = os.path.join(tmp, "kit");
+        os.makedirs(kit);
+        bundled = os.path.join(kit, "libjac_compiler.dylib");
+        Path(bundled).write_bytes(b"the stripped kernel");
+        stripped = hashlib.sha256(Path(bundled).read_bytes()).hexdigest();
+        options = kernel_options();
+        ident = native_unit_identity(unit);
+        sidecar = {
+            "classes": {},
+            "artifact_sha256": hashlib.sha256(b"the kernel before strip").hexdigest(),
+            "plan_digest": "p",
+            "layout_digest": "l",
+            "units": [unit],
+            "unit_ids": [ident],
+            "source_key": "folded elsewhere",
+            "compiler_digest": running_compiler_digest(),
+            "codegen_identity": options.base_codegen_identity(),
+            "triple": options.effective_triple(),
+            "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+            "unit_sources": {ident: unit_source_digest(unit)},
+            "unit_policy": {ident: 0}
+        };
+        Path(bundled + ".layout.json").write_text(json.dumps(sidecar));
+        destination = os.path.join(tmp, "tree", "libjac_compiler.dylib");
+        with patch.object(
+            kernel_resolve,
+            "_bundled_kernel",
+            return_value=(bundled, {"sha256": stripped})
+        ) {
+            adopted = _adopt_bundled(destination);
+        }
+        assert adopted is not None , "the manifest vouches for the stripped library";
+        assert adopted.source == "tree" and adopted.plan_digest == "p";
+        published = read_sidecar(destination);
+        assert published is not None and published["artifact_sha256"] == stripped , (
+            "the adopted copy carries the hash of the library it sits beside"
+        );
+        assert _accept_in_tree(destination) is not None , "later runs accept it in place";
+        with patch.object(
+            kernel_resolve,
+            "_bundled_kernel",
+            return_value=(bundled, {"sha256": "not the library the kit shipped"})
+        ) {
+            assert _adopt_bundled(os.path.join(tmp, "other", "libjac_compiler.dylib"))
+                is None , (
+                "a kit whose library disagrees with its own manifest is never adopted"
+            );
+        }
+    }
+}
+
 test "application configuration does not change the compiler kernel" {
     import from unittest.mock { patch }
     import from jaclang.project.config { JacConfig }

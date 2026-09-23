@@ -115,6 +115,30 @@ test "a package module's cache key ignores the active compilation scope" {
     }
 }
 
+test "a string-source compile reuses its dependencies' native records" {
+    """A module compiled from a string has no cache entry of its own, but the
+    runtime units it imports are files whose records serve every consumer;
+    the second program must not lower them again.""";
+    source = (
+        "import os;\n"
+        + "glob xs: list[int] = [len(os.getcwd())];\n"
+        + "def f(a: dict[str, int]) -> str { return str(sorted(a.items())); }\n"
+    );
+    first = JacProgram();
+    first.compile(file_path="native_records_probe_a.jac", use_str=source);
+    assert not first.errors_had , [e.pretty_print() for e in first.errors_had];
+    second = JacProgram();
+    second.compile(file_path="native_records_probe_b.jac", use_str=source);
+    assert not second.errors_had , [e.pretty_print() for e in second.errors_had];
+    events = second.analysis.cache_events;
+    if events.get("native_unit_codegen", 0) {
+        assert events.get("native_unit_lower", 0) == 0 , (
+            f"the second program lowered runtime units again: {events}"
+        );
+        assert events.get("native_iface_hit", 0) > 0 , events;
+    }
+}
+
 test "a unit's native stamp ignores policy entries that name other modules" {
     registry = JacProgram().native_units();
     path = _pkg("runtime/region_native.jac");

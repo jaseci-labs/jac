@@ -384,8 +384,8 @@ impl JacProgram.release_compile_closure(
     ev = None;
     if not retain_stubs {
         self._stub_catalog = None;
-        self._stub_trees_served = False;
     }
+    self._stub_trees_served = False;
     self.diags.clear();
     self.scratch.clear();
     self.analysis.analyses_run.clear();

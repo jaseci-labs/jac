@@ -435,6 +435,11 @@ impl NaIRGenPass._dep_iface(imported_mod: uni.Module) -> (NativeIface | None) {
         return None;
     }
     opts = self.prog.options;
+    if opts.no_ir_cache and not os.path.isfile(self.module.loc.mod_path or "") {
+        import copy;
+        opts = copy.copy(opts);
+        opts.no_ir_cache = False;
+    }
     ent = self.prog.native_units().ensure(
         path,
         compile_on_miss=True,

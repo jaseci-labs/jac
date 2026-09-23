@@ -304,9 +304,14 @@ def _accept_in_tree(lib_path: str) -> (ResolvedKernel | None) {
 }
 
 def _bundled_kernel_path -> (str | None) {
-    """The kernel the running kit carries, when this process's compiler is
-    a rerouted checkout rather than that kit: the kit's sealed jaclang sits
-    beside its interpreter.""";
+    found = _bundled_kernel();
+    return found[0] if found is not None else None;
+}
+
+def _bundled_kernel -> (tuple[str, dict[str, any]] | None) {
+    """The kernel the running kit carries and its manifest record, when this
+    process's compiler is a rerouted checkout rather than that kit: the
+    kit's sealed jaclang sits beside its interpreter.""";
     import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
     site_pkg = os.path.join(os.path.dirname(sys.prefix), "site", "jaclang");
     if not os.path.isdir(os.path.join(site_pkg, "_precompiled")) {
@@ -329,7 +334,7 @@ def _bundled_kernel_path -> (str | None) {
         return None;
     }
     lib_path = os.path.join(site_pkg, str(record.get("path", "")));
-    return lib_path if os.path.isfile(lib_path) else None;
+    return (lib_path, dict(record)) if os.path.isfile(lib_path) else None;
 }
 
 def _adopt_bundled(lib_path: str) -> (ResolvedKernel | None) {
@@ -337,33 +342,51 @@ def _adopt_bundled(lib_path: str) -> (ResolvedKernel | None) {
     the kit's kernel instead of deriving its own: the sidecar's source key
     is the same compiler digest and unit keys the derivation would settle
     on. The copy lands beside the loader so later runs accept it in place.""";
-    bundled = _bundled_kernel_path();
-    if bundled is None {
+    found = _bundled_kernel();
+    if found is None {
         return None;
     }
+    (bundled, record) = found;
     sidecar = read_sidecar(bundled);
     if sidecar is None or not _sidecar_matches_sources(sidecar) {
         return None;
     }
+    import from jaclang.compiler.backends.native.link_plan { _sha256_of }
+    try {
+        actual = _sha256_of(bundled);
+    } except OSError {
+        return None;
+    }
+    if str(record.get("sha256", "")) != actual {
+        return None;
+    }
+    published = dict(sidecar);
+    published["artifact_sha256"] = actual;
     try {
         os.makedirs(os.path.dirname(lib_path) or ".", exist_ok=True);
-        _publish_kernel(bundled, lib_path);
+        _publish_kernel(bundled, lib_path, sidecar=published);
     } except OSError {
         return None;
     }
     return _accept_in_tree(lib_path);
 }
 
-def _publish_kernel(source: str, destination: str) {
+def _publish_kernel(
+    source: str, destination: str, sidecar: (dict[str, any] | None) = None
+) {
     """Publish the library before its hash-bearing sidecar; readers fail closed
-    until both images agree. The caller holds the destination's build lock.""";
+    until both images agree. The caller holds the destination's build lock.
+    A kit strips its kernel after the sidecar recorded the library's hash and
+    re-stamps only its manifest, so an adopted copy publishes the sidecar the
+    caller re-stamped from that manifest.""";
     import from pathlib { Path }
     atomic_write(destination, Path(source).read_bytes(), mode=0o755);
-    atomic_write(
-        destination + LAYOUT_SIDECAR_SUFFIX,
-        Path(source + LAYOUT_SIDECAR_SUFFIX).read_bytes(),
-        mode=0o644
+    payload = (
+        json.dumps(sidecar, sort_keys=True).encode("utf-8")
+            if sidecar is not None
+            else Path(source + LAYOUT_SIDECAR_SUFFIX).read_bytes()
     );
+    atomic_write(destination + LAYOUT_SIDECAR_SUFFIX, payload, mode=0o644);
 }
 
 def _build_kernel_in_child(dst: str) {

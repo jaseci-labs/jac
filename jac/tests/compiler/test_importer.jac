@@ -876,7 +876,7 @@ test "release compile closure honors no unit eviction" {
     }
 }
 
-test "release compile closure recreates synthesized types with their catalog" {
+test "release compile closure keeps synthesized types with their catalog until a full release" {
     prog = JacProgram();
     ev1 = prog.get_type_evaluator();
     ls1 = ev1.prefetch.literal_string_class;
@@ -887,7 +887,15 @@ test "release compile closure recreates synthesized types with their catalog" {
     ls2 = ev2.prefetch.literal_string_class;
     assert ls2 is not None;
     assert ev1 is not ev2;
-    assert ls1.shared is not ls2.shared;
+    assert ls1.shared is ls2.shared , (
+        "the session catalog and its hydrated types serve the next evaluator"
+    );
+    prog.release_compile_closure(retain_stubs=False);
+    ev3 = prog.get_type_evaluator();
+    ls3 = ev3.prefetch.literal_string_class;
+    assert ls3 is not None and ls3.shared is not ls2.shared , (
+        "a full release drops the catalog, so its types are hydrated again"
+    );
 }
 
 test "internal get_bytecode evicts unit AST after compile" {

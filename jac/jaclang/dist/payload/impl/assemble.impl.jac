@@ -795,6 +795,16 @@ impl strip_kernel_best_effort(site: str) {
     with open(lib, "rb") as lf {
         record["sha256"] = hashlib.sha256(lf.read()).hexdigest();
     }
+    sidecar_path = lib + ".layout.json";
+    if file_exists(sidecar_path) {
+        with open(sidecar_path, "r", encoding="utf-8") as sf {
+            sidecar = dict(json.load(sf));
+        }
+        sidecar["artifact_sha256"] = record["sha256"];
+        with open(sidecar_path, "w", encoding="utf-8") as sf {
+            sf.write(json.dumps(sidecar, sort_keys=True));
+        }
+    }
     with open(manifest_path, "w", encoding="utf-8") as f {
         f.write(json.dumps(manifest, sort_keys=True, indent=1) + "\n");
     }
