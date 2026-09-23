@@ -1,4 +1,4 @@
-import from datetime { datetime, timedelta, tzinfo }
+import from datetime { datetime, timedelta, tzinfo, _MAXORDINAL, _ord2ymd }
 import from os.path { normpath }
 import from _file_native { read_file_bytes }
 import from _directory_native { try_directory_names }
@@ -391,11 +391,25 @@ obj:pub ZoneInfo(tzinfo) {
         if uoff is None {
             uoff = timedelta(0);
         }
-        dt2: datetime = dt + uoff;
-        if fold != 0 {
-            return dt2.replace(fold=1);
+        total_us: int = timestamp * 1000000 + dt.microsecond + uoff._to_microseconds();
+        days: int = total_us // 86400000000;
+        rem: int = total_us - days * 86400000000;
+        ord2: int = days + _EPOCHORDINAL;
+        if ord2 < 1 or ord2 > _MAXORDINAL {
+            raise OverflowError("result out of range");
         }
-        return dt2;
+        (y, m, d) = _ord2ymd(ord2);
+        return datetime(
+            y,
+            m,
+            d,
+            rem // 3600000000,
+            (rem // 60000000) % 60,
+            (rem // 1000000) % 60,
+            rem % 1000000,
+            self,
+            fold
+        );
     }
 
     def _find_trans(dt: (datetime | None)) -> _ttinfo {

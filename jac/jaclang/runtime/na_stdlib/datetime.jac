@@ -11,7 +11,7 @@ import from _datetime_native {
 glob:pub MINYEAR: int = 1,
      MAXYEAR: int = 9999;
 
-glob _MAXORDINAL: int = 3652059,
+glob:pub _MAXORDINAL: int = 3652059,
      _EPOCHORDINAL: int = 719163;
 
 glob _DAYS_IN_MONTH: list[int] = [
@@ -125,7 +125,7 @@ def _ymd2ord(year: int, month: int, day: int) -> int {
 }
 
 
-def _ord2ymd(n_in: int) -> tuple[(int, int, int)] {
+def:pub _ord2ymd(n_in: int) -> tuple[(int, int, int)] {
     n: int = n_in - 1;
     n400: int = n // 146097;
     n = n - n400 * 146097;
@@ -708,38 +708,44 @@ def _find_isoformat_datetime_separator(dtstr: str) -> int {
 
 
 def _parse_isoformat_date(dtstr: str) -> tuple[(int, int, int)] {
-    if len(dtstr) != 7 and len(dtstr) != 8 and len(dtstr) != 10 {
+    return _parse_isoformat_date_range(dtstr, 0, len(dtstr));
+}
+
+
+def _parse_isoformat_date_range(s: str, lo: int, hi: int) -> tuple[(int, int, int)] {
+    n: int = hi - lo;
+    if n != 7 and n != 8 and n != 10 {
         raise ValueError("Invalid isoformat string");
     }
-    year: int = _dig4(dtstr, 0);
-    has_sep: bool = dtstr[4] == "-";
-    pos: int = 4 + (1 if has_sep else 0);
-    if dtstr[pos] == "W" {
+    year: int = _dig4(s, lo);
+    has_sep: bool = s[lo + 4] == "-";
+    pos: int = lo + 4 + (1 if has_sep else 0);
+    if s[pos] == "W" {
         pos += 1;
-        weekno: int = _dig2(dtstr, pos);
+        weekno: int = _dig2(s, pos);
         pos += 2;
         dayno: int = 1;
-        if len(dtstr) > pos {
-            if (dtstr[pos] == "-") != has_sep {
+        if pos < hi {
+            if (s[pos] == "-") != has_sep {
                 raise ValueError("Inconsistent use of dash separator");
             }
             pos += 1 if has_sep else 0;
-            dayno = _atoi(dtstr[pos:pos + 1]);
+            dayno = _atoi(s[pos:pos + 1]);
         }
         return _isoweek_to_gregorian(year, weekno, dayno);
     }
-    month: int = _dig2(dtstr, pos);
+    month: int = _dig2(s, pos);
     pos += 2;
-    if (dtstr[pos] == "-") != has_sep {
+    if (s[pos] == "-") != has_sep {
         raise ValueError("Inconsistent use of dash separator");
     }
     pos += 1 if has_sep else 0;
-    day: int = ord(dtstr[pos]) - 48;
+    day: int = ord(s[pos]) - 48;
     if day < 0 or day > 9 {
         raise ValueError("invalid literal for int()");
     }
-    if pos + 1 < len(dtstr) {
-        d2: int = ord(dtstr[pos + 1]) - 48;
+    if pos + 1 < hi {
+        d2: int = ord(s[pos + 1]) - 48;
         if d2 < 0 or d2 > 9 {
             raise ValueError("invalid literal for int()");
         }
@@ -760,14 +766,15 @@ obj _IsoTimeResult {
 }
 
 
-def _parse_hh_mm_ss_ff(tstr: str) -> _IsoTimeResult {
-    len_str: int = len(tstr);
+def _parse_hh_mm_ss_ff(tstr: str, pos: int = 0, end: int = -1) -> _IsoTimeResult {
+    if end < 0 {
+        end = len(tstr);
+    }
     res: _IsoTimeResult = _IsoTimeResult();
-    pos: int = 0;
     comp: int = 0;
     has_sep: bool = False;
     while comp < 3 {
-        if len_str - pos < 2 {
+        if end - pos < 2 {
             raise ValueError("Incomplete time component");
         }
         v: int = _dig2(tstr, pos);
@@ -780,7 +787,7 @@ def _parse_hh_mm_ss_ff(tstr: str) -> _IsoTimeResult {
         }
         pos += 2;
         next_char: str = "";
-        if pos < len_str {
+        if pos < end {
             next_char = tstr[pos];
         }
         if comp == 0 {
@@ -795,14 +802,14 @@ def _parse_hh_mm_ss_ff(tstr: str) -> _IsoTimeResult {
         pos += 1 if has_sep else 0;
         comp += 1;
     }
-    if pos < len_str {
+    if pos < end {
         if tstr[pos] != "." and tstr[pos] != "," {
             raise ValueError("Invalid microsecond separator");
         }
         pos += 1;
         micro: int = 0;
         ndig: int = 0;
-        while pos < len_str {
+        while pos < end {
             d9: int = ord(tstr[pos]) - 48;
             if d9 < 0 or d9 > 9 {
                 raise ValueError("Non-digit values in fraction");
@@ -826,22 +833,27 @@ def _parse_hh_mm_ss_ff(tstr: str) -> _IsoTimeResult {
 
 
 def _parse_isoformat_time(tstr: str) -> _IsoTimeResult {
-    len_str: int = len(tstr);
-    if len_str < 2 {
+    return _parse_isoformat_time_at(tstr, 0);
+}
+
+
+def _parse_isoformat_time_at(s: str, lo: int) -> _IsoTimeResult {
+    len_str: int = len(s);
+    if len_str - lo < 2 {
         raise ValueError("Isoformat time too short");
     }
-    tz_pos: int = tstr.find("-") + 1;
-    if tz_pos == 0 {
-        tz_pos = tstr.find("+") + 1;
+    tz_idx: int = -1;
+    k: int = lo;
+    while k < len_str {
+        c: str = s[k];
+        if c == "-" or c == "+" or c == "Z" {
+            tz_idx = k;
+            break;
+        }
+        k += 1;
     }
-    if tz_pos == 0 {
-        tz_pos = tstr.find("Z") + 1;
-    }
-    timestr: str = tstr;
-    if tz_pos > 0 {
-        timestr = tstr[0:tz_pos - 1];
-    }
-    res: _IsoTimeResult = _parse_hh_mm_ss_ff(timestr);
+    tend: int = len_str if tz_idx < 0 else tz_idx;
+    res: _IsoTimeResult = _parse_hh_mm_ss_ff(s, lo, tend);
     if res.hour == 24 {
         if res.minute == 0 and res.second == 0 and res.microsecond == 0 {
             res.hour = 0;
@@ -850,28 +862,32 @@ def _parse_isoformat_time(tstr: str) -> _IsoTimeResult {
             res.error_from_components = True;
         }
     }
-    if tz_pos == len_str and len_str > 0 and tstr[len_str - 1] == "Z" {
-        res.tzi = timezone.utc;
-    } elif tz_pos > 0 {
-        tzstr: str = tstr[tz_pos:];
-        lz: int = len(tzstr);
-        if lz == 0 or lz == 1 or lz == 3 or tstr[tz_pos - 1] == "Z" {
-            raise ValueError("Malformed time zone string");
-        }
-        tzc: _IsoTimeResult = _parse_hh_mm_ss_ff(tzstr);
-        if tzc.hour == 0
-            and tzc.minute == 0
-            and tzc.second == 0
-            and tzc.microsecond == 0 {
+    if tz_idx >= 0 {
+        if s[tz_idx] == "Z" {
+            if tz_idx != len_str - 1 {
+                raise ValueError("Malformed time zone string");
+            }
             res.tzi = timezone.utc;
         } else {
-            tzsign: int = -1 if tstr[tz_pos - 1] == "-" else 1;
-            off_us: int = tzsign
-                * (
-                    (tzc.hour * 3600 + tzc.minute * 60 + tzc.second) * 1000000
-                    + tzc.microsecond
-                );
-            res.tzi = timezone(timedelta(0, 0, off_us));
+            lz: int = len_str - tz_idx - 1;
+            if lz == 0 or lz == 1 or lz == 3 {
+                raise ValueError("Malformed time zone string");
+            }
+            tzc: _IsoTimeResult = _parse_hh_mm_ss_ff(s, tz_idx + 1, len_str);
+            if tzc.hour == 0
+                and tzc.minute == 0
+                and tzc.second == 0
+                and tzc.microsecond == 0 {
+                res.tzi = timezone.utc;
+            } else {
+                tzsign: int = -1 if s[tz_idx] == "-" else 1;
+                off_us: int = tzsign
+                    * (
+                        (tzc.hour * 3600 + tzc.minute * 60 + tzc.second) * 1000000
+                        + tzc.microsecond
+                    );
+                res.tzi = timezone(timedelta(0, 0, off_us));
+            }
         }
     }
     return res;
@@ -1969,23 +1985,20 @@ obj:pub datetime(date) {
         if len(date_string) < 7 {
             raise ValueError(f"Invalid isoformat string: '{date_string}'");
         }
-        dstr: str = "";
-        tstr: str = "";
         dy: int = 0;
         dm: int = 0;
         dd: int = 0;
+        sep: int = 0;
         try {
-            separator_location: int = _find_isoformat_datetime_separator(date_string);
-            dstr = date_string[0:separator_location];
-            tstr = date_string[separator_location + 1:];
-            (dy, dm, dd) = _parse_isoformat_date(dstr);
+            sep = _find_isoformat_datetime_separator(date_string);
+            (dy, dm, dd) = _parse_isoformat_date_range(date_string, 0, sep);
         } except ValueError {
             raise ValueError(f"Invalid isoformat string: '{date_string}'");
         }
         tr: _IsoTimeResult = _IsoTimeResult();
-        if tstr != "" {
+        if sep + 1 < len(date_string) {
             try {
-                tr = _parse_isoformat_time(tstr);
+                tr = _parse_isoformat_time_at(date_string, sep + 1);
             } except ValueError {
                 raise ValueError(f"Invalid isoformat string: '{date_string}'");
             }
