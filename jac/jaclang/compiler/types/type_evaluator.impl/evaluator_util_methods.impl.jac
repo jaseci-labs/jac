@@ -815,7 +815,9 @@ impl TypeEvaluator._get_expected_kv_types(
     return None;
 }
 
-impl TypeEvaluator._infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | None {
+impl TypeEvaluator._infer_elem_from_mutations(
+    expr: Expr, container_class: ClassType
+) -> TypeBase | None {
     asg = expr.parent;
     if (
         not isinstance(asg, Assignment)
@@ -842,7 +844,7 @@ impl TypeEvaluator._infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | 
             continue;
         }
         seen_refs.add(id(ref));
-        contrib = self._list_mutation_elem_contrib(ref);
+        contrib = self._mutation_elem_contrib(ref, container_class);
         if contrib is None {
             continue;
         }
@@ -875,8 +877,11 @@ impl TypeEvaluator._infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | 
     return None;
 }
 
-impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None {
+impl TypeEvaluator._mutation_elem_contrib(
+    ref: NameAtom, container_class: ClassType
+) -> TypeBase | None {
     tr = ref.parent;
+    is_set = container_class.is_builtin("set");
     if isinstance(tr, AtomTrailer) and tr.target is ref {
         if (
             tr.is_attr
@@ -889,6 +894,15 @@ impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None
                 for p in (tr.parent.params or [])
                 if not isinstance(p, KWPair)
             ];
+            if is_set {
+                if tr.right.value == "add" and args {
+                    return self.get_type_of_expression(args[0]);
+                }
+                if tr.right.value == "update" {
+                    return self._iterable_elem_contrib(args);
+                }
+                return None;
+            }
             if tr.right.value in ("append", "insert") {
                 arg_idx = 0 if tr.right.value == "append" else 1;
                 if len(args) > arg_idx {
@@ -907,7 +921,8 @@ impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None
             return None;
         }
         if (
-            not tr.is_attr
+            not is_set
+            and not tr.is_attr
             and isinstance(tr.right, IndexSlice)
             and not tr.right.is_range
             and isinstance(tr.parent, Assignment)
@@ -922,10 +937,15 @@ impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None
     if (
         isinstance(tr, Assignment)
         and tr.aug_op is not None
-        and tr.aug_op.name == Tok.ADD_EQ
         and tr.value is not None
         and any(t is ref for t in tr.target)
     ) {
+        if is_set and tr.aug_op.name == Tok.BW_OR_EQ {
+            return self._iterable_elem_contrib([tr.value]);
+        }
+        if is_set or tr.aug_op.name != Tok.ADD_EQ {
+            return None;
+        }
         if not (self.prefetch and self.prefetch.list_class) {
             return None;
         }
@@ -934,6 +954,31 @@ impl TypeEvaluator._list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None
         );
     }
     return None;
+}
+
+impl TypeEvaluator._iterable_elem_contrib(args: list[Expr]) -> TypeBase | None {
+    if not args {
+        return None;
+    }
+    elem_types: list[TypeBase] = [];
+    for arg in args {
+        arg_type = self.get_type_of_expression(arg);
+        if not (
+            isinstance(arg_type, ClassType)
+            and arg_type.is_builtin(["list", "set", "frozenset", "tuple"])
+            and arg_type.private.type_args
+        ) {
+            return UnknownType();
+        }
+        elem = arg_type.private.type_args[0];
+        if not self._type_in_list(elem, elem_types) {
+            elem_types.append(elem);
+        }
+    }
+    if len(elem_types) != 1 {
+        return UnknownType();
+    }
+    return elem_types[0];
 }
 
 impl TypeEvaluator._get_enclosing_class(nd: UniNode) -> Archetype | None {

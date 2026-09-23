@@ -171,7 +171,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if expected_elem is not None {
                         list_inst.private.type_args = [expected_elem];
                     } else {
-                        flow_elem = self._infer_list_elem_from_mutations(expr);
+                        flow_elem = self._infer_elem_from_mutations(
+                            expr, self.prefetch.list_class
+                        );
                         if flow_elem is not None {
                             list_inst.private.type_args = [flow_elem];
                         }
@@ -1634,16 +1636,27 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case FuncCall():
             result = self.validate_call_args(expr);
-            if not expr.params and expected_type is not None {
+            if not expr.params {
                 constructor = self.get_type_of_expression(expr.target);
                 if isinstance(constructor, ClassType)
                     and constructor.is_instantiable_class()
                     and constructor.is_builtin(["list", "set", "frozenset", "dict"]) {
                     expected = self._get_expected_container_type(
                         expected_type, constructor
-                    );
+                    )
+                        if expected_type is not None
+                        else None;
                     if expected is not None and expected.private.type_args {
                         return expected.clone_as_instance();
+                    }
+                    if constructor.is_builtin(["list", "set"])
+                        and isinstance(result, ClassType) {
+                        flow_elem = self._infer_elem_from_mutations(expr, constructor);
+                        if flow_elem is not None {
+                            inferred = result.clone_as_instance();
+                            inferred.private.type_args = [flow_elem];
+                            return inferred;
+                        }
                     }
                 }
             }
@@ -2775,19 +2788,31 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                     }
                     declared_inst = self._convert_to_instance(annotation_type);
 
+                    empty_value = node_.parent.value;
                     if (
                         isinstance(declared_inst, ClassType)
-                        and declared_inst.is_builtin("list")
+                        and declared_inst.is_builtin(["list", "set"])
                         and not declared_inst.private.type_args
-                        and isinstance(node_.parent.value, ListVal)
-                        and not node_.parent.value.values
+                        and isinstance(empty_value, (ListVal, FuncCall))
+                        and (
+                            (
+                                isinstance(empty_value, ListVal)
+                                and not empty_value.values
+                            )
+                            or (
+                                isinstance(empty_value, FuncCall)
+                                and not empty_value.params
+                                and isinstance(empty_value.target, Name)
+                                and empty_value.target.value in ("list", "set")
+                            )
+                        )
                     ) {
                         value_type = self.get_type_of_expression(
-                            node_.parent.value, expected_type=declared_inst
+                            empty_value, expected_type=declared_inst
                         );
                         if (
                             isinstance(value_type, ClassType)
-                            and value_type.is_builtin("list")
+                            and value_type.shared.same_class(declared_inst.shared)
                             and value_type.private.type_args
                         ) {
                             return value_type;

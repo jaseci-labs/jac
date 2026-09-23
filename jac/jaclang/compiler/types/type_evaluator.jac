@@ -780,8 +780,15 @@ walker TypeEvaluator {
         expected_type: TypeBase | None, dict_class: TypeBase
     ) -> tuple[TypeBase, TypeBase] | None;
 
-    def _infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | None;
-    def _list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None;
+    def _infer_elem_from_mutations(
+        expr: Expr, container_class: ClassType
+    ) -> TypeBase | None;
+
+    def _mutation_elem_contrib(
+        ref: NameAtom, container_class: ClassType
+    ) -> TypeBase | None;
+
+    def _iterable_elem_contrib(args: list[Expr]) -> TypeBase | None;
     def _get_special_form_type(name: str, symbol_type: TypeBase) -> TypeBase | None;
     def _create_callable_type(
         type_args_expr: Expr | None, error_node: Expr
