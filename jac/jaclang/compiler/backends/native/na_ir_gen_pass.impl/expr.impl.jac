@@ -1705,9 +1705,29 @@ impl NaIRGenPass._identity_over_optional(
 }
 
 impl NaIRGenPass._value_identity(left: ir.Value, right: ir.Value) -> (ir.Value | None) {
+    if self?.jacval_type is not None
+        and (left.type == self.jacval_type or right.type == self.jacval_type) {
+        l_jv = self._box_to_jacval(left);
+        r_jv = self._box_to_jacval(right);
+        b = self.builder;
+        return b.and_(
+            b.icmp_unsigned(
+                "==",
+                b.extract_value(l_jv, 0, name="is.jv.ltag"),
+                b.extract_value(r_jv, 0, name="is.jv.rtag"),
+                name="is.jv.tag"
+            ),
+            b.icmp_unsigned(
+                "==",
+                b.extract_value(l_jv, 1, name="is.jv.lbits"),
+                b.extract_value(r_jv, 1, name="is.jv.rbits"),
+                name="is.jv.bits"
+            ),
+            name="is.jv"
+        );
+    }
     for side in (left, right) {
-        if self._opt_payload_of(side.type) is not None
-            or (self?.jacval_type is not None and side.type == self.jacval_type) {
+        if self._opt_payload_of(side.type) is not None {
             return None;
         }
     }

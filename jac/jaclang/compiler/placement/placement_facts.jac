@@ -186,6 +186,15 @@ def native_only(source_path: str) -> bool {
     return is_native_only(rel);
 }
 
+def native_lowered(source_path: str) -> bool {
+    rel = _toolchain_rel(source_path);
+    if rel is None {
+        return False;
+    }
+    import from jaclang.bootstrap_manifest { is_native_lowered }
+    return is_native_lowered(rel);
+}
+
 def native_unit(
     source_path: str, native_unit_compile: (bool | None) = None, prog: any = None
 ) -> bool {
@@ -194,6 +203,9 @@ def native_unit(
     }
     import from jaclang.compiler.frontend.codeinfo { is_kernel_unit_path }
     if is_kernel_unit_path(source_path) {
+        return True;
+    }
+    if native_unit_compile and native_lowered(source_path) {
         return True;
     }
     import from jaclang.compiler.placement.placement_pins { effective_module_pin }
