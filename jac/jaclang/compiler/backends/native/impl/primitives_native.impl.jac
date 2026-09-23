@@ -5246,9 +5246,10 @@ impl NativeBuiltinEmitter.emit_any(
     b.position_at_start(found_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result = b.phi(i64, name="any.result");
-    result.add_incoming(ir.Constant(i64, 0), loop_bb);
-    result.add_incoming(ir.Constant(i64, 1), found_bb);
+    i1 = ir.IntType(1);
+    result = b.phi(i1, name="any.result");
+    result.add_incoming(ir.Constant(i1, 0), loop_bb);
+    result.add_incoming(ir.Constant(i1, 1), found_bb);
     return result;
 }
 
@@ -5298,9 +5299,10 @@ impl NativeBuiltinEmitter.emit_all(
     b.position_at_start(false_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result = b.phi(i64, name="all.result");
-    result.add_incoming(ir.Constant(i64, 1), loop_bb);
-    result.add_incoming(ir.Constant(i64, 0), false_bb);
+    i1 = ir.IntType(1);
+    result = b.phi(i1, name="all.result");
+    result.add_incoming(ir.Constant(i1, 1), loop_bb);
+    result.add_incoming(ir.Constant(i1, 0), false_bb);
     return result;
 }
 

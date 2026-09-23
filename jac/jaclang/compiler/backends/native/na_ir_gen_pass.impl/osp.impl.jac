@@ -1156,10 +1156,10 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
 
 impl NaIRGenPass._osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value {
     elem = self._list_elem_llvm_of(nd);
-    if isinstance(elem, ir.PointerType) {
-        return self._coerce_type(value, self._lower_list_for_elem(elem));
+    if not isinstance(elem, ir.PointerType) {
+        elem = ir.IntType(8).as_pointer();
     }
-    return value;
+    return self._coerce_type(value, self._lower_list_for_elem(elem));
 }
 
 impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None) {
