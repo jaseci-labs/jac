@@ -1270,6 +1270,8 @@ impl NaIRGenPass._forward_declare_imported_ability(
     self._record_linked_decl(self.func_symtab.get(name), nd);
     if previous is not None {
         self.func_symtab[name] = previous;
+    } elif private {
+        self.func_symtab.pop(name, None);
     }
 }
 
