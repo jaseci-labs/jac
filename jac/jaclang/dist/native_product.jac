@@ -17,6 +17,7 @@ def write_native_product(
         ArtifactKind,
         build_link_plan,
         whole_program_module,
+        optimize_merged_program,
         link_artifact
     }
     if program is None {
@@ -43,6 +44,7 @@ def write_native_product(
         import from jaclang.compiler.backends.native.c_emit { emit_c }
         spec = plan.glue_spec(kind, "c", False);
         (merged, _) = whole_program_module(plan, spec);
+        optimize_merged_program(plan, merged, kind);
         llvm_ir = str(merged);
         if memory == 'nogc' {
             import from jaclang.compiler.backends.native.wasm_build {

@@ -770,6 +770,19 @@ def optimize_whole_program(
     mpm.run(merged, pb);
 }
 
+def optimize_merged_program(plan: LinkPlan, merged: ModuleRef, kind: ArtifactKind) {
+    """Internalize and optimize a merged whole program that is emitted as
+    source rather than linked here, so the C backend translates the
+    functions the roots reach instead of every unit of the runtime closure.
+    An executable keeps only its entry external before the pipeline runs,
+    where a system linker would otherwise drop what the internalize pass
+    appended after the pipeline leaves behind.""";
+    if kind == ArtifactKind.EXECUTABLE {
+        internalize_native_implementation(merged, ["main"]);
+    }
+    optimize_whole_program(plan, merged, kind, _target_machine(plan, kind));
+}
+
 def plan_objects(
     plan: LinkPlan, spec: GlueSpec, kind: ArtifactKind, tm: TargetMachine
 ) -> tuple[list[bytes], list[str]] {
