@@ -720,6 +720,10 @@ def _py_codegen_tail -> list[type] {
     return [NativeImportFactsPass, JcirGenPass, JcirBytecodeGenPass];
 }
 
+def get_bootstrap_code_gen -> list[type] {
+    return _py_codegen_tail();
+}
+
 def get_py_code_gen(
     native: bool = True, provided: (set[AnalysisFact] | None) = None
 ) -> list[type] {

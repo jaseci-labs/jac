@@ -53,3 +53,36 @@ def all_int_yes -> int {
 def all_int_no -> int {
     return 1 if all([1, 0]) else 0;
 }
+
+obj BoolProbeItem {
+    has value: float;
+}
+
+def any_object_comprehension -> int {
+    items = [BoolProbeItem(value=0.0), BoolProbeItem(value=1.0)];
+    return 1 if any([item.value > 0.0 for item in items]) else 0;
+}
+
+def all_object_comprehension -> int {
+    items = [BoolProbeItem(value=0.0), BoolProbeItem(value=1.0)];
+    return 1 if all([item.value > 0.0 for item in items]) else 0;
+}
+
+def any_negated_comprehension -> int {
+    items = [BoolProbeItem(value=0.0)];
+    return 1 if any([not item.value for item in items]) else 0;
+}
+
+def all_literal_comprehension -> int {
+    items = [BoolProbeItem(value=0.0), BoolProbeItem(value=1.0)];
+    return 1 if all([True for item in items]) else 0;
+}
+
+def any_float_comparison -> int {
+    return 1 if any([value > 0.0 for value in [0.0, 1.5]]) else 0;
+}
+
+def any_empty_comprehension -> int {
+    items: list[BoolProbeItem] = [];
+    return 1 if any([item.value > 0.0 for item in items]) else 0;
+}

@@ -329,8 +329,8 @@ obj ModuleCompilation {
             require_product,
             product_ready,
             CompilationProduct,
-            get_py_code_gen,
-            _py_codegen_tail
+            get_bootstrap_code_gen,
+            get_py_code_gen
         }
         if (
             not self.parse_failed
@@ -339,6 +339,15 @@ obj ModuleCompilation {
             and not self.options.symtab_ir_only
         ) {
             self.program.options = self.options;
+            if not self.full_head {
+                self.compiler.run_schedule(
+                    mod=self.module,
+                    target_program=self.program,
+                    passes=get_bootstrap_code_gen(),
+                    cancel_token=self.options.cancel_token
+                );
+                return;
+            }
 
             import from jaclang.compiler.frontend.module_facts { ModuleFacts }
             needs_native = self.native
@@ -366,7 +375,7 @@ obj ModuleCompilation {
                     provided=self.program.analysis.analyses_run.provided(self.module)
                 )
                     if self.full_head
-                    else _py_codegen_tail(),
+                    else get_bootstrap_code_gen(),
                 cancel_token=self.options.cancel_token
             );
             if self.module.decided_codespace == 'native' {

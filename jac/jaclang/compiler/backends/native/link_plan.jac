@@ -50,6 +50,7 @@ import from jaclang.compiler.frontend.codeinfo {
     kernel_unit_path
 }
 import type from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.jir { sidecar_unit_paths, unit_source_digest }
 
 glob PLAN_DIGEST_FORMAT: int = 2;
 
@@ -839,45 +840,6 @@ def units_source_key(paths: list[str], options: CompileOptions) -> str {
     return h.hexdigest();
 }
 
-def unit_source_digest(path: str) -> str {
-    """What one unit contributes to a kernel's inputs: its source with its
-    annexes and the wiring that shapes its imports. Unlike the module key,
-    nothing here fingerprints the environment, so a build at another path
-    records digests a checkout can reproduce.""";
-    import from jaclang.compiler.driver.jir { ct_dep_digest }
-    import from jaclang.compiler.driver.wiring { wiring_digest_for }
-    real = os.path.realpath(path);
-    h = hashlib.sha256();
-    h.update(ct_dep_digest(real, with_annexes=True).encode("utf-8"));
-    h.update(wiring_digest_for(real).encode("utf-8"));
-    return h.hexdigest();
-}
-
-def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
-    """The units a sidecar names, found where this process's jaclang lives:
-    a kernel built by the kit records its units by package identity, so the
-    checkout that matches the kit's sources can accept it without the
-    build's paths existing here.""";
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
-    units = sidecar.get("units");
-    ids = sidecar.get("unit_ids");
-    recorded = [str(u) for u in units] if isinstance(units, list) else [];
-    if not isinstance(ids, list) or len(ids) != len(recorded) {
-        return recorded;
-    }
-    pkg_parent = os.path.dirname(jaclang_pkg_root());
-    out: list[str] = [];
-    for (path, ident) in zip(recorded, ids) {
-        ident_s = str(ident);
-        local = (
-            os.path.join(pkg_parent, ident_s)
-                if ident_s.startswith("jaclang/")
-                else path
-        );
-        out.append(local if os.path.isfile(local) else path);
-    }
-    return out;
-}
 
 def _write_sidecar(
     plan: LinkPlan,

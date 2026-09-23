@@ -675,9 +675,33 @@ def _analysis_fingerprint_for(source_path: str) -> str {
     ).analysis_fingerprint();
 }
 
+def _check_policy_digest(source_path: str) -> str {
+    import json;
+    cfg: any = None;
+    try {
+        cfg = _config_for_module(Path(source_path).resolve());
+    } except Exception {
+        cfg = None;
+    }
+    check = cfg.check if cfg is not None else None;
+    if check is None {
+        return "";
+    }
+    lint = check.lint;
+    policy = {
+        "suppress": sorted(check.suppress),
+        "categories": sorted(check.suppress_categories),
+        "select": sorted(lint.select) if lint is not None else [],
+        "ignore": sorted(lint.ignore) if lint is not None else [],
+        "exclude": sorted(lint.exclude) if lint is not None else []
+    };
+    return hashlib.sha256(json.dumps(policy, sort_keys=True).encode()).hexdigest();
+}
+
 def _project_env_fingerprint(source_path: str) -> str {
     h = hashlib.sha256();
     h.update(_module_codespace_mode(source_path).encode());
+    h.update(_check_policy_digest(source_path).encode());
     import from jaclang.compiler.placement.placement_pins {
         pins_digest,
         config_kind_space
@@ -721,6 +745,45 @@ def _owner_projection -> str {
     import from jaclang.compiler.driver.compilation_context { active_options }
     options = active_options();
     return options.module_projection() if options is not None else '';
+}
+
+def unit_source_digest(path: str) -> str {
+    """What one unit contributes to a kernel's inputs: its source with its
+    annexes and the wiring that shapes its imports. Unlike the module key,
+    nothing here fingerprints the environment, so a build at another path
+    records digests a checkout can reproduce.""";
+    import from jaclang.compiler.driver.wiring { wiring_digest_for }
+    real = os.path.realpath(path);
+    h = hashlib.sha256();
+    h.update(ct_dep_digest(real, with_annexes=True).encode("utf-8"));
+    h.update(wiring_digest_for(real).encode("utf-8"));
+    return h.hexdigest();
+}
+
+def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
+    """The units a sidecar names, found where this process's jaclang lives:
+    a kernel built by the kit records its units by package identity, so the
+    checkout that matches the kit's sources can accept it without the
+    build's paths existing here.""";
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    units = sidecar.get("units");
+    ids = sidecar.get("unit_ids");
+    recorded = [str(u) for u in units] if isinstance(units, list) else [];
+    if not isinstance(ids, list) or len(ids) != len(recorded) {
+        return recorded;
+    }
+    pkg_parent = os.path.dirname(jaclang_pkg_root());
+    out: list[str] = [];
+    for (path, ident) in zip(recorded, ids) {
+        ident_s = str(ident);
+        local = (
+            os.path.join(pkg_parent, ident_s)
+                if ident_s.startswith("jaclang/")
+                else path
+        );
+        out.append(local if os.path.isfile(local) else path);
+    }
+    return out;
 }
 
 def compute_module_key(source_path: str) -> str {

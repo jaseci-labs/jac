@@ -1,4 +1,5 @@
 import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
+import hashlib;
 import json;
 import os;
 import sys;
@@ -216,11 +217,25 @@ def _from_source_tree -> (ResolvedKernel | None) {
     }
 }
 
-def _sidecar_matches_sources(sidecar: dict[str, any]) -> bool {
-    import from jaclang.compiler.backends.native.link_plan {
-        sidecar_unit_paths,
-        units_source_key
+def _sha256_file(path: str) -> str {
+    h = hashlib.sha256();
+    with open(path, "rb") as f {
+        while True {
+            chunk = f.read(1 << 20);
+            if not chunk {
+                break;
+            }
+            h.update(chunk);
+        }
     }
+    return h.hexdigest();
+}
+
+def _sidecar_matches_sources(sidecar: dict[str, any]) -> bool {
+    """Acceptance runs while the bootstrap tier is still compiling, so it
+    reaches only the cache-key module; the link plan, which the legacy
+    folded key needs, is imported for that key alone.""";
+    import from jaclang.compiler.driver.jir { sidecar_unit_paths }
     units = sidecar_unit_paths(sidecar);
     if not units {
         return False;
@@ -233,6 +248,7 @@ def _sidecar_matches_sources(sidecar: dict[str, any]) -> bool {
     if not recorded {
         return False;
     }
+    import from jaclang.compiler.backends.native.link_plan { units_source_key }
     return units_source_key(units, kernel_options()) == recorded;
 }
 
@@ -245,8 +261,10 @@ def _unit_sources_match(
     source key is what an in-tree build records for itself: the module key
     of a file outside the running package fingerprints its project, so the
     key a kit's build folded is never the one a checkout computes.""";
-    import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
-    import from jaclang.compiler.driver.jir { running_compiler_digest }
+    import from jaclang.compiler.driver.jir {
+        running_compiler_digest,
+        unit_source_digest
+    }
     import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
     options = kernel_options();
     if str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
@@ -284,9 +302,8 @@ def _accept_in_tree(lib_path: str) -> (ResolvedKernel | None) {
     if sidecar is None or not os.path.isfile(lib_path) {
         return None;
     }
-    import from jaclang.compiler.backends.native.link_plan { _sha256_of }
     try {
-        if sidecar.get("artifact_sha256") != _sha256_of(lib_path) {
+        if sidecar.get("artifact_sha256") != _sha256_file(lib_path) {
             return None;
         }
     } except OSError {
@@ -351,9 +368,8 @@ def _adopt_bundled(lib_path: str) -> (ResolvedKernel | None) {
     if sidecar is None or not _sidecar_matches_sources(sidecar) {
         return None;
     }
-    import from jaclang.compiler.backends.native.link_plan { _sha256_of }
     try {
-        actual = _sha256_of(bundled);
+        actual = _sha256_file(bundled);
     } except OSError {
         return None;
     }

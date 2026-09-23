@@ -1090,9 +1090,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1144",
          Category.IMPORT,
          "Import of '{module}' is not declared by arch.jac for '{consumer}'",
-         help="'{consumer}' is wired by arch.jac, so every project-module import"
-         " it writes must be a wire. Add `{wire}` to arch.jac, or run"
-         " `jac arch sync` to add every missing wire."
+         help="'{consumer}' is sealed: arch.jac names it, or [arch] closed in"
+         " jac.toml covers it, so every project-module import it writes must be"
+         " a wire. Add `{wire}` to arch.jac, or run `jac arch sync` to add every"
+         " missing wire. An inline suppression does not silence this; loosening"
+         " the boundary is a change to arch.jac or jac.toml."
      ),
      E1301 = _err(
          "E1301",
@@ -1798,6 +1800,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " incomplete",
          help="Only the wires that still parsed were applied to this module. Fix"
          " the errors reported for arch.jac and check again."
+     ),
+     E2094 = _err(
+         "E2094",
+         Category.SEMANTIC,
+         "Function-level import of '{module}' inside the sealed module '{consumer}'",
+         help="A sealed module's project-module imports are wires in arch.jac, and"
+         " a wire is module-level, so an import inside a function body would be a"
+         " dependency the wiring file cannot show. Move the import to module level"
+         " and wire it, or leave this module unmentioned by arch.jac and outside"
+         " [arch] closed if it needs a lazy import."
      ),
      W3001 = _warn(
          "W3001",
