@@ -114,15 +114,6 @@ impl ImportWiringPass._check_wire(spec: WiringSpec, wire: ImportWire) -> None {
             self.ctx.emit(E1143, node_override=consumer_node, module=consumer);
             continue;
         }
-        if spec.is_open(consumer) {
-            self.ctx.emit(
-                E1142,
-                node_override=consumer_node,
-                module=consumer,
-                detail="it is listed under [arch] open in jac.toml and keeps its own imports"
-            );
-            continue;
-        }
         if provider_ok {
             self._check_edge(spec, provider, consumer, names, consumer_node);
         }

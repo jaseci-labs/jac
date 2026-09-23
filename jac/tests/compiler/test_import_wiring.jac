@@ -67,9 +67,7 @@ def _project(files: dict[str, str], toml_extra: str = "") -> str {
 }
 
 
-def _standard(
-    arch: str = _ARCH, svc: str = _SVC, main: str = _MAIN, toml_extra: str = ""
-) -> str {
+def _standard(arch: str = _ARCH, svc: str = _SVC, main: str = _MAIN) -> str {
     return _project(
         {
             "arch.jac": arch,
@@ -77,8 +75,7 @@ def _standard(
             "core/other.jac": _OTHER,
             "core/svc.jac": svc,
             "app/main.jac": main
-        },
-        toml_extra=toml_extra
+        }
     );
 }
 
@@ -554,28 +551,6 @@ test "a written import a wire duplicates is emitted once" {
             "W3053"
         )
             == 1;
-    } finally {
-        shutil.rmtree(base, ignore_errors=True);
-    }
-}
-
-
-test "[arch] open keeps a module's own imports and refuses wires into it" {
-    base = _standard(
-        arch=_ARCH + "\nimpl import core {\n    util --> core.other { now }\n}\n",
-        toml_extra="\n[arch]\nopen = [\"core.other\"]\n"
-    );
-    try {
-        with open(os.path.join(base, "core", "other.jac"), "w") as f {
-            f.write(
-                "import from core.util { now }\n\ndef helper -> str {\n    return now();\n}\n"
-            );
-        }
-        other = _compile(base, "core/other.jac");
-        assert _errors(other) == [] , _errors(other);
-        assert "W3053" not in _warnings(other) , _warnings(other);
-        arch = _compile(base, "arch.jac");
-        assert _errors(arch) == ["E1142"] , _errors(arch);
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

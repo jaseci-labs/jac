@@ -1,6 +1,6 @@
 ---
 name: jac-arch-wiring
-description: Declare a project's module graph in arch.jac with impl import wires and edge rules. Use when adopting arch.jac, fixing E1144/E2090/E2091/E2094/W3053, setting [arch] closed or open, or running jac arch init, sync and graph.
+description: Declare a project's module graph in arch.jac with impl import wires and edge rules. Use when adopting arch.jac, fixing E1144/E2090/E2091/E2094/W3053, setting [arch] closed, or running jac arch init, sync and graph.
 ---
 
 `arch.jac` beside `jac.toml` holds `impl import [scope] { ... }` blocks. A **wire** `provider --> consumer { names }` (or `provider --> consumer;`) generates that import into the consumer at compile time; a **rule** `edge Name: pattern --> pattern [{ names }]` says what may flow where.
@@ -23,7 +23,7 @@ The one rule: **whatever arch.jac names, arch.jac is the whole truth about.** A 
 - admits imports from itself only where a rule says: if no rule names it as a provider it flows nowhere (`E2090`), and a payload rule admits only the names it lists (`E2091`);
 - may not import a project module inside a function body (`E2094`); a module that needs a lazy import stays unnamed.
 
-Everything else stays open. `[arch] closed = ["*"]` in `jac.toml` (or a pattern list) seals modules the file never names, and applies even before arch.jac exists; `[arch] open = [patterns]` is the opposite escape hatch for a self-contained package that must keep its own imports (never sealed, never wired, rules still apply). `E1144`, `E2090`, `E2091` and `E2094` ignore inline `# jac:ignore`; loosening a boundary is an edit to arch.jac or jac.toml.
+Everything else stays open. `[arch] closed = ["*"]` in `jac.toml` (or a pattern list) seals modules the file never names, and applies even before arch.jac exists. `E1144`, `E2090`, `E2091` and `E2094` ignore inline `# jac:ignore`; loosening a boundary is an edit to arch.jac or jac.toml.
 
 Consequences worth knowing:
 

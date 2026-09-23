@@ -76,9 +76,6 @@ exclude = [
     "core/leaderboard/format.jac",
 ]
 
-[arch]
-open = ["core.site.game.*"]
-
 [memory]
 profile = "managed"
 enforce = ["arena*", "sim*", "gmath*", "platform_rl*"]

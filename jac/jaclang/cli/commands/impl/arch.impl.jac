@@ -131,7 +131,7 @@ def _collect_rows(
 ) -> list[WireRow] {
     rows: dict[tuple[str, str, str, tuple[tuple[str, str], ...]], WireRow] = {};
     for (consumer, path) in modules {
-        if spec.is_open(consumer) or (only_sealed and not spec.is_sealed(consumer)) {
+        if only_sealed and not spec.is_sealed(consumer) {
             continue;
         }
         provided = spec.consumer_bindings(consumer) if only_sealed else {};

@@ -50,7 +50,6 @@ obj WiringSpec {
         _by_consumer: dict[str, list[ImportWire]] = {},
         _annex_cache: dict[str, str] = {},
         closed_patterns: list[str] = [],
-        open_patterns: list[str] = [],
         _policy_loaded: bool = False,
         _rule_rows: list[str] = [],
         _policy_digest: str = "",
@@ -67,7 +66,6 @@ obj WiringSpec {
     def is_project_module(module: str) -> bool;
     def is_mentioned(module: str) -> bool;
     def is_closed(module: str) -> bool;
-    def is_open(module: str) -> bool;
     def is_sealed(module: str) -> bool;
     def _ensure_policy -> None;
     static def pattern_matches(pattern: str, module: str) -> bool;
@@ -118,7 +116,7 @@ def wiring_annex_for(file_path: str) -> (tuple[str, str] | None);
 def wiring_digest_for(file_path: str) -> str;
 def dedupe_generated_imports(mod: Module) -> None;
 def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
-def _arch_patterns_for(root_dir: str) -> tuple[list[str], list[str]];
+def _closed_patterns_for(root_dir: str) -> list[str];
 def _import_items(stmt: Import) -> list[tuple[tuple[str, str, str, str], UniNode]];
 def _import_keys(stmt: Import) -> set[tuple[str, str, str, str]];
 def _relative_twin(
