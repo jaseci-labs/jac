@@ -2607,6 +2607,16 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         _opt_re_old_pv, op="overwrite", loc=_opt_re_loc
                     );
                 }
+            } elif coerced.type == alloca.pointee_type
+                and self._tuple_slot_owns(nd, var_name, alloca.pointee_type) {
+                self._bind_owned_tuple_slot(
+                    var_name,
+                    alloca,
+                    coerced,
+                    loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                        if nd.loc
+                        else 0}"
+                );
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
@@ -3108,6 +3118,16 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         _opt_old_pv, op="overwrite", loc=_opt_asg_loc
                     );
                 }
+            } elif value.type == var_type
+                and self._tuple_slot_owns(nd, var_name, var_type) {
+                self._bind_owned_tuple_slot(
+                    var_name,
+                    alloca,
+                    value,
+                    loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                        if nd.loc
+                        else 0}"
+                );
             }
             self.builder.store(value, alloca);
             self.local_vars[var_name] = alloca;

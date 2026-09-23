@@ -199,6 +199,7 @@ obj NativeBindingState {
     has local_vars: dict[str, ir.Value],
         param_vars: set[str],
         borrowed_vars: set[str],
+        owned_tuple_vars: set[str],
         nogc_owned_str_vars: set[str],
         region_handle_vars: set[str],
         var_list_elem_struct: dict[str, ir.Type | None],
@@ -446,6 +447,7 @@ walker NaIRGenPass(CompilerPass) {
         _managed_ctor_node: int = 0,
         clib_declared_sigs: dict[str, tuple[ir.Type, list[ir.Type]]] = {},
         borrowed_vars: set[str] = set(),
+        owned_tuple_vars: set[str] = set(),
         nogc_owned_str_vars: set[str] = set(),
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -782,6 +784,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (uni.FuncSignature | None);
 
     def _arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None);
+    def _arch_init_params_of(type_name: str) -> (list[uni.ParamVar] | None);
     def _codegen_call_args(nd: uni.FuncCall) -> list[ir.Value];
     def _coerce_narrowed_arg(
         nd: (uni.UniNode | None), val: (ir.Value | None)
@@ -1333,6 +1336,8 @@ walker NaIRGenPass(CompilerPass) {
         left: ir.Value, right: ir.Value, negate: bool
     ) -> (ir.Value | None);
 
+    def _value_identity(left: ir.Value, right: ir.Value) -> (ir.Value | None);
+    def _word_identity(left: ir.Value, right: ir.Value) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None);
     def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
@@ -1941,6 +1946,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _class_ancestors(type_name: str) -> list[str];
     def _class_init_owner(type_name: str) -> (str | None);
+    def _class_takes_no_ctor_args(type_name: str) -> bool;
     def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
     def _class_ctor_fn_type(params: list[NativeCtorParam]) -> ir.FunctionType;
     def _is_runtime_class_value(target: (uni.UniNode | None)) -> bool;
@@ -2540,6 +2546,12 @@ walker NaIRGenPass(CompilerPass) {
     def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
     def _tuple_managed_fields(struct_type: ir.LiteralStructType) -> list[int];
+    def _tuple_slot_owns(nd: uni.Assignment, var_name: str, slot_ty: ir.Type) -> bool;
+    def _bind_owned_tuple_slot(
+        var_name: str, slot: ir.Value, value: ir.Value, loc: str = ""
+    ) -> None;
+
+    def _release_tuple_slot(slot: ir.Value, op: str) -> None;
     def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);

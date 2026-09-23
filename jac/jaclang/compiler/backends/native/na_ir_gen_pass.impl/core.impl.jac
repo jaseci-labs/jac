@@ -1873,7 +1873,7 @@ impl NaIRGenPass._dispatch_builtin(
         and len(args) == 1
         and self._opt_payload_of(args[0].type) is not None
     ) {
-        return self._emit_optional_str(args[0], None);
+        return self._emit_optional_str(args[0], arg_nodes[0] if arg_nodes else None);
     }
     _emit_fn = getattr(self._native_builtin_emitter, "emit_" + func_name, None);
     if _emit_fn is None {

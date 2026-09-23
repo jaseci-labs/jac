@@ -1531,6 +1531,18 @@ impl NaIRGenPass._codegen_compare_link(
             }
             return _opt_ident;
         }
+        _val_ident = self._value_identity(left, right);
+        if _val_ident is not None {
+            return self._compare_result(
+                self.builder.not_(_val_ident, name="isn.value")
+                    if op == Tok.KW_ISN
+                    else _val_ident,
+                _cmp_left_orig,
+                _cmp_right_orig,
+                release_operands,
+                "cmp_is_value"
+            );
+        }
     }
 
     if op == Tok.KW_IS {
@@ -1558,13 +1570,19 @@ impl NaIRGenPass._codegen_compare_link(
                 "cmp_is"
             );
         }
-        return self._compare_result(
-            self._to_bool(left),
-            _cmp_left_orig,
-            _cmp_right_orig,
-            release_operands,
-            "cmp_is"
+        self.emit(
+            E5092,
+            node_override=left_node,
+            kind="identity comparison",
+            name=f"{left.type} is {right.type}",
+            help_text=(
+                "Native `is` answers identity for two references, for an "
+                "option against a reference or `None`, and for by-value "
+                "scalars and tuples (their bits, field by field); these two "
+                "operand representations fit none of them."
+            )
         );
+        return None;
     }
     if op == Tok.KW_ISN {
         if isinstance(left.type, ir.PointerType)
@@ -1591,13 +1609,19 @@ impl NaIRGenPass._codegen_compare_link(
                 "cmp_isn"
             );
         }
-        return self._compare_result(
-            self._to_bool(left),
-            _cmp_left_orig,
-            _cmp_right_orig,
-            release_operands,
-            "cmp_isn"
+        self.emit(
+            E5092,
+            node_override=left_node,
+            kind="identity comparison",
+            name=f"{left.type} is not {right.type}",
+            help_text=(
+                "Native `is` answers identity for two references, for an "
+                "option against a reference or `None`, and for by-value "
+                "scalars and tuples (their bits, field by field); these two "
+                "operand representations fit none of them."
+            )
         );
+        return None;
     }
     is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
         or isinstance(right.type, (ir.DoubleType, ir.FloatType));
@@ -1678,6 +1702,123 @@ impl NaIRGenPass._identity_over_optional(
         _res = self.builder.not_(_res, name="isn.opt");
     }
     return _res;
+}
+
+impl NaIRGenPass._value_identity(left: ir.Value, right: ir.Value) -> (ir.Value | None) {
+    for side in (left, right) {
+        if self._opt_payload_of(side.type) is not None
+            or (self?.jacval_type is not None and side.type == self.jacval_type) {
+            return None;
+        }
+    }
+    l_ref = isinstance(left.type, ir.PointerType);
+    r_ref = isinstance(right.type, ir.PointerType);
+    if l_ref and r_ref {
+        return None;
+    }
+    if l_ref == r_ref {
+        return self._word_identity(left, right);
+    }
+    held = right if l_ref else left;
+    boxed = left if l_ref else right;
+    boxed_ty = boxed.type;
+    if not isinstance(held.type, ir.LiteralStructType)
+        or not isinstance(boxed_ty, ir.PointerType)
+        or boxed_ty.pointee != held.type {
+        return ir.Constant(ir.IntType(1), 0);
+    }
+    i1 = ir.IntType(1);
+    fn = self.builder.function;
+    start_bb = self.builder.block;
+    load_bb = fn.append_basic_block(name="is.box.load");
+    done_bb = fn.append_basic_block(name="is.box.done");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "==", boxed, ir.Constant(boxed.type, None), name="is.box.null"
+        ),
+        done_bb,
+        load_bb
+    );
+    self.builder.position_at_end(load_bb);
+    same = self._word_identity(held, self.builder.load(boxed, name="is.box.val"));
+    if same is None {
+        same = ir.Constant(i1, 0);
+    }
+    load_end = self.builder.block;
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+    result = self.builder.phi(i1, name="is.box");
+    result.add_incoming(ir.Constant(i1, 0), start_bb);
+    result.add_incoming(same, load_end);
+    return result;
+}
+
+impl NaIRGenPass._word_identity(left: ir.Value, right: ir.Value) -> (ir.Value | None) {
+    i1 = ir.IntType(1);
+    i64 = ir.IntType(64);
+    lt = left.type;
+    rt = right.type;
+    if isinstance(lt, ir.PointerType) and isinstance(rt, ir.PointerType) {
+        if lt != rt {
+            right = self.builder.bitcast(right, lt, name="is.w.cast");
+        }
+        return self.builder.icmp_unsigned("==", left, right, name="is.w.ptr");
+    }
+    if isinstance(lt, ir.IntType) and isinstance(rt, ir.IntType) {
+        if lt.width < rt.width {
+            left = self.builder.zext(left, rt, name="is.w.lext")
+                if lt.width == 1
+                else self.builder.sext(left, rt, name="is.w.lext");
+        } elif rt.width < lt.width {
+            right = self.builder.zext(right, lt, name="is.w.rext")
+                if rt.width == 1
+                else self.builder.sext(right, lt, name="is.w.rext");
+        }
+        return self.builder.icmp_unsigned("==", left, right, name="is.w.int");
+    }
+    floats = (ir.DoubleType, ir.FloatType);
+    if isinstance(lt, floats) and isinstance(rt, floats) {
+        f64 = ir.DoubleType();
+        if isinstance(lt, ir.FloatType) {
+            left = self.builder.fpext(left, f64, name="is.w.lf64");
+        }
+        if isinstance(rt, ir.FloatType) {
+            right = self.builder.fpext(right, f64, name="is.w.rf64");
+        }
+        return self.builder.icmp_unsigned(
+            "==",
+            self.builder.bitcast(left, i64, name="is.w.lbits"),
+            self.builder.bitcast(right, i64, name="is.w.rbits"),
+            name="is.w.float"
+        );
+    }
+    structs = (ir.LiteralStructType, ir.IdentifiedStructType);
+    if isinstance(lt, structs) and isinstance(rt, structs) {
+        if lt != rt {
+            return ir.Constant(i1, 0);
+        }
+        fields = lt.elements;
+        if fields is None {
+            return None;
+        }
+        same: ir.Value = ir.Constant(i1, 1);
+        for index in range(len(fields)) {
+            field_same = self._word_identity(
+                self.builder.extract_value(left, index, name=f"is.w.l{index}"),
+                self.builder.extract_value(right, index, name=f"is.w.r{index}")
+            );
+            if field_same is None {
+                return None;
+            }
+            same = self.builder.and_(same, field_same, name=f"is.w.f{index}");
+        }
+        return same;
+    }
+    scalars = (ir.IntType, ir.DoubleType, ir.FloatType, ir.LiteralStructType);
+    if isinstance(lt, scalars) and isinstance(rt, scalars) {
+        return ir.Constant(i1, 0);
+    }
+    return None;
 }
 
 impl NaIRGenPass._codegen_compare_chain(
