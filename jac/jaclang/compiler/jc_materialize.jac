@@ -483,6 +483,11 @@ def _copy_value(m: Mz, h: int, layout: int) -> int {
 
 def _defer_ref(m: Mz, o: int, k: int, t: int, hint: int, slot_default: int) {
     if slot_default >= 0 {
+        done = m.map.get(t, -1);
+        if done >= 0 {
+            PyObject_SetAttr(o, k, done if done != 0 else _K.none_h);
+            return;
+        }
         PyObject_SetAttr(o, k, _K.none_h);
     }
     m.ref_o.append(o);
@@ -557,10 +562,17 @@ def _copy_list(m: Mz, o: int, k: int, hint: int, p: int) {
         i = 0;
         while i < n {
             t = _ld64(data + (i * 8));
-            m.lst_l.append(pl);
-            m.lst_i.append(i);
-            m.lst_t.append(t);
-            _enqueue(m, t, hint);
+            done = m.map.get(t, -1);
+            if done >= 0 {
+                item = done if done != 0 else _K.none_h;
+                Py_IncRef(item);
+                PyList_SetItem(pl, i, item);
+            } else {
+                m.lst_l.append(pl);
+                m.lst_i.append(i);
+                m.lst_t.append(t);
+                _enqueue(m, t, hint);
+            }
             i += 1;
         }
     }
