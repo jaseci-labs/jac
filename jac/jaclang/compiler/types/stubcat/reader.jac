@@ -323,9 +323,7 @@ obj StubCatalog {
         Types, symbols and declaration nodes are mutable during analysis and
         can retain an evaluator. Their lifetime belongs to one program, which
         keeps them from one compile to the next the way it keeps stub trees.""";
-        return StubCatalog(
-            buf=self.buf, pkg_dir=self.pkg_dir, keepalive=self.keepalive
-        );
+        return StubCatalog(buf=self.buf, pkg_dir=self.pkg_dir);
     }
 
     def postinit {
