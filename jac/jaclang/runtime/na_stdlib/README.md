@@ -292,23 +292,24 @@ native layout records the emitted name separately from its source-level key.
   variable held before that `set`, or unsets it when it held none. As in
   CPython, a token can be used once (`RuntimeError` on the second `reset`),
   only by the variable that made it (`ValueError` otherwise), and as a
-  context manager that resets on exit.
-  SCOPE: `None` is the sentinel for "no default" in `get`, where CPython
-  keys that step on whether the argument was **passed**, so an explicit
-  `get(None)` reads as an omitted argument: on an unset variable it answers
-  the constructor default, or raises, where CPython answers `None`. (A
-  variadic `get(*fallback: T)` would carry the presence bit exactly, but a
-  variadic parameter of the erased type segfaults the native binary, so this
-  waits on that gap.) For the same reason `Token.old_value` answers `None`
-  where CPython answers `Token.MISSING` for a variable that had no value.
-  There is also one cell per variable rather than one per context, because
-  the native pathway has neither asyncio tasks nor threads to separate them,
-  so `copy_context` and `Context.run` are not provided. A reference type
-  argument (an archetype, `list`, `dict`) lowers; a **scalar** one
-  (`int`, `float`, `bool`, and `str`, which is a by-value descriptor
-  natively) or an optional one is refused at the construction site with
-  `E5092` naming the instantiation, because a generic archetype is laid out
-  once for every instantiation and its `T` slot is a raw pointer (#8229).
+  context manager that resets on exit. An omitted default (to the
+  constructor or to `get`) is a private `_NoDefault` marker rather than
+  `None`, so `` ContextVar(name, `default=None) `` and `get(None)` answer
+  `None` exactly as CPython does.
+  Any type argument lowers except a tagged `any` union such as `int | str`:
+  a reference type (an archetype, `list`, `dict`) directly, and a by-value
+  one (`int`, `float`, `bool`, `str`, a tuple, or an option of any of these
+  or of a reference) boxed into the pointer slot the one shared generic
+  layout gives `T`, so `0`, `False` and `""` stay distinct from the null that
+  spells None (#8229). `ContextVar[int | str]` is refused at the construction
+  site with `E5092` naming the instantiation.
+  SCOPE: `Token.old_value` answers `None` where CPython answers
+  `Token.MISSING` for a variable that had no value. There is one cell per
+  variable rather than one per context, because the native pathway has
+  neither asyncio tasks nor threads to separate them, so `copy_context` and
+  `Context.run` are not provided. A numeric value is boxed at the
+  instantiation's type, so an `int` stored into a `ContextVar[float]` reads
+  back as a float where CPython keeps the `int`.
 
 - **`io.jac`** (Mechanism B) -- `BytesIO` (the CPython `io.BytesIO` value
   model: `read`/`read1`/`write`/`seek`/`tell`/`getvalue`/`seek`-relative

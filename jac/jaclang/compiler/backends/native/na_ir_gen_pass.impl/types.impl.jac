@@ -1360,15 +1360,342 @@ impl NaIRGenPass._typevar_optional_field(tb: any) -> bool {
             and m.shared.class_name in ("NoneType", "None")
         )
     ];
-    if len(_non_none) == len(_members) or not _non_none {
+    if not _non_none {
         return False;
     }
+    _saw_tv = False;
+    _saw_ref = False;
     for m in _non_none {
-        if not isinstance(m, _TvoTypeVarType) or self._lower_type(m) is not None {
+        if isinstance(m, _TvoTypeVarType) {
+            if self._lower_type(m) is not None {
+                return False;
+            }
+            _saw_tv = True;
+            continue;
+        }
+        _mref = self._lower_type(m);
+        if not isinstance(_mref, ir.PointerType)
+            or isinstance(_mref.pointee, ir.FunctionType) {
             return False;
         }
+        _saw_ref = True;
     }
-    return True;
+    return _saw_tv and (_saw_ref or len(_non_none) < len(_members));
+}
+
+impl NaIRGenPass._erased_decl(tb: any) -> bool {
+    """Whether a declared slot type is spelled by a type parameter.
+
+    This reads the declaration, not the instantiation: `T`, `T | None`, or a
+    union of `T` with reference types. Such a slot is a pointer in the one
+    layout every instantiation shares, so a by-value argument has to be boxed
+    on the way in and unboxed on the way out; whether that happens is then
+    decided by the physical slot and the access site's own type.
+    """;
+    try {
+        import from jaclang.compiler.types.types {
+            ClassType as _EdClassType,
+            UnionType as _EdUnionType,
+            TypeVarType as _EdTypeVarType
+        }
+    } except ImportError {
+        return False;
+    }
+    if isinstance(tb, _EdTypeVarType) {
+        return True;
+    }
+    if isinstance(tb, _EdUnionType) {
+        for m in (tb.types or []) {
+            if isinstance(m, _EdTypeVarType) {
+                return True;
+            }
+        }
+        return False;
+    }
+    if isinstance(tb, _EdClassType)
+        and tb._shared is not None
+        and tb.shared.class_name == "type" {
+        _eargs: list[TypeBase] = tb.private.type_args or [];
+        return len(_eargs) == 1 and self._erased_decl(_eargs[0]);
+    }
+    return False;
+}
+
+impl NaIRGenPass._erased_field(type_name: str, fname: str) -> bool {
+    return fname in (self.struct_field_erased_tv.get(type_name) or {});
+}
+
+impl NaIRGenPass._erased_boxable(t: (ir.Type | None)) -> bool {
+    """A by-value representation an erased pointer slot can carry boxed.""";
+    if t is None {
+        return False;
+    }
+    if isinstance(t, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+        return True;
+    }
+    if self._str_desc_ty is not None and t == self._str_desc_ty {
+        return True;
+    }
+    _payload = self._opt_payload_of(t);
+    if _payload is not None {
+        if isinstance(_payload, ir.PointerType) {
+            return not isinstance(_payload.pointee, ir.FunctionType);
+        }
+        return self._erased_boxable(_payload);
+    }
+    return False;
+}
+
+impl NaIRGenPass._erased_decl_names(tb: any) -> list[str] {
+    try {
+        import from jaclang.compiler.types.types {
+            UnionType as _EnUnionType,
+            TypeVarType as _EnTypeVarType
+        }
+    } except ImportError {
+        return [];
+    }
+    if isinstance(tb, _EnTypeVarType) {
+        return [tb.name];
+    }
+    out: list[str] = [];
+    if isinstance(tb, _EnUnionType) {
+        for m in (tb.types or []) {
+            if isinstance(m, _EnTypeVarType) and m.name not in out {
+                out.append(m.name);
+            }
+        }
+    }
+    return out;
+}
+
+impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | None) {
+    """The representation an erased slot's type parameter has at `owner`.
+
+    `owner` is the instantiated archetype type the slot is reached through
+    (`ContextVar[float]`); the parameter's argument there is what a boxed
+    scalar must be stored as, so a reader at that type unboxes what it
+    expects even when the value arrived as another numeric kind.
+    """;
+    if not tv_names or not isinstance(owner, ClassType) or owner._shared is None {
+        return None;
+    }
+    _params: list[str] = self.arch_type_params.get(owner.shared.class_name) or [];
+    _args: list[TypeBase] = owner.private.type_args or [];
+    for _tv in tv_names {
+        if _tv in _params {
+            _idx = _params.index(_tv);
+            if _idx < len(_args) {
+                return self._lower_type(_args[_idx]);
+            }
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value {
+    """Carry a by-value value into an erased (pointer) slot.
+
+    A generic archetype is laid out once, so a slot typed by its parameter
+    holds a pointer whatever the instantiation. A reference passes through;
+    a scalar goes into a fresh reference-counted cell, so the null that
+    spells None never aliases a zero payload; a `str` descriptor
+    materializes to the string object every other `str` slot holds; and an
+    option is null when absent and the boxed payload when present. The
+    result is owned whenever this allocated it, so the ordinary argument
+    and field-store paths take or release the reference.
+    """;
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    _num = (ir.IntType, ir.DoubleType, ir.FloatType);
+    _want_num = self._opt_payload_of(want) if want is not None else None;
+    if _want_num is None {
+        _want_num = want;
+    }
+    if isinstance(_want_num, _num) {
+        _val_num = self._opt_payload_of(val.type);
+        if isinstance(val.type, _num) and val.type != _want_num {
+            val = self._coerce_type(val, _want_num);
+        } elif isinstance(_val_num, _num) and _val_num != _want_num {
+            val = self._coerce_type(val, self._jac_optional_type(_want_num));
+        }
+    }
+    t = val.type;
+    if isinstance(t, ir.VoidType) {
+        return ir.Constant(i8p, None);
+    }
+    if isinstance(t, ir.PointerType) {
+        return val;
+    }
+    if self._str_desc_ty is not None and t == self._str_desc_ty {
+        return self._str_materialize(val);
+    }
+    if isinstance(t, ir.LiteralStructType) {
+        return self._box_value_tuple(val);
+    }
+    _payload = self._opt_payload_of(t);
+    if _payload is not None {
+        _present = b.icmp_unsigned(
+            "!=",
+            b.extract_value(val, 0, name="erased.opt.tag"),
+            ir.Constant(i8, 0),
+            name="erased.opt.has"
+        );
+        _absent_bb = b.block;
+        _some_bb = b.function.append_basic_block("erased.box.some");
+        _done_bb = b.function.append_basic_block("erased.box.done");
+        b.cbranch(_present, _some_bb, _done_bb);
+        b.position_at_end(_some_bb);
+        _inner = self._erased_box(b.extract_value(val, 1, name="erased.opt.pay"));
+        if isinstance(_inner.type, ir.PointerType) and _inner.type != i8p {
+            _inner = b.bitcast(_inner, i8p, name="erased.box.cast");
+        }
+        _some_end = b.block;
+        b.branch(_done_bb);
+        b.position_at_end(_done_bb);
+        _phi = b.phi(i8p, name="erased.box.opt");
+        _phi.add_incoming(ir.Constant(i8p, None), _absent_bb);
+        _phi.add_incoming(_inner, _some_end);
+        if not isinstance(_payload, ir.PointerType) or self._is_owned(val) {
+            self._mark_owned(_phi);
+        }
+        return _phi;
+    }
+    if not isinstance(t, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+        return val;
+    }
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    _alloc = self.rc_alloc_fn;
+    assert _alloc is not None , "rc helpers are emitted before boxing";
+    _raw = self._rc_call_with_ctx(
+        _alloc, [self._sizeof_llvm(t)], op="box", loc="", name="erased.box"
+    );
+    b.store(val, b.bitcast(_raw, t.as_pointer(), name="erased.box.slot"));
+    _tag = "float";
+    if isinstance(t, ir.IntType) {
+        _tag = "bool" if t.width == 1 else "int";
+    }
+    self._emit_set_type_tag(b, _raw, _tag);
+    return self._mark_owned(_raw);
+}
+
+impl NaIRGenPass._erased_unbox(
+    ptr: ir.Value, want: (ir.Type | None), owned: bool = False
+) -> (ir.Value | None) {
+    """Read an erased slot's pointer back as the access site's type.
+
+    The inverse of `_erased_box`: a scalar loads out of its cell, an option
+    answers None for null and the payload otherwise, and a reference is
+    retyped to the access site's pointer so layout-driven consumers (a boxed
+    tuple's subscript) see their own type. A `str`, whose slot and call
+    convention are already the string object, needs no conversion, and
+    `None` says so. `owned` is a +1 reference the caller
+    hands over -- a call result -- which a scalar read releases once loaded
+    and a reference payload keeps.
+    """;
+    if want is None or not isinstance(ptr.type, ir.PointerType) {
+        return None;
+    }
+    if isinstance(want, ir.PointerType) {
+        if want == ptr.type or isinstance(want.pointee, ir.FunctionType) {
+            return None;
+        }
+        _typed = self.builder.bitcast(ptr, want, name="erased.ref");
+        if owned {
+            self._mark_owned(_typed);
+        }
+        return _typed;
+    }
+    if self._str_desc_ty is not None and want == self._str_desc_ty {
+        return None;
+    }
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    _raw = b.bitcast(ptr, i8p, name="erased.raw") if ptr.type != i8p else ptr;
+    _payload = self._opt_payload_of(want);
+    if _payload is not None {
+        _ref_payload = isinstance(_payload, ir.PointerType);
+        if not _ref_payload
+            and not isinstance(_payload, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+            return None;
+        }
+        _present = b.icmp_unsigned(
+            "!=", _raw, ir.Constant(i8p, None), name="erased.unbox.has"
+        );
+        _absent_bb = b.block;
+        _some_bb = b.function.append_basic_block("erased.unbox.some");
+        _done_bb = b.function.append_basic_block("erased.unbox.done");
+        b.cbranch(_present, _some_bb, _done_bb);
+        b.position_at_end(_some_bb);
+        if _ref_payload {
+            _inner = b.bitcast(_raw, _payload, name="erased.unbox.ref")
+                if _payload != i8p
+                else _raw;
+        } else {
+            _inner = b.load(
+                b.bitcast(_raw, _payload.as_pointer(), name="erased.unbox.slot"),
+                name="erased.unbox.val"
+            );
+            if owned {
+                self._emit_rc_release_simple(
+                    self._mark_owned(b.bitcast(_raw, i8p, name="erased.unbox.cell")),
+                    op="erased_unbox"
+                );
+            }
+        }
+        _wrapped = b.insert_value(
+            ir.Constant(want, None), ir.Constant(i8, 1), 0, name="erased.unbox.tag"
+        );
+        _wrapped = b.insert_value(_wrapped, _inner, 1, name="erased.unbox.opt");
+        _some_end = b.block;
+        b.branch(_done_bb);
+        b.position_at_end(_done_bb);
+        _phi = b.phi(want, name="erased.unbox.result");
+        _phi.add_incoming(ir.Constant(want, None), _absent_bb);
+        _phi.add_incoming(_wrapped, _some_end);
+        if owned and _ref_payload {
+            self._mark_owned(_phi);
+        }
+        return _phi;
+    }
+    if not isinstance(want, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+        return None;
+    }
+    self._emit_runtime_raise(
+        b.icmp_unsigned("==", _raw, ir.Constant(i8p, None), name="erased.unbox.none"),
+        "TypeError",
+        "value is None where a value is required"
+    );
+    _val = b.load(
+        b.bitcast(_raw, want.as_pointer(), name="erased.unbox.slot"),
+        name="erased.unbox.val"
+    );
+    if owned {
+        self._emit_rc_release_simple(
+            self._mark_owned(b.bitcast(_raw, i8p, name="erased.unbox.cell")),
+            op="erased_unbox"
+        );
+    }
+    return _val;
+}
+
+impl NaIRGenPass._erased_call_result(
+    nd: uni.FuncCall, func: ir.Function, result: ir.Value
+) -> ir.Value {
+    if not isinstance(result.type, ir.PointerType) {
+        return result;
+    }
+    _sig = self._callee_sig_of(nd, func);
+    _rt = _sig.return_type if _sig is not None else None;
+    if not isinstance(_rt, uni.Expr) or not self._erased_decl(_rt.type) {
+        return result;
+    }
+    _ub = self._erased_unbox(result, self._lower_type(nd.type), owned=True);
+    return _ub if _ub is not None else result;
 }
 
 impl NaIRGenPass._erased_seq_type(tb: any) -> (ir.Type | None) {

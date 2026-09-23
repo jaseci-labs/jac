@@ -403,7 +403,7 @@ impl NaIRGenPass._raise_has_frame_handler(nd: uni.RaiseStmt) -> bool {
 impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     if self._slot_lowering_active() {
         self._codegen_try_slot(nd);
-    } elif nd.finally_body is not None and self._gen_ctx is None {
+    } elif nd.finally_body is not None {
         self._codegen_finally_guard(nd);
     } else {
         self._codegen_try_unwind(nd);
@@ -443,7 +443,9 @@ impl NaIRGenPass._codegen_try_unwind(
     self.builder.position_at_end(body_bb);
     if _in_gen {
         self._gen_try_stack.append(
-            NativeGeneratorHandler(state=exc_state, dispatch=dispatch_bb)
+            NativeGeneratorHandler(
+                state=exc_state, dispatch=dispatch_bb, depth=_rgn_depth_slot
+            )
         );
     }
     frame = NativeFinalizer(
@@ -916,6 +918,10 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
                 (cm, exit_fn) = frame.context_exit;
                 self._emit_context_exit(cm, exit_fn);
             }
+            if frame.gen_exit is not None {
+                (gen_owner, gen_out) = frame.gen_exit;
+                self._emit_gen_context_exit(gen_owner, gen_out);
+            }
             if frame.body is not None and isinstance(frame.body.body, (list, tuple)) {
                 self._codegen_body(frame.body.body);
             }
@@ -980,11 +986,21 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
         handler_depth=len(self._slot_try_stack),
         pop_handler=True
     );
+    _gc = self._gen_ctx;
+    _in_gen = _gc is not None and func is _gc.resume_fn;
+    if _in_gen {
+        self._gen_try_stack.append(
+            NativeGeneratorHandler(state=state, dispatch=dispatch, depth=depth)
+        );
+    }
     self._finally_stack.append(frame);
     try {
         self._codegen_try_unwind(nd, emit_finally=False);
     } finally {
         self._finally_stack.pop();
+        if _in_gen {
+            self._gen_try_stack.pop();
+        }
     }
     if not self.builder.block.is_terminated {
         self.builder.call(self._exc_pop_fn, []);
@@ -1000,6 +1016,14 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
     self._region_unwind(self.builder.load(depth));
     values = self._exception_values(state);
     self.builder.call(self._exc_pop_fn, []);
+    _spill: list[ir.Value] = [];
+    if _in_gen {
+        for (_si, _sv) in enumerate(values) {
+            _slot = self._entry_alloca(_sv.type, f"finally.exc.{_si}");
+            self.builder.store(_sv, _slot);
+            _spill.append(_slot);
+        }
+    }
     self._caught_error_stack.append((func, values));
     if nd.finally_body is not None
         and isinstance(nd.finally_body.body, (list, tuple)) {
@@ -1007,6 +1031,13 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
     }
     self._caught_error_stack.pop();
     if not self.builder.block.is_terminated {
+        if _spill {
+            values = (
+                self.builder.load(_spill[0], name="finally.exc.type"),
+                self.builder.load(_spill[1], name="finally.exc.obj"),
+                self.builder.load(_spill[2], name="finally.exc.msg")
+            );
+        }
         self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);
         self.builder.unreachable();
     }

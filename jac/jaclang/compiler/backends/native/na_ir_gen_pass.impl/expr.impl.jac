@@ -291,6 +291,9 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     for _entry in self._gen_try_stack {
         exc_state = _entry.state;
         self.builder.call(self._exc_push_fn, [exc_state]);
+        if _entry.depth is not None {
+            self.builder.store(self._region_depth(), _entry.depth);
+        }
         env_ptr = self.builder.gep(
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"rearm.env.{k}"
         );
@@ -305,6 +308,66 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
         self.builder.cbranch(is_exc, _entry.dispatch, cont_bb);
         self.builder.position_at_end(cont_bb);
     }
+    self._emit_gen_pending_raise();
+}
+
+impl NaIRGenPass._emit_gen_pending_raise -> None {
+    """Raise an exception thrown into the generator at its suspension point.
+
+    A caller throws by filling the frame's pending-exception record and
+    resuming. The raise happens after the resume point has re-armed the
+    handlers of every `try` (and `with`) the suspension sits inside, so it
+    lands in the innermost one exactly as a raise from the `yield` would --
+    its `except` can catch it, its `finally` runs -- and escapes to the
+    caller when none handles it. The resume index is retired first, so a
+    generator the exception leaves reads as finished.
+    """;
+    gc = self._gen_ctx;
+    if gc is None
+        or self.builder.function is not gc.resume_fn
+        or self._slot_lowering_active() {
+        return;
+    }
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    b = self.builder;
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    def _field(off: int, ty: ir.Type, label: str) -> ir.Value {
+        return b.bitcast(
+            b.gep(
+                gc.frame_i8, [ir.Constant(i64, off)], name=f"gen.pending.{label}.raw"
+            ),
+            ty.as_pointer(),
+            name=f"gen.pending.{label}"
+        );
+    }
+    flag_p = _field(GEN_PENDING_FLAG_OFF, i64, "flag");
+    raise_bb = gc.resume_fn.append_basic_block("gen.throw");
+    cont_bb = gc.resume_fn.append_basic_block("gen.resume");
+    b.cbranch(
+        b.icmp_unsigned(
+            "!=",
+            b.load(flag_p, name="gen.pending"),
+            ir.Constant(i64, 0),
+            name="gen.thrown"
+        ),
+        raise_bb,
+        cont_bb
+    );
+    b.position_at_end(raise_bb);
+    b.store(ir.Constant(i64, 0), flag_p);
+    b.store(ir.Constant(i64, -1), b.bitcast(gc.frame_i8, i64.as_pointer()));
+    _type = b.trunc(
+        b.load(_field(GEN_PENDING_TYPE_OFF, i64, "type")), i32, name="gen.throw.type"
+    );
+    _obj = b.load(_field(GEN_PENDING_OBJ_OFF, i8p, "obj"), name="gen.throw.obj");
+    _msg = b.load(_field(GEN_PENDING_MSG_OFF, i8p, "msg"), name="gen.throw.msg");
+    b.call(self._exc_raise_fn, [_obj, _type, _msg]);
+    b.unreachable();
+    b.position_at_end(cont_bb);
 }
 
 impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {

@@ -348,6 +348,7 @@ glob NATIVE_ERASED_FIELD_MARKERS: frozenset = frozenset({"ObjectField"});
 
 glob NATIVE_ERASED_IMPORTS: dict[str, frozenset] = {
          "abc": NATIVE_ERASED_ABC_BASES,
+         "contextlib": frozenset({"contextmanager"}),
          "jaclang.runtime.object_model": NATIVE_ERASED_FIELD_MARKERS,
          "typing": TYPE_PARAM_CONSTRUCTORS
              | NATIVE_ERASED_IDENTITY_CALLS

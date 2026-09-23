@@ -711,8 +711,17 @@ impl NaIRGenPass._reject_scalar_type_args(nd: uni.UniNode, type_name: str) -> bo
             if _idx >= len(_args) {
                 continue;
             }
-            _solved = self._lower_type(_args[_idx]);
+            _arg = _args[_idx];
+            if isinstance(_arg, ClassType)
+                and _arg._shared is not None
+                and _arg.shared.class_name in ("NoneType", "None") {
+                continue;
+            }
+            _solved = self._lower_type(_arg);
             if _solved is None or isinstance(_solved, ir.PointerType) {
+                continue;
+            }
+            if "(" not in fname and self._erased_boxable(_solved) {
                 continue;
             }
             return self._emit_scalar_type_arg_refusal(
@@ -992,6 +1001,12 @@ impl NaIRGenPass._forward_declare_method(
     ret_type = self._resolve_sig_type(sig.return_type)
         if isinstance(sig, uni.FuncSignature)
         else ir.IntType(64);
+    if isinstance(sig, uni.FuncSignature) and self._ability_is_generator(method) {
+        self._ensure_iter_types();
+        _iter_t = self._jac_iter_type;
+        assert _iter_t is not None;
+        ret_type = _iter_t.as_pointer();
+    }
 
     if sig is None and field is not None {
         if method.accessor_kind == "property" {
@@ -1069,6 +1084,19 @@ impl NaIRGenPass._codegen_method(
         ) {
             return;
         }
+    }
+
+    if isinstance(method.signature, uni.FuncSignature)
+        and self._ability_is_generator(method) {
+        _gen_mark = len(self.ctx.errors_had);
+        self._codegen_generator(method, func, self_arch=arch_name);
+        self._demote_method_if_unlowerable(
+            full_name,
+            func,
+            _gen_mark,
+            keep_func=method_name in self.vtable_method_indices.get(arch_name, {})
+        );
+        return;
     }
 
     state = self._enter_function(func);
@@ -2158,6 +2186,30 @@ impl NaIRGenPass._codegen_instantiation(
         if _is_clib_cb {
             val = self._clib_coerce_callback(val, ftype);
         } else {
+            if isinstance(ftype, ir.PointerType)
+                and not isinstance(val.type, ir.PointerType)
+                and self._erased_field(type_name, key_name) {
+                _ctor_t = nd.type;
+                _ctor_asg = nd.parent;
+                if isinstance(_ctor_asg, uni.Assignment)
+                    and _ctor_asg.value is nd
+                    and _ctor_asg.type_tag is not None {
+                    _ctor_decl = _ctor_asg.type_tag.tag.type;
+                    if isinstance(_ctor_decl, ClassType)
+                        and isinstance(_ctor_t, ClassType)
+                        and _ctor_decl._shared is not None
+                        and _ctor_t._shared is not None
+                        and _ctor_decl.shared.class_name == _ctor_t.shared.class_name {
+                        _ctor_t = _ctor_decl;
+                    }
+                }
+                val = self._erased_box(
+                    val,
+                    self._erased_want(
+                        self.struct_field_erased_tv[type_name][key_name], _ctor_t
+                    )
+                );
+            }
             val = self._coerce_type(val, ftype);
         }
 
@@ -3237,7 +3289,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                 return ir.Constant(ir.IntType(64), 0);
             }
 
-            return result;
+            return self._erased_call_result(nd, func, result);
         }
     }
 
@@ -3261,7 +3313,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         return ir.Constant(ir.IntType(64), 0);
     }
 
-    return result;
+    return self._erased_call_result(nd, func, result);
 }
 
 impl NaIRGenPass._emit_obj_str(val: ir.Value) -> (ir.Value | None) {
@@ -3857,7 +3909,16 @@ impl NaIRGenPass._codegen_field_access(
     if field_name in self.struct_field_inline.get(type_name, set()) {
         return field_ptr;
     }
-    return self.builder.load(field_ptr, name=f"field.{field_name}");
+    _loaded = self.builder.load(field_ptr, name=f"field.{field_name}");
+    if isinstance(nd, uni.Expr)
+        and nd.type is not None
+        and self._erased_field(type_name, field_name) {
+        _unboxed = self._erased_unbox(_loaded, self._lower_type(nd.type));
+        if _unboxed is not None {
+            return _unboxed;
+        }
+    }
+    return _loaded;
 }
 
 impl NaIRGenPass._field_slot_ptr(
@@ -4211,6 +4272,16 @@ impl NaIRGenPass._codegen_field_assign(
         and isinstance(ftype, ir.PointerType)
         and isinstance(ftype.pointee, ir.FunctionType)
     );
+    if isinstance(ftype, ir.PointerType)
+        and not isinstance(value.type, ir.PointerType)
+        and self._erased_field(type_name, field_name) {
+        value = self._erased_box(
+            value,
+            self._erased_want(
+                self.struct_field_erased_tv[type_name][field_name], target.target.type
+            )
+        );
+    }
     if _is_clib_cb {
         value = self._clib_coerce_callback(value, ftype);
     } elif not (skip_narrow_coerce and value.type != ftype) {

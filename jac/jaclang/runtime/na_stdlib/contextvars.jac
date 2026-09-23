@@ -1,18 +1,22 @@
+obj _NoDefault {}
+
+glob _NO_DEFAULT: _NoDefault = _NoDefault();
+
 obj:pub ContextVar[T] {
     has name: str,
-        `default: (T | None) = None,
+        `default: (T | _NoDefault) = _NO_DEFAULT,
         _value: (T | None) = None,
         _is_set: bool = False;
 
-    def get(fallback: (T | None) = None) -> T {
+    def get(fallback: (T | _NoDefault) = _NO_DEFAULT) -> T {
         if self._is_set {
-            return self._value;
+            return self._value as T;
         }
-        if fallback is not None {
-            return fallback;
+        if fallback is not _NO_DEFAULT {
+            return fallback as T;
         }
-        if self.`default is not None {
-            return self.`default;
+        if self.`default is not _NO_DEFAULT {
+            return self.`default as T;
         }
         raise LookupError(self.name);
     }

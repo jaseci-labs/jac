@@ -16,6 +16,7 @@ import from jaclang.compiler.frontend.unitree {
     FuncCall,
     GlobalVars,
     HasVar,
+    ImplDef,
     Import,
     KWPair,
     Module,
@@ -111,6 +112,38 @@ def erased_identity_call_arg(nd: FuncCall) -> (Expr | None) {
         return None;
     }
     return params[1];
+}
+
+def is_contextmanager_decorator(
+    expr: UniNode, anchor: (UniNode | None) = None
+) -> bool {
+    if not isinstance(expr, Name) {
+        return False;
+    }
+    if erased_import_binds(expr, expr.value, "contextmanager") {
+        return True;
+    }
+    return anchor is not None
+        and erased_import_binds(anchor, expr.value, "contextmanager");
+}
+
+def contextmanager_ability(ab: (UniNode | None)) -> bool {
+    if not isinstance(ab, Ability) {
+        return False;
+    }
+    decorators: list[UniNode] = list(ab.decorators or []);
+    if isinstance(ab.body, ImplDef) {
+        decorators.extend(ab.body.decorators or []);
+    }
+    if not decorators {
+        return False;
+    }
+    for dec in decorators {
+        if not is_contextmanager_decorator(dec, ab) {
+            return False;
+        }
+    }
+    return True;
 }
 
 def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol | None) {

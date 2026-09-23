@@ -464,6 +464,18 @@ impl NaIRGenPass._codegen_bound_args(
                     else None;
             }
             if val is not None {
+                if isinstance(expected_type, ir.PointerType)
+                    and not isinstance(val.type, ir.PointerType)
+                    and self._erased_decl(sp.type) {
+                    _owner_t = nd.type;
+                    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+                        _owner_t = nd.target.target.type;
+                    }
+                    val = self._erased_box(
+                        val,
+                        self._erased_want(self._erased_decl_names(sp.type), _owner_t)
+                    );
+                }
                 args.append(val);
             } else {
                 args.append(self._default_arg_fallback(expected_type));
@@ -1468,6 +1480,24 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     _identity_arg = erased_identity_call_arg(nd);
     if _identity_arg is not None {
         return self._codegen_expr(_identity_arg);
+    }
+
+    if id(nd) != self._ctxmgr_call_ok {
+        import from jaclang.compiler.symbol_utils { contextmanager_ability }
+        _cm_callee = self._callee_ability_of(nd);
+        if contextmanager_ability(_cm_callee) {
+            _cm_name = _cm_callee.name_ref.sym_name
+                if _cm_callee is not None and _cm_callee.name_ref
+                else "contextmanager";
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="context manager call",
+                name=f"@contextmanager {_cm_name}",
+                help_text="A @contextlib.contextmanager function lowers natively as a generator driven by the `with` statement that calls it, so it can only be called as a `with` item (`with f(...) as x { ... }`). Other uses need the Python context-manager object; call it from a @sv/Python context."
+            );
+            return None;
+        }
     }
 
     if is_field_marker(nd) {
