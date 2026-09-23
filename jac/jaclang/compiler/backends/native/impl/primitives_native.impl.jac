@@ -3623,10 +3623,11 @@ impl NativeDictEmitter.emit_get(
     p._emit_elem_retain(b, val_type, retained);
     p._release_owned_args(args, op="dict_get_arg");
     p._release_owned_args([target], op="dict_get_receiver");
+    restored = p._restore_dict_read(result, ctx.receiver_node);
     if p._elem_kind(val_type) != "raw" {
-        p._mark_owned(result);
+        p._mark_owned(restored);
     }
-    return result;
+    return restored;
 }
 
 impl NativeDictEmitter.emit_keys(
@@ -3845,7 +3846,7 @@ impl NativeDictEmitter.emit_pop(
     result.add_incoming(popped_val, _found_pred);
     result.add_incoming(default_val, _notfound_pred);
     p._release_owned_args([key], op="dict_method_key");
-    return result;
+    return p._restore_dict_read(result, ctx.receiver_node);
 }
 
 impl NativeDictEmitter.emit_remove(
@@ -3988,7 +3989,7 @@ impl NativeDictEmitter.emit_setdefault(
     result.add_incoming(default_val, notfound_bb);
     p._emit_take_ref(result, op="dict_setdefault_result");
     p._release_owned_args(args, op="dict_setdefault_arg");
-    return result;
+    return p._restore_dict_read(result, ctx.receiver_node);
 }
 
 impl NativeDictEmitter.emit_update(

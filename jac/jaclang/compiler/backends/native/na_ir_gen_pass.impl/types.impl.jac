@@ -553,8 +553,46 @@ impl NaIRGenPass._restore_list_read(
     return value;
 }
 
+impl NaIRGenPass._restore_dict_read(
+    value: ir.Value, collection: (uni.UniNode | None)
+) -> ir.Value {
+    """Restore a dictionary value's declared layout from erased pointer storage.
+
+    Dictionaries whose values lower to a pointer without a named struct --
+    tuples, most notably -- share the generic `ptr` value slot, so a read
+    hands back a bare `i8*`. Left erased, a local bound from the read takes
+    `i8*` as its storage and a subscript on it lowers as a string index.
+    Recover the pointee the dictionary's value type declares, as list reads
+    do for their elements.
+    """;
+    expected = self._dict_read_llvm(value.type, collection);
+    if expected == value.type {
+        return value;
+    }
+    restored = self.builder.bitcast(value, expected, name="dict.val.ptr");
+    if self._is_owned(value) {
+        self._mark_owned(restored);
+    }
+    return restored;
+}
+
+impl NaIRGenPass._dict_read_llvm(
+    storage: ir.Type, collection: (uni.UniNode | None)
+) -> ir.Type {
+    """Layout a value read from `collection`'s `storage` slot is used at.""";
+    if collection is None or storage != ir.IntType(8).as_pointer() {
+        return storage;
+    }
+    expected = self._dict_val_llvm_of(collection);
+    return expected if isinstance(expected, ir.PointerType) else storage;
+}
+
 impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
     return self._typed_elem_llvm_of(expr, "list[");
+}
+
+impl NaIRGenPass._dict_val_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    return self._typed_elem_llvm_of(expr, "dict[", arg_index=1);
 }
 
 impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
@@ -562,7 +600,7 @@ impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | No
 }
 
 impl NaIRGenPass._typed_elem_llvm_of(
-    expr: (uni.UniNode | None), prefix: str
+    expr: (uni.UniNode | None), prefix: str, arg_index: int = 0
 ) -> (ir.Type | None) {
     """Element storage for a container-typed expression.
 
@@ -604,10 +642,10 @@ impl NaIRGenPass._typed_elem_llvm_of(
         return None;
     }
     args = _ty.private.type_args;
-    if not args {
+    if not args or arg_index >= len(args) {
         return None;
     }
-    lowered = self._elem_storage_llvm(args[0]);
+    lowered = self._elem_storage_llvm(args[arg_index]);
     if lowered is not None and isinstance(lowered, ir.VoidType) {
         return ir.IntType(64);
     }

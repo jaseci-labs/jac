@@ -490,7 +490,8 @@ impl NaIRGenPass._codegen_dict_access(
     key_val: ir.Value,
     key_type_name: str,
     val_type_name: str,
-    key_node: (uni.UniNode | None) = None
+    key_node: (uni.UniNode | None) = None,
+    collection: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     dict_key = f"{key_type_name}:{val_type_name}";
     helpers = self.dict_helpers.get(dict_key);
@@ -513,7 +514,9 @@ impl NaIRGenPass._codegen_dict_access(
     if _gh is not None {
         _get_args.append(_gh);
     }
-    borrowed = self.builder.call(_get_fn, _get_args, name="dict.get");
+    borrowed = self._restore_dict_read(
+        self.builder.call(_get_fn, _get_args, name="dict.get"), collection
+    );
     self._release_owned_args([key_val], op="dict_get");
     result = self._finish_borrowed_read(target_val, borrowed);
     self._emit_runtime_raise(not_exists, "KeyError", "key not found");

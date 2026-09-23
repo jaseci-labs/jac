@@ -2938,7 +2938,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if dict_val is not None and dict_type_key is not None {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
-                "dict", method_name, dict_val, arg_vals, dict_type_key
+                "dict", method_name, dict_val, arg_vals, dict_type_key, kw_node=nd
             );
             if result is not None {
                 return result;

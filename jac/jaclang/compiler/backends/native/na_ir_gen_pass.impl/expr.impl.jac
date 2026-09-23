@@ -2525,7 +2525,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                                 key_val,
                                 key_type_name,
                                 val_type_name,
-                                key_node=_dk_nd
+                                key_node=_dk_nd,
+                                collection=nd.target
                             );
                         }
                     }
@@ -2555,7 +2556,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                                 key_val,
                                 key_type_name,
                                 val_type_name,
-                                key_node=_dk_nd
+                                key_node=_dk_nd,
+                                collection=nd.target
                             );
                         }
                     }

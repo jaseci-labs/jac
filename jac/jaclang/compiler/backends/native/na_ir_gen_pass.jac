@@ -1115,7 +1115,8 @@ walker NaIRGenPass {
         key_val: ir.Value,
         key_type_name: str,
         val_type_name: str,
-        key_node: (uni.UniNode | None) = None
+        key_node: (uni.UniNode | None) = None,
+        collection: (uni.UniNode | None) = None
     ) -> (ir.Value | None);
 
     def _codegen_dict_set(
@@ -2113,7 +2114,8 @@ walker NaIRGenPass {
         range_start: (ir.Value | None) = None,
         elem_cast: (ir.Type | None) = None,
         unpack_target: (uni.TupleVal | None) = None,
-        range_step: (ir.Value | None) = None
+        range_step: (ir.Value | None) = None,
+        items_source: (uni.Expr | None) = None
     ) -> None;
 
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;
@@ -2335,10 +2337,16 @@ walker NaIRGenPass {
         value: (ir.Value | None), collection: uni.UniNode
     ) -> (ir.Value | None);
 
+    def _restore_dict_read(
+        value: ir.Value, collection: (uni.UniNode | None)
+    ) -> ir.Value;
+
+    def _dict_read_llvm(storage: ir.Type, collection: (uni.UniNode | None)) -> ir.Type;
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    def _dict_val_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _typed_elem_llvm_of(
-        expr: (uni.UniNode | None), prefix: str
+        expr: (uni.UniNode | None), prefix: str, arg_index: int = 0
     ) -> (ir.Type | None);
 
     def _static_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
