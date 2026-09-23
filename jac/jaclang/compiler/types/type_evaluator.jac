@@ -61,6 +61,7 @@ import from jaclang.compiler.frontend.unitree {
     JsxComment,
     JsxElement,
     JsxElementName,
+    JsxExpression,
     JsxNormalAttribute,
     JsxSpreadAttribute,
     JsxText,
@@ -674,6 +675,7 @@ walker TypeEvaluator {
     ) -> TypeBase;
 
     def _set_module_item_symbol_and_type(node_: ModuleItem, sym: Symbol) -> TypeBase;
+    def _provided_import_item_symbol(node_: ModuleItem) -> Symbol | None;
     def resolve_imported_symbols(sym: Symbol) -> Symbol;
     def _set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase;
     def _resolution_scope_for(expr: UniNode) -> UniScopeNode | None;

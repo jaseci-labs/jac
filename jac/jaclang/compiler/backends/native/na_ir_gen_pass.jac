@@ -536,6 +536,10 @@ walker NaIRGenPass {
         text: ir.Value, maxsplit: ir.Value | None = None, reverse: bool = False
     ) -> ir.Value;
 
+    def _codegen_str_splitlines(
+        text: ir.Value, keepends: ir.Value | None = None
+    ) -> ir.Value;
+
     def _codegen_str_split(
         str_val: ir.Value,
         sep_val: ir.Value,
@@ -1001,6 +1005,7 @@ walker NaIRGenPass {
     def _ret_tuple_hints(fname: str, ret_tuple: any) -> (list[str | None] | None);
     def _ensure_emitters -> dict[str, object];
     def _primitive_method_names(type_name: str) -> set[str];
+    def _primitive_method_takes_kwargs(type_name: str, method_name: str) -> bool;
     def _dispatch_primitive_method(
         type_name: str,
         method_name: str,

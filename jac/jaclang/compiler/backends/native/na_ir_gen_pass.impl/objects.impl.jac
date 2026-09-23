@@ -2434,8 +2434,15 @@ impl NaIRGenPass._dispatch_receiver_method(
 ) -> (ir.Value | None) {
     originals = self._codegen_call_args(nd);
     arguments = [self._str_view(argument) for argument in originals];
+    takes_kwargs = self._primitive_method_takes_kwargs(type_name, method_name);
     result = self._dispatch_primitive_method(
-        type_name, method_name, receiver, arguments, ""
+        type_name,
+        method_name,
+        receiver,
+        arguments,
+        "",
+        kwargs=self._split_call_kwargs(nd) if takes_kwargs else None,
+        kw_node=nd if takes_kwargs else None
     );
     if result is None {
         return None;

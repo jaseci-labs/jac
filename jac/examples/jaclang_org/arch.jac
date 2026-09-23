@@ -142,6 +142,7 @@ impl import core {
     utils --> core.site.ui.tabs { cn }
     utils --> core.site.ui.textarea { cn }
     utils --> core.site.ui.tooltip { cn }
+    utils --> core.site.landing.Reveal | core.site.source.FloatingSource { cn }
 }
 
 impl import core.brand {
@@ -367,6 +368,80 @@ impl import core.site.docs {
 
 impl import core.site.game {
     webgl_host --> core.site.landing.WasmGame { run_game }
+    arena --> core.site.game.webgl_host {
+        frame,
+        get_deaths,
+        get_hp,
+        get_score,
+        init,
+        shutdown
+    }
+    gmath --> core.site.game.arena { clampf, jsin, lerp }
+    gmath --> core.site.game.sim {
+        DEG2RAD,
+        Rng,
+        jcos,
+        jsin,
+        jsqrt,
+        rand01,
+        rand_range,
+        rand_sign
+    }
+    platform_rl --> core.site.game.arena {
+        KEY_A,
+        KEY_D,
+        KEY_DOWN,
+        KEY_LEFT,
+        KEY_RIGHT,
+        KEY_S,
+        KEY_SPACE,
+        KEY_TAB,
+        KEY_UP,
+        KEY_W,
+        MOUSE_LEFT,
+        SCREEN_H,
+        SCREEN_W,
+        begin_frame,
+        begin_model,
+        begin_overlay,
+        close_window,
+        draw_box,
+        draw_floor,
+        draw_fps,
+        draw_rect2d,
+        end_frame,
+        end_model,
+        frame_dt,
+        key_held,
+        key_tapped,
+        lock_mouse,
+        mouse_pressed,
+        mouse_x,
+        mouse_y,
+        open_window,
+        set_camera,
+        should_close,
+        unlock_mouse
+    }
+    sim --> core.site.game.arena {
+        CHARGE_T,
+        Cmd,
+        EnemyPool,
+        FIRE_COOLDOWN,
+        Game,
+        HP_MAX,
+        MAX_ENEMIES,
+        PITCH_LIMIT,
+        Player,
+        ProjectilePool,
+        SparkPool,
+        Stats,
+        TICK_DT,
+        TICK_MAX_CATCHUP,
+        sim_tick,
+        world_new
+    }
+    type sim --> core.site.game.webgl_host { Game }
 }
 
 impl import core.site.jacyac {
@@ -459,6 +534,7 @@ impl import core.site.source {
     FloatingSource --> core.site.landing.Hero { FloatingSource }
     FloatingSource --> core.site.landing.WaitWuuut { FloatingSource }
     SourceBrowser --> core.site.landing.ExplorerFinale { SourceBrowser }
+    SourceBrowser --> core.site.source.FloatingSource { SourceBrowser }
 }
 
 impl import core.site.ui {

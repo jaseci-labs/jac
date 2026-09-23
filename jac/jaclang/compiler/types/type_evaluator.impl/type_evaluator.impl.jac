@@ -634,6 +634,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
                 self._validate_jsx_props(expr, expected_type);
+                for child in (expr.children or []) {
+                    if isinstance(child, JsxExpression) {
+                        self.get_type_of_expression(child.expr);
+                    }
+                }
                 return self._convert_to_instance(self.prefetch.jsx_element_class);
             }
 
@@ -6184,6 +6189,7 @@ impl TypeEvaluator._type_alias_tag_ident(tag_expr: Expr) -> (str | None) {
             if mod_item is not None and isinstance(mod_item.name, Name) {
                 return mod_item.name.value;
             }
+            return sym.sym_name;
         }
         return tag_expr.value;
     }

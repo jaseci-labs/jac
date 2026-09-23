@@ -25,6 +25,17 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
             }
         }
     }
+
+    if _own_spec is None
+        and (
+            isinstance(nd.out_expr, (uni.CompareExpr, uni.Bool))
+            or (
+                isinstance(nd.out_expr, uni.UnaryExpr)
+                and nd.out_expr.op.name == Tok.NOT
+            )
+        ) {
+        _own_spec = "i64";
+    }
     if _own_spec is not None {
         elem_type_name = _own_spec;
     } else {

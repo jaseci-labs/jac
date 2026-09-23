@@ -1597,6 +1597,12 @@ impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
     return _names;
 }
 
+impl NaIRGenPass._primitive_method_takes_kwargs(
+    type_name: str, method_name: str
+) -> bool {
+    return (type_name, method_name) in {("list", "sort"), ("str", "splitlines")};
+}
+
 impl NaIRGenPass._dispatch_primitive_method(
     type_name: str,
     method_name: str,
@@ -1616,7 +1622,7 @@ impl NaIRGenPass._dispatch_primitive_method(
     if _emit_fn is None {
         return None;
     }
-    if kwargs and method_name not in ("sort", ) {
+    if kwargs and not self._primitive_method_takes_kwargs(type_name, method_name) {
         self.ctx.emit(
             E5092,
             node_override=kw_node,

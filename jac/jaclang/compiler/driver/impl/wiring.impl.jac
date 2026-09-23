@@ -52,7 +52,19 @@ impl WiringSpec.postinit -> None {
             f"{rule.block.scope_prefix}:{rule.name.value}:{srcs}-->{tgts}:{names}"
         );
     }
-    self._rules_digest = hashlib.sha256("\n".join(rows).encode()).hexdigest()
+    self._rule_rows = rows;
+}
+
+impl WiringSpec._ensure_policy -> None {
+    if self._policy_loaded {
+        return;
+    }
+    self._policy_loaded = True;
+    if not self.closed_patterns {
+        self.closed_patterns = _closed_patterns_for(self.root_dir);
+    }
+    rows = list(self._rule_rows) + ["closed:" + p for p in self.closed_patterns];
+    self._policy_digest = hashlib.sha256("\n".join(rows).encode()).hexdigest()
         if rows
         else "";
 }
@@ -144,6 +156,66 @@ impl WiringSpec.consumer_wires(consumer: str) -> list[ImportWire] {
 
 impl WiringSpec.is_covered(consumer: str) -> bool {
     return consumer in self._by_consumer;
+}
+
+impl WiringSpec.is_project_module(module: str) -> bool {
+    return module in self.project_modules();
+}
+
+impl WiringSpec.pattern_matches(pattern: str, module: str) -> bool {
+    if pattern == "*" or pattern == "any" {
+        return True;
+    }
+    if pattern.endswith(".*") {
+        base = pattern[:-2];
+        return module == base or module.startswith(base + ".");
+    }
+    return module == pattern;
+}
+
+impl WiringSpec.is_mentioned(module: str) -> bool {
+    if self._mentioned is None {
+        named: set[str] = set(self._by_consumer.keys());
+        for wire in self.wires {
+            named.add(wire.provider_path);
+        }
+        patterns: list[tuple[ModulePattern, str]] = [];
+        for rule in self.rules {
+            prefix = rule.block.scope_prefix;
+            patterns.extend(
+                [
+                    (p, prefix)
+                    for p in rule.sources
+                    if not p.is_any
+                ]
+            );
+            patterns.extend(
+                [
+                    (t, "")
+                    for t in rule.targets
+                    if not t.is_any
+                ]
+            );
+        }
+        if patterns {
+            for name in self.project_modules() {
+                if any([p.matches(name, prefix) for (p, prefix) in patterns]) {
+                    named.add(name);
+                }
+            }
+        }
+        self._mentioned = named;
+    }
+    return module in self._mentioned;
+}
+
+impl WiringSpec.is_closed(module: str) -> bool {
+    self._ensure_policy();
+    return any([WiringSpec.pattern_matches(p, module) for p in self.closed_patterns]);
+}
+
+impl WiringSpec.is_sealed(module: str) -> bool {
+    return self.is_mentioned(module) or self.is_closed(module);
 }
 
 impl WiringSpec.import_form(
@@ -262,11 +334,12 @@ impl WiringSpec.annex_source(consumer: str) -> (str | None) {
 }
 
 impl WiringSpec.digest_for(consumer: str) -> str {
+    self._ensure_policy();
     annex = self.annex_source(consumer) or "";
-    if not annex and not self._rules_digest {
+    if not annex and not self._policy_digest {
         return "";
     }
-    return hashlib.sha256((annex + "\x00" + self._rules_digest).encode()).hexdigest();
+    return hashlib.sha256((annex + "\x00" + self._policy_digest).encode()).hexdigest();
 }
 
 impl WiringSpec.wire_bindings(wire: ImportWire) -> list[WireBinding] {
@@ -370,6 +443,20 @@ impl arch_file_for(path: str) -> (str | None) {
     return arch if os.path.isfile(arch) else None;
 }
 
+impl _closed_patterns_for(root_dir: str) -> list[str] {
+    import from jaclang.project.config { get_config_for_path }
+    import from pathlib { Path }
+    try {
+        cfg = get_config_for_path(Path(root_dir));
+    } except Exception {
+        return [];
+    }
+    if cfg is None {
+        return [];
+    }
+    return list(cfg.arch.closed);
+}
+
 impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
     try {
         st = os.stat(arch_path);
@@ -389,7 +476,7 @@ impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
     return spec;
 }
 
-impl wiring_for_path(path: str) -> (WiringSpec | None) {
+impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     if not path {
         return None;
     }
@@ -398,18 +485,35 @@ impl wiring_for_path(path: str) -> (WiringSpec | None) {
         return None;
     }
     scope = _resolution.get();
-    if scope is not None and root_dir in scope {
+    if scope is not None and root_dir in scope and scope[root_dir] is not None {
         return scope[root_dir];
+    }
+    if root_dir in _building {
+        return None;
     }
     arch = os.path.join(root_dir, ARCH_FILE_NAME);
     spec: (WiringSpec | None) = None;
-    if os.path.isfile(arch) and root_dir not in _building {
-        _building.add(root_dir);
-        try {
+    _building.add(root_dir);
+    try {
+        if os.path.isfile(arch) {
             spec = _load_spec(root_dir, arch);
-        } finally {
-            _building.discard(root_dir);
+        } elif not policy or (scope is not None and root_dir in scope) {
+            return None;
+        } else {
+            closed = _closed_patterns_for(root_dir);
+            if closed {
+                spec = WiringSpec(
+                    root_dir=root_dir,
+                    path=arch,
+                    source="",
+                    closed_patterns=closed,
+                    _policy_loaded=True
+                );
+                spec._ensure_policy();
+            }
         }
+    } finally {
+        _building.discard(root_dir);
     }
     if scope is not None {
         scope[root_dir] = spec;
@@ -417,11 +521,100 @@ impl wiring_for_path(path: str) -> (WiringSpec | None) {
     return spec;
 }
 
+impl dedupe_generated_imports(mod: Module) -> None {
+    spec = wiring_for_path(mod.loc.mod_path, policy=False);
+    if spec is None {
+        return;
+    }
+    written: set[tuple[str, str, str, str]] = set();
+    generated: list[Import] = [];
+    for stmt in mod.body {
+        if not isinstance(stmt, Import) {
+            continue;
+        }
+        if stmt.loc.mod_path == spec.path {
+            generated.append(stmt);
+            continue;
+        }
+        written |= _import_keys(stmt);
+    }
+    if not generated or not written {
+        return;
+    }
+    consumer = spec.module_name(mod.loc.mod_path) or "";
+    removed: set[int] = set();
+    for stmt in generated {
+        doomed: set[int] = set();
+        for (key, item) in _import_items(stmt) {
+            if key in written or _relative_twin(key, consumer) in written {
+                doomed.add(id(item));
+            }
+        }
+        if doomed and stmt.prune_items(doomed) {
+            removed.add(id(stmt));
+        }
+    }
+    if removed {
+        mod._role_set(
+            BodyRole,
+            [
+                s
+                for s in mod.body
+                if id(s) not in removed
+            ]
+        );
+        mod.set_kids(
+            nodes=[
+                k
+                for k in [mod->:Kid:->]
+                if id(k) not in removed
+            ]
+                or [EmptyToken()]
+        );
+        mod._invalidate_sub_node_tab();
+    }
+}
+
+impl _import_items(stmt: Import) -> list[tuple[tuple[str, str, str, str], UniNode]] {
+    from_loc = stmt.from_loc;
+    form = WiringSpec.import_form(
+        stmt.is_absorb, stmt.is_typed, stmt.is_comptime, from_loc is not None
+    );
+    out: list[tuple[tuple[str, str, str, str], UniNode]] = [];
+    for item in stmt.items {
+        alias = item.alias.value if item.alias is not None else "";
+        if isinstance(item, ModuleItem) and from_loc is not None {
+            out.append(((from_loc.dot_path_str, form, item.name.value, alias), item));
+        } elif isinstance(item, ModulePath) {
+            out.append(((item.dot_path_str, form, "", alias), item));
+        }
+    }
+    return out;
+}
+
+impl _import_keys(stmt: Import) -> set[tuple[str, str, str, str]] {
+    return {key for (key, _item) in _import_items(stmt)};
+}
+
+impl _relative_twin(
+    key: tuple[str, str, str, str], consumer: str
+) -> tuple[str, str, str, str] {
+    (provider, form, name, alias) = key;
+    if "." not in consumer {
+        return key;
+    }
+    package = consumer.rsplit(".", 1)[0] + ".";
+    if provider.startswith(package) {
+        return ("." + provider[len(package):], form, name, alias);
+    }
+    return key;
+}
+
 impl wiring_annex_for(file_path: str) -> (tuple[str, str] | None) {
     if is_arch_file(file_path) {
         return None;
     }
-    spec = wiring_for_path(file_path);
+    spec = wiring_for_path(file_path, policy=False);
     if spec is None {
         return None;
     }

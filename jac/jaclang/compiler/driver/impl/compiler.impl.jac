@@ -850,6 +850,8 @@ impl JacCompiler.parse_str(
                 source_str, file_path, target_program, annex_sources(file_path)
             );
         }
+        import from jaclang.compiler.driver.wiring { dedupe_generated_imports }
+        dedupe_generated_imports(mod);
         if (codespace == 'client') {
             _coerce_client_module(mod);
         } elif (codespace == 'native') {

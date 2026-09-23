@@ -650,15 +650,16 @@ jac precommit --install
 
 ### jac arch
 
-Declare the project's module wiring in an `arch.jac` beside `jac.toml` and keep it in sync with the modules. A wire `provider --> consumer { names }` generates that import into the consumer at compile time; an `edge Name: pattern --> pattern` rule says what may flow where. See [Project Wiring](../wiring.md).
+Declare the project's module wiring in an `arch.jac` beside `jac.toml` and keep it in sync with the modules. A wire `provider --> consumer { names }` generates that import into the consumer at compile time; an `edge Name: pattern --> pattern` rule says what may flow where; a module the file names is sealed in both directions, and `[arch] closed` in `jac.toml` seals the rest. See [Project Wiring](../wiring.md).
 
 ```bash
-jac arch [-h] [action] [-s] [-f] [--format {mermaid,json}] [-o OUTPUT]
+jac arch [-h] [action] [scope] [-s] [-f] [--format {mermaid,json}] [-o OUTPUT]
 ```
 
 | Argument / Option | Description | Default |
 |--------|-------------|---------|
-| `action` | `init` (write `arch.jac` from the current imports), `sync` (add the wires covered modules are missing) or `graph` (render the wiring) | `graph` |
+| `action` | `init` (write `arch.jac` from the current imports, with the layering rules they already follow), `sync` (add the wires and rules sealed modules are missing) or `graph` (render the wiring) | `graph` |
+| `scope` | With `init`: a dotted package; wire only its modules and the modules they import from, transitively, merging into an existing `arch.jac` | whole project |
 | `-s, --strip` | With `init` or `sync`: remove the imports `arch.jac` now provides from every covered module (the same fix `jac fmt --lintfix` applies) | `False` |
 | `-f, --force` | With `init`: overwrite an existing `arch.jac` | `False` |
 | `--format` | With `graph`: `mermaid` or `json` | `mermaid` |
@@ -670,7 +671,10 @@ jac arch [-h] [action] [-s] [-f] [--format {mermaid,json}] [-o OUTPUT]
 # Adopt: write arch.jac from every project-module import and strip them from the modules
 jac arch init --strip
 
-# Add a wire for every import a covered module writes that arch.jac does not declare
+# Wire one package and everything it imports from, adding to an existing arch.jac
+jac arch init core.docs
+
+# Add the wires and rules that sealed modules are missing
 jac arch sync
 
 # Print the wiring as a mermaid diagram, or dump wires and rules as JSON

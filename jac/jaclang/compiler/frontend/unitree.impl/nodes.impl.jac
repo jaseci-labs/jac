@@ -1521,6 +1521,48 @@ impl PyInlineCode.postinit -> None {
 }
 
 
+impl Import.prune_items(doomed: set[int]) -> bool {
+    self._role_set(
+        ItemsRole,
+        [
+            item
+            for item in self.items
+            if id(item) not in doomed
+        ]
+    );
+    if not self.items {
+        return True;
+    }
+    kids = [self->:Kid:->];
+    commas = [
+        k
+        for k in kids
+        if isinstance(k, Token) and k.name == Tok.COMMA
+    ];
+    no_commas = [
+        k
+        for k in kids
+        if id(k) not in doomed and not (isinstance(k, Token) and k.name == Tok.COMMA)
+    ];
+    result: list[UniNode] = [];
+    ci = 0;
+    for (i, kid) in enumerate(no_commas) {
+        result.append(kid);
+        if (
+            i + 1 < len(no_commas)
+            and isinstance(kid, (ModuleItem, ModulePath))
+            and isinstance(no_commas[i + 1], (ModuleItem, ModulePath))
+            and ci < len(commas)
+        ) {
+            result.append(commas[ci]);
+            ci += 1;
+        }
+    }
+    self.set_kids(nodes=result);
+    self._invalidate_sub_node_tab();
+    return False;
+}
+
 impl Import.postinit -> None {
     self.jac_detected = None;
     self.boundary_facts = None;

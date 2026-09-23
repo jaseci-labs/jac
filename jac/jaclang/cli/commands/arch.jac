@@ -10,8 +10,17 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
                  "action",
                  kind=ArgKind.POSITIONAL,
                  `default="graph",
-                 help="Action: init (write arch.jac from the current imports), sync (add "
-                 "missing wires for covered modules), graph (render the wiring; default)"
+                 help="Action: init (write arch.jac from the current imports, with the "
+                 "layering rules the imports already follow), sync (add the wires and "
+                 "rules sealed modules are missing), graph (render the wiring; default)"
+             ),
+             Arg.create(
+                 "scope",
+                 kind=ArgKind.POSITIONAL,
+                 `default="",
+                 help="With init: a dotted package; wire only its modules and the "
+                 "modules they import from, transitively, and merge into an existing "
+                 "arch.jac instead of replacing it"
              ),
              Arg.create(
                  "strip",
@@ -46,13 +55,19 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
          examples=[
              (
                  "jac arch init --strip",
-                 "Write arch.jac from every project-module import and remove those "
-                 "imports from the modules"
+                 "Write arch.jac from every project-module import, with one rule per "
+                 "package stating where it flows today, and remove those imports "
+                 "from the modules"
+             ),
+             (
+                 "jac arch init core.docs",
+                 "Wire one package and everything it depends on, adding to an "
+                 "existing arch.jac"
              ),
              (
                  "jac arch sync",
-                 "Add a wire for every import a covered module writes that arch.jac "
-                 "does not declare"
+                 "Add a wire for every import a sealed module writes that arch.jac "
+                 "does not declare, and a rule for every provider that has none"
              ),
              ("jac arch graph", "Print the wiring as a mermaid diagram"),
              (
@@ -67,6 +82,7 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
 
 def arch(
     action: str = "graph",
+    scope: str = "",
     strip: bool = False,
     force: bool = False,
     format: str = "mermaid",

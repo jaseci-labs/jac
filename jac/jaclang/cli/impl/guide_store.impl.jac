@@ -15,6 +15,7 @@ glob _CODE_GUIDE_MAP: dict[str, str] = {
          "E2091": "jac-arch-wiring",
          "E2092": "jac-arch-wiring",
          "E2093": "jac-arch-wiring",
+         "E2094": "jac-arch-wiring",
          "W2083": "jac-arch-wiring",
          "W3052": "jac-arch-wiring",
          "W3053": "jac-arch-wiring",

@@ -515,6 +515,13 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
             break;
         }
     }
+    import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
+    for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ability_delegates_to_model(ab) {
+            reasons.append(f"by llm ability '{ab.py_resolve_name()}'");
+            break;
+        }
+    }
     if module.get_all_sub_nodes(uni.PyInlineCode) {
         reasons.append('inline ::py:: block');
     }
@@ -591,7 +598,11 @@ def scan_native_blockers(
             return ("root access (persistent graph)", deps);
         }
     }
+    import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
     for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ability_delegates_to_model(ab) {
+            return ("by llm ability (needs the byLLM runtime)", deps);
+        }
         if ab.is_async {
             return ("async ability", deps);
         }

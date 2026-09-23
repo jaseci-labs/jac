@@ -118,3 +118,16 @@ test "int elements keep the answer they always had" {
     assert answer(eng, "all_int_yes") == 1;
     assert answer(eng, "all_int_no") == 0;
 }
+
+
+test "boolean comprehensions store results independently of input element types" {
+    (_rec, _errors, eng) = measured();
+    for i in range(20) {
+        assert answer(eng, "any_object_comprehension") == 1;
+        assert answer(eng, "all_object_comprehension") == 0;
+        assert answer(eng, "any_negated_comprehension") == 1;
+        assert answer(eng, "all_literal_comprehension") == 1;
+        assert answer(eng, "any_float_comparison") == 1;
+        assert answer(eng, "any_empty_comprehension") == 0;
+    }
+}
