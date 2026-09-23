@@ -236,13 +236,13 @@ impl NaIRGenPass._osp_collect_slots(
 impl NaIRGenPass._osp_build_slot(
     trig_tag: int, thunk: ir.Function
 ) -> (ir.Value | None) {
-    slot = self._osp_rc_new("Slot");
+    slot = self._osp_rc_new("OspSlot");
     if slot is None {
         return None;
     }
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    _idx = self.struct_field_indices.get("Slot", {});
+    _idx = self.struct_field_indices.get("OspSlot", {});
     self.builder.store(
         ir.Constant(i64, trig_tag),
         self.builder.gep(
@@ -251,7 +251,7 @@ impl NaIRGenPass._osp_build_slot(
             name="slot.trig"
         )
     );
-    _fn_ty = self.struct_field_types.get("Slot", {}).get("fn");
+    _fn_ty = self.struct_field_types.get("OspSlot", {}).get("fn");
     _fn_val = self._coerce_type(thunk, _fn_ty) if _fn_ty is not None else thunk;
     self.builder.store(
         _fn_val,
@@ -353,7 +353,7 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
     _ocf = ir.Function(self.llvm_module, complete_signature, name="__osp_on_complete");
     _ocf.linkage = "internal";
     self._builder = ir.IRBuilder(_ocf.append_basic_block("entry"));
-    _ws_idx = self.struct_field_indices.get("WalkScope", {});
+    _ws_idx = self.struct_field_indices.get("OspWalkScope", {});
     if _ws_idx {
         _deliver = _ocf.append_basic_block("deliver");
         _oc_done = _ocf.append_basic_block("done");
@@ -421,7 +421,7 @@ impl NaIRGenPass._emit_osp_setup -> None {
         return;
     }
 
-    for _req in ["Slot", "WalkerDesc", "NodeDesc", "OspRuntime"] {
+    for _req in ["OspSlot", "OspWalkerDesc", "OspNodeDesc", "OspRuntime"] {
         if _req not in self.struct_types {
             return;
         }
@@ -498,7 +498,9 @@ impl NaIRGenPass._emit_osp_setup -> None {
                 self._release_owned_args(values, op="osp_register_edge_type");
             }
         }
-        _sn = "WalkerDesc" if (_model.arch_kind.get(_name) == "walker") else "NodeDesc";
+        _sn = "OspWalkerDesc"
+            if (_model.arch_kind.get(_name) == "walker")
+            else "OspNodeDesc";
 
         _desc = self._osp_build_descriptor(
             _sn,

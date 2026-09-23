@@ -11,8 +11,8 @@ without caching it.
 
 import jaclang.runtime.osp_graph as _g;
 import from jaclang.runtime.osp_kernel {
-    NodeDesc,
-    Slot,
+    OspNodeDesc,
+    OspSlot,
     UNTYPED,
     osp_has_desc,
     osp_node_desc,
@@ -71,8 +71,8 @@ test "descriptor registry: registered descs return, misses stay uncached" {
     miss = osp_node_desc(t);
     assert miss.type_tag == t and miss.`entry == [];
     assert not osp_has_desc(t) , "a miss was cached";
-    nd = NodeDesc(
-        type_tag=t, `entry=[Slot(trig_tag=UNTYPED, fn=_noop_ability)], `exit=[]
+    nd = OspNodeDesc(
+        type_tag=t, `entry=[OspSlot(trig_tag=UNTYPED, fn=_noop_ability)], `exit=[]
     );
     osp_register_desc(t, nd);
     assert osp_has_desc(t);

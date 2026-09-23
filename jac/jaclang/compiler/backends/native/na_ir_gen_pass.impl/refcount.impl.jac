@@ -1,15 +1,15 @@
 glob _NOGC_OSP_ENGINE_STRUCTS: tuple[str, ...] = (
-         "Slot",
-         "Plan",
-         "WalkerDesc",
-         "NodeDesc",
-         "WalkScope",
+         "OspSlot",
+         "OspPlan",
+         "OspWalkerDesc",
+         "OspNodeDesc",
+         "OspWalkScope",
          "OspRuntime",
-         "Frame",
+         "OspFrame",
          "OspEngine",
          "OspGraph",
-         "Adj",
-         "EdgeRow"
+         "OspAdj",
+         "OspEdgeRow"
      ),
      _NOGC_CONTAINER_DROP_OPS: tuple[str, ...] = (
          "scope_exit",

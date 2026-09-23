@@ -345,9 +345,9 @@ impl EsastGenPass._build_osp_setup_js -> str {
         if tag is None {
             continue;
         }
-        desc_cls = "__ospC.WalkerDesc"
+        desc_cls = "__ospC.OspWalkerDesc"
             if (arch_kinds[name] == "walker")
-            else "__ospC.NodeDesc";
+            else "__ospC.OspNodeDesc";
         entry_js = self._osp_slots_js(entry_by_owner.get(name, []), tags);
         exit_js = self._osp_slots_js(exit_by_owner.get(name, []), tags);
         lines.append(
@@ -371,7 +371,7 @@ impl EsastGenPass._osp_slots_js(slots: list[OspSlot], tags: dict[str, int]) -> s
     for slot in slots {
         fn = "(o, x) => o." + slot.ability + "(x)";
         if not slot.trigger_names {
-            parts.append("new __ospC.Slot({trig_tag: -1, fn: " + fn + "})");
+            parts.append("new __ospC.OspSlot({trig_tag: -1, fn: " + fn + "})");
         } else {
             for trig in slot.trigger_names {
                 ttag = tags[trig] if (trig in tags) else -1;
@@ -381,7 +381,7 @@ impl EsastGenPass._osp_slots_js(slots: list[OspSlot], tags: dict[str, int]) -> s
                         ttag = stable_osp_tag(trig);
                     }
                 }
-                parts.append(f"new __ospC.Slot({{trig_tag: {ttag}, fn: {fn}}})");
+                parts.append(f"new __ospC.OspSlot({{trig_tag: {ttag}, fn: {fn}}})");
             }
         }
     }
