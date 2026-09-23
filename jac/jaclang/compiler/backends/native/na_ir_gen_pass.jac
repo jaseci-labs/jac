@@ -1333,6 +1333,8 @@ walker NaIRGenPass(CompilerPass) {
         left: ir.Value, right: ir.Value, negate: bool
     ) -> (ir.Value | None);
 
+    def _value_identity(left: ir.Value, right: ir.Value) -> (ir.Value | None);
+    def _word_identity(left: ir.Value, right: ir.Value) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None);
     def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
