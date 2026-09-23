@@ -4915,22 +4915,85 @@ impl NativeBuiltinEmitter.emit_round(
     if not args {
         return None;
     }
+    if len(args) > 2 {
+        return None;
+    }
     arg_val = args[0];
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
-    if isinstance(arg_val.type, ir.DoubleType) {
-        round_fn = p._get_or_declare_extern(
-            "round", ir.DoubleType(), [ir.DoubleType()]
-        );
-        rounded = b.call(round_fn, [arg_val], name="round.f");
-        return b.fptosi(rounded, i64, name="round.result");
+    f64 = ir.DoubleType();
+
+    rint_fn = p._get_or_declare_extern("rint", f64, [f64]);
+    if len(args) == 1 {
+        if isinstance(arg_val.type, ir.DoubleType) {
+            rounded = b.call(rint_fn, [arg_val], name="round.f");
+            return b.fptosi(rounded, i64, name="round.result");
+        }
+        if isinstance(arg_val.type, ir.IntType) {
+            return arg_val;
+        }
+        return None;
+    }
+    digits = args[1];
+    if not isinstance(digits.type, ir.IntType) {
+        return None;
+    }
+    if isinstance(arg_val.type, ir.IntType) {
+        if isinstance(digits, ir.Constant) and int(digits.constant) >= 0 {
+            return arg_val;
+        }
+        return None;
+    }
+    if not isinstance(arg_val.type, ir.DoubleType) {
+        return None;
     }
 
-    if isinstance(arg_val.type, ir.IntType) {
-        return arg_val;
-    }
-    return None;
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i8p = i8.as_pointer();
+    pow_fn = p._get_or_declare_extern("pow", f64, [f64, f64]);
+    snprintf_fn = p._get_or_declare_extern(
+        "snprintf", i32, [i8p, i64, i8p], var_arg=True
+    );
+    strtod_fn = p._get_or_declare_extern("strtod", f64, [i8p, i8p.as_pointer()]);
+    wide = b.sext(digits, i64, name="round.n") if digits.type.width < 64 else digits;
+    buffer = p._entry_alloca(ir.ArrayType(i8, 720), "round.buf");
+    text = b.bitcast(buffer, i8p, name="round.text");
+    places = b.select(
+        b.icmp_signed(">", wide, ir.Constant(i64, 330), name="round.big"),
+        ir.Constant(i64, 330),
+        wide,
+        name="round.places"
+    );
+    fmt = b.bitcast(p._get_snprintf_fmt("%.*f"), i8p, name="round.fmt");
+    b.call(
+        snprintf_fn,
+        [
+            text,
+            ir.Constant(i64, 720),
+            fmt,
+            b.trunc(places, i32, name="round.prec"),
+            arg_val
+        ],
+        name="round.format"
+    );
+    exact = b.call(
+        strtod_fn, [text, ir.Constant(i8p.as_pointer(), None)], name="round.parse"
+    );
+    negative = b.icmp_signed("<", wide, ir.Constant(i64, 0), name="round.neg");
+    magnitude = b.select(
+        negative, b.neg(wide, name="round.abs"), wide, name="round.mag"
+    );
+    scale = b.call(
+        pow_fn,
+        [ir.Constant(f64, 10.0), b.sitofp(magnitude, f64, name="round.magf")],
+        name="round.scale"
+    );
+    down = b.fdiv(arg_val, scale, name="round.down");
+    rounded = b.call(rint_fn, [down], name="round.rint");
+    restored_down = b.fmul(rounded, scale, name="round.restore.down");
+    return b.select(negative, restored_down, exact, name="round.value");
 }
 
 impl NativeBuiltinEmitter.emit_min(

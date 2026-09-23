@@ -1903,7 +1903,18 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name
-            in ("abs", "min", "max", "pow", "divmod", "sum", "any", "all", "format") {
+            in (
+                "abs",
+                "min",
+                "max",
+                "pow",
+                "divmod",
+                "sum",
+                "any",
+                "all",
+                "format",
+                "round"
+            ) {
             params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             arg_vals: list[ir.Value] = [];
             arg_nodes: list[uni.UniNode] = [];
@@ -1963,7 +1974,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 "hex",
                 "oct",
                 "bin",
-                "round",
                 "float",
                 "bool",
                 "sorted",
