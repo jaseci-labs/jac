@@ -1525,6 +1525,7 @@ impl NativeStrEmitter.emit_format(
     null_ptr = ir.Constant(i8p, None);
 
     str_args: list[ir.Value] = [];
+    scratch: list[ir.Value] = [];
     for arg in args {
         if isinstance(arg.type, ir.IntType) and arg.type.width > 1 {
             buf = p._str_alloc(b, ir.Constant(i64, 32), name="fmt.ibuf");
@@ -1533,9 +1534,12 @@ impl NativeStrEmitter.emit_format(
                 snprintf_fn, [buf, ir.Constant(i64, 32), fmt_s, arg], name="fmt.ibuf.n"
             );
             p._str_finish(b, buf, b.sext(ibuf_n32, i64, name="fmt.ibuf.n64"));
+            scratch.append(buf);
             str_args.append(buf);
         } elif isinstance(arg.type, ir.DoubleType) {
-            str_args.append(p._emit_float_repr(arg));
+            float_text = p._emit_float_repr(arg);
+            scratch.append(float_text);
+            str_args.append(float_text);
         } else {
             str_args.append(arg);
         }
@@ -1585,7 +1589,13 @@ impl NativeStrEmitter.emit_format(
         p._str_finish(b, result, cur_len);
         b.branch(merge_bb);
         b.position_at_start(merge_bb);
+        if i > 0 {
+            scratch.append(current);
+        }
         current = result;
+    }
+    for text in scratch {
+        p._emit_rc_release_typed(text, op="fstr_obj_tmp", loc="");
     }
     return current;
 }

@@ -715,8 +715,10 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                     fmt_parts.append(directive);
                     args.append(self._coerce_type(val, ir.DoubleType()));
                 } elif want == "repr" {
+                    _spec_repr = self._emit_float_repr(val);
+                    obj_strs.append(_spec_repr);
                     fmt_parts.append(directive);
-                    args.append(self._emit_float_repr(val));
+                    args.append(_spec_repr);
                 } elif want == "str" {
                     if val.type != ir.IntType(8).as_pointer() {
                         obj_s = self._emit_obj_str(val);
@@ -758,8 +760,10 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 fmt_parts.append("%s");
                 args.append(self._bool_text(self.builder, val, "fstr.bool"));
             } elif isinstance(val.type, ir.DoubleType) {
+                _float_repr = self._emit_float_repr(val);
+                obj_strs.append(_float_repr);
                 fmt_parts.append("%s");
-                args.append(self._emit_float_repr(val));
+                args.append(_float_repr);
             } elif isinstance(val.type, ir.PointerType) {
                 obj_s = self._emit_obj_str(val);
                 if obj_s is None {
@@ -1864,11 +1868,7 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     fr0 = b.sub(ndig, decpt, name="fr.frac0");
     is_neg = b.icmp_signed("<", fr0, ir.Constant(i64, 0), name="fr.fracneg");
     frac = b.select(is_neg, ir.Constant(i64, 0), fr0, name="fr.frac");
-    if self._nogc_headerless() {
-        _free_hl = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
-        b.call(_free_hl, [tmp]);
-    }
-    fbuf = self._str_alloc(b, cap, name="fr.fbuf");
+    fbuf = tmp;
     frac32 = b.trunc(frac, i32, name="fr.frac32");
     flen32 = b.call(snprintf, [fbuf, cap, fmt_f, frac32, d], name="fr.flen32");
     self._str_finish(b, fbuf, b.sext(flen32, i64, name="fr.flen0"));
