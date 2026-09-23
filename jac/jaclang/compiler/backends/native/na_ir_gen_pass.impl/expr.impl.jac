@@ -717,6 +717,19 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         (walker_name, walker_val, loc_val) = (left_name, left_val, right_val);
     } elif right_name is not None and right_is_walker {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
+    } elif self._is_root_walker_operand(nd.right)
+        or self._is_root_walker_operand(nd.left) {
+        _root_right = self._is_root_walker_operand(nd.right);
+        walker_val = right_val if _root_right else left_val;
+        loc_val = left_val if _root_right else right_val;
+        _osp_ready = self._osp_rt_global is not None
+            and "osp_spawn" in self.func_symtab;
+        _tag = self._codegen_class_osp_tag(walker_val) if _osp_ready else None;
+        if _tag is not None {
+            return self._codegen_kernel_spawn("Walker", walker_val, loc_val, _tag);
+        }
+        self.ctx.emit(E5092, node_override=nd, kind="binary operator", name="KW_SPAWN");
+        return walker_val;
     } else {
         self.emit(
             E5092,
@@ -754,7 +767,10 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._codegen_kernel_spawn(
-    walker_name: str, walker_val: ir.Value, loc_val: ir.Value
+    walker_name: str,
+    walker_val: ir.Value,
+    loc_val: ir.Value,
+    walker_tag: (ir.Value | None) = None
 ) -> (ir.Value | None) {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -776,16 +792,19 @@ impl NaIRGenPass._codegen_kernel_spawn(
         _h["append"], [_starts, self._coerce_type(loc_val, i64)], op="append", loc=""
     );
 
-    _tag_slot = self.osp_type_tag_field.get(walker_name);
-    if _tag_slot is None {
-        return None;
+    _wtag = walker_tag;
+    if _wtag is None {
+        _tag_slot = self.osp_type_tag_field.get(walker_name);
+        if _tag_slot is None {
+            return None;
+        }
+        _wtag = self.builder.load(
+            self.builder.gep(
+                walker_val, [ir.Constant(i32, 0), ir.Constant(i32, _tag_slot)]
+            ),
+            name="spawn.walker_tag"
+        );
     }
-    _wtag = self.builder.load(
-        self.builder.gep(
-            walker_val, [ir.Constant(i32, 0), ir.Constant(i32, _tag_slot)]
-        ),
-        name="spawn.walker_tag"
-    );
     _nd_fn = self.func_symtab.get("osp_node_desc");
     if _nd_fn is None {
         return walker_val;
@@ -824,12 +843,19 @@ impl NaIRGenPass._codegen_kernel_spawn(
 
 impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
     if isinstance(nd, uni.FuncCall) {
-        return self._get_name(nd.target);
+        return self._class_value_ctor_bound(nd.target) or self._get_name(nd.target);
     }
     if isinstance(nd, uni.Name) {
         return self._struct_name_of(nd);
     }
     return None;
+}
+
+impl NaIRGenPass._is_root_walker_operand(nd: uni.UniNode) -> bool {
+    typ = nd.type if isinstance(nd, uni.Expr) else None;
+    return isinstance(typ, ClassType)
+        and typ.is_instance()
+        and typ.shared.class_name == "Walker";
 }
 
 impl NaIRGenPass._is_walker_arch(name: str) -> bool {

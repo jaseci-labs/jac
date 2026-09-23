@@ -36,28 +36,35 @@ impl NaIRGenPass._class_expr_bound(
     return typ.shared.class_name;
 }
 
-impl NaIRGenPass._class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None) {
+impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
     while isinstance(target, uni.AtomUnit) {
         target = target.value;
     }
     if isinstance(target, uni.Name) {
         if target.value not in self.local_vars
             and target.value not in self.global_vars {
-            return None;
+            return False;
         }
         if self._arch_alias_target(target) is not None {
-            return None;
+            return False;
         }
     } elif isinstance(target, uni.AtomTrailer) {
         if target.is_attr {
             sym = resolve_expr_symbol(target);
             if sym is None or sym.sym_type in CLASS_REFERENCE_SYMBOLS {
-                return None;
+                return False;
             }
         } elif self._class_expr_bound(target.target) is not None {
-            return None;
+            return False;
         }
     } elif not isinstance(target, uni.FuncCall) {
+        return False;
+    }
+    return self._class_expr_bound(target, unbounded="type") is not None;
+}
+
+impl NaIRGenPass._class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None) {
+    if not self._is_runtime_class_value(target) {
         return None;
     }
     bound = self._class_expr_bound(target);
@@ -65,6 +72,20 @@ impl NaIRGenPass._class_value_ctor_bound(target: (uni.UniNode | None)) -> (str |
         return None;
     }
     return bound;
+}
+
+impl NaIRGenPass._class_ancestors(type_name: str) -> list[str] {
+    ancestors: list[str] = [type_name];
+    index = 0;
+    while index < len(ancestors) {
+        for step in self._mro_of(ancestors[index]) {
+            if step not in ancestors {
+                ancestors.append(step);
+            }
+        }
+        index += 1;
+    }
+    return ancestors;
 }
 
 impl NaIRGenPass._class_init_owner(type_name: str) -> (str | None) {
@@ -438,25 +459,31 @@ impl NaIRGenPass._class_ctor_registry -> ir.GlobalVariable {
     return registry;
 }
 
-impl NaIRGenPass._emit_class_ctor_lookup_fn -> ir.Function {
-    if self._class_ctor_lookup_fn is not None {
-        return self._class_ctor_lookup_fn;
+impl NaIRGenPass._class_record_type -> ir.LiteralStructType {
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    return ir.LiteralStructType([i8p, i64, i8p, i64, i8p, i64]);
+}
+
+impl NaIRGenPass._class_ctor_entry_type -> ir.LiteralStructType {
+    i8p = ir.IntType(8).as_pointer();
+    return ir.LiteralStructType([ir.IntType(64), i8p, i8p]);
+}
+
+impl NaIRGenPass._emit_class_record_lookup_fn -> ir.Function {
+    if self._class_record_lookup_fn is not None {
+        return self._class_record_lookup_fn;
     }
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    entry_ty = ir.LiteralStructType([i64, i8p, i8p]);
-    record_ty = ir.LiteralStructType([i8p, i64, i8p, i64, i8p]);
+    record_ty = self._class_record_type();
     zero = ir.Constant(i32, 0);
     registry = self._class_ctor_registry();
     strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
-    fn = self._define_function(
-        "__jac_class_ctor", ir.FunctionType(i8p, [i8p, i8p, i64])
-    );
+    fn = self._define_function("__jac_class_record", ir.FunctionType(i8p, [i8p]));
     fn.linkage = "private";
     fn.args[0].name = "cls";
-    fn.args[1].name = "bound";
-    fn.args[2].name = "bh";
     cls = fn.args[0];
     head = fn.append_basic_block("entry");
     hashed = fn.append_basic_block("hash");
@@ -465,11 +492,6 @@ impl NaIRGenPass._emit_class_ctor_lookup_fn -> ir.Function {
     record_name = fn.append_basic_block("record.name");
     advance = fn.append_basic_block("advance");
     found = fn.append_basic_block("found");
-    scan = fn.append_basic_block("scan");
-    entry_hash = fn.append_basic_block("entry.hash");
-    entry_name = fn.append_basic_block("entry.name");
-    hit = fn.append_basic_block("hit");
-    next_entry = fn.append_basic_block("entry.next");
     miss = fn.append_basic_block("miss");
 
     b = ir.IRBuilder(head);
@@ -530,7 +552,50 @@ impl NaIRGenPass._emit_class_ctor_lookup_fn -> ir.Function {
     cursor.add_incoming(first, hashed);
     cursor.add_incoming(after, advance);
 
+    ir.IRBuilder(found).ret(cursor);
+    ir.IRBuilder(miss).ret(ir.Constant(i8p, None));
+    self._class_record_lookup_fn = fn;
+    return fn;
+}
+
+impl NaIRGenPass._emit_class_ctor_lookup_fn -> ir.Function {
+    if self._class_ctor_lookup_fn is not None {
+        return self._class_ctor_lookup_fn;
+    }
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    entry_ty = self._class_ctor_entry_type();
+    record_ty = self._class_record_type();
+    zero = ir.Constant(i32, 0);
+    strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+    find_record = self._emit_class_record_lookup_fn();
+    fn = self._define_function(
+        "__jac_class_ctor", ir.FunctionType(i8p, [i8p, i8p, i64])
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "cls";
+    fn.args[1].name = "bound";
+    fn.args[2].name = "bh";
+    head = fn.append_basic_block("entry");
+    found = fn.append_basic_block("found");
+    scan = fn.append_basic_block("scan");
+    entry_hash = fn.append_basic_block("entry.hash");
+    entry_name = fn.append_basic_block("entry.name");
+    hit = fn.append_basic_block("hit");
+    next_entry = fn.append_basic_block("entry.next");
+    miss = fn.append_basic_block("miss");
+
+    b = ir.IRBuilder(head);
+    raw = b.call(find_record, [fn.args[0]], name="record.raw");
+    b.cbranch(
+        b.icmp_unsigned("==", raw, ir.Constant(i8p, None), name="record.none"),
+        miss,
+        found
+    );
+
     b = ir.IRBuilder(found);
+    record = b.bitcast(raw, record_ty.as_pointer(), name="record");
     count = b.load(b.gep(record, [zero, ir.Constant(i32, 3)]), name="entries.n");
     entries = b.bitcast(
         b.load(b.gep(record, [zero, ir.Constant(i32, 4)]), name="entries.raw"),
@@ -576,6 +641,54 @@ impl NaIRGenPass._emit_class_ctor_lookup_fn -> ir.Function {
     ir.IRBuilder(miss).ret(ir.Constant(i8p, None));
     self._class_ctor_lookup_fn = fn;
     return fn;
+}
+
+impl NaIRGenPass._codegen_class_osp_tag(instance: ir.Value) -> (ir.Value | None) {
+    cls = self._codegen_runtime_class_name(instance);
+    if cls is None {
+        return None;
+    }
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    raw = self.builder.call(
+        self._emit_class_record_lookup_fn(), [cls], name="class.record"
+    );
+    known = self.builder.icmp_unsigned(
+        "!=", raw, ir.Constant(i8p, None), name="class.record.known"
+    );
+    record = self.builder.bitcast(
+        self.builder.select(
+            known, raw, self.builder.bitcast(self._class_tagless_record(), i8p)
+        ),
+        self._class_record_type().as_pointer(),
+        name="class.record.p"
+    );
+    tag = self.builder.load(
+        self.builder.gep(record, [ir.Constant(i32, 0), ir.Constant(i32, 5)]),
+        name="class.osp_tag"
+    );
+    self._emit_runtime_raise(
+        self.builder.icmp_unsigned(
+            "==", tag, ir.Constant(i64, 0), name="class.untagged"
+        ),
+        "TypeError",
+        "spawn requires a walker whose class is registered natively"
+    );
+    return tag;
+}
+
+impl NaIRGenPass._class_tagless_record -> ir.GlobalVariable {
+    existing = self.llvm_module.globals.get("__jac_class_tagless");
+    if isinstance(existing, ir.GlobalVariable) {
+        return existing;
+    }
+    record_ty = self._class_record_type();
+    record = ir.GlobalVariable(self.llvm_module, record_ty, name="__jac_class_tagless");
+    record.linkage = "private";
+    record.global_constant = True;
+    record.initializer = ir.Constant(record_ty, None);
+    return record;
 }
 
 impl NaIRGenPass._emit_class_ctor(
@@ -751,45 +864,56 @@ impl NaIRGenPass._emit_class_ctor_bridge(
 impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> None {
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    entry_ty = ir.LiteralStructType([i64, i8p, i8p]);
-    record_ty = ir.LiteralStructType([i8p, i64, i8p, i64, i8p]);
+    entry_ty = self._class_ctor_entry_type();
+    record_ty = self._class_record_type();
     for arch in archetypes {
         if arch.name is None {
             continue;
         }
         name = arch.name.value;
-        signature = self._class_ctor_params(name);
-        if signature is None or len(signature) > CLASS_CTOR_MAX_PARAMS {
-            continue;
-        }
-        fn = self._emit_class_ctor(arch, signature);
-        if fn is None {
+        if name not in self.struct_types or self._is_enum_arch(name) {
             continue;
         }
         entries: list[ir.Constant] = [];
-        for bound in self._mro_of(name) {
-            target = fn
-                if bound == name
-                else self._emit_class_ctor_bridge(name, bound, signature, fn);
-            if target is None {
-                continue;
+        signature = self._class_ctor_params(name);
+        fn = self._emit_class_ctor(arch, signature)
+            if signature is not None and len(signature) <= CLASS_CTOR_MAX_PARAMS
+            else None;
+        if signature is not None and fn is not None {
+            for bound in self._class_ancestors(name) {
+                target = fn
+                    if bound == name
+                    else self._emit_class_ctor_bridge(name, bound, signature, fn);
+                if target is None {
+                    continue;
+                }
+                entries.append(
+                    ir.Constant(
+                        entry_ty,
+                        [
+                            ir.Constant(i64, self._static_str_hash(bound)),
+                            self._emit_class_name_const(bound),
+                            target.bitcast(i8p)
+                        ]
+                    )
+                );
             }
-            entries.append(
-                ir.Constant(
-                    entry_ty,
-                    [
-                        ir.Constant(i64, self._static_str_hash(bound)),
-                        self._emit_class_name_const(bound),
-                        target.bitcast(i8p)
-                    ]
-                )
-            );
         }
-        table_ty = ir.ArrayType(entry_ty, len(entries));
-        table = ir.GlobalVariable(self.llvm_module, table_ty, name=f"{name}.__ctors");
-        table.linkage = "private";
-        table.global_constant = True;
-        table.initializer = ir.Constant(table_ty, entries);
+        tag = stable_osp_tag(name) if name in self.osp_type_tag_field else 0;
+        if not entries and tag == 0 {
+            continue;
+        }
+        table: ir.Value = ir.Constant(i8p, None);
+        if entries {
+            table_ty = ir.ArrayType(entry_ty, len(entries));
+            table_gv = ir.GlobalVariable(
+                self.llvm_module, table_ty, name=f"{name}.__ctors"
+            );
+            table_gv.linkage = "private";
+            table_gv.global_constant = True;
+            table_gv.initializer = ir.Constant(table_ty, entries);
+            table = table_gv.bitcast(i8p);
+        }
         record = ir.GlobalVariable(
             self.llvm_module, record_ty, name=f"{name}.__classrec"
         );
@@ -801,7 +925,8 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
                 ir.Constant(i64, self._static_str_hash(name)),
                 self._emit_class_name_const(name),
                 ir.Constant(i64, len(entries)),
-                table.bitcast(i8p)
+                table,
+                ir.Constant(i64, tag)
             ]
         );
         self._class_ctor_records.append((record, self._static_str_hash(name)));

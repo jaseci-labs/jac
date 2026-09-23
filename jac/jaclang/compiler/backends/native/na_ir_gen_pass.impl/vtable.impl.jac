@@ -556,6 +556,19 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
         and inner.params
         and len(inner.params) == 1 {
         receiver = inner.params[0];
+    } elif self._is_runtime_class_value(inner) {
+        value = self._codegen_expr(inner);
+        if value is None or not isinstance(value.type, ir.PointerType) {
+            return None;
+        }
+        return self._coerce_type(value, ir.IntType(8).as_pointer());
+    } else {
+        static_class = self._class_expr_bound(inner);
+        if static_class is not None
+            and static_class in self.struct_types
+            and not self._is_enum_arch(static_class) {
+            return self._emit_class_name_const(static_class);
+        }
     }
     if receiver is None {
         return None;

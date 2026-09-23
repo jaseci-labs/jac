@@ -291,6 +291,7 @@ walker NaIRGenPass(CompilerPass) {
         _cstr_hash_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
         _class_ctor_lookup_fn: (ir.Function | None) = None,
+        _class_record_lookup_fn: (ir.Function | None) = None,
         _class_ctor_records: list[tuple[ir.GlobalVariable, int]] = [],
         _vtable_less_reach: (set[str] | None) = None,
         _short_mro_reach: (dict[str, list[str]] | None) = None,
@@ -1266,10 +1267,14 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_kernel_spawn(
-        walker_name: str, walker_val: ir.Value, loc_val: ir.Value
+        walker_name: str,
+        walker_val: ir.Value,
+        loc_val: ir.Value,
+        walker_tag: (ir.Value | None) = None
     ) -> (ir.Value | None);
 
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
+    def _is_root_walker_operand(nd: uni.UniNode) -> bool;
     def _is_walker_arch(name: str) -> bool;
     def _infer_dict_type(val: ir.Value) -> (tuple[str, str] | None);
     def _get_file_struct_type -> ir.Type;
@@ -1843,9 +1848,11 @@ walker NaIRGenPass(CompilerPass) {
         expr: (uni.UniNode | None), unbounded: (str | None) = None
     ) -> (str | None);
 
+    def _class_ancestors(type_name: str) -> list[str];
     def _class_init_owner(type_name: str) -> (str | None);
     def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
     def _class_ctor_fn_type(params: list[NativeCtorParam]) -> ir.FunctionType;
+    def _is_runtime_class_value(target: (uni.UniNode | None)) -> bool;
     def _class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None);
     def _codegen_class_value_call(
         nd: uni.FuncCall,
@@ -1870,7 +1877,12 @@ walker NaIRGenPass(CompilerPass) {
         bound: str
     ) -> (ir.Value | None);
 
+    def _class_record_type -> ir.LiteralStructType;
+    def _class_ctor_entry_type -> ir.LiteralStructType;
+    def _emit_class_record_lookup_fn -> ir.Function;
     def _emit_class_ctor_lookup_fn -> ir.Function;
+    def _codegen_class_osp_tag(instance: ir.Value) -> (ir.Value | None);
+    def _class_tagless_record -> ir.GlobalVariable;
     def _class_ctor_registry -> ir.GlobalVariable;
     def _emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> None;
     def _emit_class_ctor(

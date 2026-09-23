@@ -164,6 +164,24 @@ report E5092. Classes with the same name in different modules share one
 identity, as they already do for `isinstance`. Zero-argument edge factories
 still use the separate edge-descriptor registry.
 
+Class records are built by walking each ancestor's recorded MRO in turn. A
+subclass of an imported class can have a recorded MRO that stops at its
+immediate base. Walking each recorded MRO still gives the subclass a bridge for
+every ancestor.
+
+Because a class value is its class-name identity, `kind.__name__` lowers to the
+class value itself. `Name.__name__` lowers to the name constant, and
+`type(x).__name__` still reads the object's class id. A walker built from a
+class value spawns through the existing OSP path: `mod spawn kind(module=mod,
+ctx=ctx)` takes the static bound's type-tag slot, which subclasses share by
+layout prefix. The runtime tag then selects the runtime class's descriptor,
+including inherited abilities and node abilities triggered by marker bases such
+as `TreeWalker`. A walker typed only as `Walker` has no statically known
+tag slot. For OSP archetypes, the class record also stores the stable OSP tag.
+Spawn reads the object's runtime class name from its allocation header, finds
+the record, and dispatches on that tag. An unregistered class raises
+`TypeError`.
+
 ## Delete-target validation
 
 `DeleteStmt.invalid_target` classifies one target's invalid syntax using
