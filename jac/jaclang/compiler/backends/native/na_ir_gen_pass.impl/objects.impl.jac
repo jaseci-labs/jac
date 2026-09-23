@@ -1001,6 +1001,12 @@ impl NaIRGenPass._forward_declare_method(
     ret_type = self._resolve_sig_type(sig.return_type)
         if isinstance(sig, uni.FuncSignature)
         else ir.IntType(64);
+    if isinstance(sig, uni.FuncSignature) and self._ability_is_generator(method) {
+        self._ensure_iter_types();
+        _iter_t = self._jac_iter_type;
+        assert _iter_t is not None;
+        ret_type = _iter_t.as_pointer();
+    }
 
     if sig is None and field is not None {
         if method.accessor_kind == "property" {
@@ -1078,6 +1084,19 @@ impl NaIRGenPass._codegen_method(
         ) {
             return;
         }
+    }
+
+    if isinstance(method.signature, uni.FuncSignature)
+        and self._ability_is_generator(method) {
+        _gen_mark = len(self.ctx.errors_had);
+        self._codegen_generator(method, func, self_arch=arch_name);
+        self._demote_method_if_unlowerable(
+            full_name,
+            func,
+            _gen_mark,
+            keep_func=method_name in self.vtable_method_indices.get(arch_name, {})
+        );
+        return;
     }
 
     state = self._enter_function(func);

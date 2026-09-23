@@ -83,10 +83,12 @@ glob JS_GLOBALS: dict[str, str] = {
      _NATIVE_DECORATOR_HELP: str = (
          "Native lowers decorators only on module-level, non-generator "
          "functions, and only when each decorator is a plain name resolving "
-         "to a native function (applied at module glob-init). Method, "
-         "archetype, and dynamically-computed decorators would silently run "
-         "the undecorated body; remove the decorator or move the definition "
-         "to a @sv/Python context."
+         "to a native function (applied at module glob-init), plus "
+         "`@contextmanager` (from `import from contextlib { contextmanager }`) "
+         "on a generator function or method, which the calling `with` drives. "
+         "Other method, archetype, and dynamically-computed decorators would "
+         "silently run the undecorated body; remove the decorator or move the "
+         "definition to a @sv/Python context."
      ),
      _NATIVE_UNPACK_HELP: str = (
          "A `**` spread lowers natively only into a callee whose signature is "
@@ -462,6 +464,23 @@ impl native_capability_violations(
                         if not isinstance(_dexpr, Name) {
                             _dec_static_fn = False;
                             break;
+                        }
+                    }
+                }
+                if not _dec_static_fn {
+                    import from jaclang.compiler.symbol_utils {
+                        contextmanager_ability,
+                        is_contextmanager_decorator
+                    }
+                    if isinstance(nd, Ability) {
+                        _dec_static_fn = contextmanager_ability(nd);
+                    } elif isinstance(nd, ImplDef) {
+                        _dec_static_fn = True;
+                        for _dexpr in nd.decorators {
+                            if not is_contextmanager_decorator(_dexpr, nd.decl_link) {
+                                _dec_static_fn = False;
+                                break;
+                            }
                         }
                     }
                 }

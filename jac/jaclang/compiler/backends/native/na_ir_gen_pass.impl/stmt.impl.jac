@@ -339,8 +339,8 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 self._release_owned_args([_rv], op="gen_ret_val");
             }
         }
-        for _entry in self._gen_try_stack {
-            self.builder.call(self._exc_pop_fn, []);
+        if self._emit_finalizers() {
+            return;
         }
         self._emit_scope_cleanup(skip_var=None, loc=_gr_loc);
         _gr_i64 = ir.IntType(64);

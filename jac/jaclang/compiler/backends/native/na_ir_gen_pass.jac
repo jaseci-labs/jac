@@ -95,6 +95,12 @@ import from jaclang.compiler.backends.native.na_constants {
     RC_CYCLE_THRESHOLD
 }
 
+glob GEN_PENDING_FLAG_OFF: int = 8,
+     GEN_PENDING_TYPE_OFF: int = 16,
+     GEN_PENDING_OBJ_OFF: int = 24,
+     GEN_PENDING_MSG_OFF: int = 32,
+     GEN_FRAME_HEADER: int = 40;
+
 def _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None) {
     if not isinstance(semantic, UnionType) {
         return semantic;
@@ -115,7 +121,8 @@ obj NativeFinalizer {
         loop_depth: int,
         handler_depth: int,
         pop_handler: bool = False,
-        context_exit: tuple[ir.Value, ir.Function] | None = None;
+        context_exit: tuple[ir.Value, ir.Function] | None = None,
+        gen_exit: tuple[ir.Value, ir.Type] | None = None;
 }
 
 obj NativeErrorHandler {
@@ -123,7 +130,8 @@ obj NativeErrorHandler {
 }
 
 obj NativeGeneratorHandler(NativeErrorHandler) {
-    has state: ir.Value;
+    has state: ir.Value,
+        depth: ir.Value | None = None;
 }
 
 obj NativeGeneratorCellInit {
@@ -167,7 +175,7 @@ obj NativeGeneratorState {
         out_i8: ir.Value,
         elem_type: ir.Type,
         func_name: str,
-        cursor: int = 8,
+        cursor: int = GEN_FRAME_HEADER,
         slots: list[tuple[str, int, ir.Type]] = [],
         resume_blocks: list[ir.Block] = [],
         cell_inits: list[NativeGeneratorCellInit] = [];
@@ -462,6 +470,7 @@ walker NaIRGenPass(CompilerPass) {
         _ct_bindings: dict[str, any] = {},
         _gen_ctx: NativeGeneratorState | None = None,
         _gen_try_stack: list[NativeGeneratorHandler] = [],
+        _ctxmgr_call_ok: int = 0,
         decorated_fns:
             dict[
                 str,
@@ -1018,6 +1027,20 @@ walker NaIRGenPass(CompilerPass) {
         exprs: Sequence[uni.ExprAsItem], idx: int, body: Sequence[uni.CodeBlockStmt]
     ) -> None;
 
+    def _ctxmgr_callee(expr: (uni.UniNode | None)) -> (uni.Ability | None);
+    def _codegen_with_ctxmgr(
+        exprs: Sequence[uni.ExprAsItem],
+        idx: int,
+        body: Sequence[uni.CodeBlockStmt],
+        callee: uni.Ability
+    ) -> None;
+
+    def _emit_gen_context_exit(owner: ir.Value, out_type: ir.Type) -> None;
+    def _emit_gen_throw(
+        owner: ir.Value, out_type: ir.Type, values: tuple[ir.Value, ir.Value, ir.Value]
+    ) -> ir.Value;
+
+    def _emit_gen_pending_raise -> None;
     def postinit -> None;
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
@@ -1346,7 +1369,10 @@ walker NaIRGenPass(CompilerPass) {
     def _apply_static_decorators -> None;
     def _ability_is_generator(nd: uni.Ability) -> bool;
     def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);
-    def _codegen_generator(nd: uni.Ability, func: ir.Function) -> None;
+    def _codegen_generator(
+        nd: uni.Ability, func: ir.Function, self_arch: (str | None) = None
+    ) -> None;
+
     def _emit_generator_drop_fn(
         name: str, slots: list[tuple[str, int, ir.Type]], bindings: set[str]
     ) -> ir.Function;
