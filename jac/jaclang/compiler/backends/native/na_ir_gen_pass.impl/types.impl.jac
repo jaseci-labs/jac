@@ -1665,22 +1665,8 @@ impl NaIRGenPass._erased_unbox(
     if not isinstance(want, (ir.IntType, ir.DoubleType, ir.FloatType)) {
         return None;
     }
-    self._emit_runtime_raise(
-        b.icmp_unsigned("==", _raw, ir.Constant(i8p, None), name="erased.unbox.none"),
-        "TypeError",
-        "value is None where a value is required"
-    );
-    _val = b.load(
-        b.bitcast(_raw, want.as_pointer(), name="erased.unbox.slot"),
-        name="erased.unbox.val"
-    );
-    if owned {
-        self._emit_rc_release_simple(
-            self._mark_owned(b.bitcast(_raw, i8p, name="erased.unbox.cell")),
-            op="erased_unbox"
-        );
-    }
-    return _val;
+    _opt = self._erased_unbox(_raw, self._jac_optional_type(want), owned);
+    return self._coerce_type_inner(_opt, want) if _opt is not None else None;
 }
 
 impl NaIRGenPass._erased_call_result(
