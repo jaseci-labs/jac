@@ -205,9 +205,6 @@ def native_unit(
     if is_kernel_unit_path(source_path) {
         return True;
     }
-    if native_unit_compile and native_lowered(source_path) {
-        return True;
-    }
     import from jaclang.compiler.placement.placement_pins { effective_module_pin }
     if effective_module_pin(source_path, prog) == SPACE_NATIVE {
         return True;

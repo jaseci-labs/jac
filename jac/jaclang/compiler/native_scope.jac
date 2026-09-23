@@ -57,21 +57,23 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
      KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
      _SCOPE_SUFFIX_CACHE: list[str] = [];
 
-def scope_allows_inferred_path(mod_path: str) -> bool {
-    import from jaclang.compiler.frontend.codeinfo {
-        native_unit_compile_active,
-        native_unit_identity
-    }
-    if not native_unit_compile_active() {
-        return True;
-    }
+def package_host_edge(mod_path: str) -> bool {
+    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
     identity = native_unit_identity(mod_path);
-    if identity.startswith("jaclang/")
-        and not identity.startswith("jaclang/runtime/") {
-        import from jaclang.compiler.placement.placement_facts { native_unit }
-        return native_unit(mod_path, native_unit_compile=True);
+    if not identity.startswith("jaclang/") or identity.startswith("jaclang/runtime/") {
+        return False;
     }
-    return True;
+    import from jaclang.compiler.placement.placement_facts {
+        native_lowered,
+        native_unit
+    }
+    return not native_lowered(mod_path)
+        and not native_unit(mod_path, native_unit_compile=True);
+}
+
+def scope_allows_inferred_path(mod_path: str) -> bool {
+    import from jaclang.compiler.frontend.codeinfo { native_unit_compile_active }
+    return not native_unit_compile_active() or not package_host_edge(mod_path);
 }
 
 def native_scope_path_suffixes -> list[str] {
