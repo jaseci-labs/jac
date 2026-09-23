@@ -284,24 +284,31 @@ with a fixed precedence:
    sha256, layout digest and plan digest; missing or mismatched is a startup
    error.
 3. Source tree. The kernel beside `native_compiler.jac` is accepted when the
-   source key its sidecar records equals the one the sources have now.
+   inputs its sidecar records are the ones the sources have now.
    Otherwise, under a lock, the checkout first looks at the kernel the
    running kit carries: a rerouted checkout runs on a kit's interpreter,
-   and when that kit was built from these very sources its kernel's source
-   key matches, so the kernel is copied beside the loader and accepted.
+   and when that kit was built from these very sources its kernel's inputs
+   match, so the kernel is copied beside the loader and accepted.
    Only a checkout whose compiler differs from every kernel in reach has a
    child `jac` process rebuild one, with the store parser pinned for the
    build.
 4. No native toolchain: the store parser serves, silently.
 
-The source key is the compiler digest plus, for every unit the kernel was
-linked from, the unit's package identity and module key. Nothing in it is
-a path, which is what lets a kernel built at the kit's staging directory
-be accepted in a checkout elsewhere; the sidecar records each unit's
-identity next to the path the build used, and acceptance finds the unit
-where this process's jaclang lives. Accepting a kernel therefore costs one
-content hash per unit and no plan, which is what makes a warm `jac run` in
-a source tree start in well under a second. The derivation runs in a child
+The sidecar records the kernel's inputs one by one: the compiler digest,
+the codegen identity every unit shares, the target triple, the interpreter
+version and, for every unit the kernel was linked from, the unit's package
+identity, a digest of its source, annexes and wiring, and whether the build's
+placement policy required that unit natively. Nothing in them is a path or an
+environment fingerprint, which is what lets a kernel built at the kit's
+staging directory be accepted in a checkout elsewhere; acceptance finds
+each unit where this process's jaclang lives and compares its digest. The
+folded `source_key` the sidecar also carries is the module-key form an
+in-tree build records for itself; a module key of a file outside the
+running package fingerprints that file's project, so a kit's folded key is
+never the checkout's and only decides for sidecars that predate the
+per-unit record. Accepting a kernel therefore costs one content hash per
+unit and no plan, which is what makes a warm `jac run` in a source tree
+start in well under a second. The derivation runs in a child
 on purpose: the first parse of a checkout happens inside the compiler's own
 import chain, where half the checker is not importable yet, and a rebuild
 must not depend on the state of the process that asked for it. The kernel
@@ -333,7 +340,10 @@ server codespace unless the module is native by policy) instead of letting the
 application's placement default infer native placement over the whole runtime. A `StubCatalog`
 session shares immutable catalog bytes and their backing storage, while its
 memo tables and hydrated types belong to that session. Releasing a compile
-closure drops the evaluator, every module (including stubs), and the catalog.
+closure drops the evaluator and every source module; the program keeps its
+stub trees, its hydrated catalog and the native unit interfaces it has read
+(their products go) for its next compile, and a full release
+(`retain_stubs=False`) drops those too.
 
 The meta importer keeps the compiler's own analysis session alive until the
 outermost module execution completes, including its nested imports. Retrieving
@@ -423,3 +433,29 @@ Native binaries and layout sidecars are published with the shared bootstrap-safe
 atomic writer. Replacing a binary preserves the old image for open readers and
 gives macOS a fresh file identity for code-signature validation. JIR merge
 transactions hold the shared file lock across their read and atomic replacement.
+
+## Package modules and consumers
+
+A module the running compiler package owns is analyzed the way the package
+analyzes itself, whoever imports it (`owned_module_options` in
+`compilation_context.jac`). The consumer's application, codespace and entry
+are dropped from the binding: its placement default would otherwise be
+inferred over the runtime, its codespace flags would refuse the module's
+cached interface, and each consumer would key its own analysis of the same
+module. The canonical analysis runs under an empty cache projection, so its
+entries are the ones the package's precompile wrote and the ones the
+compiler's own bootstrap reads. A native unit build (`native_unit` or
+`aot_mode` options) keeps its own binding for package modules.
+
+A unit's native products are stamped with `unit_codegen_identity`: the codegen
+identity every unit shares plus whether the placement policy names that unit.
+The policy's other patterns and the consumer's application change nothing in
+a unit's code, so products a kit sealed under its build policy serve every
+consumer whose memory model and target agree.
+
+Interface and native record lookups consult, after the module cache, the
+precompiled tree beside the package: a sealed image by its manifest, and an
+unsealed bundle (a checkout seeded with the kit's precompile) by the unit's
+key. A native pass consults a dependency's native products only when
+placement makes that dependency native; any other import is bound through
+interop without being lowered.

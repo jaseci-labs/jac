@@ -381,7 +381,7 @@ def _native_ir(path: str) -> str {
     }
     payload = native_section_payload(
         read_section_bytes(cache_path.read_bytes(), SEC_NBITCODE),
-        prog.native_units().stamp_for()
+        prog.native_units().stamp_for(None, path)
     );
     return str(llvm.parse_bitcode(payload)) if payload is not None else "";
 }

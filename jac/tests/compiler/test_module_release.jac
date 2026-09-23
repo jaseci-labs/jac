@@ -223,7 +223,7 @@ test "typeshed never enters the hub and builtins bindings survive a release" {
 }
 
 
-test "releasing a closure releases the catalog and evaluator together" {
+test "releasing a closure drops the evaluator and keeps the session catalog" {
     import os;
     import from unittest.mock { patch }
     prog = JacProgram();
@@ -239,8 +239,16 @@ test "releasing a closure releases the catalog and evaluator together" {
     with patch.dict(os.environ, {"JAC_UNIT_COLLECT_EVERY": "1"}) {
         prog.release_compile_closure();
     }
-    assert catalog() is None , "a released catalog is still owned outside its session";
     assert evaluator() is None , "a released evaluator is still owned outside its session";
+    assert catalog() is not None and prog.stub_catalog() is catalog() , (
+        "the hydrated catalog serves the program's next compile, like its stub trees"
+    );
+    import gc;
+    with patch.dict(os.environ, {"JAC_UNIT_COLLECT_EVERY": "1"}) {
+        prog.release_compile_closure(retain_stubs=False);
+    }
+    gc.collect();
+    assert catalog() is None , "a fully released catalog is still owned outside its session";
 }
 
 test "compiler execution retains its own analysis until the outer import completes" {
@@ -282,8 +290,13 @@ test "closure release drops native products while retaining execution carriers" 
     carrier.native_bitcode = product.bitcode;
     program.hub.artifacts[product.path] = carrier;
     program.release_compile_closure(collect=False);
-    assert not registry.entries;
+    assert registry.entries.get(product.path) is product , (
+        "the interface stays for the program's next compile"
+    );
+    assert product.object_bytes is None and product.bitcode is None;
     assert program.hub.artifacts[product.path] is carrier;
     assert carrier.native_object is None and carrier.native_bitcode is None;
     assert carrier.native_iface is iface;
+    program.release_compile_closure(collect=False, retain_stubs=False);
+    assert not registry.entries , "a full release drops the interfaces too";
 }

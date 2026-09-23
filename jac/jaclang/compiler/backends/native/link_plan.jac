@@ -814,6 +814,20 @@ def units_source_key(paths: list[str], options: CompileOptions) -> str {
     return h.hexdigest();
 }
 
+def unit_source_digest(path: str) -> str {
+    """What one unit contributes to a kernel's inputs: its source with its
+    annexes and the wiring that shapes its imports. Unlike the module key,
+    nothing here fingerprints the environment, so a build at another path
+    records digests a checkout can reproduce.""";
+    import from jaclang.compiler.driver.jir { ct_dep_digest }
+    import from jaclang.compiler.driver.wiring { wiring_digest_for }
+    real = os.path.realpath(path);
+    h = hashlib.sha256();
+    h.update(ct_dep_digest(real, with_annexes=True).encode("utf-8"));
+    h.update(wiring_digest_for(real).encode("utf-8"));
+    return h.hexdigest();
+}
+
 def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
     """The units a sidecar names, found where this process's jaclang lives:
     a kernel built by the kit records its units by package identity, so the
@@ -850,6 +864,7 @@ def _write_sidecar(
     classes = plan.merged_layout();
     ldigest = layout_digest_of(classes);
     import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+    import from jaclang.compiler.driver.jir { running_compiler_digest }
     unit_paths = [u.path for u in plan.units];
     sidecar = {
         "classes": classes,
@@ -858,6 +873,17 @@ def _write_sidecar(
         "units": unit_paths,
         "unit_ids": [native_unit_identity(p) for p in unit_paths],
         "source_key": units_source_key(unit_paths, plan.options),
+        "compiler_digest": running_compiler_digest(),
+        "codegen_identity": plan.options.base_codegen_identity(),
+        "triple": plan.triple,
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "unit_sources": {
+            native_unit_identity(p): unit_source_digest(p) for p in unit_paths
+        },
+        "unit_policy": {
+            native_unit_identity(p): int(plan.options.native_required_for(p))
+            for p in unit_paths
+        },
         "action_digest": action_digest,
         "artifact_sha256": artifact_sha256
     };

@@ -147,6 +147,48 @@ test "a no-op build lowers no units and preserves the linked artifact" {
     }
 }
 
+test "the layout sidecar records the inputs a kernel is accepted by" {
+    if _can_link_host() {
+        import from jaclang.compiler.backends.native.kernel_resolve { read_sidecar }
+        import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
+        import from jaclang.compiler.driver.jir { running_compiler_digest }
+        import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+        root_dir = _diamond_copy();
+        (prog, plan) = _plan_for(root_dir);
+        output = os.path.join(root_dir, "program");
+        link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+        sidecar = read_sidecar(output);
+        assert sidecar is not None;
+        assert sidecar["compiler_digest"] == running_compiler_digest();
+        assert sidecar["codegen_identity"] == _opts().base_codegen_identity();
+        assert sidecar["triple"] == plan.triple;
+        assert sidecar["unit_sources"]
+            == {
+                native_unit_identity(u.path): unit_source_digest(u.path)
+                for u in plan.units
+            };
+        assert sidecar["unit_policy"]
+            == {native_unit_identity(u.path): 0 for u in plan.units};
+    }
+}
+
+test "a closure release keeps native interfaces and drops their products" {
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    kept = set(registry.entries);
+    assert kept , "the plan registers its units";
+    prog.release_compile_closure();
+    assert set(registry.entries) == kept , "interfaces outlive the compile that produced them";
+    assert all(
+        ent.bitcode is None and ent.object_bytes is None
+        for ent in registry.entries.values()
+    ) , "products do not";
+    assert registry.compiled_paths == [];
+    prog.release_compile_closure(retain_stubs=False);
+    assert not registry.entries , "a full release drops the interfaces too";
+}
+
 test "changing a default argument updates an unchanged caller's executable" {
     if _can_link_host() {
         root_dir = tempfile.mkdtemp(prefix="jac-default-link-");

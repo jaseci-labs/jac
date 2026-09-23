@@ -409,11 +409,11 @@ obj IfaceRegistry {
 
     @contextmanager
     def _compilation_scope -> Iterator[None] {
-        import from jaclang.compiler.driver.compilation_context { compilation_scope }
-        owner_options = None
-            if self.prog._get_compiler().selfhost.is_selfhost(self.prog)
-            else self.prog.options;
-        with compilation_scope(owner_options) {
+        import from jaclang.compiler.driver.compilation_context {
+            compilation_scope,
+            owner_scope_options
+        }
+        with compilation_scope(owner_scope_options(self.prog)) {
             yield ;
         }
     }
@@ -463,7 +463,7 @@ obj IfaceRegistry {
             }
         } except Exception {}
         try {
-            return self.prog._get_compiler()._sealed_jir_data(resolved);
+            return self.prog._get_compiler()._precompiled_jir_data(resolved);
         } except Exception {
             return None;
         }

@@ -170,9 +170,12 @@ test "application analysis does not eagerly publish selfhost dependency interfac
         );
         assert str(plugin) not in internal.iface_registry()._iface_bytes;
         explicit = internal.iface_registry().ensure(str(toolchain / "api.jac"));
-        assert explicit is not None;
-        assert internal.analysis.cache_events.get("iface_encode", 0) > 0 , (
+        assert explicit is not None , (
             "explicit selfhost interface requests must remain available to packaging"
+        );
+        assert api in internal.iface_registry()._iface_bytes , (
+            "the interface the application's canonical analysis persisted serves "
+            "the self-host program, or it encodes its own"
         );
     }
 }

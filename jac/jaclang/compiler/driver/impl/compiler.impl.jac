@@ -143,9 +143,8 @@ impl JacCompiler.get_bytecode(
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);
     }
-    with compilation_scope(
-        None if self.selfhost.is_selfhost(actual) else actual.options
-    ) {
+    import from jaclang.compiler.driver.compilation_context { owner_scope_options }
+    with compilation_scope(owner_scope_options(actual)) {
         return self._get_bytecode(full_target, actual);
     }
 }
@@ -474,6 +473,63 @@ impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None
                     return None;
                 }
             }
+            return None;
+        }
+        parent = os.path.dirname(d);
+        if parent == d {
+            return None;
+        }
+        d = parent;
+    }
+}
+
+impl JacCompiler._precompiled_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
+    """The unit a precompiled tree carries for this source, with the root its
+    dependency rows are relative to: a sealed image is trusted by its
+    manifest, and an unsealed bundle (a checkout seeded with the kit's
+    precompile) only while the unit's key still matches the source.""";
+    sealed = self._sealed_jir_data(full_target);
+    if sealed is not None {
+        return sealed;
+    }
+    import from pathlib { Path as _Path }
+    import from jaclang.compiler.driver.jir {
+        bundle_dir_allowed,
+        cache_mode,
+        precompiled_jir_matches_source
+    }
+    (rebuild_flag, no_precompile) = cache_mode();
+    if rebuild_flag or no_precompile {
+        return None;
+    }
+    norm_file = os.path.normpath(os.path.abspath(full_target));
+    d = os.path.dirname(norm_file);
+    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    while True {
+        bundle_dir = os.path.join(d, '_precompiled');
+        if os.path.isdir(bundle_dir) {
+            if not bundle_dir_allowed(bundle_dir) {
+                return None;
+            }
+            norm_root = os.path.normpath(d);
+            if not norm_file.startswith(norm_root + os.sep) {
+                return None;
+            }
+            rel_path = norm_file[len(norm_root) + 1:];
+            jir_path = os.path.join(
+                bundle_dir, pyver, os.path.splitext(rel_path)[0] + '.jir'
+            );
+            if not os.path.isfile(jir_path) {
+                return None;
+            }
+            try {
+                data = _Path(jir_path).read_bytes();
+                if precompiled_jir_matches_source(
+                    data, norm_file, package_root=norm_root
+                ) {
+                    return (data, norm_root);
+                }
+            } except Exception {}
             return None;
         }
         parent = os.path.dirname(d);
@@ -1212,8 +1268,11 @@ impl JacCompiler.compile(
     }
     context_errors = len(target_program.errors_had);
     context_warnings = len(target_program.warnings_had);
-    import from jaclang.compiler.driver.compilation_context { compilation_scope }
-    owner_options = None if self.selfhost.is_selfhost(target_program) else options;
+    import from jaclang.compiler.driver.compilation_context {
+        compilation_scope,
+        owner_scope_options
+    }
+    owner_options = owner_scope_options(target_program, options);
     with compilation_scope(owner_options) {
         with compile_progress.track(str(file_path)) {
             if self._reentrant_depth == 0 and not self.stub_catalog_disabled {
@@ -2010,9 +2069,8 @@ impl JacCompiler.get_client_artifact(
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);
     }
-    with compilation_scope(
-        None if self.selfhost.is_selfhost(actual) else actual.options
-    ) {
+    import from jaclang.compiler.driver.compilation_context { owner_scope_options }
+    with compilation_scope(owner_scope_options(actual)) {
         return self._get_client_artifact(full_target, actual);
     }
 }

@@ -123,7 +123,7 @@ test "a bytecode compile preserves native products across compilation contexts" 
         program.native_units().object_for(str(source), options);
         cache = get_module_cache_path(str(source));
         before = cache.read_bytes();
-        stamp = program.native_units().stamp_for(options);
+        stamp = program.native_units().stamp_for(options, str(source));
         sections = [SEC_NIFACE, SEC_NOBJ, SEC_NBITCODE, SEC_NDEPS, SEC_NCTDEPS];
         assert all(
             read_section_bytes(before, section) is not None for section in sections

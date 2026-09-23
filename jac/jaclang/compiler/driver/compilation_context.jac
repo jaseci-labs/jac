@@ -85,10 +85,59 @@ obj SourceStore {
     }
 }
 
+def owned_module_options(path: str, options: CompileOptions) -> CompileOptions {
+    """A module the running compiler package owns is analyzed the way the
+    package analyzes itself, whoever imports it. The consumer's application,
+    codespace and entry are dropped: its placement default would otherwise
+    be inferred over the runtime, its codespace flags would refuse the
+    module's cached interface, and every consumer would key its own analysis
+    of the same module. The consumer's memory model, target and placement
+    policy stay, since they shape the native products the module can offer
+    it.""";
+    bound = copy.copy(options);
+    bound.package_canonical = True;
+    bound.default_codespace = '';
+    bound.force_codespace = '';
+    bound.target_app = '';
+    bound.app_kind = '';
+    bound.ui = '';
+    bound.project_root = None;
+    bound.entry_point = os.path.realpath(path);
+    if bound.native_required_for(path) {
+        bound.default_codespace = 'native';
+        bound.force_codespace = 'native';
+    }
+    return bound;
+}
+
+def owner_scope_options(
+    program: JacProgram, options: (CompileOptions | None) = None
+) -> (CompileOptions | None) {
+    """The options a cache scope projects: none for the compiler's own program
+    and for a package module's canonical analysis, which then key their
+    entries the way the package's precompile does, and the program's
+    otherwise.""";
+    chosen = options if options is not None else program.options;
+    if program._get_compiler().selfhost.is_selfhost(program)
+        or chosen.package_canonical {
+        return None;
+    }
+    return chosen;
+}
+
 def bind_options(
     path: str, program: JacProgram, options: CompileOptions
 ) -> CompileOptions {
     import from jaclang.project.workspace { workspace_for_path }
+    if program._get_compiler().selfhost.owns(path)
+        and not (
+            options.native_unit
+            or options.aot_mode
+            or program.options.native_unit
+            or program.options.aot_mode
+        ) {
+        return owned_module_options(path, options);
+    }
     bound = copy.copy(options);
     if bound.native_required_for(path) {
         bound.default_codespace = 'native';

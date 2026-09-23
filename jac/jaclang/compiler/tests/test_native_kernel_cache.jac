@@ -18,7 +18,7 @@ test "explicit fresh compilation bypasses persisted native units" {
             path=path,
             digest="unit",
             iface=NativeIface(),
-            stamp=registry.stamp_for(options)
+            stamp=registry.stamp_for(options, path)
         );
         with patch.object(registry, "_read_from_disk", return_value=unit) as load, patch.object(
             registry, "compile_unit", return_value=unit
@@ -30,7 +30,9 @@ test "explicit fresh compilation bypasses persisted native units" {
             options.no_ir_cache = True;
             assert registry.ensure(path, options=options) is unit;
             load.assert_not_called();
-            compile.assert_called_once_with(os.path.realpath(path), options);
+            compile.assert_called_once_with(
+                os.path.realpath(path), options, products=True
+            );
             assert options.clone_for_native_import().no_ir_cache;
         }
     }

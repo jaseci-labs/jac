@@ -222,11 +222,61 @@ def _sidecar_matches_sources(sidecar: dict[str, any]) -> bool {
         units_source_key
     }
     units = sidecar_unit_paths(sidecar);
+    if not units {
+        return False;
+    }
+    recorded_sources = sidecar.get("unit_sources");
+    if isinstance(recorded_sources, dict) and recorded_sources {
+        return _unit_sources_match(sidecar, recorded_sources, units);
+    }
     recorded = str(sidecar.get("source_key", ""));
-    if not units or not recorded {
+    if not recorded {
         return False;
     }
     return units_source_key(units, kernel_options()) == recorded;
+}
+
+def _unit_sources_match(
+    sidecar: dict[str, any], recorded: dict[str, any], units: list[str]
+) -> bool {
+    """A kernel is its compiler, codegen identity, target, interpreter and
+    the units' sources; comparing those inputs one by one accepts a kernel
+    built at another path, such as the kit's staging directory. The folded
+    source key is what an in-tree build records for itself: the module key
+    of a file outside the running package fingerprints its project, so the
+    key a kit's build folded is never the one a checkout computes.""";
+    import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
+    import from jaclang.compiler.driver.jir { running_compiler_digest }
+    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+    options = kernel_options();
+    if str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
+        or str(sidecar.get("codegen_identity", "")) != options.base_codegen_identity()
+        or str(sidecar.get("triple", "")) != options.effective_triple()
+        or str(sidecar.get("python", ""))
+            != f"{sys.version_info.major}.{sys.version_info.minor}" {
+        return False;
+    }
+    ids = sidecar.get("unit_ids");
+    idents = (
+        [str(i) for i in ids]
+            if isinstance(ids, list) and len(ids) == len(units)
+            else [native_unit_identity(u) for u in units]
+    );
+    if len(recorded) != len(idents) {
+        return False;
+    }
+    policy = sidecar.get("unit_policy");
+    recorded_policy: dict[str, any] = policy if isinstance(policy, dict) else {};
+    for (ident, path) in zip(idents, units) {
+        if recorded.get(ident) != unit_source_digest(path) {
+            return False;
+        }
+        if int(recorded_policy.get(ident, 0))
+            != int(options.native_required_for(path)) {
+            return False;
+        }
+    }
+    return True;
 }
 
 def _accept_in_tree(lib_path: str) -> (ResolvedKernel | None) {

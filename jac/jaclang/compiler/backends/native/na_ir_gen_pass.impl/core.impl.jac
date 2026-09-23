@@ -430,15 +430,31 @@ impl NaIRGenPass._dep_iface(imported_mod: uni.Module) -> (NativeIface | None) {
     if not (imported_mod?.loc and imported_mod.loc.mod_path) {
         return None;
     }
+    path = imported_mod.loc.mod_path;
+    if not self._dep_is_native_unit(imported_mod, path) {
+        return None;
+    }
     opts = self.prog.options;
     ent = self.prog.native_units().ensure(
-        imported_mod.loc.mod_path,
+        path,
         compile_on_miss=True,
         options=opts,
         check_deps=False,
         products=not opts.no_cgen
     );
     return ent.iface if ent is not None else None;
+}
+
+impl NaIRGenPass._dep_is_native_unit(imported_mod: uni.Module, path: str) -> bool {
+    """Only a dependency that placement makes native has products to consult.
+    Lowering any other import on a cache miss would compile the Python
+    lane's modules as native units, once per consumer.""";
+    if imported_mod.gen.native_iface is not None
+        or imported_mod.decided_codespace == 'native' {
+        return True;
+    }
+    import from jaclang.compiler.placement.placement_facts { native_unit }
+    return native_unit(path, self.prog.options.native_unit, self.prog);
 }
 
 impl NaIRGenPass._load_native_unit_module(path: str) -> (uni.Module | None) {

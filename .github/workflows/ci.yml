@@ -1038,9 +1038,11 @@ jobs:
   # The dev loop (#8943): a checkout with NO kernel beside
   # native_compiler.jac must parse a new file on the first `jac run`. The
   # kit it runs on was built from these very sources, so that first run
-  # adopts the kit's kernel by source key (a checkout whose compiler differs
-  # derives one through the link plan instead), and a second run must accept
-  # the kernel beside the loader without relinking.
+  # adopts the kit's kernel by its units' content (a checkout whose compiler
+  # differs derives one through the link plan instead), and a second run must
+  # accept the kernel beside the loader without relinking. Every reroute lane
+  # pays this first run in its warm step, so a derivation here is a lane-wide
+  # regression, not a slow test.
   test-dev-loop:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
@@ -1066,6 +1068,10 @@ jobs:
           out="$(jac run "$WORK/first.jac" 2>&1)" || { echo "$out"; exit 1; }
           tail -5 <<<"$out"
           grep -q 42 <<<"$out"
+          if grep -q "Linking the native compiler kernel" <<<"$out"; then
+            echo "::error::the first run derived a kernel instead of adopting the kit's, which was built from these sources"
+            exit 1
+          fi
           test -f jac/jaclang/compiler/libjac_compiler.so
           test -f jac/jaclang/compiler/libjac_compiler.so.layout.json
           python3 -c "import json,sys; d=json.load(open('jac/jaclang/compiler/libjac_compiler.so.layout.json')); assert d['plan_digest'] and d['classes'], d.keys()"

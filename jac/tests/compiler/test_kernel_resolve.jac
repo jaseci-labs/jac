@@ -162,6 +162,63 @@ test "a kernel built elsewhere is accepted by its units' package identity" {
     }
 }
 
+test "a kernel built elsewhere is accepted by its units' content, not by its folded key" {
+    import sys;
+    import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
+    import from jaclang.compiler.driver.jir { running_compiler_digest }
+    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-") as tmp {
+        unit = os.path.join(tmp, "unit.jac");
+        Path(unit).write_text("def one -> int {\n    return 1;\n}\n");
+        lib = os.path.join(tmp, "libjac_compiler.dylib");
+        Path(lib).write_bytes(b"not a real kernel");
+        options = kernel_options();
+        ident = native_unit_identity(unit);
+        sidecar = {
+            "classes": {},
+            "artifact_sha256": hashlib.sha256(Path(lib).read_bytes()).hexdigest(),
+            "plan_digest": "p",
+            "layout_digest": "l",
+            "units": [unit],
+            "unit_ids": [ident],
+            "source_key": "folded by the build in the build's own environment",
+            "compiler_digest": running_compiler_digest(),
+            "codegen_identity": options.base_codegen_identity(),
+            "triple": options.effective_triple(),
+            "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+            "unit_sources": {ident: unit_source_digest(unit)},
+            "unit_policy": {ident: 0}
+        };
+        def write(record: dict[str, any]) {
+            Path(lib + ".layout.json").write_text(json.dumps(record));
+        }
+        write(sidecar);
+        assert _accept_in_tree(lib) is not None , (
+            "matching unit content accepts a kernel whose folded key is foreign"
+        );
+        Path(unit).write_text("def one -> int {\n    return 2;\n}\n");
+        assert _accept_in_tree(lib) is None , "an edited unit no longer matches";
+        Path(unit).write_text("def one -> int {\n    return 1;\n}\n");
+        assert _accept_in_tree(lib) is not None;
+        for (field, value) in [
+            ("compiler_digest", "another compiler"),
+            ("codegen_identity", "gc=none"),
+            ("triple", "wasm32-unknown-unknown"),
+            ("python", "2.7"),
+            ("unit_policy", {ident: 1})
+        ] {
+            write({** sidecar, field: value});
+            assert _accept_in_tree(lib) is None , f"a different {field} is another kernel";
+        }
+        without = dict(sidecar);
+        without.pop("unit_sources");
+        write(without);
+        assert _accept_in_tree(lib) is None , (
+            "without recorded unit content the foreign key decides, and it never matches"
+        );
+    }
+}
+
 test "application configuration does not change the compiler kernel" {
     import from unittest.mock { patch }
     import from jaclang.project.config { JacConfig }

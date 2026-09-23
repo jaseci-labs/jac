@@ -171,6 +171,7 @@ obj JacCompiler {
     ) -> (tuple[bytes, bytes] | None);
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
+    def _precompiled_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _build_interop_dict(result: uni.Module) -> dict[str, any];
     def _restore_native_clibs(
         gen: CodeGenTarget, cached_interop: (dict[str, any] | None)

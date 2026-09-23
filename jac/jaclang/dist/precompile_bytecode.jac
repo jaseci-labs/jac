@@ -582,7 +582,10 @@ def precompile_unit_context(
     import jaclang.compiler.types.type_evaluator;
     import jaclang.compiler.types.stubcat.modiface;
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    import from jaclang.compiler.driver.compilation_context {
+        cache_scope,
+        owner_scope_options
+    }
     import from jaclang.cli.workpool { maybe_malloc_trim }
     if not _unit_program {
         _unit_program.append(JacProgram());
@@ -595,9 +598,7 @@ def precompile_unit_context(
     );
     selected = precompile_context(jac_path, pkg_root, program, source_app);
     compiler.unit_collect = collect;
-    owner_options = None
-        if compiler.selfhost.is_selfhost(selected)
-        else selected.options;
+    owner_options = owner_scope_options(selected);
     with cache_scope(owner_options) {
         try {
             yield selected;
@@ -1175,8 +1176,8 @@ def seal_native(
             + f"{prog.analysis.cache_events.get('native_unit_codegen', 0)}"
     );
     unit_records: dict[str, dict[str, any]] = {};
-    stamp = prog.native_units().stamp_for(options);
     for u in plan.units {
+        stamp = prog.native_units().stamp_for(options, u.path);
         try {
             rel = Path(u.path).resolve().relative_to(pkg_path.resolve()).as_posix();
         } except ValueError {

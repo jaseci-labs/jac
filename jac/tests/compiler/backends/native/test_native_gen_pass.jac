@@ -4620,7 +4620,7 @@ test "jir bitcode cache round-trip" {
     # digest, codegen identity and target triple the bitcode was produced
     # under, followed by the bitcode payload.
     sec_data = secs[SEC_NBITCODE];
-    stamp = prog1.native_units().stamp_for();
+    stamp = prog1.native_units().stamp_for(None, fixture);
     payload = native_section_payload(sec_data, stamp);
     assert payload is not None , "SEC_NBITCODE has no matching native variant";
     import jaclang.compiler.backends.native.llvm.binding as llvm;

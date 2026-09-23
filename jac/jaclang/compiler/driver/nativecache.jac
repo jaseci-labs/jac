@@ -68,6 +68,18 @@ obj NativeUnitRegistry {
         self.failures.clear();
     }
 
+    def release_products {
+        """Between the compiles of one program the interfaces stay, each
+        checked against its source key on its next use; the products and the
+        per-compile bookkeeping go.""";
+        for ent in self.entries.values() {
+            ent.object_bytes = None;
+            ent.bitcode = None;
+        }
+        self.failures.clear();
+        self.compiled_paths.clear();
+    }
+
     def forget(path: str) {
         real = os.path.realpath(path);
         self.entries.pop(real, None);
@@ -123,9 +135,13 @@ obj NativeUnitRegistry {
         return opts if opts is not None else CompileOptions();
     }
 
-    def stamp_for(options: (CompileOptions | None) = None) -> NativeStamp {
+    def stamp_for(
+        options: (CompileOptions | None) = None, path: str = ""
+    ) -> NativeStamp {
         opts = options if options is not None else self._options();
-        return current_native_stamp(opts.codegen_identity(), opts.effective_triple());
+        return current_native_stamp(
+            opts.unit_codegen_identity(path), opts.effective_triple()
+        );
     }
 
     def _module_jir(resolved: str) -> (tuple[bytes, str] | None) {
@@ -136,7 +152,7 @@ obj NativeUnitRegistry {
             }
         } except Exception {}
         try {
-            return self.prog._get_compiler()._sealed_jir_data(resolved);
+            return self.prog._get_compiler()._precompiled_jir_data(resolved);
         } except Exception {
             return None;
         }
@@ -174,7 +190,9 @@ obj NativeUnitRegistry {
         compile_deps: bytes = b""
     ) -> NativeUnitEntry {
         resolved = os.path.realpath(path);
-        ent = self._register(resolved, iface, self.stamp_for(options), "compile");
+        ent = self._register(
+            resolved, iface, self.stamp_for(options, resolved), "compile"
+        );
         ent.compile_deps = compile_deps;
         ent.dep_digests = dict(dep_digests or {});
         gen = self._live_gen(resolved);
@@ -215,16 +233,15 @@ obj NativeUnitRegistry {
     ) -> list[tuple[str, str]] {
         resolved = os.path.realpath(path);
         live = self.entries.get(resolved);
-        if live is not None and live.stamp.matches(self.stamp_for(options)) {
+        stamp = self.stamp_for(options, resolved);
+        if live is not None and live.stamp.matches(stamp) {
             return sorted(live.dep_digests.items());
         }
         found = self._module_jir(resolved);
         if found is None {
             return [];
         }
-        return read_native_dep_hashes(
-            found[0], self.stamp_for(options), found[1], resolved
-        );
+        return read_native_dep_hashes(found[0], stamp, found[1], resolved);
     }
 
     def _deps_match(
@@ -307,7 +324,7 @@ obj NativeUnitRegistry {
         if not jir_cacheable_source_path(resolved) {
             return None;
         }
-        stamp = self.stamp_for(options);
+        stamp = self.stamp_for(options, resolved);
         ent = self.entries.get(resolved);
         if ent is not None and ent.stamp.matches(stamp) and self._entry_fresh(ent) {
             return ent;
@@ -350,7 +367,8 @@ obj NativeUnitRegistry {
     def known_native_deps(path: str, options: CompileOptions) -> list[str] {
         resolved = os.path.realpath(path);
         ent = self.entries.get(resolved);
-        if ent is not None and ent.stamp.matches(self.stamp_for(options)) {
+        stamp = self.stamp_for(options, resolved);
+        if ent is not None and ent.stamp.matches(stamp) {
             return sorted(os.path.realpath(d) for d in ent.iface.deps);
         }
         found = self._module_jir(resolved);
@@ -358,9 +376,7 @@ obj NativeUnitRegistry {
             return [];
         }
         (data, base_dir) = found;
-        payload = native_section_payload(
-            read_section_bytes(data, SEC_NIFACE), self.stamp_for(options)
-        );
+        payload = native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp);
         if payload is not None {
             iface = NativeIface.from_bytes(payload);
             if iface is not None {
@@ -486,11 +502,12 @@ obj NativeUnitRegistry {
             return "";
         }
         raw = read_section_bytes(found[0], SEC_NIFACE);
-        payload = native_section_payload(raw, self.stamp_for());
+        stamp = self.stamp_for(None, resolved);
+        payload = native_section_payload(raw, stamp);
         if payload is None and env_na_debug() {
             import sys;
             sys.stderr.write(
-                f"NA_DEBUG known_digest {resolved}: no native interface for {self.stamp_for().key()}\n"
+                f"NA_DEBUG known_digest {resolved}: no native interface for {stamp.key()}\n"
             );
         }
         return NativeIface.verified_digest(payload) or "";

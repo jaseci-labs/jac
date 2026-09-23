@@ -366,7 +366,11 @@ impl JacProgram.release_compile_closure(
     self.mod = self.hub.mod;
     self.deps.clear();
     if self._natives is not None and self._natives.session is None {
-        self._natives.clear();
+        if retain_stubs {
+            self._natives.release_products();
+        } else {
+            self._natives.clear();
+        }
     }
     for gen in self.hub.artifacts.values() {
         gen.native_object = None;
@@ -378,8 +382,10 @@ impl JacProgram.release_compile_closure(
     }
     self.type_evaluator = None;
     ev = None;
-    self._stub_catalog = None;
-    self._stub_trees_served = False;
+    if not retain_stubs {
+        self._stub_catalog = None;
+        self._stub_trees_served = False;
+    }
     self.diags.clear();
     self.scratch.clear();
     self.analysis.analyses_run.clear();

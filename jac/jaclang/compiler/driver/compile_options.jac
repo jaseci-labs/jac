@@ -54,6 +54,7 @@ obj CompileOptions {
         project_root: (str | None) = None,
         native_module_walk_order: (str | None) = None,
         strict_dependencies: bool = False,
+        package_canonical: bool = False,
         cancel_token: any = None;
 
     def postinit {
@@ -186,6 +187,36 @@ obj CompileOptions {
     def analysis_fingerprint -> str {
         import hashlib;
         return hashlib.sha256(self.analysis_identity().encode()).hexdigest()[:12];
+    }
+
+    def base_codegen_identity -> str {
+        """The codegen identity every unit shares. The placement policy is
+        left out: its patterns name modules, and a unit's own identity records
+        only whether the policy names that unit.""";
+        return ";".join(
+            [
+                f"gc={self.na_gc_mode}",
+                f"nogc_all={int(bool(self.nogc_enforce_all))}",
+                "nogc_mods=" + ",".join(sorted(self.memory_enforce or [])),
+                "nogc_grand=" + ",".join(sorted(self.memory_exempt or [])),
+                f"rc_debug={int(bool(self.rc_debug_codegen))}",
+                f"target={self.native_target}",
+                f"native_debug={int(bool(self.native_debug))}",
+                f"opt={self.opt_level}",
+                f"threads={self.native_threads}"
+            ]
+        );
+    }
+
+    def unit_codegen_identity(path: str) -> str {
+        """What decides one unit's native products. A unit built under a
+        project's placement policy and the same unit built without it differ
+        only when the policy names the unit, so a stamp records that bit and
+        not the policy; the consumer's application never shapes a unit's code
+        and is left out too. Products a kit sealed under its build policy
+        therefore serve every consumer whose memory model and target agree.""";
+        required = int(self.native_required_for(path)) if path else 0;
+        return self.base_codegen_identity() + f";required={required}";
     }
 
     def module_projection -> str {
