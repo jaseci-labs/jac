@@ -199,6 +199,7 @@ obj NativeBindingState {
     has local_vars: dict[str, ir.Value],
         param_vars: set[str],
         borrowed_vars: set[str],
+        owned_tuple_vars: set[str],
         nogc_owned_str_vars: set[str],
         region_handle_vars: set[str],
         var_list_elem_struct: dict[str, ir.Type | None],
@@ -445,6 +446,7 @@ walker NaIRGenPass(CompilerPass) {
         _managed_ctor_node: int = 0,
         clib_declared_sigs: dict[str, tuple[ir.Type, list[ir.Type]]] = {},
         borrowed_vars: set[str] = set(),
+        owned_tuple_vars: set[str] = set(),
         nogc_owned_str_vars: set[str] = set(),
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -2523,6 +2525,12 @@ walker NaIRGenPass(CompilerPass) {
     def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
     def _tuple_managed_fields(struct_type: ir.LiteralStructType) -> list[int];
+    def _tuple_slot_owns(nd: uni.Assignment, var_name: str, slot_ty: ir.Type) -> bool;
+    def _bind_owned_tuple_slot(
+        var_name: str, slot: ir.Value, value: ir.Value, loc: str = ""
+    ) -> None;
+
+    def _release_tuple_slot(slot: ir.Value, op: str) -> None;
     def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
