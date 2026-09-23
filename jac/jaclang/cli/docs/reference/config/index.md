@@ -478,9 +478,10 @@ The default for modules that `arch.jac` does not name. See [Project Wiring](../w
 ```toml
 [arch]
 closed = []               # Module-name patterns sealed even when arch.jac never names them
+open = []                 # Module-name patterns never sealed, even when arch.jac names them
 ```
 
-A module `arch.jac` names is sealed in both directions: its project-module imports must be wires, and it flows only where a rule admits. `closed` extends that to modules the file never mentions, including packages not yet written, and applies even before `arch.jac` exists. `["*"]` closes the whole project; a pattern list such as `["core.*"]` closes it one package at a time. The policy is part of every module's cache identity, so changing it rebuilds the affected modules.
+A module `arch.jac` names is sealed in both directions: its project-module imports must be wires, and it flows only where a rule admits. `closed` extends that to modules the file never mentions, including packages not yet written, and applies even before `arch.jac` exists. `["*"]` closes the whole project; a pattern list such as `["core.*"]` closes it one package at a time. `open` is the escape hatch in the other direction: a module it matches keeps its own imports and is never wired, even when a package rule such as `core.*` names it, which is how a package that must also build on its own, such as one a test copies out of the tree, lives inside a sealed tree. Rules still constrain what an open module may import. Both policies are part of every module's cache identity, so changing them rebuilds the affected modules.
 
 ---
 

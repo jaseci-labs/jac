@@ -60,10 +60,12 @@ impl WiringSpec._ensure_policy -> None {
         return;
     }
     self._policy_loaded = True;
-    if not self.closed_patterns {
-        self.closed_patterns = _closed_patterns_for(self.root_dir);
+    if not self.closed_patterns and not self.open_patterns {
+        (self.closed_patterns, self.open_patterns) = _arch_patterns_for(self.root_dir);
     }
-    rows = list(self._rule_rows) + ["closed:" + p for p in self.closed_patterns];
+    rows = list(self._rule_rows)
+        + ["closed:" + p for p in self.closed_patterns]
+        + ["open:" + p for p in self.open_patterns];
     self._policy_digest = hashlib.sha256("\n".join(rows).encode()).hexdigest()
         if rows
         else "";
@@ -214,7 +216,15 @@ impl WiringSpec.is_closed(module: str) -> bool {
     return any([WiringSpec.pattern_matches(p, module) for p in self.closed_patterns]);
 }
 
+impl WiringSpec.is_open(module: str) -> bool {
+    self._ensure_policy();
+    return any([WiringSpec.pattern_matches(p, module) for p in self.open_patterns]);
+}
+
 impl WiringSpec.is_sealed(module: str) -> bool {
+    if self.is_open(module) {
+        return False;
+    }
     return self.is_mentioned(module) or self.is_closed(module);
 }
 
@@ -443,18 +453,18 @@ impl arch_file_for(path: str) -> (str | None) {
     return arch if os.path.isfile(arch) else None;
 }
 
-impl _closed_patterns_for(root_dir: str) -> list[str] {
+impl _arch_patterns_for(root_dir: str) -> tuple[list[str], list[str]] {
     import from jaclang.project.config { get_config_for_path }
     import from pathlib { Path }
     try {
         cfg = get_config_for_path(Path(root_dir));
     } except Exception {
-        return [];
+        return ([], []);
     }
     if cfg is None {
-        return [];
+        return ([], []);
     }
-    return list(cfg.arch.closed);
+    return (list(cfg.arch.closed), list(cfg.arch.open));
 }
 
 impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
@@ -500,13 +510,14 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
         } elif not policy or (scope is not None and root_dir in scope) {
             return None;
         } else {
-            closed = _closed_patterns_for(root_dir);
+            (closed, opened) = _arch_patterns_for(root_dir);
             if closed {
                 spec = WiringSpec(
                     root_dir=root_dir,
                     path=arch,
                     source="",
                     closed_patterns=closed,
+                    open_patterns=opened,
                     _policy_loaded=True
                 );
                 spec._ensure_policy();
