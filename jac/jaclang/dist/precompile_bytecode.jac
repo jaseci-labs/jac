@@ -1113,7 +1113,7 @@ def seal_finalize(
 def seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]
 ) -> (dict[str, any] | None) {
-    import from jaclang.compiler.driver.pipeline_runner { native_pipeline_available }
+    import from jaclang.compiler.driver.toolchain { native_pipeline_available }
     units = package_native_units(str(pkg_path));
     if not units {
         return None;

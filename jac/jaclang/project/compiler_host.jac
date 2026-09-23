@@ -39,7 +39,6 @@ obj ProjectHost(HostServices) {
     ) -> tuple[str, str];
 
     def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None);
-
     def is_path_alias(target: str, base_path: str) -> bool;
     def is_untyped_third_party(path: str) -> bool;
     def in_typeshed_tree(path: str) -> bool;

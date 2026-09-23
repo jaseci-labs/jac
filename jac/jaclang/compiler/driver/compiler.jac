@@ -72,9 +72,9 @@ import from jaclang.compiler.driver.pipeline {
 }
 import from jaclang.compiler.driver.pipeline_runner {
     get_py_code_gen,
-    native_pipeline_available,
     native_schedule_failure
 }
+import from jaclang.compiler.driver.toolchain { native_pipeline_available }
 import from jaclang.compiler.driver.source_failures {
     CompilerSourceError,
     import_error_re_enters,

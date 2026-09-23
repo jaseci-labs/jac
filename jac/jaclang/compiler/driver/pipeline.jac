@@ -318,6 +318,7 @@ def get_symtab_ir_sched -> list[type] {
 }
 
 glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', `default=False),
+     _codegen_sched_loading = ContextVar('jac_codegen_sched_loading', `default=False),
      _analysis_sched_loading = ContextVar('jac_analysis_sched_loading', `default=False);
 
 glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),

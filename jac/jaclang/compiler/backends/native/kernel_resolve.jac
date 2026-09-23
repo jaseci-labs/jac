@@ -113,9 +113,7 @@ def _from_sealed_image -> (ResolvedKernel | None) {
 
 def _toolchain_available -> bool {
     try {
-        import from jaclang.compiler.driver.pipeline_runner {
-            native_pipeline_available
-        }
+        import from jaclang.compiler.driver.toolchain { native_pipeline_available }
         (ok, _why) = native_pipeline_available();
         return bool(ok);
     } except Exception {

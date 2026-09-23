@@ -430,6 +430,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _ct_es_expr(
         cv: (CtValue | None), jac_node: uni.UniNode
     ) -> (es.Expression | None);
+
     def _ct_es_value(v: CtValue) -> (es.Expression | None);
     def _ct_only_name(nd: uni.Name) -> bool;
     def _comptime_only_names -> set[str];

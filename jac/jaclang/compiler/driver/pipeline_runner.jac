@@ -1,9 +1,9 @@
 import from contextvars { ContextVar }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact, CompilationProduct }
+import from jaclang.compiler.driver.toolchain { native_pipeline_available }
 import from jaclang.compiler.driver.pipeline {
-    _analysis_sched_loading,
+    _codegen_sched_loading,
     _import_all,
-    _ir_sched_loading,
     module_in_flight,
     providers_of_product,
     register_product_schedule,
@@ -508,8 +508,7 @@ glob _codegen_sched_loading = ContextVar(
          'jaclang.compiler.passes.freeze_structure_pass'
      ),
      NATIVE_CODEGEN_DEPS: tuple[str, ...] = ('jaclang.compiler.backends.native', ),
-     _native_sched_failure: dict[str, str] = {},
-     _native_env_memo: dict[str, tuple[bool, str]] = {};
+     _native_sched_failure: dict[str, str] = {};
 
 def _codegen_tier_reason -> str {
     if _codegen_sched_loading.get() {
@@ -532,41 +531,6 @@ def _note_native_schedule_failure(err: (BaseException | None)) {
 
 def native_schedule_failure -> str {
     return _native_sched_failure.get('reason', '');
-}
-
-def native_pipeline_available -> tuple[bool, str] {
-    cached = _native_env_memo.get('verdict');
-    if cached is not None {
-        return cached;
-    }
-    if (
-        _analysis_sched_loading.get()
-        or _ir_sched_loading.get()
-        or _codegen_sched_loading.get()
-    ) {
-        return (True, '');
-    }
-    reason = '';
-    try {
-        import from jaclang.compiler.backends.native.llvm { _find_shim }
-        _find_shim();
-    } except ModuleNotFoundError {
-        reason = (
-            'native pipeline unavailable: LLVM shim (libjacllvm) '
-            + 'not found in this environment'
-        );
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        return (False, 'native pipeline undecided: the compiler is still initializing');
-    } except Exception {
-        reason = (
-            'native pipeline unavailable: LLVM shim (libjacllvm) '
-            + 'not found in this environment'
-        );
-    }
-    verdict = (not reason, reason);
-    _native_env_memo['verdict'] = verdict;
-    return verdict;
 }
 
 def _py_codegen_tail -> list[type] {

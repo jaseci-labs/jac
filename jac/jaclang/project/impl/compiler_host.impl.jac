@@ -161,7 +161,7 @@ impl ProjectHost.npm_declarations(spec: str, base_path: str) -> (str | None) {
 }
 
 impl ProjectHost.native_pipeline_available -> tuple[bool, str] {
-    import from jaclang.compiler.driver.pipeline_runner { native_pipeline_available }
+    import from jaclang.compiler.driver.toolchain { native_pipeline_available }
     return native_pipeline_available();
 }
 
