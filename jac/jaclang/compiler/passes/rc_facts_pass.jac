@@ -1,5 +1,4 @@
 import from jaclang.compiler.passes.context { CompileContext }
-import from typing { TypeAlias }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Assignment,
@@ -41,7 +40,7 @@ import from jaclang.compiler.frontend.unitree {
     UniNode,
     WhileStmt
 }
-import from jaclang.compiler.passes.dataflow { solve_backward_gen_kill }
+import from jaclang.compiler.passes.dataflow { SymId, solve_backward_gen_kill }
 import from jaclang.compiler.frontend.constant {
     ExprCtx,
     OwnershipKind,
@@ -49,8 +48,6 @@ import from jaclang.compiler.frontend.constant {
     Tokens as Tok,
     is_borrow_kind
 }
-
-glob SymId: TypeAlias = int;
 
 enum Ownership {
     OWNED = "owned",

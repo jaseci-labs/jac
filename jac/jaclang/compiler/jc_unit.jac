@@ -27,7 +27,6 @@ import from jaclang.compiler.passes.early_passes {
     DeclImplMatchPass,
     SemanticAnalysisPass,
     SemDefMatchPass,
-    CFGBuildPass,
     JsxIntrinsicGuardPass
 }
 import from jaclang.compiler.passes.context { Alert }
@@ -205,11 +204,6 @@ def _spawn_early(index: int, mod: Module) -> (CompileContext | None) {
         return ctx;
     }
     if index == 6 {
-        ctx = _early_context(mod, CFGBuildPass, "CFGBuildPass");
-        mod spawn CFGBuildPass(module=mod, ctx=ctx);
-        return ctx;
-    }
-    if index == 7 {
         ctx = _early_context(mod, JsxIntrinsicGuardPass, "JsxIntrinsicGuardPass");
         mod spawn JsxIntrinsicGuardPass(module=mod, ctx=ctx);
         return ctx;
