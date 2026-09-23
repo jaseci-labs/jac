@@ -613,6 +613,158 @@ impl KEDAAutoscaler._apply_autoscaler_view{
     return status;
 }
 
+impl KEDAAutoscaler._target_of{
+    ref: dict[str, any] = dict(
+        dict(scaled_object.get("spec", {}) or {}).get("scaleTargetRef", {}) or {}
+    );
+    return str(ref.get("name") or "");
+}
+
+impl KEDAAutoscaler._list_scale_targets{
+    """Every ScaledObject's target in the namespace, plus the list's version.
+
+    The returned resourceVersion is the list's, not any object's: that is the
+    point a watch resumes from, and starting a watch from an individual
+    object's version replays or skips events.
+    """;
+    api = self._custom_api or client.CustomObjectsApi();
+    kwargs: dict[str, any] = {
+        "group": "keda.sh",
+        "version": "v1alpha1",
+        "namespace": namespace,
+        "plural": "scaledobjects"
+    };
+    if label_selector {
+        kwargs["label_selector"] = label_selector;
+    }
+    listing: dict[str, any] = dict(api.list_namespaced_custom_object(**kwargs) or {});
+    targets: dict[str, str] = {};
+    for item in (listing.get("items") or []) {
+        target = self._target_of(dict(item));
+        if target {
+            targets[target] = str(
+                dict(dict(item).get("metadata", {}) or {}).get("name") or ""
+            );
+        }
+    }
+    version = str(dict(listing.get("metadata", {}) or {}).get("resourceVersion") or "");
+    return (targets, version);
+}
+
+impl KEDAAutoscaler._transition_for_event{
+    """One watch event turned into a transition, or None when nothing changed.
+
+    Split out of the stream loop so the decision that matters, whether an event
+    represents a real state change, is reachable without driving a watch. It
+    mutates `last` because that cache is what makes the decision: a relist
+    replays every object it knows about, and comparing against the cache is the
+    only thing separating a genuine transition from that replay.
+    """;
+    scaled_object = dict(event.get("object") or {});
+    target = self._target_of(scaled_object);
+    if not target {
+        return None;
+    }
+    if event.get("type") == "DELETED" {
+        last.pop(target, None);
+        return None;
+    }
+    status = self.get_runtime_status(target, namespace);
+    previous = last.get(target);
+    if previous == status.status {
+        return None;
+    }
+    last[target] = status.status;
+    return transition_from(status, target, namespace, previous);
+}
+
+impl KEDAAutoscaler.watch_scale_targets{
+    """Deduplicated transitions for the namespace's KEDA-scaled targets.
+
+    Watches the ScaledObject rather than the Deployment because the trigger and
+    scaler conditions are the half a Deployment cannot express: a scaler that
+    cannot reach its metric endpoint never changes the Deployment, so watching
+    the workload alone reports nothing at all for the failure this exists to
+    surface. The cost is the reverse gap, a pod becoming ready without the
+    ScaledObject changing, which needs a second watch and is deliberately not
+    here.
+
+    The opening list seeds the cache and emits nothing. An observer starting up
+    has witnessed no transition, and reporting current state as one invents
+    history and floods a fresh subscriber on every restart.
+
+    A 410 Gone means the cached resourceVersion is too old to resume from. The
+    recovery relists and keeps the cache, so targets whose state did not change
+    while the observer was behind stay silent and only real differences emit.
+    """;
+    import from jaclang.scale._optdeps.kubernetes { watch }
+    api = self._custom_api or client.CustomObjectsApi();
+    (targets, version) = self._list_scale_targets(namespace, label_selector);
+    last: dict[str, any] = {};
+    for target in targets {
+        last[target] = self.get_runtime_status(target, namespace).status;
+    }
+
+    while True {
+        kwargs: dict[str, any] = {
+            "group": "keda.sh",
+            "version": "v1alpha1",
+            "namespace": namespace,
+            "plural": "scaledobjects"
+        };
+        if label_selector {
+            kwargs["label_selector"] = label_selector;
+        }
+        if version {
+            kwargs["resource_version"] = version;
+        }
+        if timeout_seconds is not None {
+            kwargs["timeout_seconds"] = timeout_seconds;
+        }
+        streamer = watch.Watch();
+        try {
+            for event in streamer.stream(api.list_namespaced_custom_object, **kwargs) {
+                seen = str(
+                    dict(dict(event.get("object") or {}).get("metadata") or {}).get(
+                        "resourceVersion"
+                    )
+                        or ""
+                );
+                if seen {
+                    version = seen;
+                }
+                moved = self._transition_for_event(event, namespace, last);
+                if moved is not None {
+                    yield moved;
+                }
+            }
+        } except ApiException as e {
+            if e.status != 410 {
+                raise;
+            }
+            if self.logger {
+                self.logger.info(
+                    f"ScaledObject watch fell behind in '{namespace}' "
+                    f"(410 Gone); relisting and resuming. Cached states are "
+                    f"kept, so unchanged targets stay silent."
+                );
+            }
+            (targets, version) = self._list_scale_targets(namespace, label_selector);
+            last = {
+                k: v
+                for (k, v) in last.items()
+                if k in targets
+            };
+            continue;
+        } finally {
+            streamer.stop();
+        }
+        if timeout_seconds is not None {
+            return;
+        }
+    }
+}
+
 impl KEDAAutoscaler.interceptor_route_name_for{
     return f"{target}-http-route";
 }

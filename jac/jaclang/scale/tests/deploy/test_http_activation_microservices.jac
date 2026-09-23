@@ -1719,3 +1719,115 @@ test "a failed external metric on the HPA overrides KEDA's own Ready condition" 
     assert v2.read_namespaced_horizontal_pod_autoscaler.call_args[1]["name"]
         == "keda-hpa-worker";
 }
+
+
+# --- Section I: watch_scale_targets -- what counts as a transition -----------
+# The watch itself is a long-lived connection and only a real apiserver
+# exercises its reconnect paths. What is decidable here is the rule that makes
+# the stream usable: an event only becomes a transition when the target's state
+# actually moved, which is also what stops a relist replaying history.
+def _so_event(kind: str, target: str, active: str = "False") -> dict[str, any] {
+    body = _so(active=active);
+    body["spec"]["scaleTargetRef"] = {"kind": "Deployment", "name": target};
+    return {"type": kind, "object": body};
+}
+
+
+test "an event is a transition only when the state actually moved" {
+    (custom, apps, v2) = _status_apis(_so(active="False"), _dep_at(0, 0));
+    keda = KEDAAutoscaler(_custom_api=custom, _apps_api=apps, _v2_api=v2);
+    seen: dict[str, any] = {};
+
+    # First sighting of a target the cache has never held is a transition, and
+    # it reports no previous state rather than inventing one.
+    first = keda._transition_for_event(
+        _so_event("ADDED", "worker-deployment"), "ns", seen
+    );
+    assert first is not None;
+    assert first.state == ResourceStatus.INACTIVE , first.state;
+    assert first.previous_state is None;
+    assert first.scale_target_name == "worker-deployment";
+    assert first.observed_at , "a transition records when this observer saw it";
+
+    # The same state again is what a relist replays, and it must stay silent.
+    assert keda._transition_for_event(
+        _so_event("MODIFIED", "worker-deployment"), "ns", seen
+    )
+        is None , "an unchanged state must not re-emit";
+
+    # A real move does emit, carrying where it came from.
+    custom.get_namespaced_custom_object.return_value = _so(active="True");
+    moved = keda._transition_for_event(
+        _so_event("MODIFIED", "worker-deployment", active="True"), "ns", seen
+    );
+    assert moved is not None;
+    assert moved.previous_state == ResourceStatus.INACTIVE , moved.previous_state;
+    assert moved.state == ResourceStatus.ACTIVATING , moved.state;
+
+    # A delete drops the cache entry and is not itself a transition, so the
+    # target re-registers cleanly if it comes back.
+    assert keda._transition_for_event(
+        _so_event("DELETED", "worker-deployment"), "ns", seen
+    )
+        is None;
+    assert "worker-deployment" not in seen;
+}
+
+
+test "a scaler failure is a transition the Deployment could never report" {
+    # The whole reason this watches the ScaledObject: replica counts do not move.
+    (custom, apps, v2) = _status_apis(_so(active="False"), _dep_at(0, 0));
+    keda = KEDAAutoscaler(_custom_api=custom, _apps_api=apps, _v2_api=v2);
+    seen: dict[str, any] = {};
+    keda._transition_for_event(_so_event("ADDED", "worker-deployment"), "ns", seen);
+
+    custom.get_namespaced_custom_object.return_value = _so(
+        ready="False",
+        ready_reason="ScalerFailed",
+        ready_message="prometheus scaler: dial tcp: no such host"
+    );
+    broke = keda._transition_for_event(
+        _so_event("MODIFIED", "worker-deployment"), "ns", seen
+    );
+    assert broke is not None , "a scaler failure must surface as a transition";
+    assert broke.state == ResourceStatus.DEGRADED , broke.state;
+    assert broke.reason == "ScalerFailed";
+    assert "no such host" in (broke.message or "");
+}
+
+
+test "the opening list seeds the cache instead of replaying it as transitions" {
+    # An observer that has just started has witnessed nothing. Emitting current
+    # state as a transition invents history and floods every restart.
+    listing = {
+        "metadata": {"resourceVersion": "8800"},
+        "items": [
+            {
+                "metadata": {"name": "worker-scaledobject"},
+                "spec": {"scaleTargetRef": {"name": "worker-deployment"}}
+            }
+        ]
+    };
+    custom = unittest.mock.MagicMock();
+    custom.list_namespaced_custom_object.return_value = listing;
+    custom.get_namespaced_custom_object.return_value = _so(active="False");
+    apps = unittest.mock.MagicMock();
+    apps.read_namespaced_deployment.return_value = _dep_at(0, 0);
+    keda = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=unittest.mock.MagicMock()
+    );
+
+    (targets, version) = keda._list_scale_targets("ns");
+    assert targets == {"worker-deployment": "worker-scaledobject"} , targets;
+    assert version == "8800" , "a watch resumes from the list's version, not an object's";
+
+    # Seeded from that list, the first event for an unchanged target is silent.
+    seeded: dict[str, any] = {};
+    for t in targets {
+        seeded[t] = keda.get_runtime_status(t, "ns").status;
+    }
+    assert keda._transition_for_event(
+        _so_event("ADDED", "worker-deployment"), "ns", seeded
+    )
+        is None , "a seeded target must not emit a phantom transition";
+}

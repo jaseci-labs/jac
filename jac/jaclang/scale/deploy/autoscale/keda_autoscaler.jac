@@ -4,6 +4,8 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     Autoscaler,
     AutoscalerRuntimeStatus,
     AutoscalerSpec,
+    AutoscalerTransition,
+    transition_from,
     condition,
     normalize_conditions,
     tristate,
@@ -91,6 +93,21 @@ obj KEDAAutoscaler(Autoscaler) {
     def _apply_autoscaler_view(
         status: AutoscalerRuntimeStatus
     ) -> AutoscalerRuntimeStatus;
+
+    def watch_scale_targets(
+        namespace: str,
+        label_selector: (str | None) = None,
+        timeout_seconds: (int | None) = None
+    ) -> any;
+
+    def _list_scale_targets(
+        namespace: str, label_selector: (str | None) = None
+    ) -> tuple[dict[str, str], str];
+
+    def _target_of(scaled_object: dict[str, any]) -> str;
+    def _transition_for_event(
+        event: dict[str, any], namespace: str, last: dict[str, any]
+    ) -> (AutoscalerTransition | None);
 
     def _validate_http_activation_spec(spec: HTTPActivationSpec) -> None;
     def _build_routing_rules(rules: list[HTTPRoutingRule]) -> list[dict[str, any]];
