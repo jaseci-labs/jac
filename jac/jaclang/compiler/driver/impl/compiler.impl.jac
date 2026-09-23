@@ -137,7 +137,7 @@ impl JacCompiler.get_bytecode(
             read_file_with_encoding(full_target), full_target, 'exec'
         );
     }
-    actual = self.selfhost.resolve(full_target, target_program);
+    actual = self.selfhost.resolve(full_target, target_program, execution=True);
     if not self.selfhost.is_selfhost(actual) {
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);
@@ -152,7 +152,7 @@ impl JacCompiler.get_bytecode(
 impl JacCompiler._get_bytecode(
     full_target: str, target_program: JacProgram
 ) -> (types.CodeType | None) {
-    actual_program = self.selfhost.resolve(full_target, target_program);
+    actual_program = self.selfhost.resolve(full_target, target_program, execution=True);
     (rebuild, no_precompile) = cache_mode();
     symtab_only_recovery = False;
 
@@ -751,15 +751,15 @@ impl JacCompiler.declared_codespace(file_path: str, target_program: JacProgram) 
     if pinned in ('client', 'native') {
         return pinned;
     }
+    if self.selfhost.is_selfhost(target_program) {
+        return '';
+    }
     import from jaclang.compiler.native_scope {
         in_native_scope_path,
         scope_lowering_active
     }
     if scope_lowering_active() and in_native_scope_path(file_path) {
         return 'native';
-    }
-    if self.selfhost.is_selfhost(target_program) {
-        return '';
     }
     opts = target_program.options;
     forced = opts.force_codespace if opts is not None else '';
@@ -785,6 +785,9 @@ impl JacCompiler.infers_native_codespace(
     if opts is not None and opts.no_cgen {
         return False;
     }
+    if self.selfhost.is_selfhost(target_program) {
+        return False;
+    }
     import from jaclang.compiler.native_scope {
         in_native_scope_path,
         scope_lowering_active
@@ -792,8 +795,7 @@ impl JacCompiler.infers_native_codespace(
     if scope_lowering_active() and in_native_scope_path(file_path) {
         return True;
     }
-    return not self.selfhost.is_selfhost(target_program)
-        and _default_codespace_for(target_program) == 'native';
+    return _default_codespace_for(target_program) == 'native';
 }
 
 impl JacCompiler.parse_str(

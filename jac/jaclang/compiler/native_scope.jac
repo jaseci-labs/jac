@@ -28,6 +28,29 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(
              module="jaclang.compiler.passes.sym_tab_build_pass", strict=True
          ),
+         NativeScopeEntry(module="jaclang.compiler.passes.annex_weave", strict=True),
+         NativeScopeEntry(module="jaclang.compiler.passes.early_passes", strict=True),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.graph_lowering_pass", strict=True
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.decl_impl_match_pass", strict=True
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.semantic_analysis_pass", strict=True
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.sem_def_match_pass", strict=True
+         ),
+         NativeScopeEntry(module="jaclang.compiler.passes.cfg_build_pass", strict=True),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.jsx_intrinsic_guard_pass", strict=True
+         ),
+         NativeScopeEntry(module="jaclang.compiler.expr_keys", strict=True),
+         NativeScopeEntry(module="jaclang.project.mobui_scope", strict=True),
+         NativeScopeEntry(
+             module="jaclang.client.targets.react_native.html_tag_map", strict=True
+         ),
 
      );
 
@@ -54,19 +77,6 @@ def activate_scope_lowering(source_path: str | None = None) -> None {
         }
     }
     _SCOPE_ACTIVE.append(ActiveNativeScope(compiler_roots=roots));
-    try {
-        import from jaclang.runtime.runtime { JacRuntime }
-        sh = JacRuntime.get_selfhost();
-        prog = sh.peek_program();
-        if prog is not None {
-            hub = prog.mod.hub;
-            for k in list(hub.keys()) {
-                if in_native_scope_path(k) {
-                    del hub[k];
-                }
-            }
-        }
-    } except Exception {}
 }
 
 def scope_lowering_active -> bool {

@@ -21,6 +21,7 @@ import from jaclang.compiler.driver.wiring {
     wiring_for_path
 }
 import from jaclang.project.source { pascal_to_snake }
+import from jaclang.compiler.passes.annex_weave { import_form }
 import from jaclang.compiler.frontend.diagnostics {
     E1140,
     E1141,
@@ -33,6 +34,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E2091,
     E2092,
     E2093,
+    E2094,
     W2083
 }
 
@@ -59,8 +61,11 @@ walker ImportWiringPass {
         imp: Import,
         consumer: str,
         provided: dict[tuple[str, str, str, str], ImportWire],
-        enforce: bool
+        enforce: bool,
+        nested: bool = False
     ) -> None;
 
     static def _rule_names(rules: list[ImportRule]) -> str;
+    static def _package_pattern(module: str) -> str;
+    static def _rule_name_for(module: str) -> str;
 }

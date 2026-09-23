@@ -394,9 +394,20 @@ impl JacProgram._search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]] 
     return hubs;
 }
 
+impl JacProgram._lookup_hubs(
+    self: JacProgram, path: str
+) -> list[dict[(str, uni.Module)]] {
+    compiler = self._get_compiler();
+    internal = compiler.selfhost.program;
+    if internal is self or compiler.selfhost.resolve(path, self) is not internal {
+        return [self.mod.hub];
+    }
+    return [self.mod.hub, internal.mod.hub];
+}
+
 impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) {
     import os;
-    hubs = self._search_hubs();
+    hubs = self._lookup_hubs(path);
     for hub in hubs {
         if path in hub {
             return hub[path];

@@ -592,8 +592,8 @@ test "an interface is identical however many twins of its module are reachable" 
     # second interface carried every name twice with a different digest.
     import from tests.support { JAC_ROOT }
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    import from jaclang.compiler.types.stubcat.writer { build_module_iface }
     import from jaclang.compiler.types.stubcat.modiface {
-        build_module_iface,
         open_module_iface,
         iface_module
     }
@@ -770,7 +770,7 @@ test "an interface that cannot place a class is not persisted" {
     # would trust (the dependency digests still match). The builder refuses,
     # and the persist step leaves the cache untouched for this compile.
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-    import from jaclang.compiler.types.stubcat.modiface {
+    import from jaclang.compiler.types.stubcat.writer {
         IncoherentInterface,
         build_module_iface
     }

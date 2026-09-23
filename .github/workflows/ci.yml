@@ -1530,6 +1530,13 @@ jobs:
       - name: Export the existing native arena replay fixture
         run: |
           cp jac/tests/compiler/backends/native/fixtures/arena_replay.jac site/core/site/game/arena_replay.jac
+          sed -i '/^import from sim /d' site/core/site/game/arena_replay.jac
+          cat >> site/arch.jac <<'JAC'
+
+          impl import core.site.game {
+              sim --> core.site.game.arena_replay { Game, world_new, sim_tick }
+          }
+          JAC
           cat >> site/jac.toml <<'TOML'
           [apps.replay]
           kind = "native-binary"

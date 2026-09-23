@@ -1,6 +1,6 @@
 import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
 
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 
 impl EsastGenPass._field_constructor_args(

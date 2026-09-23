@@ -405,6 +405,7 @@ glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.intrinsic_registry',
          'jaclang.compiler.types.type_evaluator',
          'jaclang.compiler.types.stubcat.modiface',
+         'jaclang.compiler.types.stubcat.writer',
          'jaclang.compiler.passes.pyast_load_pass',
          'jaclang.compiler.passes.layout_pass',
          'jaclang.compiler.passes.cfg_build_pass',
@@ -720,6 +721,10 @@ def _py_codegen_tail -> list[type] {
     return [NativeImportFactsPass, JcirGenPass, JcirBytecodeGenPass];
 }
 
+def get_bootstrap_code_gen -> list[type] {
+    return _py_codegen_tail();
+}
+
 def get_py_code_gen(
     native: bool = True, provided: (set[AnalysisFact] | None) = None
 ) -> list[type] {
@@ -857,7 +862,7 @@ def run_utility(
         import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
         step = GrammarExtractPass;
     } elif product == UtilityProduct.CFG_DOT {
-        import from jaclang.compiler.passes.cfg_build_pass { CoalesceBBPass }
+        import from jaclang.compiler.tools.cfg_dot { CoalesceBBPass }
         step = CoalesceBBPass;
     } elif product == UtilityProduct.NORMALIZE {
         import from jaclang.compiler.tools.normalize_pass { NormalizePass }

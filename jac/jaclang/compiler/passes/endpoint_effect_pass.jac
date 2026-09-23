@@ -170,7 +170,7 @@ walker EndpointEffectPass(TreeWalker) {
                 self._visited.add(id(nd));
                 declared = self._declared_effects(nd);
                 if declared is not None {
-                    import from jaclang.compiler.tools.unparse_pass { unparse_node }
+                    import from jaclang.compiler.frontend.unparse { unparse_node }
                     self._declared_reads.update(declared["reads"]);
                     self._declared_writes.update(declared["writes"]);
                     self._assumptions.add(
@@ -250,7 +250,7 @@ walker EndpointEffectPass(TreeWalker) {
                 ) {
                 continue;
             }
-            import from jaclang.compiler.tools.unparse_pass { unparse_node }
+            import from jaclang.compiler.frontend.unparse { unparse_node }
             result: dict[str, list[str]] = {"reads": [], "writes": []};
             for pair in decorator.params or [] {
                 if not isinstance(pair, KWPair)

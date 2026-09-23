@@ -1922,6 +1922,18 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         if _cls_name is not None {
             return _cls_name;
         }
+        if right_name == "__class__" {
+            _cls_of = self._codegen_type_of(nd.target);
+            if _cls_of is not None {
+                return _cls_of;
+            }
+        }
+        if self._module_class_name(nd) is not None {
+            _cls_ref = self._codegen_class_ref(nd);
+            if _cls_ref is not None {
+                return _cls_ref;
+            }
+        }
 
         _cf_member = self._codegen_class_form_enum_member(nd);
         if _cf_member is not None {

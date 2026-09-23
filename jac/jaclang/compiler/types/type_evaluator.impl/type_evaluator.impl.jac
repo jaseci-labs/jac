@@ -6189,6 +6189,7 @@ impl TypeEvaluator._type_alias_tag_ident(tag_expr: Expr) -> (str | None) {
             if mod_item is not None and isinstance(mod_item.name, Name) {
                 return mod_item.name.value;
             }
+            return sym.sym_name;
         }
         return tag_expr.value;
     }

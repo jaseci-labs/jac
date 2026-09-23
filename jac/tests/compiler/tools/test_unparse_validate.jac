@@ -12,11 +12,9 @@ import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.tools.jac_formatter_pass { format_module }
-import from jaclang.compiler.tools.unparse_pass {
-    UnparsePass,
-    unparse_module,
-    unparse_node
-}
+import from jaclang.compiler.tools.unparse_pass { UnparsePass }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 import from jaclang.compiler.passes.execution { run_walker }
 import from jaclang.compiler.frontend.parser.frontend { parse }
 

@@ -461,6 +461,7 @@ def precompile_unit_context(
 ) -> Iterator[JacProgram] {
     import jaclang.compiler.types.type_evaluator;
     import jaclang.compiler.types.stubcat.modiface;
+    import jaclang.compiler.types.stubcat.writer;
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     import from jaclang.cli.workpool { maybe_malloc_trim }

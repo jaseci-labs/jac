@@ -49,7 +49,11 @@ impl DiagnosticPolicy.is_suppressed(
     loc: (CodeLocInfo | Span | None) = None,
     source: (Source | None) = None
 ) -> bool {
-    if loc is not None and self._inline_suppressed(diag, loc, source) {
+    if (
+        loc is not None
+        and diag.code not in INLINE_LOCKED_CODES
+        and self._inline_suppressed(diag, loc, source)
+    ) {
         return True;
     }
     if diag.code in self.suppress_codes {

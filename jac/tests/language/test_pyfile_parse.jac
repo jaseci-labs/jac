@@ -14,7 +14,7 @@ import jaclang;
 import jaclang.compiler.frontend.unitree as ast;
 import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.testing.test { parametrize }
 import from tests.fixtures_list { JACLANG_PYTHON_FILES }
 

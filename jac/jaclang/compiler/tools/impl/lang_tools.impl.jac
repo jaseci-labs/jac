@@ -1,6 +1,6 @@
 import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
 import from jaclang.cli.console { console }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.compiler.tools.treeprinter {
     print_ast_tree,
     print_symtab_tree,

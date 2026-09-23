@@ -1,9 +1,7 @@
-import struct;
-
 glob MAGIC: bytes = b"JSCAT005",
      FORMAT_VERSION: int = 5,
-     HEADER_FMT: str = "<8sI6I8QII",
      HEADER_SIZE: int = 108,
+     IFACE_HASH_LEN: int = 64,
      TY_UNKNOWN: int = 0,
      TY_NEVER: int = 1,
      TY_ANY: int = 2,
@@ -78,63 +76,79 @@ obj Header {
         ambient_sid: int = 0;
 }
 
+def put_u32(out: bytearray, value: int) {
+    out.extend(value.to_bytes(4, "little"));
+}
+
+def put_u64(out: bytearray, value: int) {
+    out.extend(value.to_bytes(8, "little"));
+}
+
+def u32_at(buf: bytes, pos: int) -> int {
+    end = pos + 4;
+    if pos < 0 or end > len(buf) {
+        raise IndexError(f"stubcat read of 4 bytes at {pos} is out of range");
+    }
+    return int.from_bytes(buf[pos:end], "little");
+}
+
+def u64_at(buf: bytes, pos: int) -> int {
+    end = pos + 8;
+    if pos < 0 or end > len(buf) {
+        raise IndexError(f"stubcat read of 8 bytes at {pos} is out of range");
+    }
+    return int.from_bytes(buf[pos:end], "little");
+}
+
 def pack_header(h: Header) -> bytes {
-    out = struct.pack(
-        HEADER_FMT,
-        MAGIC,
-        FORMAT_VERSION,
-        h.n_strings,
-        h.n_modules,
-        h.n_scopes,
-        h.n_symbols,
-        h.n_types,
-        h.n_shared,
-        h.off_strtab,
-        h.off_strblob,
-        h.off_modtab,
-        h.off_scopetab,
-        h.off_symtab,
-        h.off_typetab,
-        h.off_sharedtab,
-        h.off_recblob,
-        h.key_sid,
-        h.ambient_sid
-    );
+    out = bytearray(MAGIC);
+    put_u32(out, FORMAT_VERSION);
+    put_u32(out, h.n_strings);
+    put_u32(out, h.n_modules);
+    put_u32(out, h.n_scopes);
+    put_u32(out, h.n_symbols);
+    put_u32(out, h.n_types);
+    put_u32(out, h.n_shared);
+    put_u64(out, h.off_strtab);
+    put_u64(out, h.off_strblob);
+    put_u64(out, h.off_modtab);
+    put_u64(out, h.off_scopetab);
+    put_u64(out, h.off_symtab);
+    put_u64(out, h.off_typetab);
+    put_u64(out, h.off_sharedtab);
+    put_u64(out, h.off_recblob);
+    put_u32(out, h.key_sid);
+    put_u32(out, h.ambient_sid);
     if len(out) != HEADER_SIZE {
         raise ValueError(f"stubcat header is {len(out)} bytes, expected {HEADER_SIZE}");
     }
-    return out;
+    return bytes(out);
 }
 
-def unpack_header(buf: any) -> (Header | None) {
+def unpack_header(buf: bytes) -> (Header | None) {
     if len(buf) < HEADER_SIZE {
         return None;
     }
-    try {
-        fields = struct.unpack_from(HEADER_FMT, buf, 0);
-    } except struct.error {
-        return None;
-    }
-    if bytes(fields[0]) != MAGIC or fields[1] != FORMAT_VERSION {
+    if buf[0:8] != MAGIC or u32_at(buf, 8) != FORMAT_VERSION {
         return None;
     }
     return Header(
-        n_strings=fields[2],
-        n_modules=fields[3],
-        n_scopes=fields[4],
-        n_symbols=fields[5],
-        n_types=fields[6],
-        n_shared=fields[7],
-        off_strtab=fields[8],
-        off_strblob=fields[9],
-        off_modtab=fields[10],
-        off_scopetab=fields[11],
-        off_symtab=fields[12],
-        off_typetab=fields[13],
-        off_sharedtab=fields[14],
-        off_recblob=fields[15],
-        key_sid=fields[16],
-        ambient_sid=fields[17]
+        n_strings=u32_at(buf, 12),
+        n_modules=u32_at(buf, 16),
+        n_scopes=u32_at(buf, 20),
+        n_symbols=u32_at(buf, 24),
+        n_types=u32_at(buf, 28),
+        n_shared=u32_at(buf, 32),
+        off_strtab=u64_at(buf, 36),
+        off_strblob=u64_at(buf, 44),
+        off_modtab=u64_at(buf, 52),
+        off_scopetab=u64_at(buf, 60),
+        off_symtab=u64_at(buf, 68),
+        off_typetab=u64_at(buf, 76),
+        off_sharedtab=u64_at(buf, 84),
+        off_recblob=u64_at(buf, 92),
+        key_sid=u32_at(buf, 100),
+        ambient_sid=u32_at(buf, 104)
     );
 }
 
@@ -170,7 +184,7 @@ def put_refs(out: bytearray, refs: list[int]) {
 }
 
 obj Cursor {
-    has buf: any,
+    has buf: bytes,
         pos: int = 0;
 
     def u -> int {

@@ -267,8 +267,8 @@ test "include bindings preserve source declarations and lazy symbol providers" {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    import from jaclang.compiler.types.stubcat.writer { build_module_iface }
     import from jaclang.compiler.types.stubcat.modiface {
-        build_module_iface,
         open_module_iface,
         iface_module
     }

@@ -702,7 +702,6 @@ node Module(AstDocNode, UniScopeNode) {
     has annexable_by: (str | None) { getter; }
 
     def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
-    def absorb_annex_body(stmts: Sequence[UniNode]) -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {
@@ -892,6 +891,7 @@ node Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
     }
 
     def postinit -> None;
+    def prune_items(doomed: set[int]) -> bool;
 
     has is_jac: bool { getter; }
     has __jac_detected: bool { getter; }

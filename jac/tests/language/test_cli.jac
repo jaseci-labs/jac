@@ -23,7 +23,7 @@ import from jaclang.cli.commands {
 }
 import from jaclang.cli.commands { config as config_cmd }
 import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.config { set_config }
 import from jaclang.runtime.builtin { printgraph }
 

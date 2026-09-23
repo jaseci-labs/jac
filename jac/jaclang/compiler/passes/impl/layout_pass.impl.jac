@@ -1,5 +1,5 @@
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 
 impl LayoutPass.postinit -> None {
     self.registry = LayoutRegistry();

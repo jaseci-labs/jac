@@ -316,9 +316,16 @@ native layout records the emitted name separately from its source-level key.
   than a `BufferedIOBase` subclass -- the native pathway does not yet support
   cross-module vtable dispatch (calling an overridden method through a
   base-typed reference defined in another module aborts at run time), so the
-  bundled readers avoid inheritance across the module boundary. SCOPE: binary
-  streams only (no text `StringIO`, no `BufferedReader`/`BufferedWriter`
-  wrappers).
+  bundled readers avoid inheritance across the module boundary. `FileIO` is
+  CPython's raw binary file for reading: `FileIO(path, mode="r")` over the
+  `_file_native.jac` stdio floor, with `read(size=-1)`, `readall`, `seek` over
+  every `whence`, `tell`, `close`, the context manager, and CPython's `name`,
+  `mode == "rb"` and `closed`; a missing file raises `FileNotFoundError` and a
+  closed one `ValueError`. It is what a ranged read (`seek` then `read(n)`)
+  spells on both pathways, e.g. the stub catalog embedded in the `jac`
+  executable. DIVERGENCE: `FileIO` is read-only (any mode other than `r`/`rb`
+  raises `ValueError`). SCOPE: binary streams only (no text `StringIO`, no
+  `BufferedReader`/`BufferedWriter` wrappers).
 
 - **`compression/zstd.jac`** (Mechanism F) + **`_zstd_native.jac`** (FFI
   floor over the bundled `libzstd`, zstd 1.5.7) -- the CPython 3.14

@@ -364,12 +364,15 @@ impl UniNode.replace_kid(old: UniNode, new: UniNode) -> UniNode {
     self._assert_thawed();
     roles: list[type] = [];
     for e in [edge self->:Role:->] {
-        if getattr(e, "__jac__").target.archetype is old and `type(e) not in roles {
+        if `type(e) not in roles {
             roles.append(`type(e));
         }
     }
     for role in roles {
         targets = [self->:role:->];
+        if not any(t is old for t in targets) {
+            continue;
+        }
         del [edge self->:role:->];
         for t in targets {
             self._attach(new if t is old else t, role);
@@ -499,10 +502,6 @@ impl UniNode.in_client_context -> bool {
 
 impl UniNode.in_native_context -> bool {
     return self.codespace() == CodeContext.NATIVE;
-}
-
-impl Module.absorb_annex_body(stmts: Sequence[UniNode]) -> None {
-    self.add_kids_right(stmts, pos_update=False, parent_update=True, role=BodyRole);
 }
 
 impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
@@ -1520,6 +1519,48 @@ impl PyInlineCode.postinit -> None {
     CodeBlockStmt.postinit(self);
 }
 
+
+impl Import.prune_items(doomed: set[int]) -> bool {
+    self._role_set(
+        ItemsRole,
+        [
+            item
+            for item in self.items
+            if id(item) not in doomed
+        ]
+    );
+    if not self.items {
+        return True;
+    }
+    kids = [self->:Kid:->];
+    commas = [
+        k
+        for k in kids
+        if isinstance(k, Token) and k.name == Tok.COMMA
+    ];
+    no_commas = [
+        k
+        for k in kids
+        if id(k) not in doomed and not (isinstance(k, Token) and k.name == Tok.COMMA)
+    ];
+    result: list[UniNode] = [];
+    ci = 0;
+    for (i, kid) in enumerate(no_commas) {
+        result.append(kid);
+        if (
+            i + 1 < len(no_commas)
+            and isinstance(kid, (ModuleItem, ModulePath))
+            and isinstance(no_commas[i + 1], (ModuleItem, ModulePath))
+            and ci < len(commas)
+        ) {
+            result.append(commas[ci]);
+            ci += 1;
+        }
+    }
+    self.set_kids(nodes=result);
+    self._invalidate_sub_node_tab();
+    return False;
+}
 
 impl Import.postinit -> None {
     self.jac_detected = None;

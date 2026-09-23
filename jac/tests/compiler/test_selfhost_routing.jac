@@ -62,6 +62,7 @@ test "lazy compiler bytecode does not inherit the caller's analysis request" {
     import jaclang.compiler.driver.pass_driver as driver;
     # Ensure the codec is available so unnecessary interface work is observable.
     import jaclang.compiler.types.stubcat.modiface;
+    import jaclang.compiler.types.stubcat.writer;
     with TemporaryDirectory() as directory {
         base_path = Path(directory);
         toolchain = base_path / "toolchain";
@@ -117,6 +118,7 @@ test "application analysis does not eagerly publish selfhost dependency interfac
     import from jaclang.compiler.driver.selfhost { SelfHostCache }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import jaclang.compiler.types.stubcat.modiface;
+    import jaclang.compiler.types.stubcat.writer;
     import jaclang.compiler.driver.jir as jir;
     with TemporaryDirectory() as directory {
         base_path = Path(directory);

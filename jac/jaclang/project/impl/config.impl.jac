@@ -1731,6 +1731,18 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
             cfg.native.threads = 4;
         }
     }
+    if "arch" in data and isinstance(data["arch"], dict) {
+        arch_data = data["arch"];
+        if "closed" in arch_data {
+            if not isinstance(arch_data["closed"], list)
+                or not all(
+                    isinstance(pattern, str) for pattern in arch_data["closed"]
+                ) {
+                raise ValueError("[arch] closed must be a list of module patterns");
+            }
+            cfg.arch.closed = list(arch_data["closed"]);
+        }
+    }
     if "placement" in data
         and isinstance(data["placement"], dict)
         and "default" in data["placement"] {

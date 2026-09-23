@@ -13,7 +13,7 @@ import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.source { pascal_to_snake }
 import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
 import from jaclang.compiler.driver.program { JacProgram }

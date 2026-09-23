@@ -8,6 +8,11 @@ import from jaclang.compiler.passes.context { Alert }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.srcloc { Span }
 import from jaclang.compiler.frontend.unitree { CommentToken, Expr, Module, Source }
+import from jaclang.compiler.passes.annex_weave {
+    WovenAnnex,
+    merge_annex_into,
+    prune_generated_imports
+}
 
 def _replay_diags(
     diags: list[SrcDiag], from_pass: type, prog: JacProgram, diag_src: Source
@@ -129,7 +134,7 @@ def _native_parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list[tuple[str, str]],
+    annexes: list[WovenAnnex],
     early_context: str = ""
 ) -> (tuple[Module, bool] | None) {
     import jaclang.compiler.native_compiler as _jc;
@@ -138,8 +143,8 @@ def _native_parse_woven(
         return None;
     }
     kernel.prepare_early(early_context if prog is not None else "");
-    for (a_src, a_path) in annexes {
-        kernel.annex(a_src, a_path);
+    for annex in annexes {
+        kernel.annex(annex);
     }
     if kernel.run(source_str, file_path) != 0 {
         return None;
@@ -169,7 +174,7 @@ def parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list[tuple[str, str]],
+    annexes: list[WovenAnnex],
     early_context: str = ""
 ) -> tuple[any, bool] {
     nat = _native_parse_woven(source_str, file_path, prog, annexes, early_context);
@@ -180,10 +185,14 @@ def parse_woven(
     if had_error or not annexes {
         return (module, had_error);
     }
-    import from jaclang.compiler.passes.annex_weave { merge_annex_into }
-    for (a_src, a_path) in annexes {
-        (a_mod, _a_err) = parse(a_src, a_path, prog=prog);
+    for annex in annexes {
+        (a_mod, _a_err) = parse(annex.source, annex.path, prog=prog);
         merge_annex_into(module, a_mod);
+    }
+    for annex in annexes {
+        if annex.consumer {
+            prune_generated_imports(module, annex.path, annex.consumer);
+        }
     }
     return (module, had_error);
 }
@@ -210,12 +219,12 @@ def annex_paths(file_path: str) -> list[str] {
     return list(dict.fromkeys(found));
 }
 
-def annex_sources(file_path: str) -> list[tuple[str, str]] {
+def annex_sources(file_path: str) -> list[WovenAnnex] {
     import from jaclang.project.source { read_file_with_encoding }
-    out: list[tuple[str, str]] = [];
+    out: list[WovenAnnex] = [];
     for pth in annex_paths(file_path) {
         try {
-            out.append((read_file_with_encoding(pth), pth, ));
+            out.append(WovenAnnex(source=read_file_with_encoding(pth), path=pth));
         } except Exception {
             continue;
         }

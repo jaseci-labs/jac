@@ -4,6 +4,7 @@ import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from jaclang.compiler.frontend.unitree {
+    EmptyToken,
     ImplImport,
     Import,
     ImportRule,
@@ -16,9 +17,10 @@ import from jaclang.compiler.frontend.unitree {
     UniNode
 }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.roles { Kid }
+import from jaclang.compiler.frontend.roles { BodyRole, Kid }
 import from jaclang.project.modresolver { find_jac_project_root, resolve_local_module }
 import from jaclang.project.source { read_file_with_encoding }
+import from jaclang.compiler.passes.annex_weave { WovenAnnex, import_form }
 
 glob ARCH_FILE_NAME: str = "arch.jac";
 
@@ -48,8 +50,12 @@ obj WiringSpec {
         _lines: list[str] = [],
         _by_consumer: dict[str, list[ImportWire]] = {},
         _annex_cache: dict[str, str] = {},
-        _rules_digest: str = "",
-        _project_modules: (list[str] | None) = None;
+        closed_patterns: list[str] = [],
+        _policy_loaded: bool = False,
+        _rule_rows: list[str] = [],
+        _policy_digest: str = "",
+        _project_modules: (list[str] | None) = None,
+        _mentioned: (set[str] | None) = None;
 
     def postinit -> None;
     def module_name(path: str) -> (str | None);
@@ -58,6 +64,12 @@ obj WiringSpec {
     def project_modules -> list[str];
     def consumer_wires(consumer: str) -> list[ImportWire];
     def is_covered(consumer: str) -> bool;
+    def is_project_module(module: str) -> bool;
+    def is_mentioned(module: str) -> bool;
+    def is_closed(module: str) -> bool;
+    def is_sealed(module: str) -> bool;
+    def _ensure_policy -> None;
+    static def pattern_matches(pattern: str, module: str) -> bool;
     def annex_source(consumer: str) -> (str | None);
     def digest_for(consumer: str) -> str;
     def wire_bindings(wire: ImportWire) -> list[WireBinding];
@@ -70,10 +82,6 @@ obj WiringSpec {
     def rules_admitting(provider: str, consumer: str) -> list[ImportRule];
     static def admitted_names(rules: list[ImportRule]) -> (set[str] | None);
     static def pattern_text(pattern: ModulePattern) -> str;
-    static def import_form(
-        is_absorb: bool, is_typed: bool, is_comptime: bool, from_form: bool
-    ) -> str;
-
     def _wire_text(wire: ImportWire) -> list[tuple[int, int, str]];
     def _column_of(pos: int) -> int;
 }
@@ -100,7 +108,8 @@ def wiring_scope -> Iterator[None] {
 
 def is_arch_file(path: str) -> bool;
 def arch_file_for(path: str) -> (str | None);
-def wiring_for_path(path: str) -> (WiringSpec | None);
-def wiring_annex_for(file_path: str) -> (tuple[str, str] | None);
+def wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None);
+def wiring_annex_for(file_path: str) -> (WovenAnnex | None);
 def wiring_digest_for(file_path: str) -> str;
 def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
+def _closed_patterns_for(root_dir: str) -> list[str];

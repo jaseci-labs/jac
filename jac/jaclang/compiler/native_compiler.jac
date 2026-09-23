@@ -6,6 +6,7 @@ import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.passes.context { Alert, PassResult }
 import type from jaclang.compiler.frontend.parser.tokens { CommentData, SrcDiag }
+import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
@@ -91,11 +92,10 @@ class NativeCompiler {
         L.jac_str_new.restype = c_void_p;
         L.jac_release.argtypes = [c_void_p];
         L.jac_release.restype = None;
-        for name in ("jc_run", "jc_annex") {
-            fn = getattr(L, name);
-            fn.argtypes = [c_void_p, c_void_p, c_int64, c_void_p, c_void_p, c_int64];
-            fn.restype = c_int64;
-        }
+        L.jc_run.argtypes = [c_void_p, c_void_p, c_int64] * 2;
+        L.jc_run.restype = c_int64;
+        L.jc_annex.argtypes = [c_void_p, c_void_p, c_int64] * 3;
+        L.jc_annex.restype = c_int64;
         for name in (
             "jc_probe",
             "jc_err_count",
@@ -131,17 +131,16 @@ class NativeCompiler {
         L.jc_reg_edge.restype = c_int64;
         L.jc_reg_hint_tags.argtypes = [c_int64] * 2;
         L.jc_reg_hint_tags.restype = c_int64;
-        self.supports_early: bool = hasattr(L, "jc_set_early");
-        if self.supports_early {
-            L.jc_set_early.argtypes = [c_int64];
-            L.jc_set_early.restype = c_int64;
-            L.jc_completed.argtypes = [];
-            L.jc_completed.restype = c_int64;
-            L.jc_pass_time.argtypes = [c_int64];
-            L.jc_pass_time.restype = c_double;
-            L.jc_take_pass_alerts.argtypes = [c_int64, c_int64];
-            L.jc_take_pass_alerts.restype = c_void_p;
-        }
+        L.jc_set_early.argtypes = [c_int64];
+        L.jc_set_early.restype = c_int64;
+        L.jc_completed.argtypes = [];
+        L.jc_completed.restype = c_int64;
+        L.jc_pass_time.argtypes = [c_int64];
+        L.jc_pass_time.restype = c_double;
+        L.jc_take_pass_name.argtypes = [c_int64];
+        L.jc_take_pass_name.restype = c_void_p;
+        L.jc_take_pass_alerts.argtypes = [c_int64, c_int64];
+        L.jc_take_pass_alerts.restype = c_void_p;
     }
 
     def _hold(self: NativeCompiler, o: any) -> int {
@@ -443,75 +442,58 @@ class NativeCompiler {
         self.lib.jc_reg_seal();
     }
 
-    def _call_str2(self: NativeCompiler, name: str, a: str, b: str) -> int {
+    def _call_strs(self: NativeCompiler, name: str, *texts: str) -> int {
         fn = getattr(self.lib, name);
-        ab = a.encode();
-        bb = b.encode();
-        pa = self.lib.jac_str_new(ab, len(ab));
-        pb = None;
+        handles: list[int] = [];
+        args: list[object] = [];
         try {
-            pb = self.lib.jac_str_new(bb, len(bb));
-            return fn(
-                c_void_p(pa),
-                c_void_p(pa),
-                c_int64(len(ab)),
-                c_void_p(pb),
-                c_void_p(pb),
-                c_int64(len(bb))
-            );
+            for text in texts {
+                data = text.encode();
+                handle = self.lib.jac_str_new(data, len(data));
+                handles.append(handle);
+                args.extend([c_void_p(handle), c_void_p(handle), c_int64(len(data))]);
+            }
+            return fn(*args);
         } finally {
-            self.lib.jac_release(pb);
-            self.lib.jac_release(pa);
+            for handle in handles {
+                self.lib.jac_release(handle);
+            }
         }
     }
 
-    def annex(self: NativeCompiler, annex_src: str, annex_path: str) -> int {
-        return self._call_str2("jc_annex", annex_src, annex_path);
+    def annex(self: NativeCompiler, annex: WovenAnnex) -> int {
+        return self._call_strs("jc_annex", annex.source, annex.path, annex.consumer);
     }
 
     def run(self: NativeCompiler, source: str, path: str) -> int {
-        return self._call_str2("jc_run", source, path);
+        return self._call_strs("jc_run", source, path);
     }
 
     def prepare_early(self: NativeCompiler, context: str) {
-        if self.supports_early {
-            self.lib.jc_set_early(
-                {"server": 1, "client": 2, "native": 3}.get(context, 0)
-            );
-        }
+        self.lib.jc_set_early({"server": 1, "client": 2, "native": 3}.get(context, 0));
     }
 
     def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
         import from jaclang.compiler.passes.context {
             PassResult as CompletedPassResult
         }
-        import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-        import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+        import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
         out: dict[str, PassResult] = {};
-        if not self.supports_early {
-            return out;
-        }
-        completed = self.lib.jc_completed();
-        passes: list[tuple[int, type]] = [(1, ASTValidationPass), (2, SymTabBuildPass)];
-        for (pass_id, pass_cls) in passes {
-            if not (completed & pass_id) {
-                continue;
-            }
-            errors: list[Alert] = self._take(self.lib.jc_take_pass_alerts(pass_id, 0))
+        for index in range(self.lib.jc_completed()) {
+            name: str = self._take(self.lib.jc_take_pass_name(index));
+            errors: list[Alert] = self._take(self.lib.jc_take_pass_alerts(index, 0))
                 or [];
-            warnings: list[Alert] = self._take(self.lib.jc_take_pass_alerts(pass_id, 1))
+            warnings: list[Alert] = self._take(self.lib.jc_take_pass_alerts(index, 1))
                 or [];
             for alert in errors + warnings {
-                alert.from_pass = pass_cls;
                 if alert.code is not None {
-                    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
                     alert.code = DIAGNOSTICS[alert.code.code];
                 }
             }
-            out[pass_cls.__name__] = CompletedPassResult(
+            out[name] = CompletedPassResult(
                 errors_had=errors,
                 warnings_had=warnings,
-                time_taken=self.lib.jc_pass_time(pass_id)
+                time_taken=self.lib.jc_pass_time(index)
             );
         }
         return out;

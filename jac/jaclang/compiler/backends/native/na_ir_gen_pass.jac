@@ -62,6 +62,7 @@ import from jaclang.compiler.type_registry { JacTypeEntry }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.types.types {
     ClassType,
+    ModuleType,
     Parameter,
     TypeBase,
     UnionType,
@@ -2460,9 +2461,11 @@ walker NaIRGenPass {
     def _emit_runtime_class_name_fn -> (ir.Function | None);
     def _codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | None);
     def _codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _codegen_type_of(receiver: uni.UniNode) -> (ir.Value | None);
+    def _module_class_name(expr: uni.UniNode) -> (str | None);
     def _codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None);
     def _class_id_of_value(arch_name: str, obj_val: ir.Value) -> ir.Value;
-    def _codegen_class_ref(nd: uni.Name) -> (ir.Value | None);
+    def _codegen_class_ref(nd: uni.Name | uni.AtomTrailer) -> (ir.Value | None);
     def _is_enum_arch(name: str) -> bool;
     def _emit_isa_fn -> ir.Function;
     def _emit_isa_seq_fn -> ir.Function;

@@ -74,6 +74,7 @@ class JacProgram {
     static def hub_key(path: str) -> str;
     def has_failed_parse(self: JacProgram, path: str) -> bool;
     def _search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]];
+    def _lookup_hubs(self: JacProgram, path: str) -> list[dict[(str, uni.Module)]];
     def find_module(self: JacProgram, path: str) -> (uni.Module | None);
     def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
     def get_client_artifact(

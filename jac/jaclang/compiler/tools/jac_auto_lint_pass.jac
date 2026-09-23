@@ -43,6 +43,7 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.wiring { WiringSpec, is_arch_file, wiring_for_path }
+import from jaclang.compiler.passes.annex_weave { import_form }
 import from jaclang.compiler.driver.bccache { discover_base_file }
 import from jaclang.compiler.frontend.roles {
     Kid,
@@ -200,7 +201,6 @@ walker JacAutoLintPass(TreeWalker) {
 
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
     def _strip_usestate_imports(nd: uni.Module) -> None;
-    def _prune_import_items(stmt: uni.Import, doomed: set[int]) -> bool;
     def _strip_wired_imports(nd: uni.Module) -> None;
     def _strip_duplicate_wires(nd: uni.Module) -> None;
     can exit_expr_stmt with uni.ExprStmt exit;

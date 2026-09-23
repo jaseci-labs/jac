@@ -1,5 +1,6 @@
 import from jaclang.compiler.frontend.roles { Kid }
 import os;
+import hashlib;
 import json;
 import struct;
 import from jaclang.compiler.frontend.unitree {
@@ -1582,4 +1583,41 @@ obj CatalogWriter {
             "failure_log": list(self.failure_log)
         };
     }
+}
+
+class IncoherentInterface(RuntimeError) {
+    has mod_path: str,
+        orphans: list[str];
+
+    def init(self: IncoherentInterface, mod_path: str, orphans: list[str]) {
+        RuntimeError.__init__(
+            self,
+            f"interface of {mod_path} references {len(orphans)} class scope(s) "
+            "with no live module: "
+                + ", ".join(orphans)
+        );
+        self.mod_path = mod_path;
+        self.orphans = list(orphans);
+    }
+}
+
+def build_module_iface(
+    mod: Module,
+    evaluator: any,
+    pkg_dir: str,
+    path_mapper: Callable[[str], str] | None = None
+) -> bytes {
+    writer = CatalogWriter(
+        evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod, path_mapper=path_mapper
+    );
+    dotted = mod.name or "";
+    writer.add_module(mod, dotted);
+    writer.force_all();
+    key = mod.loc.mod_path if mod.loc else dotted;
+    body = writer.emit(writer.rel_of(key), {});
+    if writer.orphans {
+        raise IncoherentInterface(key, writer.orphans);
+    }
+    digest = hashlib.sha256(body).hexdigest();
+    return digest.encode("utf-8") + body;
 }
