@@ -459,6 +459,10 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     if not path {
         return None;
     }
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    if os.path.realpath(path).startswith(os.path.realpath(jaclang_pkg_root()) + os.sep) {
+        return None;
+    }
     root_dir = find_jac_project_root(path);
     if not root_dir {
         return None;
