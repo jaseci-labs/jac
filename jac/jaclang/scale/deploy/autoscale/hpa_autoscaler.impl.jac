@@ -202,11 +202,11 @@ impl HPAAutoscaler.get_runtime_status{
     out.scaler_ready = tristate(conditions, "ScalingActive");
     desired = hpa?.status?.desired_replicas;
     if desired is not None {
-        out.desired_replicas = int(desired);
+        out.replicas = int(desired);
     }
     if out.scaler_ready == False {
         failing = condition(conditions, "ScalingActive");
-        out.state = ResourceStatus.DEGRADED;
+        out.status = ResourceStatus.DEGRADED;
         out.reason = str((failing or {}).get("reason") or "ScalingInactive");
         out.message = str((failing or {}).get("message") or "") or None;
     }

@@ -579,7 +579,7 @@ impl KEDAAutoscaler.get_runtime_status{
         }
         desired = hpa?.status?.desired_replicas;
         if desired is not None {
-            out.desired_replicas = int(desired);
+            out.replicas = int(desired);
         }
     }
 
@@ -600,13 +600,13 @@ impl KEDAAutoscaler._apply_autoscaler_view{
         if failing is None or not failing.get("message") {
             failing = condition(status.conditions, "ScalingActive");
         }
-        status.state = ResourceStatus.DEGRADED;
+        status.status = ResourceStatus.DEGRADED;
         status.reason = str((failing or {}).get("reason") or "ScalerFailed");
         status.message = str((failing or {}).get("message") or "") or None;
         return status;
     }
-    if status.state == ResourceStatus.INACTIVE and status.trigger_active == True {
-        status.state = ResourceStatus.ACTIVATING;
+    if status.status == ResourceStatus.INACTIVE and status.trigger_active == True {
+        status.status = ResourceStatus.ACTIVATING;
         status.reason = "ScalerActivating";
         status.message = None;
     }

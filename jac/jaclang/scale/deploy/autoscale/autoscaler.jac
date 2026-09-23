@@ -1,4 +1,9 @@
-import from jaclang.scale.models.resource_status { ResourceStatus, assess_workload }
+import from jaclang.scale.models.resource_status {
+    ResourceStatus,
+    ResourceStatusInfo,
+    assess_workload,
+    field_of
+}
 
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50,
      DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
@@ -33,59 +38,33 @@ obj AutoscalerSpec {
 }
 
 
-obj AutoscalerRuntimeStatus {
-    has state: ResourceStatus,
-        scale_target_name: str = "",
-        namespace: str = "",
-        engine: str = "",
+obj AutoscalerRuntimeStatus(ResourceStatusInfo) {
+    has engine: str = "",
         autoscaler_name: (str | None) = None,
-        desired_replicas: int = 0,
-        current_replicas: int = 0,
-        ready_replicas: int = 0,
-        replica_floor: int = 1,
         trigger_active: (bool | None) = None,
         scaler_ready: (bool | None) = None,
         conditions: list[dict[str, any]] = [],
-        resource_version: (str | None) = None,
-        reason: str = "",
-        message: (str | None) = None;
-
-    def is_settled -> bool {
-        return self.state in (ResourceStatus.ACTIVE, ResourceStatus.INACTIVE);
-    }
+        resource_version: (str | None) = None;
 }
 
 
 def normalize_conditions(raw: any) -> list[dict[str, any]] {
-    """Kubernetes conditions as plain dicts, whatever shape they arrived in.
+    """Kubernetes conditions as plain dicts, whichever client produced them.
 
-    A ScaledObject read through CustomObjectsApi is dicts; an HPA read through
-    a typed client is objects with snake_case attributes. Both collapse here so
-    a caller never branches on which client produced them.
+    A ScaledObject read through CustomObjectsApi is dicts, an HPA read through
+    a typed client is objects. field_of already spans that, and every key read
+    here is spelled the same in both forms, so no case mapping is needed.
     """;
     out: list[dict[str, any]] = [];
     for cond in (raw or []) {
-        if isinstance(cond, dict) {
-            get = lambda (k: str) { cond.get(k) or cond.get(_snake(k)); };
-        } else {
-            get = lambda (k: str) { getattr(cond, _snake(k), None); };
-        }
         out.append(
             {
-                "type": str(get("type") or ""),
-                "status": str(get("status") or ""),
-                "reason": str(get("reason") or ""),
-                "message": str(get("message") or "")
+                key: str(field_of(cond, key) or "")
+                for key in ["type", "status", "reason", "message"]
             }
         );
     }
     return out;
-}
-
-
-def _snake(key: str) -> str {
-    import re;
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", key).lower();
 }
 
 
@@ -243,22 +222,13 @@ class Autoscaler {
         """;
         deployment = self.read_workload(scale_target_name, namespace, apps_api);
         health = assess_workload(deployment, replica_floor=replica_floor);
-        version = None;
-        if deployment is not None {
-            version = deployment?.metadata?.resource_version;
-        }
+        version = field_of(field_of(deployment, "metadata"), "resource_version");
         return AutoscalerRuntimeStatus(
-            state=health.status,
-            scale_target_name=scale_target_name,
-            namespace=namespace,
-            desired_replicas=health.replicas,
-            current_replicas=health.replicas,
-            ready_replicas=health.ready_replicas,
-            replica_floor=health.replica_floor,
-            conditions=normalize_conditions(deployment?.status?.conditions),
-            resource_version=str(version) if version is not None else None,
-            reason=health.reason,
-            message=health.message
+            **health.__dict__,
+            conditions=normalize_conditions(
+                field_of(field_of(deployment, "status"), "conditions")
+            ),
+            resource_version=str(version) if version is not None else None
         );
     }
 

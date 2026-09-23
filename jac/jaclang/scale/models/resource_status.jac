@@ -14,6 +14,7 @@ enum ResourceStatus(StrEnum) {
 obj ResourceStatusInfo {
     has status: ResourceStatus,
         replicas: int = 0,
+        current_replicas: int = 0,
         ready_replicas: int = 0,
         available_replicas: int = 0,
         updated_replicas: int = 0,
@@ -33,7 +34,7 @@ obj ResourceStatusInfo {
     }
 }
 
-def _field(source: any, key: str) -> any {
+def field_of(source: any, key: str) -> any {
     if source is None {
         return None;
     }
@@ -44,11 +45,11 @@ def _field(source: any, key: str) -> any {
 }
 
 def _count(source: any, key: str) -> int {
-    return int(_field(source, key) or 0);
+    return int(field_of(source, key) or 0);
 }
 
 def replica_floor_of(deployment: any) -> int {
-    annotations = _field(_field(deployment, "metadata"), "annotations") or {};
+    annotations = field_of(field_of(deployment, "metadata"), "annotations") or {};
     try {
         return int(annotations.get(REPLICA_FLOOR_ANNOTATION));
     } except (TypeError, ValueError) {
@@ -66,21 +67,22 @@ def assess_workload(
             message="deployment not found"
         );
     }
-    metadata = _field(deployment, "metadata");
-    spec = _field(deployment, "spec");
-    status = _field(deployment, "status");
-    desired_raw = _field(spec, "replicas");
+    metadata = field_of(deployment, "metadata");
+    spec = field_of(deployment, "spec");
+    status = field_of(deployment, "status");
+    desired_raw = field_of(spec, "replicas");
     info = ResourceStatusInfo(
         status=ResourceStatus.UNKNOWN,
         replicas=int(desired_raw) if desired_raw is not None else 1,
         ready_replicas=_count(status, "ready_replicas"),
         available_replicas=_count(status, "available_replicas"),
         updated_replicas=_count(status, "updated_replicas"),
+        current_replicas=_count(status, "replicas"),
         replica_floor=replica_floor
             if replica_floor is not None
             else replica_floor_of(deployment)
     );
-    current = _count(status, "replicas");
+    current = info.current_replicas;
 
     def verdict(
         state: ResourceStatus, reason: str = "", message: str = ""
@@ -91,13 +93,13 @@ def assess_workload(
         return info;
     }
 
-    for cond in (_field(status, "conditions") or []) {
-        if _field(cond, "type") == "Progressing"
-            and _field(cond, "reason") == "ProgressDeadlineExceeded" {
+    for cond in (field_of(status, "conditions") or []) {
+        if field_of(cond, "type") == "Progressing"
+            and field_of(cond, "reason") == "ProgressDeadlineExceeded" {
             return verdict(
                 ResourceStatus.DEGRADED,
                 "ProgressDeadlineExceeded",
-                str(_field(cond, "message") or "")
+                str(field_of(cond, "message") or "")
             );
         }
     }
