@@ -39,6 +39,9 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(
              module="jaclang.compiler.passes.semantic_analysis_pass", strict=True
          ),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.sem_def_match_pass", strict=True
+         ),
          NativeScopeEntry(module="jaclang.compiler.passes.cfg_build_pass", strict=True),
          NativeScopeEntry(
              module="jaclang.compiler.passes.jsx_intrinsic_guard_pass", strict=True
@@ -63,7 +66,8 @@ def scope_allows_inferred_path(mod_path: str) -> bool {
         return True;
     }
     identity = native_unit_identity(mod_path);
-    if identity.startswith("jaclang/") and not identity.startswith("jaclang/runtime/") {
+    if identity.startswith("jaclang/")
+        and not identity.startswith("jaclang/runtime/") {
         return in_native_scope_path(mod_path);
     }
     return True;

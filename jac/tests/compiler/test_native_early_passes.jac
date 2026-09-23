@@ -225,6 +225,8 @@ impl Point.shift(step: int) -> int {
     return moved;
 }
 
+sem Point.x = "horizontal position";
+
 sem Point.x = "Horizontal position.";
 
 def lookup(d: dict[str, set[str]], k: str) -> set[str] {
@@ -315,7 +317,8 @@ def flow_profile(mod: Module) -> list[any] {
                     nd.expr_ctx.name,
                     sym.sym_name if sym else None,
                     sym.sym_type.name if sym else None,
-                    len(sym.uses) if sym else 0
+                    len(sym.uses) if sym else 0,
+                    sym.semstr if sym else None
                 )
             );
         }
@@ -350,6 +353,10 @@ test "kernel early passes match the store parser's flow, impl, and semantic fact
         );
         assert any(row[0] == "impl" for row in store_profile);
         assert any(row[0] == "name" and row[2] == "STORE" for row in store_profile);
+        assert any(
+            row[0] == "name" and row[6] == "horizontal position"
+            for row in store_profile
+        );
         assert nat_profile == store_profile;
         for nd in nat_mod.flatten() {
             if isinstance(nd, UniCFGNode) {
