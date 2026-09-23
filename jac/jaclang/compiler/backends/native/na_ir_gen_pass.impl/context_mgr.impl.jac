@@ -223,7 +223,7 @@ impl NaIRGenPass._ctxmgr_callee(expr: (uni.UniNode | None)) -> (uni.Ability | No
     if not isinstance(expr, uni.FuncCall) {
         return None;
     }
-    import from jaclang.compiler.symbol_utils { contextmanager_ability }
+    import from jaclang.compiler.erased_imports { contextmanager_ability }
     _callee = self._callee_ability_of(expr);
     return _callee if contextmanager_ability(_callee) else None;
 }

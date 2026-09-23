@@ -468,7 +468,7 @@ impl native_capability_violations(
                     }
                 }
                 if not _dec_static_fn {
-                    import from jaclang.compiler.symbol_utils {
+                    import from jaclang.compiler.erased_imports {
                         contextmanager_ability,
                         is_contextmanager_decorator
                     }

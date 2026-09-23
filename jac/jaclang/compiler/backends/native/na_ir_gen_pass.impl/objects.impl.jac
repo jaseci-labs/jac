@@ -2193,8 +2193,9 @@ impl NaIRGenPass._codegen_instantiation(
                 _ctor_asg = nd.parent;
                 if isinstance(_ctor_asg, uni.Assignment)
                     and _ctor_asg.value is nd
-                    and _ctor_asg.type_tag is not None {
-                    _ctor_decl = _ctor_asg.type_tag.tag.type;
+                    and _ctor_asg.type_tag is not None
+                    and len(_ctor_asg.target) == 1 {
+                    _ctor_decl = _ctor_asg.target[0].type;
                     if isinstance(_ctor_decl, ClassType)
                         and isinstance(_ctor_t, ClassType)
                         and _ctor_decl._shared is not None

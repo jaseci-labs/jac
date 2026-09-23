@@ -1471,7 +1471,7 @@ impl NaIRGenPass._codegen_synthetic_call(
 
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
-    import from jaclang.compiler.symbol_utils { erased_identity_call_arg }
+    import from jaclang.compiler.erased_imports { erased_identity_call_arg }
     import from jaclang.compiler.field_semantics {
         field_initialization,
         is_field_marker
@@ -1483,7 +1483,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     if id(nd) != self._ctxmgr_call_ok {
-        import from jaclang.compiler.symbol_utils { contextmanager_ability }
+        import from jaclang.compiler.erased_imports { contextmanager_ability }
         _cm_callee = self._callee_ability_of(nd);
         if contextmanager_ability(_cm_callee) {
             _cm_name = _cm_callee.name_ref.sym_name
