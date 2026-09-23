@@ -735,7 +735,19 @@ obj NativeBuildSession {
         for path in paths {
             mod = self.lowered.get(path);
             if mod is None {
-                continue;
+                known = self.registry.entries.get(path);
+                if known is None or known.bitcode is not None {
+                    continue;
+                }
+                if self.lower(path) is None {
+                    raise RuntimeError(
+                        f"native unit lost its products and could not be lowered: {path}"
+                    );
+                }
+                mod = self.lowered.get(path);
+                if mod is None {
+                    continue;
+                }
             }
             errors_before = len(self.prog.errors_had);
             self.prog.run_schedule(mod, [NativeCompilePass]);

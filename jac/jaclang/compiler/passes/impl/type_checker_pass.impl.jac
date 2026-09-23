@@ -1778,10 +1778,13 @@ impl TypeCheckPass.exit_raise_stmt with RaiseStmt exit {
 impl TypeCheckPass.enter_with_stmt with WithStmt entry {
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
-        if isinstance(ctx_item.alias, Name) {
-            ctx_item.alias.type = self.evaluator.get_type_of_context_binding(
-                ctx_item, here.is_async
-            );
+        if ctx_item.alias is None or not isinstance(ctx_item.alias, Name) {
+            self.evaluator.get_type_of_expression(ctx_item.expr);
+            continue;
+        }
+        alias_type = self.evaluator.get_type_of_with_alias(ctx_item);
+        if not isinstance(alias_type, UnknownType) {
+            ctx_item.alias.type = alias_type;
         }
     }
 }

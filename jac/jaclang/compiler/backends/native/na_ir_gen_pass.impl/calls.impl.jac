@@ -1916,7 +1916,18 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name
-            in ("abs", "min", "max", "pow", "divmod", "sum", "any", "all", "format") {
+            in (
+                "abs",
+                "min",
+                "max",
+                "pow",
+                "divmod",
+                "sum",
+                "any",
+                "all",
+                "format",
+                "round"
+            ) {
             params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             arg_vals: list[ir.Value] = [];
             arg_nodes: list[uni.UniNode] = [];
@@ -1976,7 +1987,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 "hex",
                 "oct",
                 "bin",
-                "round",
                 "float",
                 "bool",
                 "sorted",
@@ -2348,7 +2358,14 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 );
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
-            func = self._get_or_declare_extern(func_name, ret_ir_type, param_ir_types);
+            _extern_sym = func_name;
+            if binding.source_context.value == "native" {
+                import from jaclang.compiler.frontend.codeinfo { native_pub_symbol }
+                _extern_sym = native_pub_symbol(func_name);
+            }
+            func = self._get_or_declare_extern(
+                _extern_sym, ret_ir_type, param_ir_types
+            );
         }
     }
     if func is None and func_name in self.generic_fns {

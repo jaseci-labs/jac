@@ -5,6 +5,7 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     if (manifest and manifest.bindings) {
         import from jaclang.runtime.interop_bridge { JAC_TO_CTYPES_STR }
         import from jaclang.compiler.frontend.codeinfo {
+            native_pub_symbol,
             native_symbol_name,
             native_unit_prefix
         }
@@ -24,7 +25,7 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
                     and decl?.access is not None
                     and decl.access.tag.name == _NsTok.KW_PUB
             );
-            symbol = binding.name
+            symbol = native_pub_symbol(binding.name)
                 if (is_pub or not prefix)
                 else native_symbol_name(prefix, binding.name);
             parts.append(

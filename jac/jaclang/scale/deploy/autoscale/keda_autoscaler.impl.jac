@@ -463,6 +463,156 @@ impl KEDAAutoscaler.resource_name_for{
     return f"{target}-scaledobject";
 }
 
+impl KEDAAutoscaler._read_scaled_object{
+    """The live ScaledObject for a target, whichever of its names exists.
+
+    A target is scaled either by the METRIC ScaledObject or by the HTTP
+    add-on's, never both, and which one is live is the thing a caller would
+    otherwise have to derive from the scaling mode before it could ask a
+    question. So both names are tried here and the caller passes a target.
+    """;
+    api = self._custom_api or client.CustomObjectsApi();
+    names = [autoscaler_name]
+        if autoscaler_name
+        else [self.resource_name_for(target), self.http_scaled_object_name_for(target)];
+    for name in names {
+        try {
+            return api.get_namespaced_custom_object(
+                group="keda.sh",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="scaledobjects",
+                name=name
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                continue;
+            }
+            if e.status == 403 {
+                if self.logger {
+                    self.logger.warn(
+                        f"Cannot read ScaledObject '{name}': RBAC denies "
+                        f"keda.sh. Reporting the workload's own state only. "
+                        f"Redeploy so the Role picks up the keda.sh rule."
+                    );
+                }
+                return None;
+            }
+            raise;
+        }
+    }
+    return None;
+}
+
+impl KEDAAutoscaler._read_hpa{
+    """The HPA KEDA created for a ScaledObject, by the name KEDA reports.
+
+    Never rebuilt from a naming convention: KEDA owns that name and publishes
+    it on the ScaledObject, so reading it back is the only way the two cannot
+    disagree.
+    """;
+    hpa_name = str(dict(scaled_object.get("status", {}) or {}).get("hpaName") or "");
+    if not hpa_name {
+        return None;
+    }
+    api = self._v2_api or AutoscalingV2Api();
+    try {
+        return api.read_namespaced_horizontal_pod_autoscaler(
+            name=hpa_name, namespace=namespace
+        );
+    } except ApiException as e {
+        if e.status in (403, 404) {
+            return None;
+        }
+        raise;
+    }
+}
+
+impl KEDAAutoscaler.get_runtime_status{
+    """The target's state from the ScaledObject, its HPA and the workload.
+
+    Three things this reads that the Deployment cannot say. The live
+    ScaledObject is the authority on the replica floor, so a target whose
+    Deployment predates the jac-scale.replica-floor annotation is still judged
+    correctly rather than falling back to a floor of 1. The HPA is where a
+    failed external-metric fetch surfaces, and KEDA's own Ready condition can
+    still read True while that is happening, so both are consulted. And when
+    nothing KEDA owns can be read, whether the ScaledObject is absent or RBAC
+    denies it, this degrades to the workload's own state on the deploy-time
+    annotation rather than reporting a scaler failure it never observed.
+    """;
+    scaled_object = self._read_scaled_object(
+        scale_target_name, namespace, autoscaler_name
+    );
+    if scaled_object is None {
+        return self.workload_runtime_status(
+            scale_target_name, namespace, apps_api=self._apps_api
+        );
+    }
+
+    spec: dict[str, any] = dict(scaled_object.get("spec", {}) or {});
+    status: dict[str, any] = dict(scaled_object.get("status", {}) or {});
+    meta: dict[str, any] = dict(scaled_object.get("metadata", {}) or {});
+
+    idle = spec.get("idleReplicaCount");
+    floor = int(idle) if idle is not None else int(spec.get("minReplicaCount", 1) or 0);
+
+    out = self.workload_runtime_status(
+        scale_target_name, namespace, replica_floor=floor, apps_api=self._apps_api
+    );
+    out.engine = "keda";
+    out.autoscaler_name = str(meta.get("name") or "");
+    out.resource_version = str(meta.get("resourceVersion") or "") or None;
+
+    so_conditions = normalize_conditions(status.get("conditions"));
+    out.trigger_active = tristate(so_conditions, "Active");
+    out.scaler_ready = tristate(so_conditions, "Ready");
+    out.conditions = so_conditions;
+
+    hpa = self._read_hpa(scaled_object, namespace);
+    if hpa is not None {
+        hpa_conditions = normalize_conditions(hpa?.status?.conditions);
+        out.conditions = so_conditions + hpa_conditions;
+
+        if tristate(hpa_conditions, "ScalingActive") == False {
+            out.scaler_ready = False;
+        }
+        desired = hpa?.status?.desired_replicas;
+        if desired is not None {
+            out.replicas = int(desired);
+        }
+    }
+
+    return self._apply_autoscaler_view(out);
+}
+
+impl KEDAAutoscaler._apply_autoscaler_view{
+    """Let the autoscaler's own signals override the workload verdict.
+
+    Two things the Deployment cannot say. A scaler that cannot reach its metric
+    endpoint leaves a workload sitting at its floor looking perfectly idle, so
+    that has to become degraded. And a trigger that has fired while no pod is
+    up yet is a scale-up in progress, not a resting workload, which is what
+    separates activation from application readiness.
+    """;
+    if status.scaler_ready == False {
+        failing = condition(status.conditions, "Ready");
+        if failing is None or not failing.get("message") {
+            failing = condition(status.conditions, "ScalingActive");
+        }
+        status.status = ResourceStatus.DEGRADED;
+        status.reason = str((failing or {}).get("reason") or "ScalerFailed");
+        status.message = str((failing or {}).get("message") or "") or None;
+        return status;
+    }
+    if status.status == ResourceStatus.INACTIVE and status.trigger_active == True {
+        status.status = ResourceStatus.ACTIVATING;
+        status.reason = "ScalerActivating";
+        status.message = None;
+    }
+    return status;
+}
+
 impl KEDAAutoscaler.interceptor_route_name_for{
     return f"{target}-http-route";
 }

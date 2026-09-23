@@ -40,18 +40,18 @@ def osp_is_a(tag: int, base: int) -> bool {
     return False;
 }
 
-obj EdgeTypeDesc {
+obj OspEdgeTypeDesc {
     has tag: int,
         factory: Callable[([], int)];
 }
 
-glob _edge_types: dict[str, EdgeTypeDesc] = {};
+glob _edge_types: dict[str, OspEdgeTypeDesc] = {};
 
 def osp_register_edge_type(name: str, tag: int, factory: Callable[([], int)]) {
-    _edge_types[name] = EdgeTypeDesc(tag=tag, factory=factory);
+    _edge_types[name] = OspEdgeTypeDesc(tag=tag, factory=factory);
 }
 
-def osp_edge_type(name: str) -> EdgeTypeDesc {
+def osp_edge_type(name: str) -> OspEdgeTypeDesc {
     desc = _edge_types.get(name);
     if desc is None {
         raise TypeError("graph operation requires a registered edge type");
@@ -59,11 +59,11 @@ def osp_edge_type(name: str) -> EdgeTypeDesc {
     return desc;
 }
 
-def osp_new_edge(desc: EdgeTypeDesc) -> int {
+def osp_new_edge(desc: OspEdgeTypeDesc) -> int {
     return desc.factory();
 }
 
-obj EdgeRow {
+obj OspEdgeRow {
     has src: int,
         tgt: int,
         tag: int,
@@ -72,7 +72,7 @@ obj EdgeRow {
         live: bool = True;
 }
 
-obj Adj {
+obj OspAdj {
     has rows_out: list[int],
         rows_in: list[int],
         out: (dict[int, list[int]] | None) = None,
@@ -80,24 +80,24 @@ obj Adj {
 }
 
 obj OspGraph {
-    has adj: dict[int, Adj],
-        rows: list[EdgeRow],
+    has adj: dict[int, OspAdj],
+        rows: list[OspEdgeRow],
         free_rows: list[int],
         row_of: dict[int, int],
         dead: dict[int, int],
         regions: dict[int, list[int]];
 
-    def adj_of(h: int) -> Adj {
+    def adj_of(h: int) -> OspAdj {
         if h in self.adj {
-            found: Adj = self.adj[h];
+            found: OspAdj = self.adj[h];
             return found;
         }
-        made = Adj(rows_out=[], rows_in=[], out=None, inn=None);
+        made = OspAdj(rows_out=[], rows_in=[], out=None, inn=None);
         self.adj[h] = made;
         return made;
     }
 
-    def light_out(a: Adj) -> dict[int, list[int]] {
+    def light_out(a: OspAdj) -> dict[int, list[int]] {
         d = a.out;
         if d is None {
             made: dict[int, list[int]] = {};
@@ -107,7 +107,7 @@ obj OspGraph {
         return d;
     }
 
-    def light_in(a: Adj) -> dict[int, list[int]] {
+    def light_in(a: OspAdj) -> dict[int, list[int]] {
         d = a.inn;
         if d is None {
             made: dict[int, list[int]] = {};
@@ -121,7 +121,7 @@ obj OspGraph {
         if h not in self.adj {
             return False;
         }
-        a: Adj = self.adj[h];
+        a: OspAdj = self.adj[h];
         outs = a.out;
         if outs is not None {
             for k in outs {
@@ -147,8 +147,8 @@ obj OspGraph {
         if src in self.dead or tgt in self.dead {
             return -1;
         }
-        sa: Adj = self.adj_of(src);
-        ta: Adj = self.adj_of(tgt);
+        sa: OspAdj = self.adj_of(src);
+        ta: OspAdj = self.adj_of(tgt);
         sd = self.light_out(sa);
         if tag in sd {
             outs: list[int] = sd[tag];
@@ -172,7 +172,7 @@ obj OspGraph {
         if src not in self.adj {
             return False;
         }
-        sa: Adj = self.adj[src];
+        sa: OspAdj = self.adj[src];
         sd = sa.out;
         if sd is None or tag not in sd {
             return False;
@@ -182,7 +182,7 @@ obj OspGraph {
             return False;
         }
         if tgt in self.adj {
-            ta: Adj = self.adj[tgt];
+            ta: OspAdj = self.adj[tgt];
             td = ta.inn;
             if td is not None and tag in td {
                 inns: list[int] = td[tag];
@@ -197,7 +197,7 @@ obj OspGraph {
         if h not in self.adj {
             return out;
         }
-        a: Adj = self.adj[h];
+        a: OspAdj = self.adj[h];
         d = a.out if outgoing else a.inn;
         if d is not None {
             for k in d {
@@ -215,7 +215,7 @@ obj OspGraph {
         if h not in self.adj {
             return 0;
         }
-        a: Adj = self.adj[h];
+        a: OspAdj = self.adj[h];
         n = 0;
         ad = a.out;
         if ad is not None {
@@ -223,7 +223,7 @@ obj OspGraph {
                 peers: list[int] = ad[k];
                 for p in peers {
                     if p in self.adj {
-                        pa: Adj = self.adj[p];
+                        pa: OspAdj = self.adj[p];
                         pd = pa.inn;
                         if pd is not None and k in pd {
                             inns: list[int] = pd[k];
@@ -241,7 +241,7 @@ obj OspGraph {
                 srcs: list[int] = ai[k];
                 for s in srcs {
                     if s in self.adj {
-                        sa: Adj = self.adj[s];
+                        sa: OspAdj = self.adj[s];
                         sd = sa.out;
                         if sd is not None and k in sd {
                             outs: list[int] = sd[k];
@@ -280,7 +280,7 @@ obj OspGraph {
     def _row_alloc(src: int, tgt: int, tag: int, eobj: int, undirected: bool) -> int {
         if self.free_rows {
             rid: int = self.free_rows.pop();
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             row.src = src;
             row.tgt = tgt;
             row.tag = tag;
@@ -292,14 +292,14 @@ obj OspGraph {
         }
         rid = len(self.rows);
         self.rows.append(
-            EdgeRow(src=src, tgt=tgt, tag=tag, handle=eobj, undirected=undirected)
+            OspEdgeRow(src=src, tgt=tgt, tag=tag, handle=eobj, undirected=undirected)
         );
         self.row_of[eobj] = rid;
         return rid;
     }
 
     def _row_retire(rid: int) {
-        row: EdgeRow = self.rows[rid];
+        row: OspEdgeRow = self.rows[rid];
         if row.handle in self.row_of {
             del self.row_of[row.handle];
         }
@@ -341,8 +341,8 @@ obj OspGraph {
         if src in self.dead or tgt in self.dead {
             return -1;
         }
-        sa: Adj = self.adj_of(src);
-        ta: Adj = self.adj_of(tgt);
+        sa: OspAdj = self.adj_of(src);
+        ta: OspAdj = self.adj_of(tgt);
         if rgn_src != 0 and (not sa.rows_out) and (not sa.rows_in) {
             self.region_reg(src, rgn_src);
         }
@@ -373,9 +373,9 @@ obj OspGraph {
         if origin not in self.adj or origin in self.dead {
             return;
         }
-        a: Adj = self.adj[origin];
+        a: OspAdj = self.adj[origin];
         for rid in a.rows_out {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if not row.live {
                 continue;
             }
@@ -392,7 +392,7 @@ obj OspGraph {
             }
         }
         for rid in a.rows_in {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if not row.live {
                 continue;
             }
@@ -472,9 +472,9 @@ obj OspGraph {
             if origin not in self.adj or origin in self.dead {
                 continue;
             }
-            a: Adj = self.adj[origin];
+            a: OspAdj = self.adj[origin];
             for rid in a.rows_out {
-                row: EdgeRow = self.rows[rid];
+                row: OspEdgeRow = self.rows[rid];
                 if not row.live {
                     continue;
                 }
@@ -493,7 +493,7 @@ obj OspGraph {
                 }
             }
             for rid in a.rows_in {
-                row: EdgeRow = self.rows[rid];
+                row: OspEdgeRow = self.rows[rid];
                 if not row.live {
                     continue;
                 }
@@ -568,7 +568,7 @@ obj OspGraph {
             return -1;
         }
         rid: int = self.row_of[eobj];
-        row: EdgeRow = self.rows[rid];
+        row: OspEdgeRow = self.rows[rid];
         if not row.live {
             return -1;
         }
@@ -582,13 +582,13 @@ obj OspGraph {
     }
 
     def _unlink(rid: int) {
-        row: EdgeRow = self.rows[rid];
+        row: OspEdgeRow = self.rows[rid];
         if row.src in self.adj {
-            sa: Adj = self.adj[row.src];
+            sa: OspAdj = self.adj[row.src];
             self._drop_rid(sa.rows_out, rid);
         }
         if row.tgt in self.adj {
-            ta: Adj = self.adj[row.tgt];
+            ta: OspAdj = self.adj[row.tgt];
             self._drop_rid(ta.rows_in, rid);
         }
     }
@@ -598,7 +598,7 @@ obj OspGraph {
             return False;
         }
         rid: int = self.row_of[eobj];
-        row: EdgeRow = self.rows[rid];
+        row: OspEdgeRow = self.rows[rid];
         if not row.live {
             return False;
         }
@@ -611,11 +611,11 @@ obj OspGraph {
         if src not in self.adj {
             return 0;
         }
-        a: Adj = self.adj[src];
+        a: OspAdj = self.adj[src];
         hits: list[int] = [];
         hit_set: set[int] = set();
         for rid in a.rows_out {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if not row.live {
                 continue;
             }
@@ -633,7 +633,7 @@ obj OspGraph {
             }
         }
         for rid in a.rows_in {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if not row.live {
                 continue;
             }
@@ -663,11 +663,11 @@ obj OspGraph {
         if src not in self.adj {
             return 0;
         }
-        a: Adj = self.adj[src];
+        a: OspAdj = self.adj[src];
         hits: list[int] = [];
         hit_set: set[int] = set();
         for rid in a.rows_out {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if not row.live {
                 continue;
             }
@@ -686,7 +686,7 @@ obj OspGraph {
             }
         }
         for rid in a.rows_in {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if not row.live {
                 continue;
             }
@@ -716,7 +716,7 @@ obj OspGraph {
         if src not in self.adj {
             return 0;
         }
-        a: Adj = self.adj[src];
+        a: OspAdj = self.adj[src];
         ad = a.out;
         if (dir == 2 or dir == 3) and ad is not None {
             ktags: list[int] = [];
@@ -769,23 +769,23 @@ obj OspGraph {
             return 0;
         }
         n0: int = self.light_detach(h);
-        a: Adj = self.adj[h];
+        a: OspAdj = self.adj[h];
         gone: list[int] = [];
         for rid in a.rows_out {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if row.live {
                 gone.append(rid);
             }
         }
         for rid in a.rows_in {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if row.live {
                 gone.append(rid);
             }
         }
         n = n0;
         for rid in gone {
-            row: EdgeRow = self.rows[rid];
+            row: OspEdgeRow = self.rows[rid];
             if not row.live {
                 continue;
             }
@@ -828,10 +828,10 @@ obj OspGraph {
         }
         members: list[int] = self.regions[rgn];
         del self.regions[rgn];
-        stash: list[Adj] = [];
+        stash: list[OspAdj] = [];
         for h in members {
             if h in self.adj {
-                a: Adj = self.adj[h];
+                a: OspAdj = self.adj[h];
                 if a.out is not None or a.inn is not None {
                     self.light_detach(h);
                 }
@@ -845,24 +845,24 @@ obj OspGraph {
         n = 0;
         for a in stash {
             for rid in a.rows_out {
-                row: EdgeRow = self.rows[rid];
+                row: OspEdgeRow = self.rows[rid];
                 if not row.live {
                     continue;
                 }
                 if row.tgt in self.adj {
-                    ta: Adj = self.adj[row.tgt];
+                    ta: OspAdj = self.adj[row.tgt];
                     self._drop_rid(ta.rows_in, rid);
                 }
                 self._row_retire(rid);
                 n += 1;
             }
             for rid in a.rows_in {
-                row: EdgeRow = self.rows[rid];
+                row: OspEdgeRow = self.rows[rid];
                 if not row.live {
                     continue;
                 }
                 if row.src in self.adj {
-                    sa: Adj = self.adj[row.src];
+                    sa: OspAdj = self.adj[row.src];
                     self._drop_rid(sa.rows_out, rid);
                 }
                 self._row_retire(rid);
@@ -884,10 +884,10 @@ def:pub osp_adj_fill(origin: int, dir: int, out: list[int]) -> int {
         return 0;
     }
     start = len(out);
-    a: Adj = DEFAULT_GRAPH.adj[origin];
+    a: OspAdj = DEFAULT_GRAPH.adj[origin];
     if dir == 2 {
         for rid in a.rows_out {
-            row: EdgeRow = DEFAULT_GRAPH.rows[rid];
+            row: OspEdgeRow = DEFAULT_GRAPH.rows[rid];
             if row.live {
                 out.append(row.tag);
                 out.append(row.tgt);
@@ -905,7 +905,7 @@ def:pub osp_adj_fill(origin: int, dir: int, out: list[int]) -> int {
         }
     } else {
         for rid in a.rows_in {
-            row: EdgeRow = DEFAULT_GRAPH.rows[rid];
+            row: OspEdgeRow = DEFAULT_GRAPH.rows[rid];
             if row.live {
                 out.append(row.tag);
                 out.append(row.src);

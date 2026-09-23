@@ -457,10 +457,6 @@ walker TypeEvaluator {
     def _get_class_from_module(module: Module | None, name: str) -> ClassType | None;
     def _prefetch_types;
     def get_none_type -> TypeBase;
-    def get_type_of_context_binding(
-        item: ExprAsItem, is_async: bool = False
-    ) -> TypeBase;
-
     def emit_diag(diag: DiagnosticInfo, nd: UniNode, **kwargs: object) -> None;
     def _invalidate_expr_type_cache(node_: UniNode) -> None;
     def get_index_of_symbol_resolution(symbol: Symbol) -> int | None;
@@ -725,6 +721,7 @@ walker TypeEvaluator {
         is_async: bool = False
     ) -> TypeBase | None;
 
+    def get_type_of_with_alias(item: ExprAsItem) -> TypeBase;
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_declared(
@@ -819,6 +816,7 @@ walker TypeEvaluator {
     def _is_unbound_method_call(expr: FuncCall) -> bool;
     def validate_call_args(expr: FuncCall) -> TypeBase;
     def _validate_call_type(expr: FuncCall, caller_type: TypeBase) -> TypeBase;
+    def _evaluate_call_args(expr: FuncCall) -> None;
     def _container_value_type(value_type: TypeBase, at: Expr) -> TypeBase;
     def _make_coroutine_type(inner: TypeBase) -> TypeBase;
     def _is_awaitable_type(t: TypeBase) -> bool;
