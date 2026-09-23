@@ -300,6 +300,14 @@ def unify_numeric_operands(
     return right_inst;
 }
 
+def arithmetic_result_type(evaluator: TypeEvaluator, t: TypeBase) -> TypeBase {
+    int_class = evaluator.prefetch.int_class if evaluator.prefetch else None;
+    if numeric_name_of(t) == "bool" and int_class is not None {
+        return evaluator._convert_to_instance(int_class);
+    }
+    return t;
+}
+
 def both_numeric(left_type: TypeBase, right_type: TypeBase) -> bool {
     return numeric_name_of(left_type) is not None
         and numeric_name_of(right_type) is not None;

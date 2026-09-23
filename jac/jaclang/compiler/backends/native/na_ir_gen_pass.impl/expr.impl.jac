@@ -1667,13 +1667,13 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
         return operand;
     }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
+    if op in (Tok.MINUS, Tok.PLUS, Tok.BW_NOT) and operand.type == ir.IntType(1) {
+        operand = self.builder.zext(operand, ir.IntType(64), name="bool.widen");
+    }
     if op == Tok.MINUS {
         if isinstance(operand.type, (ir.DoubleType, ir.FloatType)) {
             return self.builder.fneg(operand, name="fneg");
         } elif isinstance(operand.type, ir.IntType) {
-            if operand.type.width == 1 {
-                return self.builder.neg(operand, name="neg");
-            }
             if self._is_sized_node(nd) or self._is_sized_node(nd.operand) {
                 return self._emit_checked_neg(operand);
             }

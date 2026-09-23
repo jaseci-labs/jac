@@ -509,6 +509,7 @@ walker NaIRGenPass {
     def _fstring_spec_text(spec: uni.Expr) -> (str | None);
     def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple[str, str] | None);
     def _bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value;
+    def _int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value;
     def _emit_fstr_repr(val: ir.Value, part: uni.FormattedValue) -> (ir.Value | None);
     def _emit_dyn_spec_format(
         val: ir.Value, spec_val: ir.Value, part: uni.FormattedValue
@@ -2397,6 +2398,7 @@ walker NaIRGenPass {
         left: ir.Value, right: ir.Value
     ) -> tuple[(ir.Value, ir.Value)];
 
+    def _emit_int_bitwise(op: str, left: ir.Value, right: ir.Value) -> ir.Value;
     def _to_float_type(val: ir.Value, target: ir.Type, unsigned: bool) -> ir.Value;
     def _emit_arch_dunder_binop(
         op: str, left: ir.Value, right: ir.Value

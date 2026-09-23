@@ -162,6 +162,7 @@ import from jaclang.compiler.types.operations {
 }
 import from jaclang.compiler.types.fixed_width {
     AssignVerdict,
+    arithmetic_result_type,
     assign_numeric_expr,
     both_numeric,
     fixed_width_call_type,

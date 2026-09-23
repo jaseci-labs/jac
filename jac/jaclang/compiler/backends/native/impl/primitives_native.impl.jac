@@ -4885,7 +4885,7 @@ impl NativeBuiltinEmitter.emit_abs(
     b = ctx.pass_ref.builder;
     if isinstance(arg_val.type, ir.IntType) {
         if arg_val.type.width == 1 {
-            return arg_val;
+            return b.zext(arg_val, ir.IntType(64), name="abs.bool");
         }
         if ctx.arg_nodes and ctx.pass_ref._is_sized_node(ctx.arg_nodes[0]) {
             return ctx.pass_ref._emit_checked_abs(arg_val);

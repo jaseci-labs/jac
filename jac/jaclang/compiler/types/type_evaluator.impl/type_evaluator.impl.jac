@@ -1972,7 +1972,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         self.emit_diag(E1129, expr, type=str(operand_type));
                         return UnknownType(is_diagnosed=True);
                     }
-                    return operand_type;
+                    return arithmetic_result_type(self, operand_type);
                 }
             }
 
