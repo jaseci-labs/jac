@@ -1104,92 +1104,35 @@ impl NaIRGenPass._codegen_compare_link(
                 (left_coerced, _lin_gate) = self._opt_membership_operand(
                     left, elem_type
                 );
-                list_len = self.builder.call(
-                    helpers["len"], [right], name="list.in.len"
-                );
-                i64 = ir.IntType(64);
-                func = self.builder.basic_block.function;
-                entry_bb = self.builder.basic_block;
-                loop_bb = func.append_basic_block(name="list.in.loop");
-                check_bb = func.append_basic_block(name="list.in.check");
-                found_bb = func.append_basic_block(name="list.in.found");
-                done_bb = func.append_basic_block(name="list.in.done");
-                self.builder.branch(loop_bb);
-                self.builder.position_at_start(loop_bb);
-                idx = self.builder.phi(i64, name="list.in.idx");
-                idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-                at_end = self.builder.icmp_unsigned(
-                    ">=", idx, list_len, name="list.in.atend"
-                );
-                self.builder.cbranch(at_end, done_bb, check_bb);
-                self.builder.position_at_start(check_bb);
-                elem: ir.Value = self.builder.call(
-                    helpers["get"], [right, idx], name="list.in.elem"
-                );
                 _lin_left_tk = self._type_key_of(left_node);
                 _lin_coll_tk = self._type_key_of(right_node) or "";
-
                 _lin_str_elems = (
                     _lin_left_tk == "str"
                     or _lin_coll_tk.startswith("list[str")
                     or left.type == ir.IntType(8).as_pointer()
                 );
-                if (
-                    _lin_str_elems
-                    and isinstance(elem.type, ir.PointerType)
-                    and isinstance(left_coerced.type, ir.PointerType)
-                ) {
-                    _lin_i8p = ir.IntType(8).as_pointer();
-                    _lin_cmp = self._call_str_cmp(
-                        self.builder,
-                        self.builder.bitcast(
-                            left_coerced, _lin_i8p, name="list.in.l.i8"
-                        ),
-                        self.builder.bitcast(elem, _lin_i8p, name="list.in.e.i8"),
-                        name="list.in.strcmp"
-                    );
-                    eq = self.builder.icmp_signed(
-                        "==",
-                        _lin_cmp,
-                        ir.Constant(ir.IntType(32), 0),
-                        name="list.in.eq"
-                    );
-                } elif self?.jacval_type and elem.type == self.jacval_type {
-                    eq = self._emit_jacval_eq(left_coerced, elem);
-                } elif isinstance(elem.type, (ir.DoubleType, ir.FloatType)) {
-                    eq = self.builder.fcmp_ordered(
-                        "==", elem, left_coerced, name="list.in.eq"
-                    );
-                } else {
-                    eq = self.builder.icmp_signed(
-                        "==", elem, left_coerced, name="list.in.eq"
-                    );
-                }
-                _lin_end_bb = self.builder.basic_block;
-                next_idx = self.builder.add(
-                    idx, ir.Constant(i64, 1), name="list.in.next"
+                _contains_fn = self._emit_list_contains_fn(
+                    list_key, list_type.as_pointer(), elem_type, helpers, _lin_str_elems
                 );
-                idx.add_incoming(next_idx, _lin_end_bb);
-                self.builder.cbranch(eq, found_bb, loop_bb);
-                self.builder.position_at_start(found_bb);
-                self.builder.branch(done_bb);
-                self.builder.position_at_start(done_bb);
-                list_result = self.builder.phi(i64, name="list.in.result");
-                list_result.add_incoming(ir.Constant(i64, 0), loop_bb);
-                list_result.add_incoming(ir.Constant(i64, 1), found_bb);
-                result = list_result;
+                result = self.builder.call(
+                    _contains_fn, [left_coerced, right], name="list.in"
+                );
                 if _lin_gate is not None {
                     result = self.builder.select(
-                        _lin_gate, result, ir.Constant(i64, 0), name="list.in.opt"
+                        _lin_gate,
+                        result,
+                        ir.Constant(ir.IntType(64), 0),
+                        name="list.in.opt"
                     );
                 }
                 if is_not_in {
                     result = self.builder.icmp_signed(
-                        "==", result, ir.Constant(i64, 0), name="not.in"
+                        "==", result, ir.Constant(ir.IntType(64), 0), name="not.in"
                     );
-                    result = self.builder.zext(result, i64, name="notin.i64");
+                    result = self.builder.zext(
+                        result, ir.IntType(64), name="notin.i64"
+                    );
                 }
-
                 return self._compare_result(
                     result,
                     _cmp_left_orig,

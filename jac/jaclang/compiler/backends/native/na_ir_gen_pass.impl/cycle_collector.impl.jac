@@ -4,8 +4,8 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
     i8_ptr_ptr = i8_ptr.as_pointer();
+    i1 = ir.IntType(1);
     i64 = ir.IntType(64);
-
     roots_buf_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__rc_roots_buf");
     roots_buf_gv.linkage = "weak";
     roots_buf_gv.initializer = ir.Constant(i8_ptr, None);
@@ -46,16 +46,55 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     self.rc_trace_lookup_fn = lookup_fn;
 
     realloc_fn = self._get_or_declare_extern("realloc", i8_ptr, [i8_ptr, i64]);
+    grow_fn = self._emit_slow_path_helper("__rc_push_root_grow", i1, [i8_ptr, i64]);
+    grow_fn.args[0].name = "old_buf";
+    grow_fn.args[1].name = "old_cap";
+    grow_state = self._enter_function(grow_fn);
+    try {
+        gb = self.builder;
+        cap_zero = gb.icmp_unsigned(
+            "==", grow_fn.args[1], ir.Constant(i64, 0), name="grow.cap.zero"
+        );
+        new_cap = gb.select(
+            cap_zero,
+            ir.Constant(i64, 256),
+            gb.shl(grow_fn.args[1], ir.Constant(i64, 1), name="grow.cap.double"),
+            name="grow.cap"
+        );
+        new_buf = gb.call(
+            realloc_fn,
+            [grow_fn.args[0], gb.mul(new_cap, ir.Constant(i64, 8), name="grow.bytes")],
+            name="grow.buf"
+        );
+        failed = gb.icmp_unsigned(
+            "==", new_buf, ir.Constant(i8_ptr, None), name="grow.failed"
+        );
+        grow_entry = gb.basic_block;
+        ok = grow_fn.append_basic_block("grow.ok");
+        done = grow_fn.append_basic_block("grow.done");
+        gb.cbranch(failed, done, ok);
+        gb = ir.IRBuilder(ok);
+        gb.store(new_buf, roots_buf_gv);
+        gb.store(new_cap, roots_cap_gv);
+        gb.branch(done);
+        gb = ir.IRBuilder(done);
+        result = gb.phi(i1, name="grow.result");
+        result.add_incoming(ir.Constant(i1, 0), grow_entry);
+        result.add_incoming(ir.Constant(i1, 1), ok);
+        gb.ret(result);
+    } finally {
+        self._leave_function(grow_state);
+    }
 
     push_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     push_fn = ir.Function(self.llvm_module, push_fnty, name="__rc_push_root");
     push_fn.linkage = "internal";
+    push_fn.attributes.add("nounwind");
     push_fn.args[0].name = "ptr";
     self.rc_push_root_fn = push_fn;
 
     pr_entry = push_fn.append_basic_block("entry");
     pr_grow = push_fn.append_basic_block("grow");
-    pr_grow_ok = push_fn.append_basic_block("grow_ok");
     pr_store = push_fn.append_basic_block("store");
     pr_chk_thresh = push_fn.append_basic_block("chk_thresh");
     pr_trigger = push_fn.append_basic_block("trigger");
@@ -67,27 +106,9 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     b.cbranch(b.icmp_unsigned(">=", _cnt, _cap, name="full"), pr_grow, pr_store);
 
     b = ir.IRBuilder(pr_grow);
-    _czero = b.icmp_unsigned("==", _cap, ir.Constant(i64, 0), name="czero");
-    _ncap = b.select(
-        _czero, ir.Constant(i64, 256), b.shl(_cap, ir.Constant(i64, 1)), name="ncap"
-    );
     _obuf = b.load(roots_buf_gv, name="obuf");
-    _nbuf = b.call(
-        realloc_fn,
-        [_obuf, b.mul(_ncap, ir.Constant(i64, 8), name="nbytes")],
-        name="nbuf"
-    );
-
-    b.cbranch(
-        b.icmp_signed("==", _nbuf, ir.Constant(i8_ptr, None), name="nbuf.null"),
-        pr_done,
-        pr_grow_ok
-    );
-
-    b = ir.IRBuilder(pr_grow_ok);
-    b.store(_nbuf, roots_buf_gv);
-    b.store(_ncap, roots_cap_gv);
-    b.branch(pr_store);
+    _grow_ok = b.call(grow_fn, [_obuf, _cap], name="grow.ok");
+    b.cbranch(_grow_ok, pr_store, pr_done);
 
     b = ir.IRBuilder(pr_store);
     _cnt2 = b.load(roots_count_gv, name="cnt2");

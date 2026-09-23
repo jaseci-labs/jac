@@ -1239,7 +1239,9 @@ impl NaIRGenPass._define_function(name: str, fnty: ir.FunctionType) -> ir.Functi
     try {
         self.llvm_module.get_global(name);
     } except KeyError {
-        return ir.Function(self.llvm_module, fnty, name=name);
+        fn = ir.Function(self.llvm_module, fnty, name=name);
+        fn.attributes.add("nounwind");
+        return fn;
     }
     raise RuntimeError(
         f"native codegen internal error: duplicate definition of '{name}'. "

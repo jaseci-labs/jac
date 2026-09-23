@@ -938,6 +938,142 @@ impl NaIRGenPass._emit_norm_slice_bounds(
     return (start_val, stop_val, step_val, step_pos);
 }
 
+impl NaIRGenPass._emit_list_slice_fn(
+    list_key: str, list_ptr_type: ir.Type, helpers: dict[str, any], elem_type_name: str
+) -> ir.Function {
+    i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
+    _safe = list_key.replace(":", "_").replace("[", "_").replace("]", "_").replace(
+        ",", "_"
+    );
+    _name = "__list_slice_" + _safe;
+    try {
+        _old = self.llvm_module.get_global(_name);
+        if isinstance(_old, ir.Function) and _old.blocks {
+            return _old;
+        }
+    } except KeyError {}
+    fn = self._emit_slow_path_helper(
+        _name, list_ptr_type, [list_ptr_type, i64, i64, i64, i1]
+    );
+    fn.args[0].name = "list";
+    fn.args[1].name = "start";
+    fn.args[2].name = "stop";
+    fn.args[3].name = "step";
+    fn.args[4].name = "step.pos";
+    state = self._enter_function(fn);
+    try {
+        out = self.builder.call(helpers["new"], [], name="slice.new");
+        index = self._entry_alloca(i64, "slice.index");
+        self.builder.store(fn.args[1], index);
+        check = fn.append_basic_block("slice.check");
+        body = fn.append_basic_block("slice.body");
+        done = fn.append_basic_block("slice.done");
+        self.builder.branch(check);
+        self.builder.position_at_start(check);
+        current = self.builder.load(index, name="slice.current");
+        forward = self.builder.icmp_signed(
+            "<", current, fn.args[2], name="slice.forward"
+        );
+        backward = self.builder.icmp_signed(
+            ">", current, fn.args[2], name="slice.backward"
+        );
+        in_range = self.builder.select(
+            fn.args[4], forward, backward, name="slice.inrange"
+        );
+        self.builder.cbranch(in_range, body, done);
+        self.builder.position_at_start(body);
+        elem: ir.Value = self.builder.call(
+            helpers["get"], [fn.args[0], current], name="slice.elem"
+        );
+        if self._nogc_headerless() and elem_type_name == "ptr" {
+            elem = self._rc_strdup(elem, name="slice.elem.copy");
+        }
+        self._rc_call_with_ctx(helpers["append"], [out, elem], op="list_slice");
+        next_index = self.builder.add(current, fn.args[3], name="slice.next");
+        self.builder.store(next_index, index);
+        self.builder.branch(check);
+        self.builder.position_at_end(done);
+        self.builder.ret(out);
+    } finally {
+        self._leave_function(state);
+    }
+    return fn;
+}
+
+impl NaIRGenPass._emit_string_step_slice_fn -> ir.Function {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
+    _name = "__jac_str_slice_step";
+    try {
+        _old = self.llvm_module.get_global(_name);
+        if isinstance(_old, ir.Function) and _old.blocks {
+            return _old;
+        }
+    } except KeyError {}
+    fn = self._emit_slow_path_helper(_name, i8p, [i8p, i64, i64, i64, i1, i64]);
+    fn.args[0].name = "data";
+    fn.args[1].name = "start";
+    fn.args[2].name = "stop";
+    fn.args[3].name = "step";
+    fn.args[4].name = "step.pos";
+    fn.args[5].name = "length";
+    state = self._enter_function(fn);
+    try {
+        zero = ir.Constant(i64, 0);
+        one = ir.Constant(i64, 1);
+        count = fn.args[5];
+        alloc = self.builder.add(count, one, name="slice.alloc");
+        self._set_rc_ctx("str_substr", "");
+        out = self._str_alloc(self.builder, alloc, name="slice.out");
+        self._clear_rc_ctx();
+        check = fn.append_basic_block("slice.check");
+        body = fn.append_basic_block("slice.body");
+        done = fn.append_basic_block("slice.done");
+        index = self._entry_alloca(i64, "slice.index");
+        written = self._entry_alloca(i64, "slice.written");
+        self.builder.store(fn.args[1], index);
+        self.builder.store(zero, written);
+        self.builder.branch(check);
+        self.builder.position_at_start(check);
+        current = self.builder.load(index, name="slice.current");
+        current_written = self.builder.load(written, name="slice.written.current");
+        forward = self.builder.icmp_signed(
+            "<", current, fn.args[2], name="slice.forward"
+        );
+        backward = self.builder.icmp_signed(
+            ">", current, fn.args[2], name="slice.backward"
+        );
+        in_range = self.builder.select(
+            fn.args[4], forward, backward, name="slice.inrange"
+        );
+        self.builder.cbranch(in_range, body, done);
+        self.builder.position_at_start(body);
+        source = self.builder.gep(fn.args[0], [current], name="slice.source");
+        ch = self.builder.load(source, name="slice.char");
+        destination = self.builder.gep(
+            out, [current_written], name="slice.destination"
+        );
+        self.builder.store(ch, destination);
+        self.builder.store(
+            self.builder.add(current_written, one, name="slice.written.next"), written
+        );
+        self.builder.store(
+            self.builder.add(current, fn.args[3], name="slice.index.next"), index
+        );
+        self.builder.branch(check);
+        self.builder.position_at_end(done);
+        self._str_finish(
+            self.builder, out, self.builder.load(written, name="slice.final.length")
+        );
+        self.builder.ret(out);
+    } finally {
+        self._leave_function(state);
+    }
+    return fn;
+}
+
 impl NaIRGenPass._codegen_list_slice(
     target_val: ir.Value, slice_node: object, elem_type_name: str
 ) -> (ir.Value | None) {
@@ -955,38 +1091,13 @@ impl NaIRGenPass._codegen_list_slice(
     }
     (start_val, stop_val, step_val, step_pos) = bounds;
 
-    new_list = self.builder.call(helpers["new"], [], name="sl.new");
-
-    i_alloca = self.builder.alloca(i64, name="sl.i");
-    self.builder.store(start_val, i_alloca);
-    loop_check = func.append_basic_block(name="sl.check");
-    loop_body = func.append_basic_block(name="sl.body");
-    loop_done = func.append_basic_block(name="sl.done");
-    self.builder.branch(loop_check);
-
-    self.builder.position_at_end(loop_check);
-    cur_i = self.builder.load(i_alloca, name="sl.cur");
-    fwd = self.builder.icmp_signed("<", cur_i, stop_val, name="sl.fwd");
-    bwd = self.builder.icmp_signed(">", cur_i, stop_val, name="sl.bwd");
-    in_range = self.builder.select(step_pos, fwd, bwd, name="sl.inrange");
-    self.builder.cbranch(in_range, loop_body, loop_done);
-
-    self.builder.position_at_end(loop_body);
-    elem: ir.Value = self.builder.call(
-        helpers["get"], [target_val, cur_i], name="sl.elem"
+    _slice_fn = self._emit_list_slice_fn(
+        elem_type_name, target_val.type, helpers, elem_type_name
     );
-    if self._nogc_headerless() and elem_type_name == "ptr" {
-        elem = self._rc_strdup(elem, name="sl.elem.copy");
-    }
-    self._rc_call_with_ctx(helpers["append"], [new_list, elem], op="list_slice");
-
-    next_i = self.builder.add(cur_i, step_val, name="sl.next");
-    self.builder.store(next_i, i_alloca);
-    self.builder.branch(loop_check);
-
-    self.builder.position_at_end(loop_done);
-
-    return self._mark_owned(new_list);
+    _slice = self.builder.call(
+        _slice_fn, [target_val, start_val, stop_val, step_val, step_pos], name="sl"
+    );
+    return self._mark_owned(_slice);
 }
 
 impl NaIRGenPass._codegen_string_slice(
@@ -1099,41 +1210,11 @@ impl NaIRGenPass._codegen_string_slice(
     diff_pos = self.builder.icmp_signed(">", diff, zero, name="ss.dpos");
     n_val = self.builder.select(diff_pos, n_raw, zero, name="ss.n");
 
-    alloc_size = self.builder.add(n_val, one, name="ss.alloc");
-    self._set_rc_ctx("str_substr", "");
-    new_str = self._str_alloc(self.builder, alloc_size, name="ss.new");
-    self._clear_rc_ctx();
-
-    i_alloca = self.builder.alloca(i64, name="ss.i");
-    k_alloca = self.builder.alloca(i64, name="ss.k");
-    self.builder.store(start_val, i_alloca);
-    self.builder.store(zero, k_alloca);
-    loop_check = func.append_basic_block(name="ss.check");
-    loop_body = func.append_basic_block(name="ss.body");
-    loop_done = func.append_basic_block(name="ss.done");
-    self.builder.branch(loop_check);
-
-    self.builder.position_at_end(loop_check);
-    cur_i = self.builder.load(i_alloca, name="ss.cur");
-    fwd = self.builder.icmp_signed("<", cur_i, stop_val, name="ss.fwd");
-    bwd = self.builder.icmp_signed(">", cur_i, stop_val, name="ss.bwd");
-    in_range = self.builder.select(step_pos, fwd, bwd, name="ss.inrange");
-    self.builder.cbranch(in_range, loop_body, loop_done);
-
-    self.builder.position_at_end(loop_body);
-    ch_ptr = self.builder.gep(_data, [cur_i], name="ss.src.ch");
-    ch = self.builder.load(ch_ptr, name="ss.ch");
-    cur_k = self.builder.load(k_alloca, name="ss.curk");
-    out_ptr = self.builder.gep(new_str, [cur_k], name="ss.out.ch");
-    self.builder.store(ch, out_ptr);
-    self.builder.store(self.builder.add(cur_k, one, name="ss.nextk"), k_alloca);
-    self.builder.store(self.builder.add(cur_i, step_val, name="ss.nexti"), i_alloca);
-    self.builder.branch(loop_check);
-
-    self.builder.position_at_end(loop_done);
-    self._str_finish(self.builder, new_str, n_val);
-    self._mark_owned(new_str);
-    return new_str;
+    _step_fn = self._emit_string_step_slice_fn();
+    _step_slice = self.builder.call(
+        _step_fn, [_data, start_val, stop_val, step_val, step_pos, n_val], name="ss"
+    );
+    return self._mark_owned(_step_slice);
 }
 
 impl NaIRGenPass._hl_view_base_licensed(base_node: object) -> bool {
