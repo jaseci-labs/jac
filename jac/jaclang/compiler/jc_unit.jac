@@ -19,16 +19,7 @@ import from jaclang.compiler.frontend.parser.tokens { SrcDiag, CommentData }
 import from jaclang.compiler.frontend.unitree { Module, UniNode, Import }
 import from jaclang.compiler.frontend.roles { AccessorsRole, BodyRole, SpecRole }
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.passes.early_passes {
-    EARLY_PASSES,
-    GraphLoweringPass,
-    ASTValidationPass,
-    SymTabBuildPass,
-    DeclImplMatchPass,
-    SemanticAnalysisPass,
-    SemDefMatchPass,
-    JsxIntrinsicGuardPass
-}
+import from jaclang.compiler.passes.early_passes { EARLY_PASSES, SymTabBuildPass }
 import from jaclang.compiler.passes.context { Alert }
 import from jaclang.compiler.passes.annex_weave {
     merge_annex_into,
@@ -156,10 +147,6 @@ def _materialize(
     return 0;
 }
 
-def _early_context(mod: Module, pass_type: type, name: str) -> CompileContext {
-    return CompileContext(current_node=mod, from_pass=pass_type, pass_name=name);
-}
-
 def _has_absorb_import(mod: Module) -> bool {
     for imp in mod.get_all_sub_nodes(Import) {
         if imp.is_absorb {
@@ -167,48 +154,6 @@ def _has_absorb_import(mod: Module) -> bool {
         }
     }
     return False;
-}
-
-def _spawn_early(index: int, mod: Module) -> (CompileContext | None) {
-    if index == 0 {
-        ctx = _early_context(mod, GraphLoweringPass, "GraphLoweringPass");
-        mod spawn GraphLoweringPass(module=mod, ctx=ctx);
-        return ctx;
-    }
-    if index == 1 {
-        ctx = _early_context(mod, ASTValidationPass, "ASTValidationPass");
-        mod spawn ASTValidationPass(module=mod, ctx=ctx);
-        return ctx;
-    }
-    if _has_absorb_import(mod) {
-        return None;
-    }
-    if index == 2 {
-        ctx = _early_context(mod, SymTabBuildPass, "SymTabBuildPass");
-        mod spawn SymTabBuildPass(module=mod, ctx=ctx);
-        return ctx;
-    }
-    if index == 3 {
-        ctx = _early_context(mod, DeclImplMatchPass, "DeclImplMatchPass");
-        mod spawn DeclImplMatchPass(module=mod, ctx=ctx);
-        return ctx;
-    }
-    if index == 4 {
-        ctx = _early_context(mod, SemanticAnalysisPass, "SemanticAnalysisPass");
-        mod spawn SemanticAnalysisPass(module=mod, ctx=ctx);
-        return ctx;
-    }
-    if index == 5 {
-        ctx = _early_context(mod, SemDefMatchPass, "SemDefMatchPass");
-        mod spawn SemDefMatchPass(module=mod, ctx=ctx);
-        return ctx;
-    }
-    if index == 6 {
-        ctx = _early_context(mod, JsxIntrinsicGuardPass, "JsxIntrinsicGuardPass");
-        mod spawn JsxIntrinsicGuardPass(module=mod, ctx=ctx);
-        return ctx;
-    }
-    return None;
 }
 
 def _run_early_passes(mod: Module) -> list[CompileContext] {
@@ -221,12 +166,15 @@ def _run_early_passes(mod: Module) -> list[CompileContext] {
     } elif _JC.early_context == 3 {
         mod.set_code_context(CodeContext.NATIVE);
     }
-    for index in range(len(EARLY_PASSES)) {
-        started = time.time();
-        ctx = _spawn_early(index, mod);
-        if ctx is None {
+    for pass_type in EARLY_PASSES {
+        if pass_type is SymTabBuildPass and _has_absorb_import(mod) {
             break;
         }
+        ctx = CompileContext(
+            current_node=mod, from_pass=pass_type, pass_name=pass_type.__name__
+        );
+        started = time.time();
+        mod spawn pass_type(module=mod, ctx=ctx);
         ctx.time_taken = time.time() - started;
         done.append(ctx);
     }

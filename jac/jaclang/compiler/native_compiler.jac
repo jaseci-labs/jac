@@ -500,7 +500,8 @@ class NativeCompiler {
 
 glob _KERNEL_CELL: list[any] = [],
      _RESOLVED: list[any] = [],
-     _RESOLVING: list[any] = [];
+     _RESOLVING: list[any] = [],
+     _LOADED: dict[str, NativeCompiler] = {};
 
 def ensure_loaded -> (NativeCompiler | None) {
     if _KERNEL_CELL {
@@ -520,7 +521,12 @@ def ensure_loaded -> (NativeCompiler | None) {
         _RESOLVED.append(None);
         return None;
     }
-    k = NativeCompiler(found.lib_path, found.layout);
+    lib_path = os.path.realpath(found.lib_path);
+    k = _LOADED.get(lib_path);
+    if k is None {
+        k = NativeCompiler(lib_path, found.layout);
+        _LOADED[lib_path] = k;
+    }
     _KERNEL_CELL.append(k);
     return k;
 }
