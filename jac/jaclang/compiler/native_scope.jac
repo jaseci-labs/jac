@@ -77,19 +77,6 @@ def activate_scope_lowering(source_path: str | None = None) -> None {
         }
     }
     _SCOPE_ACTIVE.append(ActiveNativeScope(compiler_roots=roots));
-    try {
-        import from jaclang.runtime.runtime { JacRuntime }
-        sh = JacRuntime.get_selfhost();
-        prog = sh.peek_program();
-        if prog is not None {
-            hub = prog.mod.hub;
-            for k in list(hub.keys()) {
-                if in_native_scope_path(k) {
-                    del hub[k];
-                }
-            }
-        }
-    } except Exception {}
 }
 
 def scope_lowering_active -> bool {
