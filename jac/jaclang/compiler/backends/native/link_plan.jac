@@ -781,6 +781,18 @@ def optimize_merged_program(plan: LinkPlan, merged: ModuleRef, kind: ArtifactKin
         internalize_native_implementation(merged, ["main"]);
     }
     optimize_whole_program(plan, merged, kind, _target_machine(plan, kind));
+    if kind == ArtifactKind.EXECUTABLE {
+        mod_any: any = merged;
+        main_fn: any = None;
+        try {
+            main_fn = mod_any.get_function("main");
+        } except Exception {
+            main_fn = None;
+        }
+        if main_fn is not None and not main_fn.is_declaration {
+            main_fn.linkage = "external";
+        }
+    }
 }
 
 def plan_objects(

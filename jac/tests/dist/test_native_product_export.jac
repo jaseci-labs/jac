@@ -47,7 +47,14 @@ test "a native source export hands the C backend the reachable program only" {
         assert (base / "main.c").read_text() == "/* captured */";
         assert len(seen) == 1;
         optimized = seen[0];
-        assert "define" in optimized and "@main(" in optimized;
+        entry_lines = [
+            line
+            for line in optimized.splitlines()
+            if line.startswith("define") and "@main(" in line
+        ];
+        assert entry_lines and " internal " not in entry_lines[0] , (
+            "the exported C must define an external main: " + repr(entry_lines)
+        );
         plan = build_link_plan(program, [module.loc.mod_path], program.options);
         (merged, _) = whole_program_module(
             plan, plan.glue_spec(ArtifactKind.EXECUTABLE, "c", False)
