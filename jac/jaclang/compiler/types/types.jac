@@ -2,6 +2,7 @@ import from enum { IntEnum, auto }
 import from pathlib { Path }
 import type from jaclang.compiler.frontend.unitree { Expr, Symbol }
 import type from jaclang.compiler.frontend.unitree { UniScopeNode as SymbolTable }
+import type from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.relations {
     BaseOf,
     BoundOf,
@@ -221,7 +222,7 @@ node ClassDetailsShared {
 }
 
 node ClassDetailsPrivate {
-    has ct_args: (dict[str, any] | None) = None,
+    has ct_args: (dict[str, CtValue] | None) = None,
         alias_name: (str | None) = None,
         literal_value: (str | int | bool | None) = None,
         distinct_key: (str | None) = None,
@@ -236,7 +237,7 @@ node ClassDetailsPrivate {
     def init(
         *,
         type_args: (list[TypeBase] | None) = None,
-        ct_args: (dict[str, any] | None) = None,
+        ct_args: (dict[str, CtValue] | None) = None,
         alias_name: (str | None) = None,
         literal_value: (str | int | bool | None) = None,
         distinct_key: (str | None) = None

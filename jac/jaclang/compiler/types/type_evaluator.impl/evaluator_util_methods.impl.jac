@@ -1338,7 +1338,7 @@ impl TypeEvaluator._set_module_item_symbol_and_type(
 
 impl TypeEvaluator._ct_args_for_class(
     base_type: ClassType, slot_vals: list[Expr]
-) -> (tuple[dict[str, any], set[int]] | None) {
+) -> (tuple[dict[str, CtValue], set[int]] | None) {
     if not base_type.shared.ct_params {
         return None;
     }
@@ -1346,7 +1346,7 @@ impl TypeEvaluator._ct_args_for_class(
     if not isinstance(arch, Archetype) {
         return None;
     }
-    ct_args: dict[str, any] = {};
+    ct_args: dict[str, CtValue] = {};
     ct_slots: set[int] = set();
     for (i, tp) in enumerate(arch.type_params) {
         if not tp.is_comptime {
@@ -1361,7 +1361,7 @@ impl TypeEvaluator._ct_args_for_class(
         cv = self.ct_demand(val);
         self.ct_site_error(val, f"argument for comptime parameter '{pname}'", cv);
         if cv is not None {
-            ct_args[pname] = cv.v;
+            ct_args[pname] = cv;
         }
     }
     return (ct_args, ct_slots, );

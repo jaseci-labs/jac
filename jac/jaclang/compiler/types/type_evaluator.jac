@@ -6,6 +6,7 @@ import from pathlib { Path }
 import type from jaclang.compiler.types.stubcat.reader { CatScope, StubCatalog }
 import from typing { cast }
 import from jaclang.compiler.types.ct_eval { CtEvaluator }
+import from jaclang.compiler.types.ct_host { host_ct_environment }
 import from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.frontend.unitree {
@@ -570,7 +571,7 @@ walker TypeEvaluator {
     def _extract_ct_params(node_: Archetype) -> (list[str] | None);
     def _ct_args_for_class(
         base_type: ClassType, slot_vals: list[Expr]
-    ) -> (tuple[dict[str, any], set[int]] | None);
+    ) -> (tuple[dict[str, CtValue], set[int]] | None);
 
     def _is_class_scoped_type_param(node_: TypeParam) -> bool;
     def _collect_typevars_from_base(

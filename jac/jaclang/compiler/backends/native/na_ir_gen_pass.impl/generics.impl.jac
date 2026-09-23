@@ -196,17 +196,19 @@ impl NaIRGenPass._solve_generic_call(
     return solution;
 }
 
-impl NaIRGenPass._ct_eval -> any {
+impl NaIRGenPass._ct_eval -> CtEvaluator {
     return self.prog.get_type_evaluator().ct_eval;
 }
 
-impl NaIRGenPass._ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, any] {
+impl NaIRGenPass._ct_value_with_bindings(
+    nd: uni.Expr
+) -> tuple[bool, (CtValue | None)] {
     cv = nd.ct_value;
     if cv is None {
         return (False, None);
     }
     if not cv.is_deferred {
-        return (True, cv.v);
+        return (True, cv);
     }
     if not self._ct_bindings {
         return (False, None);
@@ -218,19 +220,22 @@ impl NaIRGenPass._ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, any] {
     }
 }
 
-impl NaIRGenPass._ct_native_const(v: any, nd: uni.Expr) -> (ir.Value | None) {
+impl NaIRGenPass._ct_native_const(v: CtValue, nd: uni.Expr) -> (ir.Value | None) {
     out: (ir.Value | None) = None;
-    if isinstance(v, bool) {
-        out = ir.Constant(ir.IntType(1), 1 if v else 0);
-    } elif isinstance(v, int) {
-        out = ir.Constant(ir.IntType(64), v);
-    } elif isinstance(v, float) {
-        out = ir.Constant(ir.DoubleType(), v);
-    } elif isinstance(v, str) {
-        out = self._make_global_string(v);
-    } elif isinstance(v, bytes) {
-        out = self._make_global_bytes(v);
-    } elif v is None {
+    if isinstance(v, CtBool) {
+        out = ir.Constant(ir.IntType(1), 1 if v.value else 0);
+    } elif isinstance(v, CtInt) {
+        if v.mag {
+            return None;
+        }
+        out = ir.Constant(ir.IntType(64), v.small);
+    } elif isinstance(v, CtFloat) {
+        out = ir.Constant(ir.DoubleType(), v.value);
+    } elif isinstance(v, CtStr) {
+        out = self._make_global_string(v.value);
+    } elif isinstance(v, CtBytes) {
+        out = self._make_global_bytes(v.value);
+    } elif isinstance(v, CtNone) {
         out = ir.Constant(ir.IntType(8).as_pointer(), None);
     }
     if out is not None and nd.coerce_to is not None {
@@ -261,7 +266,7 @@ impl NaIRGenPass._ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         return None;
     }
     (ok, v) = self._ct_value_with_bindings(nd);
-    if not ok {
+    if not ok or v is None {
         return None;
     }
     return self._ct_native_const(v, nd);
@@ -318,7 +323,7 @@ impl NaIRGenPass._ability_has_ct_params(ability: uni.Ability) -> bool {
 
 impl NaIRGenPass._solve_ct_args(
     ability: uni.Ability, nd: uni.FuncCall
-) -> (dict[str, any] | None) {
+) -> (dict[str, CtValue] | None) {
     sig = ability.signature;
     params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     positional: list[uni.Expr] = [];
@@ -332,7 +337,7 @@ impl NaIRGenPass._solve_ct_args(
             positional.append(a);
         }
     }
-    out: dict[str, any] = {};
+    out: dict[str, CtValue] = {};
     for (i, p) in enumerate(params) {
         if not p.is_comptime {
             continue;
@@ -353,7 +358,7 @@ impl NaIRGenPass._solve_ct_args(
             return None;
         }
         (ok, v) = self._ct_value_with_bindings(chosen);
-        if not ok {
+        if not ok or v is None {
             self.emit(
                 E5092,
                 node_override=chosen,
@@ -368,7 +373,7 @@ impl NaIRGenPass._solve_ct_args(
     return out;
 }
 
-impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
+impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: CtValue) -> None {
     if isinstance(tgt, uni.AtomUnit) {
         self._bind_ct_target(tgt.value, v);
         return;
@@ -378,7 +383,7 @@ impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
         return;
     }
     if isinstance(tgt, (uni.TupleVal, uni.ListVal)) {
-        items = list(v);
+        items = ct_iter(v);
         for (i, t) in enumerate(tgt.values) {
             if i < len(items) {
                 self._bind_ct_target(t, items[i]);
@@ -390,7 +395,6 @@ impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
 impl NaIRGenPass._instantiate_generic(
     nd: uni.FuncCall, func_name: str
 ) -> (ir.Function | None) {
-    import from jaclang.compiler.types.ct_value { ct_mangle }
     ability = self.generic_fns[func_name];
     solution = self._solve_generic_call(ability, nd);
     if solution is None {

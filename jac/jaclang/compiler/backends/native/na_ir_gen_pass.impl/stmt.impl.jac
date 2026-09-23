@@ -527,7 +527,7 @@ impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
         taken = nd.ct_taken;
         if taken is None {
             (ok, v) = self._ct_value_with_bindings(nd.condition);
-            if not ok {
+            if not ok or v is None {
                 self.emit(
                     E5092,
                     node_override=nd.condition,
@@ -537,7 +537,7 @@ impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
                 );
                 return;
             }
-            taken = bool(v);
+            taken = ct_truthy(v);
         }
         if taken {
             if isinstance(nd.body, (list, tuple)) {
@@ -3177,7 +3177,7 @@ impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
 impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if nd.is_comptime {
         (ok, items) = self._ct_value_with_bindings(nd.collection);
-        if not ok {
+        if not ok or items is None {
             self.emit(
                 E5092,
                 node_override=nd.collection,
@@ -3190,7 +3190,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         saved_ct = self._ct_bindings;
         self._ct_bindings = dict(saved_ct);
         try {
-            for item in items {
+            for item in ct_iter(items) {
                 self._bind_ct_target(nd.target, item);
                 if isinstance(nd.body, (list, tuple)) {
                     self._codegen_body(nd.body);

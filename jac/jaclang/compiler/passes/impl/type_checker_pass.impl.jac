@@ -1696,11 +1696,11 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
             and cv is not None
             and not cv.is_deferred
             and not self.evaluator.ct_quiet
-            and not hasattr(cv.v, "__iter__") {
+            and not ct_is_iterable(cv) {
             self.ctx.emit(
                 E0108,
                 node_override=here.collection,
-                reason=f"comptime for needs a sequence, got {type(cv.v).__name__}"
+                reason=f"comptime for needs a sequence, got {ct_type_name(cv)}"
             );
         }
     }
@@ -1809,7 +1809,7 @@ impl TypeCheckPass._resolve_comptime_if(nd: IfStmt) -> None {
     if cv is None or cv.is_deferred {
         return;
     }
-    taken = bool(cv.v);
+    taken = ct_truthy(cv);
     nd.ct_taken = taken;
     if taken {
         if nd.else_body is not None {
@@ -1986,14 +1986,14 @@ impl TypeCheckPass.exit_assert_stmt with AssertStmt exit {
     if self.evaluator.ct_site_error(here.condition, "comptime assert condition", cv) {
         return;
     }
-    if cv is None or cv.is_deferred or bool(cv.v) or self.evaluator.ct_quiet {
+    if cv is None or cv.is_deferred or ct_truthy(cv) or self.evaluator.ct_quiet {
         return;
     }
     message = "";
     if here.error_msg is not None {
         mv = self.evaluator.ct_demand(here.error_msg);
         if mv is not None and not mv.is_deferred {
-            message = f": {mv.v}";
+            message = f": {ct_str(mv)}";
         }
     }
     self.ctx.emit(E0109, node_override=here, message=message);

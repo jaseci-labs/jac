@@ -290,7 +290,7 @@ impl ClassDetailsShared.init(
 impl ClassDetailsPrivate.init(
     *,
     type_args: (list[TypeBase] | None) = None,
-    ct_args: (dict[str, any] | None) = None,
+    ct_args: (dict[str, CtValue] | None) = None,
     alias_name: (str | None) = None,
     literal_value: (str | int | bool | None) = None,
     distinct_key: (str | None) = None

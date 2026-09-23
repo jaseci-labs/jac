@@ -6,6 +6,19 @@ import jaclang.compiler.frontend.unitree as uni;
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
 import from jaclang.compiler.types.types { TypeBase, ClassType }
+import from jaclang.compiler.types.ct_value {
+    CtBool,
+    CtDict,
+    CtFloat,
+    CtInt,
+    CtList,
+    CtNone,
+    CtSet,
+    CtStr,
+    CtTuple,
+    CtValue,
+    int_host
+}
 import from jaclang.compiler.backends.es.primitives_es { ESBuiltinEmitter }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
@@ -414,8 +427,10 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         default_factory: Callable[([(uni.UniNode | None)], _T)]
     ) -> _T;
 
-    def _ct_es_expr(cv: any, jac_node: uni.UniNode) -> (es.Expression | None);
-    def _ct_es_value(v: any) -> (es.Expression | None);
+    def _ct_es_expr(
+        cv: (CtValue | None), jac_node: uni.UniNode
+    ) -> (es.Expression | None);
+    def _ct_es_value(v: CtValue) -> (es.Expression | None);
     def _ct_only_name(nd: uni.Name) -> bool;
     def _comptime_only_names -> set[str];
     def _is_ct_type_param(nd: uni.Name) -> bool;
