@@ -2885,69 +2885,47 @@ impl NaIRGenPass._emit_isinstance_core(
             self._emit_unsupported_builtin_call(nd, "isinstance");
             return None;
         }
-        tag = self.builder.extract_value(operand, 0, name="buffer.tag");
-        payload = self.builder.extract_value(operand, 1, name="buffer.payload");
-        heap = self.builder.or_(
-            self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 2)),
-            self.builder.or_(
-                self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 3)),
-                self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 6))
-            )
+        buffer_match = self._emit_buffer_isinstance(
+            self.builder.extract_value(operand, 0, name="buffer.tag"),
+            self.builder.extract_value(operand, 1, name="buffer.payload"),
+            names
         );
-        safe_payload = self.builder.select(heap, payload, ir.Constant(payload.type, 0));
-        pointer = self.builder.inttoptr(
-            safe_payload, i8.as_pointer(), name="buffer.ptr"
-        );
-        buffer_names = [
-            "list_u8" if name == "bytearray" else "bytes" for name in names
-        ];
-        b = self.builder;
-        i64 = ir.IntType(64);
-        buffer_entry = b.block;
-        inspect = b.append_basic_block("buffer.inspect");
-        literal = b.append_basic_block("buffer.literal");
-        allocated = b.append_basic_block("buffer.allocated");
-        done = b.append_basic_block("buffer.done");
-        b.cbranch(
-            b.icmp_unsigned("!=", safe_payload, ir.Constant(payload.type, 0)),
-            inspect,
-            done
-        );
-        b.position_at_end(inspect);
-        rc = b.load(
-            b.bitcast(b.gep(pointer, [ir.Constant(i64, HDR_RC_OFF)]), i64.as_pointer())
-        );
-        compact = b.and_(
-            b.icmp_unsigned("==", tag, ir.Constant(i8, 2)),
-            b.icmp_unsigned("==", rc, ir.Constant(i64, RC_SENTINEL))
-        );
-        b.cbranch(compact, literal, allocated);
-
-        b.position_at_end(literal);
-        marker = b.load(
-            b.bitcast(
-                b.gep(pointer, [ir.Constant(i64, HDR_DTOR_OFF)]), i64.as_pointer()
-            )
-        );
-        literal_hit = b.and_(
-            ir.Constant(i1, 1 if "bytes" in names else 0),
-            b.icmp_unsigned("==", marker, ir.Constant(i64, 0))
-        );
-        b.branch(done);
-        b.position_at_end(allocated);
-        hit = self._isinstance_class_name_hit(pointer, buffer_names);
-        if hit is None {
+        if buffer_match is None {
+            self._emit_unsupported_builtin_call(nd, "isinstance");
+        }
+        return buffer_match;
+    }
+    if operand.type == i8.as_pointer()
+        and names
+        and all(name in ("str", "bytes") for name in names)
+        and self._source_may_hold_bytes(source_type) {
+        if self._nogc_headerless() {
             self._emit_unsupported_builtin_call(nd, "isinstance");
             return None;
         }
-        allocated_end = b.block;
-        b.branch(done);
-        b.position_at_end(done);
-        buffer_match = b.phi(i1, name="buffer.match");
-        buffer_match.add_incoming(ir.Constant(i1, 0), buffer_entry);
-        buffer_match.add_incoming(literal_hit, literal);
-        buffer_match.add_incoming(hit, allocated_end);
-        return buffer_match;
+        payload = self.builder.ptrtoint(operand, ir.IntType(64), name="sb.payload");
+        is_bytes = self._emit_buffer_isinstance(ir.Constant(i8, 2), payload, ["bytes"]);
+        if is_bytes is None {
+            self._emit_unsupported_builtin_call(nd, "isinstance");
+            return None;
+        }
+        present = self.builder.icmp_unsigned(
+            "!=", payload, ir.Constant(payload.type, 0), name="sb.present"
+        );
+        is_str = self.builder.and_(
+            present, self.builder.not_(is_bytes, name="sb.notbytes"), name="sb.str"
+        );
+        sb_hit: (ir.Value | None) = None;
+        for name in names {
+            one = is_bytes if name == "bytes" else is_str;
+            sb_hit = one
+                if sb_hit is None
+                else self.builder.or_(sb_hit, one, name="sb.or");
+        }
+        if self._is_owned(operand) {
+            self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
+        }
+        return sb_hit;
     }
     source_members = source_type.types
         if isinstance(source_type, UnionType)
@@ -3026,6 +3004,24 @@ impl NaIRGenPass._emit_isinstance_core(
         cmp = self.builder.icmp_unsigned(
             "==", tag, ir.Constant(i8, t), name="isinst.cmp"
         );
+        if t == 2
+            and "str" in names
+            and operand.type == self.jacval_type
+            and self._source_may_hold_bytes(source_type)
+            and not self._nogc_headerless() {
+            is_bytes = self._emit_buffer_isinstance(
+                tag,
+                self.builder.extract_value(boxed, 1, name="isinst.payload"),
+                ["bytes"]
+            );
+            if is_bytes is not None {
+                cmp = self.builder.and_(
+                    cmp,
+                    self.builder.not_(is_bytes, name="isinst.notbytes"),
+                    name="isinst.str"
+                );
+            }
+        }
         result = cmp
             if result is None
             else self.builder.or_(result, cmp, name="isinst.or");
@@ -3035,6 +3031,80 @@ impl NaIRGenPass._emit_isinstance_core(
         self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
     }
     return result;
+}
+
+impl NaIRGenPass._emit_buffer_isinstance(
+    tag: ir.Value, payload: ir.Value, names: list[str]
+) -> (ir.Value | None) {
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    heap = self.builder.or_(
+        self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 2)),
+        self.builder.or_(
+            self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 3)),
+            self.builder.icmp_unsigned("==", tag, ir.Constant(i8, 6))
+        )
+    );
+    safe_payload = self.builder.select(heap, payload, ir.Constant(payload.type, 0));
+    pointer = self.builder.inttoptr(safe_payload, i8.as_pointer(), name="buffer.ptr");
+    buffer_names = ["list_u8" if name == "bytearray" else "bytes" for name in names];
+    b = self.builder;
+    i64 = ir.IntType(64);
+    buffer_entry = b.block;
+    inspect = b.append_basic_block("buffer.inspect");
+    literal = b.append_basic_block("buffer.literal");
+    allocated = b.append_basic_block("buffer.allocated");
+    done = b.append_basic_block("buffer.done");
+    b.cbranch(
+        b.icmp_unsigned("!=", safe_payload, ir.Constant(payload.type, 0)), inspect, done
+    );
+    b.position_at_end(inspect);
+    rc = b.load(
+        b.bitcast(b.gep(pointer, [ir.Constant(i64, HDR_RC_OFF)]), i64.as_pointer())
+    );
+    compact = b.and_(
+        b.icmp_unsigned("==", tag, ir.Constant(i8, 2)),
+        b.icmp_unsigned("==", rc, ir.Constant(i64, RC_SENTINEL))
+    );
+    b.cbranch(compact, literal, allocated);
+
+    b.position_at_end(literal);
+    marker = b.load(
+        b.bitcast(b.gep(pointer, [ir.Constant(i64, HDR_DTOR_OFF)]), i64.as_pointer())
+    );
+    literal_hit = b.and_(
+        ir.Constant(i1, 1 if "bytes" in names else 0),
+        b.icmp_unsigned("==", marker, ir.Constant(i64, 0))
+    );
+    b.branch(done);
+    b.position_at_end(allocated);
+    hit = self._isinstance_class_name_hit(pointer, buffer_names);
+    if hit is None {
+        return None;
+    }
+    allocated_end = b.block;
+    b.branch(done);
+    b.position_at_end(done);
+    buffer_match = b.phi(i1, name="buffer.match");
+    buffer_match.add_incoming(ir.Constant(i1, 0), buffer_entry);
+    buffer_match.add_incoming(literal_hit, literal);
+    buffer_match.add_incoming(hit, allocated_end);
+    return buffer_match;
+}
+
+impl NaIRGenPass._source_may_hold_bytes(source_type: (TypeBase | None)) -> bool {
+    members = source_type.types
+        if isinstance(source_type, UnionType)
+        else [source_type];
+    for member in members {
+        if not isinstance(member, ClassType) {
+            return True;
+        }
+        if member.shared.class_name in ("bytes", "object", "any", "Any") {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._emit_isinstance_ptr_tags(

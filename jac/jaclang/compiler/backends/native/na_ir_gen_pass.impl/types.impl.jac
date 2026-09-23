@@ -2012,10 +2012,14 @@ impl NaIRGenPass._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Val
         if not (isinstance(nd, uni.Expr) and nd.narrowed_type is not None) {
             return val;
         }
-        if not (_nt.private.type_args or [])
-            or _nt.shared.class_name
-                not in ("list", "Sequence", "dict", "set", "frozenset", "tuple")
-            or not isinstance(_want, ir.PointerType) {
+        _buffer = _nt.shared.class_name == "bytes" and self._is_bytes_type(_want);
+        if not _buffer
+            and (
+                not (_nt.private.type_args or [])
+                or _nt.shared.class_name
+                    not in ("list", "Sequence", "dict", "set", "frozenset", "tuple")
+                or not isinstance(_want, ir.PointerType)
+            ) {
             return val;
         }
         return self.builder.bitcast(val, _want, name="ptr.narrowed");

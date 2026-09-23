@@ -715,6 +715,11 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_new(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_decorated_call(nd: uni.FuncCall, func_name: str) -> (ir.Value | None);
     def _emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_buffer_isinstance(
+        tag: ir.Value, payload: ir.Value, names: list[str]
+    ) -> (ir.Value | None);
+
+    def _source_may_hold_bytes(source_type: (TypeBase | None)) -> bool;
     def _emit_isinstance_ptr_tags(operand: ir.Value, tags: list[int]) -> ir.Value;
     def _isinstance_type_name(nd: uni.UniNode) -> (str | None);
     def _isinstance_target_names(
