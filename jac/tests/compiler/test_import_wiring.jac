@@ -121,6 +121,49 @@ test "wires generate the consumer's imports and a scoped block is relative on th
 }
 
 
+test "a wire-bound name resolves to the provider's declaration" {
+    import from jaclang.compiler.frontend.unitree { Archetype, FuncCall, Module, Name }
+    base = _project(
+        {
+            "arch.jac": (
+                "impl import {\n"
+                "    edge CoreInternal: core.* --> core.*;\n"
+                "}\n"
+                "\n"
+                "impl import core {\n"
+                "    util --> core.svc { Spark }\n"
+                "}\n"
+            ),
+            "core/util.jac": "obj Spark {\n    has x: int = 0;\n}\n",
+            "core/svc.jac": ("def serve -> int {\n" "    return Spark(x=1).x;\n" "}\n")
+        }
+    );
+    try {
+        prog = JacProgram();
+        mod = prog.compile(
+            os.path.join(base, "core/svc.jac"), options=CompileOptions(no_cgen=True)
+        );
+        assert _errors(prog) == [] , _errors(prog);
+        assert isinstance(mod, Module);
+        uses = [
+            call.target
+            for call in mod.get_all_sub_nodes(FuncCall)
+            if isinstance(call.target, Name) and call.target.sym_name == "Spark"
+        ];
+        assert len(uses) == 1 , uses;
+        sym = uses[0].sym;
+        assert sym is not None;
+        assert sym.parent_tab is not None and sym.parent_tab.scope_name == "util" , (
+            sym.parent_tab.scope_name if sym.parent_tab else None
+        );
+        assert sym.decl is not None
+            and sym.decl.find_parent_of_type(Archetype) is not None , sym.decl;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
 test "a covered module's own imports are matched item by item" {
     base = _standard(
         svc=(
