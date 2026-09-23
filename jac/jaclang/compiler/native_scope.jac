@@ -39,9 +39,6 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(
              module="jaclang.compiler.passes.semantic_analysis_pass", strict=True
          ),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.sem_def_match_pass", strict=True
-         ),
          NativeScopeEntry(module="jaclang.compiler.passes.cfg_build_pass", strict=True),
          NativeScopeEntry(
              module="jaclang.compiler.passes.jsx_intrinsic_guard_pass", strict=True
