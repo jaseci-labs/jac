@@ -38,7 +38,7 @@ import from jaclang.compiler.backends.native.na_compile_pass {
     NATIVE_RELOC_MODEL,
     optimize_unit
 }
-import from jaclang.compiler.backends.native.linker_common {
+import from jaclang.compiler.backends.native.static_link {
     clib_needed_libs,
     clib_symbol_lib_map,
     collect_floor_archives,

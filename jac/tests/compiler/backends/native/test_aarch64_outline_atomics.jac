@@ -7,10 +7,10 @@ import from pathlib { Path }
 import from jaclang.dist.payload.vendor { build_outline_atomics }
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
 import from jaclang.compiler.backends.native.linker_common {
-    StaticRuntime,
     parse_ar_archive,
     object_undefined_symbols
 }
+import from jaclang.compiler.backends.native.static_link { StaticRuntime }
 
 glob _runtime_cache: list[bytes] = [];
 

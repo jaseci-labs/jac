@@ -459,3 +459,16 @@ unsealed bundle (a checkout seeded with the kit's precompile) by the unit's
 key. A native pass consults a dependency's native products only when
 placement makes that dependency native; any other import is bound through
 interop without being lowered.
+
+## Source exports and the vendored closure
+
+A source export vendors the runtime modules the exported project imports,
+following every import the generated Python contains, nested ones included.
+An exported project's wasm tooling (`dist/source/build`) reaches the LEB and
+archive codecs in `linker_common`, so nothing beside those codecs may import
+the runtime, the fused-binary support or the compiler: the floor archive and
+static runtime lookups a native link consumes live in `static_link`, which
+`link_plan` imports and the exported tooling never does. With that split the
+replay fixture's export vendors the same 16 modules as before the unit model
+instead of the whole package.
+

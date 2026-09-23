@@ -31,10 +31,10 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-import from jaclang.compiler.backends.native.linker_common {
+import from jaclang.compiler.backends.native.linker_common { select_ar_members }
+import from jaclang.compiler.backends.native.static_link {
     collect_musl_static,
-    musl_lib_dir,
-    select_ar_members
+    musl_lib_dir
 }
 import from tests.support { program_ir }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
