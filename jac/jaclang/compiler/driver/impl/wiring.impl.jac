@@ -52,7 +52,18 @@ impl WiringSpec.postinit -> None {
             f"{rule.block.scope_prefix}:{rule.name.value}:{srcs}-->{tgts}:{names}"
         );
     }
-    rows.extend(["closed:" + p for p in self.closed_patterns]);
+    self._rule_rows = rows;
+}
+
+impl WiringSpec._ensure_policy -> None {
+    if self._policy_loaded {
+        return;
+    }
+    self._policy_loaded = True;
+    if not self.closed_patterns {
+        self.closed_patterns = _closed_patterns_for(self.root_dir);
+    }
+    rows = list(self._rule_rows) + ["closed:" + p for p in self.closed_patterns];
     self._policy_digest = hashlib.sha256("\n".join(rows).encode()).hexdigest()
         if rows
         else "";
@@ -199,6 +210,7 @@ impl WiringSpec.is_mentioned(module: str) -> bool {
 }
 
 impl WiringSpec.is_closed(module: str) -> bool {
+    self._ensure_policy();
     return any([WiringSpec.pattern_matches(p, module) for p in self.closed_patterns]);
 }
 
@@ -322,6 +334,7 @@ impl WiringSpec.annex_source(consumer: str) -> (str | None) {
 }
 
 impl WiringSpec.digest_for(consumer: str) -> str {
+    self._ensure_policy();
     annex = self.annex_source(consumer) or "";
     if not annex and not self._policy_digest {
         return "";
@@ -444,27 +457,26 @@ impl _closed_patterns_for(root_dir: str) -> list[str] {
     return list(cfg.arch.closed);
 }
 
-impl _load_spec(root_dir: str, arch_path: str, closed: list[str]) -> WiringSpec {
+impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
     try {
         st = os.stat(arch_path);
-        stamp = (st.st_mtime, st.st_size, tuple(closed));
+        stamp = (st.st_mtime, st.st_size);
     } except OSError {
-        stamp = (-1.0, -1, tuple(closed));
+        stamp = (-1.0, -1);
     }
     key = os.path.realpath(root_dir);
     cached = _spec_cache.get(key);
     if cached is not None and cached[0] == stamp {
         return cached[1];
     }
-    source = read_file_with_encoding(arch_path) if os.path.isfile(arch_path) else "";
     spec = WiringSpec(
-        root_dir=root_dir, path=arch_path, source=source, closed_patterns=closed
+        root_dir=root_dir, path=arch_path, source=read_file_with_encoding(arch_path)
     );
     _spec_cache[key] = (stamp, spec);
     return spec;
 }
 
-impl wiring_for_path(path: str) -> (WiringSpec | None) {
+impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     if not path {
         return None;
     }
@@ -473,21 +485,35 @@ impl wiring_for_path(path: str) -> (WiringSpec | None) {
         return None;
     }
     scope = _resolution.get();
-    if scope is not None and root_dir in scope {
+    if scope is not None and root_dir in scope and scope[root_dir] is not None {
         return scope[root_dir];
+    }
+    if root_dir in _building {
+        return None;
     }
     arch = os.path.join(root_dir, ARCH_FILE_NAME);
     spec: (WiringSpec | None) = None;
-    if root_dir not in _building {
-        _building.add(root_dir);
-        try {
+    _building.add(root_dir);
+    try {
+        if os.path.isfile(arch) {
+            spec = _load_spec(root_dir, arch);
+        } elif not policy or (scope is not None and root_dir in scope) {
+            return None;
+        } else {
             closed = _closed_patterns_for(root_dir);
-            if os.path.isfile(arch) or closed {
-                spec = _load_spec(root_dir, arch, closed);
+            if closed {
+                spec = WiringSpec(
+                    root_dir=root_dir,
+                    path=arch,
+                    source="",
+                    closed_patterns=closed,
+                    _policy_loaded=True
+                );
+                spec._ensure_policy();
             }
-        } finally {
-            _building.discard(root_dir);
         }
+    } finally {
+        _building.discard(root_dir);
     }
     if scope is not None {
         scope[root_dir] = spec;
@@ -495,11 +521,100 @@ impl wiring_for_path(path: str) -> (WiringSpec | None) {
     return spec;
 }
 
+impl dedupe_generated_imports(mod: Module) -> None {
+    spec = wiring_for_path(mod.loc.mod_path, policy=False);
+    if spec is None {
+        return;
+    }
+    written: set[tuple[str, str, str, str]] = set();
+    generated: list[Import] = [];
+    for stmt in mod.body {
+        if not isinstance(stmt, Import) {
+            continue;
+        }
+        if stmt.loc.mod_path == spec.path {
+            generated.append(stmt);
+            continue;
+        }
+        written |= _import_keys(stmt);
+    }
+    if not generated or not written {
+        return;
+    }
+    consumer = spec.module_name(mod.loc.mod_path) or "";
+    removed: set[int] = set();
+    for stmt in generated {
+        doomed: set[int] = set();
+        for (key, item) in _import_items(stmt) {
+            if key in written or _relative_twin(key, consumer) in written {
+                doomed.add(id(item));
+            }
+        }
+        if doomed and stmt.prune_items(doomed) {
+            removed.add(id(stmt));
+        }
+    }
+    if removed {
+        mod._role_set(
+            BodyRole,
+            [
+                s
+                for s in mod.body
+                if id(s) not in removed
+            ]
+        );
+        mod.set_kids(
+            nodes=[
+                k
+                for k in [mod->:Kid:->]
+                if id(k) not in removed
+            ]
+                or [EmptyToken()]
+        );
+        mod._invalidate_sub_node_tab();
+    }
+}
+
+impl _import_items(stmt: Import) -> list[tuple[tuple[str, str, str, str], UniNode]] {
+    from_loc = stmt.from_loc;
+    form = WiringSpec.import_form(
+        stmt.is_absorb, stmt.is_typed, stmt.is_comptime, from_loc is not None
+    );
+    out: list[tuple[tuple[str, str, str, str], UniNode]] = [];
+    for item in stmt.items {
+        alias = item.alias.value if item.alias is not None else "";
+        if isinstance(item, ModuleItem) and from_loc is not None {
+            out.append(((from_loc.dot_path_str, form, item.name.value, alias), item));
+        } elif isinstance(item, ModulePath) {
+            out.append(((item.dot_path_str, form, "", alias), item));
+        }
+    }
+    return out;
+}
+
+impl _import_keys(stmt: Import) -> set[tuple[str, str, str, str]] {
+    return {key for (key, _item) in _import_items(stmt)};
+}
+
+impl _relative_twin(
+    key: tuple[str, str, str, str], consumer: str
+) -> tuple[str, str, str, str] {
+    (provider, form, name, alias) = key;
+    if "." not in consumer {
+        return key;
+    }
+    package = consumer.rsplit(".", 1)[0] + ".";
+    if provider.startswith(package) {
+        return ("." + provider[len(package):], form, name, alias);
+    }
+    return key;
+}
+
 impl wiring_annex_for(file_path: str) -> (tuple[str, str] | None) {
     if is_arch_file(file_path) {
         return None;
     }
-    spec = wiring_for_path(file_path);
+    spec = wiring_for_path(file_path, policy=False);
     if spec is None {
         return None;
     }

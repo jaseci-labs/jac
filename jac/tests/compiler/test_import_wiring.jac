@@ -14,6 +14,8 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.wiring { WiringSpec }
 import from jaclang.compiler.frontend.parser.frontend { parse }
+import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import from jaclang.compiler.frontend.unitree { ModuleItem }
 import from jaclang.cli.commands.arch {
     _collect_rows,
     _dependency_cone,
@@ -522,6 +524,33 @@ test "jac arch init with a scope wires a package's dependency cone" {
         ];
         cone = sorted([name for (name, _p) in _dependency_cone(spec, modules, "app")]);
         assert cone == ["app.main", "core.svc", "core.util"] , cone;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a written import a wire duplicates is emitted once" {
+    base = _standard(svc="import from core.util { now }\n\n" + _SVC);
+    try {
+        prog = JacProgram();
+        mod = prog.compile(
+            os.path.join(base, "core", "svc.jac"), options=CompileOptions(no_cgen=True)
+        );
+        bound = [
+            item.name.value for imp in ModuleFacts.iter_module_imports(mod)
+            for item in imp.items
+            if isinstance(item, ModuleItem)
+        ];
+        assert bound == ["now"] , bound;
+        assert [
+            w.code.code
+            for w in prog.warnings_had
+            if w.code is not None
+        ].count(
+            "W3053"
+        )
+            == 1;
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

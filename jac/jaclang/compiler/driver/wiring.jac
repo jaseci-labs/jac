@@ -4,6 +4,7 @@ import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from jaclang.compiler.frontend.unitree {
+    EmptyToken,
     ImplImport,
     Import,
     ImportRule,
@@ -16,7 +17,7 @@ import from jaclang.compiler.frontend.unitree {
     UniNode
 }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.roles { Kid }
+import from jaclang.compiler.frontend.roles { BodyRole, Kid }
 import from jaclang.project.modresolver { find_jac_project_root, resolve_local_module }
 import from jaclang.project.source { read_file_with_encoding }
 
@@ -49,6 +50,8 @@ obj WiringSpec {
         _by_consumer: dict[str, list[ImportWire]] = {},
         _annex_cache: dict[str, str] = {},
         closed_patterns: list[str] = [],
+        _policy_loaded: bool = False,
+        _rule_rows: list[str] = [],
         _policy_digest: str = "",
         _project_modules: (list[str] | None) = None,
         _mentioned: (set[str] | None) = None;
@@ -64,6 +67,7 @@ obj WiringSpec {
     def is_mentioned(module: str) -> bool;
     def is_closed(module: str) -> bool;
     def is_sealed(module: str) -> bool;
+    def _ensure_policy -> None;
     static def pattern_matches(pattern: str, module: str) -> bool;
     def annex_source(consumer: str) -> (str | None);
     def digest_for(consumer: str) -> str;
@@ -85,8 +89,7 @@ obj WiringSpec {
     def _column_of(pos: int) -> int;
 }
 
-glob _spec_cache:
-         dict[str, tuple[tuple[float, int, tuple[str, ...]], WiringSpec]] = {},
+glob _spec_cache: dict[str, tuple[tuple[float, int], WiringSpec]] = {},
      _resolution: ContextVar[dict[str, WiringSpec | None] | None] = ContextVar(
          'jac_wiring_resolution', `default=None
      ),
@@ -108,8 +111,14 @@ def wiring_scope -> Iterator[None] {
 
 def is_arch_file(path: str) -> bool;
 def arch_file_for(path: str) -> (str | None);
-def wiring_for_path(path: str) -> (WiringSpec | None);
+def wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None);
 def wiring_annex_for(file_path: str) -> (tuple[str, str] | None);
 def wiring_digest_for(file_path: str) -> str;
-def _load_spec(root_dir: str, arch_path: str, closed: list[str]) -> WiringSpec;
+def dedupe_generated_imports(mod: Module) -> None;
+def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
 def _closed_patterns_for(root_dir: str) -> list[str];
+def _import_items(stmt: Import) -> list[tuple[tuple[str, str, str, str], UniNode]];
+def _import_keys(stmt: Import) -> set[tuple[str, str, str, str]];
+def _relative_twin(
+    key: tuple[str, str, str, str], consumer: str
+) -> tuple[str, str, str, str];

@@ -892,6 +892,7 @@ node Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
     }
 
     def postinit -> None;
+    def prune_items(doomed: set[int]) -> bool;
 
     has is_jac: bool { getter; }
     has __jac_detected: bool { getter; }

@@ -2408,7 +2408,7 @@ impl JacAutoLintPass._strip_usestate_imports(nd: uni.Module) -> None {
             new_body.append(stmt);
             continue;
         }
-        if self._prune_import_items(stmt, usestate_items) {
+        if stmt.prune_items(usestate_items) {
             removed.add(id(stmt));
             continue;
         }
@@ -2429,49 +2429,6 @@ impl JacAutoLintPass._strip_usestate_imports(nd: uni.Module) -> None {
         );
     }
     nd._invalidate_sub_node_tab();
-}
-
-impl JacAutoLintPass._prune_import_items(stmt: uni.Import, doomed: set[int]) -> bool {
-    stmt._role_set(
-        ItemsRole,
-        [
-            item
-            for item in stmt.items
-            if id(item) not in doomed
-        ]
-    );
-    if not stmt.items {
-        return True;
-    }
-    kids = [stmt->:Kid:->];
-    commas = [
-        k
-        for k in kids
-        if isinstance(k, uni.Token) and k.name == Tok.COMMA
-    ];
-    no_commas = [
-        k
-        for k in kids
-        if id(k) not in doomed
-            and not (isinstance(k, uni.Token) and k.name == Tok.COMMA)
-    ];
-    result: list[uni.UniNode] = [];
-    ci = 0;
-    for (i, kid) in enumerate(no_commas) {
-        result.append(kid);
-        if (
-            i + 1 < len(no_commas)
-            and isinstance(kid, (uni.ModuleItem, uni.ModulePath))
-            and isinstance(no_commas[i + 1], (uni.ModuleItem, uni.ModulePath))
-            and ci < len(commas)
-        ) {
-            result.append(commas[ci]);
-            ci += 1;
-        }
-    }
-    stmt.set_kids(nodes=result);
-    stmt._invalidate_sub_node_tab();
-    return False;
 }
 
 impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
@@ -2567,7 +2524,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
             continue;
         }
         changed = True;
-        if self._prune_import_items(stmt, doomed) {
+        if stmt.prune_items(doomed) {
             removed.add(id(stmt));
             continue;
         }
