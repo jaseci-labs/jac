@@ -83,15 +83,9 @@ def type_to_str(t: object) -> str {
     if isinstance(t, str) {
         return t;
     }
-    try {
-        import from jaclang.runtime.object_interop { is_record }
-        if (is_record(t) and t?.name) {
-            tname = t?.name;
-            if isinstance(tname, str) {
-                return tname;
-            }
-        }
-    } except Exception {}
+    if isinstance(t, Info) {
+        return t.name;
+    }
     if isinstance(t, `tuple) {
         head = t[0];
         if (head == 'list') {

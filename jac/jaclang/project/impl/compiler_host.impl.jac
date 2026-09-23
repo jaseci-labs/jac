@@ -388,3 +388,38 @@ impl ProjectHost.package_init(directory: str) -> (str | None) {
     }
     return None;
 }
+
+impl ProjectHost.ct_environment -> CtEnvironment {
+    import sys;
+    import platform;
+    import from jaclang.compiler.types.ct_value { CtEnvironment }
+    host_os = "linux";
+    if sys.platform.startswith("win") {
+        host_os = "windows";
+    } elif sys.platform == "darwin" {
+        host_os = "darwin";
+    }
+    return CtEnvironment(os=host_os, arch=platform.machine());
+}
+
+impl ProjectHost.stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
+    return self.compiler_for(program).stub_catalog();
+}
+
+impl ProjectHost.parse_python(
+    source_str: str, file_path: str, program: JacProgram
+) -> tuple[Module, bool] {
+    import ast as py_ast;
+    import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.compiler.driver.pipeline_runner { run_utility, UtilityProduct }
+    built = run_utility(
+        UtilityProduct.PYTHON_AST,
+        uni.PythonModuleAst(
+            py_ast.parse(source_str),
+            orig_src=uni.Source(source_str, mod_path=file_path)
+        ),
+        program,
+        cancel_token=program.options.cancel_token if program.options else None
+    );
+    return (built.module, len(built.ctx.errors_had) > 0);
+}

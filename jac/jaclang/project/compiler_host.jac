@@ -11,6 +11,8 @@ import from jaclang.compiler.frontend.host {
 }
 import type from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
+import type from jaclang.compiler.types.ct_value { CtEnvironment }
 import type from jaclang.compiler.frontend.unitree { Module }
 import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
@@ -53,6 +55,12 @@ obj ProjectHost(HostServices) {
 
     def native_pipeline_available -> tuple[bool, str];
     def note(message: str);
+    def stub_catalog_for(program: JacProgram) -> (StubCatalog | None);
+    def parse_python(
+        source_str: str, file_path: str, program: JacProgram
+    ) -> tuple[Module, bool];
+
+    def ct_environment -> CtEnvironment;
     def path_facts(path: str) -> PathFacts;
     def annex_files(path: str, suffix: str = ".impl.jac") -> list[str];
     def base_file(annex_path: str) -> (str | None);

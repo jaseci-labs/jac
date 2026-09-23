@@ -53,6 +53,7 @@ class JacProgram {
     def native_units(self: JacProgram) -> NativeUnitRegistry;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def stub_catalog(self: JacProgram) -> StubCatalog | None;
+    def note_stub_tree_served(self: JacProgram, path: str) -> None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
     def release_compile_closure(
         self: JacProgram, collect: bool = True, retain_stubs: bool = True

@@ -41,7 +41,8 @@ walker JacFormatPass(CompilerPass) {
 
 def format_module(mod: uni.Module) -> str {
     import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
-    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+    import from jaclang.compiler.driver.pipeline_runner { run_utility }
+    import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
     import from jaclang.compiler.driver.program { JacProgram }
     return run_utility(
         UtilityProduct.FORMAT,
@@ -77,7 +78,8 @@ def unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
             mod.set_kids(nodes=head_kid or [uni.EmptyToken()]);
         }
         try {
-            import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+            import from jaclang.compiler.driver.pipeline_runner { run_utility }
+            import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
             run_utility(UtilityProduct.NORMALIZE, mod, JacProgram());
             if requires_format {
                 return format_module(mod);

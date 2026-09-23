@@ -1,5 +1,6 @@
 import type from jaclang.runtime.native_library { SharedNativeEngine }
-import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+import from jaclang.compiler.driver.pipeline_runner { run_utility }
+import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 impl JacCompiler.selfhost.getter -> SelfHostCache {
     cache = self._selfhost;
@@ -23,19 +24,6 @@ impl JacCompiler.stub_catalog -> StubCatalog | None {
     found = active();
     self._stub_catalog = found;
     return found;
-}
-
-impl JacCompiler.note_stub_tree_served(path: str, program: JacProgram) -> None {
-    if program._stub_trees_served {
-        return;
-    }
-    if self.stub_catalog() is not None {
-        return;
-    }
-    import from jaclang.compiler.frontend.host { active_host }
-    if active_host().in_typeshed_tree(path) {
-        program._stub_trees_served = True;
-    }
 }
 
 impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {

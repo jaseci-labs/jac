@@ -58,18 +58,20 @@ import from jaclang.compiler.driver.pass_driver {
     setup_progress
 }
 import from jaclang.compiler.driver.pipeline {
-    run_utility,
-    UtilityProduct,
     get_analysis_sched,
     get_boundary_analysis_sched,
-    get_format_sched,
     get_ir_gen_sched,
-    get_lint_sched,
     get_symtab_ir_sched,
     providers_of,
     pass_provides,
     validate_schedule
 }
+import from jaclang.compiler.driver.pipeline_runner {
+    run_utility,
+    get_format_sched,
+    get_lint_sched
+}
+import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
 import from jaclang.compiler.driver.pipeline_runner {
     get_py_code_gen,
     native_schedule_failure
@@ -118,7 +120,6 @@ obj JacCompiler {
     def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;
     def ensure_stub_catalog -> StubCatalog | None;
-    def note_stub_tree_served(path: str, program: JacProgram) -> None;
     def get_native_interop_setup(
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))];

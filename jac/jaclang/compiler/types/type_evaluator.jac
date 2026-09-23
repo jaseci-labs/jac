@@ -6,7 +6,6 @@ import from pathlib { Path }
 import type from jaclang.compiler.types.stubcat.reader { CatScope, StubCatalog }
 import from typing { cast }
 import from jaclang.compiler.types.ct_eval { CtEvaluator }
-import from jaclang.compiler.types.ct_host { host_ct_environment }
 import from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.frontend.unitree {

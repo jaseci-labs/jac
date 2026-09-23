@@ -1,5 +1,6 @@
 impl cfg_dot_from_file(file_name: str) -> str {
-    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+    import from jaclang.compiler.driver.pipeline_runner { run_utility }
+    import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
     import from jaclang.compiler.driver.program { JacProgram }
     with open(file_name, encoding="utf-8") as f {
         file_source = f.read();

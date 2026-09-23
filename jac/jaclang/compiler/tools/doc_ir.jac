@@ -1,20 +1,15 @@
-import from typing { Union }
 import type jaclang.compiler.frontend.unitree as uni;
 
-glob DocType = Union[
-         (
-             'Doc',
-             'Text',
-             'Line',
-             'Group',
-             'Indent',
-             'Concat',
-             'IfBreak',
-             'Align',
-             'LineSuffix',
-             'BreakParent'
-         )
-     ];
+type DocType = Doc
+    | Text
+    | Line
+    | Group
+    | Indent
+    | Concat
+    | IfBreak
+    | Align
+    | LineSuffix
+    | BreakParent;
 
 obj Doc {
     def __str__ -> str;

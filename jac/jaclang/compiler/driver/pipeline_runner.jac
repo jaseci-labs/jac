@@ -1,5 +1,11 @@
 import from contextvars { ContextVar }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact, CompilationProduct }
+import from jaclang.compiler.driver.pipeline_types {
+    AnalysisFact,
+    CompilationProduct,
+    UtilityProduct
+}
+import type from threading { Event }
+import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.driver.toolchain { native_pipeline_available }
 import from jaclang.compiler.driver.pipeline {
     _codegen_sched_loading,
@@ -713,4 +719,62 @@ def native_ir_product_schedule -> list[type] {
 with entry {
     register_product_schedule(CompilationProduct.CLIENT, client_product_schedule);
     register_product_schedule(CompilationProduct.NATIVE_IR, native_ir_product_schedule);
+}
+
+def get_format_sched(auto_lint: bool = False) -> list[type] {
+    import from jaclang.compiler.tools.comment_attach_pass { CommentAttachPass }
+    import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
+    import from jaclang.compiler.tools.jac_auto_lint_pass { JacAutoLintPass }
+    import from jaclang.compiler.tools.jac_formatter_pass { JacFormatPass }
+    if auto_lint {
+        return validate_schedule(
+            [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass],
+            origin='format schedule'
+        );
+    }
+    return validate_schedule(
+        [CommentAttachPass, DocIRGenPass, JacFormatPass], origin='format schedule'
+    );
+}
+
+def get_lint_sched -> list[type] {
+    import from jaclang.compiler.tools.jac_auto_lint_pass { JacLintCheckPass }
+    return validate_schedule([JacLintCheckPass], origin='lint schedule');
+}
+
+def run_utility(
+    product: UtilityProduct,
+    ir: any,
+    program: JacProgram,
+    cancel_token: Event | None = None
+) -> any {
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    step: type;
+    if product == UtilityProduct.PYTHON_AST {
+        import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
+        step = PyastBuildPass;
+    } elif product == UtilityProduct.PYTHON_SYMBOLS {
+        step = SymTabBuildPass;
+    } elif product == UtilityProduct.GRAMMAR {
+        import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
+        step = GrammarExtractPass;
+    } elif product == UtilityProduct.CFG_DOT {
+        import from jaclang.compiler.tools.cfg_dot { CoalesceBBPass }
+        step = CoalesceBBPass;
+    } elif product == UtilityProduct.NORMALIZE {
+        import from jaclang.compiler.tools.normalize_pass { NormalizePass }
+        step = NormalizePass;
+    } elif product == UtilityProduct.UNPARSE {
+        import from jaclang.compiler.tools.unparse_pass { UnparsePass }
+        step = UnparsePass;
+    } elif product == UtilityProduct.DOC {
+        import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
+        step = DocIRGenPass;
+    } elif product == UtilityProduct.FORMAT {
+        import from jaclang.compiler.tools.jac_formatter_pass { JacFormatPass }
+        step = JacFormatPass;
+    } else {
+        raise ValueError(f"Unknown utility product: {product}");
+    }
+    return run_pass(step, ir, program, cancel_token=cancel_token);
 }

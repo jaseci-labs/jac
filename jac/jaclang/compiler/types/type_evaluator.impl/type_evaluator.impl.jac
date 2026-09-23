@@ -4341,7 +4341,8 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
 }
 
 impl TypeEvaluator.postinit -> None {
-    self.ct_eval = CtEvaluator(evaluator=self, env=host_ct_environment());
+    import from jaclang.compiler.frontend.host { active_host }
+    self.ct_eval = CtEvaluator(evaluator=self, env=active_host().ct_environment());
     self._BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
     );

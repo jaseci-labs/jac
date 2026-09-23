@@ -6,7 +6,8 @@ impl py2jac(filename: str) -> int {
     import jaclang.compiler.frontend.unitree as uni;
     import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
     import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
-    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+    import from jaclang.compiler.driver.pipeline_runner { run_utility }
+    import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.project.source { read_file_with_encoding }
     if filename.endswith('.py') {

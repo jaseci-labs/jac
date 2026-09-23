@@ -168,7 +168,6 @@ impl JacProgram.load_dependency_module(
             }
         }
     }
-    compiler = self._get_compiler();
     import from jaclang.compiler.driver.compilation_context { program_for }
     target_program = program_for(resolved_path, self);
     target_hub = target_program.mod.hub;
@@ -185,26 +184,18 @@ impl JacProgram.load_dependency_module(
         mod = target_hub[resolved_path];
     } else {
         if resolved_path.endswith('.pyi') {
-            import ast as py_ast;
-            import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-            import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+            import from jaclang.compiler.driver.pass_driver { run_pass }
+            import from jaclang.compiler.frontend.host { active_host }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
             import from jaclang.project.source { read_file_with_encoding }
             src = use_str or read_file_with_encoding(source_path);
-            uni_source = uni.Source(src, source_path);
-            converted = run_utility(
-                UtilityProduct.PYTHON_AST,
-                uni.PythonModuleAst(py_ast.parse(src), orig_src=uni_source,),
-                self
-            ).module;
-            assert isinstance(converted, uni.Module);
-            mod = converted;
+            (mod, _stub_errors) = active_host().parse_python(src, source_path, self);
             mod.stub_only = True;
 
             self.install_module(resolved_path, mod);
-            compiler.note_stub_tree_served(resolved_path, self);
+            self.note_stub_tree_served(resolved_path);
             self.resolve_absorb_imports(mod);
-            run_utility(UtilityProduct.PYTHON_SYMBOLS, mod, self);
+            run_pass(SymTabBuildPass, mod, self);
             events = self.analysis.cache_events;
             events["stub_ingest"] = events.get("stub_ingest", 0) + 1;
         } else {
@@ -273,7 +264,8 @@ impl JacProgram.stub_catalog(self: JacProgram) -> (StubCatalog | None) {
         return None;
     }
     if self._stub_catalog is None {
-        catalog = self._get_compiler().stub_catalog();
+        import from jaclang.compiler.frontend.host { active_host }
+        catalog = active_host().stub_catalog_for(self);
         if catalog is not None {
             self._stub_catalog = catalog.for_session();
         }
@@ -557,31 +549,16 @@ impl JacProgram.parse_source(
     cancel_token: (Event | None) = None
 ) -> uni.Module {
     import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.driver.pipeline { UtilityProduct, run_utility }
     import from jaclang.compiler.driver.boundary_classify {
         _coerce_client_module,
         _coerce_native_module
     }
     import from jaclang.compiler.frontend.host { active_host }
-    import ast as py_ast;
     had_error = False;
     run_codespace_infer = False;
     infer_native = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
-        import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-        parsed_ast = py_ast.parse(source_str);
-        py_ast_ret = run_utility(
-            UtilityProduct.PYTHON_AST,
-            uni.PythonModuleAst(
-                parsed_ast, orig_src=uni.Source(source_str, mod_path=file_path)
-            ),
-            self,
-            cancel_token=cancel_token
-        );
-        had_error = len(py_ast_ret.ctx.errors_had) > 0;
-        converted = py_ast_ret.module;
-        assert isinstance(converted, uni.Module);
-        parsed = converted;
+        (parsed, had_error) = active_host().parse_python(source_str, file_path, self);
     } else {
         retired = active_host().path_facts(file_path).retired_marker;
         if retired == "native" {
@@ -1106,4 +1083,15 @@ impl JacProgram.module_scoped_errors(self: JacProgram, mod_path: str) -> bool {
         }
     }
     return False;
+}
+
+impl JacProgram.note_stub_tree_served(self: JacProgram, path: str) -> None {
+    import from jaclang.compiler.frontend.host { active_host }
+    host = active_host();
+    if self._stub_trees_served or host.stub_catalog_for(self) is not None {
+        return;
+    }
+    if host.in_typeshed_tree(path) {
+        self._stub_trees_served = True;
+    }
 }

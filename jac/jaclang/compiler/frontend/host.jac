@@ -2,6 +2,8 @@ import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import type from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
+import type from jaclang.compiler.types.ct_value { CtEnvironment }
 import type from jaclang.compiler.frontend.unitree { Module }
 import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
@@ -136,6 +138,21 @@ obj HostServices {
     }
 
     def note(message: str) {}
+    def stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
+        return None;
+    }
+
+    def parse_python(
+        source_str: str, file_path: str, program: JacProgram
+    ) -> tuple[Module, bool] {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def ct_environment -> CtEnvironment {
+        import from jaclang.compiler.types.ct_value { CtEnvironment }
+        return CtEnvironment();
+    }
+
     def path_facts(path: str) -> PathFacts {
         return PathFacts();
     }
