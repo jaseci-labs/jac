@@ -17,6 +17,7 @@ import from jaclang.compiler.driver.progstate {
 }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
+import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.runtime.semantic { Info }
 
@@ -36,6 +37,7 @@ class JacProgram {
         type_evaluator: TypeEvaluator | None,
         _compiler: JacCompiler | None,
         _iface: any,
+        _natives: NativeUnitRegistry | None,
         source_store: SourceStore,
         context_root: JacProgram | None,
         context_key: str,
@@ -44,6 +46,7 @@ class JacProgram {
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def iface_registry(self: JacProgram) -> any;
+    def native_units(self: JacProgram) -> NativeUnitRegistry;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def stub_catalog(self: JacProgram) -> StubCatalog | None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
@@ -51,7 +54,7 @@ class JacProgram {
         self: JacProgram, collect: bool = True, retain_stubs: bool = True
     ) -> None;
 
-    def release_native_dep_units(self: JacProgram) -> None;
+    def scrub_hub_types(self: JacProgram) -> None;
     def release_check_caches(self: JacProgram) -> None;
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def install_module(self: JacProgram, resolved_path: str, mod: uni.Module) -> None;

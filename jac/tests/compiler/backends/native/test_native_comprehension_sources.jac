@@ -2,7 +2,7 @@
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_address }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -38,7 +38,7 @@ test "comprehensions over ranges, strings, bytes, sets and adapters run natively
         ("enumerated", 135)
     ];
     for (name, want) in expected {
-        address = engine.get_function_address(name);
+        address = native_address(engine, name);
         assert isinstance(address, int) and address != 0 , name;
         got = ctypes.CFUNCTYPE(ctypes.c_int64)(address)();
         assert got == want , f"{name}: {got} != {want}";

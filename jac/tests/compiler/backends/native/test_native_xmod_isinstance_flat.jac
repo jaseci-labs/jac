@@ -50,7 +50,7 @@ def compile_native(
         assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     }
     eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
 

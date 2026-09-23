@@ -314,7 +314,7 @@ impl NaIRGenPass._emit_closure_value(
 }
 
 impl NaIRGenPass._emit_closure_escape_error(var_name: str, nd: uni.UniNode) -> None {
-    self.ctx.emit(
+    self.emit(
         E5092,
         node_override=nd,
         kind="expression",

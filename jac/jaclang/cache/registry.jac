@@ -1,5 +1,5 @@
 import from pathlib { Path }
-import from jaclang.cache.policy { Policy, Retention, SweepReport, KeepMatch, TempLock }
+import from jaclang.cache.policy { Policy, Retention, SweepReport, TempLock }
 
 obj Bucket {
     has name: str,
@@ -41,7 +41,8 @@ glob RETIRED: tuple[str, ...] = (
          "bytecode",
          "bootstrap",
          "toolchains/llvm-cbe",
-         "toolchains/cocoapods"
+         "toolchains/cocoapods",
+         "jir/kernel_units"
      ),
      GENERATION_PATTERN: str = "[0-9a-f]" * 16,
      BUCKETS: list[Bucket] = [
@@ -72,12 +73,6 @@ glob RETIRED: tuple[str, ...] = (
              relpath="jir/stubcat",
              policy=Policy(ttl_days=14.0, pattern="*.bin"),
              summary="pre-resolved typeshed catalogs"
-         ),
-         Bucket(
-             name="jir-kernel-units",
-             relpath="jir/kernel_units",
-             policy=Policy(ttl_days=14.0, keep_match=KeepMatch.FRAGMENT),
-             summary="native kernel unit sources and their compiled artifacts"
          ),
          Bucket(
              name="jir-digests",

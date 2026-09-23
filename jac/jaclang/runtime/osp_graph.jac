@@ -833,7 +833,7 @@ def _new_graph -> OspGraph {
 
 glob DEFAULT_GRAPH: OspGraph = _new_graph();
 
-def osp_adj_pairs(origin: int, dir: int) -> list[int] {
+def:pub osp_adj_pairs(origin: int, dir: int) -> list[int] {
     out: list[int] = [];
     if origin in DEFAULT_GRAPH.adj {
         a: OspAdj = DEFAULT_GRAPH.adj[origin];

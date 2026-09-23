@@ -132,9 +132,10 @@ test "native_safe_sym treats non-ASCII letters as unsafe" {
     assert safe_sym_stem("naïve_mod") == "na_ve_mod";
 }
 
-test "native_safe_sym keeps the kernel modules unhashed" {
-    assert native_safe_sym("osp_kernel") == "osp_kernel";
-    assert native_safe_sym("fmt_kernel") == "fmt_kernel";
+test "native_safe_sym hashes the kernel modules like every other unit" {
+    assert native_safe_sym("osp_kernel") != "osp_kernel";
+    assert native_safe_sym("osp_kernel").startswith("osp_kernel_");
+    assert native_safe_sym("fmt_kernel").startswith("fmt_kernel_");
 }
 
 test "native_safe_sym keeps distinct sources distinct after sanitizing" {
@@ -177,10 +178,7 @@ test "source helpers lower when a native unit reaches them" {
     );
     prog = JacProgram();
     opts = CompileOptions(
-        aot_mode=True,
-        force_codespace='native',
-        force_target_program=True,
-        no_ir_cache=True
+        aot_mode=True, force_codespace='native', force_target_program=True
     ).clone_for_native_import();
     na_coverage_begin();
     try {

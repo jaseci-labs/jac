@@ -1,3 +1,4 @@
+import type from jaclang.runtime.native_library { SharedNativeEngine }
 import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
@@ -13,9 +14,10 @@ import from jaclang.compiler.frontend.unitree { ability_of_symbol }
 import from jaclang.compiler.driver.jir {
     SEC_BYTECODE,
     SEC_MTIR,
-    SEC_LLVM_IR,
     SEC_INTEROP,
-    SEC_NATIVE_OBJ,
+    SEC_NBITCODE,
+    SEC_NIFACE,
+    SEC_NOBJ,
     SEC_PLACEMENT,
     SEC_IFACE,
     SEC_CLIENT,
@@ -149,20 +151,14 @@ obj JacCompiler {
     def _cached_client_artifact(full_target: str) -> (ClientArtifact | None);
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
+    def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,
-        cached_ir: str,
         cached_interop: (dict[str, any] | None)
     ) -> None;
 
-    def _load_native_from_bitcode(
-        full_target: str,
-        target_program: JacProgram,
-        section_data: bytes,
-        cached_interop: (dict[str, any] | None)
-    ) -> None;
-
+    def _sealed_native_engine(full_target: str) -> (SharedNativeEngine | None);
     def _restore_sections(
         full_target: str,
         actual_program: JacProgram,
@@ -175,6 +171,7 @@ obj JacCompiler {
     ) -> (tuple[bytes, bytes] | None);
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
+    def _precompiled_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _build_interop_dict(result: uni.Module) -> dict[str, any];
     def _restore_native_clibs(
         gen: CodeGenTarget, cached_interop: (dict[str, any] | None)
@@ -194,6 +191,10 @@ obj JacCompiler {
     def stamp_access_check_facts(mod: uni.Module) -> None;
     def stamp_native_import_facts(mod: uni.Module, target_program: JacProgram) -> None;
     def _persist_module_cache(
+        full_target: str, result: uni.Module, actual_program: JacProgram
+    ) -> None;
+
+    def _persist_native_unit(
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;
 

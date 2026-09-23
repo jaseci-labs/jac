@@ -45,7 +45,7 @@ test "a GOT load of a copy-relocated stderr yields the stream, not its contents"
             subprocess.run(["cc", "-c", "-fPIC", str(src), "-o", str(obj)], check=True);
         }
         assert ElfLinker.link(
-            obj_bytes=entry_obj.read_bytes(),
+            objects=[entry_obj.read_bytes()],
             output_path=str(output),
             needed_libs=["libc.so.6"],
             archive_members=[obj_path.read_bytes()]

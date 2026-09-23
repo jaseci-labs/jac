@@ -170,56 +170,6 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         );
     }
 
-    import sys;
-    jc_name = (
-        "libjac_compiler.dylib" if sys.platform == "darwin" else "libjac_compiler.so"
-    );
-    jc_src = os.path.join(repo_root, "jaclang", "compiler", "jc_unit.jac");
-    jc_dst = os.path.join(site, "jaclang", "compiler", jc_name);
-    if not file_exists(jc_src) {
-        log("==> no compiler kernel unit in this tree; skipping kernel build");
-        _bundle_bun(site, opts);
-        return;
-    }
-    if os.environ.get("JAC_PAYLOAD_SKIP_KERNEL") == "1" {
-        log("==> skipping native compiler kernel (JAC_PAYLOAD_SKIP_KERNEL=1)");
-        _bundle_bun(site, opts);
-        return;
-    }
-    log(f"==> building native compiler kernel (jac build --native --lib {jc_src})");
-    jc_boot = (
-        "import os, sys\n"
-        + "root, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]\n"
-        + "sys.path.insert(0, root)\n"
-        + "import _jac_finder\n"
-        + "_jac_finder.install()\n"
-        + "from jaclang.cli.commands.native_build import native_build\n"
-        + "rc = int(native_build(src, output=dst, lib=True) or 0)\n"
-        + "sys.stdout.flush()\n"
-        + "sys.stderr.flush()\n"
-        + "os._exit(rc)\n"
-    );
-    jc_env = clone_env();
-    jc_env["JAC_LLVM_SHIM"] = os.path.abspath(so);
-    jc_env["JAC_COMPILER_LIB"] = "off";
-    jc_env["JAC_NO_DEV_SOURCE"] = "1";
-    jc_env["JAC_STUBCAT_BUILDING"] = "1";
-    jc_ok = run_child(
-        [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst], jc_env, True
-    );
-    if (
-        not jc_ok or not file_exists(jc_dst) or not file_exists(jc_dst + ".layout.json")
-    ) {
-        raise PayloadDie(
-            f"mkpayload: native compiler kernel build failed; the shipped"
-            f" binary requires {jc_dst} and its .layout.json sidecar."
-        );
-    }
-
-    jc_tree = os.path.join(repo_root, "jaclang", "compiler", jc_name);
-    copy_file(jc_dst, jc_tree);
-    copy_file(jc_dst + ".layout.json", jc_tree + ".layout.json");
-
     _bundle_bun(site, opts);
 }
 
@@ -450,18 +400,7 @@ impl stage_tree(
 
     copy_tree(site, os.path.join(stage, "site"), skip_stage_site);
     strip_best_effort(site_shim_path(os.path.join(stage, "site")));
-    import sys as _sys;
-    strip_best_effort(
-        os.path.join(
-            stage,
-            "site",
-            "jaclang",
-            "compiler",
-            "libjac_compiler.dylib"
-                if _sys.platform == "darwin"
-                else "libjac_compiler.so"
-        )
-    );
+    strip_kernel_best_effort(os.path.join(stage, "site"));
 
     stage_python_bin(python_dir, stage);
 
@@ -822,5 +761,44 @@ impl prune_layer_cache(dir_path: str, keep: str) {
         if os.path.isfile(stale) {
             delete_file(stale);
         }
+    }
+}
+
+impl strip_kernel_best_effort(site: str) {
+    import hashlib;
+    import json;
+    manifest_path = os.path.join(site, "jaclang", "_precompiled", "MANIFEST.json");
+    if not file_exists(manifest_path) {
+        return;
+    }
+    manifest: dict[str, any] = {};
+    with open(manifest_path, "r", encoding="utf-8") as f {
+        manifest = dict(json.load(f));
+    }
+    native_rec: any = manifest.get("native") or {};
+    record: any = native_rec.get("artifact");
+    if not isinstance(record, dict) {
+        return;
+    }
+    lib: str = os.path.join(site, "jaclang", str(record["path"]));
+    if not file_exists(lib) {
+        return;
+    }
+    strip_best_effort(lib);
+    with open(lib, "rb") as lf {
+        record["sha256"] = hashlib.sha256(lf.read()).hexdigest();
+    }
+    sidecar_path = lib + ".layout.json";
+    if file_exists(sidecar_path) {
+        with open(sidecar_path, "r", encoding="utf-8") as sf {
+            sidecar = dict(json.load(sf));
+        }
+        sidecar["artifact_sha256"] = record["sha256"];
+        with open(sidecar_path, "w", encoding="utf-8") as sf {
+            sf.write(json.dumps(sidecar, sort_keys=True));
+        }
+    }
+    with open(manifest_path, "w", encoding="utf-8") as f {
+        f.write(json.dumps(manifest, sort_keys=True, indent=1) + "\n");
     }
 }
