@@ -5070,25 +5070,44 @@ impl NativeBuiltinEmitter._emit_extreme(
 impl NativeBuiltinEmitter.emit_sum(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if not args {
+    if not args or len(args) > 2 {
         return None;
     }
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
+    f64 = ir.DoubleType();
     list_val = args[0];
 
     helpers: (dict[str, any] | None) = None;
-    elem_key: (str | None) = None;
     for (lk, lt) in p.list_types.items() {
         if list_val.type == lt.as_pointer() {
             helpers = p.list_helpers.get(lk);
-            elem_key = lk;
             break;
         }
     }
     if helpers is None {
         return None;
+    }
+
+    elem_ty = helpers["get"].function_type.return_type;
+    elem_float = isinstance(elem_ty, (ir.DoubleType, ir.FloatType));
+    if not elem_float and not isinstance(elem_ty, ir.IntType) {
+        return None;
+    }
+    start = args[1] if len(args) == 2 else None;
+    start_float = start is not None
+        and isinstance(start.type, (ir.DoubleType, ir.FloatType));
+    if start is not None
+        and not start_float
+        and not isinstance(start.type, ir.IntType) {
+        return None;
+    }
+    use_float = elem_float or start_float;
+    acc_ty = f64 if use_float else i64;
+    initial: ir.Value = ir.Constant(acc_ty, 0.0 if use_float else 0);
+    if start is not None {
+        initial = _sum_operand(b, start, use_float);
     }
     list_len = b.call(helpers["len"], [list_val], name="sum.len");
     func = b.basic_block.function;
@@ -5099,20 +5118,45 @@ impl NativeBuiltinEmitter.emit_sum(
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
     idx = b.phi(i64, name="sum.idx");
-    acc = b.phi(i64, name="sum.acc");
+    acc = b.phi(acc_ty, name="sum.acc");
     idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    acc.add_incoming(ir.Constant(i64, 0), entry_bb);
+    acc.add_incoming(initial, entry_bb);
     at_end = b.icmp_unsigned(">=", idx, list_len, name="sum.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
     elem = b.call(helpers["get"], [list_val, idx], name="sum.elem");
-    new_acc = b.add(acc, elem, name="sum.add");
+    value = _sum_operand(b, elem, use_float);
+    new_acc = b.fadd(acc, value, name="sum.add")
+        if use_float
+        else b.add(acc, value, name="sum.add");
     next_idx = b.add(idx, ir.Constant(i64, 1), name="sum.next");
-    idx.add_incoming(next_idx, body_bb);
-    acc.add_incoming(new_acc, body_bb);
+    body_end = b.basic_block;
+    idx.add_incoming(next_idx, body_end);
+    acc.add_incoming(new_acc, body_end);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
     return acc;
+}
+
+def _sum_operand(b: ir.IRBuilder, value: ir.Value, to_float: bool) -> ir.Value {
+    i64 = ir.IntType(64);
+    f64 = ir.DoubleType();
+    if isinstance(value.type, ir.DoubleType) {
+        return value;
+    }
+    if isinstance(value.type, ir.FloatType) {
+        return b.fpext(value, f64, name="sum.fpext");
+    }
+    wide: ir.Value = value;
+    if isinstance(value.type, ir.IntType) and value.type.width < 64 {
+        wide = b.zext(value, i64, name="sum.zext")
+            if value.type.width == 1
+            else b.sext(value, i64, name="sum.sext");
+    }
+    if to_float {
+        return b.sitofp(wide, f64, name="sum.itof");
+    }
+    return wide;
 }
 
 impl NativeBuiltinEmitter.emit_sorted(
