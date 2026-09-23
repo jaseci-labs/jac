@@ -1512,6 +1512,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_expr(default_expr) if default_expr is not None else None;
     }
 
+    _copy_kind = self._copy_call_kind(nd);
+    if _copy_kind is not None {
+        return self._emit_copy_call(_copy_kind, nd);
+    }
+
     _class_bound = self._class_value_ctor_bound(nd.target);
     if _class_bound is not None and isinstance(nd.target, uni.Expr) {
         return self._codegen_class_value_call(

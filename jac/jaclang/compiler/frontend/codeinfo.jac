@@ -337,6 +337,7 @@ def is_kernel_unit_path(path: str) -> bool {
 glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"};
 
 glob NATIVE_SUPPORTED_STDLIB: set[str] = {
+         "copy",
          "sys",
          "time",
          "os",
