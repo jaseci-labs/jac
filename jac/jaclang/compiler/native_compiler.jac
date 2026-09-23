@@ -16,7 +16,10 @@ glob CODE_INT: int = 1,
      CODE_NATLIST: int = 7,
      CODE_UNION: int = 8,
      CODE_OPTENUM: int = 9,
-     CODE_NATDICT: int = 10;
+     CODE_NATDICT: int = 10,
+     CODE_SHAPES: int = 11;
+
+glob SHAPES_FIELD: str = "_role_shapes";
 
 glob CLASS_MODULES: tuple[str, ...] = (
          "jaclang.compiler.frontend.unitree",
@@ -93,7 +96,13 @@ class NativeCompiler {
             fn.argtypes = [c_void_p, c_void_p, c_int64, c_void_p, c_void_p, c_int64];
             fn.restype = c_int64;
         }
-        for name in ("jc_probe", "jc_err_count", "jc_lex_errs", "jc_mz_skipped") {
+        for name in (
+            "jc_probe",
+            "jc_err_count",
+            "jc_lex_errs",
+            "jc_mz_skipped",
+            "jc_reg_seal"
+        ) {
             fn = getattr(L, name);
             fn.argtypes = [];
             fn.restype = c_int64;
@@ -225,6 +234,9 @@ class NativeCompiler {
                 if "str" in parts {
                     flags = 1;
                 }
+            } elif code == "optref" and fname == SHAPES_FIELD {
+                nat_code = CODE_SHAPES;
+                aux_tag = self._shapes_layout(aux);
             } elif code in ("optref", "obj") {
                 if code == "obj" and aux == "" {
                     nat_code = CODE_OBJ;
@@ -284,6 +296,37 @@ class NativeCompiler {
             schema.get("order_offset", 0)
         );
         return index;
+    }
+
+    def _shapes_layout(self: NativeCompiler, aux: str) -> int {
+        schemas: list[dict[str, any]] = [];
+        for info in self.layout.values() {
+            for f in info["fields"].values() {
+                schema = f.get("schema");
+                if f["code"] == "natdict" and schema is not None {
+                    if f["aux"] == aux {
+                        schemas.insert(0, schema);
+                    } else {
+                        schemas.append(schema);
+                    }
+                }
+            }
+        }
+        if not schemas {
+            raise ValueError(
+                f"Native field {SHAPES_FIELD} has no dictionary layout to read {aux}"
+            );
+        }
+        schema = schemas[0];
+        return self._register_value(
+            {
+                "code": "dict",
+                "element": {"code": "str"},
+                "key_offset": schema["key_offset"],
+                "data_offset": schema["data_offset"],
+                "order_offset": schema["order_offset"]
+            }
+        );
     }
 
     def _register_defaults(self: NativeCompiler, cls: any, tag: int) {
@@ -397,6 +440,7 @@ class NativeCompiler {
         self.lib.jc_reg_hint_tags(
             stable_osp_tag("SrcDiag"), stable_osp_tag("CommentData")
         );
+        self.lib.jc_reg_seal();
     }
 
     def _call_str2(self: NativeCompiler, name: str, a: str, b: str) -> int {

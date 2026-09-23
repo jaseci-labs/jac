@@ -7,15 +7,14 @@ import from c { def Py_DecRef(o: int) -> int;  }
 import from jaclang.compiler.jc_materialize {
     hint_commentdata,
     hint_srcdiag,
-    jc_mz_dispose,
     jc_mz_obj,
     jc_mz_run,
-    jc_mz_shapes3
+    jc_mz_shape_keys
 }
 
 import from jaclang.compiler.frontend.parser.parser { parse_program }
 import from jaclang.compiler.frontend.parser.tokens { SrcDiag, CommentData }
-import from jaclang.compiler.frontend.unitree { GraphExpr, Module, UniNode, Import }
+import from jaclang.compiler.frontend.unitree { GraphExpr, Module, Import }
 import from jaclang.compiler.frontend.roles { AccessorsRole, BodyRole, SpecRole }
 import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
@@ -151,17 +150,15 @@ def _materialize(
     comments: list[CommentData],
     lex_diags: list[SrcDiag]
 ) -> int {
+    _register_shape_keys();
     out = jc_mz_run(id(mod));
     if out == 0 {
-        jc_mz_dispose();
         return 1;
     }
-    _apply_shapes(mod);
     _JC.mod_h = out;
     _JC.diags_h = _mz_list(p_diags, hint_srcdiag());
     _JC.lexdiags_h = _mz_list(lex_diags, hint_srcdiag());
     _JC.comments_h = _mz_list(comments, hint_commentdata());
-    jc_mz_dispose();
     return 0;
 }
 
@@ -233,7 +230,6 @@ def _finish_unit(
         _JC.symbols_errors_h = _mz_list(symbols.ctx.errors_had, _alert_tag());
         _JC.symbols_warnings_h = _mz_list(symbols.ctx.warnings_had, _alert_tag());
     }
-    jc_mz_dispose();
     return 0;
 }
 
@@ -316,47 +312,12 @@ def _mz_list(items: list[any], hint: int) -> int {
     return out;
 }
 
-def _shape_code(s: (str | None)) -> int {
-    if s is None {
-        return 0;
-    }
-    if s == "one" {
-        return 2;
-    }
-    if s == "many" {
-        return 3;
-    }
-    return 1;
-}
-
-def _packed_shapes(nd: UniNode) -> int {
-    shapes = nd._role_shapes;
-    if shapes is None {
-        return 0;
-    }
-    b = _shape_code(shapes.get(BodyRole));
-    sp = _shape_code(shapes.get(SpecRole));
-    a = _shape_code(shapes.get(AccessorsRole));
-    return b | (sp << 4) | (a << 8);
-}
-
-def _apply_shapes(mod: Module) {
-    stack: list[UniNode] = [mod];
-    seen: set[int] = set();
-    while stack {
-        cur = stack.pop();
-        if id(cur) in seen {
-            continue;
-        }
-        seen.add(id(cur));
-        sc = _packed_shapes(cur);
-        if sc != 0 {
-            jc_mz_shapes3(id(cur), sc);
-        }
-        for k in cur._children() {
-            stack.append(k);
-        }
-    }
+def _register_shape_keys {
+    probe: dict[type, str] = {};
+    probe[BodyRole] = "one";
+    probe[SpecRole] = "one";
+    probe[AccessorsRole] = "one";
+    jc_mz_shape_keys(id(probe));
 }
 
 def:pub jc_rc_debug(v: int) -> int {
