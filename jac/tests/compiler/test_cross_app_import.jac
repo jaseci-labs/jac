@@ -285,7 +285,7 @@ test "a provider's import of a shared pure helper is not an app edge" {
     import from pathlib { Path }
     compiler = prog._get_compiler();
     feed_path = fixture("feed_app.jac");
-    feed = compiler.parse_str(Path(feed_path).read_text(), feed_path, JacProgram());
+    feed = JacProgram().parse_source(Path(feed_path).read_text(), feed_path);
     assert feed is not None;
     imp = import_of(feed, "shared_fmt");
     assert symbol_linked_source_module(imp) is None , (
@@ -296,7 +296,7 @@ test "a provider's import of a shared pure helper is not an app edge" {
         "shared_fmt carries no walker, node or edge: importing it bridges nowhere"
     );
     ui_path = fixture("shared_ui.jac");
-    ui = compiler.parse_str(Path(ui_path).read_text(), ui_path, JacProgram());
+    ui = JacProgram().parse_source(Path(ui_path).read_text(), ui_path);
     assert ui is not None;
     assert import_provider_app(import_of(ui, "feed_app")) == "feed" , (
         "the walker import still bridges to its owner when the binding is unlinked"

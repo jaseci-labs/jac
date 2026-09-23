@@ -631,7 +631,7 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     def _prepare(ent: IfaceEntry, mod: any) {
-        self.prog._get_compiler().stamp_app_facts(mod, self.prog);
+        self.prog.stamp_app_facts(mod);
         self._restore_placement(ent);
         self.prog.analysis.analyses_run.mark(mod, _symtab_provides());
     }

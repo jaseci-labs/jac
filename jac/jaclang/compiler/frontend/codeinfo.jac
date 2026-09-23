@@ -291,10 +291,24 @@ glob KERNEL_UNIT_REL: tuple[str, ...] = (
      REGION_KERNEL_REL: str = "runtime/region_native.jac",
      FMT_KERNEL_REL: str = "compiler/backends/common/fmt_kernel.jac";
 
+glob _PKG_REAL: list[str] = [];
+
 def jaclang_pkg_root -> str {
     import os;
     import jaclang;
     return os.path.dirname(os.path.abspath(str(jaclang.__file__)));
+}
+
+def is_compiler_source_path(source_path: str) -> bool {
+    import os;
+    if not _PKG_REAL {
+        _PKG_REAL.append(os.path.realpath(jaclang_pkg_root()) + os.sep);
+    }
+    try {
+        return os.path.realpath(source_path).startswith(_PKG_REAL[0]);
+    } except (OSError, ValueError) {
+        return False;
+    }
 }
 
 def kernel_unit_path(rel: str) -> str {

@@ -17,7 +17,7 @@ obj SelfHostCache {
     }
 
     def is_selfhost(prog: (JacProgram | None)) -> bool {
-        return self._program is not None and prog is self._program;
+        return prog is not None and prog.internal;
     }
 
     def jaclang_root -> str {
@@ -31,8 +31,8 @@ obj SelfHostCache {
     }
 
     def owns(file_path: str) -> bool {
-        normalized_path = os.path.realpath(file_path);
-        return normalized_path.startswith((self.jaclang_root() + os.sep));
+        import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+        return is_compiler_source_path(file_path);
     }
 
     def resolve(
@@ -137,6 +137,7 @@ impl SelfHostCache.program.getter -> JacProgram {
         import from jaclang.runtime.runtime { JacRuntime }
         prog = JacProgram();
         prog._compiler = JacRuntime.get_compiler();
+        prog.internal = True;
         self._program = prog;
     }
     return self._program;

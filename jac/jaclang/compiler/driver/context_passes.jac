@@ -8,8 +8,8 @@ walker AppContextPass(CompilerPass) {
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
-        self.prog._get_compiler().stamp_app_facts(here, self.prog);
-        self.prog._get_compiler().stamp_access_check_facts(here);
+        self.prog.stamp_app_facts(here);
+        self.prog.stamp_access_check_facts(here);
     }
 }
 
@@ -18,7 +18,7 @@ walker AbsorbImportsPass(CompilerPass) {
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
-        self.prog._get_compiler().resolve_absorb_imports(here, self.prog);
+        self.prog.resolve_absorb_imports(here);
     }
 }
 
@@ -27,7 +27,7 @@ walker BoundaryFactsPass(CompilerPass) {
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
-        self.prog._get_compiler().stamp_boundary_facts(here, self.prog);
+        self.prog.stamp_boundary_facts(here);
     }
 }
 
@@ -36,6 +36,6 @@ walker NativeImportFactsPass(CompilerPass) {
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
-        self.prog._get_compiler().stamp_native_import_facts(here, self.prog);
+        self.prog.stamp_native_import_facts(here);
     }
 }

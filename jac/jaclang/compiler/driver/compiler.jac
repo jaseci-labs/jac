@@ -178,20 +178,6 @@ obj JacCompiler {
     ) -> None;
 
     def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
-    def declared_codespace(file_path: str, target_program: JacProgram) -> str;
-    def infers_native_codespace(file_path: str, target_program: JacProgram) -> bool;
-    def parse_str(
-        source_str: str,
-        file_path: str,
-        target_program: JacProgram,
-        cancel_token: (Event | None) = None
-    ) -> uni.Module;
-
-    def resolve_absorb_imports(mod: uni.Module, target_program: JacProgram) -> None;
-    def stamp_boundary_facts(mod: uni.Module, target_program: JacProgram) -> None;
-    def stamp_app_facts(mod: uni.Module, target_program: JacProgram) -> None;
-    def stamp_access_check_facts(mod: uni.Module) -> None;
-    def stamp_native_import_facts(mod: uni.Module, target_program: JacProgram) -> None;
     def _persist_module_cache(
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;
@@ -215,10 +201,6 @@ obj JacCompiler {
         options: CompileOptions = CompileOptions()
     ) -> uni.Module;
 
-    def _ingest_comptime_producers(
-        mod_targ: uni.Module, actual_program: JacProgram, file_path: str
-    ) -> None;
-
     def _compile_pipeline(
         file_path: str,
         actual_program: JacProgram,
@@ -229,30 +211,6 @@ obj JacCompiler {
     def build(
         file_path: str, target_program: JacProgram, use_str: (str | None) = None
     ) -> uni.Module;
-
-    def run_schedule(
-        mod: uni.Module,
-        target_program: JacProgram,
-        passes: list[type],
-        cancel_token: (Event | None) = None
-    ) -> None;
-
-    static def _count_module_blocking_errors(
-        target_program: JacProgram, mod_path: str
-    ) -> int;
-
-    static def _count_module_errors(target_program: JacProgram, mod_path: str) -> int;
-    static def _module_scoped_errors(
-        target_program: JacProgram, mod_path: str
-    ) -> bool;
-
-    static def _scrub_native_artifacts_on_error(
-        target_program: JacProgram, mod: uni.Module
-    ) -> bool;
-
-    static def _report_missing_native_ir(
-        target_program: JacProgram, mod: uni.Module
-    ) -> None;
 
     static def _prepare_tool_program(
         source_str: str, file_path: str

@@ -7,6 +7,7 @@ import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
 import type from jaclang.compiler.driver.program { JacProgram }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
@@ -68,8 +69,7 @@ def owner_scope_options(
     entries the way the package's precompile does, and the program's
     otherwise.""";
     chosen = options if options is not None else program.options;
-    if program._get_compiler().selfhost.is_selfhost(program)
-        or chosen.package_canonical {
+    if program.internal or chosen.package_canonical {
         return None;
     }
     return chosen;
@@ -79,7 +79,7 @@ def bind_options(
     path: str, program: JacProgram, options: CompileOptions
 ) -> CompileOptions {
     import from jaclang.compiler.frontend.host { active_host }
-    if program._get_compiler().selfhost.owns(path)
+    if is_compiler_source_path(path)
         and not (
             options.native_unit
             or options.aot_mode
@@ -179,12 +179,10 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
 }
 
 def program_for(path: str, program: JacProgram) -> JacProgram {
-    compiler = program._get_compiler();
-    actual = program;
-    if compiler.selfhost.is_selfhost(actual) {
-        return actual;
+    if program.internal {
+        return program;
     }
-    return context_program(actual, bind_options(path, actual, actual.options));
+    return context_program(program, bind_options(path, program, program.options));
 }
 
 def context_app(path: str) -> AppSpec | None {
@@ -207,9 +205,7 @@ def context_app(path: str) -> AppSpec | None {
 def artifact_cache_path(path: str, program: JacProgram) -> Path {
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     selected = program_for(path, program);
-    owner_options = None
-        if selected._get_compiler().selfhost.is_selfhost(selected)
-        else selected.options;
+    owner_options = None if selected.internal else selected.options;
     with cache_scope(owner_options) {
         return get_module_cache_path(path);
     }

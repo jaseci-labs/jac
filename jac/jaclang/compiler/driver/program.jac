@@ -1,6 +1,7 @@
 import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
+import os;
 import types;
 import from threading { Event }
 import jaclang.compiler.frontend.unitree as uni;
@@ -43,7 +44,8 @@ class JacProgram {
         _natives: NativeUnitRegistry | None,
         context_root: JacProgram | None,
         context_key: str,
-        contexts: dict[str, JacProgram];
+        contexts: dict[str, JacProgram],
+        internal: bool;
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
@@ -87,6 +89,13 @@ class JacProgram {
         self: JacProgram, full_target: str
     ) -> (ClientArtifact | None);
 
+    def parse_source(
+        self: JacProgram,
+        source_str: str,
+        file_path: str,
+        cancel_token: (Event | None) = None
+    ) -> uni.Module;
+
     def parse_str(
         self: JacProgram,
         source_str: str,
@@ -94,6 +103,22 @@ class JacProgram {
         cancel_token: (Event | None) = None
     ) -> uni.Module;
 
+    def declared_codespace(self: JacProgram, file_path: str) -> str;
+    def infers_native_codespace(self: JacProgram, file_path: str) -> bool;
+    def resolve_absorb_imports(self: JacProgram, mod: uni.Module) -> None;
+    def stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None;
+    def stamp_app_facts(self: JacProgram, mod: uni.Module) -> None;
+    def stamp_access_check_facts(self: JacProgram, mod: uni.Module) -> None;
+    def stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> None;
+    def ingest_comptime_producers(
+        self: JacProgram, mod_targ: uni.Module, file_path: str
+    ) -> None;
+
+    def count_module_blocking_errors(self: JacProgram, mod_path: str) -> int;
+    def count_module_errors(self: JacProgram, mod_path: str) -> int;
+    def module_scoped_errors(self: JacProgram, mod_path: str) -> bool;
+    def scrub_native_artifacts_on_error(self: JacProgram, mod: uni.Module) -> bool;
+    def report_missing_native_ir(self: JacProgram, mod: uni.Module) -> None;
     def compile(
         self: JacProgram,
         file_path: str,

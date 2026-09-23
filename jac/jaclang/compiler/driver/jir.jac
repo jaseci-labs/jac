@@ -6,6 +6,7 @@ import sys;
 import zlib;
 import from pathlib { Path }
 import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
+import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
 import from jaclang.bootstrap_manifest {
     COMPILER_DIGEST_ROOTS,
     COMPILER_IDENTITY_NAME,
@@ -374,15 +375,6 @@ def is_compiler_tree_path(source_path: str) -> bool {
         }
     }
     return False;
-}
-
-def is_compiler_source_path(source_path: str) -> bool {
-    try {
-        resolved = str(Path(source_path).resolve());
-    } except OSError {
-        return False;
-    }
-    return resolved.startswith(_jaclang_pkg_dir + os.sep);
 }
 
 def _module_codespace_mode(source_path: str) -> str {

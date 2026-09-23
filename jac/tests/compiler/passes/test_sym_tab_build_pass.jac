@@ -228,8 +228,8 @@ class C:
 test "absorbing a local declaration preserves its binding and overloads" {
     import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
     prog = JacProgram();
-    scope = prog._get_compiler().parse_str(
-        "def answer() -> int { return 42; }", "local_include.jac", prog
+    scope = prog.parse_source(
+        "def answer() -> int { return 42; }", "local_include.jac"
     );
     builder = run_pass(SymTabBuildPass, scope, prog);
     symbol = scope.lookup("answer");
@@ -245,12 +245,11 @@ test "absorbing a local declaration preserves its binding and overloads" {
 test "self include preserves the existing overload set" {
     import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
     prog = JacProgram();
-    scope = prog._get_compiler().parse_str(
+    scope = prog.parse_source(
         "def choose(value: int) -> int { return value; }\n"
             + "def choose(value: str) -> str { return value; }\n"
             + "include self_include;\n",
-        "self_include.jac",
-        prog
+        "self_include.jac"
     );
     scope.get_all_sub_nodes(uni.Import)[0].absorbed_mod = scope;
     run_pass(SymTabBuildPass, scope, prog);
@@ -296,8 +295,8 @@ test "include bindings preserve source declarations and lazy symbol providers" {
             original = imported.lookup("answer");
             assert original is not None;
             declaration = original.decl;
-            consumer = prog._get_compiler().parse_str(
-                "include definitions;", str(Path(directory) / "consumer.jac"), prog
+            consumer = prog.parse_source(
+                "include definitions;", str(Path(directory) / "consumer.jac")
             );
             consumer.get_all_sub_nodes(uni.Import)[0].absorbed_mod = imported;
             run_pass(SymTabBuildPass, consumer, prog);

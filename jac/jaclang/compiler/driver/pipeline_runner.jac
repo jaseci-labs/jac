@@ -28,7 +28,7 @@ obj ModuleCompilation {
     def parse {
         existing = self.program.mod.hub.get(os.path.realpath(self.path));
         if self.source is None
-            and not self.compiler.selfhost.is_selfhost(self.program)
+            and not self.program.internal
             and existing is not None
             and not existing.stub_only
             and not existing.parse_failed
@@ -41,11 +41,11 @@ obj ModuleCompilation {
             if self.source is not None
             else read_file_with_encoding(self.path);
         errors_before = len(self.program.errors_had);
-        self.module = self.compiler.parse_str(
-            keep_str, self.path, self.program, cancel_token=self.options.cancel_token
+        self.module = self.program.parse_source(
+            keep_str, self.path, cancel_token=self.options.cancel_token
         );
         self.parse_failed = len(self.program.errors_had) > errors_before;
-        self.compiler._ingest_comptime_producers(self.module, self.program, self.path);
+        self.program.ingest_comptime_producers(self.module, self.path);
     }
 
     def ir {
@@ -55,28 +55,24 @@ obj ModuleCompilation {
             providers_of
         }
         self.module_path = os.path.normpath(self.path);
-        blocking_errs_pre_ir = self.compiler._count_module_blocking_errors(
-            self.program, self.module_path
+        blocking_errs_pre_ir = self.program.count_module_blocking_errors(
+            self.module_path
         );
         if self.options.symtab_ir_only {
             _head_sched = get_symtab_ir_sched();
         } else {
             _head_sched = get_ir_gen_sched(
-                is_internal=self.compiler.selfhost.is_selfhost(self.program),
-                gen_mtir=not self.options.no_cgen
+                is_internal=self.program.internal, gen_mtir=not self.options.no_cgen
             );
         }
 
         self.full_head = AnalysisFact.CFG_SUCC in providers_of(_head_sched);
-        self.compiler.run_schedule(
-            mod=self.module,
-            target_program=self.program,
-            passes=_head_sched,
-            cancel_token=self.options.cancel_token
+        self.program.run_schedule(
+            mod=self.module, passes=_head_sched, cancel_token=self.options.cancel_token
         );
 
-        blocking_errs_post_ir = self.compiler._count_module_blocking_errors(
-            self.program, self.module_path
+        blocking_errs_post_ir = self.program.count_module_blocking_errors(
+            self.module_path
         );
         self.blocked = blocking_errs_post_ir > blocking_errs_pre_ir;
     }
@@ -123,7 +119,7 @@ obj ModuleCompilation {
             and not _annex_of_base
             and (
                 self.native
-                or not self.compiler.selfhost.is_selfhost(self.program)
+                or not self.program.internal
                 or not module_import_in_flight(self.path)
             );
 
@@ -142,8 +138,7 @@ obj ModuleCompilation {
         }
 
         if not self.blocked
-            and self.compiler._count_module_errors(self.program, self.module_path)
-                > 0 {
+            and self.program.count_module_errors(self.module_path) > 0 {
             self.blocked = True;
         }
     }
@@ -155,9 +150,8 @@ obj ModuleCompilation {
             and not self.blocked
             and not self.options.symtab_ir_only
         ) {
-            self.compiler.run_schedule(
+            self.program.run_schedule(
                 mod=self.module,
-                target_program=self.program,
                 passes=get_boundary_analysis_sched(),
                 cancel_token=self.options.cancel_token
             );
@@ -305,10 +299,7 @@ obj ModuleCompilation {
                 or (
                     closure.no_cgen
                     and not closure.symtab_ir_only
-                    and not (
-                        self.compiler.selfhost.is_selfhost(self.program)
-                        and is_compiler_tree_path(self.path)
-                    )
+                    and not (self.program.internal and is_compiler_tree_path(self.path))
                 )
             ) {
             import from jaclang.compiler.driver.pipeline {
@@ -340,9 +331,8 @@ obj ModuleCompilation {
         ) {
             self.program.options = self.options;
             if not self.full_head {
-                self.compiler.run_schedule(
+                self.program.run_schedule(
                     mod=self.module,
-                    target_program=self.program,
                     passes=get_bootstrap_code_gen(),
                     cancel_token=self.options.cancel_token
                 );
@@ -367,9 +357,8 @@ obj ModuleCompilation {
                     return;
                 }
             }
-            self.compiler.run_schedule(
+            self.program.run_schedule(
                 mod=self.module,
-                target_program=self.program,
                 passes=get_py_code_gen(
                     native=needs_native,
                     provided=self.program.analysis.analyses_run.provided(self.module)
@@ -379,11 +368,9 @@ obj ModuleCompilation {
                 cancel_token=self.options.cancel_token
             );
             if self.module.decided_codespace == 'native' {
-                _scrubbed = self.compiler._scrub_native_artifacts_on_error(
-                    self.program, self.module
-                );
+                _scrubbed = self.program.scrub_native_artifacts_on_error(self.module);
                 if self.options.aot_mode and not _scrubbed {
-                    self.compiler._report_missing_native_ir(self.program, self.module);
+                    self.program.report_missing_native_ir(self.module);
                 }
             }
         }

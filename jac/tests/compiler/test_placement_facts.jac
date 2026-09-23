@@ -126,7 +126,7 @@ test "placement_pins imports stay within the documented allowlist" {
     allow = {
         "jaclang/cli/commands/impl/fix.impl.jac",
         "jaclang/compiler/driver/boundary_classify.jac",
-        "jaclang/compiler/driver/impl/compiler.impl.jac",
+        "jaclang/compiler/driver/impl/program.impl.jac",
         "jaclang/compiler/driver/jir.jac",
         "jaclang/compiler/driver/na_coverage.jac",
         "jaclang/project/modresolver.jac",
