@@ -1281,6 +1281,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
         self.builder.ret_void();
         self.builder.position_at_end(_gi_run);
         self.builder.store(ir.Constant(_i8, 1), _gi_done_gv);
+        self._emit_class_ctor_registrations();
         if self._global_init_nodes {
             for init_tuple in self._global_init_nodes {
                 var_name = init_tuple[0];

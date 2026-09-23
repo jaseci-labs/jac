@@ -263,6 +263,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
 
     self._generate_inherited_method_wrappers();
     self._emit_osp_edge_factories();
+    self._emit_class_ctor_entries(archetypes);
 }
 
 impl NaIRGenPass._constructor_slots -> tuple[str, ...] {
@@ -487,6 +488,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     }
 
     self.parent_field_start[arch_name] = dict(layout.parent_field_start);
+    derived_decls = self._derived_field_decls(nd);
 
     for finfo in layout.fields {
         fname = finfo.name;
@@ -578,10 +580,11 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         field_index_map[fname] = finfo.index;
         field_type_map[fname] = ftype;
 
-        if isinstance(var, uni.HasVar)
-            and var.value is not None
+        default_decl = derived_decls.get(fname, var);
+        if isinstance(default_decl, uni.HasVar)
+            and default_decl.value is not None
             and fname not in foreign_fields {
-            field_default_map[fname] = var.value;
+            field_default_map[fname] = default_decl.value;
         }
     }
 
@@ -627,6 +630,27 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         for tp in (nd.type_params or [])
         if tp?.name is not None
     ];
+}
+
+impl NaIRGenPass._derived_field_decls(nd: uni.Archetype) -> dict[str, uni.HasVar] {
+    arch_name = nd.name.value if nd.name else "";
+    decls: dict[str, uni.HasVar] = {};
+    for cls in reversed(self._mro_of(arch_name)) {
+        arch = nd if cls == arch_name else self.arch_ast_map.get(cls);
+        if arch is None {
+            continue;
+        }
+        for var in arch.get_has_vars() {
+            owner = var.find_parent_of_type(uni.ArchHas);
+            if var.name is None
+                or var.accessors
+                or (owner is not None and owner.is_static) {
+                continue;
+            }
+            decls[var.name.value] = var;
+        }
+    }
+    return decls;
 }
 
 impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]] {
@@ -1789,7 +1813,8 @@ impl NaIRGenPass._empty_container_for_field(
 impl NaIRGenPass._codegen_instantiation(
     nd: (uni.FuncCall | uni.Name),
     type_name_override: (str | None) = None,
-    ctor_params: (list[uni.Expr | uni.KWPair] | None) = None
+    ctor_params: (list[uni.Expr | uni.KWPair] | None) = None,
+    ctor_values: (dict[str, ir.Value] | None) = None
 ) -> (ir.Value | None) {
     type_name = type_name_override
         if type_name_override is not None
@@ -2029,7 +2054,10 @@ impl NaIRGenPass._codegen_instantiation(
     foreign_fields = self.struct_field_foreign.get(type_name, set());
 
     set_fields: set[str] = set();
-    _field_inits: list[tuple[str, uni.UniNode]] = list(_pos_field_pairs);
+    _field_inits: list[tuple[str, uni.UniNode | ir.Value]] = list(_pos_field_pairs);
+    if ctor_values is not None and self._class_init_owner(type_name) is None {
+        _field_inits.extend(ctor_values.items());
+    }
     for param in params {
         if isinstance(param, uni.KWPair) {
             _kn = param.key.sym_name if param.key else None;
@@ -2047,13 +2075,15 @@ impl NaIRGenPass._codegen_instantiation(
         if key_name not in field_indices or key_name in set_fields {
             continue;
         }
-        if self._refuse_opaque_field(init_expr, type_name, key_name) {
+        val: (ir.Value | None) = None;
+        if isinstance(init_expr, ir.Value) {
+            val = init_expr;
+        } elif self._refuse_opaque_field(init_expr, type_name, key_name)
+            or key_name in foreign_fields {
             continue;
+        } else {
+            val = self._codegen_expr(init_expr);
         }
-        if key_name in foreign_fields {
-            continue;
-        }
-        val = self._codegen_expr(init_expr);
         if val is None {
             val = self._empty_container_for_field(
                 field_types.get(key_name), f"ctor.{key_name}"
@@ -2072,7 +2102,9 @@ impl NaIRGenPass._codegen_instantiation(
                 name=f"field.{key_name}"
             );
             self._store_inline_field(type_name, key_name, _inl_fp, val, False);
-            self._nogc_consume_local(init_expr);
+            if not isinstance(init_expr, ir.Value) {
+                self._nogc_consume_local(init_expr);
+            }
             set_fields.add(key_name);
             continue;
         }
@@ -2101,7 +2133,9 @@ impl NaIRGenPass._codegen_instantiation(
             name=f"field.{key_name}"
         );
         self.builder.store(val, field_ptr);
-        self._nogc_consume_local(init_expr);
+        if not isinstance(init_expr, ir.Value) {
+            self._nogc_consume_local(init_expr);
+        }
         set_fields.add(key_name);
     }
 
@@ -2238,6 +2272,15 @@ impl NaIRGenPass._codegen_instantiation(
                     if _slot < len(init_fn.args)
                     else ir.IntType(64);
                 _chosen: (uni.Expr | None) = None;
+                if ctor_values is not None {
+                    _given = ctor_values.get(sp.name.sym_name);
+                    init_args.append(
+                        _given
+                            if _given is not None
+                            else self._default_arg_fallback(_expected)
+                    );
+                    continue;
+                }
                 if pix < len(_init_pos) {
                     _chosen = _init_pos[pix];
                 } elif sp.name.sym_name in _init_kw {

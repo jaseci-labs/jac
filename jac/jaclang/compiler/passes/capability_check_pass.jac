@@ -44,6 +44,7 @@ import from jaclang.compiler.frontend.module_facts {
     client_capability_violations
 }
 import from jaclang.compiler.frontend.constant { SymbolType }
+import from jaclang.compiler.types.types { ClassType }
 import from jaclang.compiler.frontend.diagnostics {
     E5090,
     E5096,
@@ -74,6 +75,9 @@ def name_erased_natively(name_nd: UniNode) -> bool;
 def static_fstring_spec_text(spec: UniNode) -> (str | None);
 
 def call_has_kwargs_sink(call: FuncCall) -> bool;
+
+def call_constructs_class_value(call: FuncCall) -> bool;
+
 
 def native_capability_violations(
     mod: Module

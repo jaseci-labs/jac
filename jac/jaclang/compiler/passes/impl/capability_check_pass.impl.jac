@@ -232,6 +232,9 @@ impl static_fstring_spec_text(spec: UniNode) -> (str | None) {
 }
 
 impl call_has_kwargs_sink(call: FuncCall) -> bool {
+    if call_constructs_class_value(call) {
+        return True;
+    }
     tgt = call.target;
     sym = None;
     if isinstance(tgt, Name) {
@@ -248,6 +251,32 @@ impl call_has_kwargs_sink(call: FuncCall) -> bool {
         return False;
     }
     return owner.signature.kwargs is not None;
+}
+
+impl call_constructs_class_value(call: FuncCall) -> bool {
+    tgt = call.target;
+    typ = tgt.type if isinstance(tgt, Expr) else None;
+    if not isinstance(typ, ClassType) {
+        return False;
+    }
+    sym = None;
+    if isinstance(tgt, Name) {
+        sym = tgt.sym;
+    } elif isinstance(tgt, AtomTrailer) and isinstance(tgt.right, Name) {
+        sym = tgt.right.sym;
+    }
+    if sym is not None
+        and sym.decl is not None
+        and isinstance(sym.decl.name_of, Archetype) {
+        return False;
+    }
+    if typ.is_builtin("type") {
+        args = typ.private.type_args or [];
+        return bool(args)
+            and isinstance(args[0], ClassType)
+            and not args[0].is_builtin();
+    }
+    return typ.is_instantiable() and not typ.is_instance() and not typ.is_builtin();
 }
 
 impl native_capability_violations(

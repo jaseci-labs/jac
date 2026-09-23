@@ -122,6 +122,13 @@ obj NativeSpreadArg {
         is_list: bool = False;
 }
 
+obj NativeCtorParam {
+    has name: str,
+        type: ir.Type,
+        fallback: uni.Expr | None = None,
+        positional: bool = True;
+}
+
 obj NativeComprehension {
     has comprs: list[uni.InnerCompr],
         kind: str,
@@ -283,6 +290,8 @@ walker NaIRGenPass {
         _isa_h_fn: (ir.Function | None) = None,
         _cstr_hash_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
+        _class_ctor_lookup_fn: (ir.Function | None) = None,
+        _class_ctor_records: list[tuple[ir.GlobalVariable, int]] = [],
         _vtable_less_reach: (set[str] | None) = None,
         _short_mro_reach: (dict[str, list[str]] | None) = None,
         osp_type_tag_field: dict[str, int] = {},
@@ -1710,7 +1719,8 @@ walker NaIRGenPass {
     def _codegen_instantiation(
         nd: (uni.FuncCall | uni.Name),
         type_name_override: (str | None) = None,
-        ctor_params: (list[uni.Expr | uni.KWPair] | None) = None
+        ctor_params: (list[uni.Expr | uni.KWPair] | None) = None,
+        ctor_values: (dict[str, ir.Value] | None) = None
     ) -> (ir.Value | None);
 
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
@@ -1778,6 +1788,50 @@ walker NaIRGenPass {
 
     def _osp_edge_factory(name: str) -> ir.Function;
     def _emit_osp_edge_factories -> None;
+    def _derived_field_decls(nd: uni.Archetype) -> dict[str, uni.HasVar];
+    def _class_expr_bound(
+        expr: (uni.UniNode | None), unbounded: (str | None) = None
+    ) -> (str | None);
+
+    def _class_init_owner(type_name: str) -> (str | None);
+    def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
+    def _class_ctor_fn_type(params: list[NativeCtorParam]) -> ir.FunctionType;
+    def _class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None);
+    def _codegen_class_value_call(
+        nd: uni.FuncCall,
+        target: uni.Expr,
+        args: list[uni.Expr | uni.KWPair],
+        bound: str
+    ) -> (ir.Value | None);
+
+    def _bind_class_ctor_args(
+        nd: uni.FuncCall,
+        args: list[uni.Expr | uni.KWPair],
+        params: list[NativeCtorParam],
+        bound: str
+    ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None);
+
+    def _bind_class_ctor_spread(
+        nd: uni.FuncCall,
+        mapping: ir.Value,
+        params: list[NativeCtorParam],
+        values: dict[int, ir.Value],
+        mask: ir.Value,
+        bound: str
+    ) -> (ir.Value | None);
+
+    def _emit_class_ctor_lookup_fn -> ir.Function;
+    def _class_ctor_registry -> ir.GlobalVariable;
+    def _emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> None;
+    def _emit_class_ctor(
+        arch: uni.Archetype, params: list[NativeCtorParam]
+    ) -> (ir.Function | None);
+
+    def _emit_class_ctor_bridge(
+        name: str, bound: str, signature: list[NativeCtorParam], fn: ir.Function
+    ) -> (ir.Function | None);
+
+    def _emit_class_ctor_registrations -> None;
     def _osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value;
     def _osp_active -> bool;
     def _xmod_osp_help(names: list[str | None]) -> (str | None);

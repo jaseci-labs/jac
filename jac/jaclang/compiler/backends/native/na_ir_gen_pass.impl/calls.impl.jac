@@ -1171,7 +1171,14 @@ impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
         );
         return None;
     }
-    cls_name = self._get_name(params_l[0]);
+    _class_arg = params_l[0];
+    _class_bound = self._class_value_ctor_bound(_class_arg);
+    if _class_bound is not None and isinstance(_class_arg, uni.Expr) {
+        return self._codegen_class_value_call(
+            nd, _class_arg, list(params_l[1:]), _class_bound
+        );
+    }
+    cls_name = self._get_name(_class_arg);
     if cls_name is None or cls_name not in self.struct_types {
         cls_name = self._struct_name_of(nd);
     }
@@ -1181,7 +1188,7 @@ impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
             node_override=nd,
             kind="builtin call",
             name="new",
-            help_text="new() lowers natively only when the first argument statically names an archetype whose native layout is visible to this module; dynamic class values are not supported in native code."
+            help_text="new() lowers natively only when the first argument names an archetype, or is a class value bounded by one, whose native layout is visible to this module."
         );
         return None;
     }
@@ -1505,6 +1512,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
         default_expr = initialization.default_expr;
         return self._codegen_expr(default_expr) if default_expr is not None else None;
+    }
+
+    _class_bound = self._class_value_ctor_bound(nd.target);
+    if _class_bound is not None and isinstance(nd.target, uni.Expr) {
+        return self._codegen_class_value_call(
+            nd, nd.target, list(nd.params or []), _class_bound
+        );
     }
 
     _call_kind = nd.call_kind or "";
