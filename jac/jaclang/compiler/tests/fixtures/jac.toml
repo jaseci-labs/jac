@@ -130,6 +130,7 @@
 "prim_bytes.bytes_case_cl" = "client"
 "prim_bytes.bytes_modify_cl" = "client"
 "prim_bytes.bytes_search_cl" = "client"
+"prim_bytes.bytes_search_na" = "native"
 "prim_bytes.bytes_test_cl" = "client"
 "prim_bz2._digest_na" = "native"
 "prim_bz2.bz2_cl" = "client"

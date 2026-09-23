@@ -136,7 +136,9 @@ glob STR_NA_GAPS: list[any] = [
              "prim_bytes.jac",
              "bytes_search_py",
              "bytes_search_cl",
-             "bytes_search_na"
+             "bytes_search_na",
+             ["na"],
+             ["hex", "from_hex"]
          ),
          (
              "bytes modify",
