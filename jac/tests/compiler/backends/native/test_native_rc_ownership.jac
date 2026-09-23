@@ -21,7 +21,7 @@ what freed memory happens to contain.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, get_func, compile_native_ir }
+import from tests.support { TESTS_DIR, compile_native_ir, get_func, source_spelled }
 import jaclang;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -37,7 +37,7 @@ glob FIXTURES = os.path.join(
 def fn_ir(ir: uni.Module, name: str) -> str {
     out: list[str] = [];
     inside = False;
-    for ln in str(ir.gen.llvm_ir).split("\n") {
+    for ln in source_spelled(str(ir.gen.llvm_ir)).split("\n") {
         if not inside and ln.startswith("define") and (('@"' + name + '"') in ln) {
             inside = True;
         }

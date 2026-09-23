@@ -20,7 +20,12 @@ class of bug this guardrail exists to prevent.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    native_force_opts,
+    source_spelled
+}
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -66,7 +71,7 @@ def compile_na_inline_demote(label: str, code: str) -> tuple[any, ...] {
             os.environ["JAC_NA_DEBUG"] = _prev;
         }
     }
-    return (prog, ir, buf.getvalue(), );
+    return (prog, ir, source_spelled(buf.getvalue()), );
 }
 
 """Compile a snippet through the FRONT-END check schedule (the `type_check`
@@ -230,7 +235,7 @@ test "guardrail: field access on an untyped (any) node-ref element demotes the a
     )}";
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
-    assert "W.go" not in layout.methods , (
+    assert "W.go" not in by_source_name(layout.methods) , (
         "the violating ability must be demoted out of the native layout"
     );
     assert "NA_DEBUG demote W.go" in log , f"no demotion recorded for W.go in:\n{log}";

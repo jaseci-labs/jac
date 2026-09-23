@@ -257,7 +257,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
     if isinstance(_dp, uni.KWPair) and _dp.value is _child {
         _fc = _dp.parent;
         if isinstance(_fc, uni.FuncCall) {
-            _cn = self._get_name(_fc.target);
+            _cn = self._arch_ref_key(_fc.target) or self._get_name(_fc.target);
             if _cn is None or _cn not in self.struct_types {
                 _cn = self._struct_name_of(_fc);
             }

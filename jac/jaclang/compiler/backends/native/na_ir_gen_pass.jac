@@ -72,6 +72,7 @@ import type from jaclang.compiler.passes.osp_analysis { OspSlot }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.na_constants {
+    CLASS_DISPLAY_OFF,
     LIVE_NODE_NEXT_OFF,
     LIVE_NODE_RC_OFF,
     LIVE_NODE_SIZE,
@@ -268,7 +269,6 @@ walker NaIRGenPass {
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
         _struct_source_mod: dict[str, str] = {},
-        _struct_source_name: dict[str, str] = {},
         _enum_source_name: dict[str, str] = {},
         _native_skipped_methods: set[str] = set(),
         _native_skipped_import_origin: dict[str, set[str]] = {},
@@ -282,6 +282,7 @@ walker NaIRGenPass {
         _isa_h_fn: (ir.Function | None) = None,
         _cstr_hash_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
+        _class_display_fn: (ir.Function | None) = None,
         _vtable_less_reach: (set[str] | None) = None,
         _short_mro_reach: (dict[str, list[str]] | None) = None,
         osp_type_tag_field: dict[str, int] = {},
@@ -1590,6 +1591,9 @@ walker NaIRGenPass {
     def _opt_unwrap_iterable(coll_val: (ir.Value | None)) -> (ir.Value | None);
     def _opt_unwrap_subscript(val: (ir.Value | None)) -> (ir.Value | None);
     def _forward_declare_archetype_names(module: uni.Module) -> None;
+    def _arch_key(arch: uni.Archetype) -> str;
+    def _arch_ref_key(nd: (uni.UniNode | None)) -> (str | None);
+    def _arch_display(arch_name: str) -> str;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_archetypes(module: uni.Module) -> None;
     def _codegen_archetype(nd: uni.Archetype) -> None;
@@ -1599,6 +1603,7 @@ walker NaIRGenPass {
     ) -> None;
 
     def _build_jc_layout -> str;
+    def _jc_display_names(data: any) -> any;
     def _register_one_class_const(
         arch_name: str,
         fname: str,
@@ -2457,6 +2462,8 @@ walker NaIRGenPass {
     ) -> (ir.Value | None);
 
     def _emit_class_name_const(arch_name: str) -> ir.Constant;
+    def _emit_class_display_const(arch_name: str) -> ir.Constant;
+    def _emit_class_display_fn -> ir.Function;
     def _emit_runtime_class_name_fn -> (ir.Function | None);
     def _codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | None);
     def _codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None);

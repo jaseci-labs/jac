@@ -173,6 +173,71 @@ def native_library_function_symbol(mod_path: str, name: str) -> str {
     return f"__jac_lib_{native_safe_sym(module_name)}_{name}";
 }
 
+glob NATIVE_ARCH_SCOPE_SEP: str = "$",
+     _native_arch_name_memo: dict[tuple[str, str], str] = {},
+     _native_toolchain_roots: list[str] = [];
+
+def native_arch_name(mod_path: str, name: str) -> str {
+    import os;
+    if not mod_path or not name {
+        return name;
+    }
+    memo_key = (mod_path, name);
+    memo = _native_arch_name_memo.get(memo_key);
+    if memo is not None {
+        return memo;
+    }
+    source = os.path.realpath(mod_path);
+    out = name;
+    if not any(
+        source.startswith(toolchain + os.sep) for toolchain in native_toolchain_roots()
+    ) {
+        stem = os.path.basename(source);
+        dot = stem.find(".");
+        if dot > 0 {
+            stem = stem[:dot];
+        }
+        safe = "".join(
+            ch if (ch.isascii() and (ch.isalnum() or ch == "_")) else "_" for ch in stem
+        );
+        digest = hashlib.sha1(source.encode()).hexdigest()[:8];
+        out = f"{name}{NATIVE_ARCH_SCOPE_SEP}{safe}_{digest}";
+    }
+    _native_arch_name_memo[memo_key] = out;
+    return out;
+}
+
+def native_arch_display(native_name: str) -> str {
+    sep = native_name.find(NATIVE_ARCH_SCOPE_SEP);
+    return native_name if sep < 0 else native_name[:sep];
+}
+
+def native_display_text(text: str) -> str {
+    import re;
+    if NATIVE_ARCH_SCOPE_SEP not in text {
+        return text;
+    }
+    return re.sub(r"\$\w*?_[0-9a-f]{8}\b", "", text);
+}
+
+def native_toolchain_roots -> list[str] {
+    import os;
+    if _native_toolchain_roots {
+        return _native_toolchain_roots;
+    }
+    import jaclang;
+    if jaclang?.__file__ {
+        _native_toolchain_roots.append(
+            os.path.realpath(os.path.dirname(jaclang.__file__))
+        );
+    }
+    try {
+        import from jaclang.compiler.backends.common.kernel_units { kernel_units_dir }
+        _native_toolchain_roots.append(os.path.realpath(kernel_units_dir()));
+    } except Exception {}
+    return _native_toolchain_roots;
+}
+
 def module_dotted_name(mod_path: str, mod_name: str = "") -> str {
     import os;
     path = mod_path.replace("\\", "/");
@@ -840,6 +905,7 @@ obj CodeGenTarget {
         _interop_callbacks: list[any] = [],
         native_layout: (NativeModuleLayout | None) = None,
         osp_model: (OspModel | None) = None,
+        native_osp_model: (OspModel | None) = None,
         component_call_abi: str = "",
         jc_layout: (str | None) = None,
         has_root_access: (bool | None) = None,

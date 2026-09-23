@@ -43,7 +43,7 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, by_source_name }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -168,7 +168,7 @@ test "the cast erasure reaches an annexed impl body" {
         f"the annexed function demoted rather than erasing its cast: "
         f"{sorted(layout.functions)}"
     );
-    assert "Box.doubled" in layout.methods , (
+    assert "Box.doubled" in by_source_name(layout.methods) , (
         f"the annexed method demoted rather than erasing its cast: "
         f"{sorted(layout.methods)}"
     );
@@ -243,13 +243,13 @@ test "an ABC base leaves the native parent list" {
     (prog, ir) = _compile_native("abc_marker_base.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     reg = get_layout_registry(ir, prog);
-    assert "ABC" not in reg.class_parents.get("Shape", []) , (
+    assert "ABC" not in by_source_name(reg.class_parents).get("Shape", []) , (
         f"the erased marker is still a native parent of Shape: "
-        f"{reg.class_parents.get('Shape')}"
+        f"{by_source_name(reg.class_parents).get('Shape')}"
     );
-    assert "ABC" not in reg.mro_order.get("Shape", []) , (
+    assert "ABC" not in by_source_name(reg.mro_order).get("Shape", []) , (
         f"the erased marker is still on Shape's native MRO: "
-        f"{reg.mro_order.get('Shape')}"
+        f"{by_source_name(reg.mro_order).get('Shape')}"
     );
 }
 
@@ -258,7 +258,7 @@ test "a marker-only base costs the archetype no vtable slot" {
     (prog, ir) = _compile_native("type_position_base_marker.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     reg = get_layout_registry(ir, prog);
-    layout = reg.get_layout("Marked");
+    layout = by_source_name(reg.layouts).get("Marked");
     assert layout is not None , "Marked has no native layout";
     assert layout.vtable_ptr_slot is None , (
         "the marker base forced a vtable pointer onto every instance of "

@@ -56,6 +56,10 @@ def _units_dir -> str {
     return d;
 }
 
+def kernel_units_dir -> str {
+    return _units_dir();
+}
+
 def unit_source(parts: list[str]) -> str {
     texts: list[str] = [];
     base = _jaclang_dir();

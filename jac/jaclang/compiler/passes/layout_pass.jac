@@ -14,6 +14,7 @@ import from jaclang.compiler.frontend.unitree {
     FuncCall,
     FuncSignature,
     HasVar,
+    Import,
     IndexSlice,
     Module,
     ModuleItem,
@@ -154,6 +155,105 @@ def layout_slot_count(lay: ArchetypeLayout) -> int {
         }
     }
     return top;
+}
+
+def archetype_native_name(arch: Archetype) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
+    name = arch.name.value if arch.name else "unknown";
+    if arch.name is not None and is_enum_class_type(arch.name.type) {
+        return name;
+    }
+    if arch.find_parent_of_type(Import) is not None {
+        return name;
+    }
+    return native_arch_name(arch.loc.mod_path if arch.loc else "", name);
+}
+
+def referenced_archetype(expr: (UniNode | None)) -> (Archetype | None) {
+    import from jaclang.compiler.types.types { ClassType }
+    if expr is None {
+        return None;
+    }
+    if isinstance(expr, Archetype) {
+        return expr;
+    }
+    typ = expr.type if isinstance(expr, Expr) else None;
+    if isinstance(typ, ClassType) and typ._shared is not None {
+        if typ.is_instance() {
+            return None;
+        }
+        scope = typ.shared.symbol_table;
+        if isinstance(scope, Archetype) {
+            return scope;
+        }
+    }
+    if isinstance(expr, AtomTrailer) and expr.is_attr {
+        return referenced_archetype(expr.right);
+    }
+    if not isinstance(expr, AstSymbolNode) or expr.sym is None {
+        return None;
+    }
+    decl = expr.sym.decl;
+    owner = decl.name_of if decl is not None else None;
+    return owner if isinstance(owner, Archetype) else None;
+}
+
+def referenced_native_name(expr: (UniNode | None)) -> (str | None) {
+    arch = referenced_archetype(expr);
+    return archetype_native_name(arch) if arch is not None else None;
+}
+
+def class_type_native_name(typ: any) -> (str | None) {
+    import from jaclang.compiler.types.types { ClassType }
+    if not isinstance(typ, ClassType) or typ._shared is None {
+        return None;
+    }
+    scope = typ.shared.symbol_table;
+    if isinstance(scope, Archetype) and not typ.shared.is_enum_class {
+        return archetype_native_name(scope);
+    }
+    return typ.shared.class_name;
+}
+
+def native_type_key(typ: any) -> str {
+    import from jaclang.compiler.types.types {
+        ClassType,
+        FunctionType,
+        OverloadedType,
+        UnionType
+    }
+    if isinstance(typ, ClassType) {
+        if typ._shared is None {
+            return typ.mangle();
+        }
+        base = class_type_native_name(typ) or typ.shared.class_name;
+        if typ.private.type_args {
+            args = ",".join(native_type_key(arg) for arg in typ.private.type_args);
+            base = f"{base}[{args}]";
+        }
+        if typ.is_instantiable() and not typ.is_instance() {
+            return f"type[{base}]";
+        }
+        return base;
+    }
+    if isinstance(typ, UnionType) {
+        members = sorted(set(native_type_key(ty) for ty in (typ.types or [])));
+        return "|".join(members) if members else "<union>";
+    }
+    if isinstance(typ, FunctionType) {
+        params = ",".join(
+            (native_type_key(p.param_type) if p.param_type is not None else "any")
+            for p in (typ.parameters or [])
+        );
+        ret = native_type_key(typ.return_type)
+            if typ.return_type is not None
+            else "any";
+        return f"fn({params})->{ret}";
+    }
+    if isinstance(typ, OverloadedType) {
+        return "&".join(native_type_key(ov) for ov in (typ.overloads or []));
+    }
+    return typ.mangle();
 }
 
 def declaring_module_path(base_expr: Expr) -> str {

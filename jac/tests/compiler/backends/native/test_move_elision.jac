@@ -16,7 +16,12 @@ elision lives in the native codegen path rather than the analysis schedule.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts, compile_native_ir }
+import from tests.support {
+    TESTS_DIR,
+    compile_native_ir,
+    native_force_opts,
+    source_spelled
+}
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
@@ -54,7 +59,7 @@ def retain_calls(fixture: str, move_lower: bool) -> int {
     }
     try {
         ir = compile_native_ir(fixture);
-        return str(ir.gen.llvm_ir).count('call void @"__rc_retain"');
+        return source_spelled(str(ir.gen.llvm_ir)).count('call void @"__rc_retain"');
     } finally {
         NaIRGenPass._can_native_move_lower = orig;
     }
@@ -79,7 +84,7 @@ test "move-lowering elides exactly the `b = a` alias retain" {
 
 test "move-lowering nulls the source slot (keeps the free sound)" {
     ir = compile_native_ir("move_elision.jac");
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     # Nulling the moved-from slot is what makes eliding the retain sound: the
     # source's cleanup release then loads null and is a no-op, so the object is
     # freed exactly once (by the destination's cleanup).

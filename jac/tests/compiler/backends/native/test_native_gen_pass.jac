@@ -36,13 +36,16 @@ import subprocess;
 import sys;
 import tempfile;
 import from tests.support {
-    jac_command,
     JAC_ROOT,
     TESTS_DIR,
+    by_source_name,
     compile_native,
     compile_native_ir,
     get_func,
-    native_force_opts
+    jac_command,
+    native_arch,
+    native_force_opts,
+    source_spelled
 }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
@@ -198,6 +201,13 @@ def _arithmetic__context_isolation_native_ir_contains_function(eng: any, ir: any
     # If we can get the function address, the IR was generated correctly
     addr = eng.get_function_address("add");
     assert addr != 0;
+}
+
+
+"""The link symbol of `Cls.method` for a class declared in `source`."""
+def method_symbol(source: str, dotted: str) -> str {
+    (cls, method) = dotted.split(".", 1);
+    return f"{native_arch(source, cls)}.{method}";
 }
 
 test "arithmetic" {
@@ -358,8 +368,8 @@ test "native partial class: un-lowerable method skipped, sibling stays native" {
     layout = ir.gen.native_layout;
     assert layout is not None , "native layout missing";
     # The native-eligible method is exported; the eval-using one is skipped.
-    assert "Literal.length" in layout.methods;
-    assert "Literal.evaluate" not in layout.methods;
+    assert "Literal.length" in by_source_name(layout.methods);
+    assert "Literal.evaluate" not in by_source_name(layout.methods);
 }
 
 test "native partial class: demotion warns on the terminal by default (#6934)" {
@@ -431,10 +441,10 @@ test "native partial class: un-lowerable virtual method demotes to a stub slot" 
     assert ir_mod is not None and ir_mod.gen.llvm_ir is not None;
     layout = ir_mod.gen.native_layout;
     assert layout is not None;
-    assert "Derived.render" not in layout.methods , (
+    assert "Derived.render" not in by_source_name(layout.methods) , (
         "demoted virtual must not be exported in the layout"
     );
-    assert "Base.render" in layout.methods;
+    assert "Base.render" in by_source_name(layout.methods);
 }
 
 # Regression (#7593 item 1): f32 operands must promote to double instead of
@@ -1793,7 +1803,9 @@ test "chess all piece types" {
     # Verify all piece class methods are callable.
     piece_types = ["Pawn", "Knight", "Bishop", "Rook", "Queen", "King"];
     for piece_type in piece_types {
-        addr = eng.get_function_address(f"{piece_type}.get_symbol");
+        addr = eng.get_function_address(
+            method_symbol("chess.jac", f"{piece_type}.get_symbol")
+        );
         assert addr != 0 , f"{piece_type}.get_symbol not found";
     }
 }
@@ -1810,7 +1822,7 @@ test "chess board methods" {
         "Board.display"
     ];
     for method in methods {
-        addr = eng.get_function_address(method);
+        addr = eng.get_function_address(method_symbol("chess.jac", method));
         assert addr != 0 , f"{method} not found";
     }
 }
@@ -1827,7 +1839,7 @@ test "chess game methods" {
         "Game.parse_input"
     ];
     for method in methods {
-        addr = eng.get_function_address(method);
+        addr = eng.get_function_address(method_symbol("chess.jac", method));
         assert addr != 0 , f"{method} not found";
     }
 }
@@ -2719,7 +2731,7 @@ test "py interop py function not defined in native ir" {
         options=CompileOptions(default_codespace='server')
     );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     # Must not have a define (body) for py_double -- it lives in Python
     assert 'define i64 @"py_double"' not in llvm_ir_str;
     # Should have an external declare so the native code can call it
@@ -2829,7 +2841,7 @@ test "multi module na module compiles" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     assert "triple" in llvm_ir_str;
     assert "square" in llvm_ir_str;
 }
@@ -3100,7 +3112,7 @@ test "llvmir ir has function definitions" {
         str(os.path.join(FIXTURES, "arithmetic.jac")), options=native_force_opts()
     );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     assert 'define i64 @"add"' in llvm_ir_str;
     assert 'define i64 @"multiply"' in llvm_ir_str;
     assert 'define i64 @"negate"' in llvm_ir_str;
@@ -3115,7 +3127,7 @@ test "clib import produces extern declares" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     # Extern C functions should be 'declare' (no body), not 'define'
     assert 'declare double @"sqrt"' in llvm_ir_str;
     assert 'declare double @"pow"' in llvm_ir_str;
@@ -3164,7 +3176,7 @@ test "clib decl with no return arrow lowers to void, not i64" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    s = str(ir.gen.llvm_ir);
+    s = source_spelled(str(ir.gen.llvm_ir));
     assert 'declare void @"no_arrow"(double' in s , f"omitted return arrow did not lower to void: {s}";
     assert 'declare i64 @"no_arrow"' not in s , "omitted return arrow silently lowered to i64";
     # Parity with the explicit `-> None` spelling.
@@ -3179,7 +3191,7 @@ test "clib import inside na block" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     # Extern C functions from na {} block should be 'declare'
     assert 'declare double @"ceil"' in llvm_ir_str;
     assert 'declare double @"floor"' in llvm_ir_str;
@@ -3204,7 +3216,7 @@ test "clib bytes argument lowers to a raw data pointer (issue #6940 Phase 2)" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     # The extern's bytes parameter is declared as a raw i8*, not jacbytes*.
     assert 'declare i64 @"crc32_z"(i64 %"crc", i8* %"buf", i64 %"len")'
         in llvm_ir_str , (f"clib bytes param not declared as i8*: {llvm_ir_str}");
@@ -3226,7 +3238,7 @@ test "clib extensionless logical import produces extern declares (issue #6387)" 
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    s = str(ir.gen.llvm_ir);
+    s = source_spelled(str(ir.gen.llvm_ir));
     assert 'declare void @"InitWindow"(i32' in s , "InitWindow not externed";
     assert 'declare void @"CloseWindow"()' in s , "CloseWindow not externed";
     assert 'define void @"open_then_close"' in s , "wrapper not defined";
@@ -3296,7 +3308,7 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
 test "clib struct value-type coercion" {
     ir = compile_native_ir("clib_struct_coerce.jac");
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     # --- Large struct (Vec2: 128-bit, float fields) ---
     # Extern sqrt should use value type (f64 -> f64)
     assert 'declare double @"sqrt"' in llvm_ir_str;
@@ -3336,7 +3348,7 @@ test "clib System V AMD64 ABI lowering" {
     }
     ir = compile_native_ir("clib_sysv_abi.jac");
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    s = str(ir.gen.llvm_ir);
+    s = source_spelled(str(ir.gen.llvm_ir));
     # SSE eightbytes: float fields pack into <2 x float> / trailing float.
     assert 'declare float @"v2_sum"(<2 x float> %"v")' in s , "V2 -> <2 x float>";
     assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float> %"v.0", float %"v.1", float %"s")'
@@ -3437,7 +3449,7 @@ test "clib AArch64 AAPCS ABI lowering" {
     try {
         ir = compile_native_ir("clib_sysv_abi.jac");
         assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-        s = str(ir.gen.llvm_ir);
+        s = source_spelled(str(ir.gen.llvm_ir));
         assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
         # Homogeneous float aggregates pass/return in SIMD regs as [N x float].
         assert 'declare float @"v2_sum"([2 x float] %"v")' in s , "V2 -> [2 x float]";
@@ -3693,7 +3705,8 @@ test "inferred-native chess.jac has entry and key functions" {
         "Game.find_king",
         "Game.play"
     ] {
-        assert eng.get_function_address(func_name) != 0 , (
+        symbol = method_symbol(CHESS_JAC, func_name) if "." in func_name else func_name;
+        assert eng.get_function_address(symbol) != 0 , (
             f"{func_name} not found in auto-promoted native engine"
         );
     }
@@ -4594,8 +4607,8 @@ test "jir bitcode cache round-trip" {
 def _func_ptr_fields__struct_layout_exports_correct_field_types(eng: any, ir: any) {
     layout = ir.gen.native_layout;
     assert layout is not None , "Native layout should be exported";
-    assert "AllFields" in layout.structs , "AllFields struct should be in layout";
-    af = layout.structs["AllFields"];
+    assert "AllFields" in by_source_name(layout.structs) , "AllFields struct should be in layout";
+    af = by_source_name(layout.structs)["AllFields"];
     field_map = {f.name: f for f in af.fields};
     assert field_map["x"].llvm_type == "i64";
     assert field_map["y"].llvm_type == "f64";
@@ -4608,7 +4621,7 @@ def _func_ptr_fields__struct_layout_exports_correct_field_types(eng: any, ir: an
 def _func_ptr_fields__struct_layout_tracks_field_indices_correctly(eng: any, ir: any) {
     layout = ir.gen.native_layout;
     assert layout is not None;
-    af = layout.structs["AllFields"];
+    af = by_source_name(layout.structs)["AllFields"];
     indices = [f.index for f in af.fields];
     # Indices should be consecutive starting from 0
     assert indices == list(range(len(af.fields)));
@@ -4620,8 +4633,8 @@ def _func_ptr_fields__optional_field_compiles_to_a_tagged_optional_slot(
 ) {
     layout = ir.gen.native_layout;
     assert layout is not None;
-    assert "MaybePoint" in layout.structs;
-    mp = layout.structs["MaybePoint"];
+    assert "MaybePoint" in by_source_name(layout.structs);
+    mp = by_source_name(layout.structs)["MaybePoint"];
     field_map = {f.name: f for f in mp.fields};
     assert field_map["x"].llvm_type == "i64";
     assert field_map["y"].llvm_type == "i64";
@@ -4676,7 +4689,7 @@ def _func_ptr_fields__maybe_point_struct_round_trip(eng: any, ir: any) {
 def _func_ptr_fields__nativefieldinfo_func_ptr_defaults_to_false(eng: any, ir: any) {
     layout = ir.gen.native_layout;
     assert layout is not None;
-    af = layout.structs["AllFields"];
+    af = by_source_name(layout.structs)["AllFields"];
     for f in af.fields {
         assert f.is_func_ptr == False , f"Field {f.name} should not be func_ptr";
         assert f.func_param_types is None;
@@ -4812,7 +4825,7 @@ test "fnptr_null_default" {
 def _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue_6570(
     _eng: any, ir: any
 ) {
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     # The Jac def has native signature i64(i64, i64); the slot declares
     # i32(i32, i32). Storing it must go through a __clibcb trampoline with
     # the C signature, not a raw bitcast of the Jac function.
@@ -4826,7 +4839,7 @@ def _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue
 def _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair_issue_6570(
     _eng: any, ir: any
 ) {
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
     # One store site → exactly one trampoline definition.
     assert llvm_ir_str.count("define internal i32 @\"_on_event.__clibcb.0\"") == 1;
     assert "_on_event.__clibcb.1" not in llvm_ir_str;
@@ -6205,7 +6218,9 @@ def _union_field_access__tuple_trigger_union_gives_here_a_usable_field_layout_is
     # The tuple trigger types `here` as a union of node members; the body must
     # not truncate at `here.val` (the original bug emitted an empty body and no
     # `field.val` load, so `either` silently stayed 0).
-    addr = eng.get_function_address("W.on_either");
+    addr = eng.get_function_address(
+        method_symbol("union_field_access.jac", "W.on_either")
+    );
     assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
     fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
     # `self` is the walker W: { vtable@0, __type_tag@1, reports@2, either@3 } --
@@ -6409,7 +6424,7 @@ test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
     ];
     assert not e5090 , f"Unexpected E5090 errors: {e5090}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    s = str(ir.gen.llvm_ir);
+    s = source_spelled(str(ir.gen.llvm_ir));
     # Read path (#6708): single-index GEP on the StructName* base yields the
     # element pointer, which is returned as-is (aliases the buffer, no copy).
     assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";

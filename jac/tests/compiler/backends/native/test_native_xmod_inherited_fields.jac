@@ -34,7 +34,13 @@ import io;
 import os;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    jac_command,
+    native_force_opts,
+    source_spelled
+}
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
@@ -65,12 +71,12 @@ def seam_report(fixture: str) -> str {
             file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
         );
     }
-    return buf.getvalue();
+    return source_spelled(buf.getvalue());
 }
 
 """Field name to slot index, as the consumer's registry holds it."""
 def slots_of(ir: uni.Module, prog: JacProgram, name: str) -> dict[str, any] {
-    layout = get_layout_registry(ir, prog).get_layout(name);
+    layout = by_source_name(get_layout_registry(ir, prog).layouts).get(name);
     assert layout is not None , f"no layout for {name}";
     return dict(layout.field_index);
 }
@@ -167,8 +173,8 @@ test "a two-link chain adopts the whole flattened ancestor" {
 test "the subclass's vtable is prefix-compatible with the base's" {
     (prog, ir) = compile_native("xmod_inherit_main.jac");
     reg = get_layout_registry(ir, prog);
-    base = reg.get_layout("Base");
-    kid = reg.get_layout("Kid");
+    base = by_source_name(reg.layouts).get("Base");
+    kid = by_source_name(reg.layouts).get("Kid");
     assert base is not None and kid is not None , "layouts missing";
     for mslot in base.methods {
         assert kid.method_index.get(mslot.name) == mslot.index , (
@@ -195,8 +201,8 @@ test "a vtable-less imported base and its subclass agree on the header" {
     # carried was a habit rather than a requirement.
     (prog, ir) = compile_native("xmod_inherit_flat_main.jac");
     reg = get_layout_registry(ir, prog);
-    anchor = reg.get_layout("Anchor");
-    kid = reg.get_layout("FlatKid");
+    anchor = by_source_name(reg.layouts).get("Anchor");
+    kid = by_source_name(reg.layouts).get("FlatKid");
     assert anchor is not None and kid is not None , "layouts missing";
     assert anchor.vtable_ptr_slot == kid.vtable_ptr_slot , (
         f"the headers must agree or no slot assignment satisfies both: "

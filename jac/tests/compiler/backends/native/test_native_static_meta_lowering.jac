@@ -18,7 +18,7 @@ order and none of the instance layout rules.
 import os;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, source_spelled }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -72,7 +72,7 @@ test "class-level tuple metadata lowers natively" {
 
 test "class-level tuple metadata keeps the literal's layout" {
     (_prog, ir) = compile_native("static_tuple_meta.jac");
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     assert '@"Access.PROVIDES" = global {i8*}*' in text , (
         "the widened `tuple` annotation did not narrow to the one-element "
         "tuple of str its constant declares; a scalar slot here would make "
@@ -122,7 +122,7 @@ test "a type-parameter glob lowers as a compile-time declaration" {
     (prog, ir) = compile_native("type_param_glob.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , "no native IR for the type-param module";
-    assert '@"T"' not in str(ir.gen.llvm_ir) , (
+    assert '@"T"' not in source_spelled(str(ir.gen.llvm_ir)) , (
         "the type variable was given storage instead of being erased"
     );
 }
@@ -132,7 +132,8 @@ test "a widened tuple glob lowers from its constant" {
     (prog, ir) = compile_native("tuple_glob_meta.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , "no native IR for the tuple glob";
-    assert '@"MOVE_EXEMPT" = global {i8*, i8*}*' in str(ir.gen.llvm_ir) , (
+    assert '@"MOVE_EXEMPT" = global {i8*, i8*}*'
+        in source_spelled(str(ir.gen.llvm_ir)) , (
         "the glob did not take the two-element str layout its constant declares"
     );
 }

@@ -898,11 +898,14 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     f"{os.path.basename(_uv_c)} demotes " + ", ".join(sorted(_uv_n))
                     for (_uv_c, _uv_n) in sorted(_uv_conflicts.items())
                 );
+                import from jaclang.compiler.frontend.codeinfo { native_display_text }
                 console.warning(
-                    f"native seam -- re-emitting "
-                    f"{os.path.basename(real_path)}: it declared callables "
-                    f"live while their module's verdict was pending, and the "
-                    f"landed verdict disagrees ({_uv_what})"
+                    native_display_text(
+                        f"native seam -- re-emitting "
+                        f"{os.path.basename(real_path)}: it declared callables "
+                        f"live while their module's verdict was pending, and the "
+                        f"landed verdict disagrees ({_uv_what})"
+                    )
                 );
                 self.prog.scratch.na_unverified_live.pop(real_path, None);
                 self.prog.scratch.na_dep_units.pop(real_path, None);

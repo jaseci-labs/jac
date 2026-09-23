@@ -747,7 +747,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return walker_val;
     }
 
-    _spawn_model = self.module.gen.osp_model;
+    _spawn_model = self.module.gen.native_osp_model;
     if (_spawn_model is not None)
         and (walker_name in _spawn_model.tags)
         and (self._osp_rt_global is not None)
@@ -830,7 +830,7 @@ impl NaIRGenPass._codegen_kernel_spawn(
 
 impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
     if isinstance(nd, uni.FuncCall) {
-        return self._get_name(nd.target);
+        return self._arch_ref_key(nd.target) or self._get_name(nd.target);
     }
     if isinstance(nd, uni.Name) {
         return self._struct_name_of(nd);
@@ -839,7 +839,7 @@ impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
 }
 
 impl NaIRGenPass._is_walker_arch(name: str) -> bool {
-    _model = self.module.gen.osp_model;
+    _model = self.module.gen.native_osp_model;
     return (_model is not None) and (_model.arch_kind.get(name) == "walker");
 }
 
@@ -2139,10 +2139,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
 
-            if (
-                target_name in self.struct_types and target_name not in self.local_vars
-            ) {
-                for _cn in self._mro_of(target_name) {
+            _sf_cls = self._arch_ref_key(nd.target) or target_name;
+            if (_sf_cls in self.struct_types and target_name not in self.local_vars) {
+                for _cn in self._mro_of(_sf_cls) {
                     _sf = f"{_cn}.{right_name}";
                     if _sf in self.static_fields {
                         return self.builder.load(
@@ -2601,5 +2600,5 @@ impl NaIRGenPass._ct_type_param_owner(nd: uni.Name) -> (str | None) {
         return None;
     }
     arch = owner.find_parent_of_type(uni.Archetype);
-    return arch.name.value if arch is not None else None;
+    return self._arch_key(arch) if arch is not None else None;
 }

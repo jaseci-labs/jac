@@ -7,12 +7,27 @@ impl NaIRGenPass._devirt_closed_world(arch_name: str) -> bool {
     return arch.access_type == SymbolAccess.PRIVATE;
 }
 
+impl NaIRGenPass._arch_key(arch: uni.Archetype) -> str {
+    import from jaclang.compiler.passes.layout_pass { archetype_native_name }
+    return archetype_native_name(arch);
+}
+
+impl NaIRGenPass._arch_ref_key(nd: (uni.UniNode | None)) -> (str | None) {
+    import from jaclang.compiler.passes.layout_pass { referenced_native_name }
+    return referenced_native_name(nd);
+}
+
+impl NaIRGenPass._arch_display(arch_name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_arch_display }
+    return native_arch_display(arch_name);
+}
+
 impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
     result: dict[(str, uni.Archetype)] = {};
 
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if isinstance(stmt, uni.Archetype) {
-            aname = stmt.name.value if stmt.name else "unknown";
+            aname = self._arch_key(stmt);
             if aname not in result or stmt.body is not None {
                 result[aname] = stmt;
             }
@@ -20,7 +35,7 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
     }
 
     for arch in ModuleFacts.shared_archetypes_for_context(module, CodeContext.NATIVE) {
-        aname = arch.name.value if arch.name else "unknown";
+        aname = self._arch_key(arch);
         if aname not in result {
             result[aname] = arch;
         }
@@ -31,7 +46,7 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
     out: list[uni.Archetype] = [];
     for a in result.values() {
         if a.type_params {
-            aname = a.name.value if a.name else "unknown";
+            aname = self._arch_key(a);
             if layout_reg.get_layout(aname) is None {
                 continue;
             }
@@ -43,7 +58,7 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
 
 impl NaIRGenPass._forward_declare_archetype_names(module: uni.Module) -> None {
     for arch in self._native_archetypes(module) {
-        aname = arch.name.value if arch.name else None;
+        aname = self._arch_key(arch) if arch.name else None;
         if aname is not None and aname not in self.struct_types {
             struct_type = self.llvm_module.context.get_identified_type(aname);
             self.struct_types[aname] = struct_type;
@@ -55,11 +70,11 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     archetypes: list[uni.Archetype] = self._native_archetypes(module);
     arch_map: dict[(str, uni.Archetype)] = {};
     for arch in archetypes {
-        arch_map[arch.name.value if arch.name else "unknown"] = arch;
+        arch_map[self._arch_key(arch)] = arch;
     }
 
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
+        arch_name = self._arch_key(arch);
         struct_type = self.llvm_module.context.get_identified_type(arch_name);
         self.struct_types[arch_name] = struct_type;
         self.has_native_code = True;
@@ -70,7 +85,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     layout_reg = get_layout_registry(self.module, self.prog);
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
+        arch_name = self._arch_key(arch);
         self.arch_ast_map[arch_name] = arch;
     }
 
@@ -82,7 +97,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
 
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
+        arch_name = self._arch_key(arch);
         if arch.body is not None {
             for stmt in arch.body {
                 if isinstance(stmt, uni.Ability) {
@@ -129,7 +144,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
 
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
+        arch_name = self._arch_key(arch);
         self._emit_struct_release_fn(arch_name);
         self._emit_trace_fn(arch_name);
     }
@@ -218,7 +233,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     }
 
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
+        arch_name = self._arch_key(arch);
         if self._arch_has_vtable(arch_name) {
             self._emit_vtable_global(arch_name);
         }
@@ -237,7 +252,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     self._codegen_constructors_first(archetypes);
 
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
+        arch_name = self._arch_key(arch);
         if arch.body is not None {
             for stmt in arch.body {
                 if isinstance(stmt, uni.Ability) {
@@ -344,7 +359,7 @@ impl NaIRGenPass._codegen_constructors_first(archetypes: list[uni.Archetype]) ->
     """;
     _slots = self._constructor_slots();
     for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
+        arch_name = self._arch_key(arch);
         if arch.body is None {
             continue;
         }
@@ -391,7 +406,7 @@ impl NaIRGenPass._visit_nonprimary_ancestor_methods(
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     import from jaclang.compiler.symbol_utils { collect_method_names }
     layout_reg = get_layout_registry(self.module, self.prog);
-    arch_name = arch.name.value if arch.name else "unknown";
+    arch_name = self._arch_key(arch);
     mro = self._mro_of(arch_name);
     if len(mro) < 2 {
         return;
@@ -446,7 +461,7 @@ impl NaIRGenPass._visit_nonprimary_ancestor_methods(
 }
 
 impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
-    arch_name = (nd).name.value if (nd).name else "unknown";
+    arch_name = self._arch_key(nd);
     if arch_name in self.struct_field_types {
         return;
     }
@@ -706,7 +721,7 @@ impl NaIRGenPass._emit_scalar_type_arg_refusal(
         E5092,
         node_override=nd,
         kind="type argument",
-        name=f"{type_name}[{arg}]",
+        name=f"{self._arch_display(type_name)}[{arg}]",
         help_text=(
             f"A generic archetype is type-erased natively: one struct is "
             f"shared by every instantiation, so a slot typed by '{tv_name}' "
@@ -1151,10 +1166,13 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     if self._seam_warnings_on()
         and not self.prog.options.native_required_for(self.module.loc.mod_path) {
         import from jaclang.cli.console { console }
+        import from jaclang.compiler.frontend.codeinfo { native_display_text }
         _why = "; ".join(str(e) for e in _own);
         console.warning(
-            f"native seam -- demoting {full_name} to Python-only "
-            f"(un-lowerable): {_why}"
+            native_display_text(
+                f"native seam -- demoting {full_name} to Python-only "
+                f"(un-lowerable): {_why}"
+            )
         );
     }
     if _na_debug {
@@ -1248,10 +1266,13 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
     if self._seam_warnings_on()
         and not self.prog.options.native_required_for(self.module.loc.mod_path) {
         import from jaclang.cli.console { console }
+        import from jaclang.compiler.frontend.codeinfo { native_display_text }
         console.warning(
-            f"native seam -- erasing field {arch_name}.{fname} to an "
-            f"opaque slot (un-lowerable declaration): "
-                + "; ".join(str(e) for e in _own)
+            native_display_text(
+                f"native seam -- erasing field {arch_name}.{fname} to an "
+                f"opaque slot (un-lowerable declaration): "
+                    + "; ".join(str(e) for e in _own)
+            )
         );
     }
     try {
@@ -1377,7 +1398,7 @@ impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str]
             }
             continue;
         }
-        name = self._get_name(part);
+        name = self._arch_ref_key(part) or self._get_name(part);
         if name is not None and name in self.struct_types and name not in out {
             out.append(name);
         }
@@ -1386,15 +1407,15 @@ impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str]
 }
 
 impl NaIRGenPass._trigger_struct_names(method: uni.Ability) -> list[str] {
-    names = method.event_trigger_type_names();
-    if names is None {
+    if method.event_triggers is None {
         sig = method.signature;
         tag = sig.arch_tag_info if isinstance(sig, uni.EventSignature) else None;
         return self._trigger_member_structs(tag);
     }
+    import from jaclang.compiler.passes.osp_analysis { OspAnalysis }
     return [
         nm
-        for nm in names
+        for nm in OspAnalysis.native_slot_triggers(method)
         if nm in self.struct_types
     ];
 }
@@ -1435,7 +1456,7 @@ impl NaIRGenPass._unadopted_field_owner(
         return None;
     }
     for _base in (_arch.base_classes or []) {
-        _bn = self._get_name(_base);
+        _bn = self._arch_ref_key(_base) or self._get_name(_base);
         if _bn is None or _bn == arch_name {
             continue;
         }
@@ -1791,9 +1812,10 @@ impl NaIRGenPass._codegen_instantiation(
     type_name_override: (str | None) = None,
     ctor_params: (list[uni.Expr | uni.KWPair] | None) = None
 ) -> (ir.Value | None) {
+    _ctor_ref = nd.target if isinstance(nd, uni.FuncCall) else nd;
     type_name = type_name_override
         if type_name_override is not None
-        else self._get_name(nd.target if isinstance(nd, uni.FuncCall) else nd);
+        else (self._arch_ref_key(_ctor_ref) or self._get_name(_ctor_ref));
     if type_name is None or type_name not in self.struct_types {
         return None;
     }
@@ -2385,7 +2407,9 @@ impl NaIRGenPass._unregistered_class_target(target: uni.UniNode) -> (str | None)
     """;
     import os;
     name = self._get_name(target);
-    if name is None or name in self.struct_types or name in self.local_vars {
+    if name is None
+        or (self._arch_ref_key(target) or name) in self.struct_types
+        or name in self.local_vars {
         return None;
     }
     if not isinstance(target, uni.Expr) {
@@ -2473,6 +2497,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     import from jaclang.compiler.symbol_utils { imported_module_name }
     module_name = imported_module_name(trailer.target);
     target_name = module_name or self._get_name(trailer.target);
+    if module_name is None and target_name != "super" {
+        target_name = self._arch_ref_key(trailer.target) or target_name;
+    }
     method_name = self._get_name(trailer.right);
     if method_name is None {
         return None;
@@ -3260,7 +3287,9 @@ impl NaIRGenPass._emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Val
     fmt = self._make_global_string(
         "<%s object at 0x%llx>", name_prefix=".obj.repr.fmt"
     );
-    name_g = self._make_global_string(type_name, name_prefix=".obj.repr.name");
+    name_g = self._make_global_string(
+        self._arch_display(type_name), name_prefix=".obj.repr.name"
+    );
     addr = b.ptrtoint(val, i64, name="obj.repr.addr");
     b.call(
         snprintf,
@@ -3977,7 +4006,7 @@ impl NaIRGenPass._codegen_field_assign(
 ) -> None {
     _fa_errs = len(self.ctx.errors_had);
     field_name = self._get_name(target.right);
-    _sa_target = self._get_name(target.target);
+    _sa_target = self._arch_ref_key(target.target) or self._get_name(target.target);
     if _sa_target is None {
         _sa_tk = self._type_key_of(target.target);
         if _sa_tk is not None {
@@ -4409,7 +4438,8 @@ impl NaIRGenPass._jc_reference_schema(
 ) -> (dict[str, any] | None) {
     """Combine semantic reference types with the backend's container ABI.""";
     args = semantic.private.type_args or [] if isinstance(semantic, ClassType) else [];
-    semantic_name = semantic.shared.class_name
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    semantic_name = (class_type_native_name(semantic) or "")
         if isinstance(semantic, ClassType)
         else "";
     if not isinstance(ft, ir.PointerType) {
@@ -4467,7 +4497,7 @@ impl NaIRGenPass._build_jc_layout -> str {
     import from jaclang.compiler.backends.native.abi { struct_layouts }
     layouts = struct_layouts(self.llvm_module);
     out: dict[str, any] = {"classes": {}};
-    _model = self.module.gen.osp_model;
+    _model = self.module.gen.native_osp_model;
     _tags = _model.tags if _model is not None else {};
     for arch_name in self.struct_field_indices {
         st = self.struct_types.get(arch_name);
@@ -4573,5 +4603,33 @@ impl NaIRGenPass._build_jc_layout -> str {
             "fields": fields
         };
     }
-    return json.dumps(out);
+    return json.dumps(self._jc_display_names(out));
+}
+
+impl NaIRGenPass._jc_display_names(data: any) -> any {
+    """The class layout, spelled with source-level class names.
+
+    Its reader is the Python side, which looks classes up by `__name__`; the
+    native identities that key them here are module-scoped.
+    """;
+    if isinstance(data, list) {
+        return [self._jc_display_names(item) for item in data];
+    }
+    if not isinstance(data, dict) {
+        return data;
+    }
+    out: dict[str, any] = {};
+    for (key, value) in data.items() {
+        if key == "classes" and isinstance(value, dict) {
+            out[key] = {
+                self._arch_display(name): self._jc_display_names(cls)
+                for (name, cls) in value.items()
+            };
+        } elif key in ("class", "aux") and isinstance(value, str) {
+            out[key] = self._arch_display(value);
+        } else {
+            out[key] = self._jc_display_names(value);
+        }
+    }
+    return out;
 }

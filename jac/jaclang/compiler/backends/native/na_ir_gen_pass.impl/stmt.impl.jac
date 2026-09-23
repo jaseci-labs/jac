@@ -237,7 +237,7 @@ impl NaIRGenPass._del_target_holds_graph(target: uni.Expr) -> bool {
     if uni.DeleteStmt.type_has_graph_member(target.type) {
         return True;
     }
-    _model = self.module.gen.osp_model;
+    _model = self.module.gen.native_osp_model;
     _type_key = self._type_key_of(target);
     if (_model is None) or (_type_key is None) {
         return False;
@@ -1244,7 +1244,7 @@ impl NaIRGenPass._match_arch_cond(
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
-    arch_name = self._get_name(pat.name);
+    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
     if arch_name is None or arch_name not in self.struct_types {
         self.ctx.emit(
             E5092,
@@ -1617,7 +1617,7 @@ impl NaIRGenPass._bind_match_map(
 impl NaIRGenPass._bind_match_arch(
     pat: uni.MatchArch, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
-    arch_name = self._get_name(pat.name);
+    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
     if arch_name is None or arch_name not in self.struct_types {
         return;
     }

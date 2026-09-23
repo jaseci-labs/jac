@@ -194,6 +194,33 @@ glob NATIVE_FIXTURES: str = str(
              / "fixtures"
      );
 
+"""The native identity of archetype `name` declared in `source`.
+
+Structs, method symbols, vtables and layout keys are spelled with it
+(`codeinfo.native_arch_name`: the name scoped by its defining module). A
+relative `source` names a file in the native fixtures directory.
+"""
+def native_arch(source: str, name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
+    path = Path(source);
+    if not path.is_absolute() {
+        path = Path(NATIVE_FIXTURES) / source;
+    }
+    return native_arch_name(str(path), name);
+}
+
+"""`text` (IR, a symbol, a layout key) with archetype identities spelled by
+source name, for assertions about everything but the scoping itself."""
+def source_spelled(text: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_display_text }
+    return native_display_text(text);
+}
+
+"""`mapping` re-keyed by source name (layout registries, exported layouts)."""
+def by_source_name(mapping: dict[str, any]) -> any {
+    return {source_spelled(key): value for (key, value) in mapping.items()};
+}
+
 """Compile a .jac fixture into the native codespace and return (engine, module).
 
 `fixture_dir` defaults to the native pass fixtures directory, which is where

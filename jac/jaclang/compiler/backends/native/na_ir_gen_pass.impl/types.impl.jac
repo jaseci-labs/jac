@@ -796,8 +796,10 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     if _enum_ty is not None {
         return _enum_ty;
     }
-    if cname in self.struct_types {
-        return self.struct_types[cname].as_pointer();
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    _native_cn = class_type_native_name(t) or cname;
+    if _native_cn in self.struct_types {
+        return self.struct_types[_native_cn].as_pointer();
     }
     type_args: list[TypeBase] = t.private.type_args or [];
 
@@ -982,8 +984,9 @@ impl NaIRGenPass._aos_elem_name(t: any) -> (str | None) {
     if not isinstance(t, _AeClassType) or t._shared is None {
         return None;
     }
-    _tn = t.shared.class_name;
-    if _tn not in self.struct_types {
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    _tn = class_type_native_name(t);
+    if _tn is None or _tn not in self.struct_types {
         return None;
     }
     _lay = self._arch_layout(_tn);
@@ -1042,7 +1045,7 @@ impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
         for _mod in _mods {
             for _arch in _mod.get_all_sub_nodes(uni.Archetype) {
                 for _base in (_arch.base_classes or []) {
-                    _bn = self._get_name(_base);
+                    _bn = self._arch_ref_key(_base) or self._get_name(_base);
                     if _bn is not None {
                         _names.add(_bn);
                     }
@@ -4581,16 +4584,14 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
     }
     _nm = self._get_name(nd);
 
+    _ref_key = self._arch_ref_key(nd);
+    if _ref_key is not None and _ref_key in self.struct_types {
+        return self.struct_types[_ref_key].as_pointer();
+    }
     if isinstance(nd, uni.Name) and nd.sym is not None and nd.sym.decl is not None {
         _decl_of = nd.sym.decl.name_of;
         if isinstance(_decl_of, uni.Enum) {
             return ir.IntType(64);
-        }
-        if isinstance(_decl_of, uni.Archetype) {
-            _decl_anm = _decl_of.name.value if _decl_of.name else None;
-            if _decl_anm is not None and _decl_anm in self.struct_types {
-                return self.struct_types[_decl_anm].as_pointer();
-            }
         }
         if isinstance(_decl_of, uni.TypeParam)
             or (_decl_of is not None and isinstance(_decl_of.parent, uni.TypeParam)) {
@@ -4620,12 +4621,6 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                 if _imp_tail is not None {
                     if self._enum_source_name.get(_orig) == _imp_tail {
                         return ir.IntType(64);
-                    }
-                    if self._struct_source_name.get(_orig) == _imp_tail {
-                        _osrc_st = self.struct_types.get(_orig);
-                        if _osrc_st is not None {
-                            return _osrc_st.as_pointer();
-                        }
                     }
                 }
                 if _orig in self.struct_types {
