@@ -27,6 +27,7 @@ import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
     with_config_revision,
     CONFIG_REVISION_ANNOTATION,
     ManifestBuilder,
+    is_scale_to_zero_eligible,
     ScalingMode
 }
 import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
@@ -583,7 +584,11 @@ obj KubernetesTarget(KubernetesTargetBase) {
         };
         names: list[str] = [];
         app_labels: list[str] = [];
-        for (svc_name, dep) in bundle.get("deployments", {}).items() {
+        zero_floor_names: set[str] = set();
+        engine = str(self.k8s_config.autoscaler_engine or "hpa");
+        for (svc_name_raw, dep) in bundle.get("deployments", {}).items() {
+            svc_name: str = str(svc_name_raw);
+            dep_name: str = str(dep["metadata"]["name"]);
             app: str = "";
             try {
                 app = str(dep["spec"]["selector"]["matchLabels"]["app"]);
@@ -596,8 +601,16 @@ obj KubernetesTarget(KubernetesTargetBase) {
             if app {
                 app_labels.append(app);
             }
-            if svc_name not in http_activation_svc_names {
-                names.append(str(dep["metadata"]["name"]));
+            if svc_name in http_activation_svc_names {
+                continue;
+            }
+            names.append(dep_name);
+            svc_scaling: dict[str, any] = dict(scaling.get(svc_name, {}));
+            svc_autoscaler_cfg: dict[str, any] | None = svc_scaling.get(
+                "autoscaler", {}
+            );
+            if is_scale_to_zero_eligible(svc_autoscaler_cfg, engine) {
+                zero_floor_names.add(dep_name);
             }
         }
         if not names {
@@ -638,6 +651,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             else None;
         imagepull_streak: dict[str, int] = {};
         creating_streak: dict[str, int] = {};
+        zero_confirm_streak: dict[str, int] = {};
         healed_apps: dict[str, int] = {};
         last_sig = "";
         last_heartbeat = -90;
@@ -657,6 +671,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
             while elapsed < timeout {
                 ready = 0;
+                settled_zero: set[str] = set();
                 for name in names {
                     try {
                         d = apps_v1.read_namespaced_deployment(name=name, namespace=ns);
@@ -665,6 +680,15 @@ obj KubernetesTarget(KubernetesTargetBase) {
                             else (d.status.ready_replicas or 0) >= 1;
                         if complete {
                             ready += 1;
+                        } elif (
+                            name in zero_floor_names
+                            and int(d.status.observed_generation or 0)
+                                >= int(d.metadata.generation or 0)
+                            and (d.spec.replicas or 0) == 0
+                            and (d.status.replicas or 0) == 0
+                            and (d.status.ready_replicas or 0) == 0
+                        ) {
+                            settled_zero.add(name);
                         }
                     } except Exception {
                         _ = 0;
@@ -747,6 +771,26 @@ obj KubernetesTarget(KubernetesTargetBase) {
                         core_v1, ns, str(failed_pod.metadata.name), failed_pod
                     );
                     raise Exception(f"{failure}.{detail}");
+                }
+
+                zero_confirm_streak = {
+                    name: zero_confirm_streak.get(name, 0) + 1 for name in settled_zero
+                };
+                confirmed_zero = {
+                    name
+                    for (name, streak) in zero_confirm_streak.items()
+                    if streak >= 2
+                };
+                if confirmed_zero and (ready + len(confirmed_zero)) == total {
+                    if self.logger {
+                        self.logger.info(
+                            f"Fleet ready: {ready}/{total} deployments "
+                            f"serving, {len(confirmed_zero)} parked at 0 "
+                            "replicas by design (scale-to-zero, no crash "
+                            "signal observed)"
+                        );
+                    }
+                    return;
                 }
 
                 summary = ", ".join(phase_tokens)
