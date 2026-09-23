@@ -8,6 +8,7 @@ import from jaclang.server.serving.endpoint { HTTPMethod }
 import from jaclang.scale.tests.support { RecordingHost }
 import from jaclang.scale.admin.deploy_health { JacAPIServerDeployHealth }
 import from jaclang.scale.admin.deploy_health { summarize_deployment, summarize_pod }
+import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
 
 
 obj DeployHost(JacAPIServerDeployHealth) {
@@ -15,7 +16,7 @@ obj DeployHost(JacAPIServerDeployHealth) {
 }
 
 
-test "rollout status: complete vs stuck vs progressing" {
+test "rollout status: active vs inactive vs degraded" {
     complete = summarize_deployment(
         {
             "metadata": {"name": "gw"},
@@ -30,14 +31,25 @@ test "rollout status: complete vs stuck vs progressing" {
             }
         }
     );
-    assert complete["rollout"]["status"] == "complete";
+    assert complete["rollout"]["status"] == "active";
     assert complete["images"] == ["app:dev-abc"];
 
-    # A deliberate scale-to-zero is complete, not stuck in "progressing".
+    # A deliberate scale-to-zero (replica floor 0) is inactive, not degraded.
     zeroed = summarize_deployment(
+        {
+            "metadata": {"name": "z", "annotations": {REPLICA_FLOOR_ANNOTATION: "0"}},
+            "spec": {"replicas": 0},
+            "status": {}
+        }
+    );
+    assert zeroed["rollout"]["status"] == "inactive" , f"{zeroed['rollout']}";
+
+    # The same shape with no floor stamped is a workload that should be up.
+    unintended = summarize_deployment(
         {"metadata": {"name": "z"}, "spec": {"replicas": 0}, "status": {}}
     );
-    assert zeroed["rollout"]["status"] == "complete" , f"{zeroed['rollout']}";
+    assert unintended["rollout"]["status"] == "degraded" , f"{unintended['rollout']}";
+    assert unintended["rollout"]["reason"] == "ScaledBelowFloor";
 
     stuck = summarize_deployment(
         {
@@ -55,7 +67,8 @@ test "rollout status: complete vs stuck vs progressing" {
             }
         }
     );
-    assert stuck["rollout"]["status"] == "stuck";
+    assert stuck["rollout"]["status"] == "degraded";
+    assert stuck["rollout"]["reason"] == "ProgressDeadlineExceeded";
 }
 
 

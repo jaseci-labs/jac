@@ -68,6 +68,7 @@ def _lower(cl_copy: str) -> str {
     import from jaclang.compiler.backends.es { estree as es }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    import from jaclang.compiler.backends.es.jac_runtime_js { JAC_PRELUDE_MODULE }
     prog = JacProgram();
     ir = prog.compile(
         file_path=cl_copy,
@@ -81,10 +82,9 @@ def _lower(cl_copy: str) -> str {
     if isinstance(program, es.Program) {
         for stmt in program.body {
             is_jac_rt = (
-                isinstance(stmt, es.VariableDeclaration)
-                and stmt.declarations
-                and isinstance(stmt.declarations[0].id, es.Identifier)
-                and (stmt.declarations[0].id.name == "_jac")
+                isinstance(stmt, es.ImportDeclaration)
+                and stmt.source is not None
+                and (stmt.source.value == JAC_PRELUDE_MODULE)
             );
             if is_jac_rt or isinstance(stmt, es.ExportNamedDeclaration) {
                 continue;

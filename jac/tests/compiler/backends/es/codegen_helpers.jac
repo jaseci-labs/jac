@@ -11,7 +11,8 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 
 glob _js_compile_cache: dict[str, str] = {},
-     _js_production_compile_cache: dict[str, str] = {};
+     _js_production_compile_cache: dict[str, str] = {},
+     _node_stage: list[str] = [];
 
 """Resolve a fixture name to an on-disk path."""
 def _resolve_fixture_path(fixture_name: str, fixture_dir: str = "") -> str {
@@ -79,4 +80,40 @@ def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -
     );
     _js_production_compile_cache[cache_key] = ir.gen.js;
     return ir.gen.js;
+}
+
+"""Stage a directory where node can resolve the `@jac/prelude` module."""
+def stage_prelude_dir(dir_path: str = "") -> str {
+    import from jaclang.compiler.backends.es.jac_runtime_js {
+        stage_jac_prelude_package
+    }
+    if dir_path {
+        stage = dir_path;
+    } elif _node_stage {
+        return _node_stage[0];
+    } else {
+        import tempfile;
+        stage = tempfile.mkdtemp(prefix="jac_node_stage_");
+    }
+    stage_jac_prelude_package(stage);
+    if not dir_path {
+        _node_stage.append(stage);
+    }
+    return stage;
+}
+
+"""Run one emitted client module under node and return the completed process."""
+def run_js_module(source: str, timeout: float = 30.0) -> any {
+    import subprocess;
+    import tempfile;
+    stage = stage_prelude_dir();
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".mjs", delete=False, dir=stage
+    ) as mod {
+        mod.write(source);
+        mod_path = mod.name;
+    }
+    return subprocess.run(
+        ["node", mod_path], capture_output=True, text=True, timeout=timeout
+    );
 }

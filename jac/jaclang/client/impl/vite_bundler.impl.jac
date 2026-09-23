@@ -470,7 +470,9 @@ impl ViteBundler._generate_vite_config_content(
     } else {
         compiled_base = 'compiled';
     }
+    import from jaclang.compiler.backends.es.jac_runtime_js { JAC_PRELUDE_BASENAME }
     compiled_utils_relative = f"{compiled_base}/client_runtime.js";
+    compiled_prelude_relative = f"{compiled_base}/{JAC_PRELUDE_BASENAME}";
     compiled_pwa_relative = f"{compiled_base}/pwa_runtime.js";
     compiled_desktop_relative = f"{compiled_base}/desktop_api.js";
     compiled_ui_relative = f"{compiled_base}/client_mobui.js";
@@ -911,7 +913,8 @@ export default defineConfig({{
   }},
   resolve: {{
     alias: {{
-      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{virtual_alias_str}{framework_alias_str}{ui_alias_str}
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
+      "@jac/prelude": path.resolve(buildDir, "{compiled_prelude_relative}"),{pwa_alias_str}{desktop_alias_str}{virtual_alias_str}{framework_alias_str}{ui_alias_str}
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
@@ -1003,7 +1006,8 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{virtual_alias_str}{framework_alias_str}{ui_alias_str}
+        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
+        "@jac/prelude": path.resolve(buildDir, "{compiled_prelude_relative}"),{pwa_alias_str}{desktop_alias_str}{virtual_alias_str}{framework_alias_str}{ui_alias_str}
         "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],
