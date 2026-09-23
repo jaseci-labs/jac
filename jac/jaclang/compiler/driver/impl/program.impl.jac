@@ -488,7 +488,10 @@ impl JacProgram.build(
 
 impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
     import from jaclang.compiler.driver.boundary_classify { _default_codespace_for }
-    import from jaclang.compiler.frontend.codeinfo { is_client_by_location }
+    import from jaclang.compiler.frontend.codeinfo {
+        is_client_by_location,
+        is_compiler_source_path
+    }
     import from jaclang.compiler.placement.placement_facts { native_only, native_unit }
     import from jaclang.compiler.placement.placement_pins {
         config_kind_space,
@@ -505,10 +508,11 @@ impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
     if pinned in ('client', 'native') {
         return pinned;
     }
-    if native_unit(file_path, bool(opts is not None and opts.native_unit), self) {
+    unit_compile = bool(opts is not None and opts.native_unit);
+    if native_unit(file_path, unit_compile, self) {
         return 'native';
     }
-    if self.internal {
+    if self.internal or (unit_compile and is_compiler_source_path(file_path)) {
         return '';
     }
     forced = opts.force_codespace if opts is not None else '';
@@ -533,9 +537,15 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
     if opts is not None and opts.no_cgen {
         return False;
     }
-    import from jaclang.compiler.native_scope { in_native_scope_path }
-    if opts is not None and opts.native_unit and in_native_scope_path(file_path) {
-        return True;
+    if opts is not None and opts.native_unit {
+        import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+        import from jaclang.compiler.native_scope { in_native_scope_path }
+        if in_native_scope_path(file_path) {
+            return True;
+        }
+        if is_compiler_source_path(file_path) {
+            return False;
+        }
     }
     return not self.internal and _default_codespace_for(self) == 'native';
 }
