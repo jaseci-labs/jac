@@ -912,9 +912,6 @@ impl NativeStrEmitter._emit_affix(
     p = ctx.pass_ref;
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    zero = ir.Constant(i64, 0);
     candidates: list[ir.Value] = [];
     if isinstance(args[0].type, ir.LiteralStructType) {
         for (index, typ) in enumerate(args[0].type.elements) {
@@ -934,8 +931,35 @@ impl NativeStrEmitter._emit_affix(
         }
     }
     length = p._call_str_len(b, target, name="affix.length");
-    start = p._coerce_type(args[1], i64) if len(args) > 1 else zero;
-    end = p._coerce_type(args[2], i64) if len(args) > 2 else length;
+    return _emit_affix_match(
+        p,
+        b,
+        target,
+        length,
+        [
+            (candidate, p._call_str_len(b, candidate, name="affix.size"))
+            for candidate in candidates
+        ],
+        args[1:],
+        suffix
+    );
+}
+
+def _emit_affix_match(
+    p: NaIRGenPass,
+    b: ir.IRBuilder,
+    data: ir.Value,
+    length: ir.Value,
+    candidates: list[tuple[ir.Value, ir.Value]],
+    bounds: list[ir.Value],
+    suffix: bool
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    start = p._coerce_type(bounds[0], i64) if len(bounds) > 0 else zero;
+    end = p._coerce_type(bounds[1], i64) if len(bounds) > 1 else length;
     start = b.select(b.icmp_signed("<", start, zero), b.add(start, length), start);
     start = b.select(b.icmp_signed("<", start, zero), zero, start);
     end = b.select(b.icmp_signed("<", end, zero), b.add(end, length), end);
@@ -950,16 +974,15 @@ impl NativeStrEmitter._emit_affix(
     miss = fn.append_basic_block("affix.miss");
     done = fn.append_basic_block("affix.done");
     memcmp = p._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
-    for candidate in candidates {
-        size = p._call_str_len(b, candidate, name="affix.size");
+    for (candidate, size) in candidates {
         compare = fn.append_basic_block("affix.compare");
         next_candidate = fn.append_basic_block("affix.next");
         fits = b.and_(bounds_ok, b.icmp_signed("<=", size, available));
         b.cbranch(fits, compare, next_candidate);
         b.position_at_end(compare);
         offset = b.sub(end, size) if suffix else start;
-        data = b.gep(target, [offset], name="affix.data");
-        compared = b.call(memcmp, [data, candidate, size]);
+        window = b.gep(data, [offset], name="affix.data");
+        compared = b.call(memcmp, [window, candidate, size]);
         b.cbranch(
             b.icmp_signed("==", compared, ir.Constant(i32, 0)), match_bb, next_candidate
         );
@@ -971,9 +994,9 @@ impl NativeStrEmitter._emit_affix(
     b.position_at_end(miss);
     b.branch(done);
     b.position_at_end(done);
-    result = b.phi(i64, name="affix.result");
-    result.add_incoming(ir.Constant(i64, 1), match_bb);
-    result.add_incoming(zero, miss);
+    result = b.phi(ir.IntType(1), name="affix.result");
+    result.add_incoming(ir.Constant(ir.IntType(1), 1), match_bb);
+    result.add_incoming(ir.Constant(ir.IntType(1), 0), miss);
     return result;
 }
 
@@ -2400,43 +2423,92 @@ impl NativeBytesEmitter.emit_fromhex(
 impl NativeBytesEmitter.emit_count(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(target, args, "count");
 }
 
 impl NativeBytesEmitter.emit_find(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(target, args, "find");
 }
 
 impl NativeBytesEmitter.emit_rfind(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(target, args, "rfind");
 }
 
 impl NativeBytesEmitter.emit_index(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(
+        target, args, "find", missing="subsection not found"
+    );
 }
 
 impl NativeBytesEmitter.emit_rindex(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(
+        target, args, "rfind", missing="subsection not found"
+    );
 }
 
 impl NativeBytesEmitter.emit_startswith(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_affix(ctx, target, args, suffix=False);
 }
 
 impl NativeBytesEmitter.emit_endswith(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_affix(ctx, target, args, suffix=True);
+}
+
+impl NativeBytesEmitter._emit_affix(
+    self: NativeBytesEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    args: list[ir.Value],
+    suffix: bool
+) -> (ir.Value | None) {
+    if not args or len(args) > 3 {
+        return None;
+    }
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    candidates: list[ir.Value] = [];
+    if isinstance(args[0].type, ir.LiteralStructType) {
+        bytes_ptr = p._get_bytes_struct_type().as_pointer();
+        if any(typ != bytes_ptr for typ in args[0].type.elements) {
+            return None;
+        }
+        for index in range(len(args[0].type.elements)) {
+            candidates.append(b.extract_value(args[0], index, name="affix.item"));
+        }
+    } elif p._is_bytes_value(args[0]) {
+        candidates.append(args[0]);
+    } else {
+        return None;
+    }
+    for bound in args[1:] {
+        if not isinstance(bound.type, ir.IntType) {
+            return None;
+        }
+    }
+    return _emit_affix_match(
+        p,
+        b,
+        p._bytes_data_ptr(target),
+        p._bytes_len_val(target),
+        [
+            (p._bytes_data_ptr(candidate), p._bytes_len_val(candidate))
+            for candidate in candidates
+        ],
+        args[1:],
+        suffix
+    );
 }
 
 impl NativeBytesEmitter.emit_replace(

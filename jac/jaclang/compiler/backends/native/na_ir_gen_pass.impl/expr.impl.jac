@@ -1308,9 +1308,19 @@ impl NaIRGenPass._codegen_compare_link(
             );
         }
 
-        if self._is_bytes_value(left) and self._is_bytes_value(right) {
+        if self._is_bytes_value(right)
+            and (self._is_bytes_value(left) or isinstance(left.type, ir.IntType)) {
             i64 = ir.IntType(64);
-            is_found = self._emit_bytes_contains(left, right);
+            byte_at = None
+                if self._is_bytes_value(left)
+                else self._emit_bytes_search(right, [left], "find");
+            if byte_at is None {
+                is_found = self._emit_bytes_contains(left, right);
+            } else {
+                is_found = self.builder.icmp_signed(
+                    ">=", byte_at, ir.Constant(i64, 0), name="by.in.byte"
+                );
+            }
             result = self.builder.zext(is_found, i64, name="by.in.i64");
             if is_not_in {
                 result = self.builder.icmp_signed(

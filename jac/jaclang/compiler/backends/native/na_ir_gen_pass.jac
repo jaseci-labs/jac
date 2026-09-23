@@ -317,6 +317,7 @@ walker NaIRGenPass {
         _binary_file_helpers_emitted: bool = False,
         _bytes_struct_type: (ir.Type | None) = None,
         _bytes_repr_function: (ir.Function | None) = None,
+        _bytes_search_function: (ir.Function | None) = None,
         _float_repr_function: (ir.Function | None) = None,
         _repr_fns: dict[str, ir.Function] = {},
         _jac_iter_type: (ir.Type | None) = None,
@@ -607,6 +608,15 @@ walker NaIRGenPass {
     def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
     def _bytes_repr_fn -> ir.Function;
+    def _bytes_search_fn -> ir.Function;
+    def _emit_bytes_needle(
+        needle: ir.Value
+    ) -> (tuple[ir.Value, ir.Value, ir.Value] | None);
+
+    def _emit_bytes_search(
+        target: ir.Value, args: list[ir.Value], mode: str, missing: str = ""
+    ) -> (ir.Value | None);
+
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_callable_value(
         nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]

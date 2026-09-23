@@ -7,7 +7,7 @@ Uses bytes([...]) constructor since b"" literals may not be available in cl def.
 
 # ---- Search & encoding methods ----
 
-def bytes_search_py() -> dict[any, any] {
+def bytes_search_py -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);  # b"hello"
     sub = bytes([108, 108]);  # b"ll"
 
@@ -57,7 +57,7 @@ def bytes_search_py() -> dict[any, any] {
     };
 }
 
-def bytes_search_cl() -> dict[any, any] {
+def bytes_search_cl -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);
     sub = bytes([108, 108]);
 
@@ -96,7 +96,7 @@ def bytes_search_cl() -> dict[any, any] {
 
 # ---- Modification methods ----
 
-def bytes_modify_py() -> dict[any, any] {
+def bytes_modify_py -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);  # b"hello"
 
     # replace
@@ -145,7 +145,7 @@ def bytes_modify_py() -> dict[any, any] {
     };
 }
 
-def bytes_modify_cl() -> dict[any, any] {
+def bytes_modify_cl -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);
 
     replaced: list[any] = list(b.replace(bytes([108]), bytes([76])));
@@ -195,7 +195,7 @@ def bytes_modify_cl() -> dict[any, any] {
 
 # ---- Case & alignment methods ----
 
-def bytes_case_py() -> dict[any, any] {
+def bytes_case_py -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);  # b"hello"
 
     cap: list[any] = list(b.capitalize());
@@ -235,7 +235,7 @@ def bytes_case_py() -> dict[any, any] {
     };
 }
 
-def bytes_case_cl() -> dict[any, any] {
+def bytes_case_cl -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);
 
     cap: list[any] = list(b.capitalize());
@@ -274,7 +274,7 @@ def bytes_case_cl() -> dict[any, any] {
 
 # ---- Boolean test methods ----
 
-def bytes_test_py() -> dict[any, any] {
+def bytes_test_py -> dict[any, any] {
     alpha = bytes([97, 98, 99]);  # b"abc"
     digit = bytes([49, 50, 51]);  # b"123"
     mixed = bytes([97, 49]);  # b"a1"
@@ -332,7 +332,7 @@ def bytes_test_py() -> dict[any, any] {
     };
 }
 
-def bytes_test_cl() -> dict[any, any] {
+def bytes_test_cl -> dict[any, any] {
     alpha = bytes([97, 98, 99]);
     digit = bytes([49, 50, 51]);
     mixed = bytes([97, 49]);
@@ -390,18 +390,47 @@ def bytes_test_cl() -> dict[any, any] {
     };
 }
 
-def bytes_search_na() -> dict[str, any] {
+def bytes_search_na -> dict[str, any] {
+    b = bytes([104, 101, 108, 108, 111]);
+    sub = bytes([108, 108]);
+
+    decoded: str = b.decode();
+    count_l: int = b.count(bytes([108]));
+    count_miss: int = b.count(bytes([120]));
+    find_hit: int = b.find(sub);
+    find_miss: int = b.find(bytes([120]));
+    rfind_hit: int = b.rfind(bytes([108]));
+    idx: int = b.index(sub);
+    ridx: int = b.rindex(bytes([108]));
+    sw_yes: bool = b.startswith(bytes([104, 101]));
+    sw_no: bool = b.startswith(bytes([111]));
+    ew_yes: bool = b.endswith(bytes([108, 111]));
+    ew_no: bool = b.endswith(bytes([104]));
+
+    return {
+        "decoded": decoded,
+        "count_l": count_l,
+        "count_miss": count_miss,
+        "find_hit": find_hit,
+        "find_miss": find_miss,
+        "rfind_hit": rfind_hit,
+        "idx": idx,
+        "ridx": ridx,
+        "sw_yes": sw_yes,
+        "sw_no": sw_no,
+        "ew_yes": ew_yes,
+        "ew_no": ew_no
+    };
+}
+
+def bytes_modify_na -> dict[str, any] {
     return {};
 }
 
-def bytes_modify_na() -> dict[str, any] {
+def bytes_case_na -> dict[str, any] {
     return {};
 }
 
-def bytes_case_na() -> dict[str, any] {
-    return {};
-}
-
-def bytes_test_na() -> dict[str, any] {
+def bytes_test_na -> dict[str, any] {
     return {};
 }
