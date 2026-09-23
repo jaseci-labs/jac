@@ -236,13 +236,13 @@ impl NaIRGenPass._osp_collect_slots(
 impl NaIRGenPass._osp_build_slot(
     trig_tag: int, thunk: ir.Function
 ) -> (ir.Value | None) {
-    slot = self._osp_rc_new("Slot");
+    slot = self._osp_rc_new("OspSlot");
     if slot is None {
         return None;
     }
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    _idx = self.struct_field_indices.get("Slot", {});
+    _idx = self.struct_field_indices.get("OspSlot", {});
     self.builder.store(
         ir.Constant(i64, trig_tag),
         self.builder.gep(
@@ -251,7 +251,7 @@ impl NaIRGenPass._osp_build_slot(
             name="slot.trig"
         )
     );
-    _fn_ty = self.struct_field_types.get("Slot", {}).get("fn");
+    _fn_ty = self.struct_field_types.get("OspSlot", {}).get("fn");
     _fn_val = self._coerce_type(thunk, _fn_ty) if _fn_ty is not None else thunk;
     self.builder.store(
         _fn_val,
@@ -353,7 +353,7 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
     _ocf = ir.Function(self.llvm_module, complete_signature, name="__osp_on_complete");
     _ocf.linkage = "internal";
     self._builder = ir.IRBuilder(_ocf.append_basic_block("entry"));
-    _ws_idx = self.struct_field_indices.get("WalkScope", {});
+    _ws_idx = self.struct_field_indices.get("OspWalkScope", {});
     if _ws_idx {
         _deliver = _ocf.append_basic_block("deliver");
         _oc_done = _ocf.append_basic_block("done");
@@ -421,7 +421,7 @@ impl NaIRGenPass._emit_osp_setup -> None {
         return;
     }
 
-    for _req in ["Slot", "WalkerDesc", "NodeDesc", "OspRuntime"] {
+    for _req in ["OspSlot", "OspWalkerDesc", "OspNodeDesc", "OspRuntime"] {
         if _req not in self.struct_types {
             return;
         }
@@ -498,7 +498,9 @@ impl NaIRGenPass._emit_osp_setup -> None {
                 self._release_owned_args(values, op="osp_register_edge_type");
             }
         }
-        _sn = "WalkerDesc" if (_model.arch_kind.get(_name) == "walker") else "NodeDesc";
+        _sn = "OspWalkerDesc"
+            if (_model.arch_kind.get(_name) == "walker")
+            else "OspNodeDesc";
 
         _desc = self._osp_build_descriptor(
             _sn,
@@ -700,10 +702,11 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     edge_tag: (ir.Value | None) = ir.Constant(i64, -1);
     edge_obj: (ir.Value | None) = None;
+    edge_arch: (str | None) = None;
     if co.conn_type is not None {
         edge_name = self._osp_static_edge_name(co.conn_type);
-        if edge_name is not None
-            or self._osp_edge_class_name(co.conn_type) is not None {
+        edge_arch = edge_name or self._osp_edge_class_name(co.conn_type);
+        if edge_arch is not None {
             descriptor = self._osp_edge_descriptor(co.conn_type, nd)
                 if edge_name is None
                 else None;
@@ -735,6 +738,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             }
         } else {
             edge_obj = self._codegen_expr(co.conn_type);
+            edge_arch = self._struct_name_of(co.conn_type);
             edge_name = self._spawn_operand_name(co.conn_type);
             if edge_name is not None {
                 model = self.module.gen.osp_model;
@@ -754,6 +758,9 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
 
     self._osp_make_immortal(edge_obj);
+    if not self._osp_connect_assign(co, edge_obj, edge_arch) {
+        return None;
+    }
     _argtys = osp_conn_fn.function_type.args;
     _src_i64 = self._coerce_type(src, _argtys[0]);
     _tgt_i64 = self._coerce_type(tgt, _argtys[1]);
@@ -792,6 +799,64 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return result;
     }
     return tgt;
+}
+
+impl NaIRGenPass._osp_connect_assign(
+    co: uni.ConnectOp, edge_obj: ir.Value, edge_arch: (str | None)
+) -> bool {
+    """Apply a typed connect's attribute assignments to its new edge.
+
+    `a +>:E:f=v, g=w:+> b` builds `E` with no arguments and then sets each
+    named field, as the Python runtime does, so a field left out keeps its
+    default. The values are evaluated left to right after the edge exists and
+    before it joins the graph.
+    """;
+    assign = co.conn_assign;
+    if assign is None {
+        return True;
+    }
+    _estruct = self.struct_types.get(edge_arch) if edge_arch is not None else None;
+    if _estruct is not None and isinstance(edge_obj.type, ir.IntType) {
+        edge_obj = self.builder.inttoptr(
+            edge_obj, _estruct.as_pointer(), name="edge.assign.recv"
+        );
+    }
+    for kw in assign.assigns {
+        field_name = self._get_name(kw.key) if kw.key is not None else None;
+        if edge_arch is None
+            or field_name is None
+            or (
+                field_name not in self.struct_field_indices.get(edge_arch, {})
+                and self._accessor_slot_of(edge_arch, field_name, "setter") is None
+            ) {
+            self.ctx.emit(
+                E5092,
+                node_override=kw,
+                kind="edge attribute",
+                name=field_name or "<field>",
+                help_text="a connect's attribute assignments need an edge type "
+                "whose fields are known at compile time."
+            );
+            return False;
+        }
+        _errs = len(self.ctx.errors_had);
+        value = self._codegen_expr(kw.value);
+        if value is None {
+            if len(self.ctx.errors_had) == _errs {
+                self.ctx.emit(
+                    E5092,
+                    node_override=kw.value,
+                    kind="expression",
+                    name=type(kw.value).__name__
+                );
+            }
+            return False;
+        }
+        self._emit_field_store(
+            kw, edge_obj, edge_arch, field_name, value, value_node=kw.value
+        );
+    }
+    return True;
 }
 
 impl NaIRGenPass._osp_disc_list_operand(expr: (uni.UniNode | None)) -> bool {

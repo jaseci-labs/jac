@@ -3623,10 +3623,11 @@ impl NativeDictEmitter.emit_get(
     p._emit_elem_retain(b, val_type, retained);
     p._release_owned_args(args, op="dict_get_arg");
     p._release_owned_args([target], op="dict_get_receiver");
+    restored = p._restore_dict_read(result, ctx.receiver_node);
     if p._elem_kind(val_type) != "raw" {
-        p._mark_owned(result);
+        p._mark_owned(restored);
     }
-    return result;
+    return restored;
 }
 
 impl NativeDictEmitter.emit_keys(
@@ -3845,7 +3846,7 @@ impl NativeDictEmitter.emit_pop(
     result.add_incoming(popped_val, _found_pred);
     result.add_incoming(default_val, _notfound_pred);
     p._release_owned_args([key], op="dict_method_key");
-    return result;
+    return p._restore_dict_read(result, ctx.receiver_node);
 }
 
 impl NativeDictEmitter.emit_remove(
@@ -3988,7 +3989,7 @@ impl NativeDictEmitter.emit_setdefault(
     result.add_incoming(default_val, notfound_bb);
     p._emit_take_ref(result, op="dict_setdefault_result");
     p._release_owned_args(args, op="dict_setdefault_arg");
-    return result;
+    return p._restore_dict_read(result, ctx.receiver_node);
 }
 
 impl NativeDictEmitter.emit_update(
@@ -4915,22 +4916,85 @@ impl NativeBuiltinEmitter.emit_round(
     if not args {
         return None;
     }
+    if len(args) > 2 {
+        return None;
+    }
     arg_val = args[0];
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
-    if isinstance(arg_val.type, ir.DoubleType) {
-        round_fn = p._get_or_declare_extern(
-            "round", ir.DoubleType(), [ir.DoubleType()]
-        );
-        rounded = b.call(round_fn, [arg_val], name="round.f");
-        return b.fptosi(rounded, i64, name="round.result");
+    f64 = ir.DoubleType();
+
+    rint_fn = p._get_or_declare_extern("rint", f64, [f64]);
+    if len(args) == 1 {
+        if isinstance(arg_val.type, ir.DoubleType) {
+            rounded = b.call(rint_fn, [arg_val], name="round.f");
+            return b.fptosi(rounded, i64, name="round.result");
+        }
+        if isinstance(arg_val.type, ir.IntType) {
+            return arg_val;
+        }
+        return None;
+    }
+    digits = args[1];
+    if not isinstance(digits.type, ir.IntType) {
+        return None;
+    }
+    if isinstance(arg_val.type, ir.IntType) {
+        if isinstance(digits, ir.Constant) and int(digits.constant) >= 0 {
+            return arg_val;
+        }
+        return None;
+    }
+    if not isinstance(arg_val.type, ir.DoubleType) {
+        return None;
     }
 
-    if isinstance(arg_val.type, ir.IntType) {
-        return arg_val;
-    }
-    return None;
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i8p = i8.as_pointer();
+    pow_fn = p._get_or_declare_extern("pow", f64, [f64, f64]);
+    snprintf_fn = p._get_or_declare_extern(
+        "snprintf", i32, [i8p, i64, i8p], var_arg=True
+    );
+    strtod_fn = p._get_or_declare_extern("strtod", f64, [i8p, i8p.as_pointer()]);
+    wide = b.sext(digits, i64, name="round.n") if digits.type.width < 64 else digits;
+    buffer = p._entry_alloca(ir.ArrayType(i8, 720), "round.buf");
+    text = b.bitcast(buffer, i8p, name="round.text");
+    places = b.select(
+        b.icmp_signed(">", wide, ir.Constant(i64, 330), name="round.big"),
+        ir.Constant(i64, 330),
+        wide,
+        name="round.places"
+    );
+    fmt = b.bitcast(p._get_snprintf_fmt("%.*f"), i8p, name="round.fmt");
+    b.call(
+        snprintf_fn,
+        [
+            text,
+            ir.Constant(i64, 720),
+            fmt,
+            b.trunc(places, i32, name="round.prec"),
+            arg_val
+        ],
+        name="round.format"
+    );
+    exact = b.call(
+        strtod_fn, [text, ir.Constant(i8p.as_pointer(), None)], name="round.parse"
+    );
+    negative = b.icmp_signed("<", wide, ir.Constant(i64, 0), name="round.neg");
+    magnitude = b.select(
+        negative, b.neg(wide, name="round.abs"), wide, name="round.mag"
+    );
+    scale = b.call(
+        pow_fn,
+        [ir.Constant(f64, 10.0), b.sitofp(magnitude, f64, name="round.magf")],
+        name="round.scale"
+    );
+    down = b.fdiv(arg_val, scale, name="round.down");
+    rounded = b.call(rint_fn, [down], name="round.rint");
+    restored_down = b.fmul(rounded, scale, name="round.restore.down");
+    return b.select(negative, restored_down, exact, name="round.value");
 }
 
 impl NativeBuiltinEmitter.emit_min(
@@ -5070,25 +5134,44 @@ impl NativeBuiltinEmitter._emit_extreme(
 impl NativeBuiltinEmitter.emit_sum(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if not args {
+    if not args or len(args) > 2 {
         return None;
     }
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
+    f64 = ir.DoubleType();
     list_val = args[0];
 
     helpers: (dict[str, any] | None) = None;
-    elem_key: (str | None) = None;
     for (lk, lt) in p.list_types.items() {
         if list_val.type == lt.as_pointer() {
             helpers = p.list_helpers.get(lk);
-            elem_key = lk;
             break;
         }
     }
     if helpers is None {
         return None;
+    }
+
+    elem_ty = helpers["get"].function_type.return_type;
+    elem_float = isinstance(elem_ty, (ir.DoubleType, ir.FloatType));
+    if not elem_float and not isinstance(elem_ty, ir.IntType) {
+        return None;
+    }
+    start = args[1] if len(args) == 2 else None;
+    start_float = start is not None
+        and isinstance(start.type, (ir.DoubleType, ir.FloatType));
+    if start is not None
+        and not start_float
+        and not isinstance(start.type, ir.IntType) {
+        return None;
+    }
+    use_float = elem_float or start_float;
+    acc_ty = f64 if use_float else i64;
+    initial: ir.Value = ir.Constant(acc_ty, 0.0 if use_float else 0);
+    if start is not None {
+        initial = _sum_operand(b, start, use_float);
     }
     list_len = b.call(helpers["len"], [list_val], name="sum.len");
     func = b.basic_block.function;
@@ -5099,20 +5182,45 @@ impl NativeBuiltinEmitter.emit_sum(
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
     idx = b.phi(i64, name="sum.idx");
-    acc = b.phi(i64, name="sum.acc");
+    acc = b.phi(acc_ty, name="sum.acc");
     idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    acc.add_incoming(ir.Constant(i64, 0), entry_bb);
+    acc.add_incoming(initial, entry_bb);
     at_end = b.icmp_unsigned(">=", idx, list_len, name="sum.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
     elem = b.call(helpers["get"], [list_val, idx], name="sum.elem");
-    new_acc = b.add(acc, elem, name="sum.add");
+    value = _sum_operand(b, elem, use_float);
+    new_acc = b.fadd(acc, value, name="sum.add")
+        if use_float
+        else b.add(acc, value, name="sum.add");
     next_idx = b.add(idx, ir.Constant(i64, 1), name="sum.next");
-    idx.add_incoming(next_idx, body_bb);
-    acc.add_incoming(new_acc, body_bb);
+    body_end = b.basic_block;
+    idx.add_incoming(next_idx, body_end);
+    acc.add_incoming(new_acc, body_end);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
     return acc;
+}
+
+def _sum_operand(b: ir.IRBuilder, value: ir.Value, to_float: bool) -> ir.Value {
+    i64 = ir.IntType(64);
+    f64 = ir.DoubleType();
+    if isinstance(value.type, ir.DoubleType) {
+        return value;
+    }
+    if isinstance(value.type, ir.FloatType) {
+        return b.fpext(value, f64, name="sum.fpext");
+    }
+    wide: ir.Value = value;
+    if isinstance(value.type, ir.IntType) and value.type.width < 64 {
+        wide = b.zext(value, i64, name="sum.zext")
+            if value.type.width == 1
+            else b.sext(value, i64, name="sum.sext");
+    }
+    if to_float {
+        return b.sitofp(wide, f64, name="sum.itof");
+    }
+    return wide;
 }
 
 impl NativeBuiltinEmitter.emit_sorted(

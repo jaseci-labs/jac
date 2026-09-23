@@ -1196,15 +1196,11 @@ impl NaIRGenPass._register_imported_globals(
                 }
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
             }
-            import from jaclang.compiler.frontend.codeinfo {
-                native_library_function_symbol
-            }
+            import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
             global_var = ir.GlobalVariable(
                 self.llvm_module,
                 var_type,
-                name=native_library_function_symbol(source_path, var_name)
-                    if source_path
-                    else var_name
+                name=native_def_symbol(source_path, var_name)
             );
             global_var.linkage = "external";
             self.global_vars[var_name] = global_var;
@@ -1234,12 +1230,12 @@ impl NaIRGenPass._forward_declare_imported_ability(
     private = nd.access is not None and nd.access.tag.name == Tok.KW_PRIV;
 
     if name in self.func_symtab and not private {
-        import from jaclang.compiler.frontend.codeinfo {
-            native_library_function_symbol
+        if declaring_module is None {
+            return;
         }
-        if declaring_module is None
-            or native_library_function_symbol(declaring_module.source.file_path, name)
-                == name {
+        import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
+        _symbol = native_def_symbol(declaring_module.source.file_path, name);
+        if _symbol == name or _symbol in self.llvm_module.globals {
             return;
         }
     }
@@ -1270,6 +1266,8 @@ impl NaIRGenPass._forward_declare_imported_ability(
     self._record_linked_decl(self.func_symtab.get(name), nd);
     if previous is not None {
         self.func_symtab[name] = previous;
+    } elif private {
+        self.func_symtab.pop(name, None);
     }
 }
 

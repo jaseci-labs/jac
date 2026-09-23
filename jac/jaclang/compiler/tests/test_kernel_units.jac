@@ -155,9 +155,9 @@ test "client kernel JS is deterministic and the rebuild is a warm artifact read"
         "osp_register_desc",
         "osp_node_desc",
         "osp_is_a",
-        "WalkerDesc",
-        "NodeDesc",
-        "Slot",
+        "OspWalkerDesc",
+        "OspNodeDesc",
+        "OspSlot",
         "OspRuntime"
     ];
     for nm in driver_names {

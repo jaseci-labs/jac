@@ -107,16 +107,11 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         slot_gv.initializer = ir.Constant(fnty.as_pointer(), None);
         self.decorated_fns[name] = (func, slot_gv, _dec_names, fnty);
     } else {
-        _emit_name = name;
-        import from jaclang.compiler.frontend.codeinfo {
-            native_library_function_symbol
-        }
+        import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
         _def_module = nd.find_parent_of_type(uni.Module);
-        if _def_module is not None {
-            _emit_name = native_library_function_symbol(
-                _def_module.source.file_path, name
-            );
-        }
+        _emit_name = native_def_symbol(
+            _def_module.source.file_path if _def_module is not None else "", name
+        );
         if nd.access
             and nd.access.tag.name == Tok.KW_PRIV
             and nd.find_parent_of_type(uni.Archetype) is None {

@@ -51,7 +51,7 @@ impl NaIRGenPass._osp_edge_tag(
         return None;
     }
     tag = self.builder.load(
-        self._field_slot_ptr(desc, "tag", "EdgeTypeDesc"), name="edge.tag"
+        self._field_slot_ptr(desc, "tag", "OspEdgeTypeDesc"), name="edge.tag"
     );
     if descriptor is None {
         self._emit_rc_release_simple(desc, op="edge_type");

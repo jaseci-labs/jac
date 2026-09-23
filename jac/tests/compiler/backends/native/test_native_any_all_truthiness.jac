@@ -131,3 +131,29 @@ test "boolean comprehensions store results independently of input element types"
         assert answer(eng, "any_empty_comprehension") == 0;
     }
 }
+
+test "and/or comprehensions over boolean operands store booleans" {
+    (_rec, _errors, eng) = measured();
+    for i in range(20) {
+        assert answer(eng, "any_and_field_comparison") == 1;
+        assert answer(eng, "any_and_field_comparison_miss") == 0;
+        assert answer(eng, "all_or_field_comparison") == 1;
+        assert answer(eng, "all_or_field_comparison_miss") == 0;
+        assert answer(eng, "any_and_bool_fields") == 1;
+        assert answer(eng, "all_nested_boolop") == 1;
+        assert answer(eng, "any_not_mixed_boolop") == 1;
+        assert answer(eng, "stored_boolop_count") == 10;
+        assert answer(eng, "any_float_boolop") == 1;
+        assert answer(eng, "all_float_boolop") == 0;
+        assert answer(eng, "any_empty_boolop") == 0;
+        assert answer(eng, "all_empty_boolop") == 1;
+    }
+}
+
+test "and/or comprehensions over non-boolean operands keep operand values" {
+    (_rec, _errors, eng) = measured();
+    for i in range(20) {
+        assert answer(eng, "or_keeps_int_operand") == 73;
+        assert answer(eng, "or_keeps_str_operand") == 1;
+    }
+}
