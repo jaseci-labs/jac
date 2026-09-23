@@ -1737,6 +1737,17 @@ walker NaIRGenPass {
         value_node: (uni.Expr | None) = None
     ) -> None;
 
+    def _emit_field_store(
+        nd: uni.UniNode,
+        obj_val: ir.Value,
+        type_name: str,
+        field_name: str,
+        value: ir.Value,
+        skip_narrow_coerce: bool = False,
+        value_node: (uni.Expr | None) = None,
+        union_parts: (list[str] | None) = None
+    ) -> None;
+
     def _read_field_or_refuse(
         nd: uni.UniNode, obj_val: ir.Value, field_name: str, arch_name: str
     ) -> (ir.Value | None);
@@ -1808,6 +1819,10 @@ walker NaIRGenPass {
     def _codegen_disengage(nd: uni.DisengageStmt) -> None;
     def _codegen_report(nd: uni.ReportStmt) -> None;
     def _codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _osp_connect_assign(
+        co: uni.ConnectOp, edge_obj: ir.Value, edge_arch: (str | None)
+    ) -> bool;
+
     def _codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _osp_disc_list_operand(expr: (uni.UniNode | None)) -> bool;
     def _codegen_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> (ir.Value | None);
