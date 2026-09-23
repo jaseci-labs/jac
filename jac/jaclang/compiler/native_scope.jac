@@ -45,6 +45,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          ),
          NativeScopeEntry(module="jaclang.compiler.expr_keys", strict=True),
          NativeScopeEntry(module="jaclang.project.mobui_scope", strict=True),
+         NativeScopeEntry(module="jaclang.project.source", strict=True),
          NativeScopeEntry(
              module="jaclang.client.targets.react_native.html_tag_map", strict=True
          ),
@@ -58,8 +59,11 @@ def scope_allows_inferred_path(mod_path: str) -> bool {
         native_unit_compile_active,
         native_unit_identity
     }
-    if native_unit_compile_active()
-        and native_unit_identity(mod_path).startswith("jaclang/compiler/") {
+    if not native_unit_compile_active() {
+        return True;
+    }
+    identity = native_unit_identity(mod_path);
+    if identity.startswith("jaclang/") and not identity.startswith("jaclang/runtime/") {
         return in_native_scope_path(mod_path);
     }
     return True;
