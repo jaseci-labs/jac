@@ -18,14 +18,17 @@ remains ahead of it is the mega-arc's own work -- per-node dispatch, and
 retiring the Python shim seat for a generated native transcriber, which
 must conform to the bytes specified here.
 
-Status note (#8732): the native seal, the fused `libjac_compiler` build,
-the pass-serving binder, and the `mat_parse` materializer crossing that
-this document refers to were removed. The compiler modules served natively
-are now listed in `compiler/native_scope.jac`, empty until a native pass
-can share the tree with a bytecode pass. The sealed-lane paragraphs below
-(sections 2, 9 and 11) are the record of what was measured before the
-removal and the precedent the next crossing builds on; the tests and
-waiver tables they name no longer exist.
+Status note (#8732, #8943): the native seal, the fused `libjac_compiler`
+build, the pass-serving binder, and the `mat_parse` materializer crossing
+that this document refers to were removed. The compiler modules the kernel
+links are listed in `compiler/native_scope.jac`; each is an ordinary native
+unit whose interface and object live in its module JIR, and the kernel is
+one link plan over them (`compiler/backends/native/link_plan.jac`,
+resolved by `kernel_resolve.jac`). A one-body edit to a scope module
+relinks the kernel from cached objects instead of rebuilding a fused module
+from cold. The sealed-lane paragraphs below (sections 2, 9 and 11) are the
+record of what was measured before the removal and the precedent the next
+crossing builds on; the tests and waiver tables they name no longer exist.
 
 Note on location: the task brief suggested `docs/community/internals/`; the
 corpus's actual home for internal design docs is `docs/internals/` (beside

@@ -30,6 +30,9 @@ impl build_musl(osarch: str, dest: str, zig_exe: str) {
     ztarget = ztargets[osarch];
 
     make_dirs(dest);
+    if osarch == "linux-aarch64" {
+        build_outline_atomics(dest, zig_exe);
+    }
     have_all = all(file_exists(os.path.join(dest, name)) for name in MUSL_MANDATORY);
     if have_all {
         log(f"==> musl runtime already vendored in {dest}; skipping");
@@ -86,6 +89,103 @@ impl build_musl(osarch: str, dest: str, zig_exe: str) {
     }
 }
 
+impl build_outline_atomics(dest: str, zig_exe: str) {
+    import jaclang;
+    import subprocess;
+    import tempfile;
+    source_root = os.path.join(
+        os.path.dirname(str(jaclang.__file__)),
+        "compiler",
+        "backends",
+        "native",
+        "compiler_rt"
+    );
+    digest_of: dict[str, str] = {};
+    for (cur, dirs, names) in walk_sorted(source_root) {
+        for name in names {
+            source = os.path.join(cur, name);
+            digest_of[os.path.relpath(source, source_root)] = sha256_hex(
+                read_bytes(source)
+            );
+        }
+    }
+    digest_of["toolchain"] = sha256_hex(
+        subprocess.check_output([zig_exe, "version"])
+            + b"aarch64-linux-musl:O2:PIC:DISABLE_AARCH64_FMV:models1-5:v1"
+    );
+    manifest = os.path.join(dest, "ATOMICS.sha256");
+    archive = os.path.join(dest, "libclang_rt.atomics.a");
+    if file_exists(archive) {
+        digest_of["archive"] = sha256_hex(read_bytes(archive));
+        if read_source_manifest(manifest) == digest_of {
+            return;
+        }
+    }
+    make_dirs(dest);
+    log("==> building LLVM AArch64 outline-atomics runtime ...");
+    with tempfile.TemporaryDirectory(prefix=".atomics-", dir=dest) as work {
+        common = [
+            zig_exe,
+            "cc",
+            "-target",
+            "aarch64-linux-musl",
+            "-O2",
+            "-fPIC",
+            "-fno-stack-protector",
+            "-I" + source_root,
+            "-c"
+        ];
+        objects: list[str] = [];
+        for op in ["cas", "swp", "ldadd", "ldclr", "ldeor", "ldset"] {
+            sizes = [1, 2, 4, 8, 16] if op == "cas" else [1, 2, 4, 8];
+            for size in sizes {
+                for model in range(1, 6) {
+                    obj_path = os.path.join(work, f"{op}{size}_{model}.o");
+                    if not run_child(
+                        common
+                            + [
+                                "-DL_" + op,
+                                f"-DSIZE={size}",
+                                f"-DMODEL={model}",
+                                "-DVISIBILITY_HIDDEN",
+                                os.path.join(source_root, "aarch64", "lse.S"),
+                                "-o",
+                                obj_path
+                            ],
+                        None,
+                        False
+                    ) {
+                        die(f"compiler-rt: failed to build {op}{size}_{model}");
+                    }
+                    objects.append(obj_path);
+                }
+            }
+        }
+        cpu = os.path.join(work, "cpu_model.o");
+        if not run_child(
+            common
+                + [
+                    "-DDISABLE_AARCH64_FMV",
+                    os.path.join(source_root, "cpu_model", "aarch64.c"),
+                    "-o",
+                    cpu
+                ],
+            None,
+            False
+        ) {
+            die("compiler-rt: failed to build AArch64 CPU detection");
+        }
+        objects.append(cpu);
+        output = os.path.join(work, "runtime.a");
+        if not run_child([zig_exe, "ar", "rcsD", output] + objects, None, False) {
+            die("compiler-rt: failed to archive AArch64 builtins");
+        }
+        os.replace(output, archive);
+    }
+    digest_of["archive"] = sha256_hex(read_bytes(archive));
+    write_source_manifest(manifest, list(digest_of), digest_of);
+}
+
 impl collect_wasm_sources(src_root: str) -> WasmSources {
     ws = WasmSources(srcs=[], outs=[], rels=[], hdrs=[], hdr_rels=[]);
     if not os.path.isdir(src_root) {
@@ -134,7 +234,7 @@ impl collect_wasm_sources(src_root: str) -> WasmSources {
     return ws;
 }
 
-impl read_wasm_floor_manifest(manifest_path: str) -> dict[str, str] {
+impl read_source_manifest(manifest_path: str) -> dict[str, str] {
     prev: dict[str, str] = {};
     try {
         txt = read_bytes(manifest_path).decode("utf-8", errors="replace");
@@ -150,7 +250,7 @@ impl read_wasm_floor_manifest(manifest_path: str) -> dict[str, str] {
     return prev;
 }
 
-impl write_wasm_floor_manifest(
+impl write_source_manifest(
     manifest_path: str, rels: list[str], digest_of: dict[str, str]
 ) {
     lines: list[str] = [];
@@ -229,7 +329,7 @@ impl build_wasm_libc(src_root: str, dest: str, zig_exe: str) {
     }
 
     manifest_path = os.path.join(dest, WASM_FLOOR_MANIFEST);
-    prev = read_wasm_floor_manifest(manifest_path);
+    prev = read_source_manifest(manifest_path);
 
     hdrs_changed = False;
     for rel in ws.hdr_rels {
@@ -249,7 +349,7 @@ impl build_wasm_libc(src_root: str, dest: str, zig_exe: str) {
         }
     }
     if stale == 0 {
-        write_wasm_floor_manifest(manifest_path, all_rels, digest_of);
+        write_source_manifest(manifest_path, all_rels, digest_of);
         log(f"==> wasm libc bitcode up to date in {dest}; skipping");
         return;
     }
@@ -274,6 +374,6 @@ impl build_wasm_libc(src_root: str, dest: str, zig_exe: str) {
     }
     delete_file(os.path.join(dest, "_merged.bc"));
 
-    write_wasm_floor_manifest(manifest_path, all_rels, digest_of);
+    write_source_manifest(manifest_path, all_rels, digest_of);
     log(f"==> compiled {built} wasm libc bitcode file(s) -> {dest}");
 }

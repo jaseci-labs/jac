@@ -883,7 +883,11 @@ test "separated files" {
         "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")}, "
             + "{\"app\": \"separated\", \"route\": \"/separated\", \"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
         in js_code
-    );
+    ) , js_code;
+    import from tests.compiler.backends.es.codegen_helpers { _js_compile_cache }
+    _js_compile_cache.pop(os.path.abspath(os.path.join(FIXTURES, client_fixture)));
+    warm = compile_fixture_to_js(client_fixture, FIXTURES);
+    assert warm == js_code , "a hydrated walker interface changed the service call";
 }
 
 test "separated defpub generates rpc stubs" {
@@ -1118,23 +1122,21 @@ test "bridged call duplicate kwarg is a compile error" {
     # reported as a compile-time error so the build fails fast rather than
     # silently emitting a JS object with a duplicated key.
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.backends.es { EsastGenPass }
 
     fixture = os.path.join(FIXTURES, "svc_kwargs/sv_import_kwargs_dup.jac");
     prog = JacProgram();
-    ir = prog.compile(file_path=fixture, no_cgen=True);
-    run_pass(EsastGenPass, ir, prog);
+    prog.compile(file_path=fixture, no_cgen=True);
 
     dup_errs = [
         e
         for e in prog.errors_had
-        if "given both positionally and by keyword" in str(e)
+        if e.code is not None and e.code.code == "E1057"
     ];
     assert len(dup_errs) == 1 , (
-        "Expected exactly one E5080 collision diagnostic, got "
+        "Expected exactly one E1057 collision diagnostic, got "
         + str([str(e) for e in prog.errors_had])
     );
-    assert "name" in str(dup_errs[0]) and "greet" in str(dup_errs[0]);
+    assert "name" in str(dup_errs[0]);
 }
 
 test "bridged import nested in a client block emits no dead import" {

@@ -88,7 +88,7 @@ def _context_sections(path: any) -> dict[int, bytes] {
 
 def _project_modules(program: any, `root: any) -> dict[str, uni.Module] {
     result: dict[str, uni.Module] = {};
-    for hub in program._search_hubs() {
+    for hub in program.execution_hubs() {
         for (path, module) in `list(hub.items()) {
             if (module and os.path.realpath(path).startswith((`root + os.sep))) {
                 result[os.path.realpath(path)] = module;
@@ -454,6 +454,7 @@ def prepare_application(
                         program,
                         CompileOptions(
                             default_codespace='server',
+                            skip_native_engine=program.options.skip_native_engine,
                             entry_point=path,
                             project_root=`root
                         )
@@ -675,7 +676,7 @@ def _prepare(
             dependencies[path] = (stat.st_mtime_ns, stat.st_size);
         }
     }
-    for hub in program._search_hubs() {
+    for hub in program.execution_hubs() {
         for path in hub {
             if (
                 os.path.isfile(path)

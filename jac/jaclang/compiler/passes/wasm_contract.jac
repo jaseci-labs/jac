@@ -124,10 +124,13 @@ def check_host_call(call: any, program: JacProgram) -> None {
         return;
     }
     target = ability_of_symbol(call.target.sym);
-    if target is None
-        or not target.loc.mod_path.replace("\\", "/").endswith(
-            "/client/wasm_host.jac"
-        ) {
+    bound = call.target.sym;
+    target_path = (
+        target.loc.mod_path
+            if target is not None
+            else (bound.decl.loc.mod_path if bound is not None else "")
+    );
+    if not target_path.replace("\\", "/").endswith("/client/wasm_host.jac") {
         return;
     }
     if not call.params or len(call.params) != 2 {

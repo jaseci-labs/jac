@@ -28,7 +28,7 @@ carries the coverage.
 import ctypes;
 import os;
 import sys;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -83,7 +83,7 @@ def _cycle_growth(fixture: str, enable: bool, inuse: any) -> int {
     assert eng is not None , f"no native engine for {fixture}";
 
     def _fn(name: str) -> any {
-        addr = eng.get_function_address(name);
+        addr = native_address(eng, name);
         assert addr , f"symbol '{name}' not found in {fixture}";
         return ctypes.CFUNCTYPE(None)(addr);
     }

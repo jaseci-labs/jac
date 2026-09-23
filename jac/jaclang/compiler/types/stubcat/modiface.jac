@@ -7,17 +7,29 @@ glob IFACE_HASH_LEN: int = 64;
 
 class IncoherentInterface(RuntimeError) {
     has mod_path: str,
-        orphans: list[str];
+        orphans: list[str],
+        failures: list[str];
 
-    def init(self: IncoherentInterface, mod_path: str, orphans: list[str]) {
+    def init(
+        self: IncoherentInterface,
+        mod_path: str,
+        orphans: list[str],
+        failures: list[str] | None = None
+    ) {
         RuntimeError.__init__(
             self,
             f"interface of {mod_path} references {len(orphans)} class scope(s) "
             "with no live module: "
                 + ", ".join(orphans)
+                + (
+                    "; type evaluation failed: " + "; ".join(failures)
+                        if failures
+                        else ""
+                )
         );
         self.mod_path = mod_path;
         self.orphans = list(orphans);
+        self.failures = list(failures or []);
     }
 }
 
@@ -35,8 +47,8 @@ def build_module_iface(
     writer.force_all();
     key = mod.loc.mod_path if mod.loc else dotted;
     body = writer.emit(writer.rel_of(key), {});
-    if writer.orphans {
-        raise IncoherentInterface(key, writer.orphans);
+    if writer.orphans or writer.failures {
+        raise IncoherentInterface(key, writer.orphans, writer.failure_log);
     }
     digest = hashlib.sha256(body).hexdigest();
     return digest.encode("utf-8") + body;

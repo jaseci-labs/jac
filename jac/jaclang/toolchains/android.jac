@@ -8,8 +8,9 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.toolchains.host { host_platform, executable, run_step }
 import from jaclang.toolchains.pins { JDK_ARTIFACTS, JDK_VERSION, ANDROID_ARTIFACTS }
+import from jaclang.jac0core.cache_paths { FileLock }
 import from jaclang.cache.registry { bucket }
-import from jaclang.toolchains.store { install, InstallLock, offline }
+import from jaclang.toolchains.store { install, offline }
 
 obj AndroidEnvironment {
     has java_home: Path,
@@ -103,7 +104,7 @@ def ensure_android -> AndroidEnvironment {
     sdk.mkdir(parents=True, exist_ok=True);
     environment = AndroidEnvironment(java, sdk);
     manager_name = "sdkmanager.bat" if os.name == "nt" else "sdkmanager";
-    with InstallLock(sdk / ".jac-sdk.lock") {
+    with FileLock(sdk / ".jac-sdk.lock") {
         manager = sdk / "cmdline-tools" / "latest" / "bin" / manager_name;
         if not manager.is_file() {
             tools = install(artifact, "cmdline-tools/bin/" + manager_name);

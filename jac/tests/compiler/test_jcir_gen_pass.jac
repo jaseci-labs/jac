@@ -67,7 +67,7 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any
 """The same double emission, for a fixture that must be compiled from disk."""
 def dual_compile_file(path: str) -> tuple[any, ...] {
     prog = JacProgram();
-    mod = prog.compile(path, options=CompileOptions(no_ir_cache=True));
+    mod = prog.compile(path, options=CompileOptions());
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
     emitter = run_walker(JcirGenPass, module=mod);

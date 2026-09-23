@@ -15,7 +15,7 @@ accessors, so it only reads back as `11` if properties took no slots.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
@@ -38,14 +38,14 @@ def accessor_engine -> tuple[ExecutionEngine, uni.Module] {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
     eng = ir.gen.native_engine;
-    assert eng is not None , "No native engine produced for accessor_fields.jac";
+    assert isinstance(eng, ExecutionEngine) , "No native engine produced for accessor_fields.jac";
     _ENGINE_MEMO.append((eng, ir, ));
     return (eng, ir);
 }
 
 """Get a ctypes-callable function from the JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(restype, *argtypes)(addr);
 }

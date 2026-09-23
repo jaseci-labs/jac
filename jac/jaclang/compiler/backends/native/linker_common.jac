@@ -54,3 +54,5 @@ def parse_ar_archive(data: bytes) -> list[ArMember];
 def parse_ar_symbol_index(data: bytes) -> dict[str, int];
 
 def select_ar_members(data: bytes, root_undef: list[str]) -> list[ArMember];
+
+def object_undefined_symbols(mem: bytes) -> list[str];

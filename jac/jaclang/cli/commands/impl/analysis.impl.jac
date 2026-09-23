@@ -147,7 +147,6 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             compile_options = CompileOptions(
                 no_cgen=not bool(opts.get("native_coverage")),
                 native_parity=True,
-                force_target_program=True,
                 iface_ok=True,
                 strict_dependencies=True,
                 suppress_codes=list(opts.get("suppress_codes") or []),
@@ -231,7 +230,12 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
         result['success'] = False;
         return result;
     } finally {
-        prog.release_compile_closure(collect=bool(request.get("collect")));
+        if opts.get('closure') {
+            prog._get_compiler().release_compile_state(prog);
+            _CHECK_STATE['prog'] = None;
+        } else {
+            prog.release_compile_closure(collect=bool(request.get("collect")));
+        }
         _maybe_malloc_trim();
     }
 }
@@ -265,12 +269,9 @@ impl check(
     }
     import gc;
     import os;
-    import from jaclang.compiler.driver.compiler { COMPILE_GC_THRESHOLDS }
-    if (
-        not os.environ.get('JAC_GC_NO_COMPILE_BOOST')
-        and gc.get_threshold()[0] < COMPILE_GC_THRESHOLDS[0]
-    ) {
-        gc.set_threshold(*COMPILE_GC_THRESHOLDS);
+    import from jaclang.compiler.driver.compiler { CHECK_GC_THRESHOLDS }
+    if not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
+        gc.set_threshold(*CHECK_GC_THRESHOLDS);
     }
     if isinstance(paths, str) {
         paths = [paths];
@@ -1763,12 +1764,7 @@ impl grammar(output: str = "", strict: bool = False) -> int {
     prog = JacProgram();
     mod = prog.compile(
         parser_path,
-        options=CompileOptions(
-            symtab_ir_only=True,
-            no_cgen=True,
-            need_full_ast=True,
-            force_target_program=True
-        )
+        options=CompileOptions(symtab_ir_only=True, no_cgen=True, need_full_ast=True)
     );
     if prog.errors_had {
         console.error("Failed to compile parser module.");
@@ -1994,9 +1990,7 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
     }
     mod = prog.compile(
         file_path=path,
-        options=CompileOptions(
-            aot_mode=True, default_codespace="native", force_target_program=True
-        )
+        options=CompileOptions(aot_mode=True, default_codespace="native")
     );
     for err in prog.errors_had {
         console.print(err.pretty_print());
