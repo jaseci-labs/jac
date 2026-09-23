@@ -3,6 +3,7 @@ import logging;
 import from jaclang.server.serving.datatypes { Request }
 import from jaclang.server.serving.datatypes { JSONResponse }
 import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
+import from jaclang.scale.models.resource_status { assess_workload }
 import from jaclang.scale.admin.k8s_ops {
     apps_api,
     core_api,
@@ -24,31 +25,11 @@ def _s(v: any) -> str {
 
 
 def _rollout_status(dep: dict[str, any]) -> dict[str, any] {
-    spec: any = dep.get("spec", {}) or {};
-    status: any = dep.get("status", {}) or {};
-    desired = int(spec.get("replicas", 0) or 0);
-    updated = int(status.get("updated_replicas", 0) or 0);
-    available = int(status.get("available_replicas", 0) or 0);
-    conditions: any = status.get("conditions", []) or [];
-
-    for c in conditions {
-        if c.get("type") == "Progressing"
-            and str(c.get("reason", "")) == "ProgressDeadlineExceeded" {
-            return {
-                "status": "stuck",
-                "reason": "ProgressDeadlineExceeded",
-                "message": _s(c.get("message"))
-            };
-        }
-    }
-
-    if updated == desired and available == desired {
-        return {"status": "complete", "reason": "", "message": ""};
-    }
+    health = assess_workload(dep);
     return {
-        "status": "progressing",
-        "reason": "",
-        "message": f"{available}/{desired} available, {updated} updated"
+        "status": health.status.value,
+        "reason": health.reason,
+        "message": _s(health.message)
     };
 }
 

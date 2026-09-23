@@ -26,12 +26,15 @@ impl EsastGenPass._register_jac_runtime_import -> None {
     self._register_jac_virtual_import(self.resolved_backend.runtime_module());
 }
 
-impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
+impl EsastGenPass._inject_runtime_import(
+    name: str, nd: uni.UniNode, src: str = ""
+) -> None {
     import from jaclang.client.client_surface { runtime_import_source }
+    import from jaclang.compiler.backends.es.jac_runtime_js { JAC_PRELUDE_MODULE }
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
-    src = runtime_import_source(name, self.resolved_backend);
+    src = src or runtime_import_source(name, self.resolved_backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)
@@ -44,7 +47,7 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     );
     self.imports.append(import_decl);
     self.injected_imports.add(name);
-    if src.startswith('@jac/') {
+    if src.startswith('@jac/') and (src != JAC_PRELUDE_MODULE) {
         self._register_jac_runtime_import();
     }
 }

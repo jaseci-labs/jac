@@ -75,6 +75,7 @@ def _compile_runtime -> tuple[str, str];
 
 
 def _point_at_staged_runtime(js: str) -> str;
+def _point_at_staged_prelude(js: str) -> str;
 
 def _stub_npm_imports(
     entry_js: str, staged: dict[str, str]

@@ -164,21 +164,21 @@ def _print_deployment_status(status_data: dict[str, any]) -> None {
     }
 
     status_display = {
-        'running': '● Running',
-        'degraded': '◑ Degraded',
-        'pending': '⟳ Pending',
-        'restarting': '↺ Restarting',
-        'failed': '✗ Failed',
+        'active': '● Active',
+        'activating': '⟳ Activating',
+        'deactivating': '⟳ Deactivating',
+        'inactive': '◌ Inactive (scaled to zero)',
+        'degraded': '✗ Degraded',
         'not_deployed': '○ Not Deployed',
         'unknown': '? Unknown',
 
     };
     status_style = {
-        'running': 'bold green',
-        'degraded': 'bold yellow',
-        'pending': 'bold yellow',
-        'restarting': 'bold red',
-        'failed': 'bold red',
+        'active': 'bold green',
+        'activating': 'bold yellow',
+        'deactivating': 'bold yellow',
+        'inactive': 'bold dim',
+        'degraded': 'bold red',
         'not_deployed': 'muted',
         'unknown': 'muted',
 

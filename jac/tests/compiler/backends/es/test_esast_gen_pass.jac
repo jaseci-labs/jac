@@ -6,6 +6,7 @@ import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
 import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
+import from jaclang.compiler.backends.es.jac_runtime_js { build_jac_prelude_module }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
@@ -1132,9 +1133,10 @@ test "unsafe_html builtin emits a raw-HTML marker call" {
         "second call site should be routed through the runtime:\n" + js_code
     );
     # The runtime body returns a marker -- the sentinel key must appear in
-    # the embedded `_jac` prelude so client code can branch on it.
-    assert "__jacUnsafeHtml" in js_code , (
-        "runtime must define the `__jacUnsafeHtml` marker key:\n" + js_code
+    # the shared `@jac/prelude` module so client code can branch on it.
+    prelude = build_jac_prelude_module();
+    assert "__jacUnsafeHtml" in prelude , (
+        "runtime must define the `__jacUnsafeHtml` marker key"
     );
     # The identifier must not be emitted as a string literal.
     assert '"unsafe_html"' not in js_code;
@@ -1230,11 +1232,11 @@ test "unsafe_html marker has the correct shape" {
     # The prelude defines `unsafe_html(html)` that returns
     # `{ __jacUnsafeHtml: String(html == null ? "" : html) }`. Both runtime
     # adapters branch on the `__jacUnsafeHtml` key.
-    assert "unsafe_html(html)" in js_code;
-    assert "__jacUnsafeHtml: String(html" in js_code , (
+    prelude = build_jac_prelude_module();
+    assert "unsafe_html(html)" in prelude;
+    assert "__jacUnsafeHtml: String(html" in prelude , (
         "runtime must coerce the argument with String() so non-string\n"
-        "values (e.g. numbers from a walker) don't blow up:\n"
-        + js_code
+        "values (e.g. numbers from a walker) don't blow up"
     );
 }
 

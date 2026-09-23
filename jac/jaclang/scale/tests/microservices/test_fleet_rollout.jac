@@ -7,6 +7,7 @@ import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
 
 def _cs(
     name: str,
@@ -71,14 +72,15 @@ def _bundle(deploy_name: str, app: str) -> dict[str, any] {
 # A single replica Deployment as the apiserver reports it. "Not ready" is a
 # pod that exists on the current template but has not become available, which
 # is what a starting or crash-looping replica actually looks like.
-def _dep(ready: int) -> object {
+def _dep(ready: int, desired: int = 1, floor: (int | None) = None) -> object {
+    annotations = {REPLICA_FLOOR_ANNOTATION: str(floor)} if floor is not None else None;
     return SimpleNamespace(
-        metadata=SimpleNamespace(generation=1),
-        spec=SimpleNamespace(replicas=1),
+        metadata=SimpleNamespace(generation=1, annotations=annotations),
+        spec=SimpleNamespace(replicas=desired),
         status=SimpleNamespace(
             observed_generation=1,
-            replicas=1,
-            updated_replicas=1,
+            replicas=desired,
+            updated_replicas=desired,
             available_replicas=ready,
             ready_replicas=ready
         )
@@ -184,6 +186,13 @@ test "ready fleet returns without raising" {
     err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 60);
 
     assert err is None , f"ready fleet should not raise: {err}";
+
+    # A service KEDA has idled to zero is settled, not a rollout that never
+    # finished: the gate used to time out on it unless it was HTTP-activated.
+    (apps, core) = _apis(0, []);
+    apps.read_namespaced_deployment.return_value = _dep(0, desired=0, floor=0);
+    err = _run(target, _bundle("worker-deployment", "worker"), apps, core, 60);
+    assert err is None , f"an idle scale-to-zero service should not raise: {err}";
 }
 
 test "multiple image-pull containers do not fail on the first poll" {
