@@ -104,15 +104,9 @@ impl NaIRGenPass._emit_osp_edge_factories -> None {
         try {
             arch = self.arch_ast_map.get(name);
             constructible = arch is not None and self._demoted_init_of(name) is None;
-            init_sig: uni.FuncSignature | None = None;
-            for owner in self._mro_of(name) {
-                init_sig = self._arch_init_sig_of(owner);
-                if init_sig is not None {
-                    break;
-                }
-            }
-            if init_sig is not None {
-                for param in init_sig.get_parameters() {
+            init_params = self._arch_init_params_of(name);
+            if init_params is not None {
+                for param in init_params {
                     if param.value is None {
                         constructible = False;
                     }

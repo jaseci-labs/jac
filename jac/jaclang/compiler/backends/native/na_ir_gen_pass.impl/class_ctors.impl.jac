@@ -99,6 +99,21 @@ impl NaIRGenPass._class_init_owner(type_name: str) -> (str | None) {
     return None;
 }
 
+impl NaIRGenPass._class_takes_no_ctor_args(type_name: str) -> bool {
+    if self._class_init_owner(type_name) is not None
+        or self._pyb_base_of(type_name) is not None
+        or self._is_enum_arch(type_name) {
+        return False;
+    }
+    for cls in self._class_ancestors(type_name) {
+        arch = self.arch_ast_map.get(cls);
+        if not isinstance(arch, uni.Archetype) or arch.arch_type.name != Tok.KW_CLASS {
+            return False;
+        }
+    }
+    return True;
+}
+
 impl NaIRGenPass._class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None) {
     if type_name not in self.struct_types
         or self._is_enum_arch(type_name)
@@ -112,19 +127,13 @@ impl NaIRGenPass._class_ctor_params(type_name: str) -> (list[NativeCtorParam] | 
         init_fn = self.method_funcs.get(f"{owner}.init")
             or self.method_funcs.get(f"{owner}.__init__");
         sig = self._arch_init_sig_of(owner);
+        declared = self._arch_init_params_of(owner);
         if init_fn is None
             or sig is None
+            or declared is None
             or sig.varargs is not None
-            or sig.kwargs is not None {
-            return None;
-        }
-        declared = list(sig.get_parameters());
-        if declared
-            and declared[0].name.sym_name == "self"
-            and len(init_fn.args) == len(declared) {
-            declared = declared[1:];
-        }
-        if len(init_fn.args) != len(declared) + 1 {
+            or sig.kwargs is not None
+            or len(init_fn.args) != len(declared) + 1 {
             return None;
         }
         keyword_only = [id(p) for p in sig.kwonlyargs];
@@ -136,6 +145,9 @@ impl NaIRGenPass._class_ctor_params(type_name: str) -> (list[NativeCtorParam] | 
                 positional=id(p) not in keyword_only
             ) for (i, p) in enumerate(declared)
         ];
+    }
+    if self._class_takes_no_ctor_args(type_name) {
+        return [];
     }
     layout = self._arch_layout(type_name);
     if layout is None {

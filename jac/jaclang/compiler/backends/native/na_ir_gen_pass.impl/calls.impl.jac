@@ -191,19 +191,33 @@ impl NaIRGenPass._callee_sig_of(
 }
 
 impl NaIRGenPass._arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None) {
-    arch = self.arch_ast_map.get(type_name);
-    if not isinstance(arch, uni.Archetype) or arch.body is None {
-        return None;
-    }
-    for stmt in arch.body {
-        if isinstance(stmt, uni.Ability)
-            and stmt.name_ref is not None
-            and stmt.name_ref.sym_name in ("init", "__init__")
-            and isinstance(stmt.signature, uni.FuncSignature) {
-            return stmt.signature;
+    for cls in self._mro_of(type_name) {
+        arch = self.arch_ast_map.get(cls);
+        if not isinstance(arch, uni.Archetype) or arch.body is None {
+            continue;
+        }
+        for stmt in arch.body {
+            if isinstance(stmt, uni.Ability)
+                and stmt.name_ref is not None
+                and stmt.name_ref.sym_name in ("init", "__init__")
+                and isinstance(stmt.signature, uni.FuncSignature) {
+                return stmt.signature;
+            }
         }
     }
     return None;
+}
+
+impl NaIRGenPass._arch_init_params_of(type_name: str) -> (list[uni.ParamVar] | None) {
+    sig = self._arch_init_sig_of(type_name);
+    if sig is None {
+        return None;
+    }
+    params = sig.get_parameters();
+    if params and params[0].name is not None and params[0].name.sym_name == "self" {
+        return params[1:];
+    }
+    return params;
 }
 
 impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {

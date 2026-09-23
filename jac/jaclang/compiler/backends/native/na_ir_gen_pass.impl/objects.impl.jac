@@ -1916,10 +1916,22 @@ impl NaIRGenPass._codegen_instantiation(
     params = ctor_params
         if ctor_params is not None
         else ((nd.params or []) if isinstance(nd, uni.FuncCall) else []);
-    _has_init = (
-        f"{type_name}.init" in self.method_funcs
-        or f"{type_name}.__init__" in self.method_funcs
-    );
+    _has_init = self._class_init_owner(type_name) is not None;
+    if params and self._class_takes_no_ctor_args(type_name) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="constructor call",
+            name=type_name,
+            help_text=(
+                f"'{type_name}' is a `class` archetype with no initializer, so "
+                f"like a Python class it takes no constructor arguments; its "
+                f"`has` fields do not become constructor parameters. Declare "
+                f"`def init(...)` or make it an `obj`."
+            )
+        );
+        return None;
+    }
     _pos_field_pairs: list[tuple[str, uni.UniNode]] = [];
     if not _has_init {
         _pos_args = [
@@ -2124,11 +2136,11 @@ impl NaIRGenPass._codegen_instantiation(
 
     set_fields: set[str] = set();
     _field_inits: list[tuple[str, uni.UniNode | ir.Value]] = list(_pos_field_pairs);
-    if ctor_values is not None and self._class_init_owner(type_name) is None {
+    if ctor_values is not None and not _has_init {
         _field_inits.extend(ctor_values.items());
     }
     for param in params {
-        if isinstance(param, uni.KWPair) {
+        if isinstance(param, uni.KWPair) and not _has_init {
             _kn = param.key.sym_name if param.key else None;
             if _kn is not None {
                 _field_inits.append((_kn, param.value));
@@ -2345,8 +2357,8 @@ impl NaIRGenPass._codegen_instantiation(
     }
     if init_fn is not None {
         init_args: list[ir.Value] = [obj_ptr];
-        init_sig = self._arch_init_sig_of(_init_owner);
-        if init_sig is not None {
+        _sig_params = self._arch_init_params_of(_init_owner);
+        if _sig_params is not None {
             _init_pos: list[uni.Expr] = [];
             _init_kw: dict[str, uni.Expr] = {};
             for param in params {
@@ -2359,7 +2371,6 @@ impl NaIRGenPass._codegen_instantiation(
                     _init_pos.append(param);
                 }
             }
-            _sig_params = init_sig.get_parameters();
             for (pix, sp) in enumerate(_sig_params) {
                 _slot = 1 + pix;
                 _expected = init_fn.args[_slot].type

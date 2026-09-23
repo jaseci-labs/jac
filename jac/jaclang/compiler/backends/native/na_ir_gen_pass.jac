@@ -781,6 +781,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (uni.FuncSignature | None);
 
     def _arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None);
+    def _arch_init_params_of(type_name: str) -> (list[uni.ParamVar] | None);
     def _codegen_call_args(nd: uni.FuncCall) -> list[ir.Value];
     def _coerce_narrowed_arg(
         nd: (uni.UniNode | None), val: (ir.Value | None)
@@ -1927,6 +1928,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _class_ancestors(type_name: str) -> list[str];
     def _class_init_owner(type_name: str) -> (str | None);
+    def _class_takes_no_ctor_args(type_name: str) -> bool;
     def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
     def _class_ctor_fn_type(params: list[NativeCtorParam]) -> ir.FunctionType;
     def _is_runtime_class_value(target: (uni.UniNode | None)) -> bool;
