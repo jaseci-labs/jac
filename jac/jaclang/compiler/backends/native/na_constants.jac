@@ -66,3 +66,5 @@ glob LIVE_NODE_ID_OFF: int = 0,
      LIVE_NODE_RC_OFF: int = 24,
      LIVE_NODE_NEXT_OFF: int = 32,
      LIVE_NODE_SIZE: int = 40;
+
+glob NATIVE_CONTAINER_CODES: dict[str, str] = {"dict": "natdict", "set": "natset"};

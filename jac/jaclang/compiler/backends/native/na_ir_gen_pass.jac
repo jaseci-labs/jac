@@ -78,6 +78,7 @@ import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_SIZE,
     LIVE_NODE_TAG_OFF,
     LIVE_NODE_USER_OFF,
+    NATIVE_CONTAINER_CODES,
     NATIVE_OS_FUNCS,
     NATIVE_OSPATH_FUNCS,
     NATIVE_RANDOM_FUNCS,
@@ -90,6 +91,20 @@ import from jaclang.compiler.backends.native.na_constants {
     RC_COLOR_SHIFT,
     RC_COLOR_WHITE,
     RC_CYCLE_THRESHOLD
+}
+
+def _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None) {
+    if not isinstance(semantic, UnionType) {
+        return semantic;
+    }
+    present = [
+        member
+        for member in semantic.types
+        if not (
+            isinstance(member, ClassType) and member.shared.class_name == "NoneType"
+        )
+    ];
+    return present[0] if len(present) == 1 else None;
 }
 
 obj NativeFinalizer {

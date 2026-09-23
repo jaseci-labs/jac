@@ -18,7 +18,10 @@ glob CODE_INT: int = 1,
      CODE_UNION: int = 8,
      CODE_OPTENUM: int = 9,
      CODE_NATDICT: int = 10,
-     CODE_SHAPES: int = 11;
+     CODE_SHAPES: int = 11,
+     CODE_NATSET: int = 13,
+     CODE_OPTSTR: int = 14,
+     CODE_OPTLIST: int = 15;
 
 glob SHAPES_FIELD: str = "_role_shapes";
 
@@ -224,8 +227,11 @@ class NativeCompiler {
                 enum_h = self._hold(table);
             } elif code == "natlist" {
                 nat_code = CODE_NATLIST;
-            } elif code == "natdict" {
-                nat_code = CODE_NATDICT;
+                if "schema" in f {
+                    aux_tag = self._register_value(f["schema"]);
+                }
+            } elif code in ("natdict", "natset") {
+                nat_code = CODE_NATDICT if code == "natdict" else CODE_NATSET;
                 aux_tag = self._register_value(f["schema"]);
             } elif code == "union" {
                 nat_code = CODE_UNION;
@@ -236,6 +242,16 @@ class NativeCompiler {
             } elif code == "optref" and fname == SHAPES_FIELD {
                 nat_code = CODE_SHAPES;
                 aux_tag = self._shapes_layout(aux);
+            } elif code == "optref" and aux not in self.layout {
+                payload = f.get("schema", {}).get("code");
+                if payload == "str" {
+                    nat_code = CODE_OPTSTR;
+                } elif payload == "list" {
+                    nat_code = CODE_OPTLIST;
+                    aux_tag = self._register_value(f["schema"]);
+                } else {
+                    continue;
+                }
             } elif code in ("optref", "obj") {
                 if code == "obj" and aux == "" {
                     nat_code = CODE_OBJ;
@@ -280,7 +296,8 @@ class NativeCompiler {
             "str": CODE_STR,
             "obj": CODE_OBJ,
             "list": CODE_NATLIST,
-            "dict": CODE_NATDICT
+            "dict": CODE_NATDICT,
+            "set": CODE_NATSET
         };
         fn = self.lib.jc_reg_value;
         fn.argtypes = [c_int64] * 7;

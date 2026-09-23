@@ -12,6 +12,7 @@ import from c { def PyDict_New -> int;  }
 import from c { def PyDict_SetItem(d: int, k: int, v: int) -> int;  }
 import from c { def PyDict_GetItem(d: int, k: int) -> int;  }
 import from c { def PySet_New(i: int) -> int;  }
+import from c { def PySet_Add(s: int, v: int) -> int;  }
 import from c { def PyWeakref_NewRef(o: int, cb: int) -> int;  }
 import from c { def Py_IncRef(o: int) -> int;  }
 import from c { def Py_DecRef(o: int) -> int;  }
@@ -32,7 +33,10 @@ glob CODE_SKIP: int = 0,
      CODE_OPTENUM: int = 9,
      CODE_NATDICT: int = 10,
      CODE_SHAPES: int = 11,
-     CODE_DEFAULT: int = 12;
+     CODE_DEFAULT: int = 12,
+     CODE_NATSET: int = 13,
+     CODE_OPTSTR: int = 14,
+     CODE_OPTLIST: int = 15;
 
 glob DEFAULT_NONE: int = 0,
      DEFAULT_LIST: int = 1,
@@ -172,7 +176,7 @@ def jc_mz_shape_keys(probe: int) {
     layout = _VALUES[_K.shapes_layout];
     keys = _ld64(probe + layout.key_off);
     order = _ld64(probe + layout.order_off);
-    extent = _dict_order_extent(probe, order);
+    extent = _hash_order_extent(probe, order);
     found: list[int] = [];
     i = 0;
     while i < extent {
@@ -270,13 +274,34 @@ def _nlist_len(l: int) -> int {
     return _ld64(l);
 }
 
+def _seq_element_tag(layout: int) -> int {
+    if layout not in _VALUES {
+        return 0;
+    }
+    child = _VALUES[layout].child;
+    if child in _VALUES and _VALUES[child].code == CODE_OBJ {
+        return _VALUES[child].tag;
+    }
+    return -1;
+}
+
 def _plan_row(row: ClassRow, src: FieldRow, slot_default: int) {
+    aux = src.aux_tag;
+    flags = src.flags;
+    if src.code == CODE_NATLIST or src.code == CODE_OPTLIST {
+        element_tag = _seq_element_tag(aux);
+        if element_tag >= 0 {
+            aux = element_tag;
+        } else {
+            flags = 1;
+        }
+    }
     row.plan.append(src.key_h);
     row.plan.append(src.code);
     row.plan.append(src.off);
-    row.plan.append(src.aux_tag);
+    row.plan.append(aux);
     row.plan.append(src.enum_h);
-    row.plan.append(src.flags);
+    row.plan.append(flags);
     row.plan.append(slot_default);
 }
 
@@ -352,8 +377,28 @@ def _enqueue(m: Mz, h: int, hint: int) {
     }
 }
 
-def _dict_order_extent(h: int, order: int) -> int {
+def _hash_order_extent(h: int, order: int) -> int {
     return _ld64(order + _ld64(h + 8) * 16);
+}
+
+def _hashed(code: int) -> bool {
+    return code == CODE_NATDICT or code == CODE_NATSET;
+}
+
+def _container_order(h: int, row: ValueRow) -> int {
+    return _ld64(h + row.order_off) if _hashed(row.code) else 0;
+}
+
+def _container_extent(h: int, row: ValueRow, order: int) -> int {
+    return _hash_order_extent(h, order) if _hashed(row.code) else _ld64(h);
+}
+
+def _container_slot(row: ValueRow, order: int, i: int) -> int {
+    return _ld64(order + i * 8) if _hashed(row.code) else i;
+}
+
+def _container_items(h: int, row: ValueRow) -> int {
+    return _ld64(h + (row.key_off if row.code == CODE_NATSET else row.data_off));
 }
 
 def _enqueue_value(m: Mz, h: int, layout: int) {
@@ -363,17 +408,14 @@ def _enqueue_value(m: Mz, h: int, layout: int) {
     row = _VALUES[layout];
     if row.code == CODE_OBJ {
         _enqueue(m, h, row.tag);
-    } elif row.code == CODE_NATLIST or row.code == CODE_NATDICT {
-        n = _ld64(h);
-        data = _ld64(h + row.data_off);
-        order = _ld64(h + row.order_off) if row.code == CODE_NATDICT else 0;
-        extent = _dict_order_extent(h, order) if row.code == CODE_NATDICT else n;
-        for i in range(extent) {
-            slot = _ld64(order + i * 8) if row.code == CODE_NATDICT else i;
-            if slot < 0 {
-                continue;
+    } elif row.code == CODE_NATLIST or _hashed(row.code) {
+        order = _container_order(h, row);
+        items = _container_items(h, row);
+        for i in range(_container_extent(h, row, order)) {
+            slot = _container_slot(row, order, i);
+            if slot >= 0 {
+                _enqueue_value(m, _ld64(items + slot * 8), row.child);
             }
-            _enqueue_value(m, _ld64(data + slot * 8), row.child);
         }
     }
 }
@@ -406,22 +448,31 @@ def _copy_value(m: Mz, h: int, layout: int) -> int {
     if row.code == CODE_STR {
         return _str(m, h);
     }
-    n = _ld64(h);
-    data = _ld64(h + row.data_off);
-    out = PyDict_New() if row.code == CODE_NATDICT else PyList_New(n);
+    order = _container_order(h, row);
+    items = _container_items(h, row);
+    extent = _container_extent(h, row, order);
     keys = _ld64(h + row.key_off) if row.code == CODE_NATDICT else 0;
-    order = _ld64(h + row.order_off) if row.code == CODE_NATDICT else 0;
-    extent = _dict_order_extent(h, order) if row.code == CODE_NATDICT else n;
+    out = 0;
+    if row.code == CODE_NATDICT {
+        out = PyDict_New();
+    } elif row.code == CODE_NATSET {
+        out = PySet_New(0);
+    } else {
+        out = PyList_New(extent);
+    }
     for i in range(extent) {
-        slot = _ld64(order + i * 8) if row.code == CODE_NATDICT else i;
+        slot = _container_slot(row, order, i);
         if slot < 0 {
             continue;
         }
-        value = _copy_value(m, _ld64(data + slot * 8), row.child);
+        value = _copy_value(m, _ld64(items + slot * 8), row.child);
         if row.code == CODE_NATDICT {
             key = _str(m, _ld64(keys + slot * 8));
             PyDict_SetItem(out, key, value);
             Py_DecRef(key);
+            Py_DecRef(value);
+        } elif row.code == CODE_NATSET {
+            PySet_Add(out, value);
             Py_DecRef(value);
         } else {
             PyList_SetItem(out, i, value);
@@ -517,6 +568,24 @@ def _copy_list(m: Mz, o: int, k: int, hint: int, p: int) {
     Py_DecRef(pl);
 }
 
+def _defer_container(
+    m: Mz, o: int, k: int, value: int, layout: int, slot_default: int
+) {
+    if slot_default >= 0 {
+        PyObject_SetAttr(o, k, _K.none_h);
+    }
+    m.containers.append(ContainerCopy(o, k, value, layout));
+    _enqueue_value(m, value, layout);
+}
+
+def _copy_seq(m: Mz, o: int, k: int, p: int, aux: int, flags: int, slot_default: int) {
+    if flags == 0 or p == 0 {
+        _copy_list(m, o, k, aux if flags == 0 else 0, p);
+    } else {
+        _defer_container(m, o, k, p, aux, slot_default);
+    }
+}
+
 def _str_is(p: int, word: int, n: int) -> bool {
     i = 0;
     while i <= n {
@@ -551,7 +620,7 @@ def _copy_shapes(o: int, k: int, layout_id: int, slot_default: int, a: int) {
     keys = _ld64(nd + layout.key_off);
     data = _ld64(nd + layout.data_off);
     order = _ld64(nd + layout.order_off);
-    extent = _dict_order_extent(nd, order);
+    extent = _hash_order_extent(nd, order);
     body = 0;
     spec = 0;
     acc = 0;
@@ -630,7 +699,25 @@ def _apply_plan(m: Mz, row: ClassRow, h: int, o: int) {
         } elif code == CODE_DEFAULT {
             _set_default(o, k, plan[i + P_AUX]);
         } elif code == CODE_NATLIST {
-            _copy_list(m, o, k, plan[i + P_AUX], _ld64(a));
+            _copy_seq(
+                m, o, k, _ld64(a), plan[i + P_AUX], plan[i + P_FLAGS], plan[i + P_SLOT]
+            );
+        } elif code == CODE_OPTSTR {
+            p = _ld64(a + 8);
+            if _ld8(a) != 0 and p != 0 {
+                _set_fresh(o, k, _str(m, p));
+            } else {
+                PyObject_SetAttr(o, k, _K.none_h);
+            }
+        } elif code == CODE_OPTLIST {
+            p = _ld64(a + 8);
+            if _ld8(a) != 0 and p != 0 {
+                _copy_seq(
+                    m, o, k, p, plan[i + P_AUX], plan[i + P_FLAGS], plan[i + P_SLOT]
+                );
+            } else {
+                PyObject_SetAttr(o, k, _K.none_h);
+            }
         } elif code == CODE_ENUM {
             _set_enum(o, k, plan[i + P_ENUM], _ld64(a));
         } elif code == CODE_SHAPES {
@@ -643,15 +730,11 @@ def _apply_plan(m: Mz, row: ClassRow, h: int, o: int) {
             } else {
                 PyObject_SetAttr(o, k, _K.none_h);
             }
-        } elif code == CODE_NATDICT {
+        } elif _hashed(code) {
             value = _ld64(a);
             slot_default = plan[i + P_SLOT];
             if value != 0 {
-                if slot_default >= 0 {
-                    PyObject_SetAttr(o, k, _K.none_h);
-                }
-                m.containers.append(ContainerCopy(o, k, value, plan[i + P_AUX]));
-                _enqueue_value(m, value, plan[i + P_AUX]);
+                _defer_container(m, o, k, value, plan[i + P_AUX], slot_default);
             } elif slot_default >= 0 {
                 _set_default(o, k, slot_default);
             }

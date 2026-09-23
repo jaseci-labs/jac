@@ -15,7 +15,7 @@ test "string fields retain their schema while foreign pointers remain opaque" {
     try {
         module = program.compile(
             file_path="materialization_fields.jac",
-            use_str="import ast; obj Parent { has name: str; } obj Child(Parent) { has file_path: str; has foreign: ast.AST | None = None; } def make -> Child { return Child(name=\"name\", file_path=\"file.jac\"); }",
+            use_str="import ast; obj Parent { has name: str; } obj Child(Parent) { has file_path: str; has foreign: ast.AST | None = None; has tags: set[str] = set(); } def make -> Child { return Child(name=\"name\", file_path=\"file.jac\"); }",
             options=CompileOptions(
                 force_codespace="native",
                 force_target_program=True,
@@ -30,12 +30,16 @@ test "string fields retain their schema while foreign pointers remain opaque" {
         assert classes["Child"]["fields"]["name"]["code"] == "str";
         assert classes["Child"]["fields"]["file_path"]["code"] == "str";
         assert classes["Child"]["fields"]["foreign"]["code"] == "opaque";
+        tags = classes["Child"]["fields"]["tags"];
+        assert tags["code"] == "natset";
+        assert tags["schema"]["code"] == "set";
+        assert tags["schema"]["element"] == {"code": "str"};
     } finally {
         deactivate_scope_lowering();
     }
 }
 
-test "materialization skips deleted native dictionary entries and preserves order" {
+test "materialization skips deleted native hash entries and preserves dictionary order" {
     import ctypes;
     import os;
     import sys;
@@ -76,6 +80,13 @@ test "materialization skips deleted native dictionary entries and preserves orde
                 object_schema["order_offset"]
             )
                 == 1;
+            set_schema = fields["names"]["schema"];
+            copy_set = library.copy_sparse_set;
+            copy_set.restype = ctypes.py_object;
+            copy_set.argtypes = [ctypes.c_int64, ctypes.c_int64];
+            copied = copy_set(set_schema["key_offset"], set_schema["order_offset"]);
+            assert isinstance(copied, set);
+            assert copied == {"one", "three", "four"};
         }
     } finally {
         deactivate_scope_lowering();
