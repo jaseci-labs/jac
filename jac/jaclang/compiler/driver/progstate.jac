@@ -20,12 +20,11 @@ obj ModuleHub {
 
     def stamp(resolved_path: str) {
         import time;
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
         import from jaclang.compiler.frontend.host { active_host }
         seen = time.time();
         try {
             seen = max(seen, os.path.getmtime(resolved_path));
-            for related in discover_annex_files(resolved_path) {
+            for related in active_host().annex_files(resolved_path) {
                 seen = max(seen, os.path.getmtime(related));
             }
             wiring = active_host().wiring_file(resolved_path);
@@ -38,7 +37,6 @@ obj ModuleHub {
 
     def is_fresh(resolved_path: str) -> bool {
         import os;
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
         import from jaclang.compiler.frontend.host { active_host }
         cached_at = self.stamps.get(resolved_path);
         if cached_at is None {
@@ -48,7 +46,7 @@ obj ModuleHub {
             if os.path.getmtime(resolved_path) > cached_at {
                 return False;
             }
-            for related in discover_annex_files(resolved_path) {
+            for related in active_host().annex_files(resolved_path) {
                 if os.path.getmtime(related) > cached_at {
                     return False;
                 }
@@ -239,13 +237,13 @@ obj DiagLedger {
 
     def _owned(alert: Alert, path: str) -> bool {
         import os;
-        import from jaclang.jac0core.ext_registry { is_annex_path_of }
+        import from jaclang.compiler.frontend.host { active_host }
         try {
             norm = os.path.realpath(path);
         } except OSError {
             return False;
         }
-        return alert.owner == norm or is_annex_path_of(alert.owner, norm);
+        return alert.owner == norm or active_host().is_annex_path_of(alert.owner, norm);
     }
 
     def clear {

@@ -350,22 +350,11 @@ impl MTIRGenPass._extract_method_info(
 }
 
 impl MTIRGenPass._get_scope_str(nd: UniScopeNode) -> str {
-    import from jaclang.jac0core.ext_registry { STEM_REKEY_SUFFIXES }
-
     if isinstance(nd, Module) {
         mod_path = nd.loc.mod_path;
         if mod_path {
-            path = Path(mod_path);
-
-            stem = path.stem;
-
-            for suf in STEM_REKEY_SUFFIXES {
-                if stem.endswith(suf) {
-                    stem = stem[:-len(suf)];
-                    break;
-                }
-            }
-            return stem;
+            import from jaclang.compiler.frontend.host { active_host }
+            return active_host().path_facts(mod_path).scope_stem;
         }
 
         return nd.scope_name;

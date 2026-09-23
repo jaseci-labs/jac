@@ -36,6 +36,14 @@ obj ProjectDefaults {
         check: CheckSettings;
 }
 
+obj PathFacts {
+    has is_jac: bool = False,
+        is_annex: bool = False,
+        retired_marker: str = "",
+        module_stem: str = "",
+        scope_stem: str = "";
+}
+
 obj LintSettings {
     has check: CheckSettings,
         exclude: list[str] = [],
@@ -128,6 +136,26 @@ obj HostServices {
     }
 
     def note(message: str) {}
+    def path_facts(path: str) -> PathFacts {
+        return PathFacts();
+    }
+
+    def annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
+        return [];
+    }
+
+    def base_file(annex_path: str) -> (str | None) {
+        return None;
+    }
+
+    def is_annex_path_of(candidate: str, base: str) -> bool {
+        return False;
+    }
+
+    def package_init(directory: str) -> (str | None) {
+        return None;
+    }
+
     def wiring_file(path: str) -> (str | None) {
         return None;
     }

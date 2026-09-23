@@ -1466,8 +1466,8 @@ impl Module.annexable_by.getter -> (str | None) {
     if self.stub_only {
         return None;
     }
-    import from jaclang.compiler.driver.bccache { discover_base_file }
-    return discover_base_file(self.loc.mod_path);
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().base_file(self.loc.mod_path);
 }
 
 impl ProgramModule.postinit -> None {
@@ -1610,23 +1610,23 @@ impl Import.is_jac.getter -> bool {
 }
 
 impl Import.__jac_detected.getter -> bool {
-    import from jaclang.jac0core.ext_registry { is_jac, INIT_FILES }
+    import from jaclang.compiler.frontend.host { active_host }
+    host = active_host();
     if self.from_loc {
-        if is_jac(self.from_loc.resolve_relative_path()) {
+        target = self.from_loc.resolve_relative_path();
+        if host.path_facts(target).is_jac {
             return True;
         }
-        if os.path.isdir(self.from_loc.resolve_relative_path()) {
-            for init_name in INIT_FILES {
-                if os.path.exists(
-                    os.path.join(self.from_loc.resolve_relative_path(), init_name)
-                ) {
-                    return True;
-                }
+        if os.path.isdir(target) {
+            if host.package_init(target) is not None {
+                return True;
             }
             for i in self.items {
                 if (
                     isinstance(i, ModuleItem)
-                    and is_jac(self.from_loc.resolve_relative_path(i.name.value))
+                    and host.path_facts(
+                        self.from_loc.resolve_relative_path(i.name.value)
+                    ).is_jac
                 ) {
                     return True;
                 }
@@ -1634,8 +1634,10 @@ impl Import.__jac_detected.getter -> bool {
         }
     }
     return `any(
-        (isinstance(i, ModulePath) and is_jac(i.resolve_relative_path()))
-        for i in self.items
+        (
+            isinstance(i, ModulePath)
+            and host.path_facts(i.resolve_relative_path()).is_jac
+        ) for i in self.items
     );
 }
 

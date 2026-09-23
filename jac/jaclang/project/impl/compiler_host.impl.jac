@@ -327,3 +327,64 @@ impl ProjectHost.resolve_local_module(
     import from jaclang.project.modresolver { resolve_local_module }
     return resolve_local_module(base, parts);
 }
+
+impl ProjectHost.path_facts(path: str) -> PathFacts {
+    import os;
+    import from jaclang.jac0core.ext_registry {
+        STEM_REKEY_SUFFIXES,
+        base_stem,
+        is_annex,
+        is_jac,
+        is_retired_client_marker,
+        is_retired_native_marker
+    }
+    marker = "";
+    if is_retired_native_marker(path) {
+        marker = "native";
+    } elif is_retired_client_marker(path) {
+        marker = "client";
+    }
+    name = os.path.basename(path);
+    dot = name.rfind(".");
+    stem = name[:dot] if dot > 0 else name;
+    for suffix in STEM_REKEY_SUFFIXES {
+        if stem.endswith(suffix) {
+            stem = stem[:-len(suffix)];
+            break;
+        }
+    }
+    return PathFacts(
+        is_jac=is_jac(path),
+        is_annex=is_annex(path),
+        retired_marker=marker,
+        module_stem=base_stem(path),
+        scope_stem=stem
+    );
+}
+
+impl ProjectHost.annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
+    import from jaclang.compiler.driver.bccache { discover_annex_files }
+    return discover_annex_files(path, suffix);
+}
+
+impl ProjectHost.base_file(annex_path: str) -> (str | None) {
+    import from jaclang.compiler.driver.bccache { discover_base_file }
+    return discover_base_file(annex_path);
+}
+
+impl ProjectHost.is_annex_path_of(candidate: str, base: str) -> bool {
+    import from jaclang.jac0core.ext_registry { is_annex_path_of }
+    return is_annex_path_of(candidate, base);
+}
+
+impl ProjectHost.package_init(directory: str) -> (str | None) {
+    import os;
+    import from jaclang.jac0core.ext_registry { INIT_FILES }
+    for name in INIT_FILES {
+        candidate = os.path.join(directory, name);
+        if os.path.exists(candidate) {
+            return candidate;
+        }
+    }
+    return None;
+}

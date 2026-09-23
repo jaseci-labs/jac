@@ -1346,11 +1346,11 @@ impl JacAutoLintPass._base_decl_archetypes(annex_path: str) -> list[uni.Archetyp
         return self._base_decl_cache;
     }
     self._base_decls_loaded = True;
-    import from jaclang.compiler.driver.bccache { discover_base_file }
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.frontend.parser { parse as rd_parse }
     import from jaclang.project.source { read_file_with_encoding }
     import from jaclang.compiler.driver.program { JacProgram }
-    base_path = discover_base_file(annex_path);
+    base_path = active_host().base_file(annex_path);
     if base_path is None {
         return self._base_decl_cache;
     }
@@ -2429,7 +2429,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
     }
     consumer = spec.module_name(own_path);
     if consumer is None {
-        head = discover_base_file(own_path);
+        head = active_host().base_file(own_path);
         consumer = spec.module_name(head) if head else None;
     }
     if consumer is None or not spec.is_sealed(consumer) {

@@ -4,6 +4,7 @@ import from jaclang.compiler.frontend.host {
     CheckSettings,
     HostServices,
     LintSettings,
+    PathFacts,
     ProjectDefaults,
     ProjectFacts,
     install_host
@@ -52,6 +53,11 @@ obj ProjectHost(HostServices) {
 
     def native_pipeline_available -> tuple[bool, str];
     def note(message: str);
+    def path_facts(path: str) -> PathFacts;
+    def annex_files(path: str, suffix: str = ".impl.jac") -> list[str];
+    def base_file(annex_path: str) -> (str | None);
+    def is_annex_path_of(candidate: str, base: str) -> bool;
+    def package_init(directory: str) -> (str | None);
     def wiring_file(path: str) -> (str | None);
     def native_parse(
         source_str: str,

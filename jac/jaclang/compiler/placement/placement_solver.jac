@@ -53,11 +53,11 @@ def _native_dep_scan(
     if module_native_demoted(os.path.realpath(path)) {
         return ("previously-demoted", []);
     }
-    import from jaclang.compiler.driver.bccache { discover_annex_files }
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.frontend.parser { parse as rd_parse }
     files = [path]
-        + discover_annex_files(path, '.impl.jac')
-        + discover_annex_files(path, '.test.jac');
+        + active_host().annex_files(path, '.impl.jac')
+        + active_host().annex_files(path, '.test.jac');
     fresh_parts: list[tuple[str, int, int]] = [];
     for f in files {
         try {

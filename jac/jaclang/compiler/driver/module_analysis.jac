@@ -105,14 +105,10 @@ obj ModuleAnalysis {
             or str(self.path).endswith('.py')
             or (self.module is not None and self.module.stub_only)
             or (self.module is not None and self.module.is_raised_from_py);
-        import from jaclang.jac0core.ext_registry { is_annex as _cc_is_annex }
-        _annex_of_base = False;
-        if _cc_is_annex(self.path) {
-            import from jaclang.compiler.driver.bccache {
-                discover_base_file as _cc_base_file
-            }
-            _annex_of_base = _cc_base_file(str(self.path)) is not None;
-        }
+        import from jaclang.compiler.frontend.host { active_host }
+        host = active_host();
+        _annex_of_base = host.path_facts(self.path).is_annex
+            and host.base_file(str(self.path)) is not None;
         _analyze = self.full_head
             and not _is_decl_stub
             and not _annex_of_base

@@ -1,6 +1,5 @@
 import fnmatch;
 import os;
-import from jaclang.jac0core.ext_registry { base_stem }
 
 glob VALID_SPACES: tuple[str, ...] = ('server', 'client', 'native');
 
@@ -19,6 +18,7 @@ def validate_pins(pins: dict[str, str], toml_path: str) -> dict[str, str] {
 
 
 def module_dot_path(source_path: str, root_dir: str) -> str {
+    import from jaclang.compiler.frontend.host { active_host }
     path = os.path.realpath(source_path);
     relative = os.path.relpath(os.path.dirname(path), os.path.realpath(root_dir));
     parent = relative.replace(os.sep, '.')
@@ -26,7 +26,7 @@ def module_dot_path(source_path: str, root_dir: str) -> str {
         else '';
     return '.'.join(
         part
-        for part in (parent, base_stem(path))
+        for part in (parent, active_host().path_facts(path).module_stem)
         if part
     );
 }

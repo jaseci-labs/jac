@@ -583,11 +583,8 @@ impl JacProgram.parse_source(
         assert isinstance(converted, uni.Module);
         parsed = converted;
     } else {
-        import from jaclang.jac0core.ext_registry {
-            is_retired_client_marker,
-            is_retired_native_marker
-        }
-        if is_retired_native_marker(file_path) {
+        retired = active_host().path_facts(file_path).retired_marker;
+        if retired == "native" {
             raise ValueError(
                 f"{file_path}: the .na.jac marker was retired in 0.35 -- rename "
                 "the file to .jac; native placement is inferred (or forced by "
@@ -595,7 +592,7 @@ impl JacProgram.parse_source(
                 "reference/language/native-pathway'."
             );
         }
-        if is_retired_client_marker(file_path) {
+        if retired == "client" {
             raise ValueError(
                 f"{file_path}: the .cl.jac marker was retired -- rename the "
                 "file to .jac; client placement is inferred from JSX/npm "

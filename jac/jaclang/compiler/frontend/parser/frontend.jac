@@ -165,16 +165,14 @@ def annex_paths(file_path: str) -> list[str] {
         return [];
     }
     try {
-        import from jaclang.compiler.driver.bccache {
-            discover_annex_files,
-            discover_base_file
-        }
-        if discover_base_file(file_path) is not None {
+        import from jaclang.compiler.frontend.host { active_host }
+        host = active_host();
+        if host.base_file(file_path) is not None {
             return [];
         }
         found: list[str] = [
-            *discover_annex_files(file_path, ".impl.jac"),
-            *discover_annex_files(file_path, ".test.jac")
+            *host.annex_files(file_path, ".impl.jac"),
+            *host.annex_files(file_path, ".test.jac")
         ];
     } except Exception {
         return [];
