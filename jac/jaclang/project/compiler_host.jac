@@ -1,0 +1,79 @@
+import from collections.abc { Iterator }
+import from contextlib { contextmanager }
+import from jaclang.compiler.frontend.host {
+    CheckSettings,
+    HostServices,
+    ProjectDefaults,
+    ProjectFacts,
+    install_host
+}
+import type from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
+
+obj ProjectHost(HostServices) {
+    has _defaults_active: bool = False,
+        _last_defaults: (ProjectDefaults | None) = None,
+        _facts: dict[str, tuple[any, ProjectFacts]] = {};
+
+    @contextmanager
+    def session -> Iterator[None];
+
+    def project_defaults -> (ProjectDefaults | None);
+    def check_settings(target_app: str) -> CheckSettings;
+    def project_facts(path: str) -> (ProjectFacts | None);
+    def workspace(path: str) -> (WorkspaceSpec | None);
+    def app_for_path(path: str) -> (AppSpec | None);
+    def project_root(path: str) -> (str | None);
+    def resolve_module(
+        target: str, base_path: str, string_spec: bool = False
+    ) -> tuple[str, str];
+
+    def is_path_alias(target: str, base_path: str) -> bool;
+    def is_untyped_third_party(path: str) -> bool;
+    def in_typeshed_tree(path: str) -> bool;
+    def sibling_declaration(js_path: str) -> (str | None);
+    def has_npm_package(spec: str, base_path: str) -> bool;
+    def resolve_npm_package(spec: str, base_path: str) -> (str | None);
+    def npm_declarations(spec: str, base_path: str) -> (str | None);
+    def declared_dependencies(
+        module_path: str, fallback_app: str
+    ) -> (list[str] | None);
+}
+
+def check_settings_of(check: any) -> CheckSettings {
+    if check is None {
+        return CheckSettings();
+    }
+    lint = check.lint;
+    return CheckSettings(
+        suppress=list(check.suppress or []),
+        suppress_categories=list(check.suppress_categories or []),
+        lint_active=bool(lint),
+        lint_select=list(lint.select) if lint else [],
+        lint_ignore=list(lint.ignore) if lint else [],
+        enforce_access=bool(check.enforce_access),
+        untyped_external_error=check.untyped_external == "error"
+    );
+}
+
+def project_defaults_of(cfg: any) -> ProjectDefaults {
+    native = cfg.native;
+    memory = cfg.memory;
+    return ProjectDefaults(
+        default_codespace=cfg.placement.default_codespace,
+        native_closure_cap=cfg.build.native_closure_cap,
+        native_require=list(native.require),
+        native_target=native.target,
+        native_debug=native.debug,
+        native_opt=native.opt,
+        native_threads=native.threads,
+        native_link_mode=native.link_mode,
+        memory_profile=memory.profile,
+        memory_enforce=list(memory.enforce),
+        memory_exempt=list(memory.exempt),
+        check=check_settings_of(cfg.check)
+    );
+}
+
+def install_project_host {
+    install_host(ProjectHost());
+}

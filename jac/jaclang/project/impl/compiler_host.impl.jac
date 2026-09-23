@@ -1,4 +1,4 @@
-impl HostServices.session -> Iterator[None] {
+impl ProjectHost.session -> Iterator[None] {
     import from jaclang.project.workspace { workspace_scope }
     import from jaclang.compiler.driver.wiring { wiring_scope }
     with workspace_scope(), wiring_scope() {
@@ -6,7 +6,7 @@ impl HostServices.session -> Iterator[None] {
     }
 }
 
-impl HostServices.project_defaults -> (ProjectDefaults | None) {
+impl ProjectHost.project_defaults -> (ProjectDefaults | None) {
     if self._defaults_active {
         return self._last_defaults;
     }
@@ -30,7 +30,7 @@ impl HostServices.project_defaults -> (ProjectDefaults | None) {
     }
 }
 
-impl HostServices.check_settings(target_app: str) -> CheckSettings {
+impl ProjectHost.check_settings(target_app: str) -> CheckSettings {
     cfg: any = None;
     try {
         import from jaclang.project.config { get_config }
@@ -49,7 +49,7 @@ impl HostServices.check_settings(target_app: str) -> CheckSettings {
     return check_settings_of(cfg.check);
 }
 
-impl HostServices.project_facts(path: str) -> (ProjectFacts | None) {
+impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
     import from pathlib { Path }
     try {
         import from jaclang.project.config { get_config_for_path }
@@ -75,7 +75,7 @@ impl HostServices.project_facts(path: str) -> (ProjectFacts | None) {
     return facts;
 }
 
-impl HostServices.workspace(path: str) -> (WorkspaceSpec | None) {
+impl ProjectHost.workspace(path: str) -> (WorkspaceSpec | None) {
     if not path {
         return None;
     }
@@ -83,17 +83,17 @@ impl HostServices.workspace(path: str) -> (WorkspaceSpec | None) {
     return workspace_for_path(path);
 }
 
-impl HostServices.app_for_path(path: str) -> (AppSpec | None) {
+impl ProjectHost.app_for_path(path: str) -> (AppSpec | None) {
     import from jaclang.project.workspace { app_for_path }
     return app_for_path(path);
 }
 
-impl HostServices.project_root(path: str) -> (str | None) {
+impl ProjectHost.project_root(path: str) -> (str | None) {
     import from jaclang.project.modresolver { find_jac_project_root }
     return find_jac_project_root(path);
 }
 
-impl HostServices.declared_dependencies(
+impl ProjectHost.declared_dependencies(
     module_path: str, fallback_app: str
 ) -> (list[str] | None) {
     import from pathlib { Path }
@@ -118,44 +118,44 @@ impl HostServices.declared_dependencies(
     return [str(n) for n in names];
 }
 
-impl HostServices.resolve_module(
+impl ProjectHost.resolve_module(
     target: str, base_path: str, string_spec: bool = False
 ) -> tuple[str, str] {
     import from jaclang.project.modresolver { resolve_module }
     return resolve_module(target, base_path, string_spec=string_spec);
 }
 
-impl HostServices.is_path_alias(target: str, base_path: str) -> bool {
+impl ProjectHost.is_path_alias(target: str, base_path: str) -> bool {
     import from jaclang.project.modresolver { is_path_alias_import }
     return is_path_alias_import(target, base_path);
 }
 
-impl HostServices.is_untyped_third_party(path: str) -> bool {
+impl ProjectHost.is_untyped_third_party(path: str) -> bool {
     import from jaclang.project.modresolver { is_untyped_third_party_module }
     return is_untyped_third_party_module(path);
 }
 
-impl HostServices.in_typeshed_tree(path: str) -> bool {
+impl ProjectHost.in_typeshed_tree(path: str) -> bool {
     import from jaclang.project.modresolver { in_typeshed_tree }
     return in_typeshed_tree(path);
 }
 
-impl HostServices.sibling_declaration(js_path: str) -> (str | None) {
+impl ProjectHost.sibling_declaration(js_path: str) -> (str | None) {
     import from jaclang.project.modresolver { sibling_declaration_file }
     return sibling_declaration_file(js_path);
 }
 
-impl HostServices.has_npm_package(spec: str, base_path: str) -> bool {
+impl ProjectHost.has_npm_package(spec: str, base_path: str) -> bool {
     import from jaclang.project.modresolver { has_client_npm_package }
     return has_client_npm_package(spec, base_path);
 }
 
-impl HostServices.resolve_npm_package(spec: str, base_path: str) -> (str | None) {
+impl ProjectHost.resolve_npm_package(spec: str, base_path: str) -> (str | None) {
     import from jaclang.project.modresolver { resolve_client_npm_package }
     return resolve_client_npm_package(spec, base_path);
 }
 
-impl HostServices.npm_declarations(spec: str, base_path: str) -> (str | None) {
+impl ProjectHost.npm_declarations(spec: str, base_path: str) -> (str | None) {
     import from jaclang.project.modresolver { resolve_client_npm_declarations }
     return resolve_client_npm_declarations(spec, base_path);
 }

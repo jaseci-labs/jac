@@ -12,6 +12,7 @@ import os;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.project.compiler_host { ProjectHost }
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
     module_env_fingerprint
@@ -83,6 +84,7 @@ test "a module's env key is the same inside and outside the config probe guards"
             # (#8823): the host's project-defaults guard is the only
             # re-entrancy guard left.
             host = active_host();
+            assert isinstance(host, ProjectHost);
             host._defaults_active = True;
             try {
                 guarded = module_env_fingerprint(path);
