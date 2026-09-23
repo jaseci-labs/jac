@@ -988,6 +988,7 @@ walker NaIRGenPass {
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
     def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
+    def _jit_link_unit(real_path: str, options: any) -> bool;
     def _predemote_capability_unit(
         full_name: str,
         func: ir.Function,
