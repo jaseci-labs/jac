@@ -796,6 +796,22 @@ walker NaIRGenPass(CompilerPass) {
         required_kind: (str | None)
     ) -> dict[str, any];
 
+    def _emit_kw_spread_refusal(nd: uni.FuncCall) -> None;
+    def _str_dict_helpers_of(value: ir.Value) -> (dict[str, any] | None);
+    def _bind_kw_spread(
+        spread: ir.Value,
+        helpers: dict[str, any],
+        bind_records: list[dict[str, any]],
+        loc: str
+    ) -> ir.Value;
+
+    def _kw_spread_value_fits(value_type: ir.Type, slot_type: ir.Type) -> bool;
+    def _consume_kw_spreads(
+        nd: uni.FuncCall,
+        order: list[str | uni.Expr],
+        bind_records: list[dict[str, any]]
+    ) -> None;
+
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None);
     def _flow_future_licensed(nd: uni.ConcurrentExpr) -> (uni.Name | None);

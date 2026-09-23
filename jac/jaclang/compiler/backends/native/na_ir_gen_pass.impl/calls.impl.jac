@@ -315,14 +315,8 @@ impl NaIRGenPass._codegen_bound_args(
     }
 
     callee_sig = self._callee_sig_of(nd, func);
-    if kw_spreads and (callee_sig is None or callee_sig.kwargs is None) {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="call argument unpacking",
-            name="**",
-            help_text="A `**` spread carries keys known only at runtime, so the callee needs a `**kwargs` sink to receive keys that match no declared parameter. Give the callee a `**kwargs` parameter, or pass the arguments explicitly."
-        );
+    if kw_spreads and callee_sig is None {
+        self._emit_kw_spread_refusal(nd);
         kw_spreads = [];
         kw_order = [];
     }
@@ -418,7 +412,16 @@ impl NaIRGenPass._codegen_bound_args(
             }
         }
     }
-    if not _has_pack {
+    _bind_path = _has_pack
+        or (
+            bool(kw_spreads)
+            and callee_sig.varargs is None
+            and callee_sig.kwargs is None
+        );
+    if kw_spreads and not _bind_path {
+        self._emit_kw_spread_refusal(nd);
+    }
+    if not _bind_path {
         for (pix, sp) in enumerate(sig_params) {
             slot = self_offset + pix;
             if (
@@ -615,6 +618,8 @@ impl NaIRGenPass._codegen_bound_args(
             } elif _kw_t is not None {
                 args.append(self._default_arg_fallback(_kw_t));
             }
+        } elif kw_spreads {
+            self._consume_kw_spreads(nd, kw_order, _bind_records);
         }
         for _rec in _bind_records {
             if _rec["alloca"] is None {
@@ -629,7 +634,7 @@ impl NaIRGenPass._codegen_bound_args(
                 );
             }
             _bv = self.builder.load(_rec["alloca"], name="kwbind.final");
-            if isinstance(_bv.type, ir.PointerType) {
+            if self._elem_kind(_bv.type) != "raw" {
                 self._mark_owned(_bv);
             }
             args[_rec["args_idx"]] = _bv;
@@ -938,44 +943,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
             continue;
         }
 
-        for _rec in (bind_records or []) {
-            _kg = self._make_global_string(_rec["name"], name_prefix=".kwname");
-            _rkh = ir.Constant(ir.IntType(64), self._static_str_hash(_rec["name"]));
-            _has = self.builder.call(
-                helpers["contains_ph"], [sv, _kg, _rkh], name="kwbind.has"
-            );
-            if _rec["alloca"] is None {
-                self._emit_runtime_raise(_has, "TypeError", _rec["dup_msg"]);
-                continue;
-            }
-            _flv = self.builder.load(_rec["flag"], name="kwbind.flag");
-            self._emit_runtime_raise(
-                self.builder.and_(_has, _flv, name="kwbind.dup"),
-                "TypeError",
-                _rec["dup_msg"]
-            );
-            _do = self.builder.and_(
-                _has, self.builder.not_(_flv, name="kwbind.unset"), name="kwbind.do"
-            );
-            _bfn = self.builder.block.function;
-            _bind_bb = _bfn.append_basic_block("kwbind.set");
-            _cont_bb = _bfn.append_basic_block("kwbind.cont");
-            self.builder.cbranch(_do, _bind_bb, _cont_bb);
-            self.builder.position_at_end(_bind_bb);
-            _bv: ir.Value = self.builder.call(
-                helpers["get_ph"], [sv, _kg, _rkh], name="kwbind.get"
-            );
-            _bv = self._coerce_type(_bv, _rec["slot_type"]);
-            if isinstance(_rec["slot_type"], ir.PointerType) {
-                self._emit_rc_retain(_bv, op="kwbind", loc=_loc);
-                _old = self.builder.load(_rec["alloca"], name="kwbind.old");
-                self._emit_rc_release_simple(_old, op="kwbind", loc=_loc);
-            }
-            self.builder.store(_bv, _rec["alloca"]);
-            self.builder.store(ir.Constant(ir.IntType(1), 1), _rec["flag"]);
-            self.builder.branch(_cont_bb);
-            self.builder.position_at_end(_cont_bb);
-        }
+        self._bind_kw_spread(sv, helpers, bind_records or [], _loc);
         assert dict_key is not None , "the helper lookup above needs a key";
         if not self._merge_dict_into(
             dv, sv, helpers, dict_key, _loc, skip_keys=_skip_dv
@@ -3688,8 +3656,8 @@ impl NaIRGenPass._prep_kwbind_record(
     rec["dup_msg"] = f"got multiple values for keyword argument '{name}'";
     _al = self._entry_alloca(slot_type, f"kwbind.{name}");
     _init = self._coerce_type(stored, slot_type);
-    if isinstance(slot_type, ir.PointerType) and not self._is_owned(stored) {
-        self._emit_rc_retain(_init, op="kwbind", loc="");
+    if not self._is_owned(stored) {
+        self._emit_elem_retain(self.builder, slot_type, _init);
     }
     self.builder.store(_init, _al);
     _fl = self._entry_alloca(ir.IntType(1), f"kwbind.{name}.bound");
@@ -3700,6 +3668,156 @@ impl NaIRGenPass._prep_kwbind_record(
         rec["missing_msg"] = f"missing 1 required {required_kind} argument: '{name}'";
     }
     return rec;
+}
+
+impl NaIRGenPass._emit_kw_spread_refusal(nd: uni.FuncCall) -> None {
+    self.emit(
+        E5092,
+        node_override=nd,
+        kind="call argument unpacking",
+        name="**",
+        help_text="A `**` spread binds against the callee's declared parameters, so the callee's signature must be statically known and its `*args`/`**kwargs` packs must lay out natively. Call a declared function, or pass the arguments explicitly."
+    );
+}
+
+impl NaIRGenPass._str_dict_helpers_of(value: ir.Value) -> (dict[str, any] | None) {
+    for (key, dict_type) in self.dict_types.items() {
+        if key.startswith("ptr:") and dict_type.as_pointer() == value.type {
+            return self.dict_helpers.get(key);
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._bind_kw_spread(
+    spread: ir.Value,
+    helpers: dict[str, any],
+    bind_records: list[dict[str, any]],
+    loc: str
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    matched: ir.Value = ir.Constant(i64, 0);
+    for rec in bind_records {
+        key = self._make_global_string(rec["name"], name_prefix=".kwname");
+        key_hash = ir.Constant(i64, self._static_str_hash(rec["name"]));
+        present = self.builder.call(
+            helpers["contains_ph"], [spread, key, key_hash], name="kwbind.present"
+        );
+        matched = self.builder.add(
+            matched, self.builder.zext(present, i64), name="kwbind.matched"
+        );
+        if rec["alloca"] is None {
+            self._emit_runtime_raise(present, "TypeError", rec["dup_msg"]);
+            continue;
+        }
+        if not self._kw_spread_value_fits(helpers["val_type"], rec["slot_type"]) {
+            self._emit_runtime_raise(
+                present,
+                "TypeError",
+                f"argument '{rec[
+                    'name'
+                ]}' cannot take a value of the unpacked mapping's type"
+            );
+            continue;
+        }
+        bound = self.builder.load(rec["flag"], name="kwbind.flag");
+        self._emit_runtime_raise(
+            self.builder.and_(present, bound, name="kwbind.dup"),
+            "TypeError",
+            rec["dup_msg"]
+        );
+        take = self.builder.and_(
+            present, self.builder.not_(bound, name="kwbind.unset"), name="kwbind.do"
+        );
+        fn = self.builder.block.function;
+        bind_bb = fn.append_basic_block("kwbind.set");
+        cont_bb = fn.append_basic_block("kwbind.cont");
+        self.builder.cbranch(take, bind_bb, cont_bb);
+        self.builder.position_at_end(bind_bb);
+        value: ir.Value = self.builder.call(
+            helpers["get_ph"], [spread, key, key_hash], name="kwbind.get"
+        );
+        value = self._coerce_type(value, rec["slot_type"]);
+        self._emit_elem_retain(self.builder, rec["slot_type"], value);
+        self._emit_elem_release(
+            self.builder,
+            rec["slot_type"],
+            self.builder.load(rec["alloca"], name="kwbind.old")
+        );
+        self.builder.store(value, rec["alloca"]);
+        self.builder.store(ir.Constant(ir.IntType(1), 1), rec["flag"]);
+        self.builder.branch(cont_bb);
+        self.builder.position_at_end(cont_bb);
+    }
+    return matched;
+}
+
+impl NaIRGenPass._kw_spread_value_fits(
+    value_type: ir.Type, slot_type: ir.Type
+) -> bool {
+    if value_type == slot_type {
+        return True;
+    }
+    if self?.jacval_type is not None and value_type == self.jacval_type {
+        return True;
+    }
+    if isinstance(value_type, ir.IntType) {
+        return isinstance(slot_type, (ir.IntType, ir.DoubleType))
+            and (
+                not isinstance(slot_type, ir.IntType)
+                or slot_type.width >= value_type.width
+            );
+    }
+    if self._str_desc_ty is not None and slot_type == self._str_desc_ty {
+        return value_type == ir.IntType(8).as_pointer();
+    }
+    return False;
+}
+
+impl NaIRGenPass._consume_kw_spreads(
+    nd: uni.FuncCall, order: list[str | uni.Expr], bind_records: list[dict[str, any]]
+) -> None {
+    callee = self._get_name(nd.target) or "function";
+    if isinstance(nd.target, uni.AtomTrailer)
+        and isinstance(nd.target.right, uni.Name) {
+        callee = nd.target.right.sym_name;
+    }
+    loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    for item in order {
+        if isinstance(item, str) {
+            continue;
+        }
+        spread = self._codegen_expr(item);
+        helpers = self._str_dict_helpers_of(spread) if spread is not None else None;
+        if spread is None or helpers is None {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="call argument unpacking",
+                name="**",
+                help_text="A `**` spread must lower to a native str-keyed dict."
+            );
+            continue;
+        }
+        matched = self._bind_kw_spread(spread, helpers, bind_records, loc);
+        owned = [spread] if self._is_owned(spread) else [];
+        self._emit_runtime_raise(
+            self.builder.icmp_signed(
+                "!=",
+                self.builder.call(helpers["len"], [spread], name="kwargs.len"),
+                matched,
+                name="kwargs.extra"
+            ),
+            "TypeError",
+            f"{callee}() got an unexpected keyword argument",
+            release_on_error=owned
+        );
+        if owned {
+            self._emit_rc_release_simple(spread, op="kwargs_spread", loc=loc);
+        }
+    }
 }
 
 impl NaIRGenPass._codegen_sized_builtin_call(

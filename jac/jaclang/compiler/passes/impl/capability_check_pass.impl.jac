@@ -89,9 +89,11 @@ glob JS_GLOBALS: dict[str, str] = {
          "to a @sv/Python context."
      ),
      _NATIVE_UNPACK_HELP: str = (
-         "Unpacking arguments at a native call site is not lowered yet; "
-         "pass the elements explicitly or move the call to a @sv/Python "
-         "context."
+         "A `**` spread lowers natively only into a callee whose signature is "
+         "statically known (a declared function or method, or a class-value "
+         "constructor), because its keys bind against the declared "
+         "parameters; pass the arguments explicitly or move the call to a "
+         "@sv/Python context."
      );
 
 impl classify_native_import(item: UniNode) -> tuple[((str | None), bool)] {
@@ -231,7 +233,7 @@ impl static_fstring_spec_text(spec: UniNode) -> (str | None) {
     return None;
 }
 
-impl call_has_kwargs_sink(call: FuncCall) -> bool {
+impl call_binds_kwargs_spread(call: FuncCall) -> bool {
     if call_constructs_class_value(call) {
         return True;
     }
@@ -246,11 +248,7 @@ impl call_has_kwargs_sink(call: FuncCall) -> bool {
         return False;
     }
     owner = sym.decl.name_of;
-    if not isinstance(owner, Ability)
-        or not isinstance(owner.signature, FuncSignature) {
-        return False;
-    }
-    return owner.signature.kwargs is not None;
+    return isinstance(owner, Ability) and isinstance(owner.signature, FuncSignature);
 }
 
 impl call_constructs_class_value(call: FuncCall) -> bool {
@@ -567,7 +565,7 @@ impl native_capability_violations(
                 and nd.op.name == Tok.STAR_POW
                 and isinstance(nd.parent, FuncCall)
                 and nd in (nd.parent.params or [])
-                and not call_has_kwargs_sink(nd.parent) {
+                and not call_binds_kwargs_spread(nd.parent) {
                 out.append(
                     (nd, "call argument unpacking", nd.op.value, _NATIVE_UNPACK_HELP)
                 );
@@ -577,7 +575,7 @@ impl native_capability_violations(
             if isinstance(nd, KWPair)
                 and nd.key is None
                 and isinstance(nd.parent, FuncCall)
-                and not call_has_kwargs_sink(nd.parent) {
+                and not call_binds_kwargs_spread(nd.parent) {
                 out.append((nd, "call argument unpacking", "**", _NATIVE_UNPACK_HELP));
                 continue;
             }

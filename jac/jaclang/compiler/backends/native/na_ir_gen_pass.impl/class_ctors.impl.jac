@@ -321,6 +321,7 @@ impl NaIRGenPass._codegen_class_value_call(
             return None;
         }
         mask_value = spread_mask;
+        owned = list(values.values());
     }
     ctor_entry = self.builder.call(
         self._emit_class_ctor_lookup_fn(),
@@ -376,12 +377,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
     mask: ir.Value,
     bound: str
 ) -> (ir.Value | None) {
-    helpers: (dict[str, any] | None) = None;
-    for (key, dict_type) in self.dict_types.items() {
-        if key.startswith("ptr:") and dict_type.as_pointer() == mapping.type {
-            helpers = self.dict_helpers.get(key);
-        }
-    }
+    helpers = self._str_dict_helpers_of(mapping);
     if helpers is None {
         self.ctx.emit(
             E5092,
@@ -393,44 +389,36 @@ impl NaIRGenPass._bind_class_ctor_spread(
         return None;
     }
     i64 = ir.IntType(64);
-    matched = self._entry_alloca(i64, "kwargs.matched");
-    self.builder.store(ir.Constant(i64, 0), matched);
+    records: list[tuple[int, dict[str, any]]] = [];
     for (i, p) in enumerate(params) {
-        key_name = self._make_global_string(p.name, name_prefix=".kwname");
-        key_hash = ir.Constant(i64, self._static_str_hash(p.name));
-        present = self.builder.call(
-            helpers["contains_ph"], [mapping, key_name, key_hash], name="kwargs.has"
+        rec = self._prep_kwbind_record(
+            p.name,
+            p.type,
+            i,
+            values[i] if i in values else self._default_arg_fallback(p.type),
+            "kw" if i in values else None,
+            None
         );
-        if i in values {
-            self._emit_runtime_raise(
-                present,
-                "TypeError",
-                f"{bound}() got multiple values for keyword argument '{p.name}'"
-            );
+        rec["dup_msg"] = f"{bound}() {rec['dup_msg']}";
+        records.append((i, rec));
+    }
+    matched = self._bind_kw_spread(mapping, helpers, [r for (_, r) in records], "");
+    for (i, rec) in records {
+        if rec["alloca"] is None {
             continue;
         }
-        slot = self._entry_alloca(p.type, f"kwargs.{p.name}");
-        self.builder.store(self._default_arg_fallback(p.type), slot);
-        take = self.builder.append_basic_block(f"kwargs.{p.name}.take");
-        done = self.builder.append_basic_block(f"kwargs.{p.name}.done");
-        self.builder.cbranch(present, take, done);
-        self.builder.position_at_end(take);
-        item = self.builder.call(
-            helpers["get_ph"], [mapping, key_name, key_hash], name="kwargs.get"
-        );
-        self.builder.store(self._coerce_type(item, p.type), slot);
-        self.builder.store(
-            self.builder.add(
-                self.builder.load(matched, name="kwargs.n"), ir.Constant(i64, 1)
-            ),
-            matched
-        );
-        self.builder.branch(done);
-        self.builder.position_at_end(done);
-        values[i] = self.builder.load(slot, name=f"kwargs.{p.name}.value");
+        value = self.builder.load(rec["alloca"], name=f"kwargs.{rec['name']}.value");
+        if self._elem_kind(value.type) != "raw" {
+            self._mark_owned(value);
+        }
+        values[i] = value;
         mask = self.builder.or_(
             mask,
-            self.builder.select(present, ir.Constant(i64, 1 << i), ir.Constant(i64, 0)),
+            self.builder.select(
+                self.builder.load(rec["flag"], name="kwargs.given"),
+                ir.Constant(i64, 1 << i),
+                ir.Constant(i64, 0)
+            ),
             name="kwargs.mask"
         );
     }
@@ -438,7 +426,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
         self.builder.icmp_signed(
             "!=",
             self.builder.call(helpers["len"], [mapping], name="kwargs.len"),
-            self.builder.load(matched, name="kwargs.matched"),
+            matched,
             name="kwargs.extra"
         ),
         "TypeError",

@@ -74,7 +74,7 @@ def name_erased_natively(name_nd: UniNode) -> bool;
 
 def static_fstring_spec_text(spec: UniNode) -> (str | None);
 
-def call_has_kwargs_sink(call: FuncCall) -> bool;
+def call_binds_kwargs_spread(call: FuncCall) -> bool;
 
 def call_constructs_class_value(call: FuncCall) -> bool;
 
