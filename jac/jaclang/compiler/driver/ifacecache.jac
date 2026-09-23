@@ -59,10 +59,11 @@ def iface_codec -> (IfaceCodec | None) {
             return None;
         }
     }
+    writer = sys.modules[_CODEC_MODULES[-2]];
     modiface = sys.modules[_CODEC_MODULES[-1]];
     try {
         codec = IfaceCodec(
-            build_module_iface=modiface.build_module_iface,
+            build_module_iface=writer.build_module_iface,
             open_module_iface=modiface.open_module_iface,
             read_iface_hash=modiface.read_iface_hash,
             iface_module=modiface.iface_module
@@ -891,7 +892,7 @@ obj IfaceRegistry {
     }
 
     def _encode_iface(codec: IfaceCodec, mod: any, paths: JirPaths) -> (bytes | None) {
-        import from jaclang.compiler.types.stubcat.modiface { IncoherentInterface }
+        import from jaclang.compiler.types.stubcat.writer { IncoherentInterface }
         self._event("iface_encode");
         self._ensure_flow_graph(mod);
         try {
