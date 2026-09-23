@@ -39,6 +39,7 @@ import from jaclang.compiler.frontend.unitree {
     EventSignature,
     Except,
     Expr,
+    ExprAsItem,
     ExprStmt,
     FString,
     FilterCompr,
@@ -718,6 +719,7 @@ walker TypeEvaluator {
         is_async: bool = False
     ) -> TypeBase | None;
 
+    def get_type_of_with_alias(item: ExprAsItem) -> TypeBase;
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_declared(

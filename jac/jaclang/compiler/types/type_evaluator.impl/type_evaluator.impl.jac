@@ -2147,7 +2147,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     expr.sym = None;
                 }
 
-                if self._in_native_context()
+                if (self._in_native_context() or expr.in_native_context())
                     and (symbol is None or symbol.parent_tab is self.builtins_module) {
                     na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
                     if na_sym is not None {
@@ -2827,6 +2827,10 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                 and node_.parent.left is node_
             ) {
                 return self.get_type_of_expression(node_.parent.right);
+            }
+
+            if isinstance(node_.parent, ExprAsItem) and node_.parent.alias is node_ {
+                return self.get_type_of_with_alias(node_.parent);
             }
 
             if isinstance(node_.parent, (InForStmt, InnerCompr)) {
@@ -4099,6 +4103,24 @@ impl TypeEvaluator._unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBa
         }
     }
     return t;
+}
+
+impl TypeEvaluator.get_type_of_with_alias(item: ExprAsItem) -> TypeBase {
+    manager_type = self.get_type_of_expression(item.expr);
+    if isinstance(manager_type, UnknownType) {
+        return manager_type;
+    }
+    is_async = isinstance(item.parent, WithStmt) and item.parent.is_async;
+    enter_ret = self.get_type_of_magic_method_call(
+        manager_type, "__aenter__" if is_async else "__enter__", [], item.expr
+    );
+    if enter_ret is None {
+        return manager_type;
+    }
+    if is_async {
+        return self._unwrap_awaitable_type(enter_ret, item.expr);
+    }
+    return enter_ret;
 }
 
 impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
