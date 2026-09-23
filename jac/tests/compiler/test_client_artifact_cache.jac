@@ -79,7 +79,7 @@ test "the first client build persists the artifact beside the bytecode" {
         "the cold build must produce the module's JS"
     );
     assert "widget.jac" in compiled , f"the cold build compiles the module, saw {compiled}";
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
     cached = read_section_bytes(
         artifact_cache_path(widget, program).read_bytes(), SEC_CLIENT
     );

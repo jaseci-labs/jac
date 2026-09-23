@@ -54,7 +54,7 @@ def parse(
     (tokens, comments, lex_diags, lex_errs) = na_lexer.tokenize_full(source, file_path);
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
     module = parser.parse();
-    had_error = _finish_parse(
+    had_error = finish_parse(
         module, parser.error_count, parser.diags, comments, lex_diags, lex_errs, prog
     );
     return (module, had_error);
@@ -73,7 +73,7 @@ def parse_expression(
     return (expression, had_error);
 }
 
-def _finish_parse(
+def finish_parse(
     module: Module,
     p_errs: int,
     p_diags: list[SrcDiag],
@@ -130,46 +130,6 @@ def _finish_parse(
     return p_errs > 0 or lex_errs > 0;
 }
 
-def _native_parse_woven(
-    source_str: str,
-    file_path: str,
-    prog: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = ""
-) -> (tuple[Module, bool] | None) {
-    import jaclang.compiler.native_compiler as _jc;
-    kernel = _jc.ensure_loaded();
-    if kernel is None {
-        return None;
-    }
-    kernel.prepare_early(early_context if prog is not None else "");
-    for annex in annexes {
-        kernel.annex(annex);
-    }
-    if kernel.run(source_str, file_path) != 0 {
-        return None;
-    }
-    module = kernel.take_module();
-    if module is None {
-        return None;
-    }
-    p_errs = kernel.err_count();
-    lex_errs = kernel.lex_errs();
-    p_diags = kernel.take_diags();
-    lex_diags = kernel.take_lexdiags();
-    comments = kernel.take_comments();
-    had_error = _finish_parse(
-        module, p_errs, p_diags, comments, lex_diags, lex_errs, prog
-    );
-    if prog is not None {
-        results = kernel.take_pass_results();
-        if results {
-            prog.analysis.record_early(module, results);
-        }
-    }
-    return (module, had_error);
-}
-
 def parse_woven(
     source_str: str,
     file_path: str,
@@ -177,7 +137,10 @@ def parse_woven(
     annexes: list[WovenAnnex],
     early_context: str = ""
 ) -> tuple[any, bool] {
-    nat = _native_parse_woven(source_str, file_path, prog, annexes, early_context);
+    import from jaclang.compiler.frontend.host { active_host }
+    nat = active_host().native_parse(
+        source_str, file_path, prog, annexes, early_context
+    );
     if nat is not None {
         return nat;
     }

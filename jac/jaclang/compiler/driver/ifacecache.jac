@@ -1,4 +1,5 @@
 import from contextlib { contextmanager }
+import from pathlib { Path }
 import from collections.abc { Callable, Iterator }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import os;
@@ -350,10 +351,8 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     def _entry_fresh(ent: IfaceEntry) -> bool {
-        import from jaclang.compiler.driver.bccache {
-            discover_annex_files,
-            discover_wiring_file
-        }
+        import from jaclang.compiler.driver.bccache { discover_annex_files }
+        import from jaclang.compiler.frontend.host { active_host }
         try {
             if os.path.getmtime(ent.path) > ent.stamp {
                 return False;
@@ -363,7 +362,7 @@ obj IfaceRegistry(CatalogResolver) {
                     return False;
                 }
             }
-            wiring = discover_wiring_file(ent.path);
+            wiring = active_host().wiring_file(ent.path);
             if wiring is not None and os.path.getmtime(wiring) > ent.stamp {
                 return False;
             }
@@ -1288,8 +1287,17 @@ obj IfaceRegistry(CatalogResolver) {
     }
 }
 
+def artifact_cache_path(path: str, program: JacProgram) -> Path {
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
+    selected = program_for(path, program);
+    owner_options = None if selected.internal else selected.options;
+    with cache_scope(owner_options) {
+        return get_module_cache_path(path);
+    }
+}
+
 def seed_dep_edges(prog: any, root_dir: str, limit: int = 5000) -> int {
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
     seeded = 0;
     scanned = 0;
     skip_dirs = {".git", ".jac", "node_modules", "__pycache__", ".venv", "venv"};

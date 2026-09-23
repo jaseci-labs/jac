@@ -2,6 +2,7 @@ import from jaclang.compiler.driver.compilation_context { context_app }
 import json;
 import os;
 import from jaclang.compiler.frontend.host { active_host }
+import type from jaclang.compiler.driver.nativecache { NativeVerdict }
 import from jaclang.project.app_kinds { kind_codespace }
 
 import from jaclang.project.placement { validate_pins, match_pin }
@@ -51,16 +52,8 @@ def native_demotion_code(source_path: str, prog: any = None) -> str {
     return verdict.code if verdict is not None else "";
 }
 
-def _native_verdict(source_path: str, prog: any) -> any {
-    try {
-        if prog is not None {
-            return prog.native_units().verdict_for(source_path);
-        }
-        import from jaclang.compiler.driver.nativecache { read_native_verdict }
-        return read_native_verdict(source_path);
-    } except Exception {
-        return None;
-    }
+def _native_verdict(source_path: str, prog: any) -> (NativeVerdict | None) {
+    return active_host().native_verdict(source_path, prog);
 }
 
 

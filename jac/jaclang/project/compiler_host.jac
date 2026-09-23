@@ -3,11 +3,21 @@ import from contextlib { contextmanager }
 import from jaclang.compiler.frontend.host {
     CheckSettings,
     HostServices,
+    LintSettings,
     ProjectDefaults,
     ProjectFacts,
     install_host
 }
 import type from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
+import type from jaclang.compiler.driver.compiler { JacCompiler }
+import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
+import type from jaclang.compiler.driver.nativecache {
+    NativeUnitRegistry,
+    NativeVerdict
+}
 
 obj ProjectHost(HostServices) {
     has _defaults_active: bool = False,
@@ -20,6 +30,7 @@ obj ProjectHost(HostServices) {
     def project_defaults -> (ProjectDefaults | None);
     def check_settings(target_app: str) -> CheckSettings;
     def project_facts(path: str) -> (ProjectFacts | None);
+    def lint_settings(path: str) -> LintSettings;
     def workspace(path: str) -> (WorkspaceSpec | None);
     def app_for_path(path: str) -> (AppSpec | None);
     def project_root(path: str) -> (str | None);
@@ -39,6 +50,34 @@ obj ProjectHost(HostServices) {
     ) -> (list[str] | None);
 
     def native_pipeline_available -> tuple[bool, str];
+    def note(message: str);
+    def wiring_file(path: str) -> (str | None);
+    def native_parse(
+        source_str: str,
+        file_path: str,
+        program: (JacProgram | None),
+        annexes: list[WovenAnnex],
+        early_context: str = ""
+    ) -> (tuple[Module, bool] | None);
+
+    def discard_module_artifact(path: str, program: JacProgram);
+    def compiler_for(program: JacProgram) -> JacCompiler;
+    def iface_registry_for(program: JacProgram) -> IfaceRegistry;
+    def native_units_for(program: JacProgram) -> NativeUnitRegistry;
+    def native_verdict(
+        path: str, program: (JacProgram | None) = None
+    ) -> (NativeVerdict | None);
+
+    def record_native_coverage(
+        path: str, outcome: str, code: str = "", detail: str = ""
+    );
+
+    def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
+    def format_source(
+        source_str: str, file_path: str, auto_lint: bool = False
+    ) -> JacProgram;
+
+    def lint_file(file_path: str) -> JacProgram;
 }
 
 def check_settings_of(check: any) -> CheckSettings {

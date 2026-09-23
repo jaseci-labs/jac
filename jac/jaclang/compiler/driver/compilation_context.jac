@@ -201,12 +201,3 @@ def context_app(path: str) -> AppSpec | None {
     }
     return None;
 }
-
-def artifact_cache_path(path: str, program: JacProgram) -> Path {
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
-    selected = program_for(path, program);
-    owner_options = None if selected.internal else selected.options;
-    with cache_scope(owner_options) {
-        return get_module_cache_path(path);
-    }
-}

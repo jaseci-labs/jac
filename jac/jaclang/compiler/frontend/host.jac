@@ -1,6 +1,15 @@
 import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import type from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
+import type from jaclang.compiler.driver.compiler { JacCompiler }
+import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
+import type from jaclang.compiler.driver.nativecache {
+    NativeUnitRegistry,
+    NativeVerdict
+}
 
 obj CheckSettings {
     has suppress: list[str] = [],
@@ -27,6 +36,12 @@ obj ProjectDefaults {
         check: CheckSettings;
 }
 
+obj LintSettings {
+    has check: CheckSettings,
+        exclude: list[str] = [],
+        project_root: str = "";
+}
+
 obj ProjectFacts {
     has project_root: str,
         check: CheckSettings,
@@ -50,6 +65,10 @@ obj HostServices {
 
     def project_facts(path: str) -> (ProjectFacts | None) {
         return None;
+    }
+
+    def lint_settings(path: str) -> LintSettings {
+        return LintSettings(check=CheckSettings());
     }
 
     def workspace(path: str) -> (WorkspaceSpec | None) {
@@ -102,6 +121,58 @@ obj HostServices {
         module_path: str, fallback_app: str
     ) -> (list[str] | None) {
         return None;
+    }
+
+    def note(message: str) {}
+    def wiring_file(path: str) -> (str | None) {
+        return None;
+    }
+
+    def native_parse(
+        source_str: str,
+        file_path: str,
+        program: (JacProgram | None),
+        annexes: list[WovenAnnex],
+        early_context: str = ""
+    ) -> (tuple[Module, bool] | None) {
+        return None;
+    }
+
+    def discard_module_artifact(path: str, program: JacProgram) {}
+    def compiler_for(program: JacProgram) -> JacCompiler {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def iface_registry_for(program: JacProgram) -> IfaceRegistry {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def native_units_for(program: JacProgram) -> NativeUnitRegistry {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def native_verdict(
+        path: str, program: (JacProgram | None) = None
+    ) -> (NativeVerdict | None) {
+        return None;
+    }
+
+    def record_native_coverage(
+        path: str, outcome: str, code: str = "", detail: str = ""
+    ) {}
+
+    def format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def format_source(
+        source_str: str, file_path: str, auto_lint: bool = False
+    ) -> JacProgram {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def lint_file(file_path: str) -> JacProgram {
+        raise RuntimeError("no compiler host is installed");
     }
 
     def native_pipeline_available -> tuple[bool, str] {

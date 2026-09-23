@@ -22,7 +22,7 @@ reading, and merged they read a list three pushes deep.
 So: if a new fixture declares a glob anything writes, or imports one that
 does, give each of its cases its own test.
 """
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import ctypes;
 import from jaclang.compiler.driver.compile_options {

@@ -20,17 +20,15 @@ obj ModuleHub {
 
     def stamp(resolved_path: str) {
         import time;
-        import from jaclang.compiler.driver.bccache {
-            discover_annex_files,
-            discover_wiring_file
-        }
+        import from jaclang.compiler.driver.bccache { discover_annex_files }
+        import from jaclang.compiler.frontend.host { active_host }
         seen = time.time();
         try {
             seen = max(seen, os.path.getmtime(resolved_path));
             for related in discover_annex_files(resolved_path) {
                 seen = max(seen, os.path.getmtime(related));
             }
-            wiring = discover_wiring_file(resolved_path);
+            wiring = active_host().wiring_file(resolved_path);
             if wiring is not None {
                 seen = max(seen, os.path.getmtime(wiring));
             }
@@ -40,10 +38,8 @@ obj ModuleHub {
 
     def is_fresh(resolved_path: str) -> bool {
         import os;
-        import from jaclang.compiler.driver.bccache {
-            discover_annex_files,
-            discover_wiring_file
-        }
+        import from jaclang.compiler.driver.bccache { discover_annex_files }
+        import from jaclang.compiler.frontend.host { active_host }
         cached_at = self.stamps.get(resolved_path);
         if cached_at is None {
             return True;
@@ -57,7 +53,7 @@ obj ModuleHub {
                     return False;
                 }
             }
-            wiring = discover_wiring_file(resolved_path);
+            wiring = active_host().wiring_file(resolved_path);
             if wiring is not None and os.path.getmtime(wiring) > cached_at {
                 return False;
             }

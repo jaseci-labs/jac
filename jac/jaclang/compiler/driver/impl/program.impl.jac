@@ -24,23 +24,19 @@ impl JacProgram.init(
 }
 
 impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {
-    reg = self._iface;
-    if reg is None {
-        import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
-        reg = IfaceRegistry(prog=self);
-        self._iface = reg;
+    if self._iface is not None {
+        return self._iface;
     }
-    return reg;
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().iface_registry_for(self);
 }
 
 impl JacProgram.native_units(self: JacProgram) -> NativeUnitRegistry {
-    reg = self._natives;
-    if reg is None {
-        import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
-        reg = NativeUnitRegistry(prog=self);
-        self._natives = reg;
+    if self._natives is not None {
+        return self._natives;
     }
-    return reg;
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().native_units_for(self);
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
@@ -265,12 +261,11 @@ impl JacProgram.reset_module_root(
 }
 
 impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
-    if self._compiler {
+    if self._compiler is not None {
         return self._compiler;
     }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    self._compiler = JacCompiler();
-    return self._compiler;
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().compiler_for(self);
 }
 
 impl JacProgram.stub_catalog(self: JacProgram) -> (StubCatalog | None) {
@@ -557,7 +552,7 @@ impl JacProgram.parse_source(
         _coerce_client_module,
         _coerce_native_module
     }
-    import from jaclang.compiler.driver.na_coverage { na_coverage_record }
+    import from jaclang.compiler.frontend.host { active_host }
     import ast as py_ast;
     had_error = False;
     run_codespace_infer = False;
@@ -615,7 +610,7 @@ impl JacProgram.parse_source(
             _coerce_client_module(parsed);
         } elif (codespace == 'native') {
             _coerce_native_module(parsed);
-            na_coverage_record(parsed.loc.mod_path, 'native');
+            active_host().record_native_coverage(parsed.loc.mod_path, 'native');
         } elif codespace == 'server' {
             parsed.set_code_context(CodeContext.SERVER);
         } else {
@@ -646,19 +641,21 @@ impl JacProgram.parse_source(
         if _na_ok {
             _coerce_native_module(parsed);
             parsed.codespace_inferred = True;
-            na_coverage_record(parsed.loc.mod_path, 'native');
+            active_host().record_native_coverage(parsed.loc.mod_path, 'native');
         } elif _na_why == 'previously-demoted' {
             import from jaclang.compiler.placement.placement_pins {
                 native_demotion_code
             }
-            na_coverage_record(
+            active_host().record_native_coverage(
                 parsed.loc.mod_path,
                 'demoted',
                 native_demotion_code(os.path.realpath(parsed.loc.mod_path), self),
                 _na_why
             );
         } else {
-            na_coverage_record(parsed.loc.mod_path, 'server', '', _na_why);
+            active_host().record_native_coverage(
+                parsed.loc.mod_path, 'server', '', _na_why
+            );
         }
     }
     return parsed;

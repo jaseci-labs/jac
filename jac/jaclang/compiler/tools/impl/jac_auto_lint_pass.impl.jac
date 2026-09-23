@@ -1,37 +1,20 @@
 import from jaclang.compiler.frontend.unparse { unparse_node }
 
 impl JacAutoLintPass.postinit -> None {
-    import from jaclang.compiler.driver.compilation_context { context_app }
     import from jaclang.compiler.driver.pass_driver { diagnostic_policy_for }
-    import from jaclang.project.config {
-        JacConfig,
-        get_config_for_path,
-        get_explicit_config
-    }
-    import from pathlib { Path }
-
-    mod_path = self.module.loc.mod_path if self.module?.loc else None;
-    config = (
-        get_config_for_path(Path(mod_path)) if mod_path else get_explicit_config()
-    )
-        or JacConfig();
-    if mod_path {
-        _app = context_app(str(Path(mod_path).resolve()));
-        if _app is not None and not _app.implicit and _app.name in config.apps {
-            config = config.effective_for_app(_app.name);
-        }
-    }
+    import from jaclang.compiler.frontend.host { active_host }
+    mod_path = self.module.loc.mod_path if self.module?.loc else "";
+    settings = active_host().lint_settings(mod_path or "");
     _opts = self.prog.options;
     _extra: list[str] = (
         list(_opts.suppress_codes)
             if (_opts is not None and _opts.suppress_codes)
             else []
     );
-    import from jaclang.project.compiler_host { check_settings_of }
-    self.ctx.policy = diagnostic_policy_for(check_settings_of(config.check), _extra);
-    if config.check?.lint {
-        self._exclude_patterns = config.check.lint.exclude;
-        self._project_root = str(config.project_root) if config.project_root else "";
+    self.ctx.policy = diagnostic_policy_for(settings.check, _extra);
+    if settings.check.lint_active {
+        self._exclude_patterns = settings.exclude;
+        self._project_root = settings.project_root;
     }
 }
 

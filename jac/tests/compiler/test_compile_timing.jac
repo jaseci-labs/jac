@@ -532,7 +532,7 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], flo
         find_jac_files,
         _unit_program
     }
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.dist.precompile_bytecode { precompile_context }
     import from jaclang.compiler.frontend.codeinfo {

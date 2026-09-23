@@ -137,16 +137,8 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     }
     path = os.path.realpath(module.loc.mod_path);
     program.hub.client_artifacts.pop(path, None);
-    import from jaclang.compiler.driver.compilation_context {
-        cache_scope,
-        owner_scope_options
-    }
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
-    with cache_scope(owner_scope_options(program)) {
-        try {
-            get_module_cache_path(path).unlink(missing_ok=True);
-        } except OSError {}
-    }
+    import from jaclang.compiler.frontend.host { active_host }
+    active_host().discard_module_artifact(path, program);
 }
 
 glob PRODUCT_READY_FACTS: dict[CompilationProduct, tuple[AnalysisFact, ...]] = {

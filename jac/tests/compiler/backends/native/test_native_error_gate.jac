@@ -10,7 +10,7 @@ Before the gate landed, the first compile printed the errors but cached
 the poisoned artifact anyway, so every later run executed silently with
 holes in the code (exit 0, zero diagnostics).
 """
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import from tests.support { native_force_opts }
 import os;

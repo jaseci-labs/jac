@@ -164,3 +164,159 @@ impl ProjectHost.native_pipeline_available -> tuple[bool, str] {
     import from jaclang.compiler.driver.pipeline_runner { native_pipeline_available }
     return native_pipeline_available();
 }
+
+impl ProjectHost.note(message: str) {
+    import sys;
+    try {
+        import from jaclang.cli.console { console }
+        console.print(message, style="dim", file=sys.stderr);
+    } except Exception {}
+}
+
+impl ProjectHost.discard_module_artifact(path: str, program: JacProgram) {
+    import from jaclang.compiler.driver.compilation_context {
+        cache_scope,
+        owner_scope_options
+    }
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    with cache_scope(owner_scope_options(program)) {
+        try {
+            get_module_cache_path(path).unlink(missing_ok=True);
+        } except OSError {}
+    }
+}
+
+impl ProjectHost.lint_settings(path: str) -> LintSettings {
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compilation_context { context_app }
+    import from jaclang.project.config {
+        JacConfig,
+        get_config_for_path,
+        get_explicit_config
+    }
+    config = (get_config_for_path(Path(path)) if path else get_explicit_config())
+        or JacConfig();
+    if path {
+        app = context_app(str(Path(path).resolve()));
+        if app is not None and not app.implicit and app.name in config.apps {
+            config = config.effective_for_app(app.name);
+        }
+    }
+    lint = config.check.lint if config.check else None;
+    return LintSettings(
+        check=check_settings_of(config.check),
+        exclude=list(lint.exclude) if lint else [],
+        project_root=str(config.project_root) if (lint and config.project_root) else ""
+    );
+}
+
+impl ProjectHost.compiler_for(program: JacProgram) -> JacCompiler {
+    if program._compiler is None {
+        import from jaclang.compiler.driver.compiler { JacCompiler }
+        program._compiler = JacCompiler();
+    }
+    return program._compiler;
+}
+
+impl ProjectHost.iface_registry_for(program: JacProgram) -> IfaceRegistry {
+    if program._iface is None {
+        import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
+        program._iface = IfaceRegistry(prog=program);
+    }
+    return program._iface;
+}
+
+impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
+    if program._natives is None {
+        import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+        program._natives = NativeUnitRegistry(prog=program);
+    }
+    return program._natives;
+}
+
+impl ProjectHost.native_verdict(
+    path: str, program: (JacProgram | None) = None
+) -> (NativeVerdict | None) {
+    try {
+        if program is not None {
+            return program.native_units().verdict_for(path);
+        }
+        import from jaclang.compiler.driver.nativecache { read_native_verdict }
+        return read_native_verdict(path);
+    } except Exception {
+        return None;
+    }
+}
+
+impl ProjectHost.record_native_coverage(
+    path: str, outcome: str, code: str = "", detail: str = ""
+) {
+    import from jaclang.compiler.driver.na_coverage { na_coverage_record }
+    na_coverage_record(path, outcome, code, detail);
+}
+
+impl ProjectHost.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    return JacCompiler.jac_file_formatter(file_path, auto_lint);
+}
+
+impl ProjectHost.format_source(
+    source_str: str, file_path: str, auto_lint: bool = False
+) -> JacProgram {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    return JacCompiler.jac_str_formatter(source_str, file_path, auto_lint);
+}
+
+impl ProjectHost.lint_file(file_path: str) -> JacProgram {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    return JacCompiler.jac_file_linter(file_path);
+}
+
+impl ProjectHost.wiring_file(path: str) -> (str | None) {
+    import from jaclang.compiler.driver.wiring { arch_file_for, is_arch_file }
+    if is_arch_file(path) {
+        return None;
+    }
+    return arch_file_for(path);
+}
+
+impl ProjectHost.native_parse(
+    source_str: str,
+    file_path: str,
+    program: (JacProgram | None),
+    annexes: list[WovenAnnex],
+    early_context: str = ""
+) -> (tuple[Module, bool] | None) {
+    import from jaclang.compiler.frontend.parser.frontend { finish_parse }
+    import jaclang.compiler.native_compiler as _jc;
+    kernel = _jc.ensure_loaded();
+    if kernel is None {
+        return None;
+    }
+    kernel.prepare_early(early_context if program is not None else "");
+    for annex in annexes {
+        kernel.annex(annex);
+    }
+    if kernel.run(source_str, file_path) != 0 {
+        return None;
+    }
+    module = kernel.take_module();
+    if module is None {
+        return None;
+    }
+    p_errs = kernel.err_count();
+    lex_errs = kernel.lex_errs();
+    p_diags = kernel.take_diags();
+    lex_diags = kernel.take_lexdiags();
+    comments = kernel.take_comments();
+    had_error = finish_parse(
+        module, p_errs, p_diags, comments, lex_diags, lex_errs, program
+    );
+    if program is not None {
+        results = kernel.take_pass_results();
+        if results {
+            program.analysis.record_early(module, results);
+        }
+    }
+    return (module, had_error);
+}

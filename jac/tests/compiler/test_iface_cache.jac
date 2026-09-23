@@ -55,7 +55,7 @@ def _context(entry_path: str) -> JacProgram {
 }
 
 def _cache_path(path: str, entry_path: str = '') -> Path {
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
     return artifact_cache_path(path, _context(entry_path or path));
 }
 

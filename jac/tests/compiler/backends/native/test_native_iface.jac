@@ -153,7 +153,7 @@ test "the section in the module JIR carries the stamp of its compile" {
     opts = _native_opts();
     mod = prog.compile(file_path=path, options=opts);
     assert mod.gen.native_iface is not None;
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
     data = artifact_cache_path(path, prog).read_bytes();
     raw = read_section_bytes(data, SEC_NIFACE);
     assert raw is not None , "the native interface must be in the module JIR";

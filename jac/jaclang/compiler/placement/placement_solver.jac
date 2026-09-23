@@ -105,6 +105,23 @@ def _native_dep_scan(
     return (sv_reason, deps);
 }
 
+glob _CLOSURE_CAP_NOTED: set[str] = set();
+
+def note_native_closure_cap(root_path: str, cap: int) {
+    import from jaclang.compiler.frontend.host { active_host }
+    resolved = os.path.realpath(root_path);
+    if resolved in _CLOSURE_CAP_NOTED {
+        return;
+    }
+    _CLOSURE_CAP_NOTED.add(resolved);
+    active_host().note(
+        f"note: {root_path} preferred native but its import closure "
+        f"exceeded the inference cap ({cap} modules); compiled in the "
+        f"server codespace. Raise [build] native_closure_cap in jac.toml "
+        f"to scan larger closures."
+    );
+}
+
 def _native_deps_ok(
     root_path: str, root_deps: list[str], hold_exempt: bool = False
 ) -> bool {
@@ -112,14 +129,13 @@ def _native_deps_ok(
         effective_native_closure_cap,
         native_unit_compile_active
     }
-    import from jaclang.compiler.driver.na_coverage { _note_native_closure_cap }
     import from jaclang.compiler.native_scope { in_native_scope_path }
     cap = effective_native_closure_cap();
     edges: dict[str, list[str]] = {root_path: list[str](root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
         if len(edges) > cap {
-            _note_native_closure_cap(root_path, cap);
+            note_native_closure_cap(root_path, cap);
             return False;
         }
         dep = queue.pop();
@@ -939,16 +955,11 @@ def demote_client_pulled_elements(
     invalidate_client_product(prog, module);
     placement_work(prog).changed(module);
     invalidate_importers_es(prog, mod_path);
-    try {
-        import sys;
-        import from jaclang.cli.console { console }
-        console.print(
-            f"note: {mod_path} was pulled into the client but did not lower; "
-            f"demoted {', '.join(demoted)} back to the server ({first_err})",
-            style="dim",
-            file=sys.stderr
-        );
-    } except Exception {}
+    import from jaclang.compiler.frontend.host { active_host }
+    active_host().note(
+        f"note: {mod_path} was pulled into the client but did not lower; "
+        f"demoted {', '.join(demoted)} back to the server ({first_err})"
+    );
     return True;
 }
 
