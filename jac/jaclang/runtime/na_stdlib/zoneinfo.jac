@@ -338,7 +338,7 @@ obj:pub ZoneInfo(tzinfo) {
         timestamp: int = self._get_local_timestamp(dt);
         trans_utc: list[int] = self._data.trans_utc;
         num_trans: int = len(trans_utc);
-        tti: _ttinfo = _ttinfo();
+        tti: _ttinfo;
         fold: int = 0;
         tb: (_ttinfo | None) = self._data.tti_before;
         tzs: (_TZStr | None) = self._data.tz_str;
@@ -357,7 +357,7 @@ obj:pub ZoneInfo(tzinfo) {
             fold = 0;
         } else {
             idx: int = _zi_bisect_right(trans_utc, timestamp);
-            tti_prev: _ttinfo = _ttinfo();
+            tti_prev: _ttinfo;
             if num_trans > 1 and timestamp >= trans_utc[1] {
                 tti_prev = self._data.ttinfos[idx - 2];
                 tti = self._data.ttinfos[idx - 1];
@@ -374,24 +374,26 @@ obj:pub ZoneInfo(tzinfo) {
             }
             poff: (timedelta | None) = tti_prev.utcoff;
             toff: (timedelta | None) = tti.utcoff;
-            if poff is None {
-                poff = timedelta(0);
+            poff_us: int = 0;
+            toff_us: int = 0;
+            if poff is not None {
+                poff_us = poff._to_microseconds();
             }
-            if toff is None {
-                toff = timedelta(0);
+            if toff is not None {
+                toff_us = toff._to_microseconds();
             }
-            shift: int = _td_seconds(poff - toff);
-            if shift > timestamp - trans_utc[idx - 1] {
+            if (poff_us - toff_us) > (timestamp - trans_utc[idx - 1]) * 1000000 {
                 fold = 1;
             } else {
                 fold = 0;
             }
         }
+        uoff_us: int = 0;
         uoff: (timedelta | None) = tti.utcoff;
-        if uoff is None {
-            uoff = timedelta(0);
+        if uoff is not None {
+            uoff_us = uoff._to_microseconds();
         }
-        total_us: int = timestamp * 1000000 + dt.microsecond + uoff._to_microseconds();
+        total_us: int = timestamp * 1000000 + dt.microsecond + uoff_us;
         days: int = total_us // 86400000000;
         rem: int = total_us - days * 86400000000;
         ord2: int = days + _EPOCHORDINAL;
