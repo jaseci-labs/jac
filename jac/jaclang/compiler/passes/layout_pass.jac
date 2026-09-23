@@ -15,6 +15,7 @@ import from jaclang.compiler.frontend.unitree {
     FuncSignature,
     HasVar,
     IndexSlice,
+    KWPair,
     Module,
     ModuleItem,
     Name,
