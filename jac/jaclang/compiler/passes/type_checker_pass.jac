@@ -69,7 +69,7 @@ import from jaclang.compiler.frontend.unitree {
     find_python_scope_node_of,
     WireItem
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 import from jaclang.compiler.frontend.constant { ImmutabilityKind, Tokens as Tok }
@@ -155,18 +155,8 @@ glob FW_INTERVAL_OPS: dict[str, str] = {
          "STAR_MUL": "*"
      };
 
-walker TypeCheckPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        prog: JacProgram,
+walker TypeCheckPass(TreePass) {
+    has prog: JacProgram,
         evaluator: TypeEvaluator postinit,
         _deferred_writes: list[tuple[Expr, (UniNode | None)]] postinit,
         _lambda_depth: int = 0;

@@ -1,14 +1,12 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from collections { deque }
 import jaclang.compiler.tools.doc_ir as doc;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.roles { BodyRole, Kid }
 import from jaclang.compiler.frontend.diagnostics { W5050, E5051 }
 
-walker JacFormatPass {
-    has ctx: CompileContext,
-        module: uni.Module,
-        indent_size: int = 4,
+walker JacFormatPass(CompilerPass) {
+    has indent_size: int = 4,
         MAX_LINE_LENGTH: int = 88,
         _probe_cache: dict[tuple[int, int, int], bool] = {},
         _pending_suffixes: list[str] = [],

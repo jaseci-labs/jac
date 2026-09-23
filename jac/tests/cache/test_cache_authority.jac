@@ -19,7 +19,7 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 import from tests.support { cache_env }
 import from jaclang.cache.locking { FileLock }
-import from jaclang.toolchains.store { InstallLock }
+import from jaclang.jac0core.cache_paths { FileLock as InstallLock }
 import from jaclang.jac0core.cache_paths { get_cache_home, get_jir_cache_dir }
 import from jaclang.cache.home {
     CACHEDIR_TAG,
@@ -54,7 +54,6 @@ glob DAY: float = 86400.0,
          "jir-modules",
          "jir-bootstrap",
          "jir-stubcat",
-         "jir-kernel-units",
          "jir-digests",
          "apps",
          "scale-binaries",

@@ -53,25 +53,15 @@ import from jaclang.compiler.frontend.unitree {
     WhileStmt,
     WithStmt
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from typing { cast }
 import from jaclang.compiler.passes.cfg_build_pass {
     is_structural_child,
     unwrap_to_bool
 }
 
-walker CoalesceBBPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
+walker CoalesceBBPass(TreePass) {
+    has basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
         bb_counter: int = 0;
 
     can prepare with entry;

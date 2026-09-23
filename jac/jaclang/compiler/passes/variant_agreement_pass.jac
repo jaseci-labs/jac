@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import os;
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -23,11 +23,8 @@ def variant_sibling(mod_path: str) -> (str | None);
 def annotation_text(nd: (UniNode | None)) -> str;
 def public_surface(mod: Module) -> dict[str, tuple[str, str, UniNode]];
 
-walker VariantAgreementPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: Module;
-
+walker VariantAgreementPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;

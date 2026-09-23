@@ -302,16 +302,7 @@ obj CtEvaluator {
         if owner is None or not path {
             return;
         }
-        owner_path = _norm_path(owner.loc.mod_path if owner.loc else "");
-        if owner_path and os.path.realpath(owner_path) == path {
-            return;
-        }
-        if path not in owner.ct_file_deps {
-            owner.ct_file_deps.append(path);
-        }
-        if body and path not in owner.ct_body_deps {
-            owner.ct_body_deps.append(path);
-        }
+        owner.record_comptime_dependency(path, body);
     }
 
     def _note_producer(home: (Module | None), body: bool = False) {

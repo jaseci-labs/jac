@@ -53,7 +53,7 @@ import from jaclang.compiler.frontend.unitree {
     record_cross_scope_rebind,
     rebind_or_def_insert
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from jaclang.compiler.frontend.constant { SymbolAccess }
 
 import from jaclang.compiler.frontend.diagnostics { E0064, E0077 }
@@ -102,18 +102,8 @@ glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = (
          'assertWarnsRegex'
      );
 
-walker SymTabBuildPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        cur_sym_tab: list[UniScopeNode] = [];
+walker SymTabBuildPass(TreePass) {
+    has cur_sym_tab: list[UniScopeNode] = [];
 
     can prepare with entry;
     def push_scope_and_link(key_node: UniScopeNode) -> None;

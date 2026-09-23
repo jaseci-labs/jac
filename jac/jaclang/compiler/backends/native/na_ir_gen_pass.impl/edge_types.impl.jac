@@ -13,23 +13,7 @@ impl NaIRGenPass._osp_static_edge_name(expr: uni.UniNode) -> (str | None) {
 }
 
 impl NaIRGenPass._osp_edge_class_name(expr: uni.UniNode) -> (str | None) {
-    while isinstance(expr, uni.AtomUnit) {
-        expr = expr.value;
-    }
-    if not isinstance(expr, uni.Expr) or not isinstance(expr.type, ClassType) {
-        return None;
-    }
-    typ = expr.type;
-    if typ.is_builtin("type") {
-        args = typ.private.type_args or [];
-        if not args or not isinstance(args[0], ClassType) {
-            return "Edge";
-        }
-        typ = args[0];
-    } elif not typ.is_instantiable() or typ.is_instance() {
-        return None;
-    }
-    return typ.shared.class_name;
+    return self._class_expr_bound(expr, unbounded="Edge");
 }
 
 impl NaIRGenPass._osp_edge_tag(
@@ -63,7 +47,7 @@ impl NaIRGenPass._osp_edge_descriptor(
     expr: uni.UniNode, nd: uni.UniNode
 ) -> (ir.Value | None) {
     if self._osp_edge_class_name(expr) is None {
-        self.ctx.emit(
+        self.emit(
             E5092, node_override=nd, kind="edge type", name="non-class expression"
         );
         return None;
@@ -71,7 +55,7 @@ impl NaIRGenPass._osp_edge_descriptor(
     lookup = self.func_symtab.get("osp_edge_type");
     value = self._codegen_expr(expr);
     if lookup is None or value is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="edge type",

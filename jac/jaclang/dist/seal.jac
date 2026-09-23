@@ -4,6 +4,8 @@ import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.project.apps { AppConfig }
 
 
@@ -68,7 +70,8 @@ def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
 }
 
 def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] | None) {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    program = JacProgram();
+    program.options = CompileOptions(skip_native_engine=True);
     import from jaclang.compiler.driver.application { prepare_application }
     import from jaclang.project.config { get_config_for_path }
     import from jaclang.project.app_kinds { kind_has_server }
@@ -85,7 +88,7 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] |
         }
         prepared = prepare_application(
             str(entry_file.resolve()),
-            Jac.get_program(),
+            program,
             str(proj_root.resolve()),
             services=[svc.entry_path(str(proj_root.resolve())) for svc in services]
         );
@@ -99,8 +102,11 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] |
     } except Exception as e {
         console.error(f"Seal aborted: application preparation failed: {e}");
         return None;
+    } finally {
+        program.release_compile_closure();
     }
 }
+
 
 def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
     import from jaclang.client { get_bun }

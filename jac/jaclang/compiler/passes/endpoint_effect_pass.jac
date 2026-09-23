@@ -23,21 +23,11 @@ import from jaclang.compiler.frontend.unitree {
     Symbol,
     Token
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from jaclang.compiler.frontend.constant { SymbolType, Tokens as Tok }
 
-walker EndpointEffectPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        _is_writer: bool = False,
+walker EndpointEffectPass(TreePass) {
+    has _is_writer: bool = False,
         _unknown: bool = False,
         _declared_reads: set[str] = set(),
         _declared_writes: set[str] = set(),

@@ -21,7 +21,7 @@ import from jaclang.compiler.frontend.unitree {
     find_python_scope_node_of,
     is_identifier_slot
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 
 import from jaclang.compiler.frontend.diagnostics {
     E2009,
@@ -35,10 +35,8 @@ import from jaclang.compiler.frontend.diagnostics {
     W2080
 }
 
-walker DeclImplMatchPass {
-    has ctx: CompileContext,
-        module: Module,
-        _e2026_reported: set[int] = set();
+walker DeclImplMatchPass(CompilerPass) {
+    has _e2026_reported: set[int] = set();
 
     def _run_impl(ir_in: Module) -> Module;
     def _report_unimplemented(ir_in: Module) -> None;

@@ -1,7 +1,6 @@
 import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from enum { Enum }
-import from typing { TypeAlias }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     AstElseBodyNode,
@@ -66,14 +65,13 @@ import from jaclang.compiler.frontend.constant {
 }
 
 import from jaclang.compiler.passes.dataflow {
+    DataflowTransfer,
+    SymId,
     solve_backward,
     solve_forward,
     solve_forward_must
 }
 import type from jaclang.compiler.driver.program { JacProgram }
-
-glob SymId: TypeAlias = int,
-     DataflowTransfer: TypeAlias = Callable[[UniCFGNode, set[SymId]], set[SymId]];
 
 enum AccessKind {
     ASSIGN_TARGET = "assign_target",
@@ -105,10 +103,8 @@ obj BorrowMeta {
     }
 }
 
-walker OwnershipCheckPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: Module,
+walker OwnershipCheckPass(CompilerPass) {
+    has prog: JacProgram,
         owned_decl: dict[SymId, Name] = {},
         linear_decl: dict[SymId, Name] = {},
         consumed_syms: set[SymId] = set(),

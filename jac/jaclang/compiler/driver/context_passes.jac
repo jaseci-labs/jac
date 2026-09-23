@@ -1,13 +1,10 @@
 import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 
 import from jaclang.compiler.driver.program { JacProgram }
 
-walker AppContextPass {
-    has ctx: CompileContext,
-        module: Module,
-        prog: JacProgram;
-
+walker AppContextPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -16,11 +13,8 @@ walker AppContextPass {
     }
 }
 
-walker AbsorbImportsPass {
-    has ctx: CompileContext,
-        module: Module,
-        prog: JacProgram;
-
+walker AbsorbImportsPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -28,11 +22,8 @@ walker AbsorbImportsPass {
     }
 }
 
-walker BoundaryFactsPass {
-    has ctx: CompileContext,
-        module: Module,
-        prog: JacProgram;
-
+walker BoundaryFactsPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {
@@ -40,11 +31,8 @@ walker BoundaryFactsPass {
     }
 }
 
-walker NativeImportFactsPass {
-    has ctx: CompileContext,
-        module: Module,
-        prog: JacProgram;
-
+walker NativeImportFactsPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
 
     can run_walk with Module entry {

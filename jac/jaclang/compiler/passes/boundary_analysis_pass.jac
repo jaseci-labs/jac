@@ -39,7 +39,7 @@ import from jaclang.compiler.frontend.unitree {
     ability_of_symbol,
     resolved_decl_of
 }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
@@ -51,20 +51,10 @@ import from jaclang.compiler.frontend.codeinfo {
     InteropBinding,
     InteropContext
 }
+import type from jaclang.compiler.driver.program { JacProgram }
 
-walker BoundaryAnalysisPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module,
-        prog: JacProgram;
-
+walker BoundaryAnalysisPass(TreePass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
     has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = {},
         _imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = {},

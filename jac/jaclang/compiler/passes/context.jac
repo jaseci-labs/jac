@@ -6,7 +6,7 @@ import from jaclang.compiler.frontend.diagnostics {
     Severity
 }
 import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from jaclang.compiler.frontend.unitree { Source, UniNode }
+import from jaclang.compiler.frontend.unitree { Module, Source, TreeWalker, UniNode }
 
 obj Alert {
     has msg: str,
@@ -80,5 +80,20 @@ obj CompileContext {
     def exit_node(nd: UniNode) -> None;
     def is_canceled -> bool {
         return self.cancel_requested;
+    }
+}
+
+walker CompilerPass {
+    has ctx: CompileContext,
+        module: Module;
+}
+
+walker TreePass(CompilerPass, TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
     }
 }

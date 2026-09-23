@@ -1,5 +1,6 @@
 import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
+import from jaclang.compiler.driver.native_iface { NativeIface, NativeExport }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;
@@ -38,6 +39,7 @@ import from jaclang.compiler.frontend.constant {
     Tokens as Tok
 }
 import from jaclang.compiler.frontend.diagnostics {
+    DiagnosticInfo,
     E5026,
     E5060,
     E5088,
@@ -137,6 +139,13 @@ obj NativeSpreadArg {
         is_list: bool = False;
 }
 
+obj NativeCtorParam {
+    has name: str,
+        type: ir.Type,
+        fallback: uni.Expr | None = None,
+        positional: bool = True;
+}
+
 obj NativeComprehension {
     has comprs: list[uni.InnerCompr],
         kind: str,
@@ -194,10 +203,8 @@ obj NativeFunctionState {
             list[tuple[ir.Function, tuple[ir.Value, ir.Value, ir.Value]]];
 }
 
-walker NaIRGenPass {
-    has ctx: CompileContext,
-        prog: JacProgram;
-
+walker NaIRGenPass(CompilerPass) {
+    has prog: JacProgram;
     static has HOST_PASS: bool = True;
     has module: uni.Module,
         _llvm_module: (ir.Module | None) = None,
@@ -298,6 +305,8 @@ walker NaIRGenPass {
         _isa_h_fn: (ir.Function | None) = None,
         _cstr_hash_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
+        _class_ctor_lookup_fn: (ir.Function | None) = None,
+        _class_ctor_records: list[tuple[ir.GlobalVariable, int]] = [],
         _vtable_less_reach: (set[str] | None) = None,
         _short_mro_reach: (dict[str, list[str]] | None) = None,
         osp_type_tag_field: dict[str, int] = {},
@@ -306,12 +315,20 @@ walker NaIRGenPass {
         _osp_thunk_uid: int = 0,
         imported_osp_archs: dict[str, tuple[str, str]] = {},
         _osp_kernel_mod: (object | None) = None,
+        _osp_graph_mod: (object | None) = None,
         _fmt_kernel_mod: (object | None) = None,
         _osp_rt_global: (ir.GlobalVariable | None) = None,
         _osp_setup_fn: (ir.Function | None) = None,
         _osp_ensure_fn: (ir.Function | None) = None,
-        _osp_kernel_inited_gv: (ir.GlobalVariable | None) = None,
-        _osp_kernel_glob_init_fn: (ir.Function | None) = None,
+        _unit_prefix: str = "",
+        _unit_prefixes: dict[str, str] = {},
+        _native_dep_paths: list[str] = [],
+        _typed_only_imports: set[str] = set(),
+        _full_ast_cache: dict[str, uni.Module] = {},
+        _pub_symbols: set[str] = set(),
+        _unit_exports: dict[str, NativeExport] = {},
+        _demoted_names: set[str] = set(),
+        _lowering_issues: list[NativeLoweringIssue] = [],
         tuple_types: dict[str, ir.LiteralStructType] = {},
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
@@ -421,6 +438,7 @@ walker NaIRGenPass {
         di_cu: object = None,
         _di_current_sp: object = None,
         _func_loc: dict[str, int] = {},
+        _func_def_mod: dict[str, str] = {},
         _module_functions: dict[tuple[str, str], ir.Function] = {},
         _linked_fn_decls: dict[int, tuple[ir.Function | None, uni.Ability]] = {},
         _pyb_base_memo: dict[str, tuple[str, str] | None] = {},
@@ -994,6 +1012,37 @@ walker NaIRGenPass {
     ) -> None;
 
     def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
+    def _own_prefix -> str;
+    def _prefix_of_module(mod: (uni.Module | None)) -> str;
+    def _prefix_of_path(path: str) -> str;
+    def _symbol_for(
+        name: str, owner: (uni.Module | None) = None, is_pub: bool = False
+    ) -> str;
+
+    def _record_export(
+        name: str, symbol: str, kind: str, is_pub: bool = False
+    ) -> None;
+
+    def _note_native_dep(path: str) -> None;
+    def _is_catalog_module(mod: uni.Module) -> bool;
+    def _full_ast_of(full_path: str) -> (uni.Module | None);
+    def _dep_iface(imported_mod: uni.Module) -> (NativeIface | None);
+    def _dep_is_native_unit(imported_mod: uni.Module, path: str) -> bool;
+    def _load_native_unit_module(path: str) -> (uni.Module | None);
+    def _is_kernel_unit -> bool;
+    def _record_lowering_issue(issue: NativeLoweringIssue) -> None;
+    def _export_native_iface -> None;
+    def _build_class_layouts -> dict[str, any];
+    def _osp_kernel_init_fns -> list[ir.Function];
+    def _vtable_symbol(arch_name: str) -> str;
+    def emit(
+        diag: DiagnosticInfo,
+        node_override: (uni.UniNode | None) = None,
+        related: (list[tuple[str, uni.UniNode]] | None) = None,
+        help_text: (str | None) = None,
+        **kwargs: any
+    ) -> bool;
+
     def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
@@ -1255,7 +1304,11 @@ walker NaIRGenPass {
     def _ensure_fmt_kernel -> bool;
     def _get_fmt_kernel_fn(name: str) -> (ir.Function | None);
     def _forward_declare_functions(module: uni.Module) -> None;
-    def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
+    def _maybe_declare_ability(nd: uni.ElementStmt, imp_layout: any = None) -> None;
+    def _imported_string_adapter(
+        func: ir.Function, local_type: ir.FunctionType
+    ) -> ir.Function;
+
     def _apply_ownership_param_attrs(
         func: ir.Function, params: list[uni.ParamVar], base: int
     ) -> None;
@@ -1608,13 +1661,19 @@ walker NaIRGenPass {
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_archetypes(module: uni.Module) -> None;
-    def _codegen_archetype(nd: uni.Archetype) -> None;
-    def _register_static_fields(arch_name: str, archhas: uni.ArchHas) -> None;
+    def _codegen_archetype(nd: uni.Archetype, imported: bool = False) -> None;
+    def _register_static_fields(
+        arch_name: str,
+        archhas: uni.ArchHas,
+        owner: (uni.Module | None) = None,
+        imported: bool = False
+    ) -> None;
+
     def _register_class_consts(
         nd: uni.Archetype, arch_name: str, block: uni.ModuleCode
     ) -> None;
 
-    def _build_jc_layout -> str;
+    def _build_jc_layout -> dict[str, any];
     def _register_one_class_const(
         arch_name: str,
         fname: str,
@@ -1725,7 +1784,8 @@ walker NaIRGenPass {
     def _codegen_instantiation(
         nd: (uni.FuncCall | uni.Name),
         type_name_override: (str | None) = None,
-        ctor_params: (list[uni.Expr | uni.KWPair] | None) = None
+        ctor_params: (list[uni.Expr | uni.KWPair] | None) = None,
+        ctor_values: (dict[str, ir.Value] | None) = None
     ) -> (ir.Value | None);
 
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
@@ -1793,6 +1853,50 @@ walker NaIRGenPass {
 
     def _osp_edge_factory(name: str) -> ir.Function;
     def _emit_osp_edge_factories -> None;
+    def _derived_field_decls(nd: uni.Archetype) -> dict[str, uni.HasVar];
+    def _class_expr_bound(
+        expr: (uni.UniNode | None), unbounded: (str | None) = None
+    ) -> (str | None);
+
+    def _class_init_owner(type_name: str) -> (str | None);
+    def _class_ctor_params(type_name: str) -> (list[NativeCtorParam] | None);
+    def _class_ctor_fn_type(params: list[NativeCtorParam]) -> ir.FunctionType;
+    def _class_value_ctor_bound(target: (uni.UniNode | None)) -> (str | None);
+    def _codegen_class_value_call(
+        nd: uni.FuncCall,
+        target: uni.Expr,
+        args: list[uni.Expr | uni.KWPair],
+        bound: str
+    ) -> (ir.Value | None);
+
+    def _bind_class_ctor_args(
+        nd: uni.FuncCall,
+        args: list[uni.Expr | uni.KWPair],
+        params: list[NativeCtorParam],
+        bound: str
+    ) -> (tuple[list[tuple[int, uni.Expr]], uni.Expr | None] | None);
+
+    def _bind_class_ctor_spread(
+        nd: uni.FuncCall,
+        mapping: ir.Value,
+        params: list[NativeCtorParam],
+        values: dict[int, ir.Value],
+        mask: ir.Value,
+        bound: str
+    ) -> (ir.Value | None);
+
+    def _emit_class_ctor_lookup_fn -> ir.Function;
+    def _class_ctor_registry -> ir.GlobalVariable;
+    def _emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> None;
+    def _emit_class_ctor(
+        arch: uni.Archetype, params: list[NativeCtorParam]
+    ) -> (ir.Function | None);
+
+    def _emit_class_ctor_bridge(
+        name: str, bound: str, signature: list[NativeCtorParam], fn: ir.Function
+    ) -> (ir.Function | None);
+
+    def _emit_class_ctor_registrations -> None;
     def _osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value;
     def _osp_active -> bool;
     def _xmod_osp_help(names: list[str | None]) -> (str | None);
