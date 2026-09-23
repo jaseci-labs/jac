@@ -2550,6 +2550,7 @@ walker NaIRGenPass {
     def _is_move_site(expr: uni.UniNode | None) -> bool;
     def _nogc_consume_local(expr: uni.UniNode | None) -> bool;
     def _drop_hook_for(type_name: str) -> (ir.Function | None);
+    def _drop_member_of(owner: str) -> (uni.Ability | None);
     def _nogc_drop_fn_for(
         ptr_ty: ir.PointerType, self_type: str = ""
     ) -> (ir.Function | None);
