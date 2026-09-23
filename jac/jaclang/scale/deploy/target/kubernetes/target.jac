@@ -1711,8 +1711,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
         reset the count that controller set. NONE is the only mode where the
         manifest still owns the field.
         """;
-        mode = plan.get("mode");
-        if mode is None or ScalingMode(mode) == ScalingMode.NONE {
+        if plan.get("mode", ScalingMode.NONE) == ScalingMode.NONE {
             return None;
         }
         patch_body = dict(manifest);
