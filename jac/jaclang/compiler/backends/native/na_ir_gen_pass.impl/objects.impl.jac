@@ -4532,6 +4532,18 @@ impl NaIRGenPass._jc_reference_schema(
                 "order_offset": offsets[layout["order_idx"]]
             };
         }
+    } elif layout["kind"] == "hash" and len(data_fields) == 1 {
+        child = self._jc_reference_schema(
+            data_fields[0][1], layouts, args[0] if args else None
+        );
+        if child is not None {
+            return {
+                "code": "set",
+                "element": child,
+                "key_offset": offsets[data_fields[0][0]],
+                "order_offset": offsets[layout["order_idx"]]
+            };
+        }
     }
     return None;
 }
@@ -4568,6 +4580,7 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
             ft = ftypes.get(fname);
             code = "opaque";
             aux = "";
+            schema: (dict[str, any] | None) = None;
             if fname in self.struct_field_foreign.get(arch_name, set()) {
                 code = "opaque";
             } elif fname in enum_map {
@@ -4599,6 +4612,11 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
                 code = "optref";
                 _opn = getattr(ft.elements[1].pointee, "name", "") or "";
                 aux = _opn;
+                schema = self._jc_reference_schema(
+                    ft.elements[1],
+                    layouts,
+                    _jc_optional_payload(semantic_fields.get(fname))
+                );
             } elif isinstance(ft, ir.IntType) {
                 code = "bool" if ft.width == 1 else "int";
             } elif isinstance(ft, ir.DoubleType) {
@@ -4615,6 +4633,9 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
                 if _is_list {
                     code = "natlist";
                     aux = _pn;
+                    schema = self._jc_reference_schema(
+                        ft, layouts, semantic_fields.get(fname)
+                    );
                 } elif _pn in self.struct_field_indices {
                     code = "obj";
                     aux = _pn;
@@ -4623,6 +4644,15 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
                 } else {
                     code = "ptr";
                     aux = _pn;
+                    schema = self._jc_reference_schema(
+                        ft, layouts, semantic_fields.get(fname)
+                    );
+                    if schema is not None
+                        and schema["code"] in NATIVE_CONTAINER_CODES {
+                        code = NATIVE_CONTAINER_CODES[schema["code"]];
+                    } else {
+                        schema = None;
+                    }
                 }
             }
             fields[fname] = {
@@ -4631,14 +4661,8 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
                 "code": code,
                 "aux": aux
             };
-            if code == "ptr" and isinstance(ft, ir.PointerType) {
-                schema = self._jc_reference_schema(
-                    ft, layouts, semantic_fields.get(fname)
-                );
-                if schema is not None and schema["code"] == "dict" {
-                    fields[fname]["code"] = "natdict";
-                    fields[fname]["schema"] = schema;
-                }
+            if schema is not None {
+                fields[fname]["schema"] = schema;
             }
         }
         _lay_tag_idx = self.osp_type_tag_field.get(arch_name);

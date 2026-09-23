@@ -66,12 +66,14 @@ obj NativeValueSchema {
         out: dict[str, any] = {"code": self.code};
         if self.code == "obj" {
             out["class"] = self.class_name;
-        } elif self.code in ("list", "dict") {
+        } elif self.code in ("list", "dict", "set") {
             if self.element is not None {
                 out["element"] = self.element.to_dict();
             }
-            out["data_offset"] = self.data_offset;
-            if self.code == "dict" {
+            if self.code != "set" {
+                out["data_offset"] = self.data_offset;
+            }
+            if self.code != "list" {
                 out["key_offset"] = self.key_offset;
                 out["order_offset"] = self.order_offset;
             }
