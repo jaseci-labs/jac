@@ -785,10 +785,7 @@ glob _zone_cache: dict[str, ZoneInfo] = {};
 
 
 def _zone_cache_get(key: str) -> (ZoneInfo | None) {
-    if key in _zone_cache {
-        return _zone_cache[key];
-    }
-    return None;
+    return _zone_cache.get(key);
 }
 
 

@@ -604,28 +604,51 @@ def _wrap_strftime(
 
 
 def _is_ascii_digit(c: str) -> bool {
-    return c >= "0" and c <= "9";
+    d: int = ord(c) - 48;
+    return d >= 0 and d <= 9;
+}
+
+
+def _dig2(s: str, p: int) -> int {
+    a: int = ord(s[p]) - 48;
+    b: int = ord(s[p + 1]) - 48;
+    if a < 0 or a > 9 or b < 0 or b > 9 {
+        raise ValueError("invalid literal for int()");
+    }
+    return a * 10 + b;
+}
+
+
+def _dig4(s: str, p: int) -> int {
+    a: int = ord(s[p]) - 48;
+    b: int = ord(s[p + 1]) - 48;
+    c: int = ord(s[p + 2]) - 48;
+    d: int = ord(s[p + 3]) - 48;
+    if a < 0 or a > 9 or b < 0 or b > 9 or c < 0 or c > 9 or d < 0 or d > 9 {
+        raise ValueError("invalid literal for int()");
+    }
+    return a * 1000 + b * 100 + c * 10 + d;
 }
 
 
 def _atoi(s: str) -> int {
-    if len(s) == 0 {
+    n: int = len(s);
+    if n == 0 {
         raise ValueError("invalid literal for int()");
     }
-    digits: str = "0123456789";
     v: int = 0;
     i: int = 0;
     neg: bool = False;
     if s[0] == "+" or s[0] == "-" {
-        if len(s) == 1 {
+        if n == 1 {
             raise ValueError("invalid literal for int()");
         }
         neg = s[0] == "-";
         i = 1;
     }
-    while i < len(s) {
-        dv: int = digits.find(s[i]);
-        if dv < 0 {
+    while i < n {
+        dv: int = ord(s[i]) - 48;
+        if dv < 0 or dv > 9 {
             raise ValueError("invalid literal for int()");
         }
         v = v * 10 + dv;
@@ -688,16 +711,16 @@ def _parse_isoformat_date(dtstr: str) -> tuple[(int, int, int)] {
     if len(dtstr) != 7 and len(dtstr) != 8 and len(dtstr) != 10 {
         raise ValueError("Invalid isoformat string");
     }
-    year: int = _atoi(dtstr[0:4]);
+    year: int = _dig4(dtstr, 0);
     has_sep: bool = dtstr[4] == "-";
     pos: int = 4 + (1 if has_sep else 0);
-    if dtstr[pos:pos + 1] == "W" {
+    if dtstr[pos] == "W" {
         pos += 1;
-        weekno: int = _atoi(dtstr[pos:pos + 2]);
+        weekno: int = _dig2(dtstr, pos);
         pos += 2;
         dayno: int = 1;
         if len(dtstr) > pos {
-            if (dtstr[pos:pos + 1] == "-") != has_sep {
+            if (dtstr[pos] == "-") != has_sep {
                 raise ValueError("Inconsistent use of dash separator");
             }
             pos += 1 if has_sep else 0;
@@ -705,13 +728,23 @@ def _parse_isoformat_date(dtstr: str) -> tuple[(int, int, int)] {
         }
         return _isoweek_to_gregorian(year, weekno, dayno);
     }
-    month: int = _atoi(dtstr[pos:pos + 2]);
+    month: int = _dig2(dtstr, pos);
     pos += 2;
-    if (dtstr[pos:pos + 1] == "-") != has_sep {
+    if (dtstr[pos] == "-") != has_sep {
         raise ValueError("Inconsistent use of dash separator");
     }
     pos += 1 if has_sep else 0;
-    day: int = _atoi(dtstr[pos:pos + 2]);
+    day: int = ord(dtstr[pos]) - 48;
+    if day < 0 or day > 9 {
+        raise ValueError("invalid literal for int()");
+    }
+    if pos + 1 < len(dtstr) {
+        d2: int = ord(dtstr[pos + 1]) - 48;
+        if d2 < 0 or d2 > 9 {
+            raise ValueError("invalid literal for int()");
+        }
+        day = day * 10 + d2;
+    }
     return (year, month, day);
 }
 
@@ -737,7 +770,7 @@ def _parse_hh_mm_ss_ff(tstr: str) -> _IsoTimeResult {
         if len_str - pos < 2 {
             raise ValueError("Incomplete time component");
         }
-        v: int = _atoi(tstr[pos:pos + 2]);
+        v: int = _dig2(tstr, pos);
         if comp == 0 {
             res.hour = v;
         } elif comp == 1 {
@@ -746,7 +779,10 @@ def _parse_hh_mm_ss_ff(tstr: str) -> _IsoTimeResult {
             res.second = v;
         }
         pos += 2;
-        next_char: str = tstr[pos:pos + 1];
+        next_char: str = "";
+        if pos < len_str {
+            next_char = tstr[pos];
+        }
         if comp == 0 {
             has_sep = next_char == ":";
         }
@@ -764,25 +800,26 @@ def _parse_hh_mm_ss_ff(tstr: str) -> _IsoTimeResult {
             raise ValueError("Invalid microsecond separator");
         }
         pos += 1;
-        fstart: int = pos;
+        micro: int = 0;
+        ndig: int = 0;
         while pos < len_str {
-            if not _is_ascii_digit(tstr[pos]) {
+            d9: int = ord(tstr[pos]) - 48;
+            if d9 < 0 or d9 > 9 {
                 raise ValueError("Non-digit values in fraction");
             }
+            if ndig < 6 {
+                micro = micro * 10 + d9;
+            }
+            ndig += 1;
             pos += 1;
         }
-        len_remainder: int = len_str - fstart;
-        if len_remainder == 0 {
+        if ndig == 0 {
             raise ValueError("Non-digit values in fraction");
         }
-        to_parse: int = len_remainder;
-        if to_parse > 6 {
-            to_parse = 6;
+        if ndig < 6 {
+            micro *= _FRACTION_CORRECTION[ndig - 1];
         }
-        res.microsecond = _atoi(tstr[fstart:fstart + to_parse]);
-        if to_parse < 6 {
-            res.microsecond *= _FRACTION_CORRECTION[to_parse - 1];
-        }
+        res.microsecond = micro;
     }
     return res;
 }
@@ -829,10 +866,12 @@ def _parse_isoformat_time(tstr: str) -> _IsoTimeResult {
             res.tzi = timezone.utc;
         } else {
             tzsign: int = -1 if tstr[tz_pos - 1] == "-" else 1;
-            td: timedelta = timedelta(
-                0, tzc.second, tzc.microsecond, 0, tzc.minute, tzc.hour, 0
-            );
-            res.tzi = timezone(td * tzsign);
+            off_us: int = tzsign
+                * (
+                    (tzc.hour * 3600 + tzc.minute * 60 + tzc.second) * 1000000
+                    + tzc.microsecond
+                );
+            res.tzi = timezone(timedelta(0, 0, off_us));
         }
     }
     return res;
@@ -932,6 +971,21 @@ obj:pub timedelta {
         seconds_f += minutes_f * 60.0 + hours_f * 3600.0;
         microseconds_f += milliseconds_f * 1000.0;
         microseconds_w += milliseconds_w * 1000;
+        if days_f == 0.0 and seconds_f == 0.0 and microseconds_f == 0.0 {
+            ssec: int = microseconds_w // 1000000;
+            us = microseconds_w - ssec * 1000000;
+            s = seconds_w + ssec;
+            ddays: int = s // 86400;
+            s -= ddays * 86400;
+            d = days_w + ddays;
+            self.days = d;
+            self.seconds = s;
+            self.microseconds = us;
+            if _iabs(d) > 999999999 {
+                raise OverflowError(f"days={d}; must have magnitude <= 999999999");
+            }
+            return;
+        }
         daysecondsfrac: float = 0.0;
         if days_f != 0.0 {
             fr: float = 0.0;
@@ -1837,22 +1891,10 @@ obj:pub datetime(date) {
             st.tm_year, st.tm_mon, st.tm_mday, st.tm_hour, st.tm_min, ss, us, tz
         );
         if tz is None and not utc {
-            max_fold_seconds: int = 86400;
-            st2: struct_time = _localtime(sec - max_fold_seconds);
-            probe1: datetime = datetime(
-                st2.tm_year,
-                st2.tm_mon,
-                st2.tm_mday,
-                st2.tm_hour,
-                st2.tm_min,
-                st2.tm_sec,
-                us,
-                None
-            );
-            trans: timedelta = ((result - probe1) as timedelta)
-                - timedelta(0, max_fold_seconds);
-            if trans.days < 0 {
-                shift: int = (trans // timedelta(0, 1)) as int;
+            off_now: int = dt_tm_gmtoff();
+            _localtime(sec - 86400);
+            shift: int = off_now - dt_tm_gmtoff();
+            if shift < 0 {
                 st3: struct_time = _localtime(sec + shift);
                 probe2: datetime = datetime(
                     st3.tm_year,
