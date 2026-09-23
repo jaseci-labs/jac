@@ -22,17 +22,25 @@ for required in "${INNER_E2E}" "${RECORDER}"; do
     fi
 done
 
-# Read the namespace from the fixture rather than hardcoding it, so the two
-# scripts can never drift apart.
-NAMESPACE="$(cd "${FIXTURE_DIR}" && jac -c "
-import from jaclang.scale.config.config_loader { get_scale_config }
-with entry { print(get_scale_config().get_kubernetes_config()['namespace']); }
-" | tail -1)"
+# Read the namespace straight out of jac.toml, the same way the wrapped e2e
+# reads its own config: importing jac-scale to resolve it would compile modules
+# and print setup lines into the value being captured.
+CFG=$(cd "${FIXTURE_DIR}" && jac -c "
+import tomllib
+with open('jac.toml', 'rb') as f:
+    cfg = tomllib.load(f)
+print(cfg['scale']['kubernetes'].get('namespace', 'default'))
+")
+NAMESPACE=$(echo "${CFG}" | sed -n '1p')
 
-if [[ -z "${NAMESPACE}" ]]; then
-    echo "could not resolve the fixture namespace" >&2
+# A namespace read wrongly would leave the observer watching nothing while the
+# cycle succeeded elsewhere, so reject anything that is not a DNS label rather
+# than discovering it as "no transitions recorded" minutes later.
+if [[ ! "${NAMESPACE}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+    echo "resolved namespace '${NAMESPACE}' is not a DNS label; check the fixture" >&2
     exit 2
 fi
+echo "fixture namespace: ${NAMESPACE}"
 
 TRANSITIONS="$(mktemp)"
 RECORDER_LOG="$(mktemp)"
