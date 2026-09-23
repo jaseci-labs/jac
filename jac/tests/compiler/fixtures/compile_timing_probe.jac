@@ -33,12 +33,8 @@ import time;
 
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched,
-    get_py_code_gen
-}
+import from jaclang.compiler.driver.pipeline { get_analysis_sched, get_boundary_analysis_sched, get_ir_gen_sched }
+import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob CORPUS: list[str] = [

@@ -158,7 +158,9 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             );
             compile_options.entry_point = file_path;
             if opts.get('closure') {
-                import from jaclang.compiler.driver.pipeline { compile_application }
+                import from jaclang.compiler.driver.pipeline_runner {
+                    compile_application
+                }
                 compile_application(prog, file_path, compile_options);
             } else {
                 prog.compile(file_path, options=compile_options);

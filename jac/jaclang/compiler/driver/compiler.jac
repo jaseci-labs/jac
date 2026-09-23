@@ -65,13 +65,15 @@ import from jaclang.compiler.driver.pipeline {
     get_format_sched,
     get_ir_gen_sched,
     get_lint_sched,
-    get_py_code_gen,
     get_symtab_ir_sched,
-    native_pipeline_available,
-    native_schedule_failure,
     providers_of,
     pass_provides,
     validate_schedule
+}
+import from jaclang.compiler.driver.pipeline_runner {
+    get_py_code_gen,
+    native_pipeline_available,
+    native_schedule_failure
 }
 import from jaclang.compiler.driver.source_failures {
     CompilerSourceError,

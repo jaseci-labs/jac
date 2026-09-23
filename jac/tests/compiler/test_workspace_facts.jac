@@ -214,7 +214,7 @@ test "implicit projects still identify their entry" {
 }
 
 test "application traversal checks imported bodies on cold and warm requests" {
-    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.driver.pipeline_runner { compile_application }
     with TemporaryDirectory() as td {
         base = Path(td);
         entry_path = str(base / 'main.jac');

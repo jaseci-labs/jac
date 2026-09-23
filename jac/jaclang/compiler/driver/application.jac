@@ -579,7 +579,7 @@ def _prepare(
     before = len(program.errors_had);
     import copy;
     modules: dict[str, uni.Module] = {};
-    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.driver.pipeline_runner { compile_application }
     for path in entries {
         options = copy.copy(program.options);
         options.project_root = `root;
@@ -726,7 +726,7 @@ def prepare_route_metadata(`root: str, program: any) -> (list[str] | None) {
         return None;
     }
     import from jaclang.client.route_scanner { RouteScanner }
-    import from jaclang.compiler.driver.pipeline { route_exports }
+    import from jaclang.compiler.driver.pipeline_runner { route_exports }
     def exports(path: Path) -> tuple[str | None, str | None] {
         return route_exports(program, str(path));
     }

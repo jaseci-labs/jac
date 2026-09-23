@@ -471,6 +471,6 @@ def _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
 
 def compile_to_wasm(file_path: str, export_funcs: list[str] = []) -> bytes {
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.pipeline { build_wasm }
+    import from jaclang.compiler.driver.pipeline_runner { build_wasm }
     return build_wasm(JacProgram(), file_path, export_funcs);
 }

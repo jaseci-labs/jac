@@ -37,6 +37,8 @@ obj ProjectHost(HostServices) {
     def declared_dependencies(
         module_path: str, fallback_app: str
     ) -> (list[str] | None);
+
+    def native_pipeline_available -> tuple[bool, str];
 }
 
 def check_settings_of(check: any) -> CheckSettings {

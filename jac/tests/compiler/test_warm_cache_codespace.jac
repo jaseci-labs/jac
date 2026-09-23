@@ -36,14 +36,16 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
 import from jaclang.compiler.driver.pipeline {
     ANALYSIS_SCHED_DEPS,
-    CODEGEN_SCHED_DEPS,
     IR_SCHED_DEPS,
     get_analysis_sched,
     get_ir_gen_sched,
-    get_py_code_gen,
     get_symtab_ir_sched,
     providers_of,
     schedule_tier_reason
+}
+import from jaclang.compiler.driver.pipeline_runner {
+    CODEGEN_SCHED_DEPS,
+    get_py_code_gen
 }
 import from jaclang.compiler.driver.source_failures { bootstrap_tier_failure_details }
 import from jaclang.compiler.frontend.codeinfo {

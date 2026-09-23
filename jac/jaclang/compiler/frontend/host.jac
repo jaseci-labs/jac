@@ -103,6 +103,10 @@ obj HostServices {
     ) -> (list[str] | None) {
         return None;
     }
+
+    def native_pipeline_available -> tuple[bool, str] {
+        return (False, "native pipeline unavailable: no compiler host is installed");
+    }
 }
 
 glob _HOSTS: list[HostServices] = [];

@@ -159,3 +159,8 @@ impl ProjectHost.npm_declarations(spec: str, base_path: str) -> (str | None) {
     import from jaclang.project.modresolver { resolve_client_npm_declarations }
     return resolve_client_npm_declarations(spec, base_path);
 }
+
+impl ProjectHost.native_pipeline_available -> tuple[bool, str] {
+    import from jaclang.compiler.driver.pipeline_runner { native_pipeline_available }
+    return native_pipeline_available();
+}

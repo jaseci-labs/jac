@@ -1151,7 +1151,7 @@ impl JacCompiler._compile_pipeline(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    import from jaclang.compiler.driver.pipeline { compile_module }
+    import from jaclang.compiler.driver.pipeline_runner { compile_module }
     return compile_module(self, actual_program, file_path, options, use_str);
 }
 

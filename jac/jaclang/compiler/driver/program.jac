@@ -117,8 +117,6 @@ class JacProgram {
     def count_module_blocking_errors(self: JacProgram, mod_path: str) -> int;
     def count_module_errors(self: JacProgram, mod_path: str) -> int;
     def module_scoped_errors(self: JacProgram, mod_path: str) -> bool;
-    def scrub_native_artifacts_on_error(self: JacProgram, mod: uni.Module) -> bool;
-    def report_missing_native_ir(self: JacProgram, mod: uni.Module) -> None;
     def compile(
         self: JacProgram,
         file_path: str,

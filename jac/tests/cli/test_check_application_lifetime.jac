@@ -4,7 +4,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import from jaclang.cli.commands.analysis { check }
-import jaclang.compiler.driver.pipeline as pipeline;
+import jaclang.compiler.driver.pipeline_runner as pipeline;
 
 test "application checks release their programs between jobs in a reused worker" {
     programs: list[any] = [];

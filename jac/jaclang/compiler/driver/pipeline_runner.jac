@@ -1,162 +1,40 @@
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+import from contextvars { ContextVar }
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact, CompilationProduct }
+import from jaclang.compiler.driver.pipeline {
+    _analysis_sched_loading,
+    _import_all,
+    _ir_sched_loading,
+    module_in_flight,
+    providers_of_product,
+    register_product_schedule,
+    schedule_tier_reason,
+    validate_schedule
+}
+import from jaclang.compiler.driver.context_passes { NativeImportFactsPass }
+import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
+import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
+import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import os;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.project.source { read_file_with_encoding }
-import from jaclang.compiler.driver.source_failures { module_import_in_flight }
+import time;
+import from collections.abc { Callable }
+import from jaclang.compiler.driver.pipeline_types { CompilationPhase }
+import from jaclang.compiler.driver.module_analysis {
+    AnalysisStep,
+    ModuleAnalysis,
+    analysis_steps,
+    analyze_module,
+    cancelled,
+    record_phase
+}
 
 obj ModuleCompilation {
     has compiler: JacCompiler,
-        program: JacProgram,
-        path: str,
-        options: CompileOptions,
-        source: str | None = None,
-        module: uni.Module postinit,
-        module_path: str = "",
-        parse_failed: bool = False,
-        blocked: bool = False,
-        full_head: bool = False,
-        native: bool = False;
-
-    def postinit {
-        self.module = uni.Module.make_stub();
-    }
-
-    def parse {
-        existing = self.program.mod.hub.get(os.path.realpath(self.path));
-        if self.source is None
-            and not self.program.internal
-            and existing is not None
-            and not existing.stub_only
-            and not existing.parse_failed
-            and self.program.is_hub_entry_fresh(os.path.realpath(self.path))
-            and id(existing) in self.program.analysis.completed_passes {
-            self.module = existing;
-            return;
-        }
-        keep_str = self.source
-            if self.source is not None
-            else read_file_with_encoding(self.path);
-        errors_before = len(self.program.errors_had);
-        self.module = self.program.parse_source(
-            keep_str, self.path, cancel_token=self.options.cancel_token
-        );
-        self.parse_failed = len(self.program.errors_had) > errors_before;
-        self.program.ingest_comptime_producers(self.module, self.path);
-    }
-
-    def ir {
-        import from jaclang.compiler.driver.pipeline {
-            get_symtab_ir_sched,
-            get_ir_gen_sched,
-            providers_of
-        }
-        self.module_path = os.path.normpath(self.path);
-        blocking_errs_pre_ir = self.program.count_module_blocking_errors(
-            self.module_path
-        );
-        if self.options.symtab_ir_only {
-            _head_sched = get_symtab_ir_sched();
-        } else {
-            _head_sched = get_ir_gen_sched(
-                is_internal=self.program.internal, gen_mtir=not self.options.no_cgen
-            );
-        }
-
-        self.full_head = AnalysisFact.CFG_SUCC in providers_of(_head_sched);
-        self.program.run_schedule(
-            mod=self.module, passes=_head_sched, cancel_token=self.options.cancel_token
-        );
-
-        blocking_errs_post_ir = self.program.count_module_blocking_errors(
-            self.module_path
-        );
-        self.blocked = blocking_errs_post_ir > blocking_errs_pre_ir;
-    }
-
-    def placement {
-        if not self.options.symtab_ir_only and not self.blocked {
-            import from jaclang.compiler.placement.placement_solver {
-                solve_program_placement,
-                refresh_placement_module
-            }
-            refresh_placement_module(self.module, self.program);
-            solve_program_placement(self.module, self.program);
-        }
-    }
-
-    def analysis {
-        import from jaclang.compiler.driver.pipeline {
-            require_product,
-            product_ready,
-            CompilationProduct
-        }
-        import from jaclang.compiler.frontend.constant { CodeContext as _CodeCtx }
-        self.native = self.module is not None
-            and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
-
-        if self.native {
-            self.options.need_full_ast = True;
-        }
-
-        _is_decl_stub = str(self.path).endswith('.pyi')
-            or str(self.path).endswith('.py')
-            or (self.module is not None and self.module.stub_only)
-            or (self.module is not None and self.module.is_raised_from_py);
-        import from jaclang.jac0core.ext_registry { is_annex as _cc_is_annex }
-        _annex_of_base = False;
-        if _cc_is_annex(self.path) {
-            import from jaclang.compiler.driver.bccache {
-                discover_base_file as _cc_base_file
-            }
-            _annex_of_base = _cc_base_file(str(self.path)) is not None;
-        }
-        _analyze = self.full_head
-            and not _is_decl_stub
-            and not _annex_of_base
-            and (
-                self.native
-                or not self.program.internal
-                or not module_import_in_flight(self.path)
-            );
-
-        if _analyze
-            and not product_ready(
-                self.program, self.module, CompilationProduct.ANALYSIS
-            ) {
-            if not require_product(
-                self.program,
-                self.module,
-                CompilationProduct.ANALYSIS,
-                cancel_token=self.options.cancel_token
-            ) {
-                self.blocked = True;
-            }
-        }
-
-        if not self.blocked
-            and self.program.count_module_errors(self.module_path) > 0 {
-            self.blocked = True;
-        }
-    }
-
-    def boundaries {
-        import from jaclang.compiler.driver.pipeline { get_boundary_analysis_sched }
-        if (
-            not self.parse_failed
-            and not self.blocked
-            and not self.options.symtab_ir_only
-        ) {
-            self.program.run_schedule(
-                mod=self.module,
-                passes=get_boundary_analysis_sched(),
-                cancel_token=self.options.cancel_token
-            );
-        }
-    }
+        analysis: ModuleAnalysis;
 
     def native_checks {
         import from jaclang.compiler.driver.pipeline {
@@ -165,40 +43,46 @@ obj ModuleCompilation {
             CompilationProduct
         }
         if (
-            self.options.no_cgen
+            self.analysis.options.no_cgen
             and (
-                self.options.native_parity
-                or self.options.native_required_for(self.path)
+                self.analysis.options.native_parity
+                or self.analysis.options.native_required_for(self.analysis.path)
             )
-            and not self.options.symtab_ir_only
-            and not self.parse_failed
-            and not self.blocked
-            and product_ready(self.program, self.module, CompilationProduct.ANALYSIS)
+            and not self.analysis.options.symtab_ir_only
+            and not self.analysis.parse_failed
+            and not self.analysis.blocked
+            and product_ready(
+                self.analysis.program, self.analysis.module, CompilationProduct.ANALYSIS
+            )
         ) {
             import from jaclang.compiler.frontend.module_facts {
                 ModuleFacts as _PtyMcp
             }
-            if self.native or _PtyMcp.has_native_context_stmts(self.module) {
+            if self.analysis.native
+                or _PtyMcp.has_native_context_stmts(self.analysis.module) {
                 lowered = require_product(
-                    self.program,
-                    self.module,
+                    self.analysis.program,
+                    self.analysis.module,
                     CompilationProduct.NATIVE_IR,
-                    cancel_token=self.options.cancel_token
+                    cancel_token=self.analysis.options.cancel_token
                 );
-                if lowered and self.options.native_required_for(self.path) {
+                if lowered
+                    and self.analysis.options.native_required_for(self.analysis.path) {
                     import copy;
                     import from jaclang.compiler.backends.native.na_compile_pass {
                         NativeCompilePass
                     }
-                    previous = self.program.options;
+                    previous = self.analysis.program.options;
                     checked = copy.copy(previous);
                     checked.aot_mode = True;
                     checked.skip_native_engine = False;
-                    self.program.options = checked;
+                    self.analysis.program.options = checked;
                     try {
-                        self.program.run_schedule(self.module, [NativeCompilePass]);
+                        self.analysis.program.run_schedule(
+                            self.analysis.module, [NativeCompilePass]
+                        );
                     } finally {
-                        self.program.options = previous;
+                        self.analysis.program.options = previous;
                     }
                 }
             }
@@ -207,20 +91,20 @@ obj ModuleCompilation {
 
     def client_dependencies {
         if (
-            not self.parse_failed
-            and not self.blocked
-            and not self.options.symtab_ir_only
-            and not self.options.no_cgen
+            not self.analysis.parse_failed
+            and not self.analysis.blocked
+            and not self.analysis.options.symtab_ir_only
+            and not self.analysis.options.no_cgen
         ) {
             import os as _cb_os;
             cb_seen: set[str] = set();
-            cb_worklist: list[uni.Module | None] = [self.module];
+            cb_worklist: list[uni.Module | None] = [self.analysis.module];
             cb_paths: list[str] = [];
 
             cb_opts = CompileOptions(
-                no_cgen=True, cancel_token=self.options.cancel_token
+                no_cgen=True, cancel_token=self.analysis.options.cancel_token
             );
-            cb_reg = self.program.iface_registry();
+            cb_reg = self.analysis.program.iface_registry();
             while cb_worklist or cb_paths {
                 if cb_worklist {
                     cb_cur = cb_worklist.pop();
@@ -256,7 +140,7 @@ obj ModuleCompilation {
                 }
                 cb_seen.add(cb_next);
 
-                cb_mod = self.program.find_module(cb_next);
+                cb_mod = self.analysis.program.find_module(cb_next);
                 cb_has_facts = (
                     cb_mod is not None
                     and cb_mod.gen
@@ -264,7 +148,7 @@ obj ModuleCompilation {
                     and bool(cb_mod.gen.interop_manifest.bindings)
                 );
 
-                cb_known_bad = self.program.has_failed_parse(cb_next);
+                cb_known_bad = self.analysis.program.has_failed_parse(cb_next);
                 if not cb_has_facts and not cb_known_bad {
                     cb_served: (list[str] | None) = None;
                     try {
@@ -279,27 +163,35 @@ obj ModuleCompilation {
                         continue;
                     }
                     cb_mod = self.compiler.compile(
-                        file_path=cb_next, target_program=self.program, options=cb_opts
+                        file_path=cb_next,
+                        target_program=self.analysis.program,
+                        options=cb_opts
                     );
                 }
                 cb_worklist.append(cb_mod);
             }
-            self.program.options = self.options;
+            self.analysis.program.options = self.analysis.options;
         }
     }
 
     def interface {
         import from jaclang.compiler.driver.jir { is_compiler_tree_path }
-        closure = self.compiler._closure_opts or self.options;
-        if not self.parse_failed
-            and not self.blocked
-            and self.source is None
+        closure = self.compiler._closure_opts or self.analysis.options;
+        if not self.analysis.parse_failed
+            and not self.analysis.blocked
+            and self.analysis.source is None
             and (
-                (self.options.no_cgen and not self.options.symtab_ir_only)
+                (
+                    self.analysis.options.no_cgen
+                    and not self.analysis.options.symtab_ir_only
+                )
                 or (
                     closure.no_cgen
                     and not closure.symtab_ir_only
-                    and not (self.program.internal and is_compiler_tree_path(self.path))
+                    and not (
+                        self.analysis.program.internal
+                        and is_compiler_tree_path(self.analysis.path)
+                    )
                 )
             ) {
             import from jaclang.compiler.driver.pipeline {
@@ -307,10 +199,10 @@ obj ModuleCompilation {
                 CompilationProduct
             }
             require_product(
-                self.program,
-                self.module,
+                self.analysis.program,
+                self.analysis.module,
                 CompilationProduct.INTERFACE,
-                cancel_token=self.options.cancel_token
+                cancel_token=self.analysis.options.cancel_token
             );
         }
     }
@@ -319,62 +211,183 @@ obj ModuleCompilation {
         import from jaclang.compiler.driver.pipeline {
             require_product,
             product_ready,
-            CompilationProduct,
-            get_bootstrap_code_gen,
-            get_py_code_gen
+            CompilationProduct
         }
         if (
-            not self.parse_failed
-            and not self.blocked
-            and not self.options.no_cgen
-            and not self.options.symtab_ir_only
+            not self.analysis.parse_failed
+            and not self.analysis.blocked
+            and not self.analysis.options.no_cgen
+            and not self.analysis.options.symtab_ir_only
         ) {
-            self.program.options = self.options;
-            if not self.full_head {
-                self.program.run_schedule(
-                    mod=self.module,
+            self.analysis.program.options = self.analysis.options;
+            if not self.analysis.full_head {
+                self.analysis.program.run_schedule(
+                    mod=self.analysis.module,
                     passes=get_bootstrap_code_gen(),
-                    cancel_token=self.options.cancel_token
+                    cancel_token=self.analysis.options.cancel_token
                 );
                 return;
             }
 
             import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-            needs_native = self.native
-                or ModuleFacts.has_native_context_stmts(self.module);
-            if self.full_head
+            needs_native = self.analysis.native
+                or ModuleFacts.has_native_context_stmts(self.analysis.module);
+            if self.analysis.full_head
                 and needs_native
                 and not product_ready(
-                    self.program, self.module, CompilationProduct.ANALYSIS
+                    self.analysis.program,
+                    self.analysis.module,
+                    CompilationProduct.ANALYSIS
                 ) {
                 if not require_product(
-                    self.program,
-                    self.module,
+                    self.analysis.program,
+                    self.analysis.module,
                     CompilationProduct.ANALYSIS,
-                    cancel_token=self.options.cancel_token
+                    cancel_token=self.analysis.options.cancel_token
                 ) {
-                    self.blocked = True;
+                    self.analysis.blocked = True;
                     return;
                 }
             }
-            self.program.run_schedule(
-                mod=self.module,
+            self.analysis.program.run_schedule(
+                mod=self.analysis.module,
                 passes=get_py_code_gen(
                     native=needs_native,
-                    provided=self.program.analysis.analyses_run.provided(self.module)
+                    provided=self.analysis.program.analysis.analyses_run.provided(
+                        self.analysis.module
+                    )
                 )
-                    if self.full_head
+                    if self.analysis.full_head
                     else get_bootstrap_code_gen(),
-                cancel_token=self.options.cancel_token
+                cancel_token=self.analysis.options.cancel_token
             );
-            if self.module.decided_codespace == 'native' {
-                _scrubbed = self.program.scrub_native_artifacts_on_error(self.module);
-                if self.options.aot_mode and not _scrubbed {
-                    self.program.report_missing_native_ir(self.module);
+            if self.analysis.module.decided_codespace == 'native' {
+                _scrubbed = self.scrub_native_artifacts_on_error(
+                    self.analysis.program, self.analysis.module
+                );
+                if self.analysis.options.aot_mode and not _scrubbed {
+                    self.report_missing_native_ir(
+                        self.analysis.program, self.analysis.module
+                    );
                 }
             }
         }
     }
+
+    def scrub_native_artifacts_on_error(program: JacProgram, mod: uni.Module) -> bool {
+        mod_path = mod.loc.mod_path if mod?.loc else '';
+        if not mod_path {
+            return False;
+        }
+        if not program.module_scoped_errors(mod_path) {
+            return False;
+        }
+        gen = mod.gen;
+        gen.py_bytecode = None;
+        gen.llvm_ir = None;
+        gen.native_engine = None;
+        gen.native_bitcode = None;
+        gen.native_object = None;
+        gen.native_iface = None;
+        gen.native_layout = None;
+        return True;
+    }
+
+    def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
+        import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
+        import from jaclang.compiler.driver.pass_driver { deliver_alerts }
+        if mod?.gen is None or mod.gen.llvm_ir is not None {
+            return;
+        }
+        mod_path = mod.loc.mod_path if mod?.loc else '';
+        if not mod_path or program.count_module_errors(mod_path) > 0 {
+            return;
+        }
+        import from jaclang.compiler.frontend.diagnostics { E5092 }
+        import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+        import from jaclang.compiler.passes.context { Alert }
+        reason = native_schedule_failure();
+        if not reason {
+            (_avail, _why) = native_pipeline_available();
+            if not _avail {
+                reason = _why;
+            }
+        }
+        if reason {
+            detail = f"the native codegen schedule could not be built ({reason})";
+        } elif not ModuleFacts.has_native_context_stmts(mod) {
+            detail = "the module declares no native code for the backend to lower";
+        } else {
+            detail = (
+                "the native codegen passes ran but emitted neither IR nor a "
+                "diagnostic; this is a compiler bug -- please report it"
+            );
+        }
+        from_pass: any = JcirGenPass;
+        try {
+            import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+            from_pass = NaIRGenPass;
+        } except Exception {}
+        deliver_alerts(
+            [
+                Alert(
+                    msg=E5092.format_message(
+                        kind='module', name=os.path.basename(mod_path)
+                    ),
+                    loc=mod.loc.span(),
+                    from_pass=from_pass,
+                    code=E5092,
+                    help_text=detail
+                )
+            ],
+            [],
+            program
+        );
+    }
+}
+
+obj HostStep {
+    has phase: CompilationPhase,
+        execute: Callable[[ModuleCompilation], None];
+}
+
+def host_steps -> list[HostStep] {
+    return [
+        HostStep(CompilationPhase.NATIVE_CHECKS, ModuleCompilation.native_checks),
+        HostStep(
+            CompilationPhase.CLIENT_DEPENDENCIES, ModuleCompilation.client_dependencies
+        ),
+        HostStep(CompilationPhase.INTERFACE, ModuleCompilation.interface),
+        HostStep(CompilationPhase.CODEGEN, ModuleCompilation.codegen)
+    ];
+}
+
+def module_pipeline -> list[CompilationPhase] {
+    return [step.phase for step in analysis_steps()]
+        + [step.phase for step in host_steps()];
+}
+
+def compile_module(
+    compiler: JacCompiler,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: str | None = None
+) -> uni.Module {
+    analysis = analyze_module(program, path, options, source);
+    task = ModuleCompilation(compiler, analysis);
+    for step in host_steps() {
+        if cancelled(options) {
+            break;
+        }
+        started = time.perf_counter();
+        try {
+            step.execute(task);
+        } finally {
+            record_phase(program, step.phase, started);
+        }
+    }
+    return analysis.module;
 }
 
 def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
@@ -484,4 +497,256 @@ def native_application(
             pop_native_target(previous);
         }
     }
+}
+
+glob _codegen_sched_loading = ContextVar(
+         'jac_codegen_sched_loading', `default=False
+     ),
+     CODEGEN_SCHED_DEPS: tuple[str, ...] = (
+         'jaclang.compiler.passes.rc_facts_pass',
+         'jaclang.compiler.backends.es',
+         'jaclang.compiler.passes.freeze_structure_pass'
+     ),
+     NATIVE_CODEGEN_DEPS: tuple[str, ...] = ('jaclang.compiler.backends.native', ),
+     _native_sched_failure: dict[str, str] = {},
+     _native_env_memo: dict[str, tuple[bool, str]] = {};
+
+def _codegen_tier_reason -> str {
+    if _codegen_sched_loading.get() {
+        return 'the codegen schedule was still loading';
+    }
+    dep = module_in_flight(CODEGEN_SCHED_DEPS + NATIVE_CODEGEN_DEPS);
+    if dep {
+        return f"'{dep}', a dependency of the codegen schedule, was mid-import";
+    }
+    return schedule_tier_reason();
+}
+
+def _note_native_schedule_failure(err: (BaseException | None)) {
+    if err is None {
+        _native_sched_failure.pop('reason', None);
+    } else {
+        _native_sched_failure['reason'] = f"{type(err).__name__}: {err}";
+    }
+}
+
+def native_schedule_failure -> str {
+    return _native_sched_failure.get('reason', '');
+}
+
+def native_pipeline_available -> tuple[bool, str] {
+    cached = _native_env_memo.get('verdict');
+    if cached is not None {
+        return cached;
+    }
+    if (
+        _analysis_sched_loading.get()
+        or _ir_sched_loading.get()
+        or _codegen_sched_loading.get()
+    ) {
+        return (True, '');
+    }
+    reason = '';
+    try {
+        import from jaclang.compiler.backends.native.llvm { _find_shim }
+        _find_shim();
+    } except ModuleNotFoundError {
+        reason = (
+            'native pipeline unavailable: LLVM shim (libjacllvm) '
+            + 'not found in this environment'
+        );
+    } except ImportError as e {
+        fail_loud_on_compiler_source(e);
+        return (False, 'native pipeline undecided: the compiler is still initializing');
+    } except Exception {
+        reason = (
+            'native pipeline unavailable: LLVM shim (libjacllvm) '
+            + 'not found in this environment'
+        );
+    }
+    verdict = (not reason, reason);
+    _native_env_memo['verdict'] = verdict;
+    return verdict;
+}
+
+def _py_codegen_tail -> list[type] {
+    return [NativeImportFactsPass, JcirGenPass, JcirBytecodeGenPass];
+}
+
+def get_bootstrap_code_gen -> list[type] {
+    return _py_codegen_tail();
+}
+
+def get_py_code_gen(
+    native: bool = True, provided: (set[AnalysisFact] | None) = None
+) -> list[type] {
+    if _codegen_tier_reason() {
+        return _py_codegen_tail();
+    }
+    _tok = _codegen_sched_loading.set(True);
+    try {
+        _import_all(CODEGEN_SCHED_DEPS);
+        import from jaclang.compiler.backends.es { EsastGenPass }
+        import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
+
+        passes: list[type] = [RcFactsPass, EsastGenPass];
+        if native {
+            _import_all(NATIVE_CODEGEN_DEPS);
+            import from jaclang.compiler.backends.native {
+                NaIRGenPass,
+                NativeCompilePass
+            }
+            passes.extend([NaIRGenPass, NativeCompilePass]);
+            _note_native_schedule_failure(None);
+        }
+        passes.extend(_py_codegen_tail());
+        import from jaclang.compiler.passes.freeze_structure_pass {
+            FreezeStructurePass
+        }
+        passes.append(FreezeStructurePass);
+        return validate_schedule(
+            passes,
+            preprovided=providers_of_product(CompilationProduct.ANALYSIS)
+                if provided is None
+                else provided,
+            origin='codegen schedule'
+        );
+    } except ImportError as e {
+        fail_loud_on_compiler_source(e);
+        if native {
+            _note_native_schedule_failure(e);
+        }
+        return _py_codegen_tail();
+    } finally {
+        _codegen_sched_loading.reset(_tok);
+    }
+}
+
+def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
+    return wasm_artifact(program, path, exports);
+}
+
+def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None] {
+    artifact = program.get_client_artifact(os.path.realpath(path));
+    if artifact is None {
+        return (None, None);
+    }
+    return (artifact.manifest.page_export, artifact.manifest.layout_export);
+}
+
+def compile_application(
+    program: JacProgram, entry_path: str, options: CompileOptions
+) -> uni.Module {
+    import copy;
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compilation_context {
+        bind_options,
+        context_program
+    }
+    import from jaclang.compiler.frontend.unitree { Import, ModulePath }
+    import from jaclang.compiler.backends.py.artifact_imports { package_sources }
+    import from jaclang.jac0core.ext_registry { is_annex }
+    import from jaclang.project.app_kinds { kind_has_client }
+    entry_path = os.path.realpath(entry_path);
+    project_root = os.path.realpath(
+        options.project_root or os.path.dirname(entry_path)
+    );
+    selected = context_program(program, bind_options(entry_path, program, options));
+    pending: list[tuple[JacProgram, str]] = [(selected, entry_path)];
+    if kind_has_client(options.app_kind) {
+        pages = Path(entry_path).parent / 'pages';
+        if pages.is_dir() {
+            pending.extend(
+                (selected, str(p))
+                for p in sorted(pages.rglob('*.jac'))
+                if not is_annex(str(p))
+            );
+        }
+    }
+    seen: set[tuple[str, str]] = set();
+    entry_module: uni.Module | None = None;
+    while pending {
+        (context, path) = pending.pop(0);
+        if options.cancel_token is not None and options.cancel_token.is_set() {
+            break;
+        }
+        bound = bind_options(path, context, copy.copy(context.options));
+        bound.no_cgen = options.no_cgen;
+        bound.native_parity = options.native_parity;
+        bound.cancel_token = options.cancel_token;
+        context = context_program(context, bound);
+        identity = (context.context_key, path);
+        if identity in seen {
+            continue;
+        }
+        seen.add(identity);
+        previous = context.options;
+        codegen_options = copy.copy(bound);
+        codegen_options.skip_native_engine = True;
+        try {
+            module = program.compile(path, options=codegen_options);
+        } finally {
+            context.options = previous;
+        }
+        if path == entry_path and entry_module is None {
+            entry_module = module;
+        }
+        dependencies = package_sources(path, project_root);
+        dependencies.update(context.iface_registry().direct_deps.get(path, {}));
+        dependencies.update(
+            dependency
+            for (dependency, importers) in context.deps.dependents.items()
+            if path in importers
+        );
+        for statement in module.get_all_sub_nodes(Import) {
+            if not statement.is_jac or statement.is_virtual_jac {
+                continue;
+            }
+            imports = [statement.from_loc]
+                if statement.from_loc is not None
+                else [
+                    item
+                    for item in statement.items
+                    if isinstance(item, ModulePath)
+                ];
+            for imported in imports {
+                dependency = imported.resolve_relative_path();
+                if isinstance(dependency, str) and dependency.endswith('.jac') {
+                    dependencies.add(os.path.realpath(dependency));
+                }
+            }
+        }
+        pending.extend(
+            (context, dependency)
+            for dependency in sorted(dependencies)
+            if dependency.startswith(project_root + os.sep)
+                and os.path.isfile(dependency)
+                and not any(
+                    part in ('.jac', 'node_modules', 'venv')
+                    for part in os.path.relpath(dependency, project_root).split(os.sep)
+                )
+        );
+    }
+    if entry_module is None {
+        raise RuntimeError(
+            f'Application compilation cancelled before parsing {entry_path}'
+        );
+    }
+    return entry_module;
+}
+
+def client_product_schedule -> list[type] {
+    import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
+    return [EsastGenPass];
+}
+
+def native_ir_product_schedule -> list[type] {
+    import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
+    import from jaclang.compiler.backends.native { NaIRGenPass }
+    return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
+}
+
+with entry {
+    register_product_schedule(CompilationProduct.CLIENT, client_product_schedule);
+    register_product_schedule(CompilationProduct.NATIVE_IR, native_ir_product_schedule);
 }

@@ -1,7 +1,7 @@
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
-import jaclang.compiler.driver.pipeline as pipeline;
+import jaclang.compiler.driver.pipeline_runner as pipeline;
 import jaclang.server.assembly;
 import from jaclang.dist.precompile_bytecode {
     placement_facts_map,

@@ -166,13 +166,13 @@ def native_default_path_ok(path: str) -> bool {
 def native_default_verdict(
     module: uni.Module, prog: any = None, native_unit_compile: bool = False
 ) -> tuple[bool, str] {
-    import from jaclang.compiler.driver.pipeline { native_pipeline_available }
+    import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.placement.placement_pins { module_native_demoted }
 
     if module.app_kind == 'web-app' {
         return (False, "web-app project: native is opt-in");
     }
-    (env_ok, env_reason) = native_pipeline_available();
+    (env_ok, env_reason) = active_host().native_pipeline_available();
     if not env_ok {
         return (False, env_reason);
     }
