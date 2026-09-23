@@ -1,4 +1,4 @@
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 
 impl JacAutoLintPass.postinit -> None {
     import from jaclang.compiler.driver.compilation_context { context_app }

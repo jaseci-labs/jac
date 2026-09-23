@@ -364,12 +364,15 @@ impl UniNode.replace_kid(old: UniNode, new: UniNode) -> UniNode {
     self._assert_thawed();
     roles: list[type] = [];
     for e in [edge self->:Role:->] {
-        if getattr(e, "__jac__").target.archetype is old and `type(e) not in roles {
+        if `type(e) not in roles {
             roles.append(`type(e));
         }
     }
     for role in roles {
         targets = [self->:role:->];
+        if not any(t is old for t in targets) {
+            continue;
+        }
         del [edge self->:role:->];
         for t in targets {
             self._attach(new if t is old else t, role);

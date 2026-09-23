@@ -19,7 +19,7 @@ impl annotation_text(nd: (UniNode | None)) -> str {
     if nd is None {
         return '';
     }
-    import from jaclang.compiler.tools.unparse_pass { unparse_node }
+    import from jaclang.compiler.frontend.unparse { unparse_node }
     try {
         return ' '.join(unparse_node(nd).split());
     } except Exception {

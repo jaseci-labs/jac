@@ -122,17 +122,16 @@ class NativeCompiler {
         L.jc_reg_edge.restype = c_int64;
         L.jc_reg_hint_tags.argtypes = [c_int64] * 2;
         L.jc_reg_hint_tags.restype = c_int64;
-        self.supports_early: bool = hasattr(L, "jc_set_early");
-        if self.supports_early {
-            L.jc_set_early.argtypes = [c_int64];
-            L.jc_set_early.restype = c_int64;
-            L.jc_completed.argtypes = [];
-            L.jc_completed.restype = c_int64;
-            L.jc_pass_time.argtypes = [c_int64];
-            L.jc_pass_time.restype = c_double;
-            L.jc_take_pass_alerts.argtypes = [c_int64, c_int64];
-            L.jc_take_pass_alerts.restype = c_void_p;
-        }
+        L.jc_set_early.argtypes = [c_int64];
+        L.jc_set_early.restype = c_int64;
+        L.jc_completed.argtypes = [];
+        L.jc_completed.restype = c_int64;
+        L.jc_pass_time.argtypes = [c_int64];
+        L.jc_pass_time.restype = c_double;
+        L.jc_take_pass_name.argtypes = [c_int64];
+        L.jc_take_pass_name.restype = c_void_p;
+        L.jc_take_pass_alerts.argtypes = [c_int64, c_int64];
+        L.jc_take_pass_alerts.restype = c_void_p;
     }
 
     def _hold(self: NativeCompiler, o: any) -> int {
@@ -430,44 +429,30 @@ class NativeCompiler {
     }
 
     def prepare_early(self: NativeCompiler, context: str) {
-        if self.supports_early {
-            self.lib.jc_set_early(
-                {"server": 1, "client": 2, "native": 3}.get(context, 0)
-            );
-        }
+        self.lib.jc_set_early({"server": 1, "client": 2, "native": 3}.get(context, 0));
     }
 
     def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
         import from jaclang.compiler.passes.context {
             PassResult as CompletedPassResult
         }
-        import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-        import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+        import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
         out: dict[str, PassResult] = {};
-        if not self.supports_early {
-            return out;
-        }
-        completed = self.lib.jc_completed();
-        passes: list[tuple[int, type]] = [(1, ASTValidationPass), (2, SymTabBuildPass)];
-        for (pass_id, pass_cls) in passes {
-            if not (completed & pass_id) {
-                continue;
-            }
-            errors: list[Alert] = self._take(self.lib.jc_take_pass_alerts(pass_id, 0))
+        for index in range(self.lib.jc_completed()) {
+            name: str = self._take(self.lib.jc_take_pass_name(index));
+            errors: list[Alert] = self._take(self.lib.jc_take_pass_alerts(index, 0))
                 or [];
-            warnings: list[Alert] = self._take(self.lib.jc_take_pass_alerts(pass_id, 1))
+            warnings: list[Alert] = self._take(self.lib.jc_take_pass_alerts(index, 1))
                 or [];
             for alert in errors + warnings {
-                alert.from_pass = pass_cls;
                 if alert.code is not None {
-                    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
                     alert.code = DIAGNOSTICS[alert.code.code];
                 }
             }
-            out[pass_cls.__name__] = CompletedPassResult(
+            out[name] = CompletedPassResult(
                 errors_had=errors,
                 warnings_had=warnings,
-                time_taken=self.lib.jc_pass_time(pass_id)
+                time_taken=self.lib.jc_pass_time(index)
             );
         }
         return out;

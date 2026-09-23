@@ -6,7 +6,7 @@ import jaclang.compiler.frontend.unitree as uni;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes { Alert }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.frontend.unparse { unparse_node }
 import from jaclang.compiler.passes.scope_walk { ScopeWalker }
 import from jaclang.compiler.driver.jir {
     SEC_SYMINDEX,

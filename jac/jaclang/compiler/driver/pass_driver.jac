@@ -139,6 +139,9 @@ def run_pass(
     }
     completed = prog.analysis.take_early(ir_in, pass_cls.__name__);
     if completed is not None {
+        for alert in completed.errors_had + completed.warnings_had {
+            alert.from_pass = pass_cls;
+        }
         if completed.errors_had or completed.warnings_had {
             sources = {ir_in.source.file_path: ir_in.source};
             for nd in ir_in._in_mod_nodes {

@@ -28,6 +28,28 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(
              module="jaclang.compiler.passes.sym_tab_build_pass", strict=True
          ),
+         NativeScopeEntry(module="jaclang.compiler.passes.early_passes", strict=True),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.graph_lowering_pass", strict=True
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.decl_impl_match_pass", strict=True
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.semantic_analysis_pass", strict=True
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.sem_def_match_pass", strict=True
+         ),
+         NativeScopeEntry(module="jaclang.compiler.passes.cfg_build_pass", strict=True),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.jsx_intrinsic_guard_pass", strict=True
+         ),
+         NativeScopeEntry(module="jaclang.compiler.expr_keys", strict=True),
+         NativeScopeEntry(module="jaclang.project.mobui_scope", strict=True),
+         NativeScopeEntry(
+             module="jaclang.client.targets.react_native.html_tag_map", strict=True
+         ),
 
      );
 

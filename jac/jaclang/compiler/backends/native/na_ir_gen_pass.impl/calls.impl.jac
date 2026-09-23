@@ -1624,7 +1624,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "Region" {
-            import from jaclang.compiler.expr_keys { is_builtin_region_type }
+            import from jaclang.compiler.types.type_utils { is_builtin_region_type }
             if is_builtin_region_type(nd.type) or "Region" not in self.struct_types {
                 return self._region_new_handle();
             }
@@ -1650,11 +1650,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if func_name == "type" {
             _cid_params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if len(_cid_params) == 1 {
-                _scalar = self._scalar_shape(_cid_params[0]);
-                if _scalar is not None {
-                    return self._codegen_type_name_str(_scalar.name);
-                }
-                _cid = self._codegen_class_id(_cid_params[0]);
+                _cid = self._codegen_type_of(_cid_params[0]);
                 if _cid is not None {
                     return _cid;
                 }
@@ -2718,7 +2714,7 @@ impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
     if _alias_nm is not None {
         return _alias_nm;
     }
-    return self._get_name(nd);
+    return self._get_name(nd) or self._module_class_name(nd);
 }
 
 impl NaIRGenPass._enum_union_tags(

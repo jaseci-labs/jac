@@ -2525,7 +2525,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         return None;
     }
     if method_name == "partition" {
-        import from jaclang.compiler.expr_keys { is_builtin_region_type }
+        import from jaclang.compiler.types.type_utils { is_builtin_region_type }
         if is_builtin_region_type(trailer.target.type) {
             _pt_recv = self._codegen_expr(trailer.target);
             if _pt_recv is None {

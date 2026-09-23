@@ -3,6 +3,7 @@ import from jaclang.compiler.passes.context { CompileContext }
 import from c { def PyList_New(n: int) -> int;  }
 import from c { def PyList_SetItem(l: int, i: int, v: int) -> int;  }
 import from c { def Py_DecRef(o: int) -> int;  }
+import from c { def PyUnicode_FromString(p: int) -> int;  }
 
 import from jaclang.compiler.jc_materialize {
     hint_commentdata,
@@ -15,11 +16,20 @@ import from jaclang.compiler.jc_materialize {
 
 import from jaclang.compiler.frontend.parser.parser { parse_program }
 import from jaclang.compiler.frontend.parser.tokens { SrcDiag, CommentData }
-import from jaclang.compiler.frontend.unitree { GraphExpr, Module, UniNode, Import }
+import from jaclang.compiler.frontend.unitree { Module, UniNode, Import }
 import from jaclang.compiler.frontend.roles { AccessorsRole, BodyRole, SpecRole }
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.compiler.passes.early_passes {
+    EARLY_PASSES,
+    GraphLoweringPass,
+    ASTValidationPass,
+    SymTabBuildPass,
+    DeclImplMatchPass,
+    SemanticAnalysisPass,
+    SemDefMatchPass,
+    CFGBuildPass,
+    JsxIntrinsicGuardPass
+}
 import from jaclang.compiler.passes.context { Alert }
 
 obj JcState {
@@ -30,13 +40,10 @@ obj JcState {
         lexdiags_h: int = 0,
         comments_h: int = 0,
         early_context: int = 0,
-        completed: int = 0,
-        validation_errors_h: int = 0,
-        validation_warnings_h: int = 0,
-        symbols_errors_h: int = 0,
-        symbols_warnings_h: int = 0,
-        validation_time: float = 0.0,
-        symbols_time: float = 0.0;
+        pass_times: list[float] = [],
+        pass_names_h: list[int] = [],
+        pass_errors_h: list[int] = [],
+        pass_warnings_h: list[int] = [];
 }
 
 glob _JC: JcState = JcState(),
@@ -58,17 +65,19 @@ def _clear_results {
     _drop_h(_JC.diags_h);
     _drop_h(_JC.lexdiags_h);
     _drop_h(_JC.comments_h);
-    _drop_h(_JC.validation_errors_h);
-    _drop_h(_JC.validation_warnings_h);
-    _drop_h(_JC.symbols_errors_h);
-    _drop_h(_JC.symbols_warnings_h);
-    _JC.validation_errors_h = 0;
-    _JC.validation_warnings_h = 0;
-    _JC.symbols_errors_h = 0;
-    _JC.symbols_warnings_h = 0;
-    _JC.completed = 0;
-    _JC.validation_time = 0.0;
-    _JC.symbols_time = 0.0;
+    for h in _JC.pass_names_h {
+        _drop_h(h);
+    }
+    for h in _JC.pass_errors_h {
+        _drop_h(h);
+    }
+    for h in _JC.pass_warnings_h {
+        _drop_h(h);
+    }
+    _JC.pass_times.clear();
+    _JC.pass_names_h.clear();
+    _JC.pass_errors_h.clear();
+    _JC.pass_warnings_h.clear();
     _JC.mod_h = 0;
     _JC.diags_h = 0;
     _JC.lexdiags_h = 0;
@@ -83,32 +92,23 @@ def:pub jc_set_early(context: int) -> int {
 }
 
 def:pub jc_completed -> int {
-    return _JC.completed;
+    return len(_JC.pass_times);
 }
 
-def:pub jc_pass_time(pass_id: int) -> float {
-    return _JC.validation_time if pass_id == 1 else _JC.symbols_time;
+def:pub jc_pass_time(index: int) -> float {
+    return _JC.pass_times[index];
 }
 
-def:pub jc_take_pass_alerts(pass_id: int, warnings: int) -> int {
-    h = 0;
-    if pass_id == 1 {
-        if warnings != 0 {
-            h = _JC.validation_warnings_h;
-            _JC.validation_warnings_h = 0;
-        } else {
-            h = _JC.validation_errors_h;
-            _JC.validation_errors_h = 0;
-        }
-    } else {
-        if warnings != 0 {
-            h = _JC.symbols_warnings_h;
-            _JC.symbols_warnings_h = 0;
-        } else {
-            h = _JC.symbols_errors_h;
-            _JC.symbols_errors_h = 0;
-        }
-    }
+def:pub jc_take_pass_name(index: int) -> int {
+    h = _JC.pass_names_h[index];
+    _JC.pass_names_h[index] = 0;
+    return h;
+}
+
+def:pub jc_take_pass_alerts(index: int, warnings: int) -> int {
+    handles = _JC.pass_warnings_h if warnings != 0 else _JC.pass_errors_h;
+    h = handles[index];
+    handles[index] = 0;
     return h;
 }
 
@@ -165,6 +165,88 @@ def _materialize(
     return 0;
 }
 
+def _early_context(mod: Module, pass_type: type, name: str) -> CompileContext {
+    return CompileContext(current_node=mod, from_pass=pass_type, pass_name=name);
+}
+
+def _has_absorb_import(mod: Module) -> bool {
+    for imp in mod.get_all_sub_nodes(Import) {
+        if imp.is_absorb {
+            return True;
+        }
+    }
+    return False;
+}
+
+def _spawn_early(index: int, mod: Module) -> (CompileContext | None) {
+    if index == 0 {
+        ctx = _early_context(mod, GraphLoweringPass, "GraphLoweringPass");
+        mod spawn GraphLoweringPass(module=mod, ctx=ctx);
+        return ctx;
+    }
+    if index == 1 {
+        ctx = _early_context(mod, ASTValidationPass, "ASTValidationPass");
+        mod spawn ASTValidationPass(module=mod, ctx=ctx);
+        return ctx;
+    }
+    if _has_absorb_import(mod) {
+        return None;
+    }
+    if index == 2 {
+        ctx = _early_context(mod, SymTabBuildPass, "SymTabBuildPass");
+        mod spawn SymTabBuildPass(module=mod, ctx=ctx);
+        return ctx;
+    }
+    if index == 3 {
+        ctx = _early_context(mod, DeclImplMatchPass, "DeclImplMatchPass");
+        mod spawn DeclImplMatchPass(module=mod, ctx=ctx);
+        return ctx;
+    }
+    if index == 4 {
+        ctx = _early_context(mod, SemanticAnalysisPass, "SemanticAnalysisPass");
+        mod spawn SemanticAnalysisPass(module=mod, ctx=ctx);
+        return ctx;
+    }
+    if index == 5 {
+        ctx = _early_context(mod, SemDefMatchPass, "SemDefMatchPass");
+        mod spawn SemDefMatchPass(module=mod, ctx=ctx);
+        return ctx;
+    }
+    if index == 6 {
+        ctx = _early_context(mod, CFGBuildPass, "CFGBuildPass");
+        mod spawn CFGBuildPass(module=mod, ctx=ctx);
+        return ctx;
+    }
+    if index == 7 {
+        ctx = _early_context(mod, JsxIntrinsicGuardPass, "JsxIntrinsicGuardPass");
+        mod spawn JsxIntrinsicGuardPass(module=mod, ctx=ctx);
+        return ctx;
+    }
+    return None;
+}
+
+def _run_early_passes(mod: Module) -> list[CompileContext] {
+    done: list[CompileContext] = [];
+    if _JC.early_context == 0 or _JC.p_errs != 0 or _JC.lex_errs != 0 {
+        return done;
+    }
+    if _JC.early_context == 2 {
+        mod.set_code_context(CodeContext.CLIENT);
+    } elif _JC.early_context == 3 {
+        mod.set_code_context(CodeContext.NATIVE);
+    }
+    for index in range(len(EARLY_PASSES)) {
+        started = time.time();
+        ctx = _spawn_early(index, mod);
+        if ctx is None {
+            break;
+        }
+        ctx.time_taken = time.time() - started;
+        done.append(ctx);
+    }
+    return done;
+}
+
 def _finish_unit(
     r: Region,
     mod: Module,
@@ -172,66 +254,17 @@ def _finish_unit(
     comments: list[CommentData],
     lex_diags: list[SrcDiag]
 ) -> int {
-    validation: (ASTValidationPass | None) = None;
-    symbols: (SymTabBuildPass | None) = None;
-
-    if _JC.early_context != 0
-        and _JC.p_errs == 0
-        and _JC.lex_errs == 0
-        and not mod.get_all_sub_nodes(GraphExpr) {
-        if _JC.early_context == 2 {
-            mod.set_code_context(CodeContext.CLIENT);
-        } elif _JC.early_context == 3 {
-            mod.set_code_context(CodeContext.NATIVE);
-        }
-        validation = ASTValidationPass(
-            module=mod,
-            ctx=CompileContext(
-                current_node=mod,
-                from_pass=ASTValidationPass,
-                pass_name="ASTValidationPass"
-            )
-        );
-        started = time.time();
-        mod spawn validation;
-        validation.ctx.time_taken = time.time() - started;
-        _JC.completed = 1;
-        has_absorb = False;
-        for imp in mod.get_all_sub_nodes(Import) {
-            if imp.is_absorb {
-                has_absorb = True;
-                break;
-            }
-        }
-
-        if not has_absorb {
-            symbols = SymTabBuildPass(
-                module=mod,
-                ctx=CompileContext(
-                    current_node=mod,
-                    from_pass=SymTabBuildPass,
-                    pass_name="SymTabBuildPass"
-                )
-            );
-            started = time.time();
-            mod spawn symbols;
-            symbols.ctx.time_taken = time.time() - started;
-            _JC.completed = 3;
-        }
-    }
+    done = _run_early_passes(mod);
     status = _materialize(r, mod, p_diags, comments, lex_diags);
     if status != 0 {
         return status;
     }
-    if validation is not None {
-        _JC.validation_time = validation.ctx.time_taken;
-        _JC.validation_errors_h = _mz_list(validation.ctx.errors_had, _alert_tag());
-        _JC.validation_warnings_h = _mz_list(validation.ctx.warnings_had, _alert_tag());
-    }
-    if symbols is not None {
-        _JC.symbols_time = symbols.ctx.time_taken;
-        _JC.symbols_errors_h = _mz_list(symbols.ctx.errors_had, _alert_tag());
-        _JC.symbols_warnings_h = _mz_list(symbols.ctx.warnings_had, _alert_tag());
+    tag = _alert_tag();
+    for ctx in done {
+        _JC.pass_times.append(ctx.time_taken);
+        _JC.pass_names_h.append(PyUnicode_FromString(id(ctx.pass_name)));
+        _JC.pass_errors_h.append(_mz_list(ctx.errors_had, tag));
+        _JC.pass_warnings_h.append(_mz_list(ctx.warnings_had, tag));
     }
     jc_mz_dispose();
     return 0;

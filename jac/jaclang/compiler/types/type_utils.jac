@@ -140,3 +140,25 @@ def build_solution_from_specialized_class(
 ) -> dict[str, TypeBase];
 
 def specialize_for_base_class(src_type: ClassType, base_class: ClassType) -> ClassType;
+
+def is_builtin_region_type(t: (object | None), allow_class: bool = False) -> bool {
+    if not isinstance(t, ClassType) or t.shared is None {
+        return False;
+    }
+    if t.shared.class_name != "Region" {
+        return False;
+    }
+    if not allow_class and t.is_instantiable() and not t.is_instance() {
+        return False;
+    }
+    owner = t.shared.symbol_table;
+    if isinstance(owner, Archetype) {
+        _loc = owner.loc;
+        return _loc is not None and str(_loc.mod_path).endswith(".pyi");
+    }
+    return True;
+}
+
+def expr_is_builtin_region(expr: (UniNode | None)) -> bool {
+    return isinstance(expr, Expr) and is_builtin_region_type(expr.type);
+}

@@ -857,7 +857,7 @@ def run_utility(
         import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
         step = GrammarExtractPass;
     } elif product == UtilityProduct.CFG_DOT {
-        import from jaclang.compiler.passes.cfg_build_pass { CoalesceBBPass }
+        import from jaclang.compiler.tools.cfg_dot { CoalesceBBPass }
         step = CoalesceBBPass;
     } elif product == UtilityProduct.NORMALIZE {
         import from jaclang.compiler.tools.normalize_pass { NormalizePass }

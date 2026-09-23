@@ -8,8 +8,9 @@ import from jaclang.compiler.native_compiler { ensure_loaded }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
+import from jaclang.compiler.passes.early_passes { EARLY_PASSES }
 
-test "native early symbols wait for construction lowering" {
+test "native early analysis lowers graph construction before binding" {
     kernel = ensure_loaded();
     if kernel is not None {
         prog = JacProgram();
@@ -21,7 +22,7 @@ test "native early symbols wait for construction lowering" {
             early_context="client"
         );
         assert not failed;
-        assert id(mod) not in prog.analysis.early_passes;
+        assert id(mod) in prog.analysis.early_passes;
         run_pass(GraphLoweringPass, mod, prog);
         run_pass(ASTValidationPass, mod, prog);
         run_pass(SymTabBuildPass, mod, prog);
@@ -40,7 +41,6 @@ test "native early symbols wait for construction lowering" {
 test "native validation preserves client code context" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early;
         for (context, expected) in [("client", 0), ("server", 1)] {
             prog = JacProgram();
             (mod, failed) = parse_woven(
@@ -124,25 +124,27 @@ def scope_profile(mod: Module) -> list[any] {
 test "native early passes preserve the store parser's symbol graph" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early , "rebuild the compiler kernel for early analysis";
         native = JacProgram();
         (nat_mod, failed) = parse_woven(
             SOURCE, "early_scopes.jac", native, [], early_context="server"
         );
         assert not failed;
-        assert "SymTabBuildPass" in native.analysis.early_passes[id(nat_mod)].results;
+        pending = native.analysis.early_passes[id(nat_mod)].results;
+        assert sorted(pending) == sorted(p.__name__ for p in EARLY_PASSES);
         before = scope_profile(nat_mod);
-        run_pass(ASTValidationPass, nat_mod, native);
-        run_pass(SymTabBuildPass, nat_mod, native);
+        for early in EARLY_PASSES {
+            run_pass(early, nat_mod, native);
+        }
         assert id(nat_mod) not in native.analysis.early_passes;
-        assert native.analysis.pass_runs["SymTabBuildPass"] == 1;
+        assert all(native.analysis.pass_runs[p.__name__] == 1 for p in EARLY_PASSES);
         assert scope_profile(nat_mod) == before;
 
         store = JacProgram();
         (store_mod, store_failed) = parse(SOURCE, "early_scopes.jac", store);
         assert not store_failed;
-        run_pass(ASTValidationPass, store_mod, store);
-        run_pass(SymTabBuildPass, store_mod, store);
+        for early in EARLY_PASSES {
+            run_pass(early, store_mod, store);
+        }
         assert scope_profile(nat_mod) == scope_profile(store_mod);
         assert not native.errors_had;
         assert not store.errors_had;
@@ -152,7 +154,6 @@ test "native early passes preserve the store parser's symbol graph" {
 test "native validation diagnostics retain inline suppression" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early;
         for (suffix, expected) in [("", 1), (" # jac:ignore[E0052]", 0)] {
             prog = JacProgram();
             source = "def missing(value) -> int { return 1; }" + suffix;
@@ -195,7 +196,7 @@ test "application modules run their early passes in the kernel" {
             prog.analysis.record_early = spy;
             prog.compile(str(path), options=CompileOptions(no_cgen=True));
             assert not prog.errors_had;
-            assert "ASTValidationPass" in recorded and "SymTabBuildPass" in recorded;
+            assert sorted(recorded) == sorted(p.__name__ for p in EARLY_PASSES);
             assert not prog.analysis.early_passes;
         }
     }

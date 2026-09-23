@@ -33,7 +33,10 @@ obj SelfHostCache {
     }
 
     def resolve(
-        file_path: str, target_program: JacProgram, force: bool = False
+        file_path: str,
+        target_program: JacProgram,
+        force: bool = False,
+        execution: bool = False
     ) -> JacProgram {
         if not force and self.owns(file_path) {
             if self.is_selfhost(target_program) {
@@ -62,7 +65,9 @@ obj SelfHostCache {
                 in_native_scope_path,
                 scope_lowering_active
             }
-            if scope_lowering_active() and in_native_scope_path(file_path) {
+            if not execution
+                and scope_lowering_active()
+                and in_native_scope_path(file_path) {
                 return target_program;
             }
             return self.program;
