@@ -59,14 +59,42 @@ native layout records the emitted name separately from its source-level key.
   non-ASCII is a follow-up). (`dumps` of floats now matches CPython: native
   `str(float)` produces the shortest-round-trip repr -- #6940 Phase 0.3,
   pinned byte-for-byte against CPython in the native suite.)
-- **`datetime.jac`** (#6940 Phase 1 / #6951) -- a UTC `datetime` and
-  `timezone` pair. `timezone.utc` is a class attribute and `datetime.now` /
-  `datetime.fromtimestamp` are class-level constructors, riding the native
-  static-method and class-attribute capability added for #6951. The civil date
-  is computed from the POSIX epoch (Hinnant's days->civil) over the `time`
-  intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
-  `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
-  fixed-offset only (no tz database, DST, leap seconds, or microseconds).
+- **`datetime.jac`** (#6940 Phase 1 / #6951, extended to the full surface) --
+  a faithful port of CPython's `_pydatetime.py`: `timedelta`, `date`,
+  `tzinfo`, `time`, `datetime`, `timezone`, `struct_time`, and
+  `IsoCalendarDate`, with the same class hierarchy (`datetime(date)`,
+  `timezone(tzinfo)`). Civil-date math uses the proleptic-Gregorian ordinal
+  algorithms; timezone-aware math rides the `tzinfo` protocol
+  (`utcoffset`/`dst`/`tzname`/`fromutc`), `datetime.astimezone` performs the
+  local-timeline conversion like CPython (including the fold probe), and
+  `strptime` is a hand-rolled matcher port of `_strptime.py` since no regex
+  engine exists natively. `_datetime_native.jac` is the FFI floor:
+  `gettimeofday`/`localtime_r`/`gmtime_r`/`strftime`
+  over shared `malloc`'d `struct tm`/`timeval` storage (glibc `tm_gmtoff`/
+  `tm_zone` read at fixed offsets). SCOPE divergences: `datetime.date()` /
+  `time()` / `timetz()` and `datetime.combine` return/accept `any` at the type
+  level because method names shadow class names inside `obj datetime`
+  (runtime behavior unchanged); `strftime` locale text comes from libc, like
+  CPython's.
+- **`calendar.jac`** -- a port of CPython's `calendar.py`: `Calendar` /
+  `TextCalendar` (`formatweek`-`formatyear`, `prweek`-`pryear` via
+  `sys.stdout.write` since `print` doesn't lower), the `itermonth*` iterators,
+  `monthcalendar`-`yeardatescalendar` grids, `isleap`/`leapdays`/`weekday`/
+  `monthrange`, `month_name`/`month_abbr`/`day_name`/`day_abbr`, and the
+  `IllegalMonthError`/`IllegalWeekdayError` exceptions (no `super.init` — it
+  doesn't lower). SCOPE divergences: `weekday`/`monthrange` return plain
+  `int`, not the 3.14 `Day`/`Month` `IntEnum`s, and the name tables are static
+  English `list[str]` rather than locale-aware `_localized_*` objects.
+- **`zoneinfo.jac`** -- a port of CPython's `zoneinfo/_zoneinfo.py`: a full
+  TZif v1/v2+ parser (big-endian headers, transition/type arrays, POSIX TZ
+  footer via `_TZStr` transition rules), `ZoneInfo` with module-level cache +
+  `no_cache`/`from_file`/`clear_cache`, `TZPATH` filesystem discovery through
+  `_file_native`/`_directory_native`, `available_timezones`, and
+  `ZoneInfoNotFoundError`. `utcoffset`/`dst`/`tzname`/`fromutc` follow the
+  `_ttinfo` transition logic including fold/gap handling, so
+  `datetime.astimezone` conversion works end to end. SCOPE: TZif files only —
+  no `datetime.tzfile`/`tzstr` fallbacks, and POSIX-footer parsing covers the
+  common `EST5EDT,M3.2.0/2,M11.1.0` forms.
 - **`gzip.jac`** (#6978 Phase 2) -- a Mechanism-B gzip framing over the
   bundled `zlib` floor (no new FFI): `compress(data, compresslevel=9, mtime=0)`
   and `decompress(data)`. gzip is zlib's DEFLATE engine plus an RFC 1952 header,
