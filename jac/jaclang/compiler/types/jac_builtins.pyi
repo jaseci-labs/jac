@@ -15,7 +15,7 @@
 # builtin.__all__ for that purpose. This file is NOT used by codegen.
 
 from collections.abc import Callable
-from typing import Any, ClassVar, NoReturn, Protocol, TypeVar
+from typing import Any, ClassVar, Generic, NoReturn, Protocol, TypeVar
 
 _NewT = TypeVar("_NewT")
 
@@ -44,6 +44,11 @@ __all__ = [
     "LLMModel",
     "Region",
     "region_of",
+    # C interop
+    "ptr",
+    "PtrView",
+    "Pinned",
+    "pin",
     # Fixed-width numeric types
     "i8",
     "u8",
@@ -175,6 +180,39 @@ class Region:
 # The region a value was allocated in (the growth anchor of a traversal),
 # or None for a managed value.
 def region_of(__x: object) -> Region | None: ...
+
+# ── C interop ──────────────────────────────────────────────────────
+# `ptr[T]` is a non-owning address of C memory holding T (a sized scalar, a
+# foreign struct, or an opaque C type); bare `ptr` is `void*`. It is plain
+# data: it can be compared, null-tested and passed back to C, never
+# dereferenced, offset or freed from Jac. `ptr[T](p)` retypes an address.
+_PtrT = TypeVar("_PtrT", covariant=True)
+_ViewT = TypeVar("_ViewT")
+_PinT = TypeVar("_PinT")
+
+class ptr(Generic[_PtrT]):
+    # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address.
+    def __init__(self, address: ptr[object] = ...) -> None: ...
+    def is_null(self) -> bool: ...
+    # A borrowed, bounds-checked window of `n` elements starting at the
+    # address. It is a local view: it may not outlive its scope.
+    def view(self, n: int) -> PtrView[_PtrT]: ...
+    def __eq__(self, other: object) -> bool: ...
+    def __ne__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+
+class PtrView(Generic[_ViewT]):
+    def __len__(self) -> int: ...
+    def __getitem__(self, i: int) -> _ViewT: ...
+    def __setitem__(self, i: int, value: _ViewT) -> None: ...
+
+# An owned box whose payload address never changes, for C APIs that keep a
+# pointer after the call returns. A clib parameter typed `&Pinned[T]` or
+# `&mut Pinned[T]` receives the payload's address.
+class Pinned(Generic[_PinT]):
+    value: _PinT
+
+def pin(value: _PinT) -> Pinned[_PinT]: ...
 
 class EdgeDir:
     OUT: int

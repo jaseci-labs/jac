@@ -811,7 +811,10 @@ impl LayoutPass._is_layout_compatible_semantic_type(typ: TypeBase | None) -> boo
         and declaration.loc.mod_path.endswith(".jac") {
         return True;
     }
-    if typ.is_builtin(list(LAYOUT_COMPATIBLE_SCALARS) + ["None", "NoneType"]) {
+    if typ.is_builtin(
+        list(LAYOUT_COMPATIBLE_SCALARS)
+            + ["None", "NoneType", "ptr", "PtrView", "Pinned"]
+    ) {
         return True;
     }
     if typ.is_builtin(["list", "dict", "set", "frozenset", "tuple"]) {

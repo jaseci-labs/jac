@@ -1778,6 +1778,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             continue;
         }
 
+        if isinstance(target_expr, uni.AtomTrailer)
+            and self._c_interop_store(target_expr, value, nd) {
+            continue;
+        }
+
         if isinstance(target_expr, uni.AtomTrailer) and target_expr.is_attr {
             if nd.aug_op is not None {
                 _faug_errs = len(self.ctx.errors_had);
@@ -2617,6 +2622,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         if nd.loc
                         else 0}"
                 );
+            } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
+                and not is_inplace_set_op
+                and not raw_int_ptr {
+                self._nogc_consume_assigned_local(nd);
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
@@ -3090,10 +3099,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         if nd.loc
                         else 0}"
                 );
-            } elif self._opt_ptr_payload_of(var_type) is not None {
-                if self._nogc_borrow_local_assign(nd) {
-                    self.borrowed_vars.add(var_name);
-                }
+            } elif self._opt_ptr_payload_of(var_type) is not None
+                and not self._nogc_headerless() {
                 _opt_asg_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}";
@@ -3106,16 +3113,34 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } else {
                     self.rc_ops_elided += 1;
                 }
-                if not _mk_cell
-                    and not _in_gen_frame
-                    and not (self._nogc_headerless() and nd.na_overwrite_consumed)
-                    and var_name not in self.borrowed_vars {
+                if not _mk_cell and not _in_gen_frame {
                     _opt_old = self.builder.load(alloca, name=f"{var_name}.opt.old");
                     _opt_old_pv = self.builder.extract_value(
                         _opt_old, 1, name=f"{var_name}.opt.oldpv"
                     );
                     self._emit_rc_release_simple(
                         _opt_old_pv, op="overwrite", loc=_opt_asg_loc
+                    );
+                }
+            } elif self._opt_ptr_payload_of(var_type) is not None {
+                if self._nogc_borrow_local_assign(nd) {
+                    self.borrowed_vars.add(var_name);
+                }
+                self._nogc_consume_assigned_local(nd);
+                if not _mk_cell
+                    and not _in_gen_frame
+                    and not nd.na_overwrite_consumed
+                    and var_name not in self.borrowed_vars {
+                    _opt_old = self.builder.load(alloca, name=f"{var_name}.opt.old");
+                    _opt_old_pv = self.builder.extract_value(
+                        _opt_old, 1, name=f"{var_name}.opt.oldpv"
+                    );
+                    self._emit_rc_release_simple(
+                        _opt_old_pv,
+                        op="overwrite",
+                        loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
                     );
                 }
             } elif value.type == var_type

@@ -79,6 +79,41 @@ test "an owned singly linked list with take() and swap() behaves identically" {
     assert out.strip() == "10409" , out;
 }
 
+test "an owned local moved after it was borrowed is dropped once, by the new owner" {
+    out = assert_native_identity(_fixture("borrow_then_move.jac"));
+    assert out.splitlines()
+        == [
+            "mut m.n=1",
+            "drop 1",
+            "--",
+            "peek 5",
+            "shared m.n=5",
+            "drop 2",
+            "--",
+            "loop peek 3",
+            "loop peek 3",
+            "loop m.n=3",
+            "drop 3",
+            "--",
+            "field peek 1",
+            "field g.inner.n=1",
+            "drop 4",
+            "--",
+            "first m.tag=5",
+            "drop 5",
+            "existing m.tag=6 m.n=1",
+            "drop 6",
+            "--",
+            "opt a.n=9",
+            "opt m.n=9",
+            "drop 7",
+            "--",
+            "param m.n=1",
+            "drop 8",
+            "done"
+        ] , out;
+}
+
 test "own parameters are dropped by the callee and own returns by the receiver" {
     out = assert_native_identity(_fixture("own_param_drop.jac"));
     assert out.splitlines() == ["drop job 1", "drop job 7", "8", "done"] , out;

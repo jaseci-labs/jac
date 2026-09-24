@@ -859,19 +859,59 @@ walker NaIRGenPass(CompilerPass) {
     def _clib_struct_layout(name: str) -> tuple[int, int, list[tuple[int, bool, int]]];
     def _foreign_model -> dict[str, list[tuple[str, str | None]]];
     def _foreign_fns -> dict[str, dict[str, any]];
-    def _foreign_fields_of(name: str) -> list[tuple[str, str | None]];
-    def _clib_has_nested(name: str) -> bool;
     def _clib_c_type(name: str) -> ir.Type;
     def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;
     def _clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value;
-    def _clib_copy_jac_to_c(jac_ptr: ir.Value, c_ptr: ir.Value, name: str) -> None;
-    def _clib_copy_c_to_jac(c_ptr: ir.Value, jac_ptr: ir.Value, name: str) -> None;
     def _clib_alloc_box(name: str) -> ir.Value;
     def _codegen_clib_call(
-        func: ir.Function, func_name: str, args: list[ir.Value]
+        func: ir.Function,
+        func_name: str,
+        args: list[ir.Value],
+        copybacks: (list[tuple[ir.Value, ir.Value, any]] | None) = None
     ) -> (ir.Value | None);
 
     def _clib_reinterpret(val: ir.Value, want: ir.Type, name: str) -> ir.Value;
+    def _foreign_struct_name_of_type(t: any) -> (str | None);
+    def _lower_c_interop_type(t: any) -> (ir.Type | None);
+    def _ptr_view_type -> ir.Type;
+    def _c_scalar_llvm(t: any) -> (ir.Type | None);
+    def _c_load_scalar(slot: ir.Value, t: any, name: str) -> ir.Value;
+    def _c_store_scalar(value: ir.Value, slot: ir.Value, t: any) -> None;
+    def _pinned_scalar_box(elem: any) -> (str | None);
+    def _foreign_copy_box(src_ptr: ir.Value, name: str) -> ir.Value;
+    def _c_elem_info(elem: any) -> (tuple[ir.Type, (str | None)] | None);
+    def _c_view_elem_ptr(
+        view_val: ir.Value, idx_val: ir.Value, elem_llt: ir.Type
+    ) -> ir.Value;
+
+    def _c_view_elem_of(
+        nd: uni.AtomTrailer
+    ) -> (tuple[ir.Value, any, ir.Type, (str | None)] | None);
+
+    def _codegen_c_interop_trailer(
+        nd: uni.AtomTrailer
+    ) -> tuple[bool, (ir.Value | None)];
+
+    def _c_interop_store(
+        target: uni.AtomTrailer, value: ir.Value, nd: uni.Assignment
+    ) -> bool;
+
+    def _foreign_store_bytes(slot: ir.Value, value: ir.Value, sname: str) -> None;
+    def _pinned_value_slot(box: ir.Value) -> ir.Value;
+    def _codegen_c_interop_call(nd: uni.FuncCall) -> tuple[bool, (ir.Value | None)];
+    def _codegen_pin(arg: uni.Expr) -> (ir.Value | None);
+    def _c_release_temp(val: ir.Value) -> None;
+    def _clib_param_info(p: uni.ParamVar) -> dict[str, any];
+    def _clib_ret_is_cptr(sig: uni.FuncSignature) -> bool;
+    def _c_decl_type_of(type_expr: uni.UniNode) -> any;
+    def _clib_place_ptr(expr: uni.Expr) -> (ir.Value | None);
+    def _codegen_clib_args(
+        nd: uni.FuncCall,
+        func_name: str,
+        copybacks: list[tuple[ir.Value, ir.Value, any]]
+    ) -> (list[ir.Value] | None);
+
+    def _clib_pointer_arg(val: ir.Value) -> ir.Value;
     def _clib_struct_has_fn_ptr(name: str) -> bool;
     def _clib_detect_vtable_structs -> None;
     def _clib_coerce_callback(val: ir.Value, c_fn_ty: ir.PointerType) -> ir.Value;
@@ -2247,6 +2287,7 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_print_call(stream: str, fmt_ptr: ir.Value, args: list[ir.Value]) -> None;
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
+    def _nogc_consume_assigned_local(nd: uni.Assignment) -> bool;
     def _bind_borrowed(nd: uni.Assignment, var_name: str, slot_ty: ir.Type) -> bool;
     def _release_owned_operands(
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
