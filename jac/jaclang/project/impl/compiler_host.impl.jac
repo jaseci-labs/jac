@@ -106,14 +106,24 @@ impl ProjectHost.declared_dependencies(
     if cfg is None {
         return None;
     }
-    names: list[str] = [*cfg.dependencies, *cfg.dev_dependencies];
+    scopes = [cfg];
     owner = cfg.app_for_path(str(Path(module_path).resolve()));
     app_name = owner.name if owner is not None else fallback_app;
     if app_name and app_name in cfg.apps {
         try {
-            app_cfg = cfg.effective_for_app(app_name);
-            names.extend([*app_cfg.dependencies, *app_cfg.dev_dependencies]);
+            scopes.append(cfg.effective_for_app(app_name));
         } except Exception {}
+    }
+    names: list[str] = [];
+    for scope in scopes {
+        names.extend(
+            [
+                *scope.dependencies,
+                *scope.dev_dependencies,
+                *scope.pypi_dependencies,
+                *scope.pypi_dev_dependencies
+            ]
+        );
     }
     return [str(n) for n in names];
 }

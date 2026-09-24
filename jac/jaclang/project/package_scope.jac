@@ -1,15 +1,15 @@
 import os;
-import re;
 import from pathlib { Path }
+import from jaclang.project.modresolver {
+    MOUNTS_DIR_NAME,
+    is_scoped_package_name,
+    module_name_in
+}
 
-glob PACKAGE_NAME_RE: re.Pattern = re.compile(
-         r"^([a-z][a-z0-9_]*)/([a-z][a-z0-9_]*)$"
-     ),
-     MOUNTS_DIR_NAME: str = "packages",
-     STORE_BUCKET: str = "pkgs";
+glob STORE_BUCKET: str = "pkgs";
 
 def is_package_name(name: str) -> bool {
-    return bool(PACKAGE_NAME_RE.`match(name or ""));
+    return is_scoped_package_name(name);
 }
 
 def import_prefix(name: str) -> str {
@@ -58,4 +58,21 @@ def is_dependency_module(path: str, owner_root: (str | None)) -> bool {
 
 def mounts_dir(build_dir: Path) -> Path {
     return build_dir / MOUNTS_DIR_NAME;
+}
+
+
+def package_exports(project_root: str) -> list[str] {
+    import from jaclang.project.config { get_config_for_dir }
+    cfg = get_config_for_dir(project_root);
+    return list(cfg.project.exports) if cfg is not None else [];
+}
+
+def is_exported(module: str, exports: list[str]) -> bool {
+    import fnmatch;
+    for pattern in exports {
+        if module == pattern or fnmatch.fnmatchcase(module, pattern) {
+            return True;
+        }
+    }
+    return False;
 }

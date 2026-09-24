@@ -174,28 +174,38 @@ The effective config an app sees is: base `jac.toml` → its `[apps.<name>.*]` o
 
 ### [dependencies]
 
-Python/PyPI packages:
+`[dependencies]` lists Jac packages; Python (PyPI), npm and system packages live in subtables:
 
 ```toml
 [dependencies]
+"jaseci/vecdb" = "^2.1"
+"acme/util" = { path = "../util" }
+"acme/fork" = { git = "https://github.com/acme/fork", rev = "v1.2.0" }
+
+[dependencies.pypi]
 requests = ">=2.28.0"
 numpy = "1.24.0"
-byllm = ">=0.4.8"
-
-[dev-dependencies]
-pytest = ">=8.0.0"
-
-[dependencies.git]
 my-lib = { git = "https://github.com/user/repo.git", branch = "main" }
+
+[dependencies.npm]
+d3 = "^7"
 
 [dependencies.system]
 git = "*"
 ffmpeg = "*"
+
+[dev-dependencies]
+"acme/testkit" = "^0.3"
+
+[dev-dependencies.pypi]
+pytest = ">=8.0.0"
 ```
+
+Jac package names are scoped (`org/name`) and take a semantic-version requirement (`"^2.1"`, `"~1.4"`, `">=1.2, <2"`, `"=1.4.2"`) or a table with `version`, `path`, `git` + `rev`, or `registry`. See [Packages](../packages.md) for resolution, `jac.lock` and publishing.
 
 `[dependencies.system]` declares OS (apt) packages your app needs at runtime. On a `jac-scale` Kubernetes deploy they are installed into the service container at startup (Debian only; keys are apt package names). See [System Dependencies](../plugins/jac-scale-kubernetes.md#system-dependencies).
 
-**Version specifiers:**
+**PyPI version specifiers:**
 
 | Format | Example | Meaning |
 |--------|---------|---------|
@@ -204,7 +214,21 @@ ffmpeg = "*"
 | Range | `">=1.0,<2.0"` | 1.x only |
 | Compatible | `"~=1.4.2"` | 1.4.x |
 
-> **Default behavior:** When you run `jac install requests` without a version, the package is installed unconstrained and then the actual installed version is queried. A compatible-release spec (`~=X.Y`) is recorded -- e.g., if pip installs `2.32.5`, `jac.toml` gets `requests = "~=2.32"`. The `jac update` command also uses this format when writing updated versions back.
+> **Default behavior:** When you run `jac install --pypi requests` without a version, the package is installed unconstrained and then the actual installed version is queried. A compatible-release spec (`~=X.Y`) is recorded -- e.g., if pip installs `2.32.5`, `jac.toml` gets `requests = "~=2.32"`. The `jac update` command also uses this format when writing updated versions back. `jac install jaseci/vecdb` without a range records `^X.Y.Z` of the version it resolved.
+
+!!! note "Upgrading an older project"
+    Older manifests listed PyPI packages directly under `[dependencies]`, which is now an error. Run `jac fix dependencies` to move them (and the old `[dependencies.git]` table) into `[dependencies.pypi]`.
+
+### [registries]
+
+Named package registries, in addition to the default public index:
+
+```toml
+[registries]
+internal = "https://raw.githubusercontent.com/acme/jac-index/main/"
+```
+
+A dependency picks one with `{ version = "^1", registry = "internal" }`.
 
 ---
 

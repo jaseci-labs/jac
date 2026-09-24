@@ -1,6 +1,7 @@
 import from importlib.machinery { ModuleSpec }
 import os;
 import sys;
+import tomllib;
 import from pathlib { Path }
 import from jaclang.jac0core.ext_registry {
     MODULE_SUFFIXES,
@@ -134,6 +135,103 @@ def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     return found;
 }
 
+glob _mounts_by_root: dict[str, str] = {},
+     MOUNTS_DIR_NAME: str = 'packages';
+
+def is_scoped_package_name(name: str) -> bool {
+    parts = (name or '').split('/');
+    if len(parts) != 2 {
+        return False;
+    }
+    for part in parts {
+        if not part or not part.isascii() or not part[0].isalpha() {
+            return False;
+        }
+        if part != part.lower() {
+            return False;
+        }
+        if not part.replace('_', '').isalnum() {
+            return False;
+        }
+    }
+    return True;
+}
+
+def _ensure_self_mount(mounts: str, name: str, project_root: str) {
+    parts = name.split('/');
+    link = os.path.join(mounts, parts[0], parts[1]);
+    if os.path.lexists(link) {
+        return;
+    }
+    try {
+        os.makedirs(os.path.dirname(link), exist_ok=True);
+        os.symlink(os.path.realpath(project_root), link, target_is_directory=True);
+    } except OSError {
+        return;
+    }
+}
+
+def project_mounts(project_root: str) -> (str | None) {
+    if project_root not in _mounts_by_root {
+        mounts = os.path.join(project_root, '.jac', MOUNTS_DIR_NAME);
+        _mounts_by_root[project_root] = mounts;
+        name = '';
+        try {
+            with open(os.path.join(project_root, 'jac.toml'), 'rb') as fh {
+                data = tomllib.load(fh);
+            }
+            build = data.get('build', {});
+            if isinstance(build, dict) and isinstance(build.get('dir'), str) {
+                mounts = os.path.join(project_root, build['dir'], MOUNTS_DIR_NAME);
+                _mounts_by_root[project_root] = mounts;
+            }
+            project = data.get('project', {});
+            if isinstance(project, dict) and isinstance(project.get('name'), str) {
+                name = project['name'];
+            }
+        } except Exception {
+            name = '';
+        }
+        if is_scoped_package_name(name) {
+            _ensure_self_mount(mounts, name, project_root);
+        }
+    }
+    found = _mounts_by_root[project_root];
+    return found if os.path.isdir(found) else None;
+}
+
+def module_name_in(root_dir: str, path: str) -> (str | None) {
+    try {
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root_dir));
+    } except ValueError {
+        return None;
+    }
+    if rel.startswith('..') {
+        return None;
+    }
+    stem = '';
+    if rel.endswith('.jac') {
+        stem = rel[:-4];
+    } elif rel.endswith('.py') {
+        stem = rel[:-3];
+    } else {
+        return None;
+    }
+    parts = stem.split(os.sep);
+    if parts and parts[-1] == '__init__' {
+        parts = parts[:-1];
+    }
+    if not parts {
+        return None;
+    }
+    for part in parts {
+        if not part.isidentifier() {
+            return None;
+        }
+    }
+    return '.'.join(parts);
+}
+
 def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     paths = [];
     if base_path {
@@ -147,6 +245,12 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     project_root = find_jac_project_root(base_path or active_base);
     if project_root {
         paths.append(project_root);
+    }
+    for owner in (project_root, find_jac_project_root(None)) {
+        mounts = project_mounts(owner) if owner else None;
+        if mounts {
+            paths.append(mounts);
+        }
     }
     paths.append(os.getcwd());
     if ('JACPATH' in os.environ) {
