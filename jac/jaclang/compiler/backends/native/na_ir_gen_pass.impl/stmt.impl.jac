@@ -1767,6 +1767,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             continue;
         }
 
+        if isinstance(target_expr, uni.AtomTrailer)
+            and self._c_interop_store(target_expr, value, nd) {
+            continue;
+        }
+
         if isinstance(target_expr, uni.AtomTrailer) and target_expr.is_attr {
             if nd.aug_op is not None {
                 _faug_errs = len(self.ctx.errors_had);

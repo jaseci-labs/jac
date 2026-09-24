@@ -1966,6 +1966,10 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     if isinstance(nd.right, uni.FilterCompr) {
         return self._codegen_chained_filter(nd);
     }
+    (_c_handled, _c_val) = self._codegen_c_interop_trailer(nd);
+    if _c_handled {
+        return _c_val;
+    }
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);

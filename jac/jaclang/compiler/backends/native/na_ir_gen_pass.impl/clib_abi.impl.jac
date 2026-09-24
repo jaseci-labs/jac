@@ -82,7 +82,10 @@ impl NaIRGenPass._clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._codegen_clib_call(
-    func: ir.Function, func_name: str, args: list[ir.Value]
+    func: ir.Function,
+    func_name: str,
+    args: list[ir.Value],
+    copybacks: (list[tuple[ir.Value, ir.Value, any]] | None) = None
 ) -> (ir.Value | None) {
     plan = self.clib_fn_abi[func_name];
     param_plans = plan["params"];
@@ -105,7 +108,14 @@ impl NaIRGenPass._codegen_clib_call(
     for (i, pp) in enumerate(param_plans) {
         jac_val = args[i] if i < len(args) else None;
         kind = pp["kind"];
-        if kind == "scalar" {
+        _c_arg = pp.get("c_arg") or {};
+        if kind == "scalar" and _c_arg {
+            if jac_val is None {
+                call_args.append(ir.Constant(pp["type"], None));
+            } else {
+                call_args.append(self._clib_pointer_arg(jac_val));
+            }
+        } elif kind == "scalar" {
             if jac_val is None {
                 call_args.append(ir.Constant(pp["type"], 0));
             } else {
@@ -187,6 +197,11 @@ impl NaIRGenPass._codegen_clib_call(
     result: ir.Value = self.builder.call(
         func, call_args, name=f"call.{func_name}", arg_attrs=arg_attrs
     );
+    for (_tmp, _slot, _elem) in (copybacks or []) {
+        self._c_store_scalar(
+            self._c_load_scalar(_tmp, _elem, "clib.copyback"), _slot, _elem
+        );
+    }
     _struct_temps: list[ir.Value] = [];
     for (i, pp) in enumerate(param_plans) {
         _tv = args[i] if i < len(args) else None;
@@ -238,6 +253,9 @@ impl NaIRGenPass._codegen_clib_call(
         return self._clib_box_c_ptr(c_view, sname);
     }
 
+    if ret_plan.get("cptr") {
+        return self.builder.ptrtoint(result, ir.IntType(64), name="clib.ret.addr");
+    }
     _declared_ret = ret_plan.get("type");
     if (
         isinstance(_declared_ret, ir.Type)

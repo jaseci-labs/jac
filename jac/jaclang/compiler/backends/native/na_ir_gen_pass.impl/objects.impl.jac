@@ -1,4 +1,4 @@
-import from jaclang.compiler.c_interop { foreign_read_copies }
+import from jaclang.compiler.c_interop { foreign_read_copies, is_pinned_type }
 import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenPass._devirt_closed_world(arch_name: str) -> bool {
     arch = self.arch_ast_map.get(arch_name);
@@ -541,7 +541,8 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                 }
                 if self._nogc_headerless()
                     and self._hasvar_is_own(var)
-                    and isinstance(ftype, ir.PointerType) {
+                    and isinstance(ftype, ir.PointerType)
+                    and not is_pinned_type(var?.type) {
                     _fpn = getattr(ftype.pointee, "name", "") or "";
                     _fstruct = self.struct_types.get(_fpn);
 
