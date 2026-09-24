@@ -34,7 +34,10 @@ import from jaclang.compiler.passes.ecmascript.backends.solid { SolidBackend }
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.runtimelib.client_surface { with_runtime_globals }
 import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
-import from jaclang.compiler.passes.ecmascript.jac_runtime_js { point_jac_prelude_at }
+import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+    point_jac_prelude_at,
+    write_jac_prelude_file
+}
 import from jaclang.runtimelib.client.bun_installer { get_bun }
 import from jaclang.runtimelib.solid_entry { build_pages_solid_entry_script }
 
@@ -841,6 +844,7 @@ test "solid counter mounts and reacts in jsdom" {
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
+        write_jac_prelude_file(str(work));
         # Emitted JSX modules land as `*.src.jsx`; the harness babel-builds them to
         # `*.js` before mounting (cross-module imports already target `.js`).
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
@@ -912,6 +916,7 @@ test "solid native control flow (<For>/<Show>) renders + reacts in jsdom (Branch
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
+        write_jac_prelude_file(str(work));
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
@@ -999,6 +1004,7 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
+        write_jac_prelude_file(str(work));
         # Pages/layout/runtime emit JSX → `*.src.jsx` (harness babel-builds them);
         # the entry and route manifest carry no JSX but ride the same `.src.jsx`
         # build path (a no-op transform) so every importable name ends in `.js`.
@@ -1098,6 +1104,7 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
+        write_jac_prelude_file(str(work));
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
@@ -1177,6 +1184,7 @@ test "solid P2 jsdom matrix: dynamic prop, ref e2e, and callback prop" {
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
+        write_jac_prelude_file(str(work));
         (work / "dynprop.src.jsx").write_text(dynprop_js, encoding="utf-8");
         (work / "ref_app.src.jsx").write_text(ref_js, encoding="utf-8");
         (work / "callback.src.jsx").write_text(callback_js, encoding="utf-8");
