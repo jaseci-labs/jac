@@ -963,9 +963,6 @@ def demote_client_pulled_elements(
 }
 
 walker PlacementApplyPass(CompilerPass) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
 }

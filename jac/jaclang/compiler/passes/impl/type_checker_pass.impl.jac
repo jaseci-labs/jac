@@ -1479,12 +1479,19 @@ impl TypeCheckPass.initialize with entry {
     if self.ctx.nested_depth {
         return;
     }
-    self.ctx.resources.callback(setattr, self.evaluator, '_pass', self.evaluator._pass);
-    self.ctx.resources.callback(
-        setattr, self.evaluator, 'ct_quiet', self.evaluator.ct_quiet
-    );
+    self._outer_pass = self.evaluator._pass;
+    self._outer_ct_quiet = self.evaluator.ct_quiet;
+    self._restores_evaluator = True;
     self.evaluator._pass = self.ctx;
     self.evaluator.ct_quiet = False;
+}
+
+impl TypeCheckPass.release -> None {
+    if self._restores_evaluator {
+        self.evaluator._pass = self._outer_pass;
+        self.evaluator.ct_quiet = self._outer_ct_quiet;
+        self._restores_evaluator = False;
+    }
 }
 
 impl TypeCheckPass.prepare with entry {

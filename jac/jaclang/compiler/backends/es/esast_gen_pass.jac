@@ -3,7 +3,6 @@ import json;
 import from typing { cast }
 import jaclang.compiler.backends.es.estree as es;
 import jaclang.compiler.frontend.unitree as uni;
-import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
 import from jaclang.compiler.types.types { TypeBase, ClassType }
 import from jaclang.compiler.types.ct_value {
@@ -244,8 +243,7 @@ obj CallArgSlot {
 }
 
 walker EsastGenPass(BaseAstGenPass[es.Statement]) {
-    has prog: JacProgram,
-        _ct_only_names: (set[str] | None) = None,
+    has _ct_only_names: (set[str] | None) = None,
         child_passes: list[EsastGenPass] = [],
         imports: list[es.ImportDeclaration] = [],
         module_import_paths: dict[str, str] = {},
@@ -303,8 +301,6 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
             return self._jsx_processor;
         }
     }
-
-    static has HOST_PASS: bool = True;
 
     can prepare with entry;
     can enter_walk with uni.UniNode entry;

@@ -66,8 +66,7 @@ import from jaclang.compiler.frontend.roles {
 }
 
 walker JacAutoLintPass(TreePass) {
-    has prog: JacProgram,
-        lint_enabled: bool = True,
+    has lint_enabled: bool = True,
         report_only: bool = False,
         main_module: (uni.Module | None) = None,
         _exclude_patterns: list[str] = [],
@@ -76,8 +75,6 @@ walker JacAutoLintPass(TreePass) {
         _pending_setters: list[dict[str, str]] = [],
         _base_decl_cache: list[uni.Archetype] = [],
         _base_decls_loaded: bool = False;
-
-    static has HOST_PASS: bool = True;
 
     def postinit -> None;
     def _is_file_excluded(file_path: str) -> bool;

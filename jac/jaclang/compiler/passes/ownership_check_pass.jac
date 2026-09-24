@@ -71,7 +71,6 @@ import from jaclang.compiler.passes.dataflow {
     solve_forward,
     solve_forward_must
 }
-import type from jaclang.compiler.driver.program { JacProgram }
 
 enum AccessKind {
     ASSIGN_TARGET = "assign_target",
@@ -104,8 +103,7 @@ obj BorrowMeta {
 }
 
 walker OwnershipCheckPass(CompilerPass) {
-    has prog: JacProgram,
-        owned_decl: dict[SymId, Name] = {},
+    has owned_decl: dict[SymId, Name] = {},
         linear_decl: dict[SymId, Name] = {},
         consumed_syms: set[SymId] = set(),
         borrow_meta: dict[SymId, BorrowMeta] = {},
@@ -129,8 +127,6 @@ walker OwnershipCheckPass(CompilerPass) {
         receiver_modes: dict[int, OwnershipKind] = {},
         receiver_probe: set[int] = set(),
         arch_view_syms: set[SymId] = set();
-
-    static has HOST_PASS: bool = True;
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;

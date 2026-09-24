@@ -112,7 +112,6 @@ import from jaclang.compiler.types.operations {
     get_pow_result_type
 }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
-import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.diagnostics {
     Category,
     DiagnosticInfo,
@@ -163,16 +162,16 @@ glob FW_INTERVAL_OPS: dict[str, str] = {
      };
 
 walker TypeCheckPass(TreePass) {
-    has prog: JacProgram,
-        evaluator: TypeEvaluator postinit,
+    has evaluator: TypeEvaluator postinit,
         _deferred_writes: list[tuple[Expr, (UniNode | None)]] postinit,
-        _lambda_depth: int = 0;
+        _lambda_depth: int = 0,
+        _restores_evaluator: bool = False,
+        _outer_pass: (CompileContext | None) = None,
+        _outer_ct_quiet: bool = False;
 
     def postinit -> None;
     can initialize with entry;
-
-    static has HOST_PASS: bool = True;
-
+    override def release -> None;
     can prepare with entry;
     can finish with exit;
     def _stamp_fixed_width -> None;

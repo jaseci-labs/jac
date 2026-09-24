@@ -70,7 +70,6 @@ import from jaclang.compiler.frontend.diagnostics {
     E2085,
     E2086
 }
-import type from jaclang.compiler.driver.program { JacProgram }
 
 glob BUILTIN_NAMES: set[str] = {
          'ArithmeticError',
@@ -270,9 +269,6 @@ walker UnusedSymbolWalker(ScopeWalker) {
 }
 
 walker StaticAnalysisPass(CompilerPass) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _check_unused_symbols(scope: UniScopeNode) -> None;

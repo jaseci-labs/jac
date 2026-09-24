@@ -86,16 +86,12 @@ def run_pass(
     ir_in: any,
     prog: JacProgram,
     cancel_token: any = None,
-    policy: (DiagnosticPolicy | None) = None,
-    **kwargs: any
+    policy: (DiagnosticPolicy | None) = None
 ) -> any {
     pol = policy if policy is not None else build_diagnostic_policy(prog);
     errors: list[Alert] = [];
     warnings: list[Alert] = [];
     inst: any = None;
-    if getattr(pass_cls, 'HOST_PASS', False) {
-        kwargs['prog'] = prog;
-    }
     completed = prog.analysis.take_early(ir_in, pass_cls.__name__);
     if completed is not None {
         for alert in completed.errors_had + completed.warnings_had {
@@ -123,18 +119,18 @@ def run_pass(
                     )
             ];
         }
-        kwargs['completed'] = completed;
     }
     try {
         inst = run_walker(
             pass_cls,
             module=ir_in,
+            prog=prog,
             cancel_token=cancel_token,
             cancel_requested=bool(cancel_token is not None and cancel_token.is_set()),
             policy=pol,
             errors_had=errors,
             warnings_had=warnings,
-            **kwargs
+            completed=completed
         );
     } finally {
         eff = inst.ctx.policy

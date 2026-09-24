@@ -86,7 +86,6 @@ import from jaclang.compiler.types.ct_value {
 import type from jaclang.compiler.types.ct_eval { CtEvaluator }
 import type from jaclang.compiler.passes.osp_analysis { OspSlot }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
-import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_NEXT_OFF,
     LIVE_NODE_RC_OFF,
@@ -227,8 +226,6 @@ obj NativeFunctionState {
 }
 
 walker NaIRGenPass(CompilerPass) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
     has module: uni.Module,
         _llvm_module: (ir.Module | None) = None,
         _type_map: (dict[str, ir.Type] | None) = None,

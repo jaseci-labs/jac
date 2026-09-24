@@ -75,8 +75,6 @@ walker ComptimeResolvePass(TypeCheckPass) {
     has _armed: bool = False,
         _keep: set[int] = set();
 
-    static has HOST_PASS: bool = True;
-
     can prepare with entry {
         if self.ctx.nested_depth {
             return;

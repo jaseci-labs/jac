@@ -15,9 +15,12 @@ def lowering -> NaIRGenPass {
     );
     assert isinstance(module, Module);
     ctx = CompileContext(
-        current_node=module, from_pass=NaIRGenPass, pass_name="NaIRGenPass"
+        current_node=module,
+        from_pass=NaIRGenPass,
+        pass_name="NaIRGenPass",
+        program=program
     );
-    result = NaIRGenPass(module=module, prog=program, ctx=ctx);
+    result = NaIRGenPass(module=module, ctx=ctx);
     result._llvm_module = ir.Module(name="extern_test");
     return result;
 }

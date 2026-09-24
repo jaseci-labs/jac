@@ -7,6 +7,7 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
 import from jaclang.compiler.frontend.unitree { Module, Source, TreeWalker, UniNode }
+import type from jaclang.compiler.driver.program { JacProgram }
 
 obj Alert {
     has msg: str,
@@ -62,7 +63,7 @@ obj CompileContext {
         time_taken: float = 0.0,
         nested_depth: int = 0,
         policy: (DiagnosticPolicy | None) = None,
-        resources: any = None;
+        program: (JacProgram | None) = None;
 
     def emit(
         diag: DiagnosticInfo,
@@ -86,6 +87,10 @@ obj CompileContext {
 walker CompilerPass {
     has ctx: CompileContext,
         module: Module;
+
+    has prog: JacProgram { getter; }
+
+    def release {}
 }
 
 walker TreePass(CompilerPass, TreeWalker) {
