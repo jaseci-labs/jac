@@ -34,6 +34,10 @@ def _fresh_graph {
     _g.DEFAULT_GRAPH.row_of.clear();
     _g.DEFAULT_GRAPH.dead.clear();
     _g.DEFAULT_GRAPH.regions.clear();
+    _g.DEFAULT_GRAPH.tags_out.clear();
+    _g.DEFAULT_GRAPH.tags_in.clear();
+    _g.DEFAULT_GRAPH.holes_out.clear();
+    _g.DEFAULT_GRAPH.holes_in.clear();
 }
 
 test "register_type is idempotent and refuses a re-register with different bases" {
