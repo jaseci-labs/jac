@@ -1096,6 +1096,40 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " missing wire. An inline suppression does not silence this; loosening"
          " the boundary is a change to arch.jac or jac.toml."
      ),
+     E1150 = _err(
+         "E1150",
+         Category.TYPE,
+         "Field '{field}' of foreign struct '{name}' {reason}",
+         help="A struct declared in a C library import is C-layout plain data: its"
+         " fields may be sized scalars (`i8`..`u64`, `f32`, `f64`), `int`, `float`,"
+         " `bool`, other foreign structs (nested by value), `ptr[T]` or a bare"
+         " `ptr`, and named-function callbacks (`Callable[...]`). A string, a"
+         " container or a Jac object has no C layout and would need tracing by the"
+         " reference counter and cycle collector; hold C strings and buffers as"
+         " `ptr[u8]`.",
+         blocks_codegen=True
+     ),
+     E1151 = _err(
+         "E1151",
+         Category.TYPE,
+         "Opaque C type '{name}' has no known size, so it cannot be {use}",
+         help="A bodiless `obj {name};` in a C library import declares an opaque"
+         " C type: C owns its layout, so Jac handles it only by address. Declare"
+         " the positions that carry it as `ptr[{name}]`, and out-parameters that"
+         " produce one as `&mut ptr[{name}]`.",
+         blocks_codegen=True
+     ),
+     E1152 = _err(
+         "E1152",
+         Category.TYPE,
+         "{what} needs C plain data, not {type}",
+         help="`pin(value)`, `p.view(n)` and C borrow parameters (`&T` / `&mut T`"
+         " in a C library declaration) lay the value out in C memory, so its type"
+         " must be a sized scalar, `int`, `float`, `bool`, a foreign struct or a"
+         " `ptr`. A bare `ptr` or a `ptr` to an opaque C type has no element size:"
+         " retype it first with `ptr[T](p)`.",
+         blocks_codegen=True
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
