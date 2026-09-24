@@ -806,11 +806,13 @@ A Deployment whose replicas an autoscaler owns is redeployed with `spec.replicas
 `autoscaler_status` reads the autoscaler's own view to separate them:
 
 ```jac
-import from jaclang.scale.sdk { ScaleClient, ResourceStatus }
+import from jaclang.scale.sdk { ScaleClient }
 
-s = ScaleClient().autoscaler_status("orders", "prod");
-if s.scaler_ready == False {
-    print(f"scaler failing: {s.reason}: {s.message}");
+with entry {
+    s = ScaleClient().autoscaler_status("orders", "prod");
+    if s.scaler_ready == False {
+        print(f"scaler failing: {s.reason}: {s.message}");
+    }
 }
 ```
 
@@ -833,8 +835,12 @@ The caller passes a **scale target**, not an autoscaler resource name. Which res
 Polling `autoscaler_status` on a timer costs one request per target per interval and still reports a change an interval late. `watch_autoscaler_transitions` streams them instead:
 
 ```jac
-for t in ScaleClient().watch_autoscaler_transitions("orders", "prod") {
-    print(f"{t.scale_target_name}: {t.previous_state} -> {t.state} ({t.reason})");
+import from jaclang.scale.sdk { ScaleClient }
+
+with entry {
+    for t in ScaleClient().watch_autoscaler_transitions("orders", "prod") {
+        print(f"{t.scale_target_name}: {t.previous_state} -> {t.state} ({t.reason})");
+    }
 }
 ```
 
