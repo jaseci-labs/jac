@@ -2,7 +2,16 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.34.19 (Latest Release)
+## jaclang 0.34.20 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: Meta tags now parse back as written**: the served page head emitted every attribute unquoted, so any `[client.app_meta_data]` value containing a space ended at its first word under HTML parsing rules -- link-preview crawlers (LinkedIn, Slack, X) read `og:title` of "The Jac Programming Language" as "The", and descriptions truncated the same way. All attribute values are now quoted and escaped. Also corrected `og_site_name` mapping, which emitted the nonexistent `og:site:name` property (compound Open Graph leaves like `og:site_name` and `og:image:secure_url` keep their underscores), and `twitter_*` keys, previously accepted but never emitted, now produce their colon-form tags (`twitter:card`, `twitter:image:alt`).
+- **Fix: the Python-compat runtime is one shared module, not a copy in every compiled client module**: client codegen inlined the `_jac` helper object into every module that referenced it. That was most of a web app's bundle, and because the object carries the builtin exception classes, every module also had its own `ValueError`, `KeyError` and the rest. `except ValueError` lowers to an `instanceof` against the catching module's copy, so an exception raised in another module matched nothing and escaped the handler, while `except Exception` caught it down its native-JS-error arm. The helpers now live in a single `@jac/prelude` module that every compiled module imports, so builtin exception handling works across module boundaries. The published npm runtime's `index.js` drops from 75,036 to 17,546 bytes.
+- **Fix: `jac scale deploy` ships the whole project, not just the entry's folder**: a project whose services live beside the served app rather than under it refused to deploy, reporting that a service entry resolved outside the deployed tree and telling you to deploy from the project root even when you already were. When the project declares `[scale.microservices]` in a `jac.toml` above the entry file, the deploy now ships that project root, so no placeholder entry file at the root is needed, and deploy, destroy and status all read the project root's `.env` so they cannot resolve different settings from the same entry file.
+- **Bugfix: Support the current model generation**: raised the litellm pin so structured output works on Claude Opus 5.5 and Claude Fable 5.1, and tool calling works on the GPT-6 models.
+
+## jaclang 0.34.19
 
 ### New Features
 
