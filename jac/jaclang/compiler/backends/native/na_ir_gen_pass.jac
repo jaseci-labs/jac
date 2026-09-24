@@ -1984,6 +1984,7 @@ walker NaIRGenPass {
     def _emit_print_call(stream: str, fmt_ptr: ir.Value, args: list[ir.Value]) -> None;
     def _opt_result_owned(val: ir.Value, expr: object) -> bool;
     def _can_native_move_lower(nd: object) -> bool;
+    def _nogc_consume_assigned_local(nd: uni.Assignment) -> bool;
     def _bind_borrowed(nd: uni.Assignment, var_name: str, slot_ty: ir.Type) -> bool;
     def _release_owned_operands(
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
