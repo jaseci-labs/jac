@@ -1,10 +1,6 @@
-import from core.site.ui.badge { Badge }
-import from core.site.source.CodeSpotlight { CodeSpotlight }
-import from .Reveal { Reveal }
 import from "@jac/runtime" { Link }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { CheckmarkCircle01Icon, ArrowUpRight01Icon }
-import from core.jacyac.native.JacYacMobile { JacYacMobile }
 
 glob _POINTS: list[str] = [
          "Every screen is @jac/mobui: View, Text, Pressable, ScrollView. No div, no CSS. Built natively it is React Native; on this page react-native-web draws it.",

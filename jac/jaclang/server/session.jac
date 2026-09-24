@@ -122,10 +122,11 @@ def runtime_for_base(base_path: str, target_path: (str | None) = None) -> Runtim
 
 
 obj Session(Memory) {
-    has store: (Store | None) = None,
+    has _store: (Store | None) = None,
+        _data_location: (str | None) = None,
+        _lease: (RuntimeLease | None) = None,
         _flushed_hash: dict[UUID, int] postinit,
         _txn_changed: set[UUID] postinit,
-        _runtime: (any | None) postinit,
         _fetch_count: int postinit,
         _active_units: int postinit,
         _flushing: (int | None) postinit,
@@ -135,8 +136,28 @@ obj Session(Memory) {
         _snapshot_reads: set[UUID] postinit,
         _version_seen: dict[UUID, int] postinit;
 
+    has store: (Store | None) {
+        getter {
+            if self._store is None and self.base_path {
+                with self._lock {
+                    if self._store is None {
+                        self._boot_store();
+                    }
+                }
+            }
+            return self._store;
+        }
+        setter(value: (Store | None)) {
+            self._store = value;
+            self._data_location = None;
+        }
+    }
+
     def postinit -> None;
+    def _runtime_lease -> RuntimeLease;
+    def _boot_store -> None;
     def data_location -> (str | None);
+    def __repr__ -> str;
     def get(id: UUID) -> (Anchor | None);
     def delete(id: UUID) -> None;
     def close -> None;
@@ -159,6 +180,7 @@ obj Session(Memory) {
     def ensure_writable_txn -> None;
     def read_barrier -> None;
     def _recover_conflict -> None;
+    def _rollback_quiet -> None;
     def _ensure_txn -> None;
     def _txn_isolation -> TxnIsolation;
     def _register_ro_writers -> str;
@@ -166,6 +188,6 @@ obj Session(Memory) {
     def _drop_snapshot_reads -> None;
     def _materialize(row: AnchorRow) -> (Anchor | None);
     def _load_edges(nd: NodeAnchor) -> list[EdgeAnchor];
-    def _serialize(anchor: Anchor) -> AnchorRow;
+    def _serialize(anchor: Anchor, props: (any | None) = None) -> AnchorRow;
     def _evict_uncommitted -> None;
 }

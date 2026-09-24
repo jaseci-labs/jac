@@ -10,6 +10,10 @@ import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from .react_jsdom_harness { bun_install, require_client_integration }
+import from jaclang.compiler.backends.es.jac_runtime_js {
+    point_jac_prelude_at,
+    write_jac_prelude_file
+}
 
 glob HARNESS: str = """
 import {createRoot, createSignal} from 'solid-js';
@@ -51,8 +55,9 @@ test "solid returned cleanup runs on invalidation and disposal" {
     result = run_pass(EsastGenPass, ir, prog, backend=SolidBackend());
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
+        write_jac_prelude_file(str(work));
         (work / "component.js").write_text(
-            es_to_js(result.module.gen.es_ast), encoding="utf-8"
+            point_jac_prelude_at(es_to_js(result.module.gen.es_ast)), encoding="utf-8"
         );
         (work / "harness.mjs").write_text(HARNESS, encoding="utf-8");
         bun_install(bun, work, "solid-effect-cleanup-test", {"solid-js": "^1.9.13"});

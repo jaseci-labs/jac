@@ -358,7 +358,8 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
         _interop_stub_node: (UniNode | None) = None,
         _sv_boundary_names: dict[str, str] = {},
         _sv_boundary_registry: str = "",
-        _sv_serializer: str = "";
+        _sv_serializer: str = "",
+        _c_temp_count: int = 0;
 
     with entry {}
 
@@ -418,6 +419,12 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _fw_as_load(item: any) -> any;
     def _fw_aug_assign(nd: Assignment, target: any, value: any) -> (CgNode | None);
     def val(nd: UniNode) -> CgNode;
+    def _clib_block_desc(imp: Import) -> dict[str, any];
+    def _gen_clib_binding(imp: Import) -> list[CgNode];
+    def _c_temp_name(role: str) -> str;
+    def _c_named(name: str, value: CgNode) -> CgNode;
+    def _c_interop_call_rewrite(nd: FuncCall) -> None;
+    def _c_copy_rewrite(nd: AtomTrailer) -> None;
     def const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode;
     def _ct_kind(v: any) -> str;
     def _ct_order_key(v: any) -> str;

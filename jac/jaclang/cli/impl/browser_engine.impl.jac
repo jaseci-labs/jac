@@ -621,9 +621,39 @@ impl cmd_fill(session: str, selector: str, text: str) -> str {
     return f"filled {selector}";
 }
 
+impl _parse_key_combo(combo: str) -> tuple[str, int] {
+    names = {
+        "alt": 1,
+        "option": 1,
+        "control": 2,
+        "ctrl": 2,
+        "meta": 4,
+        "command": 4,
+        "cmd": 4,
+        "super": 4,
+        "shift": 8
+    };
+    if "+" not in combo or combo == "+" {
+        return (combo, 0);
+    }
+    key = "+" if combo.endswith("+") else combo.split("+")[-1];
+    head = combo[:-1] if combo.endswith("+") else combo[:len(combo) - len(key) - 1];
+    modifiers = 0;
+    for part in head.split("+") {
+        low = part.strip().lower();
+        if low in names {
+            modifiers |= names[low];
+        } elif low {
+            return (combo, 0);
+        }
+    }
+    return (key, modifiers);
+}
+
 impl cmd_press(session: str, key: str) -> str {
+    (plain, modifiers) = _parse_key_combo(key);
     cdp = connect(session);
-    _press(cdp, key);
+    _press(cdp, plain, modifiers);
     cdp.close();
     return f"pressed {key}";
 }

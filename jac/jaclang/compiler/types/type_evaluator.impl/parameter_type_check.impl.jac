@@ -279,6 +279,12 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
     return self._validate_call_type(expr, self.get_type_of_expression(expr.target));
 }
 
+impl TypeEvaluator._evaluate_call_args(expr: FuncCall) -> None {
+    for arg in expr.params or [] {
+        self.get_type_of_expression(arg.value if isinstance(arg, KWPair) else arg);
+    }
+}
+
 impl TypeEvaluator._validate_call_type(
     expr: FuncCall, caller_type: TypeBase
 ) -> TypeBase {
@@ -335,6 +341,7 @@ impl TypeEvaluator._validate_call_type(
     }
 
     if isinstance(caller_type, AnyType) {
+        self._evaluate_call_args(expr);
         return caller_type;
     }
 
@@ -666,6 +673,10 @@ impl TypeEvaluator._validate_call_type(
         return TypeVarType(name=tvt_name, is_param_spec=False);
     }
     if (isinstance(caller_type, ClassType) and caller_type.is_instantiable_class()) {
+        if caller_type.is_builtin("Any") {
+            self._evaluate_call_args(expr);
+            return caller_type.clone_as_instance();
+        }
         matched_method: FunctionType | None = None;
         sv_async_ctor = self._is_sv_async_call(expr);
 
@@ -730,6 +741,7 @@ impl TypeEvaluator._validate_call_type(
     }
     if caller_type.is_class_instance() {
         if caller_type.is_any_instance() {
+            self._evaluate_call_args(expr);
             return caller_type;
         }
         magic_call_ret = self.get_type_of_magic_method_call(

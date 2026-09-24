@@ -1,5 +1,3 @@
-import from core.source.files { source_tree, source_file, SourceFile, SourceView }
-import from core.site.ui.CodeBlock { CodeLines }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { ArrowRight01Icon, Folder01Icon }
 

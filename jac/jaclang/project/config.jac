@@ -49,11 +49,16 @@ obj RunConfig {
 }
 
 obj NativeConfig {
-    has require: list[str] = [],
+    has link_mode: str = "objects",
+        require: list[str] = [],
         target: str = "",
         opt: int = 2,
         debug: bool = False,
         threads: int = 4;
+}
+
+obj ArchConfig {
+    has closed: list[str] = [];
 }
 
 obj MemoryConfig {
@@ -279,6 +284,7 @@ obj JacConfig {
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
         native: NativeConfig = NativeConfig(),
+        arch: ArchConfig = ArchConfig(),
         memory: MemoryConfig = MemoryConfig(),
         placement: PlacementConfig = PlacementConfig(),
         `test: TestConfig = TestConfig(),

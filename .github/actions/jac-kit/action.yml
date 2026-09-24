@@ -105,12 +105,55 @@ runs:
     # serially, and to fail the lane here rather than inside the first worker of
     # a parallel pool. `jac --version` is not enough: it touches a tenth of the
     # modules a real compile does, so it would not exercise the bundle.
+    #
+    # On a reroute lane this is also the dev loop's first run (#8943): the
+    # checkout has no kernel (libjac_* is gitignored), and the kit was built
+    # from these sources, so the run must adopt the kit's kernel, not derive
+    # one, and a second run must keep it. See cli/docs/internals/native-units.md.
     - name: Warm the runtime cache
       shell: bash
+      env:
+        REROUTE: ${{ steps.mode.outputs.reroute }}
       run: |
         set -euo pipefail
         WORK="$(mktemp -d)"
         printf 'with entry { print(6*7); }\n' > "$WORK/warm.jac"
         out="$(jac run "$WORK/warm.jac" 2>&1)" || { echo "$out"; exit 1; }
-        echo "$out" | tail -3
-        echo "$out" | grep -q 42
+        tail -3 <<<"$out"
+        grep -q 42 <<<"$out"
+        if [ "$REROUTE" != "true" ]; then
+          exit 0
+        fi
+        KIT_SITE="$(jac -c 'import os, sys; print(os.path.join(os.path.dirname(sys.prefix), "site", "jaclang"))' | tail -1)"
+        python3 - "$GITHUB_WORKSPACE/jac/jaclang/compiler" "$KIT_SITE/compiler" "$WORK/kernel.stat" <<'PY'
+        import filecmp, glob, json, os, sys
+        def fail(message):
+            print(f"::error::{message}")
+            sys.exit(1)
+        tree, kit, stat_out = sys.argv[1:]
+        found = [p for p in glob.glob(os.path.join(tree, "libjac_compiler.*"))
+                 if not p.endswith((".layout.json", ".lock"))]
+        if len(found) != 1:
+            fail(f"the first run left {found or 'no kernel'} beside the loader")
+        lib = found[0]
+        sidecar = json.load(open(lib + ".layout.json"))
+        if not (sidecar.get("plan_digest") and sidecar.get("classes")):
+            fail(f"{lib}.layout.json lacks plan_digest or classes")
+        bundled = os.path.join(kit, os.path.basename(lib))
+        if not filecmp.cmp(lib, bundled, shallow=False):
+            fail("the first run derived a kernel instead of adopting the kit's, "
+                 "which was built from these sources")
+        st = os.stat(lib)
+        open(stat_out, "w").write(f"{lib} {st.st_ino} {st.st_mtime_ns}")
+        PY
+        printf 'with entry { print(7*7); }\n' > "$WORK/again.jac"
+        out="$(jac run "$WORK/again.jac" 2>&1)" || { echo "$out"; exit 1; }
+        grep -q 49 <<<"$out"
+        python3 - "$WORK/kernel.stat" <<'PY'
+        import os, sys
+        lib, ino, mtime = open(sys.argv[1]).read().split()
+        st = os.stat(lib)
+        if (st.st_ino, st.st_mtime_ns) != (int(ino), int(mtime)):
+            print("::error::the second run replaced a kernel whose inputs had not moved")
+            sys.exit(1)
+        PY

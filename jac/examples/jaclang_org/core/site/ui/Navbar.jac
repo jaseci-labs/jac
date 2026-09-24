@@ -1,8 +1,5 @@
-import from core.brand.theme { useTheme }
-import from .button { buttonVariants }
-import from core.utils { cn }
 import from "@jac/runtime" { Link }
-import from core.install { ensure_install }
+
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { GithubIcon, Moon01Icon, Sun01Icon }
 

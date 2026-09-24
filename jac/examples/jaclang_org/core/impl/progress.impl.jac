@@ -1,5 +1,3 @@
-import from core.timefmt { now_iso }
-
 impl JobProgress.begin(phase: str) {
     self.active = True;
     self.phase = phase;

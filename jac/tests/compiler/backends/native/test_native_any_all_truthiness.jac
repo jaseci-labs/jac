@@ -34,7 +34,7 @@ import ctypes;
 import os;
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -66,7 +66,7 @@ def measured -> tuple[any, ...] {
 
 """Call a no-argument fixture function through the JIT."""
 def answer(eng: any, name: str) -> int {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"function '{name}' is not in the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
@@ -117,4 +117,43 @@ test "int elements keep the answer they always had" {
     assert answer(eng, "any_int_some") == 1;
     assert answer(eng, "all_int_yes") == 1;
     assert answer(eng, "all_int_no") == 0;
+}
+
+
+test "boolean comprehensions store results independently of input element types" {
+    (_rec, _errors, eng) = measured();
+    for i in range(20) {
+        assert answer(eng, "any_object_comprehension") == 1;
+        assert answer(eng, "all_object_comprehension") == 0;
+        assert answer(eng, "any_negated_comprehension") == 1;
+        assert answer(eng, "all_literal_comprehension") == 1;
+        assert answer(eng, "any_float_comparison") == 1;
+        assert answer(eng, "any_empty_comprehension") == 0;
+    }
+}
+
+test "and/or comprehensions over boolean operands store booleans" {
+    (_rec, _errors, eng) = measured();
+    for i in range(20) {
+        assert answer(eng, "any_and_field_comparison") == 1;
+        assert answer(eng, "any_and_field_comparison_miss") == 0;
+        assert answer(eng, "all_or_field_comparison") == 1;
+        assert answer(eng, "all_or_field_comparison_miss") == 0;
+        assert answer(eng, "any_and_bool_fields") == 1;
+        assert answer(eng, "all_nested_boolop") == 1;
+        assert answer(eng, "any_not_mixed_boolop") == 1;
+        assert answer(eng, "stored_boolop_count") == 10;
+        assert answer(eng, "any_float_boolop") == 1;
+        assert answer(eng, "all_float_boolop") == 0;
+        assert answer(eng, "any_empty_boolop") == 0;
+        assert answer(eng, "all_empty_boolop") == 1;
+    }
+}
+
+test "and/or comprehensions over non-boolean operands keep operand values" {
+    (_rec, _errors, eng) = measured();
+    for i in range(20) {
+        assert answer(eng, "or_keeps_int_operand") == 73;
+        assert answer(eng, "or_keeps_str_operand") == 1;
+    }
 }

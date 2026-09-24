@@ -16,7 +16,13 @@ elision lives in the native codegen path rather than the analysis schedule.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts, compile_native_ir }
+import from tests.support {
+    TESTS_DIR,
+    compile_native_ir,
+    native_address,
+    native_force_opts,
+    source_spelled
+}
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
@@ -41,11 +47,13 @@ def compile_fixture(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
 
-"""Count emitted __rc_retain call sites, optionally with move-lowering off."""
+"""Count the __rc_retain call sites in the fixture's own code. The unit's
+exported `jac_retain` helper wraps one retain for the link glue and is not
+an assignment's retain, so its body is left out."""
 def retain_calls(fixture: str, move_lower: bool) -> int {
     orig = NaIRGenPass._can_native_move_lower;
     if not move_lower {
@@ -54,7 +62,17 @@ def retain_calls(fixture: str, move_lower: bool) -> int {
     }
     try {
         ir = compile_native_ir(fixture);
-        return str(ir.gen.llvm_ir).count('call void @"__rc_retain"');
+        count = 0;
+        in_helper = False;
+        for line in source_spelled(str(ir.gen.llvm_ir)).splitlines() {
+            if line.startswith("define ") {
+                in_helper = '.jac_retain"' in line;
+            }
+            if not in_helper and 'call void @"__rc_retain"' in line {
+                count += 1;
+            }
+        }
+        return count;
     } finally {
         NaIRGenPass._can_native_move_lower = orig;
     }
@@ -62,7 +80,7 @@ def retain_calls(fixture: str, move_lower: bool) -> int {
 
 """Get a ctypes-callable function from the JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(restype, *argtypes)(addr);
 }
@@ -79,7 +97,7 @@ test "move-lowering elides exactly the `b = a` alias retain" {
 
 test "move-lowering nulls the source slot (keeps the free sound)" {
     ir = compile_native_ir("move_elision.jac");
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     # Nulling the moved-from slot is what makes eliding the retain sound: the
     # source's cleanup release then loads null and is a no-op, so the object is
     # freed exactly once (by the destination's cleanup).

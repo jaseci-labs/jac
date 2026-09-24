@@ -124,7 +124,7 @@ user +>:MemberOf():+> team;                  # joining costs one edge
 allow_group(doc, jid(team), AccessLevel.READ);   # sharing costs one entry
 ```
 
-Both forms compose -- an existing per-root grant still applies, and a group grant only raises the level. The permission test compiles into the query for the standard model (owner, granted-to-all, granted-to-you, granted-to-your-group), so a gated read costs the rows you may see rather than every candidate. An archetype that overrides `__jac_access__` decides access with arbitrary Jac, which has no SQL form: those keep the object-space filter, correctly but at full cost.
+Both forms compose -- an existing per-root grant still applies, and a group grant only raises the level. The permission test compiles into the query for the standard model (owner, granted-to-all, granted-to-you, granted-to-your-group, granted on the owning root), so a gated read costs the rows you may see rather than every candidate. An archetype that overrides `__jac_access__` decides access with arbitrary Jac, which has no SQL form: those keep the object-space filter, correctly but at full cost.
 
 Edge-type filter / creation / deletion syntax, and the ordering-term rules: see `jac-node-edge-patterns`.
 

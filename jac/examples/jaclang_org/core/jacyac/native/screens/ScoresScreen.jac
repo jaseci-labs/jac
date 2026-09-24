@@ -7,10 +7,6 @@ import from "@jac/mobui" {
     ActivityIndicator,
     Linking
 }
-import from core.jacyac.state { JacYacState }
-import from core.jacyac.scores { useScores }
-import from core.brand.theme { useTheme }
-import from core.jacyac.native.theme { makeStyles }
 
 def:pub ScoresScreen(model: JacYacState) -> JsxElement {
     theme = useTheme();

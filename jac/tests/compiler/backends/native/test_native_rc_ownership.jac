@@ -21,7 +21,14 @@ what freed memory happens to contain.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, get_func, compile_native_ir }
+import from tests.support {
+    TESTS_DIR,
+    get_func,
+    names_function,
+    native_address,
+    compile_native_ir,
+    source_spelled
+}
 import jaclang;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -37,8 +44,8 @@ glob FIXTURES = os.path.join(
 def fn_ir(ir: uni.Module, name: str) -> str {
     out: list[str] = [];
     inside = False;
-    for ln in str(ir.gen.llvm_ir).split("\n") {
-        if not inside and ln.startswith("define") and (('@"' + name + '"') in ln) {
+    for ln in source_spelled(str(ir.gen.llvm_ir)).split("\n") {
+        if not inside and ln.startswith("define") and names_function(ln, name) {
             inside = True;
         }
         if inside {
@@ -67,7 +74,7 @@ def compile_native(
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
 
@@ -165,7 +172,7 @@ test "heap-element container compiles and runs under plain --memory nogc" {
 
 test "import sys compiles under --memory rc (argv list is a heap container)" {
     (eng, _) = compile_native("rc_import_sys.jac", gc_mode="rc");
-    addr = eng.get_function_address("argc_minus_one");
+    addr = native_address(eng, "argc_minus_one");
     assert addr != 0 , "argc_minus_one not emitted";
 }
 

@@ -27,7 +27,8 @@ import from jaclang.compiler.tests.xbackend_equiv {
     FIXTURES,
     run_py_fixture,
     run_native_function,
-    compare_results
+    compare_results,
+    remember_engine_unit
 }
 
 
@@ -44,6 +45,7 @@ def _compile_native_forced(fixture: str) -> tuple[any, ...] {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
+    remember_engine_unit(eng, ir);
     return (eng, ir);
 }
 

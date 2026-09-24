@@ -19,6 +19,7 @@ import from jaclang.compiler.frontend.unitree {
     FuncCall,
     FuncSignature,
     ImplDef,
+    ImplImport,
     Import,
     KWPair,
     LambdaExpr,

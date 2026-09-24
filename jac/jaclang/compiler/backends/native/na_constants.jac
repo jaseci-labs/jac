@@ -1,13 +1,3 @@
-glob NATIVE_TIME_FUNCS: set[str] = {
-         "time",
-         "monotonic",
-         "perf_counter",
-         "time_ns",
-         "monotonic_ns",
-         "perf_counter_ns",
-         "sleep",
-
-     };
 glob NATIVE_OS_FUNCS: set[str] = {
          "getpid",
          "listdir",
@@ -60,6 +50,8 @@ glob RC_COLOR_BLACK: int = 0,
      RC_BUFFERED_BIT: int = 4,
      RC_COLOR_SHIFT: int = 48,
      RC_CYCLE_THRESHOLD: int = 1000;
+
+glob CLASS_DISPLAY_OFF: int = 24;
 glob LIVE_NODE_ID_OFF: int = 0,
      LIVE_NODE_USER_OFF: int = 8,
      LIVE_NODE_TAG_OFF: int = 16,

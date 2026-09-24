@@ -24,12 +24,15 @@ import os;
 import subprocess;
 import tempfile;
 import from tests.support {
-    jac_command,
     TESTS_DIR,
+    by_source_name,
     compile_native,
     get_func,
     has_error_code,
-    native_force_opts
+    jac_command,
+    native_force_opts,
+    source_spelled,
+    unit_symbol
 }
 import jaclang;
 
@@ -301,7 +304,7 @@ test "variadic init demotes the constructor and refuses its callers" {
     assert "pure" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
     );
-    assert "P.init" not in layout.methods , (
+    assert "P.init" not in by_source_name(layout.methods) , (
         "the variadic init must be demoted out of the native layout"
     );
     assert "mk" not in layout.functions , (
@@ -325,17 +328,19 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
     assert not prog.errors_had , str(prog.errors_had);
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
-    assert "Cell.get" in layout.methods , (
+    assert "Cell.get" in by_source_name(layout.methods) , (
         f"the variadic method must reach the native image: {sorted(layout.methods)}"
     );
-    assert "Cell.count" in layout.methods , (
+    assert "Cell.count" in by_source_name(layout.methods) , (
         f"the variadic method must reach the native image: {sorted(layout.methods)}"
     );
-    assert "Cell.pick" in layout.methods , (
+    assert "Cell.pick" in by_source_name(layout.methods) , (
         f"a pack after a fixed parameter must lower too: {sorted(layout.methods)}"
     );
-    text = str(ir.gen.llvm_ir);
-    assert 'define i8* @"Cell.get"(%"Cell"* %"self", %"List.ptr"* %"fallback")'
+    text = source_spelled(str(ir.gen.llvm_ir));
+    assert f'define i8* @"{source_spelled(
+        unit_symbol(ir, "Cell.get")
+    )}"(%"Cell"* %"self", %"List.ptr"* %"fallback")'
         in text , (
         "the pack slot must lay out as the pointer-flavoured native list; a bare "
         "i8* there is the erased element leaking into the pack's own slot"

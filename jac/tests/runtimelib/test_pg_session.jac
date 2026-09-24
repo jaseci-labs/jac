@@ -235,9 +235,9 @@ test "read barrier hashes only dirty anchors, not the whole session" {
         JacRuntime.exec_ctx = ctx;
         orig = smod._persist_hash;
         calls: list[int] = [];
-        def counting_hash(anchor: Anchor) -> int {
+        def counting_hash(anchor: Anchor, props: (any | None) = None) -> int {
             calls.append(1);
-            return orig(anchor);
+            return orig(anchor, props);
         }
         try {
             ranch = _root(ctx);

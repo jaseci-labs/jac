@@ -1,13 +1,3 @@
-import from core.site.ui.badge { Badge }
-import from core.site.ui.SectionRail { SectionRail }
-import from core.site.landing.Reveal { Reveal }
-import from core.site.source.CodeSpotlight { CodeSpotlight }
-import from core.site.source.FloatingSource { FloatingSource }
-import from core.site.landing.diagrams.SynechicDiagram { SynechicDiagram }
-import from core.site.landing.diagrams.TopokineticDiagram { TopokineticDiagram }
-import from core.site.landing.diagrams.GradualBorrowDiagram { GradualBorrowDiagram }
-import from core.site.landing.diagrams.PolypilerDiagram { PolypilerDiagram }
-
 glob GROUPS: list[dict[str, any]] = [
          {
              "key": "synechic",

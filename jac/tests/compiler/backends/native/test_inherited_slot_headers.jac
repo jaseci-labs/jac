@@ -28,7 +28,7 @@ identifies the header decision rather than the override as the cause.
 import os;
 import ctypes;
 import from tests.support { TESTS_DIR }
-import from tests.support { compile_native, get_func }
+import from tests.support { by_source_name, compile_native, get_func, source_spelled }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -67,7 +67,7 @@ def _all_seams(coverage: dict[str, any]) -> list[str] {
     out: list[str] = [];
     for (_, rec) in coverage.items() {
         for s in (rec.get("seams") or []) {
-            out.append(str(s));
+            out.append(source_spelled(str(s)));
         }
     }
     return out;
@@ -77,9 +77,9 @@ test "an abstract interface keeps its dispatch header across imported subclasses
     (module, coverage) = _compile("abstract_slot_child.jac");
     registry = module.gen.layout_registry;
     assert not _all_seams(coverage) , str(_all_seams(coverage));
-    interface = registry.layouts["SlotInterface"];
-    storage = registry.layouts["SlotStorage"];
-    child = registry.layouts["SlotLeaf"];
+    interface = by_source_name(registry.layouts)["SlotInterface"];
+    storage = by_source_name(registry.layouts)["SlotStorage"];
+    child = by_source_name(registry.layouts)["SlotLeaf"];
     assert interface.vtable_ptr_slot == 0;
     assert storage.vtable_ptr_slot == child.vtable_ptr_slot == 0;
     assert storage.field_index["values"] == child.field_index["values"];
@@ -102,10 +102,10 @@ test "a child of a flat imported base carries the same header its base does" {
     (ir, _coverage) = _compile(CHILD);
     reg = ir.gen.layout_registry;
     assert reg is not None , "no layout registry was built";
-    base = reg.layouts.get("SlotBase");
-    child = reg.layouts.get("SlotChild");
+    base = by_source_name(reg.layouts).get("SlotBase");
+    child = by_source_name(reg.layouts).get("SlotChild");
     assert base is not None and child is not None , (
-        f"both layouts must be present, got: {sorted(reg.layouts)}"
+        f"both layouts must be present, got: {sorted(by_source_name(reg.layouts))}"
     );
     assert base.vtable_ptr_slot == child.vtable_ptr_slot , (
         f"the header slots must agree or no slot assignment satisfies both: "
@@ -122,8 +122,8 @@ test "a child of a flat imported base carries the same header its base does" {
 test "the child adopts the base's slot assignment verbatim" {
     (ir, _coverage) = _compile(CHILD);
     reg = ir.gen.layout_registry;
-    base = reg.layouts.get("SlotBase");
-    child = reg.layouts.get("SlotChild");
+    base = by_source_name(reg.layouts).get("SlotBase");
+    child = by_source_name(reg.layouts).get("SlotChild");
     for finfo in base.fields {
         assert finfo.name in child.field_index , (
             f"the child's layout is missing the inherited field "
@@ -170,8 +170,8 @@ test "the no-override control lowers too, which places the fault on the header" 
     # the header decision was.
     (ir, coverage) = _compile(NOVT);
     reg = ir.gen.layout_registry;
-    base = reg.layouts.get("SlotBase");
-    child = reg.layouts.get("SlotChildFlat");
+    base = by_source_name(reg.layouts).get("SlotBase");
+    child = by_source_name(reg.layouts).get("SlotChildFlat");
     assert base.vtable_ptr_slot == child.vtable_ptr_slot , (
         f"base {base.vtable_ptr_slot} != child {child.vtable_ptr_slot}"
     );

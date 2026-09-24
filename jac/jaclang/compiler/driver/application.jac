@@ -454,6 +454,7 @@ def prepare_application(
                         program,
                         CompileOptions(
                             default_codespace='server',
+                            skip_native_engine=program.options.skip_native_engine,
                             entry_point=path,
                             project_root=`root
                         )

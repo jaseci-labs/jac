@@ -1,5 +1,4 @@
 import from "radix-ui" { Label as LabelPrimitive }
-import from ....core.utils { cn }
 
 def:pub Label(props: any) -> JsxElement {
     <LabelPrimitive.Root

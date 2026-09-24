@@ -1,3 +1,4 @@
+import from jaclang.jac0core.cache_paths { atomic_write }
 import struct;
 import os;
 import from jaclang.cli.console { console }
@@ -838,6 +839,15 @@ impl ElfLinker.build_executable -> bytes {
         }
     }
 
+    data_got_syms: list[str] = [];
+    for rela in self.relocations {
+        if rela.rtype in arch.gotpcrel_rtypes
+            and rela.sym_name in extern_data_syms
+            and rela.sym_name not in data_got_syms {
+            data_got_syms.append(rela.sym_name);
+        }
+    }
+
     ehdr_size = 64;
     num_phdrs = 5;
     phdr_size = num_phdrs * 56;
@@ -952,7 +962,8 @@ impl ElfLinker.build_executable -> bytes {
     cur_offset = _align(cur_offset, 8);
     data_got_foff = cur_offset;
 
-    data_got_size = (len(extern_data_syms) + len(local_got_syms)) * 8;
+    data_got_size = (len(extern_data_syms) + len(local_got_syms) + len(data_got_syms))
+        * 8;
     cur_offset += data_got_size;
     cur_offset = _align(cur_offset, 8);
     dynamic_foff = cur_offset;
@@ -1085,6 +1096,16 @@ impl ElfLinker.build_executable -> bytes {
         }
     }
 
+    data_got_slot: dict[str, int] = {};
+    _dg_base = _lg_base + len(local_got_syms);
+    for dg_idx in range(len(data_got_syms)) {
+        _dg_name = data_got_syms[dg_idx];
+        data_got_slot[_dg_name] = data_got_vaddr + (_dg_base + dg_idx) * 8;
+        struct.pack_into(
+            "<Q", data_got_data, (_dg_base + dg_idx) * 8, extern_got_addr[_dg_name]
+        );
+    }
+
     code_bytes = bytearray(code_data);
     rodata_bytes = bytearray(rodata_blob);
     data_bytes = bytearray(data_blob);
@@ -1096,7 +1117,7 @@ impl ElfLinker.build_executable -> bytes {
 
         if rela.rtype in arch.gotpcrel_rtypes {
             if is_data_extern {
-                sym_addr = extern_got_addr[rela.sym_name];
+                sym_addr = data_got_slot[rela.sym_name];
             } elif is_func_extern {
                 func_idx = extern_func_syms.index(rela.sym_name);
                 sym_addr = got_plt_vaddr + (3 + func_idx) * 8;
@@ -3278,7 +3299,7 @@ impl ElfLinker.build_static_executable -> bytes {
 
 
 impl ElfLinker.link(
-    obj_bytes: bytes,
+    objects: list[bytes],
     output_path: str,
     needed_libs: list[str] = [],
     crt_objects: list[bytes] = [],
@@ -3289,8 +3310,11 @@ impl ElfLinker.link(
     archive_members: list[bytes] = [],
     static_link: bool = False
 ) -> bool {
+    if not objects {
+        return False;
+    }
     linker = ElfLinker(
-        obj_data=obj_bytes,
+        obj_data=objects[0],
         sections=[],
         symbols=[],
         relocations=[],
@@ -3305,6 +3329,13 @@ impl ElfLinker.link(
     }
 
     merge_ns: int = 0;
+
+    for extra in objects[1:] {
+        merge_ns += 1;
+        if not _merge_crt_object(linker, extra, merge_ns) {
+            return False;
+        }
+    }
 
     for crt_bytes in crt_objects {
         merge_ns += 1;
@@ -3332,21 +3363,18 @@ impl ElfLinker.link(
     if not exe_bytes {
         return False;
     }
-    with open(output_path, "wb") as f {
-        f.write(exe_bytes);
-    }
-    os.chmod(output_path, 0o755);
+    atomic_write(output_path, exe_bytes, mode=0o755);
 
     import from jaclang.compiler.driver.compile_options { env_symmap_requested }
     if env_symmap_requested() {
         symmap_path = output_path + ".symmap";
-        with open(symmap_path, "w") as smf {
+        rows = [
+            f"{sname} 0x{va:016x}\n"
             for (sname, va) in sorted(
                 linker.sym_vaddrs.items(), key=lambda (kv) { kv[1]; }
-            ) {
-                smf.write(f"{sname} 0x{va:016x}\n");
-            }
-        }
+            )
+        ];
+        atomic_write(symmap_path, "".join(rows).encode("utf-8"));
     }
 
     return True;

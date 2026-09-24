@@ -268,8 +268,9 @@ impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
             continue;
         }
         import from jaclang.compiler.types.types { ClassType }
+        import from jaclang.compiler.passes.layout_pass { class_type_native_name }
         if isinstance(member, uni.Expr) and isinstance(member.type, ClassType) {
-            name = member.type.shared.class_name;
+            name = class_type_native_name(member.type) or name;
         }
         if name in ("Exception", "BaseException") {
             return [0];
@@ -316,7 +317,9 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     exc_type_id = 0;
     if nd.cause is not None {
         if isinstance(nd.cause, uni.FuncCall) {
-            exc_type_name = self._get_name(nd.cause.target) or "Exception";
+            exc_type_name = self._arch_ref_key(nd.cause.target)
+                or self._get_name(nd.cause.target)
+                or "Exception";
             exc_type_id = self._get_or_register_exc_type(exc_type_name);
 
             _exc_pos_args: list[uni.Expr] = [];
@@ -357,7 +360,9 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     }
 
     if exc_msg is None {
-        exc_msg = self._make_global_string(exc_type_name, name_prefix=".exc.msg");
+        exc_msg = self._make_global_string(
+            self._arch_display(exc_type_name), name_prefix=".exc.msg"
+        );
     }
     exc_msg = self._str_norm(exc_msg);
     exc_payload = self._str_norm_optional(exc_payload);
@@ -517,7 +522,9 @@ impl NaIRGenPass._codegen_try_unwind(
                 next_dispatch_bb = None;
             }
 
-            caught_type_name = self._get_name(except_node.ex_type) or "Exception";
+            caught_type_name = self._arch_ref_key(except_node.ex_type)
+                or self._get_name(except_node.ex_type)
+                or "Exception";
             caught_ids = self._exception_handler_ids(except_node.ex_type);
 
             if i > 0 {
@@ -697,7 +704,7 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
         }
     }
     func = self.builder.function;
-    if func.name == "jac_entry" {
+    if func is self.func_symtab.get("jac_entry") {
         (_tg, _og, mglob) = self._nogc_err_slot();
         msg = self.builder.load(mglob, name="err.msg");
         fmt = self._make_global_string(
@@ -706,6 +713,8 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
         self.builder.call(
             self._get_printf(), [self.builder.bitcast(fmt, i8p, name="err.fmt"), msg]
         );
+        flush_fn = self._get_or_declare_extern("fflush", ir.IntType(32), [i8p]);
+        self.builder.call(flush_fn, [ir.Constant(i8p, None)]);
         abort_fn = self._get_or_declare_extern("abort", ir.VoidType(), []);
         self.builder.call(abort_fn, []);
         self.builder.unreachable();

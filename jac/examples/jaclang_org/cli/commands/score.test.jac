@@ -14,8 +14,6 @@ test "AI review appears in text and JSON without changing score" {
     assert as_dict(res)["total"] == total;
 }
 
-import from core.github { RepoMeta }
-import from core.leaderboard.scoring { analyze, score }
 import from core.timefmt { now_iso }
 
 glob SAMPLE: dict[str, str] = {

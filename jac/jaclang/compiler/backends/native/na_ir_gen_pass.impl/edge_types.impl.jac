@@ -7,8 +7,8 @@ impl NaIRGenPass._osp_static_edge_name(expr: uni.UniNode) -> (str | None) {
         or expr.value in self.global_vars {
         return None;
     }
-    name = self._arch_alias_target(expr) or expr.value;
-    model = self.module.gen.osp_model;
+    name = self._arch_ref_key(expr) or expr.value;
+    model = self.module.gen.native_osp_model;
     return name if model is not None and model.arch_kind.get(name) == "edge" else None;
 }
 
@@ -29,7 +29,8 @@ impl NaIRGenPass._osp_edge_class_name(expr: uni.UniNode) -> (str | None) {
     } elif not typ.is_instantiable() or typ.is_instance() {
         return None;
     }
-    return typ.shared.class_name;
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    return class_type_native_name(typ);
 }
 
 impl NaIRGenPass._osp_edge_tag(
@@ -40,7 +41,7 @@ impl NaIRGenPass._osp_edge_tag(
         return ir.Constant(i64, -1);
     }
     name = self._osp_static_edge_name(expr);
-    model = self.module.gen.osp_model;
+    model = self.module.gen.native_osp_model;
     if name is not None and model is not None {
         return ir.Constant(i64, model.tags[name]);
     }
@@ -51,7 +52,7 @@ impl NaIRGenPass._osp_edge_tag(
         return None;
     }
     tag = self.builder.load(
-        self._field_slot_ptr(desc, "tag", "EdgeTypeDesc"), name="edge.tag"
+        self._field_slot_ptr(desc, "tag", "OspEdgeTypeDesc"), name="edge.tag"
     );
     if descriptor is None {
         self._emit_rc_release_simple(desc, op="edge_type");
@@ -63,7 +64,7 @@ impl NaIRGenPass._osp_edge_descriptor(
     expr: uni.UniNode, nd: uni.UniNode
 ) -> (ir.Value | None) {
     if self._osp_edge_class_name(expr) is None {
-        self.ctx.emit(
+        self.emit(
             E5092, node_override=nd, kind="edge type", name="non-class expression"
         );
         return None;
@@ -71,7 +72,7 @@ impl NaIRGenPass._osp_edge_descriptor(
     lookup = self.func_symtab.get("osp_edge_type");
     value = self._codegen_expr(expr);
     if lookup is None or value is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="edge type",
@@ -104,7 +105,7 @@ impl NaIRGenPass._osp_edge_factory(name: str) -> ir.Function {
 }
 
 impl NaIRGenPass._emit_osp_edge_factories -> None {
-    model = self.module.gen.osp_model;
+    model = self.module.gen.native_osp_model;
     if model is None or self._osp_setup_fn is None {
         return;
     }

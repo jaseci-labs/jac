@@ -1703,6 +1703,11 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
     }
     if "native" in data and isinstance(data["native"], dict) {
         nat = data["native"];
+        _link_mode = str(nat.get("link_mode", cfg.native.link_mode));
+        if _link_mode not in ("objects", "bitcode") {
+            raise ValueError("[native] link_mode must be objects or bitcode");
+        }
+        cfg.native.link_mode = _link_mode;
         if "require" in nat {
             if not isinstance(nat["require"], list)
                 or not all(isinstance(pattern, str) for pattern in nat["require"]) {
@@ -1729,6 +1734,18 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
                 )}' must be an integer; defaulting to 4."
             );
             cfg.native.threads = 4;
+        }
+    }
+    if "arch" in data and isinstance(data["arch"], dict) {
+        arch_data = data["arch"];
+        if "closed" in arch_data {
+            if not isinstance(arch_data["closed"], list)
+                or not all(
+                    isinstance(pattern, str) for pattern in arch_data["closed"]
+                ) {
+                raise ValueError("[arch] closed must be a list of module patterns");
+            }
+            cfg.arch.closed = list(arch_data["closed"]);
         }
     }
     if "placement" in data

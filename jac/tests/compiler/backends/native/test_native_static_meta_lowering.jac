@@ -18,7 +18,7 @@ order and none of the instance layout rules.
 import os;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, source_spelled, unit_symbol }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -48,7 +48,7 @@ def server_errors(name: str) -> list[any] {
     prog = JacProgram();
     prog.compile(
         file_path=os.path.join(FIXTURES, name),
-        options=CompileOptions(no_ir_cache=True, force_codespace='server')
+        options=CompileOptions(force_codespace='server')
     );
     return [str(e) for e in prog.errors_had];
 }
@@ -72,15 +72,15 @@ test "class-level tuple metadata lowers natively" {
 
 test "class-level tuple metadata keeps the literal's layout" {
     (_prog, ir) = compile_native("static_tuple_meta.jac");
-    text = str(ir.gen.llvm_ir);
-    assert '@"Access.PROVIDES" = global {i8*}*' in text , (
+    text = source_spelled(str(ir.gen.llvm_ir));
+    assert f'@"{source_spelled(unit_symbol(ir, "Access.PROVIDES"))}" = global {{i8*}}*'
+        in text , (
         "the widened `tuple` annotation did not narrow to the one-element "
         "tuple of str its constant declares; a scalar slot here would make "
         "every read of it garbage"
     );
-    assert '@"Stage.REQUIRES" = global {}*' in text , (
-        "the empty tuple did not land on a zero-field struct"
-    );
+    assert f'@"{source_spelled(unit_symbol(ir, "Stage.REQUIRES"))}" = global {{}}*'
+        in text , ("the empty tuple did not land on a zero-field struct");
 }
 
 
@@ -122,7 +122,9 @@ test "a type-parameter glob lowers as a compile-time declaration" {
     (prog, ir) = compile_native("type_param_glob.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , "no native IR for the type-param module";
-    assert '@"T"' not in str(ir.gen.llvm_ir) , (
+    assert f'@"{source_spelled(unit_symbol(ir, "T"))}"'
+        not in source_spelled(str(ir.gen.llvm_ir))
+        and '@"T"' not in source_spelled(str(ir.gen.llvm_ir)) , (
         "the type variable was given storage instead of being erased"
     );
 }
@@ -132,7 +134,8 @@ test "a widened tuple glob lowers from its constant" {
     (prog, ir) = compile_native("tuple_glob_meta.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , "no native IR for the tuple glob";
-    assert '@"MOVE_EXEMPT" = global {i8*, i8*}*' in str(ir.gen.llvm_ir) , (
+    assert f'@"{source_spelled(unit_symbol(ir, "MOVE_EXEMPT"))}" = global {{i8*, i8*}}*'
+        in source_spelled(str(ir.gen.llvm_ir)) , (
         "the glob did not take the two-element str layout its constant declares"
     );
 }

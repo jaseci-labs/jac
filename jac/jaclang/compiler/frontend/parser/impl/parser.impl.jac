@@ -3222,6 +3222,10 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
         return self.parse_comptime_element();
     }
 
+    if self.check(TokenKind.KW_IMPL) and self.check_peek(TokenKind.KW_IMPORT) {
+        return self.parse_impl_import();
+    }
+
     if self.check(TokenKind.KW_IMPL) {
         return self.parse_impl_def();
     }
@@ -4179,7 +4183,8 @@ impl Parser.parse_try_stmt -> TryStmt {
         awaiting_lb = self.consume_uni(TokenKind.LBRACE);
         awaiting_stmts = self.parse_code_block_stmts();
         awaiting_rb = self.consume_uni(TokenKind.RBRACE);
-        awaiting_kid: list[UniNode] = [awaiting_uni, awaiting_lb];
+        awaiting_kid: list[UniNode] = [];
+        awaiting_kid.extend([awaiting_uni, awaiting_lb]);
         awaiting_kid.extend(awaiting_stmts);
         awaiting_kid.append(awaiting_rb);
         awaiting_body = AwaitingClause(body=awaiting_stmts, kid=awaiting_kid);
@@ -4198,7 +4203,8 @@ impl Parser.parse_try_stmt -> TryStmt {
         fin_lb = self.consume_uni(TokenKind.LBRACE);
         finally_stmts = self.parse_code_block_stmts();
         fin_rb = self.consume_uni(TokenKind.RBRACE);
-        fin_kid: list[UniNode] = [fin_uni, fin_lb];
+        fin_kid: list[UniNode] = [];
+        fin_kid.extend([fin_uni, fin_lb]);
         fin_kid.extend(finally_stmts);
         fin_kid.append(fin_rb);
         finally_body = FinallyStmt(body=finally_stmts, kid=fin_kid);
@@ -7136,4 +7142,340 @@ impl Parser.parse_report_stmt -> ReportStmt {
 
 impl Parser._lookahead_advance -> None {
     self.advance();
+}
+
+impl Parser.parse_impl_import -> ImplImport {
+    kid: list[UniNode] = [self.consume_uni(TokenKind.KW_IMPL)];
+    kid.append(self.consume_uni(TokenKind.KW_IMPORT));
+    scope: ModulePath | None = None;
+    if not self.check(TokenKind.LBRACE) {
+        if self.check_name() or self.is_keyword_token() {
+            scope_tok = self.current();
+            scope = self.parse_wire_module_path("scope");
+            if scope.alias is not None or scope.string_path_value is not None {
+                self.emit_diag(
+                    "An 'impl import' scope is a dotted package name",
+                    "E0093",
+                    loc=scope_tok.loc
+                );
+            }
+            kid.append(scope);
+        } else {
+            self.emit_diag("An 'impl import' scope is a dotted package name", "E0093");
+        }
+    }
+    kid.append(self.consume_uni(TokenKind.LBRACE));
+    body: list[ImportWire | ImportRule] = [];
+    while not self.check(TokenKind.RBRACE) and not self.at_end() {
+        start = self.pos;
+        stmt: ImportWire | ImportRule | None = None;
+        if self.check(TokenKind.KW_EDGE) {
+            stmt = self.parse_import_rule();
+        } elif self.check_any(
+            TokenKind.KW_COMPTIME,
+            TokenKind.KW_INCLUDE,
+            TokenKind.TYP_TYPE,
+            TokenKind.TYP_ANY,
+            TokenKind.STAR_MUL,
+            TokenKind.STRING
+        )
+            or self.check_name()
+            or self.is_keyword_token() {
+            stmt = self.parse_import_wire();
+        } else {
+            self.emit_diag(
+                "Expected a wire ('provider --> consumer') or an edge rule here",
+                "E0094"
+            );
+        }
+        if stmt is not None {
+            body.append(stmt);
+            kid.append(stmt);
+        }
+        if self.pos == start {
+            self.advance();
+        }
+    }
+    kid.append(self.consume_uni(TokenKind.RBRACE));
+    return ImplImport(doc=None, scope=scope, body=body, kid=kid);
+}
+
+impl Parser.parse_wire_module_path(context: str) -> ModulePath {
+    path_names: list[Name | String] = [];
+    path_kid: list[UniNode] = [];
+    if self.check(TokenKind.STRING) {
+        str_node = self.make_string(self.expect(TokenKind.STRING));
+        path_names.append(str_node);
+        path_kid.append(str_node);
+    } else {
+        name_tok = self.advance()
+            if self.check_name() or self.is_keyword_token()
+            else self.expect_name(context);
+        nm = self.make_name(name_tok);
+        path_names.append(nm);
+        path_kid.append(nm);
+        while self.check(TokenKind.DOT) and not self.check_peek(TokenKind.STAR_MUL) {
+            self.expect(TokenKind.DOT);
+            path_kid.append(self.make_uni_token(self.previous()));
+            name_tok = self.advance()
+                if self.check_name() or self.is_keyword_token()
+                else self.expect_name(context);
+            nm = self.make_name(name_tok);
+            path_names.append(nm);
+            path_kid.append(nm);
+        }
+    }
+    alias: Name | None = None;
+    if self.match_tok(TokenKind.KW_AS) {
+        as_uni = self.make_uni_token(self.previous());
+        alias = self.make_name(self.expect_name("alias"));
+        path_kid.append(as_uni);
+        path_kid.append(alias);
+    }
+    return ModulePath(path=path_names, level=0, alias=alias, kid=path_kid);
+}
+
+impl Parser.parse_module_pattern -> ModulePattern {
+    if self.check(TokenKind.TYP_ANY) {
+        any_uni = self.make_uni_token(self.expect(TokenKind.TYP_ANY));
+        return ModulePattern(path=None, is_any=True, kid=[any_uni]);
+    }
+    if self.check(TokenKind.STAR_MUL) {
+        star_uni = self.make_uni_token(self.expect(TokenKind.STAR_MUL));
+        return ModulePattern(path=None, is_glob=True, kid=[star_uni]);
+    }
+    path = self.parse_wire_module_path("module pattern");
+    kid: list[UniNode] = [path];
+    is_glob = False;
+    if self.check(TokenKind.DOT) and self.check_peek(TokenKind.STAR_MUL) {
+        kid.append(self.consume_uni(TokenKind.DOT));
+        kid.append(self.consume_uni(TokenKind.STAR_MUL));
+        is_glob = True;
+    }
+    return ModulePattern(path=path, is_glob=is_glob, kid=kid);
+}
+
+impl Parser.parse_import_rule -> ImportRule | None {
+    kid: list[UniNode] = [self.consume_uni(TokenKind.KW_EDGE)];
+    if not (self.check_name() and self.check_peek(TokenKind.COLON)) {
+        self.emit_diag(
+            "An edge rule is named: 'edge Name: source --> target'", "E0092"
+        );
+        self._skip_wiring_stmt();
+        return None;
+    }
+    name = self.make_name(self.expect_name("rule name"));
+    kid.append(name);
+    kid.append(self.consume_uni(TokenKind.COLON));
+    sources: list[ModulePattern] = [self.parse_module_pattern()];
+    kid.append(sources[0]);
+    while self.match_tok(TokenKind.BW_OR) {
+        kid.append(self.make_uni_token(self.previous()));
+        pat = self.parse_module_pattern();
+        sources.append(pat);
+        kid.append(pat);
+    }
+    self._expect_wire_arrow(kid);
+    targets: list[ModulePattern] = [self.parse_module_pattern()];
+    kid.append(targets[0]);
+    while self.match_tok(TokenKind.BW_OR) {
+        kid.append(self.make_uni_token(self.previous()));
+        pat = self.parse_module_pattern();
+        targets.append(pat);
+        kid.append(pat);
+    }
+    items: list[WireItem] | None = None;
+    if self.check(TokenKind.LBRACE) {
+        items = self.parse_wire_payload(kid, True);
+    } else {
+        self.expect(TokenKind.SEMI);
+        kid.append(self.make_semi());
+    }
+    return ImportRule(
+        name=name, sources=sources, targets=targets, items=items, kid=kid
+    );
+}
+
+impl Parser.parse_import_wire -> ImportWire | None {
+    kid: list[UniNode] = [];
+    is_comptime = False;
+    is_absorb = False;
+    is_typed = False;
+    if self.match_tok(TokenKind.KW_COMPTIME) {
+        is_comptime = True;
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    if self.match_tok(TokenKind.KW_INCLUDE) {
+        is_absorb = True;
+        kid.append(self.make_uni_token(self.previous()));
+    } elif self.match_tok(TokenKind.TYP_TYPE) {
+        is_typed = True;
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    if self.check_any(TokenKind.TYP_ANY, TokenKind.STAR_MUL) {
+        self.emit_diag(
+            "A wire names one provider; patterns belong to an edge rule", "E0087"
+        );
+        self._skip_wiring_stmt();
+        return None;
+    }
+    provider = self.parse_wire_module_path("provider");
+    kid.append(provider);
+    if self.check_any(TokenKind.DOT, TokenKind.BW_OR) {
+        self.emit_diag(
+            "A wire names one provider; patterns belong to an edge rule", "E0087"
+        );
+        self._skip_wiring_stmt();
+        return None;
+    }
+    if not self._expect_wire_arrow(kid) {
+        self._skip_wiring_stmt();
+        return None;
+    }
+    consumers: list[ModulePath] = [];
+    while True {
+        if self.check_any(TokenKind.TYP_ANY, TokenKind.STAR_MUL, TokenKind.STRING) {
+            self.emit_diag(
+                "A wire's consumer is a project module named in full", "E0088"
+            );
+            self._skip_wiring_stmt();
+            return None;
+        }
+        consumer_tok = self.current();
+        consumer = self.parse_wire_module_path("consumer");
+        if self.check(TokenKind.DOT) or consumer.alias is not None {
+            self.emit_diag(
+                "A wire's consumer is a project module named in full",
+                "E0088",
+                loc=consumer_tok.loc
+            );
+            self._skip_wiring_stmt();
+            return None;
+        }
+        consumers.append(consumer);
+        kid.append(consumer);
+        if not self.match_tok(TokenKind.BW_OR) {
+            break;
+        }
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    items: list[WireItem] | None = None;
+    if self.check(TokenKind.LBRACE) {
+        if is_absorb {
+            self.emit_diag("'include' takes no payload", "E0091");
+        } elif provider.alias is not None {
+            self.emit_diag("'as' applies to the module form of a wire", "E0089");
+        }
+        items = self.parse_wire_payload(kid, False);
+    } else {
+        self.expect(TokenKind.SEMI);
+        kid.append(self.make_semi());
+    }
+    return ImportWire(
+        provider=provider,
+        consumers=consumers,
+        items=items,
+        is_absorb=is_absorb,
+        is_typed=is_typed,
+        is_comptime=is_comptime,
+        kid=kid
+    );
+}
+
+impl Parser.parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireItem] {
+    kid.append(self.consume_uni(TokenKind.LBRACE));
+    items: list[WireItem] = [];
+    seen: set[str] = set();
+    saw_star = False;
+    while not self.check(TokenKind.RBRACE) and not self.at_end() {
+        item_name: Name | Token;
+        item_tok: LexToken;
+        if self.check(TokenKind.STAR_MUL) {
+            item_tok = self.expect(TokenKind.STAR_MUL);
+            item_name = self.make_uni_token(item_tok);
+            saw_star = True;
+            if in_rule {
+                self.emit_diag(
+                    "'*' must be the only item in a payload", "E0095", loc=item_tok.loc
+                );
+            }
+        } else {
+            item_tok = self.expect_name("payload item");
+            item_name = self.make_name(item_tok);
+        }
+        item_kid: list[UniNode] = [item_name];
+        alias: Name | None = None;
+        if self.match_tok(TokenKind.KW_AS) {
+            as_uni = self.make_uni_token(self.previous());
+            alias_tok = self.expect_name("alias");
+            alias = self.make_name(alias_tok);
+            item_kid.append(as_uni);
+            item_kid.append(alias);
+            if in_rule {
+                self.emit_diag(
+                    "A rule payload lists names without aliases",
+                    "E0096",
+                    loc=alias_tok.loc
+                );
+            }
+        }
+        if item_name.value in seen {
+            self.emit_diag(
+                f"Duplicate '{item_name.value}' in a wire payload",
+                "E0090",
+                loc=item_tok.loc
+            );
+        }
+        seen.add(item_name.value);
+        item = WireItem(name=item_name, alias=alias, kid=item_kid);
+        items.append(item);
+        kid.append(item);
+        if not self.match_tok(TokenKind.COMMA) {
+            break;
+        }
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    rb_tok = self.expect(TokenKind.RBRACE);
+    kid.append(self.make_uni_token(rb_tok));
+    if saw_star and len(items) > 1 {
+        self.emit_diag(
+            "'*' must be the only item in a payload", "E0095", loc=rb_tok.loc
+        );
+    }
+    if not items {
+        self.emit_diag(
+            "import statement must specify at least one item", "E0044", loc=rb_tok.loc
+        );
+    }
+    return items;
+}
+
+impl Parser._expect_wire_arrow(kid: list[UniNode]) -> bool {
+    if self.check_any(TokenKind.ARROW_L, TokenKind.ARROW_BI) {
+        self.emit_diag("A wire is directed: write 'provider --> consumer'", "E0086");
+        self.advance();
+        return False;
+    }
+    kid.append(self.consume_uni(TokenKind.ARROW_R));
+    return True;
+}
+
+impl Parser._skip_wiring_stmt -> None {
+    depth = 0;
+    while not self.at_end() {
+        if depth == 0 and self.check(TokenKind.RBRACE) {
+            return;
+        }
+        tok = self.advance();
+        if tok.kind == TokenKind.LBRACE {
+            depth += 1;
+        } elif tok.kind == TokenKind.RBRACE {
+            depth -= 1;
+            if depth <= 0 {
+                return;
+            }
+        } elif tok.kind == TokenKind.SEMI and depth == 0 {
+            return;
+        }
+    }
 }

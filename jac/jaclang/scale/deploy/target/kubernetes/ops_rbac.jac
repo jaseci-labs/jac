@@ -22,6 +22,11 @@ glob OPS_READ_RULES: list[dict[str, any]] = [
              "verbs": ["get", "list", "watch"]
          },
          {
+             "apiGroups": ["keda.sh"],
+             "resources": ["scaledobjects", "triggerauthentications"],
+             "verbs": ["get", "list", "watch"]
+         },
+         {
              "apiGroups": ["networking.k8s.io"],
              "resources": ["ingresses"],
              "verbs": ["get", "list", "watch"]

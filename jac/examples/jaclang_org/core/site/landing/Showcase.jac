@@ -1,8 +1,3 @@
-import from core.source.files { SourceView, example_sources }
-import from core.site.ui.badge { Badge }
-import from core.site.ui.tabs { Tabs, TabsList, TabsTrigger, TabsContent }
-import from core.site.ui.CodeBlock { CodeBlock }
-import from .Reveal { Reveal }
 import from "@jac/runtime" { Link }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { CheckmarkCircle01Icon, ArrowUpRight01Icon }

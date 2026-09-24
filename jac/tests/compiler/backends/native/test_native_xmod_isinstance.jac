@@ -11,7 +11,13 @@ at the right vtable rather than merely existing.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    compile_native,
+    get_func,
+    native_force_opts,
+    source_spelled
+}
 
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -31,7 +37,7 @@ test "isinstance against an imported class lowers natively" {
         if d.code is not None and d.code.code == "E5092"
     ];
     assert not demoted , f"cross-module isinstance did not lower: {demoted}";
-    llvm_ir = str(ir.gen.llvm_ir);
+    llvm_ir = source_spelled(str(ir.gen.llvm_ir));
     assert "Circle.__vtable" in llvm_ir , "the imported Circle vtable is not referenced at all";
 }
 

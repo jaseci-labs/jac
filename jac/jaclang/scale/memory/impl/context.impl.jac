@@ -15,7 +15,7 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
             promotions=promotions_for(base),
             auto_schema=True
         );
-        self.mem = Session(store=store, base_path=base, target_path=target);
+        self.mem = Session(_store=store, base_path=base, target_path=target);
     } else {
         self.mem = Session(base_path=base, target_path=target);
     }

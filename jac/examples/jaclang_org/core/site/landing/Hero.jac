@@ -1,10 +1,5 @@
-import from core.site.ui.button { buttonVariants }
-import from core.site.ui.badge { Badge }
-import from core.utils { cn }
 import from "@jac/runtime" { Link }
-import from core.site.ui.GraphBackdrop { GraphBackdrop }
-import from core.site.source.FloatingSource { FloatingSource }
-import from .CopyCommand { CopyCommand }
+
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { StarIcon, BookOpen01Icon }
 

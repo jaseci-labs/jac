@@ -1,6 +1,3 @@
-import from core.docs.graph { TocEntry }
-import from core.utils { cn }
-
 def:pub DocsTocRail(toc: list[TocEntry]) -> JsxElement {
     return
         <aside className="hidden xl:block">

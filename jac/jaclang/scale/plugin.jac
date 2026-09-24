@@ -6,6 +6,7 @@ import from jaclang.cli.console { console }
 import from jaclang.project.kinds { RunPlan }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.server.server { JacAPIServer as JacServer }
+import from .config.app_config { deployed_tree }
 import from .config.config_loader { get_scale_config }
 import from .config.project_env { load_project_env }
 
@@ -164,21 +165,21 @@ def _print_deployment_status(status_data: dict[str, any]) -> None {
     }
 
     status_display = {
-        'running': '● Running',
-        'degraded': '◑ Degraded',
-        'pending': '⟳ Pending',
-        'restarting': '↺ Restarting',
-        'failed': '✗ Failed',
+        'active': '● Active',
+        'activating': '⟳ Activating',
+        'deactivating': '⟳ Deactivating',
+        'inactive': '◌ Inactive (scaled to zero)',
+        'degraded': '✗ Degraded',
         'not_deployed': '○ Not Deployed',
         'unknown': '? Unknown',
 
     };
     status_style = {
-        'running': 'bold green',
-        'degraded': 'bold yellow',
-        'pending': 'bold yellow',
-        'restarting': 'bold red',
-        'failed': 'bold red',
+        'active': 'bold green',
+        'activating': 'bold yellow',
+        'deactivating': 'bold yellow',
+        'inactive': 'bold dim',
+        'degraded': 'bold red',
         'not_deployed': 'muted',
         'unknown': 'muted',
 
@@ -241,7 +242,7 @@ def deploy_destroy(
         return 1;
     }
 
-    code_folder = os.path.dirname(file_path) or '.';
+    (code_folder, _) = deployed_tree(file_path);
     load_project_env(code_folder);
 
     scale_config = get_scale_config();
@@ -292,7 +293,7 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
     if not os.path.exists(file_path) {
         raise FileNotFoundError(f"File not found: '{file_path}'");
     }
-    code_folder = os.path.dirname(file_path) or '.';
+    (code_folder, _) = deployed_tree(file_path);
     load_project_env(code_folder);
 
     scale_config = get_scale_config();

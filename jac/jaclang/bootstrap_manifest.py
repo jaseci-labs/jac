@@ -26,10 +26,27 @@ import os
 # Data, not compiler code: the Zig bootstrap and CI read this same manifest
 # before a Jac compiler exists. Include the manifest itself in source digests.
 with open(os.path.join(os.path.dirname(__file__), "compiler_inputs.txt")) as _inputs:
-    COMPILER_DIGEST_ROOTS: tuple[str, ...] = tuple(
+    _INPUT_LINES: tuple[str, ...] = tuple(
         line.strip() for line in _inputs
         if line.strip() and not line.lstrip().startswith("#")
     )
+COMPILER_DIGEST_ROOTS: tuple[str, ...] = tuple(
+    line for line in _INPUT_LINES if not line.startswith("!")
+)
+# `!path` lines name inputs the digest covers by path only: native-only units
+# whose own module keys already track their content. Adding or removing one
+# still changes the digest; editing one does not.
+COMPILER_DIGEST_ROSTER: tuple[str, ...] = tuple(
+    line[1:] for line in _INPUT_LINES if line.startswith("!")
+)
+
+
+def is_roster_input(rel_path: str) -> bool:
+    """Whether a declared compiler input is digested by its path alone."""
+    return any(
+        rel_path == p or rel_path.startswith(p + "/") for p in COMPILER_DIGEST_ROSTER
+    )
+
 
 # Inputs the build LOWERS into JacPython's native object (prepare_native.py)
 # instead of shipping as source. They are compiler identity exactly like every
@@ -86,7 +103,6 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/backends/py/jcir_gen_pass.impl/",
     "compiler/backends/py/jcir_gen_pass.jac",
     "compiler/backends/common/ast_gen_base.jac",
-    "compiler/backends/common/kernel_units.jac",
     "compiler/backends/common/fmt_kernel.jac",
     "compiler/backends/native/wasm_linker.jac",
     "compiler/backends/native/linker_common.jac",
@@ -97,10 +113,12 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/decl_impl_match_pass.jac",
     "compiler/passes/endpoint_effect_pass.jac",
     "compiler/passes/semantic_analysis_pass.jac",
+    "compiler/passes/import_wiring_pass.jac",
     "compiler/passes/sym_tab_build_pass.jac",
     "compiler/passes/context.jac",
     "compiler/native_scope.jac",
     "compiler/field_semantics.jac",
+    "compiler/c_interop.jac",
     "compiler/native_compiler.jac",
     "compiler/jc_unit.jac",
     "compiler/jc_materialize.jac",
@@ -146,22 +164,27 @@ SEED_PATHS: tuple[str, ...] = (
     "project/app_kinds.jac",
 )
 
-# Modules that live under a seed directory but belong to the native
-# toolchain tier: jac build --native --lib builds them into a shared library, and they
-# never execute as bytecode (extern `import from c` declarations have no
-# Python lowering). The jac0 sweep and the seed-manifest gate skip them;
-# tier stamping (is_seed_source) is unaffected, which also keeps them out
-# of the full-compiler seal sweep.
-NATIVE_ONLY_SEEDS: tuple[str, ...] = (
+# Modules with no bytecode meaning: they import C symbols (the kernel
+# roots and the fused-binary shims) or live under the native standard
+# library. The roster lives here, in the pure-Python tier, because the jac0
+# sweep and the seed-manifest gate must skip them before any .jac module can
+# load; `placement_facts.native_only` is the compiler's view of the same
+# data and the only predicate the driver, the seal and the link plan
+# consult. Tier stamping (is_seed_source) is unaffected.
+NATIVE_ONLY_REL: tuple[str, ...] = (
     "compiler/jc_unit.jac",
     "compiler/jc_materialize.jac",
+    "dist/fused/embed.jac",
+    "dist/fused/_libc.jac",
 )
+NATIVE_ONLY_DIR_REL: tuple[str, ...] = ("runtime/na_stdlib",)
 
 
-def is_native_only_seed(rel_path: str) -> bool:
-    """Whether a jaclang-package-relative POSIX path is a native-tier unit
-    that jac0 must not compile even though a seed directory covers it."""
-    return rel_path in NATIVE_ONLY_SEEDS
+def is_native_only(rel_path: str) -> bool:
+    """Whether a jaclang-package-relative POSIX path has no bytecode meaning."""
+    if rel_path in NATIVE_ONLY_REL:
+        return True
+    return any(rel_path.startswith(d + "/") for d in NATIVE_ONLY_DIR_REL)
 
 
 def seed_abs_entries(jaclang_dir: str) -> tuple[tuple[str, ...], frozenset[str]]:

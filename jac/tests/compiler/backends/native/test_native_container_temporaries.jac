@@ -1,6 +1,7 @@
 """Native container calls release temporaries while preserving returned elements."""
 
 import ctypes;
+import from tests.support { native_address }
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -16,9 +17,7 @@ def check_containers(profile: str) {
     assert not program.errors_had , [str(error) for error in program.errors_had];
     engine = module.gen.native_engine;
     assert engine is not None;
-    dropped = ctypes.CFUNCTYPE(ctypes.c_int64)(
-        engine.get_function_address("drop_count")
-    );
+    dropped = ctypes.CFUNCTYPE(ctypes.c_int64)(native_address(engine, "drop_count"));
     for (name, expected, allocations) in [
         ("owned_input", 7, 2),
         ("borrowed_input", 11, 2),
@@ -34,7 +33,7 @@ def check_containers(profile: str) {
         ("property_receiver", 9, 1),
         ("borrowed_field_write", 12, 1)
     ] {
-        address = engine.get_function_address(name);
+        address = native_address(engine, name);
         assert address != 0;
         call = ctypes.CFUNCTYPE(ctypes.c_int64)(address);
         before = dropped();
@@ -51,7 +50,7 @@ def check_containers(profile: str) {
         ("borrowed_index", 99, 6),
         ("borrowed_index", -99, 6)
     ] {
-        address = engine.get_function_address(name);
+        address = native_address(engine, name);
         assert address != 0;
         call = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
         before = dropped();

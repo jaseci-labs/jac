@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 compiler_paths=(jac/jaclang/compiler_inputs.txt)
 while IFS= read -r entry || [ -n "$entry" ]; do
-  case "$entry" in ''|'#'*) continue ;; esac
+  case "$entry" in ''|'#'*|'!'*) continue ;; esac
   compiler_paths+=("jac/jaclang/$entry")
 done < jac/jaclang/compiler_inputs.txt
 

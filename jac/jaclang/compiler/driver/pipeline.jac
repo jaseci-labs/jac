@@ -23,6 +23,7 @@ import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
 import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
 import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.compiler.passes.import_wiring_pass { ImportWiringPass }
 
 import from jaclang.compiler.placement.placement_solver { PlacementApplyPass }
 import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
@@ -50,6 +51,7 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
              (AnalysisFact.SYM_OF, ), (AnalysisFact.IMPL_OF, )
          ),
          'FreezeStructurePass': PassContract((), (AnalysisFact.FROZEN, )),
+         'ImportWiringPass': PassContract((AnalysisFact.SYM_OF, ), ()),
          'NaIRGenPass': PassContract(
              (
                  AnalysisFact.TYPE_OF,
@@ -140,13 +142,13 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     path = os.path.realpath(module.loc.mod_path);
     program.hub.client_artifacts.pop(path, None);
     import from jaclang.compiler.driver.compilation_context { cache_scope }
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.jir { drop_python_lane_products }
     owner_options = None
         if program._get_compiler().selfhost.is_selfhost(program)
         else program.options;
     with cache_scope(owner_options) {
         try {
-            get_module_cache_path(path).unlink(missing_ok=True);
+            drop_python_lane_products(path);
         } except OSError {}
     }
 }
@@ -576,6 +578,7 @@ def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[t
             ASTValidationPass,
             AbsorbImportsPass,
             SymTabBuildPass,
+            ImportWiringPass,
             DeclImplMatchPass,
             SemanticAnalysisPass,
             SemDefMatchPass,
@@ -715,6 +718,10 @@ def native_pipeline_available -> tuple[bool, str] {
 
 def _py_codegen_tail -> list[type] {
     return [NativeImportFactsPass, JcirGenPass, JcirBytecodeGenPass];
+}
+
+def get_bootstrap_code_gen -> list[type] {
+    return _py_codegen_tail();
 }
 
 def get_py_code_gen(
@@ -928,7 +935,14 @@ def compile_application(
             continue;
         }
         seen.add(identity);
-        module = program.compile(path, options=bound);
+        previous = context.options;
+        codegen_options = copy.copy(bound);
+        codegen_options.skip_native_engine = True;
+        try {
+            module = program.compile(path, options=codegen_options);
+        } finally {
+            context.options = previous;
+        }
         if path == entry_path and entry_module is None {
             entry_module = module;
         }

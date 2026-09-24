@@ -73,7 +73,7 @@ def _write_application(
         if module is not None and module.gen.native_engine is not None {
             import from jaclang.dist.native_product { write_native_product }
             item['native'] = write_native_product(
-                module, directory, Path("native") / python_path
+                module, directory, Path("native") / python_path, program=program
             );
         }
         modules.append(item);
@@ -193,7 +193,8 @@ def export_project(
                 directory,
                 Path('main'),
                 shared=kind == 'native-lib',
-                memory=native_options.memory_profile or ""
+                memory=native_options.memory_profile or "",
+                program=program
             );
             records.append(
                 {

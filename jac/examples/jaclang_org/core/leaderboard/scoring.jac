@@ -1,8 +1,5 @@
 import re;
 import math;
-import from core.ai { CodeReview }
-import from core.github { RepoMeta }
-import from core.timefmt { days_since }
 
 obj RepoFeatures {
     has osp: bool = False,

@@ -473,3 +473,59 @@ test "prepare warns about unmarked endpoints on cold and cached applications" {
         }
     }
 }
+
+test "preparation does not load native libraries used only by the client" {
+    import jaclang.compiler.backends.native.link_plan as linking;
+    with tempfile.TemporaryDirectory(prefix='jac-client-native-') as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        path.write_text(
+            'import from graphics { draw }\n'
+                + 'def app -> JsxElement { return <p>{draw()}</p>; }\n'
+                + 'def:pub ping -> int { return 7; }\n'
+        );
+        (base / 'graphics.jac').write_text(
+            'import from "lib_unavailable_on_server.so" { def render -> i64; }\n'
+                + 'def draw -> int { return render(); }\n'
+        );
+        try {
+            with patch.object(
+                linking,
+                'load_jit_clib',
+                side_effect=AssertionError('client library loaded on the server')
+            ) {
+                for iteration in range(2) {
+                    prepared = prepare_application(str(path), JacProgram(), tmp);
+                    module: any = initialize_application(prepared);
+                    assert module.ping() == 7;
+                    forget(str(path));
+                }
+            }
+        } finally {
+            forget(str(path));
+        }
+    }
+}
+
+test "preparation loads native engines for executable server calls" {
+    with tempfile.TemporaryDirectory(prefix='jac-server-native-') as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        (base / 'jac.toml').write_text('[placement.pins]\n"main.positive"="native"\n');
+        path.write_text(
+            'def positive(value: int) -> int { return -value; }\n'
+                + 'def:pub answer -> int { return positive(-5); }\n'
+        );
+        try {
+            for iteration in range(2) {
+                prepared = prepare_application(str(path), JacProgram(), tmp);
+                assert prepared.native[str(path)][0] is not None;
+                module: any = initialize_application(prepared);
+                assert module.answer() == 5;
+                forget(str(path));
+            }
+        } finally {
+            forget(str(path));
+        }
+    }
+}

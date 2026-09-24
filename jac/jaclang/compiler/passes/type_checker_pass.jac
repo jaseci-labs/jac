@@ -40,6 +40,7 @@ import from jaclang.compiler.frontend.unitree {
     Literal,
     MatchAs,
     ModuleCode,
+    ImportRule,
     ModuleItem,
     ModulePath,
     MultiString,
@@ -65,7 +66,8 @@ import from jaclang.compiler.frontend.unitree {
     WhileStmt,
     WithStmt,
     YieldExpr,
-    find_python_scope_node_of
+    find_python_scope_node_of,
+    WireItem
 }
 import from jaclang.compiler.passes.context { CompileContext }
 
@@ -138,6 +140,9 @@ import from jaclang.compiler.frontend.diagnostics {
     E1132,
     E1133,
     E1135,
+    E1150,
+    E1151,
+    E1152,
     E1036,
     W1036,
     W1037,
@@ -195,6 +200,14 @@ walker TypeCheckPass(TreeWalker) {
     can exit_compare_expr with CompareExpr exit;
     def _diag_erased_membership(nd: CompareExpr, hay: Expr, op_text: str) -> None;
     can exit_func_call with FuncCall exit;
+    def _c_instance_of(ann_node: (UniNode | None)) -> (TypeBase | None);
+    def _c_plain_data(t: (TypeBase | None), allow_callable: bool = False) -> bool;
+    def _opaque_member(t: (TypeBase | None)) -> (Archetype | None);
+    def _check_c_type_use(ann_node: (UniNode | None)) -> None;
+    def _check_c_interop_import(imp: Import) -> None;
+    def _foreign_struct_contains(t: (TypeBase | None), target: Archetype) -> bool;
+    def _check_c_interop_call(nd: FuncCall) -> None;
+    def _c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None);
     can exit_gen_compr with GenCompr exit;
     def _check_intrinsic_collision(nd: Ability) -> None;
     can exit_jsx_element with JsxElement exit;

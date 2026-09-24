@@ -92,6 +92,8 @@ obj PlacementSummary {
         decided: str = '',
         anchors: list[str] = [],
         native_blocker: str = '',
+        native_verdict: str = '',
+        native_verdict_code: str = '',
         jac_deps: list[str] = [],
         has_refs: bool = False,
         elements: list[ElementSummary] = [];
@@ -103,6 +105,8 @@ obj PlacementSummary {
             'decided': self.decided,
             'anchors': list(self.anchors),
             'native_blocker': self.native_blocker,
+            'native_verdict': self.native_verdict,
+            'native_verdict_code': self.native_verdict_code,
             'jac_deps': list(self.jac_deps),
             'has_refs': self.has_refs,
             'elements': [e.to_dict() for e in self.elements]
@@ -118,6 +122,8 @@ obj PlacementSummary {
         ps.decided = str(d.get('decided', ''));
         ps.anchors = [str(x) for x in d.get('anchors', [])];
         ps.native_blocker = str(d.get('native_blocker', ''));
+        ps.native_verdict = str(d.get('native_verdict', ''));
+        ps.native_verdict_code = str(d.get('native_verdict_code', ''));
         ps.jac_deps = [str(x) for x in d.get('jac_deps', [])];
         ps.has_refs = bool(d.get('has_refs', False));
         ps.elements = [
@@ -475,14 +481,51 @@ def _element_glob_write_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
     return writes;
 }
 
+def _is_filter_field_name(nm: uni.Name) -> bool {
+    par = nm.parent;
+    if isinstance(par, uni.FilterCompr) {
+        return par.f_type is not nm;
+    }
+    if isinstance(par, uni.UnaryExpr) and par.operand is nm {
+        return isinstance(par.parent, uni.FilterCompr);
+    }
+    cur: uni.UniNode = nm;
+    if isinstance(par, uni.TupleVal) {
+        cur = par;
+        par = par.parent;
+    }
+    return (
+        isinstance(par, uni.CompareExpr)
+        and par.left is cur
+        and isinstance(par.parent, uni.FilterCompr)
+    );
+}
+
+def _names_a_member(nm: uni.Name) -> bool {
+    par = nm.parent;
+    if isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm {
+        return True;
+    }
+    if isinstance(par, uni.KWPair) and par.key is nm {
+        return True;
+    }
+    if (
+        isinstance(par, uni.MatchKVPair)
+        and par.key is nm
+        and isinstance(par.parent, uni.MatchArch)
+    ) {
+        return True;
+    }
+    return _is_filter_field_name(nm);
+}
+
 def _references_browser_seed_global(elem: uni.UniNode) -> str {
     import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
     for nm in elem.get_all_sub_nodes(uni.Name) {
         if nm.value not in BROWSER_SEED_GLOBALS {
             continue;
         }
-        par = nm.parent;
-        if (isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm) {
+        if _names_a_member(nm) {
             continue;
         }
         tab = nm?.sym_tab;
@@ -512,6 +555,13 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
     for arch in module.get_all_sub_nodes(uni.Archetype) {
         if arch.arch_kind is not None and module_has_root_access(module) {
             reasons.append(f"graph archetype '{arch.name.value}'");
+            break;
+        }
+    }
+    import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
+    for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ability_delegates_to_model(ab) {
+            reasons.append(f"by llm ability '{ab.py_resolve_name()}'");
             break;
         }
     }
@@ -591,7 +641,11 @@ def scan_native_blockers(
             return ("root access (persistent graph)", deps);
         }
     }
+    import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
     for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ability_delegates_to_model(ab) {
+            return ("by llm ability (needs the byLLM runtime)", deps);
+        }
         if ab.is_async {
             return ("async ability", deps);
         }
@@ -718,7 +772,9 @@ def scan_native_blockers(
     return ('', deps);
 }
 
-def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSummary {
+def summarize_module(
+    module: uni.Module, with_refs: bool = True, prog: any = None
+) -> PlacementSummary {
     ps = PlacementSummary();
     ps.schema = PLACEMENT_SCHEMA;
     ps.mod_path = module.loc.mod_path or '';
@@ -727,6 +783,13 @@ def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSum
     base_dir = os.path.dirname(os.path.abspath(ps.mod_path)) if ps.mod_path else '';
     (blocker, deps) = scan_native_blockers(module, base_dir);
     ps.native_blocker = blocker;
+    if prog is not None and ps.mod_path {
+        pending = native_verdict_notes(prog).get(os.path.realpath(ps.mod_path));
+        if pending is not None {
+            ps.native_verdict_code = pending[0];
+            ps.native_verdict = pending[1];
+        }
+    }
     ps.jac_deps = deps;
     ps.has_refs = with_refs;
     index_by_id: dict[int, int] = {};
@@ -745,7 +808,7 @@ def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSum
         es.pinned = '';
         if ps.mod_path {
             import from jaclang.compiler.placement.placement_pins { effective_pin_for }
-            es.pinned = effective_pin_for(ps.mod_path, es.name);
+            es.pinned = effective_pin_for(ps.mod_path, es.name, prog);
         }
         es.is_pub = _endpoint_evidence(stmt) == 'pub access';
         es.reqs = _element_reqs(stmt);
@@ -796,6 +859,25 @@ def summary_store(prog: any) -> dict[str, any] {
         prog.analysis.placement_summaries = store;
     }
     return store;
+}
+
+def native_verdict_notes(prog: any) -> dict[str, tuple[str, str]] {
+    notes = prog?.analysis.native_verdict_notes;
+    if notes is None {
+        notes = {};
+        prog.analysis.native_verdict_notes = notes;
+    }
+    return notes;
+}
+
+def note_native_verdict(prog: any, resolved: str, code: str, detail: str) {
+    native_verdict_notes(prog)[resolved] = (code, detail);
+    store = summary_store(prog);
+    cached = store.get(os.path.abspath(resolved));
+    if isinstance(cached, PlacementSummary) {
+        cached.native_verdict_code = code;
+        cached.native_verdict = detail;
+    }
 }
 
 def placement_state(prog: any) -> dict[str, any] {
@@ -935,7 +1017,7 @@ def get_module_summary(
     if (isinstance(cached, PlacementSummary) and (cached.has_refs or not with_refs)) {
         return cached;
     }
-    ps = summarize_module(module, with_refs=with_refs);
+    ps = summarize_module(module, with_refs=with_refs, prog=prog);
     if key {
         store[key] = ps;
     }

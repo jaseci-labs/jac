@@ -6,7 +6,8 @@ enum IntrinsicDispatch {
     MEM_STORE = "mem_store",
     ATOMIC_XCHG = "atomic_xchg",
     CALL_DTOR = "call_dtor",
-    REGION_TLS = "region_tls"
+    REGION_TLS = "region_tls",
+    ALLOCA = "alloca"
 }
 
 obj IntrinsicEntry {
@@ -163,6 +164,12 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=[],
                  result_spec="i64",
                  dispatch=IntrinsicDispatch.REGION_TLS
+             ),
+             "__alloca": IntrinsicEntry(
+                 name="__alloca",
+                 param_specs=["i64"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.ALLOCA
              )
          }
      );

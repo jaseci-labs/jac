@@ -1,14 +1,31 @@
 --- a/lib/Target/CBackend/CBackend.cpp
 +++ b/lib/Target/CBackend/CBackend.cpp
-@@ -19,6 +19,7 @@
+@@ -17,8 +17,10 @@
+ #include "llvm/CodeGen/TargetLowering.h"
+ #include "llvm/IR/DebugInfoMetadata.h"
  #include "llvm/IR/InstIterator.h"
++#include "llvm/IR/IRBuilder.h"
  #include "llvm/IR/IntrinsicsPowerPC.h"
  #include "llvm/IR/IntrinsicsX86.h"
 +#include "llvm/IR/IntrinsicsWebAssembly.h"
  #include "llvm/IR/PatternMatch.h"
  #include "llvm/MC/TargetRegistry.h"
  #include "llvm/Support/Debug.h"
-@@ -1679,8 +1680,8 @@
+@@ -671,10 +673,10 @@
+         const auto AllocSize = FnAttr.getAllocSizeArgs();
+         if (AllocSize.second.has_value()) {
+           AttrsToPrint.push_back(
+-              "alloc_size(" + std::to_string(AllocSize.first) + "," +
+-              std::to_string(AllocSize.second.value()) + ")");
++              "alloc_size(" + std::to_string(AllocSize.first + 1) + "," +
++              std::to_string(AllocSize.second.value() + 1) + ")");
+         } else {
+           AttrsToPrint.push_back("alloc_size(" +
+-                                 std::to_string(AllocSize.first) + ")");
++                                 std::to_string(AllocSize.first + 1) + ")");
+         }
+       } break;
+@@ -1679,8 +1681,8 @@
    }
  
    // Mangle globals with the standard mangler interface for LLC compatibility.
@@ -19,7 +36,7 @@
    }
  
    std::string VarName;
-@@ -2132,7 +2133,7 @@
+@@ -2132,7 +2134,7 @@
  
  static void defineInt128(raw_ostream &Out) {
    // Output typedefs for 128-bit integers
@@ -28,7 +45,7 @@
           "*/\n"
        << "typedef int __attribute__((mode(TI))) int128_t;\n"
        << "typedef unsigned __attribute__((mode(TI))) uint128_t;\n"
-@@ -2189,32 +2190,32 @@
+@@ -2189,32 +2191,32 @@
        << " return l.hi != r.hi || l.lo != r.lo; }\n"
        << "static __forceinline bool llvm_icmp_ule_u128(uint128_t l, uint128_t "
           "r) {"
@@ -69,7 +86,18 @@
        << "#define __emulate_i128\n"
        << "#endif\n\n";
  }
-@@ -2457,8 +2458,6 @@
+@@ -2431,2 +2433,10 @@
+ void CWriter::generateHeader(Module &M) {
++  for (const Function &F : M) {
++    StringRef Name = F.getName();
++    if (F.isDeclaration() &&
++        (Name == "setjmp" || Name == "longjmp" || Name == "_setjmp" ||
++         Name == "sigsetjmp" || Name == "siglongjmp"))
++      headerUseSetjmp();
++  }
++
+   // Keep track of which functions are static ctors/dtors so they can have
+@@ -2457,8 +2459,6 @@
    // Support for integers with explicit sizes. This one isn't conditional
    // because virtually all CBE output will use it.
    OutHeaders << "#include <stdint.h>\n"; // Sized integer support
@@ -78,7 +106,7 @@
    // Provide a definition for `bool' if not compiling with a C++ compiler.
    OutHeaders << "#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n";
    OutHeaders << "\n";
-@@ -2585,7 +2584,9 @@
+@@ -2585,7 +2585,9 @@
        case Intrinsic::ssub_sat:
        case Intrinsic::sshl_sat:
        case Intrinsic::ushl_sat:
@@ -89,7 +117,7 @@
        case Intrinsic::ceil:
        case Intrinsic::ctlz:
        case Intrinsic::ctpop:
-@@ -2615,13 +2616,6 @@
+@@ -2615,13 +2617,6 @@
           (I->getName() == "setjmp" || I->getName() == "longjmp" ||
            I->getName() == "_setjmp" || I->getName() == "siglongjmp" ||
            I->getName() == "sigsetjmp")) ||
@@ -103,7 +131,7 @@
          I->getName() == "alloca" || I->getName() == "_alloca" ||
          I->getName() == "_chkstk" || I->getName() == "__chkstk" ||
          I->getName() == "___chkstk_ms")
-@@ -2694,54 +2688,15 @@
+@@ -2694,54 +2689,15 @@
        if (I->hasLocalLinkage())
          continue; // Internal Global
  
@@ -167,7 +195,7 @@
      }
    }
  
-@@ -3070,11 +3025,11 @@
+@@ -3070,11 +3026,11 @@
          } else if (opcode == Instruction::FRem) {
            // Output a call to fmod/fmodf instead of emitting a%b
            if (ElemTy->isFloatTy())
@@ -182,7 +210,7 @@
          } else {
            Out << "a.vector[" << n << "]";
            switch (opcode) {
-@@ -3278,11 +3233,11 @@
+@@ -3278,11 +3234,11 @@
        } else if (opcode == Instruction::FRem) {
          // Output a call to fmod/fmodf instead of emitting a%b
          if (ElemTy->isFloatTy())
@@ -197,7 +225,7 @@
        } else {
          Out << "a";
          switch (opcode) {
-@@ -4214,11 +4169,11 @@
+@@ -4214,11 +4170,11 @@
    } else if (I.getOpcode() == Instruction::FRem) {
      // Output a call to fmod/fmodf instead of emitting a%b
      if (I.getType() == Type::getFloatTy(I.getContext()))
@@ -212,7 +240,7 @@
      writeOperand(I.getOperand(0), ContextCasted);
      Out << ", ";
      writeOperand(I.getOperand(1), ContextCasted);
-@@ -4597,52 +4552,39 @@
+@@ -4597,52 +4553,39 @@
        DBG_ERRS("Unsupported Intrinsic!" << Opcode);
        errorWithMessage("unsupported instrinsic");
  
@@ -295,7 +323,7 @@
  
      case Intrinsic::uadd_sat:
        //   r = (a > XX_MAX - b) ? XX_MAX : a + b
-@@ -4817,19 +4759,19 @@
+@@ -4817,19 +4760,19 @@
        errorWithMessage("unsupported instrinsic");
  
      case Intrinsic::ceil:
@@ -319,7 +347,7 @@
        break;
  
      case Intrinsic::fmuladd:
-@@ -4838,19 +4780,19 @@
+@@ -4838,19 +4781,19 @@
  
      case Intrinsic::pow:
      case Intrinsic::powi:
@@ -343,7 +371,7 @@
        break;
      }
    }
-@@ -4899,7 +4841,9 @@
+@@ -4899,7 +4842,9 @@
            case Intrinsic::ssub_sat:
            case Intrinsic::ushl_sat:
            case Intrinsic::sshl_sat:
@@ -354,7 +382,7 @@
            case Intrinsic::ceil:
            case Intrinsic::ctlz:
            case Intrinsic::ctpop:
-@@ -4924,6 +4868,9 @@
+@@ -4924,8 +4869,32 @@
            case Intrinsic::smax:
            case Intrinsic::abs:
            case Intrinsic::is_constant:
@@ -363,8 +391,38 @@
 +          case Intrinsic::wasm_memory_grow:
              // We directly implement these intrinsics
              break;
++
++          case Intrinsic::scmp:
++          case Intrinsic::ucmp: {
++            // LLVM 22 introduces three-way compares during optimization.
++            // Expand them before the generic intrinsic lowering, which does
++            // not yet support these intrinsics.
++            IRBuilder<> Builder(CI);
++            Value *L = CI->getArgOperand(0), *R = CI->getArgOperand(1);
++            bool Signed = F->getIntrinsicID() == Intrinsic::scmp;
++            Value *Less = Signed ? Builder.CreateICmpSLT(L, R)
++                                 : Builder.CreateICmpULT(L, R);
++            Value *Greater = Signed ? Builder.CreateICmpSGT(L, R)
++                                    : Builder.CreateICmpUGT(L, R);
++            Value *Result = Builder.CreateSub(
++                Builder.CreateZExt(Greater, CI->getType()),
++                Builder.CreateZExt(Less, CI->getType()));
++            CI->replaceAllUsesWith(Result);
++            CI->eraseFromParent();
++            LoweredAny = true;
++            break;
++          }
  
-@@ -5086,6 +5033,21 @@
+           default:
+             // All other intrinsic calls we must lower.
+@@ -5047,4 +5024,4 @@
+-    if (Name == "sigsetjmp")
++    if (Name == "sigsetjmp" || Name == "siglongjmp")
+       Out << "*(sigjmp_buf*)";
+-    else if (Name == "setjmp")
++    else if (Name == "setjmp" || Name == "_setjmp" || Name == "longjmp")
+       Out << "*(jmp_buf*)";
+@@ -5086,6 +5055,21 @@
    case Intrinsic::dbg_declare:
    case Intrinsic::dbg_assign:
      return true; // ignore these intrinsics
@@ -386,7 +444,7 @@
    case Intrinsic::vastart:
      headerUseStdarg();
      Out << "0; ";
-@@ -5241,6 +5203,8 @@
+@@ -5241,6 +5225,8 @@
    case Intrinsic::usub_with_overflow:
    case Intrinsic::umul_with_overflow:
    case Intrinsic::smul_with_overflow:
@@ -395,7 +453,7 @@
    case Intrinsic::bswap:
    case Intrinsic::ctlz:
    case Intrinsic::ctpop:
-@@ -5610,8 +5574,75 @@
+@@ -5610,8 +5596,75 @@
    }
  }
  
@@ -471,7 +529,7 @@
  
    writeMemoryAccess(I.getOperand(0), I.getType(), I.isVolatile(),
                      I.getAlign().value());
-@@ -5619,6 +5650,14 @@
+@@ -5619,6 +5672,14 @@
  
  void CWriter::visitStoreInst(StoreInst &I) {
    CurInstr = &I;

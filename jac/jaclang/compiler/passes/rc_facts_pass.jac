@@ -86,6 +86,12 @@ def result_ownership(expr: (Expr | None)) -> Ownership {
     if isinstance(expr, String) {
         return Ownership.STATIC;
     }
+    if isinstance(expr, AtomTrailer) {
+        import from jaclang.compiler.c_interop { foreign_read_copies }
+        if foreign_read_copies(expr) {
+            return Ownership.OWNED;
+        }
+    }
     if isinstance(expr, (Name, AtomTrailer)) {
         return Ownership.BORROWED;
     }

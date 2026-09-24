@@ -217,6 +217,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
             ]
         );
     }
+    self._c_copy_rewrite(here);
 }
 
 impl JcirGenPass.exit_atom_unit with AtomUnit exit {
@@ -254,6 +255,7 @@ impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[list[CgNode], list[CgNode]
 
 impl JcirGenPass.exit_func_call with FuncCall exit {
     self._exit_func_call_impl(here);
+    self._c_interop_call_rewrite(here);
 }
 
 impl JcirGenPass._place_parts(arg: UniNode) -> (tuple[str, any, any] | None) {

@@ -172,9 +172,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.ReportStmt) {
         self._codegen_report(nd);
     } else {
-        self.ctx.emit(
-            E5092, node_override=nd, kind="statement", name=type(nd).__name__
-        );
+        self.emit(E5092, node_override=nd, kind="statement", name=type(nd).__name__);
     }
 }
 
@@ -197,12 +195,12 @@ impl NaIRGenPass._codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -
     _destroy_fn = self.func_symtab.get("osp_destroy");
     _destroy_all_fn = self.func_symtab.get("osp_destroy_all");
     if _destroy_fn is None or _destroy_all_fn is None {
-        self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         return;
     }
     _val = self._codegen_expr(target);
     if _val is None {
-        self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         return;
     }
     _forget_fn = self.func_symtab.get("osp_forget");
@@ -220,7 +218,7 @@ impl NaIRGenPass._codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -
     }
     if self._struct_name_of(target) is None
         and not self._del_target_holds_graph(target) {
-        self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         return;
     }
     _argtys = _destroy_fn.function_type.args;
@@ -237,7 +235,7 @@ impl NaIRGenPass._del_target_holds_graph(target: uni.Expr) -> bool {
     if uni.DeleteStmt.type_has_graph_member(target.type) {
         return True;
     }
-    _model = self.module.gen.osp_model;
+    _model = self.module.gen.native_osp_model;
     _type_key = self._type_key_of(target);
     if (_model is None) or (_type_key is None) {
         return False;
@@ -261,19 +259,19 @@ impl NaIRGenPass._codegen_delete_location(
         _del_cls = self._struct_name_of(target.target);
         _del_fld = self._get_name(target.right);
         if _del_cls is None or _del_fld is None {
-            self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+            self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
             return;
         }
         _del_slot = self._accessor_slot_of(_del_cls, _del_fld, "deleter");
         if _del_slot is None {
-            self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+            self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
             return;
         }
         _del_recv = self._codegen_expr(target.target);
         if _del_recv is None
             or self._codegen_accessor_call(_del_recv, _del_cls, _del_slot, [])
                 is None {
-            self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+            self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         }
         return;
     }
@@ -281,7 +279,7 @@ impl NaIRGenPass._codegen_delete_location(
     if (not isinstance(_islice, uni.IndexSlice))
         or _islice.is_range
         or len(_islice.slices) != 1 {
-        self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         return;
     }
     _idx_node = _islice.slices[0];
@@ -290,7 +288,7 @@ impl NaIRGenPass._codegen_delete_location(
         if _idx_direct is not None
         else (self._codegen_expr(_idx_node.start) if _idx_node?.start else None);
     if _idx_val is None {
-        self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         return;
     }
     _dict_type_key = self._dict_key_of(target.target);
@@ -305,13 +303,13 @@ impl NaIRGenPass._codegen_delete_location(
     }
     _container = self._codegen_expr(target.target);
     if _container is None {
-        self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         return;
     }
     if _dict_type_key is not None {
         _dict_key = self._dict_key_reconcile(_dict_type_key, _container);
         if _dict_key is None {
-            self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+            self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
             return;
         }
         self._dispatch_primitive_method(
@@ -321,7 +319,7 @@ impl NaIRGenPass._codegen_delete_location(
     }
     _elem_type_name = self._infer_list_elem_type(_container);
     if _elem_type_name is None {
-        self.ctx.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         return;
     }
     self._dispatch_primitive_method(
@@ -393,6 +391,21 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 and not self._is_owned(val)
                 and self._gc_mode() != "none" {
                 self._emit_rc_retain(val, op="ret_borrowed", loc="");
+                self._mark_owned(val);
+            } elif _ret_root_local
+                and self._nogc_headerless()
+                and self._str_desc_ty is not None
+                and val.type == self._str_desc_ty
+                and not self._is_owned(val) {
+                if self.str_new_fn is None {
+                    self._emit_str_len_helpers();
+                }
+                _ret_data = self.builder.extract_value(val, 0, name="ret.borrow.data");
+                _ret_len = self.builder.extract_value(val, 1, name="ret.borrow.len");
+                _ret_copy = self.builder.call(
+                    self.str_new_fn, [_ret_data, _ret_len], name="ret.borrow.copy"
+                );
+                val = self.builder.insert_value(val, _ret_copy, 0, name="ret.owned");
                 self._mark_owned(val);
             }
 
@@ -515,7 +528,7 @@ impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
         if taken is None {
             (ok, v) = self._ct_value_with_bindings(nd.condition);
             if not ok {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd.condition,
                     kind="comptime if condition",
@@ -927,9 +940,7 @@ impl NaIRGenPass._match_pattern_cond(
         return self._match_arch_cond(pat, subj, subj_ty);
     }
 
-    self.ctx.emit(
-        E5092, node_override=pat, kind="match pattern", name=type(pat).__name__
-    );
+    self.emit(E5092, node_override=pat, kind="match pattern", name=type(pat).__name__);
     return None;
 }
 
@@ -1025,7 +1036,7 @@ impl NaIRGenPass._match_seq_cond(
             and isinstance(subj.type.pointee, ir.LiteralStructType) {
             return self._match_tuple_seq_cond(pat, subj, subj_ty);
         }
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=pat,
             kind="match pattern",
@@ -1096,7 +1107,7 @@ impl NaIRGenPass._match_tuple_seq_cond(
     i1 = ir.IntType(1);
     (heads, star, tails) = self._match_seq_parts(pat);
     if star is not None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=pat,
             kind="match pattern",
@@ -1137,7 +1148,7 @@ impl NaIRGenPass._match_map_key(
     key_node = kv.key.value if isinstance(kv.key, uni.MatchValue) else kv.key;
     key_val = self._codegen_expr(key_node) if isinstance(key_node, uni.Expr) else None;
     if key_val is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=kv,
             kind="match pattern",
@@ -1155,7 +1166,7 @@ impl NaIRGenPass._match_map_cond(
     i1 = ir.IntType(1);
     dict_info = self._infer_dict_type(subj);
     if dict_info is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=pat,
             kind="match pattern",
@@ -1244,9 +1255,9 @@ impl NaIRGenPass._match_arch_cond(
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
-    arch_name = self._get_name(pat.name);
+    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
     if arch_name is None or arch_name not in self.struct_types {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=pat,
             kind="match pattern",
@@ -1257,7 +1268,7 @@ impl NaIRGenPass._match_arch_cond(
     }
     fields = self._match_arch_fields(pat, arch_name);
     if fields is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=pat,
             kind="match pattern",
@@ -1283,7 +1294,7 @@ impl NaIRGenPass._match_arch_cond(
         }
     }
     if static_name is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=pat,
             kind="match pattern",
@@ -1335,7 +1346,7 @@ impl NaIRGenPass._match_arch_cond(
     for (fname, sub_pat) in fields {
         fv = self._codegen_field_access(subj, fname, arch_name, pat);
         if fv is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=pat,
                 kind="match pattern",
@@ -1617,7 +1628,7 @@ impl NaIRGenPass._bind_match_map(
 impl NaIRGenPass._bind_match_arch(
     pat: uni.MatchArch, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
-    arch_name = self._get_name(pat.name);
+    arch_name = self._arch_ref_key(pat.name) or self._get_name(pat.name);
     if arch_name is None or arch_name not in self.struct_types {
         return;
     }
@@ -1730,7 +1741,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         if nd.value is not None
             and len(self.ctx.errors_had) == _rhs_errs_before
             and not self._reads_unlowered_local(nd.value) {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.value,
                 kind="expression",
@@ -1755,7 +1766,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             _unpack_errs = len(self.ctx.errors_had);
             if not self._codegen_tuple_unpack(target_expr.values, value, nd.value) {
                 if len(self.ctx.errors_had) == _unpack_errs {
-                    self.ctx.emit(
+                    self.emit(
                         E5092,
                         node_override=target_expr,
                         kind="tuple unpacking",
@@ -1764,6 +1775,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
                 self._mark_targets_unlowered([target_expr]);
             }
+            continue;
+        }
+
+        if isinstance(target_expr, uni.AtomTrailer)
+            and self._c_interop_store(target_expr, value, nd) {
             continue;
         }
 
@@ -1780,7 +1796,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         skip_narrow_coerce=(nd.aug_op.value == "**=")
                     );
                 } elif len(self.ctx.errors_had) == _faug_errs {
-                    self.ctx.emit(
+                    self.emit(
                         E5092,
                         node_override=target_expr,
                         kind="augmented field assignment",
@@ -2030,7 +2046,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             if not _idx_stored and len(self.ctx.errors_had) == _idx_errs_before {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=target_expr,
                     kind="subscript assignment",
@@ -2569,9 +2585,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     [self._region_i64(_old_opt_hdl, name=f"{var_name}.old.i64")]
                 );
             } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
-                and not self._nogc_headerless()
                 and not is_inplace_set_op
                 and not raw_int_ptr {
+                if self._nogc_borrow_local_assign(nd) {
+                    self.borrowed_vars.add(var_name);
+                }
                 _opt_re_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}";
@@ -2584,13 +2602,16 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } else {
                     self.rc_ops_elided += 1;
                 }
-                _opt_re_old = self.builder.load(alloca, name=f"{var_name}.opt.old");
-                _opt_re_old_pv = self.builder.extract_value(
-                    _opt_re_old, 1, name=f"{var_name}.opt.oldpv"
-                );
-                self._emit_rc_release_simple(
-                    _opt_re_old_pv, op="overwrite", loc=_opt_re_loc
-                );
+                if not (self._nogc_headerless() and nd.na_overwrite_consumed)
+                    and var_name not in self.borrowed_vars {
+                    _opt_re_old = self.builder.load(alloca, name=f"{var_name}.opt.old");
+                    _opt_re_old_pv = self.builder.extract_value(
+                        _opt_re_old, 1, name=f"{var_name}.opt.oldpv"
+                    );
+                    self._emit_rc_release_simple(
+                        _opt_re_old_pv, op="overwrite", loc=_opt_re_loc
+                    );
+                }
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
@@ -2904,7 +2925,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             if isinstance(var_type, ir.VoidType) {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd,
                     kind="binding a void-typed value to variable",
@@ -3064,8 +3085,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         if nd.loc
                         else 0}"
                 );
-            } elif self._opt_ptr_payload_of(var_type) is not None
-                and not self._nogc_headerless() {
+            } elif self._opt_ptr_payload_of(var_type) is not None {
+                if self._nogc_borrow_local_assign(nd) {
+                    self.borrowed_vars.add(var_name);
+                }
                 _opt_asg_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}";
@@ -3078,7 +3101,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } else {
                     self.rc_ops_elided += 1;
                 }
-                if not _mk_cell and not _in_gen_frame {
+                if not _mk_cell
+                    and not _in_gen_frame
+                    and not (self._nogc_headerless() and nd.na_overwrite_consumed)
+                    and var_name not in self.borrowed_vars {
                     _opt_old = self.builder.load(alloca, name=f"{var_name}.opt.old");
                     _opt_old_pv = self.builder.extract_value(
                         _opt_old, 1, name=f"{var_name}.opt.oldpv"
@@ -3087,6 +3113,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         _opt_old_pv, op="overwrite", loc=_opt_asg_loc
                     );
                 }
+            } elif self._opt_ptr_payload_of(var_type) is not None {
+                self._nogc_consume_assigned_local(nd);
             }
             self.builder.store(value, alloca);
             self.local_vars[var_name] = alloca;
@@ -3116,7 +3144,7 @@ impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
             self._emit_region_leaves(len(self.region_open_stack));
             self.builder.ret_void();
         } else {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="statement",
@@ -3157,7 +3185,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if nd.is_comptime {
         (ok, items) = self._ct_value_with_bindings(nd.collection);
         if not ok {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.collection,
                 kind="comptime for collection",
@@ -3209,13 +3237,14 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         and isinstance(nd.collection.target, uni.AtomTrailer)
         and nd.collection.target.is_attr
         and self._get_name(nd.collection.target.right) == "items" {
-        items_dict_key = self._dict_key_of(nd.collection.target.target);
+        items_source = nd.collection.target.target;
+        items_dict_key = self._dict_key_of(items_source);
         unpack_targets: list[uni.Expr | uni.KWPair] = list(nd.target.values or []);
         if items_dict_key is not None and len(unpack_targets) == 2 {
             key_var_name = self._get_name(unpack_targets[0]);
             val_var_name = self._get_name(unpack_targets[1]);
             if key_var_name is not None and val_var_name is not None {
-                collection_val = self._codegen_expr(nd.collection.target.target);
+                collection_val = self._codegen_expr(items_source);
                 items_dict_key = self._dict_key_reconcile(
                     items_dict_key, collection_val
                 );
@@ -3229,9 +3258,13 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                         collection_val=collection_val,
                         helpers=helpers,
                         var_names=[key_var_name, val_var_name],
-                        var_types=[helpers["key_type"], helpers["val_type"]],
+                        var_types=[
+                            helpers["key_type"],
+                            self._dict_read_llvm(helpers["val_type"], items_source)
+                        ],
                         rc_vars=True,
-                        coll_release_op="fori_coll"
+                        coll_release_op="fori_coll",
+                        items_source=items_source
                     );
                     return;
                 }
@@ -3240,7 +3273,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
     if loop_var_name is None {
         if len(self.ctx.errors_had) == _for_errs0 {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="for-loop target",
@@ -3418,7 +3451,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         _tup_seq = self._tuple_iter_seq(nd.collection, _coll_memo);
         if _tup_seq is None {
             if len(self.ctx.errors_had) == _for_errs0 {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd.collection or nd,
                     kind="for-loop iterable",
@@ -3446,7 +3479,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
 
     if _coll_memo is None {
         if len(self.ctx.errors_had) == _for_errs0 {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.collection,
                 kind="for-loop iterable",
@@ -3502,7 +3535,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     helpers = self.list_helpers.get(elem_type_name) if elem_type_name else None;
     if helpers is None {
         if len(self.ctx.errors_had) == _for_errs0 {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.collection or nd,
                 kind="for-loop iterable element type",
@@ -4217,7 +4250,8 @@ impl NaIRGenPass._codegen_for_indexed(
     range_start: (ir.Value | None) = None,
     elem_cast: (ir.Type | None) = None,
     unpack_target: (uni.TupleVal | None) = None,
-    range_step: (ir.Value | None) = None
+    range_step: (ir.Value | None) = None,
+    items_source: (uni.Expr | None) = None
 ) -> None {
     i64 = ir.IntType(64);
     _for_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.last_line
@@ -4376,8 +4410,11 @@ impl NaIRGenPass._codegen_for_indexed(
             key_val = self.builder.call(
                 helpers["get_key"], [collection_val, body_idx], name="for.key"
             );
-            val_val = self.builder.call(
-                helpers["get_val"], [collection_val, body_idx], name="for.val"
+            val_val = self._restore_dict_read(
+                self.builder.call(
+                    helpers["get_val"], [collection_val, body_idx], name="for.val"
+                ),
+                items_source
             );
 
             if rc_vars and isinstance(var_types[0], ir.PointerType) {
@@ -4425,7 +4462,7 @@ impl NaIRGenPass._codegen_for_indexed(
                 if not self._codegen_tuple_unpack(
                     unpack_target.values, elem_val, None
                 ) {
-                    self.ctx.emit(
+                    self.emit(
                         E5092,
                         node_override=unpack_target,
                         kind="for-loop target",
@@ -4447,7 +4484,7 @@ impl NaIRGenPass._codegen_for_indexed(
                 self.builder.store(elem_val, allocas[0]);
             }
         } else {
-            self.ctx.emit(
+            self.emit(
                 E9002,
                 node_override=nd,
                 details=f"unknown for-loop iteration kind '{kind}'"

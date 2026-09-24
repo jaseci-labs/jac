@@ -69,3 +69,11 @@ def discover_base_file(annex_path: str) -> (str | None) {
     }
     return None;
 }
+
+def discover_wiring_file(source_path: str) -> (str | None) {
+    import from jaclang.compiler.driver.wiring { arch_file_for, is_arch_file }
+    if is_arch_file(source_path) {
+        return None;
+    }
+    return arch_file_for(source_path);
+}

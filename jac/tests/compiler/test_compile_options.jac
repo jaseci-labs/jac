@@ -1,7 +1,7 @@
 """Compile-options identity and boundary tests (#7871 workstream G).
 
 CompileOptions is the single authority for codegen-affecting build options:
-env vars are read once at options construction, the codegen fingerprint is
+project settings are read once at options construction, the codegen fingerprint is
 part of artifact identity (folded into the JIR module key), and no compiler
 pass reads os.environ directly (source-scan gate below).
 """
@@ -69,7 +69,8 @@ test "every codegen option flip changes the fingerprint" {
         _pinned_opts(rc_debug_codegen=True),
         _pinned_opts(native_target="wasm32-unknown-unknown"),
         _pinned_opts(native_debug=True),
-        _pinned_opts(opt_level=0)
+        _pinned_opts(opt_level=0),
+        _pinned_opts(native_threads=7)
     ];
     seen: set = {base_fp};
     for flipped in flips {
@@ -711,6 +712,42 @@ test "no consumer-site NULL guards on string operands" {
     );
 }
 
+
+test "native import handoff preserves memory policy and generated thread defaults" {
+    parent = CompileOptions(
+        memory_profile="nogc",
+        memory_enforce=["app.*"],
+        memory_exempt=["app.legacy"],
+        native_threads=7,
+        native_link_mode="bitcode",
+        native_target="aarch64-unknown-linux-gnu"
+    );
+    for child in [parent.clone_for_native_import()] {
+        assert child.codegen_identity() == parent.codegen_identity();
+        assert child.analysis_identity() == parent.analysis_identity();
+        assert child.memory_profile == "nogc" and child.nogc_enforce_all;
+        assert child.native_threads == 7;
+        assert child.native_link_mode == "bitcode";
+        assert child.memory_enforce == ["app.*"];
+        assert child.memory_exempt == ["app.legacy"];
+    }
+}
+
+test "native link mode uses project configuration without changing unit codegen" {
+    import from unittest.mock { patch }
+    import from jaclang.project.config { JacConfig }
+    cfg = JacConfig.from_toml_str('[native]\nlink_mode = "bitcode"\n');
+    with patch(
+        "jaclang.compiler.driver.compile_options._project_config", return_value=cfg
+    ) {
+        configured = CompileOptions();
+        explicit = CompileOptions(native_link_mode="objects");
+        assert configured.native_link_mode == "bitcode";
+        assert explicit.native_link_mode == "objects";
+        assert configured.codegen_identity() == explicit.codegen_identity();
+    }
+}
+
 test "symbol requests preserve their app and native target context" {
     parent = CompileOptions(
         aot_mode=True,
@@ -765,20 +802,21 @@ test "native-only dependencies stay in the target rather than the compiler host"
 
 test "native dependency caches use the running compiler identity" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_compiler_fingerprint
-    }
+    import from jaclang.compiler.driver.jir { current_native_stamp }
     options = _pinned_opts();
     with patch(
         "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-a"
     ) {
-        first = native_compiler_fingerprint(options);
-        assert first == native_compiler_fingerprint(options);
-        assert first != native_compiler_fingerprint(_pinned_opts(native_required=True));
+        first = current_native_stamp(options.codegen_identity(), "").key();
+        assert first == current_native_stamp(options.codegen_identity(), "").key();
+        assert first
+            != current_native_stamp(
+                _pinned_opts(native_required=True).codegen_identity(), ""
+            ).key();
     }
     with patch(
         "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-b"
     ) {
-        assert first != native_compiler_fingerprint(options);
+        assert first != current_native_stamp(options.codegen_identity(), "").key();
     }
 }

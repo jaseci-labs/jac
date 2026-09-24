@@ -21,7 +21,7 @@ import from pathlib { Path }
 import jaclang.compiler.driver.jir as jir;
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
-    get_native_cache_dir,
+    get_native_debug_dir,
     sweep_stale_generations
 }
 
@@ -72,9 +72,9 @@ test "two compiler generations get disjoint cache slots for one module" {
 test "native artifacts ride the generation of the compiler that emitted them" {
     src = _seeded_module();
     _pin_generation(GEN_A);
-    native = get_native_cache_dir(src);
+    native = get_native_debug_dir(src);
     _unpin_generation();
-    assert native.name == "native";
+    assert native.name == "native-debug";
     assert native.parent.name == GEN_A , (
         "native artifacts escaped their compiler's generation"
     );
@@ -242,5 +242,36 @@ test "compiler identity excludes applications tests and generated artifacts" {
         assert renamed != before;
         src.with_name("renamed.jac").unlink();
         assert compiler_source_digest(pkg) != renamed;
+    }
+}
+
+test "native-only units join the compiler identity by path, not by content" {
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        _manifest_compiler_digest
+    }
+    with tempfile.TemporaryDirectory() as pkg {
+        unit = Path(pkg) / "runtime/na_stdlib/fnmatch.jac";
+        unit.parent.mkdir(parents=True);
+        unit.write_text("def f -> int { return 1; }\n");
+        compiler = Path(pkg) / "compiler/pass.jac";
+        compiler.parent.mkdir(parents=True);
+        compiler.write_text("def f -> int { return 1; }\n");
+        before = compiler_source_digest(pkg);
+        assert _manifest_compiler_digest(pkg) == before;
+        unit.write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(pkg) == before , (
+            "an edit to a native-only unit changed the compiler identity"
+        );
+        assert _manifest_compiler_digest(pkg) == before;
+        added = Path(pkg) / "runtime/na_stdlib/glob.jac";
+        added.write_text("def g -> int { return 1; }\n");
+        assert compiler_source_digest(pkg) != before , (
+            "adding a native-only unit left the compiler identity unchanged"
+        );
+        added.unlink();
+        assert compiler_source_digest(pkg) == before;
+        compiler.write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(pkg) != before;
     }
 }

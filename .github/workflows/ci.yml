@@ -180,7 +180,7 @@ jobs:
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" --version
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" -c 'import os, ssl; assert os.path.isfile(os.environ["SSL_CERT_FILE"]); assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0'
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/obj.jac")"
-          echo "$out" | grep -q 49
+          grep -q 49 <<<"$out"
 
       - name: Run real jac programs (end-to-end execution)
         working-directory: jac
@@ -197,8 +197,8 @@ jobs:
           }
           JAC
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/a.jac")"
-          echo "$out" | grep -q "dist 5.0"
-          echo "$out" | grep -q "0, 1, 4, 9, 16"
+          grep -q "dist 5.0" <<<"$out"
+          grep -q "0, 1, 4, 9, 16" <<<"$out"
 
       - name: jac test runner (self-contained test file)
         working-directory: jac
@@ -353,7 +353,7 @@ jobs:
             "firebase-admin>=6.0.0,<8.0.0" "requests>=2.32.0,<3.0.0" \
             --global
           jac install \
-            "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
             "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
             --global
 
@@ -696,7 +696,7 @@ jobs:
             requests "moto[s3]>=5.0.0" \
             --global
           jac install \
-            "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
             "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
             --global
       # Run from a copy OUTSIDE the checkout. The resolver's self-tree rule
@@ -780,7 +780,7 @@ jobs:
       - name: Install byllm deps + test deps
         run: |
           jac install \
-            "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
             "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
             --global
       # test_mtir_integration.jac runs in test-in-package-sealed (see there).
@@ -910,7 +910,11 @@ jobs:
           JAC_TEST_JOBS: "0"
         run: |
           jac test jac/jaclang/scale/tests/deploy/test_deploy_k8s.jac -x -f "not (early and exit)"
-      - name: Run KEDA HTTP-activation e2e
+      # Runs the HTTP-activation e2e under an observer, so the 0 -> 1 -> ready
+      # -> 0 cycle it already drives is also the cycle watch_scale_targets is
+      # proven against. A second deploy would cost minutes for a cycle already
+      # paid for.
+      - name: Run KEDA HTTP-activation + observer e2e
         env:
           # Ship the jac built from this checkout to the pods (channel LOCAL),
           # so the e2e validates the code under test rather than a published
@@ -920,7 +924,7 @@ jobs:
           # PVC no longer trusts a cluster default silently; name it.
           BUNDLE_STORAGE_CLASS: microk8s-hostpath
         run: |
-          bash jac/jaclang/scale/tests/deploy/keda_http_activation_real_e2e.sh \
+          bash jac/jaclang/scale/tests/deploy/keda_observer_real_e2e.sh \
             jac/jaclang/scale/tests/fixtures/keda_http_activation_e2e
       - name: Run K8 tests (failure-path)
         env:
@@ -1519,6 +1523,10 @@ jobs:
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main' | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
           sudo apt-get install -y llvm-22-dev cmake
+      # This step carries test_c_backend.jac's coverage: test-runtime also
+      # discovers it but skips it there, having no LLVM 22 toolchain.
+      - name: Verify C backend comparisons and executable startup
+        run: jac test jac/tests/toolchains/test_c_backend.jac
       - name: Scaffold and export the jaclang.org site
         run: |
           jac create site --awesome
@@ -1530,6 +1538,13 @@ jobs:
       - name: Export the existing native arena replay fixture
         run: |
           cp jac/tests/compiler/backends/native/fixtures/arena_replay.jac site/core/site/game/arena_replay.jac
+          sed -i '/^import from sim /d' site/core/site/game/arena_replay.jac
+          cat >> site/arch.jac <<'JAC'
+
+          impl import core.site.game {
+              sim --> core.site.game.arena_replay { Game, world_new, sim_tick }
+          }
+          JAC
           cat >> site/jac.toml <<'TOML'
           [apps.replay]
           kind = "native-binary"

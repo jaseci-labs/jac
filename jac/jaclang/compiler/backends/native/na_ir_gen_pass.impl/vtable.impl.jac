@@ -32,7 +32,7 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     vtable_global = self.vtable_globals.get(arch_name);
     if vtable_global is None {
         vtable_global = ir.GlobalVariable(
-            self.llvm_module, vtable_type, name=f"{arch_name}.__vtable"
+            self.llvm_module, vtable_type, name=self._vtable_symbol(arch_name)
         );
         self.vtable_globals[arch_name] = vtable_global;
     }
@@ -40,6 +40,20 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
 
     vtable_global.linkage = "";
     vtable_global.initializer = vtable_init;
+    self._record_export(f"{arch_name}.__vtable", vtable_global.name, "vtable");
+}
+
+impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo {
+        native_symbol_name,
+        native_unit_spelling
+    }
+    src = self._struct_source_mod.get(arch_name, "");
+    prefix = self._prefix_of_path(src) if src else self._own_prefix();
+    owner_path = src or (self.module.loc.mod_path if self.module?.loc else "");
+    return native_symbol_name(
+        prefix, native_unit_spelling(f"{arch_name}.__vtable", owner_path)
+    );
 }
 
 impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None) {
@@ -55,7 +69,7 @@ impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None
     i8_ptr = ir.IntType(8).as_pointer();
     vtable_type = ir.ArrayType(i8_ptr, len(lay.methods) + VTABLE_HEADER_SLOTS);
     vtable_ref = ir.GlobalVariable(
-        self.llvm_module, vtable_type, name=f"{arch_name}.__vtable"
+        self.llvm_module, vtable_type, name=self._vtable_symbol(arch_name)
     );
     vtable_ref.global_constant = True;
     vtable_ref.linkage = "external";
@@ -387,14 +401,39 @@ impl NaIRGenPass._codegen_virtual_call(
 }
 
 impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
+    """The class-name string that is an archetype's runtime identity.
+
+    It is the archetype's native name, so two same-named archetypes from
+    different modules never answer for each other in `isinstance` or dispatch.
+    A module-scoped name is laid out behind a pointer to its source-level name
+    (`CLASS_DISPLAY_OFF` bytes before the text), which is what `__name__` reads
+    back when the class is only known at run time.
+    """;
     cached = self._class_name_consts.get(arch_name);
     if cached is not None {
         return cached;
     }
     i32 = ir.IntType(32);
-    (struct_type, struct_val) = self._static_str_struct_const(
-        (arch_name + "\0").encode("utf8")
-    );
+    text = (arch_name + "\0").encode("utf8");
+    (struct_type, struct_val) = self._static_str_struct_const(text);
+    text_field = 2;
+    if self._arch_display(arch_name) != arch_name {
+        i64 = ir.IntType(64);
+        text_type = ir.ArrayType(ir.IntType(8), len(text));
+        struct_type = ir.LiteralStructType(
+            [ir.IntType(8).as_pointer(), i64, i64, text_type]
+        );
+        struct_val = ir.Constant(
+            struct_type,
+            [
+                self._emit_class_display_const(arch_name),
+                ir.Constant(i64, RC_SENTINEL),
+                ir.Constant(i64, str_len_tag(len(text) - 1)),
+                ir.Constant(text_type, bytearray(text))
+            ]
+        );
+        text_field = 3;
+    }
     global_str = ir.GlobalVariable(
         self.llvm_module, struct_type, name=f".clsname.{arch_name}"
     );
@@ -404,10 +443,86 @@ impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
     global_str.initializer = struct_val;
 
     ptr = global_str.gep(
-        [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]
+        [ir.Constant(i32, 0), ir.Constant(i32, text_field), ir.Constant(i32, 0)]
     );
     self._class_name_consts[arch_name] = ptr;
     return ptr;
+}
+
+impl NaIRGenPass._emit_class_display_const(arch_name: str) -> ir.Constant {
+    """The source-level name of an archetype, as a static string.""";
+    display = self._arch_display(arch_name);
+    if display == arch_name {
+        return self._emit_class_name_const(arch_name);
+    }
+    _key = f".clsdisp.{arch_name}";
+    cached = self._class_name_consts.get(_key);
+    if cached is not None {
+        return cached;
+    }
+    i32 = ir.IntType(32);
+    (struct_type, struct_val) = self._static_str_struct_const(
+        (display + "\0").encode("utf8")
+    );
+    global_str = ir.GlobalVariable(self.llvm_module, struct_type, name=_key);
+    global_str.linkage = "linkonce_odr";
+    global_str.global_constant = True;
+    global_str.initializer = struct_val;
+    ptr = global_str.gep(
+        [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]
+    );
+    self._class_name_consts[_key] = ptr;
+    return ptr;
+}
+
+impl NaIRGenPass._emit_class_display_fn -> ir.Function {
+    """`__jac_class_display(cls)`: the source-level name of a runtime class id.
+
+    A module-scoped identity (it contains the scope separator) was emitted by
+    `_emit_class_name_const`, which stores a pointer to the source-level name
+    `CLASS_DISPLAY_OFF` bytes before the text; any other class name already is
+    its source-level name.
+    """;
+    if self._class_display_fn is not None {
+        return self._class_display_fn;
+    }
+    import from jaclang.compiler.frontend.codeinfo { NATIVE_ARCH_SCOPE_SEP }
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    strchr = self._get_or_declare_extern("strchr", i8p, [i8p, i32]);
+    fn = self._define_function("__jac_class_display", ir.FunctionType(i8p, [i8p]));
+    fn.linkage = "private";
+    fn.args[0].name = "cls";
+    self._class_display_fn = fn;
+    _entry = fn.append_basic_block("entry");
+    _probe = fn.append_basic_block("probe");
+    _scoped = fn.append_basic_block("scoped");
+    _plain = fn.append_basic_block("plain");
+    b = ir.IRBuilder(_entry);
+    b.cbranch(
+        b.icmp_unsigned("==", fn.args[0], ir.Constant(i8p, None), name="cd.null"),
+        _plain,
+        _probe
+    );
+    b = ir.IRBuilder(_probe);
+    _sep = b.call(
+        strchr,
+        [fn.args[0], ir.Constant(i32, ord(NATIVE_ARCH_SCOPE_SEP))],
+        name="cd.sep"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", _sep, ir.Constant(i8p, None), name="cd.bare"),
+        _plain,
+        _scoped
+    );
+    b = ir.IRBuilder(_scoped);
+    _slot = b.gep(fn.args[0], [ir.Constant(i64, -CLASS_DISPLAY_OFF)], name="cd.slot");
+    b.ret(b.load(b.bitcast(_slot, i8p.as_pointer(), name="cd.slot.p"), name="cd.name"));
+    b = ir.IRBuilder(_plain);
+    b.ret(fn.args[0]);
+    return fn;
 }
 
 impl NaIRGenPass._emit_runtime_class_name_fn -> (ir.Function | None) {
@@ -552,7 +667,19 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
     if receiver is None {
         return None;
     }
-    return self._codegen_class_id(receiver);
+    _static_arch = self._struct_name_of(receiver);
+    if _static_arch is not None and not self._arch_has_vtable(_static_arch) {
+        return self._emit_class_display_const(_static_arch);
+    }
+    _cls_id = self._codegen_class_id(receiver);
+    if _cls_id is None {
+        return None;
+    }
+    return self.builder.call(
+        self._emit_class_display_fn(),
+        [self._coerce_type(_cls_id, ir.IntType(8).as_pointer())],
+        name="clsname.display"
+    );
 }
 
 impl NaIRGenPass._codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None) {
@@ -1084,12 +1211,6 @@ impl NaIRGenPass._emit_isa_seq_fn -> ir.Function {
 impl NaIRGenPass._isinstance_operand_arch(
     nd: uni.FuncCall, operand: ir.Value
 ) -> (str | None) {
-    """The archetype layout whose class id the operand's vtable slot holds.
-
-    The declared type answers first; when a union or an `any` erases it, the
-    pointee's own struct name still names the layout, which is what the class
-    id is read through.
-    """;
     named = self._struct_name_of(nd.params[0] if nd.params else None);
     if named is not None and named in self.struct_types {
         return named;
@@ -1213,8 +1334,9 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                     orig_fn_type.return_type, new_param_types
                 );
                 wrapper_fn = ir.Function(
-                    self.llvm_module, wrapper_fn_type, name=child_full
+                    self.llvm_module, wrapper_fn_type, name=self._symbol_for(child_full)
                 );
+                self._record_export(child_full, wrapper_fn.name, "method");
 
                 wrapper_fn.args[0].name = "self";
                 for i in range(1, len(impl_func.args)) {

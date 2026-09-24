@@ -404,6 +404,41 @@ test "unary minus on an unsigned operand is E1129" {
     assert fw_only(check(src)) == [("E1129", 3, 9)];
 }
 
+# ── bool operands ────────────────────────────────────────────────
+test "bool arithmetic yields int; & | ^ between two bools stay bool" {
+    assert_clean(
+        "with entry {\n"
+        "    n = 2;\n"
+        "    b = n > 1;\n"
+        "    c = n > 5;\n"
+        "    s: int = b + c;\n"
+        "    d: int = b - c;\n"
+        "    m: int = b * c;\n"
+        "    q: int = b // c;\n"
+        "    r: int = b % c;\n"
+        "    h: int = b << c;\n"
+        "    neg: int = -b;\n"
+        "    pos: int = +b;\n"
+        "    inv: int = ~b;\n"
+        "    both: bool = b & c;\n"
+        "    either: bool = b | c;\n"
+        "    one: bool = b ^ c;\n"
+        "    w: u8 = 1;\n"
+        "    sized: u8 = w + b;\n"
+        "}\n"
+    );
+    src = (
+        "with entry {\n"
+        "    n = 2;\n"
+        "    b = n > 1;\n"
+        "    s: bool = b + b;\n"
+        "    neg: bool = -b;\n"
+        "    h: bool = b << b;\n"
+        "}\n"
+    );
+    assert check(src) == [("E1001", 4, 5), ("E1001", 5, 5), ("E1001", 6, 5)];
+}
+
 # ── type-level surface ───────────────────────────────────────────
 test "MIN, MAX, wrap and the wrapping_* builtins type-check with precise types" {
     assert_clean(

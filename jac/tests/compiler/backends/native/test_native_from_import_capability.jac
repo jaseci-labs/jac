@@ -41,7 +41,7 @@ import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, by_source_name, native_address, source_spelled }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -120,7 +120,7 @@ def _codes(prog: any) -> list[str] {
 def _native_int_fn(ir: any, name: str) -> any {
     eng = ir.gen.native_engine;
     assert eng is not None , f"no native engine for '{name}'";
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
 }
@@ -132,7 +132,7 @@ def _seams_of(coverage: dict[str, any], fixture: str) -> list[str] {
     if rec is None {
         return [];
     }
-    return [str(s) for s in (rec.get("seams") or [])];
+    return [source_spelled(str(s)) for s in (rec.get("seams") or [])];
 }
 
 
@@ -284,7 +284,7 @@ test "a property accessor is an owning callable, not a module-fatal site" {
     );
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
-    assert "Box.plain" in layout.methods , (
+    assert "Box.plain" in by_source_name(layout.methods) , (
         f"the archetype's ordinary method was lost: {sorted(layout.methods)}"
     );
     seams = [

@@ -7,6 +7,7 @@ import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
 
 def _cs(
     name: str,
@@ -71,14 +72,15 @@ def _bundle(deploy_name: str, app: str) -> dict[str, any] {
 # A single replica Deployment as the apiserver reports it. "Not ready" is a
 # pod that exists on the current template but has not become available, which
 # is what a starting or crash-looping replica actually looks like.
-def _dep(ready: int) -> object {
+def _dep(ready: int, desired: int = 1, floor: (int | None) = None) -> object {
+    annotations = {REPLICA_FLOOR_ANNOTATION: str(floor)} if floor is not None else None;
     return SimpleNamespace(
-        metadata=SimpleNamespace(generation=1),
-        spec=SimpleNamespace(replicas=1),
+        metadata=SimpleNamespace(generation=1, annotations=annotations),
+        spec=SimpleNamespace(replicas=desired),
         status=SimpleNamespace(
             observed_generation=1,
-            replicas=1,
-            updated_replicas=1,
+            replicas=desired,
+            updated_replicas=desired,
             available_replicas=ready,
             ready_replicas=ready
         )
@@ -184,6 +186,46 @@ test "ready fleet returns without raising" {
     err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 60);
 
     assert err is None , f"ready fleet should not raise: {err}";
+
+    # A service KEDA has idled to zero is settled, not a rollout that never
+    # finished: the gate used to time out on it unless it was HTTP-activated.
+    (apps, core) = _apis(0, []);
+    apps.read_namespaced_deployment.return_value = _dep(0, desired=0, floor=0);
+    err = _run(target, _bundle("worker-deployment", "worker"), apps, core, 60);
+    assert err is None , f"an idle scale-to-zero service should not raise: {err}";
+}
+
+test "a fleet that already reads serving is still scanned for crash-looping pods" {
+    # Counting a Deployment ready is not a reason to skip the pod scan. Reading
+    # replica counts alone, a rolling update whose new pods crash-loop behind a
+    # ready old replica, and an idled service with a crash-looping leftover, both
+    # look finished.
+    target = KubernetesTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    boot = _cs(
+        "jac-bootstrap",
+        restarts=3,
+        waiting_reason="CrashLoopBackOff",
+        last_term_reason="StartError",
+        last_term_message="exec /app/.jachome/.local/bin/jac: exec format error",
+        last_term_exit=1
+    );
+
+    cases: list[tuple[str, any]] = [
+        ("a ready old replica beside the crash-looping new ones", _dep(1)),
+        ("a service idled to zero", _dep(0, desired=0, floor=0))
+    ];
+    for (why, dep) in cases {
+        pod = _pod("gateway-xyz", "gateway", "Pending", [boot], []);
+        (apps, core) = _apis(1, [pod]);
+        apps.read_namespaced_deployment.return_value = dep;
+
+        err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 60);
+
+        assert err is not None , (f"a crash-looping pod must abort the deploy, {why}");
+        assert "crash-looping" in str(err) , f"{why}: crashloop not reported: {err}";
+    }
 }
 
 test "multiple image-pull containers do not fail on the first poll" {

@@ -2,7 +2,7 @@
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, unit_symbol }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.unitree { InnerCompr, InForStmt, TupleVal }
@@ -37,7 +37,7 @@ test "tuple iteration targets retain analysis types and execute natively" {
     engine = module.gen.native_engine;
     assert engine is not None;
     for (name, expected) in [("comprehension", 21), ("loop", 17)] {
-        address = engine.get_function_address(name);
+        address = engine.get_function_address(unit_symbol(module, name));
         assert isinstance(address, int) and address != 0;
         assert ctypes.CFUNCTYPE(ctypes.c_int64)(address)() == expected;
     }

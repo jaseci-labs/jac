@@ -1,5 +1,5 @@
 import from c { def socket(domain: i32, socktype: i32, protocol: i32) -> i32;  }
-import from c { def connect(fd: i32, addr: bytes, addrlen: i32) -> i32;  }
+import from c { def __connect(fd: i32, addr: bytes, addrlen: i32) -> i32;  }
 import from c { def send(fd: i32, buf: bytes, n: u64, flags: i32) -> i64;  }
 import from c { def recv(fd: i32, buf: bytes, n: u64, flags: i32) -> i64;  }
 import from c { def close(fd: i32) -> i32;  }
@@ -59,7 +59,7 @@ def:pub sock_open(family: int, socktype: int, proto: int) -> int {
 
 
 def:pub sock_connect(fd: int, sa: bytes) -> int {
-    return connect(i32(fd), sa, i32(len(sa)));
+    return __connect(i32(fd), sa, i32(len(sa)));
 }
 
 

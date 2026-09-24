@@ -1,4 +1,3 @@
-import from core.jacyac.native.components.BrandMark { BrandMark }
 import from "@jac/mobui" {
     View,
     Text,
@@ -11,9 +10,6 @@ import from "@jac/mobui" {
     useWindowDimensions,
     Platform
 }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from core.jacyac.native.icon { Icon }
 
 def:pub AuthScreen(
     isSignup: bool,

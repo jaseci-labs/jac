@@ -3,6 +3,7 @@ import tempfile;
 import from pathlib { Path }
 import from tests.support { TESTS_DIR }
 import from jaclang.client.bun_installer { get_bun }
+import from tests.compiler.backends.es.codegen_helpers { stage_prelude_dir }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.project.config { JacConfig, get_config, set_config }
@@ -43,6 +44,7 @@ test "arena host scalar boundary input and asynchronous lifecycle" {
                 "@jac/webgl", "./webgl.mjs"
             )
         );
+        stage_prelude_dir(str(target));
         (target / "webgl.mjs").write_text(webgl_js);
         (target / "wasm_host.mjs").write_text(
             (fixtures / "arena_wasm_stub.mjs").read_text()

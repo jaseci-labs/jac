@@ -77,17 +77,22 @@ obj OspModel {
 def get_osp_model(
     module: uni.Module,
     archetypes: (list[uni.Archetype] | None) = None,
-    context: (CodeContext | None) = None
+    context: (CodeContext | None) = None,
+    native_names: bool = False
 ) -> OspModel {
-    existing = module.gen.osp_model;
+    existing = module.gen.native_osp_model if native_names else module.gen.osp_model;
     if existing is not None {
         return existing;
     }
     archs = archetypes
         if archetypes is not None
         else module.get_all_sub_nodes(uni.Archetype);
-    model = OspAnalysis.compute(module, archs, context);
-    module.gen.osp_model = model;
+    model = OspAnalysis.compute(module, archs, context, native_names);
+    if native_names {
+        module.gen.native_osp_model = model;
+    } else {
+        module.gen.osp_model = model;
+    }
     return model;
 }
 
@@ -130,7 +135,12 @@ obj OspAnalysis {
         return names;
     }
 
-    static def slot_triggers(ability: uni.Ability) -> list[str] {
+    static def slot_triggers(
+        ability: uni.Ability, native_names: bool = False
+    ) -> list[str] {
+        if native_names {
+            return OspAnalysis.native_slot_triggers(ability);
+        }
         trigs = ability.event_trigger_type_names();
         if trigs is None {
             _tag_info = None;
@@ -142,10 +152,69 @@ obj OspAnalysis {
         return trigs;
     }
 
-    static def arch_slots(arch: uni.Archetype) -> list[OspSlot] {
+    static def native_slot_triggers(ability: uni.Ability) -> list[str] {
+        import from jaclang.compiler.passes.layout_pass {
+            native_type_key,
+            referenced_native_name
+        }
+        names: list[str] = [];
+        if ability.event_triggers is not None {
+            for t in ability.event_triggers {
+                for part in native_type_key(t).split("|") {
+                    name = part.strip();
+                    if name.startswith("type[") and name.endswith("]") {
+                        name = name[5:-1];
+                    }
+                    if name and name not in names {
+                        names.append(name);
+                    }
+                }
+            }
+            return names;
+        }
+        _tag_info = None;
+        if isinstance(ability.signature, uni.EventSignature) {
+            _tag_info = ability.signature.arch_tag_info;
+        }
+        for head in OspAnalysis.trigger_heads(_tag_info) {
+            head_key = referenced_native_name(head) or OspAnalysis.head_name(head);
+            if head_key is not None and head_key not in names {
+                names.append(head_key);
+            }
+        }
+        return names;
+    }
+
+    static def trigger_heads(nd: (uni.UniNode | None)) -> list[uni.UniNode] {
+        if nd is None {
+            return [];
+        }
+        if isinstance(nd, uni.TupleVal) {
+            heads: list[uni.UniNode] = [];
+            for member in nd.values {
+                heads.extend(OspAnalysis.trigger_heads(member));
+            }
+            return heads;
+        }
+        if isinstance(nd, uni.BinaryExpr)
+            and isinstance(nd.op, uni.Token)
+            and nd.op.name == Tok.BW_OR {
+            return OspAnalysis.trigger_heads(nd.left)
+                + OspAnalysis.trigger_heads(nd.right);
+        }
+        cur = nd;
+        while isinstance(cur, uni.FuncCall) {
+            cur = cur.target;
+        }
+        return [cur];
+    }
+
+    static def arch_slots(
+        arch: uni.Archetype, native_names: bool = False
+    ) -> list[OspSlot] {
         out: list[OspSlot] = [];
         _kind = arch.arch_kind;
-        _owner = arch.name.value if arch.name else None;
+        _owner = OspAnalysis.arch_key(arch, native_names) if arch.name else None;
         if (_kind is None) or (_owner is None) or (arch.body is None) {
             return out;
         }
@@ -165,22 +234,31 @@ obj OspAnalysis {
                     ability=_ability,
                     is_entry=(stmt.signature.event.name == Tok.KW_ENTRY),
                     has_body=(stmt.body is not None),
-                    trigger_names=OspAnalysis.slot_triggers(stmt)
+                    trigger_names=OspAnalysis.slot_triggers(stmt, native_names)
                 )
             );
         }
         return out;
     }
 
+    static def arch_key(arch: uni.Archetype, native_names: bool) -> str {
+        if native_names {
+            import from jaclang.compiler.passes.layout_pass { archetype_native_name }
+            return archetype_native_name(arch);
+        }
+        return arch.name.value;
+    }
+
     static def compute(
         module: uni.Module,
         archetypes: list[uni.Archetype],
-        context: (CodeContext | None) = None
+        context: (CodeContext | None) = None,
+        native_names: bool = False
     ) -> OspModel {
         model = OspModel();
         _archs: dict[(str, uni.Archetype)] = {};
         for arch in archetypes {
-            _name = arch.name.value if arch.name else None;
+            _name = OspAnalysis.arch_key(arch, native_names) if arch.name else None;
             if (_name is None) or (arch.arch_kind is None) or (_name in _archs) {
                 continue;
             }
@@ -202,14 +280,16 @@ obj OspAnalysis {
         }
 
         for _name in _archs.keys() {
-            model.isa[_name] = OspAnalysis._isa_closure(_name, _archs);
-            model.slots.extend(OspAnalysis.arch_slots(_archs[_name]));
+            model.isa[_name] = OspAnalysis._isa_closure(_name, _archs, native_names);
+            model.slots.extend(OspAnalysis.arch_slots(_archs[_name], native_names));
         }
         model.uses_construct = OspAnalysis._uses_construct(module, context);
         return model;
     }
 
-    static def _isa_closure(name: str, archs: dict[(str, uni.Archetype)]) -> list[str] {
+    static def _isa_closure(
+        name: str, archs: dict[(str, uni.Archetype)], native_names: bool = False
+    ) -> list[str] {
         out: list[str] = [name];
         seen: set[str] = set();
         seen.add(name);
@@ -222,6 +302,12 @@ obj OspAnalysis {
             }
             for _bc in _arch.base_classes {
                 _bn = OspAnalysis.head_name(_bc);
+                if native_names {
+                    import from jaclang.compiler.passes.layout_pass {
+                        referenced_native_name
+                    }
+                    _bn = referenced_native_name(_bc) or _bn;
+                }
                 if (_bn is not None) and (_bn in archs) and (_bn not in seen) {
                     seen.add(_bn);
                     out.append(_bn);

@@ -1,18 +1,5 @@
 import json;
 import re;
-import from core.ai { optional_review }
-import from core.github {
-    RepoMeta,
-    code_breakdown,
-    download_tarball,
-    head_sha,
-    mb_of,
-    repo_meta,
-    text_of,
-    untar
-}
-import from core.leaderboard.scoring { RepoAnalysis, ScoreBreakdown, analyze, score }
-import from .common { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, warn }
 
 glob USER_AGENT: str = "jaclang.org cli scorer",
      MAX_TAR_BYTES: int = 52428800,

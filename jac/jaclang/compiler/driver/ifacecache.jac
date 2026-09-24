@@ -4,6 +4,7 @@ import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import os;
 import time;
 import from jaclang.compiler.driver.jir {
+    DepRow,
     SEC_CTDEPS,
     SEC_DEPS,
     SEC_DIAG,
@@ -331,18 +332,23 @@ obj IfaceRegistry {
         return out;
     }
 
-    def dep_rows(resolved_path: str, mod: any) -> list[tuple[str, str, str]] {
+    def dep_rows(resolved_path: str, mod: any) -> list[DepRow] {
         bucket = self.direct_deps.get(resolved_path, {});
         client = self._client_edges(mod) if mod is not None else set();
-        out: list[tuple[str, str, str]] = [];
+        out: list[DepRow] = [];
         for (path, digest) in bucket.items() {
-            out.append((path, digest, "c" if path in client else "", ));
+            out.append(
+                DepRow(path=path, digest=digest, flags="c" if path in client else "")
+            );
         }
         return out;
     }
 
     def _entry_fresh(ent: IfaceEntry) -> bool {
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
+        import from jaclang.compiler.driver.bccache {
+            discover_annex_files,
+            discover_wiring_file
+        }
         try {
             if os.path.getmtime(ent.path) > ent.stamp {
                 return False;
@@ -351,6 +357,10 @@ obj IfaceRegistry {
                 if os.path.getmtime(related) > ent.stamp {
                     return False;
                 }
+            }
+            wiring = discover_wiring_file(ent.path);
+            if wiring is not None and os.path.getmtime(wiring) > ent.stamp {
+                return False;
             }
             return True;
         } except OSError {
@@ -484,7 +494,9 @@ obj IfaceRegistry {
     }
 
     def _deps_match(data: bytes, base_dir: str = "") -> bool {
-        for (dep, recorded) in read_dep_hashes(data, base_dir) {
+        import from jaclang.compiler.driver.jir { read_dep_rows }
+        for row in read_dep_rows(data, base_dir) {
+            (dep, recorded) = (row.path, row.digest);
             if not recorded {
                 return False;
             }
@@ -1103,9 +1115,9 @@ obj IfaceRegistry {
         }
         edges: list[str] = [];
         import from jaclang.compiler.driver.jir { read_dep_rows }
-        for (dep, _digest, flags) in read_dep_rows(data, base_dir) {
-            if "c" in flags {
-                edges.append(dep);
+        for row in read_dep_rows(data, base_dir) {
+            if "c" in row.flags {
+                edges.append(row.path);
             }
         }
         self._event("boundary_facts");
