@@ -24,12 +24,18 @@ def materialize_jab(jab_path: str) -> Path {
     return _materialize_jab_data(Path(jab_path).read_bytes(), jab_path);
 }
 
-def materialize_jab_bytes(data: bytes) -> Path {
-    return _materialize_jab_data(data, "<app image>");
+def materialize_jab_bytes(data: bytes, expected_sha256: str = "") -> Path {
+    return _materialize_jab_data(data, "<app image>", expected_sha256);
 }
 
-def _materialize_jab_data(data: bytes, label: str) -> Path {
+def _materialize_jab_data(data: bytes, label: str, expected_sha256: str = "") -> Path {
     digest = hashlib.sha256(data).hexdigest();
+    if expected_sha256 and digest != expected_sha256 {
+        raise RuntimeError(
+            f"{label} does not match its recorded sha256 "
+            f"(expected {expected_sha256[:16]}, got {digest[:16]})"
+        );
+    }
     dest = bucket("apps").path() / digest[:20];
     manifest_path = dest / "_precompiled" / MANIFEST_NAME;
     if not manifest_path.is_file() {
