@@ -3165,6 +3165,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if obj_val is None {
             return None;
         }
+        if _bytes_method
+            and not self._is_bytes_value(obj_val)
+            and self._type_key_of(trailer.target) == "bytes" {
+            obj_val = self._coerce_type(
+                obj_val, self._get_bytes_struct_type().as_pointer()
+            );
+        }
         if self._is_bytes_value(obj_val) {
             if not _bytes_method {
                 return None;
