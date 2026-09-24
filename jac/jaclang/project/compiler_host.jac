@@ -2,6 +2,7 @@ import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from jaclang.compiler.frontend.host {
     CheckSettings,
+    HostPlatform,
     HostServices,
     LintSettings,
     NativeVerdict,
@@ -22,7 +23,8 @@ import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 obj ProjectHost(HostServices) {
     has _defaults_active: bool = False,
         _last_defaults: (ProjectDefaults | None) = None,
-        _facts: dict[str, tuple[any, ProjectFacts]] = {};
+        _facts: dict[str, tuple[any, ProjectFacts]] = {},
+        _platform: (HostPlatform | None) = None;
 
     @contextmanager
     def session -> Iterator[None];
@@ -58,6 +60,7 @@ obj ProjectHost(HostServices) {
     ) -> tuple[Module, bool];
 
     def ct_environment -> CtEnvironment;
+    def host_platform -> HostPlatform;
     def path_facts(path: str) -> PathFacts;
     def read_source(path: str) -> str;
     def annex_files(path: str, suffix: str = ".impl.jac") -> list[str];

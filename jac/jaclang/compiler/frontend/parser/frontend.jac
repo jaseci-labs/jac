@@ -112,12 +112,10 @@ def finish_parse(
     }
 
     if module.source {
-        import re;
-        ignore_pattern = re.compile(r'#\s*jac:ignore\[([^\]]+)\]');
         for comment in module.source.comments {
-            m = ignore_pattern.search(comment.value);
-            if m {
-                codes = {c.strip() for c in m.group(1).split(',')};
+            ignored = ignore_directive(comment.value);
+            if ignored is not None {
+                codes = {c.strip() for c in ignored.split(',')};
                 line = comment.line_no;
                 if line in module.source.inline_suppressions {
                     module.source.inline_suppressions[line].update(codes);
@@ -128,6 +126,26 @@ def finish_parse(
         }
     }
     return p_errs > 0 or lex_errs > 0;
+}
+
+def ignore_directive(text: str) -> (str | None) {
+    marker = "jac:ignore[";
+    start = text.find("#");
+    while start >= 0 {
+        pos = start + 1;
+        while pos < len(text) and text[pos].isspace() {
+            pos += 1;
+        }
+        if text.startswith(marker, pos) {
+            body_start = pos + len(marker);
+            body_end = text.find("]", body_start);
+            if body_end > body_start {
+                return text[body_start:body_end];
+            }
+        }
+        start = text.find("#", start + 1);
+    }
+    return None;
 }
 
 def parse_woven(
@@ -170,14 +188,18 @@ def annex_paths(file_path: str) -> list[str] {
         if host.base_file(file_path) is not None {
             return [];
         }
-        found: list[str] = [
-            *host.annex_files(file_path, ".impl.jac"),
-            *host.annex_files(file_path, ".test.jac")
-        ];
+        found = host.annex_files(file_path, ".impl.jac")
+            + host.annex_files(file_path, ".test.jac");
     } except Exception {
         return [];
     }
-    return list(dict.fromkeys(found));
+    unique: list[str] = [];
+    for path in found {
+        if path not in unique {
+            unique.append(path);
+        }
+    }
+    return unique;
 }
 
 def annex_sources(file_path: str) -> list[WovenAnnex] {

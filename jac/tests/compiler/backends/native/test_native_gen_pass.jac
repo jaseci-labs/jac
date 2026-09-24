@@ -22,6 +22,7 @@ reading, and merged they read a list three pushes deep.
 So: if a new fixture declares a glob anything writes, or imports one that
 does, give each of its cases its own test.
 """
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import ctypes;
@@ -663,7 +664,7 @@ test "context isolation native excluded from python" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "mixed_contexts.jac")));
     # Python source should NOT contain native_add
-    py_src = ir.gen.py;
+    py_src = generated_python(ir.gen);
     assert "native_add" not in py_src;
     # Python source should contain server_hello
     assert "server_hello" in py_src;
@@ -2758,7 +2759,7 @@ test "py interop py functions in python codegen" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    py_src = ir.gen.py;
+    py_src = generated_python(ir.gen);
     assert "py_double" in py_src;
     assert "call_native" in py_src;
 }
@@ -2770,7 +2771,7 @@ test "py interop native function has stub in python" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    py_src = ir.gen.py;
+    py_src = generated_python(ir.gen);
     # Stub for the native function should exist
     assert "native_add_one_to_doubled" in py_src;
     # The native function body should NOT appear as executable code in Python
@@ -2831,7 +2832,9 @@ test "py interop full entry chain" {
     assert not prog.errors_had;
     # Execute the compiled module with interop context injected
     py_code = compile(
-        ir.gen.py, str(os.path.join(FIXTURES, "na_py_interop.jac")), "exec"
+        generated_python(ir.gen),
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        "exec"
     );
     namespace = {
         "__jac_native_engine__": ir.gen.native_engine,
@@ -2919,7 +2922,9 @@ test "multi module full multi module chain" {
     assert ir.gen.native_engine is not None , "No native engine created";
 
     py_code = compile(
-        ir.gen.py, str(os.path.join(FIXTURES, "na_py_interop_multi.jac")), "exec"
+        generated_python(ir.gen),
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        "exec"
     );
     namespace = {
         "__jac_native_engine__": ir.gen.native_engine,

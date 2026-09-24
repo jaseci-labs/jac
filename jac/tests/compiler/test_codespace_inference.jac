@@ -7,6 +7,7 @@ default_codespace-driven whole-module native inference (native by default,
 server signals and closure poison opt modules back out).
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
@@ -650,7 +651,7 @@ test "cross-module pulled elements dual-emit for the server side" {
     assert util_js.strip() , "pulled module must produce client JS";
     run_pass(JcirGenPass, util, prog);
     run_pass(JcirBytecodeGenPass, util, prog);
-    py_src = util.gen.py;
+    py_src = generated_python(util.gen);
     assert 'def register' in py_src , (
         "pulled element must still exist in the python module (dual emit)"
     );

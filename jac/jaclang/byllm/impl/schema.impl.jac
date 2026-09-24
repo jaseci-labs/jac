@@ -1,19 +1,19 @@
-impl _as_info(v: object) -> (Info | str | tuple[any, ...] | None) {
-    if isinstance(v, (Info, str, tuple)) {
+impl _as_info(v: object) -> (Info | TypeForm | str | None) {
+    if isinstance(v, (Info, str, TypeForm)) {
         return v;
     }
     return None;
 }
 
 impl _info_at(
-    info: (Info | str | tuple[any, ...] | None), idx: int
-) -> (Info | str | tuple[any, ...] | None) {
+    info: (Info | TypeForm | str | None), idx: int
+) -> (Info | TypeForm | str | None) {
     if not isinstance(info, VarInfo) {
         return None;
     }
     nested = info.type_info;
-    if isinstance(nested, tuple) and len(nested) > idx {
-        return _as_info(nested[idx]);
+    if isinstance(nested, TypeForm) and len(nested.args) > idx {
+        return _as_info(nested.args[idx]);
     }
     return None;
 }
@@ -22,7 +22,7 @@ impl _type_to_schema(
     ty: type,
     title: str = "",
     desc: str = "",
-    info: (Info | str | tuple[any, ...] | None) = None
+    info: (Info | TypeForm | str | None) = None
 ) -> dict[str, any] {
     title = title.replace("_", " ").title();
     context = ({"title": title} if title else {})
@@ -30,13 +30,13 @@ impl _type_to_schema(
     info_type: str = "";
     if isinstance(info, VarInfo) and info.type_info {
         outer = info.type_info;
-        if isinstance(outer, tuple) {
-            info_type = str(outer[0]);
-            info = _as_info(outer[1]) if len(outer) > 1 else None;
+        if isinstance(outer, TypeForm) {
+            info_type = outer.head;
+            info = _as_info(outer.args[0]) if outer.args else None;
         }
-    } elif isinstance(info, tuple) {
-        info_type = str(info[0]);
-        info = _as_info(info[1]) if len(info) > 1 else None;
+    } elif isinstance(info, TypeForm) {
+        info_type = info.head;
+        info = _as_info(info.args[0]) if info.args else None;
     }
     semstr: str = ty?._jac_semstr or "";
     semstr = semstr or ty?.__doc__ or "";
@@ -69,7 +69,7 @@ impl _type_to_schema(
         args = get_args(ty);
         return {
             "anyOf": [
-                _type_to_schema(arg, info=_info_at(info, i + 1))
+                _type_to_schema(arg, info=_info_at(info, i))
                 for (i, arg) in enumerate(args)
             ],
             "title": title,
@@ -101,10 +101,10 @@ impl _type_to_schema(
                 "items": _type_to_schema(
                     item_type,
                     info=(
-                        _as_info(info[1])
-                            if isinstance(info, tuple)
-                                and len(info) > 1
-                                and info[0] == "tuple"
+                        _as_info(info.args[0])
+                            if isinstance(info, TypeForm)
+                                and info.args
+                                and info.head == "tuple"
                             else None
                     )
                 ),
@@ -283,7 +283,7 @@ impl _type_to_schema(
 }
 
 impl _function_to_schema(
-    fn: Callable, title: str = "", info: (Info | str | tuple[any, ...] | None) = None
+    fn: Callable, title: str = "", info: (Info | TypeForm | str | None) = None
 ) -> dict[str, any] {
     hints = get_type_hints(fn);
     hints.pop("return", None);
@@ -321,9 +321,7 @@ impl _function_to_schema(
     };
 }
 
-impl _name_of_type(
-    ty: type, info: (Info | str | tuple[any, ...] | None) = None
-) -> str {
+impl _name_of_type(ty: type, info: (Info | TypeForm | str | None) = None) -> str {
     if get_origin(ty) in (Union, UnionType) {
         names = [_name_of_type(arg) for arg in get_args(ty)];
         return "_or_".join(names);
@@ -398,7 +396,7 @@ impl _unwrap_from_object(json_obj: dict[str, any]) -> dict[str, any] {
 }
 
 impl type_to_schema(
-    resp_type: type, info: (Info | str | tuple[any, ...] | None) = None
+    resp_type: type, info: (Info | TypeForm | str | None) = None
 ) -> dict[str, object] {
     type_name = _name_of_type(resp_type, info=info);
     schema = _type_to_schema(resp_type, type_name, info=info);

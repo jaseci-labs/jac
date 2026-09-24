@@ -45,10 +45,7 @@ import from jaclang.compiler.backends.native.linker_common {
     load_musl_static,
     load_outline_atomics
 }
-import from jaclang.compiler.frontend.codeinfo {
-    install_native_static_init,
-    kernel_unit_path
-}
+import from jaclang.compiler.frontend.codeinfo { JAC_ENTRY_SYMBOL, kernel_unit_path }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.jir { sidecar_unit_paths, unit_source_digest }
 
@@ -1382,7 +1379,8 @@ def jit_engine(plan: LinkPlan) -> ExecutionEngine {
     for (symbol, address) in symbols.items() {
         engine.add_global_mapping(merged.get_function(symbol), address);
     }
-    install_native_static_init(engine, plan.init_symbols());
+    engine.static_init_symbols = list(plan.init_symbols());
+    engine.static_init_chained = {JAC_ENTRY_SYMBOL};
     engine_any: any = engine;
     engine_any._jac_libraries = libraries;
     engine_any._jac_unit_ifaces = [u.iface for u in plan.units];
