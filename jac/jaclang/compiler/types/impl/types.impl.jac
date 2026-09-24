@@ -1265,6 +1265,14 @@ impl TypeBase.is_class_instance -> bool {
     return ((self.category == TypeCategory.Class) and self.is_instance());
 }
 
+impl TypeBase.as_class -> (ClassType | None) {
+    return None;
+}
+
+impl ClassType.as_class -> (ClassType | None) {
+    return self if self._shared is not None else None;
+}
+
 impl TypeBase.is_instantiable_class -> bool {
     return ((self.category == TypeCategory.Class) and self.is_instantiable());
 }

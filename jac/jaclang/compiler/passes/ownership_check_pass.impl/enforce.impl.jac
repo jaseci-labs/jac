@@ -102,7 +102,7 @@ impl OwnershipCheckPass._nogc_tag_shape(tag: SubTag | None) -> str {
         return "unknown";
     }
     _tname = _root.sym_name;
-    if _tname in _NOGC_SCALARS or is_c_value_type(_expr.type) {
+    if _tname in _NOGC_SCALARS or is_c_value_type(_root.type) {
         return "scalar";
     }
     if _tname == "any" {

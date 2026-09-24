@@ -1,5 +1,6 @@
 import from jaclang.compiler.frontend.roles { BodyRole, Kid }
 import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
+import type from jaclang.compiler.types.types { TypeBase }
 import from enum { Enum }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -162,7 +163,7 @@ walker OwnershipCheckPass(CompilerPass) {
     def _view_call_owner(call: FuncCall) -> (SymId | None);
     def _emit_view_diagnostics -> None;
     def _is_c_view(expr: (UniNode | None)) -> bool;
-    def _mentions_c_view(t: object, depth: int = 0) -> bool;
+    def _mentions_c_view(t: (TypeBase | None), depth: int = 0) -> bool;
     def _c_view_escape(site: UniNode, what: str) -> None;
     def _emit_c_view_diagnostics -> None;
     def _nogc_str_elem_ok(expr: Expr | None, idx_ctx: bool = False) -> bool;

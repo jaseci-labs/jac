@@ -73,6 +73,7 @@ node TypeBase {
     def is_class_instance -> bool;
     def is_any_instance -> bool;
     def is_any_type -> bool;
+    def as_class -> (ClassType | None);
 }
 
 node UnknownType(TypeBase) {
@@ -271,6 +272,7 @@ node ClassType(TypeBase) {
         member: str, r_overloaded: list[Symbol] | None = None
     ) -> (Symbol | None);
 
+    override def as_class -> (ClassType | None);
     def is_builtin(class_name: (str | list[str] | None) = None) -> bool;
     def is_data_class -> bool;
     def is_namedtuple -> bool;

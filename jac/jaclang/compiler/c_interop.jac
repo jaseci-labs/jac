@@ -9,6 +9,8 @@ import from jaclang.compiler.frontend.unitree {
     UniNode
 }
 
+import type from jaclang.compiler.types.types { ClassType, TypeBase }
+
 glob C_BUILTIN_GENERICS: tuple[str, ...] = ("ptr", "PtrView", "Pinned");
 
 def clib_import_of(nd: (UniNode | None)) -> (Import | None) {
@@ -38,68 +40,67 @@ def is_foreign_struct_archetype(arch: (UniNode | None)) -> bool {
         and arch.body is not None;
 }
 
-def _class_shared(t: object) -> any {
-    return t?._shared;
+def _class_of(t: (TypeBase | None)) -> (ClassType | None) {
+    return t.as_class() if t is not None else None;
 }
 
-def clib_archetype_of_type(t: object) -> (Archetype | None) {
-    shared = _class_shared(t);
-    if shared is None {
+def clib_archetype_of_type(t: (TypeBase | None)) -> (Archetype | None) {
+    cls = _class_of(t);
+    if cls is None {
         return None;
     }
-    arch = shared?.symbol_table;
-    if is_clib_archetype(arch) {
+    arch = cls.shared.symbol_table;
+    if isinstance(arch, Archetype) and is_clib_archetype(arch) {
         return arch;
     }
     return None;
 }
 
-def foreign_struct_of_type(t: object) -> (Archetype | None) {
+def foreign_struct_of_type(t: (TypeBase | None)) -> (Archetype | None) {
     arch = clib_archetype_of_type(t);
     return arch if is_foreign_struct_archetype(arch) else None;
 }
 
-def opaque_c_of_type(t: object) -> (Archetype | None) {
+def opaque_c_of_type(t: (TypeBase | None)) -> (Archetype | None) {
     arch = clib_archetype_of_type(t);
     return arch if is_opaque_c_archetype(arch) else None;
 }
 
-def c_builtin_kind(t: any) -> str {
-    shared = _class_shared(t);
-    if shared is None or getattr(shared, "class_name", "") not in C_BUILTIN_GENERICS {
+def c_builtin_kind(t: (TypeBase | None)) -> str {
+    cls = _class_of(t);
+    if cls is None or cls.shared.class_name not in C_BUILTIN_GENERICS {
         return "";
     }
-    if t.is_builtin(list(C_BUILTIN_GENERICS)) {
-        return shared.class_name;
+    if cls.is_builtin(list(C_BUILTIN_GENERICS)) {
+        return cls.shared.class_name;
     }
     return "";
 }
 
-def is_ptr_type(t: object) -> bool {
+def is_ptr_type(t: (TypeBase | None)) -> bool {
     return c_builtin_kind(t) == "ptr";
 }
 
-def is_ptr_view_type(t: object) -> bool {
+def is_ptr_view_type(t: (TypeBase | None)) -> bool {
     return c_builtin_kind(t) == "PtrView";
 }
 
-def is_pinned_type(t: object) -> bool {
+def is_pinned_type(t: (TypeBase | None)) -> bool {
     return c_builtin_kind(t) == "Pinned";
 }
 
-def c_type_arg(t: object) -> (object | None) {
-    if not c_builtin_kind(t) {
+def c_type_arg(t: (TypeBase | None)) -> (TypeBase | None) {
+    cls = _class_of(t);
+    if cls is None or not c_builtin_kind(cls) {
         return None;
     }
-    import from jaclang.compiler.types.types { ClassType }
-    assert isinstance(t, ClassType);
-    args = t.private.type_args if t.private else None;
+    args = cls.private.type_args if cls.private else None;
     if not args {
         return None;
     }
-    import from jaclang.compiler.types.types { AnyType, UnknownType }
+    import from jaclang.compiler.types.types { AnyType, ClassType, UnknownType }
     arg = args[0];
-    if isinstance(arg, (AnyType, UnknownType)) {
+    if isinstance(arg, AnyType) or isinstance(arg, UnknownType) {
         return None;
     }
     if isinstance(arg, ClassType) and arg.is_builtin(["object", "Any"]) {
@@ -112,10 +113,10 @@ def reads_foreign_storage(nd: (UniNode | None)) -> bool {
     if not isinstance(nd, AtomTrailer) {
         return False;
     }
-    if foreign_struct_of_type(nd?.type) is None {
+    if foreign_struct_of_type(nd.type) is None {
         return False;
     }
-    base_type = nd.target?.type;
+    base_type = nd.target.type;
     if nd.is_attr {
         return foreign_struct_of_type(base_type) is not None;
     }
@@ -172,7 +173,7 @@ def is_builtin_pin_call(call: (UniNode | None)) -> bool {
     return isinstance(fn_type, FunctionType) and is_pinned_type(fn_type.return_type);
 }
 
-def is_c_value_type(t: object) -> bool {
+def is_c_value_type(t: (TypeBase | None)) -> bool {
     return c_builtin_kind(t) in ("ptr", "PtrView");
 }
 
@@ -184,15 +185,15 @@ def c_call_borrows_args(call: (UniNode | None)) -> bool {
     if call.call_kind == "clib" or is_builtin_pin_call(call) {
         return True;
     }
-    target_type = call.target?.type;
-    return is_ptr_type(target_type);
+    return is_ptr_type(call.target.type);
 }
 
 glob _SPEC_SCALAR_ALIASES: dict[str, str] = {"int": "i64", "float": "f64"};
 
-def c_type_spec(t: object, annotation: (UniNode | None) = None) -> list[any] {
+def c_type_spec(
+    t: (TypeBase | None), annotation: (UniNode | None) = None
+) -> list[any] {
     import from jaclang.compiler.types.types { ClassType, FunctionType, UnionType }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if isinstance(t, UnionType) {
         members = [
             m
