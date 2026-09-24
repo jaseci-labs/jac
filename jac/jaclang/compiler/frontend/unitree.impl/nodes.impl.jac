@@ -3315,14 +3315,11 @@ impl Literal.lit_value.getter -> int | str | float | bool | None | type | object
 }
 
 impl BuiltinType.lit_value.getter -> type {
-    if (self.value not in Literal.type_map) {
+    tval = Literal.type_map.get(self.value);
+    if tval is None {
         raise TypeError(f"ICE: {self.value} is not a callable builtin");
     }
-    tval = Literal.type_map[self.value];
-    if isinstance(tval, type) {
-        return tval;
-    }
-    raise TypeError(f"ICE: {self.value} is not a callable builtin");
+    return tval;
 }
 
 impl Float.lit_value.getter -> float {

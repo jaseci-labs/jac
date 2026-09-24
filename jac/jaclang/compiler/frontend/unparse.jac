@@ -9,11 +9,8 @@ def unparse_node(nd: uni.UniNode) -> str {
         return nd.value;
     }
     _kids = list([nd->:Kid:->]);
-    if not _kids {
-        _v = nd?.value;
-        if isinstance(_v, str) {
-            return _v;
-        }
+    if not _kids and isinstance(nd, uni.JsxText) and isinstance(nd.value, str) {
+        return nd.value;
     }
     return ' '.join([unparse_node(i) for i in _kids]);
 }
