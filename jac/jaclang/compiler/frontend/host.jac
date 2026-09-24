@@ -224,6 +224,12 @@ obj HostServices {
         raise RuntimeError("no compiler host is installed");
     }
 
+    def native_session_declares(
+        program: JacProgram, source: str, element: str
+    ) -> (bool | None) {
+        return None;
+    }
+
     def native_verdict(
         path: str, program: (JacProgram | None) = None
     ) -> (NativeVerdict | None) {
