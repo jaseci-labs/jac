@@ -162,7 +162,9 @@ impl HeaderBuilder._build_generic_meta_tags -> list[str] {
         if key.startswith("meta_") and val {
             name = key[5:].replace("_", "-");
             lines.append(
-                f'<meta name="{html.escape(name)}" content="{html.escape(str(val))}" />'
+                f'<meta name=\"{html.escape(name)}\" content=\"{html.escape(
+                    str(val)
+                )}\" />'
             );
         }
     }
@@ -179,14 +181,14 @@ impl HeaderBuilder._build_link_tags -> list[str] {
     };
     for (key, rel) in special_links.items() {
         if val := self._get_value(key) {
-            lines.append(f'<link rel="{rel}" href="{html.escape(str(val))}" />');
+            lines.append(f'<link rel=\"{rel}\" href=\"{html.escape(str(val))}\" />');
         }
     }
     for (key, val) in self.meta_data.items() {
         if key.startswith("link_") and val {
             rel = key[5:].replace("_", "-");
             lines.append(
-                f'<link rel="{html.escape(rel)}" href="{html.escape(str(val))}" />'
+                f'<link rel=\"{html.escape(rel)}\" href=\"{html.escape(str(val))}\" />'
             );
         }
     }
@@ -207,9 +209,9 @@ impl HeaderBuilder._build_og_tags -> list[str] {
         if key.startswith("og_") and val {
             property_name = self._og_property(key[3:]);
             lines.append(
-                f'<meta property="og:{property_name}" content="{html.escape(
+                f'<meta property=\"og:{property_name}\" content=\"{html.escape(
                     str(val)
-                )}" />'
+                )}\" />'
             );
         }
     }
@@ -222,7 +224,7 @@ impl HeaderBuilder._build_twitter_tags -> list[str] {
         if key.startswith("twitter_") and val {
             name = key[8:].replace("_", ":");
             lines.append(
-                f'<meta name="twitter:{name}" content="{html.escape(str(val))}" />'
+                f'<meta name=\"twitter:{name}\" content=\"{html.escape(str(val))}\" />'
             );
         }
     }
@@ -234,7 +236,7 @@ impl HeaderBuilder._build_meta_tags -> list[str] {
     for key in self.standard_tags {
         if val := self._get_value(key) {
             name = key.replace("_", "-");
-            lines.append(f'<meta name="{name}" content="{html.escape(val)}" />');
+            lines.append(f'<meta name=\"{name}\" content=\"{html.escape(val)}\" />');
         }
     }
     return lines;
