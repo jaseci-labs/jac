@@ -205,6 +205,60 @@ test "locals shadowing client names do not pull" {
     assert stamp_of(mod, "server_side") == 'server' , "shadowed names resolve to locals - no pull";
 }
 
+test "member names spelled like browser globals do not seed client" {
+    mod = compile_fixture("infer_member_names.jac");
+    for name in [
+        "Passage",
+        "connect_window",
+        "build_opts",
+        "filter_window",
+        "filter_fetch",
+        "order_fetch",
+        "assign_fetch",
+        "match_performance",
+        "takes_window",
+        "pass_window"
+    ] {
+        stamp = stamp_of(mod, name);
+        assert stamp not in ('client', 'missing') , (
+            f"{name} only names a member, it references no browser global: {stamp}"
+        );
+    }
+    assert stamp_of(mod, "uses_window") == 'client' , "a real `window` reference seeds client";
+    assert stamp_of(mod, "filter_by_performance") == 'client' , (
+        "a browser global on the value side of a filter still seeds client"
+    );
+}
+
+test "a browser-global-named edge field keeps an imported graph module native" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.frontend.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    prog = JacProgram();
+    _prev = get_effective_default_codespace_override();
+    try {
+        mod = prog.compile(
+            os.path.join(FIXTURE_DIR, "nadefault_member_names.jac"),
+            options=CompileOptions(default_codespace="native")
+        );
+    } finally {
+        set_effective_default_codespace(_prev);
+    }
+    assert not prog.errors_had , (
+        f"no module is client code, so no E5082: {[str(e) for e in prog.errors_had]}"
+    );
+    assert mod.decided_codespace == 'native' , "the importer lowers native";
+    assert mod.gen.native_engine is not None;
+    graph_mod = hub_module(prog, "nadefault_member_names_graph.jac");
+    assert graph_mod is not None;
+    for name in ["carve", "Passage", "bump"] {
+        stamp = stamp_of(graph_mod, name);
+        assert stamp not in ('client', 'missing') , f"{name} must not be pulled client: {stamp}";
+    }
+}
+
 test "pure modules infer native under the shipped default" {
     import from jaclang.compiler.frontend.codeinfo {
         set_effective_default_codespace,
