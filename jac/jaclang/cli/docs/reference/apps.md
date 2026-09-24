@@ -176,9 +176,16 @@ namespace = "com.example.accounts"
 ```
 
 No sharing domains or ownership declarations are needed. Changing the namespace or
-logical declaration name is a persistent schema rename. Checkout paths, service
-entry names and deployment locations do not participate in persistent type identity.
-Existing path-derived identities require explicit migration and rebuilt artifacts.
+logical declaration name is a persistent schema rename. Because the embedded
+database name includes the namespace, a renamed project without a pinned namespace
+starts a new database; startup logs a warning naming the database that still holds
+the previous data. Checkout paths, service entry names and deployment locations do
+not participate in persistent type identity. Existing path-derived identities
+require explicit migration and rebuilt artifacts.
+
+Sealed images and `.jab` bundles load each service the same way source preparation
+does: every service has its own module namespace, and a stored value resolves to the
+class the reading service imported.
 
 No workspace consumer scan or app context cache is needed. `default-app` chooses a
 CLI default; placement pins choose codespaces. Neither assigns shared code to a

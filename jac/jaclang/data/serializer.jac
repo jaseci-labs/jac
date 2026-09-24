@@ -1,4 +1,6 @@
 import from jaclang.data.type_identity {
+    class_facts,
+    storage_type,
     type_module,
     register_type,
     resolve_type,

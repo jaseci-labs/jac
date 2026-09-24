@@ -120,68 +120,27 @@ def load_prepared_module(
     path: str, application: PreparedApplication | None = None, as_main: bool = False
 ) -> types.ModuleType {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.jac0core.sealed { image_for_bundle_dir }
-    import from pathlib { Path }
     import sys;
     path = os.path.realpath(path);
     if (prepared_code(path) is None) {
         raise RuntimeError(f'No prepared executable artifact for {path}');
     }
     application = application or application_for(path);
-    base = os.path.dirname(path);
-    target = base_stem(path);
-    if application is not None and path != application.entry {
-        relative_dir = os.path.relpath(base, application.root);
-        if relative_dir != '.' {
-            target = relative_dir.replace(os.sep, '.') + '.' + target;
-        }
-        base = application.root;
+    if application is None {
+        raise RuntimeError(f'No prepared application owns {path}');
     }
-    if application is not None {
-        image = image_for_bundle_dir(Path(application.root) / '_precompiled');
-        if image is None {
-            if not as_main {
-                return import_prepared(path, application);
-            }
-            ensure_namespace(application);
-            target = qualified_module(path, application);
-            base = application.root;
-        }
-        if image is not None {
-            relative = Path(path).relative_to(application.root).as_posix();
-            target = image.manifest['modules'][relative]['module'];
-            package = image.package;
-            loaded = sys.modules.get(package);
-            if loaded is not None
-                and application.root not in getattr(loaded, '__path__', ())
-                and not str(getattr(loaded, '__file__', '') or '').startswith(
-                    application.root + os.sep
-                ) {
-                namespace = '_jac_app_'
-                    + hashlib.sha256(application.root.encode()).hexdigest()[:16];
-                for (source, info) in image.manifest['modules'].items() {
-                    name = namespace + info['module'][len(package):];
-                    image.index[name] = (info, source);
-                }
-                ensure_namespace(application, namespace);
-                target = namespace + target[len(package):];
-            } elif package not in image.index {
-                ensure_namespace(application, package);
-            }
-        }
+    if not as_main {
+        return import_prepared(path, application);
     }
+    ensure_namespace(application);
+    target = qualified_module(path, application);
     modules = Jac.jac_import(
-        target=target,
-        base_path=base,
-        lng='jac',
-        override_name='__main__' if as_main else None
+        target=target, base_path=application.root, lng='jac', override_name='__main__'
     );
     if not modules {
         raise RuntimeError(f'Prepared module did not initialize: {path}');
     }
-    if as_main {
-        sys.modules[target] = modules[0];
-    }
+    sys.modules[target] = modules[0];
     return modules[0];
 }
 

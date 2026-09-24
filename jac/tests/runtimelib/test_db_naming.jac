@@ -60,6 +60,77 @@ test "nested service entries select one application database" {
 }
 
 
+test "a project database is owned by its project root, not a service directory" {
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.server.session { runtime_for_base }
+    project_only = {
+        k: v
+        for (k, v) in os.environ.items()
+        if k not in ('JAC_DB_SCRATCH', 'JAC_DB_SCRATCH_OWNER')
+    };
+    with patch.dict(os.environ, project_only, clear=True), TemporaryDirectory() as td {
+        base = Path(td);
+        (base / 'jac.toml').write_text('[project]\nname="one-application"\n');
+        (base / 'writer').mkdir();
+        writer = str(base / 'writer' / 'main.jac');
+        Path(writer).write_text('with entry {}');
+        runtime = runtime_for_base(str(base / 'writer'), writer).runtime;
+        assert runtime.owner_path == os.path.realpath(td);
+        assert runtime.sole_owner_database;
+        assert runtime.database == project_db_name(td, writer);
+    }
+    with patch.dict(os.environ, project_only, clear=True), TemporaryDirectory() as td {
+        standalone = str(Path(td) / 'main.jac');
+        Path(standalone).write_text('with entry {}');
+        assert not runtime_for_base(td, standalone).runtime.sole_owner_database;
+    }
+}
+
+test "creating a database for a renamed project names the database it replaces" {
+    import logging;
+    import from unittest.mock { patch }
+    import from jaclang.data { dbcatalog }
+    import from jaclang.data.dbcatalog { DbRecord }
+    runtime = PgRuntime(
+        data_dir='/unused',
+        database='jac_renamed_665bae49',
+        owner_path='/srv/app',
+        sole_owner_database=True
+    );
+    records = [
+        DbRecord(
+            database='jac_renamed_665bae49', kind='project', owner_path='/srv/app'
+        ),
+        DbRecord(
+            database='jac_original_665bae49', kind='project', owner_path='/srv/app'
+        ),
+        DbRecord(database='jac_scratch_1', kind='scratch', owner_path='/srv/app'),
+        DbRecord(database='jac_elsewhere_1', kind='project', owner_path='/srv/other')
+    ];
+    captured: list[str] = [];
+    class Capture(logging.Handler) {
+        def emit(self: Capture, record: logging.LogRecord) {
+            captured.append(record.getMessage());
+        }
+    }
+    handler = Capture();
+    logger = logging.getLogger('jaclang.data.pgembed');
+    logger.addHandler(handler);
+    try {
+        with patch.object(dbcatalog, 'list_databases', return_value=records) {
+            runtime._warn_superseded(None);
+        }
+    } finally {
+        logger.removeHandler(handler);
+    }
+    assert len(captured) == 1 , captured;
+    assert 'jac_original_665bae49' in captured[0];
+    assert 'jac_scratch_1' not in captured[0];
+    assert 'jac_elsewhere_1' not in captured[0];
+    assert '[persistence] namespace' in captured[0];
+}
+
 test "running file with same name as project uses project DB name" {
     file_path = Path(FIXTURES) / "test_project";
 

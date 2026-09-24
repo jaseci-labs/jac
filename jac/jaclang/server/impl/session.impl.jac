@@ -50,17 +50,19 @@ impl shared_pg_data_dir -> str {
 }
 
 
-impl project_db_name(base_path: str, target_path: (str | None)) -> str {
+impl project_database(base_path: str, target_path: (str | None)) -> ProjectDatabase {
     import hashlib;
     import from jaclang.runtime.graph_utils { get_name }
     import from jaclang.project.workspace { workspace_for_path }
     workspace = workspace_for_path(target_path or base_path);
     database_root = os.path.realpath(base_path);
+    in_project = False;
     if workspace is not None {
         project_root = os.path.realpath(workspace.project_root);
         if database_root == project_root
             or database_root.startswith(project_root + os.sep) {
             database_root = project_root;
+            in_project = True;
         }
         name = workspace.persistence.namespace;
     } else {
@@ -68,7 +70,14 @@ impl project_db_name(base_path: str, target_path: (str | None)) -> str {
     }
     safe = ''.join((ch if (ch.isalnum() or ch == '_') else '_') for ch in name.lower());
     digest = hashlib.sha1(database_root.encode('utf-8')).hexdigest()[:8];
-    return f"jac_{safe[:40]}_{digest}";
+    return ProjectDatabase(
+        name=f"jac_{safe[:40]}_{digest}", owner=database_root, in_project=in_project
+    );
+}
+
+
+impl project_db_name(base_path: str, target_path: (str | None)) -> str {
+    return project_database(base_path, target_path).name;
 }
 
 
@@ -228,18 +237,18 @@ impl runtime_for_base(
     }
     owner = 0 if lease is not None else scratch_owner_pid();
     scratch = lease is not None or owner > 0;
+    project = project_database(base_path, target_path);
     return RuntimeLease(
         runtime=PgRuntime(
             data_dir=shared_pg_data_dir(),
-            database=(
-                lease.database
-                    if lease is not None
-                    else project_db_name(base_path, target_path)
-            ),
-            owner_path=os.path.abspath(base_path),
+            database=lease.database if lease is not None else project.name,
+            owner_path=project.owner
+                if project.in_project
+                else os.path.abspath(base_path),
             kind=DbKind.SCRATCH if scratch else DbKind.PROJECT,
             owner_pid=owner,
-            retention_days=(0 if scratch else retention_days_for(base_path))
+            retention_days=(0 if scratch else retention_days_for(base_path)),
+            sole_owner_database=project.in_project and not scratch
         ),
         reset=lease is not None and lease.reset
     );

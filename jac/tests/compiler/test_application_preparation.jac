@@ -249,19 +249,33 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
             path = base / f'{package_name}.jac';
             package_init = base / '__init__.jac';
             package_init.write_text('');
+            models = base / 'models.jac';
+            models.write_text("node Stored { has value: str = 'kept'; }\n");
+            service = base / 'service.jac';
+            service.write_text('import from models { Stored }\n');
             path.write_text(
-                "def:pub hello -> str { return 'sealed'; }\nnode Record { has value: str = 'stored'; }\n"
+                "import from models { Stored }\ndef:pub hello -> str { return 'sealed'; }\nnode Record { has value: str = 'stored'; }\n"
             );
             try {
                 source_program = JacProgram();
                 first = prepare_application(
-                    str(path), source_program, tmp, services=[str(package_init)]
+                    str(path),
+                    source_program,
+                    tmp,
+                    services=[str(package_init), str(service)]
                 );
                 import from jaclang.data.serializer { Serializer }
                 import from jaclang.data.type_identity { resolution_scope }
+                import from jaclang.runtime.prepared {
+                    load_prepared_module,
+                    application_namespace
+                }
                 source_module: any = initialize_application(first);
                 payload: any = Serializer.serialize(
                     source_module.Record().__jac__, include_type=True
+                );
+                stored_payload: any = Serializer.serialize(
+                    source_module.Stored().__jac__, include_type=True
                 );
                 import from jaclang.compiler.driver.compilation_context {
                     artifact_cache_path
@@ -270,13 +284,30 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 init_data = artifact_cache_path(
                     str(package_init), source_program
                 ).read_bytes();
+                extra = {
+                    name: artifact_cache_path(
+                        str(base / f'{name}.jac'), source_program
+                    ).read_bytes() for name in ['models', 'service']
+                };
                 forget(str(path));
+                source_namespaces = {
+                    application_namespace(application)
+                    for application in [first, *first.applications]
+                };
+                for name in list(sys.modules) {
+                    if name.split('.')[0] in source_namespaces {
+                        sys.modules.pop(name, None);
+                    }
+                }
                 bundle = base / '_precompiled';
                 (bundle / sealed.python_tag()).mkdir(parents=True);
                 (bundle / sealed.python_tag() / f'{package_name}.jir').write_bytes(
                     data
                 );
                 (bundle / sealed.python_tag() / '__init__.jir').write_bytes(init_data);
+                for (name, blob) in extra.items() {
+                    (bundle / sealed.python_tag() / f'{name}.jir').write_bytes(blob);
+                }
                 (bundle / 'MANIFEST.json').write_text(
                     json.dumps(
                         {
@@ -296,6 +327,14 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                                     'jir': '__init__.jir',
                                     'package': True,
                                     'sha256': hashlib.sha256(init_data).hexdigest()
+                                },
+                                ** {
+                                    f'{name}.jac': {
+                                        'module': f'{package_name}.{name}',
+                                        'jir': f'{name}.jir',
+                                        'package': False,
+                                        'sha256': hashlib.sha256(blob).hexdigest()
+                                    } for (name, blob) in extra.items()
                                 }
                             }
                         }
@@ -330,8 +369,9 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                     in lines , lines;
                 assert '  Loading sealed application artifacts' not in lines , lines;
                 forget(str(unlisted));
-                path.write_text('retained source must never be analyzed');
-                package_init.write_text('retained initializer must never be analyzed');
+                for retained in [path, package_init, models, service] {
+                    retained.write_text('retained source must never be analyzed');
+                }
                 with patch.object(
                     JacCompiler,
                     '_compile_pipeline',
@@ -342,10 +382,16 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                     side_effect=AssertionError('sealed startup used source loader')
                 ) {
                     prepared = prepare_application(
-                        str(path), JacProgram(), tmp, client=True, dev=False
+                        str(path),
+                        JacProgram(),
+                        tmp,
+                        services=[str(package_init), str(service)],
+                        client=True,
+                        dev=False
                     );
                     assert str(package_init) in prepared.code;
                     module: any = initialize_application(prepared);
+                    service_module: any = load_prepared_module(str(service));
                 }
                 assert module.__file__ == str(path);
                 assert module.__name__.endswith('.' + package_name);
@@ -355,6 +401,20 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                     restored: any = Serializer.deserialize(payload);
                     assert isinstance(restored.archetype, module.Record);
                     assert restored.archetype.value == 'stored';
+                    kept: any = Serializer.deserialize(stored_payload);
+                    assert type(kept.archetype) is module.Stored , (
+                        f'{type(kept.archetype).__module__} is not the app class '
+                        + f'{module.Stored.__module__}'
+                    );
+                }
+                assert load_prepared_module(str(models), prepared)
+                    is sys.modules[module.Stored.__module__];
+                service_app = prepared.applications[1];
+                assert service_app.entry == str(service);
+                assert service_module.Stored is not module.Stored;
+                with resolution_scope(service_app) {
+                    kept = Serializer.deserialize(stored_payload);
+                    assert type(kept.archetype) is service_module.Stored;
                 }
                 assert sealed.image_for_bundle_dir(bundle) is not None;
                 assert prepared.client_compiler is None;

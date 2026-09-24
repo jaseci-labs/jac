@@ -676,24 +676,33 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
     }
     if module_name.startswith('_jac_app_') {
         raise TypeResolutionError(
-            'Legacy path-derived persistent type identity; declare an explicit schema alias and migrate the store before serving it'
+            f'Legacy path-derived persistent type identity {key}; declare an explicit schema alias and migrate the store before serving it'
         );
     }
-    if (cls := Serializer._registry.get(key)) {
-        return cls;
+    cls = Serializer._registry.get(key);
+    if cls is None {
+        cls = Serializer._resolve_class_by_import(module_name, class_name);
+        if cls is not None {
+            Serializer.register(cls);
+            if (n := Serializer._warn_occurrence("import-resolved", key)) {
+                logger.info(
+                    f"Serializer: {key} was not registered when it was first read; "
+                    "resolved it from its own module and registered it. Archetype "
+                    "classes normally register themselves as they are defined."
+                        + Serializer._occurrence_note(n)
+                );
+            }
+        }
     }
-
-    if (resolved := Serializer._resolve_class_by_import(module_name, class_name)) {
-        Serializer.register(resolved);
-        if (n := Serializer._warn_occurrence("import-resolved", key)) {
-            logger.info(
-                f"Serializer: {key} was not registered when it was first read; "
-                "resolved it from its own module and registered it. Archetype "
-                "classes normally register themselves as they are defined."
-                    + Serializer._occurrence_note(n)
+    if cls is not None {
+        if class_facts(cls) {
+            raise TypeResolutionError(
+                f'Legacy runtime-named persistent type {key} is now {storage_type(
+                    cls
+                )}; declare @archetype_alias("{key}") and migrate the store before serving it'
             );
         }
-        return resolved;
+        return cls;
     }
     if (n := Serializer._warn_occurrence("unregistered", key)) {
         logger.warning(

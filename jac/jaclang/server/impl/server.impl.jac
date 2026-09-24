@@ -535,6 +535,10 @@ impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
     if own_file and os.path.abspath(src_path) == os.path.abspath(own_file) {
         return getattr(self._module, name, None);
     }
+    import from jaclang.runtime.prepared { load_prepared_module }
+    if application is not None and os.path.realpath(src_path) in application.code {
+        return getattr(load_prepared_module(src_path, application), name, None);
+    }
     for loaded in list(Jac.loaded_modules.values()) {
         f = loaded?.__file__;
         if f and os.path.abspath(f) == os.path.abspath(src_path) {
@@ -544,7 +548,6 @@ impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
             }
         }
     }
-    import from jaclang.runtime.prepared { load_prepared_module }
     module = load_prepared_module(src_path);
     return getattr(module, name, None);
 }

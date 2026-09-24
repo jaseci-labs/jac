@@ -390,6 +390,19 @@ def _prepare_sealed(
                 - revision.code.keys()
         );
     }
+    revision.applications = [
+        PreparedApplication(
+            image_root,
+            path,
+            code=revision.code,
+            manifests=revision.manifests,
+            native=revision.native,
+            dev=False
+        ) for path in entries[1:]
+    ];
+    for application in [revision, *revision.applications] {
+        application.name = revision.manifests[application.entry].get('app', '');
+    }
     publish(revision);
     return revision;
 }
