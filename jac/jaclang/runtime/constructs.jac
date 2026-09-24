@@ -15,7 +15,7 @@ import from jaclang.runtime.archetype {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.runtime.semantic { MTIR, MTRuntime }
+
 glob __all__ = [
          'AccessLevel',
          'access_level_cast',
@@ -31,7 +31,5 @@ glob __all__ = [
          'JsxElement',
          'PermissionDenied',
          'Root',
-         'MTIR',
-         'MTRuntime',
          'ObjectSpatialFunction'
      ];

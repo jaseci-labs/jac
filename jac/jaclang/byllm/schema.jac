@@ -10,36 +10,37 @@ import from jaclang.runtime.semantic {
     ClassInfo,
     ParamInfo,
     EnumInfo,
-    FunctionInfo
+    FunctionInfo,
+    TypeForm
 }
 import from jaclang.byllm.exceptions { ConfigurationError }
 
 glob _SCHEMA_OBJECT_WRAPPER = "schema_object_wrapper",
      _SCHEMA_DICT_WRAPPER = "schema_dict_wrapper";
 
-def _as_info(v: object) -> (Info | str | tuple[any, ...] | None);
+def _as_info(v: object) -> (Info | TypeForm | str | None);
 def _info_at(
-    info: (Info | str | tuple[any, ...] | None), idx: int
-) -> (Info | str | tuple[any, ...] | None);
+    info: (Info | TypeForm | str | None), idx: int
+) -> (Info | TypeForm | str | None);
 
 def _type_to_schema(
     ty: type,
     title: str = "",
     desc: str = "",
-    info: (Info | str | tuple[any, ...] | None) = None
+    info: (Info | TypeForm | str | None) = None
 ) -> dict[str, any];
 
 def _function_to_schema(
-    fn: Callable, title: str = "", info: (Info | str | tuple[any, ...] | None) = None
+    fn: Callable, title: str = "", info: (Info | TypeForm | str | None) = None
 ) -> dict[str, any];
 
-def _name_of_type(ty: type, info: (Info | str | tuple[any, ...] | None) = None) -> str;
+def _name_of_type(ty: type, info: (Info | TypeForm | str | None) = None) -> str;
 def _convert_dict_to_schema(ty_dict: type) -> dict[str, any];
 def _decode_dict(json_obj: dict[str, any]) -> dict[str, any];
 def _wrap_to_object(schema: dict[str, object]) -> dict[str, object];
 def _unwrap_from_object(json_obj: dict[str, any]) -> dict[str, any];
 def type_to_schema(
-    resp_type: type, info: (Info | str | tuple[any, ...] | None) = None
+    resp_type: type, info: (Info | TypeForm | str | None) = None
 ) -> dict[str, object];
 
 def tool_to_schema(

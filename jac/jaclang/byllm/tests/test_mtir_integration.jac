@@ -23,8 +23,11 @@ import from jaclang.runtime.semantic {
     FunctionInfo,
     MethodInfo,
     ParamInfo,
+    TypeForm,
     mk_dict,
+    mk_form,
     mk_list,
+    type_to_str,
 }
 import from jaclang.compiler.driver.program { JacProgram }
 import from support { fixture_path, load_fixture, need_outside_jaclang }
@@ -120,17 +123,22 @@ test "nested class info" {
 
 test "generic type encoding" {
     list_type = mk_list("Person");
-    assert list_type == ("list", "Person");
+    assert isinstance(list_type, TypeForm);
+    assert (list_type.head, list_type.args) == ("list", ["Person"]);
 
     dict_type = mk_dict("str", "int");
-    assert dict_type == ("dict", "str", "int");
+    assert (dict_type.head, dict_type.args) == ("dict", ["str", "int"]);
 
     person_info = ClassInfo(
         name="Person", semstr="A person.", fields=[], base_classes=[], methods=[]
     );
     nested_list = mk_list(person_info);
-    assert nested_list[0] == "list";
-    assert nested_list[1].name == "Person";
+    assert nested_list.head == "list";
+    assert nested_list.args[0] is person_info;
+
+    pair = mk_form("tuple", ["int", mk_dict("str", person_info)]);
+    assert type_to_str(pair) == "tuple[int,dict[str,Person]]";
+    assert type_to_str(mk_form("union", ["int", None])) == "int|None";
 }
 
 # =============================================================================
@@ -199,7 +207,7 @@ test "method tool in class" {
 # Python Library Fallback Tests
 # =============================================================================
 test "mtruntime without mtir info" {
-    import from jaclang.runtime.semantic { MTIR }
+    import from jaclang.byllm.mtir { MTIR }
 
     def sample_func(x: int, y: str) -> str {
         return f"{y}: {x}";
@@ -211,7 +219,8 @@ test "mtruntime without mtir info" {
 
     runtime = mtir.runtime;
     assert runtime is not None;
-    assert runtime.caller == sample_func;
+    assert runtime.mtir is mtir;
+    assert mtir.caller == sample_func;
 }
 
 test "python lib mode fixture" {

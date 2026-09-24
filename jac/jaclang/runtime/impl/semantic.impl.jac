@@ -1,7 +1,3 @@
-impl MTIR.runtime.getter -> MTRuntime {
-    return MTRuntime.factory(self.caller, self.args, self.call_params);
-}
-
 impl ClassInfo.postinit -> object {
     if (self.fields is None) {
         self.fields = [];
