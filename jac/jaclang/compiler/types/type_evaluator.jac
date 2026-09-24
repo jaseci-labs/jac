@@ -89,7 +89,6 @@ import from jaclang.compiler.frontend.unitree {
     resolved_decl_of,
     Null,
     OpenStmt,
-    ParamKind as UniParamKind,
     ParamVar,
     RaiseStmt,
     ReturnStmt,
@@ -118,6 +117,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant {
+    ParamKind,
     TOKEN_MAP,
     BindingKind,
     CodeContext,
@@ -140,7 +140,6 @@ import from jaclang.compiler.types.types {
     ModuleType,
     NeverType,
     OverloadedType,
-    ParamKind,
     Parameter,
     ParameterCategory,
     TypeBase,

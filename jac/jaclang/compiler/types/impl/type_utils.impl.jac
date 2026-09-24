@@ -623,16 +623,16 @@ impl compute_mro_linearization(
     }
 }
 
-impl mro_signature(cls: ClassType) -> tuple[tuple[int, int | str], ...] {
-    sig: list[tuple[int, int | str]] = [];
+impl mro_signature(cls: ClassType) -> list[tuple[int, str]] {
+    sig: list[tuple[int, str]] = [];
     for base in cls.shared.base_classes {
         if isinstance(base, ClassType) {
-            sig.append((id(base.shared), len(base.shared.mro)));
+            sig.append((id(base.shared), str(len(base.shared.mro))));
         } else {
             sig.append((0, type(base).__name__));
         }
     }
-    return tuple(sig);
+    return sig;
 }
 
 impl ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool {

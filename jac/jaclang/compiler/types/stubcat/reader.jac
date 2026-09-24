@@ -15,6 +15,7 @@ import from jaclang.compiler.frontend.unitree {
     UniScopeNode
 }
 import from jaclang.compiler.frontend.constant {
+    ParamKind,
     BindingKind,
     ImmutabilityKind,
     OwnershipKind,
@@ -33,7 +34,6 @@ import from jaclang.compiler.types.types {
     ModuleType,
     NeverType,
     OverloadedType,
-    ParamKind,
     Parameter,
     ParameterCategory,
     TypeBase,

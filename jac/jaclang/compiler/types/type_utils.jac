@@ -20,14 +20,13 @@ import from jaclang.compiler.frontend.unitree {
     UniNode,
     UniScopeNode
 }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
+import from jaclang.compiler.frontend.constant { ParamKind, Tokens as Tok }
 import from .types {
     NeverType,
     EnumMemberType,
     AnyType,
     ClassType,
     FunctionType,
-    ParamKind,
     Parameter,
     TypeBase,
     TypeVarType,
@@ -58,7 +57,7 @@ def linearize_mro(
     cls: ClassType, _visiting: (set[int] | None) = None
 ) -> list[ClassType];
 
-def mro_signature(cls: ClassType) -> tuple[tuple[int, int | str], ...];
+def mro_signature(cls: ClassType) -> list[tuple[int, str]];
 
 def ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool;
 

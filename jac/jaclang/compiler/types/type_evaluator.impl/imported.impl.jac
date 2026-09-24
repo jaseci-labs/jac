@@ -304,6 +304,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             offset = len(path_list) - len(path_parts);
         }
         for (idx, npath) in enumerate(path_parts) {
+            part: Expr = npath;
             mod_path = path_list[idx + offset];
             if idx == len(path_parts) - 1
                 and self._imports_own_module(node_, mod_path) {
@@ -313,7 +314,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             if mod_path in self._module_type_cache {
                 resolved_for_cache = str(Path(mod_path).resolve());
                 if self.program.is_hub_entry_fresh(resolved_for_cache) {
-                    npath.type = self._module_type_cache[mod_path];
+                    part.type = self._module_type_cache[mod_path];
                     if isinstance(npath, Name) {
                         npath._sym_category = SymbolType.MODULE;
                     }
@@ -336,13 +337,13 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                         symbol_table=None,
                         is_external=True,
                     );
-                    npath.type = mod_type;
+                    part.type = mod_type;
                     if isinstance(npath, Name) {
                         npath._sym_category = SymbolType.MODULE;
                     }
-                    return npath.type;
+                    return part.type;
                 }
-                npath.type = UnknownType(is_diagnosed=True);
+                part.type = UnknownType(is_diagnosed=True);
                 declared = self._declared_missing_dependency(node_)
                     if self.program is not None
                         and self.program.options is not None
@@ -357,7 +358,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 } else {
                     self.emit_diag(W1100, npath);
                 }
-                return npath.type;
+                return part.type;
             }
 
             if Path(mod_path).is_dir() {
@@ -381,7 +382,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                     file_uri=pkg_dir.resolve(),
                     symbol_table=pkg_sym_tab,
                 );
-                npath.type = pkg_type;
+                part.type = pkg_type;
                 self._module_type_cache[mod_path] = pkg_type;
                 continue;
             }
@@ -394,7 +395,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                     symbol_table=None,
                     is_external=True,
                 );
-                npath.type = mod_type;
+                part.type = mod_type;
                 if isinstance(npath, Name) {
                     npath._sym_category = SymbolType.MODULE;
                 }
@@ -412,7 +413,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 file_uri=Path(mod_path).resolve(),
                 symbol_table=mod,
             );
-            npath.type = mod_type;
+            part.type = mod_type;
             if isinstance(npath, Name) {
                 npath._sym_category = SymbolType.MODULE;
             }
