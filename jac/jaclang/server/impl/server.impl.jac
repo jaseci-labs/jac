@@ -1624,7 +1624,10 @@ impl JacAPIServer.start(
     port_retries = 0 if settings.strict_port else PORT_RETRY_LIMIT;
     if settings.workers.multi_process() {
         supervisor = WorkerSupervisor(
-            settings=settings, worker_main=self._worker_main, on_ready=_announce
+            settings=settings,
+            worker_main=self._worker_main,
+            on_ready=_announce,
+            on_worker_exit=self._on_worker_exit
         );
         return supervisor.run(port_retries=port_retries);
     }
@@ -1668,6 +1671,18 @@ impl JacAPIServer._worker_main(
     } finally {
         self.scheduler.stop();
         stop_worker();
+    }
+}
+
+impl JacAPIServer._on_worker_exit(pid: int) -> None {
+    for ext in (self.extensions or []) {
+        try {
+            ext.on_worker_exit(self, pid);
+        } except Exception {
+            logger.exception(
+                f"{type(ext).__name__}.on_worker_exit failed for worker pid {pid}"
+            );
+        }
     }
 }
 

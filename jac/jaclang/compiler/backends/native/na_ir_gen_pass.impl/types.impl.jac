@@ -830,6 +830,10 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
         return self._ensure_bytearray_type();
     }
 
+    _c_ty = self._lower_c_interop_type(t);
+    if _c_ty is not None {
+        return _c_ty;
+    }
     _enum_ty = self._ensure_enum_lowered(t);
     if _enum_ty is not None {
         return _enum_ty;

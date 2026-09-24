@@ -135,6 +135,15 @@ cleanup() {
         echo "=== e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
         return
     fi
+    # A caller that watches this cycle from outside cannot read the settled
+    # scale-to-zero once the namespace is gone: the Deployment and the
+    # ScaledObject disappear independently while it terminates, so a poll
+    # landing in that window reads a half-deleted state rather than an idle
+    # one. Such a caller sets this and owns the teardown itself.
+    if [ "${E2E_KEEP_NS:-0}" = "1" ]; then
+        echo "=== keeping namespace '${NAMESPACE}'; the caller owns teardown (E2E_KEEP_NS=1) ==="
+        return
+    fi
     # Deleting the namespace sweeps the Deployment/Service and the namespaced
     # InterceptorRoute/ScaledObject together; no separate destroy call needed.
     kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout="${DELETE_TIMEOUT}s" || true

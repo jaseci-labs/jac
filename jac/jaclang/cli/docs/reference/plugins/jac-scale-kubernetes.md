@@ -793,6 +793,67 @@ A Deployment whose replicas an autoscaler owns is redeployed with `spec.replicas
 
 ---
 
+### Autoscaler runtime status
+
+`resource_status` reads the Deployment, which reports how many replicas exist and never why. Those are different questions, and three situations produce the same Deployment:
+
+| Zero replicas because | Reality |
+|---|---|
+| No trigger is firing, KEDA idled it | healthy |
+| The scaler cannot reach its metric endpoint | broken, and silent |
+| Someone scaled it by hand | neither |
+
+`autoscaler_status` reads the autoscaler's own view to separate them:
+
+```jac
+import from jaclang.scale.sdk { ScaleClient }
+
+with entry {
+    s = ScaleClient().autoscaler_status("orders", "prod");
+    if s.scaler_ready == False {
+        print(f"scaler failing: {s.reason}: {s.message}");
+    }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `status` | the same `ResourceStatus` vocabulary `resource_status` uses |
+| `engine` | `keda` or `hpa` |
+| `autoscaler_name` | the live resource, resolved from the target rather than supplied |
+| `trigger_active` | a trigger is firing. `None` when the engine cannot say |
+| `scaler_ready` | the scaler itself is healthy. `None` when the engine cannot say |
+| `conditions` | the ScaledObject's and HPA's conditions, normalized to dicts |
+| `resource_version` | the version the status was read at |
+
+`trigger_active` and `scaler_ready` are tri-state on purpose. A plain HPA has nothing corresponding to a trigger firing, and a ScaledObject that could not be read leaves both unknown, so `None` is not `False`: reporting `False` would assert a scaler failure nobody observed. A pod whose Role predates the `keda.sh` read rule gets a 403 here, and the result falls back to the workload's own state rather than raising.
+
+The caller passes a **scale target**, not an autoscaler resource name. Which resource is live depends on the scaling mode (`{target}-scaledobject`, `{target}-http-scaledobject`, `{target}-hpa`), and deriving that is the abstraction's job.
+
+### Observing transitions
+
+Polling `autoscaler_status` on a timer costs one request per target per interval and still reports a change an interval late. `watch_autoscaler_transitions` streams them instead:
+
+```jac
+import from jaclang.scale.sdk { ScaleClient }
+
+with entry {
+    for t in ScaleClient().watch_autoscaler_transitions("orders", "prod") {
+        print(f"{t.scale_target_name}: {t.previous_state} -> {t.state} ({t.reason})");
+    }
+}
+```
+
+**Watch cardinality is the caller's responsibility.** One call opens a bounded number of watches for one namespace, and nothing is shared between callers. A consumer tracking many targets makes **one** call and fans out in its own process; calling it once per target opens one watch per target, which is what the bound exists to avoid.
+
+Transitions are deduplicated: a target only yields when its state actually changes. The opening list seeds that cache and yields nothing, because an observer that has just started has witnessed no transition and reporting current state as one invents history on every restart. When Kubernetes answers `410 Gone`, meaning the stream fell too far behind to resume, the watch relists and keeps the cache, so targets whose state did not move stay silent.
+
+**`observed_at` is not durable history.** It records when *this observer* saw the change, not when the change happened. A transition that occurred while the observer was down surfaces as current state on the next relist, carrying that later timestamp. Nothing here persists transitions, so a caller that needs the real moment something happened keeps its own record.
+
+This watches the ScaledObject, so KEDA-side changes (a trigger firing, a scaler failing) are observed. A pod becoming ready without the ScaledObject changing is not, and needs a second watch.
+
+---
+
 ### Resource Tagging
 
 Kubernetes resources created by jac-scale are labeled `managed: jac-scale` for easy auditing:
@@ -1474,6 +1535,8 @@ reachable at call time).
 | `destroy(app_name, namespace, component="")` | removes the deployment; never prompts |
 | `status(app_name, namespace)` | full status dict (components, pod counts, URLs) |
 | `resource_status(app_name, namespace)` | `ResourceStatusInfo{status, replicas, ready_replicas, available_replicas, updated_replicas, replica_floor, reason, message}`; `status` is one of `active`, `activating`, `inactive`, `deactivating`, `degraded`, `unknown` (see [Deployment Status](#deployment-status)) |
+| `autoscaler_status(app_name, namespace, service="")` | `AutoscalerRuntimeStatus`: everything `ResourceStatusInfo` carries plus `engine`, `autoscaler_name`, `trigger_active`, `scaler_ready`, `conditions`, `resource_version` (see [Autoscaler runtime status](#autoscaler-runtime-status)) |
+| `watch_autoscaler_transitions(app_name, namespace, label_selector=None, timeout_seconds=None)` | iterator of `AutoscalerTransition` (see [Observing transitions](#observing-transitions)) |
 | `service_url(app_name, namespace)` | externally reachable URL or `None` |
 | `scale(app_name, namespace, replicas)` | resizes the app deployment |
 

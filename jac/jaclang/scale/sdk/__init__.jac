@@ -4,3 +4,7 @@ import from .events { EventLogger }
 import from jaclang.scale.models.progress { CallbackSink, EventSink, ProgressEvent }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
 import from jaclang.scale.models.resource_status { ResourceStatus, ResourceStatusInfo }
+import from jaclang.scale.deploy.autoscale.autoscaler {
+    AutoscalerRuntimeStatus,
+    AutoscalerTransition
+}

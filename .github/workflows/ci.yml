@@ -910,7 +910,11 @@ jobs:
           JAC_TEST_JOBS: "0"
         run: |
           jac test jac/jaclang/scale/tests/deploy/test_deploy_k8s.jac -x -f "not (early and exit)"
-      - name: Run KEDA HTTP-activation e2e
+      # Runs the HTTP-activation e2e under an observer, so the 0 -> 1 -> ready
+      # -> 0 cycle it already drives is also the cycle watch_scale_targets is
+      # proven against. A second deploy would cost minutes for a cycle already
+      # paid for.
+      - name: Run KEDA HTTP-activation + observer e2e
         env:
           # Ship the jac built from this checkout to the pods (channel LOCAL),
           # so the e2e validates the code under test rather than a published
@@ -920,7 +924,7 @@ jobs:
           # PVC no longer trusts a cluster default silently; name it.
           BUNDLE_STORAGE_CLASS: microk8s-hostpath
         run: |
-          bash jac/jaclang/scale/tests/deploy/keda_http_activation_real_e2e.sh \
+          bash jac/jaclang/scale/tests/deploy/keda_observer_real_e2e.sh \
             jac/jaclang/scale/tests/fixtures/keda_http_activation_e2e
       - name: Run K8 tests (failure-path)
         env:

@@ -48,6 +48,16 @@ def _get_archetype_alias -> Callable[..., any];
 
 def _get_schema_builder(name: str) -> Callable[..., any];
 
+glob _CINTEROP_NAMES: dict[str, str] = {
+         'ptr': 'JacPtr',
+         'PtrView': 'JacPtrView',
+         'Pinned': 'JacPinned',
+         'pin': 'jac_pin',
+         '_jac_clib_bind': 'clib_bind',
+         '_jac_c_copy': 'c_copy',
+         '_jac_c_cell': 'c_cell'
+     };
+
 def __getattr__(name: str) -> object;
 
 def printgraph(
@@ -170,6 +180,13 @@ glob __all__ = [
          '_jac_swap_places',
          'Region',
          'region_of',
+         'ptr',
+         'PtrView',
+         'Pinned',
+         'pin',
+         '_jac_clib_bind',
+         '_jac_c_copy',
+         '_jac_c_cell',
          '_jac_region_open',
          '_jac_region_close',
          '_jac_region_register',
