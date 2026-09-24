@@ -14,7 +14,10 @@ import from jaclang.scale.runtime.gateway.service_registry {
 }
 
 
-"""Serve `payload` as JSON on every GET after `delay` seconds; (server, port)."""
+glob _HANDLED: list[tuple[int, float, float]] = [];
+
+"""Serve `payload` as JSON on every GET after `delay` seconds; (server, port).
+Each handled request records (port, start, end) in `_HANDLED`."""
 def _serve_spec(payload: dict[str, any], delay: float = 0.0) -> tuple[any, ...] {
     import http.server;
     import json;
@@ -23,9 +26,13 @@ def _serve_spec(payload: dict[str, any], delay: float = 0.0) -> tuple[any, ...] 
     body = json.dumps(payload).encode();
 
     def _do_get(handler_self: any) {
+        began = time.monotonic();
         if delay {
             time.sleep(delay);
         }
+        _HANDLED.append(
+            (handler_self.server.server_address[1], began, time.monotonic())
+        );
         handler_self.send_response(200);
         handler_self.send_header("Content-Type", "application/json");
         handler_self.send_header("Content-Length", str(len(body)));
@@ -78,6 +85,9 @@ test "service specs are fetched concurrently, not serially" {
     reg = ServiceRegistry();
     reg.register(_entry("orders", "/orders", port_a));
     reg.register(_entry("billing", "/billing", port_b));
+    import selectors;
+    import threading;
+    _HANDLED.clear();
     try {
         start = time.monotonic();
         doc = asyncio.run(aggregate_openapi(reg));
@@ -88,9 +98,15 @@ test "service specs are fetched concurrently, not serially" {
     }
     assert "/orders/walker/A" in doc["paths"];
     assert "/billing/walker/A" in doc["paths"];
+    timeline = [
+        f"port {port}: {began - start:.2f}s..{ended - start:.2f}s"
+        for (port, began, ended) in _HANDLED
+    ];
     assert elapsed < 2.5 , (
         f"two 1.5s fetches took {elapsed:.1f}s; serial fetching adds every "
-        f"slow service's latency to the docs endpoint"
+        f"slow service's latency to the docs endpoint. handled: {timeline}; "
+        f"selector {selectors.DefaultSelector.__name__}, "
+        f"threads {[t.name for t in threading.enumerate()]}"
     );
 }
 
