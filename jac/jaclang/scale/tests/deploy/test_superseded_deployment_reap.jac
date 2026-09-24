@@ -12,6 +12,11 @@ import from jaclang.scale.deploy.target.kubernetes.target {
     fleet_targets_for_release,
     fleet_revert_order
 }
+import from jaclang.scale.sdk {
+    ScaleClient,
+    AutoscalerRuntimeStatus,
+    AutoscalerTransition
+}
 import from jaclang.scale.models.resource_status {
     REPLICA_FLOOR_ANNOTATION,
     assess_workload
@@ -1038,4 +1043,20 @@ test "the retention keep-set refuses to answer from an unreadable cluster" {
         "an empty keep-set from an unreadable cluster tells a pruner to delete "
         "every bundle the app references"
     );
+}
+
+
+test "the autoscaler's view is reachable from the public SDK" {
+    # Before this, asking why a workload sat at zero meant importing internal
+    # module paths and wiring three Kubernetes API clients by hand, so the
+    # capability existed and no application could use it.
+    assert hasattr(ScaleClient, "autoscaler_status");
+    assert hasattr(ScaleClient, "watch_autoscaler_transitions");
+    assert AutoscalerRuntimeStatus is not None;
+    assert AutoscalerTransition is not None;
+
+    # The scale-target name a caller no longer has to know the shape of: which
+    # autoscaler resource is live depends on the scaling mode, and deriving it
+    # is what the abstraction is for.
+    assert ScaleClient()._scale_target_name("orders") == "orders-deployment";
 }

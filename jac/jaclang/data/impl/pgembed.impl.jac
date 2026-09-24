@@ -689,11 +689,11 @@ impl PgRuntime._ensure_database -> None {
 
 
 impl PgRuntime._reap_scratch(conn: any) -> int {
-    import from jaclang.data.dbcatalog { list_databases }
+    import from jaclang.data.dbcatalog { SCRATCH_PREFIX, list_databases }
     try {
         records = [
             rec
-            for rec in list_databases(conn)
+            for rec in list_databases(conn, prefix=SCRATCH_PREFIX, with_size=False)
             if rec.is_scratch()
         ];
     } except Exception as e {
@@ -798,11 +798,11 @@ impl PgRuntime.drop_database(database: str, force: bool = False) -> bool {
 }
 
 
-impl PgRuntime.databases -> list[DbRecord] {
+impl PgRuntime.databases(with_size: bool = True) -> list[DbRecord] {
     import from jaclang.data.dbcatalog { connect_admin, list_databases }
     conn: any = connect_admin(self.conninfo());
     try {
-        return list_databases(conn);
+        return list_databases(conn, with_size=with_size);
     } finally {
         conn.close();
     }
@@ -823,7 +823,7 @@ impl PgRuntime._sweep_on_start -> None {
         return;
     }
     try {
-        self._reap(conn, list_databases(conn));
+        self._reap(conn, list_databases(conn, with_size=False));
         if self.retention_days > 0 {
             swept = 0;
             for name in expired_databases(conn, self.retention_days, self.database) {
