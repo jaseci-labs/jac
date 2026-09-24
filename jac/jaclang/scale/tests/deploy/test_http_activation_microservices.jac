@@ -1685,7 +1685,9 @@ test "an idled target is not degraded just because its HPA stopped scaling" {
     );
     racing = KEDAAutoscaler(
         _custom_api=c1, _apps_api=a1, _v2_api=v21
-    ).get_runtime_status("worker-deployment", "ns");
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
     assert racing.status != ResourceStatus.DEGRADED , racing.status;
 
     # Above its floor the same HPA condition is a genuine failure to scale.
