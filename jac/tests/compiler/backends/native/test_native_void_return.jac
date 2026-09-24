@@ -15,7 +15,13 @@ explicit `return` with an expression breaks.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, names_global, native_address, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    names_global,
+    native_address,
+    native_force_opts,
+    source_spelled
+}
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -53,7 +59,7 @@ test "a module with `return None` in a `-> None` method still produces IR" {
 
 test "every `-> None` callable terminates with ret void" {
     ir = void_fixture();
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     for line in text.splitlines() {
         stripped = line.strip();
         if stripped.startswith("ret ") and stripped != "ret void" {

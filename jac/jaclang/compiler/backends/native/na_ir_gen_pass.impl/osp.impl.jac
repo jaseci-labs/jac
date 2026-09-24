@@ -54,7 +54,7 @@ impl NaIRGenPass._osp_kernel_init_fns -> list[ir.Function] {
 
 impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
     for arch in archetypes {
-        _n = arch.name.value if arch.name else None;
+        _n = self._arch_key(arch) if arch.name else None;
         if (_n is not None) and (arch.arch_kind is not None) {
             self.arch_ast_map[_n] = arch;
         }
@@ -63,7 +63,8 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
     _model = get_osp_model(
         self.module,
         archetypes=(list(archetypes) + list(self.arch_ast_map.values())),
-        context=CodeContext.NATIVE
+        context=CodeContext.NATIVE,
+        native_names=True
     );
     for (_name, _other) in _model.collisions {
         self.emit(
@@ -76,13 +77,13 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
 }
 
 impl NaIRGenPass._osp_active -> bool {
-    _model = self.module.gen.osp_model;
+    _model = self.module.gen.native_osp_model;
     return (_model is not None)
         and (_model.has_event_ability() or _model.uses_construct);
 }
 
 impl NaIRGenPass._xmod_osp_help(names: list[str | None]) -> (str | None) {
-    _model = self.module.gen.osp_model;
+    _model = self.module.gen.native_osp_model;
     _tags = _model.tags if (_model is not None) else {};
     for _n in names {
         if (
@@ -90,7 +91,9 @@ impl NaIRGenPass._xmod_osp_help(names: list[str | None]) -> (str | None) {
         ) {
             (_kind, _mod) = self.imported_osp_archs[_n];
             return (
-                f"the {_kind} archetype '{_n}' is imported from native module "
+                f"the {_kind} archetype '{self._arch_display(
+                    _n
+                )}' is imported from native module "
                 f"'{_mod}' but was not materialized into this native compile; "
                 f"ensure '{_mod}' compiles as native source, or define the "
                 f"archetype in this module."
@@ -204,7 +207,7 @@ impl NaIRGenPass._osp_collect_slots(
     arch_name: str, is_entry: bool
 ) -> list[tuple[int, ir.Function]] {
     slots: list[tuple[int, ir.Function]] = [];
-    _model = self.module.gen.osp_model;
+    _model = self.module.gen.native_osp_model;
     if _model is None {
         return slots;
     }
@@ -413,7 +416,7 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
 }
 
 impl NaIRGenPass._emit_osp_setup -> None {
-    _model = self.module.gen.osp_model;
+    _model = self.module.gen.native_osp_model;
     if (_model is None) or (not self._osp_active()) {
         return;
     }
@@ -710,7 +713,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             edge_arch = self._struct_name_of(co.conn_type);
             edge_name = self._spawn_operand_name(co.conn_type);
             if edge_name is not None {
-                model = self.module.gen.osp_model;
+                model = self.module.gen.native_osp_model;
                 if model is not None {
                     edge_tag = ir.Constant(i64, model.tags.get(edge_name, -1));
                 }
@@ -1035,7 +1038,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         return None;
     }
 
-    _er_model = self.module.gen.osp_model;
+    _er_model = self.module.gen.native_osp_model;
     _er_tags = _er_model.tags if (_er_model is not None) else {};
     _many_fn = self.func_symtab.get("osp_refs_many");
     _cur: (ir.Value | None) = None;
@@ -1157,7 +1160,8 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         }
         if _step_filter is not None {
             _filter_fn = self.func_symtab.get("osp_filter");
-            _node_filter = self._get_name(_step_filter.f_type);
+            _node_filter = self._arch_ref_key(_step_filter.f_type)
+                or self._get_name(_step_filter.f_type);
             _ntag = _er_tags.get(_node_filter, -1) if _node_filter is not None else -1;
             _tpair = self._osp_type_pair(_ntag) if _ntag >= 0 else None;
             if (_ntag < 0) or (_tpair is None) or (_filter_fn is None) {
@@ -1233,7 +1237,9 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
     if not isinstance(_f, uni.FilterCompr) {
         return None;
     }
-    _fname = self._get_name(_f.f_type) if _f.f_type is not None else None;
+    _fname = (self._arch_ref_key(_f.f_type) or self._get_name(_f.f_type))
+        if _f.f_type is not None
+        else None;
     if _fname is None and _f.compares {
         _fname = self._elem_arch_name_of(nd.target);
     }
@@ -1254,7 +1260,7 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
     _result = target_val;
     _filter_fn = self.func_symtab.get("osp_filter");
     if _f.f_type is not None {
-        _model = self.module.gen.osp_model;
+        _model = self.module.gen.native_osp_model;
         _tags = _model.tags if _model is not None else {};
         _ntag = _tags.get(_fname, -1);
         _tpair = self._osp_type_pair(_ntag) if _ntag >= 0 else None;
@@ -1341,7 +1347,8 @@ impl NaIRGenPass._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) 
     }
     _elem = _args[0];
     if isinstance(_elem, _ClassType) and _elem?.shared {
-        return _elem.shared.class_name;
+        import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+        return class_type_native_name(_elem);
     }
     return None;
 }

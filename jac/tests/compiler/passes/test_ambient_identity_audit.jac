@@ -58,6 +58,7 @@ Audit verdicts this file pins (2026-08-18):
   demotion map the migration blast radius rests on.
 """
 
+import from tests.support { by_source_name }
 import os;
 import tempfile;
 import jaclang.compiler.frontend.unitree as uni;
@@ -677,7 +678,7 @@ test "optional_layout_signal" {
         program = JacProgram();
         mod = program.compile(path);
         registry = get_layout_registry(mod, program);
-        lay = registry.get_layout("Wrap");
+        lay = by_source_name(registry.layouts).get("Wrap");
         field_tags = [(fi.name, fi.type_tag) for fi in lay.fields]
             if lay is not None
             else [];

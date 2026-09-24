@@ -212,14 +212,16 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
     }
 
     if isinstance(value_node, uni.FuncCall) {
-        call_name = self._get_name(value_node.target);
+        call_name = self._arch_ref_key(value_node.target)
+            or self._get_name(value_node.target);
         if call_name is not None and call_name in self.struct_types {
             return self.struct_types[call_name].as_pointer();
         }
     }
 
     if isinstance(value_node, uni.AtomTrailer) {
-        target_name = self._get_name(value_node.target);
+        target_name = self._arch_ref_key(value_node.target)
+            or self._get_name(value_node.target);
         if target_name is not None and target_name in self.struct_types {
             return self.struct_types[target_name].as_pointer();
         }

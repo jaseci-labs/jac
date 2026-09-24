@@ -35,7 +35,7 @@ import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from tests.support { native_address }
+import from tests.support { native_address, source_spelled }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      WALK_ORDERS: list[any] = [
@@ -138,7 +138,7 @@ test "an unlowerable field erases loudly: the declaration seams, every touch ref
     seams: list[any] = [];
     for (path, rec) in snap.items() {
         if os.path.basename(path) == "unlowerable_field.jac" {
-            seams = list(rec['seams']);
+            seams = [source_spelled(str(s)) for s in rec['seams']];
         }
     }
     # The declaration owns its refusal: E5092 and the offending type name

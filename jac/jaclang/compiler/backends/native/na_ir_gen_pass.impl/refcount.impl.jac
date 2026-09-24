@@ -1488,6 +1488,10 @@ impl NaIRGenPass._emit_set_type_tag(
         return;
     }
     _i32 = ir.IntType(32);
+    if self._arch_display(type_name) != type_name {
+        b.call(self.rc_set_type_fn, [ptr_i8, self._emit_class_name_const(type_name)]);
+        return;
+    }
     _tag_gv = self._get_snprintf_fmt(type_name);
     _tag_gep = b.gep(
         _tag_gv, [ir.Constant(_i32, 0), ir.Constant(_i32, 0)], name="tag.gep"
@@ -2015,7 +2019,8 @@ impl NaIRGenPass._nogc_type_arg_mangles(expr: uni.UniNode | None) -> list[str] {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return [];
     }
-    return self._nogc_type_arg_mangles_of_str(expr.type.mangle());
+    import from jaclang.compiler.passes.layout_pass { native_type_key }
+    return self._nogc_type_arg_mangles_of_str(native_type_key(expr.type));
 }
 
 impl NaIRGenPass._drop_spec_for_mangle(mangle: str) -> (tuple[str, ir.Type] | None) {

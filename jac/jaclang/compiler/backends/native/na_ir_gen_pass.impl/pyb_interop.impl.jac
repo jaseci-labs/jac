@@ -52,8 +52,9 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
         if bname in ("Node", "Edge", "Walker", "Object", "Obj", "Root", "Archetype") {
             continue;
         }
-        if bname in self.arch_ast_map {
-            sub = self._pyb_base_of(bname);
+        bkey = self._arch_ref_key(base_expr) or bname;
+        if bkey in self.arch_ast_map {
+            sub = self._pyb_base_of(bkey);
             if sub is not None {
                 self._pyb_base_memo[arch_name] = sub;
                 return sub;
@@ -130,7 +131,7 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
         if base_arch is None {
             continue;
         }
-        if bname not in self.arch_ast_map {
+        if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
             for stmt in (base_arch.body or []) {
                 if isinstance(stmt, uni.Ability)
                     and stmt.name_ref is not None
@@ -211,7 +212,7 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
             continue;
         }
 
-        if bname not in self.arch_ast_map {
+        if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
             for stmt in (base_arch.body or []) {
                 if not isinstance(stmt, uni.Ability) {
                     continue;
@@ -1148,7 +1149,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
         ),
         self.builder.call(
             self._pyb_helper("from_cstr"),
-            [self._pyb_cstr(type_name)],
+            [self._pyb_cstr(self._arch_display(type_name))],
             name="pyb.ctor.cls"
         ),
         kwd,

@@ -1,8 +1,10 @@
+import from jaclang.compiler.passes.layout_pass { native_type_key }
 impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
     if t is None or not t?.mangle {
         return None;
     }
-    m = t.mangle();
+    import from jaclang.compiler.passes.layout_pass { native_type_key }
+    m = native_type_key(t);
     _map = self._mono_mangle_map;
     if _map {
         import re;
@@ -413,7 +415,7 @@ impl NaIRGenPass._instantiate_generic(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     parts.extend(sorted([f"ct_{k}={ct_mangle(v)}" for (k, v) in ct_bind.items()]));
@@ -528,7 +530,7 @@ impl NaIRGenPass._instantiate_generic_for_target(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     key = func_name + "|" + ",".join(parts);
@@ -571,7 +573,7 @@ impl NaIRGenPass._instantiate_generic_method(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     key = f"{owner_arch}.{method_name}|" + ",".join(parts);

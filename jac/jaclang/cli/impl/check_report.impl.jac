@@ -126,12 +126,13 @@ impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
         if rec['outcome'] == 'native' and rec.get('seams')
     );
     if seamed {
+        import from jaclang.compiler.frontend.codeinfo { native_display_text }
         console.print("");
         console.print("native seams (callables demoted to Python-only):");
         for (p, rec) in seamed {
             console.print(f"  {p}  ({len(rec['seams'])})");
             for s in rec['seams'] {
-                console.print(f"    {s}");
+                console.print(f"    {native_display_text(str(s))}");
             }
         }
     }

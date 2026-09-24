@@ -233,7 +233,8 @@ impl NaIRGenPass._export_native_iface -> None {
     }
     import from jaclang.compiler.frontend.codeinfo {
         native_glob_init_name,
-        native_module_key
+        native_module_key,
+        native_unit_spelling
     }
     mod_path = self.module.loc.mod_path if self.module?.loc else "";
     iface = NativeIface(
@@ -275,10 +276,14 @@ impl NaIRGenPass._export_native_iface -> None {
                 for arg in fn.args
             ];
         }
-        iface.exports[name] = ex;
+        spelled = native_unit_spelling(name, mod_path);
+        ex.name = spelled;
+        iface.exports[spelled] = ex;
     }
-    for (cname, body) in self._build_class_layouts().items() {
-        iface.classes[cname] = NativeClassLayout(
+    import json;
+    for (cname, native_body) in self._build_class_layouts().items() {
+        body = json.loads(native_unit_spelling(json.dumps(native_body), mod_path));
+        iface.classes[native_unit_spelling(cname, mod_path)] = NativeClassLayout(
             name=cname,
             size=int(body.get("size", 0)),
             tag=int(body.get("tag", 0)),
@@ -356,9 +361,11 @@ impl NaIRGenPass._symbol_for(
     import from jaclang.compiler.frontend.codeinfo {
         native_def_symbol,
         native_symbol_name,
-        native_unit_identity
+        native_unit_identity,
+        native_unit_spelling
     }
     module = owner if owner is not None else self.module;
+    name = native_unit_spelling(name, module.loc.mod_path);
     bundled_library = native_unit_identity(module.loc.mod_path).startswith(
         "jaclang/runtime/na_stdlib/"
     );
@@ -1123,13 +1130,10 @@ impl NaIRGenPass._walk_imported_module_type_names(imported_mod: uni.Module) -> N
             continue;
         }
         if isinstance(stmt, uni.Archetype) {
-            aname = stmt.name.value if stmt.name else None;
+            aname = self._arch_key(stmt) if stmt.name else None;
             if aname is not None and aname not in self.struct_types {
                 struct_type = self.llvm_module.context.get_identified_type(aname);
                 self.struct_types[aname] = struct_type;
-            }
-            if aname is not None and aname not in self._struct_source_name {
-                self._struct_source_name[aname] = imported_mod.name;
             }
         } elif isinstance(stmt, uni.Enum) {
             ename = stmt.name.value if stmt.name else None;
@@ -1152,7 +1156,7 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
         if isinstance(stmt, uni.Archetype) {
             self._register_imported_archetype(stmt);
 
-            _aname = stmt.name.value if stmt.name else None;
+            _aname = self._arch_key(stmt) if stmt.name else None;
             if (_aname is not None) and (stmt.arch_kind is not None) {
                 self.imported_osp_archs[_aname] = (stmt.arch_kind, imported_mod.name);
             }
@@ -1220,7 +1224,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
             or _imp_arch.name is None {
             continue;
         }
-        _ia_name = _imp_arch.name.value;
+        _ia_name = self._arch_key(_imp_arch);
         for _imp_stmt in _imp_arch.body {
             if (
                 isinstance(_imp_stmt, uni.Ability)
@@ -1276,7 +1280,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
 }
 
 impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None {
-    aname = arch.name.value if arch.name else None;
+    aname = self._arch_key(arch) if arch.name else None;
     if aname is None or arch.body is None {
         return;
     }
@@ -1338,7 +1342,7 @@ impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None 
             continue;
         }
         if isinstance(stmt, uni.Archetype) {
-            _aname = stmt.name.value if stmt.name else None;
+            _aname = self._arch_key(stmt) if stmt.name else None;
             if (_aname is not None) and (_aname not in self.arch_ast_map) {
                 self.arch_ast_map[_aname] = stmt;
             }
@@ -1347,13 +1351,12 @@ impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None 
 }
 
 impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
-    aname = arch.name.value if arch.name else None;
+    aname = self._arch_key(arch) if arch.name else None;
     if aname is None {
         return;
     }
 
-    _arch_mod = arch.find_parent_of_type(uni.Module);
-    _arch_src = _arch_mod.loc.mod_path if _arch_mod is not None else "";
+    _arch_src = os.path.realpath(arch.loc.mod_path) if arch.loc.mod_path else "";
     _seen_src = self._struct_source_mod.get(aname);
     if _seen_src is not None and _arch_src and _seen_src != _arch_src {
         import from jaclang.cli.console { console }

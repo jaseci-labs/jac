@@ -52,10 +52,10 @@ impl LayoutPass._run_impl(ir_in: Module) -> Module {
 impl LayoutPass._collect_archetypes(module: Module) -> dict[str, Archetype] {
     arch_map: dict[str, Archetype] = {};
     for nd in module.get_all_sub_nodes(Archetype) {
-        aname = nd.name.value if nd.name else None;
-        if aname is None {
+        if nd.name is None {
             continue;
         }
+        aname = archetype_native_name(nd);
 
         if aname not in arch_map or nd.body is not None {
             arch_map[aname] = nd;
@@ -85,7 +85,7 @@ impl LayoutPass._collect_isinstance_targets(module: Module) -> None {
         }
         for c in cands {
             if isinstance(c, Name) {
-                self.isinstance_targets.add(c.value);
+                self.isinstance_targets.add(referenced_native_name(c) or c.value);
             }
         }
     }
@@ -105,9 +105,14 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
                 } elif isinstance(base_expr, AstSymbolNode) {
                     pname = base_expr.sym_name;
                 }
-                if pname is None or is_erased_base_name(pname, archetypes) {
+                if pname is None {
                     continue;
                 }
+                _pnative = referenced_native_name(base_expr);
+                if _pnative is None and is_erased_base_name(pname, archetypes) {
+                    continue;
+                }
+                pname = _pnative or pname;
                 parents.append(pname);
                 parent_mods.append(declaring_module_path(base_expr));
             }
@@ -239,7 +244,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
     provisional slot when neither the class nor its ancestors need dispatch.
     """;
     reg = self.registry;
-    aname = arch.name.value if arch.name else "unknown";
+    aname = archetype_native_name(arch);
     mro = reg.mro_order.get(aname, [aname]);
     parents = reg.class_parents.get(aname, []);
 
@@ -615,7 +620,7 @@ impl LayoutPass._acyclic_walk(name: str, state: dict[str, int]) -> int {
         }
         key: (str | None) = None;
         try {
-            key = tb.mangle();
+            key = native_type_key(tb);
         } except Exception {
             key = None;
         }
@@ -854,11 +859,12 @@ impl LayoutPass._is_layout_compatible_type(
             return True;
         }
 
-        if tname in arch_map {
+        _tnative = referenced_native_name(type_node) or tname;
+        if _tnative in arch_map {
             return True;
         }
 
-        if tname in self.registry.layouts {
+        if _tnative in self.registry.layouts {
             return True;
         }
 

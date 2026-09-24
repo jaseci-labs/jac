@@ -26,7 +26,8 @@ import from tests.support {
     get_func,
     names_function,
     native_address,
-    compile_native_ir
+    compile_native_ir,
+    source_spelled
 }
 import jaclang;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -43,7 +44,7 @@ glob FIXTURES = os.path.join(
 def fn_ir(ir: uni.Module, name: str) -> str {
     out: list[str] = [];
     inside = False;
-    for ln in str(ir.gen.llvm_ir).split("\n") {
+    for ln in source_spelled(str(ir.gen.llvm_ir)).split("\n") {
         if not inside and ln.startswith("define") and names_function(ln, name) {
             inside = True;
         }

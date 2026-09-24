@@ -10,7 +10,10 @@ impl EsastGenPass._field_constructor_args(
 ) -> (es.Expression | None) {
     import from jaclang.compiler.types.types { ClassType }
     import from jaclang.compiler.field_semantics { positional_field_names }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.passes.layout_pass {
+        archetype_native_name,
+        get_layout_registry
+    }
 
     target_type = nd.target.type;
     if not isinstance(target_type, ClassType)
@@ -27,7 +30,9 @@ impl EsastGenPass._field_constructor_args(
     }
     source = arch.find_parent_of_type(uni.Module);
     assert source is not None;
-    layout = get_layout_registry(source, self.prog).get_layout(arch.sym_name);
+    layout = get_layout_registry(source, self.prog).get_layout(
+        archetype_native_name(arch)
+    );
     assert layout is not None;
     fields: list[uni.HasVar] = [];
     for field in layout.fields {

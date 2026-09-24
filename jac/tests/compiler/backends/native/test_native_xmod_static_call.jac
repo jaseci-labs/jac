@@ -23,7 +23,13 @@ import ctypes;
 import importlib;
 import os;
 import sys;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    native_address,
+    native_force_opts,
+    source_spelled
+}
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -67,7 +73,7 @@ def _seams_of(coverage: dict[str, any], fixture: str) -> list[str] {
     if rec is None {
         return [];
     }
-    return [str(s) for s in (rec.get("seams") or [])];
+    return [source_spelled(str(s)) for s in (rec.get("seams") or [])];
 }
 
 
@@ -161,7 +167,7 @@ test "the same call with no Python base still lowers" {
     assert "run_merge" in layout.functions , (
         f"the caller was demoted: {sorted(layout.functions)}"
     );
-    assert "Merger.merge" in layout.methods , (
+    assert "Merger.merge" in by_source_name(layout.methods) , (
         f"the imported static method lost its native lowering: {sorted(layout.methods)}"
     );
 }

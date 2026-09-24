@@ -194,6 +194,53 @@ glob NATIVE_FIXTURES: str = str(
              / "fixtures"
      );
 
+"""The native identity of archetype `name` declared in `source`.
+
+Structs, method symbols, vtables and layout keys are spelled with it
+(`codeinfo.native_arch_name`: the name scoped by its defining module). A
+relative `source` names a file in the native fixtures directory.
+"""
+def native_arch(source: str, name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
+    path = Path(source);
+    if not path.is_absolute() {
+        path = Path(NATIVE_FIXTURES) / source;
+    }
+    return native_arch_name(str(path), name);
+}
+
+"""`text` (IR, a symbol, a layout key) with archetype identities spelled by
+source name, for assertions about everything but the scoping itself."""
+def source_spelled(text: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_display_text }
+    return native_display_text(text);
+}
+
+"""`mapping` re-keyed by source name (layout registries, exported layouts)."""
+def by_source_name(mapping: dict[str, any]) -> any {
+    return {source_spelled(key): value for (key, value) in mapping.items()};
+}
+
+"""The link symbol `iface` exports for `name`. A record names the unit's own
+archetypes by source name; an export whose name involves another module's
+archetype (a specialization over it) keeps that archetype's scope, and is
+found here by its source spelling too."""
+def iface_symbol(iface: any, name: str) -> (str | None) {
+    if iface is None {
+        return None;
+    }
+    found = iface.symbol_of(name);
+    if found is not None {
+        return found;
+    }
+    for (key, ex) in iface.exports.items() {
+        if source_spelled(key) == name {
+            return ex.symbol;
+        }
+    }
+    return None;
+}
+
 """Compile a .jac fixture into the native codespace and return (engine, module).
 
 `fixture_dir` defaults to the native pass fixtures directory, which is where
@@ -296,7 +343,7 @@ def native_symbol(eng: any, name: str) -> str {
         interfaces.insert(0, iface);
     }
     for unit_iface in interfaces {
-        found = unit_iface.symbol_of(name);
+        found = iface_symbol(unit_iface, name);
         if found is not None {
             return found;
         }
@@ -322,11 +369,9 @@ interface record first, the mangling rule second. Tests that grep emitted
 IR for a function or global build their marker from this."""
 def unit_symbol(ir: any, name: str) -> str {
     iface = ir.gen.native_iface if ir?.gen else None;
-    if iface is not None {
-        found = iface.symbol_of(name);
-        if found is not None {
-            return found;
-        }
+    found = iface_symbol(iface, name);
+    if found is not None {
+        return found;
     }
     path = ir.loc.mod_path if ir?.loc else "";
     if not path {

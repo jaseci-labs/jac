@@ -36,6 +36,10 @@ impl NaIRGenPass._arch_alias_target(nd: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(nd, uni.NameAtom) {
         return None;
     }
+    _arch_key = self._arch_ref_key(nd);
+    if _arch_key is not None {
+        return _arch_key;
+    }
     sym = nd.sym;
     if sym is None {
         return None;
@@ -55,20 +59,6 @@ impl NaIRGenPass._arch_alias_target(nd: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
-impl NaIRGenPass._qualified_arch_ref(nd: (uni.UniNode | None)) -> (str | None) {
-    if not (isinstance(nd, uni.AtomTrailer) and nd.is_attr)
-        or not isinstance(nd.right, uni.NameAtom) {
-        return None;
-    }
-    sym = nd.right.sym;
-    decl = sym.decl if sym is not None else None;
-    owner = decl.name_of if decl is not None else None;
-    if isinstance(owner, uni.Archetype) and owner.name.value in self.struct_types {
-        return owner.name.value;
-    }
-    return None;
-}
-
 impl NaIRGenPass._erased_generic_ctor(nd: uni.FuncCall) -> (str | None) {
     _tgt = nd.target;
     if not isinstance(_tgt, uni.AtomTrailer)
@@ -77,7 +67,7 @@ impl NaIRGenPass._erased_generic_ctor(nd: uni.FuncCall) -> (str | None) {
         return None;
     }
     if self._ct_ctor_slots(_tgt) {
-        return self._get_name(_tgt.target);
+        return self._arch_ref_key(_tgt.target) or self._get_name(_tgt.target);
     }
     _base_tk = self._type_key_of(_tgt.target);
     if _base_tk is None or not _base_tk.startswith("type[") {
@@ -1186,7 +1176,7 @@ impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
             nd, _class_arg, list(params_l[1:]), _class_bound
         );
     }
-    cls_name = self._get_name(_class_arg);
+    cls_name = self._arch_ref_key(_class_arg) or self._get_name(_class_arg);
     if cls_name is None or cls_name not in self.struct_types {
         cls_name = self._struct_name_of(nd);
     }
@@ -2274,12 +2264,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
-    if func_name in self.struct_types {
-        return self._codegen_instantiation(nd, type_name_override=func_name);
-    }
-    _alias_arch = self._arch_alias_target(nd.target);
+    _alias_arch = self._arch_alias_target(nd.target) or self._arch_ref_key(nd.target);
     if _alias_arch is not None and _alias_arch in self.struct_types {
         return self._codegen_instantiation(nd, type_name_override=_alias_arch);
+    }
+    if func_name in self.struct_types {
+        return self._codegen_instantiation(nd, type_name_override=func_name);
     }
     _skipped_key = f"{_mod_qual}.{func_name}" if _mod_qual is not None else func_name;
     if (

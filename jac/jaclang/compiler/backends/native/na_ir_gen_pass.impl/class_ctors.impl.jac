@@ -32,7 +32,8 @@ impl NaIRGenPass._class_expr_bound(
     } elif not typ.is_instantiable() or typ.is_instance() {
         return None;
     }
-    return typ.shared.class_name;
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    return class_type_native_name(typ);
 }
 
 impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
@@ -224,7 +225,9 @@ impl NaIRGenPass._bind_class_ctor_args(
                 }
             }
             if index < 0 {
-                problem = f"'{bound}' has no constructor parameter named '{key}'";
+                problem = f"'{self._arch_display(
+                    bound
+                )}' has no constructor parameter named '{key}'";
                 break;
             }
             value = arg.value;
@@ -244,7 +247,9 @@ impl NaIRGenPass._bind_class_ctor_args(
             break;
         } else {
             if next_positional >= len(positional) {
-                problem = f"too many positional arguments for the '{bound}' constructor";
+                problem = f"too many positional arguments for the '{self._arch_display(
+                    bound
+                )}' constructor";
                 break;
             }
             index = positional[next_positional];
@@ -264,7 +269,9 @@ impl NaIRGenPass._bind_class_ctor_args(
     if problem is None and spread is None {
         for (i, p) in enumerate(params) {
             if p.fallback is None and i not in taken {
-                problem = f"missing required '{bound}' constructor argument '{p.name}'";
+                problem = f"missing required '{self._arch_display(
+                    bound
+                )}' constructor argument '{p.name}'";
                 break;
             }
         }
@@ -274,8 +281,10 @@ impl NaIRGenPass._bind_class_ctor_args(
             E5092,
             node_override=nd,
             kind="class value construction",
-            name=f"type[{bound}]",
-            help_text=f"Construction through a class value binds its arguments against the '{bound}' constructor signature: {problem}."
+            name=f"type[{self._arch_display(bound)}]",
+            help_text=f"Construction through a class value binds its arguments against the '{self._arch_display(
+                bound
+            )}' constructor signature: {problem}."
         );
         return None;
     }
@@ -291,8 +300,10 @@ impl NaIRGenPass._codegen_class_value_call(
             E5092,
             node_override=nd,
             kind="class value construction",
-            name=f"type[{bound}]",
-            help_text=f"Construction through a class value needs a native constructor signature for '{bound}': its layout must be visible, its initializer must not take *args or **kwargs, and it must not be generic or derive from a Python-side base."
+            name=f"type[{self._arch_display(bound)}]",
+            help_text=f"Construction through a class value needs a native constructor signature for '{self._arch_display(
+                bound
+            )}': its layout must be visible, its initializer must not take *args or **kwargs, and it must not be generic or derive from a Python-side base."
         );
         return None;
     }
@@ -349,7 +360,9 @@ impl NaIRGenPass._codegen_class_value_call(
             "==", ctor_entry, ir.Constant(i8p, None), name="class.ctor.none"
         ),
         "TypeError",
-        f"class is not constructible with the {bound} constructor arguments",
+        f"class is not constructible with the {self._arch_display(
+            bound
+        )} constructor arguments",
         release_on_error=owned
     );
     fnty = self._class_ctor_fn_type(params);
@@ -396,7 +409,9 @@ impl NaIRGenPass._bind_class_ctor_spread(
             node_override=nd,
             kind="class value construction",
             name="**",
-            help_text=f"A `**` mapping unpacked into a type[{bound}] constructor must lower to a native str-keyed dict."
+            help_text=f"A `**` mapping unpacked into a type[{self._arch_display(
+                bound
+            )}] constructor must lower to a native str-keyed dict."
         );
         return None;
     }
@@ -411,7 +426,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
             "kw" if i in values else None,
             None
         );
-        rec["dup_msg"] = f"{bound}() {rec['dup_msg']}";
+        rec["dup_msg"] = f"{self._arch_display(bound)}() {rec['dup_msg']}";
         records.append((i, rec));
     }
     matched = self._bind_kw_spread(mapping, helpers, [r for (_, r) in records], "");
@@ -442,7 +457,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
             name="kwargs.extra"
         ),
         "TypeError",
-        f"{bound}() got an unexpected keyword argument"
+        f"{self._arch_display(bound)}() got an unexpected keyword argument"
     );
     return mask;
 }
@@ -694,7 +709,7 @@ impl NaIRGenPass._class_tagless_record -> ir.GlobalVariable {
 impl NaIRGenPass._emit_class_ctor(
     arch: uni.Archetype, params: list[NativeCtorParam]
 ) -> (ir.Function | None) {
-    name = arch.name.value;
+    name = self._arch_key(arch);
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     fn = self._define_function(f"{name}.__ctor", self._class_ctor_fn_type(params));
@@ -819,7 +834,7 @@ impl NaIRGenPass._emit_class_ctor_bridge(
     }
     i64 = ir.IntType(64);
     bridge = self._define_function(
-        f"{name}.__ctor.{bound}", self._class_ctor_fn_type(params)
+        f"{name}.__ctor.{self._arch_display(bound)}", self._class_ctor_fn_type(params)
     );
     bridge.linkage = "internal";
     state = self._enter_function(bridge);
@@ -870,7 +885,7 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
         if arch.name is None {
             continue;
         }
-        name = arch.name.value;
+        name = self._arch_key(arch);
         if name not in self.struct_types or self._is_enum_arch(name) {
             continue;
         }

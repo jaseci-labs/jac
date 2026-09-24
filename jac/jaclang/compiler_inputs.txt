@@ -15,3 +15,8 @@ project
 dist/precompile_bytecode.jac
 dist/source/build.jac
 dist/source/run.jac
+# Native-only units: each is keyed by its own source, and none has bytecode
+# meaning. `!` keeps them in the digest by path, not by content.
+!runtime/na_stdlib
+!compiler/jc_unit.jac
+!compiler/jc_materialize.jac

@@ -18,6 +18,7 @@ import os;
 import sys;
 import from tests.support {
     TESTS_DIR,
+    by_source_name,
     compile_native,
     native_address,
     native_force_opts,
@@ -52,7 +53,7 @@ test "str dunders reading through a trailer are not demoted to Python" {
     layout = ir.gen.native_layout;
     assert layout is not None , "no native layout -- module-wide native compile failed";
     for want in ["Kind.__str__", "Outer.__str__", "Indexed.__str__"] {
-        assert want in layout.methods , (
+        assert want in by_source_name(layout.methods) , (
             f"{want} was demoted or never emitted; native methods: "
             f"{sorted(layout.methods)}"
         );

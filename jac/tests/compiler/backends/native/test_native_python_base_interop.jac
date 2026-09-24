@@ -25,7 +25,13 @@ import ctypes;
 import importlib;
 import os;
 import sys;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    compile_native,
+    get_func,
+    native_force_opts
+}
 
 import from jaclang.runtime.interop_bridge { _pyb_shadows }
 
@@ -62,7 +68,7 @@ test "a native class over a Python-side base compiles with no seams" {
     layout = ir.gen.native_layout;
     assert layout is not None , "no native layout was exported";
     for m in ["Kid.__post_init__", "Kid.poke", "Kid.read_back"] {
-        assert m in layout.methods , (
+        assert m in by_source_name(layout.methods) , (
             f"{m} was demoted instead of lowering: {sorted(layout.methods)}"
         );
     }
@@ -125,7 +131,7 @@ test "a subscripted generic Python-side base still bridges" {
     (eng, ir) = compile_native("pyb_gen_base_main.jac");
     layout = ir.gen.native_layout;
     assert layout is not None , "no native layout was exported";
-    assert "Kid.poke" in layout.methods , (
+    assert "Kid.poke" in by_source_name(layout.methods) , (
         f"Kid.poke was demoted instead of bridging: {sorted(layout.methods)}"
     );
     get_func(eng, "jac_entry", None)();

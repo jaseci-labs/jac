@@ -26,10 +26,27 @@ import os
 # Data, not compiler code: the Zig bootstrap and CI read this same manifest
 # before a Jac compiler exists. Include the manifest itself in source digests.
 with open(os.path.join(os.path.dirname(__file__), "compiler_inputs.txt")) as _inputs:
-    COMPILER_DIGEST_ROOTS: tuple[str, ...] = tuple(
+    _INPUT_LINES: tuple[str, ...] = tuple(
         line.strip() for line in _inputs
         if line.strip() and not line.lstrip().startswith("#")
     )
+COMPILER_DIGEST_ROOTS: tuple[str, ...] = tuple(
+    line for line in _INPUT_LINES if not line.startswith("!")
+)
+# `!path` lines name inputs the digest covers by path only: native-only units
+# whose own module keys already track their content. Adding or removing one
+# still changes the digest; editing one does not.
+COMPILER_DIGEST_ROSTER: tuple[str, ...] = tuple(
+    line[1:] for line in _INPUT_LINES if line.startswith("!")
+)
+
+
+def is_roster_input(rel_path: str) -> bool:
+    """Whether a declared compiler input is digested by its path alone."""
+    return any(
+        rel_path == p or rel_path.startswith(p + "/") for p in COMPILER_DIGEST_ROSTER
+    )
+
 
 # Inputs the build LOWERS into JacPython's native object (prepare_native.py)
 # instead of shipping as source. They are compiler identity exactly like every
