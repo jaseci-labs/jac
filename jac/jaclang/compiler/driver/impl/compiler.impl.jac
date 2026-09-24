@@ -55,11 +55,24 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
     return found;
 }
 
+impl JacCompiler.product_program(
+    full_target: str, target_program: JacProgram, execution: bool = False
+) -> JacProgram {
+    import from jaclang.compiler.driver.compilation_context {
+        bind_options,
+        context_program
+    }
+    actual = self.selfhost.resolve(full_target, target_program, execution=execution);
+    if actual.internal {
+        return actual;
+    }
+    return context_program(actual, bind_options(full_target, actual, actual.options));
+}
+
 impl JacCompiler.get_native_interop_setup(
     full_target: str, target_program: JacProgram
 ) -> tuple[((object | None), (dict[(str, object)] | None))] {
-    import from jaclang.compiler.driver.compilation_context { program_for }
-    actual_program = program_for(full_target, target_program);
+    actual_program = self.product_program(full_target, target_program, execution=True);
     if (full_target in actual_program.hub.artifacts) {
         gen = actual_program.hub.artifacts[full_target];
         return (gen.native_engine, gen.interop_py_funcs);
@@ -81,8 +94,7 @@ impl JacCompiler.get_native_interop_setup(
 impl JacCompiler.get_native_layout(
     full_target: str, target_program: JacProgram
 ) -> (NativeModuleLayout | None) {
-    import from jaclang.compiler.driver.compilation_context { program_for }
-    actual_program = program_for(full_target, target_program);
+    actual_program = self.product_program(full_target, target_program, execution=True);
     _layout: NativeModuleLayout | None = None;
     if (full_target in actual_program.hub.artifacts) {
         gen = actual_program.hub.artifacts[full_target];
@@ -115,9 +127,8 @@ impl JacCompiler.get_bytecode(
     full_target: str, target_program: JacProgram
 ) -> (types.CodeType | None) {
     import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program,
-        compilation_scope
+        compilation_scope,
+        owner_scope_options
     }
     if full_target.endswith('.py') {
         import builtins;
@@ -126,12 +137,7 @@ impl JacCompiler.get_bytecode(
             read_file_with_encoding(full_target), full_target, 'exec'
         );
     }
-    actual = self.selfhost.resolve(full_target, target_program, execution=True);
-    if not actual.internal {
-        options = bind_options(full_target, actual, actual.options);
-        actual = context_program(actual, options);
-    }
-    import from jaclang.compiler.driver.compilation_context { owner_scope_options }
+    actual = self.product_program(full_target, target_program, execution=True);
     with compilation_scope(owner_scope_options(actual)) {
         return self._get_bytecode(full_target, actual);
     }
@@ -1331,16 +1337,10 @@ impl JacCompiler.get_client_artifact(
     full_target: str, target_program: JacProgram
 ) -> (ClientArtifact | None) {
     import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program,
-        compilation_scope
+        compilation_scope,
+        owner_scope_options
     }
-    actual = self.selfhost.resolve(full_target, target_program);
-    if not actual.internal {
-        options = bind_options(full_target, actual, actual.options);
-        actual = context_program(actual, options);
-    }
-    import from jaclang.compiler.driver.compilation_context { owner_scope_options }
+    actual = self.product_program(full_target, target_program);
     with compilation_scope(owner_scope_options(actual)) {
         return self._get_client_artifact(full_target, actual);
     }

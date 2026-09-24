@@ -175,6 +175,10 @@ obj JacCompiler {
     def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;
     def ensure_stub_catalog -> StubCatalog | None;
+    def product_program(
+        full_target: str, target_program: JacProgram, execution: bool = False
+    ) -> JacProgram;
+
     def get_native_interop_setup(
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))];

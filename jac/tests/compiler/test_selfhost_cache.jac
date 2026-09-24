@@ -171,3 +171,14 @@ test "bundled app dependencies retain their compilation context" {
     assert compiler.selfhost.resolve(compiler_source, program)
         is compiler.selfhost.program;
 }
+
+test "executing a compiler-tree module leaves the program's own context unclaimed" {
+    compiler = JacRuntime.get_compiler();
+    program = JacProgram();
+    compiler.get_native_interop_setup(
+        _tree_path('compiler/driver/pipeline.jac'), program
+    );
+    compiler.get_native_layout(_tree_path('compiler/driver/pipeline.jac'), program);
+    assert not program.context_key;
+    assert not program.contexts;
+}
