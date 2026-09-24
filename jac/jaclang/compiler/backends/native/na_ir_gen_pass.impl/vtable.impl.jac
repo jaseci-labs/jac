@@ -626,6 +626,12 @@ impl NaIRGenPass._class_id_of_value(arch_name: str, obj_val: ir.Value) -> ir.Val
         return self._emit_class_name_const(arch_name);
     }
     i32 = ir.IntType(32);
+    _struct = self.struct_types.get(arch_name);
+    if _struct is not None and obj_val.type != _struct.as_pointer() {
+        obj_val = self.builder.bitcast(
+            obj_val, _struct.as_pointer(), name="clsname.recv"
+        );
+    }
     vtable_ptr_ptr = self.builder.gep(
         obj_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="clsname.vt.ptr.ptr"
     );

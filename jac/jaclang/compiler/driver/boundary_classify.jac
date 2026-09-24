@@ -12,7 +12,7 @@ import from jaclang.compiler.placement.placement_pins {
 }
 import from jaclang.compiler.frontend.host { active_host }
 import type from jaclang.compiler.frontend.codeinfo { InteropManifest }
-import type from jaclang.project.workspace_model { AppSpec }
+import from jaclang.project.workspace_model { AppSpec }
 
 def _coerce_module(module: uni.Module, context: CodeContext) {
     module.set_code_context(context);

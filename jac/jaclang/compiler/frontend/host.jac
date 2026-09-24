@@ -1,6 +1,6 @@
 import from collections.abc { Iterator }
 import from contextlib { contextmanager }
-import type from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
+import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import type from jaclang.compiler.types.ct_value { CtEnvironment }

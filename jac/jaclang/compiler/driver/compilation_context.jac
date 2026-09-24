@@ -1,5 +1,5 @@
 import copy;
-import type from jaclang.project.workspace_model { AppSpec }
+import from jaclang.project.workspace_model { AppSpec }
 import hashlib;
 import os;
 import from contextlib { contextmanager }
