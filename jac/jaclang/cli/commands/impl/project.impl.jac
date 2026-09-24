@@ -8,13 +8,7 @@ import base64;
 import importlib.metadata;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.dist.seal {
-    make_sealed_image as _make_sealed_image,
-    run_precompiler as _run_precompiler,
-    tar_gz_dir as _tar_gz_dir,
-    vendor_jab_deps as _vendor_jab_deps,
-    build_jab
-}
+import from jaclang.dist.seal { make_sealed_image as _make_sealed_image, build_jab }
 import type from jaclang.project.template_registry { ProjectTemplate, TemplateRegistry }
 
 impl create(
@@ -1701,15 +1695,11 @@ def _bundle_binary(config: any, output: str, fat: bool = False, app: str = "") -
     import sys;
     import os;
     import shutil;
-    import subprocess;
     import tempfile;
-    import from jaclang.jac0core.sealed { MANIFEST_NAME }
-    import from jaclang.dist.jab { jab_app_meta }
+    import from jaclang.dist.fused_binary { has_runtime, append_overlay }
 
     name = config.project.name;
     jac_bin = os.path.realpath(sys.executable);
-
-    import from jaclang.dist.fused_binary { has_runtime, append_overlay }
     if not has_runtime(jac_bin) {
         console.error(
             "jac build --as binary needs a bundled single-file jac to carry the "
@@ -1724,33 +1714,15 @@ def _bundle_binary(config: any, output: str, fat: bool = False, app: str = "") -
     out_bin = Path(output) / name;
     try {
         console.print(f"\n  Sealing {name} for binary", style="muted");
-        img = _make_sealed_image(config, work, name, out_dir=Path(output), app=app);
-        if img is None {
-            return 1;
-        }
-        if not (img / "_precompiled" / MANIFEST_NAME).is_file() {
-            console.error("Seal produced no manifest; aborting binary.");
-            return 1;
-        }
-
-        if not (jab_app_meta(img).get("entry") or {}).get("path") {
-            console.error(
-                f"No runnable entry for '{name}'; a --as binary app needs an entry "
-                "(main.jac at the package root, or [project] entry-point in jac.toml).",
-                hint="Package-only projects have nothing to run as a binary."
+        try {
+            jab_path = build_jab(
+                config, work / f"{name}.jab", app=app, fat=fat, require_entry=True
             );
+        } except RuntimeError as e {
+            console.error(str(e));
             return 1;
         }
-
-        if fat and not _vendor_jab_deps(config, img) {
-            return 1;
-        }
-
-        jab_path = work / f"{name}.jab";
-        jab_path.write_bytes(_tar_gz_dir(img));
-
         console.print("  Appending app image onto the jac runtime", style="muted");
-
         if not append_overlay(jac_bin, str(jab_path), str(out_bin))
             or not out_bin.is_file() {
             console.error("Failed to append the app image onto the jac runtime.");

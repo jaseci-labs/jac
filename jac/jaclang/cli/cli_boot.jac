@@ -8,14 +8,20 @@ def _run_bundled_app -> (int | None) {
         return None;
     }
     import from jaclang.dist.jab { materialize_jab_bytes }
+    import from jaclang.dist.fused.trailer { OVERLAY_MAGIC, TRAILER_LEN, parse_trailer }
     import from jaclang.cli.commands.execution { run_jab_image }
 
     try {
         with open(sys.executable, "rb") as f {
             f.seek(int(off));
             data = f.read(int(length));
+            f.seek(-TRAILER_LEN, os.SEEK_END);
+            trailer = parse_trailer(f.read(TRAILER_LEN), OVERLAY_MAGIC);
         }
-        img_root = materialize_jab_bytes(data);
+        if trailer is None {
+            raise RuntimeError("no app overlay trailer");
+        }
+        img_root = materialize_jab_bytes(data, expected_sha256=trailer.hash_hex);
     } except Exception as e {
         print(
             f"jac: this binary's embedded app image is unreadable ({e})",

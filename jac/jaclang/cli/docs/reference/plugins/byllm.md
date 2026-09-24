@@ -59,8 +59,10 @@ This means your Jac type system functions as the LLM's output schema. Declaring 
 
 ## Installation
 
+byLLM ships inside `jac`; there is nothing to install by name. A project that declares a `[byllm]` section in `jac.toml` gets byLLM's Python dependencies (the model client) from a plain `jac install`:
+
 ```bash
-jac install byllm
+jac install
 ```
 
 For local inference without an API key, byLLM supports two paths -- pick the one that fits your environment (see [Built-in Local Models](#built-in-local-models) for the full discussion):

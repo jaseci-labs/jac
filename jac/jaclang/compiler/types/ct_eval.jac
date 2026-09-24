@@ -2037,10 +2037,23 @@ obj CtEvaluator {
     }
 
     def _embed(nd: FuncCall, rel: str, as_bytes: bool) -> any {
+        import from jaclang.project.modresolver { find_jac_project_root }
         mod = nd.find_parent_of_type(Module);
         base = os.path.dirname(mod.loc.mod_path) if mod is not None and mod.loc else "";
         path = rel if os.path.isabs(rel) else os.path.join(base, rel);
         path = os.path.normpath(path);
+        pkg_root = (find_jac_project_root(base) or base) if base else "";
+        if pkg_root {
+            real_root = os.path.realpath(pkg_root);
+            real_path = os.path.realpath(path);
+            if real_path != real_root
+                and not real_path.startswith(real_root + os.sep) {
+                raise CtError(
+                    f"embed_file: '{rel}' resolves outside the package root "
+                    f"{real_root}; compile-time embeds must stay inside the package"
+                );
+            }
+        }
         try {
             with open(path, "rb") as fh {
                 data = fh.read();

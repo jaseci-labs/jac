@@ -624,7 +624,7 @@ def _admin_dist_cache_path(channel: str, version: str = "") -> Path {
 
 
 def pack_binary_bytes(binary_bytes: bytes) -> bytes {
-    import from jaclang.scale.injector.bundle { open_det_tar }
+    import from jaclang.dist.archive { open_det_tar }
     buf = io.BytesIO();
     (tar, gz) = open_det_tar(buf);
     try {

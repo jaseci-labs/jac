@@ -750,10 +750,19 @@ def module_env_fingerprint(source_path: str) -> str {
     return h.hexdigest();
 }
 
-def _owner_projection -> str {
+def _module_projection(source_path: str) -> str {
     import from jaclang.compiler.driver.compilation_context { active_options }
     options = active_options();
-    return options.module_projection() if options is not None else '';
+    if options is None {
+        return '';
+    }
+    if not is_compiler_source_path(source_path) {
+        import from jaclang.project.package_scope { is_dependency_module }
+        if is_dependency_module(source_path, options.project_root) {
+            return options.dependency_projection(source_path);
+        }
+    }
+    return options.module_projection();
 }
 
 def unit_source_digest(path: str) -> str {
@@ -797,7 +806,7 @@ def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
 
 def compute_module_key(source_path: str) -> str {
     h = hashlib.sha256();
-    h.update(_owner_projection().encode());
+    h.update(_module_projection(source_path).encode());
     h.update(_env_fingerprint_for(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
@@ -1209,6 +1218,10 @@ def _module_cache_root(source_path: str) -> Path {
         resolved.relative_to(sys.prefix);
         return get_jir_cache_dir() / 'modules';
     } except ValueError {}
+    import from jaclang.project.package_scope { in_store }
+    if in_store(resolved_str) {
+        return get_jir_cache_dir() / 'modules';
+    }
 
     try {
         cfg = _config_for_module(resolved);
@@ -1234,7 +1247,9 @@ def _get_module_cache_dir(source_path: str) -> Path {
 def get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
-    path_hash = hashlib.sha256((str(source) + _owner_projection()).encode()).hexdigest()[:8];
+    path_hash = hashlib.sha256(
+        (str(source) + _module_projection(source_path)).encode()
+    ).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }
