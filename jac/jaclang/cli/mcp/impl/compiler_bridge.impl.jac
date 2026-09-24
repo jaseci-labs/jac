@@ -385,7 +385,8 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
             return {"python_code": "", "warnings": errors or ["Conversion failed"]};
         }
 
-        py_code = ir.gen.py or "";
+        import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+        py_code = generated_python(ir.gen);
         return {"python_code": py_code, "warnings": warnings};
     }
     (success, result) = run_with_timeout(
