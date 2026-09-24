@@ -221,8 +221,10 @@ def by_source_name(mapping: dict[str, any]) -> any {
     return {source_spelled(key): value for (key, value) in mapping.items()};
 }
 
-"""The link symbol `iface` exports for `name`, which may spell archetypes by
-source name (`Info.total` for `Info$<module>_<hash>.total`)."""
+"""The link symbol `iface` exports for `name`. A record names the unit's own
+archetypes by source name; an export whose name involves another module's
+archetype (a specialization over it) keeps that archetype's scope, and is
+found here by its source spelling too."""
 def iface_symbol(iface: any, name: str) -> (str | None) {
     if iface is None {
         return None;

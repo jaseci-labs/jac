@@ -109,6 +109,7 @@ test "each module keeps its own layout, dispatch and identity under the JIT" {
 
 test "the defining modules and the importer agree on symbols compiled apart" {
     main_ir = str(compile_native_ir("scoped_arch_main.jac").gen.llvm_ir);
+    symbols: list[str] = [];
     for (fixture, path) in [
         ("scoped_arch_routes.jac", ROUTES),
         ("scoped_arch_rooms.jac", ROOMS)
@@ -116,20 +117,67 @@ test "the defining modules and the importer agree on symbols compiled apart" {
         own_ir = str(compile_native_ir(fixture).gen.llvm_ir);
         info = native_arch_name(path, "Info");
         passage = native_arch_name(path, "Passage");
-        symbol = f'@"{native_symbol_name(native_unit_prefix(path), f"{info}.total")}"(';
+        symbol = f'@"{native_symbol_name(native_unit_prefix(path), "Info.total")}"(';
+        symbols.append(symbol);
+        assert f"{info}.total" not in own_ir , (
+            "a method symbol carries the unit prefix; the archetype scope is redundant there"
+        );
         assert any(
             line.startswith("define") and symbol in line for line in own_ir.split("\n")
-        ) , f"{fixture} does not define {info}.total";
+        ) , f"{fixture} does not define {symbol}";
         assert any(
             line.startswith("declare") and symbol in line
             for line in main_ir.split("\n")
-        ) , f"the importer does not declare {info}.total";
+        ) , f"the importer does not declare {symbol}";
         assert f'%"{passage}" = type' in own_ir;
         assert f'%"{passage}" = type' in main_ir , (
             f"the importer lost {fixture}'s Passage layout"
         );
     }
     assert '%"Passage" = type' not in main_ir , "a bare, shared Passage struct remains";
+    assert symbols[0] != symbols[1] , "the two `Info.total` methods share one symbol";
+}
+
+test "a module's archetype identity survives its package moving" {
+    with tempfile.TemporaryDirectory() as tmp {
+        names: list[str] = [];
+        for stage in ("first", "second-longer-path") {
+            package = os.path.join(tmp, stage, "library");
+            os.makedirs(package);
+            with open(os.path.join(package, "jac.toml"), "w") as f {
+                f.write('[project]\nname = "library"\n');
+            }
+            model = os.path.join(package, "model.jac");
+            with open(model, "w") as f {
+                f.write("obj Box { has value: int; }\n");
+            }
+            names.append(native_arch_name(model, "Box"));
+        }
+        assert names[0] == names[1] , (
+            f"relocating a package changed its archetypes' native identity: {names}"
+        );
+        assert names[0] != "Box";
+    }
+}
+
+test "unit records name archetypes by source; the link keys a shared name by identity" {
+    import from jaclang.compiler.driver.native_iface { merge_class_layouts }
+    routes = compile_native_ir("scoped_arch_routes.jac").gen.native_iface;
+    rooms = compile_native_ir("scoped_arch_rooms.jac").gen.native_iface;
+    assert routes is not None and rooms is not None;
+    for (iface, path) in [(routes, ROUTES), (rooms, ROOMS)] {
+        prefix = native_unit_prefix(path);
+        assert iface.exports["Info.total"].symbol
+            == native_symbol_name(prefix, "Info.total");
+        assert "Passage" in iface.classes , sorted(iface.classes.keys());
+        assert iface.classes["Passage"].name == native_arch_name(path, "Passage");
+    }
+    merged = merge_class_layouts([routes, rooms]);
+    assert "Passage" not in merged , "two modules' Passage classes merged as one";
+    assert native_arch_name(ROUTES, "Passage") in merged;
+    assert native_arch_name(ROOMS, "Passage") in merged;
+    assert merged[native_arch_name(ROUTES, "Passage")]["fields"].keys()
+        != merged[native_arch_name(ROOMS, "Passage")]["fields"].keys();
 }
 
 test "jac run lowers the importer natively with no collision or fallback" {

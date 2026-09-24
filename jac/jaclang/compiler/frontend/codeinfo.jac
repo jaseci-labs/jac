@@ -140,21 +140,20 @@ def native_safe_sym(src: str) -> str {
 }
 
 glob NATIVE_ARCH_SCOPE_SEP: str = "$",
-     _native_arch_name_memo: dict[tuple[str, str], str] = {},
+     _native_arch_scope_memo: dict[str, str] = {},
      _native_toolchain_roots: list[str] = [];
 
-def native_arch_name(mod_path: str, name: str) -> str {
+def native_arch_scope(mod_path: str) -> str {
     import os;
-    if not mod_path or not name {
-        return name;
+    if not mod_path {
+        return "";
     }
-    memo_key = (mod_path, name);
-    memo = _native_arch_name_memo.get(memo_key);
+    memo = _native_arch_scope_memo.get(mod_path);
     if memo is not None {
         return memo;
     }
     source = os.path.realpath(mod_path);
-    out = name;
+    out = "";
     if not any(
         source.startswith(toolchain + os.sep) for toolchain in native_toolchain_roots()
     ) {
@@ -166,11 +165,28 @@ def native_arch_name(mod_path: str, name: str) -> str {
         safe = "".join(
             ch if (ch.isascii() and (ch.isalnum() or ch == "_")) else "_" for ch in stem
         );
-        digest = hashlib.sha1(source.encode()).hexdigest()[:8];
-        out = f"{name}{NATIVE_ARCH_SCOPE_SEP}{safe}_{digest}";
+        ident = native_unit_identity(source);
+        digest = hashlib.sha1(ident.encode()).hexdigest()[:8];
+        out = f"{NATIVE_ARCH_SCOPE_SEP}{safe}_{digest}";
     }
-    _native_arch_name_memo[memo_key] = out;
+    _native_arch_scope_memo[mod_path] = out;
     return out;
+}
+
+def native_arch_name(mod_path: str, name: str) -> str {
+    if not name {
+        return name;
+    }
+    return f"{name}{native_arch_scope(mod_path)}";
+}
+
+def native_unit_spelling(text: str, mod_path: str) -> str {
+    import re;
+    scope = native_arch_scope(mod_path) if NATIVE_ARCH_SCOPE_SEP in text else "";
+    if not scope {
+        return text;
+    }
+    return re.sub(re.escape(scope) + r"(?!\w)", "", text);
 }
 
 def native_arch_display(native_name: str) -> str {

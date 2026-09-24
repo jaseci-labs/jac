@@ -233,7 +233,8 @@ impl NaIRGenPass._export_native_iface -> None {
     }
     import from jaclang.compiler.frontend.codeinfo {
         native_glob_init_name,
-        native_module_key
+        native_module_key,
+        native_unit_spelling
     }
     mod_path = self.module.loc.mod_path if self.module?.loc else "";
     iface = NativeIface(
@@ -275,10 +276,14 @@ impl NaIRGenPass._export_native_iface -> None {
                 for arg in fn.args
             ];
         }
-        iface.exports[name] = ex;
+        spelled = native_unit_spelling(name, mod_path);
+        ex.name = spelled;
+        iface.exports[spelled] = ex;
     }
-    for (cname, body) in self._build_class_layouts().items() {
-        iface.classes[cname] = NativeClassLayout(
+    import json;
+    for (cname, native_body) in self._build_class_layouts().items() {
+        body = json.loads(native_unit_spelling(json.dumps(native_body), mod_path));
+        iface.classes[native_unit_spelling(cname, mod_path)] = NativeClassLayout(
             name=cname,
             size=int(body.get("size", 0)),
             tag=int(body.get("tag", 0)),
@@ -356,9 +361,11 @@ impl NaIRGenPass._symbol_for(
     import from jaclang.compiler.frontend.codeinfo {
         native_def_symbol,
         native_symbol_name,
-        native_unit_identity
+        native_unit_identity,
+        native_unit_spelling
     }
     module = owner if owner is not None else self.module;
+    name = native_unit_spelling(name, module.loc.mod_path);
     bundled_library = native_unit_identity(module.loc.mod_path).startswith(
         "jaclang/runtime/na_stdlib/"
     );

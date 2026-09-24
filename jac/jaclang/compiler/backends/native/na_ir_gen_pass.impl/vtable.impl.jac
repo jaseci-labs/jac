@@ -44,10 +44,16 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
 }
 
 impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
-    import from jaclang.compiler.frontend.codeinfo { native_symbol_name }
+    import from jaclang.compiler.frontend.codeinfo {
+        native_symbol_name,
+        native_unit_spelling
+    }
     src = self._struct_source_mod.get(arch_name, "");
     prefix = self._prefix_of_path(src) if src else self._own_prefix();
-    return native_symbol_name(prefix, f"{arch_name}.__vtable");
+    owner_path = src or (self.module.loc.mod_path if self.module?.loc else "");
+    return native_symbol_name(
+        prefix, native_unit_spelling(f"{arch_name}.__vtable", owner_path)
+    );
 }
 
 impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None) {

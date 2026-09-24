@@ -359,25 +359,37 @@ obj NativeIface {
 }
 
 def merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any] {
-    merged: dict[str, any] = {};
-    owner: dict[str, str] = {};
+    by_name: dict[str, dict[str, tuple[any, str]]] = {};
     for iface in ifaces {
-        for (name, body) in iface.classes_json().items() {
-            prev = merged.get(name);
+        bodies = iface.classes_json();
+        for (name, lay) in iface.classes.items() {
+            ident = lay.name or name;
+            body = bodies[name];
+            same_name = by_name.setdefault(name, {});
+            prev = same_name.get(ident);
             if prev is None {
-                merged[name] = body;
-                owner[name] = iface.module;
+                same_name[ident] = (body, iface.module);
                 continue;
             }
-            if prev != body {
+            if prev[0] != body {
                 raise ValueError(
                     f"native layout disagreement for class '{name}': "
-                    f"{owner[name]} and {iface.module} lay it out differently"
+                    f"{prev[1]} and {iface.module} lay it out differently"
                 );
             }
         }
     }
-    return merged;
+    merged: dict[str, any] = {};
+    for (name, idents) in by_name.items() {
+        if len(idents) == 1 {
+            merged[name] = list(idents.values())[0][0];
+            continue;
+        }
+        for (ident, found) in idents.items() {
+            merged[ident] = found[0];
+        }
+    }
+    return {k: merged[k] for k in sorted(merged.keys())};
 }
 
 def layout_digest(classes: dict[str, any]) -> str {
