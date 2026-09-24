@@ -207,7 +207,7 @@ def referenced_native_name(expr: (UniNode | None)) -> (str | None) {
     return archetype_native_name(arch) if arch is not None else None;
 }
 
-def class_type_native_name(typ: any) -> (str | None) {
+def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
     import from jaclang.compiler.types.types { ClassType }
     if not isinstance(typ, ClassType) or typ._shared is None {
         return None;
@@ -219,7 +219,7 @@ def class_type_native_name(typ: any) -> (str | None) {
     return typ.shared.class_name;
 }
 
-def native_type_key(typ: any) -> str {
+def native_type_key(typ: TypeBase) -> str {
     import from jaclang.compiler.types.types {
         ClassType,
         FunctionType,
