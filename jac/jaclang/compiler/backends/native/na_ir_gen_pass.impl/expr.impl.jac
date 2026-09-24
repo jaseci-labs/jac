@@ -1252,9 +1252,17 @@ impl NaIRGenPass._codegen_compare_link(
                     _lin_args = self._agg_key_args(_in_hay_nd.type, "list")
                         if isinstance(_in_hay_nd, uni.Expr)
                         else None;
-                    if isinstance(elem.type, ir.PointerType) and _lin_args {
+                    _lin_key = _lin_args[0] if _lin_args else None;
+                    if _lin_key is not None
+                        and _lin_key.is_any_type()
+                        and isinstance(left_node, uni.Expr)
+                        and left_node.type is not None
+                        and not left_node.type.is_any_type() {
+                        _lin_key = left_node.type;
+                    }
+                    if isinstance(elem.type, ir.PointerType) and _lin_key is not None {
                         _lin_eq = self._emit_comparison(
-                            Tok.EE, left_coerced, elem, False, key_ret=_lin_args[0]
+                            Tok.EE, left_coerced, elem, False, key_ret=_lin_key
                         );
                     }
                     eq = self._to_bool(_lin_eq)
