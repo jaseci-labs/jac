@@ -662,8 +662,11 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
     if not isinstance(nd, uni.Assignment) {
         return False;
     }
+    if self._nogc_consume_assigned_local(nd) {
+        return True;
+    }
     if not nd.na_move_lowerable {
-        return self._nogc_consume_assigned_local(nd);
+        return False;
     }
     rhs = nd.value;
     if not isinstance(rhs, uni.Name) {
