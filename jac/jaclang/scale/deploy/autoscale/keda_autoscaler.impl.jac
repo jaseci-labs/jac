@@ -541,11 +541,17 @@ impl KEDAAutoscaler.get_runtime_status{
     denies it, this degrades to the workload's own state on the deploy-time
     annotation rather than reporting a scaler failure it never observed.
 
-    One HPA condition has to be read in context: KEDA's HPA reports
-    ScalingActive False whenever its target sits at zero, because there are no
-    pods to compute a metric from. For a workload whose floor is zero that is
-    the resting state, so treating it as a failure reports every idle target as
-    degraded, which is the defect #9432 removed one layer down.
+    One HPA condition has to be read by its reason, not just its status.
+    ScalingActive False with reason ScalingDisabled is the HPA saying it is not
+    scaling because the target sits at zero, which is a statement about replica
+    count rather than scaler health, and every idle scale-to-zero workload
+    reports it. A real problem reaching a metric is FailedGetExternalMetric or
+    FailedGetResourceMetric.
+
+    Comparing replica counts instead would be racy: the HPA and the Deployment
+    are separate objects read moments apart, so just after a deploy the HPA
+    already reports ScalingDisabled while the Deployment still reads its
+    pre-idle replica count.
     """;
     scaled_object = self._read_scaled_object(
         scale_target_name, namespace, autoscaler_name
@@ -580,8 +586,10 @@ impl KEDAAutoscaler.get_runtime_status{
         hpa_conditions = normalize_conditions(hpa?.status?.conditions);
         out.conditions = so_conditions + hpa_conditions;
 
-        idle_at_floor = out.replicas == 0 and out.replica_floor == 0;
-        if not idle_at_floor and tristate(hpa_conditions, "ScalingActive") == False {
+        scaling = condition(hpa_conditions, "ScalingActive");
+        if scaling is not None
+            and scaling.get("status") == "False"
+            and scaling.get("reason") != "ScalingDisabled" {
             out.scaler_ready = False;
         }
         desired = hpa?.status?.desired_replicas;
