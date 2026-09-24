@@ -180,7 +180,7 @@ jobs:
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" --version
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" -c 'import os, ssl; assert os.path.isfile(os.environ["SSL_CERT_FILE"]); assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0'
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/obj.jac")"
-          echo "$out" | grep -q 49
+          grep -q 49 <<<"$out"
 
       - name: Run real jac programs (end-to-end execution)
         working-directory: jac
@@ -197,8 +197,8 @@ jobs:
           }
           JAC
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/a.jac")"
-          echo "$out" | grep -q "dist 5.0"
-          echo "$out" | grep -q "0, 1, 4, 9, 16"
+          grep -q "dist 5.0" <<<"$out"
+          grep -q "0, 1, 4, 9, 16" <<<"$out"
 
       - name: jac test runner (self-contained test file)
         working-directory: jac
@@ -1026,64 +1026,6 @@ jobs:
       - name: Cache key mutation tests
         run: bash scripts/test_ci_cache_keys.sh
 
-  # The dev loop (#8943): a checkout with NO kernel beside
-  # native_compiler.jac must parse a new file on the first `jac run`. The
-  # kit it runs on was built from these very sources, so that first run
-  # adopts the kit's kernel by its units' content (a checkout whose compiler
-  # differs derives one through the link plan instead), and a second run must
-  # accept the kernel beside the loader without relinking. Every reroute lane
-  # pays this first run in its warm step, so a derivation here is a lane-wide
-  # regression, not a slow test.
-  test-dev-loop:
-    needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    env:
-      # Reroute lane: this checkout's compiler, the kit's shim and floors.
-      JAC_NO_DEV_SOURCE: ""
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
-      # The rerouted checkout finds the LLVM shim in the kit's runtime site
-      # (the shim locator walks sys.path), so no shim is restored here: a
-      # cache keyed on build inputs would miss on any PR that touches them.
-      - uses: ./.github/actions/jac-kit
-      - name: Delete any kernel beside the loader
-        run: rm -f jac/jaclang/compiler/libjac_compiler.* jac/jaclang/compiler/libjac_compiler.*.layout.json
-      - name: First run puts a kernel beside the loader
-        run: |
-          set -euo pipefail
-          WORK="$(mktemp -d)"
-          printf 'with entry { print(6*7); }\n' > "$WORK/first.jac"
-          out="$(jac run "$WORK/first.jac" 2>&1)" || { echo "$out"; exit 1; }
-          tail -5 <<<"$out"
-          grep -q 42 <<<"$out"
-          if grep -q "Linking the native compiler kernel" <<<"$out"; then
-            echo "::error::the first run derived a kernel instead of adopting the kit's, which was built from these sources"
-            exit 1
-          fi
-          test -f jac/jaclang/compiler/libjac_compiler.so
-          test -f jac/jaclang/compiler/libjac_compiler.so.layout.json
-          python3 -c "import json,sys; d=json.load(open('jac/jaclang/compiler/libjac_compiler.so.layout.json')); assert d['plan_digest'] and d['classes'], d.keys()"
-          cp jac/jaclang/compiler/libjac_compiler.so "$WORK/kernel.first"
-      - name: Second run keeps that kernel
-        run: |
-          set -euo pipefail
-          WORK="$(mktemp -d)"
-          printf 'with entry { print(7*7); }\n' > "$WORK/second.jac"
-          out="$(jac run "$WORK/second.jac" 2>&1)" || { echo "$out"; exit 1; }
-          grep -q 49 <<<"$out"
-          if grep -q "Linking the native compiler kernel" <<<"$out"; then
-            echo "::error::the second run relinked a kernel whose plan digest had not moved"
-            exit 1
-          fi
-      - name: Kernel resolver and link plan tests
-        run: |
-          jac test jac/tests/compiler/test_kernel_resolve.jac
-          jac test jac/tests/compiler/backends/native/test_native_iface.jac
-          jac test jac/tests/compiler/backends/native/test_link_plan.jac
-
   # The CEF dispatch build + export/runpath/deps audit lives in the suite
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
 
@@ -1581,6 +1523,8 @@ jobs:
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main' | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
           sudo apt-get install -y llvm-22-dev cmake
+      # This step carries test_c_backend.jac's coverage: test-runtime also
+      # discovers it but skips it there, having no LLVM 22 toolchain.
       - name: Verify C backend comparisons and executable startup
         run: jac test jac/tests/toolchains/test_c_backend.jac
       - name: Scaffold and export the jaclang.org site
@@ -1744,7 +1688,6 @@ jobs:
       - test-scale-k8s
       - test-native-aarch64
       - test-bootstrap
-      - test-dev-loop
       - test-launcher-jac
       - test-jac-pack-smoke
       - test-jac-pack-eject

@@ -309,6 +309,16 @@ import chain, where half the checker is not importable yet, and a rebuild
 must not depend on the state of the process that asked for it. The kernel
 build and the seal use the same in-process build session as applications.
 
+CI holds the adoption path to account on every reroute lane. The
+`jac-kit` action's warm step is the lane's first `jac run`, and a fresh
+checkout has no kernel (`libjac_*` is gitignored). Since the kit was built
+from the same commit, that run must leave a byte-for-byte copy of the kit's
+kernel beside the loader, with a sidecar that carries a plan digest, and a
+second run must leave that file in place (same inode and mtime). A kernel
+derived there instead would cost every reroute lane a relink, so the step
+fails rather than letting a lane quietly pay it. Sealed lanes skip the check:
+they boot from the payload's own image.
+
 The kernel is always the host's. `kernel_options()` pins the target to the
 host whatever target the artifacts being built use, so a cross-compiled
 artifact's units parse with a kernel the process can load.
