@@ -270,3 +270,12 @@ walker PyastBuildPass(CompilerPass) {
     def convert_to_doc(string: String) -> None;
     def aug_op_map(tok_dict: dict[str, str], op: Token) -> str;
 }
+
+def build_python_module(py_mod: PythonModuleAst) -> Module {
+    import from jaclang.compiler.passes.execution { new_context, walk_pass }
+    walk = PyastBuildPass(module=py_mod, ctx=new_context(PyastBuildPass, py_mod));
+    walk_pass(walk);
+    built = walk.module;
+    assert isinstance(built, Module);
+    return built;
+}
