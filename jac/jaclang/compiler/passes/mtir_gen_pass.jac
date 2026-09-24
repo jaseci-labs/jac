@@ -39,9 +39,10 @@ import from jaclang.runtime.semantic {
     FunctionInfo,
     MethodInfo,
     ParamInfo,
+    TypeForm,
     mk_dict,
+    mk_form,
     mk_list,
-    mk_tuple,
     type_to_str
 }
 
@@ -70,7 +71,7 @@ walker MTIRGenPass(CompilerPass) {
     def _doc_text(doc: String | None) -> str | None;
     def _parse_type_expr(
         type_expr: Expr | None, scope: UniScopeNode
-    ) -> ClassInfo | EnumInfo | str | tuple[object, ...] | None;
+    ) -> ClassInfo | EnumInfo | TypeForm | str | None;
 
     def _extract_type_symbol(
         type_expr: Expr | None, scope: UniScopeNode

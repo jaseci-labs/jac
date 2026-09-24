@@ -399,6 +399,19 @@ impl ProjectHost.package_init(directory: str) -> (str | None) {
     return None;
 }
 
+impl ProjectHost.host_platform -> HostPlatform {
+    if self._platform is None {
+        import platform;
+        import sys;
+        self._platform = HostPlatform(
+            machine=platform.machine(),
+            python_major=sys.version_info.major,
+            python_minor=sys.version_info.minor
+        );
+    }
+    return self._platform;
+}
+
 impl ProjectHost.ct_environment -> CtEnvironment {
     import sys;
     import platform;

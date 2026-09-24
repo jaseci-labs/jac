@@ -50,6 +50,12 @@ backend: `set` returns a token carrying `var` and the previous value,
 second `reset` of one token raises `RuntimeError`, a token from another
 variable raises `ValueError`, and a token used as a context manager
 resets on exit.
+
+`contextvars_own_token.jac` defines its own `Token` beside a `ContextVar`
+and imports the shim's token under CPython's name. A native program
+identifies a class by its bare name, so the shim's class is
+`ContextVarToken` with `Token` an alias; a shim class named `Token` took the
+program's struct, and the compiler's own `unitree.Token` with it.
 """
 
 import from tests.support { jac_command, python_run }
@@ -172,4 +178,11 @@ test "native ContextVar.set returns a Token that reset honors like CPython" {
     py_out = python_run(os.path.join(FIXTURES, "contextvars_token.jac"));
     (na_out, _na_err) = _na_run("contextvars_token.jac");
     _same_lines(py_out, na_out, "contextvars token");
+}
+
+test "a program's own Token lives beside the contextvars shim's token" {
+    py_out = python_run(os.path.join(FIXTURES, "contextvars_own_token.jac"));
+    (na_out, _na_err) = _na_run("contextvars_own_token.jac");
+    _same_lines(py_out, na_out, "contextvars own token");
+    assert py_out.split() == ["ab=AB!@1", "3", "3", "cd=CD!@7", "3", "9", "0"] , py_out;
 }

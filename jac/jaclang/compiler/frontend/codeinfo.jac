@@ -11,9 +11,8 @@ import from jaclang.compiler.frontend.constant {
 import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
 import type from jaclang.compiler.backends.es.estree { IndexInfo, SliceInfo }
 import type from jaclang.compiler.backends.es.estree { Node as EsNode }
-import type from jaclang.compiler.frontend.unitree { CommentToken }
 import type from jaclang.compiler.tools.doc_ir { Doc }
-import type from jaclang.compiler.frontend.unitree { Source, Token }
+import type from jaclang.compiler.frontend.unitree { CommentToken, Module }
 import type from jaclang.compiler.passes.osp_analysis { OspModel }
 import type from jaclang.compiler.backends.native.llvm.ir { Module as IRModule }
 import type from jaclang.compiler.backends.native.llvm.binding {
@@ -46,9 +45,6 @@ obj ClientArtifact {
         dep_digests: dict[str, str] = {},
         boundary_contracts: dict[str, any] = {},
         framework: str = "";
-
-    def to_bytes -> bytes;
-    static def from_bytes(raw: bytes) -> (ClientArtifact | None);
 }
 
 enum InteropContext { SERVER = 'server', NATIVE = 'native', CLIENT = 'client' }
@@ -139,78 +135,85 @@ def native_safe_sym(src: str) -> str {
     return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
 }
 
-glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = frozenset(
-         [
-             f"{base}{suffix}"
-             for base in (
-                 "acos asin atan atan2 cos sin tan acosh asinh atanh cosh sinh tanh exp exp2 "
-                 "exp10 expm1 frexp ilogb ldexp log log10 log1p log2 logb modf scalbn scalbln "
-                 "cbrt fabs hypot pow sqrt erf erfc lgamma tgamma ceil floor nearbyint rint "
-                 "lrint llrint round lround llround trunc fmod remainder remquo copysign nan "
-                 "nextafter nexttoward fdim fmax fmin fma sincos "
-             ).split() for suffix in ("", "f", "l")
-         ]
-             + (
-                 "isalnum isalpha isblank iscntrl isdigit isgraph islower isprint ispunct "
-                 "isspace isupper isxdigit tolower toupper "
-                 "feclearexcept fegetexceptflag feraiseexcept fesetexceptflag fetestexcept "
-                 "fegetround fesetround fegetenv feholdexcept fesetenv feupdateenv "
-                 "setlocale localeconv setjmp longjmp _setjmp _longjmp sigsetjmp siglongjmp "
-                 "signal raise kill "
-                 "remove rename renameat tmpfile tmpnam fclose fflush fopen freopen fdopen "
-                 "fileno setbuf setvbuf "
-                 "fprintf fscanf printf scanf snprintf sprintf sscanf dprintf vfprintf "
-                 "vfscanf vprintf vscanf vsnprintf vsprintf vsscanf "
-                 "fgetc fgets fputc fputs getc getchar putc putchar puts ungetc fread fwrite "
-                 "fgetpos fseek fseeko fsetpos ftell ftello rewind clearerr feof ferror "
-                 "perror getline getdelim popen pclose "
-                 "stdin stdout stderr __stdinp __stdoutp __stderrp "
-                 "atof atoi atol atoll strtod strtof strtold strtol strtoll strtoul strtoull "
-                 "rand srand "
-                 "aligned_alloc calloc free malloc realloc posix_memalign malloc_size "
-                 "malloc_usable_size "
-                 "abort atexit at_quick_exit exit _exit _Exit quick_exit getenv setenv "
-                 "unsetenv putenv system realpath mkstemp bsearch qsort "
-                 "abs labs llabs div ldiv lldiv mblen mbtowc wctomb mbstowcs wcstombs "
-                 "memcpy memmove memset memcmp memchr memmem memccpy strcpy strncpy stpcpy "
-                 "stpncpy strcat strncat strcmp strncmp strcasecmp strncasecmp strcoll "
-                 "strxfrm "
-                 "strchr strrchr strcspn strpbrk strspn strstr strtok strtok_r strerror "
-                 "strerror_r strlen strnlen strdup strndup bcmp bcopy bzero "
-                 "clock difftime mktime time timespec_get asctime ctime gmtime gmtime_r "
-                 "localtime localtime_r strftime clock_gettime nanosleep sleep usleep "
-                 "open openat creat close read pread write lseek stat fstat lstat access "
-                 "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
-                 "opendir readdir closedir getpid getpwuid_r getpwnam_r errno __error "
-                 "__errno_location environ _NSGetExecutablePath "
-                 "pthread_create pthread_join pthread_key_create pthread_getspecific "
-                 "pthread_setspecific "
-                 "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
-                 "dlopen dlsym dlclose dlerror "
-                 "main _start __libc_start_main __getmainargs mainCRTStartup "
-                 "compress2 uncompress uncompress2 compressBound crc32_z adler32_z "
-                 "BZ2_bzBuffToBuffCompress BZ2_bzBuffToBuffDecompress "
-                 "ZSTD_isError ZSTD_getErrorName ZSTD_compressBound ZSTD_freeCCtx "
-                 "ZSTD_CCtx_setParameter ZSTD_compress2 ZSTD_freeDCtx ZSTD_DCtx_setParameter "
-                 "ZSTD_decompressStream_simpleArgs ZSTD_getFrameContentSize "
-                 "ZSTD_getDictID_fromFrame "
-                 "RAND_bytes EVP_MD_CTX_free EVP_DigestInit_ex EVP_DigestUpdate "
-                 "EVP_DigestFinal_ex HMAC_CTX_free HMAC_Init_ex HMAC_Update HMAC_Final "
-                 "SSL_CTX_new SSL_CTX_set_verify SSL_CTX_load_verify_locations "
-                 "SSL_CTX_set_default_verify_paths SSL_CTX_free SSL_new SSL_set_fd SSL_ctrl "
-                 "SSL_set1_host SSL_connect SSL_get_verify_result SSL_get_error SSL_read "
-                 "SSL_write SSL_shutdown SSL_free X509_verify_cert_error_string "
-                 "ERR_reason_error_string "
-                 "Py_DecRef PyBool_FromLong PyBytes_AsString PyDict_New PyDict_SetItemString "
-                 "PyErr_Print PyFloat_AsDouble PyFloat_FromDouble PyGILState_Ensure "
-                 "PyGILState_Release PyImport_ImportModule PyLong_AsLongLong "
-                 "PyLong_FromLongLong PyObject_Call PyObject_GetAttrString PyObject_IsTrue "
-                 "PyObject_SetAttrString PyTuple_New PyTuple_SetItem PyUnicode_AsUTF8String "
-                 "PyUnicode_FromString "
-                 "__mt_genrand_u32 __mt_getrandbits __mt_init_by_array __mt_randbelow "
-                 "GC_malloc "
-             ).split()
-     );
+def _reserved_c_symbols -> frozenset[str] {
+    names: set[str] = set();
+    for base in (
+        "acos asin atan atan2 cos sin tan acosh asinh atanh cosh sinh tanh exp exp2 "
+        "exp10 expm1 frexp ilogb ldexp log log10 log1p log2 logb modf scalbn scalbln "
+        "cbrt fabs hypot pow sqrt erf erfc lgamma tgamma ceil floor nearbyint rint "
+        "lrint llrint round lround llround trunc fmod remainder remquo copysign nan "
+        "nextafter nexttoward fdim fmax fmin fma sincos "
+    ).split() {
+        for suffix in ("", "f", "l") {
+            names.add(base + suffix);
+        }
+    }
+    for name in (
+        "isalnum isalpha isblank iscntrl isdigit isgraph islower isprint ispunct "
+        "isspace isupper isxdigit tolower toupper "
+        "feclearexcept fegetexceptflag feraiseexcept fesetexceptflag fetestexcept "
+        "fegetround fesetround fegetenv feholdexcept fesetenv feupdateenv "
+        "setlocale localeconv setjmp longjmp _setjmp _longjmp sigsetjmp siglongjmp "
+        "signal raise kill "
+        "remove rename renameat tmpfile tmpnam fclose fflush fopen freopen fdopen "
+        "fileno setbuf setvbuf "
+        "fprintf fscanf printf scanf snprintf sprintf sscanf dprintf vfprintf "
+        "vfscanf vprintf vscanf vsnprintf vsprintf vsscanf "
+        "fgetc fgets fputc fputs getc getchar putc putchar puts ungetc fread fwrite "
+        "fgetpos fseek fseeko fsetpos ftell ftello rewind clearerr feof ferror "
+        "perror getline getdelim popen pclose "
+        "stdin stdout stderr __stdinp __stdoutp __stderrp "
+        "atof atoi atol atoll strtod strtof strtold strtol strtoll strtoul strtoull "
+        "rand srand "
+        "aligned_alloc calloc free malloc realloc posix_memalign malloc_size "
+        "malloc_usable_size "
+        "abort atexit at_quick_exit exit _exit _Exit quick_exit getenv setenv "
+        "unsetenv putenv system realpath mkstemp bsearch qsort "
+        "abs labs llabs div ldiv lldiv mblen mbtowc wctomb mbstowcs wcstombs "
+        "memcpy memmove memset memcmp memchr memmem memccpy strcpy strncpy stpcpy "
+        "stpncpy strcat strncat strcmp strncmp strcasecmp strncasecmp strcoll "
+        "strxfrm "
+        "strchr strrchr strcspn strpbrk strspn strstr strtok strtok_r strerror "
+        "strerror_r strlen strnlen strdup strndup bcmp bcopy bzero "
+        "clock difftime mktime time timespec_get asctime ctime gmtime gmtime_r "
+        "localtime localtime_r strftime clock_gettime nanosleep sleep usleep "
+        "open openat creat close read pread write lseek stat fstat lstat access "
+        "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
+        "opendir readdir closedir getpid getpwuid_r getpwnam_r errno __error "
+        "__errno_location environ _NSGetExecutablePath "
+        "pthread_create pthread_join pthread_key_create pthread_getspecific "
+        "pthread_setspecific "
+        "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
+        "dlopen dlsym dlclose dlerror "
+        "main _start __libc_start_main __getmainargs mainCRTStartup "
+        "compress2 uncompress uncompress2 compressBound crc32_z adler32_z "
+        "BZ2_bzBuffToBuffCompress BZ2_bzBuffToBuffDecompress "
+        "ZSTD_isError ZSTD_getErrorName ZSTD_compressBound ZSTD_freeCCtx "
+        "ZSTD_CCtx_setParameter ZSTD_compress2 ZSTD_freeDCtx ZSTD_DCtx_setParameter "
+        "ZSTD_decompressStream_simpleArgs ZSTD_getFrameContentSize "
+        "ZSTD_getDictID_fromFrame "
+        "RAND_bytes EVP_MD_CTX_free EVP_DigestInit_ex EVP_DigestUpdate "
+        "EVP_DigestFinal_ex HMAC_CTX_free HMAC_Init_ex HMAC_Update HMAC_Final "
+        "SSL_CTX_new SSL_CTX_set_verify SSL_CTX_load_verify_locations "
+        "SSL_CTX_set_default_verify_paths SSL_CTX_free SSL_new SSL_set_fd SSL_ctrl "
+        "SSL_set1_host SSL_connect SSL_get_verify_result SSL_get_error SSL_read "
+        "SSL_write SSL_shutdown SSL_free X509_verify_cert_error_string "
+        "ERR_reason_error_string "
+        "Py_DecRef PyBool_FromLong PyBytes_AsString PyDict_New PyDict_SetItemString "
+        "PyErr_Print PyFloat_AsDouble PyFloat_FromDouble PyGILState_Ensure "
+        "PyGILState_Release PyImport_ImportModule PyLong_AsLongLong "
+        "PyLong_FromLongLong PyObject_Call PyObject_GetAttrString PyObject_IsTrue "
+        "PyObject_SetAttrString PyTuple_New PyTuple_SetItem PyUnicode_AsUTF8String "
+        "PyUnicode_FromString "
+        "__mt_genrand_u32 __mt_getrandbits __mt_init_by_array __mt_randbelow "
+        "GC_malloc "
+    ).split() {
+        names.add(name);
+    }
+    return frozenset(names);
+}
+
+glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = _reserved_c_symbols();
 
 def native_pub_symbol(name: str) -> str {
     return f"__jac_def_{name}" if name in NATIVE_RESERVED_C_SYMBOLS else name;
@@ -349,14 +352,6 @@ def native_test_symbol(name: str, line: int, prefix: str = "") -> str {
 glob JAC_ENTRY_SYMBOL: str = "jac_entry",
      JAC_SHARED_INIT_SYMBOL: str = "__jac_shared_init";
 
-def install_native_static_init(engine: any, init_symbols: list[str]) -> None {
-    if engine is None {
-        return;
-    }
-    engine.static_init_symbols = list(init_symbols);
-    engine.static_init_chained = {JAC_ENTRY_SYMBOL};
-}
-
 glob KERNEL_UNIT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
@@ -429,15 +424,15 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {
      _native_unit_ctx: ContextVar[bool] = ContextVar("jac_native_unit_compile"),
      _native_target_ctx: ContextVar[str | None] = ContextVar("jac_native_target");
 
-glob NATIVE_ERASED_ABC_BASES: frozenset = frozenset({"ABC"});
+glob NATIVE_ERASED_ABC_BASES: frozenset[str] = frozenset({"ABC"});
 
-glob NATIVE_ERASED_BASES: frozenset = NATIVE_ERASED_ABC_BASES;
+glob NATIVE_ERASED_BASES: frozenset[str] = NATIVE_ERASED_ABC_BASES;
 
-glob NATIVE_ERASED_IDENTITY_CALLS: frozenset = frozenset({"cast"});
+glob NATIVE_ERASED_IDENTITY_CALLS: frozenset[str] = frozenset({"cast"});
 
-glob NATIVE_ERASED_FIELD_MARKERS: frozenset = frozenset({"ObjectField"});
+glob NATIVE_ERASED_FIELD_MARKERS: frozenset[str] = frozenset({"ObjectField"});
 
-glob NATIVE_ERASED_IMPORTS: dict[str, frozenset] = {
+glob NATIVE_ERASED_IMPORTS: dict[str, frozenset[str]] = {
          "abc": NATIVE_ERASED_ABC_BASES,
          "contextlib": frozenset({"contextmanager"}),
          "jaclang.runtime.object_model": NATIVE_ERASED_FIELD_MARKERS,
@@ -620,10 +615,13 @@ def is_shared_runtime_module(file_path: str) -> bool {
     }
     package = os.path.realpath(pkg);
     path = os.path.realpath(file_path);
-    return any(
-        path == os.path.join(package, *module.split('.')[1:]) + '.jac'
-        for module in SHARED_RUNTIME_MODULES
-    );
+    for module in SHARED_RUNTIME_MODULES {
+        rel = module.split('.', 1)[1].replace('.', os.sep) + '.jac';
+        if path == os.path.join(package, rel) {
+            return True;
+        }
+    }
+    return False;
 }
 
 def is_bundled_native_module(module_name: str) -> bool {
@@ -676,9 +674,13 @@ def native_target_os -> str {
 }
 
 def native_target_arch -> str {
-    import platform;
     _t = effective_native_target();
-    machine = (_t.split("-")[0] if _t else platform.machine()).lower();
+    if _t {
+        machine = _t.split("-")[0].lower();
+    } else {
+        import from jaclang.compiler.frontend.host { active_host }
+        machine = active_host().host_platform().machine.lower();
+    }
     if machine in ("arm64", "aarch64") or machine.startswith("arm64") {
         return "aarch64";
     }
@@ -813,8 +815,9 @@ def resolve_native_module(
 
     if clean.startswith('jaclang.') {
         import from jaclang.compiler.native_scope { in_native_scope_path }
-        _parts = clean.split('.')[1:];
-        _cand = os.path.join(jaclang_pkg_root(), *_parts) + '.jac';
+        _cand = os.path.join(
+            jaclang_pkg_root(), clean.split('.', 1)[1].replace('.', os.sep) + '.jac'
+        );
         if native_unit_compile_active() {
             if in_native_scope_path(_cand) and os.path.isfile(_cand) {
                 return (path_name, _cand);
@@ -859,182 +862,6 @@ obj NativeModuleLayout {
         tuples: dict[(str, NativeTupleLayout)] = {},
         tests: list[NativeTestLayout] = [],
         str_headerless: (bool | None) = None;
-}
-
-def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict[str, any] | None) {
-    if t is None {
-        return None;
-    }
-    return {
-        "key": t.key,
-        "element_types": list(t.element_types),
-        "element_struct_hints": list(t.element_struct_hints)
-    };
-}
-
-def _func_layout_to_dict(f: NativeFuncLayout) -> dict[str, any] {
-    return {
-        "name": f.name,
-        "param_types": list(f.param_types),
-        "param_names": list(f.param_names),
-        "ret_type": f.ret_type,
-        "ret_struct_name": f.ret_struct_name,
-        "ret_tuple_layout": _tuple_layout_to_dict(f.ret_tuple_layout),
-        "ret_enum_type": f.ret_enum_type,
-        "ret_elem_keys": (
-            list(f.ret_elem_keys) if f.ret_elem_keys is not None else None
-        )
-    };
-}
-
-def native_layout_to_dict(layout: NativeModuleLayout) -> dict[str, any] {
-    return {
-        "abi_version": layout.abi_version,
-        "structs": {
-            name: {
-                "name": s.name,
-                "has_vtable": s.has_vtable,
-                "accessors": {
-                    fname: dict[str, str](kinds)
-                    for (fname, kinds) in s.accessors.items()
-                },
-                "fields": [
-                    {
-                        "name": fld.name,
-                        "llvm_type": fld.llvm_type,
-                        "index": fld.index,
-                        "enum_type": fld.enum_type,
-                        "is_func_ptr": fld.is_func_ptr,
-                        "func_param_types": (
-                            list(fld.func_param_types)
-                                if fld.func_param_types is not None
-                                else None
-                        ),
-                        "func_ret_type": fld.func_ret_type,
-                        "elem_keys": (
-                            list(fld.elem_keys) if fld.elem_keys is not None else None
-                        ),
-                        "foreign": fld.foreign
-                    } for fld in s.fields
-                ]
-            } for (name, s) in layout.structs.items()
-        },
-        "enums": {
-            name: {
-                "name": e.name,
-                "is_string_valued": e.is_string_valued,
-                "members": list(e.members)
-            } for (name, e) in layout.enums.items()
-        },
-        "functions": {
-            name: _func_layout_to_dict(f) for (name, f) in layout.functions.items()
-        },
-        "methods": {
-            name: _func_layout_to_dict(f) for (name, f) in layout.methods.items()
-        },
-        "list_elem_types": dict(layout.list_elem_types),
-        "tuples": {key: _tuple_layout_to_dict(t) for (key, t) in layout.tuples.items()},
-        "str_headerless": layout.str_headerless
-    };
-}
-
-def _tuple_layout_from_dict(raw: any) -> (NativeTupleLayout | None) {
-    if not isinstance(raw, dict) {
-        return None;
-    }
-    d: dict[str, any] = raw;
-    return NativeTupleLayout(
-        key=str(d.get("key", "")),
-        element_types=[str(x) for x in (d.get("element_types") or [])],
-        element_struct_hints=list(d.get("element_struct_hints") or [])
-    );
-}
-
-def _func_layout_from_dict(raw: any) -> NativeFuncLayout {
-    d: dict[str, any] = raw;
-    keys: any = d.get("ret_elem_keys");
-    return NativeFuncLayout(
-        name=str(d.get("name", "")),
-        param_types=[str(x) for x in (d.get("param_types") or [])],
-        param_names=[str(x) for x in (d.get("param_names") or [])],
-        ret_type=str(d.get("ret_type", "i64")),
-        ret_struct_name=d.get("ret_struct_name"),
-        ret_tuple_layout=_tuple_layout_from_dict(d.get("ret_tuple_layout")),
-        ret_enum_type=d.get("ret_enum_type"),
-        ret_elem_keys=list(keys) if keys is not None else None
-    );
-}
-
-def _field_info_from_dict(raw: any) -> NativeFieldInfo {
-    fd: dict[str, any] = raw;
-    fpt: any = fd.get("func_param_types");
-    ek: any = fd.get("elem_keys");
-    return NativeFieldInfo(
-        name=str(fd.get("name", "")),
-        llvm_type=str(fd.get("llvm_type", "i64")),
-        index=int(fd.get("index", 0)),
-        enum_type=fd.get("enum_type"),
-        is_func_ptr=bool(fd.get("is_func_ptr", False)),
-        func_param_types=list(fpt) if fpt is not None else None,
-        func_ret_type=fd.get("func_ret_type"),
-        elem_keys=list(ek) if ek is not None else None,
-        foreign=bool(fd.get("foreign", False))
-    );
-}
-
-def native_layout_from_dict(raw: any) -> NativeModuleLayout {
-    d: dict[str, any] = raw;
-    layout = NativeModuleLayout(
-        abi_version=int(d.get("abi_version", NATIVE_ABI_VERSION)),
-        str_headerless=d.get("str_headerless")
-    );
-    structs: dict[str, any] = d.get("structs") or {};
-    for (name, sraw) in structs.items() {
-        sd: dict[str, any] = sraw;
-        fields: list[NativeFieldInfo] = [];
-        for fd in (sd.get("fields") or []) {
-            fields.append(_field_info_from_dict(fd));
-        }
-        accessors: dict[str, dict[str, str]] = {};
-        raw_acc: dict[str, any] = sd.get("accessors") or {};
-        for (fn_name, kinds) in raw_acc.items() {
-            kind_map: dict[str, any] = kinds;
-            accessors[str(fn_name)] = {str(k): str(v) for (k, v) in kind_map.items()};
-        }
-        layout.structs[str(name)] = NativeStructLayout(
-            name=str(sd.get("name", name)),
-            fields=fields,
-            has_vtable=bool(sd.get("has_vtable", False)),
-            accessors=accessors
-        );
-    }
-    enums: dict[str, any] = d.get("enums") or {};
-    for (name, eraw) in enums.items() {
-        ed: dict[str, any] = eraw;
-        layout.enums[str(name)] = NativeEnumLayout(
-            name=str(ed.get("name", name)),
-            is_string_valued=bool(ed.get("is_string_valued", False)),
-            members=list(ed.get("members") or [])
-        );
-    }
-    functions: dict[str, any] = d.get("functions") or {};
-    for (name, fraw) in functions.items() {
-        layout.functions[str(name)] = _func_layout_from_dict(fraw);
-    }
-    methods: dict[str, any] = d.get("methods") or {};
-    for (name, mraw) in methods.items() {
-        layout.methods[str(name)] = _func_layout_from_dict(mraw);
-    }
-    elem_types: dict[str, any] = d.get("list_elem_types") or {};
-    layout.list_elem_types = {str(k): str(v) for (k, v) in elem_types.items()};
-    tuples: dict[str, any] = d.get("tuples") or {};
-    for (key, traw) in tuples.items() {
-        t = _tuple_layout_from_dict(traw);
-        if t is not None {
-            layout.tuples[str(key)] = t;
-        }
-    }
-    return layout;
 }
 
 obj BoundaryTypeInfo {
@@ -1095,7 +922,7 @@ obj NodeComments {
 }
 
 obj CodeGenTarget {
-    has _py: (str | None) = None,
+    has py_text: (str | None) = None,
         jac: str = '',
         _doc_ir: (Doc | None) = None,
         js: str = '',
@@ -1127,13 +954,12 @@ obj CodeGenTarget {
         _exported_symbols: list[str] = [],
         doc_comments: (NodeComments | None) = None;
 
-    has py: str { getter; setter(value: str); }
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }
 }
 
-def endpoint_descriptor(module: any, kind: str, name: str) -> dict[str, str] {
+def endpoint_descriptor(module: Module, kind: str, name: str) -> dict[str, str] {
     import os;
     import from jaclang.compiler.frontend.host { active_host }
     path = module.loc.mod_path;
@@ -1148,7 +974,7 @@ def endpoint_descriptor(module: any, kind: str, name: str) -> dict[str, str] {
     return {"app": app, "module": source, "kind": kind, "name": name};
 }
 
-def endpoint_key(module: any, kind: str, name: str) -> str {
+def endpoint_key(module: Module, kind: str, name: str) -> str {
     import json;
     d = endpoint_descriptor(module, kind, name);
     return "["

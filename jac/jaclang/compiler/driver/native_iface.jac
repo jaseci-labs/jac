@@ -1,8 +1,189 @@
 import hashlib;
 import json;
 import from jaclang.compiler.frontend.codeinfo {
+    NATIVE_ABI_VERSION,
+    NativeFieldInfo,
+    NativeEnumLayout,
+    NativeFuncLayout,
     NativeModuleLayout,
-    native_layout_to_dict
+    NativeStructLayout,
+    NativeTupleLayout
+}
+
+def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict[str, any] | None) {
+    if t is None {
+        return None;
+    }
+    return {
+        "key": t.key,
+        "element_types": list(t.element_types),
+        "element_struct_hints": list(t.element_struct_hints)
+    };
+}
+
+def _func_layout_to_dict(f: NativeFuncLayout) -> dict[str, any] {
+    return {
+        "name": f.name,
+        "param_types": list(f.param_types),
+        "param_names": list(f.param_names),
+        "ret_type": f.ret_type,
+        "ret_struct_name": f.ret_struct_name,
+        "ret_tuple_layout": _tuple_layout_to_dict(f.ret_tuple_layout),
+        "ret_enum_type": f.ret_enum_type,
+        "ret_elem_keys": (
+            list(f.ret_elem_keys) if f.ret_elem_keys is not None else None
+        )
+    };
+}
+
+def native_layout_to_dict(layout: NativeModuleLayout) -> dict[str, any] {
+    return {
+        "abi_version": layout.abi_version,
+        "structs": {
+            name: {
+                "name": s.name,
+                "has_vtable": s.has_vtable,
+                "accessors": {
+                    fname: dict[str, str](kinds)
+                    for (fname, kinds) in s.accessors.items()
+                },
+                "fields": [
+                    {
+                        "name": fld.name,
+                        "llvm_type": fld.llvm_type,
+                        "index": fld.index,
+                        "enum_type": fld.enum_type,
+                        "is_func_ptr": fld.is_func_ptr,
+                        "func_param_types": (
+                            list(fld.func_param_types)
+                                if fld.func_param_types is not None
+                                else None
+                        ),
+                        "func_ret_type": fld.func_ret_type,
+                        "elem_keys": (
+                            list(fld.elem_keys) if fld.elem_keys is not None else None
+                        ),
+                        "foreign": fld.foreign
+                    } for fld in s.fields
+                ]
+            } for (name, s) in layout.structs.items()
+        },
+        "enums": {
+            name: {
+                "name": e.name,
+                "is_string_valued": e.is_string_valued,
+                "members": list(e.members)
+            } for (name, e) in layout.enums.items()
+        },
+        "functions": {
+            name: _func_layout_to_dict(f) for (name, f) in layout.functions.items()
+        },
+        "methods": {
+            name: _func_layout_to_dict(f) for (name, f) in layout.methods.items()
+        },
+        "list_elem_types": dict(layout.list_elem_types),
+        "tuples": {key: _tuple_layout_to_dict(t) for (key, t) in layout.tuples.items()},
+        "str_headerless": layout.str_headerless
+    };
+}
+
+def _tuple_layout_from_dict(raw: any) -> (NativeTupleLayout | None) {
+    if not isinstance(raw, dict) {
+        return None;
+    }
+    d: dict[str, any] = raw;
+    return NativeTupleLayout(
+        key=str(d.get("key", "")),
+        element_types=[str(x) for x in (d.get("element_types") or [])],
+        element_struct_hints=list(d.get("element_struct_hints") or [])
+    );
+}
+
+def _func_layout_from_dict(raw: any) -> NativeFuncLayout {
+    d: dict[str, any] = raw;
+    keys: any = d.get("ret_elem_keys");
+    return NativeFuncLayout(
+        name=str(d.get("name", "")),
+        param_types=[str(x) for x in (d.get("param_types") or [])],
+        param_names=[str(x) for x in (d.get("param_names") or [])],
+        ret_type=str(d.get("ret_type", "i64")),
+        ret_struct_name=d.get("ret_struct_name"),
+        ret_tuple_layout=_tuple_layout_from_dict(d.get("ret_tuple_layout")),
+        ret_enum_type=d.get("ret_enum_type"),
+        ret_elem_keys=list(keys) if keys is not None else None
+    );
+}
+
+def _field_info_from_dict(raw: any) -> NativeFieldInfo {
+    fd: dict[str, any] = raw;
+    fpt: any = fd.get("func_param_types");
+    ek: any = fd.get("elem_keys");
+    return NativeFieldInfo(
+        name=str(fd.get("name", "")),
+        llvm_type=str(fd.get("llvm_type", "i64")),
+        index=int(fd.get("index", 0)),
+        enum_type=fd.get("enum_type"),
+        is_func_ptr=bool(fd.get("is_func_ptr", False)),
+        func_param_types=list(fpt) if fpt is not None else None,
+        func_ret_type=fd.get("func_ret_type"),
+        elem_keys=list(ek) if ek is not None else None,
+        foreign=bool(fd.get("foreign", False))
+    );
+}
+
+def native_layout_from_dict(raw: any) -> NativeModuleLayout {
+    d: dict[str, any] = raw;
+    layout = NativeModuleLayout(
+        abi_version=int(d.get("abi_version", NATIVE_ABI_VERSION)),
+        str_headerless=d.get("str_headerless")
+    );
+    structs: dict[str, any] = d.get("structs") or {};
+    for (name, sraw) in structs.items() {
+        sd: dict[str, any] = sraw;
+        fields: list[NativeFieldInfo] = [];
+        for fd in (sd.get("fields") or []) {
+            fields.append(_field_info_from_dict(fd));
+        }
+        accessors: dict[str, dict[str, str]] = {};
+        raw_acc: dict[str, any] = sd.get("accessors") or {};
+        for (fn_name, kinds) in raw_acc.items() {
+            kind_map: dict[str, any] = kinds;
+            accessors[str(fn_name)] = {str(k): str(v) for (k, v) in kind_map.items()};
+        }
+        layout.structs[str(name)] = NativeStructLayout(
+            name=str(sd.get("name", name)),
+            fields=fields,
+            has_vtable=bool(sd.get("has_vtable", False)),
+            accessors=accessors
+        );
+    }
+    enums: dict[str, any] = d.get("enums") or {};
+    for (name, eraw) in enums.items() {
+        ed: dict[str, any] = eraw;
+        layout.enums[str(name)] = NativeEnumLayout(
+            name=str(ed.get("name", name)),
+            is_string_valued=bool(ed.get("is_string_valued", False)),
+            members=list(ed.get("members") or [])
+        );
+    }
+    functions: dict[str, any] = d.get("functions") or {};
+    for (name, fraw) in functions.items() {
+        layout.functions[str(name)] = _func_layout_from_dict(fraw);
+    }
+    methods: dict[str, any] = d.get("methods") or {};
+    for (name, mraw) in methods.items() {
+        layout.methods[str(name)] = _func_layout_from_dict(mraw);
+    }
+    elem_types: dict[str, any] = d.get("list_elem_types") or {};
+    layout.list_elem_types = {str(k): str(v) for (k, v) in elem_types.items()};
+    tuples: dict[str, any] = d.get("tuples") or {};
+    for (key, traw) in tuples.items() {
+        t = _tuple_layout_from_dict(traw);
+        if t is not None {
+            layout.tuples[str(key)] = t;
+        }
+    }
+    return layout;
 }
 
 glob NIFACE_FORMAT: int = 3,
@@ -244,7 +425,6 @@ obj NativeIface {
         if not isinstance(d, dict) or d.get("format") != NIFACE_FORMAT {
             return None;
         }
-        import from jaclang.compiler.frontend.codeinfo { native_layout_from_dict }
         layout_d = d.get("layout");
         return NativeIface(
             module=str(d.get("module", "")),

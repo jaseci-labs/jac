@@ -37,5 +37,6 @@ def python_source(path: str, program: JacProgram) -> tuple[str, Module | None] {
         }
         raise RuntimeError(f'No Python source product for {path}');
     }
-    return (str(module.gen.py), module);
+    import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+    return (generated_python(module.gen), module);
 }
