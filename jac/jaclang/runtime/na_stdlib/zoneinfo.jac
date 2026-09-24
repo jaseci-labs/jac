@@ -922,9 +922,12 @@ def _sp_zd(s: str, pos: int, maxn: int) -> tuple[(int, int)] {
 
 def _parse_tz_delta(td: str) -> int {
     (h, m, s) = _parse_transition_time(td);
-    total: int = h * 3600 + m * 60 + s;
-    if h > 24 {
+    if h < -24 or h > 24 {
         raise ValueError("Offset hours must be in [0, 24]: " + td);
+    }
+    total: int = h * 3600 + m * 60 + s;
+    if total < 0 {
+        total = -total;
     }
     if not td.startswith("-") {
         total = -total;

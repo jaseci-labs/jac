@@ -5,7 +5,10 @@ import from _datetime_native {
     dt_tm,
     dt_tm_gmtoff,
     dt_tm_zone,
-    dt_strftime
+    dt_strftime,
+    dt_out_buf,
+    dt_fmt_buf,
+    dt_out_str
 }
 
 glob:pub MINYEAR: int = 1,
@@ -306,6 +309,185 @@ def _pad6(n: int) -> str {
 }
 
 
+def _wb(p: int, v: int) {
+    __mem_store_i8(p, i8(v));
+}
+
+
+def _w2(p: int, n: int) {
+    __mem_store_i16(p, i16(48 + n // 10 + ((48 + n % 10) << 8)));
+}
+
+
+def _w3(p: int, n: int) {
+    _wb(p, 48 + n // 100);
+    _w2(p + 1, n % 100);
+}
+
+
+def _w4(p: int, n: int) {
+    _w2(p, n // 100);
+    _w2(p + 2, n % 100);
+}
+
+
+def _w6(p: int, n: int) {
+    _w2(p, n // 10000);
+    _w2(p + 2, (n // 100) % 100);
+    _w2(p + 4, n % 100);
+}
+
+
+def _w_uint(p: int, n: int) -> int {
+    k: int = 1;
+    m: int = n;
+    while m >= 10 {
+        m = m // 10;
+        k += 1;
+    }
+    i: int = k;
+    m = n;
+    while i > 0 {
+        i -= 1;
+        _wb(p + i, 48 + m % 10);
+        m = m // 10;
+    }
+    return k;
+}
+
+
+def _w_int(p: int, n: int) -> int {
+    if n < 0 {
+        _wb(p, 45);
+        return 1 + _w_uint(p + 1, -n);
+    }
+    return _w_uint(p, n);
+}
+
+
+def _w_bytes(p: int, b: bytes) -> int {
+    n: int = len(b);
+    i: int = 0;
+    while i < n {
+        _wb(p + i, b[i]);
+        i += 1;
+    }
+    return n;
+}
+
+
+def _w_str(p: int, s: str) -> int {
+    if len(s) == 0 {
+        return 0;
+    }
+    if len(s) == 1 {
+        _wb(p, ord(s));
+        return 1;
+    }
+    return _w_bytes(p, s.encode());
+}
+
+
+def _w_copy(p: int, src: int, n: int) -> int {
+    i: int = 0;
+    while i < n {
+        _wb(p + i, int(__mem_load_i8(src + i)));
+        i += 1;
+    }
+    return n;
+}
+
+
+def _w_date(p: int, y: int, m: int, d: int) -> int {
+    _w4(p, y);
+    _wb(p + 4, 45);
+    _w2(p + 5, m);
+    _wb(p + 7, 45);
+    _w2(p + 8, d);
+    return 10;
+}
+
+
+def _w_time(p: int, hh: int, mm: int, ss: int, us: int, timespec: str) -> int {
+    ts: str = timespec;
+    u: int = us;
+    if ts == "auto" {
+        ts = "microseconds" if u != 0 else "seconds";
+    } elif ts == "milliseconds" {
+        u = u // 1000;
+    }
+    if ts == "hours" {
+        _w2(p, hh);
+        return 2;
+    }
+    _w2(p, hh);
+    _wb(p + 2, 58);
+    _w2(p + 3, mm);
+    if ts == "minutes" {
+        return 5;
+    }
+    _wb(p + 5, 58);
+    _w2(p + 6, ss);
+    if ts == "seconds" {
+        return 8;
+    }
+    _wb(p + 8, 46);
+    if ts == "milliseconds" {
+        _w3(p + 9, u);
+        return 12;
+    }
+    if ts == "microseconds" {
+        _w6(p + 9, us);
+        return 15;
+    }
+    raise ValueError("Unknown timespec value");
+}
+
+
+def _w_offset(p: int, off: (timedelta | None), sep: str) -> int {
+    if off is None {
+        return 0;
+    }
+    o: timedelta = off;
+    u: int = o._to_microseconds();
+    q: int = p;
+    if u < 0 {
+        _wb(q, 45);
+        u = -u;
+    } else {
+        _wb(q, 43);
+    }
+    q += 1;
+    hh: int = u // 3600000000;
+    u = u % 3600000000;
+    mm: int = u // 60000000;
+    u = u % 60000000;
+    ss: int = u // 1000000;
+    us: int = u % 1000000;
+    if hh >= 0 and hh < 100 {
+        _w2(q, hh);
+        q += 2;
+    } else {
+        q += _w_int(q, hh);
+    }
+    q += _w_str(q, sep);
+    _w2(q, mm);
+    q += 2;
+    if ss != 0 or us != 0 {
+        q += _w_str(q, sep);
+        _w2(q, ss);
+        q += 2;
+        if us != 0 {
+            _wb(q, 46);
+            q += 1;
+            _w6(q, us);
+            q += 6;
+        }
+    }
+    return q - p;
+}
+
+
 def _check_date_fields(year: int, month: int, day: int) {
     if not (year >= MINYEAR and year <= MAXYEAR) {
         raise ValueError(f"year must be in {MINYEAR}..{MAXYEAR}, not {year}");
@@ -491,12 +673,23 @@ def _gmtime(t: int) -> struct_time {
 }
 
 
+glob _NNC: int = -1;
+
+
 def _need_normalize_century -> bool {
-    try {
-        return dt_strftime("%Y", 0, 0, 0, 1, 0, -1901, 0, 0, 0) != "0099";
-    } except Exception {
-        return True;
+    if _NNC < 0 {
+        try {
+            _NNC = 1;
+            if dt_strftime("%Y", 0, 0, 0, 1, 0, -1901, 0, 0, 0) != "0099" {
+                _NNC = 1;
+            } else {
+                _NNC = 0;
+            }
+        } except Exception {
+            _NNC = 1;
+        }
     }
+    return _NNC == 1;
 }
 
 
@@ -505,7 +698,185 @@ def _wrap_strftime(
     off: (timedelta | None),
     tzname_val: (str | None),
     format: str,
-    tt: struct_time
+    sec: int,
+    minute: int,
+    hour: int,
+    mday: int,
+    mon: int,
+    year: int,
+    wday: int,
+    yday: int,
+    isdst: int
+) -> str {
+    fb: bytes = format.encode();
+    n: int = len(fb);
+    if n > 640 or (tzname_val is not None and len(tzname_val) > 160) {
+        return _wrap_strftime_slow(
+            us,
+            off,
+            tzname_val,
+            format,
+            sec,
+            minute,
+            hour,
+            mday,
+            mon,
+            year,
+            wday,
+            yday,
+            isdst
+        );
+    }
+    p: int = dt_out_buf();
+    aux: int = dt_fmt_buf();
+    q: int = p;
+    flen: int = -1;
+    zlen: int = -1;
+    czlen: int = -1;
+    Zlen: int = -1;
+    i: int = 0;
+    while i < n {
+        if q - p > 640 {
+            return _wrap_strftime_slow(
+                us,
+                off,
+                tzname_val,
+                format,
+                sec,
+                minute,
+                hour,
+                mday,
+                mon,
+                year,
+                wday,
+                yday,
+                isdst
+            );
+        }
+        ch: int = fb[i];
+        i += 1;
+        if ch == 37 {
+            if i < n {
+                ch = fb[i];
+                i += 1;
+                if ch == 102 {
+                    if flen < 0 {
+                        _w6(aux, us);
+                        flen = 6;
+                    }
+                    q += _w_copy(q, aux, flen);
+                } elif ch == 122 {
+                    if zlen < 0 {
+                        zlen = _w_offset(aux + 32, off, "");
+                    }
+                    q += _w_copy(q, aux + 32, zlen);
+                } elif ch == 58 {
+                    if i < n {
+                        ch2: int = fb[i];
+                        i += 1;
+                        if ch2 == 122 {
+                            if czlen < 0 {
+                                czlen = _w_offset(aux + 64, off, ":");
+                            }
+                            q += _w_copy(q, aux + 64, czlen);
+                        } else {
+                            _wb(q, 37);
+                            _wb(q + 1, 58);
+                            _wb(q + 2, ch2);
+                            q += 3;
+                        }
+                    } else {
+                        _wb(q, 37);
+                        _wb(q + 1, 58);
+                        q += 2;
+                    }
+                } elif ch == 90 {
+                    if Zlen < 0 {
+                        Zlen = 0;
+                        if tzname_val is not None {
+                            zb: bytes = (tzname_val).encode();
+                            zn: int = len(zb);
+                            w: int = aux + 96;
+                            zi: int = 0;
+                            while zi < zn {
+                                c: int = zb[zi];
+                                zi += 1;
+                                if c == 37 {
+                                    _wb(w, 37);
+                                    w += 1;
+                                }
+                                _wb(w, c);
+                                w += 1;
+                            }
+                            Zlen = w - (aux + 96);
+                        }
+                    }
+                    q += _w_copy(q, aux + 96, Zlen);
+                } elif ch == 89 or ch == 71 or ch == 70 or ch == 67 {
+                    if year < 1000 and _need_normalize_century() {
+                        if ch == 67 {
+                            _w2(q, year // 100);
+                            q += 2;
+                        } else {
+                            _w4(q, year);
+                            q += 4;
+                            if ch == 70 {
+                                _wb(q, 45);
+                                _w2(q + 1, mon);
+                                _wb(q + 3, 45);
+                                _w2(q + 4, mday);
+                                q += 6;
+                            }
+                        }
+                    } else {
+                        _wb(q, 37);
+                        _wb(q + 1, ch);
+                        q += 2;
+                    }
+                } else {
+                    _wb(q, 37);
+                    _wb(q + 1, ch);
+                    q += 2;
+                }
+            } else {
+                _wb(q, 37);
+                q += 1;
+            }
+        } else {
+            _wb(q, ch);
+            q += 1;
+        }
+    }
+    fmt: str = dt_out_str(q - p);
+    return dt_strftime(
+        fmt,
+        sec,
+        minute,
+        hour,
+        mday,
+        mon - 1,
+        year - 1900,
+        (wday + 1) % 7,
+        yday - 1,
+        isdst
+    );
+}
+
+
+def _wrap_strftime_slow(
+    us: int,
+    off: (timedelta | None),
+    tzname_val: (str | None),
+    format: str,
+    sec: int,
+    minute: int,
+    hour: int,
+    mday: int,
+    mon: int,
+    year: int,
+    wday: int,
+    yday: int,
+    isdst: int
 ) -> str {
     freplace: str = "";
     zreplace: str = "";
@@ -563,16 +934,13 @@ def _wrap_strftime(
                     }
                     newformat += Zreplace;
                 } elif ch == "Y" or ch == "G" or ch == "F" or ch == "C" {
-                    if tt.tm_year < 1000 and _need_normalize_century() {
+                    if year < 1000 and _need_normalize_century() {
                         if ch == "C" {
-                            newformat += _pad2(tt.tm_year // 100);
+                            newformat += _pad2(year // 100);
                         } else {
-                            newformat += _pad4(tt.tm_year);
+                            newformat += _pad4(year);
                             if ch == "F" {
-                                newformat += "-"
-                                    + _pad2(tt.tm_mon)
-                                    + "-"
-                                    + _pad2(tt.tm_mday);
+                                newformat += "-" + _pad2(mon) + "-" + _pad2(mday);
                             }
                         }
                     } else {
@@ -590,15 +958,15 @@ def _wrap_strftime(
     }
     return dt_strftime(
         newformat,
-        tt.tm_sec,
-        tt.tm_min,
-        tt.tm_hour,
-        tt.tm_mday,
-        tt.tm_mon - 1,
-        tt.tm_year - 1900,
-        (tt.tm_wday + 1) % 7,
-        tt.tm_yday - 1,
-        tt.tm_isdst
+        sec,
+        minute,
+        hour,
+        mday,
+        mon - 1,
+        year - 1900,
+        (wday + 1) % 7,
+        yday - 1,
+        isdst
     );
 }
 
@@ -1140,15 +1508,33 @@ obj:pub timedelta {
         ss: int = self.seconds % 60;
         hh: int = mm // 60;
         mm = mm % 60;
-        s: str = str(hh) + ":" + _pad2(mm) + ":" + _pad2(ss);
+        p: int = dt_out_buf();
+        q: int = p;
         if self.days != 0 {
-            plural: str = "s" if _iabs(self.days) != 1 else "";
-            s = str(self.days) + " day" + plural + ", " + s;
+            q += _w_int(q, self.days);
+            q += _w_bytes(q, b" day");
+            if _iabs(self.days) != 1 {
+                _wb(q, 115);
+                q += 1;
+            }
+            q += _w_bytes(q, b", ");
         }
+        q += _w_uint(q, hh);
+        _wb(q, 58);
+        q += 1;
+        _w2(q, mm);
+        q += 2;
+        _wb(q, 58);
+        q += 1;
+        _w2(q, ss);
+        q += 2;
         if self.microseconds != 0 {
-            s += "." + _pad6(self.microseconds);
+            _wb(q, 46);
+            q += 1;
+            _w6(q, self.microseconds);
+            q += 6;
         }
-        return s;
+        return dt_out_str(q - p);
     }
 
     def __format__(fmt: str) -> str {
@@ -1608,8 +1994,21 @@ obj:pub date {
     }
 
     def strftime(format: str) -> str {
-        tt: struct_time = self.timetuple();
-        return _wrap_strftime(0, None, None, format, tt);
+        return _wrap_strftime(
+            0,
+            None,
+            None,
+            format,
+            0,
+            0,
+            0,
+            self.day,
+            self.month,
+            self.year,
+            self.weekday(),
+            _days_before_month(self.year, self.month) + self.day,
+            -1
+        );
     }
 
     def __format__(fmt: str) -> str {
@@ -1789,14 +2188,12 @@ obj:pub time {
     }
 
     def isoformat(timespec: str = "auto") -> str {
-        s: str = _format_time(
-            self.hour, self.minute, self.second, self.microsecond, timespec
+        p: int = dt_out_buf();
+        n: int = _w_time(
+            p, self.hour, self.minute, self.second, self.microsecond, timespec
         );
-        tz: str = self._tzstr();
-        if tz != "" {
-            s += tz;
-        }
-        return s;
+        n += _w_offset(p + n, self.utcoffset(), ":");
+        return dt_out_str(n);
     }
 
     def __str__ -> str {
@@ -1804,11 +2201,20 @@ obj:pub time {
     }
 
     def strftime(format: str) -> str {
-        tt: struct_time = struct_time(
-            1900, 1, 1, self.hour, self.minute, self.second, 0, 1, -1
-        );
         return _wrap_strftime(
-            self.microsecond, self.utcoffset(), self.tzname(), format, tt
+            self.microsecond,
+            self.utcoffset(),
+            self.tzname(),
+            format,
+            self.second,
+            self.minute,
+            self.hour,
+            1,
+            1,
+            1900,
+            0,
+            1,
+            -1
         );
     }
 
@@ -1959,27 +2365,31 @@ obj:pub datetime(date) {
     static def _fromepoch(
         sec: int, us: int, utc: bool, tz: (tzinfo | None)
     ) -> datetime {
-        st: struct_time = _gmtime(sec) if utc else _localtime(sec);
-        ss: int = st.tm_sec;
+        if utc {
+            dt_gmtime(sec);
+        } else {
+            dt_localtime(sec);
+        }
+        ss: int = dt_tm(0);
         if ss > 59 {
             ss = 59;
         }
         result: datetime = datetime(
-            st.tm_year, st.tm_mon, st.tm_mday, st.tm_hour, st.tm_min, ss, us, tz
+            dt_tm(5) + 1900, dt_tm(4) + 1, dt_tm(3), dt_tm(2), dt_tm(1), ss, us, tz
         );
         if tz is None and not utc {
             off_now: int = dt_tm_gmtoff();
-            _localtime(sec - 86400);
+            dt_localtime(sec - 86400);
             shift: int = off_now - dt_tm_gmtoff();
             if shift < 0 {
-                st3: struct_time = _localtime(sec + shift);
+                dt_localtime(sec + shift);
                 probe2: datetime = datetime(
-                    st3.tm_year,
-                    st3.tm_mon,
-                    st3.tm_mday,
-                    st3.tm_hour,
-                    st3.tm_min,
-                    st3.tm_sec,
+                    dt_tm(5) + 1900,
+                    dt_tm(4) + 1,
+                    dt_tm(3),
+                    dt_tm(2),
+                    dt_tm(1),
+                    dt_tm(0),
                     us,
                     None
                 );
@@ -2133,21 +2543,20 @@ obj:pub datetime(date) {
     }
 
     def _local_u(u: int) -> int {
-        st: struct_time = _localtime(u);
-        epoch: datetime = datetime(1970, 1, 1);
-        d: timedelta = (
-            datetime(
-                st.tm_year, st.tm_mon, st.tm_mday, st.tm_hour, st.tm_min, st.tm_sec
-            )
-            - epoch
-        ) as timedelta;
-        return (d // timedelta(0, 1)) as int;
+        dt_localtime(u);
+        return (_ymd2ord(dt_tm(5) + 1900, dt_tm(4) + 1, dt_tm(3)) - _EPOCHORDINAL)
+            * 86400
+            + dt_tm(2) * 3600
+            + dt_tm(1) * 60
+            + dt_tm(0);
     }
 
     def _mktime -> int {
-        epoch: datetime = datetime(1970, 1, 1);
         max_fold_seconds: int = 86400;
-        t: int = (((self - epoch) as timedelta) // timedelta(0, 1)) as int;
+        t: int = (_ymd2ord(self.year, self.month, self.day) - _EPOCHORDINAL) * 86400
+            + self.hour * 3600
+            + self.minute * 60
+            + self.second;
         a: int = self._local_u(t) - t;
         u1: int = t - a;
         t1: int = self._local_u(u1);
@@ -2308,21 +2717,31 @@ obj:pub datetime(date) {
     }
 
     def isoformat(sep: str = "T", timespec: str = "auto") -> str {
-        s: str = _pad4(self.year)
-            + "-"
-            + _pad2(self.month)
-            + "-"
-            + _pad2(self.day)
-            + sep
-            + _format_time(
-                self.hour, self.minute, self.second, self.microsecond, timespec
-            );
-        off: (timedelta | None) = self.utcoffset();
-        tzs: str = _format_offset(off);
-        if tzs != "" {
-            s += tzs;
+        if len(sep) > 512 {
+            s: str = _pad4(self.year)
+                + "-"
+                + _pad2(self.month)
+                + "-"
+                + _pad2(self.day)
+                + sep
+                + _format_time(
+                    self.hour, self.minute, self.second, self.microsecond, timespec
+                );
+            off: (timedelta | None) = self.utcoffset();
+            tzs: str = _format_offset(off);
+            if tzs != "" {
+                s += tzs;
+            }
+            return s;
         }
-        return s;
+        p: int = dt_out_buf();
+        n: int = _w_date(p, self.year, self.month, self.day);
+        n += _w_str(p + n, sep);
+        n += _w_time(
+            p + n, self.hour, self.minute, self.second, self.microsecond, timespec
+        );
+        n += _w_offset(p + n, self.utcoffset(), ":");
+        return dt_out_str(n);
     }
 
     def __str__ -> str {
@@ -2539,9 +2958,25 @@ obj:pub datetime(date) {
     }
 
     def strftime(format: str) -> str {
-        tt: struct_time = self.timetuple();
+        dtd: (timedelta | None) = self.dst();
+        dstflag: int = -1;
+        if dtd is not None {
+            dstflag = 1 if (dtd as timedelta) else 0;
+        }
         return _wrap_strftime(
-            self.microsecond, self.utcoffset(), self.tzname(), format, tt
+            self.microsecond,
+            self.utcoffset(),
+            self.tzname(),
+            format,
+            self.second,
+            self.minute,
+            self.hour,
+            self.day,
+            self.month,
+            self.year,
+            self.weekday(),
+            _days_before_month(self.year, self.month) + self.day,
+            dstflag
         );
     }
 

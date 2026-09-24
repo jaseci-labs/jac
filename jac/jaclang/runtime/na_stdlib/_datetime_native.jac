@@ -6,12 +6,33 @@ import from c { def strftime(s: int, max: u64, format: str, tm: int) -> u64;  }
 import from c { def strdup(s: int) -> str;  }
 import from _errno_native { last_errno, raise_os_error }
 
-glob _DT_S: int = malloc(u64(1152));
+glob _DT_S: int = malloc(u64(2176));
 glob _DT_TV: int = _DT_S,
      _DT_TM: int = _DT_S + 16,
      _DT_TMW: int = _DT_S + 72,
      _DT_FMT: int = _DT_S + 128,
-     _DT_FMT_CAP: int = 1024;
+     _DT_FMT_CAP: int = 1024,
+     _DT_ISO: int = _DT_S + 1152,
+     _DT_ISO_CAP: int = 1024;
+
+
+def:pub dt_out_buf -> int {
+    return _DT_ISO;
+}
+
+
+def:pub dt_fmt_buf -> int {
+    return _DT_FMT;
+}
+
+
+def:pub dt_out_str(n: int) -> str {
+    if n < 0 or n >= _DT_ISO_CAP {
+        raise ValueError("formatted output exceeds scratch capacity");
+    }
+    __mem_store_i8(_DT_ISO + n, i8(0));
+    return strdup(_DT_ISO);
+}
 
 
 def:pub dt_epoch_us -> int {
