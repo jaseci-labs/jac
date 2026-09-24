@@ -90,10 +90,8 @@ obj Person {
 # Install the Jac toolchain
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 
-# Individual plugins
-jac install byllm        # LLM integration
-# (Production deployment & scaling and full-stack web + native-desktop app
-#  building ship with the jac binary -- no separate install)
+# byLLM, production deployment & scaling, and full-stack web + native-desktop
+# app building ship with the jac binary -- no separate install
 ```
 
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.

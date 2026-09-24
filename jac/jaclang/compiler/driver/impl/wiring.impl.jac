@@ -23,6 +23,7 @@ impl WiringSpec.postinit -> None {
     import from jaclang.compiler.frontend.parser.frontend { parse_woven }
     self.digest = hashlib.sha256(self.source.encode()).hexdigest();
     self._lines = self.source.split("\n");
+    self.package_prefix = _package_prefix(self.root_dir);
     (mod, had_error) = parse_woven(self.source, self.path, None, []);
     self.module = mod;
     self.parse_failed = bool(had_error);
@@ -70,42 +71,44 @@ impl WiringSpec._ensure_policy -> None {
 }
 
 impl WiringSpec.module_name(path: str) -> (str | None) {
+    import from jaclang.project.modresolver { module_name_in }
+    local = module_name_in(self.root_dir, path);
+    return self.package_prefix + local if local is not None else None;
+}
+
+impl WiringSpec._local_name(name: str) -> (str | None) {
+    if not self.package_prefix {
+        return name;
+    }
+    if not name.startswith(self.package_prefix) {
+        return None;
+    }
+    return name[len(self.package_prefix):];
+}
+
+def _package_prefix(root_dir: str) -> str {
+    import tomllib;
+    import from jaclang.project.modresolver { is_scoped_package_name }
     try {
-        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(self.root_dir));
-    } except ValueError {
-        return None;
-    }
-    if rel.startswith("..") {
-        return None;
-    }
-    stem: str;
-    if rel.endswith(".jac") {
-        stem = rel[:-4];
-    } elif rel.endswith(".py") {
-        stem = rel[:-3];
-    } else {
-        return None;
-    }
-    parts = stem.split(os.sep);
-    if parts and parts[-1] == "__init__" {
-        parts = parts[:-1];
-    }
-    if not parts {
-        return None;
-    }
-    for part in parts {
-        if not part.isidentifier() {
-            return None;
+        with open(os.path.join(root_dir, "jac.toml"), "rb") as fh {
+            project = tomllib.load(fh).get("project", {});
         }
+    } except Exception {
+        return "";
     }
-    return ".".join(parts);
+    name = project.get("name", "") if isinstance(project, dict) else "";
+    if isinstance(name, str) and is_scoped_package_name(name) {
+        return name.replace("/", ".") + ".";
+    }
+    return "";
 }
 
 impl WiringSpec.module_file(name: str) -> (str | None) {
-    if not name {
+    local = self._local_name(name) if name else None;
+    if not local {
         return None;
     }
-    parts = name.split(".");
+    parts = local.split(".");
     if any([not p for p in parts]) {
         return None;
     }
@@ -117,10 +120,11 @@ impl WiringSpec.module_file(name: str) -> (str | None) {
 }
 
 impl WiringSpec.is_package_dir(name: str) -> bool {
-    if not name {
+    local = self._local_name(name) if name else None;
+    if not local {
         return False;
     }
-    return os.path.isdir(os.path.join(self.root_dir, *name.split(".")));
+    return os.path.isdir(os.path.join(self.root_dir, *local.split(".")));
 }
 
 impl WiringSpec.project_modules -> list[str] {

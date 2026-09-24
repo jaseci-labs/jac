@@ -96,7 +96,15 @@ glob RETIRED: tuple[str, ...] = (
                  temp_patterns=[".fetch-*"],
                  temp_lock=TempLock.SIBLINGS
              ),
-             summary="Jac packages by name, version and content hash (read-only, shared)"
+             summary="Jac packages by name, version and content hash (read-only, shared)",
+             root_env="JAC_PACKAGE_STORE",
+             root_prefix="pkgs"
+         ),
+         Bucket(
+             name="pkg-git",
+             relpath="pkg-git",
+             policy=Policy(ttl_days=30.0, temp_patterns=["*.lock"]),
+             summary="git mirrors and checkouts behind git package dependencies"
          ),
          Bucket(
              name="pkg-index",

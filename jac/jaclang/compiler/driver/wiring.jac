@@ -54,10 +54,12 @@ obj WiringSpec {
         _rule_rows: list[str] = [],
         _policy_digest: str = "",
         _project_modules: (list[str] | None) = None,
-        _mentioned: (set[str] | None) = None;
+        _mentioned: (set[str] | None) = None,
+        package_prefix: str = "";
 
     def postinit -> None;
     def module_name(path: str) -> (str | None);
+    def _local_name(name: str) -> (str | None);
     def module_file(name: str) -> (str | None);
     def is_package_dir(name: str) -> bool;
     def project_modules -> list[str];

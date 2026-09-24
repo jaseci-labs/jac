@@ -478,7 +478,7 @@ test "kind specs carry ui and has_server; the client axis is gone" {
 
 test "resolve_app_kind infers only for the implicit app" {
     cfg = JacConfig.from_toml_str(
-        '[project]\nname = "x"\n\n[dependencies]\njac-client = "*"\n'
+        '[project]\nname = "x"\n\n[dependencies.pypi]\njac-client = "*"\n'
     );
     app = cfg.resolve_app("");
     assert app.implicit and app.kind == "";

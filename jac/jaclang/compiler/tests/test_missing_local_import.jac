@@ -243,7 +243,7 @@ def _dep_project(source: str, declared: bool) -> tuple[str, str] {
     (base, mod_path) = _project(source, name="main.jac");
     toml = "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n";
     if declared {
-        toml += "\n[dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n";
+        toml += "\n[dependencies.pypi]\nnot-installed-pkg-xyz = \">=1.0\"\n";
     }
     with open(os.path.join(base, "jac.toml"), "w") as f {
         f.write(toml);

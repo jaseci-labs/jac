@@ -109,6 +109,13 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                  )
              ),
              Arg.create(
+                 "allow-drop-client",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="With --as wheel: build even though client-codespace modules cannot ship in a Python wheel (they are left out)"
+             ),
+             Arg.create(
                  "check_only",
                  typ=bool,
                  `default=False,
@@ -176,5 +183,6 @@ def build(
     memory: str = "",
     native_target: str = "",
     debug: bool = False,
-    native_link_mode: str = ""
+    native_link_mode: str = "",
+    allow_drop_client: bool = False
 ) -> int;

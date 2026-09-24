@@ -125,6 +125,10 @@ The unscoped block stays for layer rules and anything cross-cutting. Several blo
 
 Syntax has its own codes, `E0086` through `E0096`, each naming the shape that was expected: a directed `-->`, one provider per wire, consumers named in full, `as` only on the module form, no duplicate payload names, `include` without a payload, named rules, a dotted scope, and `*` standing alone.
 
+## Wiring inside a package
+
+In a project whose `[project] name` is a scoped package name (`acme/graphkit`, see [Packages](packages.md)), `arch.jac` names the project's modules by their qualified names: `acme.graphkit.core --> acme.graphkit.web.main { ... }`. The generated imports then load each module under the one name consumers use for it.
+
 ## Caching
 
 A module's cache key folds in only its own wire slice plus the rule set, so editing one wire rebuilds one module, and a project without `arch.jac` keeps the keys it had.

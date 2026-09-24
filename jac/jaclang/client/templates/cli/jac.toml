@@ -7,7 +7,7 @@ kind = "cli"
 
 [dependencies]
 
-[dev-dependencies]
+[dev-dependencies.pypi]
 watchdog = ">=3.0.0"
 
 [jacpack]

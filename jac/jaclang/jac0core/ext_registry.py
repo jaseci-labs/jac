@@ -266,6 +266,12 @@ def _subtree_has_jac(directory: str) -> bool:
                         name = entry.name
                         if not name.startswith(".") and name not in _WALK_SKIP_DIRS:
                             subdirs.append(entry.path)
+                    elif entry.is_symlink() and os.path.isfile(
+                        os.path.join(entry.path, "jac.toml")
+                    ):
+                        # A mounted Jac package (.jac/packages/<org>/<name>)
+                        # is Jac source without descending the link.
+                        return True
                     elif entry.is_file() and is_jac(entry.name):
                         return True
                 except OSError:

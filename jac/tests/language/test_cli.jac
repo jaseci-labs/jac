@@ -1521,7 +1521,7 @@ test "jac install <pkg> routes package names to the project venv installer" {
         with patch(
             "jaclang.project.providers.PythonProvider.install_specs", fake_install_specs
         ) {
-            result = project.install(packages=["numpy", "pandas"]);
+            result = project.install(pypi=True, packages=["numpy", "pandas"]);
         }
         assert result == 0 , f"Expected exit 0, got {result}";
         assert captured == [["numpy", "pandas"]] , f"unexpected specs routed: {captured}";

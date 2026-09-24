@@ -94,7 +94,7 @@ typescript = "^5.3.3"
 "@types/react" = "^19.2.0"
 "@types/react-dom" = "^19.2.0"
 
-[dev-dependencies]
+[dev-dependencies.pypi]
 watchdog = ">=3.0.0"
 
 [client]
@@ -273,12 +273,15 @@ entry-point = "main"
 plugins = ["tailwindcss", "autoprefixer"]
 
 [dependencies]
+# Jac packages (org/name)
+
+[dependencies.pypi]
 # Python packages
 
 [dependencies.npm]
 # npm packages
 
-[dev-dependencies]
+[dev-dependencies.pypi]
 watchdog = ">=3.0.0"
 ```
 

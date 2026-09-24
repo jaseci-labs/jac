@@ -157,6 +157,9 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     npm_dev_deps = _inject_missing(npm_dev_deps, CORE_DEV_DEPS);
     npm_dev_deps = {** npm_dev_deps, ** app_dev_deps};
     merged_npm_deps = {** npm_deps, ** target_scoped_deps};
+    for (dep_name, dep_version) in _package_npm_deps(jac_config).items() {
+        merged_npm_deps.setdefault(dep_name, dep_version);
+    }
 
     user_config: dict[str, any] = {
         'api': client_config.get('api', {}),
@@ -170,7 +173,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         'pwa': client_config.get('pwa', {}),
         'assets': client_config.get('assets', {}),
         'package': {
-            'name': jac_config.project.name,
+            'name': _npm_package_name(jac_config.project.name),
             'version': jac_config.project.version,
             'description': jac_config.project.description,
             'dependencies': merged_npm_deps,
@@ -180,6 +183,29 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     merged = deep_merge(default_config, user_config);
     self._config = merged;
     return merged;
+}
+
+def _package_npm_deps(jac_config: any) -> dict[str, str] {
+    import from jaclang.packages.install {
+        InstallError,
+        load_lock,
+        package_npm_requirements
+    }
+    if jac_config.project_root is None {
+        return {};
+    }
+    try {
+        lock = load_lock(jac_config);
+    } except InstallError {
+        return {};
+    }
+    return {
+        name: spec for (name, spec, _owner) in package_npm_requirements(lock, False)
+    };
+}
+
+def _npm_package_name(name: str) -> str {
+    return f"@{name}" if "/" in name and not name.startswith("@") else name;
 }
 
 impl JacClientConfig.get_package_config(self: JacClientConfig) -> dict[str, any] {
