@@ -351,7 +351,7 @@ def _center(s: str, width: int) -> str {
         return s;
     }
     total: int = width - len(s);
-    left: int = total // 2 + (total % 2);
+    left: int = total // 2 + (1 if total % 2 == 1 and width % 2 == 1 else 0);
     out: str = s;
     i: int = 0;
     while i < left {

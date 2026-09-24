@@ -3,7 +3,7 @@
 Runs unchanged on both lanes: `jac run -b python` binds CPython's modules
 (baseline) and `jac run -b native` binds na_stdlib. Each op is timed over a
 fixed iteration count with datetime.now() (microsecond resolution via
-gettimeofday on the native lane) and reported as us/op.
+clock_gettime on the native lane) and reported as us/op.
 """
 
 import from datetime { date, datetime, timedelta, timezone }

@@ -69,7 +69,7 @@ native layout records the emitted name separately from its source-level key.
   local-timeline conversion like CPython (including the fold probe), and
   `strptime` is a hand-rolled matcher port of `_strptime.py` since no regex
   engine exists natively. `_datetime_native.jac` is the FFI floor:
-  `gettimeofday`/`localtime_r`/`gmtime_r`/`strftime`
+  `clock_gettime`/`localtime_r`/`gmtime_r`/`strftime`
   over shared `malloc`'d `struct tm`/`timeval` storage (glibc `tm_gmtoff`/
   `tm_zone` read at fixed offsets). SCOPE divergences: `datetime.date()` /
   `time()` / `timetz()` and `datetime.combine` return/accept `any` at the type
@@ -81,7 +81,7 @@ native layout records the emitted name separately from its source-level key.
   `sys.stdout.write` since `print` doesn't lower), the `itermonth*` iterators,
   `monthcalendar`-`yeardatescalendar` grids, `isleap`/`leapdays`/`weekday`/
   `monthrange`, `month_name`/`month_abbr`/`day_name`/`day_abbr`, and the
-  `IllegalMonthError`/`IllegalWeekdayError` exceptions (no `super.init` — it
+  `IllegalMonthError`/`IllegalWeekdayError` exceptions (no `super.init` -- it
   doesn't lower). SCOPE divergences: `weekday`/`monthrange` return plain
   `int`, not the 3.14 `Day`/`Month` `IntEnum`s, and the name tables are static
   English `list[str]` rather than locale-aware `_localized_*` objects.
@@ -92,7 +92,7 @@ native layout records the emitted name separately from its source-level key.
   `_file_native`/`_directory_native`, `available_timezones`, and
   `ZoneInfoNotFoundError`. `utcoffset`/`dst`/`tzname`/`fromutc` follow the
   `_ttinfo` transition logic including fold/gap handling, so
-  `datetime.astimezone` conversion works end to end. SCOPE: TZif files only —
+  `datetime.astimezone` conversion works end to end. SCOPE: TZif files only --
   no `datetime.tzfile`/`tzstr` fallbacks, and POSIX-footer parsing covers the
   common `EST5EDT,M3.2.0/2,M11.1.0` forms.
 - **`gzip.jac`** (#6978 Phase 2) -- a Mechanism-B gzip framing over the
