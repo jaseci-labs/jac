@@ -789,7 +789,8 @@ obj _IsoTimeResult {
         invalid: bool = False;
 }
 
-glob _TZ_SCRATCH: _IsoTimeResult = _IsoTimeResult();
+glob _TZ_SCRATCH: _IsoTimeResult = _IsoTimeResult(),
+     _TZ_CACHE: dict[int, timezone] = {};
 
 
 def _parse_hh_mm_ss_ff(tstr: bytes, pos: int, end: int, res: _IsoTimeResult) {
@@ -926,19 +927,21 @@ def _parse_isoformat_time_at(s: bytes, lo: int) -> _IsoTimeResult {
                 res.invalid = True;
                 return res;
             }
-            if tzc.hour == 0
-                and tzc.minute == 0
-                and tzc.second == 0
-                and tzc.microsecond == 0 {
+            tzsign: int = -1 if s[tz_idx] == 45 else 1;
+            off_us: int = tzsign
+                * (
+                    (tzc.hour * 3600 + tzc.minute * 60 + tzc.second) * 1000000
+                    + tzc.microsecond
+                );
+            if off_us == 0 {
                 res.tzi = timezone.utc;
             } else {
-                tzsign: int = -1 if s[tz_idx] == 45 else 1;
-                off_us: int = tzsign
-                    * (
-                        (tzc.hour * 3600 + tzc.minute * 60 + tzc.second) * 1000000
-                        + tzc.microsecond
-                    );
-                res.tzi = timezone(timedelta(0, 0, off_us));
+                ntz: (timezone | None) = _TZ_CACHE.get(off_us);
+                if ntz is None {
+                    ntz = timezone(timedelta(0, 0, off_us));
+                    _TZ_CACHE[off_us] = ntz;
+                }
+                res.tzi = ntz;
             }
         }
     }
