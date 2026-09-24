@@ -94,6 +94,7 @@ obj PlacementSummary {
         native_blocker: str = '',
         native_verdict: str = '',
         native_verdict_code: str = '',
+        native_verdict_deps: list[list[str]] = [],
         jac_deps: list[str] = [],
         has_refs: bool = False,
         elements: list[ElementSummary] = [];
@@ -107,6 +108,7 @@ obj PlacementSummary {
             'native_blocker': self.native_blocker,
             'native_verdict': self.native_verdict,
             'native_verdict_code': self.native_verdict_code,
+            'native_verdict_deps': [list(row) for row in self.native_verdict_deps],
             'jac_deps': list(self.jac_deps),
             'has_refs': self.has_refs,
             'elements': [e.to_dict() for e in self.elements]
@@ -124,6 +126,11 @@ obj PlacementSummary {
         ps.native_blocker = str(d.get('native_blocker', ''));
         ps.native_verdict = str(d.get('native_verdict', ''));
         ps.native_verdict_code = str(d.get('native_verdict_code', ''));
+        ps.native_verdict_deps = [
+            [str(row[0]), str(row[1])]
+            for row in d.get('native_verdict_deps', [])
+            if isinstance(row, list) and len(row) == 2
+        ];
         ps.jac_deps = [str(x) for x in d.get('jac_deps', [])];
         ps.has_refs = bool(d.get('has_refs', False));
         ps.elements = [
@@ -151,6 +158,9 @@ def summary_from_bytes(
         if summary is not None and path_mapper is not None {
             summary.mod_path = path_mapper(summary.mod_path);
             summary.jac_deps = [path_mapper(p) for p in summary.jac_deps];
+            summary.native_verdict_deps = [
+                [path_mapper(row[0]), row[1]] for row in summary.native_verdict_deps
+            ];
             for element in summary.elements {
                 element.import_jac_target = path_mapper(element.import_jac_target);
                 element.import_py_targets = [
@@ -788,6 +798,7 @@ def summarize_module(
         if pending is not None {
             ps.native_verdict_code = pending[0];
             ps.native_verdict = pending[1];
+            ps.native_verdict_deps = [list(row) for row in pending[2]];
         }
     }
     ps.jac_deps = deps;
@@ -861,7 +872,7 @@ def summary_store(prog: any) -> dict[str, any] {
     return store;
 }
 
-def native_verdict_notes(prog: any) -> dict[str, tuple[str, str]] {
+def native_verdict_notes(prog: any) -> dict[str, tuple[str, str, list[list[str]]]] {
     notes = prog?.analysis.native_verdict_notes;
     if notes is None {
         notes = {};
@@ -870,14 +881,47 @@ def native_verdict_notes(prog: any) -> dict[str, tuple[str, str]] {
     return notes;
 }
 
-def note_native_verdict(prog: any, resolved: str, code: str, detail: str) {
-    native_verdict_notes(prog)[resolved] = (code, detail);
+def note_native_verdict(
+    prog: any,
+    resolved: str,
+    code: str,
+    detail: str,
+    deps: (list[list[str]] | None) = None
+) {
+    rows = [list(row) for row in (deps or [])];
+    native_verdict_notes(prog)[resolved] = (code, detail, rows);
     store = summary_store(prog);
     cached = store.get(os.path.abspath(resolved));
     if isinstance(cached, PlacementSummary) {
         cached.native_verdict_code = code;
         cached.native_verdict = detail;
+        cached.native_verdict_deps = rows;
     }
+}
+
+def jac_import_targets(module: uni.Module) -> list[str] {
+    targets: list[str] = [];
+    for imp in module.get_all_sub_nodes(uni.Import) {
+        nodes: list[(uni.ModulePath | uni.ModuleItem)] = [];
+        if imp.from_loc is not None {
+            nodes.append(imp.from_loc);
+        }
+        for item in imp.items {
+            if isinstance(item, (uni.ModulePath, uni.ModuleItem)) {
+                nodes.append(item);
+            }
+        }
+        for nd in nodes {
+            path = _resolve_import_path(nd);
+            if path is not None and path.endswith('.jac') {
+                real = os.path.realpath(path);
+                if real not in targets {
+                    targets.append(real);
+                }
+            }
+        }
+    }
+    return targets;
 }
 
 def placement_state(prog: any) -> dict[str, any] {
