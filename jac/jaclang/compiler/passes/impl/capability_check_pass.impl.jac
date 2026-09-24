@@ -642,7 +642,8 @@ impl native_capability_violations(
                 and nd.is_attr
                 and isinstance(nd.right, Name)
                 and (nd.target.type is not None)
-                and nd.target.type.is_any_type() {
+                and nd.target.type.is_any_type()
+                and not _class_bounded_typevar(nd.target.type) {
                 _fld = nd.right.value;
                 if (
                     _fld == "environ"
@@ -989,4 +990,9 @@ impl NativeCapabilityCheckPass.run_walk with Module entry {
 
 impl ClientCapabilityCheckPass.run_walk with Module entry {
     self.module = self._run_impl(here);
+}
+
+impl _class_bounded_typevar(t: object) -> bool {
+    import from jaclang.compiler.types.types { ClassType, TypeVarType }
+    return isinstance(t, TypeVarType) and isinstance(t.bound, ClassType);
 }

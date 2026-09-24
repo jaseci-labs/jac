@@ -2691,6 +2691,7 @@ walker NaIRGenPass(CompilerPass) {
         registry: dict[str, ir.IdentifiedStructType]
     ) -> (str | None);
 
+    def _typevar_bound_struct(t: (TypeBase | None)) -> (str | None);
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _struct_name_for_key(tk: (str | None)) -> (str | None);
     def _erased_arch_base(tk: str) -> (str | None);

@@ -78,6 +78,8 @@ def call_binds_kwargs_spread(call: FuncCall) -> bool;
 
 def call_constructs_class_value(call: FuncCall) -> bool;
 
+def _class_bounded_typevar(t: object) -> bool;
+
 
 def native_capability_violations(
     mod: Module

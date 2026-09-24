@@ -24,11 +24,16 @@ impl NaIRGenPass._class_expr_bound(
     }
     typ = expr.type;
     if typ.is_builtin("type") {
+        import from jaclang.compiler.types.types { TypeVarType }
         args = typ.private.type_args or [];
-        if not args or not isinstance(args[0], ClassType) {
+        arg = args[0] if args else None;
+        if isinstance(arg, TypeVarType) {
+            arg = arg.bound;
+        }
+        if not isinstance(arg, ClassType) {
             return unbounded;
         }
-        typ = args[0];
+        typ = arg;
     } elif not typ.is_instantiable() or typ.is_instance() {
         return None;
     }

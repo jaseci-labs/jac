@@ -379,6 +379,26 @@ impl NaIRGenPass._spec_union_agreement(t: any, names: tuple[str, ...]) -> (any |
     return _members[0];
 }
 
+impl NaIRGenPass._typevar_bound_struct(t: (TypeBase | None)) -> (str | None) {
+    import from jaclang.compiler.types.types { ClassType, TypeVarType, UnionType }
+    if isinstance(t, UnionType) {
+        members = [
+            m
+            for m in (t.types or [])
+            if not (
+                isinstance(m, ClassType)
+                and m._shared is not None
+                and m.shared.class_name in ("NoneType", "None")
+            )
+        ];
+        t = members[0] if len(members) == 1 else None;
+    }
+    if isinstance(t, TypeVarType) and isinstance(t.bound, ClassType) {
+        return self._struct_name_for_key(self._mangled_of(t.bound));
+    }
+    return None;
+}
+
 impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     """Which archetype layout a receiver's field access should address.
 
@@ -391,9 +411,9 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     built for -- a narrow that produces `SubTag[Token]` still has to land on
     `SubTag`.
     """;
-    _narrowed = self._struct_name_for_key(
-        self._mangled_of(self._flow_narrowed_type_of(expr))
-    );
+    _flow_type = self._flow_narrowed_type_of(expr);
+    _narrowed = self._struct_name_for_key(self._mangled_of(_flow_type))
+        or self._typevar_bound_struct(_flow_type);
     if (
         isinstance(expr, uni.Name)
         and expr.value == "self"
