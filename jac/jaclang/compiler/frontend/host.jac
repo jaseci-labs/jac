@@ -235,11 +235,17 @@ obj HostServices {
     }
 }
 
-glob _HOSTS: list[HostServices] = [];
+glob _HOSTS: list[HostServices] = [],
+     _NEUTRAL_HOST: HostServices = HostServices();
 
 def active_host -> HostServices {
     if not _HOSTS {
-        _HOSTS.append(HostServices());
+        try {
+            import from jaclang.project.compiler_host { ProjectHost }
+        } except ImportError {
+            return _NEUTRAL_HOST;
+        }
+        _HOSTS.append(ProjectHost());
     }
     return _HOSTS[-1];
 }

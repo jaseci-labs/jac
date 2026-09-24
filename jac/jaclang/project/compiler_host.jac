@@ -6,8 +6,7 @@ import from jaclang.compiler.frontend.host {
     LintSettings,
     PathFacts,
     ProjectDefaults,
-    ProjectFacts,
-    install_host
+    ProjectFacts
 }
 import type from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 import type from jaclang.compiler.driver.program { JacProgram }
@@ -129,8 +128,4 @@ def project_defaults_of(cfg: any) -> ProjectDefaults {
         memory_exempt=list(memory.exempt),
         check=check_settings_of(cfg.check)
     );
-}
-
-def install_project_host {
-    install_host(ProjectHost());
 }
