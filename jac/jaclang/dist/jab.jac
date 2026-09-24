@@ -46,8 +46,18 @@ def _materialize_jab_data(data: bytes, label: str, expected_sha256: str = "") ->
             with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tf {
                 tf.extractall(tmp, filter="data");
             }
-            if not (tmp / "_precompiled" / MANIFEST_NAME).is_file() {
+            manifest_file = tmp / "_precompiled" / MANIFEST_NAME;
+            if not manifest_file.is_file() {
                 raise RuntimeError(f"{label} is not a jab: no sealed manifest inside");
+            }
+            role = json.loads(manifest_file.read_text(encoding="utf-8")).get(
+                "role", "app"
+            );
+            if role != "app" {
+                raise RuntimeError(
+                    f"{label} is a {role} package, not an app: add a library with "
+                    "'jac install', create from a template with 'jac create --use'"
+                );
             }
             shutil.rmtree(dest, ignore_errors=True);
             tmp.rename(dest);

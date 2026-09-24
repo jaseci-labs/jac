@@ -92,7 +92,7 @@ test "normalize_constraint converts npm caret tilde and wildcard" {
 
 test "generate_metadata produces correct METADATA 2.4 output" {
     cfg = JacConfig.from_toml_str(
-        '[project]\nname = "mypkg"\nversion = "1.2.3"\nrequires-python = ">=3.11"\nlicense = "MIT"\n\n[dependencies]\nrequests = ">=2.28.0"\nnumpy = "^1.24.0"\n\n[optional-dependencies.video]\nopencv-python-headless = ">=4.0"\n'
+        '[project]\nname = "mypkg"\nversion = "1.2.3"\nrequires-python = ">=3.11"\nlicense = "MIT"\n\n[dependencies.pypi]\nrequests = ">=2.28.0"\nnumpy = "^1.24.0"\n\n[optional-dependencies.video]\nopencv-python-headless = ">=4.0"\n'
     );
     meta = generate_metadata(cfg);
 
@@ -486,7 +486,7 @@ test "generate_pyproject_toml produces valid TOML covering structure, deps, and 
         'license = "MIT \\"Modified\\""\n'
         'keywords = ["key\\"word"]\n'
         'classifiers = ["Dev :: \\"Alpha\\""]\n\n'
-        '[dependencies]\nrequests = ">=2.28"\n\n'
+        '[dependencies.pypi]\nrequests = ">=2.28"\n\n'
         '[optional-dependencies.video]\nopencv = ">=4.0"\n\n'
         '[dev-dependencies]\npytest = ">=7.0"\n'
     );
@@ -762,7 +762,7 @@ test "WheelBuilder honors an explicit jaclang dependency instead of vendoring" {
         (proj / "main.jac").write_text("node Thing {\n    has n: int = 1;\n}\n");
         cfg = JacConfig.from_toml_str(
             '[project]\nname = "hostdemo"\nversion = "0.1.0"\n\n'
-            '[dependencies]\njaclang = ">=0.30"\n'
+            '[dependencies.pypi]\njaclang = ">=0.30"\n'
         );
         cfg.project_root = proj;
         builder = WheelBuilder(config=cfg, project_root=proj);
