@@ -2674,14 +2674,14 @@ obj:pub timezone(tzinfo) {
             + "')";
     }
 
-    static has utc: timezone = timezone(timedelta(0)),
+    static has utc: timezone = UTC,
         min: timezone = timezone(timedelta(-1, 3600)),
         max: timezone = timezone(timedelta(0, 86340));
 }
 
 
-glob:pub UTC: timezone = timezone.utc;
-glob _EPOCH: datetime = datetime(1970, 1, 1, tzinfo=timezone.utc);
+glob:pub UTC: timezone = timezone(timedelta(0), "UTC");
+glob _EPOCH: datetime = datetime(1970, 1, 1, tzinfo=UTC);
 
 
 def _mk_date(y: int, m: int, d: int) -> date {
