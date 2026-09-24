@@ -490,7 +490,8 @@ impl NaIRGenPass._codegen_dict_access(
     key_val: ir.Value,
     key_type_name: str,
     val_type_name: str,
-    key_node: (uni.UniNode | None) = None
+    key_node: (uni.UniNode | None) = None,
+    collection: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     dict_key = f"{key_type_name}:{val_type_name}";
     helpers = self.dict_helpers.get(dict_key);
@@ -513,7 +514,9 @@ impl NaIRGenPass._codegen_dict_access(
     if _gh is not None {
         _get_args.append(_gh);
     }
-    borrowed = self.builder.call(_get_fn, _get_args, name="dict.get");
+    borrowed = self._restore_dict_read(
+        self.builder.call(_get_fn, _get_args, name="dict.get"), collection
+    );
     self._release_owned_args([key_val], op="dict_get");
     result = self._finish_borrowed_read(target_val, borrowed);
     self._emit_runtime_raise(not_exists, "KeyError", "key not found");
@@ -553,4 +556,95 @@ impl NaIRGenPass._codegen_dict_set(
     self._rc_call_with_ctx(_set_fn, _set_args, op="dict_set", loc=_dset_ctx_loc);
 
     self._release_owned_args([key_val, value], op="dict_set");
+}
+
+impl NaIRGenPass._emit_dict_eq(
+    left: ir.Value, right: ir.Value, dict_key: str, val_ty: (TypeBase | None)
+) -> (ir.Value | None) {
+    fn = self._dict_eq_fn(dict_key, val_ty);
+    if fn is None {
+        return None;
+    }
+    return self.builder.call(fn, [left, right], name="dict.eq");
+}
+
+impl NaIRGenPass._dict_eq_fn(
+    dict_key: str, val_ty: (TypeBase | None)
+) -> (ir.Function | None) {
+    """Python's dictionary equality for one dictionary layout.
+
+    Two dictionaries are equal when they hold the same keys, each mapped to
+    equal values; insertion order plays no part. With equal sizes that is:
+    every key of the left is found in the right (through the right's own
+    hash), and the two values under it compare equal. Values are compared
+    under the dictionary's checked value type, so a nested container or an
+    archetype with its own `__eq__` is compared as Python would, not by
+    address.
+    """;
+    helpers = self.dict_helpers.get(dict_key);
+    dict_struct = self.dict_types.get(dict_key);
+    if helpers is None or dict_struct is None {
+        return None;
+    }
+    cache_key = f"dict[{dict_key}]:{self._mangled_of(val_ty) or ''}";
+    cached = self._eq_fns.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
+    pty = dict_struct.as_pointer();
+    i64 = ir.IntType(64);
+    fn = self._eq_fn_new(cache_key, pty, pty);
+    saved = self._builder;
+    try {
+        (true_bb, false_bb) = self._eq_fn_prologue(fn);
+        b = self.builder;
+        (a, o) = (fn.args[0], fn.args[1]);
+        la = b.call(helpers["len"], [a], name="deq.la");
+        lb = b.call(helpers["len"], [o], name="deq.lb");
+        pre_bb = b.basic_block;
+        loop_bb = fn.append_basic_block("deq.loop");
+        body_bb = fn.append_basic_block("deq.body");
+        cmp_bb = fn.append_basic_block("deq.cmp");
+        next_bb = fn.append_basic_block("deq.next");
+        b.cbranch(b.icmp_unsigned("==", la, lb, name="deq.leq"), loop_bb, false_bb);
+        b.position_at_end(loop_bb);
+        i = b.phi(i64, name="deq.i");
+        i.add_incoming(ir.Constant(i64, 0), pre_bb);
+        b.cbranch(b.icmp_signed(">=", i, la, name="deq.end"), true_bb, body_bb);
+        b.position_at_end(body_bb);
+        k = b.call(helpers["get_key"], [a, i], name="deq.k");
+        va = b.call(helpers["get_val"], [a, i], name="deq.va");
+        slot = b.call(helpers["lookup"], [o, k], name="deq.slot");
+        b.cbranch(
+            b.icmp_unsigned("==", slot, ir.Constant(slot.type, None), name="deq.miss"),
+            false_bb,
+            cmp_bb
+        );
+        b.position_at_end(cmp_bb);
+        vb = b.load(slot, name="deq.vb");
+        _veq = self._emit_comparison(
+            Tok.EE,
+            va,
+            vb,
+            isinstance(va.type, (ir.DoubleType, ir.FloatType)),
+            key_ret=val_ty
+        );
+        if _veq is None {
+            self.ctx.emit(
+                E5090,
+                kind="comparison",
+                name="dictionary value",
+                help_text="This dictionary value does not lower to a comparable representation."
+            );
+            b.branch(false_bb);
+        } else {
+            b.cbranch(self._to_bool(_veq), next_bb, false_bb);
+        }
+        b.position_at_end(next_bb);
+        i.add_incoming(b.add(i, ir.Constant(i64, 1), name="deq.i.next"), next_bb);
+        b.branch(loop_bb);
+    } finally {
+        self._builder = saved;
+    }
+    return fn;
 }

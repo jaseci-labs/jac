@@ -299,6 +299,13 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
 }
 
 impl JacProgram.release_native_dep_units(self: JacProgram) -> None {
+    ctx_root = self.context_root if self.context_root is not None else self;
+    owners: list[JacProgram] = [self];
+    for context in [ctx_root] + list(ctx_root.contexts.values()) {
+        if not any(context is owner for owner in owners) {
+            owners.append(context);
+        }
+    }
     for (path, unit) in self.scratch.na_dep_units.items() {
         if isinstance(unit, str) {
             continue;
@@ -313,8 +320,10 @@ impl JacProgram.release_native_dep_units(self: JacProgram) -> None {
             probes.append(path);
         }
         for probe in probes {
-            if self.mod.hub.get(probe) is unit {
-                self.invalidate_module(probe);
+            for owner in owners {
+                if owner.mod.hub.get(probe) is unit {
+                    owner.invalidate_module(probe);
+                }
             }
         }
         try {

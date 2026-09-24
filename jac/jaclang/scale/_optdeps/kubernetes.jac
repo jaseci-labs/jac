@@ -1,6 +1,6 @@
 with entry {
     try {
-        import from kubernetes { client, config }
+        import from kubernetes { client, config, watch }
         import from kubernetes.client {
             AutoscalingV2Api,
             V2CrossVersionObjectReference,
@@ -15,6 +15,7 @@ with entry {
     } except ImportError {
         client = None;
         config = None;
+        watch = None;
         ApiException = Exception;
         ConfigException = Exception;
         AutoscalingV2Api = None;

@@ -295,11 +295,14 @@ def _json_default(o: object) -> str {
 }
 
 
-def _persist_hash(anchor: Anchor) -> int {
+def _persist_hash(anchor: Anchor, props: (any | None) = None) -> int {
     import from json { dumps }
     import from jaclang.data.serializer { Serializer }
     try {
-        data = Serializer.serialize(anchor, include_type=True);
+        data = props;
+        if data is None {
+            data = Serializer.serialize(anchor, include_type=True);
+        }
         if isinstance(data, dict) {
             data.pop('edges', None);
         }
@@ -315,7 +318,6 @@ impl Session.postinit -> None {
     self._fetch_count = 0;
     self._flushed_hash = {};
     self._txn_changed = set();
-    self._runtime = None;
     self._active_units = 0;
     self._flushing = None;
     self._read_scopes = 0;
@@ -323,45 +325,76 @@ impl Session.postinit -> None {
     self._unit_stack = [];
     self._snapshot_reads = set();
     self._version_seen = {};
-    if self.store is None and self.base_path {
-        url = os.environ.get('JAC_DB_URL', '');
-        promos = promotions_for(self.base_path);
-        if url {
-            self.store = PgStore(
-                conninfo=conninfo_from_url(url), promotions=promos, auto_schema=True
-            );
-        } else {
-            lease = runtime_for_base(self.base_path, self.target_path);
-            self._runtime = lease.runtime;
-            pgs = PgStore(
-                conninfo=lease.runtime.conninfo(),
-                ensure_cb=lease.runtime.ensure,
-                promotions=promos,
-                auto_schema=True
-            );
-            if lease.reset {
-                if lease.runtime.is_running() {
-                    pgs.reset_data();
-                } else {
-                    pgs.pending_reset = True;
-                }
-            }
-            self.store = pgs;
+}
+
+
+impl Session._runtime_lease -> RuntimeLease {
+    with self._lock {
+        if self._lease is None {
+            self._lease = runtime_for_base(self.base_path or '', self.target_path);
         }
+        return self._lease;
     }
 }
 
 
-impl Session.data_location -> (str | None) {
-    rt: any = self._runtime;
-    if rt is not None {
-        return f"{rt.data_dir}/{rt.database}";
+impl Session._boot_store -> None {
+    if self._store is not None or not self.base_path {
+        return;
     }
-    if isinstance(self.store, PgStore) {
-        info = self.store.conninfo;
+    url = os.environ.get('JAC_DB_URL', '');
+    promos = promotions_for(self.base_path);
+    if url {
+        self._store = PgStore(
+            conninfo=conninfo_from_url(url), promotions=promos, auto_schema=True
+        );
+        return;
+    }
+    lease = self._runtime_lease();
+    rt = lease.runtime;
+    pgs = PgStore(
+        conninfo=rt.conninfo(), ensure_cb=rt.ensure, promotions=promos, auto_schema=True
+    );
+    if lease.reset {
+        if rt.is_running() {
+            pgs.reset_data();
+        } else {
+            pgs.pending_reset = True;
+        }
+    }
+    self._store = pgs;
+    self._data_location = f"{rt.data_dir}/{rt.database}";
+}
+
+
+impl Session.__repr__ -> str {
+    state = "booted" if self._store is not None else "unbooted";
+    return f"Session(base_path={self.base_path}, store={state})";
+}
+
+
+impl Session.data_location -> (str | None) {
+    if self._data_location is not None {
+        return self._data_location;
+    }
+    info: (ConnInfo | None) = None;
+    if isinstance(self._store, PgStore) {
+        info = self._store.conninfo;
+    } elif self.base_path {
+        url = os.environ.get('JAC_DB_URL', '');
+        if url {
+            info = conninfo_from_url(url);
+        }
+    }
+    if info is not None {
         return info.unix_socket_dir or f"{info.host}:{info.port}/{info.database}";
     }
-    return None;
+    if not self.base_path {
+        return None;
+    }
+    rt = self._runtime_lease().runtime;
+    self._data_location = f"{rt.data_dir}/{rt.database}";
+    return self._data_location;
 }
 
 
@@ -479,12 +512,17 @@ impl Session.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
 
 impl Session.commit(anchor: (Anchor | None) = None) -> None {
     with self._lock {
-        if self.store is not None {
+        if (
+            self._store is None and self.base_path and (self._dirty or self._deleted)
+        ) {
+            self._boot_store();
+        }
+        if self._store is not None {
             attempt = 0;
             while True {
                 try {
                     self.flush(full=True);
-                    self.store.commit();
+                    self._store.commit();
                     break;
                 } except Exception as e {
                     if not _is_serialization_conflict(e) or attempt >= MAX_RETRIES {
@@ -505,8 +543,8 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
 
 
 impl Session.abort -> None {
-    if self.store is not None {
-        self.store.rollback();
+    if self._store is not None {
+        self._store.rollback();
     }
     self._evict_uncommitted();
     self._dirty.clear();
@@ -547,9 +585,9 @@ impl Session.quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None {
     import from jaclang.runtime.osp_graph_sv { sv_forget_by_id }
     sid = stub.ensure_id();
     sv_forget_by_id(sid, self);
-    if self.store is not None {
+    if self._store is not None {
         try {
-            self.store.quarantine(
+            self._store.quarantine(
                 sid, referrer.ensure_id() if referrer else None, type(stub).__name__
             );
         } except Exception as e {
@@ -591,11 +629,7 @@ impl Session._register_ro_writers -> str {
 impl Session._raise_ro_retry -> None {
     import from uuid { UUID as _UUID }
     last = self._register_ro_writers();
-    if self.store is not None {
-        try {
-            self.store.rollback();
-        } except Exception {}
-    }
+    self._rollback_quiet();
     raise ReadOnlyRetry(anchor_id=_UUID(int=0), unit_key=last);
 }
 
@@ -618,22 +652,22 @@ impl Session._drop_snapshot_reads -> None {
 
 impl Session._ensure_txn -> None {
     with self._lock {
-        if self.store is None {
+        if self._store is None {
             return;
         }
         wanted = self._txn_isolation();
-        if not self.store.in_txn() {
-            self.store.begin(wanted);
+        if not self._store.in_txn() {
+            self._store.begin(wanted);
             return;
         }
         if wanted is TxnIsolation.SERIALIZABLE
-            and self.store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
+            and self._store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
             if self._ro_units > 0 {
                 self._raise_ro_retry();
             }
-            self.store.commit();
+            self._store.commit();
             self._drop_snapshot_reads();
-            self.store.begin(TxnIsolation.SERIALIZABLE);
+            self._store.begin(TxnIsolation.SERIALIZABLE);
         }
     }
 }
@@ -647,7 +681,7 @@ impl Session.unit_enter(key: (str | None) = None) -> None {
             self._ro_units += 1;
         }
         self._unit_stack.append((key, ro));
-        if self.store is not None and self.store.in_txn() {
+        if self._store is not None and self._store.in_txn() {
             self._ensure_txn();
         }
     }
@@ -664,21 +698,19 @@ impl Session.read_scope_enter -> None {
 impl Session.read_scope_exit -> None {
     with self._lock {
         self._read_scopes = max(0, self._read_scopes - 1);
-        if self._read_scopes > 0 or self.store is None {
+        if self._read_scopes > 0 or self._store is None {
             return;
         }
-        if self.store.txn_isolation() is not TxnIsolation.SNAPSHOT_READ_ONLY {
+        if self._store.txn_isolation() is not TxnIsolation.SNAPSHOT_READ_ONLY {
             return;
         }
         try {
-            self.store.commit();
+            self._store.commit();
         } except Exception as e {
             logger.warning(
                 f"read snapshot close failed; rolling back: {type(e).__name__}: {e}"
             );
-            try {
-                self.store.rollback();
-            } except Exception {}
+            self._rollback_quiet();
         }
         self._drop_snapshot_reads();
     }
@@ -692,23 +724,19 @@ impl Session.unit_exit -> None {
             if self._active_units > 0 {
                 return;
             }
-            if self.store is None or not self.store.in_txn() {
+            if self._store is None or not self._store.in_txn() {
                 return;
             }
             try {
                 self.commit();
             } except WriteConflict {
-                try {
-                    self.store.rollback();
-                } except Exception {}
+                self._rollback_quiet();
                 raise;
             } except Exception as e {
                 logger.warning(
                     f"unit close commit failed; rolling back: {type(e).__name__}: {e}"
                 );
-                try {
-                    self.store.rollback();
-                } except Exception {}
+                self._rollback_quiet();
             }
         } finally {
             if self._unit_stack {
@@ -737,12 +765,17 @@ impl Session.get_fetch_count -> int {
 }
 
 
-impl Session._recover_conflict -> None {
-    if self.store is not None {
+impl Session._rollback_quiet -> None {
+    if self._store is not None {
         try {
-            self.store.rollback();
+            self._store.rollback();
         } except Exception {}
     }
+}
+
+
+impl Session._recover_conflict -> None {
+    self._rollback_quiet();
     for id in list(self._txn_changed) {
         if id in self.__mem__ {
             self._flushed_hash.pop(id, None);
@@ -775,7 +808,8 @@ impl Session.read_barrier -> None {
 impl Session.flush(full: bool = False) -> None {
     import threading;
     import from jaclang.data.serializer { Serializer }
-    if self.store is None {
+
+    if self._store is None {
         return;
     }
     with self._lock {
@@ -793,13 +827,14 @@ impl Session.flush(full: bool = False) -> None {
 
 
 impl Session._flush_locked(full: bool) -> None {
-    if self.store is not None {
+    if self._store is not None {
         candidates: list[UUID];
         if full {
             candidates = list(self.__mem__.keys());
         } else {
             candidates = list(self._dirty.keys());
         }
+        import from jaclang.data.serializer { Serializer }
         rows: list[AnchorRow] = [];
         pending: list[tuple[Anchor, int]] = [];
         for id in candidates {
@@ -807,7 +842,11 @@ impl Session._flush_locked(full: bool) -> None {
             if anchor is None or not anchor.persistent or not anchor.is_populated() {
                 continue;
             }
-            h = _persist_hash(anchor);
+            props: any = None;
+            try {
+                props = Serializer.serialize(anchor, include_type=True);
+            } except Exception {}
+            h = _persist_hash(anchor, props);
             if h != 0 and self._flushed_hash.get(id) == h and id not in self._dirty {
                 continue;
             }
@@ -816,14 +855,14 @@ impl Session._flush_locked(full: bool) -> None {
             if not JacRI.check_write_access(anchor, op_hint="field_write") {
                 continue;
             }
-            rows.append(self._serialize(anchor));
+            rows.append(self._serialize(anchor, props));
             pending.append((anchor, h));
         }
         if rows or self._deleted {
             self.ensure_writable_txn();
         }
         if rows {
-            self.store.upsert(rows);
+            self._store.upsert(rows);
             for (i, (anchor, h)) in enumerate(pending) {
                 aid = anchor.ensure_id();
                 self._flushed_hash[aid] = h;
@@ -833,7 +872,7 @@ impl Session._flush_locked(full: bool) -> None {
             }
         }
         if self._deleted {
-            self.store.delete(list(self._deleted));
+            self._store.delete(list(self._deleted));
             for id in self._deleted {
                 self._flushed_hash.pop(id, None);
                 self._txn_changed.add(id);
@@ -845,11 +884,13 @@ impl Session._flush_locked(full: bool) -> None {
 }
 
 
-impl Session._serialize(anchor: Anchor) -> AnchorRow {
+impl Session._serialize(anchor: Anchor, props: (any | None) = None) -> AnchorRow {
     import from jaclang.data.serializer { Serializer }
-    props = Serializer.serialize(anchor, include_type=True);
-    if isinstance(props, dict) {
-        props.pop('edges', None);
+    if props is None {
+        props = Serializer.serialize(anchor, include_type=True);
+        if isinstance(props, dict) {
+            props.pop('edges', None);
+        }
     }
     arch = anchor.archetype;
     arch_type = '';
@@ -899,9 +940,9 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
         logger.warning(
             f"could not materialize anchor {row.id} ({row.arch_type}); skipping"
         );
-        if self.store is not None {
+        if self._store is not None {
             try {
-                self.store.quarantine(row.id, None, row.kind);
+                self._store.quarantine(row.id, None, row.kind);
             } except Exception as e {
                 logger.debug(f"quarantine record failed: {e}");
             }
@@ -910,7 +951,7 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
     }
     anchor: Anchor = got;
     if isinstance(anchor, NodeAnchor) {
-        if self.store is not None {
+        if self._store is not None {
             anchor.__dict__.pop('edges', None);
             anchor.__dict__['_edge_loader'] = partial(self._load_edges, anchor);
         }
@@ -920,8 +961,8 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
     self.__mem__[row.id] = anchor;
     self._flushed_hash[row.id] = _persist_hash(anchor);
     anchor.hash = self._flushed_hash[row.id];
-    if self.store is not None
-        and self.store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
+    if self._store is not None
+        and self._store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
         self._snapshot_reads.add(row.id);
     }
     return anchor;
@@ -935,11 +976,11 @@ impl Session._load_edges(nd: NodeAnchor) -> list[EdgeAnchor] {
         return loaded;
     }
     ids: list[UUID] = [];
-    if self.store is not None and nd.id is not None {
+    if self._store is not None and nd.id is not None {
         self.read_barrier();
         after: (tuple[int, UUID] | None) = None;
         while True {
-            page = self.store.adjacency(nd.id, after, EDGE_PAGE);
+            page = self._store.adjacency(nd.id, after, EDGE_PAGE);
             for (seq, eid) in page {
                 if eid not in self._deleted {
                     ids.append(eid);
@@ -967,18 +1008,18 @@ impl Session._load_edges(nd: NodeAnchor) -> list[EdgeAnchor] {
 
 impl Session.ensure_writable_txn -> None {
     with self._lock {
-        if self.store is None {
+        if self._store is None {
             return;
         }
-        if self.store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
+        if self._store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
             if self._ro_units > 0 {
                 self._raise_ro_retry();
             }
-            self.store.commit();
+            self._store.commit();
             self._drop_snapshot_reads();
-            self.store.begin(TxnIsolation.SERIALIZABLE);
-        } elif not self.store.in_txn() {
-            self.store.begin(TxnIsolation.SERIALIZABLE);
+            self._store.begin(TxnIsolation.SERIALIZABLE);
+        } elif not self._store.in_txn() {
+            self._store.begin(TxnIsolation.SERIALIZABLE);
         }
     }
 }
@@ -992,7 +1033,7 @@ impl Session.run_request(body: Callable) -> any {
             return result;
         } except Exception as e {
             if (
-                self.store is not None
+                self._store is not None
                 and _is_serialization_conflict(e)
                 and attempt < MAX_RETRIES
             ) {
@@ -1017,8 +1058,9 @@ impl Session.close -> None {
     } except Exception as e {
         logger.warning(f"commit on close failed: {type(e).__name__}: {e}");
     }
-    if self.store is not None {
-        self.store.close();
+
+    if self._store is not None {
+        self._store.close();
     }
     self.__mem__.clear();
     self._dirty.clear();

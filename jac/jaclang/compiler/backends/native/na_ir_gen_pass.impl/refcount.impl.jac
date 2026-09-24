@@ -1,15 +1,15 @@
 glob _NOGC_OSP_ENGINE_STRUCTS: tuple[str, ...] = (
-         "Slot",
-         "Plan",
-         "WalkerDesc",
-         "NodeDesc",
-         "WalkScope",
+         "OspSlot",
+         "OspPlan",
+         "OspWalkerDesc",
+         "OspNodeDesc",
+         "OspWalkScope",
          "OspRuntime",
-         "Frame",
+         "OspFrame",
          "OspEngine",
          "OspGraph",
-         "Adj",
-         "EdgeRow"
+         "OspAdj",
+         "OspEdgeRow"
      ),
      _NOGC_CONTAINER_DROP_OPS: tuple[str, ...] = (
          "scope_exit",
@@ -1754,25 +1754,40 @@ impl NaIRGenPass._drop_hook_for(type_name: str) -> (ir.Function | None) {
         return cached;
     }
     for owner in self._mro_of(type_name) {
+        member = self._drop_member_of(owner);
+        if member is not None and not member.is_def {
+            return None;
+        }
         hook = self.func_symtab.get(f"{owner}.drop");
-        if hook is None {
-            arch = self.arch_ast_map.get(owner);
-            if arch is not None and arch.body is not None {
-                for ability in arch.get_all_sub_nodes(uni.Ability) {
-                    if ability.find_parent_of_type(uni.Archetype) is not arch
-                        or ability.name_ref is None
-                        or ability.name_ref.sym_name != "drop" {
-                        continue;
-                    }
-                    self._forward_declare_method(owner, ability);
-                    hook = self.func_symtab.get(f"{owner}.drop");
-                    break;
-                }
-            }
+        if hook is None and member is not None {
+            self._forward_declare_method(owner, member);
+            hook = self.func_symtab.get(f"{owner}.drop");
         }
         if hook is not None {
             self.struct_drop_hooks[type_name] = hook;
             return hook;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._drop_member_of(owner: str) -> (uni.Ability | None) {
+    arch = self.arch_ast_map.get(owner);
+    if arch is None or arch.body is None {
+        return None;
+    }
+    for ability in arch.get_all_sub_nodes(uni.Ability) {
+        if ability.find_parent_of_type(uni.Archetype) is arch
+            and ability.name_ref is not None
+            and ability.name_ref.sym_name == "drop" {
+            return ability;
+        }
+    }
+    for stmt in arch._get_impl_resolved_body() {
+        if isinstance(stmt, uni.Ability)
+            and stmt.name_ref is not None
+            and stmt.name_ref.sym_name == "drop" {
+            return stmt;
         }
     }
     return None;

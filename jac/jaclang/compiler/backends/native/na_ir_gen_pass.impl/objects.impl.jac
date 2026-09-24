@@ -2938,7 +2938,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if dict_val is not None and dict_type_key is not None {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
-                "dict", method_name, dict_val, arg_vals, dict_type_key
+                "dict", method_name, dict_val, arg_vals, dict_type_key, kw_node=nd
             );
             if result is not None {
                 return result;
@@ -4074,8 +4074,39 @@ impl NaIRGenPass._codegen_field_assign(
         }
         return;
     }
+    self._emit_field_store(
+        target,
+        obj_val,
+        type_name,
+        field_name,
+        value,
+        skip_narrow_coerce=skip_narrow_coerce,
+        value_node=value_node,
+        union_parts=union_parts
+    );
+}
 
-    if _setter is None and self._refuse_opaque_field(target, type_name, field_name) {
+impl NaIRGenPass._emit_field_store(
+    nd: uni.UniNode,
+    obj_val: ir.Value,
+    type_name: str,
+    field_name: str,
+    value: ir.Value,
+    skip_narrow_coerce: bool = False,
+    value_node: (uni.Expr | None) = None,
+    union_parts: (list[str] | None) = None
+) -> None {
+    """Store a lowered value into a resolved receiver's field.
+
+    The receiver and its static type are already known, so this serves both
+    `obj.field = value` and stores with no attribute target in the source,
+    such as the attribute assignments of a typed connect
+    (`+>:E:field=value:+>`). The caller has checked that the field or a
+    property setter exists on `type_name`.
+    """;
+    field_indices = self.struct_field_indices.get(type_name, {});
+    _setter = self._accessor_slot_of(type_name, field_name, "setter");
+    if _setter is None and self._refuse_opaque_field(nd, type_name, field_name) {
         return;
     }
 
@@ -4091,7 +4122,7 @@ impl NaIRGenPass._codegen_field_assign(
         if self._codegen_accessor_call(obj_val, type_name, _setter, [value]) is None {
             self.ctx.emit(
                 E5092,
-                node_override=target,
+                node_override=nd,
                 kind="field assignment",
                 name=field_name,
                 help_text=f"'{type_name}.{field_name}' is a property whose "
@@ -4164,15 +4195,15 @@ impl NaIRGenPass._codegen_field_assign(
         self._emit_take_ref(
             value,
             op="field_set",
-            loc=f"{os.path.basename(self.module.loc.mod_path)}:{target.loc.first_line
-                if target.loc
+            loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
                 else 0}"
         );
         old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
         self._set_rc_ctx(
             "field_set",
-            f"{os.path.basename(self.module.loc.mod_path)}:{target.loc.first_line
-                if target.loc
+            f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
                 else 0}"
         );
         self._emit_elem_release(self.builder, ftype, old_field_val);
@@ -4182,8 +4213,8 @@ impl NaIRGenPass._codegen_field_assign(
     if _fs_opt is not None
         and isinstance(_fs_opt, ir.PointerType)
         and not _borrow_field {
-        _fs_loc = f"{os.path.basename(self.module.loc.mod_path)}:{target.loc.first_line
-            if target.loc
+        _fs_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+            if nd.loc
             else 0}";
         if self._opt_result_owned(value, value_node) {
             self.rc_ops_elided += 1;

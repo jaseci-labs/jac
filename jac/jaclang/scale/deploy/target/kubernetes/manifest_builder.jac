@@ -1488,14 +1488,28 @@ obj ManifestBuilder {
         metric: dict[str, any] | None = self._get_autoscaler_config(svc_name);
         if metric is not None {
             idle = self.k8s_config.idle_replicas;
+            if idle is not None and int(idle) == 0 and svc_name == GATEWAY_NAME {
+                if self.logger {
+                    self.logger.warn(
+                        "Ignoring idle_replicas=0 for the gateway: it is the "
+                        "ingress entry point and must stay warm, and nothing "
+                        "wakes it once it is idle. Set idle_replicas per "
+                        "service, or use http_activation on the services that "
+                        "should sleep."
+                    );
+                }
+                idle = None;
+            }
+            keda = self.k8s_config.autoscaler_engine == "keda";
             return {
                 "mode": ScalingMode.METRIC,
                 "scale_target_name": scale_target,
                 "service_name": service_name,
                 "autoscaler": metric,
                 "http_activation": {},
+                "idle_replicas": idle if keda else None,
                 "replica_floor": int(idle)
-                    if idle is not None and self.k8s_config.autoscaler_engine == "keda"
+                    if idle is not None and keda
                     else int(metric["min"])
             };
         }

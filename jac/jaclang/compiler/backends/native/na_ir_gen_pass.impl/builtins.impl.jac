@@ -150,15 +150,8 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
                 args.append(self._bool_text(self.builder, val, "print.bool"));
             } else {
                 _unsigned = self._is_unsigned_node(param);
-                if val.type.width < 64 {
-                    val = (
-                        self.builder.zext(val, ir.IntType(64))
-                            if _unsigned
-                            else self.builder.sext(val, ir.IntType(64))
-                    );
-                }
                 fmt_parts.append("%llu" if _unsigned else "%lld");
-                args.append(val);
+                args.append(self._int_text_arg(val, _unsigned));
             }
         } elif isinstance(val.type, ir.DoubleType) {
             fmt_parts.append("%s");
@@ -680,9 +673,10 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 args.append(_dyn);
                 continue;
             }
+            _unsigned = self._is_unsigned_node(part.format_part);
             if _spec_txt {
-                if isinstance(val.type, ir.IntType) and val.type.width == 1 {
-                    val = self.builder.zext(val, ir.IntType(64));
+                if isinstance(val.type, ir.IntType) {
+                    val = self._int_text_arg(val, _unsigned);
                 }
                 _fs_kind: (str | None) = None;
                 if isinstance(val.type, ir.IntType) {
@@ -711,6 +705,9 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                     continue;
                 }
                 (directive, want) = _tr;
+                if _unsigned and directive.endswith("lld") {
+                    directive = directive[:-1] + "u";
+                }
                 if want == "float" {
                     fmt_parts.append(directive);
                     args.append(self._coerce_type(val, ir.DoubleType()));
@@ -751,12 +748,12 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 }
                 continue;
             }
-            if isinstance(val.type, ir.IntType) and val.type.width == 64 {
-                fmt_parts.append("%lld");
-                args.append(val);
-            } elif isinstance(val.type, ir.IntType) and val.type.width == 1 {
+            if isinstance(val.type, ir.IntType) and val.type.width == 1 {
                 fmt_parts.append("%s");
                 args.append(self._bool_text(self.builder, val, "fstr.bool"));
+            } elif isinstance(val.type, ir.IntType) {
+                fmt_parts.append("%llu" if _unsigned else "%lld");
+                args.append(self._int_text_arg(val, _unsigned));
             } elif isinstance(val.type, ir.DoubleType) {
                 fmt_parts.append("%s");
                 args.append(self._emit_float_repr(val));
@@ -1597,6 +1594,17 @@ impl NaIRGenPass._bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Va
     );
 }
 
+impl NaIRGenPass._int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value {
+    i64 = ir.IntType(64);
+    if val.type == i64 {
+        return val;
+    }
+    if unsigned or val.type == ir.IntType(1) {
+        return self.builder.zext(val, i64, name="text.int");
+    }
+    return self.builder.sext(val, i64, name="text.int");
+}
+
 impl NaIRGenPass._emit_fstr_repr(
     val: ir.Value, part: uni.FormattedValue
 ) -> (ir.Value | None) {
@@ -1654,9 +1662,7 @@ impl NaIRGenPass._emit_dyn_spec_format(
         kname = "jac_fmt_bool";
     } elif isinstance(val.type, ir.IntType) {
         kname = "jac_fmt_int";
-        if val.type.width != 64 {
-            sval = self.builder.sext(val, ir.IntType(64), name="fstr.dyn.sext");
-        }
+        sval = self._int_text_arg(val, self._is_unsigned_node(part.format_part));
     } elif isinstance(val.type, (ir.FloatType, ir.DoubleType)) {
         kname = "jac_fmt_float";
         if isinstance(val.type, ir.FloatType) {

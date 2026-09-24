@@ -119,12 +119,18 @@ def instrument_drops(cls: any) {
     setattr(cls, "__del__", _drop_on_release);
 }
 
+def is_drop_hook(member: any) -> bool {
+    return callable(member)
+        and not getattr(member, "__jac_entry", False)
+        and not getattr(member, "__jac_exit", False);
+}
+
 def run_drop(item: any) {
     if getattr(item, "_jac_drop_done", False) {
         return;
     }
     drop = item?.drop;
-    if not callable(drop) {
+    if not is_drop_hook(drop) {
         return;
     }
     item._jac_drop_done = True;

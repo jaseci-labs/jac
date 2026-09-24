@@ -1,43 +1,43 @@
 glob UNTYPED: int = -1;
 
-obj Slot {
+obj OspSlot {
     has trig_tag: int,
         fn: Callable[([any, any], any)];
 }
 
-obj Plan {
+obj OspPlan {
     has ctag: int,
-        w_entry: list[Slot],
-        n_entry_u: list[Slot],
-        n_entry_t: list[Slot],
-        n_exit_t: list[Slot],
-        n_exit_u: list[Slot],
-        w_exit: list[Slot];
+        w_entry: list[OspSlot],
+        n_entry_u: list[OspSlot],
+        n_entry_t: list[OspSlot],
+        n_exit_t: list[OspSlot],
+        n_exit_u: list[OspSlot],
+        w_exit: list[OspSlot];
 }
 
-obj WalkerDesc {
+obj OspWalkerDesc {
     has type_tag: int,
-        `entry: list[Slot],
-        `exit: list[Slot],
-        plans: (dict[int, Plan] | None) = None;
+        `entry: list[OspSlot],
+        `exit: list[OspSlot],
+        plans: (dict[int, OspPlan] | None) = None;
 }
 
-obj NodeDesc {
+obj OspNodeDesc {
     has type_tag: int,
-        `entry: list[Slot],
-        `exit: list[Slot];
+        `entry: list[OspSlot],
+        `exit: list[OspSlot];
 }
 
-obj Frame {
+obj OspFrame {
     has loc: int,
         phase: int = 0,
         band: int = 0,
         idx: int = 0,
         budget: int = 0,
-        plan: (Plan | None) = None;
+        plan: (OspPlan | None) = None;
 }
 
-obj WalkScope {
+obj OspWalkScope {
     has wlk: any,
         path: list[int],
         next: list[int],
@@ -52,7 +52,7 @@ obj WalkScope {
         skip_node: bool = False,
         stage: int = 0,
         sidx: int = 0,
-        frames: (list[Frame] | None) = None,
+        frames: (list[OspFrame] | None) = None,
         cur_a: any = None,
         cur_b: any = None;
 }
@@ -60,13 +60,13 @@ obj WalkScope {
 obj OspRuntime {
     has tag_of: Callable[([any], int)],
         is_a: Callable[([int, int], bool)],
-        node_desc: Callable[([int], NodeDesc)],
-        on_complete: Callable[([WalkScope, bool], None)];
+        node_desc: Callable[([int], OspNodeDesc)],
+        on_complete: Callable[([OspWalkScope, bool], None)];
 }
 
-glob _descs: dict[int, NodeDesc] = {};
+glob _descs: dict[int, OspNodeDesc] = {};
 
-def osp_register_desc(tag: int, desc: NodeDesc) {
+def osp_register_desc(tag: int, desc: OspNodeDesc) {
     _descs[tag] = desc;
 }
 
@@ -74,23 +74,23 @@ def osp_has_desc(tag: int) -> bool {
     return tag in _descs;
 }
 
-def osp_node_desc(tag: int) -> NodeDesc {
+def osp_node_desc(tag: int) -> OspNodeDesc {
     if tag in _descs {
-        found: NodeDesc = _descs[tag];
+        found: OspNodeDesc = _descs[tag];
         return found;
     }
-    return NodeDesc(type_tag=tag, `entry=[], `exit=[]);
+    return OspNodeDesc(type_tag=tag, `entry=[], `exit=[]);
 }
 
-def _new_plans -> dict[int, Plan] {
-    out: dict[int, Plan] = {};
+def _new_plans -> dict[int, OspPlan] {
+    out: dict[int, OspPlan] = {};
     return out;
 }
 
 def _plan_for(
-    rt: OspRuntime, wdesc: WalkerDesc, wtag: int, ndesc: NodeDesc, ctag: int
-) -> Plan {
-    plan = Plan(
+    rt: OspRuntime, wdesc: OspWalkerDesc, wtag: int, ndesc: OspNodeDesc, ctag: int
+) -> OspPlan {
+    plan = OspPlan(
         ctag=ctag,
         w_entry=[],
         n_entry_u=[],
@@ -126,7 +126,7 @@ def _plan_for(
     return plan;
 }
 
-def _dequeue(scope: WalkScope) -> (int | None) {
+def _dequeue(scope: OspWalkScope) -> (int | None) {
     while scope.front {
         candidate = scope.front.pop();
         if (not scope.ignores) or (candidate not in scope.ignores) {
@@ -148,12 +148,12 @@ def _dequeue(scope: WalkScope) -> (int | None) {
 }
 
 obj OspEngine {
-    has stack: list[WalkScope];
+    has stack: list[OspWalkScope];
 
-    def scope_of(wlk: any) -> (WalkScope | None) {
+    def scope_of(wlk: any) -> (OspWalkScope | None) {
         i = len(self.stack) - 1;
         while i >= 0 {
-            sc: WalkScope = self.stack[i];
+            sc: OspWalkScope = self.stack[i];
             if sc.wlk is wlk {
                 return sc;
             }
@@ -162,9 +162,9 @@ obj OspEngine {
         return None;
     }
 
-    def current -> (WalkScope | None) {
+    def current -> (OspWalkScope | None) {
         if self.stack {
-            found: WalkScope = self.stack[-1];
+            found: OspWalkScope = self.stack[-1];
             return found;
         }
         return None;
@@ -250,8 +250,8 @@ obj OspEngine {
         }
     }
 
-    def begin(wlk: any, starts: list[int]) -> WalkScope {
-        scope = WalkScope(
+    def begin(wlk: any, starts: list[int]) -> OspWalkScope {
+        scope = OspWalkScope(
             wlk=wlk,
             path=[],
             next=`list(starts),
@@ -265,10 +265,10 @@ obj OspEngine {
         return scope;
     }
 
-    def finish(scope: WalkScope, ok: bool, rt: OspRuntime) {
+    def finish(scope: OspWalkScope, ok: bool, rt: OspRuntime) {
         self.stack.pop();
         if scope.nested and self.stack {
-            outer: WalkScope = self.stack[-1];
+            outer: OspWalkScope = self.stack[-1];
             for r in scope.reports {
                 outer.reports.append(r);
             }
@@ -277,12 +277,12 @@ obj OspEngine {
     }
 
     def next_slot(
-        rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc, run: bool = False
-    ) -> (Slot | None) {
+        rt: OspRuntime, scope: OspWalkScope, wdesc: OspWalkerDesc, run: bool = False
+    ) -> (OspSlot | None) {
         if scope.frames is None {
             scope.frames = [];
         }
-        frames: list[Frame] = scope.frames;
+        frames: list[OspFrame] = scope.frames;
         while True {
             if scope.stage == 0 {
                 if scope.disengaged or scope.skip_node or (not scope.next) {
@@ -293,7 +293,7 @@ obj OspEngine {
                     scope.cur_b = scope.next[0];
                 }
                 while scope.sidx < len(wdesc.`entry) {
-                    s: Slot = wdesc.`entry[scope.sidx];
+                    s: OspSlot = wdesc.`entry[scope.sidx];
                     scope.sidx += 1;
                     if s.trig_tag == UNTYPED {
                         scope.cur_a = scope.wlk;
@@ -322,10 +322,10 @@ obj OspEngine {
                         scope.sidx = 0;
                         continue;
                     }
-                    frames.append(Frame(loc=nxt));
+                    frames.append(OspFrame(loc=nxt));
                     continue;
                 }
-                f: Frame = frames[-1];
+                f: OspFrame = frames[-1];
                 if f.phase == 0 {
                     if f.plan is None {
                         scope.path.append(f.loc);
@@ -343,7 +343,7 @@ obj OspEngine {
                         }
                         scope.pending_fence = 0;
                     }
-                    plan: Plan = f.plan;
+                    plan: OspPlan = f.plan;
                     if run {
                         for s in plan.w_entry {
                             scope.cur_a = scope.wlk;
@@ -462,7 +462,7 @@ obj OspEngine {
                         }
                         f.budget = budget;
                         if found {
-                            frames.append(Frame(loc=child));
+                            frames.append(OspFrame(loc=child));
                         } else {
                             f.phase = 2;
                             scope.pending_fence = 0;
@@ -481,7 +481,7 @@ obj OspEngine {
                                 f.budget = 0;
                                 f.plan = None;
                             } else {
-                                frames.append(Frame(loc=nxt));
+                                frames.append(OspFrame(loc=nxt));
                             }
                         } else {
                             f.phase = 2;
@@ -494,7 +494,7 @@ obj OspEngine {
                         frames.pop();
                         continue;
                     }
-                    plan: Plan = f.plan;
+                    plan: OspPlan = f.plan;
                     if run {
                         for s in plan.n_exit_t {
                             scope.cur_a = f.loc;
@@ -539,7 +539,7 @@ obj OspEngine {
                         scope.skip_node = False;
                         frames.pop();
                         if scope.fenced and (scope.pending_fence > 0) and frames {
-                            parent: Frame = frames[-1];
+                            parent: OspFrame = frames[-1];
                             parent.budget += scope.pending_fence;
                         }
                         continue;
@@ -592,7 +592,7 @@ obj OspEngine {
                     scope.skip_node = False;
                     frames.pop();
                     if scope.fenced and (scope.pending_fence > 0) and frames {
-                        parent: Frame = frames[-1];
+                        parent: OspFrame = frames[-1];
                         parent.budget += scope.pending_fence;
                     }
                     continue;
@@ -607,7 +607,7 @@ obj OspEngine {
                     return None;
                 }
                 while scope.sidx < len(wdesc.`exit) {
-                    s: Slot = wdesc.`exit[scope.sidx];
+                    s: OspSlot = wdesc.`exit[scope.sidx];
                     scope.sidx += 1;
                     if s.trig_tag == UNTYPED {
                         scope.cur_a = scope.wlk;
@@ -631,7 +631,9 @@ obj OspEngine {
         return None;
     }
 
-    def `spawn(rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list[int]) -> any {
+    def `spawn(
+        rt: OspRuntime, wlk: any, wdesc: OspWalkerDesc, starts: list[int]
+    ) -> any {
         scope = self.begin(wlk, starts);
         ok = False;
         try {
@@ -646,11 +648,11 @@ obj OspEngine {
 
 glob DEFAULT: OspEngine = OspEngine(stack=[]);
 
-def scope_of(wlk: any) -> (WalkScope | None) {
+def scope_of(wlk: any) -> (OspWalkScope | None) {
     return DEFAULT.scope_of(wlk);
 }
 
-def _current_scope -> (WalkScope | None) {
+def _current_scope -> (OspWalkScope | None) {
     return DEFAULT.current();
 }
 
@@ -682,6 +684,8 @@ def osp_report(val: any) {
     DEFAULT.`report(val);
 }
 
-def osp_spawn(rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list[int]) -> any {
+def osp_spawn(
+    rt: OspRuntime, wlk: any, wdesc: OspWalkerDesc, starts: list[int]
+) -> any {
     return DEFAULT.`spawn(rt, wlk, wdesc, starts);
 }

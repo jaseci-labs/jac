@@ -83,6 +83,38 @@ def networking_api -> any {
 }
 
 
+def autoscaling_api -> any {
+    if not _ensure_config() {
+        return None;
+    }
+    try {
+        return client.AutoscalingV2Api();
+    } except Exception as e {
+        logger.warning(f"AutoscalingV2Api init failed: {e}");
+        return None;
+    }
+}
+
+
+def custom_objects_api -> any {
+    """The client for KEDA's ScaledObject and TriggerAuthentication.
+
+    Reaching these also needs the `keda.sh` rule in OPS_READ_RULES, which a pod
+    whose Role predates that rule does not carry, so a caller has to treat a 403
+    from here as "no autoscaler view" rather than as an error.
+    """;
+    if not _ensure_config() {
+        return None;
+    }
+    try {
+        return client.CustomObjectsApi();
+    } except Exception as e {
+        logger.warning(f"CustomObjectsApi init failed: {e}");
+        return None;
+    }
+}
+
+
 def api_error_detail(e: any) -> str {
     status = e?.status;
     reason = str(getattr(e, "reason", "") or "");

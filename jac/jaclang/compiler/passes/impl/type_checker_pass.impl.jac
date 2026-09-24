@@ -1772,28 +1772,15 @@ impl TypeCheckPass.exit_raise_stmt with RaiseStmt exit {
 }
 
 impl TypeCheckPass.enter_with_stmt with WithStmt entry {
-    enter_method = "__aenter__" if here.is_async else "__enter__";
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
-        expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
-        if ctx_item.alias is None
-            or not isinstance(ctx_item.alias, Name)
-            or isinstance(expr_type, UnknownType) {
+        if ctx_item.alias is None or not isinstance(ctx_item.alias, Name) {
+            self.evaluator.get_type_of_expression(ctx_item.expr);
             continue;
         }
-
-        enter_ret = self.evaluator.get_type_of_magic_method_call(
-            expr_type, enter_method, [], ctx_item.expr
-        );
-        if enter_ret is not None {
-            if here.is_async {
-                enter_ret = self.evaluator._unwrap_awaitable_type(
-                    enter_ret, ctx_item.expr
-                );
-            }
-            ctx_item.alias.type = enter_ret;
-        } else {
-            ctx_item.alias.type = expr_type;
+        alias_type = self.evaluator.get_type_of_with_alias(ctx_item);
+        if not isinstance(alias_type, UnknownType) {
+            ctx_item.alias.type = alias_type;
         }
     }
 }

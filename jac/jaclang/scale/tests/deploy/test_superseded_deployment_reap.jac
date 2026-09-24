@@ -12,6 +12,11 @@ import from jaclang.scale.deploy.target.kubernetes.target {
     fleet_targets_for_release,
     fleet_revert_order
 }
+import from jaclang.scale.sdk {
+    ScaleClient,
+    AutoscalerRuntimeStatus,
+    AutoscalerTransition
+}
 import from jaclang.scale.models.resource_status {
     REPLICA_FLOOR_ANNOTATION,
     assess_workload
@@ -451,7 +456,8 @@ def _rollout(
     available: int,
     desired: int = 1,
     floor: (int | None) = None,
-    stuck: bool = False
+    stuck: bool = False,
+    ready: (int | None) = None
 ) -> any {
     annotations = {REPLICA_FLOOR_ANNOTATION: str(floor)} if floor is not None else None;
     conditions = [
@@ -469,6 +475,7 @@ def _rollout(
             replicas=replicas,
             updated_replicas=updated,
             available_replicas=available,
+            ready_replicas=available if ready is None else ready,
             conditions=conditions
         )
     );
@@ -482,34 +489,39 @@ def _rollout(
 # same verdict now also has to tell a deliberately idle workload (replica floor
 # 0) from one that should be up, and a failed rollout from a slow one.
 test "assess_workload settles only on active or intentionally inactive" {
-    cases: list[tuple[any, str, bool, str]] = [
+    cases: list[tuple[any, str, bool, bool, str]] = [
         (
             _rollout(generation=2, observed=1, replicas=1, updated=0, available=1),
             "activating",
             False,
+            True,
             "the controller has not observed the patch yet"
         ),
         (
             _rollout(generation=2, observed=2, replicas=1, updated=0, available=1),
             "activating",
             False,
+            True,
             "no replica runs the reverted template yet"
         ),
         (
             _rollout(generation=2, observed=2, replicas=2, updated=1, available=1),
             "activating",
             False,
+            True,
             "an old replica is still serving beside the reverted one"
         ),
         (
             _rollout(generation=2, observed=2, replicas=1, updated=1, available=0),
             "activating",
             False,
+            False,
             "the reverted pod exists but has not become available"
         ),
         (
             _rollout(generation=2, observed=2, replicas=1, updated=1, available=1),
             "active",
+            True,
             True,
             "every replica runs the new template"
         ),
@@ -519,6 +531,7 @@ test "assess_workload settles only on active or intentionally inactive" {
             ),
             "active",
             True,
+            True,
             "three of three"
         ),
         (
@@ -527,6 +540,7 @@ test "assess_workload settles only on active or intentionally inactive" {
             ),
             "activating",
             False,
+            True,
             "a three replica service is not rolled out on two"
         ),
         (
@@ -535,6 +549,7 @@ test "assess_workload settles only on active or intentionally inactive" {
             ),
             "deactivating",
             False,
+            True,
             "surplus replicas are still draining after a scale-down"
         ),
         (
@@ -542,6 +557,7 @@ test "assess_workload settles only on active or intentionally inactive" {
                 generation=1, observed=1, replicas=0, updated=0, available=0, desired=0
             ),
             "degraded",
+            False,
             False,
             "zero replicas with no floor stamped is a workload that should be up"
         ),
@@ -557,6 +573,7 @@ test "assess_workload settles only on active or intentionally inactive" {
             ),
             "inactive",
             True,
+            True,
             "zero replicas at a replica floor of zero is the idle resting state"
         ),
         (
@@ -571,6 +588,7 @@ test "assess_workload settles only on active or intentionally inactive" {
             ),
             "deactivating",
             False,
+            True,
             "the last replica is still draining down to idle"
         ),
         (
@@ -579,14 +597,30 @@ test "assess_workload settles only on active or intentionally inactive" {
             ),
             "degraded",
             False,
+            False,
             "a rollout past its progress deadline is broken even while the old replica serves"
         ),
-
+        (
+            _rollout(
+                generation=1,
+                observed=1,
+                replicas=2,
+                updated=2,
+                available=2,
+                desired=2,
+                ready=0
+            ),
+            "active",
+            True,
+            True,
+            "active is serving whatever ready_replicas the apiserver reported"
+        )
     ];
-    for (dep, expected, settled, why) in cases {
+    for (dep, expected, settled, serving, why) in cases {
         health = assess_workload(dep);
         assert health.status.value == expected , f"{why}: got {health.status.value}";
         assert health.is_settled() == settled , f"{why}: settled={health.is_settled()}";
+        assert health.is_serving() == serving , f"{why}: serving={health.is_serving()}";
     }
     assert not assess_workload(
         _rollout(generation=2, observed=2, replicas=1, updated=1, available=0),
@@ -1009,4 +1043,20 @@ test "the retention keep-set refuses to answer from an unreadable cluster" {
         "an empty keep-set from an unreadable cluster tells a pruner to delete "
         "every bundle the app references"
     );
+}
+
+
+test "the autoscaler's view is reachable from the public SDK" {
+    # Before this, asking why a workload sat at zero meant importing internal
+    # module paths and wiring three Kubernetes API clients by hand, so the
+    # capability existed and no application could use it.
+    assert hasattr(ScaleClient, "autoscaler_status");
+    assert hasattr(ScaleClient, "watch_autoscaler_transitions");
+    assert AutoscalerRuntimeStatus is not None;
+    assert AutoscalerTransition is not None;
+
+    # The scale-target name a caller no longer has to know the shape of: which
+    # autoscaler resource is live depends on the scaling mode, and deriving it
+    # is what the abstraction is for.
+    assert ScaleClient()._scale_target_name("orders") == "orders-deployment";
 }

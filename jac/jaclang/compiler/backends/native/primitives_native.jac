@@ -641,6 +641,14 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_affix(
+        self: NativeBytesEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        suffix: bool
+    ) -> (ir.Value | None);
+
     def emit_replace(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
