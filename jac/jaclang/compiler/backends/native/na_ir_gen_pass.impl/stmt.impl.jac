@@ -276,6 +276,12 @@ impl NaIRGenPass._codegen_delete_location(
         return;
     }
     _islice = target.right;
+    if isinstance(_islice, uni.IndexSlice)
+        and _islice.is_range
+        and len(_islice.slices) == 1 {
+        self._codegen_delete_list_slice(target, _islice.slices[0], nd);
+        return;
+    }
     if (not isinstance(_islice, uni.IndexSlice))
         or _islice.is_range
         or len(_islice.slices) != 1 {
@@ -325,6 +331,52 @@ impl NaIRGenPass._codegen_delete_location(
     self._dispatch_primitive_method(
         "list", "del_at", _container, [_idx_val], _elem_type_name
     );
+}
+
+impl NaIRGenPass._codegen_delete_list_slice(
+    target: uni.AtomTrailer, slice_node: uni.Slice, nd: uni.DeleteStmt
+) -> None {
+    if slice_node.step is not None {
+        self.emit(
+            E5092, node_override=nd, kind="statement", name="stepped slice deletion"
+        );
+        return;
+    }
+    _container = self._codegen_expr(target.target);
+    if _container is None {
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        return;
+    }
+    _elem = self._infer_list_elem_type(_container);
+    _helpers = self.list_helpers.get(_elem) if _elem is not None else None;
+    if _elem is None or _helpers is None {
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        return;
+    }
+    i64 = ir.IntType(64);
+    b = self.builder;
+    _len = b.call(_helpers["len"], [_container], name="dsl.len");
+    _bounds = self._emit_norm_slice_bounds(slice_node, _len);
+    if _bounds is None {
+        return;
+    }
+    (_start, _stop, _step, _pos) = _bounds;
+    _cursor = b.alloca(i64, name="dsl.i");
+    b.store(_stop, _cursor);
+    _func = b.basic_block.function;
+    _check = _func.append_basic_block(name="dsl.check");
+    _body = _func.append_basic_block(name="dsl.body");
+    _done = _func.append_basic_block(name="dsl.done");
+    b.branch(_check);
+    b.position_at_end(_check);
+    _cur = b.load(_cursor, name="dsl.cur");
+    b.cbranch(b.icmp_signed(">", _cur, _start, name="dsl.more"), _body, _done);
+    b.position_at_end(_body);
+    _idx = b.sub(_cur, ir.Constant(i64, 1), name="dsl.idx");
+    self._dispatch_primitive_method("list", "del_at", _container, [_idx], _elem);
+    b.store(_idx, _cursor);
+    b.branch(_check);
+    b.position_at_end(_done);
 }
 
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {

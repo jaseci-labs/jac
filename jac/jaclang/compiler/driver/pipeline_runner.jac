@@ -1,9 +1,10 @@
+import from jaclang.compiler.passes.context { PassSchedule }
 import from jaclang.compiler.driver.pipeline_types {
     AnalysisFact,
     CompilationProduct,
     UtilityProduct
 }
-import type from jaclang.compiler.passes.context { CancelToken }
+import type from jaclang.compiler.driver.compile_options { CancelToken }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.driver.toolchain {
     _codegen_sched_loading,
@@ -536,17 +537,17 @@ def native_schedule_failure -> str {
     return _native_sched_failure.get('reason', '');
 }
 
-def _py_codegen_tail -> list[type] {
+def _py_codegen_tail -> PassSchedule {
     return [NativeImportFactsPass, JcirGenPass, JcirBytecodeGenPass];
 }
 
-def get_bootstrap_code_gen -> list[type] {
+def get_bootstrap_code_gen -> PassSchedule {
     return _py_codegen_tail();
 }
 
 def get_py_code_gen(
     native: bool = True, provided: (set[AnalysisFact] | None) = None
-) -> list[type] {
+) -> PassSchedule {
     if _codegen_tier_reason() {
         return _py_codegen_tail();
     }
@@ -556,7 +557,7 @@ def get_py_code_gen(
         import from jaclang.compiler.backends.es { EsastGenPass }
         import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
 
-        passes: list[type] = [RcFactsPass, EsastGenPass];
+        passes: PassSchedule = [RcFactsPass, EsastGenPass];
         if native {
             active_host().load_modules(list(NATIVE_CODEGEN_DEPS));
             import from jaclang.compiler.backends.native {
@@ -704,12 +705,12 @@ def compile_application(
     return entry_module;
 }
 
-def client_product_schedule -> list[type] {
+def client_product_schedule -> PassSchedule {
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
     return [EsastGenPass];
 }
 
-def native_ir_product_schedule -> list[type] {
+def native_ir_product_schedule -> PassSchedule {
     import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
     import from jaclang.compiler.backends.native { NaIRGenPass }
     return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
@@ -720,7 +721,7 @@ with entry {
     register_product_schedule(CompilationProduct.NATIVE_IR, native_ir_product_schedule);
 }
 
-def get_format_sched(auto_lint: bool = False) -> list[type] {
+def get_format_sched(auto_lint: bool = False) -> PassSchedule {
     import from jaclang.compiler.tools.comment_attach_pass { CommentAttachPass }
     import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.tools.jac_auto_lint_pass { JacAutoLintPass }
@@ -736,7 +737,7 @@ def get_format_sched(auto_lint: bool = False) -> list[type] {
     );
 }
 
-def get_lint_sched -> list[type] {
+def get_lint_sched -> PassSchedule {
     import from jaclang.compiler.tools.jac_auto_lint_pass { JacLintCheckPass }
     return validate_schedule([JacLintCheckPass], origin='lint schedule');
 }

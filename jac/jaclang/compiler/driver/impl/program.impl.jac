@@ -983,7 +983,7 @@ impl JacProgram.ingest_comptime_producers(
 impl JacProgram.run_schedule(
     self: JacProgram,
     mod: uni.Module,
-    passes: list[type],
+    passes: PassSchedule,
     cancel_token: (CancelToken | None) = None
 ) -> None {
     import from jaclang.compiler.driver.pipeline { execute_passes }

@@ -1933,6 +1933,9 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
         return operand;
     }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
+    if op in (Tok.MINUS, Tok.PLUS) and self._is_jacval_ty(operand.type) {
+        return self._emit_jacval_sign(op, operand);
+    }
     if op in (Tok.MINUS, Tok.PLUS, Tok.BW_NOT) and operand.type == ir.IntType(1) {
         operand = self.builder.zext(operand, ir.IntType(64), name="bool.widen");
     }

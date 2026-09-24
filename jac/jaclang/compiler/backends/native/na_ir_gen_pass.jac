@@ -572,6 +572,7 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_value_repr(
         val: ir.Value, type_node: (uni.UniNode | None)
     ) -> (ir.Value | None);
+
     def _emit_dyn_spec_format(
         val: ir.Value, spec_val: ir.Value, part: uni.FormattedValue
     ) -> (ir.Value | None);
@@ -2428,6 +2429,10 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_delete(nd: uni.DeleteStmt) -> None;
     def _codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -> None;
     def _del_target_holds_graph(target: uni.Expr) -> bool;
+    def _codegen_delete_list_slice(
+        target: uni.AtomTrailer, slice_node: uni.Slice, nd: uni.DeleteStmt
+    ) -> None;
+
     def _codegen_delete_location(target: uni.AtomTrailer, nd: uni.DeleteStmt) -> None;
     def _codegen_if(nd: uni.IfStmt) -> None;
     def _codegen_switch(nd: uni.SwitchStmt) -> None;
@@ -2781,6 +2786,15 @@ walker NaIRGenPass(CompilerPass) {
         op: str, jv: ir.Value, peer: ir.Value, jv_on_left: bool
     ) -> (ir.Value | None);
 
+    def _jacval_numeric_parts(
+        v: ir.Value, label: str
+    ) -> tuple[ir.Value, ir.Value, ir.Value, ir.Value];
+
+    def _emit_jacval_arith(
+        op: str, left: ir.Value, right: ir.Value
+    ) -> (ir.Value | None);
+
+    def _emit_jacval_sign(op: str, operand: ir.Value) -> (ir.Value | None);
     def _emit_mixed_jacval_comparison(
         op: str, left: ir.Value, right: ir.Value
     ) -> (ir.Value | None);

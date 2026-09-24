@@ -2,11 +2,11 @@ import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import os;
-import type from jaclang.compiler.passes.context { CancelToken }
+import type from jaclang.compiler.driver.compile_options { CancelToken }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.passes.context { Alert }
+import from jaclang.compiler.passes.context { Alert, PassSchedule }
 import from jaclang.compiler.driver.progstate {
     AnalysisCaches,
     BuildScratch,
@@ -126,7 +126,7 @@ class JacProgram {
     def run_schedule(
         self: JacProgram,
         mod: uni.Module,
-        passes: list[type],
+        passes: PassSchedule,
         cancel_token: (CancelToken | None) = None
     ) -> None;
 

@@ -958,14 +958,9 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
             );
         }
 
-        if isinstance(helpers["elem_type"], ir.PointerType) {
-            if p.rc_release_simple_fn is None {
-                p._emit_rc_helpers();
-            }
-            _i8p_da = ir.IntType(8).as_pointer();
+        if p._elem_kind(helpers["elem_type"]) != "raw" and not p._nogc_headerless() {
             _da_elem = b.call(helpers["get"], [target, del_idx], name="delat_rel_elem");
-            _da_cast = b.bitcast(_da_elem, _i8p_da, name="delat_rel_cast");
-            b.call(p.rc_release_simple_fn, [_da_cast]);
+            p._emit_elem_release(b, helpers["elem_type"], _da_elem);
         }
         len_ptr = b.gep(
             target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="delat.len.ptr"

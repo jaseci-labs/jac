@@ -7,6 +7,7 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
 import from jaclang.compiler.frontend.unitree { Module, Source, TreeWalker, UniNode }
+import from jaclang.compiler.driver.compile_options { CancelToken }
 import type from jaclang.compiler.driver.program { JacProgram }
 
 obj Alert {
@@ -52,22 +53,6 @@ obj PassResult {
         time_taken: float = 0.0;
 }
 
-obj CancelToken {
-    has requested: bool = False;
-
-    def set {
-        self.requested = True;
-    }
-
-    def clear {
-        self.requested = False;
-    }
-
-    def is_set -> bool {
-        return self.requested;
-    }
-}
-
 obj CompileContext {
     has current_node: UniNode,
         from_pass: type,
@@ -108,6 +93,8 @@ walker CompilerPass {
 
     def release {}
 }
+
+type PassSchedule = list[type[CompilerPass]];
 
 walker TreePass(CompilerPass, TreeWalker) {
     can enter_walk with UniNode entry {

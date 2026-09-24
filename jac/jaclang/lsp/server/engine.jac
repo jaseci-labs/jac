@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CancelToken }
+import from jaclang.compiler.driver.compile_options { CancelToken }
 import asyncio;
 import type from jaclang.compiler.passes.context { Alert }
 import logging;

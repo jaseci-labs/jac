@@ -3,7 +3,7 @@
 import os;
 import from tempfile { TemporaryDirectory }
 import from pathlib { Path }
-import from jaclang.compiler.passes.context { CancelToken }
+import from jaclang.compiler.driver.compile_options { CancelToken }
 import from unittest.mock { patch }
 import jaclang.compiler.driver.pass_driver as pass_driver;
 import from jaclang.testing.test { parametrize }

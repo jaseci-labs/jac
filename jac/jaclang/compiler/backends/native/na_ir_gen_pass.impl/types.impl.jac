@@ -3363,6 +3363,10 @@ impl NaIRGenPass._emit_binary_op(
 
     if self?.jacval_type
         and (left.type == self.jacval_type or right.type == self.jacval_type) {
+        _jv_arith = self._emit_jacval_arith(op, left, right);
+        if _jv_arith is not None {
+            return _jv_arith;
+        }
         self.emit(
             E5092,
             node_override=self.ctx.current_node,
@@ -3795,6 +3799,128 @@ impl NaIRGenPass._emit_jacval_ordering(
         return None;
     }
     return self.builder.select(_is_flt, _flt_res, _int_res, name="jv.ord.res");
+}
+
+impl NaIRGenPass._jacval_numeric_parts(
+    v: ir.Value, label: str
+) -> tuple[ir.Value, ir.Value, ir.Value, ir.Value] {
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    dbl = ir.DoubleType();
+    b = self.builder;
+    if self._is_jacval_ty(v.type) {
+        tag = b.extract_value(v, 0, name=f"{label}.tag");
+        pay = b.extract_value(v, 1, name=f"{label}.pay");
+        is_flt = b.icmp_signed("==", tag, ir.Constant(i8, 1), name=f"{label}.isflt");
+        is_int = b.or_(
+            b.icmp_signed("==", tag, ir.Constant(i8, 0), name=f"{label}.isint"),
+            b.icmp_signed("==", tag, ir.Constant(i8, 7), name=f"{label}.isbool"),
+            name=f"{label}.intish"
+        );
+        as_f = b.select(
+            is_flt,
+            b.bitcast(pay, dbl, name=f"{label}.fbits"),
+            b.sitofp(pay, dbl, name=f"{label}.fconv"),
+            name=f"{label}.f"
+        );
+        return (is_flt, b.or_(is_flt, is_int, name=f"{label}.num"), pay, as_f);
+    }
+    if isinstance(v.type, (ir.DoubleType, ir.FloatType)) {
+        as_f = self._coerce_type(v, dbl);
+        return (
+            ir.Constant(i1, 1),
+            ir.Constant(i1, 1),
+            b.fptosi(as_f, i64, name=f"{label}.ftrunc"),
+            as_f
+        );
+    }
+    as_i = self._int_text_arg(v, False);
+    return (
+        ir.Constant(i1, 0),
+        ir.Constant(i1, 1),
+        as_i,
+        b.sitofp(as_i, dbl, name=f"{label}.iconv")
+    );
+}
+
+impl NaIRGenPass._emit_jacval_arith(
+    op: str, left: ir.Value, right: ir.Value
+) -> (ir.Value | None) {
+    symbols: dict[str, str] = {
+        Tok.PLUS: "+",
+        Tok.MINUS: "-",
+        Tok.STAR_MUL: "*",
+        Tok.DIV: "/",
+        Tok.FLOOR_DIV: "//",
+        Tok.MOD: "%"
+    };
+    if op not in symbols {
+        return None;
+    }
+    for side in (left, right) {
+        if not (
+            self._is_jacval_ty(side.type)
+            or isinstance(side.type, (ir.IntType, ir.DoubleType, ir.FloatType))
+        ) {
+            return None;
+        }
+    }
+    b = self.builder;
+    (l_flt, l_num, l_int, l_f) = self._jacval_numeric_parts(left, "jv.al");
+    (r_flt, r_num, r_int, r_f) = self._jacval_numeric_parts(right, "jv.ar");
+    self._emit_runtime_raise(
+        b.not_(b.and_(l_num, r_num, name="jv.a.num"), name="jv.a.bad"),
+        "TypeError",
+        f"unsupported operand type(s) for {symbols[op]}"
+    );
+    float_lane = b.or_(l_flt, r_flt, name="jv.a.flt");
+    if op == Tok.DIV {
+        float_lane = ir.Constant(ir.IntType(1), 1);
+    }
+    func = b.basic_block.function;
+    int_bb = func.append_basic_block(name="jv.a.int");
+    flt_bb = func.append_basic_block(name="jv.a.float");
+    done_bb = func.append_basic_block(name="jv.a.done");
+    b.cbranch(float_lane, flt_bb, int_bb);
+    b.position_at_start(int_bb);
+    int_res = self._emit_binary_op(op, l_int, r_int);
+    if int_res is None {
+        return None;
+    }
+    int_box = self._box_to_jacval(int_res);
+    int_end = b.basic_block;
+    b.branch(done_bb);
+    b.position_at_start(flt_bb);
+    flt_res = self._emit_binary_op(op, l_f, r_f);
+    if flt_res is None {
+        return None;
+    }
+    flt_box = self._box_to_jacval(flt_res);
+    flt_end = b.basic_block;
+    b.branch(done_bb);
+    b.position_at_start(done_bb);
+    res = b.phi(self.jacval_type, name="jv.a.res");
+    res.add_incoming(int_box, int_end);
+    res.add_incoming(flt_box, flt_end);
+    return res;
+}
+
+impl NaIRGenPass._emit_jacval_sign(op: str, operand: ir.Value) -> (ir.Value | None) {
+    b = self.builder;
+    i64 = ir.IntType(64);
+    (is_flt, is_num, as_int, as_f) = self._jacval_numeric_parts(operand, "jv.s");
+    _sym = "-" if op == Tok.MINUS else "+";
+    self._emit_runtime_raise(
+        b.not_(is_num, name="jv.s.bad"),
+        "TypeError",
+        f"bad operand type for unary {_sym}"
+    );
+    int_val = b.neg(as_int, name="jv.s.neg") if op == Tok.MINUS else as_int;
+    flt_val = b.fneg(as_f, name="jv.s.fneg") if op == Tok.MINUS else as_f;
+    int_box = self._box_to_jacval(int_val);
+    flt_box = self._box_to_jacval(flt_val);
+    return b.select(is_flt, flt_box, int_box, name="jv.s.res");
 }
 
 impl NaIRGenPass._emit_mixed_jacval_comparison(

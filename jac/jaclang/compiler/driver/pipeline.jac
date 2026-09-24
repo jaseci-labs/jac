@@ -1,7 +1,8 @@
+import from jaclang.compiler.passes.context { PassSchedule }
 import os;
 import time;
 import from collections.abc { Callable }
-import type from jaclang.compiler.passes.context { CancelToken }
+import type from jaclang.compiler.driver.compile_options { CancelToken }
 import from contextvars { ContextVar }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -89,15 +90,15 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
          'TypeCheckPass': PassContract((), (AnalysisFact.TYPE_OF, )),
          'VariantAgreementPass': PassContract((), (AnalysisFact.VARIANT_AGREEMENT, ))
      },
-     _PRODUCT_SCHEDULES: dict[CompilationProduct, Callable[[], list[type]]] = {};
+     _PRODUCT_SCHEDULES: dict[CompilationProduct, Callable[[], PassSchedule]] = {};
 
 def register_product_schedule(
-    product: CompilationProduct, schedule: Callable[[], list[type]]
+    product: CompilationProduct, schedule: Callable[[], PassSchedule]
 ) {
     _PRODUCT_SCHEDULES[product] = schedule;
 }
 
-def product_pipeline(product: CompilationProduct) -> list[type] {
+def product_pipeline(product: CompilationProduct) -> PassSchedule {
     if product == CompilationProduct.SYMBOLS {
         return get_symtab_ir_sched();
     }
@@ -291,7 +292,7 @@ def require_product(
     }
 }
 
-def get_symtab_ir_sched -> list[type] {
+def get_symtab_ir_sched -> PassSchedule {
     if not schedule_tier_reason() {
         _tok = _ir_sched_loading.set(True);
         try {
@@ -387,10 +388,10 @@ def pass_provides(p: type) -> tuple[AnalysisFact, ...] {
 }
 
 def validate_schedule(
-    passes: list[type],
+    passes: PassSchedule,
     preprovided: (set[AnalysisFact] | None) = None,
     origin: str = 'schedule'
-) -> list[type] {
+) -> PassSchedule {
     provided: set[AnalysisFact] = set(preprovided)
         if preprovided is not None
         else set();
@@ -414,14 +415,14 @@ def validate_schedule(
 
 class TypeshedUnavailableError(RuntimeError) {}
 
-def get_boundary_analysis_sched -> list[type] {
+def get_boundary_analysis_sched -> PassSchedule {
     return validate_schedule(
         [BoundaryFactsPass, BoundaryAnalysisPass, EndpointEffectPass],
         origin='boundary-analysis schedule'
     );
 }
 
-def get_bootstrap_ir_sched -> list[type] {
+def get_bootstrap_ir_sched -> PassSchedule {
     return validate_schedule(
         [
             AppContextPass,
@@ -436,7 +437,7 @@ def get_bootstrap_ir_sched -> list[type] {
     );
 }
 
-def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[type] {
+def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> PassSchedule {
     if schedule_tier_reason() {
         return get_bootstrap_ir_sched();
     }
@@ -449,7 +450,7 @@ def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[t
             JsxIntrinsicGuardPass
         }
 
-        passes: list[type] = [
+        passes: PassSchedule = [
             AppContextPass,
             GraphLoweringPass,
             ASTValidationPass,
@@ -502,7 +503,7 @@ def require_typeshed_stubs -> None {
     );
 }
 
-def get_analysis_sched -> list[type] {
+def get_analysis_sched -> PassSchedule {
     if _analysis_sched_loading.get()
         or active_host().module_in_flight(list(ANALYSIS_SCHED_DEPS)) {
         return [];
@@ -546,7 +547,7 @@ def get_analysis_sched -> list[type] {
     }
 }
 
-def providers_of(passes: list[type]) -> set[AnalysisFact] {
+def providers_of(passes: PassSchedule) -> set[AnalysisFact] {
     out: set[AnalysisFact] = set();
     for p in passes {
         for tag in pass_provides(p) {
@@ -559,7 +560,7 @@ def providers_of(passes: list[type]) -> set[AnalysisFact] {
 def execute_passes(
     program: JacProgram,
     module: Module,
-    passes: list[type],
+    passes: PassSchedule,
     cancel_token: (CancelToken | None) = None
 ) -> Module {
     import from jaclang.compiler.driver.pass_driver {

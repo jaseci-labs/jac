@@ -3,12 +3,8 @@ import os;
 import sys;
 import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
-import from jaclang.compiler.passes.context {
-    Alert,
-    CancelToken,
-    CompilerPass,
-    DiagnosticPolicy
-}
+import from jaclang.compiler.passes.context { Alert, CompilerPass, DiagnosticPolicy }
+import from jaclang.compiler.driver.compile_options { CancelToken }
 import from jaclang.compiler.frontend.unitree { Module, Source }
 import from jaclang.compiler.frontend.host { CheckSettings, active_host }
 import from jaclang.compiler.driver.program { JacProgram }

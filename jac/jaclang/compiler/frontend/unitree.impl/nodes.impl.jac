@@ -382,12 +382,6 @@ impl UniNode.replace_kid(old: UniNode, new: UniNode) -> UniNode {
     return self;
 }
 
-impl UniNode.detached_copy -> UniNode {
-    import copy;
-
-    return copy.deepcopy(self);
-}
-
 impl UniNode.__deepcopy__(memo: dict[int, object]) -> UniNode {
     import copy;
 

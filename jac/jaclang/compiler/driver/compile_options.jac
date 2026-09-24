@@ -1,4 +1,19 @@
-import type from jaclang.compiler.passes.context { CancelToken }
+obj CancelToken {
+    has requested: bool = False;
+
+    def set {
+        self.requested = True;
+    }
+
+    def clear {
+        self.requested = False;
+    }
+
+    def is_set -> bool {
+        return self.requested;
+    }
+}
+
 obj CompileOptions {
     has symtab_ir_only: bool = False,
         no_cgen: bool = False,
