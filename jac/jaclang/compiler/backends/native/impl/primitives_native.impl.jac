@@ -4215,7 +4215,20 @@ impl NativeSetEmitter._emit_set_elem_loop(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    n = b.call(helpers["len"], [src_set], name=f"{prefix}.len");
+    src_helpers = helpers;
+    elem_cast: (ir.Type | None) = None;
+    set_type = p.set_types.get(ctx.type_key);
+    if set_type is not None and src_set.type != set_type.as_pointer() {
+        for (list_key, list_helpers) in p.list_helpers.items() {
+            list_type = p.list_types.get(list_key);
+            if list_type is not None and src_set.type == list_type.as_pointer() {
+                src_helpers = list_helpers;
+                elem_cast = helpers["elem_type"];
+                break;
+            }
+        }
+    }
+    n = b.call(src_helpers["len"], [src_set], name=f"{prefix}.len");
     iv = b.alloca(i64, name=f"{prefix}.i");
     b.store(ir.Constant(i64, 0), iv);
     func = b.basic_block.function;
@@ -4229,7 +4242,10 @@ impl NativeSetEmitter._emit_set_elem_loop(
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
     idx_b = b.load(iv, name=f"{prefix}.idx.b");
-    ev = b.call(helpers["get"], [src_set, idx_b], name=f"{prefix}.ev");
+    ev: ir.Value = b.call(src_helpers["get"], [src_set, idx_b], name=f"{prefix}.ev");
+    if elem_cast is not None {
+        ev = p._cast_to_list_elem(b, ev, elem_cast, f"{prefix}.key");
+    }
     body_cb(b, ev);
     b.store(b.add(idx_b, ir.Constant(i64, 1), name=f"{prefix}.next"), iv);
     b.branch(loop_bb);

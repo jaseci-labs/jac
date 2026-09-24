@@ -2743,7 +2743,12 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_optional_eq(
-        op: str, left: ir.Value, right: ir.Value, is_float: bool
+        op: str,
+        left: ir.Value,
+        right: ir.Value,
+        is_float: bool,
+        unsigned: bool = False,
+        key_ret: (TypeBase | None) = None
     ) -> (ir.Value | None);
 
     def _emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value;
