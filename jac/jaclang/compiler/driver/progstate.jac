@@ -318,7 +318,7 @@ obj PendingPassResults {
 class AnalysisCaches {
     has placement_summaries: dict[str, any],
         placement_state: dict[str, any],
-        native_verdict_notes: dict[str, tuple[str, str]],
+        native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
         pass_runs: dict[str, int],
@@ -333,7 +333,7 @@ class AnalysisCaches {
     def init(self: AnalysisCaches) {
         self.placement_summaries: dict[str, any] = {};
         self.placement_state: dict[str, any] = {};
-        self.native_verdict_notes: dict[str, tuple[str, str]] = {};
+        self.native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
         self.pass_runs: dict[str, int] = {};

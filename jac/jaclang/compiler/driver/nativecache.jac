@@ -3,6 +3,8 @@ import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
 import type from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.driver.jir {
+    PRECOMPILE_SENTINEL,
+    compute_content_sha256,
     NativeStamp,
     SEC_NCTDEPS,
     ct_deps_section,
@@ -41,7 +43,8 @@ obj NativeUnitEntry {
 obj NativeVerdict {
     has demoted: bool = False,
         code: str = "",
-        detail: str = "";
+        detail: str = "",
+        deps: list[list[str]] = [];
 }
 
 obj NativeUnitRegistry {
@@ -550,16 +553,19 @@ obj NativeUnitRegistry {
         key = NativeUnitRegistry._source_key(resolved);
         cached = self.verdicts.get(resolved);
         if cached is not None {
-            if cached[0] == key {
+            if cached[0] == key and verdict_deps_fresh(cached[1].deps) {
                 return cached[1];
             }
             del self.verdicts[resolved];
+            if cached[0] == key {
+                return None;
+            }
         }
         found = self._module_jir(resolved);
         if found is None {
             return None;
         }
-        verdict = verdict_from_jir(found[0]);
+        verdict = verdict_from_jir(found[0], found[1]);
         if verdict is not None and key is not None {
             self.verdicts[resolved] = (key, verdict, );
         }
@@ -579,15 +585,16 @@ obj NativeUnitRegistry {
     def record_verdict(path: str, code: str, detail: str) {
         resolved = os.path.realpath(path);
         key = NativeUnitRegistry._source_key(resolved);
+        deps = native_verdict_dep_rows(resolved);
         if key is not None {
             self.verdicts[resolved] = (
                 key,
-                NativeVerdict(demoted=True, code=code, detail=detail),
+                NativeVerdict(demoted=True, code=code, detail=detail, deps=deps),
 
             );
         }
         import from jaclang.compiler.placement.placement { note_native_verdict }
-        note_native_verdict(self.prog, resolved, code, detail);
+        note_native_verdict(self.prog, resolved, code, detail, deps);
         self.entries.pop(resolved, None);
     }
 }
@@ -745,7 +752,119 @@ obj NativeBuildSession {
     }
 }
 
-def verdict_from_jir(data: bytes) -> (NativeVerdict | None) {
+glob _closure_memo:
+         dict[str, tuple[tuple[(tuple[int, int] | None), ...], list[str], list[str]]] = {},
+     _dep_digest_memo: dict[str, tuple[tuple[int, int], str]] = {},
+     VERDICT_CLOSURE_LIMIT: int = 4096;
+
+def _stat_key(path: str) -> (tuple[int, int] | None) {
+    try {
+        st = os.stat(path);
+        return (st.st_mtime_ns, st.st_size);
+    } except OSError {
+        return None;
+    }
+}
+
+def _module_files_and_imports(path: str) -> tuple[list[str], list[str]] {
+    import from jaclang.compiler.driver.bccache { discover_annex_files }
+    files = [path]
+        + discover_annex_files(path, '.impl.jac')
+        + discover_annex_files(path, '.test.jac');
+    fresh = tuple(_stat_key(f) for f in files);
+    cached = _closure_memo.get(path);
+    if cached is not None and cached[0] == fresh {
+        return (cached[1], cached[2]);
+    }
+    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.parser { parse as rd_parse }
+    import from jaclang.compiler.placement.placement { jac_import_targets }
+    imports: list[str] = [];
+    for f in files {
+        try {
+            (mod, _had_err) = rd_parse(
+                read_file_with_encoding(f), f, prog=JacProgram()
+            );
+        } except Exception {
+            continue;
+        }
+        for target in jac_import_targets(mod) {
+            if target not in imports {
+                imports.append(target);
+            }
+        }
+    }
+    _closure_memo[path] = (fresh, files, imports);
+    return (files, imports);
+}
+
+def native_verdict_closure(path: str) -> list[str] {
+    start = os.path.realpath(path);
+    seen: set[str] = {start};
+    queue: list[str] = list(_module_files_and_imports(start)[1]);
+    out: list[str] = [];
+    while queue and len(seen) < VERDICT_CLOSURE_LIMIT {
+        dep = queue.pop(0);
+        if dep in seen {
+            continue;
+        }
+        seen.add(dep);
+        (files, imports) = _module_files_and_imports(dep);
+        out.extend(files);
+        queue.extend(
+            i
+            for i in imports
+            if i not in seen
+        );
+    }
+    return sorted(set(out));
+}
+
+def _file_digest(path: str) -> str {
+    key = _stat_key(path);
+    if key is None {
+        return "";
+    }
+    cached = _dep_digest_memo.get(path);
+    if cached is not None and cached[0] == key {
+        return cached[1];
+    }
+    try {
+        digest = compute_content_sha256(path);
+    } except OSError {
+        return "";
+    }
+    _dep_digest_memo[path] = (key, digest);
+    return digest;
+}
+
+def native_verdict_dep_rows(path: str) -> list[list[str]] {
+    try {
+        return [[f, _file_digest(f)] for f in native_verdict_closure(path)];
+    } except Exception {
+        return [];
+    }
+}
+
+def verdict_deps_fresh(rows: list[list[str]], base_dir: str = "") -> bool {
+    prefix = PRECOMPILE_SENTINEL + "/";
+    for row in rows {
+        path = row[0];
+        if path.startswith(prefix) {
+            if not base_dir {
+                continue;
+            }
+            path = os.path.normpath(os.path.join(base_dir, path[len(prefix):]));
+        }
+        if _file_digest(path) != row[1] {
+            return False;
+        }
+    }
+    return True;
+}
+
+def verdict_from_jir(data: bytes, base_dir: str = "") -> (NativeVerdict | None) {
     raw = read_section_bytes(data, SEC_PLACEMENT);
     if raw is None {
         return None;
@@ -755,8 +874,14 @@ def verdict_from_jir(data: bytes) -> (NativeVerdict | None) {
     if summary is None or not summary.native_verdict {
         return None;
     }
+    if not verdict_deps_fresh(summary.native_verdict_deps, base_dir) {
+        return None;
+    }
     return NativeVerdict(
-        demoted=True, code=summary.native_verdict_code, detail=summary.native_verdict
+        demoted=True,
+        code=summary.native_verdict_code,
+        detail=summary.native_verdict,
+        deps=summary.native_verdict_deps
     );
 }
 

@@ -275,3 +275,109 @@ test "a docstring-only module is never decided native" {
     assert not ok , "an empty module passed the native verdict";
     assert "empty module" in why , why;
 }
+
+def write_sources(base: str, sources: dict[str, str]) {
+    for (name, text) in sources.items() {
+        path = os.path.join(base, name);
+        with open(path, "w", encoding="utf-8") as f {
+            f.write(text);
+        }
+        stamp = os.stat(path).st_mtime_ns + 2000000000;
+        os.utime(path, ns=(stamp, stamp));
+    }
+}
+
+def compile_native_default(prog: JacProgram, path: str) -> uni.Module {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.frontend.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    prev = get_effective_default_codespace_override();
+    try {
+        return prog.compile(path, options=CompileOptions(default_codespace="native"));
+    } finally {
+        set_effective_default_codespace(prev);
+    }
+}
+
+glob GOOD_COMBAT = "def pick_spot(x: int) -> int {\n    return x * 2;\n}\n",
+     BAD_COMBAT = "def pick_spot(x: int) -> int {\n    n: int = \"oops\";\n    return x * 2;\n}\n",
+     WEAPONS_SRC = "import from .combat { pick_spot }\n\ndef weapon_rules(x: int) -> int {\n    return pick_spot(x);\n}\n\nwith entry {\n    print(weapon_rules(2));\n}\n";
+
+"""Persist a verdict the way the driver does, with the dependency rows the
+recording program noted for it."""
+def persist_noted_verdict(prog: JacProgram, path: str) -> bool {
+    (code, detail, rows) = prog.analysis.native_verdict_notes[os.path.realpath(path)];
+    ps = PlacementSummary(
+        mod_path=path,
+        native_verdict=detail,
+        native_verdict_code=code,
+        native_verdict_deps=rows
+    );
+    return write_module_cache(
+        path, None, extra_sections={SEC_PLACEMENT: summary_to_bytes(ps)}
+    );
+}
+
+test "a demotion an imported module caused dies when that module is fixed" {
+    # weapons.jac is fine on its own; the imported combat.jac breaks its
+    # native lowering. The verdict is recorded against weapons.jac, whose own
+    # source never changes, so it used to outlive the fix to combat.jac and
+    # keep weapons.jac (and everything importing it) off the native lane.
+    import tempfile;
+    with tempfile.TemporaryDirectory() as tmp {
+        base = os.path.realpath(tmp);
+        write_sources(base, {"combat.jac": BAD_COMBAT, "weapons.jac": WEAPONS_SRC});
+        weapons_path = os.path.join(base, "weapons.jac");
+        combat_path = os.path.join(base, "combat.jac");
+        prog = JacProgram();
+        compile_native_default(prog, weapons_path);
+        assert module_native_demoted(weapons_path, prog) , "the broken import must demote weapons.jac";
+        noted = prog.analysis.native_verdict_notes[weapons_path];
+        assert combat_path in [row[0] for row in noted[2]] , (
+            f"the verdict must record the import it was lowered against: {noted[2]}"
+        );
+        assert persist_noted_verdict(prog, weapons_path) , "module cache write failed";
+        assert module_native_demoted(weapons_path) , "a fresh reader sees the persisted verdict";
+        write_sources(base, {"combat.jac": GOOD_COMBAT});
+        assert read_native_verdict(weapons_path) is None , "fixing combat.jac must clear the persisted verdict";
+        assert not module_native_demoted(weapons_path);
+        assert not module_native_demoted(weapons_path, JacProgram());
+        assert not module_native_demoted(weapons_path, prog) , "the recording program must drop its in-memory verdict too";
+        retry = compile_native_default(JacProgram(), weapons_path);
+        assert retry.decided_codespace == 'native' , "weapons.jac lowers native again";
+    }
+}
+
+test "a demotion verdict follows the import closure, not unrelated files" {
+    import tempfile;
+    with tempfile.TemporaryDirectory() as tmp {
+        base = os.path.realpath(tmp);
+        write_sources(
+            base,
+            {
+                "combat.jac": GOOD_COMBAT,
+                "weapons.jac": WEAPONS_SRC,
+                "items.jac": "import from .weapons { weapon_rules }\n\ndef drop(x: int) -> int {\n    return weapon_rules(x) + 1;\n}\n",
+                "unrelated.jac": "def other -> int {\n    return 1;\n}\n"
+            }
+        );
+        items_path = os.path.join(base, "items.jac");
+        prog = JacProgram();
+        prog.native_units().record_verdict(items_path, "E5020", "error[E5020]: stale");
+        assert persist_noted_verdict(prog, items_path) , "module cache write failed";
+        try {
+            write_sources(
+                base, {"unrelated.jac": "def other -> int {\n    return 2;\n}\n"}
+            );
+            assert module_native_demoted(items_path) , "an edit outside the closure keeps the verdict";
+            assert module_native_demoted(items_path, prog);
+            write_sources(base, {"combat.jac": BAD_COMBAT});
+            assert not module_native_demoted(items_path) , "an edit two imports down clears the verdict";
+            assert not module_native_demoted(items_path, prog);
+        } finally {
+            forget_verdict(prog, items_path);
+        }
+    }
+}
