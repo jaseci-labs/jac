@@ -48,7 +48,8 @@ import from jaclang.compiler.frontend.constant {
 import from jaclang.compiler.frontend.codeinfo {
     BoundaryTypeInfo,
     InteropBinding,
-    InteropContext
+    InteropContext,
+    InteropManifest
 }
 
 walker BoundaryAnalysisPass(TreePass) {
@@ -110,5 +111,5 @@ walker BoundaryAnalysisPass(TreePass) {
 
     def _literal_default(expr: (UniNode | None)) -> tuple[(bool, any)];
     can finish with exit;
-    def _record_surface(manifest: any) -> None;
+    def _record_surface(manifest: InteropManifest) -> None;
 }
