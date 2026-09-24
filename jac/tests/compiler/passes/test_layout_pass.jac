@@ -222,3 +222,38 @@ test "imported Jac field layouts use resolved declarations including aliases" {
         ) , str(program.warnings_had);
     }
 }
+
+"""The registry's MRO table catches up with a layout whose chain is longer.
+
+A class defined in one module over a base from another keeps its short
+linearization in any registry that saw it before its base's own bases; the
+layout object that crosses modules carries the complete chain. Adopting
+imported bases must bring the MRO table up to that chain, or every
+`isinstance` against an ancestor past the short end refuses to lower.
+"""
+test "adopting imported bases completes a short MRO table entry" {
+    import from jaclang.compiler.passes.layout_pass { adopt_imported_bases }
+    prog = JacProgram();
+    module = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "valid_inheritance.jac"))
+    );
+    reg = LayoutRegistry();
+    reg.layouts["Root"] = ArchetypeLayout(name="Root", arch_type="node", mro=["Root"]);
+    reg.layouts["Scope"] = ArchetypeLayout(
+        name="Scope", arch_type="node", parents=["Root"], mro=["Scope", "Root"]
+    );
+    reg.layouts["CatScope"] = ArchetypeLayout(
+        name="CatScope",
+        arch_type="node",
+        parents=["Scope"],
+        mro=["CatScope", "Scope", "Root"]
+    );
+    reg.mro_order = {
+        "Root": ["Root"],
+        "Scope": ["Scope", "Root"],
+        "CatScope": ["CatScope", "Scope"]
+    };
+    module.gen.layout_registry = reg;
+    adopt_imported_bases(module);
+    assert reg.mro_order["CatScope"] == ["CatScope", "Scope", "Root"] , reg.mro_order;
+}

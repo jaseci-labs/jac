@@ -374,6 +374,8 @@ def adopt_imported_bases(module: Module) -> list[str] {
         full = extended_mro(reg, lay);
         if len(full) > len(lay.mro or []) {
             lay.mro = full;
+        }
+        if len(full) > len(reg.mro_order.get(name) or []) {
             reg.mro_order[name] = list(full);
         }
     }

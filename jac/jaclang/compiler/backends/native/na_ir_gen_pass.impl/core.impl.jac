@@ -1322,8 +1322,10 @@ impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None 
         }
     }
     for (_name, _mro) in _imp_reg.mro_order.items() {
-        if _name not in _cons_reg.mro_order
-            or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts) {
+        _have = _cons_reg.mro_order.get(_name);
+        if _have is None
+            or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts)
+            or len(_mro) > len(_have) {
             _cons_reg.mro_order[_name] = _mro;
         }
     }
