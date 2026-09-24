@@ -478,6 +478,7 @@ The default for modules that `arch.jac` does not name. See [Project Wiring](../w
 ```toml
 [arch]
 closed = []               # Module-name patterns sealed even when arch.jac never names them
+roots = []                # Directories that are import roots (module names are relative to them)
 ```
 
 A module `arch.jac` names is sealed in both directions: its project-module imports must be wires, and it flows only where a rule admits. `closed` extends that to modules the file never mentions, including packages not yet written, and applies even before `arch.jac` exists. `["*"]` closes the whole project; a pattern list such as `["core.*"]` closes it one package at a time. The policy is part of every module's cache identity, so changing it rebuilds the affected modules.

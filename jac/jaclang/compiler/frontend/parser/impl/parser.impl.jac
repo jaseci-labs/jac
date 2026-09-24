@@ -7301,14 +7301,14 @@ impl Parser.parse_import_wire -> ImportWire | None {
     is_comptime = False;
     is_absorb = False;
     is_typed = False;
-    if self.match_tok(TokenKind.KW_COMPTIME) {
+    if self._match_wire_form(TokenKind.KW_COMPTIME) {
         is_comptime = True;
         kid.append(self.make_uni_token(self.previous()));
     }
-    if self.match_tok(TokenKind.KW_INCLUDE) {
+    if self._match_wire_form(TokenKind.KW_INCLUDE) {
         is_absorb = True;
         kid.append(self.make_uni_token(self.previous()));
-    } elif self.match_tok(TokenKind.TYP_TYPE) {
+    } elif self._match_wire_form(TokenKind.TYP_TYPE) {
         is_typed = True;
         kid.append(self.make_uni_token(self.previous()));
     }
@@ -7419,14 +7419,13 @@ impl Parser.parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireIt
                 );
             }
         }
-        if item_name.value in seen {
+        bound = alias.value if alias is not None else item_name.value;
+        if bound in seen {
             self.emit_diag(
-                f"Duplicate '{item_name.value}' in a wire payload",
-                "E0090",
-                loc=item_tok.loc
+                f"Duplicate '{bound}' in a wire payload", "E0090", loc=item_tok.loc
             );
         }
-        seen.add(item_name.value);
+        seen.add(bound);
         item = WireItem(name=item_name, alias=alias, kid=item_kid);
         items.append(item);
         kid.append(item);
@@ -7457,6 +7456,17 @@ impl Parser._expect_wire_arrow(kid: list[UniNode]) -> bool {
         return False;
     }
     kid.append(self.consume_uni(TokenKind.ARROW_R));
+    return True;
+}
+
+impl Parser._match_wire_form(kind: TokenKind) -> bool {
+    if not self.check(kind)
+        or self.check_peek_any(
+            TokenKind.ARROW_R, TokenKind.DOT, TokenKind.KW_AS, TokenKind.BW_OR
+        ) {
+        return False;
+    }
+    self.advance();
     return True;
 }
 

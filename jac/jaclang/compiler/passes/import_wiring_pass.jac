@@ -1,7 +1,9 @@
 import os;
 import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.unitree {
+    Ability,
     EmptyToken,
+    ImplDef,
     ImplImport,
     Import,
     ImportRule,
@@ -17,7 +19,9 @@ import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.driver.wiring {
     WireBinding,
     WiringSpec,
+    scope_owners,
     is_arch_file,
+    scope_path_of,
     wiring_for_path
 }
 import from jaclang.project.source { pascal_to_snake }
@@ -61,7 +65,12 @@ walker ImportWiringPass {
         consumer: str,
         provided: dict[tuple[str, str, str, str], ImportWire],
         enforce: bool,
-        nested: bool = False
+        nested: bool = False,
+        scope: (list[str] | None) = None
+    ) -> None;
+
+    def _emit_nested(
+        binding: WireBinding, at: UniNode, consumer: str, scope: (list[str] | None)
     ) -> None;
 
     static def _rule_names(rules: list[ImportRule]) -> str;

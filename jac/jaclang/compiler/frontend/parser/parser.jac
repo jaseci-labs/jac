@@ -610,6 +610,7 @@ obj Parser {
     def parse_wire_module_path(context: str) -> ModulePath;
     def parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireItem];
     def _expect_wire_arrow(kid: list[UniNode]) -> bool;
+    def _match_wire_form(kind: TokenKind) -> bool;
     def _skip_wiring_stmt -> None;
     def parse_sem_def -> SemDef;
     def parse_type_alias -> TypeAlias;

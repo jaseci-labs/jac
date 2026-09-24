@@ -4,7 +4,6 @@ import from jaclang.compiler.tools.reactive_use_walk { ReactiveUseWalker }
 import keyword;
 import os;
 import jaclang.compiler.frontend.unitree as uni;
-
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.constant { TOKEN_MAP }
 import from jaclang.compiler.frontend.parser.tokens { KEYWORDS }
@@ -42,7 +41,13 @@ import from jaclang.compiler.frontend.diagnostics {
     W3053
 }
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.wiring { WiringSpec, is_arch_file, wiring_for_path }
+import from jaclang.compiler.driver.wiring {
+    WiringSpec,
+    compiled_by_seed,
+    is_arch_file,
+    scope_path_of,
+    wiring_for_path
+}
 import from jaclang.compiler.driver.bccache { discover_base_file }
 import from jaclang.compiler.frontend.roles {
     Kid,
@@ -201,6 +206,12 @@ walker JacAutoLintPass(TreeWalker) {
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def _strip_wired_imports(nd: uni.Module) -> None;
+    def _wired_items(
+        stmt: uni.Import,
+        spec: WiringSpec,
+        provided: dict[tuple[str, str, str, str], uni.ImportWire]
+    ) -> set[int];
+
     def _strip_duplicate_wires(nd: uni.Module) -> None;
     can exit_expr_stmt with uni.ExprStmt exit;
     can exit_module with uni.Module exit;

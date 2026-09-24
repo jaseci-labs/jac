@@ -36,6 +36,7 @@ A wire is one import statement with its consumer attached:
 | `comptime P --> C { x }` | `comptime import from P { x }` |
 | `include P --> C;` | `include P;` |
 | `P --> C1 \| C2 { a }` | the same import in both `C1` and `C2` |
+| `P --> C.f { a }` | `import from P { a }` at the top of the body of `f` in `C` |
 
 The consumer never writes the import. At compile time the wire is woven into the consumer as annex source, exactly as a `.impl.jac` file is, so every existing import diagnostic works unchanged and points at the wire: a name the provider does not export is `W1101` on the payload item, a wired name the consumer never uses is `W2003` on it. A wire that claims a flow which does not exist is therefore visible, and the file stays faithful to the code.
 
@@ -45,6 +46,10 @@ Three constraints keep wires readable:
 - **Wires connect project modules only.** A provider must resolve to a Jac or Python module under the project root. Standard-library, installed, npm and asset imports stay in the module file; they are that module's external surface, and `jac.toml` already governs them through `[dependencies]`.
 - **A consumer is named in full.** It is the head module the import lands in, so `.impl.jac` files and `.test.jac` files are never consumers. An `.impl.jac` file counts as its head. A `.test.jac` runs inside its head's namespace, so it may import freely without wires, but an import that duplicates a wire is still redundant there and is removed like any other.
 
+A consumer path may continue past the module into a class, function or method: `core.jobs.Runner.start` names `start` in class `Runner` of `core.jobs`, whether its body is written inline or in an `.impl.jac` annex. The longest prefix that is a module is the module; the rest walks its declarations. Such a wire lands its import at the top of that body instead of at module level, so a dependency that must stay lazy (to break an import cycle, or to keep a heavy provider off the start-up path) is still declared in the file. A wire names each consumer module once; give a second scope in the same module its own wire.
+
+An import of a name the runtime resolves outside the project is never a project import, even when a project file shares the name: a standard-library module (`types`, `math`), a module of the bundled native standard library, and a module importing its own names all stay written in the module file.
+
 ## Sealing
 
 The file follows one rule: **whatever arch.jac names, arch.jac is the whole truth about.** A module is *sealed* once the file names it anywhere: as a wire's provider, as a wire's consumer, or by matching a rule's source or target pattern (`any` is a widening, not a name, and seals nothing). A sealed module is governed in both directions.
@@ -53,7 +58,7 @@ The file follows one rule: **whatever arch.jac names, arch.jac is the whole trut
 
 - A written import a wire already provides is `W3053` (`remove-wired-import`), and `jac fmt --lintfix` deletes it.
 - A written import no wire provides is `E1144`, and the message carries the exact wire to add.
-- A project-module import inside a function body is `E2094`. A wire is module-level, so a nested import is a dependency the file cannot show; a module that needs a lazy import stays unnamed.
+- A project-module import inside a function body must match a wire whose consumer names that function (`E2094` otherwise, with the scoped wire to add). An import in the body proper is removed by `jac fmt --lintfix` like a module-level one; an import nested in an `if` or `try` stays written, since moving it to the top of the function would change when it runs, and the wire declares it.
 
 **As a provider**, it admits imports only where a rule says. If no rule names it as a source, it flows nowhere: any import of it, written or wired, is `E2090` with the rule to add. This is why a file of wires needs rules, and why `jac arch init` writes them.
 
@@ -71,6 +76,10 @@ closed = ["*"]              # or a ratchet: ["core.*", "web.*"]
 ```
 
 A module matching a pattern is sealed whether or not arch.jac names it, and the setting applies even before arch.jac exists, so a fresh package under a closed root fails to check until it is wired and ruled. `closed = ["*"]` is the last step of a migration: after `jac arch init --strip` it costs nothing on the modules already wired and closes the door on new ones.
+
+A rule's target pattern names, and so seals, the modules it matches. When a sealed package is imported from code that stays open (tests, scripts, examples), let the rule's target be `any`, which admits every importer without sealing it: `edge CoreFlows: core.* --> any;`. `jac arch init <package>` writes rules this way when the package has importers outside it.
+
+Modules compiled by the bootstrap compiler (the jac0 seed set of the jaclang package itself) run before wiring exists, so they keep their written imports; arch.jac still declares them and the seal still checks them, but `jac fmt --lintfix` does not remove them.
 
 `E1144`, `E2090`, `E2091` and `E2094` ignore inline `# jac:ignore` comments. Loosening a boundary is an edit to arch.jac or to `[arch] closed`, so it is visible in review; `[check] suppress` in jac.toml still applies.
 
@@ -120,10 +129,21 @@ The unscoped block stays for layer rules and anything cross-cutting. Several blo
 | `E1143` | a wire connects a module to itself |
 | `E2092` | two rules share a name |
 | `E2093` | `arch.jac` has syntax errors, so a sealed module's wiring may be incomplete |
-| `E2094` | a sealed module imports a project module inside a function body |
+| `E2094` | a sealed module imports a project module inside a function body that no scoped wire declares |
 | `W3052` | a wire repeats an earlier one (`remove-duplicate-wire`, autofixed by `jac fmt --lintfix`) |
 
 Syntax has its own codes, `E0086` through `E0096`, each naming the shape that was expected: a directed `-->`, one provider per wire, consumers named in full, `as` only on the module form, no duplicate payload names, `include` without a payload, named rules, a dotted scope, and `*` standing alone.
+
+## Import roots
+
+Module names in arch.jac are the names modules are imported by. They are paths relative to the project root, unless the modules live under a separate import root, as in a `src/` layout or a monorepo whose package sits in a subdirectory. List such directories in `jac.toml`:
+
+```toml
+[arch]
+roots = ["src"]            # src/app/core.jac is the module `app.core`
+```
+
+A module is named relative to the deepest root that contains it, falling back to the project root. Naming modules by their import path matters because the generated import is written with that name: a name that differs from the one the rest of the code imports would load the module a second time.
 
 ## Caching
 

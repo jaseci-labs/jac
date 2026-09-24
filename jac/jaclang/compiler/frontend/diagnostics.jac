@@ -1839,12 +1839,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2094 = _err(
          "E2094",
          Category.SEMANTIC,
-         "Function-level import of '{module}' inside the sealed module '{consumer}'",
-         help="A sealed module's project-module imports are wires in arch.jac, and"
-         " a wire is module-level, so an import inside a function body would be a"
-         " dependency the wiring file cannot show. Move the import to module level"
-         " and wire it, or leave this module unmentioned by arch.jac and outside"
-         " [arch] closed if it needs a lazy import."
+         "Import of '{module}' inside '{scope}' is not declared by arch.jac for the"
+         " sealed module '{consumer}'",
+         help="A sealed module's project-module imports are wires. A wire whose consumer"
+         " continues past the module into a class, function or method"
+         " (`pkg.mod.Class.method`) lands its import in that body, so the import"
+         " stays lazy. {fix} An inline suppression does not silence this."
      ),
      W3001 = _warn(
          "W3001",

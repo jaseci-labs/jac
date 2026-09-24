@@ -1,5 +1,4 @@
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
-
 impl JacAutoLintPass.postinit -> None {
     import from jaclang.compiler.driver.compilation_context { context_app }
     import from jaclang.compiler.driver.pass_driver { diagnostic_policy_for }
@@ -2436,7 +2435,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         return;
     }
     own_path = nd.loc.mod_path;
-    if self._is_file_excluded(own_path) {
+    if self._is_file_excluded(own_path) or compiled_by_seed(own_path) {
         return;
     }
     spec = wiring_for_path(own_path);
@@ -2466,59 +2465,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
             new_body.append(stmt);
             continue;
         }
-        doomed: set[int] = set();
-        from_loc = stmt.from_loc;
-        if from_loc is not None {
-            provider = spec.import_provider(from_loc);
-            form = WiringSpec.import_form(
-                stmt.is_absorb, stmt.is_typed, stmt.is_comptime, True
-            );
-            for item in stmt.items {
-                if provider is None or not isinstance(item, uni.ModuleItem) {
-                    continue;
-                }
-                alias = item.alias.value if item.alias is not None else "";
-                if (provider, form, item.name.value, alias) not in provided {
-                    continue;
-                }
-                if (
-                    self.ctx.emit(
-                        W3053, node_override=item, name=item.name.value, module=provider
-                    )
-                    and not self.report_only
-                ) {
-                    doomed.add(id(item));
-                }
-            }
-        } else {
-            form = WiringSpec.import_form(
-                stmt.is_absorb, stmt.is_typed, stmt.is_comptime, False
-            );
-            for item in stmt.items {
-                if not isinstance(item, uni.ModulePath) {
-                    continue;
-                }
-                provider = spec.import_provider(item);
-                if provider is None {
-                    continue;
-                }
-                alias = item.alias.value if item.alias is not None else "";
-                if (provider, form, "", alias) not in provided {
-                    continue;
-                }
-                if (
-                    self.ctx.emit(
-                        W3053,
-                        node_override=item,
-                        name=item.dot_path_str,
-                        module=provider
-                    )
-                    and not self.report_only
-                ) {
-                    doomed.add(id(item));
-                }
-            }
-        }
+        doomed = self._wired_items(stmt, spec, provided);
         if not doomed {
             new_body.append(stmt);
             continue;
@@ -2529,6 +2476,40 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
             continue;
         }
         new_body.append(stmt);
+    }
+    for imp in nd.get_all_sub_nodes(typ=uni.Import) {
+        if imp.parent is nd or imp.loc.mod_path == spec.path {
+            continue;
+        }
+        scope = scope_path_of(imp);
+        if not scope {
+            continue;
+        }
+        owner = imp.parent;
+        if not isinstance(owner, (uni.Ability, uni.ImplDef)) {
+            continue;
+        }
+        doomed = self._wired_items(imp, spec, spec.consumer_bindings(consumer, scope));
+        if not doomed or not imp.prune_items(doomed) {
+            continue;
+        }
+        owner_body = [
+            s
+            for s in owner.body
+            if s is not imp
+        ];
+        with owner.structure_thawed() {
+            owner._role_set(BodyRole, owner_body);
+            owner.set_kids(
+                nodes=[
+                    k
+                    for k in [owner->:Kid:->]
+                    if k is not imp
+                ],
+                pos_update=False
+            );
+        }
+        owner._invalidate_sub_node_tab();
     }
     if not changed {
         return;
@@ -2545,6 +2526,67 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         );
     }
     nd._invalidate_sub_node_tab();
+}
+
+impl JacAutoLintPass._wired_items(
+    stmt: uni.Import,
+    spec: WiringSpec,
+    provided: dict[tuple[str, str, str, str], uni.ImportWire]
+) -> set[int] {
+    doomed: set[int] = set();
+    if not provided {
+        return doomed;
+    }
+    from_loc = stmt.from_loc;
+    if from_loc is not None {
+        provider = spec.import_provider(from_loc);
+        form = WiringSpec.import_form(
+            stmt.is_absorb, stmt.is_typed, stmt.is_comptime, True
+        );
+        for item in stmt.items {
+            if provider is None or not isinstance(item, uni.ModuleItem) {
+                continue;
+            }
+            alias = item.alias.value if item.alias is not None else "";
+            if (provider, form, item.name.value, alias) not in provided {
+                continue;
+            }
+            if (
+                self.ctx.emit(
+                    W3053, node_override=item, name=item.name.value, module=provider
+                )
+                and not self.report_only
+            ) {
+                doomed.add(id(item));
+            }
+        }
+        return doomed;
+    }
+    form = WiringSpec.import_form(
+        stmt.is_absorb, stmt.is_typed, stmt.is_comptime, False
+    );
+    for item in stmt.items {
+        if not isinstance(item, uni.ModulePath) {
+            continue;
+        }
+        provider = spec.import_provider(item);
+        if provider is None {
+            continue;
+        }
+        alias = item.alias.value if item.alias is not None else "";
+        if (provider, form, "", alias) not in provided {
+            continue;
+        }
+        if (
+            self.ctx.emit(
+                W3053, node_override=item, name=item.dot_path_str, module=provider
+            )
+            and not self.report_only
+        ) {
+            doomed.add(id(item));
+        }
+    }
+    return doomed;
 }
 
 impl JacAutoLintPass._strip_duplicate_wires(nd: uni.Module) -> None {

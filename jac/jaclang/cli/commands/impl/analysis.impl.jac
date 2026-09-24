@@ -1810,6 +1810,8 @@ def _iter_jac_files(
     paths: list[str], ignore_list: (list[str] | None) = None, include_annex: bool = True
 ) -> tuple[list[str], bool] {
     import os;
+    import from jaclang.project.source { drop_git_ignored }
+
     ignore_list: list[str] = ignore_list or [];
     result: list[str] = [];
     explicit: set[str] = set();
@@ -1831,8 +1833,8 @@ def _iter_jac_files(
                     walked.append(str(jac_file));
                 }
             }
-            if _drop_git_ignored([str(path_obj)]) {
-                result.extend(_drop_git_ignored(walked));
+            if drop_git_ignored([str(path_obj)]) {
+                result.extend(drop_git_ignored(walked));
             } else {
                 result.extend(walked);
             }
@@ -1893,42 +1895,6 @@ def _is_project_wide_run(paths: list[str]) -> bool {
     }
     return os.path.realpath(paths[0]) == os.path.realpath(proj);
 }
-
-def _drop_git_ignored(paths: list[str]) -> list[str] {
-    import subprocess;
-    if not paths {
-        return paths;
-    }
-    try {
-        proc = subprocess.run(
-            ['git', 'check-ignore', '--stdin'],
-            input="\n".join(paths),
-            capture_output=True,
-            text=True,
-            check=False
-        );
-    } except (OSError, ValueError) {
-        return paths;
-    }
-
-    if proc.returncode not in (0, 1) {
-        return paths;
-    }
-    ignored = {
-        line
-        for line in proc.stdout.splitlines()
-        if line
-    };
-    if not ignored {
-        return paths;
-    }
-    return [
-        p
-        for p in paths
-        if p not in ignored
-    ];
-}
-
 
 def _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool {
     import from jaclang.project.source { path_matches_exclude }

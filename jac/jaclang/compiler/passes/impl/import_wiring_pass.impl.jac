@@ -87,8 +87,21 @@ impl ImportWiringPass._check_wire(spec: WiringSpec, wire: ImportWire) -> None {
     if not wire.is_module_form {
         names = [(item.name.value, item) for item in wire.items];
     }
+    seen_modules: set[str] = set();
     for consumer_node in wire.consumers {
-        consumer = consumer_node.dot_path_str;
+        split = spec.split_consumer(consumer_node.dot_path_str);
+        consumer = split[0] if split is not None else consumer_node.dot_path_str;
+        if split is not None and consumer in seen_modules {
+            self.ctx.emit(
+                E1142,
+                node_override=consumer_node,
+                module=consumer_node.dot_path_str,
+                detail=f"this wire already names '{consumer}'; a wire lands in each"
+                " module once, so give the other scope its own wire"
+            );
+            continue;
+        }
+        seen_modules.add(consumer);
         cfile = spec.module_file(consumer);
         if cfile is None {
             detail = (
@@ -246,7 +259,33 @@ impl ImportWiringPass._check_module(mod: Module, spec: WiringSpec) -> None {
         self._check_import(spec, imp, consumer, provided, sealed);
     }
     for imp in ModuleFacts.iter_nested_imports(mod) {
-        self._check_import(spec, imp, consumer, provided, False, nested=sealed);
+        if not sealed {
+            self._check_import(spec, imp, consumer, {}, False);
+            continue;
+        }
+        scope = scope_path_of(imp);
+        scoped = spec.consumer_bindings(consumer, scope) if scope is not None else {};
+        self._check_import(
+            spec, imp, consumer, scoped, False, nested=True, scope=scope
+        );
+    }
+    owners: (dict[str, (Ability | ImplDef)] | None) = None;
+    for wire in spec.consumer_wires(consumer) {
+        scope = spec.consumer_scope(consumer, wire);
+        if not scope {
+            continue;
+        }
+        if owners is None {
+            owners = scope_owners(mod);
+        }
+        if ".".join(scope) not in owners {
+            self.ctx.emit(
+                E1142,
+                node_override=mod,
+                module=consumer + "." + ".".join(scope),
+                detail=f"'{consumer}' has no function or method '{'.'.join(scope)}'"
+            );
+        }
     }
 }
 
@@ -265,7 +304,8 @@ impl ImportWiringPass._check_import(
     consumer: str,
     provided: dict[tuple[str, str, str, str], ImportWire],
     enforce: bool,
-    nested: bool = False
+    nested: bool = False,
+    scope: (list[str] | None) = None
 ) -> None {
     src = imp.loc.mod_path;
     if src == spec.path or src.endswith(".test.jac") {
@@ -274,6 +314,9 @@ impl ImportWiringPass._check_import(
     from_loc = imp.from_loc;
     if from_loc is not None {
         project_provider = spec.import_provider(from_loc);
+        if project_provider == consumer {
+            return;
+        }
         provider = project_provider
             if project_provider is not None
             else from_loc.dot_path_str;
@@ -288,12 +331,20 @@ impl ImportWiringPass._check_import(
             alias = item.alias.value if item.alias is not None else "";
             names.append((item.name.value, item));
             if nested and project_provider is not None {
-                self.ctx.emit(
-                    E2094,
-                    node_override=item,
-                    module=project_provider,
-                    consumer=consumer
-                );
+                key = (project_provider, form, item.name.value, alias);
+                if key not in provided {
+                    self._emit_nested(
+                        WireBinding(
+                            provider=project_provider,
+                            form=form,
+                            name=item.name.value,
+                            alias=alias
+                        ),
+                        item,
+                        consumer,
+                        scope
+                    );
+                }
             }
             if enforce and project_provider is not None {
                 key = (project_provider, form, item.name.value, alias);
@@ -323,13 +374,21 @@ impl ImportWiringPass._check_import(
             continue;
         }
         project_provider = spec.import_provider(item);
+        if project_provider == consumer {
+            continue;
+        }
         provider = project_provider
             if project_provider is not None
             else item.dot_path_str;
         alias = item.alias.value if item.alias is not None else "";
-        if nested and project_provider is not None {
-            self.ctx.emit(
-                E2094, node_override=item, module=project_provider, consumer=consumer
+        if nested
+            and project_provider is not None
+            and (project_provider, form, "", alias) not in provided {
+            self._emit_nested(
+                WireBinding(provider=project_provider, form=form, alias=alias),
+                item,
+                consumer,
+                scope
             );
         }
         if enforce and project_provider is not None {
@@ -349,4 +408,30 @@ impl ImportWiringPass._check_import(
         }
         self._check_edge(spec, provider, consumer, None, item);
     }
+}
+
+impl ImportWiringPass._emit_nested(
+    binding: WireBinding, at: UniNode, consumer: str, scope: (list[str] | None)
+) -> None {
+    if scope is None {
+        self.ctx.emit(
+            E2094,
+            node_override=at,
+            module=binding.provider,
+            consumer=consumer,
+            scope="an unnamed ability",
+            fix="No wire can name an unnamed ability; move the import into a named"
+            " function or method and wire that."
+        );
+        return;
+    }
+    target = ".".join([consumer, *scope]);
+    self.ctx.emit(
+        E2094,
+        node_override=at,
+        module=binding.provider,
+        consumer=consumer,
+        scope=".".join(scope) if scope else consumer,
+        fix=f"Add `{binding.wire_text(target)}` to arch.jac, or run `jac arch sync`."
+    );
 }
