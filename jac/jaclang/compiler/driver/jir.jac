@@ -544,9 +544,33 @@ def _analysis_fingerprint_for(source_path: str) -> str {
     ).analysis_fingerprint();
 }
 
+def _check_policy_digest(source_path: str) -> str {
+    import json;
+    cfg: any = None;
+    try {
+        cfg = _config_for_module(Path(source_path).resolve());
+    } except Exception {
+        cfg = None;
+    }
+    check = cfg.check if cfg is not None else None;
+    if check is None {
+        return "";
+    }
+    lint = check.lint;
+    policy = {
+        "suppress": sorted(check.suppress),
+        "categories": sorted(check.suppress_categories),
+        "select": sorted(lint.select) if lint is not None else [],
+        "ignore": sorted(lint.ignore) if lint is not None else [],
+        "exclude": sorted(lint.exclude) if lint is not None else []
+    };
+    return hashlib.sha256(json.dumps(policy, sort_keys=True).encode()).hexdigest();
+}
+
 def _project_env_fingerprint(source_path: str) -> str {
     h = hashlib.sha256();
     h.update(_module_codespace_mode(source_path).encode());
+    h.update(_check_policy_digest(source_path).encode());
     import from jaclang.compiler.placement.placement_pins {
         pins_digest,
         config_kind_space
@@ -601,6 +625,8 @@ def compute_module_key(source_path: str) -> str {
         h.update(rel.encode());
         h.update(digest.encode());
     }
+    import from jaclang.compiler.driver.wiring { wiring_digest_for }
+    h.update(wiring_digest_for(source_path).encode());
     return h.hexdigest();
 }
 
@@ -1118,7 +1144,8 @@ def read_debug_source(data: bytes) -> (str | None) {
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
     import from jaclang.compiler.driver.bccache {
         discover_annex_files,
-        discover_style_annex
+        discover_style_annex,
+        discover_wiring_file
     }
     if not cache_path.exists() {
         return False;
@@ -1142,6 +1169,10 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         style = discover_style_annex(source_path);
         if style is not None {
             related.append(style);
+        }
+        wiring = discover_wiring_file(source_path);
+        if wiring is not None {
+            related.append(wiring);
         }
         fresh = cache_mtime > os.path.getmtime(source_path);
         if fresh {

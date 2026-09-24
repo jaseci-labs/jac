@@ -1,6 +1,4 @@
 import from "@jac/runtime" { Link }
-import from core.site.ui.button { buttonVariants }
-import from core.site.ui.GraphBackdrop { GraphBackdrop }
 
 def:pub NotFound -> JsxElement {
     return

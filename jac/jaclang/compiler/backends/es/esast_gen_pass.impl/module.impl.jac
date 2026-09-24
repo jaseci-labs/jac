@@ -111,6 +111,13 @@ impl EsastGenPass.exit_module with uni.Module exit {
             )
         );
     }
+    if self.needs_osp_graph or self.needs_osp_kernel {
+        self.needs_jac_runtime = True;
+    }
+    if self.needs_jac_runtime {
+        import from jaclang.compiler.backends.es.jac_runtime_js { JAC_PRELUDE_MODULE }
+        self._inject_runtime_import('_jac', here, src=JAC_PRELUDE_MODULE);
+    }
     body: list[(es.Statement | es.ModuleDeclaration)] = [];
     body.extend(self.imports);
 
@@ -126,22 +133,6 @@ impl EsastGenPass.exit_module with uni.Module exit {
         body.extend(hoisted);
     }
 
-    if self.needs_osp_graph or self.needs_osp_kernel {
-        self.needs_jac_runtime = True;
-    }
-    if self.needs_jac_runtime {
-        import from jaclang.compiler.backends.es.jac_runtime_js { build_jac_runtime_js }
-        jac_rt_decl = es.VariableDeclaration(
-            declarations=[
-                es.VariableDeclarator(
-                    id=es.Identifier(name='_jac'),
-                    init=es.RawCode(code=build_jac_runtime_js())
-                )
-            ],
-            kind='const'
-        );
-        body.append(jac_rt_decl);
-    }
     merged_body = self._merge_module_bodies(here);
     client_items: list[es.Statement | list[es.Statement] | None] = [];
     fallback_items: list[es.Statement | list[es.Statement] | None] = [];

@@ -1,16 +1,4 @@
 import from "lucide-react" { Inbox }
-import from core.site.ui.skeleton { Skeleton }
-import from core.site.ui.empty {
-    Empty,
-    EmptyHeader,
-    EmptyMedia,
-    EmptyTitle,
-    EmptyDescription
-}
-import from .TweetCard { TweetCard }
-import from .Composer { Composer }
-import from .WelcomeBanner { WelcomeBanner }
-import from core.social_graph { Tweet }
 
 def:pub FeedTab(
     showWelcome: bool,

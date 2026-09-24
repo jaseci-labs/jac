@@ -1,5 +1,3 @@
-import from core.brand.font { useBrandFont }
-import from core.jacyac.native.components.BrandMark { BrandMark }
 import from "@jac/mobui" {
     View,
     Text,
@@ -8,18 +6,6 @@ import from "@jac/mobui" {
     Pressable,
     useWindowDimensions
 }
-import from core.jacyac.state { useJacYac }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from .icon { Icon }
-import from .components.TabBar { TabBar }
-import from .components.BridgeBanner { BridgeBanner }
-import from .screens.AuthScreen { AuthScreen }
-import from .screens.ScoresScreen { ScoresScreen }
-import from .screens.FeedScreen { FeedScreen }
-import from .screens.ExploreScreen { ExploreScreen }
-import from .screens.ChannelsScreen { ChannelsScreen }
-import from .screens.ProfileScreen { ProfileScreen }
 
 glob TAB_TITLES: dict[str, str] = {
          "feed": "Home",

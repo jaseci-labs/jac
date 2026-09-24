@@ -453,6 +453,13 @@ glob OWNERSHIP_CASES: list[tuple[any, ...]] = [
          ),
          (
              "ownership_check_pass",
+             "bytes() and bytearray() copy their argument instead of moving it",
+             "bytes_ctor_copy_ok.jac",
+             [],
+             True
+         ),
+         (
+             "ownership_check_pass",
              "a conditionally-moved binding that is not used afterwards is clean",
              "branch_no_use_ok.jac",
              []

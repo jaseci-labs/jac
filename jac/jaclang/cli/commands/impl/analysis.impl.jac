@@ -1278,7 +1278,8 @@ impl format(
 
 impl precommit(
     paths: (list[str] | None) = None,
-    staged: bool = False,
+    staged: bool = True,
+    all: bool = False,
     verify: bool = False,
     install: bool = False,
     force: bool = False,
@@ -1296,7 +1297,11 @@ impl precommit(
     rel_targets: list[str] = [];
     check_targets: list[str] = [];
     git_root = "";
-    if staged {
+    staged_mode = staged and not paths and not all;
+    if paths {
+        targets = list(paths);
+        check_targets = targets;
+    } elif staged_mode {
         try {
             git_root = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
@@ -1335,9 +1340,6 @@ impl precommit(
             for (rel, abs_t) in zip(rel_targets, targets)
             if not _should_ignore(rel, gate)
         ];
-    } elif paths {
-        targets = list(paths);
-        check_targets = targets;
     } else {
         config = get_config();
         if config is not None and config.project_root {
@@ -1351,7 +1353,7 @@ impl precommit(
     fmt_targets = targets;
     tmp_root: (str | None) = None;
     path_map: dict[str, str] = {};
-    if staged and verify {
+    if staged_mode and verify {
         dirty = _staged_dirty_files(git_root, rel_targets);
         if dirty {
             tmp_root = tempfile.mkdtemp(prefix="jac-precommit-");
@@ -1446,7 +1448,7 @@ impl precommit(
 
     fixes_applied = (
         int(stats.get("changed", 0)) > 0
-        or (staged and _staged_dirty_files(git_root, rel_targets))
+        or (staged_mode and _staged_dirty_files(git_root, rel_targets))
         or fmt_ret != 0
     );
     if not verify and check_ret == 0 and fixes_applied {
@@ -1513,7 +1515,7 @@ def _install_precommit_hook(force: bool = False) -> int {
     precommit_body = (
         "#!/bin/sh\n"
         "# Installed by `jac precommit --install`\n"
-        "exec jac precommit --staged --verify\n"
+        "exec jac precommit --verify\n"
     );
     commit_msg_body = (
         "#!/bin/sh\n"
@@ -1531,7 +1533,6 @@ def _install_precommit_hook(force: bool = False) -> int {
         }
     }
     console.success(f"Installed git hooks in '{hooks_dir}': pre-commit, commit-msg.");
-    console.print("pre-commit runs: jac precommit --staged --verify");
     console.print("commit-msg blocks AI co-author attribution lines.");
     return 0;
 }

@@ -1,5 +1,9 @@
 import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
-import from jaclang.scale.models.resource_status { ResourceStatus, ResourceStatusInfo }
+import from jaclang.scale.models.resource_status {
+    ResourceStatus,
+    ResourceStatusInfo,
+    assess_workload
+}
 import from jaclang.scale.models.progress { EventSink, NoopSink, ProgressEvent }
 import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
@@ -233,23 +237,8 @@ obj KubernetesTargetBase(DeploymentTarget) {
             core_v1 = client.CoreV1Api();
             namespace = self.k8s_config.namespace;
 
-            deployment = apps_v1.read_namespaced_deployment(
-                name=app_name, namespace=namespace
-            );
-
-            replicas = deployment.spec.replicas or 0;
-            ready_replicas = deployment.status.ready_replicas or 0;
-
-            if ready_replicas == replicas and replicas > 0 {
-                status = ResourceStatus.RUNNING;
-            } elif ready_replicas > 0 {
-                status = ResourceStatus.PENDING;
-            } else {
-                status = ResourceStatus.FAILED;
-            }
-
-            return ResourceStatusInfo(
-                status=status, replicas=replicas, ready_replicas=ready_replicas
+            return assess_workload(
+                apps_v1.read_namespaced_deployment(name=app_name, namespace=namespace)
             );
         } except Exception as e {
             if self.logger {
@@ -561,24 +550,15 @@ obj KubernetesTargetBase(DeploymentTarget) {
                 resource_map = dep_map;
             }
             if k8s_name in resource_map {
-                r = resource_map[k8s_name];
-                replicas = r.spec.replicas or 0;
-                ready = r.status.ready_replicas or 0;
-                if ready == replicas and replicas > 0 {
-                    status = 'running';
-                } elif ready > 0 {
-                    status = 'degraded';
-                } elif k8s_name in restarting_apps {
-                    status = 'restarting';
-                } else {
-                    status = 'pending';
-                }
+                health = assess_workload(
+                    resource_map[k8s_name], crashlooping=k8s_name in restarting_apps
+                );
                 components.append(
                     {
                         'name': display_name,
-                        'status': status,
-                        'ready': ready,
-                        'total': replicas
+                        'status': health.status.value,
+                        'ready': health.ready_replicas,
+                        'total': health.replicas
                     }
                 );
                 if display_name == 'Grafana' {

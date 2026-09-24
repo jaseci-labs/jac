@@ -52,7 +52,7 @@ test "a deleted foreign row becomes eligible for normal reference healing" {
     import from jaclang.server.session { Session }
     store = unittest.mock.MagicMock();
     store.load_full.return_value = {};
-    session = Session(store=cast(Store, store));
+    session = Session(_store=cast(Store, store));
     id = uuid4();
     session._foreign_refs.add(id);
     with unittest.mock.patch.object(session, 'read_barrier') {

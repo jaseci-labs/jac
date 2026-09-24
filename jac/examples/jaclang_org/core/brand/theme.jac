@@ -1,5 +1,4 @@
 import from "@jac/runtime" { __getLocalStorage, __setLocalStorage }
-import from .tokens { Colors, dark_palette, light_palette }
 
 glob listeners: list[Callable[[bool], None]] = [];
 

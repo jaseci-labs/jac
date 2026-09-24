@@ -776,12 +776,20 @@ Status values:
 
 | Value | Meaning |
 |-------|---------|
-| `Running` | All pods ready |
-| `Degraded` | Some pods ready, others not |
-| `Pending` | Pods are starting up (no pods ready yet) |
-| `Restarting` | One or more pods are crash-looping |
+| `Active` | Every desired replica runs the current template and is available |
+| `Activating` | Replicas are starting, or a rollout is still in progress |
+| `Inactive` | Scaled to zero on purpose: the replica floor is 0 (`idle_replicas = 0` under KEDA, or `http_activation`), so this is the healthy resting state, not an error |
+| `Deactivating` | Scaling down; surplus replicas are still draining |
+| `Degraded` | Something is wrong: the rollout passed its progress deadline, pods are crash-looping, or the workload sits at zero replicas below its floor |
 | `Not Deployed` | Component was never provisioned |
 | `Unknown` | Component state could not be determined |
+
+The same verdict backs `ScaleClient.resource_status`, the fleet-ready gate at the end of `jac scale deploy`, and the Ops Console's `/admin/ops/deploy` endpoint, so all four agree about a workload. Scaling intent is read from the `jac-scale.replica-floor` annotation that `jac scale deploy` stamps on each Deployment; a Deployment applied before this annotation existed is treated as having a floor of 1 until it is redeployed.
+
+A Deployment whose replicas an autoscaler owns is redeployed with `spec.replicas` left out of the update, so the count the HPA, ScaledObject or HTTP interceptor set survives. Two consequences follow:
+
+- A service already idled to zero stays at zero through a redeploy, so `jac scale deploy` finishes without ever starting the new revision. The deploy log names those services: the image is unverified until the first request wakes one. Deploy a warm service, or set `idle_replicas` above zero, when a deploy has to prove the new build boots.
+- `idle_replicas` is a fleet-wide setting and the gateway is exempt from it, for the reason it is already exempt from `http_activation`: it is the ingress entry point, and nothing wakes it once it sleeps. Put `http_activation` on the services that should sleep instead.
 
 ---
 
@@ -1465,7 +1473,7 @@ reachable at call time).
 | `preview(spec)` | the manifest bundle, nothing applied (microservice target only, like `--dry-run`) |
 | `destroy(app_name, namespace, component="")` | removes the deployment; never prompts |
 | `status(app_name, namespace)` | full status dict (components, pod counts, URLs) |
-| `resource_status(app_name, namespace)` | `ResourceStatusInfo{status, replicas, ready_replicas}` |
+| `resource_status(app_name, namespace)` | `ResourceStatusInfo{status, replicas, ready_replicas, available_replicas, updated_replicas, replica_floor, reason, message}`; `status` is one of `active`, `activating`, `inactive`, `deactivating`, `degraded`, `unknown` (see [Deployment Status](#deployment-status)) |
 | `service_url(app_name, namespace)` | externally reachable URL or `None` |
 | `scale(app_name, namespace, replicas)` | resizes the app deployment |
 

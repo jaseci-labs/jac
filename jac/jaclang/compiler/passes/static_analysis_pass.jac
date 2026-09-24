@@ -25,6 +25,7 @@ import from jaclang.compiler.frontend.unitree {
     FormattedValue,
     IfStmt,
     ImplDef,
+    ImplImport,
     Import,
     InForStmt,
     Int,

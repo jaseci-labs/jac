@@ -1,4 +1,3 @@
-import from core.utils { cn }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { Copy01Icon, CheckmarkCircle01Icon }
 

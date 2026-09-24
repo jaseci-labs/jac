@@ -10,14 +10,19 @@ glob logger = logging.getLogger(__name__),
 
 
 obj Memory {
-    has store: (any | None) = None,
-        base_path: (str | None) = None,
+    has base_path: (str | None) = None,
         target_path: (str | None) = None,
         __mem__: dict[UUID, Anchor] postinit,
         _dirty: dict[UUID, None] postinit,
         _deleted: set[UUID] postinit,
         _on_commit: list[Callable] postinit,
         _lock: threading.RLock postinit;
+
+    has store: (any | None) {
+        getter {
+            return None;
+        }
+    }
 
     def postinit {
         self._init_memory();

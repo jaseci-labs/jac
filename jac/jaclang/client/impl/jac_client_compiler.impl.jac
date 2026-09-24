@@ -87,12 +87,18 @@ impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> P
     return path;
 }
 
+impl JacClientCompiler.emit_prelude(self: JacClientCompiler) -> Path {
+    import from jaclang.compiler.backends.es.jac_runtime_js { write_jac_prelude_file }
+    return Path(write_jac_prelude_file(str(self.compiled_dir)));
+}
+
 impl JacClientCompiler.compile(
     self: JacClientCompiler,
     module: (ModuleType | None),
     module_path: Path,
     native: bool = False
 ) -> tuple[list[str], list[str]] {
+    self.emit_prelude();
     artifact = self.jac_compiler.compile_module(module_path);
     self._collect_na_modules(artifact);
     collected_exports: set[str] = set(
@@ -247,6 +253,7 @@ impl JacClientCompiler.emit_dependencies(
     def variant(path: Path) -> Path {
         return self._native_variant(path) if native else path;
     }
+    self.emit_prelude();
     closure = collect_client_graph(
         [module_path],
         self.jac_compiler.compile_module,
@@ -304,35 +311,6 @@ def _extract_import_lines(js_code: str) -> list[str] {
     return imports;
 }
 
-def _extract_jac_preamble(js_code: str) -> str {
-    start = js_code.find('const _jac =');
-    if start < 0 {
-        return '';
-    }
-    depth = 0;
-    i = js_code.find('{', start);
-    if i < 0 {
-        return '';
-    }
-    while i < len(js_code) {
-        ch = js_code[i];
-        if ch == '{' {
-            depth += 1;
-        } elif ch == '}' {
-            depth -= 1;
-            if depth == 0 {
-                end = i + 1;
-                if end < len(js_code) and js_code[end] == ';' {
-                    end += 1;
-                }
-                return js_code[start:end];
-            }
-        }
-        i += 1;
-    }
-    return '';
-}
-
 def _extract_function_bodies(js_code: str) -> str {
     stripped = _strip_esm_export_line(js_code);
 
@@ -343,14 +321,7 @@ def _extract_function_bodies(js_code: str) -> str {
         }
         body_lines.append(line);
     }
-    body = '\n'.join(body_lines);
-
-    jac_preamble = _extract_jac_preamble(body);
-    if jac_preamble {
-        body = body.replace(jac_preamble, '', 1);
-    }
-
-    return body;
+    return '\n'.join(body_lines);
 }
 
 def _merge_runtime_imports(platform_js: str, core_js: str) -> str {
@@ -384,19 +355,12 @@ def _strip_esm_export_line(js_code: str) -> str {
 
 def _bundle_runtime_js(core_js: str, platform_js: str, export_names: list[str]) -> str {
     imports = _merge_runtime_imports(platform_js, core_js);
-    jac_preamble = _extract_jac_preamble(platform_js);
-    if not jac_preamble {
-        jac_preamble = _extract_jac_preamble(core_js);
-    }
     core_body = _extract_function_bodies(core_js);
     platform_body = _extract_function_bodies(platform_js);
     export_line = 'export {' + ', '.join(export_names) + '};';
     parts: list[str] = [];
     if imports {
         parts.append(imports);
-    }
-    if jac_preamble {
-        parts.append(jac_preamble);
     }
     if core_body {
         parts.append(core_body);

@@ -475,14 +475,51 @@ def _element_glob_write_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
     return writes;
 }
 
+def _is_filter_field_name(nm: uni.Name) -> bool {
+    par = nm.parent;
+    if isinstance(par, uni.FilterCompr) {
+        return par.f_type is not nm;
+    }
+    if isinstance(par, uni.UnaryExpr) and par.operand is nm {
+        return isinstance(par.parent, uni.FilterCompr);
+    }
+    cur: uni.UniNode = nm;
+    if isinstance(par, uni.TupleVal) {
+        cur = par;
+        par = par.parent;
+    }
+    return (
+        isinstance(par, uni.CompareExpr)
+        and par.left is cur
+        and isinstance(par.parent, uni.FilterCompr)
+    );
+}
+
+def _names_a_member(nm: uni.Name) -> bool {
+    par = nm.parent;
+    if isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm {
+        return True;
+    }
+    if isinstance(par, uni.KWPair) and par.key is nm {
+        return True;
+    }
+    if (
+        isinstance(par, uni.MatchKVPair)
+        and par.key is nm
+        and isinstance(par.parent, uni.MatchArch)
+    ) {
+        return True;
+    }
+    return _is_filter_field_name(nm);
+}
+
 def _references_browser_seed_global(elem: uni.UniNode) -> str {
     import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
     for nm in elem.get_all_sub_nodes(uni.Name) {
         if nm.value not in BROWSER_SEED_GLOBALS {
             continue;
         }
-        par = nm.parent;
-        if (isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm) {
+        if _names_a_member(nm) {
             continue;
         }
         tab = nm?.sym_tab;
@@ -512,6 +549,13 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
     for arch in module.get_all_sub_nodes(uni.Archetype) {
         if arch.arch_kind is not None and module_has_root_access(module) {
             reasons.append(f"graph archetype '{arch.name.value}'");
+            break;
+        }
+    }
+    import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
+    for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ability_delegates_to_model(ab) {
+            reasons.append(f"by llm ability '{ab.py_resolve_name()}'");
             break;
         }
     }
@@ -591,7 +635,11 @@ def scan_native_blockers(
             return ("root access (persistent graph)", deps);
         }
     }
+    import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
     for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ability_delegates_to_model(ab) {
+            return ("by llm ability (needs the byLLM runtime)", deps);
+        }
         if ab.is_async {
             return ("async ability", deps);
         }

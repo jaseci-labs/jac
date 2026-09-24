@@ -1,6 +1,3 @@
-import from core.utils { cn }
-import from core.jac_tokenizer { Token, tokenize_lines }
-
 def:pub TokenSpan(tk: Token) -> JsxElement {
     return
         <span className={("tok-" + tk.kind) if tk.kind != "plain" else ""}>

@@ -221,5 +221,12 @@ def annex_sources(file_path: str) -> list[tuple[str, str]] {
             continue;
         }
     }
+    try {
+        import from jaclang.compiler.driver.wiring { wiring_annex_for }
+        wired = wiring_annex_for(file_path);
+        if wired is not None {
+            out.append(wired);
+        }
+    } except Exception {}
     return out;
 }

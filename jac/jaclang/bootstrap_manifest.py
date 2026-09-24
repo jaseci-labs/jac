@@ -97,6 +97,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/decl_impl_match_pass.jac",
     "compiler/passes/endpoint_effect_pass.jac",
     "compiler/passes/semantic_analysis_pass.jac",
+    "compiler/passes/import_wiring_pass.jac",
     "compiler/passes/sym_tab_build_pass.jac",
     "compiler/passes/context.jac",
     "compiler/native_scope.jac",

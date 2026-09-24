@@ -45,6 +45,11 @@ walker UnparsePass(TreeWalker) {
     can exit_module_item with uni.ModuleItem exit;
     can exit_archetype with uni.Archetype exit;
     can exit_impl_def with uni.ImplDef exit;
+    can exit_impl_import with uni.ImplImport exit;
+    can exit_import_wire with uni.ImportWire exit;
+    can exit_import_rule with uni.ImportRule exit;
+    can exit_module_pattern with uni.ModulePattern exit;
+    can exit_wire_item with uni.WireItem exit;
     can exit_sem_def with uni.SemDef exit;
     can exit_enum with uni.Enum exit;
     can exit_ability with uni.Ability exit;

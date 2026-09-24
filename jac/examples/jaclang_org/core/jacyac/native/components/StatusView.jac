@@ -1,7 +1,4 @@
 import from "@jac/mobui" { View, Text }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from core.jacyac.native.icon { Icon }
 
 def:pub EmptyState(icon: str, title: str, hint: str) -> JsxElement {
     theme = useTheme();

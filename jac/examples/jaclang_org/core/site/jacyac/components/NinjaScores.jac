@@ -1,10 +1,3 @@
-import from core.jacyac.state { JacYacState }
-import from core.jacyac.scores { useScores }
-import from core.site.ui.button { Button }
-import from core.site.ui.input { Input }
-import from .ProjectCard { ProjectCard }
-import from core.site.leaderboard.Methodology { Methodology }
-
 def:pub NinjaScores(model: JacYacState) -> JsxElement {
     scores = useScores(model);
     has url: str = "";

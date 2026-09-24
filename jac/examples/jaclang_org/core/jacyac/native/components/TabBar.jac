@@ -1,7 +1,4 @@
 import from "@jac/mobui" { View, Text, Pressable }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from core.jacyac.native.icon { Icon }
 
 obj Tab {
     has key: str,

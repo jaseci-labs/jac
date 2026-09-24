@@ -140,6 +140,10 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
             continue;
         }
 
+        if name_nd.find_parent_of_type(ImplImport) is not None {
+            continue;
+        }
+
         if not name_nd.is_kwesc {
             position = self._osp_shape_position(name_nd);
             if position is not None {

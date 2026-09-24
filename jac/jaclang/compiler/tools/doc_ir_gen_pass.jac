@@ -205,6 +205,12 @@ walker DocIRGenPass(TreeWalker) {
     can exit_jsx_expression with uni.JsxExpression exit;
     can exit_jsx_slot with uni.JsxSlot exit;
     can exit_jsx_comment with uni.JsxComment exit;
+    can exit_impl_import with uni.ImplImport exit;
+    can exit_import_wire with uni.ImportWire exit;
+    can exit_import_rule with uni.ImportRule exit;
+    can exit_module_pattern with uni.ModulePattern exit;
+    can exit_wire_item with uni.WireItem exit;
+    def _wiring_stmt_doc_ir(nd: uni.UniNode) -> doc.DocType;
     can doc_ir_default_exit with uni.UniNode exit;
     can finish_doc_comments with uni.UniNode exit;
 }

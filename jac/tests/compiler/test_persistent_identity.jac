@@ -72,7 +72,7 @@ def exercise(shared: bool, evolve: bool = False) {
                 == (shared and not evolve);
             store = MagicMock();
             session = Session(
-                store=cast(Store, store), target_path=applications[1].entry
+                _store=cast(Store, store), target_path=applications[1].entry
             );
             row = AnchorRow(
                 id=instance.__jac__.ensure_id(), kind='NodeAnchor', props=payload
@@ -241,7 +241,7 @@ test "shared schema additions retain stored values and apply defaults" {
 test "missing local schema fails without quarantine" {
     import from uuid { uuid4 }
     store = MagicMock();
-    session = Session(store=cast(Store, store));
+    session = Session(_store=cast(Store, store));
     row = AnchorRow(
         id=uuid4(),
         kind='NodeAnchor',

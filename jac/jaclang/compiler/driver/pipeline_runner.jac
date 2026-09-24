@@ -331,6 +331,7 @@ obj ModuleCompilation {
             require_product,
             product_ready,
             CompilationProduct,
+            get_bootstrap_code_gen,
             get_py_code_gen
         }
         if (
@@ -340,6 +341,15 @@ obj ModuleCompilation {
             and not self.options.symtab_ir_only
         ) {
             self.program.options = self.options;
+            if not self.full_head {
+                self.compiler.run_schedule(
+                    mod=self.module,
+                    target_program=self.program,
+                    passes=get_bootstrap_code_gen(),
+                    cancel_token=self.options.cancel_token
+                );
+                return;
+            }
 
             import from jaclang.compiler.frontend.module_facts { ModuleFacts }
             needs_native = self.native

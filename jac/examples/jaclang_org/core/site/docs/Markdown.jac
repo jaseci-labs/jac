@@ -1,7 +1,5 @@
 import from "@jac/runtime" { Link }
-import from core.site.ui.CodeBlock { CodeLines }
-import from .MermaidDiagram { MermaidDiagram }
-import from core.site.ui.tabs { Tabs, TabsList, TabsTrigger, TabsContent }
+
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     ArrowRight01Icon,

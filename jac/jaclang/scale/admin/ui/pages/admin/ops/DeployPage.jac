@@ -1,8 +1,9 @@
 """Deploy Health page for the Ops Console.
 
 Reads GET /admin/ops/deploy and renders two tables, kubeconfig-free:
-  - Deployments: ready/desired replicas + rollout status (complete /
-    progressing / stuck) + the spec image(s).
+  - Deployments: ready/desired replicas + workload status (active /
+    activating / inactive / deactivating / degraded / unknown) + the spec
+    image(s).
   - Pods: phase, ready containers, restart count (highlighted when > 0),
     node, and per-container state (running / waiting:<reason> /
     terminated:<reason>).
@@ -65,10 +66,10 @@ def:pub DeployPage -> JsxElement {
     # ---- helpers (return strings, never JSX) -------------------------
     def rolloutCls(status: str) -> str {
         base = "text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded ";
-        if status == "complete" {
+        if status == "active" or status == "inactive" {
             return base + "bg-success-weak text-success";
         }
-        if status == "stuck" {
+        if status == "degraded" {
             return base + "bg-danger-weak text-danger";
         }
         return base + "bg-warning-weak text-warning";

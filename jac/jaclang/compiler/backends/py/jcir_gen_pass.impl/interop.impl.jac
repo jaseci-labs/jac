@@ -4,7 +4,12 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     names: list[str] = [];
     if (manifest and manifest.bindings) {
         import from jaclang.runtime.interop_bridge { JAC_TO_CTYPES_STR }
+        import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
         for binding in manifest.native_exports {
+            symbol = native_def_symbol(
+                self.module.loc.mod_path if binding.source_module is None else "",
+                binding.name
+            );
             params = ', '.join(binding.param_names);
             ret_ct = JAC_TO_CTYPES_STR.get(binding.ret_type, 'ctypes.c_int64');
             arg_cts = ', '.join(
@@ -15,7 +20,7 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
                 f"def {binding.name}({params}):\n"
                     + f"    import ctypes\n"
                     + f"    _addr = __jac_native_engine__"
-                    + f".get_function_address('{binding.name}')\n"
+                    + f".get_function_address('{symbol}')\n"
                     + f"    _fn = ctypes.CFUNCTYPE({ret_ct}, {arg_cts})(_addr)\n"
                     + f"    return _fn({params})"
             );

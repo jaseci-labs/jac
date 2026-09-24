@@ -346,6 +346,78 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Graph construction cannot suspend execution",
          help="Resolve awaited values and asynchronous iterables before entering `graph { ... }`. Construction expressions are synchronous."
      ),
+     E0086 = _err(
+         "E0086",
+         Category.SYNTAX,
+         "A wire is directed: write 'provider --> consumer'",
+         help="Values flow from the provider on the left to the consumer on the"
+         " right; '<--', '<-->' and connect operators have no meaning here."
+     ),
+     E0087 = _err(
+         "E0087",
+         Category.SYNTAX,
+         "A wire names one provider; patterns belong to an edge rule",
+         help="Write one dotted module on the left of '-->'. To constrain a"
+         " family of modules use `edge Name: pattern --> pattern`."
+     ),
+     E0088 = _err(
+         "E0088",
+         Category.SYNTAX,
+         "A wire's consumer is a project module named in full",
+         help="'.*', 'any' and quoted paths are patterns, and patterns belong to"
+         " an edge rule. Name each consumer module, joined with '|'."
+     ),
+     E0089 = _err(
+         "E0089",
+         Category.SYNTAX,
+         "'as' applies to the module form of a wire",
+         help="`provider as p --> consumer;` binds the module under another name,"
+         " as `import provider as p;` does. Alias individual names inside the"
+         " payload instead: `{{ name as other }}`."
+     ),
+     E0090 = _err("E0090", Category.SYNTAX, "Duplicate '{name}' in a wire payload"),
+     E0091 = _err(
+         "E0091",
+         Category.SYNTAX,
+         "'include' takes no payload",
+         help="`include provider --> consumer;` absorbs the whole module, as"
+         " `include provider;` does. Drop the payload or use a plain wire."
+     ),
+     E0092 = _err(
+         "E0092",
+         Category.SYNTAX,
+         "An edge rule is named: 'edge Name: source --> target'",
+         help="Rule names carry the documentation and the diagnostics that cite"
+         " them, so every rule has one."
+     ),
+     E0093 = _err(
+         "E0093",
+         Category.SYNTAX,
+         "An 'impl import' scope is a dotted package name",
+         help="Write `impl import core.docs {{ ... }}`; names inside are then"
+         " relative to that package."
+     ),
+     E0094 = _err(
+         "E0094",
+         Category.SYNTAX,
+         "Expected a wire ('provider --> consumer') or an edge rule here",
+         help="An `impl import` block holds wires and `edge Name:` rules only."
+     ),
+     E0095 = _err(
+         "E0095",
+         Category.SYNTAX,
+         "'*' must be the only item in a payload",
+         help="`{{ * }}` imports every name, so listing other names beside it"
+         " is contradictory. A rule payload lists names; '*' is its open form"
+         " (`;`)."
+     ),
+     E0096 = _err(
+         "E0096",
+         Category.SYNTAX,
+         "A rule payload lists names without aliases",
+         help="A rule's payload says which names may cross; an alias belongs to"
+         " the wire or module that imports the name."
+     ),
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
@@ -772,6 +844,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " the edge's endpoints as `any --> any` if it is meant to start from any"
          " node."
      ),
+     W2083 = _warn(
+         "W2083",
+         Category.SEMANTIC,
+         "Edge rule '{name}': {what} matches no module",
+         help="A pattern that matches nothing constrains nothing. Check the"
+         " spelling, or remove the rule if the modules it governed are gone."
+     ),
      E1119 = _err(
          "E1119",
          Category.TYPE,
@@ -980,6 +1059,42 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " Importing them re-enters the module while it is still initializing,"
          " which fails at run time with 'cannot import name ... from partially"
          " initialized module'. Remove the import and use the names directly."
+     ),
+     E1140 = _err(
+         "E1140",
+         Category.IMPORT,
+         "'{scope}' is not a package or module under the project root",
+         help="Names inside an `impl import {scope} {{ ... }}` block are relative to"
+         " its header, so the header must name something the project contains."
+     ),
+     E1141 = _err(
+         "E1141",
+         Category.IMPORT,
+         "'{module}' is not a project module, so it cannot be a wire's provider",
+         help="Wires connect modules under the project root. Imports of the"
+         " standard library, installed packages, npm packages and asset paths"
+         " stay in the module file; an edge rule may still name such a provider"
+         " to constrain who imports it."
+     ),
+     E1142 = _err(
+         "E1142",
+         Category.IMPORT,
+         "'{module}' cannot be a wire's consumer: {detail}",
+         help="A consumer is the head module the generated import lands in: a"
+         " module file under the project root, named in full."
+     ),
+     E1143 = _err(
+         "E1143", Category.IMPORT, "A wire cannot connect '{module}' to itself"
+     ),
+     E1144 = _err(
+         "E1144",
+         Category.IMPORT,
+         "Import of '{module}' is not declared by arch.jac for '{consumer}'",
+         help="'{consumer}' is sealed: arch.jac names it, or [arch] closed in"
+         " jac.toml covers it, so every project-module import it writes must be"
+         " a wire. Add `{wire}` to arch.jac, or run `jac arch sync` to add every"
+         " missing wire. An inline suppression does not silence this; loosening"
+         " the boundary is a change to arch.jac or jac.toml."
      ),
      E1301 = _err(
          "E1301",
@@ -1637,6 +1752,65 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " type's default value. Write the implementation, mark the declaration"
          " `abst` if a subclass is meant to supply it, or delete the declaration."
      ),
+     E2088 = _err(
+         "E2088",
+         Category.SEMANTIC,
+         "'impl import' is only valid in the arch.jac beside jac.toml",
+         help="A wiring block generates imports for other modules, so it lives in"
+         " one place: the arch.jac at the project root. Move this block there;"
+         " an arch.jac elsewhere is an ordinary module, and per-package wiring"
+         " files are not read yet."
+     ),
+     E2089 = _err(
+         "E2089",
+         Category.SEMANTIC,
+         "arch.jac declares wiring only; this {kind} does not belong here",
+         help="arch.jac holds `impl import { ... }` blocks and nothing else."
+         " Move this statement into a module."
+     ),
+     E2090 = _err(
+         "E2090",
+         Category.SEMANTIC,
+         "'{provider} --> {consumer}' is not permitted by any edge rule",
+         help="Provider '{provider}' matches the source of {rules}, so it may only"
+         " flow where one of them admits. Add a rule that admits '{consumer}',"
+         " widen an existing rule, or route the dependency through a permitted"
+         " module."
+     ),
+     E2091 = _err(
+         "E2091",
+         Category.SEMANTIC,
+         "'{name}' is not admitted across '{provider} --> {consumer}' by {rules}",
+         help="A rule with a payload admits only the names it lists. Add '{name}'"
+         " to the rule's payload or import it through a module the rules allow."
+         " A module-form import cannot be admitted by a payload rule, since the"
+         " names it carries are not visible; use `import from`."
+     ),
+     E2092 = _err(
+         "E2092",
+         Category.SEMANTIC,
+         "Edge rule '{name}' is declared more than once",
+         help="Rule names carry the diagnostics that cite them, so each name is"
+         " declared once. Merge the two rules or rename one."
+     ),
+     E2093 = _err(
+         "E2093",
+         Category.SEMANTIC,
+         "arch.jac has syntax errors, so the wiring for '{consumer}' may be"
+         " incomplete",
+         help="Only the wires that still parsed were applied to this module. Fix"
+         " the errors reported for arch.jac and check again."
+     ),
+     E2094 = _err(
+         "E2094",
+         Category.SEMANTIC,
+         "Function-level import of '{module}' inside the sealed module '{consumer}'",
+         help="A sealed module's project-module imports are wires in arch.jac, and"
+         " a wire is module-level, so an import inside a function body would be a"
+         " dependency the wiring file cannot show. Move the import to module level"
+         " and wire it, or leave this module unmentioned by arch.jac and outside"
+         " [arch] closed if it needs a lazy import."
+     ),
      W3001 = _warn(
          "W3001",
          Category.LINT,
@@ -1793,6 +1967,22 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "[check.lint] select in jac.toml. `jac fmt --lintfix` then removes "
          "all docstrings; it never fires under select = [\"all\"] or [\"default\"]."
      ),
+     W3052 = _warn(
+         "W3052",
+         Category.LINT,
+         "This wire is already declared by an earlier wire [remove-duplicate-wire]",
+         help="Two wires give '{consumer}' the same binding from '{provider}'."
+         " `jac fmt --lintfix` removes the later one."
+     ),
+     W3053 = _warn(
+         "W3053",
+         Category.LINT,
+         "Import of '{name}' from '{module}' is already provided by arch.jac"
+         " [remove-wired-import]",
+         help="arch.jac wires this binding into the module, so the written import"
+         " is redundant. `jac fmt --lintfix` removes it; `jac arch sync` does"
+         " the same for every covered module."
+     ),
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
          "combine-has": "W3002",
@@ -1823,7 +2013,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "map-lambda-to-comprehension": "W3042",
          "property-to-native": "W3043",
          "strip-comments": "W3050",
-         "strip-docstrings": "W3051"
+         "strip-docstrings": "W3051",
+         "remove-duplicate-wire": "W3052",
+         "remove-wired-import": "W3053"
      },
      E5001 = _err(
          "E5001",

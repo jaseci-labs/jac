@@ -1,7 +1,5 @@
-import from core.docs.graph { DocPageView }
 import from "@jac/runtime" { Link }
-import from core.site.ui.skeleton { Skeleton }
-import from .Markdown { Markdown }
+
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     Alert01Icon,

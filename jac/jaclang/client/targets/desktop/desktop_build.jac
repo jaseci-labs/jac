@@ -133,7 +133,9 @@ def _stage_fused_runtime(out_dir: Path) {
     dst = out_dir / "fused";
     dst.mkdir(parents=True, exist_ok=True);
     for f in sorted(src.`glob("*.jac")) {
-        shutil.copy2(f, dst / f.name);
+        if f.is_file() {
+            shutil.copy2(f, dst / f.name);
+        }
     }
 }
 

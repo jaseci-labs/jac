@@ -2807,3 +2807,117 @@ impl DocIRGenPass._wrap_doc_comments(nd: uni.UniNode) -> None {
     }
     nd.gen.doc_ir = base;
 }
+
+impl DocIRGenPass.exit_impl_import with uni.ImplImport exit {
+    parts: list[doc.DocType] = [];
+    body_parts: list[doc.DocType] = [];
+    in_body = False;
+    prev_body_item: (uni.UniNode | None) = None;
+    for i in [here->:Kid:->] {
+        if in_body or (here.body and (i == here.body[0])) {
+            if not in_body {
+                parts.pop();
+                body_parts.append(self.hard_line());
+            }
+            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
+            prev_body_item = i;
+            in_body = True;
+            if i == here.body[-1] {
+                in_body = False;
+                self.trim_trailing_line(body_parts);
+                parts.append(self.indent(self.concat(body_parts), ast_node=here));
+                parts.append(self.hard_line());
+            }
+        } elif (
+            isinstance(i, uni.Token) and (i.name == Tok.LBRACE) and not here.body
+        ) {
+            parts.append(i.gen.doc_ir);
+        } else {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        }
+    }
+    here.gen.doc_ir = self.group(self.concat(parts, ast_node=here), ast_node=here);
+}
+
+impl DocIRGenPass._wiring_stmt_doc_ir(nd: uni.UniNode) -> doc.DocType {
+    parts: list[doc.DocType] = [];
+    mod_items: list[doc.DocType] = [];
+    is_in_items = False;
+    for i in [nd->:Kid:->] {
+        if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
+            if is_in_items {
+                mod_items.pop();
+                mod_items.append(i.gen.doc_ir);
+                mod_items.append(self.line());
+            } else {
+                parts.pop();
+                parts.append(i.gen.doc_ir);
+                parts.append(self.line());
+            }
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.COLON)) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
+            is_in_items = False;
+            if mod_items {
+                mod_items.pop();
+            }
+            parts.append(
+                self.group(
+                    self.concat(
+                        [
+                            self.indent(self.concat([self.line(), *mod_items])),
+                            self.line()
+                        ]
+                    )
+                )
+            );
+            parts.append(i.gen.doc_ir);
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
+            is_in_items = True;
+            parts.append(i.gen.doc_ir);
+        } elif is_in_items {
+            mod_items.append(i.gen.doc_ir);
+            mod_items.append(self.space());
+        } else {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        }
+    }
+    return self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+}
+
+impl DocIRGenPass.exit_import_wire with uni.ImportWire exit {
+    here.gen.doc_ir = self._wiring_stmt_doc_ir(here);
+}
+
+impl DocIRGenPass.exit_import_rule with uni.ImportRule exit {
+    here.gen.doc_ir = self._wiring_stmt_doc_ir(here);
+}
+
+impl DocIRGenPass.exit_module_pattern with uni.ModulePattern exit {
+    parts: list[doc.DocType] = [];
+    for i in [here->:Kid:->] {
+        parts.append(i.gen.doc_ir);
+    }
+    here.gen.doc_ir = self.concat(parts, ast_node=here);
+}
+
+impl DocIRGenPass.exit_wire_item with uni.WireItem exit {
+    parts: list[doc.DocType] = [];
+    for i in [here->:Kid:->] {
+        if (isinstance(i, uni.Token) and (i.name == Tok.KW_AS)) {
+            parts.append(self.space());
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } else {
+            parts.append(i.gen.doc_ir);
+        }
+    }
+    here.gen.doc_ir = self.concat(parts, ast_node=here);
+}

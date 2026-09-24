@@ -9,6 +9,7 @@ import from jaclang.scale.config.config_loader {
 }
 import from jaclang.scale.runtime.fleet { FleetSpec, fleet_from_config, solo_fleet }
 import from jaclang.scale.models.deploy_context { DATABASE_URL_ENV, DeployContext }
+import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -629,6 +630,9 @@ obj ManifestBuilder {
             scaling[svc_name] = self._resolve_scaling(
                 svc_name, deployments[svc_name], services[svc_name]
             );
+            deployments[svc_name]["metadata"].setdefault("annotations", {})[
+                REPLICA_FLOOR_ANNOTATION
+            ] = str(scaling[svc_name]["replica_floor"]);
             pdb = self._build_pdb_manifest(svc_name, scaling[svc_name].get("mode"));
             if pdb is not None {
                 pdbs[svc_name] = pdb;
@@ -1477,17 +1481,36 @@ obj ManifestBuilder {
                 "scale_target_name": scale_target,
                 "service_name": service_name,
                 "autoscaler": {},
-                "http_activation": http
+                "http_activation": http,
+                "replica_floor": int(http.get("min_replicas", 0))
             };
         }
         metric: dict[str, any] | None = self._get_autoscaler_config(svc_name);
         if metric is not None {
+            idle = self.k8s_config.idle_replicas;
+            if idle is not None and int(idle) == 0 and svc_name == GATEWAY_NAME {
+                if self.logger {
+                    self.logger.warn(
+                        "Ignoring idle_replicas=0 for the gateway: it is the "
+                        "ingress entry point and must stay warm, and nothing "
+                        "wakes it once it is idle. Set idle_replicas per "
+                        "service, or use http_activation on the services that "
+                        "should sleep."
+                    );
+                }
+                idle = None;
+            }
+            keda = self.k8s_config.autoscaler_engine == "keda";
             return {
                 "mode": ScalingMode.METRIC,
                 "scale_target_name": scale_target,
                 "service_name": service_name,
                 "autoscaler": metric,
-                "http_activation": {}
+                "http_activation": {},
+                "idle_replicas": idle if keda else None,
+                "replica_floor": int(idle)
+                    if idle is not None and keda
+                    else int(metric["min"])
             };
         }
         return {
@@ -1495,7 +1518,8 @@ obj ManifestBuilder {
             "scale_target_name": scale_target,
             "service_name": service_name,
             "autoscaler": {},
-            "http_activation": {}
+            "http_activation": {},
+            "replica_floor": int(deployment["spec"].get("replicas", 1))
         };
     }
 

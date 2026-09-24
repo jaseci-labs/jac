@@ -39,6 +39,7 @@ import from jaclang.compiler.frontend.unitree {
     EventSignature,
     Except,
     Expr,
+    ExprAsItem,
     ExprStmt,
     FString,
     FilterCompr,
@@ -61,6 +62,7 @@ import from jaclang.compiler.frontend.unitree {
     JsxComment,
     JsxElement,
     JsxElementName,
+    JsxExpression,
     JsxNormalAttribute,
     JsxSpreadAttribute,
     JsxText,
@@ -160,6 +162,7 @@ import from jaclang.compiler.types.operations {
 }
 import from jaclang.compiler.types.fixed_width {
     AssignVerdict,
+    arithmetic_result_type,
     assign_numeric_expr,
     both_numeric,
     fixed_width_call_type,
@@ -674,6 +677,7 @@ walker TypeEvaluator {
     ) -> TypeBase;
 
     def _set_module_item_symbol_and_type(node_: ModuleItem, sym: Symbol) -> TypeBase;
+    def _provided_import_item_symbol(node_: ModuleItem) -> Symbol | None;
     def resolve_imported_symbols(sym: Symbol) -> Symbol;
     def _set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase;
     def _resolution_scope_for(expr: UniNode) -> UniScopeNode | None;
@@ -716,6 +720,7 @@ walker TypeEvaluator {
         is_async: bool = False
     ) -> TypeBase | None;
 
+    def get_type_of_with_alias(item: ExprAsItem) -> TypeBase;
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_declared(
@@ -803,6 +808,7 @@ walker TypeEvaluator {
     def _is_unbound_method_call(expr: FuncCall) -> bool;
     def validate_call_args(expr: FuncCall) -> TypeBase;
     def _validate_call_type(expr: FuncCall, caller_type: TypeBase) -> TypeBase;
+    def _evaluate_call_args(expr: FuncCall) -> None;
     def _container_value_type(value_type: TypeBase, at: Expr) -> TypeBase;
     def _make_coroutine_type(inner: TypeBase) -> TypeBase;
     def _is_awaitable_type(t: TypeBase) -> bool;

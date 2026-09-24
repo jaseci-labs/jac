@@ -1,10 +1,4 @@
 import from "@jac/mobui" { View, Text, Pressable, TextInput }
-import from core.social_graph { Tweet }
-import from core.jacyac.native.theme { makeStyles }
-import from core.brand.theme { useTheme }
-import from core.jacyac.format { handle_of }
-import from core.jacyac.native.icon { Icon }
-import from .Avatar { Avatar }
 
 def time_ago(stamp: str) -> str {
     if not stamp {

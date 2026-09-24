@@ -1,14 +1,3 @@
-import from core.site.ui.card { Card, CardHeader, CardTitle, CardContent }
-import from core.site.ui.carousel {
-    Carousel,
-    CarouselContent,
-    CarouselItem,
-    CarouselPrevious,
-    CarouselNext,
-    CarouselDots
-}
-import from .Reveal { Reveal }
-import from .WhyJac { WhySlide }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     FlashIcon,
