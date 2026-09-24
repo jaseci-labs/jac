@@ -540,6 +540,12 @@ impl KEDAAutoscaler.get_runtime_status{
     nothing KEDA owns can be read, whether the ScaledObject is absent or RBAC
     denies it, this degrades to the workload's own state on the deploy-time
     annotation rather than reporting a scaler failure it never observed.
+
+    One HPA condition has to be read in context: KEDA's HPA reports
+    ScalingActive False whenever its target sits at zero, because there are no
+    pods to compute a metric from. For a workload whose floor is zero that is
+    the resting state, so treating it as a failure reports every idle target as
+    degraded, which is the defect #9432 removed one layer down.
     """;
     scaled_object = self._read_scaled_object(
         scale_target_name, namespace, autoscaler_name
@@ -574,7 +580,8 @@ impl KEDAAutoscaler.get_runtime_status{
         hpa_conditions = normalize_conditions(hpa?.status?.conditions);
         out.conditions = so_conditions + hpa_conditions;
 
-        if tristate(hpa_conditions, "ScalingActive") == False {
+        idle_at_floor = out.replicas == 0 and out.replica_floor == 0;
+        if not idle_at_floor and tristate(hpa_conditions, "ScalingActive") == False {
             out.scaler_ready = False;
         }
         desired = hpa?.status?.desired_replicas;
@@ -594,11 +601,19 @@ impl KEDAAutoscaler._apply_autoscaler_view{
     that has to become degraded. And a trigger that has fired while no pod is
     up yet is a scale-up in progress, not a resting workload, which is what
     separates activation from application readiness.
+
+    The reason names whichever condition actually reports False. Preferring
+    Ready because it carries a message reports KEDA's success reason,
+    ScaledObjectReady, as the cause of an HPA-side failure.
     """;
     if status.scaler_ready == False {
-        failing = condition(status.conditions, "Ready");
-        if failing is None or not failing.get("message") {
-            failing = condition(status.conditions, "ScalingActive");
+        failing = None;
+        for kind in ["Ready", "ScalingActive"] {
+            candidate = condition(status.conditions, kind);
+            if candidate is not None and candidate.get("status") == "False" {
+                failing = candidate;
+                break;
+            }
         }
         status.status = ResourceStatus.DEGRADED;
         status.reason = str((failing or {}).get("reason") or "ScalerFailed");

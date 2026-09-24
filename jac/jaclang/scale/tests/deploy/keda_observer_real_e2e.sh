@@ -123,4 +123,15 @@ if awk 'NR>1 && $2=="none"' "${TRANSITIONS}" | grep -q .; then
 fi
 echo "ok: previous_state is only absent on a first sighting"
 
+# A healthy cycle must never report degraded. This is the assertion that was
+# missing when this e2e first ran: it recorded two spurious inactive -> degraded
+# transitions from KEDA's HPA reporting ScalingActive False at zero replicas,
+# and passed anyway because it only checked that active and inactive appeared.
+if grep -qE " -> degraded( |$)" "${TRANSITIONS}"; then
+    echo "FAIL: a healthy cycle reported degraded" >&2
+    grep -E " -> degraded( |$)" "${TRANSITIONS}" >&2
+    exit 1
+fi
+echo "ok: no degraded transition during a healthy cycle"
+
 echo "=== KEDA observer REAL e2e PASSED ==="
