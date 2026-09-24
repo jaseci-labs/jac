@@ -558,13 +558,8 @@ obj OspGraph {
         return merged;
     }
 
-    def refs_into(
-        origin: int,
-        dir: int,
-        edge_tag: int,
-        edges_only: bool,
-        out: list[int],
-        seen: set[int]
+    def _collect(
+        origin: int, dir: int, edge_tag: int, edges_only: bool, out: list[int]
     ) {
         if origin not in self.adj or origin in self.dead {
             return;
@@ -584,10 +579,7 @@ obj OspGraph {
             if (out_ok or row.undirected)
                 and (nar or self._tag_matches(row.tag, edge_tag)) {
                 o: int = row.handle if edges_only else row.tgt;
-                if o not in seen {
-                    seen.add(o);
-                    out.append(o);
-                }
+                out.append(o);
             }
         }
         nar = self._narrowed(origin, False, edge_tag);
@@ -602,10 +594,7 @@ obj OspGraph {
             if (in_ok or row.undirected)
                 and (nar or self._tag_matches(row.tag, edge_tag)) {
                 o: int = row.handle if edges_only else row.src;
-                if o not in seen {
-                    seen.add(o);
-                    out.append(o);
-                }
+                out.append(o);
             }
         }
         if edges_only {
@@ -616,10 +605,7 @@ obj OspGraph {
                 if self._tag_matches(k, edge_tag) {
                     peers: list[int] = a.out[k];
                     for p in peers {
-                        if p not in seen {
-                            seen.add(p);
-                            out.append(p);
-                        }
+                        out.append(p);
                     }
                 }
             }
@@ -629,20 +615,73 @@ obj OspGraph {
                 if self._tag_matches(k, edge_tag) {
                     srcs: list[int] = a.inn[k];
                     for s in srcs {
-                        if s not in seen {
-                            seen.add(s);
-                            out.append(s);
-                        }
+                        out.append(s);
                     }
                 }
             }
         }
     }
 
+    def _dedup_tail(out: list[int], start: int, seen: set[int]) {
+        j = start;
+        i = start;
+        n = len(out);
+        while i < n {
+            v: int = out[i];
+            if v not in seen {
+                seen.add(v);
+                out[j] = v;
+                j += 1;
+            }
+            i += 1;
+        }
+        while len(out) > j {
+            out.pop();
+        }
+    }
+
+    def refs_into(
+        origin: int,
+        dir: int,
+        edge_tag: int,
+        edges_only: bool,
+        out: list[int],
+        seen: set[int]
+    ) {
+        start = len(out);
+        self._collect(origin, dir, edge_tag, edges_only, out);
+        self._dedup_tail(out, start, seen);
+    }
+
     def refs(origin: int, dir: int, edge_tag: int, edges_only: bool) -> list[int] {
         out: list[int] = [];
-        seen: set[int] = set();
-        self.refs_into(origin, dir, edge_tag, edges_only, out, seen);
+        self._collect(origin, dir, edge_tag, edges_only, out);
+        n = len(out);
+        if n < 2 {
+            return out;
+        }
+        if n > 16 {
+            seen: set[int] = set();
+            self._dedup_tail(out, 0, seen);
+            return out;
+        }
+        j = 0;
+        i = 0;
+        while i < n {
+            v: int = out[i];
+            k = 0;
+            while k < j and out[k] != v {
+                k += 1;
+            }
+            if k == j {
+                out[j] = v;
+                j += 1;
+            }
+            i += 1;
+        }
+        while len(out) > j {
+            out.pop();
+        }
         return out;
     }
 

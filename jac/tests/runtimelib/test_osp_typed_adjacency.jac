@@ -133,6 +133,28 @@ test "parallel edges and self loops dedupe peers but not edges" {
     }
 }
 
+test "peers dedupe to first occurrences for small and large results" {
+    for idx in INDEX_AT {
+        for (edges, peers) in [(10, 4), (16, 16), (17, 9), (60, 23)] {
+            g = _graph(idx);
+            want: list[int] = [];
+            for i in range(edges) {
+                p = 100 + (i * 7) % peers;
+                g.connect(1, p, 1000 + i, False, T_A if i % 3 else T_B, 0, 0);
+                if p not in want {
+                    want.append(p);
+                }
+            }
+            g.connect(100, 1, 999, False, T_A, 0, 0);
+            assert g.refs(1, OUT, -1, False) == want;
+            assert g.refs(1, ANY, -1, False) == want;
+            assert g.refs(1, OUT, -1, True) == [1000 + i for i in range(edges)];
+            assert g.refs_many([1, 1], OUT, -1, False) == want;
+            assert g.refs(1, IN, -1, False) == [100];
+        }
+    }
+}
+
 test "removal keeps survivors in order and freed rows rejoin at the end" {
     for idx in INDEX_AT {
         g = _graph(idx);
