@@ -779,19 +779,19 @@ walker NaIRGenPass {
     def _clib_struct_layout(name: str) -> tuple[int, int, list[tuple[int, bool, int]]];
     def _foreign_model -> dict[str, list[tuple[str, str | None]]];
     def _foreign_fns -> dict[str, dict[str, any]];
-    def _foreign_fields_of(name: str) -> list[tuple[str, str | None]];
-    def _clib_has_nested(name: str) -> bool;
     def _clib_c_type(name: str) -> ir.Type;
     def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;
     def _clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value;
-    def _clib_copy_jac_to_c(jac_ptr: ir.Value, c_ptr: ir.Value, name: str) -> None;
-    def _clib_copy_c_to_jac(c_ptr: ir.Value, jac_ptr: ir.Value, name: str) -> None;
     def _clib_alloc_box(name: str) -> ir.Value;
     def _codegen_clib_call(
         func: ir.Function, func_name: str, args: list[ir.Value]
     ) -> (ir.Value | None);
 
     def _clib_reinterpret(val: ir.Value, want: ir.Type, name: str) -> ir.Value;
+    def _foreign_struct_name_of_type(t: any) -> (str | None);
+    def _foreign_copy_box(src_ptr: ir.Value, name: str) -> ir.Value;
+    def _foreign_store_bytes(slot: ir.Value, value: ir.Value, sname: str) -> None;
+    def _c_release_temp(val: ir.Value) -> None;
     def _clib_struct_has_fn_ptr(name: str) -> bool;
     def _clib_detect_vtable_structs -> None;
     def _clib_coerce_callback(val: ir.Value, c_fn_ty: ir.PointerType) -> ir.Value;
