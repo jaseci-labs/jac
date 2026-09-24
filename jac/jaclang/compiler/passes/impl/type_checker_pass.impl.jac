@@ -1424,7 +1424,8 @@ impl TypeCheckPass._client_state_field_owner(nd: HasVar) -> (Ability | None) {
     if not nd.in_client_context() {
         return None;
     }
-    for probe in (nd.value, nd.type_tag.tag if nd.type_tag else None) {
+    probes: list[Expr | None] = [nd.value, nd.type_tag.tag if nd.type_tag else None];
+    for probe in probes {
         cur: (UniNode | None) = probe;
         while isinstance(cur, (FuncCall, AtomTrailer)) {
             cur = cur.target;
@@ -2186,11 +2187,12 @@ impl TypeCheckPass.exit_impl_def with ImplDef exit {
 }
 
 impl TypeCheckPass.exit_sub_tag with SubTag exit {
-    if isinstance(here.tag, Expr) {
-        self.evaluator.validate_typevar_in_type_expr(here.tag);
+    tag = here.tag;
+    if isinstance(tag, Expr) {
+        self.evaluator.validate_typevar_in_type_expr(tag);
 
-        if here.tag?.type is None {
-            self.evaluator.get_type_of_expression(here.tag);
+        if tag.type is None {
+            self.evaluator.get_type_of_expression(tag);
         }
     }
 }

@@ -1,4 +1,4 @@
-import from jaclang.compiler.frontend.roles { Kid }
+import from jaclang.compiler.frontend.roles { BodyRole, Kid }
 import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
 import from enum { Enum }
 import from jaclang.compiler.frontend.unitree {

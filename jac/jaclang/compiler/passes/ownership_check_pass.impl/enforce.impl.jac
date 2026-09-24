@@ -42,11 +42,11 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
         }
     }
     opts = self.prog?.options;
-    if opts is not None and getattr(opts, "nogc_enforce_all", False) {
+    if opts is not None and opts.nogc_enforce_all {
         return "enforced by the nogc profile";
     }
-    _pats: list[str] = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
-    _grand: list[str] = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
+    _pats: list[str] = list(opts.memory_enforce or []) if opts is not None else [];
+    _grand: list[str] = list(opts.memory_exempt or []) if opts is not None else [];
     if not _pats {
         import from jaclang.compiler.frontend.host { active_host }
         _project = active_host().project_defaults();
@@ -621,8 +621,8 @@ impl OwnershipCheckPass._nogc_module_enforced(mod_name: str) -> bool {
     if opts is not None and opts.nogc_enforced_for(mod_name) {
         return True;
     }
-    _pats: list[str] = list(getattr(opts, "memory_enforce", []) or []) if opts else [];
-    _grand: list[str] = list(getattr(opts, "memory_exempt", []) or []) if opts else [];
+    _pats: list[str] = list(opts.memory_enforce or []) if opts is not None else [];
+    _grand: list[str] = list(opts.memory_exempt or []) if opts is not None else [];
     if not _pats {
         import from jaclang.compiler.frontend.host { active_host }
         _project = active_host().project_defaults();
@@ -755,7 +755,7 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
     }
 
     _opts_c = self.prog?.options;
-    _hl_c = getattr(_opts_c, "na_gc_mode", "cycles") == "none" if _opts_c else False;
+    _hl_c = _opts_c is not None and _opts_c.na_gc_mode == "none";
     _heap_args: list[Name] = [];
     for _arg in self._call_params(call) {
         _a = _arg.value if isinstance(_arg, KWPair) else _arg;
@@ -852,7 +852,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
     _prov = self.nogc_prov;
 
     _opts = self.prog?.options;
-    _headerless = getattr(_opts, "na_gc_mode", "cycles") == "none" if _opts else False;
+    _headerless = _opts is not None and _opts.na_gc_mode == "none";
     if _headerless {
         for _lv in self.module.get_all_sub_nodes(ListVal) {
             if _lv.find_parent_of_type(SubTag) is not None
