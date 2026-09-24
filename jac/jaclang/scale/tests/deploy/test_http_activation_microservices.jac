@@ -1632,6 +1632,90 @@ test "the ScaledObject decides what the workload's replica count means" {
 }
 
 
+test "an idled target is not degraded just because its HPA stopped scaling" {
+    # KEDA's HPA reports ScalingActive False whenever the target sits at zero,
+    # so reading that as a failure calls every resting scale-to-zero workload
+    # broken. The earlier HPA test only modelled a real metric failure, which is
+    # why a live cluster was the thing that caught this.
+    (custom, apps, v2) = _status_apis(
+        _so(ready="True", idle=0, hpa_name="keda-hpa-worker"), _dep_at(0, 0)
+    );
+    v2.read_namespaced_horizontal_pod_autoscaler.return_value = SimpleNamespace(
+        status=SimpleNamespace(
+            desired_replicas=0,
+            conditions=[
+                SimpleNamespace(
+                    type="ScalingActive",
+                    status="False",
+                    reason="ScalingDisabled",
+                    message="scaling is disabled since the replica count of the target is zero"
+                )
+            ]
+        )
+    );
+    out = KEDAAutoscaler(
+        _custom_api=custom, _apps_api=apps, _v2_api=v2
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+
+    assert out.status == ResourceStatus.INACTIVE , out.status;
+    assert out.reason == "Idle" , out.reason;
+    assert out.is_settled();
+
+    # The HPA and the Deployment are separate objects read moments apart, so just
+    # after a deploy the HPA already reports ScalingDisabled while the Deployment
+    # still reads its pre-idle count. Comparing replica counts to decide this
+    # loses that race; the reason is what settles it.
+    (c1, a1, v21) = _status_apis(
+        _so(ready="True", idle=0, hpa_name="keda-hpa-worker"), _dep_at(1, 1)
+    );
+    v21.read_namespaced_horizontal_pod_autoscaler.return_value = SimpleNamespace(
+        status=SimpleNamespace(
+            desired_replicas=0,
+            conditions=[
+                SimpleNamespace(
+                    type="ScalingActive",
+                    status="False",
+                    reason="ScalingDisabled",
+                    message="scaling is disabled since the replica count of the target is zero"
+                )
+            ]
+        )
+    );
+    racing = KEDAAutoscaler(
+        _custom_api=c1, _apps_api=a1, _v2_api=v21
+    ).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+    assert racing.status != ResourceStatus.DEGRADED , racing.status;
+
+    # Above its floor the same HPA condition is a genuine failure to scale.
+    (c2, a2, v22) = _status_apis(
+        _so(ready="True", idle=None, hpa_name="keda-hpa-worker"), _dep_at(2, 2)
+    );
+    v22.read_namespaced_horizontal_pod_autoscaler.return_value = SimpleNamespace(
+        status=SimpleNamespace(
+            desired_replicas=2,
+            conditions=[
+                SimpleNamespace(
+                    type="ScalingActive",
+                    status="False",
+                    reason="FailedGetExternalMetric",
+                    message="unable to get external metric"
+                )
+            ]
+        )
+    );
+    live = KEDAAutoscaler(_custom_api=c2, _apps_api=a2, _v2_api=v22).get_runtime_status(
+        "worker-deployment", "ns"
+    );
+    assert live.status == ResourceStatus.DEGRADED , live.status;
+    # The reason must name the condition that failed, not the healthy Ready one.
+    assert live.reason == "FailedGetExternalMetric" , live.reason;
+}
+
+
 test "the caller passes a target, not an autoscaler name, whichever ScaledObject is live" {
     # An HTTP-activated target's ScaledObject has a different name. A caller
     # that had to supply the name would first have to derive the scaling mode,

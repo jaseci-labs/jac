@@ -57,6 +57,15 @@ cleanup() {
     echo "=== transitions recorded ==="
     cat "${TRANSITIONS}" || true
     rm -f "${TRANSITIONS}" "${RECORDER_LOG}"
+    # The inner e2e hands its namespace over rather than deleting it, so the
+    # recorder above could read a settled idle state instead of a terminating
+    # one. Teardown lands here, after the recorder is stopped.
+    if [[ "${rc}" != "0" && "${E2E_KEEP_NS_ON_FAIL:-1}" == "1" ]]; then
+        echo "=== observer e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
+    else
+        kubectl delete namespace "${NAMESPACE}" --ignore-not-found \
+            --timeout="${DELETE_TIMEOUT:-120}s" || true
+    fi
     exit "${rc}"
 }
 trap cleanup EXIT
@@ -72,10 +81,12 @@ RECORDER_PID=$!
 echo "=== drive a real cycle via the HTTP-activation e2e ==="
 # Its exit code decides whether a cycle happened at all; a transition assertion
 # on a failed deploy would be meaningless.
-bash "${INNER_E2E}" "${FIXTURE_DIR}"
+E2E_KEEP_NS=1 bash "${INNER_E2E}" "${FIXTURE_DIR}"
 
 echo "=== stop the observer and inspect what it saw ==="
-# Give the watch a moment to flush the final scale-down it may have seen last.
+# The namespace is still up, so this waits out one more poll of a workload that
+# is genuinely idle at zero. Deleting first made the same wait read teardown:
+# the last transition landed on degraded or unknown, never on inactive.
 sleep 15
 if kill -0 "${RECORDER_PID}" 2>/dev/null; then
     kill "${RECORDER_PID}" 2>/dev/null || true
@@ -122,5 +133,16 @@ if awk 'NR>1 && $2=="none"' "${TRANSITIONS}" | grep -q .; then
     exit 1
 fi
 echo "ok: previous_state is only absent on a first sighting"
+
+# A healthy cycle must never report degraded. This is the assertion that was
+# missing when this e2e first ran: it recorded two spurious inactive -> degraded
+# transitions from KEDA's HPA reporting ScalingActive False at zero replicas,
+# and passed anyway because it only checked that active and inactive appeared.
+if grep -qE " -> degraded( |$)" "${TRANSITIONS}"; then
+    echo "FAIL: a healthy cycle reported degraded" >&2
+    grep -E " -> degraded( |$)" "${TRANSITIONS}" >&2
+    exit 1
+fi
+echo "ok: no degraded transition during a healthy cycle"
 
 echo "=== KEDA observer REAL e2e PASSED ==="

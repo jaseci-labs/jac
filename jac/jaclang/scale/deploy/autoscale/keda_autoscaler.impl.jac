@@ -540,6 +540,18 @@ impl KEDAAutoscaler.get_runtime_status{
     nothing KEDA owns can be read, whether the ScaledObject is absent or RBAC
     denies it, this degrades to the workload's own state on the deploy-time
     annotation rather than reporting a scaler failure it never observed.
+
+    One HPA condition has to be read by its reason, not just its status.
+    ScalingActive False with reason ScalingDisabled is the HPA saying it is not
+    scaling because the target sits at zero, which is a statement about replica
+    count rather than scaler health, and every idle scale-to-zero workload
+    reports it. A real problem reaching a metric is FailedGetExternalMetric or
+    FailedGetResourceMetric.
+
+    Comparing replica counts instead would be racy: the HPA and the Deployment
+    are separate objects read moments apart, so just after a deploy the HPA
+    already reports ScalingDisabled while the Deployment still reads its
+    pre-idle replica count.
     """;
     scaled_object = self._read_scaled_object(
         scale_target_name, namespace, autoscaler_name
@@ -574,7 +586,10 @@ impl KEDAAutoscaler.get_runtime_status{
         hpa_conditions = normalize_conditions(hpa?.status?.conditions);
         out.conditions = so_conditions + hpa_conditions;
 
-        if tristate(hpa_conditions, "ScalingActive") == False {
+        scaling = condition(hpa_conditions, "ScalingActive");
+        if scaling is not None
+            and scaling.get("status") == "False"
+            and scaling.get("reason") != "ScalingDisabled" {
             out.scaler_ready = False;
         }
         desired = hpa?.status?.desired_replicas;
@@ -594,11 +609,19 @@ impl KEDAAutoscaler._apply_autoscaler_view{
     that has to become degraded. And a trigger that has fired while no pod is
     up yet is a scale-up in progress, not a resting workload, which is what
     separates activation from application readiness.
+
+    The reason names whichever condition actually reports False. Preferring
+    Ready because it carries a message reports KEDA's success reason,
+    ScaledObjectReady, as the cause of an HPA-side failure.
     """;
     if status.scaler_ready == False {
-        failing = condition(status.conditions, "Ready");
-        if failing is None or not failing.get("message") {
-            failing = condition(status.conditions, "ScalingActive");
+        failing = None;
+        for kind in ["Ready", "ScalingActive"] {
+            candidate = condition(status.conditions, kind);
+            if candidate is not None and candidate.get("status") == "False" {
+                failing = candidate;
+                break;
+            }
         }
         status.status = ResourceStatus.DEGRADED;
         status.reason = str((failing or {}).get("reason") or "ScalerFailed");
