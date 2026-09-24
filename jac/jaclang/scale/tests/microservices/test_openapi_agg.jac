@@ -67,8 +67,10 @@ def _entry(name: str, prefix: str, port: int) -> ServiceEntry {
 
 
 """One undelayed aggregate first: the client's fetch path and the servers'
-request handling each import and warm up on first use, and that cost belongs
-to neither fetch the timing compares."""
+request handling each import and warm up on first use. The collector then runs
+once and stays off for the timed window: a full collection of a test worker's
+heap stops the process for about two seconds, which CI showed landing before
+either request was sent. Neither cost is the fetch concurrency this compares."""
 test "service specs are fetched concurrently, not serially" {
     spec = {"openapi": "3.0.2", "paths": {"/walker/A": {"post": {}}}};
     (srv_w, port_w) = _serve_spec(spec);
@@ -85,14 +87,18 @@ test "service specs are fetched concurrently, not serially" {
     reg = ServiceRegistry();
     reg.register(_entry("orders", "/orders", port_a));
     reg.register(_entry("billing", "/billing", port_b));
+    import gc;
     import selectors;
     import threading;
     _HANDLED.clear();
+    gc.collect();
+    gc.disable();
     try {
         start = time.monotonic();
         doc = asyncio.run(aggregate_openapi(reg));
         elapsed = time.monotonic() - start;
     } finally {
+        gc.enable();
         srv_a.shutdown();
         srv_b.shutdown();
     }
