@@ -529,6 +529,103 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 }
 
 
+test "an interceptor-routed peer gets the Host header on both sv_service_call and sv_walker_call" {
+    # A scale-to-zero peer has no JAC_SV_<NAME>_URL in its callers' pods, so
+    # both call paths must take the K8s route, Host override included.
+    import jaclang.scale.deploy.target.kubernetes.runtime_resolver as resolver_mod;
+    import from jaclang.scale.runtime.context.service_routing { ServiceRoute }
+
+    captured: list = [];
+    def handler(request: httpx.Request) -> httpx.Response {
+        captured.append(request);
+        return httpx.Response(
+            status_code=200, json={"ok": True, "data": {"result": "via-interceptor"}}
+        );
+    }
+
+    def fake_routes -> dict[str, ServiceRoute] {
+        return {
+            "k9_intercepted_mod": ServiceRoute(
+                url="http://keda-add-ons-http-interceptor-proxy.keda:8080",
+                host_header="k9-intercepted-mod-service.prod.svc.cluster.local"
+            )
+        };
+    }
+
+    original_client = httpx.Client;
+    original_get_routes = resolver_mod.get_sv_service_routes;
+    httpx.Client = _mock_client_class(handler);
+    setattr(resolver_mod, "get_sv_service_routes", fake_routes);
+    try {
+        if "k9_intercepted_mod" in sv_client._registry {
+            sv_client.unregister("k9_intercepted_mod");
+        }
+        JacScalePlugin.sv_service_call("k9_intercepted_mod", "do", {});
+        JacScalePlugin.sv_walker_call("k9_intercepted_mod", "DoIt", {}, None);
+        assert len(captured) == 2;
+        for req in captured {
+            assert req.url.host == "keda-add-ons-http-interceptor-proxy.keda";
+            assert req.headers["Host"] == "k9-intercepted-mod-service.prod.svc.cluster.local";
+        }
+    } finally {
+        setattr(resolver_mod, "get_sv_service_routes", original_get_routes);
+        httpx.Client = original_client;
+    }
+}
+
+
+test "get_sv_service_routes warns once on a failing lookup, then again after it recovers and fails again" {
+    # It runs on every sv-to-sv call, so a broken scale config must not warn
+    # on every single one of them.
+    import os;
+    import from types { SimpleNamespace }
+    import jaclang.scale.deploy.target.kubernetes.runtime_resolver as resolver_mod;
+    import jaclang.scale.config.config_loader as config_loader_mod;
+
+    original_warning = resolver_mod.logger.warning;
+    original_get_scale_config = config_loader_mod.get_scale_config;
+    warn_calls: list = [];
+
+    def failing_config(project_dir: object = None) -> object {
+        raise RuntimeError("config unreachable");
+    }
+
+    def healthy_config(project_dir: object = None) -> object {
+        return SimpleNamespace(
+            get_microservices_config=lambda { return {"routes": {}}; }
+        );
+    }
+
+    had_k8s_env = "KUBERNETES_SERVICE_HOST" in os.environ;
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
+    resolver_mod._sv_service_routes_warned = False;
+    setattr(
+        resolver_mod.logger, "warning", lambda (msg: str) { warn_calls.append(msg); }
+    );
+
+    try {
+        for (label, loader, expected) in [
+            ("three failing calls warn once", failing_config, 1),
+            ("a recovered call stays quiet", healthy_config, 1),
+            ("failing again after recovery warns again", failing_config, 2)
+        ] {
+            setattr(config_loader_mod, "get_scale_config", loader);
+            for _ in range(3) {
+                resolver_mod.get_sv_service_routes();
+            }
+            assert len(warn_calls) == expected , label;
+        }
+    } finally {
+        setattr(config_loader_mod, "get_scale_config", original_get_scale_config);
+        setattr(resolver_mod.logger, "warning", original_warning);
+        resolver_mod._sv_service_routes_warned = False;
+        if not had_k8s_env {
+            os.environ.pop("KUBERNETES_SERVICE_HOST", None);
+        }
+    }
+}
+
+
 obj _K8sStubMsCfg {
     has data: dict[str, any];
 

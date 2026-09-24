@@ -124,6 +124,36 @@ test "every generated deployment rolls with surge, never delete-and-recreate" {
 }
 
 
+test "build_env bakes a direct peer URL only for peers that are not HTTP-activated" {
+    # A baked JAC_SV_<PEER>_URL would send sv-to-sv calls straight at a Service
+    # with no live endpoints instead of through the interceptor that wakes it.
+    activated = {
+        "worker": {
+            "http_activation": {
+                "enabled": True,
+                "target_port": 8000,
+                "concurrency_target": 1,
+                "rules": [{"hosts": ["worker.ns.local"]}]
+            }
+        }
+    };
+    for (label, services, baked) in [
+        ("HTTP-activated peer", activated, False),
+        ("plain peer", {}, True)
+    ] {
+        builder = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="jac-shop", namespace="ns"),
+            microservices_config={
+                "routes": {"app": "/", "worker": "/worker"},
+                "services": services
+            }
+        );
+        env = {e["name"]: e["value"] for e in builder._build_env("app", {})};
+        assert ("JAC_SV_WORKER_URL" in env) == baked , f"{label}: {env}";
+    }
+}
+
+
 test "build_env omits JAC_SV_ROUTES when there are no routes" {
     cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
     builder = ManifestBuilder(k8s_config=cfg);

@@ -139,6 +139,52 @@ test "--show-yaml gate: YAML hidden by default, dumped on opt-in" {
 }
 
 
+test "--show-yaml dumps rendered autoscaler manifests alongside the rest" {
+    bundle: dict[str, Any] = {
+        "deployments": {"api": _dep()},
+        "autoscaler_manifests": [
+            {
+                "apiVersion": "autoscaling/v2",
+                "kind": "HorizontalPodAutoscaler",
+                "metadata": {"name": "api-hpa"},
+                "spec": {"minReplicas": 2}
+            }
+        ]
+    };
+    (on, _) = _run_plan(bundle, show_yaml=True);
+    assert "kind: HorizontalPodAutoscaler" in on;
+    assert "api-hpa" in on;
+}
+
+
+test "every manifest-bearing bundle key reaches --show-yaml" {
+    # The summary counts these resources; the reviewed YAML must carry them
+    # all. Excluded by design: pod_specs and injector (not manifests) and
+    # autoscalers (configs, rendered into autoscaler_manifests).
+    bundle: dict[str, Any] = {
+        "user_secret": {"metadata": {"name": "sentinel-user-secret"}},
+        "pvcs": {"a": {"metadata": {"name": "sentinel-pvc"}}},
+        "deployments": {"a": {"metadata": {"name": "sentinel-deployment"}}},
+        "services": {"a": {"metadata": {"name": "sentinel-service"}}},
+        "pdbs": {"a": {"metadata": {"name": "sentinel-pdb"}}},
+        "autoscaler_manifests": [{"metadata": {"name": "sentinel-autoscaler"}}],
+        "ingress": {"metadata": {"name": "sentinel-ingress"}}
+    };
+    (on, _) = _run_plan(bundle, show_yaml=True);
+    for sentinel in [
+        "sentinel-user-secret",
+        "sentinel-pvc",
+        "sentinel-deployment",
+        "sentinel-service",
+        "sentinel-pdb",
+        "sentinel-autoscaler",
+        "sentinel-ingress"
+    ] {
+        assert sentinel in on , f"{sentinel} missing from --show-yaml output";
+    }
+}
+
+
 test "render smoke: realistic bundle prints every section" {
     bundle: dict[str, Any] = {
         "deployments": {
@@ -148,7 +194,15 @@ test "render smoke: realistic bundle prints every section" {
             "__gateway__": _dep(image="gateway:v1")
         },
         "services": {"api": {}, "__gateway__": {}},
-        "autoscalers": {"api": {"min": 2, "max": 10, "cpu_target": 70}},
+        "scaling": {
+            "api": {
+                "mode": "metric",
+                "scale_target_name": "api-deployment",
+                "service_name": "api-service",
+                "autoscaler": {"min": 2, "max": 10, "cpu_target": 70},
+                "http_activation": {}
+            }
+        },
         "pdbs": {"api": {"spec": {"maxUnavailable": 1}}},
         "ingress": {
             "spec": {"rules": [{"host": "shop.example.com", "http": {"paths": []}}]}
@@ -177,6 +231,34 @@ test "render smoke: realistic bundle prints every section" {
     assert "Totals" in out;
 }
 
+
+test "render: an http_activation service shows scale-to-zero and counts in Totals" {
+    bundle: dict[str, Any] = {
+        "deployments": {"llm": _dep(image="llm:v1")},
+        "services": {"llm": {}},
+        "scaling": {
+            "llm": {
+                "mode": "http_activation",
+                "scale_target_name": "llm-deployment",
+                "service_name": "llm-service",
+                "autoscaler": {},
+                "http_activation": {
+                    "enabled": True,
+                    "min_replicas": 0,
+                    "max_replicas": 5,
+                    "concurrency_target": 10
+                }
+            }
+        },
+        "pdbs": {}
+    };
+    (out, _) = _run_plan(bundle, ms_cfg_pair=({"routes": {"llm": "/llm"}}, {}));
+    assert "HTTP activation: 0 -> 5 on concurrency=10" in out;
+    assert "scale-to-zero via KEDA HTTP Add-on" in out;
+    assert "1 HTTP activation" in out;
+    # The metric-autoscaler HPA line must NOT appear for an activation service.
+    assert "HPA:" not in out;
+}
 
 test "validate: reserved name __gateway__ as a microservice -> error" {
     diags = _validate({"deployments": {}}, {"routes": {"__gateway__": "/x"}}, {});

@@ -4,6 +4,7 @@ import from jaclang.scale.config.config_loader {
     normalize_microservices_config
 }
 import from jaclang.scale.models.deploy_context { DeployContext }
+import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -11,12 +12,18 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     DEFAULT_CPU_UTILIZATION_TARGET,
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
+import from jaclang.scale.deploy.autoscale.http_activation_config {
+    build_http_activation_spec
+}
+import from jaclang.scale.runtime.context.service_routing {
+    resolve_http_activation_config
+}
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
+import from enum { StrEnum }
 
 
-glob GATEWAY_NAME: str = "__gateway__",
-     CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
+glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _UVICORN_EXIT_CUSHION_S: int = 5,
-     _RFC1123_MAX_LEN: int = 253,
      _CLIENT_BUILD_ATTEMPTS: int = 3,
      _CLIENT_BUILD_RETRY_PAUSE_S: int = 3,
      _DEP_INSTALL_TIMEOUT_S: int = 900,
@@ -53,30 +60,11 @@ def _is_transient_client_build_failure(output: str) -> bool {
 }
 
 
-def k8s_safe_name(svc_name: str) -> str {
-    if svc_name == GATEWAY_NAME {
-        return "gateway";
-    }
-    import re;
-    if "${" in svc_name {
-        raise ValueError(
-            f"'{svc_name}' still contains an unresolved ${{...}} placeholder, so "
-            f"the environment variable it names was not set where this deploy "
-            f"ran. Export it, or replace it with a literal name."
-        );
-    }
-    safe = re.sub(r"[^a-z0-9.-]", "-", svc_name.lower().replace("_", "-"));
-    safe = re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", safe)[:_RFC1123_MAX_LEN];
-    safe = re.sub(r"[^a-z0-9]+$", "", safe);
-    if not safe {
-        raise ValueError(
-            f"'{svc_name}' has no characters usable in a Kubernetes name; names "
-            f"must contain at least one letter or digit."
-        );
-    }
-    return safe;
+enum ScalingMode(StrEnum) {
+    NONE = "none",
+    METRIC = "metric",
+    HTTP_ACTIVATION = "http_activation"
 }
-
 
 def _is_named_list(items: list) -> bool {
     if not items {
@@ -336,26 +324,29 @@ obj ManifestBuilder {
         pod_specs = self.generate_service_pod_specs(app_config, image);
         deployments: dict[str, dict[str, any]] = {};
         services: dict[str, dict[str, any]] = {};
-        autoscalers: dict[str, dict[str, any]] = {};
+        scaling: dict[str, dict[str, any]] = {};
         pdbs: dict[str, dict[str, any]] = {};
 
         for (svc_name, pod_spec) in pod_specs.items() {
             deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
             services[svc_name] = self._build_service_manifest(svc_name);
-            autoscaler_cfg = self._get_autoscaler_config(svc_name);
-            if autoscaler_cfg is not None {
-                autoscalers[svc_name] = autoscaler_cfg;
-            }
-            pdb = self._build_pdb_manifest(svc_name);
+            scaling[svc_name] = self._resolve_scaling(
+                svc_name, deployments[svc_name], services[svc_name]
+            );
+            deployments[svc_name]["metadata"].setdefault("annotations", {})[
+                REPLICA_FLOOR_ANNOTATION
+            ] = str(scaling[svc_name]["replica_floor"]);
+            pdb = self._build_pdb_manifest(svc_name, scaling[svc_name].get("mode"));
             if pdb is not None {
                 pdbs[svc_name] = pdb;
             }
         }
+        self._validate_http_activation_rules(scaling);
 
         bundle: dict[str, any] = {
             "deployments": deployments,
             "services": services,
-            "autoscalers": autoscalers,
+            "scaling": scaling,
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
@@ -734,6 +725,9 @@ obj ManifestBuilder {
             if peer_name == GATEWAY_NAME {
                 continue;
             }
+            if self._get_http_activation_config(peer_name) is not None {
+                continue;
+            }
             key = f"JAC_SV_{peer_name.upper()}_URL";
             if key in seen_peer_keys {
                 continue;
@@ -936,6 +930,147 @@ obj ManifestBuilder {
         };
     }
 
+    def _resolve_scaling(
+        svc_name: str, deployment: dict[str, any], service: dict[str, any]
+    ) -> dict[str, any] {
+        """Resolve a service's single, mutually-exclusive scaling decision.
+
+        The one place a service's scaling mode is decided. The scale-target
+        name is read from the Deployment manifest just built (never rebuilt
+        from svc_name), so build, apply, and `jac plan` can never disagree on
+        it. The gateway is forced out of HTTP_ACTIVATION here: it is the
+        ingress entry point and must stay warm, so it must never inherit the
+        shared scale-to-zero default.
+        """;
+        scale_target: str = deployment["metadata"]["name"];
+        service_name: str = service["metadata"]["name"];
+        http: dict[str, any] | None = self._get_http_activation_config(svc_name);
+        if http is not None and svc_name == GATEWAY_NAME {
+            if self.logger {
+                self.logger.warn(
+                    "Ignoring http_activation for the gateway: it is the ingress "
+                    "entry point and must stay warm. Set http_activation "
+                    "per-service instead of relying on the shared default."
+                );
+            }
+            http = None;
+        }
+        if http is not None {
+            try {
+                build_http_activation_spec(
+                    http, scale_target, self.k8s_config.namespace, service_name
+                );
+            } except ValueError as e {
+                raise ValueError(f"[service '{svc_name}'] {e}") from e;
+            }
+            return {
+                "mode": ScalingMode.HTTP_ACTIVATION,
+                "scale_target_name": scale_target,
+                "service_name": service_name,
+                "autoscaler": {},
+                "http_activation": http,
+                "replica_floor": int(http.get("min_replicas", 0))
+            };
+        }
+        metric: dict[str, any] | None = self._get_autoscaler_config(svc_name);
+        if metric is not None {
+            idle = self.k8s_config.idle_replicas;
+            if idle is not None and int(idle) == 0 and svc_name == GATEWAY_NAME {
+                if self.logger {
+                    self.logger.warn(
+                        "Ignoring idle_replicas=0 for the gateway: it is the "
+                        "ingress entry point and must stay warm, and nothing "
+                        "wakes it once it is idle. Set idle_replicas per "
+                        "service, or use http_activation on the services that "
+                        "should sleep."
+                    );
+                }
+                idle = None;
+            }
+            keda = self.k8s_config.autoscaler_engine == "keda";
+            return {
+                "mode": ScalingMode.METRIC,
+                "scale_target_name": scale_target,
+                "service_name": service_name,
+                "autoscaler": metric,
+                "http_activation": {},
+                "idle_replicas": idle if keda else None,
+                "replica_floor": int(idle)
+                    if idle is not None and keda
+                    else int(metric["min"])
+            };
+        }
+        return {
+            "mode": ScalingMode.NONE,
+            "scale_target_name": scale_target,
+            "service_name": service_name,
+            "autoscaler": {},
+            "http_activation": {},
+            "replica_floor": int(deployment["spec"].get("replicas", 1))
+        };
+    }
+
+    def _canonical_rules_fingerprint(rules: list[dict[str, any]]) -> str {
+        """A rules fingerprint that ignores list ordering, so two services
+        with the same match criteria collide in _validate_http_activation_rules
+        even when `hosts`/`paths`/`headers`, or the rules themselves, are
+        written in a different order -- fields within a rule are AND'd and
+        separate rules are OR'd, so reordering never changes what a rule set
+        actually matches.
+        """;
+        import json;
+        canonical_rules = [];
+        for rule in rules {
+            headers = [
+                (str(h.get("name", "")), str(h.get("value", "")))
+                for h in rule.get("headers", [])
+            ];
+            canonical_rules.append(
+                {
+                    "hosts": sorted(str(h) for h in rule.get("hosts", [])),
+                    "paths": sorted(str(p) for p in rule.get("paths", [])),
+                    "headers": sorted(headers)
+                }
+            );
+        }
+        canonical_rules.sort(key=lambda (r) { json.dumps(r, sort_keys=True); });
+        return json.dumps(canonical_rules, sort_keys=True);
+    }
+
+    def _validate_http_activation_rules(scaling: dict[str, dict[str, any]]) {
+        """Two services sharing the top-level http_activation default with no
+        per-service override resolve to identical routing rules; the interceptor
+        then has no way to tell which target a matching request belongs to.
+        """;
+        by_rules: dict[str, list[str]] = {};
+        for (svc_name, plan) in scaling.items() {
+            if plan.get("mode") != ScalingMode.HTTP_ACTIVATION {
+                continue;
+            }
+            rules = plan.get("http_activation", {}).get("rules", []);
+            if not rules {
+                continue;
+            }
+            fingerprint = self._canonical_rules_fingerprint(rules);
+            by_rules.setdefault(fingerprint, []).append(svc_name);
+        }
+        for svc_names in by_rules.values() {
+            if len(svc_names) > 1 {
+                names = ", ".join(sorted(svc_names));
+                raise ValueError(
+                    f"[http_activation] {names} resolve to identical routing "
+                    f"rules, most likely all inheriting "
+                    f"[scale.kubernetes.http_activation]'s rules unchanged. The "
+                    f"KEDA HTTP Add-on interceptor can't tell which target a "
+                    f"matching request belongs to when two InterceptorRoutes "
+                    f"share the same match criteria. Set a distinct "
+                    f"[services.NAME.http_activation.rules] for at least all "
+                    f"but one of these services."
+                );
+            }
+        }
+    }
+
     def _get_autoscaler_config(svc_name: str) -> dict[str, any] | None {
         svc: dict[str, any] = self._service_config(svc_name);
 
@@ -949,6 +1084,16 @@ obj ManifestBuilder {
                 raw_triggers.append(dict(item));
             }
         }
+        behavior = hpa.get("behavior", {});
+        if not isinstance(behavior, dict) {
+            if self.logger {
+                self.logger.warning(
+                    f"Ignoring malformed hpa.behavior for '{svc_name}': expected "
+                    f"a table, got {type(behavior).__name__}"
+                );
+            }
+            behavior = {};
+        }
         return {
             "min": int(hpa.get("min", 1)),
             "max": int(hpa.get("max", 3)),
@@ -956,8 +1101,15 @@ obj ManifestBuilder {
             "memory_target": int(
                 hpa.get("memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET)
             ),
-            "triggers": raw_triggers
+            "triggers": raw_triggers,
+            "behavior": dict(behavior)
         };
+    }
+
+    def _get_http_activation_config(svc_name: str) -> dict[str, any] | None {
+        return resolve_http_activation_config(
+            dict(self.k8s_config.http_activation), self._service_config(svc_name)
+        );
     }
 
     def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {
@@ -1040,9 +1192,23 @@ obj ManifestBuilder {
         };
     }
 
-    def _build_pdb_manifest(svc_name: str) -> dict[str, any] | None {
+    def _build_pdb_manifest(
+        svc_name: str, mode: (ScalingMode | None) = None
+    ) -> dict[str, any] | None {
         cfg: dict[str, any] = self._service_config(svc_name).get("pdb", {});
         if not cfg.get("enabled", True) {
+            return None;
+        }
+        if mode == ScalingMode.HTTP_ACTIVATION {
+            if self.logger and cfg {
+                self.logger.warn(
+                    f"No PodDisruptionBudget emitted for '{svc_name}': it is "
+                    f"HTTP-activated and legitimately scales to zero replicas, "
+                    f"so a floor-based budget (pdb.max_unavailable / "
+                    f"min_available) doesn't apply. Disable it explicitly with "
+                    f"pdb.enabled = false to silence this warning."
+                );
+            }
             return None;
         }
         k8s_name = k8s_safe_name(svc_name);

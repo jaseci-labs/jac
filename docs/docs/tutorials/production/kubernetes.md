@@ -221,6 +221,35 @@ autoscaler_initial_cooldown = 0    # default 0; seconds after deploy before scal
 
 For the full list of autoscaling options (including event triggers, polling intervals, cooldown tuning, and authenticated triggers), see the [Scale Reference](../../reference/plugins/jac-scale-kubernetes.md#autoscaling).
 
+### Scale to zero on an HTTP request
+
+The KEDA engine above scales on metrics or events. To instead wake a
+zero-replica workload on an incoming HTTP request, enable the KEDA HTTP
+Add-on activation:
+
+```toml
+[scale.kubernetes.http_activation]
+enabled = true
+target_port = 8000
+concurrency_target = 10
+min_replicas = 0            # true scale-to-zero
+max_replicas = 3
+
+[[scale.kubernetes.http_activation.rules]]
+hosts = ["app.example.com"]
+```
+
+This reconciles a KEDA `InterceptorRoute` and `ScaledObject` for the target,
+and works for both single-app and per-service (`[scale.microservices.services.<name>.http_activation]`) deploys.
+
+!!! note
+    This needs the KEDA HTTP Add-on installed alongside KEDA core. jac-scale
+    routes gateway-forwarded and sv-to-sv RPC traffic to this target through
+    the KEDA HTTP interceptor proxy automatically, so `min_replicas = 0` is
+    safe to use without any manual Ingress or gateway rewiring.
+
+See the [Scale Reference](../../reference/plugins/jac-scale-kubernetes.md#http-add-on-activation-scale-to-zero-on-request) for the full HTTP activation config (routing rules, cold-start response, timeouts).
+
 ---
 
 ## Local and Remote Clusters

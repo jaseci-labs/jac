@@ -28,32 +28,44 @@ test "deployment result failure" {
     assert "error" in result.details;
 }
 
-test "resource status info ready" {
+test "resource status info settled and serving" {
     status = ResourceStatusInfo(
-        status=ResourceStatus.RUNNING, replicas=3, ready_replicas=3
+        status=ResourceStatus.ACTIVE, replicas=3, ready_replicas=3
     );
 
-    assert status.is_ready() is True;
+    assert status.is_settled() is True;
+    assert status.is_serving() is True;
     assert status.replicas == 3;
     assert status.ready_replicas == 3;
 }
 
-test "resource status info not ready" {
+test "resource status info activating is not settled" {
     status = ResourceStatusInfo(
-        status=ResourceStatus.PENDING, replicas=3, ready_replicas=1
+        status=ResourceStatus.ACTIVATING, replicas=3, ready_replicas=0
     );
 
-    assert status.is_ready() is False;
+    assert status.is_settled() is False;
+    assert status.is_serving() is False;
     assert status.replicas == 3;
-    assert status.ready_replicas == 1;
+    assert status.ready_replicas == 0;
+}
+
+test "resource status info inactive is settled and serving at zero replicas" {
+    status = ResourceStatusInfo(
+        status=ResourceStatus.INACTIVE, replicas=0, ready_replicas=0, replica_floor=0
+    );
+
+    assert status.is_settled() is True;
+    assert status.is_serving() is True;
 }
 
 test "resource status enum" {
     assert ResourceStatus.UNKNOWN.value == "unknown";
-    assert ResourceStatus.PENDING.value == "pending";
-    assert ResourceStatus.RUNNING.value == "running";
-    assert ResourceStatus.FAILED.value == "failed";
-    assert ResourceStatus.STOPPED.value == "stopped";
+    assert ResourceStatus.INACTIVE.value == "inactive";
+    assert ResourceStatus.ACTIVATING.value == "activating";
+    assert ResourceStatus.ACTIVE.value == "active";
+    assert ResourceStatus.DEACTIVATING.value == "deactivating";
+    assert ResourceStatus.DEGRADED.value == "degraded";
 }
 
 test "app config get code path" {

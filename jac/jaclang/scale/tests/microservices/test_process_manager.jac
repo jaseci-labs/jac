@@ -451,3 +451,28 @@ test "stop_service cleans up stale pidfile when pid is already dead" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+
+test "check all health trusts an interceptor-routed entry instead of probing it" {
+    # Probing a scale-to-zero peer through the interceptor would wake it on
+    # every health tick, and demoting it would stop the gateway routing to it.
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="worker",
+            file="worker.jac",
+            prefix="/worker",
+            url="http://keda-add-ons-http-interceptor-proxy.keda:8080",
+            host_override="worker-service.default.svc.cluster.local"
+        )
+    );
+    pm = ServiceProcessManager(registry=reg, _max_failures=2);
+
+    with unittest.mock.patch.object(pm, "check_health", return_value=False) as probe {
+        for _ in range(3) {
+            pm.check_all_health();
+        }
+        assert probe.call_count == 0;
+    }
+    assert reg.entries["worker"].status == ServiceStatus.HEALTHY;
+}

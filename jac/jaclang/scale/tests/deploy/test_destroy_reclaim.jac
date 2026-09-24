@@ -53,6 +53,7 @@ def _run_destroy(
         client=fake_client,
         namespace_is_owned=unittest.mock.MagicMock(return_value=owned),
         delete_namespace=on_delete_namespace,
+        KEDAAutoscaler=unittest.mock.MagicMock(),
         MonitoringDeployer=monitoring_deployer
     ) {
         with unittest.mock.patch.object(

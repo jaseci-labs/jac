@@ -6,6 +6,26 @@ import from .breaker {
 }
 
 
+"""(url, interceptor Host override) for a peer, resolved together so they never disagree.
+
+K8s routes come first: a scale-to-zero peer gets no JAC_SV_<NAME>_URL env var, so
+it is reachable only through them. Otherwise the get_sv_registry hook, then env vars.
+"""
+def _resolve_call_target(module_name: str) -> tuple[str, str | None] {
+    import from jaclang.runtimelib { sv_client }
+    import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
+        get_sv_service_routes
+    }
+    route = get_sv_service_routes().get(module_name);
+    if route is not None and route.url {
+        return (route.url, route.host_header);
+    }
+    import jaclang;
+    url: str = jaclang.JacRuntime.get_sv_registry().get(module_name, "");
+    return (url or sv_client.resolve_url(module_name), None);
+}
+
+
 def service_call(module_name: str, func_name: str, args: dict) -> any {
     import time;
     import from jaclang.runtimelib { sv_client }
@@ -40,12 +60,7 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
         );
     }
 
-    import jaclang;
-    ms_registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
-    url: str = ms_registry.get(module_name, "");
-    if not url {
-        url = sv_client.resolve_url(module_name);
-    }
+    (url, host_override) = _resolve_call_target(module_name);
     try {
         import httpx;
     } except ImportError {
@@ -69,6 +84,9 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
     tp = current_traceparent(trace);
     if tp {
         headers["traceparent"] = tp;
+    }
+    if host_override {
+        headers["Host"] = host_override;
     }
 
     max_attempts: int = 3;
@@ -140,7 +158,7 @@ def walker_call(
         );
     }
 
-    url = sv_client.resolve_url(module_name);
+    (url, host_override) = _resolve_call_target(module_name);
     try {
         import httpx;
     } except ImportError {
@@ -163,6 +181,9 @@ def walker_call(
     tp = current_traceparent(trace);
     if tp {
         headers["traceparent"] = tp;
+    }
+    if host_override {
+        headers["Host"] = host_override;
     }
 
     max_attempts: int = 3;

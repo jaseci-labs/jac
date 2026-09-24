@@ -30,11 +30,17 @@ glob _DEFAULT_HTTP_FORWARD_TIMEOUT: float = 30.0,
 glob DEFAULT_GATEWAY_PORT: int = 8000,
      DEFAULT_GATEWAY_HOST: str = "0.0.0.0",
      DEFAULT_CLIENT_DIST_DIR: str = ".jac/client/dist",
-     K8S_CLUSTER_DNS_SUFFIX: str = "svc.cluster.local";
+     K8S_CLUSTER_DNS_SUFFIX: str = "svc.cluster.local",
+     _RFC1123_MAX_LEN: int = 253;
+
+
+def k8s_service_dns_host(service_name: str, namespace: str) -> str {
+    return f"{service_name}.{namespace}.{K8S_CLUSTER_DNS_SUFFIX}";
+}
 
 
 def k8s_service_dns_url(safe_name: str, namespace: str, port: int) -> str {
-    return f"http://{safe_name}-service.{namespace}.{K8S_CLUSTER_DNS_SUFFIX}:{port}";
+    return f"http://{k8s_service_dns_host(f'{safe_name}-service', namespace)}:{port}";
 }
 
 
@@ -111,4 +117,31 @@ def wait_for_health(
         }
     }
     return False;
+}
+
+
+glob GATEWAY_NAME: str = "__gateway__";
+
+def k8s_safe_name(svc_name: str) -> str {
+    if svc_name == GATEWAY_NAME {
+        return "gateway";
+    }
+    import re;
+    if "${" in svc_name {
+        raise ValueError(
+            f"'{svc_name}' still contains an unresolved ${{...}} placeholder, so "
+            f"the environment variable it names was not set where this deploy "
+            f"ran. Export it, or replace it with a literal name."
+        );
+    }
+    safe = re.sub(r"[^a-z0-9.-]", "-", svc_name.lower().replace("_", "-"));
+    safe = re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", safe)[:_RFC1123_MAX_LEN];
+    safe = re.sub(r"[^a-z0-9]+$", "", safe);
+    if not safe {
+        raise ValueError(
+            f"'{svc_name}' has no characters usable in a Kubernetes name; names "
+            f"must contain at least one letter or digit."
+        );
+    }
+    return safe;
 }

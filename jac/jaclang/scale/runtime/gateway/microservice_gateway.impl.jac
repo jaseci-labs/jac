@@ -312,10 +312,14 @@ impl MicroserviceGateway.aggregate_graph_data(request: Request) -> Response | No
         if query {
             target_url = f"{target_url}?{query}";
         }
+        per_svc_headers = dict(fwd_headers);
+        if svc_entry.host_override {
+            per_svc_headers["Host"] = svc_entry.host_override;
+        }
         result = await raw_forward(
             "GET",
             target_url,
-            fwd_headers,
+            per_svc_headers,
             b"",
             timeout=int(http_forward_timeout(svc_name))
         );
@@ -395,8 +399,12 @@ impl MicroserviceGateway.handle_builtin_passthrough(
             import from jaclang.scale.runtime.transport.http_forward { stream_forward }
             timeout = http_forward_timeout(svc_name);
 
+            per_svc_headers = dict(fwd_headers);
+            if svc_entry.host_override {
+                per_svc_headers["Host"] = svc_entry.host_override;
+            }
             fr = await stream_forward(
-                request.method, target_url, fwd_headers, body, timeout=int(timeout)
+                request.method, target_url, per_svc_headers, body, timeout=int(timeout)
             );
             if fr is None {
                 import from jaclang.scale.runtime.context.errors { service_unavailable }
@@ -444,6 +452,9 @@ impl MicroserviceGateway.forward_to(
     client_addr: str = getattr(request?.client, "host", "unknown");
     fwd_headers["X-Forwarded-For"] = client_addr;
 
+    if service_entry.host_override {
+        fwd_headers["Host"] = service_entry.host_override;
+    }
     body: bytes = await request.body();
 
     timeout = http_forward_timeout(service_entry.name);

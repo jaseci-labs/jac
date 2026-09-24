@@ -25,7 +25,7 @@ obj HTTPConcurrencyMetric {
 
 obj HTTPRequestRateMetric {
     has target_value: int,
-        window: str = "1m",
+        rate_window: str = "1m",
         granularity: str = "1s";
 }
 

@@ -16,6 +16,7 @@ obj ServiceEntry {
         replicas: int = 1,
         env: dict[str, str] = {},
         url: str = "",
+        host_override: str = "",
         pid: int | None = None,
         status: ServiceStatus = ServiceStatus.REGISTERED,
         last_health_check: datetime | None = None;

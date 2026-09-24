@@ -142,21 +142,21 @@ def _print_deployment_status(status_data: dict) -> None {
     }
 
     status_display = {
-        'running': '● Running',
-        'degraded': '◑ Degraded',
-        'pending': '⟳ Pending',
-        'restarting': '↺ Restarting',
-        'failed': '✗ Failed',
+        'active': '● Active',
+        'activating': '⟳ Activating',
+        'deactivating': '⟳ Deactivating',
+        'inactive': '◌ Inactive (scaled to zero)',
+        'degraded': '✗ Degraded',
         'not_deployed': '○ Not Deployed',
         'unknown': '? Unknown',
 
     };
     status_style = {
-        'running': 'bold green',
-        'degraded': 'bold yellow',
-        'pending': 'bold yellow',
-        'restarting': 'bold red',
-        'failed': 'bold red',
+        'active': 'bold green',
+        'activating': 'bold yellow',
+        'deactivating': 'bold yellow',
+        'inactive': 'bold dim',
+        'degraded': 'bold red',
         'not_deployed': 'muted',
         'unknown': 'muted',
 
@@ -642,22 +642,14 @@ class JacScalePlugin {
             return dict(sv_client._registry);
         }
 
-        try {
-            import from jaclang.scale.config.config_loader { get_scale_config }
-            import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
-                build_k8s_registry
-            }
-            ms_cfg = get_scale_config().get_microservices_config();
-            routes: dict[str, str] = ms_cfg.get("routes", {});
-            port: int = int(ms_cfg.get("gateway_port", 8000));
-            return build_k8s_registry(routes, port);
-        } except Exception as e {
-            import logging;
-            logging.getLogger(__name__).warning(
-                f"K8s get_sv_registry fell back to local registry: {e}"
-            );
+        import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
+            get_sv_service_routes
+        }
+        routes = get_sv_service_routes();
+        if not routes {
             return dict(sv_client._registry);
         }
+        return {name: route.url for (name, route) in routes.items()};
     }
 
     static def sv_transport_available -> bool {

@@ -5,6 +5,13 @@ import from jaclang.scale.runtime.orchestrator.orchestrator {
     _populate_k8s_urls
 }
 import from jaclang.scale.runtime.gateway.service_registry { ServiceStatus }
+import from jaclang.scale.deploy.target.kubernetes { runtime_resolver }
+import from jaclang.scale.runtime.context.service_routing { ServiceRoute }
+
+
+def _routes_of(dns_map: dict[str, str]) -> dict[str, ServiceRoute] {
+    return {name: ServiceRoute(url=url) for (name, url) in dns_map.items()};
+}
 
 test "build_registry creates entries from routes map" {
     ms_config = {"routes": {"orders_app": "/api/orders", "cart_app": "/api/cart"}};
@@ -169,8 +176,6 @@ test "_mark_all_healthy_k8s is idempotent on empty registry" {
 
 
 test "_populate_k8s_urls writes DNS map onto svc_entry.url (regression)" {
-    import jaclang;
-
     registry = build_registry(
         {"routes": {"products_app": "/api/products", "orders_app": "/api/orders"}}
     );
@@ -184,7 +189,7 @@ test "_populate_k8s_urls writes DNS map onto svc_entry.url (regression)" {
         "orders_app": "http://orders-app-service.default.svc.cluster.local:8000"
     };
     with mock.patch.object(
-        jaclang.JacRuntime, "get_sv_registry", return_value=fake_dns
+        runtime_resolver, "get_sv_service_routes", return_value=_routes_of(fake_dns)
     ) {
         _populate_k8s_urls(registry);
     }
@@ -199,12 +204,10 @@ test "_populate_k8s_urls writes DNS map onto svc_entry.url (regression)" {
 
 
 test "_populate_k8s_urls fails-soft when hookspec raises (entries stay empty)" {
-    import jaclang;
-
     registry = build_registry({"routes": {"orders_app": "/api/orders"}});
     with mock.patch.object(
-        jaclang.JacRuntime,
-        "get_sv_registry",
+        runtime_resolver,
+        "get_sv_service_routes",
         side_effect=RuntimeError("hookspec broken")
     ) {
         _populate_k8s_urls(registry);
@@ -215,14 +218,12 @@ test "_populate_k8s_urls fails-soft when hookspec raises (entries stay empty)" {
 
 
 test "_populate_k8s_urls handles partial DNS map (only sets known URLs)" {
-    import jaclang;
-
     registry = build_registry(
         {"routes": {"products_app": "/api/products", "missing_app": "/api/missing"}}
     );
     fake_dns: dict[str, str] = {"products_app": "http://products-app-service:8000"};
     with mock.patch.object(
-        jaclang.JacRuntime, "get_sv_registry", return_value=fake_dns
+        runtime_resolver, "get_sv_service_routes", return_value=_routes_of(fake_dns)
     ) {
         _populate_k8s_urls(registry);
     }

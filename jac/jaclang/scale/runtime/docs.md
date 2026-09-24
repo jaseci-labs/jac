@@ -322,6 +322,7 @@ code changes from local mode.
 | `rpc_timeout` | `10.0` | `sv import` httpx timeout (s) |
 | `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
 | `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `70` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
+| `hpa.behavior` | `{}` | Raw HPA `behavior` fragment (`scaleUp`/`scaleDown`) deep-merged over the generated scale-rate defaults - same merge rules as `deployment_overlay`. Applies to both engines; for `keda` it only governs scaling while replicas are above zero - the drop to zero is still controlled by `autoscaler_cooldown` (the ScaledObject's `cooldownPeriod`). See example below. |
 | `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`). Each entry: `type` (required), `metadata` (default `{}`), `name` (default `null`), `auth.secret_refs` (default `{}`). Same shape as `[[scale.kubernetes.extra_triggers]]`. |
 | `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
 
