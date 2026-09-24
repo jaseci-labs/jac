@@ -1,10 +1,10 @@
 import os;
 import time;
-import from collections.abc { Callable }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact, CompilationPhase }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.frontend.host { active_host }
 
 obj ModuleAnalysis {
@@ -20,7 +20,7 @@ obj ModuleAnalysis {
         native: bool = False;
 
     def postinit {
-        self.module = uni.Module.make_stub();
+        self.module = Module.make_stub();
     }
 
     def parse {
@@ -136,6 +136,20 @@ obj ModuleAnalysis {
         }
     }
 
+    def run_phase(phase: CompilationPhase) {
+        if phase == CompilationPhase.PARSE {
+            self.parse();
+        } elif phase == CompilationPhase.IR {
+            self.ir();
+        } elif phase == CompilationPhase.PLACEMENT {
+            self.placement();
+        } elif phase == CompilationPhase.ANALYSIS {
+            self.analysis();
+        } elif phase == CompilationPhase.BOUNDARIES {
+            self.boundaries();
+        }
+    }
+
     def boundaries {
         import from jaclang.compiler.driver.pipeline { get_boundary_analysis_sched }
         if (
@@ -152,20 +166,13 @@ obj ModuleAnalysis {
     }
 }
 
-obj AnalysisStep {
-    has phase: CompilationPhase,
-        execute: Callable[[ModuleAnalysis], None];
-}
-
-def analysis_steps -> list[AnalysisStep] {
-    return [
-        AnalysisStep(CompilationPhase.PARSE, ModuleAnalysis.parse),
-        AnalysisStep(CompilationPhase.IR, ModuleAnalysis.ir),
-        AnalysisStep(CompilationPhase.PLACEMENT, ModuleAnalysis.placement),
-        AnalysisStep(CompilationPhase.ANALYSIS, ModuleAnalysis.analysis),
-        AnalysisStep(CompilationPhase.BOUNDARIES, ModuleAnalysis.boundaries)
-    ];
-}
+glob ANALYSIS_PHASES: list[CompilationPhase] = [
+         CompilationPhase.PARSE,
+         CompilationPhase.IR,
+         CompilationPhase.PLACEMENT,
+         CompilationPhase.ANALYSIS,
+         CompilationPhase.BOUNDARIES
+     ];
 
 def record_phase(program: JacProgram, phase: CompilationPhase, started: float) {
     name = phase.name;
@@ -182,15 +189,15 @@ def analyze_module(
     program: JacProgram, path: str, options: CompileOptions, source: str | None = None
 ) -> ModuleAnalysis {
     task = ModuleAnalysis(program, path, options, source);
-    for step in analysis_steps() {
+    for phase in ANALYSIS_PHASES {
         if cancelled(options) {
             break;
         }
         started = time.perf_counter();
         try {
-            step.execute(task);
+            task.run_phase(phase);
         } finally {
-            record_phase(program, step.phase, started);
+            record_phase(program, phase, started);
         }
     }
     return task;

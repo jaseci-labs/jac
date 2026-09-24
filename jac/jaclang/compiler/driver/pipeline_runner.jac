@@ -30,9 +30,8 @@ import time;
 import from collections.abc { Callable }
 import from jaclang.compiler.driver.pipeline_types { CompilationPhase }
 import from jaclang.compiler.driver.module_analysis {
-    AnalysisStep,
+    ANALYSIS_PHASES,
     ModuleAnalysis,
-    analysis_steps,
     analyze_module,
     cancelled,
     record_phase
@@ -369,8 +368,7 @@ def host_steps -> list[HostStep] {
 }
 
 def module_pipeline -> list[CompilationPhase] {
-    return [step.phase for step in analysis_steps()]
-        + [step.phase for step in host_steps()];
+    return list(ANALYSIS_PHASES) + [step.phase for step in host_steps()];
 }
 
 def compile_module(
