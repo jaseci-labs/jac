@@ -101,7 +101,7 @@ def exercise(shared: bool, evolve: bool = False) {
             runtime = runtime_for_base(storage, applications[0].entry).runtime;
             connection = runtime.ensure();
             writing = Session(
-                store=PgStore(conninfo=connection, auto_schema=True),
+                _store=PgStore(conninfo=connection, auto_schema=True),
                 target_path=applications[0].entry
             );
             import from uuid { UUID }
