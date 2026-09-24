@@ -4,6 +4,7 @@ import from jaclang.compiler.frontend.host {
     CheckSettings,
     HostServices,
     LintSettings,
+    NativeVerdict,
     PathFacts,
     ProjectDefaults,
     ProjectFacts
@@ -16,10 +17,7 @@ import type from jaclang.compiler.frontend.unitree { Module }
 import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
-import type from jaclang.compiler.driver.nativecache {
-    NativeUnitRegistry,
-    NativeVerdict
-}
+import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 
 obj ProjectHost(HostServices) {
     has _defaults_active: bool = False,

@@ -35,8 +35,8 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
     _mp = str(self.module.loc.mod_path or "") if self.module?.loc else "";
     if _mp {
         import os as _os;
-        import jaclang as _jl;
-        _pkg = str(_os.path.dirname(_os.path.abspath(str(_jl.__file__))));
+        import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+        _pkg = jaclang_pkg_root();
         if str(_os.path.abspath(_mp)).startswith(_pkg + _os.sep) {
             return None;
         }

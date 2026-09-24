@@ -8,9 +8,12 @@ import type from jaclang.compiler.frontend.unitree { Module }
 import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
-import type from jaclang.compiler.driver.nativecache {
-    NativeUnitRegistry,
-    NativeVerdict
+import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+
+obj NativeVerdict {
+    has demoted: bool = False,
+        code: str = "",
+        detail: str = "";
 }
 
 obj CheckSettings {
@@ -236,18 +239,20 @@ obj HostServices {
 }
 
 glob _HOSTS: list[HostServices] = [],
-     _NEUTRAL_HOST: HostServices = HostServices();
+     _NEUTRAL_HOST: HostServices = HostServices(),
+     _PACKAGE_ROOT: list[str] = [];
 
 def active_host -> HostServices {
-    if not _HOSTS {
-        try {
-            import from jaclang.project.compiler_host { ProjectHost }
-        } except ImportError {
-            return _NEUTRAL_HOST;
-        }
-        _HOSTS.append(ProjectHost());
-    }
-    return _HOSTS[-1];
+    return _HOSTS[-1] if _HOSTS else _NEUTRAL_HOST;
+}
+
+def package_root -> str {
+    return _PACKAGE_ROOT[0] if _PACKAGE_ROOT else "";
+}
+
+def set_package_root(path: str) {
+    _PACKAGE_ROOT.clear();
+    _PACKAGE_ROOT.append(path);
 }
 
 def install_host(host: HostServices) {

@@ -371,9 +371,8 @@ glob KERNEL_UNIT_REL: tuple[str, ...] = (
 glob _PKG_REAL: list[str] = [];
 
 def jaclang_pkg_root -> str {
-    import os;
-    import jaclang;
-    return os.path.dirname(os.path.abspath(str(jaclang.__file__)));
+    import from jaclang.compiler.frontend.host { package_root }
+    return package_root();
 }
 
 def is_compiler_source_path(source_path: str) -> bool {
@@ -513,13 +512,11 @@ def effective_native_closure_cap -> int {
 
 def native_stdlib_root -> (str | None) {
     import os;
-    import jaclang;
-    if not jaclang?.__file__ {
+    pkg = jaclang_pkg_root();
+    if not pkg {
         return None;
     }
-    stdlib_dir = os.path.join(
-        os.path.dirname(jaclang.__file__), "runtime", "na_stdlib"
-    );
+    stdlib_dir = os.path.join(pkg, "runtime", "na_stdlib");
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
 }
 
@@ -545,23 +542,21 @@ def bundled_native_module_names -> list[str] {
 
 def is_native_by_location(file_path: str) -> bool {
     import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
+    pkg = jaclang_pkg_root();
+    if not file_path or not pkg {
         return False;
     }
     ap = os.path.abspath(file_path);
-    pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
     return ap.startswith(os.path.join(pkg, "runtime", "na_stdlib") + os.sep);
 }
 
 def bundled_stdlib_module_of(file_path: str) -> (str | None) {
     import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
+    pkg = jaclang_pkg_root();
+    if not file_path or not pkg {
         return None;
     }
     ap = os.path.abspath(file_path);
-    pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
     native_root = os.path.join(pkg, "runtime", "na_stdlib") + os.sep;
     stub_root = os.path.join(pkg, "vendor", "typeshed", "stdlib") + os.sep;
     if ap.startswith(native_root) and ap.endswith(".jac") {
@@ -604,12 +599,11 @@ glob SHARED_RUNTIME_MODULES: tuple[str, ...] = (
 
 def is_client_by_location(file_path: str) -> bool {
     import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
+    pkg = jaclang_pkg_root();
+    if not file_path or not pkg {
         return False;
     }
     ap = os.path.abspath(file_path);
-    pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
     for rel in CLIENT_RUNTIME_SOURCE_PATHS {
         if ap == os.path.join(pkg, rel.replace("/", os.sep)) {
             return True;
@@ -620,11 +614,11 @@ def is_client_by_location(file_path: str) -> bool {
 
 def is_shared_runtime_module(file_path: str) -> bool {
     import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
+    pkg = jaclang_pkg_root();
+    if not file_path or not pkg {
         return False;
     }
-    package = os.path.dirname(os.path.realpath(str(jaclang.__file__)));
+    package = os.path.realpath(pkg);
     path = os.path.realpath(file_path);
     return any(
         path == os.path.join(package, *module.split('.')[1:]) + '.jac'

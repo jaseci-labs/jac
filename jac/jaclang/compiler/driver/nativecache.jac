@@ -1,5 +1,6 @@
 import os;
 import type from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.frontend.host { NativeVerdict }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
 import type from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.driver.jir {
@@ -36,12 +37,6 @@ obj NativeUnitEntry {
         compile_deps: bytes = b"",
         compile_deps_base: str = "",
         dep_digests: dict[str, str] = {};
-}
-
-obj NativeVerdict {
-    has demoted: bool = False,
-        code: str = "",
-        detail: str = "";
 }
 
 obj NativeUnitRegistry {

@@ -185,8 +185,8 @@ def plain_native_import_target(nd: uni.Import, prog: object) -> (str | None) {
         return None;
     }
     real_resolved = os.path.realpath(resolved);
-    import jaclang;
-    jaclang_root = os.path.realpath(os.path.dirname(str(jaclang.__file__)));
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    jaclang_root = os.path.realpath(jaclang_pkg_root());
     if (
         real_resolved.startswith(jaclang_root + os.sep)
         and (os.sep + 'na_stdlib' + os.sep) not in real_resolved

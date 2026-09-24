@@ -502,15 +502,9 @@ def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[t
 }
 
 def typeshed_stubs_available -> bool {
-    import jaclang;
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
     return os.path.exists(
-        os.path.join(
-            os.path.dirname(str(jaclang.__file__)),
-            'vendor',
-            'typeshed',
-            'stdlib',
-            'builtins.pyi'
-        )
+        os.path.join(jaclang_pkg_root(), 'vendor', 'typeshed', 'stdlib', 'builtins.pyi')
     );
 }
 

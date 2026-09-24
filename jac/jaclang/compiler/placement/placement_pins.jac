@@ -1,7 +1,7 @@
 import from jaclang.compiler.driver.compilation_context { context_app }
 import os;
 import from jaclang.compiler.frontend.host { active_host }
-import type from jaclang.compiler.driver.nativecache { NativeVerdict }
+import type from jaclang.compiler.frontend.host { NativeVerdict }
 import from jaclang.project.app_kinds { kind_codespace }
 
 import from jaclang.project.placement { validate_pins, match_pin }
