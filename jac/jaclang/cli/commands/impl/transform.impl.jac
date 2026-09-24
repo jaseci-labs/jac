@@ -41,8 +41,9 @@ impl py2jac(filename: str) -> int {
 
 impl jac2py(filename: str) -> int {
     import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.backends.py.codegen_shim { generated_python }
     if filename.endswith('.jac') {
-        code = JacProgram().compile(file_path=filename).gen.py;
+        code = generated_python(JacProgram().compile(file_path=filename).gen);
         if code {
             console.print(code, markup=False, highlight=False);
             return 0;

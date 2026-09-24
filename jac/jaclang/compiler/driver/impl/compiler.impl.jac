@@ -402,8 +402,7 @@ impl JacCompiler._restore_sections(
     import pickle;
     client_bytes = secs.get(SEC_CLIENT);
     if client_bytes is not None {
-        import from jaclang.compiler.frontend.codeinfo { ClientArtifact }
-        restored_client = ClientArtifact.from_bytes(client_bytes);
+        restored_client = client_artifact_from_bytes(client_bytes);
         if restored_client is not None {
             actual_program.hub.client_artifacts[full_target] = restored_client;
         }
@@ -981,7 +980,7 @@ impl JacCompiler._persist_module_cache(
         client_artifact = self.client_artifact_of(result);
         if client_artifact is not None {
             try {
-                sections[SEC_CLIENT] = client_artifact.to_bytes();
+                sections[SEC_CLIENT] = client_artifact_bytes(client_artifact);
             } except Exception {}
         }
         try {
@@ -1284,7 +1283,6 @@ impl JacCompiler.client_artifact_of(mod: uni.Module) -> (ClientArtifact | None) 
 }
 
 impl JacCompiler._cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
-    import from jaclang.compiler.frontend.codeinfo { ClientArtifact }
     (rebuild, _no_precompile) = cache_mode();
     if rebuild {
         return None;
@@ -1301,7 +1299,7 @@ impl JacCompiler._cached_client_artifact(full_target: str) -> (ClientArtifact | 
     if raw is None {
         return None;
     }
-    return ClientArtifact.from_bytes(raw);
+    return client_artifact_from_bytes(raw);
 }
 
 impl JacCompiler._client_deps_fresh(artifact: ClientArtifact) -> bool {
@@ -1322,7 +1320,9 @@ impl JacCompiler._persist_client_artifact(
 ) -> None {
     try {
         write_module_cache(
-            full_target, None, extra_sections={SEC_CLIENT: artifact.to_bytes()}
+            full_target,
+            None,
+            extra_sections={SEC_CLIENT: client_artifact_bytes(artifact)}
         );
     } except Exception {}
 }

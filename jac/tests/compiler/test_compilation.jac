@@ -4,6 +4,7 @@ These tests verify that the Jac compiler can successfully compile various
 fixture files without errors, and test compilation-level behaviour.
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
 import from jaclang.compiler.tools.treeprinter { print_ast_tree }
 import from tests.support { JAC_ROOT }
@@ -92,8 +93,9 @@ test "multiline single tok" {
 
 test "annotation tuple issue" {
     mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "slice_vals.jac"));
-    assert "Annotated[Str, INT, BLAH]" in mypass.gen.py;
-    assert "tuple[int, Optional[type], Optional[tuple]]" in mypass.gen.py;
+    assert "Annotated[Str, INT, BLAH]" in generated_python(mypass.gen);
+    assert "tuple[int, Optional[type], Optional[tuple]]"
+        in generated_python(mypass.gen);
 }
 
 test "obj hasvar initialization" {

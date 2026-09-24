@@ -18,6 +18,7 @@ test that fails: "expected E5090, got no errors" — which is exactly the
 class of bug this guardrail exists to prevent.
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_address, native_force_opts }
@@ -108,7 +109,7 @@ def server_answer(label: str, code: str, name: str) -> int {
     );
     assert not prog.errors_had , f"server-lane compilation errors: {fmt_errors(prog)}";
     ns: dict[str, any] = {};
-    exec(compile(ir.gen.py, path, "exec"), ns);
+    exec(compile(generated_python(ir.gen), path, "exec"), ns);
     return ns[name]();
 }
 

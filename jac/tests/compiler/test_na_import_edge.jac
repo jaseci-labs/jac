@@ -11,6 +11,7 @@ edge is placement-inferred; these tests pin the host module client via
 [placement.pins] the way a migrated project would.
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
 import json;
 import re;
@@ -130,7 +131,7 @@ test "native import records typed cl->na bindings in the interop manifest" {
 
 test "native import compiles to nothing on the python side" {
     mod = compile_host();
-    assert "kernel" not in mod.gen.py , (
+    assert "kernel" not in generated_python(mod.gen) , (
         "the client->native import must be inert under CPython; only a plain"
         " server import of a native module means the ctypes crossing"
     );
@@ -200,7 +201,7 @@ test "plain import of a native module from client code takes the na edge" {
     assert len(targets) == 1 and targets[0].endswith("kernel.jac") , (
         f"plain native import must drive wasm emission; got: {targets}"
     );
-    assert "kernel" not in mod.gen.py , (
+    assert "kernel" not in generated_python(mod.gen) , (
         "the inferred na edge must be inert under CPython, exactly like the"
         " server-pinned form"
     );

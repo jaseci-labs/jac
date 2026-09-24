@@ -288,7 +288,9 @@ native layout records the emitted name separately from its source-level key.
   `.set(value)` and `.reset(token)`. `get` walks CPython's precedence -- the
   value last `set`, else the default the call passed, else the default the
   constructor took, else `LookupError(name)`. `set` returns a `Token[T]`
-  carrying `.var` and `.old_value`, and `reset(token)` restores the value the
+  (the class is `ContextVarToken`, with `Token` its alias, because a native
+  program identifies classes by bare name and the compiler has its own
+  `Token`) carrying `.var` and `.old_value`, and `reset(token)` restores the value the
   variable held before that `set`, or unsets it when it held none. As in
   CPython, a token can be used once (`RuntimeError` on the second `reset`),
   only by the variable that made it (`ValueError` otherwise), and as a

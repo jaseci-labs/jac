@@ -103,7 +103,63 @@ import from jaclang.compiler.driver.na_coverage {
 }
 
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (5000000, 50, 100),
-     CHECK_GC_THRESHOLDS: tuple[int, int, int] = (100000, 10, 10);
+     CHECK_GC_THRESHOLDS: tuple[int, int, int] = (100000, 10, 10),
+     CLIENT_SECTION_VERSION: int = 3;
+
+def client_artifact_bytes(artifact: ClientArtifact) -> bytes {
+    import pickle;
+    return pickle.dumps(
+        (
+            CLIENT_SECTION_VERSION,
+            artifact.js,
+            artifact.manifest,
+            list(artifact.native_import_sources),
+            list(artifact.source_map),
+            dict(artifact.dep_digests),
+            artifact.framework,
+            artifact.boundary_contracts
+        ),
+        int(pickle.HIGHEST_PROTOCOL)
+    );
+}
+
+def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
+    import pickle;
+    import from jaclang.compiler.frontend.codeinfo {
+        ClientArtifact as _ClientArtifact,
+        ClientManifest
+    }
+    try {
+        (
+            version,
+            js,
+            manifest,
+            native_import_sources,
+            source_map,
+            dep_digests,
+            framework,
+            boundary_contracts
+        ) = pickle.loads(raw);
+    } except Exception {
+        return None;
+    }
+    if version != CLIENT_SECTION_VERSION
+        or not isinstance(js, str)
+        or not isinstance(manifest, ClientManifest) {
+        return None;
+    }
+    return _ClientArtifact(
+        js=js,
+        manifest=manifest,
+        native_import_sources=[str(s) for s in native_import_sources],
+        source_map=[tuple(seg) for seg in source_map],
+        dep_digests={
+            str(k): str(v) for (k, v) in dict[object, object](dep_digests).items()
+        },
+        framework=str(framework),
+        boundary_contracts=dict(boundary_contracts)
+    );
+}
 
 obj JacCompiler {
     has _selfhost: (SelfHostCache | None) = None,

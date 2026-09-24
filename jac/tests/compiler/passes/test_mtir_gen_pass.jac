@@ -3,7 +3,13 @@
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.runtime.semantic { ClassInfo, FunctionInfo, MethodInfo }
+import from jaclang.runtime.semantic {
+    ClassInfo,
+    FunctionInfo,
+    MethodInfo,
+    TypeForm,
+    type_to_str
+}
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
@@ -104,10 +110,9 @@ test "mtir gen list return type" {
     assert find_people_scope is not None , "find_people should be in mtir_map";
     func_info = mtir_map[find_people_scope];
     assert isinstance(func_info, FunctionInfo);
-    assert func_info.return_type is not None;
-    if isinstance(func_info.return_type, tuple) {
-        assert func_info.return_type[0] == "list";
-    }
+    ret = func_info.return_type;
+    assert isinstance(ret, TypeForm) and ret.head == "list" , ret;
+    assert type_to_str(ret) == "list[Person]" , type_to_str(ret);
 }
 
 test "mtir gen semstrings" {

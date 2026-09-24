@@ -50,6 +50,12 @@ obj PathFacts {
         scope_stem: str = "";
 }
 
+obj HostPlatform {
+    has machine: str = "",
+        python_major: int = 0,
+        python_minor: int = 0;
+}
+
 obj LintSettings {
     has check: CheckSettings,
         exclude: list[str] = [],
@@ -159,6 +165,10 @@ obj HostServices {
 
     def path_facts(path: str) -> PathFacts {
         return PathFacts();
+    }
+
+    def host_platform -> HostPlatform {
+        return HostPlatform();
     }
 
     def read_source(path: str) -> str {

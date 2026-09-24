@@ -153,10 +153,11 @@ impl AstTool.ir(args: list[str]) -> str {
                 );
 
             case 'py':
+                import from jaclang.compiler.backends.py.codegen_shim {
+                    generated_python
+                }
                 ir_mod = prog.compile(file_name, options=CompileOptions());
-                return f"{ir_mod.gen.py}"
-                    if isinstance(ir_mod.gen.py[0], str)
-                    else 'Compile failed.';
+                return generated_python(ir_mod.gen) or 'Compile failed.';
 
             case 'esast':
                 require_product(prog, ir_mod, CompilationProduct.CLIENT);
