@@ -1,3 +1,4 @@
+import type from jaclang.compiler.passes.context { CancelToken }
 obj CompileOptions {
     has symtab_ir_only: bool = False,
         no_cgen: bool = False,
@@ -38,7 +39,7 @@ obj CompileOptions {
         native_module_walk_order: (str | None) = None,
         strict_dependencies: bool = False,
         package_canonical: bool = False,
-        cancel_token: any = None;
+        cancel_token: (CancelToken | None) = None;
 
     def postinit {
         import from jaclang.compiler.frontend.host { active_host }

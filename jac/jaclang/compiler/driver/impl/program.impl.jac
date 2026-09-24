@@ -425,7 +425,7 @@ impl JacProgram.parse_str(
     self: JacProgram,
     source_str: str,
     file_path: str,
-    cancel_token: (Event | None) = None
+    cancel_token: (CancelToken | None) = None
 ) -> uni.Module {
     mod = self.parse_source(source_str, file_path, cancel_token);
     if self.deps.tracking {
@@ -442,7 +442,7 @@ impl JacProgram.compile(
     use_str: (str | None) = None,
     no_cgen: bool = False,
     symtab_ir_only: bool = False,
-    cancel_token: (Event | None) = None,
+    cancel_token: (CancelToken | None) = None,
     options: (CompileOptions | None) = None
 ) -> uni.Module {
     if (options is None) {
@@ -535,7 +535,7 @@ impl JacProgram.parse_source(
     self: JacProgram,
     source_str: str,
     file_path: str,
-    cancel_token: (Event | None) = None
+    cancel_token: (CancelToken | None) = None
 ) -> uni.Module {
     import from jaclang.compiler.frontend.constant { CodeContext }
     import from jaclang.compiler.driver.boundary_classify {
@@ -1014,7 +1014,7 @@ impl JacProgram.run_schedule(
     self: JacProgram,
     mod: uni.Module,
     passes: list[type],
-    cancel_token: (Event | None) = None
+    cancel_token: (CancelToken | None) = None
 ) -> None {
     import from jaclang.compiler.driver.pipeline { execute_passes }
     execute_passes(self, mod, passes, cancel_token);

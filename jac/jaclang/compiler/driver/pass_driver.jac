@@ -3,7 +3,7 @@ import os;
 import sys;
 import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
-import from jaclang.compiler.passes.context { Alert, DiagnosticPolicy }
+import from jaclang.compiler.passes.context { Alert, CancelToken, DiagnosticPolicy }
 import from jaclang.compiler.frontend.host { CheckSettings, active_host }
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -85,7 +85,7 @@ def run_pass(
     pass_cls: type,
     ir_in: any,
     prog: JacProgram,
-    cancel_token: any = None,
+    cancel_token: (CancelToken | None) = None,
     policy: (DiagnosticPolicy | None) = None
 ) -> any {
     pol = policy if policy is not None else build_diagnostic_policy(prog);

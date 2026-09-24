@@ -3,7 +3,7 @@ import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import os;
 import types;
-import from threading { Event }
+import type from jaclang.compiler.passes.context { CancelToken }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -94,14 +94,14 @@ class JacProgram {
         self: JacProgram,
         source_str: str,
         file_path: str,
-        cancel_token: (Event | None) = None
+        cancel_token: (CancelToken | None) = None
     ) -> uni.Module;
 
     def parse_str(
         self: JacProgram,
         source_str: str,
         file_path: str,
-        cancel_token: (Event | None) = None
+        cancel_token: (CancelToken | None) = None
     ) -> uni.Module;
 
     def declared_codespace(self: JacProgram, file_path: str) -> str;
@@ -124,7 +124,7 @@ class JacProgram {
         use_str: (str | None) = None,
         no_cgen: bool = False,
         symtab_ir_only: bool = False,
-        cancel_token: (Event | None) = None,
+        cancel_token: (CancelToken | None) = None,
         options: (CompileOptions | None) = None
     ) -> uni.Module;
 
@@ -136,7 +136,7 @@ class JacProgram {
         self: JacProgram,
         mod: uni.Module,
         passes: list[type],
-        cancel_token: (Event | None) = None
+        cancel_token: (CancelToken | None) = None
     ) -> None;
 
     static def jac_file_formatter(

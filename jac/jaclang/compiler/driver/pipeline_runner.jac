@@ -4,7 +4,7 @@ import from jaclang.compiler.driver.pipeline_types {
     CompilationProduct,
     UtilityProduct
 }
-import type from threading { Event }
+import type from jaclang.compiler.passes.context { CancelToken }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.driver.toolchain { native_pipeline_available }
 import from jaclang.compiler.driver.pipeline {
@@ -746,7 +746,7 @@ def run_utility(
     product: UtilityProduct,
     ir: any,
     program: JacProgram,
-    cancel_token: Event | None = None
+    cancel_token: (CancelToken | None) = None
 ) -> any {
     import from jaclang.compiler.driver.pass_driver { run_pass }
     step: type;

@@ -52,11 +52,27 @@ obj PassResult {
         time_taken: float = 0.0;
 }
 
+obj CancelToken {
+    has requested: bool = False;
+
+    def set {
+        self.requested = True;
+    }
+
+    def clear {
+        self.requested = False;
+    }
+
+    def is_set -> bool {
+        return self.requested;
+    }
+}
+
 obj CompileContext {
     has current_node: UniNode,
         from_pass: type,
         pass_name: str,
-        cancel_token: any = None,
+        cancel_token: (CancelToken | None) = None,
         cancel_requested: bool = False,
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],

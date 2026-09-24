@@ -8,7 +8,6 @@ import os;
 import from collections.abc { Callable }
 import sys;
 import types;
-import from threading { Event }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.unitree { ability_of_symbol }
 import from jaclang.compiler.driver.jir {

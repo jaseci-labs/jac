@@ -1,7 +1,7 @@
 import os;
 import time;
 import from collections.abc { Callable }
-import type from threading { Event }
+import type from jaclang.compiler.passes.context { CancelToken }
 import from contextvars { ContextVar }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -216,7 +216,7 @@ def require_product(
     program: JacProgram,
     module: Module,
     product: CompilationProduct,
-    cancel_token: (Event | None) = None
+    cancel_token: (CancelToken | None) = None
 ) -> bool {
     active_cancel = cancel_token
         if cancel_token is not None
@@ -588,7 +588,7 @@ def execute_passes(
     program: JacProgram,
     module: Module,
     passes: list[type],
-    cancel_token: Event | None = None
+    cancel_token: (CancelToken | None) = None
 ) -> Module {
     import from jaclang.compiler.driver.pass_driver {
         run_pass,
