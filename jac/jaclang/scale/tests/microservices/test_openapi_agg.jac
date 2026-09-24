@@ -59,8 +59,19 @@ def _entry(name: str, prefix: str, port: int) -> ServiceEntry {
 }
 
 
+"""One undelayed aggregate first: the client's fetch path and the servers'
+request handling each import and warm up on first use, and that cost belongs
+to neither fetch the timing compares."""
 test "service specs are fetched concurrently, not serially" {
     spec = {"openapi": "3.0.2", "paths": {"/walker/A": {"post": {}}}};
+    (srv_w, port_w) = _serve_spec(spec);
+    warm = ServiceRegistry();
+    warm.register(_entry("warm", "/warm", port_w));
+    try {
+        asyncio.run(aggregate_openapi(warm));
+    } finally {
+        srv_w.shutdown();
+    }
     (srv_a, port_a) = _serve_spec(spec, delay=1.5);
     (srv_b, port_b) = _serve_spec(spec, delay=1.5);
 
