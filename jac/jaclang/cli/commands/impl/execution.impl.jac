@@ -736,7 +736,9 @@ def _resolve_plan(
     return (plan, cfg, app, file, 0);
 }
 
-def _load_executable(filename: str, base: str, main: bool) -> types.ModuleType {
+def _load_executable(
+    filename: str, base: str, main: bool, force_codespace: str = ''
+) -> types.ModuleType {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.compiler.driver.application { prepare_application }
     import from jaclang.runtime.prepared { load_prepared_module }
@@ -773,7 +775,9 @@ def _load_executable(filename: str, base: str, main: bool) -> types.ModuleType {
     }
     workspace = workspace_for_path(filename);
     project_root = workspace.project_root if workspace is not None else base;
-    prepared = prepare_application(filename, program, project_root);
+    prepared = prepare_application(
+        filename, program, project_root, force_codespace=force_codespace
+    );
     return load_prepared_module(prepared.entry, prepared, as_main=main);
 }
 
@@ -1076,7 +1080,9 @@ def _exec_file(
                 }
             }
             if not native_executed {
-                _load_executable(filename, base, main);
+                _load_executable(
+                    filename, base, main, 'server' if backend == 'python' else ''
+                );
             }
         } else {
             Jac.jac_import(

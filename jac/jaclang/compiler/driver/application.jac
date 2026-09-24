@@ -413,7 +413,8 @@ def prepare_application(
     `root: (str | None) = None,
     services: any = (),
     client: bool = False,
-    dev: bool = True
+    dev: bool = True,
+    force_codespace: str = ''
 ) -> PreparedApplication {
     import from jaclang.cli.console { console }
     `entry = os.path.realpath(`entry);
@@ -475,6 +476,7 @@ def prepare_application(
                         program,
                         CompileOptions(
                             default_codespace='server',
+                            force_codespace=force_codespace,
                             skip_native_engine=program.options.skip_native_engine,
                             entry_point=path,
                             project_root=`root
