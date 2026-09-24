@@ -420,8 +420,8 @@ obj UnitCollectBudget {
     has releases: int = 0,
         last_peak_mb: int = 0;
 
-    def due(units: int = 1) -> bool {
-        self.releases += units;
+    def due -> bool {
+        self.releases += 1;
         every = _env_int("JAC_UNIT_COLLECT_EVERY", UNIT_COLLECT_EVERY);
         growth = _env_int("JAC_UNIT_COLLECT_GROWTH_MB", UNIT_COLLECT_GROWTH_MB);
         peak = _peak_rss_mb();

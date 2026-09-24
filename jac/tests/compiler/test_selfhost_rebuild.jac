@@ -119,11 +119,9 @@ test "a cold compiler rebuild ingests each dependency about once and collects on
         f"dependencies were re-ingested: {symtab} Jac symbol-table runs for {compiled} "
         f"modules (bound {SYMTAB_PER_MODULE} per module; events: {events})"
     );
-    released = events.get("unit_release", 0);
-    collections = events.get("unit_collect", 0);
-    assert released > 0 , f"the rebuild released no semantic units: {events}";
-    assert collections <= released // COLLECT_EVERY + COLLECT_SLACK , (
-        f"the unit collector fired {collections} times for {released} released units; the budget "
+    collections = int(payload["collections"]);
+    assert collections <= compiled // COLLECT_EVERY + COLLECT_SLACK , (
+        f"explicit collection ran {collections} times for {compiled} modules; the budget "
         f"allows one per {COLLECT_EVERY} releases plus {COLLECT_SLACK}"
     );
     assert events.get("iface_encode", 0) == 0 , (

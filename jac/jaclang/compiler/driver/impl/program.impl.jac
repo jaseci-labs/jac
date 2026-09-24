@@ -327,13 +327,6 @@ impl JacProgram.release_compile_closure(
         return;
     }
 
-    units = len(
-        {
-            id(mod)
-            for mod in self.mod.hub.values()
-            if not mod.is_raised_from_py
-        }
-    );
     if self.context_root is None {
         for context in list(self.contexts.values()) {
             if context is not self {
@@ -380,10 +373,7 @@ impl JacProgram.release_compile_closure(
     if self._iface is not None {
         self._iface.on_closure_release();
     }
-    events = self.analysis.cache_events;
-    events["unit_release"] = events.get("unit_release", 0) + units;
-    if collect and unit_collect_budget.due(units) {
-        events["unit_collect"] = events.get("unit_collect", 0) + 1;
+    if collect and unit_collect_budget.due() {
         import gc;
         gc.collect();
     }

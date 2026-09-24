@@ -1110,6 +1110,59 @@ def seal_finalize(
     return 0;
 }
 
+def native_roots(pkg_name: str, units: list[str]) -> list[str] {
+    if pkg_name == "jaclang" {
+        import from jaclang.compiler.native_scope { kernel_root_path }
+        return [kernel_root_path()];
+    }
+    return list(units);
+}
+
+def prebuild_native_closure(roots: list[str]) -> dict[(str, any)] {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
+    options = CompileOptions(
+        aot_mode=True,
+        default_codespace="native",
+        native_unit=True,
+        skip_native_engine=True
+    );
+    plan = build_link_plan(JacProgram(), roots, options, native_unit=True);
+    return {"status": "compiled", "units": len(plan.units)};
+}
+
+def prebuild_native_units(roots: list[str]) {
+    import time;
+    import from jaclang.cli.workpool { WorkPool }
+    started = time.monotonic();
+
+    def prebuild_job(request: dict[(str, any)]) -> dict[(str, any)] {
+        return prebuild_native_closure([str(request["path"])]);
+    }
+
+    def on_record(idx: int, record: dict[(str, any)]) {
+        result = record.get("result");
+        if not isinstance(result, dict) {
+            detail = record.get("crash") or record.get("error") or "no result";
+            console.error(f"  Native prebuild of {roots[idx]} failed: {detail}");
+        }
+    }
+
+    WorkPool(
+        items=list(roots),
+        job=prebuild_job,
+        on_record=on_record,
+        jobs=1,
+        rss_log_env="JAC_PRECOMPILE_RSS_LOG",
+        crash_prefix="jac-precompile-crash-"
+    ).run();
+    console.print(
+        f"  Native prebuild: {len(roots)} root(s) in "
+            + f"{time.monotonic() - started:.1f}s"
+    );
+}
+
 def seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]
 ) -> (dict[str, any] | None) {
@@ -1144,16 +1197,10 @@ def seal_native(
         native_unit=True,
         skip_native_engine=True
     );
-    if pkg_name == "jaclang" {
-        import from jaclang.compiler.native_scope { kernel_root_path }
-        roots = [kernel_root_path()];
-        artifact_rel = os.path.join("compiler", kernel_lib_name());
-    } else {
-        roots = list(units);
-        artifact_rel = os.path.join(
-            NATIVE_DIR_REL, "lib" + pkg_name + _shared_suffix()
-        );
-    }
+    roots = native_roots(pkg_name, units);
+    artifact_rel = os.path.join("compiler", kernel_lib_name())
+        if pkg_name == "jaclang"
+        else os.path.join(NATIVE_DIR_REL, "lib" + pkg_name + _shared_suffix());
     console.print(f"  Native units: {len(units)} (roots: {len(roots)})");
     import time;
     native_start = time.monotonic();
@@ -1617,6 +1664,10 @@ def run_precompile(
             }
         }
         counts[status] = counts.get(status, 0) + 1;
+    }
+
+    if use_pool and native_units_set {
+        prebuild_native_units(native_roots(pkg_name, sorted(native_units_set)));
     }
 
     pool = WorkPool(
