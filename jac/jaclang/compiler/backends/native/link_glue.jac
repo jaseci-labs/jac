@@ -490,7 +490,10 @@ def inject_heap_accounting(
         return (llvm_ir_str, []);
     }
     if not managed and not re.search(r'define[^\n]*@"?__rc_alloc"?\(', llvm_ir_str) {
-        raise RuntimeError("Native heap accounting requires managed allocations");
+        raise RuntimeError(
+            "Native heap accounting requires allocation headers; a nogc-enforced "
+            "unit under gc=none allocates without them"
+        );
     }
     apple = re.search(r'target triple = "[^"\n]*(?:apple|darwin)', llvm_ir_str)
         is not None;

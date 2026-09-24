@@ -1180,6 +1180,7 @@ def seal_native(
         }
         _refresh_native_twin(out_dir / mod_entry["jir"], u.path, str(pkg_path));
         jir_bytes = (out_dir / mod_entry["jir"]).read_bytes();
+        mod_entry["sha256"] = hashlib.sha256(jir_bytes).hexdigest();
         sealed_iface = NativeIface.verified_digest(
             native_section_payload(_rsb(jir_bytes, SEC_NIFACE), stamp)
         );

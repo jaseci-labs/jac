@@ -1482,7 +1482,9 @@ def merge_native_sections(
     existing: dict[int, bytes], incoming: dict[int, bytes]
 ) -> dict[int, bytes] {
     """Fold one producer's stamped native sections into the entry's variants. A
-    replaced bitcode variant invalidates the object emitted from the old one. A
+    replaced bitcode variant invalidates the object emitted from the old one, and
+    a write that relowers a unit (a new interface or dependency record) without
+    bringing bitcode drops the bitcode and object compiled before it. A
     native write carries the running compiler's digest on every stamped section
     it brings, so variants of any native section under another compiler digest
     are obsolete and pruned: a compiler upgrade replaces products instead of
@@ -1496,6 +1498,15 @@ def merge_native_sections(
         for (key, value) in after.items()
         if before.get(key) != value
     };
+    relowered: set[str] = set();
+    for tag in (SEC_NIFACE, SEC_NDEPS) {
+        prior = native_section_variants(existing.get(tag));
+        for (key, value) in native_section_variants(incoming.get(tag)).items() {
+            if key not in after and prior.get(key) != value {
+                relowered.add(key);
+            }
+        }
+    }
     digests: set[str] = set();
     for tag in NATIVE_SECTIONS {
         if tag in incoming {
@@ -1507,7 +1518,12 @@ def merge_native_sections(
     for tag in NATIVE_SECTIONS {
         variants = native_section_variants(existing.get(tag));
         if tag == SEC_NOBJ {
-            for key in changed {
+            for key in changed | relowered {
+                variants.pop(key, None);
+            }
+        }
+        if tag == SEC_NBITCODE {
+            for key in relowered {
                 variants.pop(key, None);
             }
         }
@@ -1607,6 +1623,40 @@ def write_module_cache(
             f"Could not write module cache for {resolved_path}: {exc}", exc_info=True
         );
         return False;
+    }
+}
+
+def drop_python_lane_products(source_path: str) -> None {
+    """Discard a module's Python-lane products and keep its stamped native
+    sections, which validate their own inputs when read. With no native
+    sections left the entry is removed.""";
+    resolved_path = str(Path(source_path).resolve());
+    cache_path = get_module_cache_path(resolved_path);
+    if not cache_path.exists() {
+        return;
+    }
+    with FileLock(_module_lock_path(cache_path)) {
+        try {
+            data = cache_path.read_bytes();
+            header = parse_header(data[:HEADER_SIZE]);
+            magic: any = SECTIONS_MAGIC;
+            pos = data.find(magic, HEADER_SIZE);
+            secs = read_sections(data, pos + len(magic))
+                if header is not None and pos >= 0
+                else {};
+        } except OSError {
+            return;
+        }
+        kept: dict[int, bytes] = {
+            sec: secs[sec]
+            for sec in NATIVE_SECTIONS + (SEC_MODKEY, SEC_ENVKEY, SEC_PATH_ROOT)
+            if sec in secs
+        };
+        if header is None or not any(sec in kept for sec in NATIVE_SECTIONS) {
+            cache_path.unlink(missing_ok=True);
+            return;
+        }
+        atomic_write(cache_path, write_precompiled_jir(None, "", header.flags, kept));
     }
 }
 

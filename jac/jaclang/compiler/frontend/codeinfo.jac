@@ -280,7 +280,10 @@ def native_unit_ref(path: str) -> str {
 def resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
     """The path a unit reference names here: an absolute path is itself;
     `jaclang/...` is under this process's jaclang; another root's identity
-    is looked for beside the anchor unit's own root, then beside it.""";
+    is looked for as the anchor unit's own root, beside it, then under each
+    import path. A reference found nowhere names a path that cannot exist,
+    never one relative to the working directory, so its unit reads as
+    missing and is rebuilt.""";
     import os;
     if not ref or os.path.isabs(ref) {
         return ref;
@@ -304,7 +307,16 @@ def resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
             }
         }
     }
-    return ref;
+    import sys;
+    for search_dir in sys.path {
+        if search_dir and os.path.isabs(search_dir) {
+            candidate = os.path.join(search_dir, ref);
+            if os.path.isfile(candidate) {
+                return candidate;
+            }
+        }
+    }
+    return os.path.join(os.path.abspath(os.sep), "<unresolved native unit>", ref);
 }
 
 def native_module_key(path: str) -> str {

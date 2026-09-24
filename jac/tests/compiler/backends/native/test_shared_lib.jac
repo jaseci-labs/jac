@@ -885,6 +885,25 @@ test "private native helpers cannot satisfy another library's C symbols" {
     engine.close();
 }
 
+test "heap accounting links under gc=none when the units keep allocation headers" {
+    program = JacProgram();
+    module = program.compile(
+        file_path=os.path.join(FIXTURES, "shared_heap_accounting.jac"),
+        options=CompileOptions(
+            aot_mode=True,
+            default_codespace="native",
+            memory_profile="rc",
+            na_gc_mode="none"
+        )
+    );
+    assert not program.errors_had;
+    assert module is not None;
+    plan = build_link_plan(program, [module.loc.mod_path], program.options);
+    spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False);
+    (_whole, exports) = whole_program_module(plan, spec);
+    assert "jac_heap_size" in exports and "jac_list_heap_size" in exports;
+}
+
 test "opaque native owners account for object and growing list allocations" {
     import ctypes;
     import from jaclang.compiler.backends.native.link_glue { init_object_codegen }

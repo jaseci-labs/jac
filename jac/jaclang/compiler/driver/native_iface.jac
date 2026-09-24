@@ -185,7 +185,8 @@ obj NativeIface {
         clib_symbol_lib: dict[str, str] = {},
         layout: (NativeModuleLayout | None) = None,
         deps: list[str] = [],
-        coverage: dict[str, any] = {};
+        coverage: dict[str, any] = {},
+        headerless: bool = False;
 
     def digest_fields -> dict[str, any] {
         return {
@@ -209,7 +210,8 @@ obj NativeIface {
             },
             "layout": (
                 native_layout_to_dict(self.layout) if self.layout is not None else None
-            )
+            ),
+            "headerless": self.headerless
         };
     }
 
@@ -272,7 +274,8 @@ obj NativeIface {
                     else None
             ),
             deps=[str(x) for x in d.get("deps", [])],
-            coverage=dict(d.get("coverage") or {})
+            coverage=dict(d.get("coverage") or {}),
+            headerless=bool(d.get("headerless", False))
         );
     }
 

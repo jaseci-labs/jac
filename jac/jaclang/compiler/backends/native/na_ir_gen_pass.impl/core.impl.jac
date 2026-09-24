@@ -238,7 +238,8 @@ impl NaIRGenPass._export_native_iface -> None {
     mod_path = self.module.loc.mod_path if self.module?.loc else "";
     iface = NativeIface(
         module=native_module_key(mod_path) if mod_path else "",
-        prefix=self._own_prefix()
+        prefix=self._own_prefix(),
+        headerless=self._nogc_headerless()
     );
     layout = self.module.gen.native_layout;
     iface.layout = layout;
