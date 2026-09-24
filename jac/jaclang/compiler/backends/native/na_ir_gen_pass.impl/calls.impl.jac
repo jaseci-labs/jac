@@ -1495,6 +1495,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_expr(_identity_arg);
     }
 
+    (_c_handled, _c_val) = self._codegen_c_interop_call(nd);
+    if _c_handled {
+        return _c_val;
+    }
+
     if is_field_marker(nd) {
         owner = nd.parent;
         assert isinstance(owner, uni.HasVar);
@@ -1947,9 +1952,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
 
-        if func_name == "bytearray" and not (nd.params or []) {
+        if func_name in ("bytes", "bytearray") and not (nd.params or []) {
             _ba_empty = self._dispatch_builtin(
-                "bytearray", [], kwargs=self._split_call_kwargs(nd), kw_node=nd
+                func_name, [], kwargs=self._split_call_kwargs(nd), kw_node=nd
             );
             if _ba_empty is not None {
                 return _ba_empty;
@@ -2389,12 +2394,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
 
-    args: list[ir.Value] = self._codegen_bound_args(nd, func, self_offset=0);
-
     _is_foreign = self.clib_extern_fns.get(func_name) is func;
     if _is_foreign and func_name in self.clib_fn_abi {
-        return self._codegen_clib_call(func, func_name, args);
+        _copybacks: list[tuple[ir.Value, ir.Value, any]] = [];
+        _clib_args = self._codegen_clib_args(nd, func_name, _copybacks);
+        if _clib_args is None {
+            _clib_args = self._codegen_bound_args(nd, func, self_offset=0);
+        }
+        return self._codegen_clib_call(func, func_name, _clib_args, _copybacks);
     }
+
+    args: list[ir.Value] = self._codegen_bound_args(nd, func, self_offset=0);
 
     coerced: list[ir.Value] = [];
 

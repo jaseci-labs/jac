@@ -92,7 +92,7 @@ obj PgRuntime {
     def is_running -> bool;
     def conninfo -> ConnInfo;
     def drop_database(database: str, force: bool = False) -> bool;
-    def databases -> list[DbRecord];
+    def databases(with_size: bool = True) -> list[DbRecord];
     def fetch_dist -> str;
     def _sock_dir -> str;
     def _priv_plan -> PgPrivPlan;

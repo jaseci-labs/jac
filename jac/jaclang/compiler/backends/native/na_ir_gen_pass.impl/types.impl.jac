@@ -830,6 +830,10 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
         return self._ensure_bytearray_type();
     }
 
+    _c_ty = self._lower_c_interop_type(t);
+    if _c_ty is not None {
+        return _c_ty;
+    }
     _enum_ty = self._ensure_enum_lowered(t);
     if _enum_ty is not None {
         return _enum_ty;
@@ -2658,10 +2662,10 @@ impl NaIRGenPass._unify_int_widths(
     left_type = left.type;
     right_type = right.type;
     assert isinstance(left_type, ir.IntType) and isinstance(right_type, ir.IntType);
-    _i32 = ir.IntType(32);
     if left_type.width == 1 and right_type.width == 1 {
-        left = self.builder.zext(left, _i32, name="bool.widen");
-        right = self.builder.zext(right, _i32, name="bool.widen");
+        _int = ir.IntType(64);
+        left = self.builder.zext(left, _int, name="bool.widen");
+        right = self.builder.zext(right, _int, name="bool.widen");
     } elif left_type.width == 1 and right_type.width > 1 {
         left = self.builder.zext(left, right_type, name="bool.widen");
     } elif right_type.width == 1 and left_type.width > 1 {
@@ -3076,6 +3080,11 @@ impl NaIRGenPass._emit_binary_op(
             );
             return None;
         }
+        if op in (Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR)
+            and left.type == ir.IntType(1)
+            and right.type == ir.IntType(1) {
+            return self._emit_int_bitwise(op, left, right);
+        }
         (left, right) = self._unify_int_widths(left, right);
         if op == Tok.LSHIFT {
             if checked {
@@ -3125,14 +3134,8 @@ impl NaIRGenPass._emit_binary_op(
         }
     }
 
-    if op == Tok.BW_AND {
-        return self.builder.and_(left, right, name="bwand");
-    }
-    if op == Tok.BW_OR {
-        return self.builder.or_(left, right, name="bwor");
-    }
-    if op == Tok.BW_XOR {
-        return self.builder.xor(left, right, name="bwxor");
+    if op in (Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR) {
+        return self._emit_int_bitwise(op, left, right);
     }
 
     if op == Tok.KW_AND {
@@ -3146,6 +3149,18 @@ impl NaIRGenPass._emit_binary_op(
         E5092, node_override=self.ctx.current_node, kind="binary operator", name=op
     );
     return None;
+}
+
+impl NaIRGenPass._emit_int_bitwise(
+    op: str, left: ir.Value, right: ir.Value
+) -> ir.Value {
+    if op == Tok.BW_AND {
+        return self.builder.and_(left, right, name="bwand");
+    }
+    if op == Tok.BW_OR {
+        return self.builder.or_(left, right, name="bwor");
+    }
+    return self.builder.xor(left, right, name="bwxor");
 }
 
 impl NaIRGenPass._emit_arch_dunder_binop(

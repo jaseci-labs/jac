@@ -112,6 +112,36 @@ test "db status reports server state and row counts after a run" {
 }
 
 
+test "db status on a stopped cluster reports stopped without restarting it" {
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        app = Path(tmpdir) / "app.jac";
+        app.write_text(APP);
+        _seed_project(tmpdir, "dbcli");
+        try {
+            (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", str(app)]);
+            assert rc == 0 , f"create failed: {err}";
+            _stop_db(tmpdir);
+            (rc, out, err) = _jac(tmpdir, ["db", "status"]);
+            assert rc == 0 , f"status failed: {err}";
+            assert "running  : False" in out and "stopped" in out , out;
+            assert "NodeAnchor" not in out , (
+                f"a status probe must not boot a stopped cluster: {out!r}"
+            );
+            (rc, out, err) = _jac(tmpdir, ["db", "list"]);
+            assert rc == 0 , f"list failed: {err}";
+            assert "not running" in out , out;
+            # A probe that had secretly restarted postgres would show up here.
+            (rc, out, err) = _jac(tmpdir, ["db", "status"]);
+            assert rc == 0 , f"second status failed: {err}";
+            assert "running  : False" in out , out;
+        } finally {
+            _stop_db(tmpdir);
+        }
+    }
+}
+
+
 test "db sql runs a statement against the project store" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);

@@ -912,9 +912,6 @@ impl NativeStrEmitter._emit_affix(
     p = ctx.pass_ref;
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    zero = ir.Constant(i64, 0);
     candidates: list[ir.Value] = [];
     if isinstance(args[0].type, ir.LiteralStructType) {
         for (index, typ) in enumerate(args[0].type.elements) {
@@ -934,8 +931,35 @@ impl NativeStrEmitter._emit_affix(
         }
     }
     length = p._call_str_len(b, target, name="affix.length");
-    start = p._coerce_type(args[1], i64) if len(args) > 1 else zero;
-    end = p._coerce_type(args[2], i64) if len(args) > 2 else length;
+    return _emit_affix_match(
+        p,
+        b,
+        target,
+        length,
+        [
+            (candidate, p._call_str_len(b, candidate, name="affix.size"))
+            for candidate in candidates
+        ],
+        args[1:],
+        suffix
+    );
+}
+
+def _emit_affix_match(
+    p: NaIRGenPass,
+    b: ir.IRBuilder,
+    data: ir.Value,
+    length: ir.Value,
+    candidates: list[tuple[ir.Value, ir.Value]],
+    bounds: list[ir.Value],
+    suffix: bool
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    start = p._coerce_type(bounds[0], i64) if len(bounds) > 0 else zero;
+    end = p._coerce_type(bounds[1], i64) if len(bounds) > 1 else length;
     start = b.select(b.icmp_signed("<", start, zero), b.add(start, length), start);
     start = b.select(b.icmp_signed("<", start, zero), zero, start);
     end = b.select(b.icmp_signed("<", end, zero), b.add(end, length), end);
@@ -950,16 +974,15 @@ impl NativeStrEmitter._emit_affix(
     miss = fn.append_basic_block("affix.miss");
     done = fn.append_basic_block("affix.done");
     memcmp = p._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
-    for candidate in candidates {
-        size = p._call_str_len(b, candidate, name="affix.size");
+    for (candidate, size) in candidates {
         compare = fn.append_basic_block("affix.compare");
         next_candidate = fn.append_basic_block("affix.next");
         fits = b.and_(bounds_ok, b.icmp_signed("<=", size, available));
         b.cbranch(fits, compare, next_candidate);
         b.position_at_end(compare);
         offset = b.sub(end, size) if suffix else start;
-        data = b.gep(target, [offset], name="affix.data");
-        compared = b.call(memcmp, [data, candidate, size]);
+        window = b.gep(data, [offset], name="affix.data");
+        compared = b.call(memcmp, [window, candidate, size]);
         b.cbranch(
             b.icmp_signed("==", compared, ir.Constant(i32, 0)), match_bb, next_candidate
         );
@@ -971,10 +994,9 @@ impl NativeStrEmitter._emit_affix(
     b.position_at_end(miss);
     b.branch(done);
     b.position_at_end(done);
-    i1 = ir.IntType(1);
-    result = b.phi(i1, name="affix.result");
-    result.add_incoming(ir.Constant(i1, 1), match_bb);
-    result.add_incoming(ir.Constant(i1, 0), miss);
+    result = b.phi(ir.IntType(1), name="affix.result");
+    result.add_incoming(ir.Constant(ir.IntType(1), 1), match_bb);
+    result.add_incoming(ir.Constant(ir.IntType(1), 0), miss);
     return result;
 }
 
@@ -2407,43 +2429,92 @@ impl NativeBytesEmitter.emit_fromhex(
 impl NativeBytesEmitter.emit_count(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(target, args, "count");
 }
 
 impl NativeBytesEmitter.emit_find(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(target, args, "find");
 }
 
 impl NativeBytesEmitter.emit_rfind(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(target, args, "rfind");
 }
 
 impl NativeBytesEmitter.emit_index(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(
+        target, args, "find", missing="subsection not found"
+    );
 }
 
 impl NativeBytesEmitter.emit_rindex(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return ctx.pass_ref._emit_bytes_search(
+        target, args, "rfind", missing="subsection not found"
+    );
 }
 
 impl NativeBytesEmitter.emit_startswith(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_affix(ctx, target, args, suffix=False);
 }
 
 impl NativeBytesEmitter.emit_endswith(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_affix(ctx, target, args, suffix=True);
+}
+
+impl NativeBytesEmitter._emit_affix(
+    self: NativeBytesEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    args: list[ir.Value],
+    suffix: bool
+) -> (ir.Value | None) {
+    if not args or len(args) > 3 {
+        return None;
+    }
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    candidates: list[ir.Value] = [];
+    if isinstance(args[0].type, ir.LiteralStructType) {
+        bytes_ptr = p._get_bytes_struct_type().as_pointer();
+        if any(typ != bytes_ptr for typ in args[0].type.elements) {
+            return None;
+        }
+        for index in range(len(args[0].type.elements)) {
+            candidates.append(b.extract_value(args[0], index, name="affix.item"));
+        }
+    } elif p._is_bytes_value(args[0]) {
+        candidates.append(args[0]);
+    } else {
+        return None;
+    }
+    for bound in args[1:] {
+        if not isinstance(bound.type, ir.IntType) {
+            return None;
+        }
+    }
+    return _emit_affix_match(
+        p,
+        b,
+        p._bytes_data_ptr(target),
+        p._bytes_len_val(target),
+        [
+            (p._bytes_data_ptr(candidate), p._bytes_len_val(candidate))
+            for candidate in candidates
+        ],
+        args[1:],
+        suffix
+    );
 }
 
 impl NativeBytesEmitter.emit_replace(
@@ -4892,7 +4963,7 @@ impl NativeBuiltinEmitter.emit_abs(
     b = ctx.pass_ref.builder;
     if isinstance(arg_val.type, ir.IntType) {
         if arg_val.type.width == 1 {
-            return arg_val;
+            return b.zext(arg_val, ir.IntType(64), name="abs.bool");
         }
         if ctx.arg_nodes and ctx.pass_ref._is_sized_node(ctx.arg_nodes[0]) {
             return ctx.pass_ref._emit_checked_abs(arg_val);
@@ -5842,14 +5913,14 @@ impl NativeBuiltinEmitter.emit_list(
         return p._list_from_iter(val, elem_type, elem_type);
     }
 
-    if p._is_bytes_value(val) {
+    _byte_src = p._bytearray_src_of(val);
+    if _byte_src is not None {
         p._emit_list_helpers("i64", i64);
         helpers = p.list_helpers.get("i64");
         if helpers is None {
             return None;
         }
-        count = p._bytes_len_val(val);
-        data = p._bytes_data_ptr(val);
+        (data, count) = _byte_src;
         result = b.call(helpers["new"], [], name="b2l.new");
         func = b.basic_block.function;
         entry_bb = b.basic_block;
@@ -6089,31 +6160,65 @@ impl NativeBuiltinEmitter.emit_frozenset(
 impl NativeBuiltinEmitter.emit_bytes(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
     p = ctx.pass_ref;
+    i64 = ir.IntType(64);
+    if not args {
+        return p._bytes_alloc(ir.Constant(i64, 0));
+    }
+    val = args[0];
+    if isinstance(val.type, ir.IntType) {
+        return _emit_zeroed_bytes(p, val);
+    }
+    _src = p._bytearray_src_of(val);
+    if _src is not None {
+        return p._bytes_from_raw(_src[0], _src[1]);
+    }
+    return _emit_bytes_from_int_list(p, val, "bytes must be in range(0, 256)", []);
+}
+
+def _emit_zeroed_bytes(p: NaIRGenPass, count: ir.Value) -> ir.Value {
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    n = p._coerce_type(count, i64);
+    p._emit_runtime_raise(
+        b.icmp_signed("<", n, ir.Constant(i64, 0), name="bytes.neg"),
+        "ValueError",
+        "negative count"
+    );
+    bv = p._bytes_alloc(n);
+    memset_fn = p._get_or_declare_extern("memset", i8p, [i8p, i32, i64]);
+    b.call(memset_fn, [p._bytes_data_ptr(bv), ir.Constant(i32, 0), n]);
+    return bv;
+}
+
+def _emit_bytes_from_int_list(
+    p: NaIRGenPass, val: ir.Value, message: str, release_on_error: list[ir.Value]
+) -> (ir.Value | None) {
     b = get_builder(p);
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
-    val = args[0];
-    if ("u8" in p.list_types and val.type == p.list_types["u8"].as_pointer()) {
-        _src = p._bytearray_src_of(val);
-        if _src is not None {
-            return p._bytes_from_raw(_src[0], _src[1]);
-        }
-    }
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
-        if ltype is not None and val.type == ltype.as_pointer() {
-            list_len = b.call(lhelpers["len"], [val], name="bytes.len");
-            bv = p._bytes_alloc(list_len);
-            data = p._bytes_data_ptr(bv);
+        if ltype is None or val.type != ltype.as_pointer() {
+            continue;
+        }
+        elem_type = lhelpers["elem_type"];
+        if not isinstance(elem_type, ir.IntType) or elem_type.width > 64 {
+            return None;
+        }
+        list_len = b.call(lhelpers["len"], [val], name="bytes.len");
+        bv: (ir.Value | None) = None;
+        for phase in ("check", "copy") {
+            if phase == "copy" {
+                bv = p._bytes_alloc(list_len);
+            }
             func = b.basic_block.function;
             entry_bb = b.basic_block;
-            loop_bb = func.append_basic_block(name="bytes.loop");
-            body_bb = func.append_basic_block(name="bytes.body");
-            done_bb = func.append_basic_block(name="bytes.done");
+            loop_bb = func.append_basic_block(name=f"bytes.{phase}.loop");
+            body_bb = func.append_basic_block(name=f"bytes.{phase}.body");
+            done_bb = func.append_basic_block(name=f"bytes.{phase}.done");
             b.branch(loop_bb);
             b.position_at_start(loop_bb);
             idx = b.phi(i64, name="bytes.idx");
@@ -6122,15 +6227,29 @@ impl NativeBuiltinEmitter.emit_bytes(
             b.cbranch(at_end, done_bb, body_bb);
             b.position_at_start(body_bb);
             elem = b.call(lhelpers["get"], [val, idx], name="bytes.elem");
-            byte_val = b.trunc(elem, i8, name="bytes.trunc");
-            bp = b.gep(data, [idx], name="bytes.bp");
-            b.store(byte_val, bp);
+            if phase == "check" {
+                p._emit_runtime_raise(
+                    b.icmp_unsigned(
+                        ">",
+                        p._coerce_type(elem, i64),
+                        ir.Constant(i64, 255),
+                        name="bytes.range"
+                    ),
+                    "ValueError",
+                    message,
+                    release_on_error=[val, *release_on_error]
+                );
+            } else {
+                assert bv is not None , "the copy phase allocates the result";
+                bp = b.gep(p._bytes_data_ptr(bv), [idx], name="bytes.bp");
+                b.store(b.trunc(p._coerce_type(elem, i64), i8, name="bytes.trunc"), bp);
+            }
             nidx = b.add(idx, ir.Constant(i64, 1), name="bytes.nidx");
-            idx.add_incoming(nidx, body_bb);
+            idx.add_incoming(nidx, b.basic_block);
             b.branch(loop_bb);
             b.position_at_start(done_bb);
-            return bv;
         }
+        return bv;
     }
     return None;
 }
@@ -6140,11 +6259,19 @@ impl NativeBuiltinEmitter.emit_bytearray(
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
     b = get_builder(p);
-    i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     p._ensure_bytearray_type();
     fns = p._bytearray_runtime_fns();
+    n: (ir.Value | None) = None;
+    if args and isinstance(args[0].type, ir.IntType) {
+        n = p._coerce_type(args[0], i64);
+        p._emit_runtime_raise(
+            b.icmp_signed("<", n, ir.Constant(i64, 0), name="ba.neg"),
+            "ValueError",
+            "negative count"
+        );
+    }
     buf = p._rc_call_with_ctx(
         p.list_helpers["u8"]["new"], [], op="new", loc="", name="ba.new"
     );
@@ -6152,8 +6279,7 @@ impl NativeBuiltinEmitter.emit_bytearray(
         return buf;
     }
     a0 = args[0];
-    if isinstance(a0.type, ir.IntType) {
-        n = p._coerce_type(a0, i64);
+    if n is not None {
         b.call(fns["reserve"], [buf, n], name="");
         data_p = b.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ba.z.data.p"
@@ -6172,7 +6298,7 @@ impl NativeBuiltinEmitter.emit_bytearray(
         return buf;
     }
 
-    _bv = self.emit_bytes(ctx, [a0]);
+    _bv = _emit_bytes_from_int_list(p, a0, "byte must be in range(0, 256)", [buf]);
     if _bv is not None and p._is_bytes_value(_bv) {
         _bsrc = p._bytearray_src_of(_bv);
         if _bsrc is not None {

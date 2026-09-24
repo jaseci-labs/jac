@@ -1972,7 +1972,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         self.emit_diag(E1129, expr, type=str(operand_type));
                         return UnknownType(is_diagnosed=True);
                     }
-                    return operand_type;
+                    return arithmetic_result_type(self, operand_type);
                 }
             }
 
@@ -3029,6 +3029,9 @@ impl TypeEvaluator._assign_class(
 
             return src_type.get_literal_value() == dest_type.get_literal_value();
         }
+        if src_type.is_builtin(["ptr", "PtrView", "Pinned"]) {
+            return self._assign_c_interop_args(src_type, dest_type, strict);
+        }
 
         if src_type.private.type_args and dest_type.private.type_args {
             if len(src_type.private.type_args) == len(dest_type.private.type_args) {
@@ -3106,6 +3109,32 @@ impl TypeEvaluator._assign_class(
         }
     }
     return False;
+}
+
+impl TypeEvaluator._assign_c_interop_args(
+    src_type: ClassType, dest_type: ClassType, strict: bool = False
+) -> bool {
+    import from jaclang.compiler.c_interop { c_type_arg }
+    dest_arg = c_type_arg(dest_type);
+    src_arg = c_type_arg(src_type);
+    if isinstance(dest_arg, TypeVarType) or isinstance(src_arg, TypeVarType) {
+        return True;
+    }
+    if dest_arg is None {
+        return True;
+    }
+    if src_arg is None {
+        return not src_type.is_builtin("ptr");
+    }
+    if not isinstance(dest_arg, TypeBase) or not isinstance(src_arg, TypeBase) {
+        return True;
+    }
+    dest_inst = self._convert_to_instance(dest_arg);
+    src_inst = self._convert_to_instance(src_arg);
+    if isinstance(dest_inst, ClassType) and isinstance(src_inst, ClassType) {
+        return src_inst.shared.same_class(dest_inst.shared);
+    }
+    return self.assign_type(src_inst, dest_inst, strict);
 }
 
 impl TypeEvaluator._is_protocol_class(cls_type: ClassType) -> bool {

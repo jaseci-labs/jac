@@ -265,8 +265,11 @@ impl Archetype.__init_subclass__(cls: any, **kwargs: object) -> None {
         import from jaclang { JacRuntimeInterface as _ }
         _.make_archetype(cls);
         if 'drop' in cls.__dict__ {
-            import from jaclang.runtime.builtin { _jac_region_instrument }
-            _jac_region_instrument(cls);
+            import from jaclang.runtime.region { is_drop_hook }
+            if is_drop_hook(cls.__dict__['drop']) {
+                import from jaclang.runtime.builtin { _jac_region_instrument }
+                _jac_region_instrument(cls);
+            }
         }
         for hook in Archetype._subclass_hooks {
             hook(cls);

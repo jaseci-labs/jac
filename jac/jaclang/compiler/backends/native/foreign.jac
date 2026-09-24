@@ -1,5 +1,6 @@
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+import from jaclang.compiler.frontend.constant { is_borrow_kind }
 
 def collect_foreign_structs(
     modules: list[uni.Module]
@@ -68,17 +69,22 @@ def collect_foreign_fns(modules: list[uni.Module]) -> dict[str, dict[str, any]] 
                     continue;
                 }
                 params: list[tuple[str | None, str | None]] = [];
+                borrowed: list[bool] = [];
                 for p in decl.signature.get_parameters() {
                     if p.is_vararg or p.is_kwargs {
                         continue;
                     }
+                    is_borrow = p.type_tag is not None
+                        and is_borrow_kind(p.type_tag.ownership);
                     ptn = declared_type_name(p.type_tag.tag)
-                        if (p.type_tag and p.type_tag.tag)
+                        if (p.type_tag and p.type_tag.tag and not is_borrow)
                         else None;
                     params.append((p.name.value if p.name else None, ptn));
+                    borrowed.append(is_borrow);
                 }
                 out[fname] = {
                     "params": params,
+                    "borrowed": borrowed,
                     "ret": declared_type_name(decl.signature.return_type)
                 };
             }

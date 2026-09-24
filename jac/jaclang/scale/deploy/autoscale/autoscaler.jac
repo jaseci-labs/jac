@@ -48,6 +48,51 @@ obj AutoscalerRuntimeStatus(ResourceStatusInfo) {
 }
 
 
+obj AutoscalerTransition {
+    has scale_target_name: str,
+        namespace: str,
+        state: ResourceStatus,
+        previous_state: (ResourceStatus | None) = None,
+        autoscaler_name: (str | None) = None,
+        engine: str = "",
+        observed_at: str = "",
+        resource_version: (str | None) = None,
+        reason: str = "",
+        message: (str | None) = None;
+}
+
+
+def transition_from(
+    status: AutoscalerRuntimeStatus,
+    scale_target_name: str,
+    namespace: str,
+    previous_state: (ResourceStatus | None)
+) -> AutoscalerTransition {
+    """A transition built from the same status the point-in-time API returns.
+
+    Derived rather than recomputed so an observer and get_runtime_status can
+    never disagree about one target. `observed_at` is stamped here, when this
+    observer saw the change, which is not when the change happened: a
+    transition that occurred while the observer was down is reported as current
+    state on the next relist and carries that later timestamp. Callers that
+    need the real moment something happened keep their own record.
+    """;
+    import from datetime { datetime, timezone }
+    return AutoscalerTransition(
+        scale_target_name=scale_target_name,
+        namespace=namespace,
+        state=status.status,
+        previous_state=previous_state,
+        autoscaler_name=status.autoscaler_name,
+        engine=status.engine,
+        observed_at=datetime.now(timezone.utc).isoformat(),
+        resource_version=status.resource_version,
+        reason=status.reason,
+        message=status.message
+    );
+}
+
+
 def normalize_conditions(raw: any) -> list[dict[str, any]] {
     """Kubernetes conditions as plain dicts, whichever client produced them.
 
@@ -206,6 +251,27 @@ class Autoscaler {
         do for them.
         """;
         return self.workload_runtime_status(scale_target_name, namespace);
+    }
+
+    def watch_scale_targets(
+        self: Autoscaler,
+        namespace: str,
+        label_selector: (str | None) = None,
+        timeout_seconds: (int | None) = None
+    ) -> any {
+        """Stream deduplicated state transitions for a namespace's targets.
+
+        Cardinality is the caller's: one call opens a bounded number of watches
+        for that namespace and nothing here shares them between callers, so a
+        control plane that wants one stream for many targets makes one call and
+        fans out in its own process. An engine without a resource that reports
+        scaling intent has nothing to watch and says so rather than silently
+        yielding nothing.
+        """;
+        raise NotImplementedError(
+            "watch_scale_targets() is implemented by engines whose scaling "
+            "intent is a watchable resource; this engine has none."
+        );
     }
 
     def workload_runtime_status(

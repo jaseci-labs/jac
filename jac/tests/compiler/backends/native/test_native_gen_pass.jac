@@ -3348,10 +3348,11 @@ test "clib System V AMD64 ABI lowering" {
     assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64 (merge to INTEGER)";
     # Two SSE double eightbytes.
     assert 'declare double @"dd_sum"(double %"d.0", double %"d.1")' in s , "DD -> two doubles";
-    # MEMORY class (>16B, nested): byval pointer argument, sret return.
-    assert '%"Cam.cabi" = type' in s , "C-layout type for nested struct";
-    assert 'byval(%"Cam.cabi")' in s , "Cam passed byval";
-    assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    # MEMORY class (>16B, nested): byval pointer argument, sret return. Nested
+    # structs are embedded by value, so the Jac object is already C layout.
+    assert '%"Cam" = type {%"V3", %"V3", %"V3", float, i32}' in s , "Cam C layout";
+    assert 'byval(%"Cam")' in s , "Cam passed byval";
+    assert 'sret(%"Cam")' in s , "Cam returned via sret";
     result_declaration = next(
         line
         for line in s.splitlines()
@@ -3362,11 +3363,10 @@ test "clib System V AMD64 ABI lowering" {
         for line in s.splitlines()
         if line.startswith('declare float @"cam_fovy"')
     );
-    assert 'sret(%"Cam.cabi") align 8' in result_declaration;
-    assert 'byval(%"Cam.cabi") align 8' in argument_declaration;
-    # The non-injective return-boxing (gap #7) is gone: a scalar return is never
-    # rerouted through struct boxing.
-    assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
+    assert 'sret(%"Cam") align 8' in result_declaration;
+    assert 'byval(%"Cam") align 8' in argument_declaration;
+    # No per-call marshalling copy: the object is passed as is.
+    assert "clib.cabi.arg" not in s , "nested struct needs no C-layout repacking";
 }
 
 test "jac run loads a transitive imported-module clib (issue #6687)" {
@@ -3451,9 +3451,11 @@ test "clib AArch64 AAPCS ABI lowering" {
         assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64";
         # Large (>16B) aggregate: indirect via a PLAIN pointer (no byval), and
         # sret for the return.
-        assert 'declare float @"cam_fovy"(%"Cam.cabi"* %"c")' in s , "Cam -> plain ptr (indirect)";
+        assert 'declare float @"cam_fovy"(%"Cam"* %"c")' in s , "Cam -> plain ptr (indirect)";
         assert "byval" not in s , "AAPCS must not emit byval";
-        assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+        assert 'sret(%"Cam")' in s , "Cam returned via sret";
+        # Nested structs are embedded by value: the Jac object IS the C layout.
+        assert '%"Cam" = type {%"V3", %"V3", %"V3", float, i32}' in s , "Cam C layout";
     } finally {
         pop_native_target(_saved);
     }

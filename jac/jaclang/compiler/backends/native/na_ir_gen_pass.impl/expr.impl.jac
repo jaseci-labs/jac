@@ -1348,9 +1348,19 @@ impl NaIRGenPass._codegen_compare_link(
             );
         }
 
-        if self._is_bytes_value(left) and self._is_bytes_value(right) {
+        if self._is_bytes_value(right)
+            and (self._is_bytes_value(left) or isinstance(left.type, ir.IntType)) {
             i64 = ir.IntType(64);
-            is_found = self._emit_bytes_contains(left, right);
+            byte_at = None
+                if self._is_bytes_value(left)
+                else self._emit_bytes_search(right, [left], "find");
+            if byte_at is None {
+                is_found = self._emit_bytes_contains(left, right);
+            } else {
+                is_found = self.builder.icmp_signed(
+                    ">=", byte_at, ir.Constant(i64, 0), name="by.in.byte"
+                );
+            }
             result = self.builder.zext(is_found, i64, name="by.in.i64");
             if is_not_in {
                 result = self.builder.icmp_signed(
@@ -1667,13 +1677,13 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
         return operand;
     }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
+    if op in (Tok.MINUS, Tok.PLUS, Tok.BW_NOT) and operand.type == ir.IntType(1) {
+        operand = self.builder.zext(operand, ir.IntType(64), name="bool.widen");
+    }
     if op == Tok.MINUS {
         if isinstance(operand.type, (ir.DoubleType, ir.FloatType)) {
             return self.builder.fneg(operand, name="fneg");
         } elif isinstance(operand.type, ir.IntType) {
-            if operand.type.width == 1 {
-                return self.builder.neg(operand, name="neg");
-            }
             if self._is_sized_node(nd) or self._is_sized_node(nd.operand) {
                 return self._emit_checked_neg(operand);
             }
@@ -1955,6 +1965,10 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
     if isinstance(nd.right, uni.FilterCompr) {
         return self._codegen_chained_filter(nd);
+    }
+    (_c_handled, _c_val) = self._codegen_c_interop_trailer(nd);
+    if _c_handled {
+        return _c_val;
     }
     if nd.is_attr {
         target_name = self._get_name(nd.target);

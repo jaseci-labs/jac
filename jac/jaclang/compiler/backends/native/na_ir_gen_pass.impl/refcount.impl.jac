@@ -639,8 +639,11 @@ impl NaIRGenPass._opt_result_owned(val: ir.Value, expr: object) -> bool {
 }
 
 impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
-    if not isinstance(nd, uni.Assignment) or not nd.na_move_lowerable {
+    if not isinstance(nd, uni.Assignment) {
         return False;
+    }
+    if not nd.na_move_lowerable {
+        return self._nogc_consume_assigned_local(nd);
     }
     rhs = nd.value;
     if not isinstance(rhs, uni.Name) {
@@ -667,6 +670,34 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
         return False;
     }
     self.builder.store(ir.Constant(src_alloca.pointee_type, None), src_alloca);
+    self.rc_ops_elided += 1;
+    return True;
+}
+
+impl NaIRGenPass._nogc_consume_assigned_local(nd: uni.Assignment) -> bool {
+    import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
+    if nd.aug_op is not None
+        or len(nd.target) != 1
+        or not isinstance(nd.target[0], uni.Name)
+        or self._nogc_borrow_local_assign(nd) {
+        return False;
+    }
+    if nd.type_tag is not None
+        and (
+            is_borrow_kind(nd.type_tag.ownership)
+            or nd.type_tag.ownership == OwnershipKind.IMM
+        ) {
+        return False;
+    }
+    rhs = nd.value;
+    if not isinstance(rhs, uni.Name)
+        or rhs.value in self.closure_cell_handles
+        or rhs.value in self.borrowed_vars {
+        return False;
+    }
+    if not self._nogc_consume_local(rhs) {
+        return False;
+    }
     self.rc_ops_elided += 1;
     return True;
 }
@@ -1754,25 +1785,40 @@ impl NaIRGenPass._drop_hook_for(type_name: str) -> (ir.Function | None) {
         return cached;
     }
     for owner in self._mro_of(type_name) {
+        member = self._drop_member_of(owner);
+        if member is not None and not member.is_def {
+            return None;
+        }
         hook = self.func_symtab.get(f"{owner}.drop");
-        if hook is None {
-            arch = self.arch_ast_map.get(owner);
-            if arch is not None and arch.body is not None {
-                for ability in arch.get_all_sub_nodes(uni.Ability) {
-                    if ability.find_parent_of_type(uni.Archetype) is not arch
-                        or ability.name_ref is None
-                        or ability.name_ref.sym_name != "drop" {
-                        continue;
-                    }
-                    self._forward_declare_method(owner, ability);
-                    hook = self.func_symtab.get(f"{owner}.drop");
-                    break;
-                }
-            }
+        if hook is None and member is not None {
+            self._forward_declare_method(owner, member);
+            hook = self.func_symtab.get(f"{owner}.drop");
         }
         if hook is not None {
             self.struct_drop_hooks[type_name] = hook;
             return hook;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._drop_member_of(owner: str) -> (uni.Ability | None) {
+    arch = self.arch_ast_map.get(owner);
+    if arch is None or arch.body is None {
+        return None;
+    }
+    for ability in arch.get_all_sub_nodes(uni.Ability) {
+        if ability.find_parent_of_type(uni.Archetype) is arch
+            and ability.name_ref is not None
+            and ability.name_ref.sym_name == "drop" {
+            return ability;
+        }
+    }
+    for stmt in arch._get_impl_resolved_body() {
+        if isinstance(stmt, uni.Ability)
+            and stmt.name_ref is not None
+            and stmt.name_ref.sym_name == "drop" {
+            return stmt;
         }
     }
     return None;

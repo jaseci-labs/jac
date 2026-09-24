@@ -859,14 +859,40 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
     }
     if type_expr is not None {
         declared = self.get_type_of_expression(type_expr);
-        if isinstance(declared, ClassType) and not declared.is_builtin() {
-            scope = declared.shared.symbol_table;
-            if isinstance(scope, Archetype) {
-                return self._convert_to_instance(declared);
-            }
+        if self._is_typed_c_declaration(declared) {
+            return self._convert_to_instance(declared);
         }
     }
     return AnyType(is_foreign=True);
+}
+
+impl TypeEvaluator._is_typed_c_declaration(declared: TypeBase) -> bool {
+    import from jaclang.compiler.c_interop { c_builtin_kind }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if isinstance(declared, UnionType) {
+        saw_typed = False;
+        for member in declared.types {
+            if isinstance(member, ClassType)
+                and member.shared.class_name in ("NoneType", "None") {
+                continue;
+            }
+            if not self._is_typed_c_declaration(member) {
+                return False;
+            }
+            saw_typed = True;
+        }
+        return saw_typed;
+    }
+    if not isinstance(declared, ClassType) {
+        return False;
+    }
+    if c_builtin_kind(declared) {
+        return True;
+    }
+    if declared.is_builtin() {
+        return JAC_TYPE_REGISTRY.is_sized(declared.shared.class_name);
+    }
+    return isinstance(declared.shared.symbol_table, Archetype);
 }
 
 impl TypeEvaluator._check_extern_ctor_args(expr: FuncCall, arch: Archetype) -> None {

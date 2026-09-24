@@ -78,7 +78,7 @@ remaining rows.
 | 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + `WasmLinker` exports |
 | 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | `WasmLinker` import table + cl host shim |
 | 11 | **`sv/na ↔ py`** | Free | Literal Python import / meta-path finder | Live CPython objects | `JcirGenPass` (`import`→`ast.Import`) + `meta_importer` |
-| 12 | **`na ↔ C`** | Marshalled (ABI) | System V AMD64 / AAPCS calling convention | C scalars & structs (by value or pointer) | `NaIRGenPass` clib marshaller |
+| 12 | **`na ↔ C`** | Marshalled (ABI) | System V AMD64 / AAPCS calling convention | C scalars, C-layout structs (by value or by address), `ptr[T]` addresses, pinned payloads | `NaIRGenPass` clib marshaller (`ctypes` on the Python backend) |
 | 13 | **`na → C host`** | Marshalled (ABI) | `--lib` C-ABI export | Scalars by value; Jac objects as opaque handles | `nacompile` `_inject_shared_init` + platform linkers |
 
 The rest of the document is one section per group of rows.
@@ -340,9 +340,15 @@ parameter lowers to `i8*`. A clib declaration with a *body* is an error
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| **Declaration model** | `compiler/backends/native/foreign.jac` | What the user declared: scalar sizes (`FOREIGN_SCALARS`), C struct layout (`foreign_struct_layout` -- byte offsets, alignment, tail padding, nested-by-value flattening) |
+| **Declaration model** | `compiler/backends/native/foreign.jac` | What the user declared: scalar sizes (`FOREIGN_SCALARS`), C struct layout (`foreign_struct_layout` -- byte offsets, alignment, tail padding, nested-by-value flattening), which parameters are borrows |
 | **psABI classifier** | `compiler/backends/native/abi.jac` | Pure calling-convention logic: `classify_struct` dispatches on the triple -- `aarch64`/`arm64` → AAPCS, else System V AMD64 |
-| **Backend marshaller** | `na_ir_gen_pass.impl/clib_abi.impl.jac` | Emits the actual call: applies the plan, builds the parallel `.cabi` LLVM type, copies between Jac and C layouts |
+| **Backend marshaller** | `na_ir_gen_pass.impl/clib_abi.impl.jac`, `na_ir_gen_pass.impl/c_interop.impl.jac` | Emits the actual call: applies the plan, splits by-value structs into their register pieces, passes borrowed storage and pointers as addresses |
+
+The facts every consumer shares -- which `obj` is a foreign struct or an
+opaque C type, which read copies a struct out of C storage, what `ptr[T]`,
+`PtrView[T]` and `Pinned[T]` denote -- live in one module,
+`compiler/c_interop.jac`, read by the checker, the ownership pass and both
+backends.
 
 ### How structs cross
 
@@ -363,6 +369,51 @@ site. Whether a struct travels by pointer or by value differs for
 The marshaller marks `byval`/`sret` on **both** the function declaration and
 the call instruction -- omit either and LLVM passes the pointer in a register
 instead of copying the aggregate, silently violating the ABI.
+
+A foreign struct's Jac storage **is** its C layout: nested structs are
+embedded by value (the LLVM struct `%Camera = {%Vector3, %Vector3, float,
+i32}`), so the object pointer is already the `T*` C expects and no call
+copies between a Jac shape and a C shape. A managed or RC object keeps that
+payload behind its header, at an address that never moves; under headerless
+`nogc` codegen the payload is a bare allocation, or is flattened into an
+owner like other acyclic owned fields. Reading a nested struct field (or a
+view element) as a value copies its bytes into a fresh object; reaching
+through it (`cam.position.x`, `&mut cam.position`, `cam.position = v`)
+works in place. `foreign_read_copies` in `compiler/c_interop.jac` is the one
+rule both backends lower.
+
+### Pointers, borrows and pinned payloads
+
+- **`&T` / `&mut T` parameters** are declared as a plain pointer. A foreign
+  struct argument passes its payload address; a scalar argument passes the
+  address of its slot (spilled to a slot of the C type and copied back after
+  the call when the Jac slot differs, e.g. `bool`). The borrow's lifetime is
+  the call, so the ownership checker needs no new rule, and a clib call
+  never consumes its arguments.
+- **`ptr[T]`** lowers to an `i64` in Jac values (locals, fields, container
+  elements, foreign struct fields), so no reference-count or cycle-collector
+  path ever sees it; the marshaller converts at the call boundary.
+- **`PtrView[T]`** is a by-value `{address, length}` pair. Indexing
+  normalises a negative index, checks the bounds (raising `IndexError`) and
+  addresses the element; a struct element read in value position is copied.
+- **`Pinned[T]`** is a pointer to a box of `T` -- a heap object whose
+  address is stable because nothing moves heap objects. Under `rc`/`managed`
+  it is reference counted like the struct itself; under `nogc` it is an owned
+  allocation dropped at its static point, and it is never flattened into an
+  owner (flattening would copy the payload). A `&Pinned[T]` parameter
+  receives the box's payload address; `| None` passes NULL.
+
+### The Python backend
+
+When the Python backend is requested (`jac run --backend python`, a forced
+`server` codespace), a clib import is no longer seeded native: `JcirGenPass`
+serialises the block (library, structs, opaque types, function signatures
+as type specs) into one `_jac_clib_bind(globals(), <json>)` call, and
+`jaclang/runtime/cinterop.jac` builds `ctypes.Structure` subclasses with the
+same layout and `ctypes` function wrappers from it. Scalar `&mut` arguments
+travel as cells written back to their place after the call, and the same
+foreign-storage reads copy, so a program prints identically on both
+backends.
 
 > **Contrast with Jac-native structs.** A user-defined Jac `obj` is a
 > reference-counted heap allocation and lowers to *pointer-to-struct*

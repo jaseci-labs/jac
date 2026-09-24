@@ -11,6 +11,7 @@ import from jaclang.server.serving.datatypes { Response }
 import logging;
 
 glob logger = logging.getLogger(__name__),
+     MULTIPROC_DIR_ENV: str = 'PROMETHEUS_MULTIPROC_DIR',
      DEFAULT_BUCKETS: tuple[float, ...] = (
          0.005,
          0.01,
@@ -27,8 +28,20 @@ glob logger = logging.getLogger(__name__),
          10.0
      );
 
+def _merges_across_workers -> bool {
+    import os;
+    if not os.environ.get(MULTIPROC_DIR_ENV) {
+        return False;
+    }
+    import from prometheus_client { values }
+    return values.ValueClass is not values.MutexValue;
+}
+
+
 obj PrometheusMetricsCollector(MetricsCollector) {
     has config: dict[str, any] = {},
+        worker_count: int = 1,
+        _multiprocess: bool = False,
         _enabled: bool postinit,
         _namespace: str postinit,
         _include_walker_metrics: bool postinit,
@@ -49,6 +62,11 @@ obj PrometheusMetricsCollector(MetricsCollector) {
 
         if not self._enabled {
             return;
+        }
+
+        self._multiprocess = _merges_across_workers();
+        if self.worker_count > 1 and not self._multiprocess {
+            logger.error(self._fleet_diagnosis());
         }
 
         if self._registry is None {
@@ -73,7 +91,8 @@ obj PrometheusMetricsCollector(MetricsCollector) {
                 "jac_info",
                 "Jac runtime version information",
                 ["version"],
-                registry=self._registry
+                registry=self._registry,
+                multiprocess_mode="max"
             );
             self._jac_info.labels(version=version).set(1);
         } except Exception as e {
@@ -112,7 +131,8 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         self._active_requests = Gauge(
             f"{self._namespace}_http_requests_in_progress",
             "Number of HTTP requests currently being processed",
-            registry=self._registry
+            registry=self._registry,
+            multiprocess_mode="livesum"
         );
 
         if self._include_walker_metrics {
@@ -128,7 +148,8 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         self._ws_connections_active = Gauge(
             f"{self._namespace}_ws_connections_active",
             "Active WebSocket connections",
-            registry=self._registry
+            registry=self._registry,
+            multiprocess_mode="livesum"
         );
 
         self._ws_broadcasts_total = Counter(
@@ -202,9 +223,34 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         }
     }
 
-    def _scrape_registry -> any {
+    def _fleet_diagnosis -> str {
         import os;
-        if not os.environ.get('PROMETHEUS_MULTIPROC_DIR') {
+        if not os.environ.get(MULTIPROC_DIR_ENV) {
+            return (
+                f"{MULTIPROC_DIR_ENV} is unset with {self.worker_count} workers, so "
+                "each worker counts into its own memory and a scrape reports only "
+                "the worker that answers it; the serve entry point has to open a "
+                "worker_metrics_dir scope before the application loads"
+            );
+        }
+        return (
+            f"{MULTIPROC_DIR_ENV} is set but prometheus_client had already chosen "
+            f"in-memory values, so the {self.worker_count} workers write nothing to "
+            "it; something imported prometheus_client before the serve entry point "
+            "opened the worker_metrics_dir scope"
+        );
+    }
+
+    def worker_exited(pid: int) {
+        import os;
+        if self._multiprocess {
+            import from prometheus_client.multiprocess { mark_process_dead }
+            mark_process_dead(pid, os.environ.get(MULTIPROC_DIR_ENV));
+        }
+    }
+
+    def _scrape_registry -> any {
+        if not self._multiprocess {
             return self._registry;
         }
         try {

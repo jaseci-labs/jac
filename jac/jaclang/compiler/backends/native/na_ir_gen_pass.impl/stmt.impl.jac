@@ -1767,6 +1767,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             continue;
         }
 
+        if isinstance(target_expr, uni.AtomTrailer)
+            and self._c_interop_store(target_expr, value, nd) {
+            continue;
+        }
+
         if isinstance(target_expr, uni.AtomTrailer) and target_expr.is_attr {
             if nd.aug_op is not None {
                 _faug_errs = len(self.ctx.errors_had);
@@ -2591,6 +2596,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 self._emit_rc_release_simple(
                     _opt_re_old_pv, op="overwrite", loc=_opt_re_loc
                 );
+            } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
+                and not is_inplace_set_op
+                and not raw_int_ptr {
+                self._nogc_consume_assigned_local(nd);
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
@@ -3087,6 +3096,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         _opt_old_pv, op="overwrite", loc=_opt_asg_loc
                     );
                 }
+            } elif self._opt_ptr_payload_of(var_type) is not None {
+                self._nogc_consume_assigned_local(nd);
             }
             self.builder.store(value, alloca);
             self.local_vars[var_name] = alloca;

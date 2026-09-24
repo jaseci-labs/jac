@@ -119,6 +119,9 @@ impl __getattr__(name: str) -> object {
             '_jac_region_instrument': 'instrument_drops'
         };
         return getattr(_region_mod, _region_map[name]);
+    } elif name in _CINTEROP_NAMES {
+        import jaclang.runtime.cinterop as _cinterop_mod;
+        return getattr(_cinterop_mod, _CINTEROP_NAMES[name]);
     } elif name.startswith('wrapping_') or _is_sized_type_name(name) {
         import jaclang.runtime.sized as _sized_mod;
         if name.startswith('wrapping_') {
