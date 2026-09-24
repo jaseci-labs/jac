@@ -135,6 +135,7 @@ walker JacAutoLintPass(TreePass) {
     can exit_bool_expr with uni.BoolExpr exit;
     def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
     def _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None;
+    def _reparse_signature(sig: uni.FuncSignature) -> (uni.FuncSignature | None);
     def _impl_owner_archetype(impl_node: uni.ImplDef) -> (uni.Archetype | None);
     def _base_decl_archetypes(annex_path: str) -> list[uni.Archetype];
     def _signatures_match(
@@ -194,7 +195,7 @@ walker JacAutoLintPass(TreePass) {
     can exit_module with uni.Module exit;
     def _strip_noise(nd: uni.Module) -> None;
     def _strip_docstrings(start: uni.UniNode) -> None;
-    def _collect_doc_nodes(`node: uni.UniNode, results: list[uni.AstDocNode]) -> None;
+    def _collect_doc_nodes(start: uni.UniNode) -> list[tuple[uni.UniNode, uni.String]];
     def _check_stale_has_read(ability_node: uni.Ability) -> None;
     def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];
     def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;
