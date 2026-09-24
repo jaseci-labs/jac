@@ -187,3 +187,89 @@ def c_call_borrows_args(call: (UniNode | None)) -> bool {
     target_type = call.target?.type;
     return is_ptr_type(target_type);
 }
+
+glob _SPEC_SCALAR_ALIASES: dict[str, str] = {"int": "i64", "float": "f64"};
+
+def c_type_spec(t: object, annotation: (UniNode | None) = None) -> list[any] {
+    import from jaclang.compiler.types.types { ClassType, FunctionType, UnionType }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if isinstance(t, UnionType) {
+        members = [
+            m
+            for m in (t.types or [])
+            if not (
+                isinstance(m, ClassType) and m.shared.class_name in ("NoneType", "None")
+            )
+        ];
+        if len(members) == 1 {
+            inner = c_type_spec(members[0], None);
+            return ["opt", inner] if len(members) < len(t.types or []) else inner;
+        }
+        return ["any"];
+    }
+    if isinstance(t, FunctionType) {
+        return [
+            "fn",
+            [c_type_spec(p.param_type, None) for p in (t.parameters or [])],
+            c_type_spec(t.return_type, None)
+        ];
+    }
+    if isinstance(t, ClassType) and t._shared is not None {
+        kind = c_builtin_kind(t);
+        if kind == "ptr" {
+            arg = c_type_arg(t);
+            return ["ptr", None if arg is None else c_type_spec(arg, None)];
+        }
+        if kind == "Pinned" {
+            return ["pinned", c_type_spec(c_type_arg(t), None)];
+        }
+        name = t.shared.class_name;
+        if name in ("NoneType", "None") {
+            return ["void"];
+        }
+        arch = clib_archetype_of_type(t);
+        if arch is not None {
+            return [
+                "opaque" if is_opaque_c_archetype(arch) else "struct",
+                arch.name.value
+            ];
+        }
+        if t.is_builtin() {
+            return _spec_for_name(name) or ["any"];
+        }
+        return ["any"];
+    }
+    written = _annotation_name(annotation);
+    if written is not None {
+        return _spec_for_name(written) or ["any"];
+    }
+    return ["any"];
+}
+
+def _spec_for_name(name: str) -> (list[any] | None) {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if name == "str" {
+        return ["str"];
+    }
+    if name in ("bytes", "bytearray") {
+        return ["bytes"];
+    }
+    if name == "None" {
+        return ["void"];
+    }
+    if JAC_TYPE_REGISTRY.is_numeric(name) {
+        return ["s", _SPEC_SCALAR_ALIASES.get(name, name)];
+    }
+    return None;
+}
+
+def _annotation_name(annotation: (UniNode | None)) -> (str | None) {
+    import from jaclang.compiler.frontend.unitree { Name, Null }
+    if isinstance(annotation, Null) {
+        return "None";
+    }
+    if isinstance(annotation, Name) {
+        return annotation.value;
+    }
+    return None;
+}

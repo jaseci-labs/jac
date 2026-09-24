@@ -430,6 +430,10 @@ impl JcirGenPass.exit_import with Import exit {
         self.set_out(here, []);
         return;
     }
+    if here.clib_decls {
+        self.set_out(here, self._gen_clib_binding(here));
+        return;
+    }
     if (here.from_loc and here.from_loc.path) {
         module_parts = [
             p.value
@@ -520,7 +524,11 @@ impl JcirGenPass.exit_import with Import exit {
 impl JcirGenPass.exit_module_path with ModulePath exit {
     if here.string_path_value is not None {
         import_node = here.parent_of_type(Import);
-        if (import_node and (import_node.code_context != CodeContext.CLIENT)) {
+        if (
+            import_node
+            and import_node.code_context != CodeContext.CLIENT
+            and not import_node.clib_decls
+        ) {
             self.ctx.emit(E5001, node_override=here, path=str(here.string_path_value));
         }
     }
