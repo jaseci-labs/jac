@@ -274,8 +274,8 @@ impl StaticAnalysisPass._check_unreachable_code(mod: Module) -> None {
     }
 
     for container in containers {
-        body = container?.body;
-        if not body or not isinstance(body, Sequence) {
+        body: list[UniNode] = [container->:BodyRole:->];
+        if not body {
             continue;
         }
         found_terminator = False;
