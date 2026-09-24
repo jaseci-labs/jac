@@ -292,6 +292,18 @@ Emitted by the type checker and type evaluator.
 | `E1080` | Contravariant type variable cannot be used in return type |
 | `E1081` | Covariant type variable cannot be used in parameter type |
 
+### C Interop Errors
+
+Emitted by the type checker for [C library](language/native-pathway.md#c-library-interop) declarations and their uses. They block native codegen.
+
+| Code | Message |
+|------|---------|
+| `E1150` | Field '{field}' of foreign struct '{name}' {reason} |
+| `E1151` | Opaque C type '{name}' has no known size, so it cannot be {use} |
+| `E1152` | {what} needs C plain data, not {type} |
+
+A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bool`, another foreign struct (nested by value, never containing itself), `ptr[T]` / `ptr`, or a named-function callback (`E1150`). A bodiless `obj Name;` declares an opaque C type, usable only as `ptr[Name]` (`E1151`). `pin(value)`, `p.view(n)` and `&T` / `&mut T` clib parameters lay their payload out in C memory, so `T` needs a known size (`E1152`). Escaping a `PtrView` of C memory is `E1315`, and passing anything but a `Pinned[T]` to a `&mut Pinned[T]` parameter is an ordinary argument mismatch (`E1053`).
+
 ### Exception / Context Manager / Yield
 
 | Code | Message |
@@ -631,9 +643,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 | `E5020` | Native compilation failed: {error} |
 | `W5021` | C library not found: {path} |
 | `W5022` | Failed to load C library '{path}': {error} |
-| `W5023` | Native module not found: {path} |
-| `W5024` | Failed to compile native module {path}: {error} |
-| `W5025` | Failed to link native module {path}: {error} |
+| `E5026` | Symbol collision during native link: '{symbol}' is defined in both '{existing_module}' and '{new_module}' |
 
 ### Layout Pass
 

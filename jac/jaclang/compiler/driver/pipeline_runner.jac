@@ -408,19 +408,17 @@ def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
         before = len(program.errors_had);
+        options = CompileOptions(
+            aot_mode=True,
+            default_codespace='native',
+            na_gc_mode=gc_mode,
+            memory_enforce=enf_mods,
+            memory_exempt=enf_grand,
+            native_target="wasm32-unknown-unknown"
+        );
         na_coverage_begin();
         try {
-            ir = program.compile(
-                file_path=os.path.abspath(file_path),
-                options=CompileOptions(
-                    aot_mode=True,
-                    default_codespace='native',
-                    na_gc_mode=gc_mode,
-                    memory_enforce=enf_mods,
-                    memory_exempt=enf_grand,
-                    native_target="wasm32-unknown-unknown"
-                )
-            );
+            ir = program.compile(file_path=os.path.abspath(file_path), options=options);
         } finally {
             coverage = na_coverage_end();
         }
@@ -444,16 +442,19 @@ def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
                 f"native lowering produced no IR for '{file_path}': {reason}"
             );
         }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            native_linked_ir_text
+        import from jaclang.compiler.backends.native.link_plan {
+            build_link_plan,
+            wasm_program_ir
         }
-        llvm_ir_str = native_linked_ir_text(ir);
-        app_imports = app_declared_imports(ir);
+        plan = build_link_plan(program, [ir.loc.mod_path], options);
+        llvm_ir_str = wasm_program_ir(plan);
+        app_ir_str = str(ir.gen.llvm_ir);
+        app_imports = app_declared_imports(ir, plan);
     } finally {
         pop_native_target(prev);
     }
     if gc_mode == "none" {
-        _assert_ir_rc_free(llvm_ir_str, file_path);
+        _assert_ir_rc_free(app_ir_str, file_path);
     }
     return (llvm_ir_str, app_imports);
 }

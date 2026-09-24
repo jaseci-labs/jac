@@ -94,7 +94,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     if _decl_elem is not None
         and self?.jacval_type
         and _decl_elem == self.jacval_type {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="expression",
@@ -112,7 +112,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
             self._str_norm_optional(self._codegen_expr(_first_spread))
         );
         if _first_src_info is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.values[0],
                 kind="expression",
@@ -146,7 +146,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         }
         _spread_elem = self._spread_elem_storage(_first_src_info, _first_spread);
         if _spread_elem is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.values[0],
                 kind="expression",
@@ -218,7 +218,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
                 self._str_norm_optional(self._codegen_expr(_spread_op))
             );
             if _src_info is None {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd.values[i],
                     kind="expression",
@@ -247,7 +247,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         }
         val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         if val is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.values[i],
                 kind="expression",

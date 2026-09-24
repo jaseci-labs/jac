@@ -5,8 +5,9 @@ A native program is one flat link namespace. `import math` declares libm's
 same module used to die in native lowering (`DuplicatedNameError: floor`) and
 fall back to the server codespace. Without the import the collision was
 silent instead: the backend's own `floor` extern (behind
-`float.as_integer_ratio`) bound to the user function. A user definition named
-after a C symbol is now emitted as `__jac_def_<name>`, beside the C one.
+`float.as_integer_ratio`) bound to the user function. A module-local
+definition is emitted under its module-qualified symbol, and a `:pub`
+definition named after a C symbol as `__jac_def_<name>`, beside the C one.
 """
 import ctypes;
 import os;
@@ -52,17 +53,31 @@ test "C-named user definitions get Jac-owned symbols and C keeps its own" {
     module = compile_native_ir("c_symbol_shadowing.jac");
     text = str(module.gen.llvm_ir);
     for name in ["floor", "sqrt", "strlen", "puts", "main"] {
-        assert re.search(rf'define [^\n]*@"?__jac_def_{name}"?\(', text) , (
-            f"user {name} was not emitted under its Jac-owned symbol"
+        assert re.search(rf'define [^\n]*@"[^"\n]*\.{name}"\(', text) , (
+            f"user {name} was not emitted under its module-qualified symbol"
         );
         assert not re.search(rf'define [^\n]*@"?{name}"?\(', text) , (
             f"a user definition took over the C symbol {name}"
         );
     }
-    assert re.search(r'@"?__jac_def_pow"? = ', text) , "glob pow kept the C name";
+    assert re.search(r'@"[^"\n]*\.pow" = ', text) , "glob pow kept the C name";
     assert re.search(r'declare [^\n]*@"?floor"?\(double', text) , (
         "libm floor is no longer declared for math.floor"
     );
+}
+
+test "a public C-named definition is emitted as __jac_def_ beside the C symbol" {
+    module = compile_native_ir("c_symbol_shadowing_pub.jac");
+    text = str(module.gen.llvm_ir);
+    assert re.search(r'define [^\n]*@"?__jac_def_floor"?\(', text) , (
+        "a public floor was not emitted under its Jac-owned symbol"
+    );
+    assert not re.search(r'define [^\n]*@"?floor"?\(', text) , (
+        "a public floor took over the C symbol"
+    );
+    (engine, _module) = compile_native("c_symbol_shadowing_pub.jac");
+    assert get_func(engine, "pub_floor_probe", ctypes.c_int64)() == 7;
+    assert get_func(engine, "math_floor_probe", ctypes.c_int64)() == 2;
 }
 
 test "the backend's own floor extern does not bind to a user floor" {
@@ -124,14 +139,9 @@ test "a native binary links a user main, puts and floor beside libc and libm" {
 }
 
 test "native_def_symbol moves only C-named definitions" {
-    assert native_def_symbol("/tmp/app.jac", "floor") == "__jac_def_floor";
-    assert native_def_symbol("", "sqrt") == "__jac_def_sqrt";
-    assert native_def_symbol("/tmp/app.jac", "floorish") == "floorish";
-    stdlib = native_stdlib_root();
-    if stdlib is not None {
-        library_symbol = native_def_symbol(os.path.join(stdlib, "math.jac"), "floor");
-        assert library_symbol.startswith("__jac_lib_") , library_symbol;
-    }
+    assert native_def_symbol("floor") == "__jac_def_floor";
+    assert native_def_symbol("sqrt") == "__jac_def_sqrt";
+    assert native_def_symbol("floorish") == "floorish";
 }
 
 test "every C symbol the backend or a bundled module declares is reserved" {

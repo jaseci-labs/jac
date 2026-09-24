@@ -33,7 +33,10 @@ obj SelfHostCache {
     }
 
     def resolve(
-        file_path: str, target_program: JacProgram, force: bool = False
+        file_path: str,
+        target_program: JacProgram,
+        force: bool = False,
+        native_unit: bool = False
     ) -> JacProgram {
         if not force and self.owns(file_path) {
             if self.is_selfhost(target_program) {
@@ -52,17 +55,16 @@ obj SelfHostCache {
             }
             import from jaclang.compiler.frontend.codeinfo {
                 is_native_by_location,
+                native_unit_compile_active,
                 is_shared_runtime_module
             }
             if is_native_by_location(file_path)
                 or is_shared_runtime_module(file_path) {
                 return target_program;
             }
-            import from jaclang.compiler.native_scope {
-                in_native_scope_path,
-                scope_lowering_active
-            }
-            if scope_lowering_active() and in_native_scope_path(file_path) {
+            import from jaclang.compiler.native_scope { in_native_scope_path }
+            if (native_unit or native_unit_compile_active())
+                and in_native_scope_path(file_path) {
                 return target_program;
             }
             return self.program;
@@ -86,6 +88,8 @@ obj SelfHostCache {
             slim = CodeGenTarget();
             slim.native_engine = result.gen.native_engine;
             slim.native_layout = result.gen.native_layout;
+            slim.native_iface = result.gen.native_iface;
+            slim.native_deps = list(result.gen.native_deps or []);
             slim.interop_py_funcs = result.gen.interop_py_funcs;
             slim._interop_callbacks = result.gen._interop_callbacks;
             slim.interop_manifest = result.gen.interop_manifest;

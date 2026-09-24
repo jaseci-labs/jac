@@ -71,7 +71,7 @@ obj _FactoryDefaults(Root) {
 def _old_user_raw -> dict[str, any] {
     return {
         '__type__': '_DriftUser',
-        '__module__': getattr(_DriftUser, '__module__'),
+        '__module__': type_module(_DriftUser),
         'username': 'ada',
         'tags': 'math, computing',
         'legacy_bio': 'wrote the first program',
@@ -134,7 +134,7 @@ test "repair renames aliased field and runs upgrade callback on load" {
 test "repair is idempotent: already-repaired data is untouched" {
     current = {
         '__type__': '_DriftUser',
-        '__module__': getattr(_DriftUser, '__module__'),
+        '__module__': type_module(_DriftUser),
         'name': 'ada',
         'tags': ['math'],
         'email': 'a@b'
@@ -181,7 +181,7 @@ test "attic survives a serialize round-trip" {
 test "rules apply to subclass documents (inherited field history)" {
     raw = {
         '__type__': '_DriftAdmin',
-        '__module__': getattr(_DriftAdmin, '__module__'),
+        '__module__': type_module(_DriftAdmin),
         'username': 'grace',
         'tags': 'navy, compilers',
         'email': 'g@x',
@@ -200,7 +200,7 @@ test "rules apply to subclass documents (inherited field history)" {
 test "unknown stored fields are atticed instead of silently dropped" {
     raw = {
         '__type__': '_NoRules',
-        '__module__': getattr(_NoRules, '__module__'),
+        '__module__': type_module(_NoRules),
         'name': 'ok',
         'stray_field': 'still here'
     };
@@ -220,7 +220,7 @@ test "unknown stored fields are atticed instead of silently dropped" {
 test "stored attic from a prior repair is carried through deserialize" {
     raw = {
         '__type__': '_NoRules',
-        '__module__': getattr(_NoRules, '__module__'),
+        '__module__': type_module(_NoRules),
         'name': 'ok',
         '__jac_attic__': {'old_thing': {'value': 42, 'reason': 'dropped'}}
     };
@@ -236,7 +236,7 @@ test "stored attic from a prior repair is carried through deserialize" {
 test "missing default_factory fields are backfilled on load" {
     raw = {
         '__type__': '_FactoryDefaults',
-        '__module__': getattr(_FactoryDefaults, '__module__'),
+        '__module__': type_module(_FactoryDefaults),
         'name': 'x'
     };
     anchor = NodeAnchor.__new__(NodeAnchor);
@@ -254,7 +254,7 @@ test "missing default_factory fields are backfilled on load" {
 test "backfilled factory defaults are per-instance, not shared" {
     raw = {
         '__type__': '_FactoryDefaults',
-        '__module__': getattr(_FactoryDefaults, '__module__'),
+        '__module__': type_module(_FactoryDefaults),
         'name': 'x'
     };
     a1 = Serializer._deserialize_archetype(raw, NodeAnchor.__new__(NodeAnchor));
@@ -293,7 +293,7 @@ test "serialize_fields dual-writes aliased fields on partial updates" {
 test "loading a dual-written doc strips the shadow without repair churn" {
     raw = {
         '__type__': '_DriftUser',
-        '__module__': getattr(_DriftUser, '__module__'),
+        '__module__': type_module(_DriftUser),
         'name': 'ada',
         'username': 'ada',
         'tags': ['math'],
@@ -317,7 +317,7 @@ test "loading a dual-written doc strips the shadow without repair churn" {
 test "shadow conflict: new name wins, differing shadow is atticed" {
     raw = {
         '__type__': '_DriftUser',
-        '__module__': getattr(_DriftUser, '__module__'),
+        '__module__': type_module(_DriftUser),
         'name': 'ada',
         'username': 'ada-stale-write',
         'tags': ['math'],
@@ -365,7 +365,7 @@ test "stored attic round-trips even when JAC_SCHEMA_REPAIR=off" {
     try {
         raw = {
             '__type__': '_NoRules',
-            '__module__': getattr(_NoRules, '__module__'),
+            '__module__': type_module(_NoRules),
             'name': 'ok',
             '__jac_attic__': {'old_thing': {'value': 42, 'reason': 'dropped'}}
         };

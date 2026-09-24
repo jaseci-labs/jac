@@ -43,14 +43,31 @@ def cold_jit_opts -> CompileOptions {
     );
 }
 
-"""Every `declare` line in the IR that names `symbol` as a callee."""
+"""Every `declare` line in the IR that names `symbol` as a callee, bare or
+module-qualified."""
 def dangling_declares(llvm_ir_text: str, symbol: str) -> list[str] {
     return [
         line.strip()
         for line in llvm_ir_text.splitlines()
         if line.lstrip().startswith("declare")
-            and (f"@{symbol}(" in line or f'@"{symbol}"(' in line)
+            and (
+                f"@{symbol}(" in line
+                or f'@"{symbol}"(' in line
+                or f'.{symbol}"(' in line
+            )
     ];
+}
+
+"""The native interface the program's unit registry holds for `fixture`."""
+def dep_iface(prog: JacProgram, fixture: str) -> any {
+    ent = prog.native_units().ensure(
+        os.path.join(FIXTURES, fixture),
+        compile_on_miss=False,
+        options=cold_jit_opts(),
+        check_deps=False,
+        products=False
+    );
+    return ent.iface if ent is not None else None;
 }
 
 """Compile a fixture on the cold JIT lane; return (program, module, linked IR)."""
@@ -100,7 +117,11 @@ test "a cold JIT importer demotes a caller of a demoted linked function" {
         f"xmod_demote_lib demotes it: {dangling_declares(text, 'pyonly_len')}"
     );
     demoted = native_demoted_ir_symbols(text);
-    assert "pyonly_len" in demoted , f"the callee lowered after all: {demoted}";
+    lib_iface = dep_iface(prog, "xmod_demote_lib.jac");
+    assert lib_iface is not None , "no native interface for xmod_demote_lib";
+    assert "pyonly_len" in lib_iface.demoted , (
+        f"the callee lowered after all: {lib_iface.demoted}"
+    );
     assert "call_seam" in demoted , (
         f"the caller of the demoted function stayed native: {demoted}"
     );

@@ -1096,6 +1096,40 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " missing wire. An inline suppression does not silence this; loosening"
          " the boundary is a change to arch.jac or jac.toml."
      ),
+     E1150 = _err(
+         "E1150",
+         Category.TYPE,
+         "Field '{field}' of foreign struct '{name}' {reason}",
+         help="A struct declared in a C library import is C-layout plain data: its"
+         " fields may be sized scalars (`i8`..`u64`, `f32`, `f64`), `int`, `float`,"
+         " `bool`, other foreign structs (nested by value), `ptr[T]` or a bare"
+         " `ptr`, and named-function callbacks (`Callable[...]`). A string, a"
+         " container or a Jac object has no C layout and would need tracing by the"
+         " reference counter and cycle collector; hold C strings and buffers as"
+         " `ptr[u8]`.",
+         blocks_codegen=True
+     ),
+     E1151 = _err(
+         "E1151",
+         Category.TYPE,
+         "Opaque C type '{name}' has no known size, so it cannot be {use}",
+         help="A bodiless `obj {name};` in a C library import declares an opaque"
+         " C type: C owns its layout, so Jac handles it only by address. Declare"
+         " the positions that carry it as `ptr[{name}]`, and out-parameters that"
+         " produce one as `&mut ptr[{name}]`.",
+         blocks_codegen=True
+     ),
+     E1152 = _err(
+         "E1152",
+         Category.TYPE,
+         "{what} needs C plain data, not {type}",
+         help="`pin(value)`, `p.view(n)` and C borrow parameters (`&T` / `&mut T`"
+         " in a C library declaration) lay the value out in C memory, so its type"
+         " must be a sized scalar, `int`, `float`, `bool`, a foreign struct or a"
+         " `ptr`. A bare `ptr` or a `ptr` to an opaque C type has no element size:"
+         " retype it first with `ptr[T](p)`.",
+         blocks_codegen=True
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
@@ -1219,8 +1253,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "A view does not allow {name}",
          help="a view is a value that carries a borrow: an archetype with a"
-         " `&`-typed field, a container declared over `&T`, or (in a"
-         " nogc-enforced module) a step-free string slice. It lives on the stack"
+         " `&`-typed field, a container declared over `&T`, a `PtrView` of C"
+         " memory (`p.view(n)`), or (in a nogc-enforced module) a step-free string"
+         " slice. It lives on the stack"
          " and is usable locally; it may not be stored into a field, a container,"
          " or a module global, may not be bound `own`, and may be returned only"
          " when it derives from the function's borrowed parameters (or a method's"
@@ -2096,48 +2131,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W5022 = _warn(
          "W5022", Category.CODEGEN, "Failed to load C library '{path}': {error}"
      ),
-     W5023 = _warn("W5023", Category.CODEGEN, "Native module not found: {path}"),
-     E5024 = _err(
-         "E5024",
-         Category.CODEGEN,
-         "Failed to compile native module {path}: {error}. "
-         "Fix the error in the imported module or the native build will produce a broken binary."
-     ),
-     E5025 = _err(
-         "E5025",
-         Category.CODEGEN,
-         "Failed to link native module {path}: {error}. "
-         "Fix the error in the imported module or the native build will produce a broken binary."
-     ),
      E5026 = _err(
          "E5026",
          Category.CODEGEN,
          "Symbol collision during native link: '{symbol}' is defined in both "
          "'{existing_module}' and '{new_module}'. "
          "Mark one as :priv or rename to avoid a runtime crash."
-     ),
-     E5027 = _err(
-         "E5027",
-         Category.CODEGEN,
-         "Native module '{path}' was built with different compile options "
-         "(cached fingerprint {cached_fp}, current build {current_fp}); "
-         "refusing a mixed-options link.",
-         help="Every module in a native link must carry the same codegen options fingerprint (gc mode, nogc enforcement, target triple, opt level, debug gates). Rebuild the module under the current options, or scrub the stale native cache with `jac build --native --scrub`."
-     ),
-     E5028 = _err(
-         "E5028",
-         Category.CODEGEN,
-         "Native module '{path}' still calls {names} as live after {attempts} "
-         "re-emissions, but the defining module's verdict demotes them; the "
-         "demotion/emission order did not converge.",
-         help="Within one native unit a caller's emitted IR must observe the callee module's final demotion verdicts (verdict-before-emission). A caller emitted under an import cycle is re-emitted once its callees' verdicts land; failing to converge means a verdict keeps flipping between emissions, which is a compiler defect worth reporting with JAC_NA_DEBUG=1 output."
-     ),
-     E5029 = _err(
-         "E5029",
-         Category.CODEGEN,
-         "Native link of '{path}' tripped the verdict blast-radius guard: "
-         "{detail}. Refusing to compose further instead of grinding.",
-         help="A healthy native link keeps the unverified-live set near zero and compiles at most a handful of modules at link time. Numbers this size mean verdict resolution is missing systematically -- every miss fails closed into conflict-on-all and another full compile -- which presents as a silent multi-hour build. The counts in the message say which lever moved: taint means the emission lane is recording where it should not, link-time compiles mean dependency identity is splitting, and verdict misses mean the resolver cannot see modules that are already compiled. Report with JAC_NA_DEBUG=1 output."
      ),
      E5030 = _err(
          "E5030",

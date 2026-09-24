@@ -120,8 +120,11 @@ test "native-only checks link providers outside the entry directory" {
     import from pathlib { Path }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_linked_ir_text
+    import from jaclang.compiler.backends.native.link_plan {
+        ArtifactKind,
+        build_link_plan,
+        whole_program_module,
+        _platform_of
     }
     with tempfile.TemporaryDirectory() as directory {
         fixture_dir = Path(directory);
@@ -157,10 +160,18 @@ test "native-only checks link providers outside the entry directory" {
                 error.code is not None and error.code.code == "W5023"
                 for error in program.warnings_had
             );
-            text = native_linked_ir_text(module);
-            linked = llvm.parse_assembly(text);
+            plan = build_link_plan(program, [str(entry_file)], program.options);
+            (linked, _) = whole_program_module(
+                plan,
+                plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
+            );
+            provider = next(
+                unit
+                for unit in plan.units
+                if unit.path.endswith("/nested/numbers.jac")
+            );
             import from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
-            function = linked.get_function("increment");
+            function = linked.get_function(provider.iface.exports["increment"].symbol);
             assert isinstance(function, ValueRef);
             assert not function.is_declaration;
         }

@@ -19,6 +19,42 @@ glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "own_walk_kernel.jac"
      );
 
+test "uncached walker builds preserve the kernel string ABI" {
+    import from jaclang.cli.commands.native_build { native_build }
+    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    import from unittest.mock { patch }
+    load_kernel: any = NaIRGenPass._load_native_unit_module;
+
+    def without_cached_layout(lowering: any, path: str) -> any {
+        unit = load_kernel(lowering, path);
+        if unit is not None {
+            unit.gen.native_iface = None;
+            unit.gen.native_layout = None;
+            for key in [path, os.path.abspath(path), os.path.realpath(path)] {
+                artifact = lowering.prog.hub.artifacts.get(key);
+                if artifact is not None {
+                    artifact.native_iface = None;
+                    artifact.native_layout = None;
+                }
+            }
+        }
+        return unit;
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        output = os.path.join(tmp, 'uncached_walker');
+        with patch.object(
+            NaIRGenPass, '_load_native_unit_module', without_cached_layout
+        ) {
+            assert native_build(FIXTURE, output=output, memory='nogc', no_ir_cache=True)
+                == 0;
+        }
+        result = subprocess.run([output], capture_output=True, text=True);
+        assert result.returncode == 0 , f"walker exited {result.returncode}: {result.stderr}";
+        assert result.stdout.strip() == '814034290';
+    }
+}
+
 test "enforced walker kernel runs rc-free with the managed digest" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "ownwalk_none");
@@ -52,7 +88,10 @@ test "enforced walker kernel runs rc-free with the managed digest" {
         cy_out = subprocess.run([cy_bin], capture_output=True, text=True);
         assert cy_out.stdout == rc_out.stdout , (f"{cy_out.stdout} vs {rc_out.stdout}");
         none_out = subprocess.run([out_bin], capture_output=True, text=True);
-        assert none_out.returncode == 0 , f"enforced run failed: {none_out.stderr}";
+        assert none_out.returncode == 0 , (
+            f"enforced run failed ({none_out.returncode}): {none_out.stderr}"
+            + f"\nstdout: {none_out.stdout}"
+        );
         assert none_out.stdout == rc_out.stdout , (
             f"enforced digest diverges: {none_out.stdout} vs {rc_out.stdout}"
         );

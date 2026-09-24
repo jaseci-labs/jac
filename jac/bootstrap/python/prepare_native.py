@@ -29,33 +29,39 @@ output.mkdir(parents=True, exist_ok=True)
 import jaclang
 from jaclang.compiler.driver.program import JacProgram
 from jaclang.compiler.driver.compile_options import CompileOptions
-from jaclang.compiler.backends.native.na_compile_pass import (
-    native_linked_ir_text, require_native_ir,
+from jaclang.compiler.backends.native.na_compile_pass import require_native_ir
+from jaclang.compiler.backends.native.link_glue import init_object_codegen
+from jaclang.compiler.backends.native.link_plan import (
+    ArtifactKind, build_link_plan, whole_program_module,
+    internalize_native_implementation, _platform_of,
 )
-from jaclang.compiler.backends.native.shared_emit import emit_shared_object
+import jaclang.compiler.backends.native.llvm.binding as llvm
 
 program = JacProgram()
 entry = root / "jaclang/compiler/backends/py/jacpython/native_api.jac"
-module = program.compile(file_path=str(entry), options=CompileOptions(
+options = CompileOptions(
     aot_mode=True, default_codespace="native", force_target_program=True,
+    skip_native_engine=True,
     native_required=True,
     memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
-))
+)
+plan = build_link_plan(program, [str(entry)], options)
 if program.errors_had:
     for error in program.errors_had:
         print(error.pretty_print(), file=sys.stderr)
     raise RuntimeError("JacPython native compilation failed")
-if module is None:
-    raise RuntimeError("JacPython native compilation produced no module")
-ir_text = native_linked_ir_text(module)
-require_native_ir(ir_text)
-object_bytes = emit_shared_object(
-    ir_text,
-    module.gen.interop_manifest,
-    list(module.gen._exported_symbols),
-    triple,
-    opt_level=2,
-).code
+init_object_codegen()
+spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
+compiled, runtime_exports = whole_program_module(plan, spec)
+require_native_ir(str(compiled))
+internalize_native_implementation(
+    compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
+)
+compiled.verify()
+machine = llvm.Target.from_triple(triple).create_target_machine(
+    opt=2, reloc="pic", codemodel="small",
+)
+object_bytes = machine.emit_object(compiled)
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
 print("JacPython: built native compiler object; no interpreted demotions", flush=True)

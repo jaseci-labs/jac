@@ -253,24 +253,9 @@ obj DiagLedger {
 }
 
 obj BuildScratch {
-    has na_dep_units: dict[str, (uni.Module | str)] = {},
-        na_dep_inflight: set[str] postinit,
-        na_verdict_resolving: set[str] postinit,
-        na_unverified_live: dict[str, dict[str, set[str]]] = {},
-        na_verdict_misses: int = 0,
-        compile_depth: int = 0;
-
-    def postinit {
-        self.na_dep_inflight = set();
-        self.na_verdict_resolving = set();
-    }
+    has compile_depth: int = 0;
 
     def clear {
-        self.na_dep_units.clear();
-        self.na_dep_inflight.clear();
-        self.na_verdict_resolving.clear();
-        self.na_unverified_live.clear();
-        self.na_verdict_misses = 0;
         self.compile_depth = 0;
     }
 }
@@ -333,6 +318,7 @@ obj PendingPassResults {
 class AnalysisCaches {
     has placement_summaries: dict[str, any],
         placement_state: dict[str, any],
+        native_verdict_notes: dict[str, tuple[str, str]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
         pass_runs: dict[str, int],
@@ -347,6 +333,7 @@ class AnalysisCaches {
     def init(self: AnalysisCaches) {
         self.placement_summaries: dict[str, any] = {};
         self.placement_state: dict[str, any] = {};
+        self.native_verdict_notes: dict[str, tuple[str, str]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
         self.pass_runs: dict[str, int] = {};

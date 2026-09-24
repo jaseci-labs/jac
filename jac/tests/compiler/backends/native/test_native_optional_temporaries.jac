@@ -1,6 +1,7 @@
 """Optional results carry ownership through boolean expressions and dictionary reads."""
 
 import ctypes;
+import from tests.support { native_address }
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -16,9 +17,7 @@ def check_optional_temporaries(profile: str) {
     assert not program.errors_had , [str(error) for error in program.errors_had];
     engine = module.gen.native_engine;
     assert engine is not None;
-    dropped = ctypes.CFUNCTYPE(ctypes.c_int64)(
-        engine.get_function_address("dropped_count")
-    );
+    dropped = ctypes.CFUNCTYPE(ctypes.c_int64)(native_address(engine, "dropped_count"));
     for (name, argument, expected, allocations) in [
         ("optional_or", 0, 5, 1),
         ("optional_or", 1, 5, 1),
@@ -54,7 +53,7 @@ def check_optional_temporaries(profile: str) {
         ("dict_optional_string", 0, -1, 0),
         ("dict_optional_string", 1, 2, 0)
     ] {
-        address = engine.get_function_address(name);
+        address = native_address(engine, name);
         assert address != 0;
         call = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
         before = dropped();

@@ -64,6 +64,7 @@ programmatically:
 | **Platforms** | Linux (x86_64, aarch64), macOS (x86_64, arm64), Windows (x86_64) |
 | **External toolchain** | None -- entire pipeline is self-contained |
 | **C interop (in)** | `import from libname` (logical) or `import from "path"` (explicit) |
+| **C structs and pointers** | C-layout structs, `&`/`&mut` borrows to C, `ptr[T]`, `p.view(n)`, `Pinned[T]` |
 | **C interop (out)** | `jac build --native --lib` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
 | **Std library** | `import math` / `time` / `sys` / `os` / `random` (Python-congruent subset) |
 | **Memory model** | `[memory] profile`: `managed` (RC + cycle collector, default), `rc`, `nogc` (borrow-checked, no runtime); one-off override with `--memory` |
@@ -366,7 +367,8 @@ For C interop and precise control, Jac provides fixed-width integer and float ty
 | `i64` / `u64` | 8 bytes | Signed / unsigned 64-bit |
 | `f32` | 4 bytes | Single-precision float |
 | `f64` | 8 bytes | Double-precision float |
-| `c_void` | pointer | Opaque pointer (for C interop) |
+
+C addresses are `ptr[T]` (and a bare `ptr` for `void*`); see [C pointers](#c-pointers-ptrt).
 
 ### Collection Internals
 
@@ -748,7 +750,7 @@ with entry {
 }
 ```
 
-Inside the `import from` declaration, the fixed-width types (`f64`, `i32`, `c_void`, etc.) describe the C function's ABI signature. They are not interop-only vocabulary, though: the sized scalars are ordinary Jac types on every lane, usable in your own functions, variables, and call sites alongside `int`, `float`, and `str`. Conversions are explicit -- value-preserving widenings like `float -> f64` happen implicitly (which is why the `float`-typed code above can call `sqrt(x: f64)` directly), but a lossy conversion is a checked cast `T(x)`, never a silent coercion (`E1127`). See [Types and Values](types-and-values.md#fixed-width-semantics) for the full contract.
+Inside the `import from` declaration, the fixed-width types (`f64`, `i32`, `u8`, etc.) describe the C function's ABI signature; a `-> None` return is C `void`. They are not interop-only vocabulary, though: the sized scalars are ordinary Jac types on every lane, usable in your own functions, variables, and call sites alongside `int`, `float`, and `str`. Conversions are explicit -- value-preserving widenings like `float -> f64` happen implicitly (which is why the `float`-typed code above can call `sqrt(x: f64)` directly), but a lossy conversion is a checked cast `T(x)`, never a silent coercion (`E1127`). See [Types and Values](types-and-values.md#fixed-width-semantics) for the full contract.
 
 ### Platform-neutral library names
 
@@ -757,13 +759,13 @@ A library can be named by its **logical name** -- a dotted, extensionless identi
 <!-- jac-skip -->
 ```jac
 import from raylib {
-    def InitWindow(width: i32, height: i32, title: str) -> c_void;
+    def InitWindow(width: i32, height: i32, title: str) -> None;
     def WindowShouldClose() -> i32;
-    def BeginDrawing() -> c_void;
-    def EndDrawing() -> c_void;
-    def CloseWindow() -> c_void;
-    def ClearBackground(color: i32) -> c_void;
-    def DrawText(text: str, x: i32, y: i32, fontSize: i32, color: i32) -> c_void;
+    def BeginDrawing() -> None;
+    def EndDrawing() -> None;
+    def CloseWindow() -> None;
+    def ClearBackground(color: i32) -> None;
+    def DrawText(text: str, x: i32, y: i32, fontSize: i32, color: i32) -> None;
 }
 ```
 
@@ -796,6 +798,161 @@ This is the form used for the libm example above. Any library that exposes a C A
 
 !!! note "Choosing a form"
     Prefer the logical name (`import from raylib`) for portable code: the platform's `.so` / `.dylib` / `.dll` filename is chosen for you. Reach for an explicit string only when you must pin an exact path or a versioned soname (e.g. `libfoo.so.5`), which the extensionless form does not name.
+
+### C structs
+
+An `obj` with fields declared inside the import block is a **foreign struct**: C-layout plain data. Its storage is the C layout the library expects -- the same field offsets, alignment and padding, with nested structs embedded by value -- so a struct is passed to C as is, by value or by address, with no per-call copying.
+
+<!-- jac-skip -->
+```jac
+import from raylib {
+    obj Vector3 { has x: f32, y: f32, z: f32; }
+    obj Camera3D { has position: Vector3, target: Vector3, up: Vector3, fovy: f32, projection: i32; }
+    def UpdateCamera(camera: &mut Camera3D, mode: i32) -> None;
+    def GetCameraMatrix(camera: Camera3D) -> Matrix;
+}
+```
+
+A field may be a sized scalar (`i8`..`u64`, `f32`, `f64`), `int` (`i64`), `float` (`f64`), `bool`, another foreign struct, a pointer (`ptr[T]` or `ptr`), or a named-function callback (`Callable[...]`). A field of any other type -- a `str`, a container, a Jac object -- is [`E1150`](../diagnostics.md#c-interop-errors): foreign structs hold no managed references, so the reference counter and cycle collector never need to trace them. Hold a C string or buffer as `ptr[u8]`.
+
+Construct a foreign struct like any object (`Vector3(x=1.0)`); fields you leave out are zero. Because a nested struct is part of its parent's bytes, reading one *as a value* copies it, as C does, while reading *through* it works in place:
+
+<!-- jac-skip -->
+```jac
+target = cam.target;        # a copy: writing target.x leaves cam alone
+cam.target.x = 0.0;         # writes cam's own bytes
+cam.target = cam.position;  # copies position's bytes into target
+```
+
+The same rule applies to an element of a [C memory view](#views-of-c-memory-pviewn). Assigning or passing a whole foreign struct object behaves like any other object; only a struct stored *inside* C-layout memory is copied when read out.
+
+### Borrowing Jac storage to C (`&T`, `&mut T`)
+
+A clib parameter typed `&T` or `&mut T` receives the **address** of the argument's storage, valid for the duration of the call. The caller writes the ordinary borrow expressions `&x` / `&mut x`, and the ordinary borrow rules apply; nothing new is checked, because the borrow ends when the call returns. Writes C makes through a `&mut` pointer are visible in the Jac value afterwards: it is the same storage.
+
+`T` may be a foreign struct or a scalar. A scalar borrow of a local (or a field, or a view element) is how out-parameters work:
+
+<!-- jac-skip -->
+```jac
+import from sdl {
+    def SDL_GetWindowSize(window: ptr[SDL_Window], w: &mut i32, h: &mut i32) -> None;
+}
+
+with entry {
+    w: i32 = i32(0);
+    h: i32 = i32(0);
+    SDL_GetWindowSize(window, &mut w, &mut h);
+    print(w, h);
+}
+```
+
+The scalar travels through an addressable slot of its C type and is written back after the call, so `&mut flag` with `flag: bool` passes a C `bool*`. On the native backend a struct is passed as a pointer to its payload; the LLVM `noalias` / `readonly` facts on borrowed Jac parameters are unaffected.
+
+### C pointers: `ptr[T]`
+
+`ptr[T]` is a **non-owning C address** of a `T` (a sized scalar, a foreign struct, an opaque C type, or another `ptr`); a bare `ptr` is `void*`. It is a builtin generic type name like `list[T]`, not a keyword, and it is plain data: it can be a local, a field of a Jac object, a container element, a foreign struct field, a clib parameter or a clib return, and it copies like an `int`. That is how a Jac object holds a C handle.
+
+A pointer supports exactly these operations:
+
+| Operation | Meaning |
+|---|---|
+| `p.is_null()` | the address is NULL; `bool(p)` / `if p` test the same thing |
+| `p == q`, `p != q` | address equality |
+| passing `p` to C | the address, as is |
+| `p.view(n)` | a bounds-checked view of `n` elements ([below](#views-of-c-memory-pviewn)) |
+| `ptr[T]()` | the null pointer |
+| `ptr[T](q)` | the same address retyped as a `T*` |
+
+There is no dereference, no arithmetic and no `free`: C memory is freed by the C API that allocated it. Any `ptr[T]` widens implicitly to a bare `ptr`; narrowing a `ptr` back, or changing the pointee type, is the explicit `ptr[T](q)`, because pointee types must match exactly. An out-parameter that produces a pointer is `&mut ptr[T]`:
+
+<!-- jac-skip -->
+```jac
+import from sqlite3 {
+    obj sqlite3;
+    def sqlite3_open(filename: str, db: &mut ptr[sqlite3]) -> i32;
+    def sqlite3_close(db: ptr[sqlite3]) -> i32;
+}
+
+obj Store {
+    has db: ptr[sqlite3] = ptr[sqlite3]();
+}
+
+with entry {
+    store = Store();
+    if sqlite3_open("app.db", &mut store.db) == 0 and not store.db.is_null() {
+        sqlite3_close(store.db);
+    }
+}
+```
+
+A pointer has no null-typed form of its own: test it with `is_null()`. A clib parameter typed `ptr[T] | None` passes NULL for `None`.
+
+### Opaque C types
+
+A **bodiless** `obj` inside the import block (`obj sqlite3;` above) declares an opaque C type. C owns its layout, so Jac never learns its size: it cannot be constructed, held, passed or returned by value, and is usable only behind a pointer, as `ptr[sqlite3]`. Any other use is [`E1151`](../diagnostics.md#c-interop-errors).
+
+### Views of C memory: `p.view(n)`
+
+`p.view(n)` returns a `PtrView[T]`: a borrowed window of `n` elements of `T` starting at `p`, where `T` is a scalar, a pointer or a foreign struct. The length is always explicit. A view supports `len(v)`, `v[i]` and `v[i] = x`; writes go straight into C memory, a negative index counts from the end, and an index outside the view raises `IndexError` on every backend. `p.view(n)` with a negative `n`, or of a null pointer with `n > 0`, raises `ValueError`.
+
+<!-- jac-skip -->
+```jac
+import from raylib {
+    obj Image { has data: ptr[u8], width: i32, height: i32, mipmaps: i32, format: i32; }
+    def GenImageColor(width: i32, height: i32, color: Color) -> Image;
+}
+
+def brightest(img: Image) -> int {
+    pixels = img.data.view(img.width * img.height * 4);
+    best = 0;
+    for i in range(len(pixels)) {
+        best = max(best, pixels[i]);
+    }
+    return best;
+}
+```
+
+A view is a [local view](ownership-borrowing.md#views-and-zero-copy-current-state-and-direction): the C memory it borrows is not tracked, so the view may be passed down to functions but never returned, stored in a field, a container or a module global, bound `own`, or sent across `flow` (`E1315`). Index it with `range(len(v))`; a view is not an iterator. `T` must have a known size, so a view of a bare `ptr` or of an opaque type is `E1152`.
+
+### Pointers C keeps: `Pinned[T]`
+
+Some C APIs keep a pointer after the call returns: raylib's `rlSetRenderBatchActive(rlRenderBatch *batch)`, libuv handles, many `foo_init(&state)` APIs. The payload must then stay at one address for as long as C holds it. `pin(value)` makes a `Pinned[T]`: an owned box holding a copy of `value` whose payload address **never changes**. Moving or copying the handle never moves the payload, and dropping the handle frees it (statically placed under `nogc`, at the last reference under `rc` and `managed`).
+
+Retention is carried by the parameter type: a clib parameter typed `&Pinned[T]` or `&mut Pinned[T]` receives the pinned payload's address, the `T*` C expects. Only a pinned value can produce that argument, so passing a stack local or a temporary (`&mut local_struct`) is an ordinary type error (`E1053`). A parameter typed `&mut Pinned[T] | None` passes NULL for `None`, which is how a registration is cleared.
+
+<!-- jac-skip -->
+```jac
+import from raylib {
+    obj rlRenderBatch { has bufferCount: i32, currentBuffer: i32, vertexBuffer: ptr, draws: ptr, drawCounter: i32, currentDepth: f32; }
+    def rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRenderBatch;
+    def rlSetRenderBatchActive(batch: &mut Pinned[rlRenderBatch] | None) -> None;
+    def rlUnloadRenderBatch(batch: rlRenderBatch) -> None;
+}
+
+obj Renderer {
+    has batch: own Pinned[rlRenderBatch];
+
+    def activate {
+        rlSetRenderBatchActive(&mut self.batch);   # raylib keeps this address
+    }
+}
+
+with entry {
+    r = Renderer(batch=pin(rlLoadRenderBatch(i32(4), i32(8192))));
+    r.activate();
+    # ... draw; r.batch.value.drawCounter reads the live payload ...
+    rlSetRenderBatchActive(None);
+}
+```
+
+`p.value` reads and writes the payload: `p.value.drawCounter` is a field of the pinned struct itself, and `p.value = x` copies `x` in. A `Pinned[T]` lives as a local, as a field of a Jac object (never flattened into its parent under `nogc`), or as a module glob under `rc` and `managed` (a `nogc` module glob cannot hold heap storage, `E1406`).
+
+!!! warning "Keep the pin alive while C holds it"
+    The compiler guarantees that only a pinned payload reaches a retaining parameter, and that the payload never moves. It does **not** yet check that the `Pinned[T]` outlives C's use of the pointer: keep the handle alive (in an object or scope that outlives the registration) and clear the registration before dropping it, as `rlSetRenderBatchActive(None)` does above.
+
+### The Python backend
+
+The same program runs on the Python backend (`jac run --backend python`), which lowers the import block onto `ctypes` with identical behaviour: a foreign struct is a `ctypes.Structure` with the same layout, a `&`/`&mut` argument passes a `ctypes` reference (a scalar is copied back after the call), `ptr[T]` wraps the address, a view reads and writes the C memory with the same bounds checks, and a `Pinned[T]` owns a heap `Structure` that stays put while the handle lives.
 
 ---
 
@@ -830,12 +987,14 @@ Under the managed profiles (`managed`, `rc`) a heap value carries a reference co
 
 There is a third allocation lane alongside reference counting and headerless owned codegen: objects, nodes, and edges constructed while an [`in <handle> { }` region](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) is open are bump-allocated into that region and freed together when it closes.
 
+The arena runtime, `runtime/region_native.jac`, is a native unit carried into the link plan by dependency edges. Its `:pub` `__jac_region_*` functions provide the C ABI used by generated code.
+
 ### Zero-RC ownership compilation
 
 For a module written against the [ownership and borrow-checking surface](ownership-borrowing.md), memory management compiles to what Rust would emit: an allocation at construction, a free at a statically determined drop point, and **no reference counting or collector in the binary at all** -- and the absence of that machinery is checkable in the artifact. Three pieces turn this into a compile-time contract rather than a best-effort optimization:
 
 - **nogc enforcement** (`[memory] profile = "nogc"`, `jac build <file> --native --memory nogc`, or per-module `[memory] enforce` patterns under a managed profile, see [`[memory]`](../config/index.md#memory)). In an enforced module, every heap-typed contract position -- parameter, return type, `has` field -- must live in the owned world (`own`, `&`, `&mut`, `imm`); an unmarked local infers its state from its right-hand side (fresh values are `own`, string literals `imm`, field and element reads borrow their root; see [local inference](ownership-borrowing.md#local-inference-under-enforcement)). Anything the contract cannot prove is a hard error ([`E1401`-`E1406`](../diagnostics.md#zero-rc-enforcement-errors)) that blocks codegen.
-- **Headerless owned codegen** (under `--memory nogc`). Owned payloads are bare `malloc` allocations with no reference-count header, and each free is a direct call to the statically inserted `__drop_<T>` at the value's drop point -- after its last use, NLL-style (see [drop timing](ownership-borrowing.md#the-drop-hook)). User `def drop` hooks run from that same static call.
+- **Headerless owned codegen** (under `--memory nogc`). Owned payloads are bare `malloc` allocations with no reference-count header, and each free is a direct call to the statically inserted `__drop_<T>` at the value's drop point -- after its last use, NLL-style (see [drop timing](ownership-borrowing.md#the-drop-hook)). User `def drop` hooks run from that same static call. There is no reference count to share a payload, so every move the ownership checker proves hands the payload over: `b = a` nulls `a`'s slot, including when `a` was borrowed earlier (`f(&mut a); b = a;`), and `a`'s own drop point then frees nothing.
 - **The RC-free invariant** is checked on every `nogc` build: the emitted IR is scanned for `__rc_*` helpers, trace functions, roots buffers, and run-time collector probes, and a hit is a compiler bug rather than a user error.
 
 ```bash
@@ -917,9 +1076,9 @@ Assert messages in native tests are limited to string literals: `assert cond, "m
 
 ## Build Options and Artifact Identity
 
-The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/compiler/driver/compile_options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then environment override, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
+The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/compiler/driver/compile_options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
 
-The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The fingerprint participates in artifact identity: it is folded into the JIR module cache key and into the native import IR cache key, so flipping any codegen option re-keys the artifact and a stale build is never served. Each native import artifact is stamped with the fingerprint of the options that built it; a cached module whose stamp disagrees with the current build is rejected with `E5027` instead of being linked into a mixed-options binary.
+The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The identity participates in artifact identity: every native section of a module's JIR (`SEC_NIFACE`, `SEC_NOBJ`, `SEC_NBITCODE`) holds variants stamped with the compiler digest, the codegen identity and the target triple of the compile that produced them, and the native reader uses only the variant under the current build's stamp, so flipping any codegen option rebuilds the unit and a stale product is never linked. The link plan's digest folds the same compiler digest, codegen identity and triple with every unit's key and interface digest, so an artifact records exactly which identity built it.
 
 ### Codegen options (part of the fingerprint)
 
@@ -933,6 +1092,85 @@ The codegen options carry a canonical identity string and a short hash of it, th
 | `[native] threads` | run time: `JAC_THREADS` | The `flow for` width compiled into the binary (default 4). |
 
 No compile-time environment variable sets behavior. The diagnostic surfaces that used to hide behind environment variables are verbs: `jac explain ir <file>` writes the final optimized IR beside the source and prints the symbol map, `jac explain memory <file>` prints the inferred ownership facts, move sites, and release points, and `jac explain placement <file>` prints every element's codespace with the evidence that decided it.
+
+### The native unit model
+
+The module is the native unit. Every native-locked module's JIR carries
+native sections beside its bytecode and type interface: `SEC_NIFACE`, the
+unit's native interface (exports with their link symbols, class layouts,
+initializer, demoted symbols, C library needs, direct native dependencies;
+digest-prefixed exactly as the type interface is), and `SEC_NOBJ`, its
+relocatable object, plus `SEC_NBITCODE`, its bitcode. The native sections
+live under the module's content key, each holding variants keyed by a stamp
+of the compiler digest, codegen identity and target triple, so a module the
+compiler runs as bytecode and the kernel links as a native unit keeps both
+products in one entry. Dependents record each native dependency's interface
+digest in `SEC_NDEPS`; a body edit rebuilds one object, an interface edit
+rebuilds the dependents.
+
+Symbols are module-qualified: every external symbol that is not `:pub` is
+emitted as `<unit prefix>.<name>` (methods `<prefix>.Class.method`), where
+the prefix is the safe form of the unit's module key. `:pub` symbols keep
+bare names, the C ABI a library promises. Two modules defining the same Jac
+name therefore never collide at link time; `E5026` remains for two `:pub`
+exports of one name in one link.
+
+Bundled `na_stdlib` shims retain qualified symbols even for their public
+Jac APIs. Their public names (for example `hashlib.new` and `hmac.new`)
+belong to separate library modules and are not bare C ABI exports.
+
+Every native artifact is produced by one link plan
+(`compiler/backends/native/link_plan.jac`; the design and its reasons are
+recorded in the [Native Units](../../internals/native-units.md) internals
+page). It resolves roots (an entry
+module, the kernel root `jc_unit`, or every native unit of a sealed
+package), walks the native edges recorded in `SEC_NDEPS` dependencies
+first, analyzes stale units in a native build session and reuses those
+analyzed trees while settling cycles, checks that every unit's recorded
+dependency digests agree with the plan and recompiles affected strongly connected
+components until their interfaces settle, rejecting repeated inconsistent states, orders initializers topologically, synthesizes one
+glue object holding `jac_entry` / `__jac_shared_init`, the platform entry
+point and the `jac_retain` / `jac_release` / `jac_str_new` wrappers (each
+wrapper only when a unit defines its target), and links. Two modes read different
+sections of the same entries: `objects`, the incremental default, links the
+units' relocatable objects; `bitcode` links every unit's bitcode into one
+LLVM module and optimizes it whole-program before a single codegen (the
+release lane; also what the in-process JIT, PE and wasm targets use).
+Select it per build with `jac build --native --link-mode bitcode` or
+`[native] link_mode = "bitcode"` in `jac.toml`. The plan writes a digest over every unit's
+keys and stamps beside the artifact and into the `<lib>.layout.json`
+sidecar, which is the merge of the units' class layouts.
+
+### The native scope and the kernel
+
+The compiler modules the kernel links are listed in
+`jaclang/compiler/native_scope.jac` (`NATIVE_SCOPE`); they are native units
+and bytecode units at once, and the kernel root (`jc_unit`) is native only.
+Whether a compile treats the scope as native is `CompileOptions.native_unit`,
+set by the link plan for the compiles it requests; there is no process-global
+mode flag. The kernel comes from one lookup, `resolve_kernel()`
+(`compiler/backends/native/kernel_resolve.jac`), with a fixed precedence:
+`JAC_COMPILER_LIB` as a path (must carry its sidecar) or `off` (the store
+parser), then a sealed image's `native` record (artifact, sha256, layout
+and plan digests; missing or mismatched is a startup error), then the
+kernel beside `native_compiler.jac` when the inputs its sidecar records
+(the compiler digest, codegen identity, target triple, interpreter version
+and a source digest of every unit it was linked from) are the ones the
+sources have now, then the running kit's kernel when that kit was built from
+these sources, otherwise a rebuild through the plan in a child `jac` process
+under a lock with the store parser serving meanwhile,
+and finally the store parser when there is no native toolchain. `zig build
+-Ddev` needs no kernel step: the first parse derives it, and accepting an
+existing kernel costs one content hash per unit and no plan. A demotion inside a scoped module is routing,
+recorded in the module's own JIR, never a refusal. The historical
+`JAC_NO_SEAL` override is gone; setting it against a sealed image is itself a
+startup error.
+
+Toolchain location variables are read through the same boundary module, never inside passes: `JAC_LLVM_SHIM`, `JAC_LLVM_TYPED_POINTERS` (with `LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS` honored as a fallback), `JAC_NATIVE_WASM_LIBC_DIR`, `JAC_NATIVE_MUSL_DIR`, `JAC_NATIVE_FLOOR_DIR`, `JAC_NATIVE_CA_BUNDLE`.
+
+The compiled binary uses `JAC_GC` for runtime collector diagnostics.
+
+---
 
 ## Debugging
 

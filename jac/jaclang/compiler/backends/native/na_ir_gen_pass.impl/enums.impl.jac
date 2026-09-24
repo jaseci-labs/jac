@@ -340,7 +340,7 @@ impl NaIRGenPass._enum_ctor_target(nd: uni.FuncCall) -> (str | None) {
 impl NaIRGenPass._emit_enum_ctor_refusal(
     nd: uni.FuncCall, enum_name: str, why: str
 ) -> None {
-    self.ctx.emit(
+    self.emit(
         E5092,
         node_override=nd,
         kind="enum constructor",

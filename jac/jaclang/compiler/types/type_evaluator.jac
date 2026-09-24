@@ -604,6 +604,11 @@ walker TypeEvaluator {
     ) -> bool;
 
     def _extern_scalar_type(type_expr: Expr | None) -> TypeBase;
+    def _is_typed_c_declaration(declared: TypeBase) -> bool;
+    def _assign_c_interop_args(
+        src_type: ClassType, dest_type: ClassType, strict: bool = False
+    ) -> bool;
+
     def _intrinsic_function_type(name: str) -> (FunctionType | None);
     def _intrinsic_spec_type(spec: str) -> TypeBase;
     def _check_extern_ctor_args(expr: FuncCall, arch: Archetype) -> None;

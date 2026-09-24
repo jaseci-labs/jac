@@ -28,7 +28,7 @@ import os;
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_force_opts }
+import from tests.support { JAC_ROOT, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -111,7 +111,7 @@ test "the erased base leaves the archetype's behavior intact" {
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     eng = ir.gen.native_engine;
     assert eng is not None , "no native engine for the abc fixture";
-    addr = eng.get_function_address("run");
+    addr = native_address(eng, "run");
     assert addr != 0 , "'run' is absent from the JIT engine";
     run = ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
     assert run() == 25 , (
