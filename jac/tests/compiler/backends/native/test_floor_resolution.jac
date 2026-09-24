@@ -1,7 +1,7 @@
 """Unit gate for the floor locator's two shipping shapes (#6978 Phase 0.2).
 
 `nacompile` static-links a bundled C floor from a `.a` it resolves at compile
-time. `resolve_floor_dir` (in `compiler.backends.native.floor`) and
+time. `resolve_floor_dir` (in `compiler.backends.native.static_link`) and
 `_resolve_ca_bundle` map the jaclang package root + a
 target triple to that archive dir (and the CA bundle) under either the dev
 `.python-build` tree or the installed `python/floor` payload layout (staged into the
@@ -13,7 +13,10 @@ dir so the resolution is covered without a real pbs build or a relocated jaclang
 
 import os;
 import tempfile;
-import from jaclang.compiler.backends.native.floor { resolve_floor_dir, floor_lib_dir }
+import from jaclang.compiler.backends.native.static_link {
+    resolve_floor_dir,
+    floor_lib_dir
+}
 import from jaclang.cli.commands.native_build { _resolve_ca_bundle, _floor_ca_bundle }
 
 

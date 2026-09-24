@@ -97,11 +97,11 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             }
         }
     }
-    import from jaclang.compiler.frontend.codeinfo { native_pub_symbol }
+    import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
     for (var_name, var_type) in candidates.items() {
         try {
             global_var = ir.GlobalVariable(
-                self.llvm_module, var_type, name=native_pub_symbol(var_name)
+                self.llvm_module, var_type, name=native_def_symbol(var_name)
             );
         } except Exception as _dup_err {
             continue;

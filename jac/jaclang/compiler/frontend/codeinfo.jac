@@ -215,7 +215,7 @@ def _reserved_c_symbols -> frozenset[str] {
 
 glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = _reserved_c_symbols();
 
-def native_pub_symbol(name: str) -> str {
+def native_def_symbol(name: str) -> str {
     return f"__jac_def_{name}" if name in NATIVE_RESERVED_C_SYMBOLS else name;
 }
 

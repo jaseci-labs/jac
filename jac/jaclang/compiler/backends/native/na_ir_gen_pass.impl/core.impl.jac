@@ -354,7 +354,7 @@ impl NaIRGenPass._symbol_for(
     name: str, owner: (uni.Module | None) = None, is_pub: bool = False
 ) -> str {
     import from jaclang.compiler.frontend.codeinfo {
-        native_pub_symbol,
+        native_def_symbol,
         native_symbol_name,
         native_unit_identity
     }
@@ -363,7 +363,7 @@ impl NaIRGenPass._symbol_for(
         "jaclang/runtime/na_stdlib/"
     );
     if is_pub and not bundled_library {
-        return native_pub_symbol(name);
+        return native_def_symbol(name);
     }
     return native_symbol_name(self._prefix_of_module(owner), name);
 }

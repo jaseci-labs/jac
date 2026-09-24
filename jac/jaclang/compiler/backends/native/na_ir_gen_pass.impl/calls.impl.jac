@@ -2378,9 +2378,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
             _extern_sym = func_name;
-            if binding.source_context.value == "native" {
-                import from jaclang.compiler.frontend.codeinfo { native_pub_symbol }
-                _extern_sym = native_pub_symbol(func_name);
+            if binding.source_context.value == "native" and _src_ab is not None {
+                _extern_sym = self._symbol_for(
+                    func_name,
+                    _src_ab.find_parent_of_type(uni.Module),
+                    bool(_src_ab.access and _src_ab.access.tag.name == Tok.KW_PUB)
+                );
             }
             func = self._get_or_declare_extern(
                 _extern_sym, ret_ir_type, param_ir_types

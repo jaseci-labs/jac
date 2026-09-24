@@ -11,7 +11,7 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
-import from jaclang.compiler.backends.native.linker_common {
+import from jaclang.compiler.backends.native.static_link {
     collect_musl_static,
     musl_lib_dir
 }
