@@ -91,8 +91,9 @@ docker run --rm -it --entrypoint bash jaseci/jaclang
 The `jac` binary bundles every capability -- the AI (byLLM), MCP, full-stack client, and deployment & scaling subsystems are all built in. There is nothing to enable; what `jac install` does is resolve a capability's **optional third-party dependencies** into your project:
 
 ```bash
-# AI/LLM integration (byLLM is built in; this pulls its optional deps -- litellm, pillow, ...):
-jac install byllm
+# AI/LLM integration: byLLM is built in; in a project with a [byllm] section,
+# a plain install pulls its optional deps (litellm, pillow, ...):
+jac install
 
 # The MCP server and the production deployment & scaling subsystem ship built
 # into the jac binary (no install): run `jac mcp`, and use `jac run` /
@@ -211,32 +212,28 @@ This creates a project with a Jac backend and a React frontend, ready to go at `
 
 ---
 
-## Community Jacpacks
+## Community Templates
 
-[Jacpacks](https://github.com/jaseci-labs/jacpacks) are ready-made Jac project templates you can spin up instantly. Since `--use` accepts a URL, you can run any jacpack directly from GitHub:
+Project templates (jacpacks) are published to the [Jac package index](https://github.com/jaseci-labs/jac-index) like any other package. `jac create --use` takes a template's `org/name` and fetches the newest version that works with your `jac`:
 
 ```bash
-jac create my-todo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-app/multi-user-todo-app.jacpack
+jac create my-todo --use jaseci/mini_todo
 cd my-todo
 jac install
 jac run
 ```
 
-Want to try one with AI built in? The `multi-user-todo-meals-app` uses Jac's AI integration features to generate smart shopping lists with costs and nutritional info. It works out of the box with an Anthropic API key:
+`jaseci/mini_todo` is a full-stack todo app whose AI features run through byLLM. For a multi-user app with sign-up, login and per-user data, try `jaseci/day_planner`, an AI day planner (set an API key for your model provider first):
 
 ```bash
 export ANTHROPIC_API_KEY="your-key-here"
-jac create meals-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-meals-app/multi-user-todo-meals-app.jacpack
-cd meals-app
+jac create planner --use jaseci/day_planner
+cd planner
 jac install
 jac run
 ```
 
-To use any of the other jacpacks, just swap the URL:
-
-```bash
-jac create my-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/<jacpack-name>/<jacpack-name>.jacpack
-```
+Pin a version with `--use org/name@^1.2`, or pass a local template directory or `.jab` file. See [Packages](../reference/packages.md#templates) for publishing your own.
 
 ---
 
