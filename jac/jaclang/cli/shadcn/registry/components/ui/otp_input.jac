@@ -2,7 +2,6 @@ import from "input-otp" { OTPInput, OTPInputContext }
 import from "react" { useContext }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { MinusSignIcon }
-import from ...lib.utils { cn }
 
 def:pub InputOTP(props: any) -> JsxElement {
     <OTPInput

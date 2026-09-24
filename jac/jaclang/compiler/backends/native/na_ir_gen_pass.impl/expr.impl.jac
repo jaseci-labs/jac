@@ -567,7 +567,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         global_var = self.global_vars[var_name];
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+
     _np = nd.parent;
     _is_call_target = isinstance(_np, uni.FuncCall) and _np.target is nd;
     if JAC_TYPE_REGISTRY.is_sized(var_name) and not _is_call_target {
@@ -1655,7 +1655,7 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     if operand is None {
         return None;
     }
-    import from jaclang.compiler.frontend.constant { is_borrow_kind, OwnershipKind }
+
     if is_borrow_kind(nd.ownership) {
         return operand;
     }

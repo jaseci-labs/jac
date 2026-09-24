@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_TOOL: CommandSpec = CommandSpec(
          name="tool",
          help="Run AST tools",

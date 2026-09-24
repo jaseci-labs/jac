@@ -1,12 +1,6 @@
 import re;
 import json as json_mod;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.cli.shadcn.shadcn_handler {
-    _registry_dir,
-    load_registry,
-    resolve_single_component
-}
 
 glob _SHADCN_TAILWIND_CSS: str = """/* Vendored from shadcn v3.8.5 dist/tailwind.css (no npm dep needed) */
 @theme inline {

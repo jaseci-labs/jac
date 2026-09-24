@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_ARCH: CommandSpec = CommandSpec(
          name="arch",
          help="Declare the project's module wiring in arch.jac and keep it in sync",

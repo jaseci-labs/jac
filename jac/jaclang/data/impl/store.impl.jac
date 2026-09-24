@@ -345,8 +345,6 @@ def _owner_alive(pid: (int | None)) -> bool {
 
 
 impl PgStore._connect -> any {
-    import from jaclang.data.pgload { connect as pg_connect }
-    import from jaclang.data.pgpool { checkout }
     info = self.conninfo;
     pooled = checkout(info);
     if pooled is not None {
@@ -365,7 +363,6 @@ impl PgStore._connect -> any {
 
 
 def _park_conn(info: any, conn: any, in_txn: bool, listened: bool) -> None {
-    import from jaclang.data.pgpool { pool_enabled, release }
     if conn is None {
         return;
     }

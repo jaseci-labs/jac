@@ -1,7 +1,6 @@
 def _mock_jsonable(value: object) -> object {
-    import from jaclang.runtime.object_interop { fields, is_record }
     import from enum { Enum }
-    import from jaclang.runtime.archetype { Archetype }
+
     if value is None or isinstance(value, (bool, int, float, str)) {
         return value;
     }

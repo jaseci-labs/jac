@@ -1,5 +1,3 @@
-import from jaclang.scale.events.broker { Event, RetryPolicy, StreamPosition }
-
 obj _SubscriptionEntry {
     has topic: str,
         handler: Callable[[Event], any],

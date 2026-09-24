@@ -1,5 +1,3 @@
-import from jaclang.server.serving.datatypes { JSONResponse }
-
 def error_response(
     code: str,
     message: str,
@@ -7,8 +5,6 @@ def error_response(
     service: str | None = None,
     retry_after_seconds: int | None = None
 ) -> JSONResponse {
-    import from jaclang.scale.runtime.context.trace_ctx { get_current_trace }
-
     err: dict[str, any] = {"code": code, "message": message};
     if service {
         err["service"] = service;

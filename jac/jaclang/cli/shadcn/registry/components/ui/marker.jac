@@ -1,6 +1,5 @@
 import from "class-variance-authority" { cva }
 import from "radix-ui" { Slot }
-import from ...lib.utils { cn }
 
 glob _markerVariants: any = cva(
          "cn-marker group/marker relative flex w-full items-center",

@@ -2,21 +2,6 @@ import os;
 import asyncio;
 import logging;
 import time;
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes { JSONResponse }
-import from jaclang.server.serving.endpoint {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.admin.service_urls { service_base_url }
-import from jaclang.scale.admin.traces { _tempo_base_url }
-import from jaclang.scale.admin.logs { _loki_base_url, _app_namespace }
-import from jaclang.scale._optdeps.prometheus { HAS_PROMETHEUS }
-import from jaclang.scale._optdeps.opentelemetry { HAS_OTEL }
-import from jaclang.scale.runtime.context.tracing { tracing_active }
 
 glob logger = logging.getLogger(__name__),
      _PROBE_TIMEOUT_S: float = 2.0;
@@ -221,7 +206,6 @@ def _mask_uri(uri: str) -> str {
 
 
 async def _http_ready(base: str, path: str) -> bool {
-    import from jaclang.server.serving.client { arequest }
     url = base.rstrip("/") + path;
     try {
         resp = await arequest("GET", url, timeout=_PROBE_TIMEOUT_S);
@@ -234,7 +218,6 @@ async def _http_ready(base: str, path: str) -> bool {
 
 
 async def _tempo_recent_count -> int {
-    import from jaclang.server.serving.client { arequest }
     base = _tempo_base_url();
     now_s = int(time.time());
     params = {"q": "{ }", "limit": "1", "start": str(now_s - 300), "end": str(now_s)};
@@ -257,7 +240,6 @@ async def _tempo_recent_count -> int {
 
 
 async def _loki_recent_count -> int {
-    import from jaclang.server.serving.client { arequest }
     base = _loki_base_url();
     ns = _app_namespace();
     selector = f'{{namespace="{ns}"}}' if ns else '{namespace=~".+"}';

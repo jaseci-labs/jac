@@ -1,5 +1,4 @@
 import from urllib.parse { urlparse }
-import from jaclang.server.transport { TransportResponse, Meta }
 
 glob _LOOPBACK_HOSTS: set[str] = {'127.0.0.1', 'localhost', '::1'};
 

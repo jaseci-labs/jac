@@ -1,6 +1,5 @@
 import from "class-variance-authority" { cva }
 import from "radix-ui" { Slot }
-import from ...lib.utils { cn }
 
 glob _bubbleVariants: any = cva(
          "cn-bubble group/bubble relative flex w-fit min-w-0 flex-col",

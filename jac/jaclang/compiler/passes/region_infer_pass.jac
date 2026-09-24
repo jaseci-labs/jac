@@ -1,21 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    CodeBlockStmt,
-    FuncCall,
-    ImplDef,
-    Module,
-    ModuleCode,
-    Name,
-    NameAtom,
-    OpenStmt,
-    Symbol,
-    Test,
-    UniNode
-}
-
 walker RegionInferPass {
     has ctx: CompileContext,
         module: Module,

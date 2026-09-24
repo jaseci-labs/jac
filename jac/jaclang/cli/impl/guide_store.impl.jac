@@ -151,7 +151,6 @@ glob DOC_CORPUS_ORDER: list[str] = [
 glob _DOC_DESCRIPTION_MAX: int = 180;
 
 impl guides_dir -> Path {
-    import jaclang;
     pkg_file = jaclang.__file__;
     if pkg_file is None {
         raise RuntimeError("jaclang package location is unavailable");
@@ -160,7 +159,6 @@ impl guides_dir -> Path {
 }
 
 impl docs_dir -> Path {
-    import jaclang;
     pkg_file = jaclang.__file__;
     if pkg_file is None {
         raise RuntimeError("jaclang package location is unavailable");

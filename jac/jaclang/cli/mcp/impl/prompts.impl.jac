@@ -1,5 +1,4 @@
 impl load_resource_content(uri: str) -> str {
-    import from jaclang.cli.mcp.resources { get_resource_provider }
     rp = get_resource_provider();
     content = rp.read_resource(uri);
     if content.startswith("Error:") {
@@ -174,7 +173,6 @@ impl PromptProvider.list_prompts -> list[dict[str, any]] {
 
     ];
 
-    import from jaclang.cli.mcp.mode { get_mcp_mode, disabled_prompts_for_mode }
     disabled = disabled_prompts_for_mode(get_mcp_mode());
     if not disabled {
         return all_prompts;

@@ -95,7 +95,6 @@ glob JS_GLOBALS: dict[str, str] = {
      );
 
 impl classify_native_import(item: UniNode) -> tuple[((str | None), bool)] {
-    import from jaclang.compiler.frontend.codeinfo { native_erased_import_names }
     mod_name: (str | None) = None;
     if isinstance(item, ModulePath) and item.path {
         parts = [];
@@ -170,7 +169,6 @@ impl node_within(name_nd: UniNode, top: (UniNode | None)) -> bool {
 }
 
 impl base_expr_is_erased(base: UniNode) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_BASES }
     _tail: UniNode = base.right if isinstance(base, AtomTrailer) else base;
     return isinstance(_tail, Name) and _tail.value in NATIVE_ERASED_BASES;
 }
@@ -253,11 +251,6 @@ impl call_has_kwargs_sink(call: FuncCall) -> bool {
 impl native_capability_violations(
     mod: Module
 ) -> list[tuple[(UniNode, str, str, (str | None))]] {
-    import from jaclang.compiler.frontend.constant {
-        CodeContext,
-        ExprCtx,
-        Tokens as Tok
-    }
     out: list[tuple[(UniNode, str, str, (str | None))]] = [];
     _stdlib_help: (str | None) = None;
 
@@ -791,7 +784,6 @@ impl PortabilityWarnPass._run_impl(ir_in: Module) -> Module {
 }
 
 impl PortabilityWarnPass._check_js_globals(mod: Module) -> None {
-    import from jaclang.compiler.frontend.constant { ExprCtx }
     all_names = mod.get_all_sub_nodes(typ=Name);
     for name_nd in all_names {
         if name_nd.expr_ctx != ExprCtx.LOAD {
@@ -870,7 +862,6 @@ impl PortabilityWarnPass._find_call_is_js_style(call: FuncCall) -> bool {
 }
 
 impl PortabilityWarnPass._check_js_keywords(mod: Module) -> None {
-    import from jaclang.compiler.frontend.constant { ExprCtx }
     all_names = mod.get_all_sub_nodes(typ=Name);
     for name_nd in all_names {
         if name_nd.expr_ctx != ExprCtx.LOAD {

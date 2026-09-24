@@ -1,6 +1,6 @@
 def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
     import os;
-    import from jaclang.runtime.graph_utils { triple_arch }
+
     want = triple_arch(triple);
 
     python_build = os.path.join(pkg_root, ".python-build");
@@ -26,7 +26,6 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
         }
     }
 
-    import from jaclang.dist.fused_binary { bundled_floor_roots }
     for floor in bundled_floor_roots(pkg_root) {
         if not os.path.isdir(floor) {
             continue;
@@ -43,12 +42,12 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
 
 def floor_lib_dir(triple: str) -> (str | None) {
     import os;
-    import from jaclang.compiler.driver.compile_options { env_floor_dir }
+
     `override = env_floor_dir();
     if `override and os.path.isdir(`override) {
         return `override;
     }
-    import jaclang;
+
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
     return resolve_floor_dir(pkg_root, triple);
 }
@@ -62,7 +61,7 @@ def collect_floor_archives(
     clib_paths: list[str], clib_symbol_lib: dict[str, str], triple: str, is_macos: bool
 ) -> tuple[list[bytes], set[str]] {
     import os;
-    import from jaclang.compiler.backends.native.linker_common { select_ar_members }
+
     member_bytes: list[bytes] = [];
     handled: set[str] = set();
 

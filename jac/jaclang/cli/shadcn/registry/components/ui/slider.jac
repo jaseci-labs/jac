@@ -1,5 +1,4 @@
 import from "radix-ui" { Slider as SliderPrimitive }
-import from ...lib.utils { cn }
 
 def:pub Slider(props: any) -> JsxElement {
     <SliderPrimitive.Root

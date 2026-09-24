@@ -10,15 +10,6 @@ import from enum { StrEnum }
 import from io { BytesIO }
 import from typing { IO, get_args, get_origin, get_type_hints }
 
-import from jaclang.byllm._optdeps.pillow { PILImageCls, open_image }
-import from jaclang.byllm._optdeps.litellm { LiteLLMMessage }
-import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
-import from .schema { tool_to_schema }
-import from jaclang.byllm.exceptions { ByLLMError, FinishToolError }
-
-import from jaclang.runtime.semantic { Info }
-import from jaclang.byllm.mcp { McpTool }
-
 type MessageType = Message | LiteLLMMessage | dict[str, object];
 
 enum MessageRole(StrEnum) {

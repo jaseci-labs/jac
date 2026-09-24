@@ -130,10 +130,11 @@ def _native_parse_woven(
     file_path: str,
     prog: (JacProgram | None),
     annexes: list[tuple[str, str]],
-    early_context: str = ""
+    early_context: str = "",
+    load_kernel: bool = True
 ) -> (tuple[Module, bool] | None) {
     import jaclang.compiler.native_compiler as _jc;
-    kernel = _jc.ensure_loaded();
+    kernel = _jc.ensure_loaded() if load_kernel else _jc.loaded_kernel();
     if kernel is None {
         return None;
     }
@@ -172,9 +173,12 @@ def parse_woven(
     file_path: str,
     prog: (JacProgram | None),
     annexes: list[tuple[str, str]],
-    early_context: str = ""
+    early_context: str = "",
+    load_kernel: bool = True
 ) -> tuple[any, bool] {
-    nat = _native_parse_woven(source_str, file_path, prog, annexes, early_context);
+    nat = _native_parse_woven(
+        source_str, file_path, prog, annexes, early_context, load_kernel
+    );
     if nat is not None {
         return nat;
     }

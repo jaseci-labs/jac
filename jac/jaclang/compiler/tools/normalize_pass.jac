@@ -1,12 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree { TreeWalker, Tok, EmptyToken, Token }
-import from jaclang.compiler.passes.context { CompileContext }
-import jaclang.compiler.frontend.unitree as uni;
-
-import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.frontend.roles { BodyRole, ItemsRole }
-
 walker NormalizePass(TreeWalker) {
     can enter_walk with uni.UniNode entry {
         self.ctx.enter_node(here);

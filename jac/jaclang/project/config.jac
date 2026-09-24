@@ -3,7 +3,7 @@ import re;
 import sys;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.project.apps { AppConfig, implicit_app, parse_apps }
+
 glob CAPABILITY_SECTIONS: tuple[str, ...] = (
          "byllm",
          "scale",

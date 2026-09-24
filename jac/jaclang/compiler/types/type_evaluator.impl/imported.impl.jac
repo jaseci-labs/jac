@@ -7,7 +7,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
         return binding.type;
     }
     item_name = node_.name.value;
-    import from jaclang.project.modresolver { is_untyped_third_party_module }
+
     import_node = node_.parent_of_type(Import);
     assert import_node.from_loc is not None;
 
@@ -288,7 +288,6 @@ impl TypeEvaluator._resolve_star_import_symbol(
 }
 
 impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
-    import from jaclang.project.modresolver { is_untyped_third_party_module }
     path_parts = node_.path;
     if path_parts {
         last_type = path_parts[-1].type;
@@ -433,7 +432,6 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
 impl TypeEvaluator._resolve_submodule_attr(
     base_type: ModuleType, attr_name: str
 ) -> (ModuleType | None) {
-    import from jaclang.project.modresolver { is_untyped_third_party_module }
     if base_type.file_uri is None {
         return None;
     }
@@ -525,7 +523,6 @@ impl TypeEvaluator.forget_module(resolved_path: str) -> None {
 }
 
 impl TypeEvaluator._resolve_importer_path(ast_node: UniNode) -> (str | None) {
-    import from jaclang.compiler.symbol_utils { resolve_importer_path_from_node }
     return resolve_importer_path_from_node(ast_node);
 }
 
@@ -550,7 +547,6 @@ impl TypeEvaluator.get_type_of_symbol(symbol: Symbol) -> TypeBase {
 }
 
 impl TypeEvaluator._published_class_type(symbol: Symbol) -> (TypeBase | None) {
-    import from jaclang.compiler.frontend.unitree { Archetype }
     decl = symbol.decl;
     if decl is None {
         return None;
@@ -626,7 +622,7 @@ impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | Non
     if mod is None or not mod.loc or not mod.loc.mod_path {
         return None;
     }
-    import from jaclang.project.config { get_config_for_path }
+
     try {
         cfg = get_config_for_path(Path(mod.loc.mod_path));
     } except Exception {

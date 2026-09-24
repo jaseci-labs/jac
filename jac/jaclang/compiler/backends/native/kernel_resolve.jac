@@ -1,12 +1,7 @@
-import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
 import hashlib;
 import json;
 import os;
 import sys;
-import from jaclang.compiler.driver.compile_options {
-    CompileOptions,
-    NATIVE_LINK_MODE_BITCODE
-}
 
 glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
      STUBCAT_BUILDING_ENV: str = "JAC_STUBCAT_BUILDING",
@@ -33,7 +28,6 @@ def kernel_lib_name -> str {
 }
 
 def source_tree_kernel_path -> str {
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
     return os.path.join(jaclang_pkg_root(), "compiler", kernel_lib_name());
 }
 
@@ -69,7 +63,6 @@ def _from_explicit(path: str) -> ResolvedKernel {
 }
 
 def _from_sealed_image -> (ResolvedKernel | None) {
-    import from jaclang.jac0core { sealed }
     image = sealed._jaclang_image();
     if image is None {
         return None;
@@ -152,9 +145,6 @@ def kernel_options -> CompileOptions {
 }
 
 def kernel_plan(prog: any = None, mode: str = "") -> any {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.native_scope { kernel_root_path }
-    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
     program = prog if prog is not None else JacProgram();
     options = kernel_options();
     return build_link_plan(
@@ -163,10 +153,6 @@ def kernel_plan(prog: any = None, mode: str = "") -> any {
 }
 
 def build_kernel(dst: str, prog: any = None, log: any = None) -> any {
-    import from jaclang.compiler.backends.native.link_plan {
-        ArtifactKind,
-        link_artifact
-    }
     with _StoreParserSpan() {
         plan = kernel_plan(prog, mode=NATIVE_LINK_MODE_BITCODE);
         os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
@@ -236,7 +222,7 @@ def _sidecar_matches_sources(sidecar: dict[str, any]) -> bool {
     """Acceptance runs while the bootstrap tier is still compiling, so it
     reaches only the cache-key module; the link plan, which the legacy
     folded key needs, is imported for that key alone.""";
-    import from jaclang.compiler.driver.jir { sidecar_unit_paths }
+
     units = sidecar_unit_paths(sidecar);
     if not units {
         return False;
@@ -249,7 +235,7 @@ def _sidecar_matches_sources(sidecar: dict[str, any]) -> bool {
     if not recorded {
         return False;
     }
-    import from jaclang.compiler.backends.native.link_plan { units_source_key }
+
     return units_source_key(units, kernel_options()) == recorded;
 }
 
@@ -262,11 +248,7 @@ def _unit_sources_match(
     source key is what an in-tree build records for itself: the module key
     of a file outside the running package fingerprints its project, so the
     key a kit's build folded is never the one a checkout computes.""";
-    import from jaclang.compiler.driver.jir {
-        running_compiler_digest,
-        unit_source_digest
-    }
-    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+
     options = kernel_options();
     if str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
         or str(sidecar.get("codegen_identity", "")) != options.base_codegen_identity()
@@ -330,7 +312,7 @@ def _bundled_kernel -> (tuple[str, dict[str, any]] | None) {
     """The kernel the running kit carries and its manifest record, when this
     process's compiler is a rerouted checkout rather than that kit: the
     kit's sealed jaclang sits beside its interpreter.""";
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+
     site_pkg = os.path.join(os.path.dirname(sys.prefix), "site", "jaclang");
     if not os.path.isdir(os.path.join(site_pkg, "_precompiled")) {
         return None;
@@ -485,7 +467,7 @@ child must put first on its path to run the same compiler. A build boots
 its interpreter with `-I` and an explicit `sys.path`, which a child does
 not inherit, and `python -c` would otherwise put the working directory
 first, where a checkout's own `jaclang` shadows the tree being built.""";
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+
     return os.path.dirname(jaclang_pkg_root());
 }
 

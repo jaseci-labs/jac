@@ -1,6 +1,4 @@
 impl list_commands -> dict[str, str | int | list[dict[str, str]] | list[str]] {
-    import from jaclang.cli.manifest { get_groups, iter_command_meta }
-
     commands: list[dict[str, str]] = [];
     for meta in iter_command_meta() {
         commands.append({'name': meta.name, 'help': meta.help, 'group': meta.group});
@@ -12,9 +10,6 @@ impl list_commands -> dict[str, str | int | list[dict[str, str]] | list[str]] {
 impl get_command(
     name: str
 ) -> dict[str, str | bool | list[object] | None | list[dict[str, str]]] {
-    import from jaclang.cli.manifest { get_command_meta }
-    import from jaclang.cli.command { arg_typ_name }
-
     meta = get_command_meta(name);
     if meta is None {
         return {'error': f"Command not found: {name}"};

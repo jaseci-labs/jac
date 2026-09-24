@@ -1,13 +1,6 @@
 import os;
 import sys;
 
-import from jaclang { JacRuntime as Jac }
-import from jaclang.runtime.constants { Constants as Con }
-import type from jaclang.runtime.context { ExecutionContext }
-import from jaclang.jac0core.ext_registry { base_stem }
-import from jaclang.server.server { JacAPIServer, ServerExtension }
-import from jaclang.server.settings { ServeSettings }
-
 
 obj PreparedInProcessRuntime {
     has server: any,
@@ -56,8 +49,6 @@ def prepare_inprocess_runtime(
     extensions: (list[ServerExtension] | None) = None,
     overrides: (dict[str, any] | None) = None
 ) -> PreparedInProcessRuntime {
-    import from jaclang.testing.testkit { ServingTestClient }
-
     if transport_kind not in ("testclient", "listener") {
         raise NotImplementedError(
             "transport_kind='"
@@ -67,7 +58,6 @@ def prepare_inprocess_runtime(
         );
     }
 
-    import from jaclang.scale.runtime.provider { mark_scale_runtime }
     static_only = bool((overrides or {}).get('static_only', False));
     (base, _) = os.path.split(jac_file);
     base = base or "./";

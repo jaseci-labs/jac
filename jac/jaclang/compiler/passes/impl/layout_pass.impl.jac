@@ -1,6 +1,3 @@
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-
 impl LayoutPass.postinit -> None {
     self.registry = LayoutRegistry();
     self.isinstance_targets = set();
@@ -798,7 +795,6 @@ impl LayoutPass._validate_obj_fields(
 }
 
 impl LayoutPass._is_layout_compatible_semantic_type(typ: TypeBase | None) -> bool {
-    import from jaclang.compiler.types.types { ClassType, FunctionType, UnionType }
     if isinstance(typ, UnionType) {
         return bool(typ.types)
             and all(

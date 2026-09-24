@@ -1,7 +1,5 @@
 import os;
 import logging;
-import from jaclang.scale._optdeps.kubernetes { client, config, HAS_KUBERNETES }
-import from jaclang.scale.runtime.context.util { in_cluster_namespace }
 
 glob logger = logging.getLogger(__name__);
 

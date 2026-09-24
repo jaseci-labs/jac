@@ -2,8 +2,6 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.toolchains.store { Artifact, install, InstallLock }
-import from jaclang.toolchains.host { host_platform }
 
 def cef_artifact(sums: Path) -> Artifact {
     version = "";

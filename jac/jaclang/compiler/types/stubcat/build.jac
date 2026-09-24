@@ -1,17 +1,7 @@
-import type from jaclang.compiler.driver.program { JacProgram }
 import json;
 import os;
 import sys;
 import time;
-import from jaclang.compiler.types.stubcat.locate {
-    ENV_BUILDING,
-    catalog_key,
-    jac_internal_stub_dir,
-    jaclang_pkg_dir,
-    typeshed_stdlib_dir
-}
-import from jaclang.compiler.types.stubcat.writer { CatalogWriter }
-import jaclang.compiler.types.stubcat.reader;
 
 glob PRELUDE_ORDER: tuple[str, ...] = (
          "builtins",
@@ -139,10 +129,8 @@ def build_catalog(
     quiet: bool = False
 ) -> dict[str, any] {
     started = time.monotonic();
-    import from jaclang.compiler.driver.program { JacProgram }
+
     prog = JacProgram();
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
 
     prog._compiler = JacCompiler(
         stub_catalog_disabled=True, _selfhost=SelfHostCache(_program=prog)

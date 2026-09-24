@@ -1,7 +1,5 @@
 import from "class-variance-authority" { cva }
 import from "radix-ui" { Slot }
-import from .button { Button }
-import from ...lib.utils { cn }
 
 glob _attachmentVariants: any = cva(
          "cn-attachment group/attachment relative flex max-w-full min-w-0 shrink-0 flex-wrap border bg-card text-card-foreground transition-colors has-[>a,>button]:hover:bg-muted/50 data-[state=error]:border-destructive/30 data-[state=idle]:border-dashed",

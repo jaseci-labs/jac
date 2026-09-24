@@ -1,10 +1,6 @@
 import threading;
-import type from jaclang.compiler.passes.context { Alert }
-import type from jaclang.client.client_diagnostics { ClientDiagnostic }
-import from pathlib { Path }
-import type from jaclang.server.watcher { JacFileWatcher, FileChangeEvent, ChangeType }
 
-import from jaclang.server.build_status { BuildStatus, BuildMonitor }
+import from pathlib { Path }
 
 obj HotReloader {
     has base_path: str,

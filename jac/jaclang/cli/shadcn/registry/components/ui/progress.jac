@@ -1,5 +1,4 @@
 import from "radix-ui" { Progress as ProgressPrimitive }
-import from ...lib.utils { cn }
 
 def:pub Progress(props: any) -> JsxElement {
     value = props["value"] or 0;

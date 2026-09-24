@@ -1,29 +1,5 @@
 import logging;
 import from pathlib { Path }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.runtime.runtime { JacRuntime as Jac }
-import from jaclang.server.serving.datatypes {
-    HTMLResponse,
-    JSONResponse,
-    Request,
-    Response
-}
-import from jaclang.server.serving.endpoint {
-    APIParameter,
-    HTTPMethod,
-    JEndPoint,
-    ParameterType
-}
-import from jaclang.project.config { get_config }
-import from jaclang.server.serving.files { file_response }
-import from jaclang.server.server { JacAPIServer, JsonValue }
-import from jaclang.server.static_files {
-    find_root_asset,
-    client_dist_index,
-    find_static_candidate,
-    sibling_app_dist,
-    sibling_app_file
-}
 
 glob logger: logging.Logger = logging.getLogger('jaclang.serve'),
      CL_PREFIX: str = 'cl/',
@@ -49,7 +25,6 @@ def _dev_client_elsewhere -> JSONResponse {
 
 
 def _static_base(server: JacAPIServer) -> str {
-    import from jaclang.server.sealed_serve { sealed_root_for }
     source_path = getattr(server.module, '__file__', '') or '';
     image_root = sealed_root_for(source_path) if source_path else None;
     if image_root is not None {
@@ -321,7 +296,6 @@ def register_graph_endpoints(server: JacAPIServer) {
     }
 
     def graph_page(request: Request) -> Response {
-        import jaclang.scale as scale_mod;
         try {
             template = Path(scale_mod.__file__).parent / 'templates' / 'graph.html';
             return HTMLResponse(content=template.read_text(encoding='utf-8'));
@@ -346,7 +320,6 @@ def register_graph_endpoints(server: JacAPIServer) {
     );
 
     def graph_data(request: Request) -> Response {
-        import from jaclang.runtime.graph_utils { collect_node_connections }
         username = request.state?.username or Con.GUEST.value;
         root_id = server.user_manager.get_root_id(str(username));
         if not root_id {
@@ -400,7 +373,6 @@ def register_graph_endpoints(server: JacAPIServer) {
 
 def register_diagnostics_endpoints(server: JacAPIServer) {
     async def build_status(request: Request) -> JSONResponse {
-        import from jaclang.server.build_status { get_build_status }
         return JSONResponse(content=get_build_status());
     }
     server.add_endpoint(
@@ -427,9 +399,7 @@ def register_diagnostics_endpoints(server: JacAPIServer) {
                 status_code=400, content={'error': 'Missing required field: message'}
             );
         }
-        import from jaclang.client.source_mapping { _error_rate_limiter }
-        import from jaclang.client.client_diagnostics { log_client_error }
-        import from jaclang.project.config { get_config }
+
         if not _error_rate_limiter.should_log(str(data.get('message'))) {
             return JSONResponse(content={'ok': True, 'throttled': True});
         }

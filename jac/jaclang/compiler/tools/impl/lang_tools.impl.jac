@@ -1,13 +1,3 @@
-import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
-import from jaclang.cli.console { console }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
-import from jaclang.compiler.tools.treeprinter {
-    print_ast_tree,
-    print_symtab_tree,
-    printgraph_ast_tree,
-    printgraph_symtab_tree
-}
-
 impl AstTool.autodoc_uninode -> str {
     output = '';
     tick = chr(96);
@@ -50,7 +40,6 @@ impl AstTool.autodoc_uninode -> str {
 }
 
 impl AstTool.ir(args: list[str]) -> str {
-    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
     error = 'Usage: ir <choose one of (sym / sym. / ast / ast. / docir / pyast / py / unparse / esast / es)> <.py or .jac file_path>';
     if (len(args) != 2) {
         return error;
@@ -194,8 +183,6 @@ impl AstTool.ir(args: list[str]) -> str {
 }
 
 impl AstTool.py_uni_nodes -> str {
-    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-
     py_ast.unparse(py_ast.parse(""));
     visit_methods = [
         method

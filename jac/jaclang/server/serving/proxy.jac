@@ -1,7 +1,6 @@
 import ipaddress;
 import logging;
 import threading;
-import from jaclang.server.serving.datatypes { Headers }
 
 glob logger: logging.Logger = logging.getLogger(__name__),
      _untrusted_warned: threading.Event = threading.Event();

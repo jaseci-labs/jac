@@ -1,11 +1,4 @@
 import os;
-import type from jaclang.runtime.context { ExecutionContext }
-import type from jaclang.server.server { JacAPIServer as JacServer, ServerExtension }
-import type from jaclang.data.storage { Storage }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.events.streams.postgres { PgEventStream }
-import from jaclang.server.shared_store { shared_store as _pg_anchor }
-import from jaclang.scale.state.pg_state_backend { PgStateBackend as _state_anchor }
 
 def scale_runtime_configured -> bool {
     if (
@@ -35,7 +28,7 @@ class JacScaleRuntime {
         if not scale_runtime_configured() {
             return None;
         }
-        import from jaclang.scale.memory.context { JScaleExecutionContext }
+
         ctx = JScaleExecutionContext();
         if user_root is not None {
             ctx.set_user_root(user_root);
@@ -48,14 +41,12 @@ class JacScaleRuntime {
     }
 
     static def get_server_extensions -> list[ServerExtension] {
-        import from jaclang.scale.server.extensions { scale_extensions }
         return scale_extensions();
     }
 
     static def store(
         base_path: str = "./storage", create_dirs: bool = True
     ) -> Storage {
-        import from jaclang.scale.storage.factory { StorageFactory }
         return StorageFactory.get_default(base_path, create_dirs);
     }
 
@@ -126,7 +117,6 @@ class JacScaleRuntime {
         args: dict[str, any],
         headers: dict[str, str] | None = None
     ) -> any {
-        import from jaclang.scale.runtime.transport.transport { http_transport }
         return http_transport().call_function(app, func_name, args, headers=headers);
     }
 
@@ -137,7 +127,6 @@ class JacScaleRuntime {
         stub_cls: any,
         headers: dict[str, str] | None = None
     ) -> any {
-        import from jaclang.scale.runtime.transport.transport { http_transport }
         return http_transport().call_walker(
             app, walker_name, args, stub_cls, headers=headers
         );

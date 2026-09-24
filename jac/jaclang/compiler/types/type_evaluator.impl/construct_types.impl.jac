@@ -44,8 +44,6 @@ impl TypeEvaluator._get_type_of_super(node_: Name) -> TypeBase {
 }
 
 impl TypeEvaluator._get_type_of_lhs_assignment(expr: Name) -> TypeBase | None {
-    import from jaclang.compiler.symbol_utils { find_destructure_index_path }
-
     if expr.sym is not None and expr.sym.decl is expr {
         return None;
     }
@@ -204,7 +202,6 @@ impl TypeEvaluator._tuple_literal_index_type(
 }
 
 impl TypeEvaluator._container_value_type(value_type: TypeBase, at: Expr) -> TypeBase {
-    import from jaclang.compiler.frontend.unitree { in_type_position }
     if in_type_position(at, include_subscripts=False) {
         return value_type;
     }
@@ -369,7 +366,6 @@ impl TypeEvaluator.get_type_of_int(nd: Int) -> TypeBase {
 }
 
 impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     if node_.name_spec.type is not None {
         return node_.name_spec.type;
     }
@@ -561,7 +557,6 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
 impl TypeEvaluator._apply_function_decorators(
     node_: Ability, func_type: FunctionType
 ) -> FunctionType {
-    import from jaclang.compiler.types.type_utils { apply_solved_type_vars }
     if not node_.decorators {
         return func_type;
     }
@@ -776,7 +771,6 @@ impl TypeEvaluator.get_none_type -> TypeBase {
 
 
 impl TypeEvaluator._super_owner_for(node_: Name, rest: list[ClassType]) -> ClassType {
-    import from jaclang.compiler.types.type_utils { collect_member_syms }
     parent = node_.parent;
     member_name: str | None = None;
     if isinstance(parent, AtomTrailer) and isinstance(parent.right, Name) {
@@ -807,8 +801,6 @@ impl TypeEvaluator._super_owner_for(node_: Name, rest: list[ClassType]) -> Class
 }
 
 impl TypeEvaluator._intrinsic_function_type(name: str) -> (FunctionType | None) {
-    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
-    import from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
     registry = intrinsic_registry_if_ready();
     intr = registry.get(name) if isinstance(registry, IntrinsicRegistry) else None;
     if intr is None {
@@ -844,7 +836,6 @@ impl TypeEvaluator._intrinsic_spec_type(spec: str) -> TypeBase {
 }
 
 impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if isinstance(type_expr, Name) {
         name = type_expr.sym_name;
         if JAC_TYPE_REGISTRY.is_sized(name) {
@@ -867,8 +858,6 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
 }
 
 impl TypeEvaluator._is_typed_c_declaration(declared: TypeBase) -> bool {
-    import from jaclang.compiler.c_interop { c_builtin_kind }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if isinstance(declared, UnionType) {
         saw_typed = False;
         for member in declared.types {
@@ -947,9 +936,6 @@ impl TypeEvaluator._extern_member_type(arch: Archetype, name: str) -> TypeBase {
 }
 
 impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
-    import from jaclang.compiler.types.types { create_callable_type }
-    import from jaclang.compiler.types.fixed_width { numeric_name_of }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     annotation = field.type_tag;
     if annotation is None {
         return AnyType(is_foreign=True);

@@ -54,10 +54,18 @@ def _native_dep_scan(
         return ("previously-demoted", []);
     }
     import from jaclang.compiler.driver.bccache { discover_annex_files }
-    import from jaclang.compiler.frontend.parser { parse as rd_parse }
+    import from jaclang.compiler.driver.wiring {
+        arch_file_for,
+        dedupe_generated_imports
+    }
+    import from jaclang.compiler.frontend.parser.frontend { annex_sources, parse_woven }
     files = [path]
         + discover_annex_files(path, '.impl.jac')
         + discover_annex_files(path, '.test.jac');
+    arch = arch_file_for(path);
+    if arch is not None {
+        files.append(arch);
+    }
     fresh_parts: list[tuple[str, int, int]] = [];
     for f in files {
         try {
@@ -74,28 +82,24 @@ def _native_dep_scan(
     }
     sv_reason = '';
     deps: list[str] = [];
-    if not sv_reason {
-        base_dir = os.path.dirname(os.path.abspath(path)) or '.';
-        for f in files {
-            try {
-                src = read_file_with_encoding(f);
-            } except Exception {
-                sv_reason = "unreadable annex";
-                break;
-            }
-            (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
-            if had_err {
-                sv_reason = "parse error";
-                break;
-            }
-            (f_sv, f_deps) = scan_native_blockers(
+    base_dir = os.path.dirname(os.path.abspath(path)) or '.';
+    src: (str | None) = None;
+    try {
+        src = read_file_with_encoding(path);
+    } except Exception {
+        sv_reason = "unreadable module";
+    }
+    if src is not None {
+        (dep_mod, had_err) = parse_woven(
+            src, path, JacProgram(), annex_sources(path), load_kernel=False
+        );
+        if had_err {
+            sv_reason = "parse error";
+        } else {
+            dedupe_generated_imports(dep_mod);
+            (sv_reason, deps) = scan_native_blockers(
                 dep_mod, base_dir, allow_pub=True, hold_exempt=hold_exempt
             );
-            if f_sv {
-                sv_reason = f_sv;
-                break;
-            }
-            deps.extend(f_deps);
         }
     }
     if sv_reason {

@@ -2,20 +2,6 @@ import json;
 import shutil;
 import sys;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.cli.guide_store {
-    Guide,
-    list_guides,
-    guide_sections,
-    list_docs,
-    get_guide,
-    guide_group,
-    grouped_guides,
-    doc_corpora,
-    corpus_blurb,
-    grep_guides,
-    nav_manifest
-}
 
 def _emit(text: str) {
     sys.stdout.write(text + "\n");

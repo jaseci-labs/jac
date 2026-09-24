@@ -3,17 +3,6 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.toolchains.host { executable, host_platform, run_step }
-import from jaclang.toolchains.store {
-    Artifact,
-    InstallLock,
-    build_slot,
-    extract,
-    fetch,
-    file_digest,
-    publish_build_slot,
-    slot_ready
-}
 
 glob LLVM_MAJOR: int = 22,
      C_BACKEND: Artifact = Artifact(

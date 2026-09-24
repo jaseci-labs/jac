@@ -1,22 +1,5 @@
 import os;
 
-import from jaclang.dist.payload.fsutil {
-    clone_env,
-    copy_file,
-    delete_file,
-    delete_tree,
-    die,
-    file_exists,
-    log,
-    make_dirs,
-    mtime_ns,
-    read_bytes,
-    run_child,
-    sha256_hex,
-    walk_sorted,
-    write_text
-}
-
 impl build_musl(osarch: str, dest: str, zig_exe: str) {
     ztargets = {
         "linux-x86_64": "x86_64-linux-musl",

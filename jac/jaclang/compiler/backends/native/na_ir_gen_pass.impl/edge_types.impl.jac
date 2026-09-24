@@ -29,7 +29,7 @@ impl NaIRGenPass._osp_edge_class_name(expr: uni.UniNode) -> (str | None) {
     } elif not typ.is_instantiable() or typ.is_instance() {
         return None;
     }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     return class_type_native_name(typ);
 }
 

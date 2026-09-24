@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
          name="explain",
          help="Explain what the compiler inferred: memory (ownership, drops), placement (demotions), ir (optimized LLVM IR)",

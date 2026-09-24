@@ -1,5 +1,4 @@
 import from "radix-ui" { Avatar as AvatarPrimitive }
-import from ...lib.utils { cn }
 
 def:pub Avatar(props: any) -> JsxElement {
     size = props["size"] or "default";

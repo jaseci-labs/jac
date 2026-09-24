@@ -673,7 +673,6 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.loop_stack.append((cond_bb, end_bb));
     self.builder.position_at_end(body_bb);
 
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
     _while_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -701,7 +700,6 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
 }
 
 impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
     _region_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -759,7 +757,6 @@ impl NaIRGenPass._codegen_forever(nd: uni.ForeverStmt) -> None {
     self.loop_stack.append((body_bb, end_bb));
     self.builder.position_at_end(body_bb);
 
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
     _forever_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -807,7 +804,7 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
 
     self.loop_stack.append((step_bb, end_bb));
     self.builder.position_at_end(body_bb);
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+
     _saved_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -3576,8 +3573,6 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
 }
 
 impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
-
     if nd.else_body is not None {
         return False;
     }
@@ -4492,7 +4487,7 @@ impl NaIRGenPass._codegen_for_indexed(
             return;
         }
     }
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+
     _for_saved = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -4677,7 +4672,6 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
     self._emit_chunk_header(coll, _nv, _ci, _hdr, helpers["len"]);
     self.builder.store(_hdr, _lv_alloca);
 
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
     _ch_saved = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );

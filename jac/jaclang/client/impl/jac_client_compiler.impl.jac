@@ -1,5 +1,3 @@
-import from jaclang.cli.console { console }
-
 def _jac_client_plugin_dir -> Path {
     import importlib;
     client_pkg = importlib.import_module("jaclang.client");
@@ -72,7 +70,6 @@ impl JacClientCompiler._jac_path_to_js(self: JacClientCompiler, rel_str: str) ->
 }
 
 impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> Path {
-    import from jaclang.jac0core.ext_registry { base_stem }
     name = path.name;
     if ".native." in name {
         return path;
@@ -88,7 +85,6 @@ impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> P
 }
 
 impl JacClientCompiler.emit_prelude(self: JacClientCompiler) -> Path {
-    import from jaclang.compiler.backends.es.jac_runtime_js { write_jac_prelude_file }
     return Path(write_jac_prelude_file(str(self.compiled_dir)));
 }
 
@@ -130,7 +126,7 @@ impl JacClientCompiler.compile(
     if native {
         self.compile_runtime_utils(self.NATIVE_RUNTIME_FILE);
     }
-    import from jaclang.client.config_loader { JacClientConfig as PwaConfig }
+
     pwa_config = PwaConfig(self.project_dir, entry_path=self.entry_path);
     if pwa_config.is_pwa_enabled() and not native {
         self.compile_pwa_runtime();
@@ -142,7 +138,6 @@ impl JacClientCompiler.compile(
 }
 
 impl JacClientCompiler.copy_root_assets(self: JacClientCompiler) -> None {
-    import from jaclang.client.config_loader { JacClientConfig }
     root_assets_dir = JacClientConfig(
         self.project_dir, entry_path=self.entry_path
     ).get_assets_dir();
@@ -245,7 +240,7 @@ impl JacClientCompiler.emit_dependencies(
     if (collected_globals is None) {
         collected_globals = {};
     }
-    import from jaclang.compiler.driver.pipeline { collect_client_graph }
+
     module_path = module_path.resolve();
     source_root = source_root.resolve()
         if source_root is not None
@@ -445,7 +440,6 @@ impl JacClientCompiler.compile_runtime_utils(
 impl JacClientCompiler.compile_pwa_runtime(
     self: JacClientCompiler
 ) -> tuple[str, list[str]] {
-    import jaclang;
     pwa_runtime_path: Path = (
         Path(jaclang.__file__).parent / "client" / "pwa_runtime.jac"
     );
@@ -560,7 +554,6 @@ impl JacClientCompiler._scan_and_compile_pages(
 impl JacClientCompiler._check_entry_renders_routes(
     self: JacClientCompiler, entry_manifest: any
 ) -> None {
-    import from jaclang.client.route_scanner { entry_drops_route_children }
     if not entry_drops_route_children(entry_manifest) {
         return;
     }
@@ -576,7 +569,6 @@ impl JacClientCompiler._check_entry_renders_routes(
 impl JacClientCompiler._warn_pages_without_routes(
     self: JacClientCompiler, scanner: RouteScanner
 ) -> None {
-    import from jaclang.client.route_scanner { describe_pages_without_routes }
     for line in describe_pages_without_routes(scanner.pages_dir) {
         console.error(line);
     }
@@ -585,7 +577,6 @@ impl JacClientCompiler._warn_pages_without_routes(
 impl JacClientCompiler._warn_unrouted_pages(
     self: JacClientCompiler, scanner: RouteScanner
 ) -> None {
-    import from jaclang.client.route_scanner { describe_unrouted_pages }
     for line in describe_unrouted_pages(scanner.get_unrouted_files()) {
         console.warning(line);
     }

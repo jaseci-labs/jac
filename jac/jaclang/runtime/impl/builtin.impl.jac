@@ -1,5 +1,4 @@
 impl _jac_graph_json(file: (str | None) = None) -> str {
-    import from jaclang.runtime.graph_utils { collect_node_connections }
     jac = _get_jac();
     visited_nodes: set = set();
     connections: set = set();
@@ -151,7 +150,6 @@ impl _get_llm -> LLMModel {
 impl _get_archetype_alias -> Callable[..., any] {
     def factory(old_name: str) -> Callable {
         def decorator(cls: type) -> type {
-            import from jaclang.data.serializer { Serializer }
             Serializer.register_alias(old_name, cls);
             return cls;
         }
@@ -162,7 +160,6 @@ impl _get_archetype_alias -> Callable[..., any] {
 
 impl _get_schema_builder(name: str) -> Callable[..., any] {
     def builder(*args: any, **kwargs: any) -> any {
-        import jaclang.data.schema_rules as _rules;
         return getattr(_rules, name)(*args, **kwargs);
     }
     return builder;
@@ -204,12 +201,10 @@ impl _get_jid -> Callable[..., any] {
 }
 
 impl _get_access_level -> type[AccessLevel] {
-    import from jaclang.runtime.constructs { AccessLevel }
     return AccessLevel;
 }
 
 impl _get_jac -> type[JacRuntimeInterface] {
-    import from jaclang { JacRuntimeInterface }
     return JacRuntimeInterface;
 }
 
@@ -272,9 +267,7 @@ impl RaisesContext.`match(regexp: str) -> bool {
 
 impl restspec(**specs: any) -> Callable {
     import logging;
-    import from jaclang { JacRuntimeInterface as Jac }
-    import from jaclang.server.serving.endpoint { HTTPMethod }
-    import type from jaclang.server.server { JacAPIServer }
+
     ServerCls: type[JacAPIServer] = Jac.get_api_server_class();
     SpecsCls = ServerCls.RestSpecs;
 
@@ -373,7 +366,6 @@ def _validate_restspec_target(spec: any, target: any) {
 }
 
 impl schedule(**kwargs: any) -> Callable {
-    import from jaclang.server.task_scheduler { ScheduleSpec }
     import from jaclang.runtime.builtin { ScheduleTrigger }
     trigger = kwargs.pop("trigger", ScheduleTrigger.STATIC);
     if isinstance(trigger, str) {
@@ -477,6 +469,5 @@ impl _jac_chunks(xs: any, n: int) -> list[any] {
 }
 
 def _is_sized_type_name(name: str) -> bool {
-    import from jaclang.runtime.scalars { is_sized }
     return is_sized(name);
 }

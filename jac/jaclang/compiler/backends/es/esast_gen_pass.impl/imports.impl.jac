@@ -12,7 +12,6 @@ impl EsastGenPass._has_import(name: str) -> bool {
 }
 
 impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
-    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
     if not self.client_manifest or module_id in self.client_manifest.imports {
         return;
     }
@@ -29,8 +28,6 @@ impl EsastGenPass._register_jac_runtime_import -> None {
 impl EsastGenPass._inject_runtime_import(
     name: str, nd: uni.UniNode, src: str = ""
 ) -> None {
-    import from jaclang.client.client_surface { runtime_import_source }
-    import from jaclang.compiler.backends.es.jac_runtime_js { JAC_PRELUDE_MODULE }
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
@@ -200,16 +197,10 @@ impl EsastGenPass._partition_client_import_items(
     tuple[list[uni.ModuleItem | uni.ModulePath], list[uni.ModuleItem | uni.ModulePath]]
     | None
 ) {
-    import from jaclang.compiler.symbol_utils {
-        ClientImportVerdict,
-        classify_client_import_item,
-        is_client_boundary_import,
-        report_dead_client_import
-    }
     if not is_client_boundary_import(nd) {
         return None;
     }
-    import from jaclang.compiler.driver.boundary_classify { import_crosses_apps }
+
     cross_app = import_crosses_apps(nd);
     source_mod = self._resolve_source_module(nd);
     if source_mod is None {
@@ -378,12 +369,10 @@ impl EsastGenPass._generate_sv_import_stubs(
 }
 
 impl EsastGenPass._is_client_native_import(nd: uni.Import) -> bool {
-    import from jaclang.compiler.driver.boundary_classify { import_binds_client_native }
     return import_binds_client_native(nd, self.module.gen.interop_manifest);
 }
 
 impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
-    import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import json;
     contracts: dict[str, dict[str, any]] = {};
     host_imports: dict[str, any] = {};

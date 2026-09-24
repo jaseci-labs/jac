@@ -23,7 +23,7 @@ impl WiringSpec.postinit -> None {
     import from jaclang.compiler.frontend.parser.frontend { parse_woven }
     self.digest = hashlib.sha256(self.source.encode()).hexdigest();
     self._lines = self.source.split("\n");
-    (mod, had_error) = parse_woven(self.source, self.path, None, []);
+    (mod, had_error) = parse_woven(self.source, self.path, None, [], load_kernel=False);
     self.module = mod;
     self.parse_failed = bool(had_error);
     self.blocks = [
@@ -474,11 +474,12 @@ impl WiringSpec.consumer_bindings(
 }
 
 impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
+    import from jaclang.compiler.frontend.codeinfo { is_bundled_native_module }
     if path_node.level == 0
         and path_node.string_path_value is None
         and (
             path_node.dot_path_str.split(".")[0] in sys.stdlib_module_names
-            or path_node.native_bundled_path() is not None
+            or is_bundled_native_module(path_node.dot_path_str)
         ) {
         return None;
     }

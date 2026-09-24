@@ -4,18 +4,6 @@ import threading;
 import from collections.abc { Generator }
 import from uuid { UUID }
 
-import from jaclang.runtime.archetype { Anchor, EdgeAnchor, NodeAnchor, Root }
-import from jaclang.runtime.memory { Memory }
-import from jaclang.data.dbcatalog {
-    DbKind,
-    MAINTENANCE_DB,
-    SCRATCH_PREFIX,
-    stop_heartbeat
-}
-import from jaclang.data.pgembed { PgRuntime }
-import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
-import from jaclang.data.store { AnchorRow, ConnInfo, PgStore, Store, TxnIsolation }
-
 glob logger = logging.getLogger(__name__),
      MAX_RETRIES = 5,
      EDGE_PAGE = 1000,

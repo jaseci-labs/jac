@@ -1,6 +1,3 @@
-import from jaclang.compiler.c_interop { is_ptr_view_type }
-import from jaclang.compiler.frontend.diagnostics { E1315 }
-
 impl OwnershipCheckPass._is_c_view(expr: (UniNode | None)) -> bool {
     if not isinstance(expr, Expr) or not is_ptr_view_type(expr.type) {
         return False;

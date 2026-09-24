@@ -1,4 +1,3 @@
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl GExpr.__eq__(other: object) -> bool {
     return type(self) == type(other);
 }

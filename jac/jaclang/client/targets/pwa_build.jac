@@ -1,6 +1,5 @@
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.project.config { get_config }
+
 import json;
 import shutil;
 import sys;

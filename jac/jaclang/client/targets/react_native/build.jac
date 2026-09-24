@@ -4,14 +4,6 @@ import os;
 import re;
 import json;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.client.targets.build_common { artifact_mtime }
-import from jaclang.client.targets.react_native.common {
-    SUBPROCESS_TIMEOUT_BUILD,
-    resolve_node_tool
-}
-import from jaclang.client.targets.react_native.html_tag_map { supported_rn_html_tags }
-import from jaclang.client.jac_client_compiler { JacClientCompiler }
 
 glob _RUNTIME_JS_FILES = {"client_runtime.js", "pwa_runtime.js"},
      _WEB_ONLY_GLOBALS = ["window", "document", "localStorage"],
@@ -487,7 +479,6 @@ def strip_css_imports(compiled_dir: Path) -> int {
 }
 
 def run_expo_prebuild(rn_dir: Path, platform: str = "android") {
-    import from jaclang.toolchains.javascript { build_environment }
     plat = str(platform or "android").strip().lower();
     if plat not in ["android", "ios"] {
         raise ValueError(
@@ -509,9 +500,6 @@ def run_expo_prebuild(rn_dir: Path, platform: str = "android") {
 }
 
 def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
-    import from jaclang.toolchains.android { ensure_android }
-    import from jaclang.toolchains.javascript { build_environment }
-    import from jaclang.toolchains.store { InstallLock, offline }
     environment = build_environment(ensure_android().env());
     environment.setdefault("NODE_ENV", "production" if release else "development");
     android_dir = rn_dir / "android";
@@ -603,9 +591,7 @@ def run_xcodebuild_ios(
     if platform_mod.system() != "Darwin" {
         raise RuntimeError("iOS xcodebuild requires macOS with Xcode installed.");
     }
-    import from jaclang.toolchains.apple { ensure_apple }
-    import from jaclang.toolchains.javascript { build_environment }
-    import from jaclang.toolchains.host { run_step }
+
     environment = build_environment(ensure_apple());
     environment.setdefault("NODE_ENV", "production" if release else "development");
     ios_dir = rn_dir / "ios";
@@ -614,7 +600,7 @@ def run_xcodebuild_ios(
             f"iOS project not found at {ios_dir}. Did expo prebuild fail?"
         );
     }
-    import from jaclang.toolchains.store { offline }
+
     if offline() {
         locked = ios_dir / "Podfile.lock";
         installed = ios_dir / "Pods" / "Manifest.lock";
@@ -717,7 +703,6 @@ def run_xcodebuild_ios(
 def run_eas_local_build(
     rn_dir: Path, platform: str, profile: str = "production", release: bool = True
 ) -> Path {
-    import from jaclang.toolchains.store { offline }
     if offline() {
         raise RuntimeError(
             "EAS builds require network access; disable JAC_OFFLINE or use the native builder."
@@ -727,9 +712,7 @@ def run_eas_local_build(
     if plat not in ["android", "ios"] {
         raise ValueError(f"Unsupported EAS platform '{platform}'");
     }
-    import from jaclang.toolchains.javascript { build_environment }
-    import from jaclang.toolchains.android { ensure_android }
-    import from jaclang.toolchains.apple { ensure_apple }
+
     environment = build_environment(
         ensure_android().env() if plat == "android" else ensure_apple()
     );

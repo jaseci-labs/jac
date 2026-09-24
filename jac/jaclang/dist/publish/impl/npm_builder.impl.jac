@@ -1,18 +1,7 @@
 import importlib.metadata;
 import from pathlib { Path }
-import from jaclang.dist.publish.npm_tarball { pack_tarball }
-import from jaclang.dist.publish.npm_sources {
-    collect_npm_sources,
-    resolve_npm_entry,
-    runtime_pkg_name
-}
-import from jaclang.dist.publish.package_json {
-    generate_package_json,
-    npm_tarball_filename
-}
 
 def _react_peer_floor(pkg: str) -> str {
-    import from jaclang.client.npm_provider { CORE_RUNTIME_DEPS }
     pin = str(CORE_RUNTIME_DEPS.get(pkg, ""));
     major = pin.lstrip("^~>=< v").split(".")[0];
     if major.isdigit() {

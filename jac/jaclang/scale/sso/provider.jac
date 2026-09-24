@@ -1,8 +1,6 @@
 import json;
 import from base64 { urlsafe_b64decode }
 import from urllib.parse { urlencode }
-import from jaclang.server.serving.client { arequest }
-import from jaclang.server.serving.datatypes { RedirectResponse, Request, Response }
 
 obj SSOUserInfo {
     has email: str,

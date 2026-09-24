@@ -1,5 +1,3 @@
-import from ...lib.utils { cn }
-
 def:pub Table(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div data-slot="table-container" className="cn-table-container">

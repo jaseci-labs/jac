@@ -1,5 +1,3 @@
-import from jaclang.scale.runtime.context.util { k8s_safe_name, k8s_service_dns_host }
-
 glob KEDA_INTERCEPTOR_SERVICE_ADDRESS: str = "keda-add-ons-http-interceptor-proxy.keda:8080";
 
 

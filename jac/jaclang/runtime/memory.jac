@@ -3,8 +3,6 @@ import threading;
 import from collections.abc { Generator }
 import from uuid { UUID }
 
-import from jaclang.runtime.archetype { Anchor, Root }
-
 glob logger = logging.getLogger(__name__),
      __all__ = ['Memory'];
 

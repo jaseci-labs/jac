@@ -1,6 +1,3 @@
-import from jaclang.server.serving.client { arequest }
-import from jaclang.scale.sso.provider { OAuth2CodeProvider, SSOUserInfo }
-
 obj GithubSSOProvider(OAuth2CodeProvider) {
     def authorize_url -> str {
         return 'https://github.com/login/oauth/authorize';

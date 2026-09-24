@@ -1,15 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
-import type from jaclang.compiler.backends.es.view_ir { ViewElement, ViewChild }
-
 obj SolidBackend(FrameworkBackend) {
     def name -> str;
     def lower_state_field(s: StateField) -> list[es.Statement];

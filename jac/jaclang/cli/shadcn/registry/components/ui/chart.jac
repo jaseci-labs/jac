@@ -4,7 +4,6 @@ import from "recharts" {
     ResponsiveContainer
 }
 import from "react" { createContext, useContext }
-import from ...lib.utils { cn }
 
 glob ChartContext: any = createContext(None);
 

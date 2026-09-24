@@ -1,19 +1,8 @@
-import from .breaker {
-    breaker_should_skip,
-    breaker_record_success,
-    breaker_record_failure,
-    _BREAKER_COOLDOWN_SECONDS
-}
-
 glob _RPC_MAX_ATTEMPTS: int = 3,
      _RPC_INITIAL_BACKOFF_SECONDS: float = 0.1;
 
 def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
     import time;
-    import from jaclang.server.serving.client {
-        ClientConnectionError,
-        ClientRequestNotSent
-    }
 
     backoff: float = _RPC_INITIAL_BACKOFF_SECONDS;
     last_err: Exception | None = None;
@@ -55,9 +44,6 @@ def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
 
 def _rpc_headers(extra: dict[str, str] | None = None) -> dict[str, str] {
     import from jaclang.server { sv_client }
-    import from jaclang.scale.runtime.context.auth_ctx { get_current_auth }
-    import from jaclang.scale.runtime.context.trace_ctx { get_current_trace }
-    import from jaclang.scale.runtime.context.tracing { current_traceparent }
 
     headers: dict[str, str] = dict(sv_client.auth_headers());
     for (key, value) in (extra or {}).items() {
@@ -80,7 +66,6 @@ def _rpc_headers(extra: dict[str, str] | None = None) -> dict[str, str] {
 
 
 def _provider_url(app_name: str) -> str {
-    import jaclang;
     import from jaclang.server { sv_client }
     registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
     base: str = str(registry.get(app_name, "") or "").rstrip("/");
@@ -104,7 +89,6 @@ def _resolve_call_target(module_name: str) -> tuple[str, str | None] {
     there is nothing to catch or re-warn about here. Fallback:
     _provider_url's registry/env-var resolution -- the K8s path never
     reaches here, so no separate host-override table is needed for it.""";
-    import from jaclang.scale.runtime.provider { JacScaleRuntime }
 
     routes: dict[str, any] = JacScaleRuntime.get_sv_service_routes();
     route = routes.get(module_name);
@@ -146,7 +130,6 @@ def service_call(
     }
 
     (url, host_override) = _resolve_call_target(module_name);
-    import from jaclang.server.serving.client { post_stream_aware_sync }
 
     send_headers: dict[str, str] = _rpc_headers(headers);
 
@@ -204,7 +187,6 @@ def walker_call(
     }
 
     (url, host_override) = _resolve_call_target(module_name);
-    import from jaclang.server.serving.client { request_sync }
 
     send_headers: dict[str, str] = _rpc_headers(headers);
 
@@ -231,7 +213,6 @@ def walker_call(
 
 
 def _iter_sse_text(text: str, func_label: str) -> any {
-    import from jaclang.server.serving.sse { consume_sse_events }
     for ev in consume_sse_events(text.splitlines(), func_label) {
         yield ev;
     }

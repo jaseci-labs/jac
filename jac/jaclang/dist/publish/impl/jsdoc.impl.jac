@@ -1,12 +1,4 @@
 import re;
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    Ability,
-    FuncSignature,
-    ParamVar,
-    UniNode
-}
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
 
 glob _SCALAR_MAP: dict[str, str] = {
          "int": "number",

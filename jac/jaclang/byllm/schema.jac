@@ -1,18 +1,6 @@
-import from jaclang.runtime.object_interop { is_record }
 import from enum { Enum }
 import from types { FunctionType, MethodType, UnionType }
 import from typing { Union, get_args, get_origin, get_type_hints }
-import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
-import from jaclang.runtime.semantic {
-    Info,
-    VarInfo,
-    FieldInfo,
-    ClassInfo,
-    ParamInfo,
-    EnumInfo,
-    FunctionInfo
-}
-import from jaclang.byllm.exceptions { ConfigurationError }
 
 glob _SCHEMA_OBJECT_WRAPPER = "schema_object_wrapper",
      _SCHEMA_DICT_WRAPPER = "schema_dict_wrapper";

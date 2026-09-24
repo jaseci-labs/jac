@@ -1,9 +1,5 @@
 import logging;
 
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang { JacRuntimeInterface as Jac }
-import jaclang.lsp.protocol.types as lspt;
-
 glob logger = logging.getLogger("jaclang.lsp.server.sem_manager");
 
 obj SemTokManager {

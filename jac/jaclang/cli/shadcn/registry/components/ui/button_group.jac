@@ -1,7 +1,5 @@
 import from "class-variance-authority" { cva }
 import from "radix-ui" { Slot }
-import from ...lib.utils { cn }
-import from .separator { Separator }
 
 glob _buttonGroupVariants: any = cva(
          "cn-button-group flex w-fit items-stretch *:focus-visible:z-10 *:focus-visible:relative [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit [&>input]:flex-1",

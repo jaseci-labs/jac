@@ -1,6 +1,5 @@
 import os;
 import from pathlib { Path }
-import from jaclang.project.config { get_config_for_dir }
 
 
 def deployed_tree(entry_path: str) -> tuple[str, str] {

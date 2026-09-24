@@ -1,5 +1,4 @@
 def _configure_litellm {
-    import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
     logging.getLogger("httpx").setLevel(logging.WARNING);
     if HAS_LITELLM {
         if not _litellm_config.get("debug", False) {

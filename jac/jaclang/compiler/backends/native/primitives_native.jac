@@ -1,22 +1,3 @@
-import from jaclang.compiler.backends.native.llvm { ir }
-import from jaclang.compiler.backends.common.primitives {
-    IntEmitter,
-    FloatEmitter,
-    ComplexEmitter,
-    StrEmitter,
-    BytesEmitter,
-    ListEmitter,
-    DictEmitter,
-    SetEmitter,
-    FrozensetEmitter,
-    TupleEmitter,
-    RangeEmitter,
-    BuiltinEmitter
-}
-import type from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.unitree { Expr, UniNode }
-
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
         type_key: str = "",

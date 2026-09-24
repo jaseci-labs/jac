@@ -1,5 +1,4 @@
 import from "radix-ui" { RadioGroup as RadioGroupPrimitive }
-import from ...lib.utils { cn }
 
 def:pub RadioGroup(props: any) -> JsxElement {
     <RadioGroupPrimitive.Root

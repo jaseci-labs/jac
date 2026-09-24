@@ -8,8 +8,6 @@ import tarfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
 import from urllib.error { HTTPError }
-import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
-import from jaclang.runtime.graph_utils { release_arch, host_arch, host_os }
 
 glob logger = logging.getLogger(__name__);
 
@@ -249,7 +247,6 @@ glob _deploy_version_memo: dict[str, any] = {};
 
 
 def resolve_deploy_version(project_dir: str, channel: str) -> str {
-    import from jaclang.scale.config.dev_config { Channel }
     if channel != Channel.STABLE.value {
         return "";
     }
@@ -260,9 +257,6 @@ def resolve_deploy_version(project_dir: str, channel: str) -> str {
 def deploy_generation_refusal(
     project_dir: str, channel: str = "", offline: bool = False
 ) -> str {
-    import from jaclang.cli.manifest_route { resolve_cli_version }
-    import from jaclang.project.config { JacConfig, find_project_root }
-    import from jaclang.scale.config.dev_config { Channel, resolve_dev_channel }
     channel = channel or resolve_dev_channel(project_dir).value;
     if offline {
         found = find_project_root(Path(project_dir));
@@ -300,7 +294,6 @@ def deploy_generation_refusal(
 def resolve_console_version(
     project_dir: str, channel: str, deploy_version: str
 ) -> str {
-    import from jaclang.scale.config.dev_config { Channel }
     if deploy_version {
         return deploy_version;
     }
@@ -312,7 +305,6 @@ def resolve_console_version(
 
 
 def resolve_pinned_version(project_dir: str) -> str {
-    import from jaclang.project.config { JacConfig, find_project_root }
     found = find_project_root(Path(project_dir));
     if found is None {
         return "";
@@ -395,7 +387,6 @@ def _no_asset_message(meta: dict[str, any], suffix: str, version: str) -> str {
 
 
 def preflight_pod_runtime(project_dir: str, channel: str, arch: str) -> str {
-    import from jaclang.scale.config.dev_config { Channel }
     if channel != Channel.STABLE.value {
         return "";
     }
@@ -490,7 +481,6 @@ def _write_cache_atomic(cache_file: Path, payload: bytes) {
 def _fetch_verified_asset(
     url: str, checksum_url: str, cache_file: Path, what: str
 ) -> bytes {
-    import from jaclang.toolchains.store { Artifact, fetch }
     if not checksum_url {
         raise RuntimeError(
             f"No checksum is available for {what}; refusing an unverified download."
@@ -503,16 +493,13 @@ def _fetch_verified_asset(
     digest = parts[0].strip().lower();
     artifact = Artifact("jac-deployment", digest, "asset", url, digest);
     payload = fetch(artifact, cache_file).read_bytes();
-    import from jaclang.cache.registry { maybe_sweep }
+
     maybe_sweep("scale-binaries");
     return payload;
 }
 
 
 def host_toolchain_path(project_dir: str, channel: str = "") -> str {
-    import from jaclang.cli.manifest_route { resolve_cli_version }
-    import from jaclang.scale.config.dev_config { resolve_dev_channel }
-
     channel = channel or resolve_dev_channel(project_dir).value;
     version = resolve_deploy_version(project_dir, channel);
     if not version or version == resolve_cli_version().strip() {
@@ -541,12 +528,7 @@ def resolve_pod_base_image(
         return configured;
     }
     fallback = "python:3.12-slim";
-    import from jaclang.scale.config.dev_config {
-        resolve_dev_channel,
-        resolve_experimental_pr,
-        resolve_pinned_spec,
-        Channel
-    }
+
     channel = resolve_dev_channel(project_dir);
     if channel == Channel.LOCAL {
         return fallback;
@@ -604,7 +586,6 @@ def resolve_pod_base_image(
 
 
 def _scale_cache_root -> Path {
-    import from jaclang.cache.registry { bucket }
     return bucket("scale-binaries").path();
 }
 
@@ -624,7 +605,6 @@ def _admin_dist_cache_path(channel: str, version: str = "") -> Path {
 
 
 def pack_binary_bytes(binary_bytes: bytes) -> bytes {
-    import from jaclang.scale.injector.bundle { open_det_tar }
     buf = io.BytesIO();
     (tar, gz) = open_det_tar(buf);
     try {

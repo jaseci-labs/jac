@@ -6,8 +6,6 @@ import shutil;
 import subprocess;
 import from pathlib { Path }
 import from typing { Optional }
-import from jaclang.client.client_bundle { ClientBundleError }
-import from .config_loader { JacClientConfig }
 
 glob logger = logging.getLogger(__name__),
      API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL",

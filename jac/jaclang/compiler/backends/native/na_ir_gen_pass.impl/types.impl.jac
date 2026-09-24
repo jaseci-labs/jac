@@ -1,4 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     if t is None {
         return None;
@@ -195,12 +194,7 @@ impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(expr, uni.Expr) {
         return None;
     }
-    import from jaclang.compiler.types.types {
-        ClassType as EnumClassType,
-        EnumMemberType,
-        TypeBase,
-        UnionType
-    }
+
     t = self._flow_narrowed_type_of(expr);
     if not isinstance(t, TypeBase) {
         return None;
@@ -838,7 +832,7 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     if _enum_ty is not None {
         return _enum_ty;
     }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     _native_cn = class_type_native_name(t) or cname;
     if _native_cn in self.struct_types {
         return self.struct_types[_native_cn].as_pointer();
@@ -1026,7 +1020,7 @@ impl NaIRGenPass._aos_elem_name(t: any) -> (str | None) {
     if not isinstance(t, _AeClassType) or t._shared is None {
         return None;
     }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     _tn = class_type_native_name(t);
     if _tn is None or _tn not in self.struct_types {
         return None;
@@ -3169,7 +3163,6 @@ impl NaIRGenPass._emit_int_bitwise(
 impl NaIRGenPass._emit_arch_dunder_binop(
     op: str, left: ir.Value, right: ir.Value
 ) -> (ir.Value | None) {
-    import from jaclang.compiler.types.operations { BINARY_OPERATOR_MAP }
     _pair = BINARY_OPERATOR_MAP.get(op);
     if _pair is None {
         return None;
@@ -4457,7 +4450,6 @@ impl NaIRGenPass._emit_arch_eq(
 impl NaIRGenPass._eq_fn_new(
     cache_key: str, left_ty: ir.Type, right_ty: ir.Type
 ) -> ir.Function {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
     fn = ir.Function(
         self.llvm_module,
         ir.FunctionType(ir.IntType(1), [left_ty, right_ty]),
@@ -4845,7 +4837,6 @@ impl NaIRGenPass._sort_key_supported_d(ty: ir.Type, depth: int) -> bool {
 }
 
 impl NaIRGenPass._sort_key_return_type(nd: (uni.UniNode | None)) -> (TypeBase | None) {
-    import from jaclang.compiler.types.types { FunctionType }
     while isinstance(nd, uni.CfgExpr) {
         nd = nd.expr;
     }
@@ -4860,8 +4851,6 @@ impl NaIRGenPass._sort_key_return_type(nd: (uni.UniNode | None)) -> (TypeBase | 
 }
 
 impl NaIRGenPass._sort_key_orderable(ty: (TypeBase | None)) -> (bool | None) {
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
     if ty is None {
         return None;
     }
@@ -4899,7 +4888,6 @@ impl NaIRGenPass._sort_key_orderable(ty: (TypeBase | None)) -> (bool | None) {
 }
 
 impl NaIRGenPass._sort_key_unsigned(nd: (uni.UniNode | None)) -> bool {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
     while isinstance(nd, uni.CfgExpr) {
         nd = nd.expr;
     }
@@ -4918,8 +4906,6 @@ impl NaIRGenPass._sort_key_unsigned(nd: (uni.UniNode | None)) -> bool {
 impl NaIRGenPass._agg_key_args(
     key_ret: (TypeBase | None), agg_name: str
 ) -> (list[TypeBase] | None) {
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
     if not isinstance(key_ret, ClassType) {
         return None;
     }
@@ -4935,8 +4921,7 @@ impl NaIRGenPass._container_class_name(ty: (TypeBase | None)) -> (str | None) {
     `primitive_type_name_of` names the primitives; the dictionary views are
     plain builtin classes it does not cover, so their class name answers.
     """;
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
+
     if ty is None {
         return None;
     }
@@ -4952,7 +4937,6 @@ impl NaIRGenPass._container_class_name(ty: (TypeBase | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._key_elem_unsigned(et: (TypeBase | None)) -> bool {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
     _shape = self._scalar_shape_named(primitive_type_name_of(et));
     return _shape is not None
         and _shape.sized

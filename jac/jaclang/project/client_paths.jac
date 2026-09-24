@@ -1,6 +1,4 @@
 import from pathlib { Path }
-import type from jaclang.project.config { JacConfig }
-import type from jaclang.project.apps { AppConfig }
 
 def client_workspace_app(
     config: JacConfig | None, entry_path: str = ""

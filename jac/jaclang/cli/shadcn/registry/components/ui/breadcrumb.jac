@@ -1,5 +1,5 @@
 import from "radix-ui" { Slot }
-import from ...lib.utils { cn }
+
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     ArrowRight01Icon,

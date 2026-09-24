@@ -3,7 +3,6 @@ import tempfile;
 import from pathlib { Path }
 
 def emit_c(llvm_ir: str) -> str {
-    import from jaclang.toolchains.c_backend { ensure_c_backend }
     backend = ensure_c_backend();
     with tempfile.TemporaryDirectory(prefix='jac-c-') as temporary {
         directory = Path(temporary);

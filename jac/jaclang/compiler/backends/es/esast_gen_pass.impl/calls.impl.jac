@@ -1,20 +1,8 @@
-import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
-
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-import from jaclang.compiler.symbol_utils { return_type_is_jsx }
-
 impl EsastGenPass._field_constructor_args(
     nd: uni.FuncCall,
     args: list[es.Expression | es.SpreadElement],
     props: list[es.Property | es.SpreadElement]
 ) -> (es.Expression | None) {
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.field_semantics { positional_field_names }
-    import from jaclang.compiler.passes.layout_pass {
-        archetype_native_name,
-        get_layout_registry
-    }
-
     target_type = nd.target.type;
     if not isinstance(target_type, ClassType)
         or not target_type.is_instantiable_class() {
@@ -84,17 +72,12 @@ impl EsastGenPass._field_constructor_args(
 }
 
 impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) {
-    import from jaclang.compiler.symbol_utils { resolve_import_source_module }
     return resolve_import_source_module(self.prog, nd);
 }
 
 impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
     import from pathlib { Path }
-    import from jaclang.compiler.driver.boundary_classify {
-        import_crosses_apps,
-        import_provider_app,
-        import_provider_route
-    }
+
     if not nd.from_loc {
         return;
     }
@@ -117,10 +100,6 @@ impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
 }
 
 impl EsastGenPass._is_service_bridge_import(nd: uni.Import) -> bool {
-    import from jaclang.compiler.driver.boundary_classify {
-        CrossAppKind,
-        classify_cross_app_import
-    }
     return (
         classify_cross_app_import(nd, self.module.gen.interop_manifest)
         == CrossAppKind.SERVICE_BRIDGE
@@ -128,11 +107,6 @@ impl EsastGenPass._is_service_bridge_import(nd: uni.Import) -> bool {
 }
 
 impl EsastGenPass._sv_provider_options(nd: uni.Import) -> (es.Expression | None) {
-    import from jaclang.compiler.driver.boundary_classify {
-        import_crosses_apps,
-        import_provider_app,
-        import_provider_route
-    }
     if not import_crosses_apps(nd) {
         return None;
     }
@@ -161,8 +135,6 @@ impl EsastGenPass._sv_provider_options(nd: uni.Import) -> (es.Expression | None)
 }
 
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
-    import from jaclang.compiler.symbol_utils { ability_of_symbol }
-
     if nd.callee_decl is not None {
         return nd.callee_decl;
     }
@@ -872,7 +844,6 @@ impl EsastGenPass._try_lower_server_rpc_call(
         args_obj = self._wrap_with_kwargs_temp(args_obj, spread_arg, nd);
     }
 
-    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
     source_module = ability_node.find_parent_of_type(uni.Module);
     contract_id = endpoint_key(source_module, "func", ability_node.sym_name);
     rpc_options = es.ObjectExpression(
@@ -931,7 +902,7 @@ impl EsastGenPass._warn_rpc_callable_params(
         return;
     }
     import re;
-    import from jaclang.compiler.frontend.diagnostics { W6005 }
+
     _sig = ability_node.signature;
     for _plist in [_sig.posonly_params, _sig.params or [], _sig.kwonlyargs] {
         for _p in _plist {
@@ -1038,11 +1009,6 @@ impl EsastGenPass._build_server_forwarder(
 }
 
 impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] {
-    import from jaclang.compiler.symbol_utils {
-        client_bridged_endpoint,
-        client_value_ref_targets,
-        element_display_name
-    }
     forwarders: list[es.Statement] = [];
     bound: set[str] = set();
     for (ref_name, top) in client_value_ref_targets(nd, self.shared_arch_names) {

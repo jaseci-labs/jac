@@ -1,8 +1,4 @@
 import from "class-variance-authority" { cva }
-import from ...lib.utils { cn }
-import from .button { Button }
-import from .input { Input }
-import from .textarea { Textarea }
 
 glob _inputGroupAddonVariants: any = cva(
          "cn-input-group-addon text-muted-foreground h-auto gap-2 py-1.5 text-sm font-medium group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-[calc(var(--radius)-5px)] [&>svg:not([class*='size-'])]:size-4 flex cursor-text items-center justify-center select-none",

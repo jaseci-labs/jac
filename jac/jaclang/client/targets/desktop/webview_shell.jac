@@ -3,32 +3,10 @@ import shutil;
 import subprocess;
 import from pathlib { Path }
 import from typing { Optional }
-import from jaclang.cli.console { console }
-import from jaclang.toolchains.desktop { ensure_webview, webview_library_name }
-import from jaclang.toolchains.host { host_platform }
-import from jaclang.client.targets.desktop.app_layout { AppLayout }
-import from jaclang.client.targets.desktop.macos_bundle { write_bundle_metadata }
-import from jaclang.client.targets.desktop.desktop_build {
-    _find_webview_dir,
-    _jac_bin,
-    _jac_subprocess_env,
-    _stage_fused_runtime,
-    _bundle_runtime,
-    stage_program
-}
-import from jaclang.client.targets.desktop._host_bootstrap { _generate_host_source }
-import from jaclang.client.targets.desktop._dev_launch {
-    ensure_dev_build_env,
-    desktop_app_runtime_env,
-    jac_desktop_deps_shell_export,
-    jac_desktop_webkit_shell_export
-}
 
 def _assemble_native_host(
     entry_file: Path, project_dir: Path, output_dir: Path, dist_dir: Optional[Path]
 ) -> Path {
-    import from jaclang.client.desktop_config { get_desktop_config }
-
     cfg = get_desktop_config(project_dir);
     cfg.validate();
     ident = cfg.get_identity();
@@ -150,17 +128,6 @@ def webview_dev(
     port: int = 8000,
     api_port: int = 0
 ) {
-    import from jaclang.server.watcher { JacFileWatcher }
-    import from jaclang.client.targets.client_dev_common {
-        _ClientHmrHandler,
-        prepare_vite_dev_compilation,
-        resolve_port_or_next_available,
-        ensure_watchdog_common,
-        stop_dev_watcher,
-        terminate_dev_processes,
-        install_dev_signal_handlers
-    }
-
     console.print("\n🖥️  Desktop dev (native webview + Vite HMR)", style="bold");
     ensure_dev_build_env();
 

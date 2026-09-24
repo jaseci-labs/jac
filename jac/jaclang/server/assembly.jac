@@ -1,7 +1,4 @@
 import os;
-import type from jaclang.project.apps { AppConfig }
-import from jaclang.cli.console { console }
-import type from jaclang.runtime.prepared { PreparedApplication }
 
 
 def service_apps(cfg: any, served: any) -> list[AppConfig] {
@@ -28,8 +25,6 @@ def colocate_services(
     if not services {
         return;
     }
-    import from jaclang.runtime.prepared { load_prepared_module }
-    import from jaclang.server.sv_client { register_local }
 
     project_root = str(cfg.project_root) if cfg.project_root else base;
     for svc in services {

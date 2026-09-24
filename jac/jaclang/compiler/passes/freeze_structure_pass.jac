@@ -1,6 +1,3 @@
-import from jaclang.compiler.passes.context { CompileContext }
-import jaclang.compiler.frontend.unitree as uni;
-
 walker FreezeStructurePass {
     has ctx: CompileContext,
         module: uni.Module;

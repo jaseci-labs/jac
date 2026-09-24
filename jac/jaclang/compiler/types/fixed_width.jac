@@ -1,26 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    AtomUnit,
-    Expr,
-    Float,
-    FuncCall,
-    Int,
-    Name,
-    Token,
-    UnaryExpr,
-    UniNode
-}
-import from jaclang.compiler.frontend.constant { TOKEN_MAP, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E1126, E1127, E1128, E1130 }
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, NumericKind }
-import from jaclang.compiler.types.types {
-    AnyType,
-    ClassType,
-    TypeBase,
-    UnionType,
-    UnknownType
-}
-import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
-
 obj AssignVerdict {
     has ok: bool,
         diagnosed: bool = False;

@@ -1,11 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
-import from jaclang.compiler.frontend.unitree { Archetype, HasVar }
-import from jaclang.compiler.types.types { ClassType, TypeBase, UnionType }
-import from jaclang.compiler.types.type_utils {
-    apply_solved_type_vars,
-    build_type_var_solution
-}
-
 def contains_borrow(ty: TypeBase | None) -> bool {
     return _contains_borrow(ty, set());
 }

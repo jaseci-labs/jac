@@ -1,7 +1,6 @@
 import os;
 import re;
 import from pathlib { Path }
-import from jaclang.client.source_mapping { JacLocator, SourceLocation, _npm_specifier }
 
 glob _EXPORT_MISS_RE = re.compile(
          r"does not provide an export named [\"']([^\"']+)[\"']"
@@ -26,7 +25,6 @@ glob _EXPORT_MISS_RE = re.compile(
      _RAW_FOOTER = "--- End Raw Error ---";
 
 def _diag(code: str) -> any {
-    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
     return DIAGNOSTICS.get(code);
 }
 
@@ -63,11 +61,6 @@ impl ClientDiagnostic.abs_file -> str {
 }
 
 impl ClientDiagnostic.render(colors: bool = False) -> str {
-    import from jaclang.project.source {
-        render_diagnostic,
-        span_for_file,
-        read_file_with_encoding
-    }
     if self.rendered_cache and not self.base_path {
         return self.rendered_cache;
     }
@@ -642,7 +635,7 @@ impl is_debug_mode(config: object = None) -> bool {
     if env_debug in ("0", "false", "no") {
         return False;
     }
-    import from jaclang.project.config { JacConfig }
+
     if isinstance(config, JacConfig) {
         try {
             client_cfg = config.get_plugin_config("client");

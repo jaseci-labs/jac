@@ -2,7 +2,6 @@ import os;
 import types;
 import from pathlib { Path }
 import from typing { Optional, cast }
-import from jaclang.client.vite_bundler { ViteBundler }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
@@ -18,7 +17,6 @@ def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
 }
 
 def _pwa_enabled(project_dir: Path) -> bool {
-    import from jaclang.client.config_loader { JacClientConfig }
     return JacClientConfig(project_dir).is_pwa_enabled();
 }
 
@@ -32,16 +30,6 @@ impl WebTarget.setup(project_dir: Path) -> None {
 impl WebTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    import from jaclang.cli.console { console }
-    import from jaclang.client.targets.client_dev_common {
-        _ClientHmrHandler,
-        dev_proxy_paths,
-        ensure_watchdog_common,
-        prepare_vite_dev_compilation,
-        stop_dev_watcher,
-        terminate_dev_processes
-    }
-
     api_p = api_port if api_port > 0 else port + 1;
 
     hot_watcher: any = None;
@@ -87,7 +75,6 @@ impl WebTarget.dev(
 impl WebTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import from jaclang.cli.commands.execution { serve }
     if serve(filename=str(entry_file.resolve()), port=api_port, dev=False) {
         raise RuntimeError(f'Could not start web application: {entry_file}');
     }
@@ -97,8 +84,6 @@ impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     import shutil;
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
 
     bundler = ViteBundler(project_dir=project_dir);
 
@@ -146,8 +131,6 @@ impl WebTarget.build(
 }
 
 def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-
     mod_path = loaded_mod?.__file__;
     if not mod_path {
         return DEFAULT_FUNCTION_NAME;
@@ -190,8 +173,6 @@ def _build_css_link(bundler: ViteBundler) -> str {
 }
 
 def _get_app_meta_data -> dict[str, any] {
-    import from jaclang.project.config { get_config }
-
     config = get_config();
     if not config {
         return {};
@@ -213,7 +194,6 @@ def _generate_index_html(
 ) {
     import html;
     import json;
-    import from jaclang.client.serving { HeaderBuilder }
 
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);

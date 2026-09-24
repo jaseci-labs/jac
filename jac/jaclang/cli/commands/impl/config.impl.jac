@@ -1,7 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.project.tomlio { read_toml_with_encoding }
-import from jaclang.project.config { JacConfig }
 
 glob APP_FIELDS: list[str] = ["kind", "path", "entry_point", "platform", "route"],
      CONFIG_GROUPS = [
@@ -26,7 +23,6 @@ impl config(
     output: str = 'table'
 ) -> int {
     import json;
-    import from jaclang.project.config { get_config, JacConfig }
 
     if action == 'path' {
         _config_path();
@@ -82,8 +78,6 @@ def _config_file_label(path: Path, active_profile: str) -> str {
 }
 
 def _config_path {
-    import from jaclang.project.config { get_config, find_project_root }
-
     config = get_config();
     if config and config.toml_path {
         console.print(f"Project root: {config.project_root}", style="muted");
@@ -136,19 +130,6 @@ def _config_groups {
 }
 
 def _get_group_defaults(group_name: str) -> dict[str, object] {
-    import from jaclang.project.config {
-        ProjectConfig,
-        RunConfig,
-        BuildConfig,
-        TestConfig,
-        ServeConfig,
-        FormatConfig,
-        CheckConfig,
-        DotConfig,
-        CacheConfig,
-        EnvironmentConfig
-    }
-
     defaults_map = {
         "project": ProjectConfig(),
         "run": RunConfig(),
@@ -416,7 +397,6 @@ def _output_json(settings: dict[str, dict[str, dict[str, object]]]) {
 }
 
 def _output_toml(settings: dict[str, dict[str, dict[str, object]]], show_all: bool) {
-    import from jaclang.project.config { toml_value }
     lines: list[str] = [];
 
     for grp in sorted(settings.keys()) {
@@ -567,8 +547,6 @@ def _refuse_app_edit(key: str) -> int {
 }
 
 def _config_set(config: (JacConfig | None), key: str, value: str) -> int {
-    import from jaclang.project.config { JacConfig, find_project_root }
-
     if not key {
         console.error("Key required for 'set' action.");
         console.print("Usage: jac config set <group>.<key> <value>", style="muted");
@@ -652,8 +630,6 @@ def _config_set(config: (JacConfig | None), key: str, value: str) -> int {
 }
 
 def _config_unset(config: (JacConfig | None), key: str) -> int {
-    import from jaclang.project.config { find_project_root }
-
     if not key {
         console.error("Key required for 'unset' action.");
         console.print("Usage: jac config unset <group>.<key>", style="muted");

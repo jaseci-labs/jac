@@ -1,23 +1,5 @@
 import json;
 import from urllib.parse { quote }
-import from jaclang.server.identity.auth_models { FirebaseTokenRequest }
-import from jaclang.server.middleware { require_user }
-import from jaclang.server.server { JacAPIServer, ServerExtension }
-import from jaclang.server.serving.datatypes { RedirectResponse, Request, Response }
-import from jaclang.server.serving.endpoint {
-    APIParameter,
-    HTTPMethod,
-    JEndPoint,
-    ParameterType
-}
-import from jaclang.server.transport { TransportResponse }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
-import from jaclang.scale.sso.sso_auth { SSOAuth }
-import from jaclang.scale.sso.provider { OAuth2CodeProvider }
-import from jaclang.scale.sso.oauth_session { OAuthSession }
-import from jaclang.runtime.object_model { asdict }
-import from jaclang.scale.webhook.webhook { ApiKeyManager }
 
 
 def resolve_sso_client_redirect(requested: (str | None), configured: str) -> str {

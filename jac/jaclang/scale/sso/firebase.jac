@@ -1,14 +1,4 @@
 import json;
-import from jaclang.server.serving.datatypes { Request, Response }
-import from jaclang.scale.sso.provider { SSOProvider, SSOUserInfo }
-import from jaclang.scale.config.firebase_env { firebase_project_id_env_hint }
-import from jaclang.scale._optdeps.optional_deps { require_optional }
-import from jaclang.scale._optdeps.firebase_auth {
-    HAS_FIREBASE_ADMIN,
-    firebase_admin,
-    auth,
-    credentials
-}
 
 obj FirebaseSSOProvider(SSOProvider) {
     has project_id: str,

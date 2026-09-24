@@ -1,5 +1,3 @@
-import from ...lib.utils { cn }
-
 def:pub Skeleton(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div

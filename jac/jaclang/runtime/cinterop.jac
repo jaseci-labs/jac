@@ -2,7 +2,6 @@ import ctypes;
 import json;
 import os;
 import sys;
-import from jaclang.runtime.scalars { numeric_shapes }
 
 def _scalar_ctypes -> dict[str, any] {
     out: dict[str, any] = {};

@@ -1,6 +1,3 @@
-import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler }
-import from jaclang.scale.observability.logger { Logger }
-
 type AutoscalerFactoryFn = Callable[[dict[str, any], Logger | None], Autoscaler];
 
 class AutoscalerFactory {

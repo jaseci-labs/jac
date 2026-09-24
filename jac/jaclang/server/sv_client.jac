@@ -1,10 +1,4 @@
 import os;
-import from jaclang.server.bridge {
-    BridgeError,
-    BridgeUnavailable,
-    bridge_error_for_status,
-    bridge_error_from
-}
 
 glob BRIDGE_TOKEN_ENV: str = "JAC_BRIDGE_TOKEN",
      BRIDGE_USERNAME: str = "__bridge__",
@@ -144,7 +138,7 @@ def _read_cache_enabled -> bool {
     if not consumer {
         return False;
     }
-    import from jaclang.project.config { get_config }
+
     cfg = get_config();
     if cfg is None or consumer not in cfg.apps {
         return False;
@@ -272,7 +266,6 @@ def _ensure_available(app: str, name: str = "") -> None {
 }
 
 def _scale_transport -> any {
-    import from jaclang.runtime.runtime { _scale_provider }
     provider = _scale_provider();
     if provider is not None and provider.sv_transport_available() {
         return provider;
@@ -292,8 +285,6 @@ def _unwrap_envelope(data: any, app: str, name: str) -> any {
 def _http_call(
     app: str, fn: str, kwargs: dict[str, any], headers: dict[str, str]
 ) -> any {
-    import from jaclang.server.serving.client { post_stream_aware_sync }
-    import from jaclang.server.serving.sse { consume_sse_events }
     label = f"{app}.{fn}";
     if app in _test_clients {
         client = _test_clients[app];
@@ -348,7 +339,6 @@ def _http_spawn(
     stub_cls: any,
     headers: dict[str, str]
 ) -> any {
-    import from jaclang.server.serving.client { request_sync }
     if app in _test_clients {
         client = _test_clients[app];
         data = client.post(
@@ -389,8 +379,6 @@ async def _local_call(app: str, fn: str, kwargs: dict[str, any]) -> any {
 }
 
 async def _local_spawn(app: str, walker_name: str, kwargs: dict[str, any]) -> any {
-    import from jaclang { JacRuntime }
-    import from jaclang.runtime.context { ExecutionContext }
     module = _local_providers[app];
     walker_cls = getattr(module, walker_name, None);
     if walker_cls is None or not isinstance(walker_cls, type) {
@@ -532,7 +520,6 @@ async def spawn_walker(
 def spawn_deferred(
     app: str, walker_name: str, kwargs: dict[str, any], idempotency_key: str = ""
 ) -> str {
-    import from jaclang.server.outbox { enqueue }
     return enqueue(app, walker_name, kwargs, idempotency_key);
 }
 

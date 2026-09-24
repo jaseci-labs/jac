@@ -1,5 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
-
 impl NaIRGenPass._codegen_with(nd: uni.WithStmt) -> None {
     if not nd.exprs {
         if isinstance(nd.body, (list, tuple)) {

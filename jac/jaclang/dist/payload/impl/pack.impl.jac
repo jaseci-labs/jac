@@ -1,20 +1,5 @@
 import os;
 
-import from jaclang.dist.payload.fsutil {
-    die,
-    read_bytes,
-    sha256_hex,
-    strip_best_effort
-}
-import from jaclang.dist.fused.trailer {
-    MAGIC,
-    REGION_ALIGN,
-    REGION_DESC_LEN,
-    TRAILER_LEN,
-    build_region_desc,
-    build_trailer
-}
-
 impl pack(stub: str, payload: str, out: str, stubcat: str | None = None) {
     try {
         strip_best_effort(stub);

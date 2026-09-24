@@ -7,7 +7,6 @@ import os;
 import time;
 
 import from concurrent.futures { Future, ThreadPoolExecutor, as_completed }
-import from jaclang.byllm.types { ToolCallResultMsg, normalize_tool_result }
 
 glob _plog = logging.getLogger("byllm.parallel"),
      _POOL_SIZE: int = int(

@@ -1,6 +1,4 @@
 import re;
-import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
 
 glob _AMBIENT_CACHE: set[str] = set(),
      _RAW_DECL_RE: re.Pattern = re.compile(
@@ -178,7 +176,6 @@ impl client_ambient_globals -> set[str] {
     names: set[str] = set(_JS_LANGUAGE_GLOBALS);
     names.update(BROWSER_SEED_GLOBALS);
 
-    import jaclang;
     stub_dir = os.path.join(
         os.path.dirname(str(jaclang.__file__)), "compiler", "types"
     );

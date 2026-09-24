@@ -1,9 +1,4 @@
 import from datetime { timedelta }
-import from jaclang.scale._optdeps.gcs {
-    StorageClient,
-    NotFound,
-    require_google_cloud_storage
-}
 
 impl GcsStorage.init(
     self: GcsStorage,

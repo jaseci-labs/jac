@@ -1,11 +1,7 @@
-import from jaclang.toolchains.host { use_system_tools }
 import os;
 import shutil;
 import subprocess;
 import from pathlib { Path }
-import from jaclang.toolchains.host { host_platform }
-import from jaclang.toolchains.pins { NODE_ARTIFACTS }
-import from jaclang.toolchains.store { install, offline }
 
 def native_node -> Path {
     found = shutil.which("node");

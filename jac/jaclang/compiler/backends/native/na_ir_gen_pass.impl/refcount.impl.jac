@@ -654,7 +654,7 @@ impl NaIRGenPass._opt_result_owned(val: ir.Value, expr: object) -> bool {
     if self._opt_ptr_payload_of(val.type) is None {
         return False;
     }
-    import from jaclang.compiler.passes.rc_facts_pass { Ownership, result_ownership }
+
     return isinstance(expr, uni.Expr) and result_ownership(expr) == Ownership.OWNED;
 }
 
@@ -698,7 +698,6 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
 }
 
 impl NaIRGenPass._nogc_consume_assigned_local(nd: uni.Assignment) -> bool {
-    import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
     if nd.aug_op is not None
         or len(nd.target) != 1
         or not isinstance(nd.target[0], uni.Name)
@@ -749,7 +748,7 @@ impl NaIRGenPass._nogc_borrow_local_assign(nd: object) -> bool {
     if len(nd.target) != 1 or not isinstance(nd.target[0], uni.Name) {
         return False;
     }
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+
     _sym = nd.target[0].sym;
     if _sym is not None and is_borrow_kind(_sym.ownership) {
         return True;
@@ -1667,19 +1666,16 @@ impl NaIRGenPass._emit_rc_release_typed(
 }
 
 impl NaIRGenPass._arch_is_acyclic(arch_name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     lay = get_layout_registry(self.module, self.prog).get_layout(arch_name);
     return lay is not None and lay.is_acyclic;
 }
 
 impl NaIRGenPass._arch_is_osp_name(arch_name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     lay = get_layout_registry(self.module, self.prog).get_layout(arch_name);
     return lay is not None and lay.is_osp;
 }
 
 impl NaIRGenPass._arch_is_walker_name(arch_name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     lay = get_layout_registry(self.module, self.prog).get_layout(arch_name);
     return lay is not None and lay.arch_type == "walker";
 }
@@ -2019,7 +2015,7 @@ impl NaIRGenPass._nogc_type_arg_mangles(expr: uni.UniNode | None) -> list[str] {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return [];
     }
-    import from jaclang.compiler.passes.layout_pass { native_type_key }
+
     return self._nogc_type_arg_mangles_of_str(native_type_key(expr.type));
 }
 
@@ -2137,7 +2133,7 @@ impl NaIRGenPass._emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | N
     if _key in self.container_drop_fns {
         return self.container_drop_fns[_key];
     }
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -2410,7 +2406,7 @@ impl NaIRGenPass._nogc_osp_skip(val: ir.Value) -> bool {
     if _tn is None {
         return False;
     }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+
     lay = get_layout_registry(self.module, self.prog).get_layout(_tn);
     return lay is not None and lay.is_osp;
 }

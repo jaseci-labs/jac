@@ -1,6 +1,5 @@
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { UnfoldMoreIcon }
-import from ...lib.utils { cn }
 
 glob _nativeSelectExcludeKeys: list[str] = ["className", "size", "children"];
 

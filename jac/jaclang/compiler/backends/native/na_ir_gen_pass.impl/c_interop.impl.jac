@@ -1,14 +1,3 @@
-import from jaclang.compiler.c_interop {
-    c_builtin_kind,
-    c_type_arg,
-    foreign_read_copies,
-    foreign_struct_of_type,
-    is_builtin_pin_call,
-    is_pinned_type,
-    is_ptr_type,
-    is_ptr_view_type
-}
-
 impl NaIRGenPass._foreign_struct_name_of_type(t: any) -> (str | None) {
     arch = foreign_struct_of_type(t);
     if arch is None or arch.name is None {
@@ -48,8 +37,6 @@ impl NaIRGenPass._ptr_view_type -> ir.Type {
 }
 
 impl NaIRGenPass._c_scalar_llvm(t: any) -> (ir.Type | None) {
-    import from jaclang.compiler.types.types { ClassType as _CClassType }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if is_ptr_type(t) {
         return ir.IntType(64);
     }
@@ -454,7 +441,6 @@ impl NaIRGenPass._codegen_pin(arg: uni.Expr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._clib_param_info(p: uni.ParamVar) -> dict[str, any] {
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
     ptype = p.type;
     optional = False;
     if isinstance(ptype, UnionType) {
@@ -507,7 +493,6 @@ impl NaIRGenPass._c_decl_type_of(type_expr: uni.UniNode) -> any {
 }
 
 impl NaIRGenPass._clib_place_ptr(expr: uni.Expr) -> (ir.Value | None) {
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
     if isinstance(expr, uni.UnaryExpr) and is_borrow_kind(expr.ownership) {
         expr = expr.operand;
     }

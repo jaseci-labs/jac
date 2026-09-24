@@ -1,6 +1,5 @@
 import importlib;
 import logging;
-import from jaclang.scale.emailer.emailer { Emailer }
 
 glob _registry: dict[str, type] = {},
      logger = logging.getLogger(__name__);

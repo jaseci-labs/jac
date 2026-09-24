@@ -1,25 +1,6 @@
 import json;
 import os;
 import from enum { StrEnum }
-import from jaclang.cli.console { console }
-import from jaclang.project.config { get_config }
-import from jaclang.project.source { read_file_with_encoding }
-import from jaclang.compiler.driver.wiring {
-    ARCH_FILE_NAME,
-    WiringSpec,
-    scope_path_of,
-    wiring_for_path
-}
-import from jaclang.compiler.driver.bccache { discover_annex_files }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree {
-    ImplImport,
-    Import,
-    ImportRule,
-    ImportWire,
-    ModuleItem,
-    ModulePath
-}
 
 enum ArchAction(StrEnum) { INIT = "init", SYNC = "sync", GRAPH = "graph" }
 
@@ -100,7 +81,6 @@ def _module_files(spec: WiringSpec) -> list[tuple[str, str]] {
 }
 
 def _parse_imports(path: str) -> list[tuple[Import, (list[str] | None)]] {
-    import from jaclang.compiler.frontend.parser.frontend { parse_woven }
     try {
         (mod, _err) = parse_woven(read_file_with_encoding(path), path, None, []);
     } except Exception {

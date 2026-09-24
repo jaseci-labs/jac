@@ -1,6 +1,3 @@
-import from jaclang.compiler.frontend.unitree { Module, SemDef, Symbol, UniScopeNode }
-import from jaclang.compiler.passes.context { CompileContext }
-
 walker SemDefMatchPass {
     has ctx: CompileContext,
         module: Module;

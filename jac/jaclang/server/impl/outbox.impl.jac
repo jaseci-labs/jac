@@ -31,8 +31,7 @@ impl outbox_db_path -> str {
     if data_root {
         return os.path.join(data_root, OUTBOX_DB_REL);
     }
-    import from jaclang { JacRuntime }
-    import from jaclang.project.modresolver { find_jac_project_root }
+
     base = JacRuntime.get_base_path_dir() or os.getcwd();
     project_root = find_jac_project_root(base) or base;
     return os.path.join(project_root, OUTBOX_DB_REL);
@@ -313,7 +312,6 @@ impl SqliteOutboxStore.close -> None {
 
 
 impl _current_memory -> any {
-    import from jaclang { JacRuntime }
     ctx = JacRuntime.peek_context();
     return ctx.mem if ctx is not None else None;
 }
@@ -326,7 +324,6 @@ impl _primary_pg_store -> (PgStore | None) {
 
 
 impl _writable_txn(mem: any, store: Store) -> None {
-    import from jaclang.server.session { Session }
     if not isinstance(mem, Session) {
         if not store.in_txn() {
             store.begin(TxnIsolation.SERIALIZABLE);
@@ -473,7 +470,6 @@ impl _run_coro(coro: any) -> any {
 
 
 impl _deliver_one(item: OutboxEntry) -> any {
-    import jaclang.server.sv_client as sv_client;
     return await sv_client.spawn_walker(
         item.app,
         item.`walker,
@@ -574,7 +570,6 @@ impl start_worker(interval_s: float = 1.0) -> None {
 
 
 impl start_worker_if_bridging(interval_s: float = 1.0) -> bool {
-    import jaclang.server.sv_client as sv_client;
     if not sv_client.has_consumers() {
         return False;
     }
@@ -681,7 +676,7 @@ impl replay_cached(key: str) -> any {
     if cached is None {
         return None;
     }
-    import from jaclang.server.bridge { replay_response }
+
     return replay_response(cached);
 }
 
@@ -690,9 +685,7 @@ impl remember_response(key: str, response: any) -> any {
     if not key {
         return response;
     }
-    import from jaclang.server.bridge { serialize_response }
-    import from jaclang.server.serving.datatypes { JSONResponse }
-    import from jaclang.server.transport { TransportResponse }
+
     ok = False;
     if isinstance(response, TransportResponse) {
         ok = bool(response.ok);

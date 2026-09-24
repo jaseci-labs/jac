@@ -1,19 +1,4 @@
 import from typing { cast }
-import jaclang.compiler.frontend.unitree as uni;
-import type from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-import type from jaclang.compiler.backends.es.estree { Expression }
-
-import type from jaclang.compiler.backends.es.view_ir {
-    StaticAttr,
-    DynamicAttr,
-    EventAttr,
-    RefAttr,
-    SpreadAttr,
-    ViewElement,
-    IfChild,
-    EachChild,
-    ViewChild
-}
 
 class EsJsxProcessor {
     def init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None;

@@ -15,10 +15,7 @@ impl TypeEvaluator._ts_decl_path(from_loc: ModulePath) -> (str | None) {
     if cache_key in self._ts_decl_path_cache {
         return self._ts_decl_path_cache[cache_key];
     }
-    import from jaclang.project.modresolver {
-        resolve_client_npm_declarations,
-        sibling_declaration_file
-    }
+
     dts_path: (str | None) = None;
     try {
         if spec.startswith('.') {
@@ -91,7 +88,7 @@ impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | 
     if dts_path in self._ts_decl_cache {
         return self._ts_decl_cache[dts_path];
     }
-    import from jaclang.compiler.types.ts_decl_parser { parse_dts }
+
     decls: (dict[str, TsDecl] | None) = None;
     try {
         with open(dts_path, 'r', encoding='utf-8', errors='replace') as f {
@@ -474,7 +471,7 @@ impl TypeEvaluator._untyped_external_is_error(node_: UniNode) -> bool {
     if not mod_path {
         return False;
     }
-    import from jaclang.project.modresolver { find_jac_project_root }
+
     proj_root = find_jac_project_root(mod_path);
     if not proj_root {
         return False;
@@ -504,6 +501,6 @@ impl TypeEvaluator._jac_virtual_sibling_dts(
     if not import_node.is_virtual_jac or from_mod_type.file_uri is None {
         return None;
     }
-    import from jaclang.project.modresolver { sibling_declaration_file }
+
     return sibling_declaration_file(str(from_mod_type.file_uri));
 }

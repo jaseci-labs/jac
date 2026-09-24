@@ -2,11 +2,7 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
     if not self._osp_active() {
         return;
     }
-    import from jaclang.compiler.frontend.codeinfo {
-        OSP_GRAPH_REL,
-        OSP_KERNEL_REL,
-        kernel_unit_path
-    }
+
     kernel_mod = self._load_native_unit_module(kernel_unit_path(OSP_KERNEL_REL));
     graph_mod = self._load_native_unit_module(kernel_unit_path(OSP_GRAPH_REL));
     if kernel_mod is None or graph_mod is None {
@@ -32,7 +28,6 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
 }
 
 impl NaIRGenPass._osp_kernel_init_fns -> list[ir.Function] {
-    import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
     out: list[ir.Function] = [];
     for unit_mod in (self._osp_kernel_mod, self._osp_graph_mod) {
         unit: any = unit_mod;
@@ -59,7 +54,7 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
             self.arch_ast_map[_n] = arch;
         }
     }
-    import from jaclang.compiler.passes.osp_analysis { get_osp_model }
+
     _model = get_osp_model(
         self.module,
         archetypes=(list(archetypes) + list(self.arch_ast_map.values())),

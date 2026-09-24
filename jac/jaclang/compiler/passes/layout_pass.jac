@@ -1,37 +1,3 @@
-import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    ArchHas,
-    Archetype,
-    Assignment,
-    AstSymbolNode,
-    AstTypedVarNode,
-    AtomTrailer,
-    BinaryExpr,
-    BuiltinType,
-    Enum,
-    Expr,
-    FuncCall,
-    FuncSignature,
-    HasVar,
-    Import,
-    IndexSlice,
-    Module,
-    ModuleItem,
-    Name,
-    Null,
-    TupleVal,
-    TypeParam,
-    UnaryExpr,
-    UniNode
-}
-
-import type from jaclang.compiler.types.types { TypeBase }
-import from jaclang.compiler.frontend.const_fold { fold_const }
-import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-
 glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "int",
          "float",
@@ -135,7 +101,6 @@ def get_layout_registry(module: Module, prog: any) -> LayoutRegistry {
         return reg;
     }
 
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
     if not require_product(prog, module, CompilationProduct.LAYOUT) {
         raise RuntimeError(f"Layout preparation failed: {module.loc.mod_path}");
     }
@@ -158,7 +123,6 @@ def layout_slot_count(lay: ArchetypeLayout) -> int {
 }
 
 def archetype_native_name(arch: Archetype) -> str {
-    import from jaclang.compiler.frontend.codeinfo { native_arch_name }
     name = arch.name.value if arch.name else "unknown";
     if arch.name is not None and is_enum_class_type(arch.name.type) {
         return name;
@@ -170,7 +134,6 @@ def archetype_native_name(arch: Archetype) -> str {
 }
 
 def referenced_archetype(expr: (UniNode | None)) -> (Archetype | None) {
-    import from jaclang.compiler.types.types { ClassType }
     if expr is None {
         return None;
     }
@@ -204,7 +167,6 @@ def referenced_native_name(expr: (UniNode | None)) -> (str | None) {
 }
 
 def class_type_native_name(typ: any) -> (str | None) {
-    import from jaclang.compiler.types.types { ClassType }
     if not isinstance(typ, ClassType) or typ._shared is None {
         return None;
     }
@@ -216,12 +178,6 @@ def class_type_native_name(typ: any) -> (str | None) {
 }
 
 def native_type_key(typ: any) -> str {
-    import from jaclang.compiler.types.types {
-        ClassType,
-        FunctionType,
-        OverloadedType,
-        UnionType
-    }
     if isinstance(typ, ClassType) {
         if typ._shared is None {
             return typ.mangle();
@@ -258,7 +214,7 @@ def native_type_key(typ: any) -> str {
 
 def declaring_module_path(base_expr: Expr) -> str {
     import os;
-    import from jaclang.compiler.types.types { ClassType }
+
     base_type = base_expr.type;
     if isinstance(base_type, ClassType) and base_type._shared is not None {
         scope = base_type.shared.symbol_table;
@@ -526,7 +482,6 @@ def adopt_ancestor_methods(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout
 }
 
 def is_erased_base_name(name: str, archetypes: dict[str, Archetype]) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_BASES }
     return name in NATIVE_ERASED_BASES and name not in archetypes;
 }
 

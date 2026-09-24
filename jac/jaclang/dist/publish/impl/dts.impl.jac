@@ -1,15 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    Ability,
-    Archetype,
-    AstTypedVarNode,
-    FuncSignature,
-    GlobalVars,
-    UniNode
-}
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-import from jaclang.dist.publish.jsdoc { jac_type_to_ts }
-
 def _param_type_str(param: AstTypedVarNode) -> str {
     tag = param.type_tag;
     if tag is None {

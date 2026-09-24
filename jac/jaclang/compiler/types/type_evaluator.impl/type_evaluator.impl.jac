@@ -3114,7 +3114,6 @@ impl TypeEvaluator._assign_class(
 impl TypeEvaluator._assign_c_interop_args(
     src_type: ClassType, dest_type: ClassType, strict: bool = False
 ) -> bool {
-    import from jaclang.compiler.c_interop { c_type_arg }
     dest_arg = c_type_arg(dest_type);
     src_arg = c_type_arg(src_type);
     if isinstance(dest_arg, TypeVarType) or isinstance(src_arg, TypeVarType) {
@@ -3215,7 +3214,6 @@ impl TypeEvaluator._solve_protocol_type_args(
 }
 
 impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool {
-    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
     self._heal_ancestry(sub_cls);
     ensure_mro_fresh(sub_cls);
     for cls in sub_cls.shared.mro {
@@ -3227,7 +3225,6 @@ impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> boo
 }
 
 impl TypeEvaluator._heal_ancestry(cls: ClassType) -> None {
-    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
     attempted: set[int] = set();
     while True {
         healed = False;
@@ -3251,8 +3248,6 @@ impl TypeEvaluator._heal_ancestry(cls: ClassType) -> None {
 }
 
 impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
-    import from jaclang.compiler.frontend.unitree { Archetype }
-    import from jaclang.compiler.types.type_utils { linearize_mro, mro_signature }
     shared = cls.shared;
     node_ = shared.symbol_table;
     if not isinstance(node_, Archetype) {
@@ -4437,7 +4432,6 @@ impl TypeEvaluator._init_prelude_from_catalog(catalog: StubCatalog) -> list[Modu
 }
 
 impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     typing_mod = self._load_stub_module(self._TYPING_STUB_FILE_PATH);
     types_mod = self._load_stub_module(self._TYPES_STUB_FILE_PATH);
     enum_mod = self._load_stub_module(self._ENUM_STUB_FILE_PATH);
@@ -4534,7 +4528,7 @@ impl TypeEvaluator.flow_pred_never_returns(pred: UniCFGNode) -> bool {
     if not isinstance(call, FuncCall) {
         return False;
     }
-    import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
+
     sym = resolve_expr_symbol(call.target);
     if sym is None {
         return False;
@@ -4583,7 +4577,7 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
     expr: Expr, declared_type: TypeBase, at_node: UniNode
 ) -> TypeBase | None {
     import from jaclang.compiler.types.type_evaluator { NarrowingTarget }
-    import from jaclang.compiler.symbol_utils { reference_key_deps }
+
     if not isinstance(declared_type, (UnionType, ClassType, FunctionType)) {
         return None;
     }
@@ -5000,7 +4994,6 @@ impl TypeEvaluator._if_exit_type(
 impl TypeEvaluator._loop_body_writes_target(
     loop_node: UniCFGNode, target: NarrowingTarget
 ) -> bool {
-    import from jaclang.compiler.symbol_utils { collect_assignment_target_keys }
     cache_key = id(loop_node);
     written = self._loop_written_keys_cache.get(cache_key);
     if written is None {
@@ -5120,7 +5113,6 @@ impl TypeEvaluator._find_symbol_by_key(key: str, condition: Expr) -> Symbol | No
 }
 
 impl TypeEvaluator.classify_condition(condition: Expr) -> ConditionInfo | None {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     import from jaclang.compiler.types.type_evaluator { ConditionInfo, NarrowingKind }
 
     if isinstance_info := self._extract_isinstance_info(condition) {
@@ -5246,7 +5238,6 @@ impl TypeEvaluator.classify_condition(condition: Expr) -> ConditionInfo | None {
 impl TypeEvaluator._find_predicate_for(
     target: NarrowingTarget, condition: Expr
 ) -> NarrowingPredicate | None {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     import from jaclang.compiler.types.type_evaluator {
         NarrowingKind,
         NarrowingPredicate,
@@ -6250,7 +6241,6 @@ impl TypeEvaluator._type_alias_tag_ident(tag_expr: Expr) -> (str | None) {
 impl TypeEvaluator._brand_distinct_alias(
     node_: TypeAlias, resolved: TypeBase
 ) -> TypeBase {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if not isinstance(resolved, ClassType)
         or not JAC_TYPE_REGISTRY.is_primitive(resolved.shared.class_name) {
         return resolved;
@@ -6319,8 +6309,6 @@ impl TypeEvaluator._resolve_type_alias_rhs(value: Expr) -> TypeBase {
 impl TypeEvaluator._resolve_string_type_expr(
     type_str: str, scope: UniScopeNode
 ) -> TypeBase | None {
-    import from jaclang.compiler.frontend.parser.parser { parse_expression }
-    import from jaclang.compiler.frontend.unitree { SubTag }
     (expression, had_error, _parser_diags, _lex_diags) = parse_expression(
         type_str, scope.loc.mod_path
     );

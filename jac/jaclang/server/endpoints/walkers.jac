@@ -1,34 +1,7 @@
-import from jaclang.server.endpoint_contract { check_endpoint_contract }
 import json;
 import logging;
 import from inspect { isgenerator }
 import from typing { AsyncGenerator, get_type_hints }
-import from jaclang.data.serializer { Serializer }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.runtime.builtin { APIProtocol }
-import from jaclang.server.serving.coerce { is_upload_type }
-import from jaclang.server.serving.datatypes { Request, Response, StreamingResponse }
-import from jaclang.server.serving.endpoint {
-    APIParameter,
-    HTTPMethod,
-    JEndPoint,
-    ParameterType
-}
-import from jaclang.server.outbox {
-    remember_response,
-    replay_cached,
-    scoped_idempotency_key
-}
-import from jaclang.server.serving.router { path_param_names }
-import from jaclang.server.serving.sse { sse_frame_stream }
-import from jaclang.server.server {
-    JacAPIServer,
-    JsonValue,
-    target_restspec,
-    target_schedule_spec
-}
-import from jaclang.server.sv_client { IDEMPOTENCY_HEADER, bridge_identity }
-import from jaclang.server.transport { Meta, TransportResponse }
 
 glob logger: logging.Logger = logging.getLogger('jaclang.serve');
 
@@ -179,7 +152,7 @@ def walker_callback(
         if nd {
             kwargs['_jac_spawn_node'] = nd;
         }
-        import from jaclang.server.sv_client { consumer_app }
+
         mismatch = check_endpoint_contract(
             request,
             server.get_walkers()[walker_name],
@@ -322,7 +295,7 @@ def function_callback(
         if requires_auth and not username {
             return _unauthorized();
         }
-        import from jaclang.server.sv_client { consumer_app }
+
         mismatch = check_endpoint_contract(
             request, func_obj, "func", func_name, consumer_app()
         );

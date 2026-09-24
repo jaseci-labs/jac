@@ -1,50 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree {
-    AtomTrailer,
-    BinaryExpr,
-    ConnectOp,
-    DisconnectOp,
-    Expr,
-    FuncCall,
-    KWPair,
-    Name,
-    Token,
-    TupleVal,
-    UniNode
-}
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from .types {
-    AnyType,
-    ClassType,
-    FunctionType,
-    NeverType,
-    TypeBase,
-    TypeVarType,
-    UnionType,
-    UnknownType
-}
-import from jaclang.compiler.frontend.diagnostics {
-    E1010,
-    E1033,
-    E1035,
-    E1055,
-    E1096,
-    E1097,
-    E1098,
-    E1114,
-    E1115,
-    E1118
-}
-import from .fixed_width {
-    arithmetic_result_type,
-    both_numeric,
-    folded_number,
-    numeric_name_of,
-    shift_result_type,
-    unify_numeric_operands
-}
-import type from .type_evaluator { TypeEvaluator }
-
 glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          Tok.PLUS: ('__add__', '__radd__'),
          Tok.MINUS: ('__sub__', '__rsub__'),
@@ -194,7 +147,6 @@ def get_numeric_promotion_type(
 }
 
 def is_int_kind_type(t: TypeBase) -> bool {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, NumericKind }
     name = numeric_name_of(t);
     return name is not None
         and JAC_TYPE_REGISTRY.numeric_kind_of(name) == NumericKind.IntKind;
@@ -231,7 +183,6 @@ def get_pow_result_type(
     left_node: Expr | None = None,
     diag_node: UniNode | None = None
 ) -> (TypeBase | None) {
-    import from jaclang.compiler.frontend.const_fold { fold_const }
     float_class = evaluator.prefetch.float_class;
     complex_type = get_complex_arith_result_type(left_type, right_type);
     if complex_type is not None {

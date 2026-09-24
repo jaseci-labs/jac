@@ -551,6 +551,10 @@ def ensure_loaded -> (NativeCompiler | None) {
     return k;
 }
 
+def loaded_kernel -> (NativeCompiler | None) {
+    return _KERNEL_CELL[0] if _KERNEL_CELL else None;
+}
+
 def reset_loaded {
     _KERNEL_CELL.clear();
     _RESOLVED.clear();

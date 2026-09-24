@@ -1,5 +1,3 @@
-import from webview.webview { Webview, respond }
-
 import from "<libpy>" {
     def PyGILState_Ensure -> int;  def PyGILState_Release(state: int) -> None;  def PyObject_CallOneArg(
         fn: int, arg: int

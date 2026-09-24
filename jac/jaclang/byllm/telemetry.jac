@@ -1,6 +1,5 @@
 import from contextvars { ContextVar }
 import logging;
-import type from jaclang.byllm.mtir { MTRuntime }
 
 glob _agent_callbacks: list[Callable[[dict[str, any]], None]] = [],
      logger = logging.getLogger(__name__),

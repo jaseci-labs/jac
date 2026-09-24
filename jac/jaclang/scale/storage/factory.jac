@@ -1,11 +1,4 @@
 import os;
-import from jaclang.data.storage { Storage }
-import from jaclang.project.config { get_config }
-import from jaclang.scale.config.firebase_env {
-    JAC_STORAGE_FIREBASE_PROJECT_ID_ENV,
-    JAC_STORAGE_GCS_PROJECT_ID_ENV,
-    resolve_firebase_project_id
-}
 
 enum StorageType { LOCAL = "local", S3 = "s3", GCS = "gcs", FIREBASE = "firebase" }
 

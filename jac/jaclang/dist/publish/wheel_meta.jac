@@ -1,5 +1,3 @@
-import from jaclang.project.config { JacConfig }
-
 def generate_wheel_file(
     generator_version: str = "",
     pure_python: bool = True,

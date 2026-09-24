@@ -2,16 +2,6 @@ import hashlib;
 import os;
 import sys;
 import from pathlib { Path }
-import from jaclang.dist.fused.trailer {
-    MAGIC,
-    OVERLAY_MAGIC,
-    TRAILER_LEN,
-    Trailer,
-    build_trailer,
-    parse_trailer,
-    region_start,
-    rt_key
-}
 
 def fused_base_length(data: bytes) -> int {
     total = len(data);
@@ -126,7 +116,6 @@ def interpreter_runtime_dir -> (str | None) {
 
 
 def _runtime_dir_for_key(key: str) -> (str | None) {
-    import from jaclang.cache.registry { bucket }
     if not key {
         return None;
     }

@@ -1,5 +1,4 @@
 import from "radix-ui" { Popover as PopoverPrimitive }
-import from ...lib.utils { cn }
 
 def:pub Popover(props: any) -> JsxElement {
     <PopoverPrimitive.Root data-slot="popover" {**props}/>
