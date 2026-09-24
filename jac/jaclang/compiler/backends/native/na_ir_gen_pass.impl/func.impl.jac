@@ -107,16 +107,11 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         slot_gv.initializer = ir.Constant(fnty.as_pointer(), None);
         self.decorated_fns[name] = (func, slot_gv, _dec_names, fnty);
     } else {
-        _emit_name = name;
-        import from jaclang.compiler.frontend.codeinfo {
-            native_library_function_symbol
-        }
+        import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
         _def_module = nd.find_parent_of_type(uni.Module);
-        if _def_module is not None {
-            _emit_name = native_library_function_symbol(
-                _def_module.source.file_path, name
-            );
-        }
+        _emit_name = native_def_symbol(
+            _def_module.source.file_path if _def_module is not None else "", name
+        );
         if nd.access
             and nd.access.tag.name == Tok.KW_PRIV
             and nd.find_parent_of_type(uni.Archetype) is None {
@@ -268,7 +263,13 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     _abi_supported = (
         "x86_64" in _abi_triple or "aarch64" in _abi_triple or "arm64" in _abi_triple
     );
-    _decl_params = sig.get_parameters();
+    _decl_params = [
+        p
+        for p in sig.get_parameters()
+        if not (p.is_vararg or p.is_kwargs)
+    ];
+    _c_args = [self._clib_param_info(p) for p in _decl_params];
+    _c_ret_ptr = self._clib_ret_is_cptr(sig);
 
     is_variadic = sig.varargs is not None;
     plan: (dict[str, any] | None) = None;
@@ -276,7 +277,11 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         _fdecl = self._foreign_fns().get(name);
         if _fdecl is not None {
             plan = classify_foreign_fn(
-                self._foreign_model(), _fdecl["params"], _fdecl["ret"], _abi_triple
+                self._foreign_model(),
+                _fdecl["params"],
+                _fdecl["ret"],
+                _abi_triple,
+                force=_c_ret_ptr or any(bool(_ci) for _ci in _c_args)
             );
         }
     }
@@ -287,6 +292,8 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
                 sysv_param_types.append(self._clib_c_type(slot[1]).as_pointer());
             } elif slot[0] == "coerce" {
                 sysv_param_types.append(slot[1]);
+            } elif slot[1] < len(_c_args) and _c_args[slot[1]] {
+                sysv_param_types.append(ir.IntType(8).as_pointer());
             } else {
                 _sp = _decl_params[slot[1]];
                 sysv_param_types.append(
@@ -298,10 +305,11 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         }
 
         param_plan = plan["params"];
-        for pp in param_plan {
+        for (_pi, pp) in enumerate(param_plan) {
             if pp["kind"] == "scalar" {
                 pp["type"] = sysv_param_types[pp["argpos"]];
                 pp["is_str"] = pp.get("tname") == "str";
+                pp["c_arg"] = _c_args[_pi] if _pi < len(_c_args) else {};
             }
         }
         sysv_sret = plan["sret"];
@@ -317,6 +325,10 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             } else {
                 sysv_ret_type = ir.LiteralStructType(_rco);
             }
+        } elif _c_ret_ptr {
+            sysv_ret_type = ir.IntType(8).as_pointer();
+            sysv_ret_plan["type"] = sysv_ret_type;
+            sysv_ret_plan["cptr"] = True;
         } else {
             sysv_ret_type = self._resolve_clib_type(sig.return_type);
             sysv_ret_plan["type"] = sysv_ret_type;

@@ -1767,6 +1767,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             continue;
         }
 
+        if isinstance(target_expr, uni.AtomTrailer)
+            and self._c_interop_store(target_expr, value, nd) {
+            continue;
+        }
+
         if isinstance(target_expr, uni.AtomTrailer) and target_expr.is_attr {
             if nd.aug_op is not None {
                 _faug_errs = len(self.ctx.errors_had);
@@ -2591,6 +2596,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 self._emit_rc_release_simple(
                     _opt_re_old_pv, op="overwrite", loc=_opt_re_loc
                 );
+            } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
+                and not is_inplace_set_op
+                and not raw_int_ptr {
+                self._nogc_consume_assigned_local(nd);
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
@@ -3087,6 +3096,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         _opt_old_pv, op="overwrite", loc=_opt_asg_loc
                     );
                 }
+            } elif self._opt_ptr_payload_of(var_type) is not None {
+                self._nogc_consume_assigned_local(nd);
             }
             self.builder.store(value, alloca);
             self.local_vars[var_name] = alloca;
@@ -3209,13 +3220,14 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         and isinstance(nd.collection.target, uni.AtomTrailer)
         and nd.collection.target.is_attr
         and self._get_name(nd.collection.target.right) == "items" {
-        items_dict_key = self._dict_key_of(nd.collection.target.target);
+        items_source = nd.collection.target.target;
+        items_dict_key = self._dict_key_of(items_source);
         unpack_targets: list[uni.Expr | uni.KWPair] = list(nd.target.values or []);
         if items_dict_key is not None and len(unpack_targets) == 2 {
             key_var_name = self._get_name(unpack_targets[0]);
             val_var_name = self._get_name(unpack_targets[1]);
             if key_var_name is not None and val_var_name is not None {
-                collection_val = self._codegen_expr(nd.collection.target.target);
+                collection_val = self._codegen_expr(items_source);
                 items_dict_key = self._dict_key_reconcile(
                     items_dict_key, collection_val
                 );
@@ -3229,9 +3241,13 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                         collection_val=collection_val,
                         helpers=helpers,
                         var_names=[key_var_name, val_var_name],
-                        var_types=[helpers["key_type"], helpers["val_type"]],
+                        var_types=[
+                            helpers["key_type"],
+                            self._dict_read_llvm(helpers["val_type"], items_source)
+                        ],
                         rc_vars=True,
-                        coll_release_op="fori_coll"
+                        coll_release_op="fori_coll",
+                        items_source=items_source
                     );
                     return;
                 }
@@ -4217,7 +4233,8 @@ impl NaIRGenPass._codegen_for_indexed(
     range_start: (ir.Value | None) = None,
     elem_cast: (ir.Type | None) = None,
     unpack_target: (uni.TupleVal | None) = None,
-    range_step: (ir.Value | None) = None
+    range_step: (ir.Value | None) = None,
+    items_source: (uni.Expr | None) = None
 ) -> None {
     i64 = ir.IntType(64);
     _for_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.last_line
@@ -4376,8 +4393,11 @@ impl NaIRGenPass._codegen_for_indexed(
             key_val = self.builder.call(
                 helpers["get_key"], [collection_val, body_idx], name="for.key"
             );
-            val_val = self.builder.call(
-                helpers["get_val"], [collection_val, body_idx], name="for.val"
+            val_val = self._restore_dict_read(
+                self.builder.call(
+                    helpers["get_val"], [collection_val, body_idx], name="for.val"
+                ),
+                items_source
             );
 
             if rc_vars and isinstance(var_types[0], ir.PointerType) {

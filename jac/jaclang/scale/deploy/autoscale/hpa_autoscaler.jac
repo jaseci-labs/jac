@@ -1,7 +1,12 @@
 import from jaclang.scale._optdeps.kubernetes { AutoscalingV2Api, ApiException, client }
+import from jaclang.scale.models.resource_status { ResourceStatus }
 import from jaclang.scale.deploy.autoscale.autoscaler {
     Autoscaler,
+    AutoscalerRuntimeStatus,
     AutoscalerSpec,
+    condition,
+    normalize_conditions,
+    tristate,
     DEFAULT_CPU_UTILIZATION_TARGET,
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
@@ -18,4 +23,7 @@ obj HPAAutoscaler(Autoscaler) {
     def destroy(app_name: str, namespace: str) -> None;
     def destroy_collection(namespace: str, label_selector: str) -> None;
     def resource_name_for(target: str) -> str;
+    def get_runtime_status(
+        scale_target_name: str, namespace: str, autoscaler_name: (str | None) = None
+    ) -> AutoscalerRuntimeStatus;
 }

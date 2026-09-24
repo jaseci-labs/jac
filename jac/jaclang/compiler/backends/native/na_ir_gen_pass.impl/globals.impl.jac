@@ -97,9 +97,12 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             }
         }
     }
+    import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
     for (var_name, var_type) in candidates.items() {
         try {
-            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
+            global_var = ir.GlobalVariable(
+                self.llvm_module, var_type, name=native_def_symbol("", var_name)
+            );
         } except Exception as _dup_err {
             continue;
         }
@@ -146,11 +149,9 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 }
             }
 
-            import from jaclang.compiler.frontend.codeinfo {
-                native_library_function_symbol
-            }
+            import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
             _gv_path = self.module.loc.mod_path if self.module?.loc else "";
-            _gv_sym = native_library_function_symbol(_gv_path, var_name);
+            _gv_sym = native_def_symbol(_gv_path, var_name);
             try {
                 global_var = ir.GlobalVariable(
                     self.llvm_module, var_type, name=_gv_sym

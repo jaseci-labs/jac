@@ -296,7 +296,7 @@ impl MTRuntime.get_history_for_persist -> list[MessageType] {
         if isinstance(msg, ToolCallResultMsg) and msg.name == "finish_tool" {
             continue;
         }
-        tool_calls = msg?.tool_calls;
+        tool_calls: any = msg?.tool_calls;
         if tool_calls is None and isinstance(msg, dict) {
             tool_calls = msg.get("tool_calls");
         }

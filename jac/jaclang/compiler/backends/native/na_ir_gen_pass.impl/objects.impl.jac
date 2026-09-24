@@ -1,3 +1,4 @@
+import from jaclang.compiler.c_interop { foreign_read_copies, is_pinned_type }
 import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenPass._devirt_closed_world(arch_name: str) -> bool {
     arch = self.arch_ast_map.get(arch_name);
@@ -524,8 +525,15 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     }
                     _cf_fnty = isinstance(var?.type, _ClibFnType);
                 } except ImportError {}
+                _nested = self._foreign_struct_name_of_type(var?.type);
                 if _cf_fnty {
                     ftype = self._lower_clib_function_type(arch_name, fname, var.type);
+                } elif _nested is not None and _nested in self.struct_types {
+                    ftype = self.struct_types[_nested];
+                    if arch_name not in self.struct_field_inline {
+                        self.struct_field_inline[arch_name] = set();
+                    }
+                    self.struct_field_inline[arch_name].add(fname);
                 } else {
                     ftype = self._resolve_jac_type(var.type_tag);
                 }
@@ -548,7 +556,8 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                 }
                 if self._nogc_headerless()
                     and self._hasvar_is_own(var)
-                    and isinstance(ftype, ir.PointerType) {
+                    and isinstance(ftype, ir.PointerType)
+                    and not is_pinned_type(var?.type) {
                     _fpn = getattr(ftype.pointee, "name", "") or "";
                     _fstruct = self.struct_types.get(_fpn);
 
@@ -2094,7 +2103,9 @@ impl NaIRGenPass._codegen_instantiation(
                 name=f"field.{key_name}"
             );
             self._store_inline_field(type_name, key_name, _inl_fp, val, False);
-            self._nogc_consume_local(init_expr);
+            if type_name not in self.clib_struct_names {
+                self._nogc_consume_local(init_expr);
+            }
             set_fields.add(key_name);
             continue;
         }
@@ -2965,7 +2976,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if dict_val is not None and dict_type_key is not None {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
-                "dict", method_name, dict_val, arg_vals, dict_type_key
+                "dict", method_name, dict_val, arg_vals, dict_type_key, kw_node=nd
             );
             if result is not None {
                 return result;
@@ -3813,6 +3824,14 @@ impl NaIRGenPass._codegen_field_access(
     }
     field_ptr = self._field_slot_ptr(obj_val, field_name, type_name);
     if field_name in self.struct_field_inline.get(type_name, set()) {
+        if type_name in self.clib_struct_names and foreign_read_copies(nd) {
+            _nested = getattr(
+                self.struct_field_types.get(type_name, {}).get(field_name), "name", ""
+            );
+            if _nested in self.struct_types {
+                return self._foreign_copy_box(field_ptr, _nested);
+            }
+        }
         return field_ptr;
     }
     return self.builder.load(field_ptr, name=f"field.{field_name}");
@@ -3912,6 +3931,12 @@ impl NaIRGenPass._store_inline_field(
     i8p = ir.IntType(8).as_pointer();
     _ftype = self.struct_field_types.get(type_name, {}).get(fname);
     _pname = getattr(_ftype, "name", "") or "";
+    if type_name in self.clib_struct_names and _pname in self.clib_struct_names {
+        if value is not None {
+            self._foreign_store_bytes(field_ptr, value, _pname);
+        }
+        return;
+    }
     if drop_old and _pname {
         _dropf = self._emit_struct_drop_fields_fn(_pname);
         if _dropf is not None {
@@ -4103,8 +4128,39 @@ impl NaIRGenPass._codegen_field_assign(
         }
         return;
     }
+    self._emit_field_store(
+        target,
+        obj_val,
+        type_name,
+        field_name,
+        value,
+        skip_narrow_coerce=skip_narrow_coerce,
+        value_node=value_node,
+        union_parts=union_parts
+    );
+}
 
-    if _setter is None and self._refuse_opaque_field(target, type_name, field_name) {
+impl NaIRGenPass._emit_field_store(
+    nd: uni.UniNode,
+    obj_val: ir.Value,
+    type_name: str,
+    field_name: str,
+    value: ir.Value,
+    skip_narrow_coerce: bool = False,
+    value_node: (uni.Expr | None) = None,
+    union_parts: (list[str] | None) = None
+) -> None {
+    """Store a lowered value into a resolved receiver's field.
+
+    The receiver and its static type are already known, so this serves both
+    `obj.field = value` and stores with no attribute target in the source,
+    such as the attribute assignments of a typed connect
+    (`+>:E:field=value:+>`). The caller has checked that the field or a
+    property setter exists on `type_name`.
+    """;
+    field_indices = self.struct_field_indices.get(type_name, {});
+    _setter = self._accessor_slot_of(type_name, field_name, "setter");
+    if _setter is None and self._refuse_opaque_field(nd, type_name, field_name) {
         return;
     }
 
@@ -4120,7 +4176,7 @@ impl NaIRGenPass._codegen_field_assign(
         if self._codegen_accessor_call(obj_val, type_name, _setter, [value]) is None {
             self.ctx.emit(
                 E5092,
-                node_override=target,
+                node_override=nd,
                 kind="field assignment",
                 name=field_name,
                 help_text=f"'{type_name}.{field_name}' is a property whose "
@@ -4159,7 +4215,9 @@ impl NaIRGenPass._codegen_field_assign(
             name=f"field.{field_name}.ptr"
         );
         self._store_inline_field(type_name, field_name, _inl_fp, value, True);
-        self._nogc_consume_local(value_node);
+        if type_name not in self.clib_struct_names {
+            self._nogc_consume_local(value_node);
+        }
         return;
     }
 
@@ -4193,15 +4251,15 @@ impl NaIRGenPass._codegen_field_assign(
         self._emit_take_ref(
             value,
             op="field_set",
-            loc=f"{os.path.basename(self.module.loc.mod_path)}:{target.loc.first_line
-                if target.loc
+            loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
                 else 0}"
         );
         old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
         self._set_rc_ctx(
             "field_set",
-            f"{os.path.basename(self.module.loc.mod_path)}:{target.loc.first_line
-                if target.loc
+            f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
                 else 0}"
         );
         self._emit_elem_release(self.builder, ftype, old_field_val);
@@ -4211,8 +4269,8 @@ impl NaIRGenPass._codegen_field_assign(
     if _fs_opt is not None
         and isinstance(_fs_opt, ir.PointerType)
         and not _borrow_field {
-        _fs_loc = f"{os.path.basename(self.module.loc.mod_path)}:{target.loc.first_line
-            if target.loc
+        _fs_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+            if nd.loc
             else 0}";
         if self._opt_result_owned(value, value_node) {
             self.rc_ops_elided += 1;

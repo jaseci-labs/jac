@@ -2002,7 +2002,7 @@ if (!globalThis.__jacOspCore) {
     osp_edge_peer,
     osp_spawn, osp_visit, osp_report, osp_disengage, osp_forget,
     osp_register_type, osp_register_desc, osp_node_desc, osp_is_a,
-    WalkerDesc, NodeDesc, Slot, OspRuntime
+    OspWalkerDesc, OspNodeDesc, OspSlot, OspRuntime
   };
 }
 var __ospC = globalThis.__jacOspCore;

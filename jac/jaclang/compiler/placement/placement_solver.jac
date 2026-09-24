@@ -425,6 +425,11 @@ def _module_externally_pinned(mod_path: str) -> bool {
     return config_module_pin(mod_path) != '';
 }
 
+def _python_backend_forced(prog: any) -> bool {
+    opts = prog?.options;
+    return getattr(opts, "force_codespace", "") == "server";
+}
+
 def _seed_from_summary(module: uni.Module, prog: any) -> int {
     import from jaclang.compiler.driver.boundary_classify { _stamp_context_element }
     mod_path = module.loc.mod_path or '';
@@ -460,6 +465,9 @@ def _seed_from_summary(module: uni.Module, prog: any) -> int {
                 continue;
             }
             (cap, reason) = (req[0], req[1]);
+            if cap == 'FFI' and _python_backend_forced(prog) {
+                continue;
+            }
             if cap == 'FFI' {
                 target_ctx = CodeContext.NATIVE;
                 ctx_label = 'native';

@@ -1499,6 +1499,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_expr(_identity_arg);
     }
 
+    (_c_handled, _c_val) = self._codegen_c_interop_call(nd);
+    if _c_handled {
+        return _c_val;
+    }
+
     if is_field_marker(nd) {
         owner = nd.parent;
         assert isinstance(owner, uni.HasVar);
@@ -1907,7 +1912,18 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name
-            in ("abs", "min", "max", "pow", "divmod", "sum", "any", "all", "format") {
+            in (
+                "abs",
+                "min",
+                "max",
+                "pow",
+                "divmod",
+                "sum",
+                "any",
+                "all",
+                "format",
+                "round"
+            ) {
             params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             arg_vals: list[ir.Value] = [];
             arg_nodes: list[uni.UniNode] = [];
@@ -1940,9 +1956,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
 
-        if func_name == "bytearray" and not (nd.params or []) {
+        if func_name in ("bytes", "bytearray") and not (nd.params or []) {
             _ba_empty = self._dispatch_builtin(
-                "bytearray", [], kwargs=self._split_call_kwargs(nd), kw_node=nd
+                func_name, [], kwargs=self._split_call_kwargs(nd), kw_node=nd
             );
             if _ba_empty is not None {
                 return _ba_empty;
@@ -1967,7 +1983,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 "hex",
                 "oct",
                 "bin",
-                "round",
                 "float",
                 "bool",
                 "sorted",
@@ -2338,7 +2353,19 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 );
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
-            func = self._get_or_declare_extern(func_name, ret_ir_type, param_ir_types);
+            _extern_sym = func_name;
+            if binding.source_context.value == "native" {
+                import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
+                _src_mod = _src_ab.find_parent_of_type(uni.Module)
+                    if _src_ab is not None
+                    else None;
+                _extern_sym = native_def_symbol(
+                    _src_mod.source.file_path if _src_mod is not None else "", func_name
+                );
+            }
+            func = self._get_or_declare_extern(
+                _extern_sym, ret_ir_type, param_ir_types
+            );
         }
     }
     if func is None and func_name in self.generic_fns {
@@ -2371,12 +2398,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
 
-    args: list[ir.Value] = self._codegen_bound_args(nd, func, self_offset=0);
-
     _is_foreign = self.clib_extern_fns.get(func_name) is func;
     if _is_foreign and func_name in self.clib_fn_abi {
-        return self._codegen_clib_call(func, func_name, args);
+        _copybacks: list[tuple[ir.Value, ir.Value, any]] = [];
+        _clib_args = self._codegen_clib_args(nd, func_name, _copybacks);
+        if _clib_args is None {
+            _clib_args = self._codegen_bound_args(nd, func, self_offset=0);
+        }
+        return self._codegen_clib_call(func, func_name, _clib_args, _copybacks);
     }
+
+    args: list[ir.Value] = self._codegen_bound_args(nd, func, self_offset=0);
 
     coerced: list[ir.Value] = [];
 

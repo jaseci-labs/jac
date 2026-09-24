@@ -30,6 +30,8 @@ Bug index:
   #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
+  #WITHAS-2 - a `with ... as x` alias read before the checker walked its `with` (a
+              native import's interface build) was Unknown and stayed cached
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
@@ -1064,6 +1066,72 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #WITHAS-2: the alias type was only ever set by the checker pass as it
+# entered the `with` statement. A native module analyses its imports in full,
+# and each import's interface is built first, typing the import's function
+# bodies before the checker walks them: the alias read as Unknown there, the
+# Unknown stayed cached on the use, and `jac check` reported E1032 inside the
+# import (the bundled native `zipfile` among them) and then failed with
+# "Native dependency analysis failed". The evaluator now derives the alias
+# from `__enter__` whenever it is read.
+test "bug_withas_2_alias_typed_before_checker_walks_with" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    failure = "";
+    try {
+        program.compile(
+            os.path.join(CHECKER_FIXTURES, "checker_with_alias_native_dep.jac"),
+            options=CompileOptions(
+                no_cgen=True,
+                native_parity=True,
+                force_target_program=True,
+                iface_ok=True,
+                strict_dependencies=True
+            )
+        );
+    } except RuntimeError as e {
+        failure = str(e);
+    }
+    assert failure == "" and program.errors_had == [] , (
+        "Bug #WITHAS-2: a `with ... as` alias in a native module's import must "
+        f"type through __enter__. Got failure {failure!r}, errors: "
+        f"{[str(e) for e in program.errors_had]}"
+    );
+}
+
+# The same reads with no pass running at all: a native module's `open` resolves
+# to the native builtin by the module it is written in (not by whichever node a
+# running pass happens to be on), and the alias binds through `__enter__`.
+test "bug_withas_2_native_alias_typed_outside_a_pass" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import jaclang.compiler.frontend.unitree as uni;
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_with_alias_outside_pass.jac"),
+        options=CompileOptions(symtab_ir_only=True, force_codespace="native")
+    );
+    evaluator = program.get_type_evaluator();
+    opens = [
+        call
+        for call in mod.get_all_sub_nodes(uni.FuncCall)
+        if isinstance(call.target, uni.Name) and call.target.value == "open"
+    ];
+    uses = [
+        name
+        for name in mod.get_all_sub_nodes(uni.Name)
+        if name.value == "stream" and name.sym is not None and name.sym.decl is not name
+    ];
+    assert len(opens) == 1 and len(uses) == 1 , f"fixture shape changed: {opens} {uses}";
+    open_type = str(evaluator.get_type_of_expression(opens[0]));
+    alias_type = str(evaluator.get_type_of_expression(uses[0]));
+    assert open_type == "BinaryFile" , (
+        f"Bug #WITHAS-2: native `open(path, \"rb\")` typed {open_type}, not BinaryFile"
+    );
+    assert alias_type == "BinaryFile" , (
+        f"Bug #WITHAS-2: the `with` alias typed {alias_type}, not BinaryFile"
     );
 }
 

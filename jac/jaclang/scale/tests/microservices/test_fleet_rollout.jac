@@ -195,6 +195,39 @@ test "ready fleet returns without raising" {
     assert err is None , f"an idle scale-to-zero service should not raise: {err}";
 }
 
+test "a fleet that already reads serving is still scanned for crash-looping pods" {
+    # Counting a Deployment ready is not a reason to skip the pod scan. Reading
+    # replica counts alone, a rolling update whose new pods crash-loop behind a
+    # ready old replica, and an idled service with a crash-looping leftover, both
+    # look finished.
+    target = KubernetesTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    boot = _cs(
+        "jac-bootstrap",
+        restarts=3,
+        waiting_reason="CrashLoopBackOff",
+        last_term_reason="StartError",
+        last_term_message="exec /app/.jachome/.local/bin/jac: exec format error",
+        last_term_exit=1
+    );
+
+    cases: list[tuple[str, any]] = [
+        ("a ready old replica beside the crash-looping new ones", _dep(1)),
+        ("a service idled to zero", _dep(0, desired=0, floor=0))
+    ];
+    for (why, dep) in cases {
+        pod = _pod("gateway-xyz", "gateway", "Pending", [boot], []);
+        (apps, core) = _apis(1, [pod]);
+        apps.read_namespaced_deployment.return_value = dep;
+
+        err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 60);
+
+        assert err is not None , (f"a crash-looping pod must abort the deploy, {why}");
+        assert "crash-looping" in str(err) , f"{why}: crashloop not reported: {err}";
+    }
+}
+
 test "multiple image-pull containers do not fail on the first poll" {
     target = KubernetesTarget(
         config=KubernetesConfig(app_name="jac-shop", namespace="ns")

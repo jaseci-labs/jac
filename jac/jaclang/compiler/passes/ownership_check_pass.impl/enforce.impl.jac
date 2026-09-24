@@ -1,5 +1,6 @@
 import from jaclang.compiler.expr_keys { type_tag_borrows }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+import from jaclang.compiler.c_interop { is_c_value_type }
 import from jaclang.compiler.frontend.diagnostics {
     E1315,
     E1401,
@@ -14,6 +15,11 @@ glob _NOGC_SCALARS: frozenset[str] = frozenset(
          ["int", "float", "bool", "None", "NoneType", "type"]
              + JAC_TYPE_REGISTRY.sized_scalar_names()
      );
+
+def _is_class_object(t: object) -> bool {
+    import from jaclang.compiler.types.types { ClassType }
+    return isinstance(t, ClassType) and t.is_instantiable_class();
+}
 
 def _nogc_name_candidates(mod_name: str) -> list[str] {
     _cands = [mod_name];
@@ -100,7 +106,7 @@ impl OwnershipCheckPass._nogc_tag_shape(tag: SubTag | None) -> str {
         return "unknown";
     }
     _tname = _root.sym_name;
-    if _tname in _NOGC_SCALARS {
+    if _tname in _NOGC_SCALARS or is_c_value_type(_expr.type) {
         return "scalar";
     }
     if _tname == "any" {
@@ -127,7 +133,7 @@ impl OwnershipCheckPass._nogc_local_shape(nm: Name) -> str {
     } except Exception {
         return "unknown";
     }
-    if _mangled in _NOGC_SCALARS {
+    if _mangled in _NOGC_SCALARS or is_c_value_type(_t) or _is_class_object(_t) {
         return "scalar";
     }
     if _mangled in ("any", "Unknown", "") {
@@ -274,6 +280,9 @@ impl OwnershipCheckPass._nogc_infer_state(
         return (OwnershipKind.NONE, _none);
     }
     if isinstance(expr, AtomTrailer) {
+        if is_c_value_type(expr.type) {
+            return (OwnershipKind.NONE, _none);
+        }
         if self._nogc_str_slice_value(expr) {
             if self._view_base_place(expr) is not None {
                 return (OwnershipKind.NONE, _none);
@@ -549,7 +558,10 @@ impl OwnershipCheckPass._nogc_expr_type_is_heap(expr: Expr | None) -> bool {
     } except Exception {
         return False;
     }
-    if _m in _NOGC_SCALARS or _m in ("any", "Unknown", "") {
+    if _m in _NOGC_SCALARS
+        or _m in ("any", "Unknown", "")
+        or is_c_value_type(expr.type)
+        or _is_class_object(expr.type) {
         return False;
     }
     for _arch in self.module.get_all_sub_nodes(Archetype) {
@@ -571,7 +583,7 @@ impl OwnershipCheckPass._expr_scalar_typed(expr: Expr | None) -> bool {
     } except Exception {
         return False;
     }
-    return _m in _NOGC_SCALARS;
+    return _m in _NOGC_SCALARS or is_c_value_type(expr.type);
 }
 
 impl OwnershipCheckPass._nogc_is_container_expr(expr: Expr | None) -> bool {
