@@ -1,5 +1,6 @@
 import from enum { IntEnum, auto }
 import from pathlib { Path }
+import from jaclang.compiler.frontend.constant { ParamKind }
 import type from jaclang.compiler.frontend.unitree { Expr, Symbol }
 import type from jaclang.compiler.frontend.unitree { UniScopeNode as SymbolTable }
 import type from jaclang.compiler.types.ct_value { CtValue }
@@ -164,7 +165,7 @@ node ClassDetailsShared {
         ct_params: (list[str] | None) = None,
         _mro_cache: (list[ClassType] | None) = None,
         _acc_cache: (dict[str, any] | None) = None,
-        _mro_sig: (tuple[tuple[int, int | str], ...] | None) = None,
+        _mro_sig: (list[tuple[int, str]] | None) = None,
         _provisional: bool = False,
         _heal_stamp: int = 0;
 
@@ -282,16 +283,6 @@ node ClassType(TypeBase) {
     def clone_with_literal(value: (str | int | bool | None)) -> ClassType;
     def is_literal_type -> bool;
     def get_literal_value -> (str | int | bool | None);
-}
-
-class ParamKind(IntEnum) {
-    with entry {
-        POSONLY = 0;
-        NORMAL = 1;
-        VARARG = 2;
-        KWONLY = 3;
-        KWARG = 4;
-    }
 }
 
 enum FunctionTypeFlags(IntEnum) {

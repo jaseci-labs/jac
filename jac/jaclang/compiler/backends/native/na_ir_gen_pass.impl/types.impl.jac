@@ -3615,7 +3615,12 @@ impl NaIRGenPass._emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value {
 }
 
 impl NaIRGenPass._emit_optional_eq(
-    op: str, left: ir.Value, right: ir.Value, is_float: bool
+    op: str,
+    left: ir.Value,
+    right: ir.Value,
+    is_float: bool,
+    unsigned: bool = False,
+    key_ret: (TypeBase | None) = None
 ) -> (ir.Value | None) {
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
@@ -3647,7 +3652,9 @@ impl NaIRGenPass._emit_optional_eq(
         self.builder.position_at_start(pay_bb);
         pl = self.builder.extract_value(left, 1, name="opt.eq.lpayload");
         pr = self.builder.extract_value(right, 1, name="opt.eq.rpayload");
-        pcmp = self._emit_comparison(Tok.EE, pl, pr, is_float);
+        pcmp = self._emit_comparison(
+            Tok.EE, pl, pr, is_float, unsigned=unsigned, key_ret=key_ret
+        );
         if pcmp is None {
             return None;
         }
@@ -3686,7 +3693,9 @@ impl NaIRGenPass._emit_optional_eq(
     self.builder.position_at_start(pay_bb);
     pv = self.builder.extract_value(opt_v, 1, name="opt.eq.payloadval");
     ov = self._coerce_type(other, pt);
-    pcmp = self._emit_comparison(Tok.EE, pv, ov, is_float);
+    pcmp = self._emit_comparison(
+        Tok.EE, pv, ov, is_float, unsigned=unsigned, key_ret=key_ret
+    );
     if pcmp is None {
         return None;
     }
@@ -3847,7 +3856,9 @@ impl NaIRGenPass._emit_comparison(
     _r_opt = self._opt_payload_of(right.type);
     if _l_opt is not None or _r_opt is not None {
         if op in (Tok.EE, Tok.NE) {
-            return self._emit_optional_eq(op, left, right, is_float);
+            return self._emit_optional_eq(
+                op, left, right, is_float, unsigned=unsigned, key_ret=key_ret
+            );
         }
         if _l_opt is not None {
             left = self._coerce_type(left, _l_opt);
@@ -3855,7 +3866,9 @@ impl NaIRGenPass._emit_comparison(
         if _r_opt is not None {
             right = self._coerce_type(right, _r_opt);
         }
-        return self._emit_comparison(op, left, right, is_float);
+        return self._emit_comparison(
+            op, left, right, is_float, unsigned=unsigned, key_ret=key_ret
+        );
     }
     _dty = self._str_desc_ty;
     if _dty is not None
@@ -4580,11 +4593,13 @@ impl NaIRGenPass._cmp_static_type(
     if _l.type is None or _r.type is None {
         return None;
     }
-    _lk = self._mangled_of(_l.type);
-    if _lk is None or _lk != self._mangled_of(_r.type) {
+    _lt: TypeBase = self._opt_sole_member(_l.type) or _l.type;
+    _rt: TypeBase = self._opt_sole_member(_r.type) or _r.type;
+    _lk = self._mangled_of(_lt);
+    if _lk is None or _lk != self._mangled_of(_rt) {
         return None;
     }
-    return _l.type;
+    return _lt;
 }
 
 impl NaIRGenPass._restore_erased_cmp_operands(

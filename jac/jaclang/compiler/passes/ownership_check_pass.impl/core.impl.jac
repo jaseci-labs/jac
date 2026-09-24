@@ -1233,16 +1233,15 @@ impl OwnershipCheckPass._emit_place_move(expr: Expr) -> None {
 
 impl OwnershipCheckPass._callee_own_param_names(call: FuncCall) -> (set[str] | None) {
     tgt = call.target;
-    sym = tgt.sym
-        if isinstance(tgt, (Name, AtomTrailer)) and hasattr(tgt, "sym")
-        else None;
+    sym = tgt.sym if isinstance(tgt, Name) else None;
     decl = sym.decl if sym is not None else None;
     ability = decl.find_parent_of_type(Ability) if decl is not None else None;
-    if ability is None or not isinstance(ability.signature, FuncSignature) {
+    sig = ability.signature if ability is not None else None;
+    if not isinstance(sig, FuncSignature) {
         return None;
     }
     out: set[str] = set();
-    for (i, p) in enumerate(ability.signature.get_parameters()) {
+    for (i, p) in enumerate(sig.get_parameters()) {
         if p.type_tag is not None and p.type_tag.ownership == OwnershipKind.OWN {
             out.add(f"#{i}");
             if p.name is not None {

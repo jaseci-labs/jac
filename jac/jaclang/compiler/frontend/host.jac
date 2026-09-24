@@ -197,6 +197,10 @@ obj HostServices {
         return None;
     }
 
+    def is_seed_source(rel_path: str) -> bool {
+        return False;
+    }
+
     def native_parse(
         source_str: str,
         file_path: str,

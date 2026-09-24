@@ -280,6 +280,11 @@ impl ProjectHost.wiring_file(path: str) -> (str | None) {
     return arch_file_for(path);
 }
 
+impl ProjectHost.is_seed_source(rel_path: str) -> bool {
+    import from jaclang.bootstrap_manifest { is_seed_source }
+    return is_seed_source(rel_path);
+}
+
 impl ProjectHost.native_parse(
     source_str: str,
     file_path: str,

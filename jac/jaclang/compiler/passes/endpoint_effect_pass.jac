@@ -14,17 +14,42 @@ import from jaclang.compiler.frontend.unitree {
     DeleteStmt,
     DisconnectOp,
     EventSignature,
+    Expr,
     FuncCall,
     KWPair,
+    ListVal,
+    MultiString,
     ability_of_symbol,
     ImplDef,
     Name,
     SpecialVarRef,
+    String,
     Symbol,
     Token
 }
 import from jaclang.compiler.passes.context { CompileContext, TreePass }
 import from jaclang.compiler.frontend.constant { SymbolType, Tokens as Tok }
+
+def _literal_names(value: (Expr | None)) -> (list[str] | None) {
+    if not isinstance(value, ListVal) {
+        return None;
+    }
+    names: list[str] = [];
+    for item in value.values {
+        text: (str | bytes) = b"";
+        if isinstance(item, String) {
+            text = item.lit_value;
+        } elif isinstance(item, MultiString)
+            and all(isinstance(part, String) for part in item.strings) {
+            text = item.lit_value;
+        }
+        if not isinstance(text, str) or not text {
+            return None;
+        }
+        names.append(text);
+    }
+    return names;
+}
 
 walker EndpointEffectPass(TreePass) {
     has _is_writer: bool = False,
@@ -228,7 +253,6 @@ walker EndpointEffectPass(TreePass) {
     }
 
     def _declaration_effects(decl: Ability) -> dict[str, list[str]] | None {
-        import ast;
         for decorator in decl.decorators or [] {
             if not isinstance(decorator, FuncCall) {
                 continue;
@@ -240,7 +264,6 @@ walker EndpointEffectPass(TreePass) {
                 ) {
                 continue;
             }
-            import from jaclang.compiler.frontend.unparse { unparse_node }
             result: dict[str, list[str]] = {"reads": [], "writes": []};
             for pair in decorator.params or [] {
                 if not isinstance(pair, KWPair)
@@ -250,9 +273,8 @@ walker EndpointEffectPass(TreePass) {
                         "Effect declarations require reads= and writes= literal lists"
                     );
                 }
-                values = ast.literal_eval(unparse_node(pair.value));
-                if not isinstance(values, list)
-                    or any(not isinstance(v, str) or not v for v in values) {
+                values = _literal_names(pair.value);
+                if values is None {
                     raise ValueError(
                         "Effect dependencies must be literal nonempty strings"
                     );

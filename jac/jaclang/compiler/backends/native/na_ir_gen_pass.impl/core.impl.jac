@@ -1417,6 +1417,11 @@ impl NaIRGenPass._register_imported_globals(
                     continue;
                 }
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
+            } elif assign.value is not None {
+                inferred = self._infer_global_init_type(assign.value);
+                if inferred is not None {
+                    var_type = inferred;
+                }
             }
             _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
             _owner = nd.find_parent_of_type(uni.Module);

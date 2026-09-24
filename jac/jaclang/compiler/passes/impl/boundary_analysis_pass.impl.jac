@@ -382,7 +382,7 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import from jaclang.compiler.passes.wasm_contract {
         function_contract,
-        host_contracts
+        host_contract_dicts
     }
     import from jaclang.compiler.frontend.diagnostics { E5083, E5100 }
     if not nd.from_loc or not nd.items {
@@ -423,8 +423,8 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
         if decl is None {
             continue;
         }
-        contract = function_contract(decl);
-        manifest.native_host_imports[stem] = host_contracts(
+        contract = function_contract(decl).to_dict();
+        manifest.native_host_imports[stem] = host_contract_dicts(
             decl.find_parent_of_type(Module), self.prog
         );
         (ret_type, param_types, param_names) = self._signature_of_decl(decl);
@@ -1256,8 +1256,9 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                         } elif isinstance(item.value, Token) {
                             member_val = item.value.value;
                             try {
-                                member_val = int(item.value.value);
-                                next_auto = member_val + 1;
+                                explicit = int(item.value.value);
+                                member_val = explicit;
+                                next_auto = explicit + 1;
                             } except ValueError {}
                         }
                     } else {
@@ -1303,12 +1304,14 @@ impl BoundaryAnalysisPass._literal_default(
         val = expr.lit_value;
         return (True, val) if isinstance(val, str) else (False, None);
     }
-    if (
-        isinstance(expr, UnaryExpr)
-        and expr.op.value == '-'
-        and isinstance(expr.operand, (Int, Float))
-    ) {
-        return (True, -expr.operand.lit_value);
+    if isinstance(expr, UnaryExpr) and expr.op.value == '-' {
+        operand = expr.operand;
+        if isinstance(operand, Int) {
+            return (True, -operand.lit_value);
+        }
+        if isinstance(operand, Float) {
+            return (True, -operand.lit_value);
+        }
     }
     if isinstance(expr, (ListVal, TupleVal)) {
         items = [];
@@ -1487,7 +1490,7 @@ impl BoundaryAnalysisPass.finish with exit {
     self._record_surface(manifest);
 }
 
-impl BoundaryAnalysisPass._record_surface(manifest: any) -> None {
+impl BoundaryAnalysisPass._record_surface(manifest: InteropManifest) -> None {
     if not (self.module and self.module.body) {
         return;
     }

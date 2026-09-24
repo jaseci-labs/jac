@@ -1,13 +1,13 @@
 """Tests for the LayoutPass CType struct contract.
 
 Validates that the layout pass correctly identifies layout-compatible
-and incompatible field types on obj archetypes, and that FieldInfo
+and incompatible field types on obj archetypes, and that FieldLayout
 tracks function pointer fields.
 """
 
 import from jaclang.compiler.passes.layout_pass {
     LAYOUT_COMPATIBLE_PRIMITIVES,
-    FieldInfo,
+    FieldLayout,
     ArchetypeLayout,
     LayoutRegistry,
     LayoutPass,
@@ -76,14 +76,14 @@ test "LAYOUT_COMPATIBLE_PRIMITIVES contains all expected types" {
     assert LAYOUT_COMPATIBLE_PRIMITIVES == expected;
 }
 
-# ── FieldInfo.is_func_ptr ────────────────────────────────────
-test "FieldInfo default is_func_ptr is False" {
-    fi = FieldInfo(name="x", index=0, type_tag="int");
+# ── FieldLayout.is_func_ptr ────────────────────────────────────
+test "FieldLayout default is_func_ptr is False" {
+    fi = FieldLayout(name="x", index=0, type_tag="int");
     assert fi.is_func_ptr == False;
 }
 
-test "FieldInfo is_func_ptr can be set True" {
-    fi = FieldInfo(name="cb", index=0, type_tag="fn", is_func_ptr=True);
+test "FieldLayout is_func_ptr can be set True" {
+    fi = FieldLayout(name="cb", index=0, type_tag="fn", is_func_ptr=True);
     assert fi.is_func_ptr == True;
 }
 

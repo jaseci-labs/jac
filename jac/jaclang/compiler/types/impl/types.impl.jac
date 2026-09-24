@@ -214,8 +214,10 @@ impl ClassDetailsShared.enum_value_type.setter(
 
 impl ClassDetailsShared.typeddict_fields.getter -> dict[str, TypeBase] {
     d: dict[str, TypeBase] = {};
-    for ea in [edge self->:TypeMemberOf:->] {
-        d[ea.name] = getattr(ea, "__jac__").target.archetype;
+    members = [edge self->:TypeMemberOf:->];
+    targets = [self->:TypeMemberOf:->];
+    for (member, target) in zip(members, targets) {
+        d[member.name] = target;
     }
     return d;
 }
@@ -231,8 +233,10 @@ impl ClassDetailsShared.typeddict_fields.setter(
 
 impl ClassDetailsShared.enum_members.getter -> dict[str, EnumMemberInfo] {
     d: dict[str, EnumMemberInfo] = {};
-    for ea in [edge self->:EnumMemberOf:->] {
-        d[ea.name] = getattr(ea, "__jac__").target.archetype;
+    members = [edge self->:EnumMemberOf:->];
+    targets = [self->:EnumMemberOf:->];
+    for (member, target) in zip(members, targets) {
+        d[member.name] = target;
     }
     return d;
 }

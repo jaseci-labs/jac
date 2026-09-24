@@ -4343,36 +4343,22 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
 impl TypeEvaluator.postinit -> None {
     import from jaclang.compiler.frontend.host { active_host }
     self.ct_eval = CtEvaluator(evaluator=self, env=active_host().ct_environment());
-    self._BUILTINS_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
-    );
-    self._TYPING_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/typing.pyi"
-    );
-    self._TYPES_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/types.pyi"
-    );
-    self._JAC_BUILTINS_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "jac_builtins.pyi"
-    );
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    package = jaclang_pkg_root();
+    stdlib_stubs = os.path.join(package, "vendor", "typeshed", "stdlib");
+    jac_stubs = os.path.join(package, "compiler", "types");
+    self._BUILTINS_STUB_FILE_PATH = os.path.join(stdlib_stubs, "builtins.pyi");
+    self._TYPING_STUB_FILE_PATH = os.path.join(stdlib_stubs, "typing.pyi");
+    self._TYPES_STUB_FILE_PATH = os.path.join(stdlib_stubs, "types.pyi");
+    self._JAC_BUILTINS_STUB_FILE_PATH = os.path.join(jac_stubs, "jac_builtins.pyi");
     self._BUILTIN_OVERRIDES_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "builtin_overrides.pyi"
+        jac_stubs, "builtin_overrides.pyi"
     );
-    self._DOM_TYPES_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "dom_types.pyi"
-    );
-    self._NA_BUILTINS_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "na_builtins.pyi"
-    );
-    self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "js_globals.pyi"
-    );
-    self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "typing_ambient.pyi"
-    );
-    self._ENUM_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/enum.pyi"
-    );
+    self._DOM_TYPES_STUB_FILE_PATH = os.path.join(jac_stubs, "dom_types.pyi");
+    self._NA_BUILTINS_STUB_FILE_PATH = os.path.join(jac_stubs, "na_builtins.pyi");
+    self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(jac_stubs, "js_globals.pyi");
+    self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(jac_stubs, "typing_ambient.pyi");
+    self._ENUM_STUB_FILE_PATH = os.path.join(stdlib_stubs, "enum.pyi");
 
     self.prefetch = PrefetchedTypes();
     self._flow_pending_symbols = set();
@@ -6398,7 +6384,7 @@ impl TypeEvaluator._intern_shared(shared: ClassDetailsShared) -> ClassDetailsSha
     ];
     if fresh_bases and not known_bases {
         found.base_classes = shared.base_classes;
-        found._mro_sig = ();
+        found._mro_sig = [];
         found._provisional = shared._provisional;
     }
     return found;

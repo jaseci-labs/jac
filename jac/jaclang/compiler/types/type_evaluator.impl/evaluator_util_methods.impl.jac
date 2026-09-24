@@ -1222,7 +1222,7 @@ impl TypeEvaluator._is_unbound_method_call(expr: FuncCall) -> bool {
                             or `any(
                                 isinstance(dec, Name)
                                     and dec.sym_name == "staticmethod"
-                                for dec in (node_.decorators or ())
+                                for dec in (node_.decorators or [])
                             )
                         ) {
                         return False;
@@ -1238,8 +1238,10 @@ impl TypeEvaluator._is_unbound_method_call(expr: FuncCall) -> bool {
                     import from jaclang.compiler.types.stubcat.format {
                         SYMF_INSTANCE_METHOD
                     }
-                    prov: any = member.symbol.provider;
-                    if int(getattr(prov, "symbits", 0) or 0) & SYMF_INSTANCE_METHOD {
+                    import from jaclang.compiler.types.stubcat.reader { CatProvider }
+                    prov = member.symbol.provider;
+                    if isinstance(prov, CatProvider)
+                        and (prov.symbits & SYMF_INSTANCE_METHOD) != 0 {
                         return True;
                     }
                     if not isinstance(node_, Ability) or not node_.is_method {
