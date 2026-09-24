@@ -2030,9 +2030,10 @@ impl NativeStrEmitter._emit_char_test(
     b.position_at_start(pass_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result_phi = b.phi(i64, name=f"{prefix}.final");
-    result_phi.add_incoming(ir.Constant(i64, 0), fail_bb);
-    result_phi.add_incoming(ir.Constant(i64, 1), pass_bb);
+    i1 = ir.IntType(1);
+    result_phi = b.phi(i1, name=f"{prefix}.final");
+    result_phi.add_incoming(ir.Constant(i1, 0), fail_bb);
+    result_phi.add_incoming(ir.Constant(i1, 1), pass_bb);
     return result_phi;
 }
 
@@ -2082,9 +2083,10 @@ impl NativeStrEmitter.emit_isascii(
     b.position_at_start(pass_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result_phi = b.phi(i64, name="isascii.final");
-    result_phi.add_incoming(ir.Constant(i64, 0), fail_bb);
-    result_phi.add_incoming(ir.Constant(i64, 1), pass_bb);
+    i1 = ir.IntType(1);
+    result_phi = b.phi(i1, name="isascii.final");
+    result_phi.add_incoming(ir.Constant(i1, 0), fail_bb);
+    result_phi.add_incoming(ir.Constant(i1, 1), pass_bb);
     return result_phi;
 }
 
@@ -2156,9 +2158,10 @@ impl NativeStrEmitter.emit_isidentifier(
     b.position_at_start(pass_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result_phi = b.phi(i64, name="isid.final");
-    result_phi.add_incoming(ir.Constant(i64, 0), fail_bb);
-    result_phi.add_incoming(ir.Constant(i64, 1), pass_bb);
+    i1 = ir.IntType(1);
+    result_phi = b.phi(i1, name="isid.final");
+    result_phi.add_incoming(ir.Constant(i1, 0), fail_bb);
+    result_phi.add_incoming(ir.Constant(i1, 1), pass_bb);
     return result_phi;
 }
 
@@ -2215,9 +2218,10 @@ impl NativeStrEmitter.emit_islower(
     b.position_at_start(fail_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result_phi = b.phi(i64, name="islower.final");
-    result_phi.add_incoming(ir.Constant(i64, 1), check_bb);
-    result_phi.add_incoming(ir.Constant(i64, 0), fail_bb);
+    i1 = ir.IntType(1);
+    result_phi = b.phi(i1, name="islower.final");
+    result_phi.add_incoming(ir.Constant(i1, 1), check_bb);
+    result_phi.add_incoming(ir.Constant(i1, 0), fail_bb);
     return result_phi;
 }
 
@@ -2306,9 +2310,10 @@ impl NativeStrEmitter.emit_istitle(
     b.position_at_start(fail_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result_phi = b.phi(i64, name="istitle.final");
-    result_phi.add_incoming(ir.Constant(i64, 1), check_bb);
-    result_phi.add_incoming(ir.Constant(i64, 0), fail_bb);
+    i1 = ir.IntType(1);
+    result_phi = b.phi(i1, name="istitle.final");
+    result_phi.add_incoming(ir.Constant(i1, 1), check_bb);
+    result_phi.add_incoming(ir.Constant(i1, 0), fail_bb);
     return result_phi;
 }
 
@@ -2363,9 +2368,10 @@ impl NativeStrEmitter.emit_isupper(
     b.position_at_start(fail_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result_phi = b.phi(i64, name="isupper.final");
-    result_phi.add_incoming(ir.Constant(i64, 1), check_bb);
-    result_phi.add_incoming(ir.Constant(i64, 0), fail_bb);
+    i1 = ir.IntType(1);
+    result_phi = b.phi(i1, name="isupper.final");
+    result_phi.add_incoming(ir.Constant(i1, 1), check_bb);
+    result_phi.add_incoming(ir.Constant(i1, 0), fail_bb);
     return result_phi;
 }
 
