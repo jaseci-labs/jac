@@ -39,20 +39,44 @@ def _fake_scale_config(raw_scale_doc: dict) -> any {
 }
 
 
-def _realize_capturing(ms_config: dict, raw_scale_doc: dict, app: str) -> tuple {
+def _realize_capturing(
+    ms_config: dict, raw_scale_doc: dict, app: str, plans: (list | None) = None
+) -> tuple {
     out = io.StringIO();
     err = io.StringIO();
     fake_target = unittest.mock.MagicMock();
+    plan_mock = unittest.mock.MagicMock(return_value=({}, []));
     with unittest.mock.patch.object(
         realizer_mod, "get_scale_config", return_value=_fake_scale_config(raw_scale_doc)
-    ), unittest.mock.patch(
-        "jaclang.scale.runtime.cli.plan.print_plan", return_value=({}, [])
-    ), unittest.mock.patch.object(
+    ), unittest.mock.patch("jaclang.scale.runtime.cli.plan.print_plan", plan_mock), unittest.mock.patch.object(
         DeploymentTargetFactory, "create", return_value=fake_target
     ), redirect_stdout(out), redirect_stderr(err) {
         rc = KubernetesRealizer(ms_config=dict(ms_config)).realize(app, dry_run=True);
     }
+    if plans is not None {
+        for call in plan_mock.call_args_list {
+            plans.append(call.args[1]);
+        }
+    }
     return (rc, out.getvalue(), err.getvalue());
+}
+
+
+"""Entry file at <tmpdir>/web/main.jac, with jac.toml at `toml_folder`.
+
+`deployed_tree` promotes only when the jac.toml sits above the entry and
+declares [scale.microservices]; both knobs are varied here.
+"""
+def _write_nested_app(tmpdir: str, toml_folder: str, declare_ms: bool) -> str {
+    base = Path(tmpdir);
+    (base / "web").mkdir();
+    body = "[project]\nname = \"shop\"\n";
+    if declare_ms {
+        body += "\n[scale.microservices]\nenabled = true\n";
+    }
+    toml_dir = base / toml_folder if toml_folder else base;
+    (toml_dir / "jac.toml").write_text(body);
+    return _write_sv_app(str(base / "web"));
 }
 
 
@@ -169,5 +193,35 @@ test "microservices_declared reads the raw jac.toml section, not merged defaults
             "routes declared without an explicit enabled key still count as "
             "a configured section"
         );
+    }
+}
+
+
+test "a nested entry deploys from the project root that declares microservices (issue 9256)" {
+    # (toml folder, declares [scale.microservices], expected tree, expected entry)
+    cases = [
+        ("", True, "", "web/main.jac"),
+        ("", False, "web", "main.jac"),
+        ("web", True, "web", "main.jac")
+    ];
+    for (toml_folder, declare_ms, want_tree, want_entry) in cases {
+        with tempfile.TemporaryDirectory() as tmpdir {
+            app = _write_nested_app(tmpdir, toml_folder, declare_ms);
+            plans: list = [];
+            (rc, out, err) = _realize_capturing(
+                {"enabled": None, "routes": {}}, {}, app, plans
+            );
+            label = f"toml_folder={toml_folder!r} declare_ms={declare_ms}";
+            assert rc == 0 , f"{label}:\n{out}{err}";
+            assert len(plans) == 1 , f"{label}: {plans}";
+            expected = os.path.realpath(os.path.join(tmpdir, want_tree));
+            assert os.path.realpath(plans[0].code_folder) == expected , (
+                f"{label}: deployed tree must be {expected!r}, got "
+                f"{os.path.realpath(plans[0].code_folder)!r}"
+            );
+            assert plans[0].file_name == want_entry , (
+                f"{label}: entry must be {want_entry!r}, got " f"{plans[0].file_name!r}"
+            );
+        }
     }
 }

@@ -1,6 +1,6 @@
 import os;
 import pathlib;
-import from jaclang.scale.config.app_config { AppConfig }
+import from jaclang.scale.config.app_config { AppConfig, deployed_tree }
 import from jaclang.scale.deploy.target.factory {
     ensure_deploy_tooling,
     require_deploy_tooling
@@ -197,7 +197,10 @@ obj ScaleClient {
     }
 
     def _app_config(spec: DeploySpec) -> AppConfig {
-        (code_folder, file_name) = spec.resolve_entry();
+        (entry_folder, entry_name) = spec.resolve_entry();
+        (code_folder, file_name) = deployed_tree(
+            os.path.join(entry_folder, entry_name)
+        );
 
         posix_folder = pathlib.Path(os.path.relpath(code_folder)).as_posix();
         return AppConfig(code_folder=posix_folder, file_name=file_name);

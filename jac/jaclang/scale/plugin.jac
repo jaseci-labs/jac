@@ -5,6 +5,7 @@ import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
+import from .config.app_config { deployed_tree }
 import from .config.config_loader { get_scale_config }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
@@ -227,7 +228,7 @@ def deploy_destroy(
         return 1;
     }
 
-    code_folder = os.path.dirname(file_path) or '.';
+    (code_folder, _) = deployed_tree(file_path);
     dotenv_path = os.path.join(code_folder, '.env');
     import from dotenv { load_dotenv }
     load_dotenv(dotenv_path);
@@ -280,7 +281,7 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
     if not os.path.exists(file_path) {
         raise FileNotFoundError(f"File not found: '{file_path}'");
     }
-    code_folder = os.path.dirname(file_path) or '.';
+    (code_folder, _) = deployed_tree(file_path);
     dotenv_path = os.path.join(code_folder, '.env');
     import from dotenv { load_dotenv }
     load_dotenv(dotenv_path);

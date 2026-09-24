@@ -5,7 +5,7 @@ import from jaclang.cli.console { console }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.config.app_config { AppConfig }
+import from jaclang.scale.config.app_config { AppConfig, deployed_tree }
 import from jaclang.scale.runtime.discovery.route_policy { format_route_origin_lines }
 
 glob DELEGATED_ENV: str = "JAC_SCALE_PINNED_DEPLOY";
@@ -135,7 +135,7 @@ obj KubernetesRealizer {
         if delegated is not None {
             return delegated;
         }
-        code_folder = os.path.dirname(filename) or '.';
+        (code_folder, entry_file) = deployed_tree(filename);
         dotenv_path = os.path.join(code_folder, '.env');
         load_dotenv(dotenv_path);
         if dry_run {
@@ -181,10 +181,9 @@ obj KubernetesRealizer {
 
         code_folder = os.path.relpath(code_folder);
         code_folder = pathlib.Path(code_folder).as_posix();
-        base_file_path = os.path.basename(filename);
         deployment_target.secrets = scale_config.get_secrets_config();
 
-        app_config = AppConfig(code_folder=code_folder, file_name=base_file_path);
+        app_config = AppConfig(code_folder=code_folder, file_name=entry_file);
         console.warning(
             "Copying local source into the cluster via PVC and installing "
             "jac at pod startup. Keep secrets in [scale.secrets] "
