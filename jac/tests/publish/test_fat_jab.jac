@@ -77,7 +77,7 @@ def _make_project(tmp_path: Path) {
         'name = "fatapp"\n'
         'version = "1.0.0"\n'
         'entry-point = "main"\n\n'
-        '[dependencies]\n'
+        '[dependencies.pypi]\n'
         f'{DIST} = "=={VERSION}"\n'
     );
     (tmp_path / "jac.toml").write_text(toml);

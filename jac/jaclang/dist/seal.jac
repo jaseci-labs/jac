@@ -215,6 +215,38 @@ def bake_serve_payloads(
     return True;
 }
 
+def vendor_packages(config: any, pkg_copy: Path) {
+    import os;
+    import from jaclang.packages.artifact { stage_source_tree }
+    import from jaclang.packages.install { has_packages, sync }
+    import from jaclang.project.package_scope { mounts_dir }
+    if not has_packages(config) {
+        return;
+    }
+    result = sync(config);
+    proj_root = os.path.realpath(str(config.project_root));
+    mounts_rel = mounts_dir(config.get_build_dir()).relative_to(
+        Path(config.project_root)
+    );
+    runtime = {
+        p.name
+        for p in result.lock.packages
+        if not p.dev
+    };
+    for (name, target) in sorted(result.targets.items()) {
+        if name not in runtime or os.path.realpath(str(target)) == proj_root {
+            continue;
+        }
+        (org, pkg) = name.split("/", 1);
+        stage_source_tree(Path(target), pkg_copy / mounts_rel / org / pkg);
+    }
+    result.lock.write(pkg_copy / "jac.lock");
+    console.print(
+        f"  Sealing {len(result.lock.packages)} Jac package(s) into the image",
+        style="muted"
+    );
+}
+
 def make_sealed_image(
     config: any,
     parent: Path,
@@ -262,6 +294,7 @@ def make_sealed_image(
         pkg_copy = stage / name;
         shutil.copytree(proj_root, pkg_copy, ignore=copy_ignore);
         sanitize_shipped_tree(pkg_copy);
+        vendor_packages(config, pkg_copy);
 
         has_init = any((pkg_copy / f).exists() for f in ext_registry.INIT_FILES);
         if not has_init and not (pkg_copy / "__init__.py").exists() {
