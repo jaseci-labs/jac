@@ -66,7 +66,8 @@ def render(flag: bool) -> int {
     m = maybe_flag(flag);
     print(m, f"{m}");
     print(pick(flag), f"{pick(flag)}", f"{names(flag)}");
-    return len(f"{x}{l}{n}{r}{t}");
+    print(f"{x!r}", f"{l!r}", f"{n!r}", f"{r!r}", f"{m!r}", f"{pick(flag)!r}");
+    return len(f"{x}{l}{n}{r}{t}") + len(f"{x!r}{l!r}{n!r}");
 }
 
 with entry {

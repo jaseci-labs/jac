@@ -541,7 +541,7 @@ impl NaIRGenPass._fstring_spec_to_printf(
 }
 
 impl NaIRGenPass._emit_optional_str(
-    val: ir.Value, part: (uni.UniNode | None)
+    val: ir.Value, part: (uni.UniNode | None), repr_mode: bool = False
 ) -> (ir.Value | None) {
     _pt = self._opt_payload_of(val.type);
     if _pt is None {
@@ -584,9 +584,11 @@ impl NaIRGenPass._emit_optional_str(
     self.builder.position_at_start(_some_bb);
     _pv = self.builder.extract_value(val, 1, name="opt.str.pv");
     _s: ir.Value = _pv;
-    if _pt != i8p {
-        _built = self._emit_obj_str(_pv);
-        if _built is None {
+    if repr_mode or _pt != i8p {
+        _built = self._emit_value_repr(_pv, part)
+            if repr_mode
+            else self._emit_obj_str(_pv);
+        if _built is None and not repr_mode {
             _built = self._emit_container_repr(_pv, self._type_key_of(part));
         }
         if _built is None {
@@ -631,8 +633,11 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
             if val is None {
                 continue;
             }
+            _conv = part.conversion if part.conversion is not None else -1;
             if self._opt_payload_of(val.type) is not None {
-                _opt_s = self._emit_optional_str(val, part.format_part);
+                _opt_s = self._emit_optional_str(
+                    val, part.format_part, repr_mode=(_conv == 114)
+                );
                 if _opt_s is None {
                     self.emit(
                         E5092,
@@ -645,10 +650,12 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 self._release_owned_args([val], op="fstr_opt_src");
                 val = _opt_s;
                 obj_strs.append(_opt_s);
+                if _conv == 114 {
+                    _conv = -1;
+                }
             }
-            _conv = part.conversion if part.conversion is not None else -1;
             if _conv == 114 {
-                val = self._emit_fstr_repr(val, part);
+                val = self._emit_value_repr(val, part.format_part);
                 if val is None {
                     return None;
                 }
@@ -1636,8 +1643,8 @@ impl NaIRGenPass._int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value {
     return self.builder.sext(val, i64, name="text.int");
 }
 
-impl NaIRGenPass._emit_fstr_repr(
-    val: ir.Value, part: uni.FormattedValue
+impl NaIRGenPass._emit_value_repr(
+    val: ir.Value, type_node: (uni.UniNode | None)
 ) -> (ir.Value | None) {
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
@@ -1660,10 +1667,10 @@ impl NaIRGenPass._emit_fstr_repr(
         res = self.builder.call(self._repr_str_fn(), [val], name="fstr.repr.str");
         return self._mark_owned(res);
     } elif isinstance(val.type, (ir.PointerType, ir.LiteralStructType)) {
-        _r = self._emit_container_repr(val, self._type_key_of(part.format_part));
+        _r = self._emit_container_repr(val, self._type_key_of(type_node));
         if _r is None and isinstance(val.type, ir.PointerType) {
             _r = self._dispatch_builtin(
-                "repr", [val], type_key=(self._type_key_of(part.format_part) or "")
+                "repr", [val], type_key=(self._type_key_of(type_node) or "")
             );
         }
         if _r is not None {
@@ -1675,7 +1682,7 @@ impl NaIRGenPass._emit_fstr_repr(
             return _r;
         }
     }
-    self.emit(E5092, node_override=part, kind="f-string conversion", name="!r");
+    self.emit(E5092, node_override=type_node, kind="f-string conversion", name="!r");
     return None;
 }
 

@@ -569,7 +569,9 @@ walker NaIRGenPass(CompilerPass) {
     def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple[str, str] | None);
     def _bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value;
     def _int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value;
-    def _emit_fstr_repr(val: ir.Value, part: uni.FormattedValue) -> (ir.Value | None);
+    def _emit_value_repr(
+        val: ir.Value, type_node: (uni.UniNode | None)
+    ) -> (ir.Value | None);
     def _emit_dyn_spec_format(
         val: ir.Value, spec_val: ir.Value, part: uni.FormattedValue
     ) -> (ir.Value | None);
@@ -577,7 +579,7 @@ walker NaIRGenPass(CompilerPass) {
     def _static_str_struct_const(data: bytes) -> tuple[ir.Type, ir.Constant];
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     def _emit_optional_str(
-        val: ir.Value, part: (uni.UniNode | None)
+        val: ir.Value, part: (uni.UniNode | None), repr_mode: bool = False
     ) -> (ir.Value | None);
 
     def _codegen_string_index(

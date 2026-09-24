@@ -11,7 +11,9 @@ renderer when it is a list, dict, set or tuple; previously `print` refused
 `str | None` and both `print` and f-strings refused `list[str] | None`. The
 rendered text is always an owned string (a string payload is retained, the
 headerless profile copies), so every caller releases it after use, and the
-optional operand itself is released once rendered.
+optional operand itself is released once rendered. Under `!r` the present
+payload renders through its repr and an absent one as `None`; the optional is
+not first rendered as text and then quoted.
 
 `optional_text.jac` diffs every shape against the Python backend under each
 memory profile; `optional_text_leaks.jac` repeats them and dumps the live

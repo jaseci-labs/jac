@@ -630,6 +630,10 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         global_var = self.global_vars[var_name];
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
+    if var_name == "__file__" and self.module?.loc and self.module.loc.mod_path {
+        import os;
+        return self._make_global_string(os.path.realpath(self.module.loc.mod_path));
+    }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     _np = nd.parent;
     _is_call_target = isinstance(_np, uni.FuncCall) and _np.target is nd;
