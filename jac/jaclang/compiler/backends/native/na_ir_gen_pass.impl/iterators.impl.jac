@@ -719,7 +719,7 @@ impl NaIRGenPass._adapter_callee(fn_expr: uni.UniNode) -> (NativeIterCallback | 
         lv = self._codegen_lambda(fn_expr);
         if self._pending_lambda_captures is not None {
             self._pending_lambda_captures = None;
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=fn_expr,
                 kind="expression",

@@ -29,7 +29,12 @@ import from tests.support {
     native_build,
     native_run
 }
-import from jaclang.compiler.frontend.codeinfo { native_arch_display, native_arch_name }
+import from jaclang.compiler.frontend.codeinfo {
+    native_arch_display,
+    native_arch_name,
+    native_symbol_name,
+    native_unit_prefix
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -111,7 +116,7 @@ test "the defining modules and the importer agree on symbols compiled apart" {
         own_ir = str(compile_native_ir(fixture).gen.llvm_ir);
         info = native_arch_name(path, "Info");
         passage = native_arch_name(path, "Passage");
-        symbol = f'@"{info}.total"(';
+        symbol = f'@"{native_symbol_name(native_unit_prefix(path), f"{info}.total")}"(';
         assert any(
             line.startswith("define") and symbol in line for line in own_ir.split("\n")
         ) , f"{fixture} does not define {info}.total";

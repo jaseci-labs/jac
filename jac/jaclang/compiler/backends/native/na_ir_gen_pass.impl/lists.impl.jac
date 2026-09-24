@@ -374,7 +374,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             self._str_norm_optional(self._codegen_expr(_first_spread))
         );
         if _first_src_info is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.values[0],
                 kind="expression",
@@ -501,7 +501,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
                 self._str_norm_optional(self._codegen_expr(_spread_op))
             );
             if _src_info is None {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd.values[i],
                     kind="expression",
@@ -530,7 +530,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         }
         val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         if val is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.values[i],
                 kind="expression",

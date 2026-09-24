@@ -14,6 +14,7 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._iface: any = None;
+    self._natives = None;
     import from jaclang.compiler.driver.compilation_context { SourceStore }
     self.source_store = SourceStore();
     self.context_root = None;
@@ -27,6 +28,16 @@ impl JacProgram.iface_registry(self: JacProgram) -> any {
         import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
         reg = IfaceRegistry(prog=self);
         self._iface = reg;
+    }
+    return reg;
+}
+
+impl JacProgram.native_units(self: JacProgram) -> NativeUnitRegistry {
+    reg = self._natives;
+    if reg is None {
+        import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+        reg = NativeUnitRegistry(prog=self);
+        self._natives = reg;
     }
     return reg;
 }
@@ -96,6 +107,9 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
         }
     }
 
+    if self._natives is not None {
+        self._natives.forget(resolved_path);
+    }
     if self._iface is not None {
         self._iface.forget(resolved_path);
     }
@@ -218,8 +232,8 @@ impl JacProgram.load_dependency_module(
         self.record_dependency(importer_path, resolved_path);
         if need_tree {
             importer = self.find_module(JacProgram.hub_key(importer_path));
-            if importer is not None and resolved_path not in importer.ct_file_deps {
-                importer.ct_file_deps.append(resolved_path);
+            if importer is not None {
+                importer.record_comptime_dependency(resolved_path);
             }
         }
     }
@@ -278,7 +292,10 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
         self.mod.hub.clear();
         return;
     }
+    self.scrub_hub_types();
+}
 
+impl JacProgram.scrub_hub_types(self: JacProgram) -> None {
     for mod in self.mod.hub.values() {
         if mod.stub_only {
             continue;
@@ -290,55 +307,13 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
                 nd.type = None;
                 nd.narrowed_type = None;
                 nd.coerce_to = None;
+                nd.ct_value = None;
             }
             for kid in [nd->:Kid:->] {
                 stack.append(kid);
             }
         }
     }
-}
-
-impl JacProgram.release_native_dep_units(self: JacProgram) -> None {
-    ctx_root = self.context_root if self.context_root is not None else self;
-    owners: list[JacProgram] = [self];
-    for context in [ctx_root] + list(ctx_root.contexts.values()) {
-        if not any(context is owner for owner in owners) {
-            owners.append(context);
-        }
-    }
-    for (path, unit) in self.scratch.na_dep_units.items() {
-        if isinstance(unit, str) {
-            continue;
-        }
-        try {
-            keyed = JacProgram.hub_key(path);
-        } except Exception {
-            keyed = path;
-        }
-        probes: list[str] = [keyed];
-        if path != keyed {
-            probes.append(path);
-        }
-        for probe in probes {
-            for owner in owners {
-                if owner.mod.hub.get(probe) is unit {
-                    owner.invalidate_module(probe);
-                }
-            }
-        }
-        try {
-            gen = unit.gen;
-        } except Exception {
-            continue;
-        }
-        gen.native_engine = None;
-        gen.llvm_ir = None;
-        gen.native_linked_ir = None;
-        gen.native_bitcode = None;
-    }
-    self.scratch.na_dep_units.clear();
-    self.scratch.na_unverified_live.clear();
-    self.scratch.na_verdict_resolving.clear();
 }
 
 impl JacProgram.release_check_caches(self: JacProgram) -> None {
@@ -376,10 +351,28 @@ impl JacProgram.release_compile_closure(
         self.source_store.units.clear();
         self.source_store.revisions.clear();
     }
-    self.release_native_dep_units();
     self.hub.reset(retain_stubs=retain_stubs);
     self.mod = self.hub.mod;
     self.deps.clear();
+    if self._natives is not None and self._natives.session is None {
+        self._natives.clear();
+    }
+    for gen in self.hub.artifacts.values() {
+        gen.native_object = None;
+        gen.native_bitcode = None;
+    }
+    ev = self.type_evaluator;
+    if ev is not None {
+        self.release_check_caches();
+        ev._module_type_cache.clear();
+        ev._mobui_module_cache.clear();
+        ev._ts_decl_cache.clear();
+        ev._ts_decl_path_cache.clear();
+        ev._ts_synth_class_cache.clear();
+        ev._untyped_external_cfg_cache.clear();
+        ev._shared_intern.clear();
+        ev.symbol_resolution_stack.clear();
+    }
     self.type_evaluator = None;
     self.diags.clear();
     self.scratch.clear();

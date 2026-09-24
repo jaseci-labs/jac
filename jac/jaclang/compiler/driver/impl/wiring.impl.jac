@@ -444,9 +444,9 @@ impl arch_file_for(path: str) -> (str | None) {
 }
 
 impl _closed_patterns_for(root_dir: str) -> list[str] {
-    import from jaclang.project.config { get_config_for_path }
     import from pathlib { Path }
     try {
+        import from jaclang.project.config { get_config_for_path }
         cfg = get_config_for_path(Path(root_dir));
     } except Exception {
         return [];

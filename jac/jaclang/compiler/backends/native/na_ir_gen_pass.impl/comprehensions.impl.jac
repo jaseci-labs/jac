@@ -523,7 +523,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
             if built is not None {
                 self._codegen_compr_iter_walk(compr, idx, (built[0], built[2], True));
             } else {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=collection,
                     kind="expression",
@@ -613,7 +613,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
 
     if unpack_target is not None {
         if not self._codegen_tuple_unpack(unpack_target.values, elem_val, None) {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=unpack_target,
                 kind="comprehension target",
@@ -687,7 +687,7 @@ impl NaIRGenPass._codegen_compr_iter_walk(
         );
     }
     if not self._codegen_tuple_unpack(targets, yielded, None) {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=inner.target,
             kind="comprehension target",

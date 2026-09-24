@@ -18,7 +18,7 @@ later one, or the object inside it is never destroyed.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
@@ -62,7 +62,7 @@ def _compile -> any {
     assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {FIXTURE}";
-    gi_addr = eng.get_function_address("__jac_glob_init");
+    gi_addr = native_address(eng, "__jac_glob_init");
     if gi_addr {
         ctypes.CFUNCTYPE(None)(gi_addr)();
     }
@@ -73,7 +73,7 @@ def _compile -> any {
 
 """ctypes handle for an (int) -> int function in the JIT engine."""
 def _get(name: str) -> any {
-    addr = _compile().get_function_address(name);
+    addr = native_address(_compile(), name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }

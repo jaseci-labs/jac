@@ -1,3 +1,4 @@
+import from jaclang.jac0core.cache_paths { atomic_write }
 import struct;
 import os;
 import from jaclang.cli.console { console }
@@ -3298,7 +3299,7 @@ impl ElfLinker.build_static_executable -> bytes {
 
 
 impl ElfLinker.link(
-    obj_bytes: bytes,
+    objects: list[bytes],
     output_path: str,
     needed_libs: list[str] = [],
     crt_objects: list[bytes] = [],
@@ -3309,8 +3310,11 @@ impl ElfLinker.link(
     archive_members: list[bytes] = [],
     static_link: bool = False
 ) -> bool {
+    if not objects {
+        return False;
+    }
     linker = ElfLinker(
-        obj_data=obj_bytes,
+        obj_data=objects[0],
         sections=[],
         symbols=[],
         relocations=[],
@@ -3325,6 +3329,13 @@ impl ElfLinker.link(
     }
 
     merge_ns: int = 0;
+
+    for extra in objects[1:] {
+        merge_ns += 1;
+        if not _merge_crt_object(linker, extra, merge_ns) {
+            return False;
+        }
+    }
 
     for crt_bytes in crt_objects {
         merge_ns += 1;
@@ -3352,21 +3363,18 @@ impl ElfLinker.link(
     if not exe_bytes {
         return False;
     }
-    with open(output_path, "wb") as f {
-        f.write(exe_bytes);
-    }
-    os.chmod(output_path, 0o755);
+    atomic_write(output_path, exe_bytes, mode=0o755);
 
     import from jaclang.compiler.driver.compile_options { env_symmap_requested }
     if env_symmap_requested() {
         symmap_path = output_path + ".symmap";
-        with open(symmap_path, "w") as smf {
+        rows = [
+            f"{sname} 0x{va:016x}\n"
             for (sname, va) in sorted(
                 linker.sym_vaddrs.items(), key=lambda (kv) { kv[1]; }
-            ) {
-                smf.write(f"{sname} 0x{va:016x}\n");
-            }
-        }
+            )
+        ];
+        atomic_write(symmap_path, "".join(rows).encode("utf-8"));
     }
 
     return True;

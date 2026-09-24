@@ -59,7 +59,8 @@ if prog.errors_had:
 engine = ir.gen.native_engine
 if engine is None:
     raise SystemExit('no native engine')
-addr = engine.get_function_address(sys.argv[2])
+symbol = ir.gen.native_iface.symbol_of(sys.argv[2])
+addr = engine.get_function_address(symbol or sys.argv[2])
 if addr == 0:
     raise SystemExit('symbol absent from the JIT engine: %s' % sys.argv[2])
 print(ctypes.CFUNCTYPE(ctypes.c_int64)(addr)())
@@ -112,30 +113,6 @@ test "a bare-imported shim's table is live when a JIT'd unit reads it" {
 }
 
 
-test "the initializer plan lists the import closure before the unit itself" {
-    import from jaclang.compiler.frontend.codeinfo {
-        InteropManifest,
-        native_glob_init_symbols,
-        native_safe_sym
-    }
-    manifest = InteropManifest();
-    manifest.native_transitive_sources = ["deep", "mid", "mid"];
-    assert native_glob_init_symbols(manifest)
-        == [
-            f"__jac_glob_init_{native_safe_sym('deep')}",
-            f"__jac_glob_init_{native_safe_sym('mid')}",
-            "__jac_glob_init"
-        ] , (
-        "a module's globals may read a module it imports, so the closure runs "
-        "in dependency order and the unit's own initializer runs last; a "
-        "source named twice must not be run twice"
-    );
-    assert native_glob_init_symbols(None) == ["__jac_glob_init"] , (
-        "a unit with no native imports still has its own initializer to run"
-    );
-}
-
-
 test "jac_entry is exempt so it keeps chaining the initializers itself" {
     import from jaclang.compiler.frontend.codeinfo { install_native_static_init }
 
@@ -146,12 +123,13 @@ test "jac_entry is exempt so it keeps chaining the initializers itself" {
         }
     }
     engine = _FakeEngine();
-    install_native_static_init(engine, None);
+    plan = ["__jac_glob_init_dep", "__jac_glob_init_unit"];
+    install_native_static_init(engine, plan);
     assert "jac_entry" in engine.static_init_chained , (
         "`jac_entry` sets the GC mode and reads `argv` before it chains the "
         "initializers; pre-running them on the way to its address would move "
         "that setup after the code it configures"
     );
-    assert engine.static_init_symbols == ["__jac_glob_init"];
-    install_native_static_init(None, None);
+    assert engine.static_init_symbols == plan;
+    install_native_static_init(None, plan);
 }

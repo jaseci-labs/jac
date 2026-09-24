@@ -4,18 +4,30 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     names: list[str] = [];
     if (manifest and manifest.bindings) {
         import from jaclang.runtime.interop_bridge { JAC_TO_CTYPES_STR }
-        import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
+        import from jaclang.compiler.frontend.codeinfo {
+            native_def_symbol,
+            native_symbol_name,
+            native_unit_prefix
+        }
+        import from jaclang.compiler.frontend.constant { Tokens as _NsTok }
+        mod_path = self.module.loc.mod_path if self.module.loc else "";
+        prefix = native_unit_prefix(mod_path) if mod_path else "";
         for binding in manifest.native_exports {
-            symbol = native_def_symbol(
-                self.module.loc.mod_path if binding.source_module is None else "",
-                binding.name
-            );
             params = ', '.join(binding.param_names);
             ret_ct = JAC_TO_CTYPES_STR.get(binding.ret_type, 'ctypes.c_int64');
             arg_cts = ', '.join(
                 JAC_TO_CTYPES_STR.get(pt, 'ctypes.c_int64')
                 for pt in binding.param_types
             );
+            decl = binding.ast_node;
+            is_pub = bool(
+                decl is not None
+                    and decl?.access is not None
+                    and decl.access.tag.name == _NsTok.KW_PUB
+            );
+            symbol = native_def_symbol(binding.name)
+                if (is_pub or not prefix)
+                else native_symbol_name(prefix, binding.name);
             parts.append(
                 f"def {binding.name}({params}):\n"
                     + f"    import ctypes\n"
@@ -105,33 +117,21 @@ impl JcirGenPass._top_level_bound_names(items: any) -> list[str] {
 impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
     import from jaclang.compiler.frontend.codeinfo {
         native_test_symbol,
-        native_glob_init_name
+        native_unit_prefix
     }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
-    symbol = native_test_symbol(test_name, line);
-    manifest = self.module.gen.interop_manifest if self.module?.gen else None;
-    dep_sources = manifest.native_transitive_sources if manifest else [];
-    init_syms: list[str] = [];
-    for dep_src in (dep_sources or []) {
-        if dep_src {
-            dep_init = native_glob_init_name(dep_src, manifest);
-            if dep_init not in init_syms {
-                init_syms.append(dep_init);
-            }
-        }
-    }
-    init_syms.append("__jac_glob_init");
-    init_list = "[" + ", ".join(f"'{sy}'" for sy in init_syms) + "]";
+    mod_path = self.module.loc.mod_path if self.module.loc else "";
+    symbol = native_test_symbol(
+        test_name, line, native_unit_prefix(mod_path) if mod_path else ""
+    );
     src_lines = [
         "from jaclang.testing.test import invoke_native_test as _jac_invoke",
         "_jac_invoke(globals().get('__jac_native_engine__'), '"
             + symbol
             + "', '"
             + test_name
-            + "', "
-            + init_list
-            + ")"
+            + "')"
     ];
     return [CgSplice(src='\n'.join(src_lines), offset=0)];
 }

@@ -703,6 +703,7 @@ node Module(AstDocNode, UniScopeNode) {
 
     def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
     def absorb_annex_body(stmts: Sequence[UniNode]) -> None;
+    def record_comptime_dependency(path: str, body: bool = False) -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {

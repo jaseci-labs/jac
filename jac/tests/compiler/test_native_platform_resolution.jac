@@ -31,9 +31,9 @@ test "sibling native errno import retains its platform filename" {
 test "native package imports use the same provider as semantic imports" {
     import from tempfile { TemporaryDirectory }
     import from jaclang.project.modresolver { resolve_module }
-    import from jaclang.compiler.native_scope {
-        activate_scope_lowering,
-        deactivate_scope_lowering
+    import from jaclang.compiler.frontend.codeinfo {
+        set_native_unit_compile,
+        reset_native_unit_compile
     }
     with TemporaryDirectory() as directory {
         compiler = os.path.join(directory, "jaclang", "compiler");
@@ -48,7 +48,7 @@ test "native package imports use the same provider as semantic imports" {
         with open(fixture, "w") as source {
             source.write("");
         }
-        activate_scope_lowering(checkout);
+        previous = set_native_unit_compile(True);
         try {
             for importer in [fixture, os.path.join(compiler, "entry.jac")] {
                 (expected, language) = resolve_module(
@@ -64,7 +64,7 @@ test "native package imports use the same provider as semantic imports" {
                     == (os.path.dirname(importer) == compiler);
             }
         } finally {
-            deactivate_scope_lowering();
+            reset_native_unit_compile(previous);
         }
     }
 }

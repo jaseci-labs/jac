@@ -34,10 +34,6 @@ def _live_keys -> dict[str, set[str]] {
         live["jir-modules"] = generation;
         live["project"] = generation;
     } except Exception {}
-    try {
-        import from jaclang.compiler.backends.common.kernel_units { live_unit_digests }
-        live["jir-kernel-units"] = live_unit_digests();
-    } except Exception {}
     return live;
 }
 
