@@ -26,6 +26,10 @@ import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.runtimelib.client_surface { with_runtime_globals }
 import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+    point_jac_prelude_at,
+    write_jac_prelude_file
+}
 
 # Mirrors `_default_client_deps("react")` runtime deps; jsdom is test-only.
 glob REACT_JSDOM_DEPS: dict[str, str] = {
@@ -64,7 +68,7 @@ def compile_react(path: str) -> str {
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
     es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=ReactBackend());
-    return es_to_js(es_pass.ir_out.gen.es_ast);
+    return point_jac_prelude_at(es_to_js(es_pass.ir_out.gen.es_ast));
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""
@@ -93,6 +97,7 @@ def compile_page(path: str, backend: any) -> str {
 
 """Emit the compiled `@jac/runtime` shim + its core into the work dir."""
 def write_runtime(work: Path) {
+    write_jac_prelude_file(str(work));
     runtime_path = resolve_client_runtime_cl_path("react");
     (work / "jac_runtime.js").write_text(
         rewrite_core_specifier(compile_react(runtime_path)), encoding="utf-8"

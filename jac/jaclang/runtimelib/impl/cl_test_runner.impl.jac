@@ -38,6 +38,13 @@ impl _compile_runtime_js -> str {
     return js;
 }
 
+impl _point_at_staged_prelude(js: str) -> str {
+    import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+        point_jac_prelude_at
+    }
+    return point_jac_prelude_at(js);
+}
+
 impl _compile_runtime_core_js -> str {
     import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
 
@@ -328,13 +335,23 @@ impl _run_harness(
 
     work_dir = Path(tempfile.mkdtemp(prefix="jac_cl_test_"));
     try {
+        import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+            JAC_PRELUDE_BASENAME,
+            build_jac_prelude_module
+        }
+        (work_dir / JAC_PRELUDE_BASENAME).write_text(
+            build_jac_prelude_module(), encoding="utf-8"
+        );
+        module_js = _point_at_staged_prelude(module_js);
         if "@jac/runtime" in imports {
             import from jaclang.runtimelib.client_surface {
                 prepend_active_runtime_globals
             }
-            runtime_js = _compile_runtime_js();
+            runtime_js = _point_at_staged_prelude(_compile_runtime_js());
 
-            module_js = prepend_active_runtime_globals(module_js);
+            module_js = _point_at_staged_prelude(
+                prepend_active_runtime_globals(module_js)
+            );
 
             module_js = module_js.replace('"@jac/runtime"', '"./jac_runtime.js"');
             module_js = module_js.replace("'@jac/runtime'", "'./jac_runtime.js'");
@@ -342,7 +359,7 @@ impl _run_harness(
             core_specifier = "./jaclang/runtimelib/client_runtime_core.js";
             core_js = None;
             if core_specifier in runtime_js {
-                core_js = _compile_runtime_core_js();
+                core_js = _point_at_staged_prelude(_compile_runtime_core_js());
                 runtime_js = runtime_js.replace(
                     core_specifier, "./client_runtime_core.js"
                 );

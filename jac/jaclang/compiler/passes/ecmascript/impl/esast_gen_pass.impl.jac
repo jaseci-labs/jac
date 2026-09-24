@@ -4371,13 +4371,16 @@ impl EsastGenPass._register_jac_runtime_import -> None {
     }
 }
 
-impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
+impl EsastGenPass._inject_runtime_import(
+    name: str, nd: uni.UniNode, src: str = ""
+) -> None {
     import from jaclang.runtimelib.client_surface { runtime_import_source }
+    import from jaclang.compiler.passes.ecmascript.jac_runtime_js { JAC_PRELUDE_MODULE }
     self._ensure_backend();
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
-    src = runtime_import_source(name, self.backend);
+    src = src or runtime_import_source(name, self.backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)
@@ -4390,7 +4393,7 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     );
     self.imports.append(import_decl);
     self.injected_imports.add(name);
-    if src.startswith('@jac/') {
+    if src.startswith('@jac/') and (src != JAC_PRELUDE_MODULE) {
         self._register_jac_runtime_import();
     }
 }
@@ -6605,6 +6608,15 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
             )
         );
     }
+    if self.needs_osp_graph or self.needs_osp_kernel {
+        self.needs_jac_runtime = True;
+    }
+    if self.needs_jac_runtime {
+        import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+            JAC_PRELUDE_MODULE
+        }
+        self._inject_runtime_import('_jac', nd, src=JAC_PRELUDE_MODULE);
+    }
     body: list[(es.Statement | es.ModuleDeclaration)] = [];
     body.extend(self.imports);
 
@@ -6619,21 +6631,6 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
         body.extend(hoisted);
     }
 
-    if self.needs_jac_runtime {
-        import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
-            build_jac_runtime_js
-        }
-        jac_rt_decl = es.VariableDeclaration(
-            declarations=[
-                es.VariableDeclarator(
-                    id=es.Identifier(name='_jac'),
-                    init=es.Identifier(name=build_jac_runtime_js())
-                )
-            ],
-            kind='const'
-        );
-        body.append(jac_rt_decl);
-    }
     merged_body = self._merge_module_bodies(nd);
     client_items: list[es.Statement | list[es.Statement] | None] = [];
     fallback_items: list[es.Statement | list[es.Statement] | None] = [];

@@ -72,6 +72,8 @@ def compile_cl_module(filepath: str) -> tuple[str, list, dict, list];
 
 def _compile_runtime_js -> str;
 
+def _point_at_staged_prelude(js: str) -> str;
+
 def _compile_runtime_core_js -> str;
 
 def _stub_npm_imports(js_sources: list[str]) -> tuple[list, str, bool];

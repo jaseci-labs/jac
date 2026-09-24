@@ -21,6 +21,8 @@ import json;
 import os;
 import struct;
 import subprocess;
+
+glob _PRELUDE_CWD: list[str] = [];
 import sys;
 import from pathlib { Path }
 import jaclang;
@@ -80,10 +82,33 @@ def compile_fixture_to_js(fixture_name: str) -> str {
     return es_to_js(es_ir.gen.es_ast);
 }
 
+"""A directory where node can resolve the virtual `@jac/prelude` module.
+
+`node -e` evaluates a bundle with no file of its own, so resolution is rooted
+at the working directory; staging once and running there is what lets the
+emitted prelude import resolve.
+"""
+def _prelude_cwd -> str {
+    import tempfile;
+    import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+        stage_jac_prelude_package
+    }
+    if not _PRELUDE_CWD {
+        stage = tempfile.mkdtemp(prefix="jac_xbackend_");
+        stage_jac_prelude_package(stage);
+        _PRELUDE_CWD.append(stage);
+    }
+    return _PRELUDE_CWD[0];
+}
+
 def run_js_function(js_code: str, func_name: str) -> dict {
     wrapper = js_code + "\nconsole.log(JSON.stringify(" + func_name + "()));";
     result = subprocess.run(
-        ["node", "-e", wrapper], capture_output=True, text=True, timeout=10
+        ["node", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        cwd=_prelude_cwd()
     );
     assert result.returncode == 0 , f"Node.js failed: {result.stderr}";
     return json.loads(result.stdout.strip());

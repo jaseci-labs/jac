@@ -181,6 +181,27 @@ def _relative_dep_specs(js: str) -> list[str] {
     return specs;
 }
 
+def _point_at_packaged_prelude(js: str, member_rel: str) -> str {
+    import posixpath;
+    import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+        JAC_PRELUDE_BASENAME,
+        JAC_PRELUDE_MODULE
+    }
+    up = posixpath.dirname(member_rel);
+    target = posixpath.normpath(
+        posixpath.join(posixpath.relpath(".", up or "."), JAC_PRELUDE_BASENAME)
+    )
+        if up
+        else JAC_PRELUDE_BASENAME;
+    if not target.startswith(".") {
+        target = "./" + target;
+    }
+    for quote in ['"', "'"] {
+        js = js.replace(quote + JAC_PRELUDE_MODULE + quote, quote + target + quote);
+    }
+    return js;
+}
+
 def _collect_dep_modules(entry_js: str) -> list[tuple[str, str]] {
     import jaclang;
     import posixpath;
@@ -234,6 +255,8 @@ impl build_runtime_tarball(
     entry_js = compile_runtime_js(framework);
 
     deps = _collect_dep_modules(entry_js);
+    entry_js = _point_at_packaged_prelude(entry_js, "index.js");
+    deps = [(rel, _point_at_packaged_prelude(dep_js, rel)) for (rel, dep_js) in deps];
 
     exports = runtime_export_names(entry_js, framework);
     if exports {
@@ -243,9 +266,14 @@ impl build_runtime_tarball(
     all_js = "\n".join([entry_js] + [dep_js for (_, dep_js) in deps]);
     peers = _runtime_peer_deps(all_js);
     pj = _runtime_package_json(version, name, peers);
+    import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+        JAC_PRELUDE_BASENAME,
+        build_jac_prelude_module
+    }
     members: list[tuple[str, bytes]] = [
         ("package/package.json", pj.encode("utf-8")),
-        ("package/index.js", entry_js.encode("utf-8"))
+        ("package/index.js", entry_js.encode("utf-8")),
+        (f"package/{JAC_PRELUDE_BASENAME}", build_jac_prelude_module().encode("utf-8"))
     ];
     for (rel, dep_js) in deps {
         members.append((f"package/{rel}", dep_js.encode("utf-8")));

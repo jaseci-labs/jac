@@ -34,6 +34,7 @@ import from jaclang.compiler.passes.ecmascript.backends.solid { SolidBackend }
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.runtimelib.client_surface { with_runtime_globals }
 import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+import from jaclang.compiler.passes.ecmascript.jac_runtime_js { point_jac_prelude_at }
 import from jaclang.runtimelib.client.bun_installer { get_bun }
 import from jaclang.runtimelib.solid_entry { build_pages_solid_entry_script }
 
@@ -785,7 +786,7 @@ def _compile_solid(path: str) -> str {
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
     es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=SolidBackend());
-    return es_to_js(es_pass.ir_out.gen.es_ast);
+    return point_jac_prelude_at(es_to_js(es_pass.ir_out.gen.es_ast));
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""

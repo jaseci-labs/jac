@@ -322,7 +322,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def _has_import(name: str) -> bool;
-    def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
+    def _inject_runtime_import(name: str, nd: uni.UniNode, src: str = "") -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
     def _register_jac_runtime_import -> None;
