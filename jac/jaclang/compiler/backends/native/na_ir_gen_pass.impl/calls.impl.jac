@@ -55,6 +55,20 @@ impl NaIRGenPass._arch_alias_target(nd: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
+impl NaIRGenPass._qualified_arch_ref(nd: (uni.UniNode | None)) -> (str | None) {
+    if not (isinstance(nd, uni.AtomTrailer) and nd.is_attr)
+        or not isinstance(nd.right, uni.NameAtom) {
+        return None;
+    }
+    sym = nd.right.sym;
+    decl = sym.decl if sym is not None else None;
+    owner = decl.name_of if decl is not None else None;
+    if isinstance(owner, uni.Archetype) and owner.name.value in self.struct_types {
+        return owner.name.value;
+    }
+    return None;
+}
+
 impl NaIRGenPass._erased_generic_ctor(nd: uni.FuncCall) -> (str | None) {
     _tgt = nd.target;
     if not isinstance(_tgt, uni.AtomTrailer)

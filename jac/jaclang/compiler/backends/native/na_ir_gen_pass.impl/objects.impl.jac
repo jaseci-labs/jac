@@ -2630,7 +2630,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
     import from jaclang.compiler.symbol_utils { imported_module_name }
     module_name = imported_module_name(trailer.target);
-    target_name = module_name or self._get_name(trailer.target);
+    target_name = module_name
+        or self._get_name(trailer.target)
+        or self._qualified_arch_ref(trailer.target);
     method_name = self._get_name(trailer.right);
     if method_name is None {
         return None;

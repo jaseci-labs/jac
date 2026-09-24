@@ -774,6 +774,7 @@ walker NaIRGenPass(CompilerPass) {
         operand_expr: uni.UniNode, names: list[str]
     ) -> tuple[list[int], list[str]];
 
+    def _qualified_arch_ref(nd: (uni.UniNode | None)) -> (str | None);
     def _arch_alias_target(nd: (uni.UniNode | None)) -> (str | None);
     def _emit_isinstance_user(
         nd: uni.FuncCall, operand: ir.Value, names: list[str]
