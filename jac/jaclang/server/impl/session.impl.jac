@@ -50,13 +50,34 @@ impl shared_pg_data_dir -> str {
 }
 
 
-impl project_db_name(base_path: str, target_path: (str | None)) -> str {
+impl project_database(base_path: str, target_path: (str | None)) -> ProjectDatabase {
     import hashlib;
     import from jaclang.runtime.graph_utils { get_name }
-    name = get_name(target_path=target_path) or 'main';
+    import from jaclang.project.workspace { workspace_for_path }
+    workspace = workspace_for_path(target_path or base_path);
+    database_root = os.path.realpath(base_path);
+    in_project = False;
+    if workspace is not None {
+        project_root = os.path.realpath(workspace.project_root);
+        if database_root == project_root
+            or database_root.startswith(project_root + os.sep) {
+            database_root = project_root;
+            in_project = True;
+        }
+        name = workspace.persistence.namespace;
+    } else {
+        name = get_name(target_path=target_path) or 'main';
+    }
     safe = ''.join((ch if (ch.isalnum() or ch == '_') else '_') for ch in name.lower());
-    digest = hashlib.sha1(os.path.realpath(base_path).encode('utf-8')).hexdigest()[:8];
-    return f"jac_{safe[:40]}_{digest}";
+    digest = hashlib.sha1(database_root.encode('utf-8')).hexdigest()[:8];
+    return ProjectDatabase(
+        name=f"jac_{safe[:40]}_{digest}", owner=database_root, in_project=in_project
+    );
+}
+
+
+impl project_db_name(base_path: str, target_path: (str | None)) -> str {
+    return project_database(base_path, target_path).name;
 }
 
 
@@ -216,18 +237,18 @@ impl runtime_for_base(
     }
     owner = 0 if lease is not None else scratch_owner_pid();
     scratch = lease is not None or owner > 0;
+    project = project_database(base_path, target_path);
     return RuntimeLease(
         runtime=PgRuntime(
             data_dir=shared_pg_data_dir(),
-            database=(
-                lease.database
-                    if lease is not None
-                    else project_db_name(base_path, target_path)
-            ),
-            owner_path=os.path.abspath(base_path),
+            database=lease.database if lease is not None else project.name,
+            owner_path=project.owner
+                if project.in_project
+                else os.path.abspath(base_path),
             kind=DbKind.SCRATCH if scratch else DbKind.PROJECT,
             owner_pid=owner,
-            retention_days=(0 if scratch else retention_days_for(base_path))
+            retention_days=(0 if scratch else retention_days_for(base_path)),
+            sole_owner_database=project.in_project and not scratch
         ),
         reset=lease is not None and lease.reset
     );
@@ -266,7 +287,8 @@ def _ancestry_of(arch: (object | None)) -> list[str] {
         if c in stops {
             break;
         }
-        out.append(c.__name__);
+        import from jaclang.data.type_identity { storage_type }
+        out.append(storage_type(c));
     }
     return out;
 }
@@ -325,6 +347,7 @@ impl Session.postinit -> None {
     self._unit_stack = [];
     self._snapshot_reads = set();
     self._version_seen = {};
+    self._foreign_refs = set();
 }
 
 
@@ -490,6 +513,7 @@ impl Session.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
             try {
                 self.read_barrier();
                 loaded = self.store.load_full(missing);
+                self._foreign_refs.difference_update(missing);
                 for (rid, row) in loaded.items() {
                     anchor = self._materialize(row);
                     if anchor is not None {
@@ -897,8 +921,10 @@ impl Session._serialize(anchor: Anchor, props: (any | None) = None) -> AnchorRow
     arch_module = '';
     fingerprint = '';
     if anchor.is_populated() and arch is not None {
-        arch_type = type(arch).__name__;
-        arch_module = type(arch).__module__;
+        import from jaclang.data.type_identity { storage_type }
+        arch_type = storage_type(type(arch));
+        import from jaclang.data.type_identity { type_module }
+        arch_module = type_module(type(arch));
         fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) else '';
     }
@@ -931,11 +957,22 @@ impl Session._serialize(anchor: Anchor, props: (any | None) = None) -> AnchorRow
 impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
     import from functools { partial }
     import from jaclang.data.serializer { Serializer }
+    self._foreign_refs.discard(row.id);
     existing = self.__mem__.get(row.id);
     if existing is not None and existing.is_populated() {
         return existing;
     }
-    got = Serializer.deserialize(row.props);
+    import from jaclang.data.type_identity { resolution_scope, ForeignType }
+    import from jaclang.runtime.prepared { application_for }
+    application = application_for(self.target_path) if self.target_path else None;
+    try {
+        with resolution_scope(application) {
+            got = Serializer.deserialize(row.props);
+        }
+    } except ForeignType {
+        self._foreign_refs.add(row.id);
+        return None;
+    }
     if not isinstance(got, Anchor) {
         logger.warning(
             f"could not materialize anchor {row.id} ({row.arch_type}); skipping"

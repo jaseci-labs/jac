@@ -30,48 +30,106 @@ def _database_names -> list[str] {
 }
 
 
-test "different standalone files get separate databases" {
-    db_persistent = project_db_name(
-        FIXTURES, os.path.join(FIXTURES, "simple_persistent.jac")
-    );
-    db_connection = project_db_name(
-        FIXTURES, os.path.join(FIXTURES, "simple_node_connection.jac")
-    );
-    assert db_persistent != db_connection , (
-        "Standalone files must map to distinct databases"
-    );
-    assert db_persistent.startswith("jac_simple_persistent_");
-    assert db_connection.startswith("jac_simple_node_connection_");
-
-    _orig_base = Jac.get_base_path_dir();
-    try {
-        Jac.set_base_path(FIXTURES);
-
-        # The database is provisioned by the first access to persistent state,
-        # so these files have to actually touch the graph: simple_persistent
-        # declares walkers only, hence the explicit spawn.
-        execution.run(
-            target=os.path.join(FIXTURES, "simple_persistent.jac"), entry_name="create"
-        );
-        execution.run(target=os.path.join(FIXTURES, "simple_node_connection.jac"));
-
-        rc = execution.run(target=os.path.join(FIXTURES, "simple_persistent.jac"));
-        assert rc == 0 , (
-            f"Second run of simple_persistent.jac file failed with return code {rc} - bug #4401 regression"
-        );
-
-        names = _database_names();
-        assert db_persistent in names , (
-            f"Expected database {db_persistent} on the shared server"
-        );
-        assert db_connection in names , (
-            f"Expected database {db_connection} on the shared server"
-        );
-    } finally {
-        Jac.set_base_path(_orig_base);
+test "standalone files without a project remain separate applications" {
+    import from tempfile { TemporaryDirectory }
+    with TemporaryDirectory() as td {
+        first = Path(td) / 'first.jac';
+        second = Path(td) / 'second.jac';
+        first.write_text('with entry {}');
+        second.write_text('with entry {}');
+        assert project_db_name(td, str(first)) != project_db_name(td, str(second));
     }
 }
 
+test "nested service entries select one application database" {
+    import from tempfile { TemporaryDirectory }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        (base / 'jac.toml').write_text('[project]\nname="one-application"\n');
+        for service in ['writer', 'reader'] {
+            (base / service).mkdir();
+            (base / service / 'main.jac').write_text('with entry {}');
+        }
+        writer = str(base / 'writer' / 'main.jac');
+        reader = str(base / 'reader' / 'main.jac');
+        expected = project_db_name(td, writer);
+        assert project_db_name(td, reader) == expected;
+        assert project_db_name(str(base / 'writer'), writer) == expected;
+        assert project_db_name(str(base / 'reader'), reader) == expected;
+    }
+}
+
+
+test "a project database is owned by its project root, not a service directory" {
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.server.session { runtime_for_base }
+    project_only = {
+        k: v
+        for (k, v) in os.environ.items()
+        if k not in ('JAC_DB_SCRATCH', 'JAC_DB_SCRATCH_OWNER')
+    };
+    with patch.dict(os.environ, project_only, clear=True), TemporaryDirectory() as td {
+        base = Path(td);
+        (base / 'jac.toml').write_text('[project]\nname="one-application"\n');
+        (base / 'writer').mkdir();
+        writer = str(base / 'writer' / 'main.jac');
+        Path(writer).write_text('with entry {}');
+        runtime = runtime_for_base(str(base / 'writer'), writer).runtime;
+        assert runtime.owner_path == os.path.realpath(td);
+        assert runtime.sole_owner_database;
+        assert runtime.database == project_db_name(td, writer);
+    }
+    with patch.dict(os.environ, project_only, clear=True), TemporaryDirectory() as td {
+        standalone = str(Path(td) / 'main.jac');
+        Path(standalone).write_text('with entry {}');
+        assert not runtime_for_base(td, standalone).runtime.sole_owner_database;
+    }
+}
+
+test "creating a database for a renamed project names the database it replaces" {
+    import logging;
+    import from unittest.mock { patch }
+    import from jaclang.data { dbcatalog }
+    import from jaclang.data.dbcatalog { DbRecord }
+    runtime = PgRuntime(
+        data_dir='/unused',
+        database='jac_renamed_665bae49',
+        owner_path='/srv/app',
+        sole_owner_database=True
+    );
+    records = [
+        DbRecord(
+            database='jac_renamed_665bae49', kind='project', owner_path='/srv/app'
+        ),
+        DbRecord(
+            database='jac_original_665bae49', kind='project', owner_path='/srv/app'
+        ),
+        DbRecord(database='jac_scratch_1', kind='scratch', owner_path='/srv/app'),
+        DbRecord(database='jac_elsewhere_1', kind='project', owner_path='/srv/other')
+    ];
+    captured: list[str] = [];
+    class Capture(logging.Handler) {
+        def emit(self: Capture, record: logging.LogRecord) {
+            captured.append(record.getMessage());
+        }
+    }
+    handler = Capture();
+    logger = logging.getLogger('jaclang.data.pgembed');
+    logger.addHandler(handler);
+    try {
+        with patch.object(dbcatalog, 'list_databases', return_value=records) {
+            runtime._warn_superseded(None);
+        }
+    } finally {
+        logger.removeHandler(handler);
+    }
+    assert len(captured) == 1 , captured;
+    assert 'jac_original_665bae49' in captured[0];
+    assert 'jac_scratch_1' not in captured[0];
+    assert 'jac_elsewhere_1' not in captured[0];
+    assert '[persistence] namespace' in captured[0];
+}
 
 test "running file with same name as project uses project DB name" {
     file_path = Path(FIXTURES) / "test_project";

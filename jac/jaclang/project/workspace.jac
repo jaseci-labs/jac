@@ -1,3 +1,4 @@
+import from jaclang.project.persistence { PersistenceConfig }
 import fnmatch;
 import hashlib;
 import json;
@@ -38,6 +39,7 @@ obj WorkspaceSpec {
         default_app: str = "",
         explicit: bool = False,
         digest: str = "",
+        persistence: PersistenceConfig = PersistenceConfig(),
         base_pins: dict[str, str] = {},
         base_npm_names: set[str] = set();
 

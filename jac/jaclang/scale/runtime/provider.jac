@@ -36,7 +36,9 @@ class JacScaleRuntime {
             return None;
         }
         import from jaclang.scale.memory.context { JScaleExecutionContext }
-        ctx = JScaleExecutionContext();
+        ctx = JScaleExecutionContext(
+            base_path_dir=base_path_dir, full_target_path=full_target_path
+        );
         if user_root is not None {
             ctx.set_user_root(user_root);
         }

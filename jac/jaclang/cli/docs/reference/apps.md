@@ -157,9 +157,35 @@ workspace with several and no default errors, listing the apps.
 
 Ordinary imported modules carry the selected app's identity, including their
 walkers and persisted node/edge declarations. A service entry establishes a
-separate provider context. Import that entry when multiple apps need the same
-service or store. Colocated apps load distinct copies of ordinary shared-source
+separate provider context. Import that entry to call its service operations.
+Colocated apps load distinct copies of ordinary shared-source
 modules, so module globals are app-local.
+
+All services of a project use one application database. Importing the same model
+module gives each service the same persistent type identity automatically, while
+classes and module globals remain local to each service. A service call keeps the
+application database binding and the user's root ID; separate provider sessions
+have their own transactions and resolve stored values to their local classes.
+
+Persistent identity consists of the application namespace, project-relative module
+and declaration name. The namespace defaults to the project name and can be pinned:
+
+```toml
+[persistence]
+namespace = "com.example.accounts"
+```
+
+No sharing domains or ownership declarations are needed. Changing the namespace or
+logical declaration name is a persistent schema rename. Because the embedded
+database name includes the namespace, a renamed project without a pinned namespace
+starts a new database; startup logs a warning naming the database that still holds
+the previous data. Checkout paths, service entry names and deployment locations do
+not participate in persistent type identity. Existing path-derived identities
+require explicit migration and rebuilt artifacts.
+
+Sealed images and `.jab` bundles load each service the same way source preparation
+does: every service has its own module namespace, and a stored value resolves to the
+class the reading service imported.
 
 No workspace consumer scan or app context cache is needed. `default-app` chooses a
 CLI default; placement pins choose codespaces. Neither assigns shared code to a

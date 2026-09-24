@@ -49,7 +49,7 @@ def _project_data_dir(explicit: str) -> str {
 
 
 def _project_target(entry_file: str) -> tuple[str, (str | None)] {
-    import from jaclang.runtime.graph_utils { get_name }
+    import from jaclang.server.session { project_db_name }
     if entry_file {
         path = Path(entry_file).expanduser().resolve();
         if not path.is_file() {
@@ -66,12 +66,12 @@ def _project_target(entry_file: str) -> tuple[str, (str | None)] {
     if not jacs {
         return (str(cwd), None);
     }
-    if len({get_name(target_path=str(p)) for p in jacs}) > 1 {
+    if len({project_db_name(str(cwd), str(p)) for p in jacs}) > 1 {
         listed = ', '.join(p.name for p in jacs);
         raise DbEntryError(
             "cannot tell which app's database to open: this directory holds "
-            f"{len(jacs)} .jac files ({listed}) and jac.toml sets no [project] "
-            f"name; pass the entry file, e.g. `jac db status --entry {jacs[0].name}`"
+            f"{len(jacs)} .jac files ({listed}) that resolve to different databases; "
+            f"pass the entry file, e.g. `jac db status --entry {jacs[0].name}`"
         );
     }
     return (str(cwd), str(jacs[0]));

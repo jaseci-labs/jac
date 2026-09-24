@@ -59,6 +59,13 @@ obj PreparedFinder(MetaPathFinder) {
             }
             for source in application.code {
                 if qualified_module(source, application) == fullname {
+                    if target is not None and application.dev {
+                        import from jaclang.runtime.build_services { build_services }
+                        import from jaclang.runtime.runtime { JacRuntime }
+                        application = build_services().prepare_dynamic_module(
+                            source, JacRuntime.get_program(), application
+                        );
+                    }
                     package = os.path.basename(source).startswith('__init__.');
                     return importlib.util.spec_from_file_location(
                         fullname,

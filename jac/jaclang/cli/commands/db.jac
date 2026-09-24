@@ -53,9 +53,9 @@ comptime SPEC_DB: CommandSpec = CommandSpec(
                  dest="entry_file",
                  `default="",
                  help=(
-                     "The app's entry file, which names its database the way the "
-                     "server does; needed only when the directory holds several "
-                     ".jac files and jac.toml sets no [project] name"
+                     "An entry file used to locate the application's database; "
+                     "needed only for standalone files outside a project that "
+                     "resolve to different databases"
                  ),
                  short=""
              ),

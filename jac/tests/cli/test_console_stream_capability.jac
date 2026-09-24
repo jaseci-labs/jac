@@ -154,3 +154,18 @@ obj _FakeTty {
         return ''.join(self._buf);
     }
 }
+
+
+test "status honors the requested output stream" {
+    import from contextlib { redirect_stdout }
+    c = _make_color_console();
+    target = io.StringIO();
+    output = io.StringIO();
+    with redirect_stdout(output) {
+        with c.status('Preparing application...', file=target) as status {
+            status.update('Ready');
+        }
+    }
+    assert target.getvalue() == 'Preparing application...\n';
+    assert output.getvalue() == '';
+}

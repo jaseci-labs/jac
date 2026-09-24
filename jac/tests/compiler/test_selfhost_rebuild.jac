@@ -18,11 +18,9 @@ import resource;
 import subprocess;
 import sys;
 import tempfile;
-import from tests.support { cache_env }
-import jaclang;
+import from tests.support { cache_env, compiler_python_command, JAC_ROOT }
 
-glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__))),
-     SYMTAB_PER_MODULE: float = 1.75,
+glob SYMTAB_PER_MODULE: float = 1.75,
      COLLECT_EVERY: int = 16,
      COLLECT_SLACK: int = 8,
      PEAK_RSS_CEILING_MB: int = 4096,
@@ -77,8 +75,8 @@ def _cold_rebuild -> tuple[int, dict[str, any], int] {
         env.pop(knob, None);
     }
     proc = subprocess.run(
-        [sys.executable, "-c", DRIVER, probe],
-        cwd=os.path.dirname(JACLANG_DIR),
+        compiler_python_command(DRIVER, probe, compiler_root=JAC_ROOT),
+        cwd=JAC_ROOT,
         capture_output=True,
         text=True,
         env=env

@@ -32,7 +32,8 @@ def dump_traceback(e: Exception) -> str {
     }
     seen_runtime_marker: bool = False;
     collapse_internal: bool = True;
-    for (idx, frame) in enumerate(tb.stack) {
+    source_displayed = False;
+    for frame in tb.stack {
         is_internal: bool = is_internal_runtime_frame(frame.filename);
         if (is_internal and collapse_internal) {
             if not seen_runtime_marker {
@@ -47,11 +48,12 @@ def dump_traceback(e: Exception) -> str {
         display_filename: str = jac_filename or frame.filename;
         display_source: (str | None) = jac_source;
         if (
-            (idx == 0)
+            (not source_displayed)
             and (
                 (frame.lineno is not None) and frame.line and (frame.line.strip() != '')
             )
         ) {
+            source_displayed = True;
             line_o = frame.line;
             original_line = frame?._original_line;
             original_lines = frame?._original_lines;
