@@ -64,15 +64,20 @@ glob HDR_MAGIC: int = 44061,
      RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 
 glob STR_LEN_TAG_BIT: int = 1,
-     STR_LEN_TAG_SHIFT: int = 1;
+     STR_ASCII_TAG_BIT: int = 2,
+     STR_LEN_TAG_SHIFT: int = 2;
 
 glob JACSTR_DESC_FIELDS: dict[(str, tuple[str, ...])] = {
          'jacstr3': ('root', 'data', 'len'),
          'jacstr2': ('data', 'len')
      };
 
-def str_len_tag(length: int) -> int {
-    return (length << STR_LEN_TAG_SHIFT) | STR_LEN_TAG_BIT;
+def str_len_tag(length: int, ascii: bool = False) -> int {
+    return (
+        (length << STR_LEN_TAG_SHIFT)
+        | (STR_ASCII_TAG_BIT if ascii else 0)
+        | STR_LEN_TAG_BIT
+    );
 }
 
 obj NativeFieldInfo {

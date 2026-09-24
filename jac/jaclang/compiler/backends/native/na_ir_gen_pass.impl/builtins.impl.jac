@@ -380,7 +380,9 @@ impl NaIRGenPass._static_str_struct_const(data: bytes) -> tuple[ir.Type, ir.Cons
     arr_type = ir.ArrayType(i8, len(data));
     struct_type = ir.LiteralStructType([i64, i64, arr_type]);
     sentinel_val = ir.Constant(i64, RC_SENTINEL);
-    tagged_len = ir.Constant(i64, str_len_tag(len(data) - 1));
+    tagged_len = ir.Constant(
+        i64, str_len_tag(len(data) - 1, all(b < 0x80 for b in data))
+    );
     c_str = ir.Constant(arr_type, bytearray(data));
     return (struct_type, ir.Constant(struct_type, [sentinel_val, tagged_len, c_str]), );
 }
@@ -829,12 +831,12 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
     self._set_rc_ctx("fstring", _fstr_loc);
     buf = self._str_alloc(self.builder, buf_size, name="fstr.buf");
     self._clear_rc_ctx();
-    self._stamp_str_len(self.builder, buf, need);
     call_args: list[ir.Value] = [buf, buf_size, fmt_global];
     for a in args {
         call_args.append(a);
     }
     self.builder.call(snprintf_fn, call_args, name="fstr.len");
+    self._stamp_str_len(self.builder, buf, need);
 
     for _obj_s in obj_strs {
         self._emit_rc_release_typed(_obj_s, op="fstr_obj_tmp", loc="");
@@ -847,35 +849,26 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
 impl NaIRGenPass._codegen_string_index(
     target_val: ir.Value, index_val: ir.Value, len_val: (ir.Value | None) = None
 ) -> (ir.Value | None) {
-    i32 = ir.IntType(32);
     i64 = ir.IntType(64);
 
-    if len_val is not None {
-        b = self.builder;
-        zero = ir.Constant(i64, 0);
-        index_val = self._coerce_type(index_val, i64);
-        _neg = b.icmp_signed("<", index_val, zero, name="char.neg");
-        index_val = b.select(
-            _neg,
-            b.add(index_val, len_val, name="char.wrap"),
-            index_val,
-            name="char.idx.norm"
-        );
-        _lo = b.icmp_signed("<", index_val, zero, name="char.oob.lo");
-        _hi = b.icmp_signed(">=", index_val, len_val, name="char.oob.hi");
-        _oob = b.or_(_lo, _hi, name="char.oob");
-        self._emit_runtime_raise(_oob, "IndexError", "string index out of range");
+    if len_val is None {
+        len_val = self._call_str_len(self.builder, target_val, name="char.blen");
     }
-    char_ptr = self.builder.gep(target_val, [index_val], name="char.ptr");
-    char_val = self.builder.load(char_ptr, name="char.val");
-    byte_idx = self.builder.zext(char_val, i64, name="char.idx");
-    cache_gv = self._get_char_cache_gv();
-    cached_ptr = self.builder.gep(
-        cache_gv,
-        [ir.Constant(i32, 0), byte_idx, ir.Constant(i32, 2), ir.Constant(i32, 0)],
-        name="char.cached"
+    b = self.builder;
+    zero = ir.Constant(i64, 0);
+    index_val = self._coerce_type(index_val, i64);
+    len_val = self._coerce_type(len_val, i64);
+    cplen = self._call_utf8_cplen(b, target_val, len_val, name="char.cplen");
+    _neg = b.icmp_signed("<", index_val, zero, name="char.neg");
+    index_val = b.select(
+        _neg, b.add(index_val, cplen, name="char.wrap"), index_val, name="char.idx.norm"
     );
-    return cached_ptr;
+    _lo = b.icmp_signed("<", index_val, zero, name="char.oob.lo");
+    _hi = b.icmp_signed(">=", index_val, cplen, name="char.oob.hi");
+    _oob = b.or_(_lo, _hi, name="char.oob");
+    self._emit_runtime_raise(_oob, "IndexError", "string index out of range");
+    off = self._call_utf8_cp_off(b, target_val, len_val, index_val, name="char.off");
+    return self._call_utf8_cp_at_off(b, target_val, off, name="char.val");
 }
 
 impl NaIRGenPass._emit_norm_slice_bounds(
@@ -999,14 +992,16 @@ impl NaIRGenPass._codegen_string_slice(
     if _desc_in {
         _root = self.builder.extract_value(target_val, 0, name="ss.root");
         _data = self.builder.extract_value(target_val, 0 if _hl else 1, name="ss.data");
-        src_len = self.builder.extract_value(
+        src_blen = self.builder.extract_value(
             target_val, 1 if _hl else 2, name="ss.srclen"
         );
     } else {
         _root = target_val;
         _data = target_val;
-        src_len = self._call_str_len(self.builder, target_val, name="ss.len");
+        src_blen = self._call_str_len(self.builder, target_val, name="ss.len");
     }
+    src_blen = self._coerce_type(src_blen, i64);
+    src_len = self._call_utf8_cplen(self.builder, _data, src_blen, name="ss.cplen");
     bounds = self._emit_norm_slice_bounds(slice_node, src_len);
     if bounds is None {
         return None;
@@ -1025,14 +1020,20 @@ impl NaIRGenPass._codegen_string_slice(
             or (_hl and self._hl_view_base_licensed(base_node))
         );
     if _view_ok {
-        _v_raw = self.builder.sub(stop_val, start_val, name="s.view.raw");
+        _bstart = self._call_utf8_cp_off(
+            self.builder, _data, src_blen, start_val, name="s.view.bstart"
+        );
+        _bstop = self._call_utf8_cp_off(
+            self.builder, _data, src_blen, stop_val, name="s.view.bstop"
+        );
+        _v_raw = self.builder.sub(_bstop, _bstart, name="s.view.raw");
         _v_len = self.builder.select(
             self.builder.icmp_signed("<", _v_raw, zero, name="s.view.neg"),
             zero,
             _v_raw,
             name="s.view.len"
         );
-        _v_data = self.builder.gep(_data, [start_val], name="s.view.data");
+        _v_data = self.builder.gep(_data, [_bstart], name="s.view.data");
         _i32v = ir.IntType(32);
         _zv = ir.Constant(_i32v, 0);
         _v_slot = self._entry_alloca(self._str_desc_type(), "s.view.slot");
@@ -1077,58 +1078,82 @@ impl NaIRGenPass._codegen_string_slice(
         return _view;
     }
 
-    diff = self.builder.select(
-        step_pos,
-        self.builder.sub(stop_val, start_val, name="ss.d.fwd"),
-        self.builder.sub(start_val, stop_val, name="ss.d.bwd"),
-        name="ss.diff"
+    bstart = self.builder.select(
+        self.builder.icmp_signed("<", start_val, zero, name="ss.bs.neg"),
+        ir.Constant(i64, -1),
+        self._call_utf8_cp_off(
+            self.builder, _data, src_blen, start_val, name="ss.bstart"
+        ),
+        name="ss.bstart.c"
     );
-    astep = self.builder.select(
-        step_pos,
-        step_val,
-        self.builder.sub(zero, step_val, name="ss.step.neg"),
-        name="ss.astep"
+    bstop = self.builder.select(
+        self.builder.icmp_signed("<", stop_val, zero, name="ss.be.neg"),
+        ir.Constant(i64, -1),
+        self._call_utf8_cp_off(
+            self.builder, _data, src_blen, stop_val, name="ss.bstop"
+        ),
+        name="ss.bstop.c"
     );
-    n_num = self.builder.add(
-        diff, self.builder.sub(astep, one, name="ss.am1"), name="ss.nnum"
-    );
-    n_raw = self.builder.sdiv(n_num, astep, name="ss.nraw");
-    diff_pos = self.builder.icmp_signed(">", diff, zero, name="ss.dpos");
-    n_val = self.builder.select(diff_pos, n_raw, zero, name="ss.n");
 
-    alloc_size = self.builder.add(n_val, one, name="ss.alloc");
+    alloc_size = self.builder.add(src_blen, one, name="ss.alloc");
     self._set_rc_ctx("str_substr", "");
     new_str = self._str_alloc(self.builder, alloc_size, name="ss.new");
     self._clear_rc_ctx();
 
     i_alloca = self.builder.alloca(i64, name="ss.i");
     k_alloca = self.builder.alloca(i64, name="ss.k");
-    self.builder.store(start_val, i_alloca);
+    t_alloca = self.builder.alloca(i64, name="ss.t");
+    self.builder.store(bstart, i_alloca);
     self.builder.store(zero, k_alloca);
+    self.builder.store(zero, t_alloca);
     loop_check = func.append_basic_block(name="ss.check");
     loop_body = func.append_basic_block(name="ss.body");
+    inner_check = func.append_basic_block(name="ss.ichk");
+    inner_body = func.append_basic_block(name="ss.ibody");
+    iter_done = func.append_basic_block(name="ss.idone");
     loop_done = func.append_basic_block(name="ss.done");
     self.builder.branch(loop_check);
 
     self.builder.position_at_end(loop_check);
     cur_i = self.builder.load(i_alloca, name="ss.cur");
-    fwd = self.builder.icmp_signed("<", cur_i, stop_val, name="ss.fwd");
-    bwd = self.builder.icmp_signed(">", cur_i, stop_val, name="ss.bwd");
+    fwd = self.builder.icmp_signed("<", cur_i, bstop, name="ss.fwd");
+    bwd = self.builder.icmp_signed(">", cur_i, bstop, name="ss.bwd");
     in_range = self.builder.select(step_pos, fwd, bwd, name="ss.inrange");
     self.builder.cbranch(in_range, loop_body, loop_done);
 
     self.builder.position_at_end(loop_body);
-    ch_ptr = self.builder.gep(_data, [cur_i], name="ss.src.ch");
-    ch = self.builder.load(ch_ptr, name="ss.ch");
+    cp_len = self._call_utf8_cp_len_at(self.builder, _data, cur_i, name="ss.cplen.at");
     cur_k = self.builder.load(k_alloca, name="ss.curk");
-    out_ptr = self.builder.gep(new_str, [cur_k], name="ss.out.ch");
+    self.builder.store(zero, t_alloca);
+    self.builder.branch(inner_check);
+
+    self.builder.position_at_end(inner_check);
+    cur_t = self.builder.load(t_alloca, name="ss.curt");
+    t_go = self.builder.icmp_unsigned("<", cur_t, cp_len, name="ss.tgo");
+    self.builder.cbranch(t_go, inner_body, iter_done);
+
+    self.builder.position_at_end(inner_body);
+    src_off = self.builder.add(cur_i, cur_t, name="ss.src.off");
+    ch_ptr = self.builder.gep(_data, [src_off], name="ss.src.ch");
+    ch = self.builder.load(ch_ptr, name="ss.ch");
+    out_off = self.builder.add(cur_k, cur_t, name="ss.out.off");
+    out_ptr = self.builder.gep(new_str, [out_off], name="ss.out.ch");
     self.builder.store(ch, out_ptr);
-    self.builder.store(self.builder.add(cur_k, one, name="ss.nextk"), k_alloca);
-    self.builder.store(self.builder.add(cur_i, step_val, name="ss.nexti"), i_alloca);
+    self.builder.store(self.builder.add(cur_t, one, name="ss.nextt"), t_alloca);
+    self.builder.branch(inner_check);
+
+    self.builder.position_at_end(iter_done);
+    k_next = self.builder.add(cur_k, cp_len, name="ss.nextk");
+    self.builder.store(k_next, k_alloca);
+    i_next = self._call_utf8_advance(
+        self.builder, _data, src_blen, cur_i, step_val, name="ss.nexti"
+    );
+    self.builder.store(i_next, i_alloca);
     self.builder.branch(loop_check);
 
     self.builder.position_at_end(loop_done);
-    self._str_finish(self.builder, new_str, n_val);
+    out_len = self.builder.load(k_alloca, name="ss.outlen");
+    self._str_finish(self.builder, new_str, out_len);
     self._mark_owned(new_str);
     return new_str;
 }

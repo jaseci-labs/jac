@@ -4301,7 +4301,10 @@ impl NaIRGenPass._codegen_for_indexed(
         }
     } else {
         if kind == "str" {
-            len_val = self._call_str_len(self.builder, collection_val, name="for.len");
+            _sblen = self._call_str_len(self.builder, collection_val, name="for.blen");
+            len_val = self._call_utf8_cplen(
+                self.builder, collection_val, _sblen, name="for.len"
+            );
         } elif kind == "bytes" {
             len_val = self._bytes_len_val(collection_val);
         } else {
@@ -4375,7 +4378,10 @@ impl NaIRGenPass._codegen_for_indexed(
             self.builder.load(_gen_coll_slot, name="for.coll")
         );
         if kind == "str" {
-            len_val = self._call_str_len(self.builder, collection_val, name="for.len");
+            _sblen = self._call_str_len(self.builder, collection_val, name="for.blen");
+            len_val = self._call_utf8_cplen(
+                self.builder, collection_val, _sblen, name="for.len"
+            );
         } elif kind == "bytes" {
             len_val = self._bytes_len_val(collection_val);
         } else {
