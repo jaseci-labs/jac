@@ -253,13 +253,32 @@ def native_arch_name(mod_path: str, name: str) -> str {
     return f"{name}{native_arch_scope(mod_path)}";
 }
 
+def _is_word_char(ch: str) -> bool {
+    return ch.isalnum() or ch == "_";
+}
+
 def native_unit_spelling(text: str, mod_path: str) -> str {
-    import re;
     scope = native_arch_scope(mod_path) if NATIVE_ARCH_SCOPE_SEP in text else "";
     if not scope {
         return text;
     }
-    return re.sub(re.escape(scope) + r"(?!\w)", "", text);
+    out: list[str] = [];
+    i = 0;
+    while i < len(text) {
+        j = text.find(scope, i);
+        if j < 0 {
+            out.append(text[i:]);
+            break;
+        }
+        end = j + len(scope);
+        if end < len(text) and _is_word_char(text[end]) {
+            out.append(text[i:end]);
+        } else {
+            out.append(text[i:j]);
+        }
+        i = end;
+    }
+    return "".join(out);
 }
 
 def native_arch_display(native_name: str) -> str {
@@ -267,12 +286,45 @@ def native_arch_display(native_name: str) -> str {
     return native_name if sep < 0 else native_name[:sep];
 }
 
+def _scope_suffix_end(text: str, start: int) -> int {
+    n = len(text);
+    k = start + 1;
+    while k < n and _is_word_char(text[k]) {
+        if text[k] == "_"
+            and k + 9 <= n
+            and (k + 9 == n or not _is_word_char(text[k + 9])) {
+            digest = text[k + 1:k + 9];
+            if all(ch in "0123456789abcdef" for ch in digest) {
+                return k + 9;
+            }
+        }
+        k += 1;
+    }
+    return -1;
+}
+
 def native_display_text(text: str) -> str {
-    import re;
     if NATIVE_ARCH_SCOPE_SEP not in text {
         return text;
     }
-    return re.sub(r"\$\w*?_[0-9a-f]{8}\b", "", text);
+    out: list[str] = [];
+    i = 0;
+    while i < len(text) {
+        j = text.find(NATIVE_ARCH_SCOPE_SEP, i);
+        if j < 0 {
+            out.append(text[i:]);
+            break;
+        }
+        end = _scope_suffix_end(text, j);
+        if end < 0 {
+            out.append(text[i:j + 1]);
+            i = j + 1;
+        } else {
+            out.append(text[i:j]);
+            i = end;
+        }
+    }
+    return "".join(out);
 }
 
 def native_def_symbol(name: str) -> str {
