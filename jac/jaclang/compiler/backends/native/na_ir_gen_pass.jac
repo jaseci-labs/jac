@@ -1249,6 +1249,12 @@ walker NaIRGenPass(CompilerPass) {
     def _box_to_jacval(value: ir.Value) -> ir.Value;
     def _jacval_pointer_tag(pointer_type: ir.Type) -> int;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _any_view_target(target_type: ir.Type) -> (tuple[str, str] | None);
+    def _unbox_any_container(jv: ir.Value, target_type: ir.Type) -> (ir.Value | None);
+
+    def _binding_function_active -> bool;
+    def _heap_ref_jacval_tag_fn -> ir.Function;
+    def _any_view_fn(target_type: ir.Type) -> (ir.Function | None);
     def _codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None);
     def _codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None);
     def _codegen_dict_access(
@@ -2581,6 +2587,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value;
     def _unbox_narrowed_member(nd: uni.AtomTrailer, val: ir.Value) -> ir.Value;
+    def _bare_any_container_type(nt: ClassType) -> (ir.Type | None);
     def _lower_function_signature(t: SemanticFunctionType) -> ir.FunctionType;
     def _lower_function_type_raw(t: SemanticFunctionType) -> ir.PointerType;
     def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
