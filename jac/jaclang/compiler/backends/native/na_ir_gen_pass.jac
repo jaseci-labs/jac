@@ -592,6 +592,9 @@ walker NaIRGenPass {
     def _make_global_bytes(data: bytes) -> ir.Value;
     def _is_bytes_value(v: ir.Value) -> bool;
     def _codegen_bytes_index(bv: ir.Value, idx: ir.Value) -> (ir.Value | None);
+    def _bytes_real_index(bv: ir.Value, idx: ir.Value, name_prefix: str) -> ir.Value;
+    def _codegen_bytes_index_set(bv: ir.Value, idx: ir.Value, value: ir.Value) -> None;
+    def _is_bytes_literal_target(target: uni.UniNode) -> bool;
     def _codegen_bytes_slice(bv: ir.Value, slice_node: uni.Slice) -> (ir.Value | None);
     def _emit_bytes_eq(left: ir.Value, right: ir.Value, negate: bool) -> ir.Value;
     def _is_bytes_type(t: ir.Type) -> bool;
@@ -1229,6 +1232,7 @@ walker NaIRGenPass {
     def _get_exc_descendants(type_name: str) -> list[str];
     def _exception_handler_ids(ex: uni.Expr | None) -> list[int];
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
+    def _box_scalar_cause(exc_msg: ir.Value, kind: str) -> (ir.Value | None);
     def _raise_has_frame_handler(nd: uni.RaiseStmt) -> bool;
     def _codegen_try(nd: uni.TryStmt) -> None;
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
@@ -2611,6 +2615,10 @@ walker NaIRGenPass {
     def _emit_take(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_swap(nd: uni.FuncCall) -> (ir.Value | None);
     def _callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None);
+    def _import_bound_native_fn(
+        nd: uni.FuncCall, func_name: str
+    ) -> (ir.Function | None);
+
     def _transfer_own_args(
         nd: uni.FuncCall,
         func: (ir.Function | None),

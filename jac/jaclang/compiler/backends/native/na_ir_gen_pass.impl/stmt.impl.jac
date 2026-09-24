@@ -1947,6 +1947,21 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                     _idx_stored = True;
                                 }
                             }
+                        } elif self._is_bytes_value(target_val) and nd.aug_op is None {
+                            if self._is_bytes_literal_target(target_expr.target) {
+                                self.ctx.emit(
+                                    E5092,
+                                    node_override=target_expr,
+                                    kind="immutable bytes literal",
+                                    name=(idx_target_name or "<expr>"),
+                                    help_text="bytes objects are immutable; allocate a writable buffer with `b'\\x00' * n` or use bytearray"
+                                );
+                            } else {
+                                self._codegen_bytes_index_set(
+                                    target_val, idx_val, value
+                                );
+                                _idx_stored = True;
+                            }
                         } else {
                             elem_type_name: (str | None) = (
                                 self._infer_list_elem_type(target_val)

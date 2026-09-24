@@ -123,6 +123,23 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
                 )}";
             }
         }
+        if _emit_name == name {
+            for gv in self.llvm_module.global_values {
+                if isinstance(gv, ir.Function)
+                    and gv.name == name
+                    and (gv.is_declaration or name in self.clib_extern_names) {
+                    if _def_module is not None {
+                        import from jaclang.compiler.frontend.codeinfo {
+                            native_safe_sym
+                        }
+                        _emit_name = f"{name}.__jacp_{native_safe_sym(
+                            os.path.realpath(_def_module.source.file_path)
+                        )}";
+                    }
+                    break;
+                }
+            }
+        }
         func = ir.Function(self.llvm_module, fnty, name=_emit_name);
     }
 

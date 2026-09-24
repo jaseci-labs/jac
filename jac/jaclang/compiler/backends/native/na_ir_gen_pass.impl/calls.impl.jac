@@ -165,6 +165,39 @@ impl NaIRGenPass._callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None) {
     return resolved_callee(nd);
 }
 
+impl NaIRGenPass._import_bound_native_fn(
+    nd: uni.FuncCall, func_name: str
+) -> (ir.Function | None) {
+    if not isinstance(nd.target, uni.Name) or nd.target.sym is None {
+        return None;
+    }
+    sym = nd.target.sym;
+    scope = sym.parent_tab;
+    if isinstance(scope, uni.Module) and scope.stub_only {
+        import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+        (_, src) = resolve_native_module(scope.name, os.path.dirname(nd.loc.mod_path));
+        if src is None {
+            return None;
+        }
+        return self._module_functions.get((os.path.realpath(src), sym.name));
+    }
+    decl = sym.decl;
+    item = decl.find_parent_of_type(uni.ModuleItem)
+        if isinstance(decl, uni.NameAtom)
+        else None;
+    if item is None {
+        return None;
+    }
+    imp = item.from_parent;
+    facts = imp.boundary_facts if imp is not None else None;
+    src = facts.native_from_path if facts is not None else None;
+    if src is None {
+        return None;
+    }
+    item_name = item.name.value if isinstance(item.name, uni.Name) else func_name;
+    return self._module_functions.get((os.path.realpath(src), item_name));
+}
+
 impl NaIRGenPass._linked_callee_decl(
     func: (ir.Function | None)
 ) -> (uni.Ability | None) {
@@ -2276,11 +2309,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    if func is not None
-        and declaration is not None
-        and func is self.clib_extern_fns.get(func_name)
-        and ModuleFacts.unwrap_body(declaration) {
-        func = None;
+    if func is not None and func is self.clib_extern_fns.get(func_name) {
+        _bound_fn = self._import_bound_native_fn(nd, func_name);
+        if _bound_fn is not None {
+            func = _bound_fn;
+        } elif declaration is not None and ModuleFacts.unwrap_body(declaration) {
+            func = None;
+        }
     }
     if _mod_qual is not None {
         import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
