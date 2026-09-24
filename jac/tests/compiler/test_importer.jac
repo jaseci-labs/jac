@@ -515,6 +515,17 @@ test "resolve_import_source_module never compiles pyi stubs" {
     }
 }
 
+"""Judge a module cache under the owner scope that wrote it: the module key
+folds in the owning program's compile projection, so a check outside that
+scope compares against a different key."""
+def owner_cache_valid(jac_file: str, cache_path: any) -> bool {
+    import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
+    import from jaclang.compiler.driver.jir { is_module_cache_valid }
+    with cache_scope(program_for(jac_file, JacProgram()).options) {
+        return is_module_cache_valid(jac_file, cache_path);
+    }
+}
+
 """A cache newer than its source is not thereby valid: the mtime covers the
 source bytes only, so every environment input the module key folds in (the node
 schema, the analysis fingerprint, the placement/cut/codespace facts) must be
@@ -549,20 +560,20 @@ test "fresh mtime does not admit a cache written under a different environment" 
         assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
             "cache must be newer than source for the mtime fast path to apply"
         );
-        assert is_module_cache_valid(jac_file, cache_path) , "fresh cache should be valid";
+        assert owner_cache_valid(jac_file, cache_path) , "fresh cache should be valid";
 
         saved = list(jir._COMPILER_DIGEST_CACHE);
         try {
             jir._COMPILER_DIGEST_CACHE.clear();
             jir._COMPILER_DIGEST_CACHE.append("289:" + "0" * 64);
-            assert not is_module_cache_valid(jac_file, cache_path) , (
+            assert not owner_cache_valid(jac_file, cache_path) , (
                 "a fresh mtime served a cache written under a different compiler"
             );
         } finally {
             jir._COMPILER_DIGEST_CACHE.clear();
             jir._COMPILER_DIGEST_CACHE.extend(saved);
         }
-        assert is_module_cache_valid(jac_file, cache_path) , (
+        assert owner_cache_valid(jac_file, cache_path) , (
             "restoring the compiler digest should restore validity"
         );
 
@@ -572,21 +583,21 @@ test "fresh mtime does not admit a cache written under a different environment" 
         }
         prev_tgt = push_native_target("wasm32-unknown-unknown");
         try {
-            assert not is_module_cache_valid(jac_file, cache_path) , (
+            assert not owner_cache_valid(jac_file, cache_path) , (
                 "a fresh mtime served a cache written under a different "
                 "analysis fingerprint"
             );
         } finally {
             pop_native_target(prev_tgt);
         }
-        assert is_module_cache_valid(jac_file, cache_path) , (
+        assert owner_cache_valid(jac_file, cache_path) , (
             "restoring the analysis fingerprint should restore validity"
         );
 
         prev_opt = os.environ.get("JAC_OPT_LEVEL");
         try {
             os.environ["JAC_OPT_LEVEL"] = "0" if prev_opt != "0" else "1";
-            assert is_module_cache_valid(jac_file, cache_path) , (
+            assert owner_cache_valid(jac_file, cache_path) , (
                 "a native-only codegen knob (opt level) must not invalidate "
                 "a bytecode cache"
             );

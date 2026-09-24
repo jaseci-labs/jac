@@ -173,15 +173,15 @@ impl ProjectHost.note(message: str) {
     } except Exception {}
 }
 
-impl ProjectHost.discard_module_artifact(path: str, program: JacProgram) {
+impl ProjectHost.drop_python_lane_products(path: str, program: JacProgram) {
     import from jaclang.compiler.driver.compilation_context {
         cache_scope,
         owner_scope_options
     }
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.jir { drop_python_lane_products }
     with cache_scope(owner_scope_options(program)) {
         try {
-            get_module_cache_path(path).unlink(missing_ok=True);
+            drop_python_lane_products(path);
         } except OSError {}
     }
 }

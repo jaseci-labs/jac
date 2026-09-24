@@ -211,7 +211,7 @@ obj HostServices {
         return None;
     }
 
-    def discard_module_artifact(path: str, program: JacProgram) {}
+    def drop_python_lane_products(path: str, program: JacProgram) {}
     def compiler_for(program: JacProgram) -> JacCompiler {
         raise RuntimeError("no compiler host is installed");
     }

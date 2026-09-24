@@ -87,6 +87,20 @@ def check_pub_collisions(units: list[LinkUnit]) {
     }
 }
 
+def check_prefix_collisions(units: list[LinkUnit]) {
+    owners: dict[str, str] = {};
+    for u in units {
+        first = owners.get(u.prefix);
+        if first is not None and first != u.path {
+            raise LinkPlanError(
+                f"{first} and {u.path} share the native unit prefix {u.prefix}: "
+                "their package roots have the same directory name; rename one root"
+            );
+        }
+        owners[u.prefix] = u.path;
+    }
+}
+
 obj LinkUnit {
     has path: str,
         prefix: str,
@@ -538,6 +552,7 @@ def _build_link_plan(
         }
     }
 
+    check_prefix_collisions(ordered);
     check_pub_collisions(ordered);
     import from jaclang.compiler.driver.na_coverage { na_coverage_replay }
     for unit in ordered {
@@ -621,7 +636,9 @@ def heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
     declarations: dict[str, str] = {};
     defined: set[str] = set();
 
-    managed = plan.options.na_gc_mode != "none";
+    """Heap accounting reads the allocation header, which only a headerless
+    (nogc-enforced, `gc=none`) unit lacks.""";
+    managed = not any(unit.iface.headerless for unit in plan.units);
     registry = plan.prog.native_units();
     for unit in plan.units {
         bitcode = registry.bitcode_for(unit.path, plan.options);

@@ -662,8 +662,11 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
     if not isinstance(nd, uni.Assignment) {
         return False;
     }
+    if self._nogc_consume_assigned_local(nd) {
+        return True;
+    }
     if not nd.na_move_lowerable {
-        return self._nogc_consume_assigned_local(nd);
+        return False;
     }
     rhs = nd.value;
     if not isinstance(rhs, uni.Name) {
@@ -687,7 +690,7 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
         and isinstance(src_alloca.pointee_type, ir.PointerType)
     )
         and not _mv_desc_slot {
-        return self._nogc_consume_assigned_local(nd);
+        return False;
     }
     self.builder.store(ir.Constant(src_alloca.pointee_type, None), src_alloca);
     self.rc_ops_elided += 1;

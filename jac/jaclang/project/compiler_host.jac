@@ -89,7 +89,7 @@ obj ProjectHost(HostServices) {
         early_context: str = ""
     ) -> (tuple[Module, bool] | None);
 
-    def discard_module_artifact(path: str, program: JacProgram);
+    def drop_python_lane_products(path: str, program: JacProgram);
     def compiler_for(program: JacProgram) -> JacCompiler;
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;

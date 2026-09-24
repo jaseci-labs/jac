@@ -270,46 +270,6 @@ def native_unit_identity(path: str) -> str {
     return f"{os.path.basename(unit_root)}/{rel}";
 }
 
-def native_unit_ref(path: str) -> str {
-    """How one unit names another in what it writes to disk: by package
-    identity when the other lives under a root, so the reference survives
-    the package moving, and by real path otherwise.""";
-    import os;
-    rp = os.path.realpath(path);
-    ident = native_unit_identity(rp);
-    return ident if ident != rp else rp;
-}
-
-def resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
-    """The path a unit reference names here: an absolute path is itself;
-    `jaclang/...` is under this process's jaclang; another root's identity
-    is looked for beside the anchor unit's own root, then beside it.""";
-    import os;
-    if not ref or os.path.isabs(ref) {
-        return ref;
-    }
-    (root_name, _sep, rel) = ref.partition("/");
-    if not rel {
-        return ref;
-    }
-    if root_name == "jaclang" {
-        return os.path.join(os.path.dirname(jaclang_pkg_root()), ref);
-    }
-    if anchor {
-        anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
-        if anchor_root is not None {
-            if os.path.basename(anchor_root) == root_name {
-                return os.path.join(anchor_root, rel);
-            }
-            sibling = os.path.join(os.path.dirname(anchor_root), ref);
-            if os.path.isfile(sibling) {
-                return sibling;
-            }
-        }
-    }
-    return ref;
-}
-
 def native_module_key(path: str) -> str {
     """The key names a unit the same wherever its package lands: a module
     under a sealed package, a `jac.toml` project or the jaclang package is

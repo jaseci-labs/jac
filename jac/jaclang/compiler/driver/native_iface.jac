@@ -1,5 +1,7 @@
 import hashlib;
 import json;
+import os;
+import sys;
 import from jaclang.compiler.frontend.codeinfo {
     NATIVE_ABI_VERSION,
     NativeFieldInfo,
@@ -7,7 +9,59 @@ import from jaclang.compiler.frontend.codeinfo {
     NativeFuncLayout,
     NativeModuleLayout,
     NativeStructLayout,
-    NativeTupleLayout
+    NativeTupleLayout,
+    jaclang_pkg_root,
+    native_unit_identity,
+    native_unit_root
+}
+
+def native_unit_ref(path: str) -> str {
+    """How one unit names another in what it writes to disk: by package
+    identity when the other lives under a root, so the reference survives
+    the package moving, and by real path otherwise.""";
+    rp = os.path.realpath(path);
+    ident = native_unit_identity(rp);
+    return ident if ident != rp else rp;
+}
+
+def resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
+    """The path a unit reference names here: an absolute path is itself;
+    `jaclang/...` is under this process's jaclang; another root's identity
+    is looked for as the anchor unit's own root, beside it, then under each
+    import path. A reference found nowhere names a path that cannot exist,
+    never one relative to the working directory, so its unit reads as
+    missing and is rebuilt.""";
+    if not ref or os.path.isabs(ref) {
+        return ref;
+    }
+    (root_name, _sep, rel) = ref.partition("/");
+    if not rel {
+        return ref;
+    }
+    if root_name == "jaclang" {
+        return os.path.join(os.path.dirname(jaclang_pkg_root()), ref);
+    }
+    if anchor {
+        anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
+        if anchor_root is not None {
+            if os.path.basename(anchor_root) == root_name {
+                return os.path.join(anchor_root, rel);
+            }
+            sibling = os.path.join(os.path.dirname(anchor_root), ref);
+            if os.path.isfile(sibling) {
+                return sibling;
+            }
+        }
+    }
+    for search_dir in sys.path {
+        if search_dir and os.path.isabs(search_dir) {
+            candidate = os.path.join(search_dir, ref);
+            if os.path.isfile(candidate) {
+                return candidate;
+            }
+        }
+    }
+    return os.path.join(os.path.abspath(os.sep), "<unresolved native unit>", ref);
 }
 
 def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict[str, any] | None) {
@@ -368,7 +422,8 @@ obj NativeIface {
         clib_symbol_lib: dict[str, str] = {},
         layout: (NativeModuleLayout | None) = None,
         deps: list[str] = [],
-        coverage: dict[str, any] = {};
+        coverage: dict[str, any] = {},
+        headerless: bool = False;
 
     def digest_fields -> dict[str, any] {
         return {
@@ -392,7 +447,8 @@ obj NativeIface {
             },
             "layout": (
                 native_layout_to_dict(self.layout) if self.layout is not None else None
-            )
+            ),
+            "headerless": self.headerless
         };
     }
 
@@ -402,7 +458,6 @@ obj NativeIface {
     }
 
     def to_dict -> dict[str, any] {
-        import from jaclang.compiler.frontend.codeinfo { native_unit_ref }
         d = self.digest_fields();
         d["deps"] = [native_unit_ref(x) for x in self.deps];
         d["coverage"] = dict(self.coverage);
@@ -412,7 +467,6 @@ obj NativeIface {
     def resolve_deps(anchor: str) {
         """Dependencies read from disk are references; the unit's own path
         tells where a same-package reference lives.""";
-        import from jaclang.compiler.frontend.codeinfo { resolve_native_unit_ref }
         self.deps = [resolve_native_unit_ref(x, anchor) for x in self.deps];
     }
 
@@ -454,7 +508,8 @@ obj NativeIface {
                     else None
             ),
             deps=[str(x) for x in d.get("deps", [])],
-            coverage=dict(d.get("coverage") or {})
+            coverage=dict(d.get("coverage") or {}),
+            headerless=bool(d.get("headerless", False))
         );
     }
 

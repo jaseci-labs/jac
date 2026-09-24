@@ -137,7 +137,7 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     }
     path = os.path.realpath(module.loc.mod_path);
     program.hub.client_artifacts.pop(path, None);
-    active_host().discard_module_artifact(path, program);
+    active_host().drop_python_lane_products(path, program);
 }
 
 glob PRODUCT_READY_FACTS: dict[CompilationProduct, tuple[AnalysisFact, ...]] = {
