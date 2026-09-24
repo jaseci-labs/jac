@@ -1953,9 +1953,11 @@ impl NaIRGenPass._codegen_instantiation(
             E5092,
             node_override=nd,
             kind="constructor call",
-            name=type_name,
+            name=self._arch_display(type_name),
             help_text=(
-                f"'{type_name}' is a `class` archetype with no initializer, so "
+                f"'{self._arch_display(
+                    type_name
+                )}' is a `class` archetype with no initializer, so "
                 f"like a Python class it takes no constructor arguments; its "
                 f"`has` fields do not become constructor parameters. Declare "
                 f"`def init(...)` or make it an `obj`."
@@ -1975,9 +1977,11 @@ impl NaIRGenPass._codegen_instantiation(
                 E5092,
                 node_override=nd,
                 kind="constructor call",
-                name=type_name,
+                name=self._arch_display(type_name),
                 help_text=(
-                    f"'{type_name}' inherits from a Python-side base, so its "
+                    f"'{self._arch_display(
+                        type_name
+                    )}' inherits from a Python-side base, so its "
                     f"constructor arguments cannot be matched positionally; "
                     f"use keyword arguments."
                 )
@@ -1991,8 +1995,10 @@ impl NaIRGenPass._codegen_instantiation(
                     E5092,
                     node_override=nd,
                     kind="constructor call",
-                    name=type_name,
-                    help_text=f"Positional arguments to '{type_name}' lower natively only up to its declared has-field count and only when its field layout is visible to this module."
+                    name=self._arch_display(type_name),
+                    help_text=f"Positional arguments to '{self._arch_display(
+                        type_name
+                    )}' lower natively only up to its declared has-field count and only when its field layout is visible to this module."
                 );
                 return None;
             }

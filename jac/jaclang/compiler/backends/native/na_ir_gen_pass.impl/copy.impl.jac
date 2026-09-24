@@ -309,7 +309,11 @@ impl NaIRGenPass._copy_class_refusal(
     seen.add(arch);
     _dunder = "__deepcopy__" if deep else "__copy__";
     for cand in self._copy_candidates(arch) {
-        _label = f"`{cand}`" if cand == arch else f"`{cand}` (a subclass of `{arch}`)";
+        _label = f"`{self._arch_display(cand)}`"
+            if cand == arch
+            else f"`{self._arch_display(cand)}` (a subclass of `{self._arch_display(
+                arch
+            )}`)";
         if cand not in self.struct_field_types {
             return f"{_label}, whose field layout is not visible to this module";
         }
@@ -512,7 +516,9 @@ impl NaIRGenPass._emit_copy_dispatch(
     self._emit_runtime_raise(
         ir.Constant(ir.IntType(1), 1),
         "TypeError",
-        f"copy.{kind}: this native unit has no copy for the runtime class of a '{arch}' value (a subclass defined in a module it does not import)"
+        f"copy.{kind}: this native unit has no copy for the runtime class of a '{self._arch_display(
+            arch
+        )}' value (a subclass defined in a module it does not import)"
     );
     incoming.append((ir.Constant(sptr, None), self.builder.block));
     self.builder.branch(done_bb);
