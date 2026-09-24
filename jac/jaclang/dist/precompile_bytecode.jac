@@ -490,7 +490,7 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
                     }
                 }
                 if SEC_PLACEMENT in extra {
-                    import from jaclang.compiler.placement.placement {
+                    import from jaclang.compiler.placement.placement_export {
                         summary_from_bytes,
                         summary_to_bytes
                     }

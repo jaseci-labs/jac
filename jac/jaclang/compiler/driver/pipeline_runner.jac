@@ -1,4 +1,3 @@
-import from contextvars { ContextVar }
 import from jaclang.compiler.driver.pipeline_types {
     AnalysisFact,
     CompilationProduct,
@@ -6,16 +5,17 @@ import from jaclang.compiler.driver.pipeline_types {
 }
 import type from jaclang.compiler.passes.context { CancelToken }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-import from jaclang.compiler.driver.toolchain { native_pipeline_available }
-import from jaclang.compiler.driver.pipeline {
+import from jaclang.compiler.driver.toolchain {
     _codegen_sched_loading,
-    _import_all,
-    module_in_flight,
+    native_pipeline_available
+}
+import from jaclang.compiler.driver.pipeline {
     providers_of_product,
     register_product_schedule,
     schedule_tier_reason,
     validate_schedule
 }
+import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.compiler.driver.context_passes { NativeImportFactsPass }
 import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
@@ -505,10 +505,7 @@ def native_application(
     }
 }
 
-glob _codegen_sched_loading = ContextVar(
-         'jac_codegen_sched_loading', `default=False
-     ),
-     CODEGEN_SCHED_DEPS: tuple[str, ...] = (
+glob CODEGEN_SCHED_DEPS: tuple[str, ...] = (
          'jaclang.compiler.passes.rc_facts_pass',
          'jaclang.compiler.backends.es',
          'jaclang.compiler.passes.freeze_structure_pass'
@@ -520,7 +517,9 @@ def _codegen_tier_reason -> str {
     if _codegen_sched_loading.get() {
         return 'the codegen schedule was still loading';
     }
-    dep = module_in_flight(CODEGEN_SCHED_DEPS + NATIVE_CODEGEN_DEPS);
+    dep = active_host().module_in_flight(
+        list(CODEGEN_SCHED_DEPS) + list(NATIVE_CODEGEN_DEPS)
+    );
     if dep {
         return f"'{dep}', a dependency of the codegen schedule, was mid-import";
     }
@@ -555,13 +554,13 @@ def get_py_code_gen(
     }
     _tok = _codegen_sched_loading.set(True);
     try {
-        _import_all(CODEGEN_SCHED_DEPS);
+        active_host().load_modules(list(CODEGEN_SCHED_DEPS));
         import from jaclang.compiler.backends.es { EsastGenPass }
         import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
 
         passes: list[type] = [RcFactsPass, EsastGenPass];
         if native {
-            _import_all(NATIVE_CODEGEN_DEPS);
+            active_host().load_modules(list(NATIVE_CODEGEN_DEPS));
             import from jaclang.compiler.backends.native {
                 NaIRGenPass,
                 NativeCompilePass
@@ -597,7 +596,9 @@ def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
 }
 
 def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None] {
-    artifact = program.get_client_artifact(os.path.realpath(path));
+    artifact = program._get_compiler().get_client_artifact(
+        os.path.realpath(path), program
+    );
     if artifact is None {
         return (None, None);
     }

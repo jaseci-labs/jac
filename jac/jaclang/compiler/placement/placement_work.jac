@@ -1,5 +1,6 @@
 import os;
 import jaclang.compiler.frontend.unitree as uni;
+import type from jaclang.compiler.driver.program { JacProgram }
 
 
 obj PlacementWork {
@@ -136,7 +137,7 @@ obj PlacementWork {
         return cached;
     }
 
-    def drain(prog: any) {
+    def drain(prog: JacProgram) {
         import from jaclang.compiler.placement.placement_solver {
             _pull_boundary_import
         }

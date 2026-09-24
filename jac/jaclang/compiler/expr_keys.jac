@@ -286,9 +286,7 @@ def collect_assignment_target_keys(target: UniNode) -> set[str] {
     } elif isinstance(target, (TupleVal, ListVal)) {
         if target.values {
             for sub in target.values {
-                if isinstance(sub, UniNode) {
-                    keys.update(collect_assignment_target_keys(sub));
-                }
+                keys.update(collect_assignment_target_keys(sub));
             }
         }
     } elif (
@@ -297,7 +295,7 @@ def collect_assignment_target_keys(target: UniNode) -> set[str] {
         and target.op.name == Tok.STAR_MUL
     ) {
         keys.update(collect_assignment_target_keys(target.operand));
-    } elif isinstance(target, AtomUnit) and isinstance(target.value, UniNode) {
+    } elif isinstance(target, AtomUnit) {
         keys.update(collect_assignment_target_keys(target.value));
     }
     return keys;

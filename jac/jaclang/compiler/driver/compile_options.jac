@@ -115,14 +115,8 @@ obj CompileOptions {
         if self.native_target {
             return str(self.native_target);
         }
-        try {
-            import from jaclang.compiler.backends.native.llvm.binding {
-                get_default_triple
-            }
-            return str(get_default_triple());
-        } except Exception {
-            return "";
-        }
+        import from jaclang.compiler.frontend.host { active_host }
+        return active_host().default_target_triple();
     }
 
     def codegen_identity -> str {

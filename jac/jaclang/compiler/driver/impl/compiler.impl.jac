@@ -121,7 +121,7 @@ impl JacCompiler.get_bytecode(
     }
     if full_target.endswith('.py') {
         import builtins;
-        import from jaclang.project.source { read_file_with_encoding }
+        import from jaclang.project.textio { read_file_with_encoding }
         return builtins.compile(
             read_file_with_encoding(full_target), full_target, 'exec'
         );
@@ -419,9 +419,9 @@ impl JacCompiler._restore_sections(
     placement_bytes = secs.get(SEC_PLACEMENT);
     if placement_bytes is not None {
         try {
-            import from jaclang.compiler.placement.placement {
-                summary_from_bytes,
-                summary_store
+            import from jaclang.compiler.placement.placement { summary_store }
+            import from jaclang.compiler.placement.placement_export {
+                summary_from_bytes
             }
             import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
             paths = JirPaths.from_bytes(secs.get(SEC_PATH_ROOT), base_dir);
@@ -985,10 +985,8 @@ impl JacCompiler._persist_module_cache(
             } except Exception {}
         }
         try {
-            import from jaclang.compiler.placement.placement {
-                get_module_summary,
-                summary_to_bytes
-            }
+            import from jaclang.compiler.placement.placement { get_module_summary }
+            import from jaclang.compiler.placement.placement_export { summary_to_bytes }
             sections[SEC_PLACEMENT] = summary_to_bytes(
                 get_module_summary(result, actual_program)
             );
@@ -1026,10 +1024,8 @@ impl JacCompiler._persist_native_unit(
             sections[SEC_INTEROP] = json.dumps(interop_dict).encode('utf-8');
         }
         try {
-            import from jaclang.compiler.placement.placement {
-                get_module_summary,
-                summary_to_bytes
-            }
+            import from jaclang.compiler.placement.placement { get_module_summary }
+            import from jaclang.compiler.placement.placement_export { summary_to_bytes }
             sections[SEC_PLACEMENT] = summary_to_bytes(
                 get_module_summary(result, actual_program)
             );

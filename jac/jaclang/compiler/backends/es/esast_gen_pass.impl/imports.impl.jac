@@ -231,7 +231,7 @@ impl EsastGenPass._partition_client_import_items(
             bridged.append(item);
         } elif verdict == ClientImportVerdict.DEAD {
             if not cross_app and isinstance(item, uni.ModuleItem) {
-                report_dead_client_import(self, nd, item);
+                report_dead_client_import(self, nd, item, self._unbound_reported);
             }
         } else {
             kept.append(item);

@@ -769,7 +769,7 @@ def verdict_from_jir(data: bytes) -> (NativeVerdict | None) {
     if raw is None {
         return None;
     }
-    import from jaclang.compiler.placement.placement { summary_from_bytes }
+    import from jaclang.compiler.placement.placement_export { summary_from_bytes }
     summary = summary_from_bytes(raw);
     if summary is None or not summary.native_verdict {
         return None;

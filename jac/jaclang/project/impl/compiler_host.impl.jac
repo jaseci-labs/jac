@@ -363,7 +363,7 @@ impl ProjectHost.path_facts(path: str) -> PathFacts {
 }
 
 impl ProjectHost.read_source(path: str) -> str {
-    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.project.textio { read_file_with_encoding }
     return read_file_with_encoding(path);
 }
 
@@ -427,4 +427,170 @@ impl ProjectHost.parse_python(
         cancel_token=program.options.cancel_token if program.options else None
     );
     return (built.module, len(built.ctx.errors_had) > 0);
+}
+
+impl UnitCollectBudget.due -> bool {
+    import os;
+    import sys;
+    def env_int(name: str, fallback: int) -> int {
+        raw = os.environ.get(name, "").strip();
+        if not raw {
+            return fallback;
+        }
+        try {
+            return int(raw);
+        } except ValueError {
+            return fallback;
+        }
+    }
+    def peak_rss_mb -> int {
+        try {
+            import resource;
+        } except ImportError {
+            return 0;
+        }
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
+        if sys.platform == "darwin" {
+            return int(peak // (1024 * 1024));
+        }
+        return int(peak // 1024);
+    }
+    self.releases += 1;
+    every = env_int("JAC_UNIT_COLLECT_EVERY", UNIT_COLLECT_EVERY);
+    growth = env_int("JAC_UNIT_COLLECT_GROWTH_MB", UNIT_COLLECT_GROWTH_MB);
+    peak = peak_rss_mb();
+    if self.last_peak_mb == 0 {
+        self.last_peak_mb = peak;
+    }
+    by_count = every > 0 and self.releases >= every;
+    by_growth = growth > 0 and (peak - self.last_peak_mb) >= growth;
+    if not (by_count or by_growth) {
+        return False;
+    }
+    self.releases = 0;
+    self.last_peak_mb = peak;
+    return True;
+}
+
+impl ProjectHost.compile_module(
+    program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
+) -> Module {
+    return self.compiler_for(program).compile(
+        file_path=file_path, target_program=program, use_str=use_str, options=options
+    );
+}
+
+impl ProjectHost.build_module(
+    program: JacProgram, file_path: str, use_str: (str | None)
+) -> Module {
+    return self.compiler_for(program).build(file_path, program, use_str);
+}
+
+impl ProjectHost.internal_program(program: JacProgram) -> (JacProgram | None) {
+    return self.compiler_for(program).selfhost.peek_program();
+}
+
+impl ProjectHost.bind_context_program(context_root: JacProgram, program: JacProgram) {
+    program._compiler = self.compiler_for(context_root);
+    root_iface = context_root._iface;
+    if root_iface is not None and root_iface.verifying {
+        self.iface_registry_for(program).verifying = True;
+    }
+}
+
+impl ProjectHost.note_program_dependency(program: JacProgram, resolved_path: str) {
+    try {
+        self.iface_registry_for(program).note_dep(resolved_path);
+    } except Exception {}
+}
+
+impl ProjectHost.forget_program_products(program: JacProgram, resolved_path: str) {
+    if program._natives is not None {
+        program._natives.forget(resolved_path);
+    }
+    if program._iface is not None {
+        program._iface.forget(resolved_path);
+    }
+}
+
+impl ProjectHost.release_program_products(program: JacProgram, retain_stubs: bool) {
+    natives = program._natives;
+    if natives is not None and natives.session is None {
+        if retain_stubs {
+            natives.release_products();
+        } else {
+            natives.clear();
+        }
+    }
+    if program._iface is not None {
+        program._iface.on_closure_release();
+    }
+}
+
+impl ProjectHost.prepare_interface(
+    program: JacProgram, path: str, module: Module
+) -> bool {
+    return bool(self.iface_registry_for(program).prepare_interface(path, module));
+}
+
+impl ProjectHost.collect_released_memory{
+    if self._collect_budget.due() {
+        import gc;
+        gc.collect();
+    }
+}
+
+impl ProjectHost.load_modules(names: list[str]) {
+    import importlib;
+    for name in names {
+        try {
+            importlib.import_module(name);
+        } except ImportError as err {
+            import from jaclang.compiler.driver.source_failures {
+                fail_loud_on_compiler_source
+            }
+            fail_loud_on_compiler_source(err);
+            raise;
+        }
+    }
+}
+
+impl ProjectHost.module_in_flight(names: list[str]) -> str {
+    import sys;
+    for name in names {
+        spec = sys.modules.get(name)?.__spec__;
+        if spec is not None and getattr(spec, '_initializing', False) {
+            return name;
+        }
+    }
+    return '';
+}
+
+impl ProjectHost.import_in_flight(path: str) -> bool {
+    import from jaclang.compiler.driver.source_failures { module_import_in_flight }
+    return module_import_in_flight(path);
+}
+
+impl ProjectHost.has_active_stub_catalog -> bool {
+    import from jaclang.jac0core.stubcat_hook { active }
+    return active() is not None;
+}
+
+impl ProjectHost.is_native_only_source(rel: str) -> bool {
+    import from jaclang.bootstrap_manifest { is_native_only }
+    return is_native_only(rel);
+}
+
+impl ProjectHost.is_native_lowered_source(rel: str) -> bool {
+    import from jaclang.bootstrap_manifest { is_native_lowered }
+    return is_native_lowered(rel);
+}
+
+impl ProjectHost.default_target_triple -> str {
+    try {
+        import from jaclang.compiler.backends.native.llvm.binding { get_default_triple }
+        return str(get_default_triple());
+    } except Exception {
+        return "";
+    }
 }

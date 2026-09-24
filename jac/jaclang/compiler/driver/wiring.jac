@@ -21,7 +21,8 @@ import from jaclang.compiler.frontend.roles { BodyRole, Kid }
 import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.compiler.passes.annex_weave { WovenAnnex, import_form }
 
-glob ARCH_FILE_NAME: str = "arch.jac";
+glob ARCH_FILE_NAME: str = "arch.jac",
+     SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__");
 
 obj WireBinding {
     has provider: str,
@@ -61,6 +62,7 @@ obj WiringSpec {
     def module_file(name: str) -> (str | None);
     def is_package_dir(name: str) -> bool;
     def project_modules -> list[str];
+    def _scan_modules(directory: str, found: list[str], seen: set[str]) -> None;
     def consumer_wires(consumer: str) -> list[ImportWire];
     def is_covered(consumer: str) -> bool;
     def is_project_module(module: str) -> bool;

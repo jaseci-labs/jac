@@ -19,6 +19,10 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.jir { get_module_cache_path }
 import from jaclang.runtime.runtime { JacRuntime }
 
+def _bytecode(prog: JacProgram, target: str) -> any {
+    return prog._get_compiler().get_bytecode(target, prog);
+}
+
 # `eval` of a runtime string can never be lowered on the na pathway: it
 # would need an embedded interpreter inside the AOT-compiled binary. The
 # E5092 fires deep inside NaIRGenPass codegen and, crucially, is NOT caught
@@ -93,7 +97,7 @@ test "inferred module that cannot lower natively demotes to working bytecode" {
     # half-native artifact. (The loud error gate lives on the forced path --
     # see "na codegen errors withhold the native artifact".)
     src = write_module("gate_bad.jac", BAD_NA_SOURCE);
-    bc = JacProgram().get_bytecode(src);
+    bc = _bytecode(JacProgram(), src);
     assert bc is not None , (
         "an inferred module whose native codegen errors must demote to a "
         "complete server bytecode, not fail"
@@ -143,7 +147,7 @@ test "clean na module still publishes artifacts and caches" {
     mod = prog.compile(file_path=src, options=native_force_opts());
     assert not prog.errors_had , f"unexpected errors: {fmt_errors(prog)}";
     assert mod.gen.llvm_ir is not None , ("clean na module must still publish llvm ir");
-    bc = JacProgram().get_bytecode(src);
+    bc = _bytecode(JacProgram(), src);
     assert bc is not None , "clean na module must still produce bytecode";
     assert os.path.exists(artifact_cache_path(src, JacProgram())) , (
         "clean na module must still be written to the jir cache"

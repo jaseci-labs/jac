@@ -120,7 +120,7 @@ impl WiringSpec.is_package_dir(name: str) -> bool {
     if not name {
         return False;
     }
-    return os.path.isdir(os.path.join(self.root_dir, *name.split(".")));
+    return os.path.isdir(os.path.join(self.root_dir, name.replace(".", os.sep)));
 }
 
 impl WiringSpec.project_modules -> list[str] {
@@ -128,26 +128,41 @@ impl WiringSpec.project_modules -> list[str] {
         return self._project_modules;
     }
     found: list[str] = [];
-    for (dirpath, dirnames, filenames) in os.walk(self.root_dir) {
-        dirnames[:] = sorted(
-            [
-                d
-                for d in dirnames
-                if not d.startswith(".") and d not in ("node_modules", "__pycache__")
-            ]
-        );
-        for fname in sorted(filenames) {
-            if not fname.endswith(".jac") {
-                continue;
+    self._scan_modules(self.root_dir, found, set());
+    self._project_modules = found;
+    return found;
+}
+
+impl WiringSpec._scan_modules(
+    directory: str, found: list[str], seen: set[str]
+) -> None {
+    real = os.path.realpath(directory);
+    if real in seen {
+        return;
+    }
+    seen.add(real);
+    try {
+        entries = sorted(os.listdir(directory));
+    } except OSError {
+        return;
+    }
+    subdirs: list[str] = [];
+    for fname in entries {
+        full = os.path.join(directory, fname);
+        if os.path.isdir(full) {
+            if not fname.startswith(".") and fname not in SKIPPED_PROJECT_DIRS {
+                subdirs.append(full);
             }
-            name = self.module_name(os.path.join(dirpath, fname));
+        } elif fname.endswith(".jac") {
+            name = self.module_name(full);
             if name is not None {
                 found.append(name);
             }
         }
     }
-    self._project_modules = found;
-    return found;
+    for sub in subdirs {
+        self._scan_modules(sub, found, seen);
+    }
 }
 
 impl WiringSpec.consumer_wires(consumer: str) -> list[ImportWire] {
@@ -428,12 +443,10 @@ impl _closed_patterns_for(root_dir: str) -> list[str] {
 }
 
 impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
+    stamp: tuple[float, int] = (-1.0, -1);
     try {
-        st = os.stat(arch_path);
-        stamp = (st.st_mtime, st.st_size);
-    } except OSError {
-        stamp = (-1.0, -1);
-    }
+        stamp = (os.path.getmtime(arch_path), os.path.getsize(arch_path));
+    } except OSError {}
     key = os.path.realpath(root_dir);
     cached = _spec_cache.get(key);
     if cached is not None and cached[0] == stamp {

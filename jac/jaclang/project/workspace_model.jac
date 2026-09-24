@@ -32,7 +32,6 @@ obj WorkspaceSpec {
     def app_at(real_path: str) -> (AppSpec | None);
     def app_for_path(abs_path: str) -> (AppSpec | None);
     def serving_apps -> list[AppSpec];
-    def module_dot_path(abs_path: str) -> str;
 }
 
 def normalized_path(path: str) -> str {

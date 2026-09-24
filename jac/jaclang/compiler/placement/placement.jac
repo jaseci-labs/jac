@@ -1,20 +1,19 @@
 import os;
-import json;
-import from collections.abc { Callable }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant {
     CodeContext,
     SymbolAccess,
     Tokens as Tok
 }
+import type from jaclang.compiler.driver.program { JacProgram }
 
 glob PLACEMENT_SCHEMA: int = 2,
-     PLACEMENT_SV_SIGNAL_NODES: tuple[tuple[str, type], ...] = (
+     PLACEMENT_SV_SIGNAL_NODES: tuple[tuple[str, type[uni.UniNode]], ...] = (
          ("TypedCtxBlock", uni.TypedCtxBlock),
          ("PyInlineCode", uni.PyInlineCode),
          ("JsxElement", uni.JsxElement)
      ),
-     PLACEMENT_NATIVE_REJECT_NODES: tuple[tuple[str, type], ...] = (),
+     PLACEMENT_NATIVE_REJECT_NODES: tuple[tuple[str, type[uni.UniNode]], ...] = (),
      PLACEMENT_INFERENCE_HELD: dict[str, str] = {
          "compiler/frontend/codeinfo.jac": (
              "runtime JIT inference stays conservative: admitting codeinfo "
@@ -44,46 +43,8 @@ obj ElementSummary {
         import_py_targets: list[str] = [],
         reqs: list[list[str]] = [],
         refs: list[int] = [],
-        escapes: list[list[int | str]] = [],
+        escapes: list[tuple[int, str]] = [],
         glob_writes: list[int] = [];
-
-    def to_dict -> dict[str, any] {
-        return {
-            'index': self.index,
-            'kind': self.kind,
-            'name': self.name,
-            'pinned': self.pinned,
-            'is_pub': self.is_pub,
-            'sv_import': self.sv_import,
-            'import_eco': self.import_eco,
-            'import_jac_target': self.import_jac_target,
-            'import_items': list(self.import_items),
-            'import_py_targets': list(self.import_py_targets),
-            'reqs': [list(r) for r in self.reqs],
-            'refs': list(self.refs),
-            'escapes': [list(e) for e in self.escapes],
-            'glob_writes': list(self.glob_writes)
-        };
-    }
-
-    static def from_dict(d: dict[str, any]) -> ElementSummary {
-        es = ElementSummary();
-        es.index = int(d.get('index', -1));
-        es.kind = str(d.get('kind', ''));
-        es.name = str(d.get('name', ''));
-        es.pinned = str(d.get('pinned', ''));
-        es.is_pub = bool(d.get('is_pub', False));
-        es.sv_import = bool(d.get('sv_import', False));
-        es.import_eco = str(d.get('import_eco', ''));
-        es.import_jac_target = str(d.get('import_jac_target', ''));
-        es.import_items = [str(x) for x in d.get('import_items', [])];
-        es.import_py_targets = [str(x) for x in d.get('import_py_targets', [])];
-        es.reqs = [list(r) for r in d.get('reqs', [])];
-        es.refs = [int(x) for x in d.get('refs', [])];
-        es.escapes = [list(e) for e in d.get('escapes', [])];
-        es.glob_writes = [int(x) for x in d.get('glob_writes', [])];
-        return es;
-    }
 }
 
 obj PlacementSummary {
@@ -97,71 +58,6 @@ obj PlacementSummary {
         jac_deps: list[str] = [],
         has_refs: bool = False,
         elements: list[ElementSummary] = [];
-
-    def to_dict -> dict[str, any] {
-        return {
-            'schema': self.schema,
-            'mod_path': self.mod_path,
-            'decided': self.decided,
-            'anchors': list(self.anchors),
-            'native_blocker': self.native_blocker,
-            'native_verdict': self.native_verdict,
-            'native_verdict_code': self.native_verdict_code,
-            'jac_deps': list(self.jac_deps),
-            'has_refs': self.has_refs,
-            'elements': [e.to_dict() for e in self.elements]
-        };
-    }
-
-    static def from_dict(d: dict[str, any]) -> (PlacementSummary | None) {
-        if not isinstance(d, dict) or d.get('schema') != PLACEMENT_SCHEMA {
-            return None;
-        }
-        ps = PlacementSummary();
-        ps.mod_path = str(d.get('mod_path', ''));
-        ps.decided = str(d.get('decided', ''));
-        ps.anchors = [str(x) for x in d.get('anchors', [])];
-        ps.native_blocker = str(d.get('native_blocker', ''));
-        ps.native_verdict = str(d.get('native_verdict', ''));
-        ps.native_verdict_code = str(d.get('native_verdict_code', ''));
-        ps.jac_deps = [str(x) for x in d.get('jac_deps', [])];
-        ps.has_refs = bool(d.get('has_refs', False));
-        ps.elements = [
-            ElementSummary.from_dict(e)
-            for e in d.get('elements', [])
-            if isinstance(e, dict)
-        ];
-        return ps;
-    }
-}
-
-def summary_to_bytes(ps: PlacementSummary) -> bytes {
-    return json.dumps(ps.to_dict()).encode('utf-8');
-}
-
-def summary_from_bytes(
-    data: bytes, path_mapper: Callable[[str], str] | None = None
-) -> (PlacementSummary | None) {
-    try {
-        parsed = json.loads(data.decode('utf-8'));
-        if not isinstance(parsed, dict) {
-            return None;
-        }
-        summary = PlacementSummary.from_dict(parsed);
-        if summary is not None and path_mapper is not None {
-            summary.mod_path = path_mapper(summary.mod_path);
-            summary.jac_deps = [path_mapper(p) for p in summary.jac_deps];
-            for element in summary.elements {
-                element.import_jac_target = path_mapper(element.import_jac_target);
-                element.import_py_targets = [
-                    path_mapper(p) for p in element.import_py_targets
-                ];
-            }
-        }
-        return summary;
-    } except Exception {
-        return None;
-    }
 }
 
 def element_display_name(stmt: uni.UniNode) -> str {
@@ -208,7 +104,9 @@ def _endpoint_evidence(stmt: uni.UniNode) -> str {
     if exposure == SymbolAccess.PUBLIC {
         return 'pub access';
     }
-    if exposure == SymbolAccess.PROTECTED and getattr(stmt, 'surface_kind', '') {
+    if exposure == SymbolAccess.PROTECTED
+        and isinstance(stmt, (uni.Ability, uni.Archetype))
+        and stmt.surface_kind {
         return 'protect access';
     }
     return '';
@@ -231,11 +129,12 @@ def project_has_server(module: (uni.Module | None)) -> bool {
 }
 
 def _resolve_import_path(nd: (uni.ModulePath | uni.ModuleItem)) -> (str | None) {
-    path: (str | None) = None;
+    path = '';
     try {
-        resolved = nd.resolve_relative_path();
-        if isinstance(resolved, str) {
-            path = resolved;
+        if isinstance(nd, uni.ModulePath) {
+            path = nd.resolve_relative_path();
+        } else {
+            path = nd.resolve_relative_path();
         }
     } except Exception {
         return None;
@@ -773,7 +672,7 @@ def scan_native_blockers(
 }
 
 def summarize_module(
-    module: uni.Module, with_refs: bool = True, prog: any = None
+    module: uni.Module, with_refs: bool = True, prog: (JacProgram | None) = None
 ) -> PlacementSummary {
     ps = PlacementSummary();
     ps.schema = PLACEMENT_SCHEMA;
@@ -784,7 +683,7 @@ def summarize_module(
     (blocker, deps) = scan_native_blockers(module, base_dir);
     ps.native_blocker = blocker;
     if prog is not None and ps.mod_path {
-        pending = native_verdict_notes(prog).get(os.path.realpath(ps.mod_path));
+        pending = prog.analysis.native_verdict_notes.get(os.path.realpath(ps.mod_path));
         if pending is not None {
             ps.native_verdict_code = pending[0];
             ps.native_verdict = pending[1];
@@ -798,9 +697,6 @@ def summarize_module(
     }
     server_anchored = bool(ps.anchors);
     for (idx, stmt) in enumerate(module.body) {
-        if not isinstance(stmt, uni.UniNode) {
-            continue;
-        }
         es = ElementSummary();
         es.index = idx;
         es.kind = type(stmt).__name__;
@@ -843,7 +739,7 @@ def summarize_module(
             for esc in _element_escape_edges(module, stmt) {
                 eidx = index_by_id.get(esc[0]);
                 if eidx is not None {
-                    es.escapes.append([eidx, esc[1]]);
+                    es.escapes.append((eidx, esc[1]));
                 }
             }
         }
@@ -852,58 +748,25 @@ def summarize_module(
     return ps;
 }
 
-def summary_store(prog: any) -> dict[str, any] {
-    store = prog?.analysis.placement_summaries;
-    if store is None {
-        store = {};
-        prog.analysis.placement_summaries = store;
-    }
-    return store;
+def summary_store(prog: JacProgram) -> dict[str, PlacementSummary] {
+    return prog.analysis.placement_summaries;
 }
 
-def native_verdict_notes(prog: any) -> dict[str, tuple[str, str]] {
-    notes = prog?.analysis.native_verdict_notes;
-    if notes is None {
-        notes = {};
-        prog.analysis.native_verdict_notes = notes;
-    }
-    return notes;
-}
-
-def note_native_verdict(prog: any, resolved: str, code: str, detail: str) {
-    native_verdict_notes(prog)[resolved] = (code, detail);
-    store = summary_store(prog);
-    cached = store.get(os.path.abspath(resolved));
-    if isinstance(cached, PlacementSummary) {
+def note_native_verdict(prog: JacProgram, resolved: str, code: str, detail: str) {
+    prog.analysis.native_verdict_notes[resolved] = (code, detail);
+    cached = prog.analysis.placement_summaries.get(os.path.abspath(resolved));
+    if cached is not None {
         cached.native_verdict_code = code;
         cached.native_verdict = detail;
     }
 }
 
-def placement_state(prog: any) -> dict[str, any] {
-    state = prog?.analysis.placement_state;
-    if state is None {
-        state = {};
-        prog.analysis.placement_state = state;
-    }
-    return state;
-}
-
-def record_placement_evidence(prog: any, mod_path: str, index: int, note: str) {
-    state = placement_state(prog);
-    evidence: dict[str, any] = {};
-    cur = state.get('evidence');
-    if isinstance(cur, dict) {
-        evidence = cur;
-    } else {
-        state['evidence'] = evidence;
-    }
+def record_placement_evidence(prog: JacProgram, mod_path: str, index: int, note: str) {
+    evidence = prog.analysis.placement_evidence;
     key = f"{os.path.abspath(mod_path)}::{index}";
-    notes: list[str] = [];
-    cur_notes = evidence.get(key);
-    if isinstance(cur_notes, list) {
-        notes = cur_notes;
-    } else {
+    notes = evidence.get(key);
+    if notes is None {
+        notes = [];
         evidence[key] = notes;
     }
     if note not in notes {
@@ -911,110 +774,19 @@ def record_placement_evidence(prog: any, mod_path: str, index: int, note: str) {
     }
 }
 
-def collect_placement_rows(prog: any) -> dict[str, dict[str, any]] {
-    rows_by_module: dict[str, dict[str, any]] = {};
-    hub = prog?.mod?.hub;
-    if not isinstance(hub, dict) or not hub {
-        return rows_by_module;
-    }
-    state = placement_state(prog);
-    evidence: dict[str, any] = {};
-    cur_ev = state.get('evidence');
-    if isinstance(cur_ev, dict) {
-        evidence = cur_ev;
-    }
-    for (path, mod) in list(hub.items()) {
-        if not isinstance(mod, uni.Module) {
-            continue;
-        }
-        mod_path = mod.loc.mod_path or path;
-        if not str(mod_path).endswith('.jac') {
-            continue;
-        }
-        ps = get_module_summary(mod, prog);
-        mod_rows: list[dict[str, any]] = [];
-        for (idx, stmt) in enumerate(mod.body) {
-            if not isinstance(stmt, uni.ContextAwareNode) {
-                continue;
-            }
-            es = ps.elements[idx] if idx < len(ps.elements) else None;
-            notes: list[str] = [];
-            if es is not None {
-                if es.pinned {
-                    notes.append(f"pinned '{es.pinned}' ([placement.pins])");
-                }
-                for req in es.reqs {
-                    if len(req) >= 2 {
-                        notes.append(f"{req[0]}: {req[1]}");
-                    }
-                }
-            }
-            key = f"{os.path.abspath(str(mod_path))}::{idx}";
-            raw_extras = evidence.get(key);
-            if isinstance(raw_extras, list) {
-                for extra in raw_extras {
-                    if isinstance(extra, str) and extra not in notes {
-                        notes.append(extra);
-                    }
-                }
-            }
-            rname = element_display_name(stmt);
-            if idx < len(ps.elements) {
-                rname = ps.elements[idx].name;
-            }
-            mod_rows.append(
-                {
-                    'name': rname,
-                    'kind': type(stmt).__name__,
-                    'space': stmt.code_context.value,
-                    'dual': stmt.codespace_dual,
-                    'evidence': notes
-                }
-            );
-        }
-        crossings = 0;
-        for stmt in mod.body {
-            if not (
-                isinstance(stmt, uni.Import) and stmt.code_context == CodeContext.CLIENT
-            ) {
-                continue;
-            }
-            try {
-                import from jaclang.compiler.symbol_utils {
-                    ClientImportVerdict,
-                    classify_client_import_item,
-                    is_client_boundary_import,
-                    resolve_import_source_module
-                }
-                if is_client_boundary_import(stmt) {
-                    src = resolve_import_source_module(prog, stmt);
-                    if src is not None {
-                        for item in stmt.items {
-                            verdict = classify_client_import_item(src, item);
-                            if verdict == ClientImportVerdict.BRIDGED {
-                                crossings += 1;
-                            }
-                        }
-                    }
-                }
-            } except Exception {}
-        }
-        rows_by_module[os.path.abspath(str(mod_path))] = {
-            'decided': mod.decided_codespace or '',
-            'rows': mod_rows,
-            'crossings': crossings
-        };
-    }
-    return rows_by_module;
+def placement_evidence_for(prog: JacProgram, mod_path: str, index: int) -> list[str] {
+    return prog.analysis.placement_evidence.get(
+        f"{os.path.abspath(mod_path)}::{index}", []
+    );
 }
 
 def get_module_summary(
-    module: uni.Module, prog: any, with_refs: bool = True
+    module: uni.Module, prog: JacProgram, with_refs: bool = True
 ) -> PlacementSummary {
-    store = summary_store(prog);
+    store = prog.analysis.placement_summaries;
     key = os.path.abspath(module.loc.mod_path) if module.loc.mod_path else '';
     cached = store.get(key);
-    if (isinstance(cached, PlacementSummary) and (cached.has_refs or not with_refs)) {
+    if cached is not None and (cached.has_refs or not with_refs) {
         return cached;
     }
     ps = summarize_module(module, with_refs=with_refs, prog=prog);

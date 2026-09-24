@@ -21,7 +21,7 @@ import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.import_wiring_pass { ImportWiringPass }
 
 import from jaclang.compiler.placement.placement_solver { PlacementApplyPass }
-import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
+import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.compiler.driver.pipeline_types {
     UtilityProduct,
     AnalysisFact,
@@ -137,7 +137,6 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     }
     path = os.path.realpath(module.loc.mod_path);
     program.hub.client_artifacts.pop(path, None);
-    import from jaclang.compiler.frontend.host { active_host }
     active_host().discard_module_artifact(path, program);
 }
 
@@ -260,8 +259,8 @@ def require_product(
             }
         }
         if product == CompilationProduct.INTERFACE {
-            if not program.iface_registry().prepare_interface(
-                os.path.realpath(module.loc.mod_path), module
+            if not active_host().prepare_interface(
+                program, os.path.realpath(module.loc.mod_path), module
             ) {
                 task.state = TaskState.FAILED;
                 return False;
@@ -296,10 +295,8 @@ def get_symtab_ir_sched -> list[type] {
     if not schedule_tier_reason() {
         _tok = _ir_sched_loading.set(True);
         try {
-            _import_all(SYMTAB_SCHED_DEPS);
-        } except ImportError as e {
-            fail_loud_on_compiler_source(e);
-        } finally {
+            active_host().load_modules(list(SYMTAB_SCHED_DEPS));
+        } except ImportError {} finally {
             _ir_sched_loading.reset(_tok);
         }
     }
@@ -317,9 +314,12 @@ def get_symtab_ir_sched -> list[type] {
     );
 }
 
-glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', `default=False),
-     _codegen_sched_loading = ContextVar('jac_codegen_sched_loading', `default=False),
-     _analysis_sched_loading = ContextVar('jac_analysis_sched_loading', `default=False);
+glob _ir_sched_loading: ContextVar[bool] = ContextVar(
+         'jac_ir_sched_loading', `default=False
+     ),
+     _analysis_sched_loading: ContextVar[bool] = ContextVar(
+         'jac_analysis_sched_loading', `default=False
+     );
 
 glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
      IR_SCHED_DEPS: tuple[str, ...] = (
@@ -367,29 +367,11 @@ glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.tools.jac_auto_lint_pass'
      );
 
-def module_in_flight(names: tuple[str, ...]) -> str {
-    import sys;
-    for name in names {
-        spec = sys.modules.get(name)?.__spec__;
-        if spec is not None and getattr(spec, '_initializing', False) {
-            return name;
-        }
-    }
-    return '';
-}
-
-def _import_all(names: tuple[str, ...]) {
-    import importlib;
-    for name in names {
-        importlib.import_module(name);
-    }
-}
-
 def schedule_tier_reason -> str {
     if _ir_sched_loading.get() {
         return 'the ir-gen schedule was still loading';
     }
-    dep = module_in_flight(IR_SCHED_DEPS);
+    dep = active_host().module_in_flight(list(IR_SCHED_DEPS));
     if dep {
         return f"'{dep}', a dependency of the ir-gen schedule, was mid-import";
     }
@@ -460,7 +442,7 @@ def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[t
     }
     _tok = _ir_sched_loading.set(True);
     try {
-        _import_all(IR_SCHED_DEPS);
+        active_host().load_modules(list(IR_SCHED_DEPS));
         import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.sem_def_match_pass { SemDefMatchPass }
         import from jaclang.compiler.passes.jsx_intrinsic_guard_pass {
@@ -490,8 +472,7 @@ def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[t
         }
         passes.append(ComptimeResolvePass);
         return validate_schedule(passes, origin='ir-gen schedule');
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
+    } except ImportError {
         if is_internal {
             return get_bootstrap_ir_sched();
         }
@@ -509,8 +490,7 @@ def typeshed_stubs_available -> bool {
 }
 
 def require_typeshed_stubs -> None {
-    import from jaclang.jac0core.stubcat_hook { active }
-    if active() is not None or typeshed_stubs_available() {
+    if active_host().has_active_stub_catalog() or typeshed_stubs_available() {
         return;
     }
     raise TypeshedUnavailableError(
@@ -523,13 +503,14 @@ def require_typeshed_stubs -> None {
 }
 
 def get_analysis_sched -> list[type] {
-    if _analysis_sched_loading.get() or module_in_flight(ANALYSIS_SCHED_DEPS) {
+    if _analysis_sched_loading.get()
+        or active_host().module_in_flight(list(ANALYSIS_SCHED_DEPS)) {
         return [];
     }
     require_typeshed_stubs();
     _tok = _analysis_sched_loading.set(True);
     try {
-        _import_all(ANALYSIS_SCHED_DEPS);
+        active_host().load_modules(list(ANALYSIS_SCHED_DEPS));
         import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
         import from jaclang.compiler.passes.static_analysis_pass { StaticAnalysisPass }
         import from jaclang.compiler.passes.access_check_pass { AccessCheckPass }
@@ -560,9 +541,6 @@ def get_analysis_sched -> list[type] {
             preprovided=prereq_provides(CompilationProduct.ANALYSIS),
             origin='analysis schedule'
         );
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        raise;
     } finally {
         _analysis_sched_loading.reset(_tok);
     }

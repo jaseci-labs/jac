@@ -1,5 +1,4 @@
 import copy;
-import from pathlib { Path }
 import type from jaclang.project.workspace_model { AppSpec }
 import hashlib;
 import os;
@@ -164,13 +163,11 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
     if not context_root.context_key {
         selected = context_root;
     } else {
+        import from jaclang.compiler.frontend.host { active_host }
         selected = JacProgram();
         selected.context_root = context_root;
-        selected._compiler = context_root._get_compiler();
         selected.options = options;
-        if context_root._iface is not None and context_root._iface.verifying {
-            selected.iface_registry().verifying = True;
-        }
+        active_host().bind_context_program(context_root, selected);
     }
     selected.options = options;
     selected.context_key = identity;

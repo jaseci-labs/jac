@@ -135,7 +135,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 Parser as _SyntaxParser
             }
             import from jaclang.compiler.frontend.unitree { Source as _Src }
-            import from jaclang.project.source { read_file_with_encoding as _read_src }
+            import from jaclang.project.textio { read_file_with_encoding as _read_src }
             _src_txt = _read_src(file_path);
             (_had, _pd, _ld) = parse_diags(_src_txt, file_path);
             if _pd or _ld {
@@ -187,7 +187,9 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             }
         }
         if opts.get("placements") {
-            import from jaclang.compiler.placement.placement { collect_placement_rows }
+            import from jaclang.compiler.placement.placement_export {
+                collect_placement_rows
+            }
             result['placements'] = collect_placement_rows(prog);
         }
         if opts.get("native_coverage") {
@@ -742,7 +744,7 @@ def _format_single_file_worker(
 ) -> dict[str, any] {
     import os;
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.project.textio { read_file_with_encoding }
     path_obj = Path(file_path);
 
     effective_logical = logical_path or file_path;
@@ -1978,7 +1980,9 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
         return 0;
     }
     if topic == "placement" {
-        import from jaclang.compiler.placement.placement { collect_placement_rows }
+        import from jaclang.compiler.placement.placement_export {
+            collect_placement_rows
+        }
         import from jaclang.cli.check_report { print_placement_report }
         prog.compile(file_path=path);
         for err in prog.errors_had {

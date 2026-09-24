@@ -167,7 +167,7 @@ obj BundleSourceFilter {
 
 
 def source_filter_for(base: Path) -> BundleSourceFilter {
-    import from jaclang.project.source { read_jacignore_patterns }
+    import from jaclang.project.textio { read_jacignore_patterns }
 
     return BundleSourceFilter(ignore_patterns=read_jacignore_patterns(str(base)));
 }

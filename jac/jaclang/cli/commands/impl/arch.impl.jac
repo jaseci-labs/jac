@@ -3,11 +3,8 @@ import os;
 import from enum { StrEnum }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { get_config }
-import from jaclang.project.source {
-    normalize_exclude_patterns,
-    path_matches_exclude,
-    read_file_with_encoding
-}
+import from jaclang.project.source { normalize_exclude_patterns, path_matches_exclude }
+import from jaclang.project.textio { read_file_with_encoding }
 import from jaclang.compiler.driver.wiring {
     ARCH_FILE_NAME,
     WiringSpec,

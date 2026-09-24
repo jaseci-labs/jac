@@ -615,9 +615,9 @@ obj IfaceRegistry(CatalogResolver) {
             return;
         }
         try {
-            import from jaclang.compiler.placement.placement {
-                summary_from_bytes,
-                summary_store
+            import from jaclang.compiler.placement.placement { summary_store }
+            import from jaclang.compiler.placement.placement_export {
+                summary_from_bytes
             }
             restored = summary_from_bytes(
                 ent.placement,
@@ -985,10 +985,8 @@ obj IfaceRegistry(CatalogResolver) {
         }
         sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
         try {
-            import from jaclang.compiler.placement.placement {
-                get_module_summary,
-                summary_to_bytes
-            }
+            import from jaclang.compiler.placement.placement { get_module_summary }
+            import from jaclang.compiler.placement.placement_export { summary_to_bytes }
             sections[SEC_PLACEMENT] = summary_to_bytes(
                 get_module_summary(mod, self.prog)
             );

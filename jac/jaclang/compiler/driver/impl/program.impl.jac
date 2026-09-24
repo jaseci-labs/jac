@@ -50,7 +50,8 @@ impl JacProgram.install_module(
     if displaced is None {
         return;
     }
-    work = self.analysis.placement_state.get('work');
+    self.analysis.forget_module(displaced);
+    work = self.analysis.placement_work;
     if work is not None {
         work.forget(displaced);
     }
@@ -84,9 +85,9 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
     }
     old_module = self.mod.hub.get(resolved_path);
     if old_module is not None {
-        self.analysis.drop_tasks(id(old_module));
+        self.analysis.forget_module(old_module);
     }
-    work = self.analysis.placement_state.get('work');
+    work = self.analysis.placement_work;
     if work is not None {
         work.forget_path(resolved_path);
     }
@@ -104,12 +105,8 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
         }
     }
 
-    if self._natives is not None {
-        self._natives.forget(resolved_path);
-    }
-    if self._iface is not None {
-        self._iface.forget(resolved_path);
-    }
+    import from jaclang.compiler.frontend.host { active_host }
+    active_host().forget_program_products(self, resolved_path);
     self.deps.forget(resolved_path);
 }
 
@@ -153,9 +150,9 @@ impl JacProgram.load_dependency_module(
     use_str: (str | None) = None,
     need_tree: bool = False
 ) -> uni.Module {
-    import from pathlib { Path }
-
-    resolved_path = str(Path(source_path).resolve());
+    import from jaclang.compiler.types.stubcat.reader { CatModule }
+    resolved_path = os.path.realpath(source_path);
+    import from jaclang.compiler.frontend.host { active_host }
     if resolved_path.endswith('.pyi') {
         catalog = self.stub_catalog();
         if catalog is not None {
@@ -177,15 +174,14 @@ impl JacProgram.load_dependency_module(
     }
     mod: uni.Module;
     if resolved_path in self.mod.hub
-        and not (need_tree and hasattr(self.mod.hub[resolved_path], "cat_kids")) {
+        and not (need_tree and isinstance(self.mod.hub[resolved_path], CatModule)) {
         mod = self.mod.hub[resolved_path];
     } elif resolved_path in target_hub
-        and not (need_tree and hasattr(target_hub[resolved_path], "cat_kids")) {
+        and not (need_tree and isinstance(target_hub[resolved_path], CatModule)) {
         mod = target_hub[resolved_path];
     } else {
         if resolved_path.endswith('.pyi') {
             import from jaclang.compiler.driver.pass_driver { run_pass }
-            import from jaclang.compiler.frontend.host { active_host }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
             src = use_str or active_host().read_source(source_path);
             (mod, _stub_errors) = active_host().parse_python(src, source_path, self);
@@ -209,7 +205,7 @@ impl JacProgram.load_dependency_module(
                 self.options = saved_options;
             }
         }
-        if not hasattr(mod, "cat_kids") {
+        if not isinstance(mod, CatModule) {
             target_program.install_module(resolved_path, mod);
         }
     }
@@ -223,15 +219,12 @@ impl JacProgram.load_dependency_module(
             }
         }
     }
-    try {
-        self.iface_registry().note_dep(resolved_path);
-    } except Exception {}
+    active_host().note_program_dependency(self, resolved_path);
     return mod;
 }
 
 impl JacProgram.hub_key(path: str) -> str {
-    import from pathlib { Path }
-    return str(Path(path).resolve());
+    return os.path.realpath(path);
 }
 
 impl JacProgram.has_failed_parse(self: JacProgram, path: str) -> bool {
@@ -281,10 +274,11 @@ impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
 }
 
 impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> None {
-    self.analysis.placement_state.pop('work', None);
+    self.analysis.placement_work = None;
     self.type_evaluator = None;
     if clear_hub {
         self.mod.hub.clear();
+        self.analysis.reset_module_state();
         return;
     }
     self.scrub_hub_types();
@@ -341,13 +335,9 @@ impl JacProgram.release_compile_closure(
     self.hub.reset(retain_stubs=retain_stubs);
     self.mod = self.hub.mod;
     self.deps.clear();
-    if self._natives is not None and self._natives.session is None {
-        if retain_stubs {
-            self._natives.release_products();
-        } else {
-            self._natives.clear();
-        }
-    }
+    import from jaclang.compiler.frontend.host { active_host }
+    host = active_host();
+    host.release_program_products(self, retain_stubs);
     for gen in self.hub.artifacts.values() {
         gen.native_object = None;
         gen.native_bitcode = None;
@@ -364,18 +354,9 @@ impl JacProgram.release_compile_closure(
     self._stub_trees_served = False;
     self.diags.clear();
     self.scratch.clear();
-    self.analysis.analyses_run.clear();
-    self.analysis.placement_state.pop('work', None);
-    self.analysis.early_passes.clear();
-    self.analysis.product_tasks.clear();
-    self.analysis.completed_passes.clear();
-    self.analysis.task_owners.clear();
-    if self._iface is not None {
-        self._iface.on_closure_release();
-    }
-    if collect and unit_collect_budget.due() {
-        import gc;
-        gc.collect();
+    self.analysis.reset_module_state();
+    if collect {
+        host.collect_released_memory();
     }
 }
 
@@ -401,24 +382,13 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
 
 impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {
     """Enumerate loaded runtime metadata; source analysis uses only its own hub.""";
+    import from jaclang.compiler.frontend.host { active_host }
     hubs: list[dict[str, uni.Module]] = [self.mod.hub];
-    internal = self._get_compiler().selfhost.peek_program();
+    internal = active_host().internal_program(self);
     if internal is not None and internal is not self {
         hubs.append(internal.mod.hub);
     }
     return hubs;
-}
-
-impl JacProgram.get_bytecode(
-    self: JacProgram, full_target: str
-) -> (types.CodeType | None) {
-    return self._get_compiler().get_bytecode(full_target, self);
-}
-
-impl JacProgram.get_client_artifact(
-    self: JacProgram, full_target: str
-) -> (ClientArtifact | None) {
-    return self._get_compiler().get_client_artifact(full_target, self);
 }
 
 impl JacProgram.parse_str(
@@ -450,9 +420,8 @@ impl JacProgram.compile(
             symtab_ir_only=symtab_ir_only, no_cgen=no_cgen, cancel_token=cancel_token
         );
     }
-    mod = self._get_compiler().compile(
-        file_path=file_path, target_program=self, use_str=use_str, options=options
-    );
+    import from jaclang.compiler.frontend.host { active_host }
+    mod = active_host().compile_module(self, file_path, use_str, options);
     if self.deps.tracking {
         try {
             self.deps.record_module(mod);
@@ -464,7 +433,8 @@ impl JacProgram.compile(
 impl JacProgram.build(
     self: JacProgram, file_path: str, use_str: (str | None) = None
 ) -> uni.Module {
-    return self._get_compiler().build(file_path, self, use_str);
+    import from jaclang.compiler.frontend.host { active_host }
+    return active_host().build_module(self, file_path, use_str);
 }
 
 impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {

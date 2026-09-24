@@ -166,7 +166,9 @@ test "helpers module scope binds no Python modules" {
 # are type errors, and a type error in a native module refuses the module --
 # there is no callable to demote a signature to. Every one of them is fixed
 # or demotable now, so the module reaches the backend and the constructs that
-# genuinely cannot lower become seams instead of a whole-module refusal.
+# genuinely cannot lower become seams instead of a whole-module refusal. The
+# encoding-probing file reader now lives in `project.textio`, the host-side
+# text I/O module, so none of the helpers here has to demote at all.
 test "source helpers lower when a native unit reaches them" {
     import jaclang;
     import from jaclang.compiler.driver.na_coverage {
@@ -197,15 +199,12 @@ test "source helpers lower when a native unit reaches them" {
     rec = coverage.get(os.path.realpath(helpers_path));
     assert rec is not None , "the coverage recorded nothing for project/source.jac";
     seams = [str(s) for s in (rec["seams"] or [])];
-    reader = [
+    own_seams = [
         s
         for s in seams
-        if s.startswith("read_file_with_encoding: ")
+        if os.path.join("project", "source.jac") in s
     ];
-    assert len(reader) == 1 and "open" in reader[0] , (
-        f"`open(path, encoding=...)` has to demote its own function and name "
-        f"the construct it refused, got: {seams}"
-    );
+    assert not own_seams , f"project/source.jac demoted its own helpers: {own_seams}";
 }
 
 test "helpers no longer exports the moved symbols" {

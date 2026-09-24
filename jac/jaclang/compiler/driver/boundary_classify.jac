@@ -11,6 +11,7 @@ import from jaclang.compiler.placement.placement_pins {
     classify_bare_import
 }
 import from jaclang.compiler.frontend.host { active_host }
+import type from jaclang.compiler.frontend.codeinfo { InteropManifest }
 import type from jaclang.project.workspace_model { AppSpec }
 
 def _coerce_module(module: uni.Module, context: CodeContext) {
@@ -39,9 +40,9 @@ def _stamp_context_element(elem: uni.UniNode, context: CodeContext) {
     }
 }
 
-def hub_module_for_path(path: str, prog: object) -> (uni.Module | None) {
-    hub: (dict[str, uni.Module] | None) = prog?.mod?.hub;
-    if hub is None or not hub {
+def hub_module_for_path(path: str, prog: JacProgram) -> (uni.Module | None) {
+    hub = prog.mod.hub;
+    if not hub {
         return None;
     }
     if path in hub {
@@ -160,13 +161,13 @@ def module_own_native_anchor(module: (uni.Module | None)) -> bool {
     return False;
 }
 
-def module_demoted_native(path: str, prog: object = None) -> bool {
+def module_demoted_native(path: str, prog: (JacProgram | None) = None) -> bool {
     import from jaclang.compiler.placement.placement_pins { module_native_demoted }
     return module_native_demoted(os.path.realpath(path), prog);
 }
 
 
-def plain_native_import_target(nd: uni.Import, prog: object) -> (str | None) {
+def plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None) {
     import from jaclang.compiler.placement.placement_pins {
         module_native_demoted,
         effective_module_pin
@@ -217,7 +218,9 @@ def plain_native_import_target(nd: uni.Import, prog: object) -> (str | None) {
     return None;
 }
 
-def import_declares_native_target(nd: uni.Import, prog: any = None) -> bool {
+def import_declares_native_target(
+    nd: uni.Import, prog: (JacProgram | None) = None
+) -> bool {
     import from jaclang.compiler.placement.placement_pins { effective_module_pin }
     if nd.from_loc is None {
         return False;
@@ -233,7 +236,7 @@ def import_declares_native_target(nd: uni.Import, prog: any = None) -> bool {
     return effective_module_pin(resolved, prog) == 'native';
 }
 
-def native_only_import_target(nd: uni.Import, prog: object) -> (str | None) {
+def native_only_import_target(nd: uni.Import, prog: JacProgram) -> (str | None) {
     import from jaclang.compiler.placement.placement_pins { effective_module_pin }
     resolved = plain_native_import_target(nd, prog);
     if resolved is None {
@@ -249,7 +252,7 @@ def native_only_import_target(nd: uni.Import, prog: object) -> (str | None) {
     return None;
 }
 
-def is_client_native_edge_import(nd: uni.Import, prog: object) -> bool {
+def is_client_native_edge_import(nd: uni.Import, prog: JacProgram) -> bool {
     if nd.code_context == CodeContext.CLIENT {} elif nd.code_context
         == CodeContext.SERVER
         and module_has_client_top(nd.find_parent_of_type(uni.Module)) {} else {
@@ -372,7 +375,7 @@ def is_service_bridge_import(nd: uni.Import) -> bool {
 }
 
 def classify_cross_app_import(
-    nd: uni.Import, manifest: (object | None)
+    nd: uni.Import, manifest: (InteropManifest | None)
 ) -> CrossAppKind {
     kind = CrossAppKind.LOCAL;
     if bridgeable_import_target(nd) is not None {
@@ -419,6 +422,19 @@ def symbol_linked_source_module(nd: uni.Import) -> (uni.Module | None) {
     return None;
 }
 
+def _declared_name(stmt: uni.ContextAwareNode) -> (str | None) {
+    if isinstance(stmt, uni.Ability) {
+        return stmt.name_ref.sym_name if stmt.name_ref is not None else None;
+    }
+    if isinstance(stmt, (uni.Archetype, uni.Enum, uni.TypeAlias, uni.Test)) {
+        return stmt.name.value;
+    }
+    if isinstance(stmt, uni.ModuleCode) and stmt.name is not None {
+        return stmt.name.value;
+    }
+    return None;
+}
+
 def _import_item_declaration(
     source_mod: uni.Module, item: uni.ModuleItem
 ) -> (uni.ContextAwareNode | None) {
@@ -427,11 +443,7 @@ def _import_item_declaration(
     }
     wanted = item.name.sym_name;
     for stmt in source_mod.body {
-        if not isinstance(stmt, uni.ContextAwareNode) {
-            continue;
-        }
-        owner_name = stmt?.name_ref?.sym_name or stmt?.name?.value;
-        if owner_name == wanted {
+        if isinstance(stmt, uni.ContextAwareNode) and _declared_name(stmt) == wanted {
             return stmt;
         }
     }
@@ -450,7 +462,7 @@ def _import_item_declaration(
 }
 
 def classify_client_import_item(
-    source_mod: uni.Module, item: object
+    source_mod: uni.Module, item: uni.UniNode
 ) -> ClientImportVerdict {
     if not isinstance(item, uni.ModuleItem) {
         return ClientImportVerdict.UNKNOWN;
@@ -476,15 +488,17 @@ def classify_client_import_item(
     return ClientImportVerdict.DEAD;
 }
 
-def import_binds_client_native(nd: uni.Import, manifest: object) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { InteropContext, InteropManifest }
+def import_binds_client_native(
+    nd: uni.Import, manifest: (InteropManifest | None)
+) -> bool {
+    import from jaclang.compiler.frontend.codeinfo { InteropContext }
     if nd.from_loc is None or not nd.items {
         return False;
     }
     if nd.is_service_import or nd.is_typed or nd.is_virtual_jac {
         return False;
     }
-    if not isinstance(manifest, InteropManifest) or not manifest.bindings {
+    if manifest is None or not manifest.bindings {
         return False;
     }
     try {
@@ -496,9 +510,7 @@ def import_binds_client_native(nd: uni.Import, manifest: object) -> bool {
         if not isinstance(item, uni.ModuleItem) {
             continue;
         }
-        local_name = item.alias.sym_name
-            if item.alias is not None
-            else getattr(item.name, 'value', str(item.name));
+        local_name = item.alias.sym_name if item.alias is not None else item.name.value;
         binding = manifest.bindings.get(local_name);
         if (
             binding is not None

@@ -9,7 +9,7 @@ impl py2jac(filename: str) -> int {
     import from jaclang.compiler.driver.pipeline_runner { run_utility }
     import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.project.textio { read_file_with_encoding }
     if filename.endswith('.py') {
         file_source = read_file_with_encoding(filename);
         converted = run_utility(

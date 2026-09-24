@@ -3,7 +3,13 @@ import os;
 import sys;
 import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
-import from jaclang.compiler.passes.context { Alert, CancelToken, DiagnosticPolicy }
+import from jaclang.compiler.passes.context {
+    Alert,
+    CancelToken,
+    CompilerPass,
+    DiagnosticPolicy
+}
+import from jaclang.compiler.frontend.unitree { Module, Source }
 import from jaclang.compiler.frontend.host { CheckSettings, active_host }
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -38,13 +44,12 @@ def build_diagnostic_policy(prog: JacProgram) -> DiagnosticPolicy {
 }
 
 def _alert_in_internal_stub(loc_path: str) -> bool {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
     if not loc_path.endswith('.pyi') {
         return False;
     }
     _p = os.path.realpath(loc_path);
-    _pkg = os.path.realpath(
-        os.path.dirname(os.path.dirname(os.path.abspath(str(__file__))))
-    );
+    _pkg = os.path.realpath(os.path.join(jaclang_pkg_root(), 'compiler'));
     if _p.startswith(_pkg + os.sep) {
         return True;
     }
@@ -81,24 +86,24 @@ def deliver_alerts(
     }
 }
 
-def run_pass(
-    pass_cls: type,
-    ir_in: any,
+def run_pass[W: CompilerPass](
+    pass_cls: type[W],
+    ir_in: Module,
     prog: JacProgram,
     cancel_token: (CancelToken | None) = None,
     policy: (DiagnosticPolicy | None) = None
-) -> any {
+) -> W {
     pol = policy if policy is not None else build_diagnostic_policy(prog);
     errors: list[Alert] = [];
     warnings: list[Alert] = [];
-    inst: any = None;
+    inst: (W | None) = None;
     completed = prog.analysis.take_early(ir_in, pass_cls.__name__);
     if completed is not None {
         for alert in completed.errors_had + completed.warnings_had {
             alert.from_pass = pass_cls;
         }
         if completed.errors_had or completed.warnings_had {
-            sources = {ir_in.source.file_path: ir_in.source};
+            sources: dict[str, Source] = {ir_in.source.file_path: ir_in.source};
             for nd in ir_in._in_mod_nodes {
                 sources[nd.loc.mod_path] = nd.loc.orig_src;
             }
@@ -132,6 +137,7 @@ def run_pass(
             warnings_had=warnings,
             completed=completed
         );
+        return inst;
     } finally {
         eff = inst.ctx.policy
             if (inst is not None and inst.ctx.policy is not None)
@@ -148,7 +154,6 @@ def run_pass(
             }
         } except Exception {}
     }
-    return inst;
 }
 
 

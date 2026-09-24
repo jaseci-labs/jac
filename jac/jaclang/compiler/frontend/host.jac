@@ -9,6 +9,7 @@ import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import type from jaclang.compiler.driver.compile_options { CompileOptions }
 
 obj NativeVerdict {
     has demoted: bool = False,
@@ -235,6 +236,59 @@ obj HostServices {
 
     def native_pipeline_available -> tuple[bool, str] {
         return (False, "native pipeline unavailable: no compiler host is installed");
+    }
+
+    def compile_module(
+        program: JacProgram,
+        file_path: str,
+        use_str: (str | None),
+        options: CompileOptions
+    ) -> Module {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def build_module(
+        program: JacProgram, file_path: str, use_str: (str | None)
+    ) -> Module {
+        raise RuntimeError("no compiler host is installed");
+    }
+
+    def internal_program(program: JacProgram) -> (JacProgram | None) {
+        return None;
+    }
+
+    def bind_context_program(context_root: JacProgram, program: JacProgram) {}
+    def note_program_dependency(program: JacProgram, resolved_path: str) {}
+    def forget_program_products(program: JacProgram, resolved_path: str) {}
+    def release_program_products(program: JacProgram, retain_stubs: bool) {}
+    def prepare_interface(program: JacProgram, path: str, module: Module) -> bool {
+        return False;
+    }
+
+    def collect_released_memory {}
+    def load_modules(names: list[str]) {}
+    def module_in_flight(names: list[str]) -> str {
+        return "";
+    }
+
+    def import_in_flight(path: str) -> bool {
+        return False;
+    }
+
+    def has_active_stub_catalog -> bool {
+        return False;
+    }
+
+    def is_native_only_source(rel: str) -> bool {
+        return False;
+    }
+
+    def is_native_lowered_source(rel: str) -> bool {
+        return False;
+    }
+
+    def default_target_triple -> str {
+        return "";
     }
 }
 

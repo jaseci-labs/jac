@@ -24,17 +24,17 @@ test "a cached partial helper is regenerated when a new client root pulls anothe
         second = os.path.join(tmp, "second.jac");
         cold = JacProgram();
         cold.compile(first);
-        partial = cold.get_client_artifact(identity);
+        partial = cold._get_compiler().get_client_artifact(identity, cold);
         assert partial is not None;
         assert "function avatar_of(" in partial.js;
         assert "function name_of(" not in partial.js;
         assert not cold.errors_had , [str(e) for e in cold.errors_had];
         warm = JacProgram();
-        assert warm.get_client_artifact(first) is not None;
-        caller = warm.get_client_artifact(second);
+        assert warm._get_compiler().get_client_artifact(first, warm) is not None;
+        caller = warm._get_compiler().get_client_artifact(second, warm);
         assert caller is not None;
         assert 'import { name_of } from "./identity.js"' in caller.js;
-        complete = warm.get_client_artifact(identity);
+        complete = warm._get_compiler().get_client_artifact(identity, warm);
         assert complete is not None;
         assert "function name_of(" in complete.js , (
             "a source-fresh artifact can still be placement-stale: " + complete.js

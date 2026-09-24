@@ -5,7 +5,6 @@ import from jaclang.compiler.driver.pipeline_types { AnalysisFact, CompilationPh
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.source_failures { module_import_in_flight }
 import from jaclang.compiler.frontend.host { active_host }
 
 obj ModuleAnalysis {
@@ -114,7 +113,7 @@ obj ModuleAnalysis {
             and (
                 self.native
                 or not self.program.internal
-                or not module_import_in_flight(self.path)
+                or not host.import_in_flight(self.path)
             );
 
         if _analyze

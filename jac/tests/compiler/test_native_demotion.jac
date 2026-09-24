@@ -38,7 +38,8 @@ import from jaclang.compiler.driver.jir {
     write_module_cache
 }
 import from jaclang.compiler.driver.nativecache { read_native_verdict }
-import from jaclang.compiler.placement.placement { PlacementSummary, summary_to_bytes }
+import from jaclang.compiler.placement.placement { PlacementSummary }
+import from jaclang.compiler.placement.placement_export { summary_to_bytes }
 import from jaclang.compiler.placement.placement_pins {
     effective_module_pin,
     effective_pin_for,

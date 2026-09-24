@@ -29,11 +29,3 @@ impl WorkspaceSpec.serving_apps -> list[AppSpec] {
         if a.has_server
     ];
 }
-
-impl WorkspaceSpec.module_dot_path(abs_path: str) -> str {
-    if not abs_path {
-        return '';
-    }
-    import from jaclang.project.placement { module_dot_path }
-    return module_dot_path(abs_path, self.project_root);
-}

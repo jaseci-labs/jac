@@ -121,7 +121,7 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             assert reloaded._materialize(cached).loc.mod_path == path , (
                 "persisting a reused interface lost its relocation metadata"
             );
-            code = program.get_bytecode(path);
+            code = program._get_compiler().get_bytecode(path, program);
             assert code is not None and code.co_filename == path;
             import from jaclang.compiler.placement.placement { summary_store }
             assert summary_store(program)[path].mod_path == path;

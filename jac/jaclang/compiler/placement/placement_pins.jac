@@ -1,10 +1,51 @@
 import from jaclang.compiler.driver.compilation_context { context_app }
+import fnmatch;
 import os;
-import from jaclang.compiler.frontend.host { active_host }
-import type from jaclang.compiler.frontend.host { NativeVerdict }
+import from jaclang.compiler.frontend.host { NativeVerdict, active_host }
+import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.project.app_kinds { kind_codespace }
 
-import from jaclang.project.placement { validate_pins, match_pin }
+glob PIN_SPACES: tuple[str, ...] = ('server', 'client', 'native');
+
+def validate_pins(pins: dict[str, str], toml_path: str) -> dict[str, str] {
+    for (key, space) in pins.items() {
+        if space not in PIN_SPACES {
+            raise ValueError(
+                f"[placement.pins] in {toml_path}: '{key}' pins to '{space}', "
+                    + f"expected one of {list(PIN_SPACES)}."
+            );
+        }
+    }
+    return pins;
+}
+
+def module_dot_path(source_path: str, root_dir: str) -> str {
+    path = os.path.realpath(source_path);
+    relative = os.path.relpath(os.path.dirname(path), os.path.realpath(root_dir));
+    parent = relative.replace(os.sep, '.')
+        if relative != '.' and not relative.startswith('..')
+        else '';
+    stem = active_host().path_facts(path).module_stem;
+    if parent and stem {
+        return parent + '.' + stem;
+    }
+    return parent or stem;
+}
+
+def match_pin(
+    source_path: str, root_dir: str, pins: dict[str, str], element_name: str = ''
+) -> str {
+    module = module_dot_path(source_path, root_dir);
+    for (pattern, space) in pins.items() {
+        if element_name and fnmatch.fnmatchcase(f'{module}.{element_name}', pattern) {
+            return space;
+        }
+        if fnmatch.fnmatchcase(module, pattern) {
+            return space;
+        }
+    }
+    return '';
+}
 
 def config_pins_for(source_path: str) -> dict[str, str] {
     if not source_path {
@@ -41,22 +82,26 @@ def config_module_pin(source_path: str) -> str {
 }
 
 
-def module_native_demoted(source_path: str, prog: any = None) -> bool {
+def module_native_demoted(source_path: str, prog: (JacProgram | None) = None) -> bool {
     verdict = _native_verdict(source_path, prog);
     return verdict is not None and verdict.demoted;
 }
 
-def native_demotion_code(source_path: str, prog: any = None) -> str {
+def native_demotion_code(source_path: str, prog: (JacProgram | None) = None) -> str {
     verdict = _native_verdict(source_path, prog);
     return verdict.code if verdict is not None else "";
 }
 
-def _native_verdict(source_path: str, prog: any) -> (NativeVerdict | None) {
+def _native_verdict(
+    source_path: str, prog: (JacProgram | None)
+) -> (NativeVerdict | None) {
     return active_host().native_verdict(source_path, prog);
 }
 
 
-def effective_pin_for(source_path: str, element_name: str, prog: any = None) -> str {
+def effective_pin_for(
+    source_path: str, element_name: str, prog: (JacProgram | None) = None
+) -> str {
     pin = config_pin_for(source_path, element_name);
     if pin == 'native' and module_native_demoted(os.path.realpath(source_path), prog) {
         return '';
@@ -65,7 +110,7 @@ def effective_pin_for(source_path: str, element_name: str, prog: any = None) -> 
 }
 
 
-def effective_module_pin(source_path: str, prog: any = None) -> str {
+def effective_module_pin(source_path: str, prog: (JacProgram | None) = None) -> str {
     return effective_pin_for(source_path, '', prog);
 }
 
@@ -92,8 +137,7 @@ def pins_digest(source_path: str) -> str {
     if not pins and not facts {
         return '';
     }
-    return ";".join(f"{name}={space}" for (name, space) in sorted(pins.items()))
-        + facts;
+    return ";".join([f"{name}={pins[name]}" for name in sorted(pins.keys())]) + facts;
 }
 
 

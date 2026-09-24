@@ -1,5 +1,7 @@
 import os;
 import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.frontend.host { active_host }
+import type from jaclang.compiler.driver.program { JacProgram }
 
 glob SPACE_SERVER: str = 'server',
      SPACE_CLIENT: str = 'client',
@@ -16,7 +18,6 @@ glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
 
 
 def project_root_of(source_path: str) -> (str | None) {
-    import from jaclang.compiler.frontend.host { active_host }
     return active_host().project_root(source_path);
 }
 
@@ -63,30 +64,15 @@ def emits_server_code(mod: (uni.Module | None)) -> bool {
 }
 
 
-def declared_path_spaces(source_path: str, prog: any) -> set[str] {
+def declared_path_spaces(source_path: str, prog: JacProgram) -> set[str] {
     import from jaclang.compiler.placement.placement_solver { _materialize_module }
     return module_spaces(_materialize_module(source_path, prog));
 }
 
 
-def _errors_for_path(prog: any, ap: str) -> int {
-    count = 0;
-    normed = os.path.normpath(ap);
-    for e in prog.errors_had {
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
-            continue;
-        }
-        if e_path == normed {
-            count += 1;
-        }
-    }
-    return count;
-}
-
-
-def discover_spaces(paths: list[str], prog: any = None) -> dict[str, set[str]] {
+def discover_spaces(
+    paths: list[str], prog: (JacProgram | None) = None
+) -> dict[str, set[str]] {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.boundary_classify { hub_module_for_path }
     target = prog if prog is not None else JacProgram();
@@ -100,7 +86,7 @@ def discover_spaces(paths: list[str], prog: any = None) -> dict[str, set[str]] {
             } except Exception {}
         }
         spaces = set(module_spaces(mod));
-        if _errors_for_path(target, ap) > 0 {
+        if target.count_module_errors(os.path.normpath(ap)) > 0 {
             spaces.add(SPACE_SERVER);
         }
         out[ap] = spaces;
@@ -135,38 +121,6 @@ def client_only_paths(paths: list[str]) -> set[str] {
 }
 
 
-def sealed_spaces_for(source_path: str) -> (set[str] | None) {
-    import json;
-    ap = os.path.abspath(source_path);
-    d = os.path.dirname(ap);
-    while True {
-        mf = os.path.join(d, "_precompiled", "MANIFEST.json");
-        if os.path.isfile(mf) {
-            break;
-        }
-        parent = os.path.dirname(d);
-        if parent == d {
-            return None;
-        }
-        d = parent;
-    }
-    try {
-        with open(mf, "r") as f {
-            manifest = json.load(f);
-        }
-    } except Exception {
-        return None;
-    }
-    placement: any = manifest.get("placement") or {};
-    rel = os.path.relpath(ap, d).replace(os.sep, "/");
-    spaces = placement.get(rel);
-    if spaces is None {
-        return None;
-    }
-    return set(spaces);
-}
-
-
 def _toolchain_rel(source_path: str) -> (str | None) {
     import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
     pkg = os.path.realpath(jaclang_pkg_root());
@@ -182,8 +136,7 @@ def native_only(source_path: str) -> bool {
     if rel is None {
         return False;
     }
-    import from jaclang.bootstrap_manifest { is_native_only }
-    return is_native_only(rel);
+    return active_host().is_native_only_source(rel);
 }
 
 def native_lowered(source_path: str) -> bool {
@@ -191,12 +144,13 @@ def native_lowered(source_path: str) -> bool {
     if rel is None {
         return False;
     }
-    import from jaclang.bootstrap_manifest { is_native_lowered }
-    return is_native_lowered(rel);
+    return active_host().is_native_lowered_source(rel);
 }
 
 def native_unit(
-    source_path: str, native_unit_compile: (bool | None) = None, prog: any = None
+    source_path: str,
+    native_unit_compile: (bool | None) = None,
+    prog: (JacProgram | None) = None
 ) -> bool {
     if native_only(source_path) {
         return True;

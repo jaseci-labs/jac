@@ -18,11 +18,23 @@ import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import type from jaclang.compiler.driver.compile_options { CompileOptions }
+
+glob UNIT_COLLECT_EVERY: int = 16,
+     UNIT_COLLECT_GROWTH_MB: int = 512;
+
+obj UnitCollectBudget {
+    has releases: int = 0,
+        last_peak_mb: int = 0;
+
+    def due -> bool;
+}
 
 obj ProjectHost(HostServices) {
     has _defaults_active: bool = False,
         _last_defaults: (ProjectDefaults | None) = None,
-        _facts: dict[str, tuple[any, ProjectFacts]] = {};
+        _facts: dict[str, tuple[any, ProjectFacts]] = {},
+        _collect_budget: UnitCollectBudget = UnitCollectBudget();
 
     @contextmanager
     def session -> Iterator[None];
@@ -91,6 +103,31 @@ obj ProjectHost(HostServices) {
     ) -> JacProgram;
 
     def lint_file(file_path: str) -> JacProgram;
+    def compile_module(
+        program: JacProgram,
+        file_path: str,
+        use_str: (str | None),
+        options: CompileOptions
+    ) -> Module;
+
+    def build_module(
+        program: JacProgram, file_path: str, use_str: (str | None)
+    ) -> Module;
+
+    def internal_program(program: JacProgram) -> (JacProgram | None);
+    def bind_context_program(context_root: JacProgram, program: JacProgram);
+    def note_program_dependency(program: JacProgram, resolved_path: str);
+    def forget_program_products(program: JacProgram, resolved_path: str);
+    def release_program_products(program: JacProgram, retain_stubs: bool);
+    def prepare_interface(program: JacProgram, path: str, module: Module) -> bool;
+    def collect_released_memory;
+    def load_modules(names: list[str]);
+    def module_in_flight(names: list[str]) -> str;
+    def import_in_flight(path: str) -> bool;
+    def has_active_stub_catalog -> bool;
+    def is_native_only_source(rel: str) -> bool;
+    def is_native_lowered_source(rel: str) -> bool;
+    def default_target_triple -> str;
 }
 
 def check_settings_of(check: any) -> CheckSettings {

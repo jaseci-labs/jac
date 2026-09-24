@@ -2,7 +2,6 @@ import from jaclang.compiler.frontend.roles { Kid }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import os;
-import types;
 import type from jaclang.compiler.passes.context { CancelToken }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
@@ -13,12 +12,9 @@ import from jaclang.compiler.driver.progstate {
     BuildScratch,
     DepGraph,
     DiagLedger,
-    ModuleHub,
-    unit_collect_budget
+    ModuleHub
 }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
-import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
@@ -85,11 +81,6 @@ class JacProgram {
     def has_failed_parse(self: JacProgram, path: str) -> bool;
     def execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]];
     def find_module(self: JacProgram, path: str) -> (uni.Module | None);
-    def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
-    def get_client_artifact(
-        self: JacProgram, full_target: str
-    ) -> (ClientArtifact | None);
-
     def parse_source(
         self: JacProgram,
         source_str: str,

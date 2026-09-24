@@ -607,7 +607,7 @@ test "fresh mtime does not admit a cache written under a different environment" 
 }
 
 def _cached_pins(jir_bytes: bytes) -> dict[str, str] {
-    import from jaclang.compiler.placement.placement { summary_from_bytes }
+    import from jaclang.compiler.placement.placement_export { summary_from_bytes }
     pos = jir_bytes.find(SECTIONS_MAGIC, HEADER_SIZE);
     if pos < 0 {
         return {};
