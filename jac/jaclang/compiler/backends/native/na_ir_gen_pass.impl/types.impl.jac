@@ -2340,21 +2340,9 @@ impl NaIRGenPass._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Val
         return val;
     }
     _want = self._lower_type(_nt);
-    _nt_bare = False;
-    if _nt.shared.class_name in ("list", "Sequence") {
-        _nt_args: list[TypeBase] = _nt.private.type_args or [];
-        _nt_bare = not _nt_args;
-        if not _nt_bare and len(_nt_args) == 1 {
-            _a0 = _nt_args[0];
-            _nt_bare = (
-                isinstance(_a0, _ClassType)
-                and _a0.shared.class_name in ("any", "Any", "object")
-            );
-        }
-        if _nt_bare and not _is_ptr and self?.jacval_type {
-            self._emit_list_helpers("jacval", self.jacval_type);
-            _want = self.list_types["jacval"].as_pointer();
-        }
+    _canon = self._bare_any_container_type(_nt);
+    if _canon is not None and not _is_ptr {
+        _want = _canon;
     }
     if _want is None or isinstance(_want, ir.VoidType) or _want == val.type {
         return val;
@@ -2428,6 +2416,10 @@ impl NaIRGenPass._unbox_narrowed_member(
         return val;
     }
     _want = self._lower_type(_nt);
+    _canon = self._bare_any_container_type(_nt);
+    if _canon is not None {
+        _want = _canon;
+    }
     if _want is None
         or isinstance(_want, ir.VoidType)
         or _want == val.type
@@ -2437,6 +2429,41 @@ impl NaIRGenPass._unbox_narrowed_member(
         return val;
     }
     return self._unbox_from_jacval(val, _want);
+}
+
+impl NaIRGenPass._bare_any_container_type(nt: ClassType) -> (ir.Type | None) {
+    """The storage a narrow to a container that names no elements reads as.
+
+    `isinstance(v, list)` narrows to a bare `list` and `isinstance(v, dict)`
+    to a bare `dict`, whose default lowering (`i64` slots and keys) says
+    nothing about the value the box holds. A bare list reads as `list[any]`
+    and a bare dict as `dict[str, any]`, the layouts any-subscript and
+    any-iteration assume; the unbox converts a typed container into them.
+    None for anything else.
+    """;
+    if not self?.jacval_type {
+        return None;
+    }
+    _cn = nt.shared.class_name;
+    _args: list[TypeBase] = nt.private.type_args or [];
+    if _cn in ("list", "Sequence") {
+        _a0 = _args[0] if len(_args) == 1 else None;
+        if _args
+            and not (
+                isinstance(_a0, ClassType)
+                and _a0.shared.class_name in ("any", "Any", "object")
+            ) {
+            return None;
+        }
+        self._emit_list_helpers("jacval", self.jacval_type);
+        return self.list_types["jacval"].as_pointer();
+    }
+    if _cn == "dict" and not _args {
+        _i8p = ir.IntType(8).as_pointer();
+        self._emit_dict_helpers("ptr", "jacval", _i8p, self.jacval_type);
+        return self.dict_types["ptr:jacval"].as_pointer();
+    }
+    return None;
 }
 
 impl NaIRGenPass._opt_ptr_payload_of(t: ir.Type) -> (ir.Type | None) {
