@@ -244,3 +244,34 @@ test "compiler identity excludes applications tests and generated artifacts" {
         assert compiler_source_digest(pkg) != renamed;
     }
 }
+
+test "native-only units join the compiler identity by path, not by content" {
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        _manifest_compiler_digest
+    }
+    with tempfile.TemporaryDirectory() as pkg {
+        unit = Path(pkg) / "runtime/na_stdlib/fnmatch.jac";
+        unit.parent.mkdir(parents=True);
+        unit.write_text("def f -> int { return 1; }\n");
+        compiler = Path(pkg) / "compiler/pass.jac";
+        compiler.parent.mkdir(parents=True);
+        compiler.write_text("def f -> int { return 1; }\n");
+        before = compiler_source_digest(pkg);
+        assert _manifest_compiler_digest(pkg) == before;
+        unit.write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(pkg) == before , (
+            "an edit to a native-only unit changed the compiler identity"
+        );
+        assert _manifest_compiler_digest(pkg) == before;
+        added = Path(pkg) / "runtime/na_stdlib/glob.jac";
+        added.write_text("def g -> int { return 1; }\n");
+        assert compiler_source_digest(pkg) != before , (
+            "adding a native-only unit left the compiler identity unchanged"
+        );
+        added.unlink();
+        assert compiler_source_digest(pkg) == before;
+        compiler.write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(pkg) != before;
+    }
+}

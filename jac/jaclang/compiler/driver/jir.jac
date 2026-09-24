@@ -10,7 +10,8 @@ import from jaclang.bootstrap_manifest {
     COMPILER_DIGEST_ROOTS,
     COMPILER_IDENTITY_NAME,
     NATIVE_LOWERED_PATHS,
-    is_native_lowered
+    is_native_lowered,
+    is_roster_input
 }
 
 glob MAGIC = b"JIR\x00",
@@ -397,7 +398,8 @@ def _module_codespace_mode(source_path: str) -> str {
     }
 }
 
-glob COMPILER_DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".py"),
+glob COMPILER_DIGEST_ROSTER_MARK: str = "roster",
+     COMPILER_DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".py"),
      COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__"),
      COMPILER_DIGEST_SKIP: tuple[str, ...] = ();
 
@@ -478,6 +480,9 @@ def declared_compiler_inputs(pkg_dir: str, recorded: dict[str, str]) -> list[str
 }
 
 def resolve_compiler_input(pkg_dir: str, rel: str, recorded: dict[str, str]) -> str {
+    if is_roster_input(rel) {
+        return COMPILER_DIGEST_ROSTER_MARK;
+    }
     full = os.path.join(str(pkg_dir), rel.replace("/", os.sep));
     if os.path.isfile(full) {
         return compute_content_sha256(full);
@@ -563,6 +568,10 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
     new_entries: dict[str, list[float | int | str]] = {};
     rows: list[tuple[str, str]] = [];
     for rel in rels {
+        if is_roster_input(rel) {
+            rows.append((rel, COMPILER_DIGEST_ROSTER_MARK));
+            continue;
+        }
         full = os.path.join(base, rel.replace("/", os.sep));
         st: any = None;
         try {
