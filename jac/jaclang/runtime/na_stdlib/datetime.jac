@@ -789,23 +789,29 @@ obj _IsoTimeResult {
         invalid: bool = False;
 }
 
+glob _TZ_SCRATCH: _IsoTimeResult = _IsoTimeResult();
 
-def _parse_hh_mm_ss_ff(tstr: bytes, pos: int = 0, end: int = -1) -> _IsoTimeResult {
+
+def _parse_hh_mm_ss_ff(tstr: bytes, pos: int, end: int, res: _IsoTimeResult) {
     if end < 0 {
         end = len(tstr);
     }
-    res: _IsoTimeResult = _IsoTimeResult();
+    res.hour = 0;
+    res.minute = 0;
+    res.second = 0;
+    res.microsecond = 0;
+    res.invalid = False;
     comp: int = 0;
     has_sep: bool = False;
     while comp < 3 {
         if end - pos < 2 {
             res.invalid = True;
-            return res;
+            return;
         }
         v: int = _dig2(tstr, pos);
         if v < 0 {
             res.invalid = True;
-            return res;
+            return;
         }
         if comp == 0 {
             res.hour = v;
@@ -827,7 +833,7 @@ def _parse_hh_mm_ss_ff(tstr: bytes, pos: int = 0, end: int = -1) -> _IsoTimeResu
         }
         if has_sep and nc != 58 {
             res.invalid = True;
-            return res;
+            return;
         }
         pos += 1 if has_sep else 0;
         comp += 1;
@@ -835,7 +841,7 @@ def _parse_hh_mm_ss_ff(tstr: bytes, pos: int = 0, end: int = -1) -> _IsoTimeResu
     if pos < end {
         if tstr[pos] != 46 and tstr[pos] != 44 {
             res.invalid = True;
-            return res;
+            return;
         }
         pos += 1;
         micro: int = 0;
@@ -844,7 +850,7 @@ def _parse_hh_mm_ss_ff(tstr: bytes, pos: int = 0, end: int = -1) -> _IsoTimeResu
             d9: int = tstr[pos] - 48;
             if d9 < 0 or d9 > 9 {
                 res.invalid = True;
-                return res;
+                return;
             }
             if ndig < 6 {
                 micro = micro * 10 + d9;
@@ -854,14 +860,14 @@ def _parse_hh_mm_ss_ff(tstr: bytes, pos: int = 0, end: int = -1) -> _IsoTimeResu
         }
         if ndig == 0 {
             res.invalid = True;
-            return res;
+            return;
         }
         if ndig < 6 {
             micro *= _FRACTION_CORRECTION[ndig - 1];
         }
         res.microsecond = micro;
     }
-    return res;
+    return;
 }
 
 
@@ -888,7 +894,8 @@ def _parse_isoformat_time_at(s: bytes, lo: int) -> _IsoTimeResult {
         k += 1;
     }
     tend: int = len_str if tz_idx < 0 else tz_idx;
-    res: _IsoTimeResult = _parse_hh_mm_ss_ff(s, lo, tend);
+    res: _IsoTimeResult = _IsoTimeResult();
+    _parse_hh_mm_ss_ff(s, lo, tend, res);
     if res.invalid {
         return res;
     }
@@ -913,7 +920,8 @@ def _parse_isoformat_time_at(s: bytes, lo: int) -> _IsoTimeResult {
                 res.invalid = True;
                 return res;
             }
-            tzc: _IsoTimeResult = _parse_hh_mm_ss_ff(s, tz_idx + 1, len_str);
+            _parse_hh_mm_ss_ff(s, tz_idx + 1, len_str, _TZ_SCRATCH);
+            tzc: _IsoTimeResult = _TZ_SCRATCH;
             if tzc.invalid {
                 res.invalid = True;
                 return res;
