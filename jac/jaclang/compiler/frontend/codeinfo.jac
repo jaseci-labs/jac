@@ -207,6 +207,19 @@ def _reserved_c_symbols -> frozenset[str] {
         "PyUnicode_FromString "
         "__mt_genrand_u32 __mt_getrandbits __mt_init_by_array __mt_randbelow "
         "GC_malloc "
+        "clock_settime clock_nanosleep inflateInit2_ inflate inflateEnd zlibVersion "
+        "__connect "
+        "sqlite3_open sqlite3_open_v2 sqlite3_close sqlite3_exec sqlite3_free "
+        "sqlite3_errmsg sqlite3_errcode sqlite3_extended_errcode sqlite3_libversion "
+        "sqlite3_busy_timeout sqlite3_prepare_v2 sqlite3_step sqlite3_reset "
+        "sqlite3_finalize sqlite3_clear_bindings sqlite3_bind_null sqlite3_bind_int64 "
+        "sqlite3_bind_double sqlite3_bind_text sqlite3_bind_blob "
+        "sqlite3_bind_parameter_count sqlite3_bind_parameter_name "
+        "sqlite3_column_count sqlite3_column_name sqlite3_column_type "
+        "sqlite3_column_int64 sqlite3_column_double sqlite3_column_text "
+        "sqlite3_column_blob sqlite3_column_bytes sqlite3_changes64 "
+        "sqlite3_total_changes64 sqlite3_last_insert_rowid sqlite3_get_autocommit "
+        "sqlite3_stmt_readonly sqlite3_complete "
     ).split() {
         names.add(name);
     }
@@ -477,12 +490,18 @@ def is_kernel_unit_path(path: str) -> bool {
     return False;
 }
 
-glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"};
+glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"},
+     NOGC_NATIVE_STDLIB: set[str] = {
+         "time",
+         "_time_native",
+         "_time_common",
+         "_errno_native",
+         "_errno_platform"
+     };
 
 glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "copy",
          "sys",
-         "time",
          "os",
          "random",
          "struct",
@@ -585,6 +604,15 @@ def native_stdlib_root -> (str | None) {
     }
     stdlib_dir = os.path.join(pkg, "runtime", "na_stdlib");
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
+}
+
+def is_in_jaclang_package(file_path: str) -> bool {
+    import os;
+    pkg = jaclang_pkg_root();
+    if not file_path or not pkg {
+        return False;
+    }
+    return os.path.abspath(file_path).startswith(pkg + os.sep);
 }
 
 def bundled_native_module_names -> list[str] {

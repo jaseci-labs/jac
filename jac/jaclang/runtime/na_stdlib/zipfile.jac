@@ -1,4 +1,11 @@
-import from _zlib_native { z_uncompress2, z_crc32, z_adler32 }
+import from _zlib_native {
+    ZInflateResult,
+    Z_STREAM_END,
+    Z_MEM_ERROR,
+    z_crc32,
+    z_inflate_all,
+    z_inflate_bound
+}
 
 glob:pub ZIP_STORED: int = 0,
      ZIP_DEFLATED: int = 8;
@@ -230,31 +237,19 @@ def _name(raw: bytes, flags: int) -> str {
 }
 
 def _inflate(data: bytes, size: int) -> bytes {
-    if size < 0 or size > len(data) * 1032 + 1024 {
+    if size < 0 or size > z_inflate_bound(len(data)) {
         raise BadZipFile("Invalid DEFLATE output size");
     }
-    framed = b"\x78\x9c" + data + b"\x00\x00\x00\x00";
-    dest = b"\x00" * (size + 1);
-    dest_len = (size + 1).to_bytes(8, "little");
-    src_len = len(framed).to_bytes(8, "little");
-    rc = z_uncompress2(dest, dest_len, framed, src_len);
-    if (rc != 0 and rc != -3)
-        or int.from_bytes(dest_len, "little") != size
-        or int.from_bytes(src_len, "little") != len(framed) {
+    res: ZInflateResult = z_inflate_all(data, 0, len(data), -15, size, size + 1);
+    if res.status == Z_MEM_ERROR {
+        raise MemoryError("zipfile: allocation failed");
+    }
+    if res.status != Z_STREAM_END
+        or res.consumed != len(data)
+        or len(res.data) != size {
         raise BadZipFile("Invalid or truncated DEFLATE stream");
     }
-    result = dest[:size];
-    checksum = z_adler32(1, result, size);
-    verified = b"\x78\x9c" + data + checksum.to_bytes(4, "big");
-    dest_len = (size + 1).to_bytes(8, "little");
-    src_len = len(verified).to_bytes(8, "little");
-    rc = z_uncompress2(dest, dest_len, verified, src_len);
-    if rc != 0
-        or int.from_bytes(dest_len, "little") != size
-        or int.from_bytes(src_len, "little") != len(verified) {
-        raise BadZipFile("Invalid or truncated DEFLATE stream");
-    }
-    return result;
+    return res.data;
 }
 
 obj:pub ZipFile {

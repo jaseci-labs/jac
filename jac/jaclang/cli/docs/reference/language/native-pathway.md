@@ -625,15 +625,20 @@ with entry {
 
 #### `time` -- Clocks and Sleep
 
-`import time` lowers to POSIX clocks. Wall-clock values are inherently
-non-deterministic, but each reader is congruent with its CPython counterpart.
+`import time` binds the bundled `na_stdlib` module over POSIX clocks.
+Wall-clock values are inherently non-deterministic, but each reader is
+congruent with its CPython counterpart.
 
 | Feature | Notes |
 |---------|-------|
-| `time.time()` | Unix epoch seconds (`float`), `CLOCK_REALTIME` |
-| `time.monotonic()` / `time.perf_counter()` | Monotonic seconds (`float`) |
-| `time.time_ns()` / `time.monotonic_ns()` / `time.perf_counter_ns()` | Integer nanoseconds |
-| `time.sleep(secs)` | Suspend for `secs` (fractional seconds OK), via `nanosleep` |
+| `time.time()` / `time.time_ns()` | Unix epoch (`CLOCK_REALTIME`) |
+| `time.monotonic()` / `time.monotonic_ns()` | Monotonic (`CLOCK_MONOTONIC`) |
+| `time.perf_counter()` / `time.perf_counter_ns()` | Monotonic (`CLOCK_MONOTONIC`) |
+| `time.process_time()` / `time.process_time_ns()` | Process CPU time |
+| `time.thread_time()` / `time.thread_time_ns()` | Thread CPU time |
+| `time.clock_gettime_ns(clk)` / `time.clock_settime_ns(clk, ns)` | Integer nanoseconds by clock id |
+| `time.sleep(secs)` | Fractional seconds OK; absolute `clock_nanosleep` deadline on Linux, `nanosleep` on macOS; retries `EINTR` |
+| `time.CLOCK_*` | `CLOCK_REALTIME`, `CLOCK_MONOTONIC`, `CLOCK_MONOTONIC_RAW`, `CLOCK_PROCESS_CPUTIME_ID`, `CLOCK_THREAD_CPUTIME_ID` (per-OS values) |
 
 #### `sys` -- Interpreter and Process
 
