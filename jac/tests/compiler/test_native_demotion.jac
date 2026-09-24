@@ -275,3 +275,103 @@ test "a docstring-only module is never decided native" {
     assert not ok , "an empty module passed the native verdict";
     assert "empty module" in why , why;
 }
+
+"""Lower `mod` again the way a native build session does, against whatever
+the module caches say now; the boundary facts and interop bindings stay the
+ones the first compile made."""
+def relower_native(prog: JacProgram, mod: uni.Module) {
+    import from jaclang.compiler.frontend.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
+    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    completed = prog.analysis.completed_passes.get(id(mod));
+    if completed is not None {
+        completed.discard("NaIRGenPass");
+        completed.discard("NativeCompilePass");
+    }
+    mod.gen.llvm_ir = None;
+    mod.gen.native_iface = None;
+    prev = get_effective_default_codespace_override();
+    set_effective_default_codespace("native");
+    try {
+        prog.run_schedule(mod, [RcFactsPass, NaIRGenPass]);
+    } finally {
+        set_effective_default_codespace(prev);
+    }
+}
+
+def ir_lines_naming(mod: uni.Module, name: str) -> list[str] {
+    return [
+        line
+        for line in str(mod.gen.llvm_ir or "").split("\n")
+        if (line.startswith("declare") or line.startswith("define")) and name in line
+    ];
+}
+
+test "a native binding whose unit left the native lane never lowers to an unlinked extern" {
+    # A caller's boundary facts bind `monster_drop` to the native unit of
+    # items.jac. A demotion verdict for weapons.jac, which items imports,
+    # then becomes visible before the caller lowers (a parallel worker wrote
+    # it, or another compile projection recorded it), so the import walk no
+    # longer links items. The call used to become a bare `@monster_drop`
+    # extern that no unit defines; the JIT bound it to address zero and the
+    # native call segfaulted, and the cached bitcode crashed every run after.
+    import tempfile;
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.frontend.codeinfo {
+        resolve_native_module,
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = os.path.realpath(tmp);
+        sources = {
+            "weapons.jac": "def weapon_rules(x: int) -> int {\n    return x;\n}\n",
+            "items.jac": "import from .weapons { weapon_rules }\n\n"
+            "def monster_drop(x: int) -> int {\n    return weapon_rules(x) + 1;\n}\n",
+            "app.jac": "import from .items { monster_drop }\n\n"
+            "def use_drop(x: int) -> int {\n    return monster_drop(x);\n}\n"
+        };
+        for (name, text) in sources.items() {
+            with open(os.path.join(base, name), "w", encoding="utf-8") as f {
+                f.write(text);
+            }
+        }
+        weapons_path = os.path.join(base, "weapons.jac");
+        prog = JacProgram();
+        prev = get_effective_default_codespace_override();
+        try {
+            app = prog.compile(
+                os.path.join(base, "app.jac"),
+                options=CompileOptions(default_codespace="native")
+            );
+        } finally {
+            set_effective_default_codespace(prev);
+        }
+        assert app.decided_codespace == 'native' , "the caller must lower native";
+        binding = app.gen.interop_manifest.bindings.get("monster_drop");
+        assert binding is not None
+            and binding.source_context == InteropContext.NATIVE , "the caller binds monster_drop to the native unit of items.jac";
+        linked = ir_lines_naming(app, "monster_drop");
+        assert linked and all(".monster_drop" in line for line in linked) , linked;
+        try {
+            assert persist_verdict(weapons_path, "E1001", "error[E1001]: stale") , "module cache write failed";
+            assert resolve_native_module(".items", base) == (None, None) , "items.jac is no longer a native unit once weapons.jac is demoted";
+            relower_native(prog, app);
+            unlinked = [
+                line
+                for line in ir_lines_naming(app, "monster_drop")
+                if '@"monster_drop"' in line or "@monster_drop(" in line
+            ];
+            assert not unlinked , f"a bare extern no unit defines: {unlinked}";
+            iface: any = app.gen.native_iface;
+            assert iface is not None and "use_drop" in iface.demoted , (
+                "the caller must fall back to Python instead of calling through a null symbol"
+            );
+        } finally {
+            forget_verdict(prog, weapons_path);
+        }
+    }
+}

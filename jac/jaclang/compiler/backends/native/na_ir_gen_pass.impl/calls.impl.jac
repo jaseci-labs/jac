@@ -2355,11 +2355,38 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
             _extern_sym = func_name;
-            if binding.source_context.value == "native" and _src_ab is not None {
+            if binding.source_context.value == "native" {
+                _native_ab = _src_ab
+                    if _src_ab is not None
+                    else (
+                        binding.ast_node
+                            if isinstance(binding.ast_node, uni.Ability)
+                            else None
+                    );
+                _native_mod = _native_ab.find_parent_of_type(uni.Module)
+                    if _native_ab is not None
+                    else None;
+                _native_unit = os.path.realpath(_native_mod.loc.mod_path)
+                    if _native_mod is not None and _native_mod.loc
+                    else "";
+                if not _native_unit or _native_unit not in self._native_dep_paths {
+                    self.emit(
+                        E5092,
+                        node_override=nd,
+                        kind="function",
+                        name=func_name,
+                        help_text=f"'{func_name}' is bound to a native definition in "
+                        f"{binding.source_module}, but that module is not a native "
+                        f"unit this module links (it, or a module it imports, left "
+                        f"the native lane), so a native caller cannot reach it; the "
+                        f"caller falls back to Python."
+                    );
+                    return None;
+                }
                 _extern_sym = self._symbol_for(
                     func_name,
-                    _src_ab.find_parent_of_type(uni.Module),
-                    bool(_src_ab.access and _src_ab.access.tag.name == Tok.KW_PUB)
+                    _native_mod,
+                    bool(_native_ab.access and _native_ab.access.tag.name == Tok.KW_PUB)
                 );
             }
             func = self._get_or_declare_extern(
