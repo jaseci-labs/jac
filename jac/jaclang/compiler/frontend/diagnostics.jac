@@ -1253,8 +1253,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "A view does not allow {name}",
          help="a view is a value that carries a borrow: an archetype with a"
-         " `&`-typed field, a container declared over `&T`, or (in a"
-         " nogc-enforced module) a step-free string slice. It lives on the stack"
+         " `&`-typed field, a container declared over `&T`, a `PtrView` of C"
+         " memory (`p.view(n)`), or (in a nogc-enforced module) a step-free string"
+         " slice. It lives on the stack"
          " and is usable locally; it may not be stored into a field, a container,"
          " or a module global, may not be bound `own`, and may be returned only"
          " when it derives from the function's borrowed parameters (or a method's"

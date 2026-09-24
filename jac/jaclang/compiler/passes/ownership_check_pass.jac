@@ -169,6 +169,10 @@ walker OwnershipCheckPass {
     def _stamp_view_call_results(scope: UniNode, seen_ids: set[int]) -> None;
     def _view_call_owner(call: FuncCall) -> (SymId | None);
     def _emit_view_diagnostics -> None;
+    def _is_c_view(expr: (UniNode | None)) -> bool;
+    def _mentions_c_view(t: object, depth: int = 0) -> bool;
+    def _c_view_escape(site: UniNode, what: str) -> None;
+    def _emit_c_view_diagnostics -> None;
     def _nogc_str_elem_ok(expr: Expr | None, idx_ctx: bool = False) -> bool;
     def _nogc_tag_shape(tag: SubTag | None) -> str;
     def _nogc_local_shape(nm: Name) -> str;
