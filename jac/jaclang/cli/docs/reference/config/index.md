@@ -1056,11 +1056,11 @@ version = "1.0.0"
 description = "An AI-powered application"
 entry-point = "main"
 
-[dependencies]
+[dependencies.pypi]
 byllm = ">=0.4.8"
 requests = ">=2.28.0"
 
-[dev-dependencies]
+[dev-dependencies.pypi]
 pytest = ">=8.0.0"
 
 [run]

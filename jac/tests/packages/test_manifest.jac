@@ -47,7 +47,8 @@ test "a bare PyPI name under [dependencies] is an error that names the move" {
     for text in (
         "[dependencies]\nrequests = \">=2\"\n",
         "[dependencies.git]\nlib = { git = \"https://x/y.git\" }\n",
-        "[dependencies]\nlib = { path = \"../lib\" }\n"
+        "[dependencies]\nlib = { path = \"../lib\" }\n",
+        "[dependencies]\nlib = { git = \"https://x/y.git\", rev = \"abc\" }\n"
     ) {
         try {
             JacConfig.from_toml_str(text);
@@ -56,6 +57,16 @@ test "a bare PyPI name under [dependencies] is an error that names the move" {
             assert "jac fix dependencies" in str(e) or "org/name" in str(e) , str(e);
         }
     }
+}
+
+test "an unscoped table under [dependencies] belongs to a plugin ecosystem" {
+    cfg = JacConfig.from_toml_str(
+        "[dependencies.system]\ngit = \"*\"\nffmpeg = \"*\"\n"
+    );
+    assert cfg.get_plugin_deps("system") == {"git": "*", "ffmpeg": "*"};
+    assert not cfg.dependencies;
+    only_git = JacConfig.from_toml_str("[dependencies.system]\ngit = \"*\"\n");
+    assert only_git.get_plugin_deps("system") == {"git": "*"};
 }
 
 test "a package dependency serializes back to the form it was written in" {
