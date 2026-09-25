@@ -138,7 +138,7 @@ jac publish --dry-run     # build, check and show the API diff; upload nothing
 jac publish               # build and open the index pull request
 ```
 
-`jac publish` builds a library `.jab` (the package source plus precompiled interfaces), then runs the publish gates:
+`jac publish` builds a library `.jab` (the package source plus its exported API, `_precompiled/API.json`), then runs the publish gates:
 
 - the name is scoped, the version is new, and `exports` is not empty
 - `jac check` is clean under the package's own configuration
@@ -146,7 +146,9 @@ jac publish               # build and open the index pull request
 - `[project.urls] repository` names the public source repository
 - **semver**: the exported API is compared with the latest release of the same major version. Removing or changing anything a consumer can use (a module, a function, a parameter, a field, an ability) needs a major bump; additions need at least a minor bump. A changed `has` field on a `node` or `edge` is also reported as a persistence schema change, since stored graphs may no longer load.
 
-It then uploads the `.jab` as a release asset on your fork of the index repository and opens a pull request that adds one line to `index/<org>/<name>.json`. The index's CI re-runs the gates, copies the artifact into the index's immutable blob store, and merges. Published versions never change; `jac publish --yank <version>` opens a pull request that marks a version yanked, which stops new resolutions from choosing it while existing locks keep working.
+It then uploads the `.jab` as a release asset on your fork of the index repository and opens a pull request that adds one line to `index/<org>/<name>.json` and, for a library, the version's API to `api/<org>/<name>/<version>.json`. The index's CI re-runs the gates, copies the artifact into the index's immutable blob store, and merges. Published versions never change; `jac publish --yank <version>` opens a pull request that marks a version yanked, which stops new resolutions from choosing it while existing locks keep working.
+
+The API file carries each exported module's symbols, signatures, `has` fields, docstrings and default values; [jaclang.org/packages](https://www.jaclang.org/packages) renders it as the package's API docs, next to the README from the package's source repository. Docstrings and default-value text are documentation, so editing them never needs a version bump.
 
 Publishing uses your GitHub identity (`GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token`). An org is claimed by a pull request that adds `orgs/<org>.toml` to the index, listing the GitHub users allowed to publish under it.
 
@@ -155,8 +157,9 @@ Publishing uses your GitHub identity (`GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth to
 The default registry is the public index at [jaseci-labs/jac-index](https://github.com/jaseci-labs/jac-index). A registry is any directory or URL with this layout:
 
 ```
-config.json                  {"protocol": 1, "blob_base": "...", "repo": "..."}
-index/<org>/<name>.json      one JSON object per line, one line per version
+config.json                        {"protocol": 1, "blob_base": "...", "repo": "..."}
+index/<org>/<name>.json            one JSON object per line, one line per version
+api/<org>/<name>/<version>.json    a library version's exported API
 ```
 
 and blobs named `<sha256>.jab` under `blob_base`. Point a project at another registry by name:

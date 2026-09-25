@@ -41,6 +41,7 @@ impl import core {
     }
     github --> core.install | core.jacyac.github.repos { fetch }
     github --> core.leaderboard.scoring { RepoMeta }
+    github --> core.packages.catalog { API_ROOT, fetch, parse_repo_url }
     github --> core.scoring_service {
         RepoMeta,
         code_breakdown,
@@ -356,13 +357,28 @@ impl import core.leaderboard {
     scoring --> core.social_graph { ScoreBreakdown }
 }
 
+impl import core.packages {
+    catalog --> core.site.packages.ApiDocs { ApiMember, ApiModule, ApiParam, ApiSymbol }
+    catalog --> core.site.packages.PackagePage { PackageDetail, PackageVersion }
+    catalog --> core.site.packages.PackagesIndex { PackageCatalog, PackageSummary }
+    catalog --> core.site.packages.PackagesShell {
+        PackageCatalog,
+        PackageDetail,
+        package_catalog,
+        package_detail
+    }
+    catalog --> web.main { package_catalog, package_detail }
+}
+
 impl import core.site.docs {
     DocsArticle --> core.site.docs.DocsShell { DocsArticle, DocsArticleSkeleton }
     DocsGraphFloat --> core.site.docs.DocsSidebar { DocsGraphFloat }
     DocsShell --> desktop.pages.docs.index | web.pages.docs.index { DocsShell }
     DocsSidebar --> core.site.docs.DocsShell { DocsSidebar }
     DocsTocRail --> core.site.docs.DocsShell { DocsTocRail }
-    Markdown --> core.site.docs.DocsArticle { Markdown }
+    Markdown --> core.site.docs.DocsArticle | core.site.packages.PackagePage {
+        Markdown
+    }
     MermaidDiagram --> core.site.docs.Markdown { MermaidDiagram }
 }
 
@@ -484,6 +500,9 @@ impl import core.site.landing {
     Capabilities --> core.site.landing.Home { Capabilities }
     CopyCommand --> core.site.landing.Agents | core.site.landing.Hero { CopyCommand }
     CopyCommand --> core.site.landing.ExplorerFinale { CopyCommandBlock }
+    CopyCommand --> core.site.packages.PackagePage | core.site.packages.PackagesIndex {
+        CopyCommand
+    }
     ExplorerFinale --> core.site.landing.Home { ExplorerFinale }
     Hero --> core.site.landing.Home { Hero }
     Home --> desktop.pages.index | web.pages.index { Home }
@@ -526,6 +545,15 @@ impl import core.site.leaderboard {
     Methodology --> core.site.jacyac.components.NinjaScores { Methodology }
     Methodology --> desktop.pages.methodology { Methodology }
     Methodology --> web.pages.methodology { Methodology }
+}
+
+impl import core.site.packages {
+    ApiDocs --> core.site.packages.PackagePage { ApiDocs }
+    PackagePage --> core.site.packages.PackagesShell { PackagePage }
+    PackagesIndex --> core.site.packages.PackagesShell { PackagesIndex }
+    PackagesShell --> desktop.pages.packages.index | web.pages.packages.index {
+        PackagesShell
+    }
 }
 
 impl import core.site.source {
@@ -623,6 +651,9 @@ impl import core.site.ui {
     badge --> core.site.landing.WasmGame { Badge }
     badge --> core.site.landing.WhyJac { Badge }
     badge --> core.site.leaderboard.Methodology { Badge }
+    badge --> core.site.packages.PackagePage | core.site.packages.PackagesIndex {
+        Badge
+    }
     button --> core.site.jacyac.JacYac { Button }
     button --> core.site.jacyac.components.AuthForm { Button }
     button --> core.site.jacyac.components.ChannelsTab { Button }
@@ -728,6 +759,7 @@ impl import core.site.ui {
     input --> core.site.jacyac.components.ProjectsPanel { Input }
     input --> core.site.jacyac.components.RightSidebar { Input }
     input --> core.site.jacyac.components.TweetCard { Input }
+    input --> core.site.packages.PackagesIndex { Input }
     label --> core.site.ui.field { Label }
     select --> core.site.docs.DocsSidebar {
         Select,

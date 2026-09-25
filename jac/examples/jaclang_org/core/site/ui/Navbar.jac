@@ -49,6 +49,12 @@ def:pub Navbar -> JsxElement {
                     >
                         Docs
                     </Link>
+                    <Link
+                        to="/packages"
+                        className="rounded-md pl-3 pr-3 pt-1.5 pb-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                        Packages
+                    </Link>
                     <button
                         onClick={lambda { theme.toggle(); }}
                         title="Toggle theme"

@@ -154,7 +154,8 @@ def package_manifest(
         "role": role,
         "name": ident.name,
         "version": ident.version,
-        "description": config.project.description,
+        "description": config.project.description
+            or str((config.get_section("jacpack") or {}).get("description", "")),
         "license": config.project.license,
         "jac_version": config.project.jac_version,
         "jaclang_version": jaclang_version()

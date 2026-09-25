@@ -9,15 +9,17 @@ import from urllib.parse { urlsplit }
 import from jaclang.cli.console { console }
 import from jaclang.dist.archive { extract_tar_gz }
 import from jaclang.packages.apidiff { check_bump, diff_surfaces }
-import from jaclang.packages.artifact { read_package_manifest }
+import from jaclang.packages.artifact { API_FILE, MANIFEST_DIR, read_package_manifest }
 import from jaclang.packages.index {
+    API_DIR,
     IndexEntry,
     Registry,
     RegistryError,
+    api_rel_path,
     fetch_verified,
     parse_index_lines
 }
-import from jaclang.packages.publish { previous_release, surface_in_blob }
+import from jaclang.packages.publish { previous_release, previous_surface }
 import from jaclang.packages.semver { SemverError, Version }
 import from jaclang.project.package_scope { is_package_name }
 
@@ -30,6 +32,7 @@ obj VerifyReport {
     has problems: list[str] = [],
         mirror: list[dict[str, str]] = [],
         checked: list[str] = [],
+        api_files: set[str] = set(),
         any_upload: bool = False;
 }
 
@@ -168,7 +171,8 @@ def _verify_entry(
         for (key, expected) in (
             ("name", item.name),
             ("version", item.version),
-            ("role", item.role)
+            ("role", item.role),
+            ("description", item.description)
         ) {
             if manifest.get(key) != expected {
                 outcome.problems.append(
@@ -190,6 +194,7 @@ def _verify_entry(
                     f"{label}: the index line's api_digest differs from the artifact's"
                 );
             }
+            _check_api_file(base_root, stage, item, outcome);
             _verify_library(stage, registry, item, version, history, outcome);
         }
     } finally {
@@ -197,6 +202,36 @@ def _verify_entry(
     }
     outcome.mirror.append({"sha256": item.sha256, "upload": item.upload});
     outcome.checked.append(label);
+}
+
+def _check_api_file(
+    base_root: Path, stage: Path, item: IndexEntry, outcome: VerifyReport
+) {
+    label = f"{item.name} {item.version}";
+    rel = api_rel_path(item.name, item.version);
+    outcome.api_files.add(rel);
+    published = base_root / rel;
+    shipped = stage / MANIFEST_DIR / API_FILE;
+    if not published.is_file() {
+        outcome.problems.append(f"{label}: the pull request must add {rel}");
+        return;
+    }
+    if not shipped.is_file() {
+        outcome.problems.append(f"{label}: the artifact carries no {API_FILE}");
+        return;
+    }
+    try {
+        same = json.loads(published.read_text(encoding="utf-8"))
+            == json.loads(shipped.read_text(encoding="utf-8"));
+    } except ValueError as e {
+        outcome.problems.append(f"{label}: {rel} is not valid JSON: {e}");
+        return;
+    }
+    if not same {
+        outcome.problems.append(
+            f"{label}: {rel} differs from the artifact's {API_FILE}"
+        );
+    }
 }
 
 def _verify_library(
@@ -231,8 +266,8 @@ def _verify_library(
         return;
     }
     try {
-        old = surface_in_blob(registry.fetch_blob(previous));
-    } except RegistryError as e {
+        old = previous_surface(registry, previous);
+    } except (RegistryError, ValueError) as e {
         outcome.problems.append(
             f"{label}: cannot read {previous.version} for the semver check: {e}"
         );
@@ -323,14 +358,26 @@ def verify_index(
 ) -> VerifyReport {
     outcome = VerifyReport(any_upload=any_upload);
     registry = Registry(name="index", url=str(base_root));
+    api_changed: list[str] = [];
     for rel in _changed_files(base_root, base) {
         if rel.startswith(f"{ORGS_DIR}/") and rel.endswith(".toml") {
             _check_org(base_root, base, rel, author, outcome);
         } elif rel.startswith(f"{INDEX_DIR}/") and rel.endswith(".json") {
             _check_index_file(base_root, base, rel, author, registry, outcome);
+        } elif rel.startswith(f"{API_DIR}/") and rel.endswith(".json") {
+            api_changed.append(rel);
         } else {
             outcome.problems.append(
-                f"{rel}: a publish pull request may only change index/ and orgs/"
+                f"{rel}: a publish pull request may only change index/, api/ and orgs/"
+            );
+        }
+    }
+    for rel in api_changed {
+        if _at_base(base_root, base, rel) is not None {
+            outcome.problems.append(f"{rel}: a published API file never changes");
+        } elif rel not in outcome.api_files {
+            outcome.problems.append(
+                f"{rel}: no library version published in this pull request owns it"
             );
         }
     }
@@ -340,7 +387,7 @@ def verify_index(
 def run_verify(index_dir: str, base: str, author: str, mirror_out: str = "") -> int {
     base_root = Path(index_dir).resolve();
     if not (base_root / "config.json").is_file() {
-        console.error(f"{root} is not a package index (no config.json)");
+        console.error(f"{base_root} is not a package index (no config.json)");
         return 1;
     }
     if not author {
