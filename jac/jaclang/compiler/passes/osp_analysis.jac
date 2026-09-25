@@ -331,6 +331,11 @@ obj OspAnalysis {
                 if isinstance(nd, (uni.ConnectOp, uni.VisitStmt, uni.EdgeOpRef)) {
                     return True;
                 }
+                if isinstance(nd, uni.FuncCall)
+                    and isinstance(nd.target, uni.Name)
+                    and (nd.target.value == "jid") {
+                    return True;
+                }
                 if isinstance(nd, uni.BinaryExpr)
                     and isinstance(nd.op, uni.Token)
                     and (nd.op.name == Tok.KW_SPAWN) {

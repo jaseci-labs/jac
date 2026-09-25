@@ -85,7 +85,9 @@ obj OspGraph {
         free_rows: list[int],
         row_of: dict[int, int],
         dead: dict[int, int],
-        regions: dict[int, list[int]];
+        regions: dict[int, list[int]],
+        jids: dict[int, str] = {},
+        jid_next: int = 0;
 
     def adj_of(h: int) -> OspAdj {
         if h in self.adj {
@@ -521,6 +523,46 @@ obj OspGraph {
         return n;
     }
 
+    def keep_toward(
+        hs: list[int], origins: list[int], dir: int, edges_only: bool, wanted: list[int]
+    ) -> list[int] {
+        want: set[int] = set(wanted);
+        out: list[int] = [];
+        if not edges_only {
+            for h in hs {
+                if h in want {
+                    out.append(h);
+                }
+            }
+            return out;
+        }
+        orig: set[int] = set(origins);
+        for e in hs {
+            if e not in self.row_of {
+                continue;
+            }
+            row: OspEdgeRow = self.rows[self.row_of[e]];
+            fwd = dir != 1 or row.undirected;
+            bwd = dir != 2 or row.undirected;
+            if (fwd and row.src in orig and row.tgt in want)
+                or (bwd and row.tgt in orig and row.src in want) {
+                out.append(e);
+            }
+        }
+        return out;
+    }
+
+    def jid_of(h: int) -> str {
+        if h in self.jids {
+            found: str = self.jids[h];
+            return found;
+        }
+        self.jid_next += 1;
+        made = _hex16(id(self)) + _hex16(self.jid_next);
+        self.jids[h] = made;
+        return made;
+    }
+
     def edge_peer(eobj: int, origin: int) -> int {
         if eobj not in self.row_of {
             return -1;
@@ -775,6 +817,9 @@ obj OspGraph {
         if h in self.dead {
             self.dead.pop(h);
         }
+        if h in self.jids {
+            self.jids.pop(h);
+        }
         return n;
     }
 
@@ -794,6 +839,9 @@ obj OspGraph {
             }
             if h in self.dead {
                 self.dead.pop(h);
+            }
+            if h in self.jids {
+                self.jids.pop(h);
             }
         }
         n = 0;
@@ -827,8 +875,22 @@ obj OspGraph {
     }
 }
 
+def _hex16(v: int) -> str {
+    digits: str = "0123456789abcdef";
+    out: str = "";
+    i = 0;
+    while i < 16 {
+        out = digits[v % 16] + out;
+        v = v // 16;
+        i += 1;
+    }
+    return out;
+}
+
 def _new_graph -> OspGraph {
-    return OspGraph(adj={}, rows=[], free_rows=[], row_of={}, dead={}, regions={});
+    return OspGraph(
+        adj={}, rows=[], free_rows=[], row_of={}, dead={}, regions={}, jids={}
+    );
 }
 
 glob DEFAULT_GRAPH: OspGraph = _new_graph();
@@ -950,6 +1012,16 @@ def osp_wrap1(x: int) -> list[int] {
     out: list[int] = [];
     out.append(x);
     return out;
+}
+
+def osp_keep_toward(
+    hs: list[int], origins: list[int], dir: int, edges_only: int, wanted: list[int]
+) -> list[int] {
+    return DEFAULT_GRAPH.keep_toward(hs, origins, dir, edges_only != 0, wanted);
+}
+
+def osp_jid(h: int) -> str {
+    return DEFAULT_GRAPH.jid_of(h);
 }
 
 def osp_edge_peer(edge_handle: int, origin: int) -> int {
