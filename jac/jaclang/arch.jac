@@ -13142,6 +13142,8 @@ impl import runtime {
         invalidate as _invalidate_typecache,
         warm as _warm_typecache
     }
+    archetype --> runtime.graph_utils.collect_node_connections { AccessLevel }
+    runtime --> runtime.graph_utils.collect_node_connections { JacRuntimeInterface }
 }
 
 impl import runtime.python {

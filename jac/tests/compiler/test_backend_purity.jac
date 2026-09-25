@@ -339,7 +339,7 @@ def wired_lines(
                 }
             }
         }
-        if f"import from {wire.provider_path} " in body {
+        if f"import from {spec.import_name(wire.provider_path)} " in body {
             continue;
         }
         for (name, rx) in compiled.items() {
