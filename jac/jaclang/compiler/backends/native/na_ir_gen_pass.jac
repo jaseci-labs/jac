@@ -2190,6 +2190,9 @@ walker NaIRGenPass(CompilerPass) {
     def _finish_osp_reclaim_hook -> None;
     def _fill_osp_reclaim_hook -> None;
     def _emit_osp_sync_fn -> (ir.Function | None);
+    def _osp_handle_list(value: ir.Value, nd: uni.Expr) -> (ir.Value | None);
+    def _osp_endpoint_handles(endpoint: uni.Expr, nd: uni.Expr) -> (ir.Value | None);
+    def _emit_jid(nd: uni.FuncCall) -> (ir.Value | None);
     def _osp_active -> bool;
     def _xmod_osp_help(names: list[str | None]) -> (str | None);
     def _register_osp_kernel_module -> None;
