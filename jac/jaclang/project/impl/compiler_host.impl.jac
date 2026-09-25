@@ -392,6 +392,11 @@ impl ProjectHost.resolve_local_module(
     return resolve_local_module(base, parts);
 }
 
+impl ProjectHost.jac_virtual_module_path(target: str) -> (str | None) {
+    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
+    return resolve_jac_virtual_module_path(target);
+}
+
 impl ProjectHost.path_facts(path: str) -> PathFacts {
     import from jaclang.compiler.driver.bccache { host_layout_tables }
     import from jaclang.compiler.frontend.source_layout { path_facts_of }

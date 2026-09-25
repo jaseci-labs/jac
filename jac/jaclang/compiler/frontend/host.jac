@@ -25,7 +25,8 @@ obj CheckSettings {
         lint_select: list[str] = [],
         lint_ignore: list[str] = [],
         enforce_access: bool = False,
-        untyped_external_error: bool = False;
+        untyped_external_error: bool = False,
+        warn_native_seams: bool = True;
 }
 
 obj ProjectDefaults {
@@ -40,7 +41,8 @@ obj ProjectDefaults {
         memory_profile: str,
         memory_enforce: list[str],
         memory_exempt: list[str],
-        check: CheckSettings;
+        check: CheckSettings,
+        client_framework: str = "react";
 }
 
 obj PathFacts {
@@ -111,6 +113,10 @@ obj HostServices {
     }
 
     def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None) {
+        return None;
+    }
+
+    def jac_virtual_module_path(target: str) -> (str | None) {
         return None;
     }
 

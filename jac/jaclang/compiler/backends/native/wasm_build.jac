@@ -226,22 +226,24 @@ def _assert_abi64_adapters(
 def _link_wasm_libc(mod: ModuleRef) -> bool {
     libc_dir = _wasm_libc_dir();
     if libc_dir is None {
-        import from jaclang.cli.console { console }
-        console.warning(
+        import from jaclang.compiler.frontend.host { active_host }
+        active_host().note(
             "vendored wasm libc not found (run `zig build vendor-wasm-libc`); "
                 + "libc symbols stay as raw env imports and the jac_host1 import "
-                + "contract is NOT enforced"
+                + "contract is NOT enforced",
+            style="warning"
         );
         return False;
     }
     drift = _floor_source_drift(libc_dir);
     if drift is None {
         if _is_dev_libc_dir(libc_dir) {
-            import from jaclang.cli.console { console }
-            console.warning(
+            import from jaclang.compiler.frontend.host { active_host }
+            active_host().note(
                 f"vendored wasm libc at {libc_dir} carries no {FLOOR_MANIFEST}, "
                     + "so it cannot be checked against wasm_rt/; it predates the "
-                    + f"manifest -- {_rebuild_hint(libc_dir)}."
+                    + f"manifest -- {_rebuild_hint(libc_dir)}.",
+                style="warning"
             );
         }
     } elif drift {
