@@ -20,6 +20,7 @@ import from jaclang.server.identity.config {
 
 glob logger = logging.getLogger(__name__),
      SYSTEM_USER: str = '__system__',
+     PLACEHOLDER_ADMIN_PASSWORD: str = 'changeme',
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
          '_jaclang_root_id_cache', `default=None
      );
@@ -90,6 +91,7 @@ obj UserManager {
     def get_user_role(user_id: str) -> str | None;
     def set_user_role(user_id: str, role: str) -> dict[str, str];
     def is_admin(user_id: str) -> bool;
+    def has_admin_access(user_id: str) -> bool;
     def requires_password_reset(user_id: str) -> bool;
     def set_requires_password_reset(
         user_id: str, requires_reset: bool
@@ -98,9 +100,18 @@ obj UserManager {
     def expire_legacy_credentials(username: (str | None) = None) -> dict[str, any];
     def is_password_required(user_id: str) -> bool;
     def bootstrap_admin_user(
-        admin_username: str = 'admin', default_password: str = 'changeme'
+        admin_username: str,
+        bootstrap_password: str,
+        require_password_reset: bool = True
     ) -> dict[str, str];
 
+    def _bootstrap_notice(bootstrap_password: str, require_reset: bool) -> str;
+    def _awaits_bootstrap_password(admin_username: str, user_id: str) -> bool;
+    def _adopt_bootstrap_admin(
+        admin_username: str, user_id: str, bootstrap_password: str, require_reset: bool
+    ) -> dict[str, str];
+
+    def retire_placeholder_password(user_id: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def delete_user(user_id: str) -> dict[str, str];
     def create_user_as_admin(

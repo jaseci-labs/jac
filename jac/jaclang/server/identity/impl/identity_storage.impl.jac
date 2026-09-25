@@ -260,6 +260,29 @@ impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str
     return {'user_id': user_id, 'message': 'Password updated successfully'};
 }
 
+impl IdentityStorage.has_password(user_id: str) -> bool {
+    for cred in self._get_credentials(user_id) {
+        if cred.get('type') == 'password' {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl IdentityStorage.revoke_password(user_id: str) -> bool {
+    credentials = self._get_credentials(user_id);
+    remaining = [
+        cred
+        for cred in credentials
+        if cred.get('type') != 'password'
+    ];
+    if len(remaining) == len(credentials) {
+        return False;
+    }
+    self._update_credentials(user_id, remaining);
+    return True;
+}
+
 impl IdentityStorage.expire_legacy_credentials(
     user_id: (str | None) = None
 ) -> list[str] {
