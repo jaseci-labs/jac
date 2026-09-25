@@ -1026,3 +1026,37 @@ test "an analysis-only consumer records a dependency's interface without emittin
         }
     }
 }
+
+"""The facts an importer records for an imported function come from the
+dependency's own interface, so a unit lowered against a warm dependency
+records the same element keys as one lowered alongside it."""
+def _imported_ret_keys(root_dir: str) -> any {
+    prog = JacProgram();
+    opts = _opts(NATIVE_LINK_MODE_BITCODE);
+    prog.options = opts;
+    top = os.path.join(root_dir, "top.jac");
+    unit = prog.native_units().ensure(top, compile_on_miss=True, options=opts);
+    assert unit is not None and unit.iface.layout is not None;
+    record = unit.iface.layout.functions.get("evens");
+    return record.ret_elem_keys if record is not None else None;
+}
+
+test "an importer records an imported function's element keys from its interface" {
+    root_dir = tempfile.mkdtemp(prefix="jac-imported-keys-");
+    Path(root_dir, "lib.jac").write_text(
+        "def:pub evens(n: int) -> list[int] {\n"
+        "    return [i * 2 for i in range(n)];\n"
+        "}\n"
+    );
+    top = Path(root_dir, "top.jac");
+    top.write_text(
+        "import from .lib { evens }\n" "with entry { print(len(evens(3))); }\n"
+    );
+    cold = _imported_ret_keys(root_dir);
+    top.write_text(
+        "import from .lib { evens }\n" "with entry { print(len(evens(4))); }\n"
+    );
+    warm = _imported_ret_keys(root_dir);
+    assert cold == warm , f"cold {cold} vs warm {warm}";
+    assert cold == ["int"] , cold;
+}

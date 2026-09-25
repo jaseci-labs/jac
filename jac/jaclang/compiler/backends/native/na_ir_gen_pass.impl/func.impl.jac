@@ -168,7 +168,7 @@ impl NaIRGenPass._maybe_declare_ability(
 
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
 
-    self._record_ret_facts(name, sig);
+    self._record_ret_facts(name, sig, imported);
     self.has_native_code = True;
 
     if len(self.ctx.errors_had) > _sig_mark {
@@ -320,7 +320,9 @@ impl NaIRGenPass._elem_keys_of_annotation(
     return keys;
 }
 
-impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
+impl NaIRGenPass._record_ret_facts(
+    name: str, sig: uni.FuncSignature, imported: (NativeFuncLayout | None) = None
+) -> None {
     _rt = sig.return_type;
     if _rt is None {
         return;
@@ -337,7 +339,12 @@ impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
             }
         } except Exception {}
     }
-    keys = self._elem_keys_of_annotation(_rt);
+    if imported is not None and imported.ret_enum_type {
+        self.func_ret_type_key.setdefault(name, imported.ret_enum_type);
+    }
+    keys = imported.ret_elem_keys
+        if imported is not None
+        else self._elem_keys_of_annotation(_rt);
     if keys {
         self.func_ret_elem_keys[name] = keys;
     }

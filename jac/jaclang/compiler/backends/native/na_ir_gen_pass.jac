@@ -27,6 +27,7 @@ import from jaclang.compiler.frontend.codeinfo {
     HDR_TAG_OFF,
     HDR_TOTAL,
     JACSTR_DESC_FIELDS,
+    NativeFuncLayout,
     RC_SENTINEL,
     is_package_keyed_path,
     native_unit_identity,
@@ -1503,7 +1504,10 @@ walker NaIRGenPass(CompilerPass) {
         ann: (uni.UniNode | None)
     ) -> (list[str | None] | None);
 
-    def _record_ret_facts(name: str, sig: uni.FuncSignature) -> None;
+    def _record_ret_facts(
+        name: str, sig: uni.FuncSignature, imported: (NativeFuncLayout | None) = None
+    ) -> None;
+
     def _emit_glob_init_func -> None;
     def _set_rc_ctx(op: str, loc: str) -> None;
     def _clear_rc_ctx -> None;
