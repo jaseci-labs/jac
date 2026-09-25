@@ -1,14 +1,41 @@
 import os;
+import sys;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.host { HostServices, active_host, install_host }
-import from jaclang.compiler.frontend.kernel_inputs { KernelInputs, ManifestSets }
-import from jaclang.compiler.frontend.kernel_host { KernelHost }
+import from jaclang.compiler.frontend.host {
+    HostServices,
+    active_host,
+    install_host,
+    kernel_host_mode
+}
+import from jaclang.compiler.frontend.kernel_inputs {
+    KernelInputs,
+    ManifestSets,
+    PythonInterface,
+    request_of
+}
+import from jaclang.compiler.frontend.kernel_host { HostCensus, KernelHost }
+import from jaclang.compiler.driver.kernel_analyze {
+    ANALYSIS_CRASHED,
+    ANALYSIS_OK,
+    AnalysisReport,
+    analysis_report,
+    run_kernel_analysis
+}
+import from jaclang.compiler.driver.module_analysis { ModuleAnalysis, analyze_module }
+import from jaclang.compiler.driver.session_compile {
+    CompileFrame,
+    SessionContext,
+    SessionHooks,
+    compile_in_session
+}
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
 
 glob SCAN_LIMIT: int = 4000,
-     THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/");
+     THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
+     _TOTALS: list[HostCensus] = [],
+     _EXIT_REPORT: list[bool] = [];
 
 obj ClosureScan {
     has learner: KernelHost,
@@ -219,6 +246,40 @@ def manifest_sets -> ManifestSets {
     );
 }
 
+def python_interface(path: str, options: CompileOptions) -> (PythonInterface | None) {
+    import from jaclang.compiler.types.stubcat.writer {
+        IncoherentInterface,
+        build_module_iface
+    }
+    resolved = os.path.realpath(path);
+    scratch = JacProgram();
+    try {
+        mod = scratch.compile(resolved, options=options.for_symbols());
+        pkg_dir = os.path.dirname(resolved);
+        data = build_module_iface(mod, scratch.get_type_evaluator(), pkg_dir);
+    } except IncoherentInterface {
+        return None;
+    }
+    return PythonInterface(path=resolved, pkg_dir=pkg_dir, data=data);
+}
+
+def python_interfaces(
+    paths: list[str], options: CompileOptions
+) -> list[PythonInterface] {
+    out: list[PythonInterface] = [];
+    for path in sorted(paths) {
+        if not path.endswith(".py")
+            or any(marker in path.replace("\\", "/") for marker in THIRD_PARTY_DIRS) {
+            continue;
+        }
+        iface = python_interface(path, options);
+        if iface is not None {
+            out.append(iface);
+        }
+    }
+    return out;
+}
+
 def snapshot_inputs(
     host: HostServices,
     program: JacProgram,
@@ -228,22 +289,29 @@ def snapshot_inputs(
 ) -> KernelInputs {
     import from jaclang.compiler.driver.bccache { host_layout_tables }
     import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
+    import from jaclang.compiler.types.stubcat.locate { catalog_origin }
     catalog_dir = "";
-    if host.has_active_stub_catalog() {
+    catalog_active = host.has_active_stub_catalog();
+    if catalog_active {
         import from jaclang.jac0core.stubcat_hook { active }
         catalog: any = active();
         catalog_dir = str(catalog.pkg_dir) if catalog is not None else "";
     }
+    origin = catalog_origin() if catalog_active else None;
     natives = program._natives;
     inputs = KernelInputs(
         entry_path=path,
         module_projection=options.module_projection(),
         target_app=options.target_app or "",
+        request=request_of(options),
         project_defaults=host.project_defaults(),
         host_platform=host.host_platform(),
         ct_environment=host.ct_environment(),
-        stub_catalog_active=host.has_active_stub_catalog(),
+        stub_catalog_active=catalog_active,
         stub_catalog_dir=catalog_dir,
+        stub_catalog_file=origin.path if origin is not None else "",
+        stub_catalog_offset=origin.offset if origin is not None else 0,
+        stub_catalog_length=origin.length if origin is not None else 0,
         typeshed_roots=get_typeshed_paths(),
         search_paths=get_jac_search_paths(os.path.dirname(os.path.abspath(path))),
         native_session_active=natives is not None and natives.session is not None,
@@ -256,6 +324,8 @@ def snapshot_inputs(
     inputs.lint_of[""] = host.lint_settings("");
     (inputs.native_pipeline, inputs.native_pipeline_reason) = host.native_pipeline_available();
     inputs.native_pipeline_known = True;
+    inputs.target_triple = host.default_target_triple();
+    inputs.target_triple_known = True;
     learner = KernelHost(inputs=inputs, fallback=host);
     previous = active_host();
     install_host(learner);
@@ -273,4 +343,197 @@ def snapshot_inputs(
     }
     inputs.scanned_modules = len(scan.seen);
     return inputs;
+}
+
+def kernel_analysis_inputs(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None
+) -> KernelInputs {
+    inputs = snapshot_inputs(host, program, path, options, source);
+    for ws in list(inputs.workspaces.values()) {
+        for name in ws.apps {
+            if name not in inputs.check_settings {
+                inputs.check_settings[name] = host.check_settings(name);
+            }
+        }
+    }
+    local = [
+        p
+        for (p, untyped) in inputs.untyped.items()
+        if not untyped
+    ];
+    inputs.python_ifaces = python_interfaces(local, options);
+    return inputs;
+}
+
+class KernelAnalysisError(RuntimeError) {}
+
+obj HostReferenceSession(SessionHooks) {
+    has compiler: any,
+        entry_path: str,
+        task: (ModuleAnalysis | None) = None;
+
+    def enter_compile(ctx: SessionContext) -> CompileFrame {
+        return self.compiler.enter_compile(ctx);
+    }
+
+    def leave_compile(ctx: SessionContext, frame: CompileFrame) {
+        self.compiler.leave_compile(ctx, frame);
+    }
+
+    def finish_compile(frame: CompileFrame) {
+        self.compiler.finish_compile(frame);
+    }
+
+    def check_crash(crash: Exception, file_path: str) {
+        self.compiler.check_crash(crash, file_path);
+    }
+
+    def closure_options -> (CompileOptions | None) {
+        return self.compiler.closure_options();
+    }
+
+    def run_module(
+        file_path: str,
+        target_program: JacProgram,
+        use_str: (str | None),
+        options: CompileOptions
+    ) -> uni.Module {
+        if self.task is None and os.path.realpath(file_path) == self.entry_path {
+            task = analyze_module(target_program, file_path, options, use_str);
+            self.task = task;
+            return task.module;
+        }
+        return self.compiler.run_module(file_path, target_program, use_str, options);
+    }
+}
+
+def host_analysis(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None
+) -> AnalysisReport {
+    session = HostReferenceSession(
+        compiler=host.compiler_for(program), entry_path=os.path.realpath(path)
+    );
+    status = ANALYSIS_OK;
+    message = "";
+    try {
+        compile_in_session(session, path, program, source, options);
+    } except Exception as err {
+        status = ANALYSIS_CRASHED;
+        message = f"{type(err).__name__}: {err}";
+    }
+    tasks = [session.task] if session.task is not None else [];
+    return analysis_report(program, path, tasks, status, message);
+}
+
+def kernel_analysis_json(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None
+) -> str {
+    compiler: any = host.compiler_for(program);
+    compiler.ensure_stub_catalog();
+    return kernel_analysis_inputs(host, program, path, options, source).to_json();
+}
+
+def call_kernel_analyze(
+    kernel: any, inputs_json: str, path: str, source: (str | None)
+) -> str {
+    import from ctypes { c_int64, c_void_p }
+    lib = kernel.lib;
+    analyze = lib.jc_analyze;
+    analyze.argtypes = [c_void_p, c_void_p, c_int64] * 3 + [c_int64];
+    analyze.restype = c_int64;
+    take = lib.jc_take_analysis;
+    take.argtypes = [];
+    take.restype = c_void_p;
+    handles: list[int] = [];
+    args: list[object] = [];
+    try {
+        for text in (inputs_json, path, source or "") {
+            data = text.encode();
+            handle = lib.jac_str_new(data, len(data));
+            handles.append(handle);
+            args.extend([c_void_p(handle), c_void_p(handle), c_int64(len(data))]);
+        }
+        args.append(c_int64(1 if source is not None else 0));
+        analyze(*args);
+    } finally {
+        for handle in handles {
+            lib.jac_release(handle);
+        }
+    }
+    return kernel._take(take()) or "";
+}
+
+def kernel_analysis(
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None,
+    in_process: bool = False
+) -> AnalysisReport {
+    inputs_json = kernel_analysis_json(host, program, path, options, source);
+    if in_process {
+        outcome = run_kernel_analysis(inputs_json, path, source);
+    } else {
+        import from jaclang.compiler.native_compiler { ensure_loaded }
+        kernel = ensure_loaded();
+        if kernel is None {
+            raise KernelAnalysisError("no native compiler kernel is available");
+        }
+        outcome = AnalysisReport.from_json(
+            call_kernel_analyze(kernel, inputs_json, path, source)
+        );
+    }
+    if outcome.status == ANALYSIS_CRASHED {
+        raise KernelAnalysisError(outcome.message);
+    }
+    return outcome;
+}
+
+def kernel_census -> HostCensus {
+    if not _TOTALS {
+        _TOTALS.append(HostCensus());
+    }
+    return _TOTALS[0];
+}
+
+def reset_kernel_census {
+    _TOTALS.clear();
+}
+
+def record_kernel_session(census: HostCensus, path: str) {
+    census.sessions += 1;
+    census.entry_path = path;
+    kernel_census().merge(census);
+    if kernel_host_mode() != "census" {
+        return;
+    }
+    if not _EXIT_REPORT {
+        import atexit;
+        _EXIT_REPORT.append(True);
+        atexit.register(report_kernel_census);
+    }
+    if census.total_misses() {
+        report_stream().write(f"[{path}] {census.summary()}\n");
+    }
+}
+
+def report_kernel_census {
+    report_stream().write(kernel_census().summary() + "\n");
+}
+
+def report_stream -> any {
+    return sys.__stderr__ or sys.stderr;
 }

@@ -282,10 +282,8 @@ impl ProjectHost.native_analyze(
     if program.internal or not kernel_host_enabled() {
         return None;
     }
-    import from jaclang.compiler.frontend.kernel_host {
-        KernelHost,
-        record_kernel_session
-    }
+    import from jaclang.compiler.frontend.kernel_host { KernelHost }
+    import from jaclang.project.kernel_snapshot { record_kernel_session }
     import from jaclang.compiler.driver.module_analysis { analyze_module }
     import from jaclang.compiler.frontend.host { active_host, install_host }
     import time;

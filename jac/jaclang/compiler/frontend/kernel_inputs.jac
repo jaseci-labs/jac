@@ -1,4 +1,6 @@
+import base64;
 import json;
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.host {
     CheckSettings,
     HostPlatform,
@@ -11,7 +13,73 @@ import from jaclang.compiler.frontend.source_layout { LayoutTables }
 import from jaclang.compiler.types.ct_value { CtEnvironment }
 import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 
-glob KERNEL_INPUTS_VERSION: int = 1;
+glob KERNEL_INPUTS_VERSION: int = 2;
+
+obj RequestOptions {
+    has symtab_ir_only: bool = False,
+        no_cgen: bool = False,
+        native_parity: bool = False,
+        native_required: bool = False,
+        native_require: list[str] = [],
+        iface_ok: bool = False,
+        need_full_ast: bool = False,
+        no_ir_cache: bool = False,
+        resolve_annex_parent: bool = False,
+        aot_mode: bool = False,
+        native_unit: bool = False,
+        force_codespace: str = "",
+        memory_profile: str = "managed",
+        nogc_enforce_all: bool = False,
+        memory_enforce: list[str] = [],
+        memory_exempt: list[str] = [],
+        native_target: str = "",
+        suppress_codes: list[str] = [],
+        default_codespace: str = "",
+        app_kind: str = "",
+        target_app: str = "",
+        entry_point: str = "",
+        ui: str = "",
+        project_root: (str | None) = None,
+        strict_dependencies: bool = False,
+        package_canonical: bool = False;
+
+    def to_options -> CompileOptions {
+        return CompileOptions(
+            symtab_ir_only=self.symtab_ir_only,
+            no_cgen=self.no_cgen,
+            native_parity=self.native_parity,
+            native_required=self.native_required,
+            native_require=list(self.native_require),
+            iface_ok=self.iface_ok,
+            need_full_ast=self.need_full_ast,
+            no_ir_cache=self.no_ir_cache,
+            resolve_annex_parent=self.resolve_annex_parent,
+            aot_mode=self.aot_mode,
+            native_unit=self.native_unit,
+            force_codespace=self.force_codespace,
+            memory_profile=self.memory_profile,
+            nogc_enforce_all=self.nogc_enforce_all,
+            memory_enforce=list(self.memory_enforce),
+            memory_exempt=list(self.memory_exempt),
+            native_target=self.native_target,
+            suppress_codes=list(self.suppress_codes),
+            default_codespace=self.default_codespace,
+            app_kind=self.app_kind,
+            target_app=self.target_app,
+            entry_point=self.entry_point,
+            ui=self.ui,
+            project_root=self.project_root,
+            strict_dependencies=self.strict_dependencies,
+            package_canonical=self.package_canonical
+        );
+    }
+}
+
+obj PythonInterface {
+    has path: str,
+        pkg_dir: str,
+        data: bytes = b"";
+}
 
 obj ImportResolution {
     has target: str,
@@ -107,6 +175,7 @@ obj KernelInputs {
         entry_path: str = "",
         module_projection: str = "",
         target_app: str = "",
+        request: RequestOptions = RequestOptions(),
         project_defaults: (ProjectDefaults | None) = None,
         check_settings: dict[str, CheckSettings] = {},
         host_platform: HostPlatform = HostPlatform(),
@@ -118,6 +187,9 @@ obj KernelInputs {
         native_pipeline_known: bool = False,
         stub_catalog_active: bool = False,
         stub_catalog_dir: str = "",
+        stub_catalog_file: str = "",
+        stub_catalog_offset: int = 0,
+        stub_catalog_length: int = 0,
         typeshed_roots: list[str] = [],
         search_paths: list[str] = [],
         native_session_active: bool = False,
@@ -138,7 +210,8 @@ obj KernelInputs {
         imports: list[ImportResolution] = [],
         local_imports: list[LocalResolution] = [],
         npm: list[NpmAnswer] = [],
-        declared: list[DeclaredDependencies] = [];
+        declared: list[DeclaredDependencies] = [],
+        python_ifaces: list[PythonInterface] = [];
 
     def to_json -> str {
         return json.dumps(inputs_to_dict(self), sort_keys=True);
@@ -159,6 +232,100 @@ def local_key(base: str, parts: list[str]) -> str {
 
 def pair_key(first: str, second: str) -> str {
     return f"{first}\x00{second}";
+}
+
+def request_of(options: CompileOptions) -> RequestOptions {
+    return RequestOptions(
+        symtab_ir_only=options.symtab_ir_only,
+        no_cgen=options.no_cgen,
+        native_parity=options.native_parity,
+        native_required=options.native_required,
+        native_require=list(options.native_require or []),
+        iface_ok=options.iface_ok,
+        need_full_ast=options.need_full_ast,
+        no_ir_cache=options.no_ir_cache,
+        resolve_annex_parent=options.resolve_annex_parent,
+        aot_mode=options.aot_mode,
+        native_unit=options.native_unit,
+        force_codespace=options.force_codespace,
+        memory_profile=options.memory_profile or "managed",
+        nogc_enforce_all=bool(options.nogc_enforce_all),
+        memory_enforce=list(options.memory_enforce or []),
+        memory_exempt=list(options.memory_exempt or []),
+        native_target=options.native_target or "",
+        suppress_codes=list(options.suppress_codes),
+        default_codespace=options.default_codespace,
+        app_kind=options.app_kind,
+        target_app=options.target_app,
+        entry_point=options.entry_point,
+        ui=options.ui,
+        project_root=options.project_root,
+        strict_dependencies=options.strict_dependencies,
+        package_canonical=options.package_canonical
+    );
+}
+
+def request_to_dict(request: RequestOptions) -> dict[str, any] {
+    return {
+        "symtab_ir_only": request.symtab_ir_only,
+        "no_cgen": request.no_cgen,
+        "native_parity": request.native_parity,
+        "native_required": request.native_required,
+        "native_require": list(request.native_require),
+        "iface_ok": request.iface_ok,
+        "need_full_ast": request.need_full_ast,
+        "no_ir_cache": request.no_ir_cache,
+        "resolve_annex_parent": request.resolve_annex_parent,
+        "aot_mode": request.aot_mode,
+        "native_unit": request.native_unit,
+        "force_codespace": request.force_codespace,
+        "memory_profile": request.memory_profile,
+        "nogc_enforce_all": request.nogc_enforce_all,
+        "memory_enforce": list(request.memory_enforce),
+        "memory_exempt": list(request.memory_exempt),
+        "native_target": request.native_target,
+        "suppress_codes": list(request.suppress_codes),
+        "default_codespace": request.default_codespace,
+        "app_kind": request.app_kind,
+        "target_app": request.target_app,
+        "entry_point": request.entry_point,
+        "ui": request.ui,
+        "project_root": request.project_root,
+        "strict_dependencies": request.strict_dependencies,
+        "package_canonical": request.package_canonical
+    };
+}
+
+def request_from_dict(raw: dict[str, any]) -> RequestOptions {
+    project_root = raw.get("project_root");
+    return RequestOptions(
+        symtab_ir_only=bool(raw.get("symtab_ir_only", False)),
+        no_cgen=bool(raw.get("no_cgen", False)),
+        native_parity=bool(raw.get("native_parity", False)),
+        native_required=bool(raw.get("native_required", False)),
+        native_require=[str(x) for x in raw.get("native_require", [])],
+        iface_ok=bool(raw.get("iface_ok", False)),
+        need_full_ast=bool(raw.get("need_full_ast", False)),
+        no_ir_cache=bool(raw.get("no_ir_cache", False)),
+        resolve_annex_parent=bool(raw.get("resolve_annex_parent", False)),
+        aot_mode=bool(raw.get("aot_mode", False)),
+        native_unit=bool(raw.get("native_unit", False)),
+        force_codespace=str(raw.get("force_codespace", "")),
+        memory_profile=str(raw.get("memory_profile", "managed")),
+        nogc_enforce_all=bool(raw.get("nogc_enforce_all", False)),
+        memory_enforce=[str(x) for x in raw.get("memory_enforce", [])],
+        memory_exempt=[str(x) for x in raw.get("memory_exempt", [])],
+        native_target=str(raw.get("native_target", "")),
+        suppress_codes=[str(x) for x in raw.get("suppress_codes", [])],
+        default_codespace=str(raw.get("default_codespace", "")),
+        app_kind=str(raw.get("app_kind", "")),
+        target_app=str(raw.get("target_app", "")),
+        entry_point=str(raw.get("entry_point", "")),
+        ui=str(raw.get("ui", "")),
+        project_root=str(project_root) if project_root is not None else None,
+        strict_dependencies=bool(raw.get("strict_dependencies", False)),
+        package_canonical=bool(raw.get("package_canonical", False))
+    );
 }
 
 def check_to_dict(check: CheckSettings) -> dict[str, any] {
@@ -402,6 +569,7 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "entry_path": inputs.entry_path,
         "module_projection": inputs.module_projection,
         "target_app": inputs.target_app,
+        "request": request_to_dict(inputs.request),
         "project_defaults": defaults_to_dict(defaults)
             if defaults is not None
             else None,
@@ -424,6 +592,9 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "native_pipeline_known": inputs.native_pipeline_known,
         "stub_catalog_active": inputs.stub_catalog_active,
         "stub_catalog_dir": inputs.stub_catalog_dir,
+        "stub_catalog_file": inputs.stub_catalog_file,
+        "stub_catalog_offset": inputs.stub_catalog_offset,
+        "stub_catalog_length": inputs.stub_catalog_length,
         "typeshed_roots": list(inputs.typeshed_roots),
         "search_paths": list(inputs.search_paths),
         "native_session_active": inputs.native_session_active,
@@ -487,6 +658,13 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
                 "fallback_app": r.fallback_app,
                 "names": list(r.names) if r.names is not None else None
             } for r in inputs.declared
+        ],
+        "python_ifaces": [
+            {
+                "path": r.path,
+                "pkg_dir": r.pkg_dir,
+                "data": base64.b64encode(r.data).decode("ascii")
+            } for r in inputs.python_ifaces
         ]
     };
 }
@@ -506,6 +684,7 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
         entry_path=str(raw.get("entry_path", "")),
         module_projection=str(raw.get("module_projection", "")),
         target_app=str(raw.get("target_app", "")),
+        request=request_from_dict(dict(raw.get("request", {}))),
         project_defaults=defaults_from_dict(defaults_raw)
             if defaults_raw is not None
             else None,
@@ -528,6 +707,9 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
         native_pipeline_known=bool(raw.get("native_pipeline_known", False)),
         stub_catalog_active=bool(raw.get("stub_catalog_active", False)),
         stub_catalog_dir=str(raw.get("stub_catalog_dir", "")),
+        stub_catalog_file=str(raw.get("stub_catalog_file", "")),
+        stub_catalog_offset=int(raw.get("stub_catalog_offset", 0)),
+        stub_catalog_length=int(raw.get("stub_catalog_length", 0)),
         typeshed_roots=[str(x) for x in raw.get("typeshed_roots", [])],
         search_paths=[str(x) for x in raw.get("search_paths", [])],
         native_session_active=bool(raw.get("native_session_active", False)),
@@ -598,6 +780,13 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
                 fallback_app=str(r.get("fallback_app", "")),
                 names=optional_list(r.get("names"))
             ) for r in raw.get("declared", [])
+        ],
+        python_ifaces=[
+            PythonInterface(
+                path=str(r["path"]),
+                pkg_dir=str(r.get("pkg_dir", "")),
+                data=base64.b64decode(str(r.get("data", "")).encode("ascii"))
+            ) for r in raw.get("python_ifaces", [])
         ]
     );
 }
