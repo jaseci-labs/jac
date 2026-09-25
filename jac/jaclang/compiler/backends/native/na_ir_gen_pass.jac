@@ -439,6 +439,9 @@ walker NaIRGenPass(CompilerPass) {
         rc_collect_cycles_fn: (ir.Function | None) = None,
         rc_trace_lookup_fn: (ir.Function | None) = None,
         rc_trace_pairs: dict[str, tuple[any, ir.Function]] = {},
+        rc_treg_find_fn: (ir.Function | None) = None,
+        rc_treg_register_fn: (ir.Function | None) = None,
+        rc_treg_final: bool = False,
         rc_retains_emitted: int = 0,
         rc_releases_emitted: int = 0,
         rc_ops_elided: int = 0,
@@ -1244,6 +1247,9 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, obj_i8: ir.Value, name_prefix: str = "buf"
     ) -> ir.Value;
 
+    def _emit_rc_trace_registry -> None;
+    def _rc_treg_register -> ir.Function;
+    def _fill_rc_treg_register -> None;
     def _emit_rc_trace_dispatch(
         fn: ir.Function,
         b: ir.IRBuilder,
