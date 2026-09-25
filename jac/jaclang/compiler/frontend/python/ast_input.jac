@@ -3,7 +3,6 @@ import from jaclang.compiler.frontend.python.ast_nodes {
     ast_field,
     ast_kind,
     ast_node,
-    mod,
     Module,
     Interactive,
     Expression,
@@ -2450,6 +2449,124 @@ def read_node_TypeVarTuple(handle: u64, depth: int) -> TypeVarTuple {
     );
 }
 
+
+glob _KIND_READERS: dict[int, Callable[([u64, int], ast_node)]] = {
+         ast_kind.Module.value: read_node_Module,
+         ast_kind.Interactive.value: read_node_Interactive,
+         ast_kind.Expression.value: read_node_Expression,
+         ast_kind.FunctionType.value: read_node_FunctionType,
+         ast_kind.FunctionDef.value: read_node_FunctionDef,
+         ast_kind.AsyncFunctionDef.value: read_node_AsyncFunctionDef,
+         ast_kind.ClassDef.value: read_node_ClassDef,
+         ast_kind.Return.value: read_node_Return,
+         ast_kind.Delete.value: read_node_Delete,
+         ast_kind.Assign.value: read_node_Assign,
+         ast_kind.TypeAlias.value: read_node_TypeAlias,
+         ast_kind.AugAssign.value: read_node_AugAssign,
+         ast_kind.AnnAssign.value: read_node_AnnAssign,
+         ast_kind.For.value: read_node_For,
+         ast_kind.AsyncFor.value: read_node_AsyncFor,
+         ast_kind.While.value: read_node_While,
+         ast_kind.If.value: read_node_If,
+         ast_kind.With.value: read_node_With,
+         ast_kind.AsyncWith.value: read_node_AsyncWith,
+         ast_kind.Match.value: read_node_Match,
+         ast_kind.Raise.value: read_node_Raise,
+         ast_kind.Try.value: read_node_Try,
+         ast_kind.TryStar.value: read_node_TryStar,
+         ast_kind.Assert.value: read_node_Assert,
+         ast_kind.Import.value: read_node_Import,
+         ast_kind.ImportFrom.value: read_node_ImportFrom,
+         ast_kind.Global.value: read_node_Global,
+         ast_kind.Nonlocal.value: read_node_Nonlocal,
+         ast_kind.Expr.value: read_node_Expr,
+         ast_kind.Pass.value: read_node_Pass,
+         ast_kind.Break.value: read_node_Break,
+         ast_kind.Continue.value: read_node_Continue,
+         ast_kind.BoolOp.value: read_node_BoolOp,
+         ast_kind.NamedExpr.value: read_node_NamedExpr,
+         ast_kind.BinOp.value: read_node_BinOp,
+         ast_kind.UnaryOp.value: read_node_UnaryOp,
+         ast_kind.Lambda.value: read_node_Lambda,
+         ast_kind.IfExp.value: read_node_IfExp,
+         ast_kind.Dict.value: read_node_Dict,
+         ast_kind.Set.value: read_node_Set,
+         ast_kind.ListComp.value: read_node_ListComp,
+         ast_kind.SetComp.value: read_node_SetComp,
+         ast_kind.DictComp.value: read_node_DictComp,
+         ast_kind.GeneratorExp.value: read_node_GeneratorExp,
+         ast_kind.Await.value: read_node_Await,
+         ast_kind.Yield.value: read_node_Yield,
+         ast_kind.YieldFrom.value: read_node_YieldFrom,
+         ast_kind.Compare.value: read_node_Compare,
+         ast_kind.Call.value: read_node_Call,
+         ast_kind.FormattedValue.value: read_node_FormattedValue,
+         ast_kind.Interpolation.value: read_node_Interpolation,
+         ast_kind.JoinedStr.value: read_node_JoinedStr,
+         ast_kind.TemplateStr.value: read_node_TemplateStr,
+         ast_kind.Constant.value: read_node_Constant,
+         ast_kind.Attribute.value: read_node_Attribute,
+         ast_kind.Subscript.value: read_node_Subscript,
+         ast_kind.Starred.value: read_node_Starred,
+         ast_kind.Name.value: read_node_Name,
+         ast_kind.List.value: read_node_List,
+         ast_kind.Tuple.value: read_node_Tuple,
+         ast_kind.Slice.value: read_node_Slice,
+         ast_kind.Load.value: read_node_Load,
+         ast_kind.Store.value: read_node_Store,
+         ast_kind.Del.value: read_node_Del,
+         ast_kind.And.value: read_node_And,
+         ast_kind.Or.value: read_node_Or,
+         ast_kind.Add.value: read_node_Add,
+         ast_kind.Sub.value: read_node_Sub,
+         ast_kind.Mult.value: read_node_Mult,
+         ast_kind.MatMult.value: read_node_MatMult,
+         ast_kind.Div.value: read_node_Div,
+         ast_kind.Mod.value: read_node_Mod,
+         ast_kind.Pow.value: read_node_Pow,
+         ast_kind.LShift.value: read_node_LShift,
+         ast_kind.RShift.value: read_node_RShift,
+         ast_kind.BitOr.value: read_node_BitOr,
+         ast_kind.BitXor.value: read_node_BitXor,
+         ast_kind.BitAnd.value: read_node_BitAnd,
+         ast_kind.FloorDiv.value: read_node_FloorDiv,
+         ast_kind.Invert.value: read_node_Invert,
+         ast_kind.Not.value: read_node_Not,
+         ast_kind.UAdd.value: read_node_UAdd,
+         ast_kind.USub.value: read_node_USub,
+         ast_kind.Eq.value: read_node_Eq,
+         ast_kind.NotEq.value: read_node_NotEq,
+         ast_kind.Lt.value: read_node_Lt,
+         ast_kind.LtE.value: read_node_LtE,
+         ast_kind.Gt.value: read_node_Gt,
+         ast_kind.GtE.value: read_node_GtE,
+         ast_kind.Is.value: read_node_Is,
+         ast_kind.IsNot.value: read_node_IsNot,
+         ast_kind.In.value: read_node_In,
+         ast_kind.NotIn.value: read_node_NotIn,
+         ast_kind.comprehension.value: read_node_comprehension,
+         ast_kind.ExceptHandler.value: read_node_ExceptHandler,
+         ast_kind.arguments.value: read_node_arguments,
+         ast_kind.arg.value: read_node_arg,
+         ast_kind.keyword.value: read_node_keyword,
+         ast_kind.alias.value: read_node_alias,
+         ast_kind.withitem.value: read_node_withitem,
+         ast_kind.match_case.value: read_node_match_case,
+         ast_kind.MatchValue.value: read_node_MatchValue,
+         ast_kind.MatchSingleton.value: read_node_MatchSingleton,
+         ast_kind.MatchSequence.value: read_node_MatchSequence,
+         ast_kind.MatchMapping.value: read_node_MatchMapping,
+         ast_kind.MatchClass.value: read_node_MatchClass,
+         ast_kind.MatchStar.value: read_node_MatchStar,
+         ast_kind.MatchAs.value: read_node_MatchAs,
+         ast_kind.MatchOr.value: read_node_MatchOr,
+         ast_kind.TypeIgnore.value: read_node_TypeIgnore,
+         ast_kind.TypeVar.value: read_node_TypeVar,
+         ast_kind.ParamSpec.value: read_node_ParamSpec,
+         ast_kind.TypeVarTuple.value: read_node_TypeVarTuple,
+
+     };
+
 def read_node(handle: u64, depth: int = 0) -> ast_node {
     if depth > 1000 {
         raise RecursionError("maximum recursion depth exceeded during AST conversion");
@@ -2458,344 +2575,9 @@ def read_node(handle: u64, depth: int = 0) -> ast_node {
     if kind < -1 {
         raise boundary_failure();
     }
-    if kind == ast_kind.Module.value {
-        return read_node_Module(handle, depth);
-    }
-    if kind == ast_kind.Interactive.value {
-        return read_node_Interactive(handle, depth);
-    }
-    if kind == ast_kind.Expression.value {
-        return read_node_Expression(handle, depth);
-    }
-    if kind == ast_kind.FunctionType.value {
-        return read_node_FunctionType(handle, depth);
-    }
-    if kind == ast_kind.FunctionDef.value {
-        return read_node_FunctionDef(handle, depth);
-    }
-    if kind == ast_kind.AsyncFunctionDef.value {
-        return read_node_AsyncFunctionDef(handle, depth);
-    }
-    if kind == ast_kind.ClassDef.value {
-        return read_node_ClassDef(handle, depth);
-    }
-    if kind == ast_kind.Return.value {
-        return read_node_Return(handle, depth);
-    }
-    if kind == ast_kind.Delete.value {
-        return read_node_Delete(handle, depth);
-    }
-    if kind == ast_kind.Assign.value {
-        return read_node_Assign(handle, depth);
-    }
-    if kind == ast_kind.TypeAlias.value {
-        return read_node_TypeAlias(handle, depth);
-    }
-    if kind == ast_kind.AugAssign.value {
-        return read_node_AugAssign(handle, depth);
-    }
-    if kind == ast_kind.AnnAssign.value {
-        return read_node_AnnAssign(handle, depth);
-    }
-    if kind == ast_kind.For.value {
-        return read_node_For(handle, depth);
-    }
-    if kind == ast_kind.AsyncFor.value {
-        return read_node_AsyncFor(handle, depth);
-    }
-    if kind == ast_kind.While.value {
-        return read_node_While(handle, depth);
-    }
-    if kind == ast_kind.If.value {
-        return read_node_If(handle, depth);
-    }
-    if kind == ast_kind.With.value {
-        return read_node_With(handle, depth);
-    }
-    if kind == ast_kind.AsyncWith.value {
-        return read_node_AsyncWith(handle, depth);
-    }
-    if kind == ast_kind.Match.value {
-        return read_node_Match(handle, depth);
-    }
-    if kind == ast_kind.Raise.value {
-        return read_node_Raise(handle, depth);
-    }
-    if kind == ast_kind.Try.value {
-        return read_node_Try(handle, depth);
-    }
-    if kind == ast_kind.TryStar.value {
-        return read_node_TryStar(handle, depth);
-    }
-    if kind == ast_kind.Assert.value {
-        return read_node_Assert(handle, depth);
-    }
-    if kind == ast_kind.Import.value {
-        return read_node_Import(handle, depth);
-    }
-    if kind == ast_kind.ImportFrom.value {
-        return read_node_ImportFrom(handle, depth);
-    }
-    if kind == ast_kind.Global.value {
-        return read_node_Global(handle, depth);
-    }
-    if kind == ast_kind.Nonlocal.value {
-        return read_node_Nonlocal(handle, depth);
-    }
-    if kind == ast_kind.Expr.value {
-        return read_node_Expr(handle, depth);
-    }
-    if kind == ast_kind.Pass.value {
-        return read_node_Pass(handle, depth);
-    }
-    if kind == ast_kind.Break.value {
-        return read_node_Break(handle, depth);
-    }
-    if kind == ast_kind.Continue.value {
-        return read_node_Continue(handle, depth);
-    }
-    if kind == ast_kind.BoolOp.value {
-        return read_node_BoolOp(handle, depth);
-    }
-    if kind == ast_kind.NamedExpr.value {
-        return read_node_NamedExpr(handle, depth);
-    }
-    if kind == ast_kind.BinOp.value {
-        return read_node_BinOp(handle, depth);
-    }
-    if kind == ast_kind.UnaryOp.value {
-        return read_node_UnaryOp(handle, depth);
-    }
-    if kind == ast_kind.Lambda.value {
-        return read_node_Lambda(handle, depth);
-    }
-    if kind == ast_kind.IfExp.value {
-        return read_node_IfExp(handle, depth);
-    }
-    if kind == ast_kind.Dict.value {
-        return read_node_Dict(handle, depth);
-    }
-    if kind == ast_kind.Set.value {
-        return read_node_Set(handle, depth);
-    }
-    if kind == ast_kind.ListComp.value {
-        return read_node_ListComp(handle, depth);
-    }
-    if kind == ast_kind.SetComp.value {
-        return read_node_SetComp(handle, depth);
-    }
-    if kind == ast_kind.DictComp.value {
-        return read_node_DictComp(handle, depth);
-    }
-    if kind == ast_kind.GeneratorExp.value {
-        return read_node_GeneratorExp(handle, depth);
-    }
-    if kind == ast_kind.Await.value {
-        return read_node_Await(handle, depth);
-    }
-    if kind == ast_kind.Yield.value {
-        return read_node_Yield(handle, depth);
-    }
-    if kind == ast_kind.YieldFrom.value {
-        return read_node_YieldFrom(handle, depth);
-    }
-    if kind == ast_kind.Compare.value {
-        return read_node_Compare(handle, depth);
-    }
-    if kind == ast_kind.Call.value {
-        return read_node_Call(handle, depth);
-    }
-    if kind == ast_kind.FormattedValue.value {
-        return read_node_FormattedValue(handle, depth);
-    }
-    if kind == ast_kind.Interpolation.value {
-        return read_node_Interpolation(handle, depth);
-    }
-    if kind == ast_kind.JoinedStr.value {
-        return read_node_JoinedStr(handle, depth);
-    }
-    if kind == ast_kind.TemplateStr.value {
-        return read_node_TemplateStr(handle, depth);
-    }
-    if kind == ast_kind.Constant.value {
-        return read_node_Constant(handle, depth);
-    }
-    if kind == ast_kind.Attribute.value {
-        return read_node_Attribute(handle, depth);
-    }
-    if kind == ast_kind.Subscript.value {
-        return read_node_Subscript(handle, depth);
-    }
-    if kind == ast_kind.Starred.value {
-        return read_node_Starred(handle, depth);
-    }
-    if kind == ast_kind.Name.value {
-        return read_node_Name(handle, depth);
-    }
-    if kind == ast_kind.List.value {
-        return read_node_List(handle, depth);
-    }
-    if kind == ast_kind.Tuple.value {
-        return read_node_Tuple(handle, depth);
-    }
-    if kind == ast_kind.Slice.value {
-        return read_node_Slice(handle, depth);
-    }
-    if kind == ast_kind.Load.value {
-        return read_node_Load(handle, depth);
-    }
-    if kind == ast_kind.Store.value {
-        return read_node_Store(handle, depth);
-    }
-    if kind == ast_kind.Del.value {
-        return read_node_Del(handle, depth);
-    }
-    if kind == ast_kind.And.value {
-        return read_node_And(handle, depth);
-    }
-    if kind == ast_kind.Or.value {
-        return read_node_Or(handle, depth);
-    }
-    if kind == ast_kind.Add.value {
-        return read_node_Add(handle, depth);
-    }
-    if kind == ast_kind.Sub.value {
-        return read_node_Sub(handle, depth);
-    }
-    if kind == ast_kind.Mult.value {
-        return read_node_Mult(handle, depth);
-    }
-    if kind == ast_kind.MatMult.value {
-        return read_node_MatMult(handle, depth);
-    }
-    if kind == ast_kind.Div.value {
-        return read_node_Div(handle, depth);
-    }
-    if kind == ast_kind.Mod.value {
-        return read_node_Mod(handle, depth);
-    }
-    if kind == ast_kind.Pow.value {
-        return read_node_Pow(handle, depth);
-    }
-    if kind == ast_kind.LShift.value {
-        return read_node_LShift(handle, depth);
-    }
-    if kind == ast_kind.RShift.value {
-        return read_node_RShift(handle, depth);
-    }
-    if kind == ast_kind.BitOr.value {
-        return read_node_BitOr(handle, depth);
-    }
-    if kind == ast_kind.BitXor.value {
-        return read_node_BitXor(handle, depth);
-    }
-    if kind == ast_kind.BitAnd.value {
-        return read_node_BitAnd(handle, depth);
-    }
-    if kind == ast_kind.FloorDiv.value {
-        return read_node_FloorDiv(handle, depth);
-    }
-    if kind == ast_kind.Invert.value {
-        return read_node_Invert(handle, depth);
-    }
-    if kind == ast_kind.Not.value {
-        return read_node_Not(handle, depth);
-    }
-    if kind == ast_kind.UAdd.value {
-        return read_node_UAdd(handle, depth);
-    }
-    if kind == ast_kind.USub.value {
-        return read_node_USub(handle, depth);
-    }
-    if kind == ast_kind.Eq.value {
-        return read_node_Eq(handle, depth);
-    }
-    if kind == ast_kind.NotEq.value {
-        return read_node_NotEq(handle, depth);
-    }
-    if kind == ast_kind.Lt.value {
-        return read_node_Lt(handle, depth);
-    }
-    if kind == ast_kind.LtE.value {
-        return read_node_LtE(handle, depth);
-    }
-    if kind == ast_kind.Gt.value {
-        return read_node_Gt(handle, depth);
-    }
-    if kind == ast_kind.GtE.value {
-        return read_node_GtE(handle, depth);
-    }
-    if kind == ast_kind.Is.value {
-        return read_node_Is(handle, depth);
-    }
-    if kind == ast_kind.IsNot.value {
-        return read_node_IsNot(handle, depth);
-    }
-    if kind == ast_kind.In.value {
-        return read_node_In(handle, depth);
-    }
-    if kind == ast_kind.NotIn.value {
-        return read_node_NotIn(handle, depth);
-    }
-    if kind == ast_kind.comprehension.value {
-        return read_node_comprehension(handle, depth);
-    }
-    if kind == ast_kind.ExceptHandler.value {
-        return read_node_ExceptHandler(handle, depth);
-    }
-    if kind == ast_kind.arguments.value {
-        return read_node_arguments(handle, depth);
-    }
-    if kind == ast_kind.arg.value {
-        return read_node_arg(handle, depth);
-    }
-    if kind == ast_kind.keyword.value {
-        return read_node_keyword(handle, depth);
-    }
-    if kind == ast_kind.alias.value {
-        return read_node_alias(handle, depth);
-    }
-    if kind == ast_kind.withitem.value {
-        return read_node_withitem(handle, depth);
-    }
-    if kind == ast_kind.match_case.value {
-        return read_node_match_case(handle, depth);
-    }
-    if kind == ast_kind.MatchValue.value {
-        return read_node_MatchValue(handle, depth);
-    }
-    if kind == ast_kind.MatchSingleton.value {
-        return read_node_MatchSingleton(handle, depth);
-    }
-    if kind == ast_kind.MatchSequence.value {
-        return read_node_MatchSequence(handle, depth);
-    }
-    if kind == ast_kind.MatchMapping.value {
-        return read_node_MatchMapping(handle, depth);
-    }
-    if kind == ast_kind.MatchClass.value {
-        return read_node_MatchClass(handle, depth);
-    }
-    if kind == ast_kind.MatchStar.value {
-        return read_node_MatchStar(handle, depth);
-    }
-    if kind == ast_kind.MatchAs.value {
-        return read_node_MatchAs(handle, depth);
-    }
-    if kind == ast_kind.MatchOr.value {
-        return read_node_MatchOr(handle, depth);
-    }
-    if kind == ast_kind.TypeIgnore.value {
-        return read_node_TypeIgnore(handle, depth);
-    }
-    if kind == ast_kind.TypeVar.value {
-        return read_node_TypeVar(handle, depth);
-    }
-    if kind == ast_kind.ParamSpec.value {
-        return read_node_ParamSpec(handle, depth);
-    }
-    if kind == ast_kind.TypeVarTuple.value {
-        return read_node_TypeVarTuple(handle, depth);
-    }
-    raise TypeError("Expected a concrete AST node");
+    reader = _KIND_READERS.get(kind);
+    if reader is None {
+        raise TypeError("Expected a concrete AST node");
+    }
+    return reader(handle, depth);
 }
