@@ -39,18 +39,25 @@ impl NaIRGenPass._emit_hash_order_compact_fn(
     order = b.load(
         b.gep(container, [ir.Constant(i32, 0), ir.Constant(i32, layout["order_idx"])])
     );
-    extent_ptr = self._hash_order_extent_ptr(b, order, capacity);
-    extent = b.load(extent_ptr);
     read_ptr = b.alloca(i64, name="order.read");
     write_ptr = b.alloca(i64, name="order.write");
     b.store(ir.Constant(i64, 0), read_ptr);
     b.store(ir.Constant(i64, 0), write_ptr);
+    live = fn.append_basic_block("live");
     scan = fn.append_basic_block("scan");
     check = fn.append_basic_block("check");
     copy = fn.append_basic_block("copy");
     advance = fn.append_basic_block("advance");
     finish = fn.append_basic_block("finish");
     done = fn.append_basic_block("done");
+    b.cbranch(
+        b.icmp_unsigned("==", order, ir.Constant(order.type, None), name="order.none"),
+        done,
+        live
+    );
+    b = ir.IRBuilder(live);
+    extent_ptr = self._hash_order_extent_ptr(b, order, capacity);
+    extent = b.load(extent_ptr);
     b.cbranch(b.icmp_unsigned("==", extent, length), done, scan);
     bs = ir.IRBuilder(scan);
     read = bs.load(read_ptr);
