@@ -1,4 +1,5 @@
 import from _csprng_native { csprng_bytes }
+import from _hex { to_hex }
 
 
 obj:pub UUID {
@@ -21,21 +22,14 @@ obj:pub UUID {
 
 
 def:pub uuid4 -> UUID {
-    raw = csprng_bytes(16);
-    digits: str = "0123456789abcdef";
-    out: str = "";
+    src = csprng_bytes(16);
+    raw: list[int] = [];
     i: int = 0;
     while i < 16 {
-        v: int = raw[i];
-        if i == 6 {
-            v = (v & 15) | 64;
-        }
-        if i == 8 {
-            v = (v & 63) | 128;
-        }
-        out += digits[v >> 4];
-        out += digits[v & 15];
+        raw.append(src[i]);
         i += 1;
     }
-    return UUID(hex=out, version=4);
+    raw[6] = (raw[6] & 15) | 64;
+    raw[8] = (raw[8] & 63) | 128;
+    return UUID(hex=to_hex(bytes(raw)), version=4);
 }
