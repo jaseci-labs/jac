@@ -31,3 +31,18 @@ itertools       test.test_itertools
 array           test.test_array
 _pickle         test.test_pickle
 _statistics     test.test_statistics
+_stat           test.test_stat
+_opcode         test.test__opcode,test.test_dis
+pwd             test.test_pwd
+grp             test.test_grp
+_types          test.test_types
+_typing         test.test_typing
+_suggestions    test.test_traceback
+_sysconfig      test.test_sysconfig
+_weakref        test.test_weakref
+_tracemalloc    test.test_tracemalloc
+zlib            test.test_zlib                          -lz
+_bz2            test.test_bz2                           -lbz2
+errno           test.test_errno
+syslog          test.test_syslog
+resource        test.test_resource

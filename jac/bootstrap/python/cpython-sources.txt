@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 43 C files / 104,023 lines; 26 headers / 11,229 lines.
-#   Total: 69 files / 115,252 source lines.
+#   Excluded: 58 C files / 111,789 lines; 38 headers / 14,455 lines.
+#   Total: 96 files / 126,244 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -317,7 +317,7 @@ Modules/Setup.stdlib.in
 Modules/_abc.c
 Modules/_asynciomodule.c
 # Modules/_bisectmodule.c  # removed: 484 source lines
-Modules/_bz2module.c
+# Modules/_bz2module.c  # removed: 843 source lines
 Modules/_codecsmodule.c
 # Modules/_collectionsmodule.c  # removed: 2,902 source lines
 # Modules/_csv.c  # removed: 1,864 source lines
@@ -410,7 +410,7 @@ Modules/_multiprocessing/multiprocessing.c
 Modules/_multiprocessing/multiprocessing.h
 Modules/_multiprocessing/posixshmem.c
 Modules/_multiprocessing/semaphore.c
-Modules/_opcode.c
+# Modules/_opcode.c  # removed: 451 source lines
 # Modules/_operator.c  # removed: 2,032 source lines
 # Modules/_pickle.c  # removed: 8,179 source lines
 Modules/_posixsubprocess.c
@@ -457,17 +457,17 @@ Modules/_ssl/clinic/cert.c.h
 Modules/_ssl/debughelpers.c
 Modules/_ssl/misc.c
 Modules/_ssl_data_35.h
-Modules/_stat.c
+# Modules/_stat.c  # removed: 713 source lines
 # Modules/_statisticsmodule.c  # removed: 159 source lines
 # Modules/_struct.c  # removed: 2,825 source lines
-Modules/_suggestions.c
-Modules/_sysconfig.c
+# Modules/_suggestions.c  # removed: 69 source lines
+# Modules/_sysconfig.c  # removed: 109 source lines
 Modules/_threadmodule.c
-Modules/_tracemalloc.c
-Modules/_typesmodule.c
-Modules/_typingmodule.c
+# Modules/_tracemalloc.c  # removed: 228 source lines
+# Modules/_typesmodule.c  # removed: 72 source lines
+# Modules/_typingmodule.c  # removed: 99 source lines
 Modules/_uuidmodule.c
-Modules/_weakref.c
+# Modules/_weakref.c  # removed: 187 source lines
 Modules/_zoneinfo.c
 Modules/_zstd/_zstdmodule.c
 Modules/_zstd/_zstdmodule.h
@@ -506,7 +506,7 @@ Modules/cjkcodecs/multibytecodec.h
 Modules/clinic/_abc.c.h
 Modules/clinic/_asynciomodule.c.h
 # Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
-Modules/clinic/_bz2module.c.h
+# Modules/clinic/_bz2module.c.h  # removed: 241 source lines
 Modules/clinic/_codecsmodule.c.h
 # Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
 # Modules/clinic/_csv.c.h  # removed: 210 source lines
@@ -518,7 +518,7 @@ Modules/clinic/_hashopenssl.c.h
 Modules/clinic/_localemodule.c.h
 Modules/clinic/_lsprof.c.h
 Modules/clinic/_lzmamodule.c.h
-Modules/clinic/_opcode.c.h
+# Modules/clinic/_opcode.c.h  # removed: 779 source lines
 # Modules/clinic/_operator.c.h  # removed: 1,510 source lines
 # Modules/clinic/_pickle.c.h  # removed: 1,101 source lines
 Modules/clinic/_posixsubprocess.c.h
@@ -528,12 +528,12 @@ Modules/clinic/_remote_debugging_module.c.h
 Modules/clinic/_ssl.c.h
 # Modules/clinic/_statisticsmodule.c.h  # removed: 51 source lines
 # Modules/clinic/_struct.c.h  # removed: 461 source lines
-Modules/clinic/_suggestions.c.h
-Modules/clinic/_sysconfig.c.h
+# Modules/clinic/_suggestions.c.h  # removed: 41 source lines
+# Modules/clinic/_sysconfig.c.h  # removed: 22 source lines
 Modules/clinic/_threadmodule.c.h
-Modules/clinic/_tracemalloc.c.h
-Modules/clinic/_typingmodule.c.h
-Modules/clinic/_weakref.c.h
+# Modules/clinic/_tracemalloc.c.h  # removed: 217 source lines
+# Modules/clinic/_typingmodule.c.h  # removed: 12 source lines
+# Modules/clinic/_weakref.c.h  # removed: 115 source lines
 Modules/clinic/_zoneinfo.c.h
 # Modules/clinic/arraymodule.c.h  # removed: 777 source lines
 # Modules/clinic/binascii.c.h  # removed: 791 source lines
@@ -541,16 +541,16 @@ Modules/clinic/blake2module.c.h
 # Modules/clinic/cmathmodule.c.h  # removed: 990 source lines
 Modules/clinic/fcntlmodule.c.h
 Modules/clinic/gcmodule.c.h
-Modules/clinic/grpmodule.c.h
+# Modules/clinic/grpmodule.c.h  # removed: 155 source lines
 Modules/clinic/hmacmodule.c.h
 # Modules/clinic/itertoolsmodule.c.h  # removed: 968 source lines
 # Modules/clinic/mathmodule.c.h  # removed: 1,114 source lines
 Modules/clinic/md5module.c.h
 Modules/clinic/mmapmodule.c.h
 Modules/clinic/posixmodule.c.h
-Modules/clinic/pwdmodule.c.h
+# Modules/clinic/pwdmodule.c.h  # removed: 74 source lines
 Modules/clinic/pyexpat.c.h
-Modules/clinic/resource.c.h
+# Modules/clinic/resource.c.h  # removed: 177 source lines
 Modules/clinic/selectmodule.c.h
 Modules/clinic/sha1module.c.h
 Modules/clinic/sha2module.c.h
@@ -558,14 +558,14 @@ Modules/clinic/sha3module.c.h
 Modules/clinic/signalmodule.c.h
 Modules/clinic/socketmodule.c.h
 # Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
-Modules/clinic/syslogmodule.c.h
+# Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
 Modules/clinic/termios.c.h
 Modules/clinic/timemodule.c.h
 Modules/clinic/unicodedata.c.h
-Modules/clinic/zlibmodule.c.h
+# Modules/clinic/zlibmodule.c.h  # removed: 1,125 source lines
 # Modules/cmathmodule.c  # removed: 1,315 source lines
 Modules/config.c.in
-Modules/errnomodule.c
+# Modules/errnomodule.c  # removed: 988 source lines
 Modules/faulthandler.c
 Modules/fcntlmodule.c
 Modules/gcmodule.c
@@ -575,7 +575,7 @@ Modules/getnameinfo.c
 Modules/getpath.c
 Modules/getpath.py
 Modules/getpath_noop.c
-Modules/grpmodule.c
+# Modules/grpmodule.c  # removed: 409 source lines
 Modules/hashlib.h
 Modules/hmacmodule.c
 # Modules/itertoolsmodule.c  # removed: 4,103 source lines
@@ -587,9 +587,9 @@ Modules/md5module.c
 Modules/mmapmodule.c
 Modules/posixmodule.c
 Modules/posixmodule.h
-Modules/pwdmodule.c
+# Modules/pwdmodule.c  # removed: 380 source lines
 Modules/pyexpat.c
-Modules/resource.c
+# Modules/resource.c  # removed: 568 source lines
 Modules/rotatingtree.c
 Modules/rotatingtree.h
 Modules/selectmodule.c
@@ -600,7 +600,7 @@ Modules/signalmodule.c
 Modules/socketmodule.c
 Modules/socketmodule.h
 # Modules/symtablemodule.c  # removed: 130 source lines
-Modules/syslogmodule.c
+# Modules/syslogmodule.c  # removed: 469 source lines
 Modules/termios.c
 Modules/timemodule.c
 Modules/unicodedata.c
@@ -608,7 +608,7 @@ Modules/unicodedata_db.h
 Modules/unicodename_db.h
 # Modules/winreparse.h  # pruned: 59 source lines
 # Modules/xxmodule.c  # pruned: 413 source lines
-Modules/zlibmodule.c
+# Modules/zlibmodule.c  # removed: 2,181 source lines
 
 # Python standard library (no test or GUI packages)
 Lib/__future__.py

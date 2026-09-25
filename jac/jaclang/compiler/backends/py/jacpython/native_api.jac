@@ -31,6 +31,21 @@ import from jaclang.runtime.python.bindings.random { PyInit__random }
 import from jaclang.runtime.python.bindings.bisect { PyInit__bisect }
 import from jaclang.runtime.python.bindings.heapq { PyInit__heapq }
 import from jaclang.runtime.python.bindings.statistics { PyInit__statistics }
+import from jaclang.runtime.python.bindings.stat { PyInit__stat }
+import from jaclang.runtime.python.bindings.opcode { PyInit__opcode }
+import from jaclang.runtime.python.bindings.pwd { PyInit_pwd }
+import from jaclang.runtime.python.bindings.grp { PyInit_grp }
+import from jaclang.runtime.python.bindings.types { PyInit__types }
+import from jaclang.runtime.python.bindings.typing { PyInit__typing }
+import from jaclang.runtime.python.bindings.suggestions { PyInit__suggestions }
+import from jaclang.runtime.python.bindings.sysconfig { PyInit__sysconfig }
+import from jaclang.runtime.python.bindings.weakref { PyInit__weakref }
+import from jaclang.runtime.python.bindings.tracemalloc { PyInit__tracemalloc }
+import from jaclang.runtime.python.bindings.zlib { PyInit_zlib }
+import from jaclang.runtime.python.bindings.bz2 { PyInit__bz2 }
+import from jaclang.runtime.python.bindings.errno { PyInit_errno }
+import from jaclang.runtime.python.bindings.syslog { PyInit_syslog }
+import from jaclang.runtime.python.bindings.resource { PyInit_resource }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

@@ -2,3 +2,15 @@
 # Argument Clinic input by gen_clinic.py into
 # jaclang/runtime/python/bindings/clinic/<name>.jac.
 # `python3 jac/bootstrap/python/gen_clinic.py --check` fails when any is stale.
+_opcode
+pwd
+grp
+_suggestions
+_sysconfig
+_typing
+_tracemalloc
+_weakref
+zlib
+_bz2
+syslog
+resource
