@@ -791,6 +791,7 @@ impl OwnershipCheckPass._handled_by_enclosing_try(
 ) -> bool {
     child: UniNode = nd;
     cur: UniNode | None = nd.parent;
+    raised: set[str] | None = None;
     while cur is not None and cur is not stop {
         if isinstance(cur, TryStmt) and child in list(cur.body) {
             for handler in cur.excepts {
@@ -820,6 +821,14 @@ impl OwnershipCheckPass._handled_by_enclosing_try(
                         and exc in JAC_TYPE_REGISTRY.exception_descendants(caught) {
                         return True;
                     }
+                    if caught is not None {
+                        if raised is None {
+                            raised = self._raised_class_names(nd, exc, set());
+                        }
+                        if caught in raised {
+                            return True;
+                        }
+                    }
                 }
             }
         }
@@ -827,6 +836,45 @@ impl OwnershipCheckPass._handled_by_enclosing_try(
         cur = cur.parent;
     }
     return False;
+}
+
+impl OwnershipCheckPass._raised_class_names(
+    site: UniNode, exc: str, seen: set[int]
+) -> set[str] {
+    import from jaclang.compiler.types.types { ClassType }
+    if isinstance(site, RaiseStmt) {
+        _t = site.cause.type if isinstance(site.cause, Expr) else None;
+        if isinstance(_t, ClassType) and _t.shared.class_name == exc {
+            return {c.shared.class_name for c in (_t.shared.mro or [])};
+        }
+        return set();
+    }
+    body = site if isinstance(site, Ability) else None;
+    if isinstance(site, FuncCall) {
+        body = self._callee_ability(site);
+    }
+    if body is None or id(body) in seen {
+        return set();
+    }
+    seen.add(id(body));
+    for rs in body.get_all_sub_nodes(RaiseStmt) {
+        if self._raise_type_name(rs) == exc {
+            found = self._raised_class_names(rs, exc, seen);
+            if found {
+                return found;
+            }
+        }
+    }
+    for call in body.get_all_sub_nodes(FuncCall) {
+        callee = self._callee_ability(call);
+        if callee is not None and exc in callee.raises {
+            found = self._raised_class_names(callee, exc, seen);
+            if found {
+                return found;
+            }
+        }
+    }
+    return set();
 }
 
 impl OwnershipCheckPass._callee_ability(call: FuncCall) -> (Ability | None) {

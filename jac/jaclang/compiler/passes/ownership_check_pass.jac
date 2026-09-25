@@ -211,6 +211,7 @@ walker OwnershipCheckPass(CompilerPass) {
     def _emit_managed_borrow_diagnostics(cfg_nodes: list[UniCFGNode]) -> None;
     def _raise_type_name(nd: RaiseStmt) -> (str | None);
     def _handled_by_enclosing_try(nd: UniNode, exc: str, stop: UniNode) -> bool;
+    def _raised_class_names(site: UniNode, exc: str, seen: set[int]) -> set[str];
     def _callee_ability(call: FuncCall) -> (Ability | None);
     def _local_raises(ab: UniNode) -> set[str];
     def _emit_raises_diagnostics -> None;

@@ -1365,7 +1365,37 @@ walker NaIRGenPass(CompilerPass) {
 
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
-    def _exception_handler_ids(ex: uni.Expr | None) -> list[int];
+    def _exception_handler_targets(ex: uni.Expr | None) -> (list[str] | None);
+    def _emit_exception_match(
+        type_val: ir.Value,
+        obj_val: ir.Value,
+        msg_val: ir.Value,
+        targets: list[str],
+        id_bias: int,
+        on_match: ir.Block,
+        on_miss: ir.Block
+    ) -> None;
+
+    def _exc_message_slot(type_name: str) -> (int | None);
+    def _ctor_arg_value(
+        arg: uni.UniNode, pre: dict[int, ir.Value]
+    ) -> (ir.Value | None);
+
+    def _store_exc_message(
+        obj_ptr: ir.Value,
+        type_name: str,
+        args: list[uni.Expr],
+        pre: dict[int, ir.Value],
+        shared: bool
+    ) -> bool;
+
+    def _exc_args_text(
+        values: list[ir.Value], nodes: list[uni.Expr], shared: bool
+    ) -> (ir.Value | None);
+
+    def _exc_stored_message(obj_val: ir.Value, type_name: str) -> ir.Value;
+    def _emit_exc_message_str(obj_val: ir.Value, type_name: str) -> ir.Value;
+    def _exc_state_message(obj_val: ir.Value, type_name: str) -> ir.Value;
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
     def _raise_has_frame_handler(nd: uni.RaiseStmt) -> bool;
     def _codegen_try(nd: uni.TryStmt) -> None;

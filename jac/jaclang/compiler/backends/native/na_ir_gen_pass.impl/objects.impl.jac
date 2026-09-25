@@ -470,7 +470,10 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
     if struct_type is None {
         return;
     }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.passes.layout_pass {
+        EXC_MESSAGE_FIELD,
+        get_layout_registry
+    }
     _owner_mod = nd.find_parent_of_type(uni.Module) or self.module;
     layout = get_layout_registry(_owner_mod, self.prog).get_layout(arch_name);
     if layout is None {
@@ -509,6 +512,9 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
         fname = finfo.name;
         var = finfo.decl_node;
         ftype: ir.Type = ir.IntType(64);
+        if var is None and fname == EXC_MESSAGE_FIELD {
+            ftype = self._lower_type_by_name("str") or ftype;
+        }
         if isinstance(var, uni.HasVar) and type_tag_borrows(var.type_tag) {
             if arch_name not in self.struct_field_borrow {
                 self.struct_field_borrow[arch_name] = set();
@@ -633,7 +639,11 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
         struct_type.set_body(*field_types);
     }
     self.struct_field_indices[arch_name] = field_index_map;
-    self.struct_field_order[arch_name] = [f.name for f in layout.fields];
+    self.struct_field_order[arch_name] = [
+        f.name
+        for f in layout.fields
+        if f.name != EXC_MESSAGE_FIELD
+    ];
     import from jaclang.compiler.field_semantics { positional_field_names }
     constructor_fields: list[uni.HasVar] = [];
     for field in layout.fields {
@@ -1915,6 +1925,7 @@ impl NaIRGenPass._codegen_instantiation(
     ctor_params: (list[uni.Expr | uni.KWPair] | None) = None,
     ctor_values: (dict[str, ir.Value] | None) = None
 ) -> (ir.Value | None) {
+    import from jaclang.compiler.passes.layout_pass { EXC_MESSAGE_FIELD }
     _ctor_ref = nd.target if isinstance(nd, uni.FuncCall) else nd;
     type_name = type_name_override
         if type_name_override is not None
@@ -1966,12 +1977,22 @@ impl NaIRGenPass._codegen_instantiation(
         return None;
     }
     _pos_field_pairs: list[tuple[str, uni.UniNode]] = [];
+    _pos_all: list[uni.Expr] = [
+        p
+        for p in params
+        if not isinstance(p, uni.KWPair)
+    ];
+    _msg_slot = self._exc_message_slot(type_name);
+    _msg_only = (
+        _msg_slot is not None
+        and not self.struct_constructor_order.get(type_name)
+        and not any(
+            f"{_c}.init" in self.method_funcs or f"{_c}.__init__" in self.method_funcs
+            for _c in self._mro_of(type_name)
+        )
+    );
     if not _has_init {
-        _pos_args = [
-            p
-            for p in params
-            if not isinstance(p, uni.KWPair)
-        ];
+        _pos_args = _pos_all;
         if _pos_args and self._pyb_base_of(type_name) is not None {
             self.emit(
                 E5092,
@@ -1988,7 +2009,7 @@ impl NaIRGenPass._codegen_instantiation(
             );
             return None;
         }
-        if _pos_args {
+        if _pos_args and not _msg_only {
             _order = self.struct_constructor_order.get(type_name);
             if _order is None or len(_pos_args) > len(_order) {
                 self.emit(
@@ -2172,6 +2193,15 @@ impl NaIRGenPass._codegen_instantiation(
     foreign_fields = self.struct_field_foreign.get(type_name, set());
 
     set_fields: set[str] = set();
+    _pre_args: dict[int, ir.Value] = {};
+    if _msg_slot is not None and _pos_all {
+        if not self._store_exc_message(
+            obj_ptr, type_name, _pos_all, _pre_args, shared=not _msg_only
+        ) {
+            return None;
+        }
+        set_fields.add(EXC_MESSAGE_FIELD);
+    }
     _field_inits: list[tuple[str, uni.UniNode | ir.Value]] = list(_pos_field_pairs);
     if ctor_values is not None and not _has_init {
         _field_inits.extend(ctor_values.items());
@@ -2200,7 +2230,7 @@ impl NaIRGenPass._codegen_instantiation(
             or key_name in foreign_fields {
             continue;
         } else {
-            val = self._codegen_expr(init_expr);
+            val = self._ctor_arg_value(init_expr, _pre_args);
         }
         if val is None {
             val = self._empty_container_for_field(
@@ -2431,7 +2461,9 @@ impl NaIRGenPass._codegen_instantiation(
                 } elif sp.value is not None {
                     _chosen = sp.value;
                 }
-                _val = self._codegen_expr(_chosen) if _chosen is not None else None;
+                _val = self._ctor_arg_value(_chosen, _pre_args)
+                    if _chosen is not None
+                    else None;
                 if _val is not None {
                     init_args.append(_val);
                 } else {
@@ -2439,7 +2471,7 @@ impl NaIRGenPass._codegen_instantiation(
                 }
             }
             for pix in range(len(_sig_params), len(_init_pos)) {
-                _extra = self._codegen_expr(_init_pos[pix]);
+                _extra = self._ctor_arg_value(_init_pos[pix], _pre_args);
                 if _extra is not None {
                     init_args.append(_extra);
                 }
@@ -2447,7 +2479,7 @@ impl NaIRGenPass._codegen_instantiation(
         } else {
             for param in params {
                 if not isinstance(param, uni.KWPair) {
-                    val = self._codegen_expr(param);
+                    val = self._ctor_arg_value(param, _pre_args);
                     if val is not None {
                         init_args.append(val);
                     }
@@ -2473,6 +2505,9 @@ impl NaIRGenPass._codegen_instantiation(
             self._release_owned_args(coerced_args[1:], op="call_arg");
         }
         self._emit_err_check(self._linked_callee_decl(init_fn));
+    }
+    if _pre_args and not self._nogc_headerless() {
+        self._release_owned_args(list(_pre_args.values()), op="exc_ctor_arg");
     }
 
     _pi_auto = init_fn is None;
@@ -3393,7 +3428,9 @@ impl NaIRGenPass._emit_obj_str(val: ir.Value) -> (ir.Value | None) {
     self.builder.branch(cont_bb);
 
     self.builder.position_at_end(live_bb);
-    if func is None {
+    if func is None and self._exc_message_slot(type_name) is not None {
+        live_res = self._emit_exc_message_str(val, type_name);
+    } elif func is None {
         live_res = self._emit_default_obj_repr(val, type_name);
     } else {
         was_owned = self._is_owned(val);

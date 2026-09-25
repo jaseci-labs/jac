@@ -318,6 +318,18 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
         }
     }
 
+    if EXC_MESSAGE_FIELD not in seen_fields
+        and any(JAC_TYPE_REGISTRY.is_exception(p) for p in parents) {
+        seen_fields.add(EXC_MESSAGE_FIELD);
+        fields.append(
+            FieldLayout(
+                name=EXC_MESSAGE_FIELD, index=current_idx, type_tag="str", owner=aname
+            )
+        );
+        field_index[EXC_MESSAGE_FIELD] = current_idx;
+        current_idx += 1;
+    }
+
     for var in arch.get_has_vars() {
         fname = var.name.value if var.name else "field";
         if fname in seen_fields {

@@ -237,19 +237,29 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
 
 impl NaIRGenPass._get_exc_descendants(type_name: str) -> list[str] {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    descendants = JAC_TYPE_REGISTRY.exception_descendants(type_name);
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    roots = [type_name] + JAC_TYPE_REGISTRY.exception_descendants(type_name);
+    descendants = roots[1:];
+    for cls in get_layout_registry(self.module, self.prog).mro_order {
+        if cls in roots or cls in descendants {
+            continue;
+        }
+        if any(anc in roots for anc in self._mro_of(cls)[1:]) {
+            descendants.append(cls);
+        }
+    }
     for desc_name in descendants {
         self._get_or_register_exc_type(desc_name);
     }
     return descendants;
 }
 
-impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
+impl NaIRGenPass._exception_handler_targets(ex: uni.Expr | None) -> (list[str] | None) {
     if ex is None {
-        return [0];
+        return None;
     }
     members = list(ex.values) if isinstance(ex, uni.TupleVal) else [ex];
-    ids: list[int] = [];
+    targets: list[str] = [];
     for member in members {
         name: str | None = None;
         if isinstance(member, uni.Name) {
@@ -273,16 +283,215 @@ impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
             name = class_type_native_name(member.type) or name;
         }
         if name in ("Exception", "BaseException") {
-            return [0];
+            return None;
         }
         for candidate in [name] + self._get_exc_descendants(name) {
-            tid = self._get_or_register_exc_type(candidate);
-            if tid not in ids {
-                ids.append(tid);
+            if candidate not in targets {
+                targets.append(candidate);
             }
         }
     }
-    return ids;
+    return targets;
+}
+
+impl NaIRGenPass._emit_exception_match(
+    type_val: ir.Value,
+    obj_val: ir.Value,
+    msg_val: ir.Value,
+    targets: list[str],
+    id_bias: int,
+    on_match: ir.Block,
+    on_miss: ir.Block
+) -> None {
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    b = self.builder;
+    i32 = ir.IntType(32);
+    does_match: ir.Value = ir.Constant(ir.IntType(1), 0);
+    for name in targets {
+        tid = self._get_or_register_exc_type(name);
+        does_match = b.or_(
+            does_match,
+            b.icmp_signed(
+                "==", type_val, ir.Constant(i32, tid + id_bias), name=f"exc.is.{tid}"
+            ),
+            name="exc.match"
+        );
+    }
+    known: set[str] = set();
+    for mro in get_layout_registry(self.module, self.prog).mro_order.values() {
+        known.update(mro);
+    }
+    isa_names = [
+        name
+        for name in targets
+        if name in known
+    ];
+    if not isa_names or self._emit_runtime_class_name_fn() is None {
+        b.cbranch(does_match, on_match, on_miss);
+        return;
+    }
+    func = b.function;
+    obj_bb = func.append_basic_block("exc.match.obj");
+    isa_bb = func.append_basic_block("exc.match.isa");
+    b.cbranch(does_match, on_match, obj_bb);
+    b.position_at_end(obj_bb);
+    is_obj = b.and_(
+        b.icmp_unsigned("!=", obj_val, msg_val, name="exc.obj.own"),
+        b.icmp_unsigned(
+            "!=", obj_val, ir.Constant(obj_val.type, None), name="exc.obj.set"
+        ),
+        name="exc.obj.is"
+    );
+    b.cbranch(is_obj, isa_bb, on_miss);
+    b.position_at_end(isa_bb);
+    hit = self._isinstance_class_name_hit(obj_val, isa_names);
+    if hit is None {
+        b.branch(on_miss);
+    } else {
+        b.cbranch(hit, on_match, on_miss);
+    }
+}
+
+impl NaIRGenPass._exc_message_slot(type_name: str) -> (int | None) {
+    import from jaclang.compiler.passes.layout_pass { EXC_MESSAGE_FIELD }
+    return self.struct_field_indices.get(type_name, {}).get(EXC_MESSAGE_FIELD);
+}
+
+impl NaIRGenPass._ctor_arg_value(
+    arg: uni.UniNode, pre: dict[int, ir.Value]
+) -> (ir.Value | None) {
+    if id(arg) in pre {
+        return pre.pop(id(arg));
+    }
+    return self._codegen_expr(arg);
+}
+
+impl NaIRGenPass._store_exc_message(
+    obj_ptr: ir.Value,
+    type_name: str,
+    args: list[uni.Expr],
+    pre: dict[int, ir.Value],
+    shared: bool
+) -> bool {
+    import from jaclang.compiler.passes.layout_pass { EXC_MESSAGE_FIELD }
+    values: list[ir.Value] = [];
+    for arg in args {
+        val = self._codegen_expr(arg);
+        if val is None {
+            return False;
+        }
+        values.append(val);
+        pre[id(arg)] = val;
+    }
+    moved = len(args) == 1 and not shared and self._type_key_of(args[0]) == "str";
+    text: ir.Value | None = None;
+    if moved {
+        text = pre.pop(id(args[0]));
+    } else {
+        text = self._exc_args_text(values, args, shared);
+    }
+    if text is None {
+        return False;
+    }
+    i32 = ir.IntType(32);
+    text = self._coerce_type(
+        text, self.struct_field_types[type_name][EXC_MESSAGE_FIELD]
+    );
+    self._emit_take_ref(text, op="ctor_field");
+    self.builder.store(
+        text,
+        self.builder.gep(
+            obj_ptr,
+            [
+                ir.Constant(i32, 0),
+                ir.Constant(
+                    i32, self.struct_field_indices[type_name][EXC_MESSAGE_FIELD]
+                )
+            ],
+            name="field.exc.msg"
+        )
+    );
+    if moved {
+        self._nogc_consume_local(args[0]);
+    }
+    return True;
+}
+
+impl NaIRGenPass._exc_args_text(
+    values: list[ir.Value], nodes: list[uni.Expr], shared: bool
+) -> (ir.Value | None) {
+    i8p = ir.IntType(8).as_pointer();
+    if len(values) == 1 {
+        if shared and self._type_key_of(nodes[0]) == "str" {
+            text = self._coerce_type(self._str_norm(values[0]), i8p);
+            return self._mark_owned(
+                self._call_str_dup(self.builder, text, name="exc.msg.dup")
+            );
+        }
+        shown = self._dispatch_builtin(
+            "str",
+            [values[0]],
+            type_key=self._type_key_of(nodes[0]) or "",
+            arg_nodes=[nodes[0]]
+        );
+        return self._mark_owned(shown) if shown is not None else None;
+    }
+    acc = self._entry_alloca(i8p, "exc.args.acc");
+    self.builder.store(self._repr_const_str("("), acc);
+    for i in range(len(values)) {
+        piece = self._dispatch_builtin(
+            "repr",
+            [values[i]],
+            type_key=self._type_key_of(nodes[i]) or "",
+            arg_nodes=[nodes[i]]
+        );
+        if piece is None {
+            return None;
+        }
+        if i > 0 {
+            self._repr_acc_concat(acc, self._repr_const_str(", "), False);
+        }
+        self._repr_acc_concat(acc, self._mark_owned(piece), True);
+    }
+    self._repr_acc_concat(acc, self._repr_const_str(")"), False);
+    return self._mark_owned(self.builder.load(acc, name="exc.args.text"));
+}
+
+impl NaIRGenPass._exc_stored_message(obj_val: ir.Value, type_name: str) -> ir.Value {
+    import from jaclang.compiler.passes.layout_pass { EXC_MESSAGE_FIELD }
+    i8p = ir.IntType(8).as_pointer();
+    raw = self._codegen_field_access(obj_val, EXC_MESSAGE_FIELD, type_name);
+    if raw is None {
+        return ir.Constant(i8p, None);
+    }
+    return self._coerce_type(self._str_norm(raw), i8p);
+}
+
+impl NaIRGenPass._emit_exc_message_str(obj_val: ir.Value, type_name: str) -> ir.Value {
+    b = self.builder;
+    raw = self._exc_stored_message(obj_val, type_name);
+    text = b.select(
+        b.icmp_unsigned("==", raw, ir.Constant(raw.type, None), name="exc.str.none"),
+        self._make_global_string("", name_prefix=".exc.str.empty"),
+        raw,
+        name="exc.str"
+    );
+    if self._nogc_headerless() {
+        return self._mark_owned(self._call_str_dup(b, text, name="exc.str.dup"));
+    }
+    self._emit_rc_retain(text, op="exc_str");
+    return self._mark_owned(text);
+}
+
+impl NaIRGenPass._exc_state_message(obj_val: ir.Value, type_name: str) -> ir.Value {
+    b = self.builder;
+    raw = self._exc_stored_message(obj_val, type_name);
+    return b.select(
+        b.icmp_unsigned("==", raw, ir.Constant(raw.type, None), name="exc.msg.none"),
+        self._make_global_string(self._arch_display(type_name), name_prefix=".exc.msg"),
+        raw,
+        name="exc.state.msg"
+    );
 }
 
 impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
@@ -316,7 +525,12 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     exc_type_name = "Exception";
     exc_type_id = 0;
     if nd.cause is not None {
-        if isinstance(nd.cause, uni.FuncCall) {
+        if isinstance(nd.cause, uni.FuncCall)
+            and (
+                (self._arch_ref_key(nd.cause.target) or self._get_name(nd.cause.target))
+                    in self.struct_types
+                or self._struct_name_of(nd.cause) not in self.struct_types
+            ) {
             exc_type_name = self._arch_ref_key(nd.cause.target)
                 or self._get_name(nd.cause.target)
                 or "Exception";
@@ -333,12 +547,17 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
                 _exc_has_init = True;
             }
             _exc_order = self.struct_field_order.get(exc_type_name);
-            _exc_struct_ok = _exc_has_init;
+            _exc_struct_ok = _exc_has_init
+                or self._exc_message_slot(exc_type_name) is not None;
             if (not _exc_struct_ok) and (_exc_order is not None) {
                 _exc_struct_ok = len(_exc_pos_args) <= len(_exc_order);
             }
             if (exc_type_name in self.struct_types) and _exc_struct_ok {
                 exc_payload = self._codegen_expr(nd.cause);
+                if exc_payload is not None
+                    and self._exc_message_slot(exc_type_name) is not None {
+                    exc_msg = self._exc_state_message(exc_payload, exc_type_name);
+                }
             } elif _exc_pos_args {
                 exc_msg = self._codegen_expr(_exc_pos_args[0]);
             } elif nd.cause.params {
@@ -352,6 +571,9 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
                 exc_payload = self._codegen_expr(nd.cause);
                 if exc_payload is not None {
                     self._emit_take_ref(exc_payload, op="raise");
+                    if self._exc_message_slot(cause_struct) is not None {
+                        exc_msg = self._exc_state_message(exc_payload, cause_struct);
+                    }
                 }
             } else {
                 exc_msg = self._codegen_expr(nd.cause);
@@ -527,7 +749,7 @@ impl NaIRGenPass._codegen_try_unwind(
             caught_type_name = self._arch_ref_key(except_node.ex_type)
                 or self._get_name(except_node.ex_type)
                 or "Exception";
-            caught_ids = self._exception_handler_ids(except_node.ex_type);
+            caught_targets = self._exception_handler_targets(except_node.ex_type);
 
             if i > 0 {
                 self.builder.position_at_end(current_dispatch_bb);
@@ -536,24 +758,31 @@ impl NaIRGenPass._codegen_try_unwind(
                 exc_obj_val = self.builder.load(exc_obj_ptr, name=f"exc.obj.{i}");
             }
 
-            if 0 in caught_ids {
+            if caught_targets is None {
                 self.builder.branch(handler_bb);
             } else {
-                does_match: ir.Value = ir.Constant(ir.IntType(1), 0);
-                for tid in caught_ids {
-                    matches = self.builder.icmp_signed(
-                        "==",
-                        exc_type_val,
-                        ir.Constant(i32, tid),
-                        name=f"exc.match.{i}.{tid}"
-                    );
-                    does_match = self.builder.or_(does_match, matches);
-                }
+                exc_msg_val = self.builder.load(exc_msg_slot, name=f"exc.msg.{i}");
                 if next_dispatch_bb is not None {
-                    self.builder.cbranch(does_match, handler_bb, next_dispatch_bb);
+                    self._emit_exception_match(
+                        exc_type_val,
+                        exc_obj_val,
+                        exc_msg_val,
+                        caught_targets,
+                        0,
+                        handler_bb,
+                        next_dispatch_bb
+                    );
                 } else {
                     reraise_bb = func.append_basic_block(name="except.reraise");
-                    self.builder.cbranch(does_match, handler_bb, reraise_bb);
+                    self._emit_exception_match(
+                        exc_type_val,
+                        exc_obj_val,
+                        exc_msg_val,
+                        caught_targets,
+                        0,
+                        handler_bb,
+                        reraise_bb
+                    );
                     self.builder.position_at_end(reraise_bb);
                     self.builder.call(self._exc_pop_fn, []);
                     reraise_obj = self.builder.load(exc_obj_ptr, name="reraise.obj");
@@ -813,24 +1042,24 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     err_type = self.builder.load(tglob, name="err.type");
     for (i, except_node) in enumerate(nd.excepts or []) {
         ex = except_node.ex_type;
-        caught = ex.value if isinstance(ex, uni.Name) else None;
-        if isinstance(ex, uni.AtomTrailer) and isinstance(ex.right, uni.Name) {
-            caught = ex.right.value;
-        }
-        ids = self._exception_handler_ids(ex);
+        caught = (self._arch_ref_key(ex) or self._get_name(ex))
+            if ex is not None
+            else None;
+        targets = self._exception_handler_targets(ex);
         handler_bb = func.append_basic_block(f"except.handler.{i}");
         next_bb = func.append_basic_block(f"except.dispatch.{i + 1}");
-        if 0 in ids {
+        if targets is None {
             self.builder.branch(handler_bb);
         } else {
-            does_match: ir.Value = ir.Constant(ir.IntType(1), 0);
-            for tid in ids {
-                cmp = self.builder.icmp_signed(
-                    "==", err_type, ir.Constant(i32, tid + 1), name=f"exc.is.{tid}"
-                );
-                does_match = self.builder.or_(does_match, cmp, name="exc.match");
-            }
-            self.builder.cbranch(does_match, handler_bb, next_bb);
+            self._emit_exception_match(
+                err_type,
+                self.builder.load(oglob, name="err.obj"),
+                self.builder.load(mglob, name="err.msg"),
+                targets,
+                1,
+                handler_bb,
+                next_bb
+            );
         }
         self.builder.position_at_end(handler_bb);
         caught_values = (
