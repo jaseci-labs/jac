@@ -1815,6 +1815,21 @@ impl NormalizePass.enter_import_wire with uni.ImportWire entry {
 }
 
 impl NormalizePass.enter_import_rule with uni.ImportRule entry {
+    if here.is_closed {
+        closed_kid: list[uni.UniNode] = [here.name];
+        if here.sources {
+            closed_kid.append(here.gen_token(Tok.COLON));
+            for idx in range(len(here.sources)) {
+                closed_kid.append(here.sources[idx]);
+                if idx < len(here.sources) - 1 {
+                    closed_kid.append(here.gen_token(Tok.BW_OR));
+                }
+            }
+        }
+        closed_kid.append(here.gen_token(Tok.SEMI));
+        here.set_kids(nodes=closed_kid);
+        return;
+    }
     new_kid: list[uni.UniNode] = [
         here.gen_token(Tok.KW_EDGE),
         here.name,

@@ -1,4 +1,5 @@
 import from pathlib { Path }
+import from jaclang { JacRuntime as Jac }
 
 impl MTIRGenPass._run_impl(ir_in: Module) -> Module {
     for nd in ir_in.get_all_sub_nodes(Ability) {

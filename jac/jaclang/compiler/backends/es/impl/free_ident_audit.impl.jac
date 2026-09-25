@@ -176,6 +176,7 @@ impl client_ambient_globals -> set[str] {
     names: set[str] = set(_JS_LANGUAGE_GLOBALS);
     names.update(BROWSER_SEED_GLOBALS);
 
+    import jaclang;
     stub_dir = os.path.join(
         os.path.dirname(str(jaclang.__file__)), "compiler", "types"
     );

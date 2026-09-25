@@ -55,6 +55,7 @@ def _install_ws_catchall(gw: MicroserviceGateway) {
 }
 
 impl MicroserviceGateway.service_base_url(service_entry: ServiceEntry) -> str {
+    import jaclang;
     registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
     return registry.get(service_entry.name, service_entry.url);
 }

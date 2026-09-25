@@ -113,6 +113,7 @@ def _patch_host_rpath(binary: Path) {
 
 
 def _fused_runtime_dir -> Path {
+    import jaclang;
     return Path(jaclang.__file__).parent / "dist" / "fused";
 }
 
@@ -310,6 +311,7 @@ def stage_program(
     if dist_dir is None {
         return {"entry": str(entry_file.resolve())};
     }
+    import from jaclang.project.config { get_config_for_dir }
 
     config = get_config_for_dir(str(project_dir));
     if config is None {

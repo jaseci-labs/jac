@@ -4,6 +4,7 @@ import tempfile;
 import from pathlib { Path }
 
 def _pkg_root -> Path {
+    import jaclang;
     return Path(str(jaclang.__file__)).parent;
 }
 

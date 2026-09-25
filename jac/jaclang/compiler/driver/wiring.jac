@@ -60,14 +60,16 @@ obj WiringSpec {
         _policy_digest: str = "",
         _project_modules: (list[str] | None) = None,
         _mentioned: (set[str] | None) = None,
-        _roots: (list[str] | None) = None,
+        _prefix: (str | None) = None,
+        _file_closed: list[str] = [],
         _indexed: bool = False,
         _scopes: dict[tuple[str, int], list[str]] = {},
         _wire_lines: dict[int, ImportWire] = {};
 
     def postinit -> None;
     def module_name(path: str) -> (str | None);
-    def import_roots -> list[str];
+    def import_prefix -> str;
+    def import_name(name: str) -> str;
     def module_file(name: str) -> (str | None);
     def split_consumer(path: str) -> (tuple[str, list[str]] | None);
     def _index_consumers -> None;
@@ -132,7 +134,6 @@ def dedupe_generated_imports(mod: Module) -> None;
 def compiled_by_seed(path: str) -> bool;
 def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
 def _closed_patterns_for(root_dir: str) -> list[str];
-def _import_roots_for(root_dir: str) -> list[str];
 def _arch_patterns(root_dir: str, key: str) -> list[str];
 def scope_path_of(nd: UniNode) -> (list[str] | None);
 def scope_owners(mod: Module) -> dict[str, (Ability | ImplDef)];

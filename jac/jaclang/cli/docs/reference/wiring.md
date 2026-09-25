@@ -1,6 +1,6 @@
 # Project Wiring (arch.jac)
 
-A project's architecture is the graph of which modules feed which. Jac lets you write that graph down once, in a file named `arch.jac` beside `jac.toml`, and then makes the file do two jobs: it **is** the import mechanism for the modules it names, and it is the rulebook that every import in the project is checked against.
+A project's architecture is the graph of which modules feed which. Jac lets you write that graph down in files named `arch.jac`, and then makes each file do two jobs: it **is** the import mechanism for the modules it names, and it is the rulebook that every import in the project is checked against.
 
 The file holds `impl import` blocks. A block lists **wires** and **rules**:
 
@@ -22,6 +22,14 @@ impl import core {
 The picture reads the way the typed graph does: modules are the nodes, imports are the edges, and the names crossing an edge are its payload. Values flow from the provider on the left to the consumer on the right.
 
 ---
+
+## Where arch.jac lives
+
+An `arch.jac` governs the modules in its directory and below it, down to the next `arch.jac`: the nearest one above a module is the one that wires and seals it, the way the nearest `jac.toml` configures it. A project can keep one file at its root, or give a package its own file inside the package, so the wiring ships with the package and travels with any subtree that is copied elsewhere.
+
+Module names in an `arch.jac` are relative to its directory: in `app/arch.jac`, `core.docs` is `app/core/docs.jac`. The generated import is written with the module's real import name, which the file derives from the `__init__` modules above its directory, so a package's `arch.jac` names `cli.errmap` while the import it generates reads `import from mypkg.cli.errmap`.
+
+An `arch.jac` with no `closed` declaration seals only what it names. An empty one is an open boundary: it stops the enclosing file from governing its subtree, so modules there keep their written imports. That is the right shape for sources that are copied out and compiled on their own, such as component templates.
 
 ## Wires
 
@@ -68,20 +76,28 @@ Imports in test annexes are exempt. A test runs inside its head module's namespa
 
 ## Closing the project
 
-Sealing reaches only what the file names. To seal modules it has never heard of, including packages not yet written, set the default in `jac.toml`:
+Sealing reaches only what the file names. To seal modules it has never heard of, including packages not yet written, declare it in the file:
+
+```jac
+impl import {
+    closed;                 # or a ratchet: closed: core.* | web.*;
+}
+```
+
+For the `arch.jac` at the project root the same default can live in `jac.toml`, where it applies even before arch.jac exists:
 
 ```toml
 [arch]
 closed = ["*"]              # or a ratchet: ["core.*", "web.*"]
 ```
 
-A module matching a pattern is sealed whether or not arch.jac names it, and the setting applies even before arch.jac exists, so a fresh package under a closed root fails to check until it is wired and ruled. `closed = ["*"]` is the last step of a migration: after `jac arch init --strip` it costs nothing on the modules already wired and closes the door on new ones.
+A module matching a pattern is sealed whether or not arch.jac names it, so a fresh package under a closed root fails to check until it is wired and ruled. `closed = ["*"]` is the last step of a migration: after `jac arch init --strip` it costs nothing on the modules already wired and closes the door on new ones.
 
 A rule's target pattern names, and so seals, the modules it matches. When a sealed package is imported from code that stays open (tests, scripts, examples), let the rule's target be `any`, which admits every importer without sealing it: `edge CoreFlows: core.* --> any;`. `jac arch init <package>` writes rules this way when the package has importers outside it.
 
 Modules compiled by the bootstrap compiler (the jac0 seed set of the jaclang package itself) run before wiring exists, so they keep their written imports; arch.jac still declares them and the seal still checks them, but `jac fmt --lintfix` does not remove them.
 
-`E1144`, `E2090`, `E2091` and `E2094` ignore inline `# jac:ignore` comments. Loosening a boundary is an edit to arch.jac or to `[arch] closed`, so it is visible in review; `[check] suppress` in jac.toml still applies.
+`E1144`, `E2090`, `E2091` and `E2094` ignore inline `# jac:ignore` comments. Loosening a boundary is an edit to arch.jac (or to `[arch] closed`), so it is visible in review; `[check] suppress` in jac.toml still applies.
 
 ## Rules
 
@@ -119,7 +135,7 @@ The unscoped block stays for layer rules and anything cross-cutting. Several blo
 
 ## What the file may hold
 
-`impl import` is legal only in the `arch.jac` beside `jac.toml` (`E2088` elsewhere), and that file holds `impl import` blocks and nothing else (`E2089`). The file is itself checked when you check the project:
+`impl import` is legal only in a file named `arch.jac` (`E2088` elsewhere), and that file holds `impl import` blocks and nothing else (`E2089`). The file is itself checked when you check the project:
 
 | Code | Fires when |
 |---|---|
@@ -134,17 +150,6 @@ The unscoped block stays for layer rules and anything cross-cutting. Several blo
 
 Syntax has its own codes, `E0086` through `E0096`, each naming the shape that was expected: a directed `-->`, one provider per wire, consumers named in full, `as` only on the module form, no duplicate payload names, `include` without a payload, named rules, a dotted scope, and `*` standing alone.
 
-## Import roots
-
-Module names in arch.jac are the names modules are imported by. They are paths relative to the project root, unless the modules live under a separate import root, as in a `src/` layout or a monorepo whose package sits in a subdirectory. List such directories in `jac.toml`:
-
-```toml
-[arch]
-roots = ["src"]            # src/app/core.jac is the module `app.core`
-```
-
-A module is named relative to the deepest root that contains it, falling back to the project root. Naming modules by their import path matters because the generated import is written with that name: a name that differs from the one the rest of the code imports would load the module a second time.
-
 ## Caching
 
 A module's cache key folds in only its own wire slice plus the rule set, so editing one wire rebuilds one module, and a project without `arch.jac` keeps the keys it had.
@@ -153,9 +158,9 @@ A module's cache key folds in only its own wire slice plus the rule set, so edit
 
 | Command | Effect |
 |---|---|
-| `jac arch init` | Write `arch.jac` from every project-module import, one block per leaf package, plus one `edge <Pkg>Flows` rule per package stating where its modules flow today. `--strip` then removes those imports from the modules, which is the same fix `jac fmt --lintfix` applies. `--force` overwrites an existing file. |
+| `jac arch init [dir]` | Write `arch.jac` (in `dir`, or at the project root) from every import of the modules it would govern, one block per leaf package, plus one `edge <Pkg>Flows` rule per package stating where its modules flow today. `--strip` then removes those imports from the modules, which is the same fix `jac fmt --lintfix` applies. `--force` overwrites an existing file. |
 | `jac arch init <package>` | Wire one package and everything it imports from, transitively, and merge the wires and rules into an existing `arch.jac`. This is how a large tree adopts one subsystem at a time. |
-| `jac arch sync` | Add a wire for every import a sealed module writes that `arch.jac` does not declare, into the block whose scope matches, and a rule for every provider that has none. `--strip` removes the now-redundant imports. |
-| `jac arch graph` | Render the wiring as mermaid (default) or `--format json`; `-o <file>` writes it. |
+| `jac arch sync [dir]` | For the `arch.jac` in `dir`, or every `arch.jac` in the project: add a wire for every import a sealed module writes that `arch.jac` does not declare, into the block whose scope matches, and a rule for every provider that has none. `--strip` removes the now-redundant imports. |
+| `jac arch graph [dir]` | Render the wiring as mermaid (default) or `--format json`; `-o <file>` writes it. |
 
-Modules that `[check] exclude` lists are not wired, since they are not checked. Modules that `[check.lint] exclude` lists are wired but never stripped, so a hand-written import may sit beside the wire that provides it. Such an import is bound once: the generated copy is dropped as the module is parsed, so the two never produce a duplicate declaration on any backend. `jac arch init --strip` is the adoption path: nobody hand-writes hundreds of wires. Run it once, read the file it wrote as a catalog of packages, then add the rules that state how the project is layered.
+Modules that `[check.lint] exclude` lists are wired but never stripped, so a hand-written import may sit beside the wire that provides it. Such an import is bound once: the generated copy is dropped as the module is parsed, so the two never produce a duplicate declaration on any backend. `jac arch init --strip` is the adoption path: nobody hand-writes hundreds of wires. Run it once, read the file it wrote as a catalog of packages, then add the rules that state how the project is layered.

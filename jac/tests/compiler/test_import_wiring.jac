@@ -16,7 +16,7 @@ import from jaclang.compiler.driver.wiring { WiringSpec }
 import from jaclang.compiler.frontend.parser.frontend { parse }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.unitree { ModuleItem }
-import from jaclang.cli.commands.arch {
+import from jaclang.cli.commands.architecture {
     _collect_rows,
     _dependency_cone,
     _derive_rules,

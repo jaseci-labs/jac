@@ -1,5 +1,6 @@
 import from "radix-ui" { Tabs as TabsPrimitive }
 import from "class-variance-authority" { cva }
+import from ...lib.utils { cn }
 
 glob _tabsListVariants: any = cva(
          "cn-tabs-list group/tabs-list text-muted-foreground inline-flex w-fit items-center justify-center group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col",

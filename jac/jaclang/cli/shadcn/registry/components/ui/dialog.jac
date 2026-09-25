@@ -1,5 +1,6 @@
 import from "radix-ui" { Dialog as DialogPrimitive }
-
+import from ...lib.utils { cn }
+import from .button { buttonVariants }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { Cancel01Icon }
 

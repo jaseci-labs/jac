@@ -205,6 +205,7 @@ impl _get_access_level -> type[AccessLevel] {
 }
 
 impl _get_jac -> type[JacRuntimeInterface] {
+    import from jaclang { JacRuntimeInterface }
     return JacRuntimeInterface;
 }
 
@@ -267,6 +268,7 @@ impl RaisesContext.`match(regexp: str) -> bool {
 
 impl restspec(**specs: any) -> Callable {
     import logging;
+    import from jaclang { JacRuntimeInterface as Jac }
 
     ServerCls: type[JacAPIServer] = Jac.get_api_server_class();
     SpecsCls = ServerCls.RestSpecs;

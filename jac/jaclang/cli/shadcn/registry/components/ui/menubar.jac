@@ -1,5 +1,5 @@
 import from "radix-ui" { Menubar as MenubarPrimitive }
-
+import from ...lib.utils { cn }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { Tick02Icon, ArrowRight01Icon }
 

@@ -1,4 +1,5 @@
 import from "class-variance-authority" { cva }
+import from ...lib.utils { cn }
 
 glob _alertVariants: any = cva(
          "cn-alert w-full relative group/alert",

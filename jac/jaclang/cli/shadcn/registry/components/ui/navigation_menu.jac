@@ -1,6 +1,6 @@
 import from "class-variance-authority" { cva }
 import from "radix-ui" { NavigationMenu as NavigationMenuPrimitive }
-
+import from ...lib.utils { cn }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { ArrowDownIcon }
 

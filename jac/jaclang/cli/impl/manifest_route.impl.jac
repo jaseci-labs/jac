@@ -1,3 +1,4 @@
+import jaclang;
 def _read_version_from_toml(toml_path: Path) -> (str | None) {
     try {
         data = tomllib.loads(toml_path.read_text(encoding='utf-8'));

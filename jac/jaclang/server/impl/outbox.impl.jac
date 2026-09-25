@@ -31,6 +31,7 @@ impl outbox_db_path -> str {
     if data_root {
         return os.path.join(data_root, OUTBOX_DB_REL);
     }
+    import from jaclang { JacRuntime }
 
     base = JacRuntime.get_base_path_dir() or os.getcwd();
     project_root = find_jac_project_root(base) or base;
@@ -312,6 +313,7 @@ impl SqliteOutboxStore.close -> None {
 
 
 impl _current_memory -> any {
+    import from jaclang { JacRuntime }
     ctx = JacRuntime.peek_context();
     return ctx.mem if ctx is not None else None;
 }

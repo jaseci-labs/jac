@@ -1,6 +1,7 @@
 import os;
-
+import from .report { die }
 import from _dl_native { dlopen, dlsym, dl_error, RTLD_NOW, RTLD_GLOBAL, SHLIB_EXT }
+import from ._libc { peek, poke, c_string, c_alloc_string }
 
 glob PY_VER: str = "3.14",
      PY_VER_COMPACT: str = "314",

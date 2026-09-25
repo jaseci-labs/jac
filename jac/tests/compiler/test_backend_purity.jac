@@ -41,12 +41,17 @@ glob FORBIDDEN: dict[str, str] = {
      # they are reads of central APIs or of the declaration surface itself,
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple[str, str], tuple[int, str]] = {
+         ("es/esast_gen_pass.jac", "symbol_utils"): (
+             1,
+             "return_type_is_jsx (#8314), wired module-wide by arch.jac for "
+             "the call and declaration impls: reads the declared return "
+             "annotation to pick a component's call ABI and to record a "
+             "component export; the declaration is the fact, and the type "
+             "checker keys component-hood off the same predicate so the two "
+             "cannot disagree"
+         ),
          ("es/esast_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             4,
-             "return_type_is_jsx (#8314) reads the declared return annotation "
-             "to pick a component's call ABI; the declaration is the fact, "
-             "and the type checker keys component-hood off the same "
-             "predicate so the two cannot disagree. "
+             3,
              "symbol-FACT readers over already-resolved symbols at call "
              "lowering: resolve_import_source_module (#7632, the delegated "
              "body of the former local _resolve_source_module, shared with "
@@ -60,12 +65,6 @@ glob FORBIDDEN: dict[str, str] = {
              "check path cannot disagree about what is bound. The former "
              "classify_call fallback is deleted (#7418): call_kind is "
              "stamped authoritatively by the required inference schedule"
-         ),
-         ("es/esast_gen_pass.impl/decls.impl.jac", "symbol_utils"): (
-             1,
-             "return_type_is_jsx (#8314) reads the declared return annotation "
-             "to record a component export; same declaration-surface "
-             "predicate the type checker uses"
          ),
          ("es/esast_gen_pass.impl/module.impl.jac", "symbol_utils"): (
              1,
@@ -261,7 +260,10 @@ glob FORBIDDEN: dict[str, str] = {
 
      };
 
-"""Count matching lines per (file, pattern) across both backends."""
+"""Count matching lines per (file, pattern) across both backends. A module
+sealed by arch.jac declares its imports there instead of in its sources, so
+each wire whose provider matches counts as one line of the file its import
+lands in: the file defining the wire's scope, or the head module."""
 def scan_backends -> dict[tuple[str, str], int] {
     passes_root = Path(jaclang.__file__).parent / "compiler" / "backends";
     compiled = {name: re.compile(pat) for (name, pat) in FORBIDDEN.items()};
@@ -283,9 +285,70 @@ def scan_backends -> dict[tuple[str, str], int] {
                     counts[(rel, name)] = count;
                 }
             }
+            for ((w_rel, name), n) in wired_lines(src, passes_root, compiled).items() {
+                counts[(w_rel, name)] = counts.get((w_rel, name), 0) + n;
+            }
         }
     }
     return counts;
+}
+
+"""Wires into the module headed by `src`, attributed to the file whose code
+receives each generated import."""
+def wired_lines(
+    src: Path, passes_root: Path, compiled: dict[str, re.Pattern]
+) -> dict[tuple[str, str], int] {
+    import from jaclang.compiler.driver.wiring { wiring_for_path }
+    import from jaclang.compiler.driver.bccache { discover_annex_files }
+    out: dict[tuple[str, str], int] = {};
+    spec = wiring_for_path(str(src));
+    module = spec.module_name(str(src)) if spec is not None else None;
+    if spec is None or module is None {
+        return out;
+    }
+    head_rel = src.relative_to(passes_root).as_posix();
+    targets: dict[str, tuple[str, str]] = {};
+    module_text = "";
+    for f in [str(src), *discover_annex_files(str(src), ".impl.jac")] {
+        f_rel = Path(f).relative_to(passes_root).as_posix();
+        text = Path(f).read_text(encoding="utf-8", errors="replace");
+        module_text += "\n".join(
+            [
+                ln
+                for ln in text.splitlines()
+                if not ln.startswith((" ", "\t"))
+            ]
+        );
+        for m in re.finditer(
+            r"^(?:impl|def)\s+([\w.]+)[^\n]*\n(.*?)^\}", text, re.M | re.S
+        ) {
+            targets.setdefault(m.group(1), (f_rel, m.group(2)));
+        }
+    }
+    for wire in spec.consumer_wires(module) {
+        scope = ".".join(spec.consumer_scope(module, wire));
+        dest = head_rel;
+        body = module_text;
+        best = -1;
+        for (target, (t_rel, t_body)) in targets.items() {
+            if scope and (scope == target or scope.startswith(target + ".")) {
+                if len(target) > best {
+                    best = len(target);
+                    dest = t_rel;
+                    body = t_body;
+                }
+            }
+        }
+        if f"import from {wire.provider_path} " in body {
+            continue;
+        }
+        for (name, rx) in compiled.items() {
+            if rx.search(wire.provider_path) {
+                out[(dest, name)] = out.get((dest, name), 0) + 1;
+            }
+        }
+    }
+    return out;
 }
 
 test "backend passes do not re-run analysis" {

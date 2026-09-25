@@ -1090,8 +1090,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1144",
          Category.IMPORT,
          "Import of '{module}' is not declared by arch.jac for '{consumer}'",
-         help="'{consumer}' is sealed: arch.jac names it, or [arch] closed in"
-         " jac.toml covers it, so every project-module import it writes must be"
+         help="'{consumer}' is sealed: its arch.jac names it or declares it closed,"
+         " so every project-module import it writes must be"
          " a wire. Add `{wire}` to arch.jac, or run `jac arch sync` to add every"
          " missing wire. An inline suppression does not silence this; loosening"
          " the boundary is a change to arch.jac or jac.toml."
@@ -1790,11 +1790,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2088 = _err(
          "E2088",
          Category.SEMANTIC,
-         "'impl import' is only valid in the arch.jac beside jac.toml",
+         "'impl import' is only valid in a file named arch.jac",
          help="A wiring block generates imports for other modules, so it lives in"
-         " one place: the arch.jac at the project root. Move this block there;"
-         " an arch.jac elsewhere is an ordinary module, and per-package wiring"
-         " files are not read yet."
+         " the arch.jac of the directory whose modules it wires. Move this block"
+         " into that arch.jac (create one beside the modules if needed); the"
+         " nearest arch.jac above a module governs it."
      ),
      E2089 = _err(
          "E2089",

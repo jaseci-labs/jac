@@ -6,7 +6,19 @@ import time;
 import from compression.zstd { ZstdFile }
 import from io { BytesIO }
 import from c { def atoi(s: str) -> i32;  }
-
+import from .trailer {
+    MAGIC,
+    OVERLAY_MAGIC,
+    REGION_DESC_LEN,
+    TRAILER_LEN,
+    Trailer,
+    parse_region_desc,
+    parse_trailer,
+    region_start,
+    rt_key
+}
+import from ._libc { read_at, getuid, listdir, write_file }
+import from .report { die, say }
 import from _cache_platform { platform_cache_home }
 
 glob CACHEDIR_TAG: str = "CACHEDIR.TAG",

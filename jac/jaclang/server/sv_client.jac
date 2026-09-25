@@ -379,6 +379,7 @@ async def _local_call(app: str, fn: str, kwargs: dict[str, any]) -> any {
 }
 
 async def _local_spawn(app: str, walker_name: str, kwargs: dict[str, any]) -> any {
+    import from jaclang { JacRuntime }
     module = _local_providers[app];
     walker_cls = getattr(module, walker_name, None);
     if walker_cls is None or not isinstance(walker_cls, type) {

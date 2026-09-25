@@ -1,3 +1,5 @@
+import from ...lib.utils { cn }
+
 def:pub Input(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <input

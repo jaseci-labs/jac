@@ -9,6 +9,7 @@ def _wasm_libc_dir -> (str | None) {
     if env {
         return env if os.path.isdir(env) else None;
     }
+    import jaclang;
 
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
     dev = os.path.join(pkg_root, ".pbs-build", "wasm32", "libc");

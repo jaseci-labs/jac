@@ -1,4 +1,5 @@
 import from "radix-ui" { Separator as SeparatorPrimitive }
+import from ...lib.utils { cn }
 
 def:pub Separator(props: any) -> JsxElement {
     orientation = props["orientation"] or "horizontal";

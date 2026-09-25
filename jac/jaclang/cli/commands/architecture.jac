@@ -14,9 +14,9 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
                  "scope",
                  kind=ArgKind.POSITIONAL,
                  `default="",
-                 help="With init: a dotted package; wire only its modules and the "
-                 "modules they import from, transitively, and merge into an existing "
-                 "arch.jac instead of replacing it"
+                 help="A directory: the arch.jac there (created by init) governs its "
+                 "subtree. With init, a dotted package instead wires only that package "
+                 "and the modules it imports from, merging into an existing arch.jac"
              ),
              Arg.create(
                  "strip",

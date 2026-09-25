@@ -3,6 +3,13 @@ import from "class-variance-authority" { cva }
 import from "@radix-ui/react-slot" { Slot }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { SidebarLeftIcon }
+import from .button { Button }
+import from .input { Input }
+import from .separator { Separator }
+import from .sheet { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle }
+import from .skeleton { Skeleton }
+import from .tooltip { Tooltip, TooltipContent, TooltipTrigger }
+import from ...lib.utils { cn }
 
 glob SIDEBAR_COOKIE_NAME: str = "sidebar_state",
      SIDEBAR_COOKIE_MAX_AGE: int = 604800,

@@ -377,6 +377,7 @@ def _floor_ca_bundle -> (str | None) {
     if env and os.path.isfile(env) {
         return env;
     }
+    import jaclang;
 
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
     return _resolve_ca_bundle(pkg_root);

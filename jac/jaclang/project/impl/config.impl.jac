@@ -1741,13 +1741,6 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
             }
             cfg.arch.closed = list(arch_data["closed"]);
         }
-        if "roots" in arch_data {
-            if not isinstance(arch_data["roots"], list)
-                or not all(isinstance(r, str) for r in arch_data["roots"]) {
-                raise ValueError("[arch] roots must be a list of directories");
-            }
-            cfg.arch.roots = list(arch_data["roots"]);
-        }
     }
     if "placement" in data
         and isinstance(data["placement"], dict)

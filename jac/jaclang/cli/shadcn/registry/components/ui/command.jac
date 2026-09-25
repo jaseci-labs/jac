@@ -1,6 +1,15 @@
 import from "cmdk" { Command as CommandPrimitive }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { SearchIcon, Tick02Icon }
+import from .dialog {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle
+}
+import from ".input_group" { InputGroup, InputGroupAddon }
+import from ...lib.utils { cn }
 
 def:pub Command(props: any) -> JsxElement {
     <CommandPrimitive

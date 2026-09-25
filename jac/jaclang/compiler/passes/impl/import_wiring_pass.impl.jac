@@ -46,6 +46,9 @@ impl ImportWiringPass._check_arch_module(mod: Module) -> None {
     for block in blocks {
         self._check_scope(spec, block, seen_scopes);
         for stmt in block.body {
+            if isinstance(stmt, ImportRule) and stmt.is_closed {
+                continue;
+            }
             if isinstance(stmt, ImportRule) {
                 if stmt.name.value in rule_names {
                     self.ctx.emit(E2092, node_override=stmt.name, name=stmt.name.value);
@@ -186,8 +189,8 @@ impl ImportWiringPass._check_edge(
                 consumer=consumer,
                 rules="no rule",
                 help_text=(
-                    f"'{provider}' is sealed: arch.jac names it, or [arch] closed in"
-                    " jac.toml covers it, so it flows only where an edge rule admits,"
+                    f"'{provider}' is sealed: its arch.jac names it or declares it"
+                    " closed, so it flows only where an edge rule admits,"
                     " and no rule names it as a provider yet. Add one, for example"
                     f" `edge {ImportWiringPass._rule_name_for(provider)}:"
                     f" {ImportWiringPass._package_pattern(provider)} -->"

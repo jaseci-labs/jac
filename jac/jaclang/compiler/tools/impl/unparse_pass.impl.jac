@@ -1247,6 +1247,11 @@ impl UnparsePass.exit_import_wire with uni.ImportWire exit {
 }
 
 impl UnparsePass.exit_import_rule with uni.ImportRule exit {
+    if here.is_closed {
+        pats = " | ".join([s.gen.jac for s in here.sources]);
+        here.gen.jac = "closed" + (": " + pats if pats else "") + ";";
+        return;
+    }
     parts: list[str] = ["edge", here.name.gen.jac + ":"];
     parts.append(" | ".join([s.gen.jac for s in here.sources]));
     parts.append("-->");

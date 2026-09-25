@@ -63,14 +63,6 @@ serial = [
     "jac/jaclang/scale/tests/data/test_firebase_env.jac",
 ]
 
-# Module wiring (arch.jac). `jac/` is the import root of the jaclang package,
-# so modules are named as they are imported (jaclang.cli.errmap). `closed`
-# seals the shipped package: every jaclang module's project imports are wires,
-# including modules arch.jac never names. Tests, examples and scripts stay open.
-[arch]
-roots = ["jac"]
-closed = ["jaclang.*"]
-
 # JacPython is a native-only library in checks, builds and cached imports.
 [native]
 require = [

@@ -462,8 +462,34 @@ def _strip_modules(paths: list[str]) -> int {
     return changed;
 }
 
+def _arch_target(scope: str) -> tuple[(str | None), str] {
+    if scope and os.path.isdir(scope) {
+        return (os.path.abspath(scope), "");
+    }
+    return (_project_root(), scope);
+}
+
+def _arch_files(root_dir: str) -> list[str] {
+    found: list[str] = [];
+    for (dirpath, dirnames, filenames) in os.walk(root_dir) {
+        dirnames[:] = sorted(
+            [
+                d
+                for d in dirnames
+                if not d.startswith(".")
+                    and d not in ("node_modules", "__pycache__")
+                    and not os.path.isfile(os.path.join(dirpath, d, "jac.toml"))
+            ]
+        );
+        if ARCH_FILE_NAME in filenames {
+            found.append(os.path.join(dirpath, ARCH_FILE_NAME));
+        }
+    }
+    return drop_git_ignored(found, cwd=root_dir);
+}
+
 def _arch_init(force: bool, strip: bool, scope: str) -> int {
-    root_dir = _project_root();
+    (root_dir, scope) = _arch_target(scope);
     if root_dir is None {
         return 1;
     }
@@ -577,13 +603,29 @@ def _row_bindings(row: WireRow) -> list[tuple[str, str, str, str]] {
     return [(row.provider, row.form, "", row.alias)];
 }
 
-def _arch_sync(strip: bool) -> int {
-    root_dir = _project_root();
+def _arch_sync(strip: bool, scope: str) -> int {
+    (root_dir, _rest) = _arch_target(scope);
     if root_dir is None {
         return 1;
     }
-    arch_path = os.path.join(root_dir, ARCH_FILE_NAME);
-    spec = wiring_for_path(arch_path);
+    targets = [os.path.join(root_dir, ARCH_FILE_NAME)]
+        if scope
+        else _arch_files(root_dir);
+    if not targets {
+        console.error(
+            f"no {ARCH_FILE_NAME} under {root_dir}", hint="run `jac arch init` first"
+        );
+        return 1;
+    }
+    status = 0;
+    for arch_path in targets {
+        status = max(status, _sync_one(arch_path, strip));
+    }
+    return status;
+}
+
+def _sync_one(arch_path: str, strip: bool) -> int {
+    spec = wiring_for_path(arch_path) if os.path.isfile(arch_path) else None;
     if spec is None {
         console.error(f"{arch_path} does not exist", hint="run `jac arch init` first");
         return 1;
@@ -697,8 +739,8 @@ def _render_json(spec: WiringSpec) -> str {
     return json.dumps({"wires": wires, "rules": rules}, indent=2) + "\n";
 }
 
-def _arch_graph(fmt: str, output: str) -> int {
-    root_dir = _project_root();
+def _arch_graph(fmt: str, output: str, scope: str) -> int {
+    (root_dir, _rest) = _arch_target(scope);
     if root_dir is None {
         return 1;
     }
@@ -733,15 +775,15 @@ impl arch(
         console.error(f"unknown action: {action} (expected init, sync or graph)");
         return 2;
     }
-    if scope and verb != ArchAction.INIT {
-        console.error("a package scope applies to init only");
+    if scope and verb != ArchAction.INIT and not os.path.isdir(scope) {
+        console.error("sync and graph take a directory holding an arch.jac");
         return 2;
     }
     if verb == ArchAction.INIT {
         return _arch_init(force, strip, scope);
     }
     if verb == ArchAction.SYNC {
-        return _arch_sync(strip);
+        return _arch_sync(strip, scope);
     }
-    return _arch_graph(format, output);
+    return _arch_graph(format, output, scope);
 }

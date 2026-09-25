@@ -440,6 +440,7 @@ impl JacClientCompiler.compile_runtime_utils(
 impl JacClientCompiler.compile_pwa_runtime(
     self: JacClientCompiler
 ) -> tuple[str, list[str]] {
+    import jaclang;
     pwa_runtime_path: Path = (
         Path(jaclang.__file__).parent / "client" / "pwa_runtime.jac"
     );

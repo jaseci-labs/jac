@@ -1003,7 +1003,9 @@ node ImportWire(UniNode) {
 }
 
 node ImportRule(UniNode) {
-    has is_open: bool = False;
+    has is_open: bool = False,
+        is_closed: bool = False;
+
     has name: Name { getter; }
     has sources: Sequence[ModulePattern] { getter; }
     has targets: Sequence[ModulePattern] { getter; }

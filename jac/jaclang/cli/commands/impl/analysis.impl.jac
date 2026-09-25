@@ -1713,6 +1713,7 @@ impl gen_parser -> int {
 }
 
 impl grammar(output: str = "", strict: bool = False) -> int {
+    import jaclang;
     parser_path = str(
         Path(jaclang.__file__).parent
             / "compiler"

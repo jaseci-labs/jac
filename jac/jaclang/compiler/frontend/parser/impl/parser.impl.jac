@@ -7171,6 +7171,10 @@ impl Parser.parse_impl_import -> ImplImport {
         stmt: ImportWire | ImportRule | None = None;
         if self.check(TokenKind.KW_EDGE) {
             stmt = self.parse_import_rule();
+        } elif self.check_name()
+            and self.current().value == "closed"
+            and self.check_peek_any(TokenKind.SEMI, TokenKind.COLON) {
+            stmt = self.parse_import_closed();
         } elif self.check_any(
             TokenKind.KW_COMPTIME,
             TokenKind.KW_INCLUDE,
@@ -7296,19 +7300,42 @@ impl Parser.parse_import_rule -> ImportRule | None {
     );
 }
 
+impl Parser.parse_import_closed -> ImportRule {
+    name = self.make_name(self.expect_name("closed"));
+    kid: list[UniNode] = [name];
+    sources: list[ModulePattern] = [];
+    if self.match_tok(TokenKind.COLON) {
+        kid.append(self.make_uni_token(self.previous()));
+        pat = self.parse_module_pattern();
+        sources.append(pat);
+        kid.append(pat);
+        while self.match_tok(TokenKind.BW_OR) {
+            kid.append(self.make_uni_token(self.previous()));
+            pat = self.parse_module_pattern();
+            sources.append(pat);
+            kid.append(pat);
+        }
+    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
+    rule = ImportRule(name=name, sources=sources, targets=[], items=None, kid=kid);
+    rule.is_closed = True;
+    return rule;
+}
+
 impl Parser.parse_import_wire -> ImportWire | None {
     kid: list[UniNode] = [];
     is_comptime = False;
     is_absorb = False;
     is_typed = False;
-    if self._match_wire_form(TokenKind.KW_COMPTIME) {
+    if not self._wire_path_ahead() and self.match_tok(TokenKind.KW_COMPTIME) {
         is_comptime = True;
         kid.append(self.make_uni_token(self.previous()));
     }
-    if self._match_wire_form(TokenKind.KW_INCLUDE) {
+    if not self._wire_path_ahead() and self.match_tok(TokenKind.KW_INCLUDE) {
         is_absorb = True;
         kid.append(self.make_uni_token(self.previous()));
-    } elif self._match_wire_form(TokenKind.TYP_TYPE) {
+    } elif not self._wire_path_ahead() and self.match_tok(TokenKind.TYP_TYPE) {
         is_typed = True;
         kid.append(self.make_uni_token(self.previous()));
     }
@@ -7459,15 +7486,10 @@ impl Parser._expect_wire_arrow(kid: list[UniNode]) -> bool {
     return True;
 }
 
-impl Parser._match_wire_form(kind: TokenKind) -> bool {
-    if not self.check(kind)
-        or self.check_peek_any(
-            TokenKind.ARROW_R, TokenKind.DOT, TokenKind.KW_AS, TokenKind.BW_OR
-        ) {
-        return False;
-    }
-    self.advance();
-    return True;
+impl Parser._wire_path_ahead -> bool {
+    return self.check_peek_any(
+        TokenKind.ARROW_R, TokenKind.DOT, TokenKind.KW_AS, TokenKind.BW_OR
+    );
 }
 
 impl Parser._skip_wiring_stmt -> None {

@@ -1,5 +1,6 @@
 import logging;
 
+import from jaclang { JacRuntimeInterface as Jac }
 glob logger = logging.getLogger("jaclang.lsp.server.sem_manager");
 
 obj SemTokManager {

@@ -1,4 +1,5 @@
 import from "vaul" { Drawer as DrawerPrimitive }
+import from ...lib.utils { cn }
 
 def:pub Drawer(props: any) -> JsxElement {
     <DrawerPrimitive.Root data-slot="drawer" {**props}/>

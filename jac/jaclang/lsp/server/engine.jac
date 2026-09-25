@@ -9,6 +9,7 @@ import from collections { deque }
 import from concurrent.futures { Future }
 import from typing { Optional }
 
+import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.lsp.protocol { uris }
 
 import from . { utils }

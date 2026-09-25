@@ -2476,7 +2476,18 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         if not isinstance(owner, (uni.Ability, uni.ImplDef)) {
             continue;
         }
-        doomed = self._wired_items(imp, spec, spec.consumer_bindings(consumer, scope));
+        twins: set[tuple[str, str, str, str]] = set();
+        for other in owner.get_all_sub_nodes(typ=uni.Import) {
+            if other is not imp {
+                twins |= self._resolved_import_keys(other, spec);
+            }
+        }
+        provided_here = {
+            k: v
+            for (k, v) in spec.consumer_bindings(consumer, scope).items()
+            if k not in twins
+        };
+        doomed = self._wired_items(imp, spec, provided_here);
         if not doomed or not imp.prune_items(doomed) {
             continue;
         }
@@ -2513,6 +2524,31 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         );
     }
     nd._invalidate_sub_node_tab();
+}
+
+impl JacAutoLintPass._resolved_import_keys(
+    stmt: uni.Import, spec: WiringSpec
+) -> set[tuple[str, str, str, str]] {
+    keys: set[tuple[str, str, str, str]] = set();
+    from_loc = stmt.from_loc;
+    form = WiringSpec.import_form(
+        stmt.is_absorb, stmt.is_typed, stmt.is_comptime, from_loc is not None
+    );
+    for item in stmt.items {
+        alias = item.alias.value if item.alias is not None else "";
+        if from_loc is not None and isinstance(item, uni.ModuleItem) {
+            provider = spec.import_provider(from_loc);
+            if provider is not None {
+                keys.add((provider, form, item.name.value, alias));
+            }
+        } elif isinstance(item, uni.ModulePath) {
+            provider = spec.import_provider(item);
+            if provider is not None {
+                keys.add((provider, form, "", alias));
+            }
+        }
+    }
+    return keys;
 }
 
 impl JacAutoLintPass._wired_items(

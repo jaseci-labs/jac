@@ -540,6 +540,7 @@ def _project_name_from_cwd(cwd: Path) -> str {
 }
 
 def _resolve_bundled_template(name: str, example: str) -> ProjectTemplate | None {
+    import jaclang;
     pkg = Path(jaclang.__file__).parent;
     candidates = [pkg.parent / f"{name}_template", pkg.parent / "examples" / example];
     for cand in candidates {

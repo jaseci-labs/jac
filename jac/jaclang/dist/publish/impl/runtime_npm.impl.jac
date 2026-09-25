@@ -1,5 +1,6 @@
 import re;
 import json;
+import jaclang;
 
 import from pathlib { Path }
 
@@ -198,6 +199,7 @@ def _point_at_packaged_prelude(js: str, member_rel: str) -> str {
 def _collect_dep_modules(
     entry_js: str, entry_dir: str = ""
 ) -> tuple[str, list[tuple[str, str]]] {
+    import jaclang;
     import posixpath;
     base = Path(jaclang.__file__).parent.parent;
     seen: set[str] = set();
@@ -258,6 +260,7 @@ impl build_runtime_tarball(
     entry_js = compile_runtime_js(framework);
 
     import posixpath;
+    import jaclang;
 
     base = Path(jaclang.__file__).parent.parent;
     entry_dir = posixpath.dirname(

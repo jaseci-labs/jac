@@ -1,3 +1,5 @@
+import from ...lib.utils { cn }
+
 glob _messageExcludeKeys: list[str] = ["className", "align"];
 
 def:pub MessageGroup(props: any) -> JsxElement {

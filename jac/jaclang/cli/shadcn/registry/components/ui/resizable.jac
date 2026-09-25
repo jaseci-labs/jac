@@ -1,4 +1,5 @@
 import from "react-resizable-panels" { PanelGroup, Panel, PanelResizeHandle }
+import from ...lib.utils { cn }
 
 def:pub ResizablePanelGroup(props: any) -> JsxElement {
     <PanelGroup

@@ -80,7 +80,6 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(repo_root, "jaclang"), os.path.join(site, "jaclang")
         );
         log(f"   compiler identity: {_identity}");
-        ship_wiring(repo_root, site);
 
         copy_file(
             os.path.join(repo_root, "bootstrap", "pins.json"),
@@ -142,27 +141,6 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
     }
 
     _bundle_bun(site, opts);
-}
-
-impl ship_wiring(repo_root: str, site: str) {
-    import tomllib;
-    top = os.path.dirname(os.path.abspath(repo_root));
-    arch_src = os.path.join(top, "arch.jac");
-    if not file_exists(arch_src) {
-        return;
-    }
-    closed: list[str] = [];
-    try {
-        with open(os.path.join(top, "jac.toml"), "rb") as f {
-            closed = list(tomllib.load(f).get("arch", {}).get("closed", []));
-        }
-    } except (OSError, tomllib.TOMLDecodeError) {
-        closed = [];
-    }
-    copy_file(arch_src, os.path.join(site, "arch.jac"));
-    listed = ", ".join([f'"{p}"' for p in closed]);
-    write_text(os.path.join(site, "jac.toml"), f"[arch]\nclosed = [{listed}]\n");
-    log("==> shipping arch.jac wiring at the site root");
 }
 
 impl _bundle_bun(site: str, opts: MkPayloadOpts) {

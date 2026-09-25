@@ -398,6 +398,7 @@ impl HotReloader._refresh_routing(file_path: str) -> None {
 }
 
 impl HotReloader._reload_server_module(file_path: str) -> None {
+    import from jaclang.runtime.prepared { application_for }
     entry_path = str(self._entry_module_path());
     previous = application_for(entry_path);
     program = Jac.program;

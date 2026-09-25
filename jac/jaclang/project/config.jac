@@ -58,8 +58,7 @@ obj NativeConfig {
 }
 
 obj ArchConfig {
-    has closed: list[str] = [],
-        roots: list[str] = [];
+    has closed: list[str] = [];
 }
 
 obj MemoryConfig {

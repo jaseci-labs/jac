@@ -767,6 +767,7 @@ impl JacScaleScheduler._execute_task(
         }
 
         async def _run {
+            import from jaclang { JacRuntime as Jac }
             ctx = JScaleExecutionContext();
             ctx_token = Jac.push_request_context(ctx);
             try {

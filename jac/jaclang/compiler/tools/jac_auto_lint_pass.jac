@@ -138,6 +138,10 @@ walker JacAutoLintPass(TreeWalker) {
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def _strip_wired_imports(nd: uni.Module) -> None;
+    def _resolved_import_keys(
+        stmt: uni.Import, spec: WiringSpec
+    ) -> set[tuple[str, str, str, str]];
+
     def _wired_items(
         stmt: uni.Import,
         spec: WiringSpec,

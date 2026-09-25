@@ -1,4 +1,6 @@
 import from "radix-ui" { ToggleGroup as ToggleGroupPrimitive }
+import from ...lib.utils { cn }
+import from ".toggle" { toggleVariants }
 
 def:pub ToggleGroup(props: any) -> JsxElement {
     variant = props["variant"] or "default";

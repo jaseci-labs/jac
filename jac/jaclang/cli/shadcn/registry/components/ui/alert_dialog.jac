@@ -1,4 +1,6 @@
 import from "radix-ui" { AlertDialog as AlertDialogPrimitive }
+import from ...lib.utils { cn }
+import from .button { Button }
 
 def:pub AlertDialog(props: any) -> JsxElement {
     <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>

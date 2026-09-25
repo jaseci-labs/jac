@@ -4,6 +4,7 @@ import from collections.abc { Callable }
 import from enum { StrEnum }
 import from typing { ClassVar, NoReturn, `override }
 import type from enum { IntEnum }
+import type from jaclang { JacRuntimeInterface }
 
 enum APIProtocol(StrEnum) {
     HTTP = 'http',

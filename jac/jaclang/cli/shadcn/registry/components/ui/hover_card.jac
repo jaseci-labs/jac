@@ -1,4 +1,5 @@
 import from "radix-ui" { HoverCard as HoverCardPrimitive }
+import from ...lib.utils { cn }
 
 def:pub HoverCard(props: any) -> JsxElement {
     <HoverCardPrimitive.Root data-slot="hover-card" {**props}/>

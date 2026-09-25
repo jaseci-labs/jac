@@ -66,6 +66,7 @@ def _rpc_headers(extra: dict[str, str] | None = None) -> dict[str, str] {
 
 
 def _provider_url(app_name: str) -> str {
+    import jaclang;
     import from jaclang.server { sv_client }
     registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
     base: str = str(registry.get(app_name, "") or "").rstrip("/");

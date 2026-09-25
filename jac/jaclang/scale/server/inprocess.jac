@@ -1,6 +1,7 @@
 import os;
 import sys;
 
+import from jaclang { JacRuntime as Jac }
 
 obj PreparedInProcessRuntime {
     has server: any,

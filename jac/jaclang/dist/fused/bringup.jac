@@ -1,3 +1,6 @@
+import from .embed { Embed, open_tree }
+import from .materialize { materialize }
+import from .report { die }
 import from _exec_native { executable_path }
 
 def:pub open_runtime(exe_path: str) -> Embed {

@@ -1,3 +1,5 @@
+import from ...lib.utils { cn }
+
 def:pub Kbd(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <kbd

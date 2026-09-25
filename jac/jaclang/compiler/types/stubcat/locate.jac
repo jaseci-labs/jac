@@ -22,6 +22,7 @@ glob ENV_FILE: str = "JAC_STUBCAT_FILE",
      _CATALOG_CACHE: list[StubCatalog] = [];
 
 def jaclang_pkg_dir -> str {
+    import jaclang;
     return os.path.dirname(os.path.realpath(str(jaclang.__file__)));
 }
 

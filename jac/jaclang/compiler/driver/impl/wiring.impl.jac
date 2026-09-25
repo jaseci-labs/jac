@@ -36,6 +36,20 @@ impl WiringSpec.postinit -> None {
             if isinstance(stmt, ImportWire) {
                 self.wires.append(stmt);
                 self._wire_lines[stmt.loc.first_line] = stmt;
+            } elif isinstance(stmt, ImportRule) and stmt.is_closed {
+                if stmt.sources {
+                    self._file_closed.extend(
+                        [
+                            ModulePattern.join_scope(
+                                block.scope_prefix, WiringSpec.pattern_text(p)
+                            ) for p in stmt.sources
+                        ]
+                    );
+                } else {
+                    self._file_closed.append(
+                        block.scope_prefix + ".*" if block.scope_prefix else "*"
+                    );
+                }
             } elif isinstance(stmt, ImportRule) {
                 self.rules.append(stmt);
             }
@@ -59,51 +73,52 @@ impl WiringSpec._ensure_policy -> None {
     }
     self._policy_loaded = True;
     if not self.closed_patterns {
-        self.closed_patterns = _closed_patterns_for(self.root_dir);
+        self.closed_patterns = list(self._file_closed)
+            + _closed_patterns_for(self.root_dir);
     }
-    rows = list(self._rule_rows)
-        + ["closed:" + p for p in self.closed_patterns]
-        + [
-            "root:" + os.path.relpath(r, self.root_dir)
-            for r in self.import_roots()[:-1]
-        ];
+    rows = list(self._rule_rows) + ["closed:" + p for p in self.closed_patterns];
     self._policy_digest = hashlib.sha256("\n".join(rows).encode()).hexdigest()
         if rows
         else "";
 }
 
-impl WiringSpec.import_roots -> list[str] {
-    if self._roots is None {
-        base = os.path.realpath(self.root_dir);
-        extra = [
-            os.path.realpath(os.path.join(base, r))
-            for r in _import_roots_for(self.root_dir)
-        ];
-        inside = [
-            r
-            for r in extra
-            if r != base and r.startswith(base + os.sep)
-        ];
-        self._roots = sorted(set(inside), key=lambda (r: str) { -len(r); }) + [base];
+impl WiringSpec.import_prefix -> str {
+    if self._prefix is None {
+        parts: list[str] = [];
+        cur = os.path.realpath(self.root_dir);
+        while any(
+            [
+                os.path.isfile(os.path.join(cur, "__init__" + ext))
+                for ext in (".jac", ".py")
+            ]
+        ) {
+            parts.insert(0, os.path.basename(cur));
+            parent = os.path.dirname(cur);
+            if parent == cur {
+                break;
+            }
+            cur = parent;
+        }
+        self._prefix = ".".join(parts);
     }
-    return self._roots;
+    return self._prefix;
+}
+
+impl WiringSpec.import_name(name: str) -> str {
+    prefix = self.import_prefix();
+    if prefix and name {
+        return prefix + "." + name;
+    }
+    return prefix or name;
 }
 
 impl WiringSpec.module_name(path: str) -> (str | None) {
-    real = os.path.realpath(path);
-    rel = "";
-    for base in self.import_roots() {
-        try {
-            candidate = os.path.relpath(real, base);
-        } except ValueError {
-            continue;
-        }
-        if not candidate.startswith("..") {
-            rel = candidate;
-            break;
-        }
+    try {
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(self.root_dir));
+    } except ValueError {
+        return None;
     }
-    if not rel {
+    if rel.startswith("..") {
         return None;
     }
     stem: str;
@@ -137,16 +152,11 @@ impl WiringSpec.module_file(name: str) -> (str | None) {
     if any([not p for p in parts]) {
         return None;
     }
-    for base in self.import_roots() {
-        found = resolve_local_module(base, parts);
-        if found is None or found[1] not in ("jac", "py") {
-            continue;
-        }
-        if self.module_name(found[0]) == name {
-            return found[0];
-        }
+    found = resolve_local_module(self.root_dir, parts);
+    if found is None or found[1] not in ("jac", "py") {
+        return None;
     }
-    return None;
+    return found[0];
 }
 
 impl WiringSpec.split_consumer(path: str) -> (tuple[str, list[str]] | None) {
@@ -195,12 +205,7 @@ impl WiringSpec.is_package_dir(name: str) -> bool {
     if not name {
         return False;
     }
-    return any(
-        [
-            os.path.isdir(os.path.join(base, *name.split(".")))
-            for base in self.import_roots()
-        ]
-    );
+    return os.path.isdir(os.path.join(self.root_dir, *name.split(".")));
 }
 
 impl WiringSpec.project_modules -> list[str] {
@@ -216,6 +221,7 @@ impl WiringSpec.project_modules -> list[str] {
                 if not d.startswith(".")
                     and d not in ("node_modules", "__pycache__")
                     and not os.path.isfile(os.path.join(dirpath, d, "jac.toml"))
+                    and not os.path.isfile(os.path.join(dirpath, d, ARCH_FILE_NAME))
             ]
         );
         for fname in sorted(filenames) {
@@ -348,7 +354,7 @@ impl WiringSpec._wire_text(wire: ImportWire) -> list[tuple[int, int, str]] {
         alias = wire.provider.alias;
         text = head_form
             + " "
-            + wire.provider_path
+            + self.import_name(wire.provider_path)
             + (" as " + alias.value if alias is not None else "")
             + ";";
         return [(line0, col, text)];
@@ -368,7 +374,7 @@ impl WiringSpec._wire_text(wire: ImportWire) -> list[tuple[int, int, str]] {
         return [];
     }
     payload = self.source[lbrace.pos_start:rbrace.pos_end];
-    header = head_form + " from " + wire.provider_path;
+    header = head_form + " from " + self.import_name(wire.provider_path);
     lb_col = self._column_of(lbrace.pos_start);
     if lbrace.line_no > first.line_no {
         header = header + ("\n" * (lbrace.line_no - first.line_no)) + (" " * lb_col);
@@ -427,7 +433,9 @@ impl WiringSpec.digest_for(consumer: str) -> str {
     if not annex and not self._policy_digest {
         return "";
     }
-    return hashlib.sha256((annex + "\x00" + self._policy_digest).encode()).hexdigest();
+    return hashlib.sha256(
+        (consumer + "\x00" + annex + "\x00" + self._policy_digest).encode()
+    ).hexdigest();
 }
 
 impl WiringSpec.wire_bindings(wire: ImportWire) -> list[WireBinding] {
@@ -527,21 +535,28 @@ impl WiringSpec.admitted_names(rules: list[ImportRule]) -> (set[str] | None) {
 }
 
 impl is_arch_file(path: str) -> bool {
-    if os.path.basename(path) != ARCH_FILE_NAME {
-        return False;
-    }
-    return os.path.isfile(
-        os.path.join(os.path.dirname(os.path.abspath(path)), "jac.toml")
-    );
+    return os.path.basename(path) == ARCH_FILE_NAME;
 }
 
 impl arch_file_for(path: str) -> (str | None) {
-    root_dir = find_jac_project_root(path);
-    if not root_dir {
-        return None;
+    project = find_jac_project_root(path);
+    stop = os.path.realpath(project) if project else None;
+    real = os.path.realpath(path);
+    cur = real if os.path.isdir(real) else os.path.dirname(real);
+    while True {
+        candidate = os.path.join(cur, ARCH_FILE_NAME);
+        if os.path.isfile(candidate) {
+            return candidate;
+        }
+        if stop is not None and cur == stop {
+            return None;
+        }
+        parent = os.path.dirname(cur);
+        if parent == cur {
+            return None;
+        }
+        cur = parent;
     }
-    arch = os.path.join(root_dir, ARCH_FILE_NAME);
-    return arch if os.path.isfile(arch) else None;
 }
 
 impl compiled_by_seed(path: str) -> bool {
@@ -556,10 +571,6 @@ impl compiled_by_seed(path: str) -> bool {
     return bootstrap_manifest.is_seed_source(
         os.path.relpath(real, pkg).replace(os.sep, "/")
     );
-}
-
-impl _import_roots_for(root_dir: str) -> list[str] {
-    return _arch_patterns(root_dir, "roots");
 }
 
 impl _arch_patterns(root_dir: str, key: str) -> list[str] {
@@ -674,7 +685,11 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     if not path {
         return None;
     }
-    root_dir = find_jac_project_root(path);
+    arch = arch_file_for(path);
+    root_dir: (str | None) = os.path.dirname(arch) if arch is not None else None;
+    if root_dir is None {
+        root_dir = find_jac_project_root(path);
+    }
     if not root_dir {
         return None;
     }
@@ -685,11 +700,10 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     if root_dir in _building {
         return None;
     }
-    arch = os.path.join(root_dir, ARCH_FILE_NAME);
     spec: (WiringSpec | None) = None;
     _building.add(root_dir);
     try {
-        if os.path.isfile(arch) {
+        if arch is not None {
             spec = _load_spec(root_dir, arch);
         } elif not policy or (scope is not None and root_dir in scope) {
             return None;
@@ -698,7 +712,7 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
             if closed {
                 spec = WiringSpec(
                     root_dir=root_dir,
-                    path=arch,
+                    path=os.path.join(root_dir, ARCH_FILE_NAME),
                     source="",
                     closed_patterns=closed,
                     _policy_loaded=True
@@ -721,6 +735,7 @@ impl dedupe_generated_imports(mod: Module) -> None {
         return;
     }
     consumer = spec.module_name(mod.loc.mod_path) or "";
+    consumer_import = spec.import_name(consumer);
     written: set[tuple[str, str, str, str]] = set();
     generated: list[Import] = [];
     removed: set[int] = set();
@@ -747,7 +762,8 @@ impl dedupe_generated_imports(mod: Module) -> None {
                 }
                 doomed: set[int] = set();
                 for (key, item) in _import_items(stmt) {
-                    if key in in_scope or _relative_twin(key, consumer) in in_scope {
+                    if key in in_scope
+                        or _relative_twin(key, consumer_import) in in_scope {
                         doomed.add(id(item));
                     }
                 }
@@ -764,7 +780,7 @@ impl dedupe_generated_imports(mod: Module) -> None {
     for stmt in (generated if written else []) {
         doomed: set[int] = set();
         for (key, item) in _import_items(stmt) {
-            if key in written or _relative_twin(key, consumer) in written {
+            if key in written or _relative_twin(key, consumer_import) in written {
                 doomed.add(id(item));
             }
         }

@@ -1,4 +1,5 @@
 import from "radix-ui" { Switch as SwitchPrimitive }
+import from ...lib.utils { cn }
 
 def:pub Switch(props: any) -> JsxElement {
     size = props["size"] or "default";

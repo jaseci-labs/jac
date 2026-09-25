@@ -1,3 +1,5 @@
+import from ...lib.utils { cn }
+
 def:pub Card(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     size = props["size"] or "default";

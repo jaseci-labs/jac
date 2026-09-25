@@ -4,6 +4,7 @@ import threading;
 import from inspect { isgenerator }
 import from pathlib { Path }
 import from typing { AsyncGenerator, Generator, TypeAlias }
+import from jaclang { JacRuntime as Jac }
 
 glob JsonValue: TypeAlias = None
          | str

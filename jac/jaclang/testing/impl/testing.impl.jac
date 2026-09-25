@@ -4,6 +4,7 @@ import re;
 import from pathlib { Path }
 import from urllib.parse { urlencode }
 
+import from jaclang { JacRuntime as Jac }
 impl TestResponse.json -> dict[str, any] {
     if self._json_cache is None {
         try {

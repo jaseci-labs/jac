@@ -67,6 +67,7 @@ impl ResourceProvider.index_resources -> None {
 }
 
 impl ResourceProvider._index_grammar -> None {
+    import jaclang;
     jaclang_dir = Path(jaclang.__file__).parent;
     spec_path = jaclang_dir / "jac.spec";
     if spec_path.exists() {
