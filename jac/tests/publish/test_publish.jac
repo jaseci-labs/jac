@@ -488,7 +488,7 @@ test "generate_pyproject_toml produces valid TOML covering structure, deps, and 
         'classifiers = ["Dev :: \\"Alpha\\""]\n\n'
         '[dependencies.pypi]\nrequests = ">=2.28"\n\n'
         '[optional-dependencies.video]\nopencv = ">=4.0"\n\n'
-        '[dev-dependencies]\npytest = ">=7.0"\n'
+        '[dev-dependencies.pypi]\npytest = ">=7.0"\n'
     );
     toml_str = generate_pyproject_toml(cfg);
     tomllib.loads(toml_str);  # raises TOMLDecodeError on any invalid TOML
@@ -668,7 +668,7 @@ test "WheelBuilder rewrites sibling imports so the installed wheel imports clean
     }
 }
 
-test "WheelBuilder skips client codespace files with a record" {
+test "WheelBuilder refuses client codespace files unless told to drop them" {
     tmpdir = tempfile.mkdtemp();
     try {
         proj = Path(tmpdir);
@@ -677,7 +677,13 @@ test "WheelBuilder skips client codespace files with a record" {
         (pkg / "core.jac").write_text("def go() -> int {\n    return 1;\n}\n");
         (pkg / "view.jac").write_text("def View() -> JsxElement { return <div />; }\n");
         cfg = pkg_config_with_include(proj, "mypkg");
-        builder = WheelBuilder(config=cfg, project_root=proj);
+        try {
+            WheelBuilder(config=cfg, project_root=proj).build();
+            assert False , "a client module must not be dropped silently";
+        } except ValueError as e {
+            assert "mypkg/view.jac" in str(e) and "--allow-drop-client" in str(e);
+        }
+        builder = WheelBuilder(config=cfg, project_root=proj, allow_drop_client=True);
         data = builder.build();
         with zipfile.ZipFile(io.BytesIO(data)) as zf {
             names = zf.namelist();

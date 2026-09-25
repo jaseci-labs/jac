@@ -310,7 +310,7 @@ test "a dependency declared only on the app that owns the module is an error too
         f.write(
             "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n\n"
             "[apps.web]\nkind = \"service\"\nentry-point = \"main\"\n\n"
-            "[apps.web.dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n"
+            "[apps.web.dependencies.pypi]\nnot-installed-pkg-xyz = \">=1.0\"\n"
         );
     }
     try {
@@ -334,7 +334,7 @@ test "a shared module is not an error for an app that does not declare the packa
             "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n\n"
             "[apps.web]\nkind = \"service\"\nentry-point = \"web\"\n\n"
             "[apps.worker]\nkind = \"service\"\nentry-point = \"worker\"\n\n"
-            "[apps.worker.dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n"
+            "[apps.worker.dependencies.pypi]\nnot-installed-pkg-xyz = \">=1.0\"\n"
         );
     }
     try {

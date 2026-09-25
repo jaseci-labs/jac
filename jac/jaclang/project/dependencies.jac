@@ -103,6 +103,19 @@ obj DependencyTables {
         ecosystems: dict[str, dict[str, any]] = {};
 }
 
+def _looks_like_package_dep(value: dict[str, any]) -> bool {
+    if not value or any(k not in PACKAGE_DEP_KEYS for k in value) {
+        return False;
+    }
+    git = str(value.get("git", ""));
+    return bool(
+        value.get("path")
+            or value.get("registry")
+            or "://" in git
+            or git.startswith("git@")
+    );
+}
+
 def split_dependency_table(
     table: dict[str, any], dev: bool, section: str
 ) -> DependencyTables {
@@ -129,7 +142,7 @@ def split_dependency_table(
             }
             continue;
         }
-        if key == "git" and isinstance(value, dict) and not is_package_name(key) {
+        if key == "git" and isinstance(value, dict) {
             raise ManifestError(
                 f"jac.toml [{section}.git]: Python git dependencies moved to "
                 f"[{section}.{PYPI_TABLE}] as name = {{ git = \"...\" }} ({MIGRATE_HINT})"
@@ -139,7 +152,7 @@ def split_dependency_table(
             out.packages[key] = PackageDep.parse(key, value, dev, section);
             continue;
         }
-        if isinstance(value, dict) and not any(k in value for k in PACKAGE_DEP_KEYS) {
+        if isinstance(value, dict) and not _looks_like_package_dep(value) {
             out.ecosystems[key] = value;
             continue;
         }
