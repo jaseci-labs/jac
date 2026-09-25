@@ -244,6 +244,28 @@ impl NaIRGenPass._get_exc_descendants(type_name: str) -> list[str] {
     return descendants;
 }
 
+impl NaIRGenPass._exception_member_name(member: uni.UniNode) -> (str | None) {
+    name: str | None = None;
+    if isinstance(member, uni.Name) {
+        name = member.value;
+    } elif isinstance(member, uni.AtomTrailer) and isinstance(member.right, uni.Name) {
+        name = member.right.value;
+    }
+    if name is None {
+        return None;
+    }
+    arch_key = self._arch_ref_key(member);
+    if arch_key is not None {
+        return arch_key;
+    }
+    import from jaclang.compiler.types.types { ClassType }
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    if isinstance(member, uni.Expr) and isinstance(member.type, ClassType) {
+        name = class_type_native_name(member.type) or name;
+    }
+    return name;
+}
+
 impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
     if ex is None {
         return [0];
@@ -251,13 +273,7 @@ impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
     members = list(ex.values) if isinstance(ex, uni.TupleVal) else [ex];
     ids: list[int] = [];
     for member in members {
-        name: str | None = None;
-        if isinstance(member, uni.Name) {
-            name = member.value;
-        } elif isinstance(member, uni.AtomTrailer)
-            and isinstance(member.right, uni.Name) {
-            name = member.right.value;
-        }
+        name = self._exception_member_name(member);
         if name is None {
             self.ctx.emit(
                 E5090,
@@ -266,11 +282,6 @@ impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
                 name="dynamic exception type"
             );
             continue;
-        }
-        import from jaclang.compiler.types.types { ClassType }
-        import from jaclang.compiler.passes.layout_pass { class_type_native_name }
-        if isinstance(member, uni.Expr) and isinstance(member.type, ClassType) {
-            name = class_type_native_name(member.type) or name;
         }
         if name in ("Exception", "BaseException") {
             return [0];
@@ -289,7 +300,7 @@ impl NaIRGenPass._exc_bound_struct(ex: (uni.Expr | None)) -> (str | None) {
     if ex is None or isinstance(ex, uni.TupleVal) {
         return None;
     }
-    key = self._arch_ref_key(ex) or self._get_name(ex);
+    key = self._exception_member_name(ex);
     if key is None or key not in self.struct_types {
         return None;
     }
@@ -338,6 +349,210 @@ impl NaIRGenPass._reraise_if_bound(cause: uni.Expr) -> None {
         self._reraise_caught(values);
         self.builder.position_at_end(fresh_bb);
         return;
+    }
+}
+
+impl NaIRGenPass._exception_handler_bases(ex: (uni.Expr | None)) -> list[int] {
+    if ex is None {
+        return [];
+    }
+    members = list(ex.values) if isinstance(ex, uni.TupleVal) else [ex];
+    ids: list[int] = [];
+    for member in members {
+        name = self._exception_member_name(member);
+        if name is None or name in ("Exception", "BaseException") {
+            continue;
+        }
+        tid = self._get_or_register_exc_type(name);
+        if tid not in ids {
+            ids.append(tid);
+        }
+    }
+    return ids;
+}
+
+impl NaIRGenPass._exc_lineage_fns -> tuple[ir.Function, ir.Function] {
+    if "__jac_exc_lineage_has" in self.extern_funcs {
+        return (
+            self.extern_funcs["__jac_exc_lineage_add"],
+            self.extern_funcs["__jac_exc_lineage_has"]
+        );
+    }
+    i1 = ir.IntType(1);
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    table_ty = ir.ArrayType(i64, EXC_LINEAGE_SLOTS);
+    table = ir.GlobalVariable(self.llvm_module, table_ty, name="__jac_exc_lineage");
+    table.linkage = "weak";
+    table.initializer = ir.Constant(table_ty, None);
+    atomic = "wasm" not in str(self.llvm_module.triple or "");
+
+    has_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(i1, [i64]), name="__jac_exc_lineage_has"
+    );
+    has_fn.linkage = "linkonce_odr";
+    has_fn.args[0].name = "key";
+    b = ir.IRBuilder(has_fn.append_basic_block("entry"));
+    (_slot, _v, found, empty, full) = self._emit_exc_lineage_probe(
+        b, table, has_fn.args[0], atomic
+    );
+    ir.IRBuilder(found).ret(ir.Constant(i1, 1));
+    ir.IRBuilder(empty).ret(ir.Constant(i1, 0));
+    ir.IRBuilder(full).ret(ir.Constant(i1, 0));
+
+    add_fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), [i64]),
+        name="__jac_exc_lineage_add"
+    );
+    add_fn.linkage = "linkonce_odr";
+    add_fn.args[0].name = "key";
+    key = add_fn.args[0];
+    start_bb = add_fn.append_basic_block("entry");
+    insert = add_fn.append_basic_block("insert");
+    done = add_fn.append_basic_block("done");
+    b = ir.IRBuilder(start_bb);
+    b.cbranch(b.call(has_fn, [key], name="known"), done, insert);
+    b = ir.IRBuilder(insert);
+    lock: (ir.GlobalVariable | None) = None;
+    if atomic {
+        lock = ir.GlobalVariable(self.llvm_module, i64, name="__jac_exc_lineage_lock");
+        lock.linkage = "weak";
+        lock.initializer = zero;
+        spin = add_fn.append_basic_block("lock");
+        held = add_fn.append_basic_block("held");
+        b.branch(spin);
+        b = ir.IRBuilder(spin);
+        old = b.atomic_rmw(
+            "xchg", lock, ir.Constant(i64, 1), ordering="acquire", name="lock.old"
+        );
+        b.cbranch(b.icmp_unsigned("!=", old, zero), spin, held);
+        b = ir.IRBuilder(held);
+    }
+    (slot, _v, found, empty, full) = self._emit_exc_lineage_probe(b, table, key, False);
+    unlock = add_fn.append_basic_block("unlock");
+    ir.IRBuilder(found).branch(unlock);
+    ir.IRBuilder(full).branch(unlock);
+    b = ir.IRBuilder(empty);
+    if atomic {
+        b.store_atomic(key, slot, "release", 8);
+    } else {
+        b.store(key, slot);
+    }
+    b.branch(unlock);
+    b = ir.IRBuilder(unlock);
+    if lock is not None {
+        b.store_atomic(zero, lock, "release", 8);
+    }
+    b.branch(done);
+    ir.IRBuilder(done).ret_void();
+
+    self.extern_funcs["__jac_exc_lineage_has"] = has_fn;
+    self.extern_funcs["__jac_exc_lineage_add"] = add_fn;
+    return (add_fn, has_fn);
+}
+
+impl NaIRGenPass._emit_exc_lineage_probe(
+    b: ir.IRBuilder, table: ir.GlobalVariable, key: ir.Value, atomic: bool
+) -> tuple[ir.Value, ir.Value, ir.Block, ir.Block, ir.Block] {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    func = b.function;
+    start = b.block;
+    loop = func.append_basic_block("probe");
+    step = func.append_basic_block("probe.next");
+    miss = func.append_basic_block("probe.miss");
+    found = func.append_basic_block("probe.found");
+    empty = func.append_basic_block("probe.empty");
+    full = func.append_basic_block("probe.full");
+    mixed = b.mul(key, ir.Constant(i64, EXC_LINEAGE_MIX), name="probe.mix");
+    home = b.lshr(mixed, ir.Constant(i64, 64 - EXC_LINEAGE_BITS), name="probe.home");
+    b.branch(loop);
+    b = ir.IRBuilder(loop);
+    idx = b.phi(i64, name="probe.idx");
+    tried = b.phi(i64, name="probe.tried");
+    slot = b.gep(table, [ir.Constant(i32, 0), idx], name="probe.slot");
+    value = b.load_atomic(slot, "acquire", 8, name="probe.v")
+        if atomic
+        else b.load(slot, name="probe.v");
+    b.cbranch(b.icmp_unsigned("==", value, key), found, miss);
+    b = ir.IRBuilder(miss);
+    b.cbranch(b.icmp_unsigned("==", value, ir.Constant(i64, 0)), empty, step);
+    b = ir.IRBuilder(step);
+    nxt = b.and_(
+        b.add(idx, ir.Constant(i64, 1)),
+        ir.Constant(i64, EXC_LINEAGE_SLOTS - 1),
+        name="probe.nxt"
+    );
+    more = b.add(tried, ir.Constant(i64, 1), name="probe.more");
+    b.cbranch(
+        b.icmp_unsigned("==", more, ir.Constant(i64, EXC_LINEAGE_SLOTS)), full, loop
+    );
+    idx.add_incoming(home, start);
+    idx.add_incoming(nxt, step);
+    tried.add_incoming(ir.Constant(i64, 0), start);
+    tried.add_incoming(more, step);
+    return (slot, value, found, empty, full);
+}
+
+impl NaIRGenPass._emit_exc_lineage_match(
+    type_val: ir.Value, bases: list[int]
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    (_add, has_fn) = self._exc_lineage_fns();
+    high = self.builder.shl(
+        self.builder.zext(type_val, i64), ir.Constant(i64, 32), name="exc.lineage.hi"
+    );
+    matched: ir.Value = ir.Constant(ir.IntType(1), 0);
+    for base in bases {
+        key = self.builder.or_(high, ir.Constant(i64, base), name="exc.lineage.key");
+        matched = self.builder.or_(
+            matched, self.builder.call(has_fn, [key], name="exc.lineage.has")
+        );
+    }
+    return matched;
+}
+
+impl NaIRGenPass._register_exc_lineage(cause: (uni.Expr | None), type_id: int) -> None {
+    import from jaclang.compiler.types.types { ClassType, TypeBase }
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    if type_id == 0 or cause is None {
+        return;
+    }
+    typ = cause.type;
+    if not isinstance(typ, ClassType) or typ._shared is None {
+        return;
+    }
+    if not isinstance(typ.shared.symbol_table, uni.Archetype) {
+        return;
+    }
+    ancestors: list[int] = [];
+    seen: set[int] = set();
+    pending: list[TypeBase] = list(typ.shared.base_classes);
+    while pending {
+        base = pending.pop(0);
+        if not isinstance(base, ClassType) or base._shared is None {
+            continue;
+        }
+        if id(base.shared) in seen {
+            continue;
+        }
+        seen.add(id(base.shared));
+        name = class_type_native_name(base) or base.shared.class_name;
+        if name not in ("object", "Exception", "BaseException") {
+            aid = self._get_or_register_exc_type(name);
+            if aid not in (0, type_id) and aid not in ancestors {
+                ancestors.append(aid);
+            }
+        }
+        pending.extend(base.shared.base_classes);
+    }
+    if not ancestors {
+        return;
+    }
+    (add_fn, _has) = self._exc_lineage_fns();
+    for aid in ancestors {
+        self.builder.call(add_fn, [ir.Constant(ir.IntType(64), (type_id << 32) | aid)]);
     }
 }
 
@@ -427,6 +642,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
         exc_payload = self.builder.bitcast(exc_payload, i8p, name="exc.obj.cast");
     }
 
+    self._register_exc_lineage(nd.cause, exc_type_id);
     if self._slot_lowering_active() {
         self._codegen_raise_slot(exc_payload, exc_type_id, exc_msg);
         return;
@@ -593,6 +809,12 @@ impl NaIRGenPass._codegen_try_unwind(
                     );
                     does_match = self.builder.or_(does_match, matches);
                 }
+                does_match = self.builder.or_(
+                    does_match,
+                    self._emit_exc_lineage_match(
+                        exc_type_val, self._exception_handler_bases(except_node.ex_type)
+                    )
+                );
                 if next_dispatch_bb is not None {
                     self.builder.cbranch(does_match, handler_bb, next_dispatch_bb);
                 } else {
@@ -877,6 +1099,11 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
                 );
                 does_match = self.builder.or_(does_match, cmp, name="exc.match");
             }
+            raised = self.builder.sub(err_type, ir.Constant(i32, 1), name="exc.raised");
+            does_match = self.builder.or_(
+                does_match,
+                self._emit_exc_lineage_match(raised, self._exception_handler_bases(ex))
+            );
             self.builder.cbranch(does_match, handler_bb, next_bb);
         }
         self.builder.position_at_end(handler_bb);

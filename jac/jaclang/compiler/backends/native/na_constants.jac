@@ -58,3 +58,7 @@ glob LIVE_NODE_ID_OFF: int = 0,
      LIVE_NODE_RC_OFF: int = 24,
      LIVE_NODE_NEXT_OFF: int = 32,
      LIVE_NODE_SIZE: int = 40;
+
+glob EXC_LINEAGE_BITS: int = 11,
+     EXC_LINEAGE_SLOTS: int = 2048,
+     EXC_LINEAGE_MIX: int = -7046029254386353131;

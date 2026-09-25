@@ -619,11 +619,21 @@ impl EsastGenPass.exit_try_stmt with uni.TryStmt exit {
             import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
             (ex_ty_known, ex_builtin) = _raised_exc_identity(except_node.ex_type);
+            use_matches = exc_type_name is not None
+                and JAC_TYPE_REGISTRY.is_exception(exc_type_name);
             if ex_ty_known {
-                exc_type_name = ex_builtin;
+                ex_ty = except_node.ex_type.type;
+                user_class = isinstance(ex_ty, ClassType)
+                    and not ex_ty.shared.is_builtin_class;
+                use_matches = ex_builtin is not None;
+                if ex_builtin is not None {
+                    exc_type_name = ex_builtin;
+                } elif not user_class {
+                    exc_type_name = None;
+                }
             }
             test_expr: (es.Expression | None) = None;
-            if exc_type_name and JAC_TYPE_REGISTRY.is_exception(exc_type_name) {
+            if exc_type_name and use_matches {
                 test_expr = self.sync_loc(
                     es.CallExpression(
                         callee=self._jac_exc_ref('matches', except_node),
