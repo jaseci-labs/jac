@@ -2802,31 +2802,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
 
-    if (
-        module_name == "os"
-        and self._native_stdlib_modules
-        and "os" in self._native_stdlib_modules
-        and method_name in NATIVE_OS_FUNCS
-    ) {
-        return self._emit_os_call(method_name, nd);
-    }
-
-    if (
-        module_name == "random"
-        and self._native_stdlib_modules
-        and "random" in self._native_stdlib_modules
-        and method_name in NATIVE_RANDOM_FUNCS
-    ) {
-        return self._emit_random_call(method_name, nd);
-    }
-
-    if (
-        module_name == "struct"
-        and self._native_stdlib_modules
-        and "struct" in self._native_stdlib_modules
-        and method_name in NATIVE_STRUCT_FUNCS
-    ) {
-        return self._emit_struct_call(method_name, nd);
+    if module_name is not None
+        and self._stdlib_intercept_covers(module_name, method_name) {
+        return self._emit_stdlib_intercept(module_name, method_name, nd);
     }
 
     if target_name == "int" and method_name == "from_bytes" {
