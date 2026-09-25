@@ -322,6 +322,29 @@ jobs:
           read -r -a required <<<"$REQUIRED"
           bash scripts/release_publish_guard.sh "$VERSION" "${required[@]}"
 
+  # jachammer redeploys jaclang.org on pushes to release/jaclang-org; moving it
+  # here, and only when this release went latest, ships the site once per
+  # release. Its own job so a failure here never marks the release failed.
+  site-branch:
+    needs: [resolve, publish]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: Point release/jaclang-org at the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: bash scripts/release_site_branch.sh "$VERSION"
+
   # install.sh's real `curl | bash` path is verified out-of-band -- nightly.yml
   # `installer-live` and ci.yml `installer-test` -- not as a blocking release
   # gate: install.sh queries the GitHub API unauthenticated, and on shared macOS
@@ -405,6 +428,15 @@ jobs:
             --generate-notes \
             --latest
           echo "Created release v${{ steps.version.outputs.version }}"
+
+      # Same as the site-branch job. Runs even when the release already
+      # existed, so a recovery run also repairs a branch that never moved.
+      - name: Point release/jaclang-org at the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash scripts/release_site_branch.sh "$VERSION"
 
       - name: Summary
         run: |
