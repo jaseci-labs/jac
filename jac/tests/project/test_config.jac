@@ -124,7 +124,13 @@ test "interpolate against a given environment instead of the process one" {
         (
             "${JAC_PROCESS_ONLY:?pods need it}",
             "JAC_PROCESS_ONLY is required: pods need it"
-        )
+        ),
+        ("${POD_VAR:+on}", "Unsupported form ${POD_VAR:+on}"),
+        ("${POD_VAR:0:3}", "Unsupported form ${POD_VAR:0:3}"),
+        ("${POD_VAR-default}", "Unsupported form ${POD_VAR-default}"),
+        ("${POD_VAR?msg}", "Unsupported form ${POD_VAR?msg}"),
+        ("echo ${1:+on}", "echo ${1:+on}"),
+        ("echo ${#arr[@]}", "echo ${#arr[@]}")
     ];
     try {
         for (value, expected) in cases {
@@ -148,12 +154,12 @@ test "config load records the references it could not resolve" {
         (
             "a bare reference",
             f"[scale.secrets]\nKEY = \"${{{var_name}}}\"\n",
-            [("scale.secrets.KEY", False, "")]
+            [("scale.secrets.KEY", False, "", False)]
         ),
         (
             "a required reference",
             f"[scale.secrets]\nKEY = \"${{{var_name}:?export it}}\"\n",
-            [("scale.secrets.KEY", True, "export it")]
+            [("scale.secrets.KEY", True, "export it", False)]
         ),
         ("a default", f"[scale.secrets]\nKEY = \"${{{var_name}:-x}}\"\n", []),
         (
@@ -164,13 +170,23 @@ test "config load records the references it could not resolve" {
         (
             "a reference inside a list",
             f"[serve]\ncors_origins = [\"${{{var_name}}}\"]\n",
-            [("serve.cors_origins[0]", False, "")]
+            [("serve.cors_origins[0]", False, "", False)]
         ),
         (
             "a reference under an app",
             "[apps.web]\nkind = \"web-app\"\nentry-point = \"main\"\n"
                 + f"[apps.web.dependencies.npm]\npkg = \"${{{var_name}}}\"\n",
-            [("apps.web.dependencies.npm.pkg", False, "")]
+            [("apps.web.dependencies.npm.pkg", False, "", False)]
+        ),
+        (
+            "an alternate-value form, which jac does not read",
+            f"[scale.secrets]\nKEY = \"${{{var_name}:+on}}\"\n",
+            [("scale.secrets.KEY", False, "", True)]
+        ),
+        (
+            "a substring form, which jac does not read",
+            f"[scale.secrets]\nKEY = \"${{{var_name}:0:3}}\"\n",
+            [("scale.secrets.KEY", False, "", True)]
         )
     ];
     previous = os.environ.pop(var_name, None);
@@ -181,7 +197,8 @@ test "config load records the references it could not resolve" {
                 toml_path.write_text(base + extra);
                 config = JacConfig.load(toml_path);
                 got = [
-                    (ref.path, ref.required, ref.message) for ref in config.unresolved
+                    (ref.path, ref.required, ref.message, ref.unsupported)
+                    for ref in config.unresolved
                 ];
                 assert got == expected , f"{label}: {got}";
                 for ref in config.unresolved {

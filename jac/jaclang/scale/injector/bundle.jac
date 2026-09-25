@@ -452,7 +452,16 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
 def unresolved_toml_references(text: str, environ: dict[str, str]) -> list[str] {
     import from jaclang.project.config { resolve_env_refs }
     (_, refs) = resolve_env_refs(tomllib.loads(text), environ);
-    return [f"{ref.path}: {ref.describe()}" for ref in refs];
+    return [
+        f"{ref.path}: {ref.describe()}"
+        for ref in refs
+        if not _is_shell_script_ref(ref)
+    ];
+}
+
+
+def _is_shell_script_ref(ref: any) -> bool {
+    return ref.unsupported and ref.path.split(".")[0] == "scripts";
 }
 
 

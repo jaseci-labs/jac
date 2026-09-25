@@ -252,9 +252,12 @@ obj UnresolvedRef {
         var: str = "",
         raw: str = "",
         required: bool = False,
-        message: str = "";
+        message: str = "",
+        unsupported: bool = False,
+        form: str = "";
 
     def describe -> str;
+    def reason -> str;
 }
 
 def interpolate_env_vars(

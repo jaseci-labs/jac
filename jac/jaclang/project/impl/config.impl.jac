@@ -10,38 +10,60 @@ impl interpolate_env_vars(
     }
     source = os.environ if environ is None else environ;
 
-    pattern = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}";
+    pattern = r"\$\{([^}]*)\}";
+    supported = r"([A-Za-z_][A-Za-z0-9_]*)(?:(:[-?])([^}]*))?";
     def replace_env_var(`match: re.Match) -> str {
-        var_name = `match.group(1);
-        operator = `match.group(2);
-        operand = `match.group(3) or "";
-
-        env_value = source.get(var_name);
-
-        if env_value is not None {
-            return env_value;
-        }
-
-        if operator == ":-" {
-            return operand;
-        }
-        if not var_name.isidentifier() {
+        body = `match.group(1);
+        parts = re.fullmatch(supported, body);
+        leading = re.match(r"[A-Za-z_][A-Za-z0-9_]*", body);
+        if leading is None {
             return `match.group(0);
         }
-        ref = UnresolvedRef(var=var_name, required=operator == ":?", message=operand);
+        var_name = leading.group(0);
+        record = None;
+        if parts is None {
+            record = UnresolvedRef(
+                var=var_name, unsupported=True, form=`match.group(0)
+            );
+        } else {
+            operator = parts.group(2);
+            operand = parts.group(3) or "";
+            env_value = source.get(var_name);
+            if env_value is not None {
+                return env_value;
+            }
+            if operator == ":-" {
+                return operand;
+            }
+            record = UnresolvedRef(
+                var=var_name, required=operator == ":?", message=operand
+            );
+        }
         if sink is not None {
-            sink.append(ref);
+            sink.append(record);
             return `match.group(0);
         }
-        raise ValueError(ref.describe());
+        raise ValueError(record.describe());
     }
     return re.sub(pattern, replace_env_var, value);
 }
 
 impl UnresolvedRef.describe -> str {
+    if self.unsupported {
+        return f"Unsupported form {self.form}: jac reads ${{VAR}}, "
+        "${VAR:-default} and ${VAR:?message}";
+    }
     return f"Environment variable {self.var} is required: {self.message}"
         if self.required
         else f"Environment variable {self.var} is not set";
+}
+
+impl UnresolvedRef.reason -> str {
+    if self.unsupported {
+        return f"{self.form} is not a form jac reads "
+        "(use ${VAR}, ${VAR:-default} or ${VAR:?message})";
+    }
+    return f"{self.var} is not set" + (f" ({self.message})" if self.message else "");
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
@@ -1412,10 +1434,7 @@ impl report_env_findings(
     if not refs {
         return;
     }
-    lines = [
-        f"  {ref.path}: {ref.var} is not set"
-            + (f" ({ref.message})" if ref.message else "") for ref in refs
-    ];
+    lines = [f"  {ref.path}: {ref.reason()}" for ref in refs];
     tail = f"\n{hint}" if hint else "";
     raise ValueError(context + "\n" + "\n".join(lines) + tail);
 }
