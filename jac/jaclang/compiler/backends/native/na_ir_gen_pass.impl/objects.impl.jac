@@ -2713,7 +2713,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         and method_name in self.struct_field_types[_fld_struct]
     ) {
         _fld_ty = self.struct_field_types[_fld_struct][method_name];
-        if self._closure_struct_of(_fld_ty) is not None {
+        if self._closure_struct_of(_fld_ty) is not None
+            or _fld_ty == self.jacval_type {
             callable_value = self._codegen_expr(trailer);
             if callable_value is not None {
                 return self._codegen_callable_value(nd, callable_value, []);

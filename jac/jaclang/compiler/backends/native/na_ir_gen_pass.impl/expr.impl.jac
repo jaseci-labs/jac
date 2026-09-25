@@ -431,30 +431,17 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
 
         body = nd.body;
         _lam_errs0 = len(self.ctx.errors_had);
-        if not isinstance(body, uni.Expr) {
-            tail = nd.tail_return_expr();
-            if tail is not None {
-                body_value = self._codegen_expr(tail);
-                if body_value is not None {
-                    self.builder.ret(self._coerce_type(body_value, ret_type));
-                } else {
-                    if len(self.ctx.errors_had) == _lam_errs0 {
-                        self.emit(
-                            E5092,
-                            node_override=nd,
-                            kind="expression",
-                            name="lambda body",
-                            help_text="An expression in this lambda body could not lower natively; an unresolvable name here usually means the lambda reads a variable its enclosing frame cannot expose (e.g. a module-entry local)."
-                        );
-                    }
-                    self.builder.ret(self._zero_const(ret_type));
-                }
-            } else {
-                self._codegen_body(body);
-            }
+        tail = body if isinstance(body, uni.Expr) else nd.tail_return_expr();
+        if tail is None {
+            self._codegen_body(body);
         } else {
-            body_value = self._codegen_expr(body);
-            if body_value is not None {
+            body_value = self._codegen_expr(tail);
+            if isinstance(ret_type, ir.VoidType) {
+                """A void lambda evaluates its tail expression for effect
+                only; the expression's value (a call's placeholder, say)
+                is never the function's result.""";
+                self.builder.ret_void();
+            } elif body_value is not None {
                 self.builder.ret(self._coerce_type(body_value, ret_type));
             } else {
                 if len(self.ctx.errors_had) == _lam_errs0 {
