@@ -160,6 +160,7 @@ description = "One language, one compiler, the whole stack. No glue. AI, graphs,
 keywords = "jac, jaclang, programming language, jaseci, object-spatial programming, by llm, full-stack"
 author = "Jaseci Labs"
 theme_color = "#ff6b35"
+meta_color_scheme = "light dark"
 icon = "/static/assets/jac-logo.svg"
 og_title = "The Jac Programming Language"
 og_description = "One language, one compiler, the whole stack. No glue. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features."

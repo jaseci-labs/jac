@@ -9,6 +9,7 @@ def:pub Navbar -> JsxElement {
 
     can with [dark] entry {
         document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.classList.toggle("light", not dark);
     }
 
     async can with entry {
