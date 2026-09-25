@@ -3416,7 +3416,20 @@ impl NativeListEmitter._emit_value_sort(
     ctx: NativeEmitCtx,
     target: ir.Value,
     reverse: (ir.Value | None)
-) -> ir.Value {
+) -> (ir.Value | None) {
+    """Stable merge sort of the list's own elements, compared in place.
+
+    Scalars compare as themselves. Every other element lives in an erased
+    `i8*` slot, whatever it holds, so the slot type cannot say how to order
+    it: only the checked element type can. A `str` compares through the
+    string helper; anything else -- a tuple, `bytes`, a nested list --
+    goes through the same `_emit_comparison` a `key=` result does, which
+    views the pointers through that type. Treating every pointer as a
+    string ordered a tuple by the bytes of its first field, so float and
+    string leads (and most ints) came back unsorted. An element type the
+    comparison cannot order (a class without the protocol) refuses rather
+    than guess; one whose shape is not fully known keeps the string compare.
+    """;
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);
@@ -3429,6 +3442,30 @@ impl NativeListEmitter._emit_value_sort(
     assert isinstance(data.type, ir.PointerType) and not data.type.is_opaque;
     elem_type = data.type.pointee;
     itemsize = p._abi_sizeof(elem_type);
+    checked_elem: (TypeBase | None) = None;
+    for source_node in (ctx.receiver_node, ctx.call_node) {
+        elem_args = (
+            p._agg_key_args(p._flow_narrowed_type_of(source_node), "list")
+                if source_node is not None
+                else None
+        );
+        if elem_args {
+            checked_elem = elem_args[0];
+            break;
+        }
+    }
+    orderable = p._sort_key_orderable(checked_elem);
+    compare_as_str = isinstance(elem_type, ir.PointerType)
+        and (orderable is None or p._container_class_name(checked_elem) == "str");
+    if isinstance(elem_type, ir.PointerType) and orderable is False {
+        p.ctx.emit(
+            E5092,
+            node_override=ctx.call_node or ctx.receiver_node,
+            kind="sort",
+            name=SORT_KEY_MSG
+        );
+        return None;
+    }
     fn = b.basic_block.function;
     allocate = fn.append_basic_block("sort.allocate");
     outer = fn.append_basic_block("sort.merge.pass");
@@ -3511,12 +3548,33 @@ impl NativeListEmitter._emit_value_sort(
     if isinstance(elem_type, (ir.DoubleType, ir.FloatType)) {
         before = b.fcmp_ordered("<", c, a);
         after = b.fcmp_ordered("<", a, c);
-    } elif isinstance(elem_type, ir.PointerType) {
+    } elif compare_as_str {
         result = p._call_str_cmp(
             b, b.bitcast(a, i8p), b.bitcast(c, i8p), name="sort.compare"
         );
         before = b.icmp_signed(">", result, ir.Constant(i32, 0));
         after = b.icmp_signed("<", result, ir.Constant(i32, 0));
+    } elif isinstance(elem_type, ir.PointerType) {
+        sort_errs = len(p.ctx.errors_had);
+        ordered_before = p._emit_comparison(Tok.LT, c, a, False, key_ret=checked_elem);
+        ordered_after = (
+            p._emit_comparison(Tok.LT, a, c, False, key_ret=checked_elem)
+                if ordered_before is not None and reverse is not None
+                else None
+        );
+        if ordered_before is None or (reverse is not None and ordered_after is None) {
+            if len(p.ctx.errors_had) == sort_errs {
+                p.ctx.emit(
+                    E5092,
+                    node_override=ctx.call_node or ctx.receiver_node,
+                    kind="sort",
+                    name=SORT_KEY_MSG
+                );
+            }
+            return None;
+        }
+        before = ordered_before;
+        after = ordered_after if ordered_after is not None else ordered_before;
     } else {
         collection = ctx.receiver_node;
         if collection is None and ctx.arg_nodes {
