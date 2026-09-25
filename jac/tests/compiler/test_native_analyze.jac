@@ -145,6 +145,41 @@ test "the kernel's analysis code run in process matches the host path" {
     }
 }
 
+test "kernel inputs carry the client framework and the seam-warning setting" {
+    import from jaclang.compiler.frontend.host { CheckSettings, ProjectDefaults }
+    import from jaclang.compiler.frontend.kernel_host { KernelHost }
+    import from jaclang.compiler.frontend.kernel_inputs { KernelInputs }
+    quiet = CheckSettings(warn_native_seams=False);
+    inputs = KernelInputs(
+        project_defaults=ProjectDefaults(
+            default_codespace="",
+            native_closure_cap=0,
+            native_require=[],
+            native_target="",
+            native_debug=False,
+            native_opt=2,
+            native_threads=4,
+            native_link_mode="objects",
+            memory_profile="managed",
+            memory_enforce=[],
+            memory_exempt=[],
+            check=quiet,
+            client_framework="solid"
+        ),
+        check_settings={"": quiet, "web": CheckSettings()}
+    );
+    restored = KernelInputs.from_json(inputs.to_json());
+    assert restored.to_json() == inputs.to_json();
+    kernel = KernelHost(inputs=restored);
+    defaults = kernel.project_defaults();
+    assert defaults is not None;
+    assert defaults.client_framework == "solid";
+    assert not defaults.check.warn_native_seams;
+    assert not kernel.check_settings("").warn_native_seams;
+    assert kernel.check_settings("web").warn_native_seams;
+    assert kernel.census.total_misses() == 0;
+}
+
 test "native jc_analyze matches the host path" {
     kernel = loaded_kernel();
     if kernel is None {

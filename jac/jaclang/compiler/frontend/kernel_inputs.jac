@@ -207,6 +207,7 @@ obj KernelInputs {
         untyped: dict[str, bool] = {},
         siblings: dict[str, str] = {},
         path_aliases: dict[str, bool] = {},
+        virtual_modules: dict[str, str] = {},
         imports: list[ImportResolution] = [],
         local_imports: list[LocalResolution] = [],
         npm: list[NpmAnswer] = [],
@@ -336,7 +337,8 @@ def check_to_dict(check: CheckSettings) -> dict[str, any] {
         "lint_select": list(check.lint_select),
         "lint_ignore": list(check.lint_ignore),
         "enforce_access": check.enforce_access,
-        "untyped_external_error": check.untyped_external_error
+        "untyped_external_error": check.untyped_external_error,
+        "warn_native_seams": check.warn_native_seams
     };
 }
 
@@ -348,7 +350,8 @@ def check_from_dict(raw: dict[str, any]) -> CheckSettings {
         lint_select=[str(x) for x in raw.get("lint_select", [])],
         lint_ignore=[str(x) for x in raw.get("lint_ignore", [])],
         enforce_access=bool(raw.get("enforce_access", False)),
-        untyped_external_error=bool(raw.get("untyped_external_error", False))
+        untyped_external_error=bool(raw.get("untyped_external_error", False)),
+        warn_native_seams=bool(raw.get("warn_native_seams", True))
     );
 }
 
@@ -365,7 +368,8 @@ def defaults_to_dict(defaults: ProjectDefaults) -> dict[str, any] {
         "memory_profile": defaults.memory_profile,
         "memory_enforce": list(defaults.memory_enforce),
         "memory_exempt": list(defaults.memory_exempt),
-        "check": check_to_dict(defaults.check)
+        "check": check_to_dict(defaults.check),
+        "client_framework": defaults.client_framework
     };
 }
 
@@ -382,7 +386,8 @@ def defaults_from_dict(raw: dict[str, any]) -> ProjectDefaults {
         memory_profile=str(raw["memory_profile"]),
         memory_enforce=[str(x) for x in raw["memory_enforce"]],
         memory_exempt=[str(x) for x in raw["memory_exempt"]],
-        check=check_from_dict(raw["check"])
+        check=check_from_dict(raw["check"]),
+        client_framework=str(raw.get("client_framework", "react"))
     );
 }
 
@@ -623,6 +628,7 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "untyped": dict(inputs.untyped),
         "siblings": dict(inputs.siblings),
         "path_aliases": dict(inputs.path_aliases),
+        "virtual_modules": dict(inputs.virtual_modules),
         "imports": [
             {
                 "target": r.target,
@@ -744,6 +750,9 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
         siblings={str(k): str(v) for (k, v) in dict(raw.get("siblings", {})).items()},
         path_aliases={
             str(k): bool(v) for (k, v) in dict(raw.get("path_aliases", {})).items()
+        },
+        virtual_modules={
+            str(k): str(v) for (k, v) in dict(raw.get("virtual_modules", {})).items()
         },
         imports=[
             ImportResolution(

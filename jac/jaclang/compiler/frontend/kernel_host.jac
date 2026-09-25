@@ -556,6 +556,18 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
+    def jac_virtual_module_path(target: str) -> (str | None) {
+        self.census.count("jac_virtual_module_path");
+        if target in self.inputs.virtual_modules {
+            return self.inputs.virtual_modules[target] or None;
+        }
+        with self.missing("jac_virtual_module_path", target) as host {
+            answer = host.jac_virtual_module_path(target);
+        }
+        self.inputs.virtual_modules[target] = answer or "";
+        return answer;
+    }
+
     def is_path_alias(target: str, base_path: str) -> bool {
         self.census.count("is_path_alias");
         key = pair_key(target, base_path);

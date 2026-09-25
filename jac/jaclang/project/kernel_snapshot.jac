@@ -138,6 +138,9 @@ obj ClosureScan {
             }
             self.follow(self.resolved(mod_path, None));
             self.learn_npm(spec, owner);
+            if spec.startswith("@jac/") {
+                learner.jac_virtual_module_path(spec);
+            }
             if spec.startswith("jaclang.") {
                 learner.resolve_module(spec, os.path.join(os.path.dirname(owner), ""));
             }
