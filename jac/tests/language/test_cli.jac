@@ -700,6 +700,45 @@ test "run specific test only" {
 }
 
 
+test "an imported module's tests stay with their own file" {
+    # `jactest_main.jac` imports `jactest_imported.jac`, whose only `test`
+    # block is named "this should not run" and asserts False. Running the
+    # importer must run the importer's own two blocks and nothing else: a
+    # dependency's tests belong to the dependency's file, which discovery
+    # collects in its own right, so running them here would execute them
+    # once per dependent across a suite and report them under the wrong file.
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    rc = 1;
+    out = "";
+    sys.stdout = captured;
+    try {
+        rc = int(
+            analysis.`test(paths=[fixture_path("jactest_main.jac")], verbose=True)
+        );
+        out = captured.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+    }
+
+    # Both of the importer's own blocks ran, so the selection is not simply
+    # empty, and the imported one did not. `first two` asserts `fib(1) == 0`
+    # and so fails on purpose, which is why the run is not green and why the
+    # `--test_name` case above cannot see any of this: its filter excludes
+    # the imported block whether or not the selection is right. One failure
+    # is the fixture's own; two would be the imported block running as well.
+    assert "first two" in out;
+    assert "from 2 to 10" in out;
+    assert "1 failed" in out , f"expected the fixture's own failure; got {out!r}";
+    assert "2 failed" not in out , (
+        f"the imported module's test ran and failed too; got {out!r}"
+    );
+    assert "this should not run" not in out;
+    assert "This test should not run after import." not in out;
+    assert rc != 0;
+}
+
+
 test "graph coverage" {
     graph_params = set(inspect.signature(tools.dot).parameters.keys());
     printgraph_params = set(inspect.signature(printgraph).parameters.keys());
@@ -1094,8 +1133,8 @@ test "format tracks changed files" {
 
 test "format -s preserves bracketed Jac syntax through Rich console" {
     # Regression: `jac format -s` prints formatted source via `console.print`.
-    # The built-in Rich-style console — what real users see when they run the
-    # `jac` CLI — must emit bracketed Jac syntax like `[root-->]` or
+    # The built-in Rich-style console - what real users see when they run the
+    # `jac` CLI - must emit bracketed Jac syntax like `[root-->]` or
     # `todos + [t]` verbatim; it looks like terminal markup but the console
     # never interprets markup/highlight in caller data. This test invokes the
     # `jac` binary via subprocess so the full CLI console + stdout path is
@@ -2408,7 +2447,7 @@ test "bare lt in jsx content is treated as text" {
     # A `<` not followed by alpha, `/`, or `>` (e.g. `<--`) should be
     # consumed as JSX text, not mistaken for a tag opener. Previously
     # the text loop broke on every `<`, and when no JSX pattern matched
-    # the lexer never advanced — causing an infinite loop.
+    # the lexer never advanced - causing an infinite loop.
     captured_stderr = io.StringIO();
     old_stderr = sys.stderr;
     sys.stderr = captured_stderr;
@@ -2454,7 +2493,7 @@ test "jac check reports errors for files inside jaclang source tree" {
 
     combined = stdout + stderr;
 
-    # always_type_error.jac is deliberately ill-typed — check must report
+    # always_type_error.jac is deliberately ill-typed - check must report
     # its errors even though the file lives inside the jaclang package.
     assert result == 1 , (
         "jac check should report errors for jaclang-internal files, "
