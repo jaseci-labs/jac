@@ -652,6 +652,7 @@ test "stage 0 pinned to HEAD builds this tree's kernel and the checkout accepts 
         sidecar = read_sidecar(lib);
         assert sidecar is not None and sidecar["builder"] == "stage0";
         assert sidecar["stage0"]["commit"] == pin.commit;
+        assert sidecar["link_mode"] == KERNEL_DEV_LINK_MODE , "an in-tree kernel links unit objects";
         assert accepted() , "the checkout accepts the kernel stage 0 built";
         edited = os.path.join(copy, "runtime", "na_stdlib", "keyword.jac");
         Path(edited).write_text(Path(edited).read_text() + "\n");
