@@ -122,6 +122,134 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
 
     b = ir.IRBuilder(pr_done);
     b.ret_void();
+    self._emit_rc_garbage_buffer();
+}
+
+impl NaIRGenPass._emit_rc_garbage_buffer -> None {
+    i8_ptr = ir.IntType(8).as_pointer();
+    i8_ptr_ptr = i8_ptr.as_pointer();
+    i64 = ir.IntType(64);
+
+    buf_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__rc_garbage_buf");
+    buf_gv.linkage = "weak";
+    buf_gv.initializer = ir.Constant(i8_ptr, None);
+    self.rc_garbage_buf_gv = buf_gv;
+    cap_gv = ir.GlobalVariable(self.llvm_module, i64, name="__rc_garbage_cap");
+    cap_gv.linkage = "weak";
+    cap_gv.initializer = ir.Constant(i64, 0);
+    self.rc_garbage_cap_gv = cap_gv;
+    count_gv = ir.GlobalVariable(self.llvm_module, i64, name="__rc_garbage_count");
+    count_gv.linkage = "weak";
+    count_gv.initializer = ir.Constant(i64, 0);
+    self.rc_garbage_count_gv = count_gv;
+
+    realloc_fn = self._get_or_declare_extern("realloc", i8_ptr, [i8_ptr, i64]);
+    push_fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), [i8_ptr]),
+        name="__rc_push_garbage"
+    );
+    push_fn.linkage = "internal";
+    push_fn.args[0].name = "ptr";
+    self.rc_push_garbage_fn = push_fn;
+
+    gb_entry = push_fn.append_basic_block("entry");
+    grow = push_fn.append_basic_block("grow");
+    grow_ok = push_fn.append_basic_block("grow_ok");
+    gb_store = push_fn.append_basic_block("store");
+    done = push_fn.append_basic_block("done");
+
+    b = ir.IRBuilder(gb_entry);
+    _cnt = b.load(count_gv, name="cnt");
+    _cap = b.load(cap_gv, name="cap");
+    b.cbranch(b.icmp_unsigned(">=", _cnt, _cap, name="full"), grow, gb_store);
+
+    b = ir.IRBuilder(grow);
+    _ncap = b.select(
+        b.icmp_unsigned("==", _cap, ir.Constant(i64, 0), name="czero"),
+        ir.Constant(i64, 256),
+        b.shl(_cap, ir.Constant(i64, 1)),
+        name="ncap"
+    );
+    _nbuf = b.call(
+        realloc_fn,
+        [b.load(buf_gv, name="obuf"), b.mul(_ncap, ir.Constant(i64, 8), name="nbytes")],
+        name="nbuf"
+    );
+
+    b.cbranch(
+        b.icmp_signed("==", _nbuf, ir.Constant(i8_ptr, None), name="nbuf.null"),
+        done,
+        grow_ok
+    );
+
+    b = ir.IRBuilder(grow_ok);
+    b.store(_nbuf, buf_gv);
+    b.store(_ncap, cap_gv);
+    b.branch(gb_store);
+
+    b = ir.IRBuilder(gb_store);
+    _cnt2 = b.load(count_gv, name="cnt2");
+    _slot = b.gep(
+        b.load(buf_gv, name="buf"),
+        [b.mul(_cnt2, ir.Constant(i64, 8), name="soff")],
+        name="slot"
+    );
+    b.store(push_fn.args[0], b.bitcast(_slot, i8_ptr_ptr, name="slotpp"));
+    b.store(b.add(_cnt2, ir.Constant(i64, 1), name="cnt3"), count_gv);
+    b.branch(done);
+
+    b = ir.IRBuilder(done);
+    b.ret_void();
+}
+
+impl NaIRGenPass._emit_rc_reclaim_garbage_fn -> ir.Function {
+    i8_ptr = ir.IntType(8).as_pointer();
+    i8_ptr_ptr = i8_ptr.as_pointer();
+    i64 = ir.IntType(64);
+    one_fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), [i8_ptr]),
+        name="__rc_reclaim_one"
+    );
+    one_fn.linkage = "internal";
+    one_fn.args[0].name = "obj";
+    one_done = one_fn.append_basic_block("done");
+    one_entry = one_fn.append_basic_block("entry");
+    one_reclaim = self._emit_rc_collect_white_reclaim(one_fn, one_done, one_fn.args[0]);
+    ir.IRBuilder(one_entry).branch(one_reclaim);
+    ir.IRBuilder(one_done).ret_void();
+
+    one_fn.blocks.remove(one_entry);
+    one_fn.blocks.insert(0, one_entry);
+
+    fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), []),
+        name="__rc_reclaim_garbage"
+    );
+    fn.linkage = "internal";
+    gb_entry = fn.append_basic_block("entry");
+    head = fn.append_basic_block("head");
+    body = fn.append_basic_block("body");
+    done = fn.append_basic_block("done");
+    b = ir.IRBuilder(gb_entry);
+    _n = b.load(self.rc_garbage_count_gv, name="n");
+    _buf = b.load(self.rc_garbage_buf_gv, name="buf");
+    b.branch(head);
+    b = ir.IRBuilder(head);
+    _i = b.phi(i64, name="i");
+    _i.add_incoming(ir.Constant(i64, 0), gb_entry);
+    b.cbranch(b.icmp_unsigned("<", _i, _n, name="more"), body, done);
+    b = ir.IRBuilder(body);
+    _slot = b.gep(_buf, [b.mul(_i, ir.Constant(i64, 8), name="off")], name="slot");
+    b.call(one_fn, [b.load(b.bitcast(_slot, i8_ptr_ptr, name="pp"), name="obj")]);
+    _i.add_incoming(b.add(_i, ir.Constant(i64, 1), name="next"), body);
+    b.branch(head);
+    b = ir.IRBuilder(done);
+    b.store(ir.Constant(i64, 0), self.rc_garbage_count_gv);
+    b.ret_void();
+    return fn;
 }
 
 impl NaIRGenPass._emit_rc_color_load(
@@ -615,8 +743,11 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
 
     self._emit_rc_color_reset(b, _cw_csp);
 
-    cw_reclaim = self._emit_rc_collect_white_reclaim(cw_fn, cw_done, cw_fn.args[0]);
-    self._emit_rc_trace_dispatch(cw_fn, b, cw_fn.args[0], cw_vis_fn, cw_reclaim);
+    cw_queue = cw_fn.append_basic_block("cw_queue");
+    self._emit_rc_trace_dispatch(cw_fn, b, cw_fn.args[0], cw_vis_fn, cw_queue);
+    b = ir.IRBuilder(cw_queue);
+    b.call(self.rc_push_garbage_fn, [cw_fn.args[0]]);
+    b.branch(cw_done);
 
     b = ir.IRBuilder(cw_done);
     b.ret_void();
@@ -765,6 +896,7 @@ impl NaIRGenPass._emit_rc_collect_loop(
     );
 
     b = ir.IRBuilder(cc_finish);
+    b.call(self._emit_rc_reclaim_garbage_fn(), []);
     b.store(ir.Constant(i64, 0), self.rc_roots_count_gv);
     b.store(ir.Constant(i8, 0), self.rc_collecting_gv);
     b.branch(cc_done);
