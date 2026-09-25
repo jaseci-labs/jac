@@ -74,4 +74,6 @@ test "base except handler still sees a readable message for struct raises" {
     fn = get_func(eng, "base_handler_message", ctypes.c_int64);
     result = fn();
     assert result == 1 , f"Expected 1 (str(e) is the type name), got {result}";
+    fieldless = get_func(eng, "fieldless_subclass_message", ctypes.c_int64)();
+    assert fieldless == 1 , f"Expected 1 (str(e) is the raised message), got {fieldless}";
 }

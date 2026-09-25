@@ -34,6 +34,24 @@ def:pub base_handler_message -> int {
     return -1;
 }
 
+obj BindError(Exception) {}
+
+obj StrictBindError(BindError) {}
+
+def reject(n: int) -> int {
+    raise StrictBindError("param " + str(n) + " rejected");
+    return 0;
+}
+
+def:pub fieldless_subclass_message -> int {
+    try {
+        reject(3);
+    } except StrictBindError as e {
+        return 1 if str(e) == "param 3 rejected" else 0;
+    }
+    return -1;
+}
+
 with entry {
     subclass_field_roundtrip();
 }

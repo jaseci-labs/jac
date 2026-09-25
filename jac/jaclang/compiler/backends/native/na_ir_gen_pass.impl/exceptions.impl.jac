@@ -285,6 +285,18 @@ impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
     return ids;
 }
 
+impl NaIRGenPass._exc_has_init(name: str) -> bool {
+    return f"{name}.init" in self.method_funcs
+        or f"{name}.__init__" in self.method_funcs;
+}
+
+impl NaIRGenPass._exc_carries_object(name: (str | None)) -> bool {
+    if (name is None) or (name not in self.struct_types) {
+        return False;
+    }
+    return self._exc_has_init(name) or bool(self.struct_field_order.get(name));
+}
+
 impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -328,16 +340,13 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
                     _exc_pos_args.append(_p);
                 }
             }
-            _exc_has_init = f"{exc_type_name}.init" in self.method_funcs;
-            if f"{exc_type_name}.__init__" in self.method_funcs {
-                _exc_has_init = True;
-            }
+            _exc_has_init = self._exc_has_init(exc_type_name);
             _exc_order = self.struct_field_order.get(exc_type_name);
             _exc_struct_ok = _exc_has_init;
             if (not _exc_struct_ok) and (_exc_order is not None) {
                 _exc_struct_ok = len(_exc_pos_args) <= len(_exc_order);
             }
-            if (exc_type_name in self.struct_types) and _exc_struct_ok {
+            if self._exc_carries_object(exc_type_name) and _exc_struct_ok {
                 exc_payload = self._codegen_expr(nd.cause);
             } elif _exc_pos_args {
                 exc_msg = self._codegen_expr(_exc_pos_args[0]);
@@ -572,7 +581,7 @@ impl NaIRGenPass._codegen_try_unwind(
                     if isinstance(except_node.name, uni.Name)
                     else str(except_node.name);
 
-                if caught_type_name in self.struct_types {
+                if self._exc_carries_object(caught_type_name) {
                     handler_exc_obj = self.builder.load(
                         exc_obj_ptr, name="exc.bound.obj"
                     );
@@ -842,7 +851,7 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
             var_name = except_node.name.value
                 if isinstance(except_node.name, uni.Name)
                 else str(except_node.name);
-            if caught is not None and caught in self.struct_types {
+            if self._exc_carries_object(caught) {
                 _exc_sp_ty = self.struct_types[caught].as_pointer();
                 typed_obj = self.builder.bitcast(
                     self.builder.load(oglob, name="exc.bound.obj"),
