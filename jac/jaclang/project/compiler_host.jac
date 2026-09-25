@@ -20,6 +20,8 @@ import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
+import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
+import type from jaclang.compiler.frontend.kernel_inputs { KernelInputs }
 
 glob UNIT_COLLECT_EVERY: int = 16,
      UNIT_COLLECT_GROWTH_MB: int = 512;
@@ -106,6 +108,13 @@ obj ProjectHost(HostServices) {
     );
 
     def record_native_verdict(program: JacProgram, path: str, code: str, detail: str);
+    def native_analyze(
+        program: JacProgram, path: str, options: CompileOptions, source: (str | None)
+    ) -> (ModuleAnalysis | None);
+
+    def kernel_inputs(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> KernelInputs;
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(

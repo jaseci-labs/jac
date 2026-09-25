@@ -275,6 +275,42 @@ impl ProjectHost.record_native_verdict(
     program.native_units().record_verdict(path, code, detail);
 }
 
+impl ProjectHost.native_analyze(
+    program: JacProgram, path: str, options: CompileOptions, source: (str | None)
+) -> (ModuleAnalysis | None) {
+    import from jaclang.compiler.frontend.host { kernel_host_enabled }
+    if program.internal or not kernel_host_enabled() {
+        return None;
+    }
+    import from jaclang.compiler.frontend.kernel_host {
+        KernelHost,
+        record_kernel_session
+    }
+    import from jaclang.compiler.driver.module_analysis { analyze_module }
+    import from jaclang.compiler.frontend.host { active_host, install_host }
+    kernel = KernelHost(
+        inputs=self.kernel_inputs(program, path, options),
+        fallback=self,
+        closure=self.compiler_for(program).closure_options()
+    );
+    previous = active_host();
+    install_host(kernel);
+    try {
+        return analyze_module(program, path, options, source);
+    } finally {
+        install_host(previous);
+        kernel.replay(previous);
+        record_kernel_session(kernel.census, path);
+    }
+}
+
+impl ProjectHost.kernel_inputs(
+    program: JacProgram, path: str, options: CompileOptions
+) -> KernelInputs {
+    import from jaclang.project.kernel_snapshot { snapshot_inputs }
+    return snapshot_inputs(self, program, path, options);
+}
+
 impl ProjectHost.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
     import from jaclang.compiler.driver.compiler { JacCompiler }
     return JacCompiler.jac_file_formatter(file_path, auto_lint);

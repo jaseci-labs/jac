@@ -10,6 +10,7 @@ import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
+import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
 
 obj NativeVerdict {
     has demoted: bool = False,
@@ -244,6 +245,12 @@ obj HostServices {
         program: JacProgram, path: str, code: str, detail: str
     ) {}
 
+    def native_analyze(
+        program: JacProgram, path: str, options: CompileOptions, source: (str | None)
+    ) -> (ModuleAnalysis | None) {
+        return None;
+    }
+
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
         raise RuntimeError("no compiler host is installed");
     }
@@ -316,7 +323,8 @@ obj HostServices {
     }
 }
 
-glob _HOSTS: list[HostServices] = [],
+glob KERNEL_HOST_ENV: str = "JAC_KERNEL_HOST",
+     _HOSTS: list[HostServices] = [],
      _NEUTRAL_HOST: HostServices = HostServices(),
      _PACKAGE_ROOT: list[str] = [];
 
@@ -336,4 +344,13 @@ def set_package_root(path: str) {
 def install_host(host: HostServices) {
     _HOSTS.clear();
     _HOSTS.append(host);
+}
+
+def kernel_host_mode -> str {
+    import os;
+    return os.environ.get(KERNEL_HOST_ENV, "").strip().lower();
+}
+
+def kernel_host_enabled -> bool {
+    return kernel_host_mode() not in ("", "0", "off", "false");
 }

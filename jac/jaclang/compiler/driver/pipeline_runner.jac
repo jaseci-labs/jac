@@ -379,7 +379,10 @@ def compile_module(
     options: CompileOptions,
     source: str | None = None
 ) -> uni.Module {
-    analysis = analyze_module(program, path, options, source);
+    analysis = active_host().native_analyze(program, path, options, source);
+    if analysis is None {
+        analysis = analyze_module(program, path, options, source);
+    }
     task = ModuleCompilation(compiler, analysis);
     for step in host_steps() {
         if cancelled(options) {
