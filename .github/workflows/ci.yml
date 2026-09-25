@@ -125,6 +125,56 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The kernel's stage-0 compiler, as jac/bootstrap/stage0.json pins it.
+      # Under "self" every stage-0 step is skipped and the seal builds the
+      # kernel with this checkout's compiler. A pinned commit builds it inside
+      # the seal from that commit's jaclang snapshot: the snapshot (immutable
+      # per commit) and the units stage 0 lowered come back from the cache,
+      # and the seal finds the pin, the git history and the cache through
+      # JAC_STAGE0_ROOT and JAC_CACHE_HOME, which precompile_env passes on.
+      - name: Resolve the stage-0 pin
+        id: stage0
+        run: |
+          set -euo pipefail
+          bash scripts/ci_cache_keys.sh | grep '^stage0=' >> "$GITHUB_OUTPUT"
+          echo "python=$(jq -r '.cpython.version' jac/bootstrap/python/sources.json | cut -d. -f1,2)" >> "$GITHUB_OUTPUT"
+          echo "cache_home=$RUNNER_TEMP/jac-stage0-cache" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the stage-0 snapshot
+        id: stage0-src
+        if: steps.stage0.outputs.stage0 != 'self'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.stage0.outputs.cache_home }}/stage0/${{ steps.stage0.outputs.stage0 }}
+          key: stage0-src-${{ steps.stage0.outputs.stage0 }}
+
+      - name: Restore the stage-0 kernel units
+        id: stage0-units
+        if: steps.stage0.outputs.stage0 != 'self'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.stage0.outputs.cache_home }}/jir/modules
+          key: stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-${{ github.run_id }}
+          restore-keys: |
+            stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-
+
+      # The checkout is shallow; the seal's guards read the pinned commit's
+      # trees, so fetch that one commit.
+      - name: Provision stage 0
+        if: steps.stage0.outputs.stage0 != 'self'
+        env:
+          STAGE0_COMMIT: ${{ steps.stage0.outputs.stage0 }}
+          STAGE0_CACHE: ${{ steps.stage0.outputs.cache_home }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$STAGE0_COMMIT"
+          mkdir -p "$STAGE0_CACHE/jir/modules"
+          touch "$RUNNER_TEMP/stage0.before"
+          {
+            echo "JAC_CACHE_HOME=$STAGE0_CACHE"
+            echo "JAC_STAGE0_ROOT=$GITHUB_WORKSPACE/jac"
+          } >> "$GITHUB_ENV"
+
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
         with:
@@ -132,6 +182,45 @@ jobs:
           # source-built interpreter and its native compiler object. A binary
           # cache hit skips producing both, so ask for them explicitly.
           need-build-inputs: "true"
+
+      # Only main seeds the stage-0 caches, and only with what this run made:
+      # a binary cache hit or a fallback to the self build leaves nothing new.
+      - name: Check the stage-0 products
+        id: stage0-made
+        if: steps.stage0.outputs.stage0 != 'self'
+        env:
+          STAGE0_COMMIT: ${{ steps.stage0.outputs.stage0 }}
+          STAGE0_CACHE: ${{ steps.stage0.outputs.cache_home }}
+        run: |
+          set -euo pipefail
+          src=false; units=false
+          [ -f "$STAGE0_CACHE/stage0/$STAGE0_COMMIT/.stage0.json" ] && src=true
+          if [ -n "$(find "$STAGE0_CACHE/jir/modules" -newer "$RUNNER_TEMP/stage0.before" -type f -print -quit)" ]; then
+            units=true
+          fi
+          echo "src=$src" >> "$GITHUB_OUTPUT"
+          echo "units=$units" >> "$GITHUB_OUTPUT"
+
+      - name: Save the stage-0 snapshot (main only)
+        if: >-
+          steps.stage0.outputs.stage0 != 'self' &&
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          steps.stage0-src.outputs.cache-hit != 'true' &&
+          steps.stage0-made.outputs.src == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.stage0.outputs.cache_home }}/stage0/${{ steps.stage0.outputs.stage0 }}
+          key: stage0-src-${{ steps.stage0.outputs.stage0 }}
+
+      - name: Save the stage-0 kernel units (main only)
+        if: >-
+          steps.stage0.outputs.stage0 != 'self' &&
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          steps.stage0-made.outputs.units == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.stage0.outputs.cache_home }}/jir/modules
+          key: stage0-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.stage0.outputs.stage0 }}-py${{ steps.stage0.outputs.python }}-${{ github.run_id }}
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2

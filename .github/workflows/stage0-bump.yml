@@ -1,0 +1,117 @@
+name: Stage-0 pin bump
+
+# Weekly, or on demand: pin the kernel's stage-0 compiler
+# (jac/bootstrap/stage0.json) to the newest main commit whose CI passed, and
+# open a PR with the new pin. The pin is computed by main's own compiler
+# (stage0_build.pin_for_commit), the code a checkout runs to verify the
+# snapshot it provisions, so the digest it records is the one PRs recompute.
+# A pinned commit must carry kernel_stage0.build_target_kernel; an older one
+# would only ever fall back to the self build.
+
+on:
+  schedule:
+    - cron: '37 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit to pin (default: the newest main commit with passing CI)'
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: stage0-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.repository == 'jaseci-labs/jac'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    env:
+      # The sealed kit of this main commit computes the pin.
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Choose the commit
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          commit="$REQUESTED"
+          if [ -z "$commit" ]; then
+            commit=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+              --branch main --event push --status success --limit 1 \
+              --json headSha --jq '.[0].headSha // ""')
+          fi
+          [ -n "$commit" ] || { echo "::error::no main commit with passing CI"; exit 1; }
+          commit=$(git rev-parse --verify "$commit^{commit}")
+          git merge-base --is-ancestor "$commit" HEAD || {
+            echo "::error::$commit is not on main"; exit 1; }
+          git cat-file -e "$commit:jac/jaclang/compiler/backends/native/kernel_stage0.jac" || {
+            echo "::error::$commit predates the stage-0 kernel entry point"; exit 1; }
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Build the jac binary (cached)
+        uses: ./.github/actions/setup-jac
+
+      - name: Compute the pin
+        env:
+          JAC_STAGE0_ROOT: ${{ github.workspace }}/jac
+          JAC_CACHE_HOME: ${{ runner.temp }}/jac-stage0-cache
+          STAGE0_COMMIT: ${{ steps.pick.outputs.commit }}
+        run: |
+          set -euo pipefail
+          jac -P -c '
+          import sys
+          import jaclang
+          from jaclang.compiler.backends.native.stage0_build import pin_for_commit
+          from jaclang.compiler.backends.native.stage0_pin import write_stage0_pin
+          pin = pin_for_commit(sys.argv[1])
+          write_stage0_pin(pin, sys.argv[2])
+          print(f"stage 0: {pin.commit} digest {pin.compiler_digest}")
+          ' "$STAGE0_COMMIT" "$GITHUB_WORKSPACE/jac/bootstrap/stage0.json"
+          git diff -- jac/bootstrap/stage0.json
+
+      - name: Open the pin-bump PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGE0_COMMIT: ${{ steps.pick.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- jac/bootstrap/stage0.json; then
+            echo "::notice::stage 0 is already pinned to $STAGE0_COMMIT"
+            exit 0
+          fi
+          short="${STAGE0_COMMIT:0:12}"
+          branch="stage0-bump/$short"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "::notice::$branch already exists; its PR carries this pin"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add jac/bootstrap/stage0.json
+          git commit -m "stage0: pin the kernel's stage-0 compiler to $short"
+          git push origin "$branch"
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "stage0: pin the kernel's stage-0 compiler to $short" \
+            --body "Pins jac/bootstrap/stage0.json to $STAGE0_COMMIT, the newest main commit with passing CI. Kernel builds under this pin run that commit's compiler; any guard trip falls back to the self build with a notice.")
+          echo "::notice::Stage-0 pin PR created: $PR_URL"
+          # GITHUB_TOKEN-authored PRs never trigger CI (GitHub anti-recursion):
+          # a maintainer closes and reopens the PR to attach its checks.
+          echo "::notice::Close & reopen this PR to run its checks"
