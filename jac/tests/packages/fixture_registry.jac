@@ -3,7 +3,7 @@ import os;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.packages.artifact { build_package }
-import from jaclang.packages.index { IndexEntry, forget_registries }
+import from jaclang.packages.index { IndexEntry, api_rel_path, forget_registries }
 import from jaclang.project.config { JacConfig }
 
 def write_tree(base_dir: Path, files: dict[str, str]) {
@@ -64,6 +64,7 @@ obj FixtureRegistry {
             version=built.manifest["version"],
             sha256=built.sha256,
             role=built.manifest["role"],
+            description=str(built.manifest.get("description", "")),
             deps=dict(built.manifest.get("deps", {})),
             pypi=dict(built.manifest.get("pypi", {})),
             npm=dict(built.manifest.get("npm", {})),
@@ -75,6 +76,16 @@ obj FixtureRegistry {
         index_file.parent.mkdir(parents=True, exist_ok=True);
         with open(index_file, "a", encoding="utf-8") as fh {
             fh.write(row.to_line() + "\n");
+        }
+        if built.surface {
+            write_tree(
+                self.base_dir,
+                {
+                    api_rel_path(row.name, row.version): json.dumps(
+                        built.surface, sort_keys=True, indent=1
+                    )
+                }
+            );
         }
         forget_registries();
         return row;

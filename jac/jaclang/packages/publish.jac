@@ -25,6 +25,7 @@ import from jaclang.packages.index {
     IndexEntry,
     Registry,
     RegistryError,
+    api_rel_path,
     index_rel_path,
     parse_index_lines,
     registry_named
@@ -96,10 +97,20 @@ def previous_release(entries: list[IndexEntry], version: Version) -> IndexEntry 
     return best;
 }
 
+def previous_surface(
+    registry: Registry, previous: IndexEntry
+) -> dict[str, any] | None {
+    published = registry.api(previous.name, previous.version);
+    if published is not None {
+        return published;
+    }
+    return surface_in_blob(registry.fetch_blob(previous));
+}
+
 def api_changes(
     registry: Registry, previous: IndexEntry, surface: dict[str, any]
 ) -> list[ApiChange] {
-    old = surface_in_blob(registry.fetch_blob(previous));
+    old = previous_surface(registry, previous);
     if old is None {
         return [];
     }
@@ -185,6 +196,7 @@ def plan_publish(
         version=ident.version,
         sha256=built.sha256,
         role=role,
+        description=str(built.manifest.get("description", "")),
         deps=dict(built.manifest.get("deps", {})),
         pypi=dict(built.manifest.get("pypi", {})),
         npm=dict(built.manifest.get("npm", {})),
@@ -250,7 +262,12 @@ def index_repo(registry: Registry) -> str {
 }
 
 def open_index_pull(
-    registry: Registry, item: IndexEntry, data: bytes | None, title: str, body: str
+    registry: Registry,
+    item: IndexEntry,
+    data: bytes | None,
+    title: str,
+    body: str,
+    surface: dict[str, any] | None = None
 ) -> str {
     import from jaclang.packages.github { GitHub }
     gh = GitHub.from_env();
@@ -287,6 +304,16 @@ def open_index_pull(
         lines = updated;
     }
     gh.write_file(fork, rel, branch, "\n".join(lines) + "\n", title, sha);
+    if surface {
+        gh.write_file(
+            fork,
+            api_rel_path(item.name, item.version),
+            branch,
+            json.dumps(surface, sort_keys=True, indent=1) + "\n",
+            title,
+            None
+        );
+    }
     return gh.open_pull(repo, f"{login}:{branch}", "main", title, body);
 }
 
@@ -331,7 +358,8 @@ def publish_project(
             plan.item,
             plan.built.data,
             f"publish {plan.item.name} {plan.item.version}",
-            body
+            body,
+            plan.built.surface
         );
     } except Exception as e {
         console.error(f"Publishing failed: {e}");

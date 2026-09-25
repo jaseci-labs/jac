@@ -14,6 +14,8 @@ glob DEFAULT_REGISTRY_NAME: str = "jaseci",
      PROTOCOL_VERSION: int = 1,
      SETTINGS_NAME: str = "config.json",
      INDEX_DIR: str = "index",
+     API_DIR: str = "api",
+     GITHUB_API: str = "https://api.github.com",
      USER_AGENT: str = "jac-packages";
 
 obj RegistryError(Exception) {}
@@ -23,6 +25,7 @@ obj IndexEntry {
         version: str,
         sha256: str,
         role: str = "lib",
+        description: str = "",
         deps: dict[str, str] = {},
         pypi: dict[str, str] = {},
         npm: dict[str, str] = {},
@@ -46,6 +49,7 @@ obj IndexEntry {
             version=row["version"],
             sha256=row["sha256"],
             role=str(row.get("role", "lib")),
+            description=str(row.get("description", "")),
             deps=_str_map(row.get("deps")),
             pypi=_str_map(row.get("pypi")),
             npm=_str_map(row.get("npm")),
@@ -75,6 +79,9 @@ obj IndexEntry {
             "published": self.published,
             "source": self.source
         };
+        if self.description {
+            row["description"] = self.description;
+        }
         if self.pypi {
             row["pypi"] = self.pypi;
         }
@@ -114,6 +121,45 @@ def index_rel_path(name: str) -> str {
         raise RegistryError(f"'{name}' is not a package name (org/name)");
     }
     return f"{INDEX_DIR}/{name}.json";
+}
+
+def api_rel_path(name: str, version: str) -> str {
+    if not is_package_name(name) {
+        raise RegistryError(f"'{name}' is not a package name (org/name)");
+    }
+    return f"{API_DIR}/{name}/{version}.json";
+}
+
+def name_of_index_path(rel: str) -> str | None {
+    if not rel.startswith(f"{INDEX_DIR}/") or not rel.endswith(".json") {
+        return None;
+    }
+    name = rel[len(INDEX_DIR) + 1:-len(".json")];
+    return name if is_package_name(name) else None;
+}
+
+def _github_tree(repo: str, branch: str) -> list[str] {
+    import from jaclang.packages.github { find_token }
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"};
+    token = find_token();
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
+    }
+    url = f"{GITHUB_API}/repos/{repo}/git/trees/{branch}?recursive=1";
+    try {
+        with urllib.request.urlopen(
+            urllib.request.Request(url, headers=headers), timeout=30
+        ) as response {
+            data = json.loads(response.read().decode("utf-8"));
+        }
+    } except (urllib.error.URLError, ValueError) as e {
+        raise RegistryError(f"cannot list {repo}: {e}");
+    }
+    return [
+        str(item.get("path", ""))
+        for item in data.get("tree", [])
+        if item.get("type") == "blob"
+    ];
 }
 
 def _is_local(url: str) -> bool {
@@ -235,6 +281,42 @@ obj Registry {
             self._entries[name] = parse_index_lines(text) if text else [];
         }
         return self._entries[name];
+    }
+
+    def list_names -> list[str] {
+        if _is_local(self.url) {
+            base_dir = Path(self.base());
+            rels = [
+                str(p.relative_to(base_dir)).replace(os.sep, "/")
+                for p in (base_dir / INDEX_DIR).glob("*/*.json")
+            ];
+        } else {
+            repo = str(self.settings().get("repo", ""));
+            if "/" not in repo {
+                raise RegistryError(
+                    f"registry '{self.name}' does not name its GitHub repository in "
+                    f"{SETTINGS_NAME}, so its packages cannot be listed"
+                );
+            }
+            rels = _github_tree(repo, str(self.settings().get("branch", "main")));
+        }
+        names: set[str] = set();
+        for rel in rels {
+            name = name_of_index_path(rel);
+            if name is not None {
+                names.add(name);
+            }
+        }
+        return sorted(names);
+    }
+
+    def api(name: str, version: str) -> dict[str, any] | None {
+        text = self._read(api_rel_path(name, version));
+        if not text {
+            return None;
+        }
+        data = json.loads(text);
+        return data if isinstance(data, dict) else None;
     }
 
     def find(name: str, version: str) -> IndexEntry | None {

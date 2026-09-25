@@ -291,6 +291,16 @@ def _icon_name_ok(name: str) -> bool {
     return True;
 }
 
+def _external_href(href: str) -> bool {
+    s = href.strip().lower();
+    for scheme in ("http:", "https:", "mailto:") {
+        if s.startswith(scheme) {
+            return True;
+        }
+    }
+    return ":" not in s;
+}
+
 def _parse_inline(t: str) -> list[dict[str, any]] {
     spans: list[dict[str, any]] = [];
     buf = "";
@@ -468,7 +478,7 @@ def:pub MDSpans(text: str) -> JsxElement {
                         >
                             <MDLabel text={sp["t"] as str}/>
                         </a>
-                    } else {
+                    } elif _external_href(sp["href"] as str) {
                         <a
                             key={str(i)}
                             href={sp["href"]}
@@ -478,6 +488,10 @@ def:pub MDSpans(text: str) -> JsxElement {
                         >
                             <MDLabel text={sp["t"] as str}/>
                         </a>
+                    } else {
+                        <span key={str(i)}>
+                            <MDLabel text={sp["t"] as str}/>
+                        </span>
                     }
                 } else {
                     <span key={str(i)}>{sp["t"]}</span>

@@ -4,7 +4,13 @@ import subprocess;
 import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.packages.artifact { build_package }
-import from jaclang.packages.index { IndexEntry, Registry, forget_registries }
+import from jaclang.packages.api { MODULE_DOCS }
+import from jaclang.packages.index {
+    IndexEntry,
+    Registry,
+    api_rel_path,
+    forget_registries
+}
 import from jaclang.packages.publish { PublishError, plan_publish }
 import from jaclang.packages.verify { verify_index }
 import from jaclang.project.config { JacConfig }
@@ -20,7 +26,12 @@ glob KIT_V1: str = (
          "def area(w: int, h: int) -> int {\n    return w * h;\n}\n\n"
          "def perimeter(w: int, h: int) -> int {\n    return 2 * (w + h);\n}\n"
      ),
-     KIT_BREAKING: str = "def area(w: int, h: int) -> int {\n    return w * h;\n}\n";
+     KIT_BREAKING: str = "def area(w: int, h: int) -> int {\n    return w * h;\n}\n",
+     KIT_DOCUMENTED: str = (
+         "\"\"\"Rectangle helpers.\"\"\"\n\n"
+         "\"\"\"Area of a w by h rectangle.\"\"\"\n"
+         "def area(w: int, h: int = 1 + 1) -> int {\n    return w * h;\n}\n"
+     );
 
 def _git(repo: Path, *args: str) {
     env = {
@@ -117,6 +128,7 @@ def _line(built: any, upload: str) -> str {
         version=built.manifest["version"],
         sha256=built.sha256,
         role=built.manifest["role"],
+        description=str(built.manifest.get("description", "")),
         deps=dict(built.manifest.get("deps", {})),
         jac_version=str(built.manifest.get("jac_version", "")),
         api_digest=str(built.manifest.get("api_digest", "")),
@@ -132,7 +144,15 @@ test "the index verifier accepts a clean publish and rejects edits and strangers
         built = build_package(_kit(tmp / "v1", "1.0.0", KIT_V1));
         blob = tmp / f"{built.sha256}.jab";
         blob.write_bytes(built.data);
+        api_rel = api_rel_path("acme/kit", "1.0.0");
+        api_text = json.dumps(built.surface, sort_keys=True, indent=1);
         write_tree(repo, {"index/acme/kit.json": _line(built, blob.as_uri()) + "\n"});
+        _git(repo, "add", ".");
+        _git(repo, "commit", "-q", "-m", "publish-without-api");
+        forget_registries();
+        no_api = verify_index(repo, "main", "alice", any_upload=True);
+        assert any(api_rel in p for p in no_api.problems) , no_api.problems;
+        write_tree(repo, {api_rel: api_text});
         _git(repo, "add", ".");
         _git(repo, "commit", "-q", "-m", "publish");
         forget_registries();
@@ -152,5 +172,68 @@ test "the index verifier accepts a clean publish and rejects edits and strangers
         _git(repo, "commit", "-q", "-m", "publish-bad");
         bad = verify_index(repo, "main", "alice", any_upload=True);
         assert any("deps differ" in p for p in bad.problems) , bad.problems;
+        _git(repo, "checkout", "-q", "-b", "stray");
+        _git(repo, "reset", "-q", "--hard", "change");
+        write_tree(
+            repo,
+            {
+                "index/acme/kit.json": _line(built, blob.as_uri()) + "\n",
+                api_rel: api_text.replace("\"int\"", "\"str\"", 1),
+                api_rel_path("acme/kit", "9.9.9"): api_text
+            }
+        );
+        _git(repo, "add", ".");
+        _git(repo, "commit", "-q", "-m", "publish-stray");
+        stray = verify_index(repo, "main", "alice", any_upload=True);
+        assert any("differs from the artifact" in p for p in stray.problems) , stray.problems;
+        assert any("9.9.9" in p and "owns it" in p for p in stray.problems) , stray.problems;
+    }
+}
+
+test "API docs carry docstrings and defaults without moving the api digest" {
+    tmp = fresh_dir("jac-apidocs-");
+    with patch.dict(os.environ, {"JAC_PACKAGE_STORE": str(tmp / "store")}) {
+        documented = build_package(_kit(tmp / "a", "1.0.0", KIT_DOCUMENTED));
+        reworded = build_package(
+            _kit(
+                tmp / "b",
+                "1.0.0",
+                KIT_DOCUMENTED.replace("Area of", "The area of").replace(
+                    "Rectangle", "Box"
+                )
+            )
+        );
+        area = documented.surface["modules"]["geo"]["area"];
+        assert area["doc"] == "Area of a w by h rectangle." , area;
+        h = [
+            p
+            for p in area["params"]
+            if p["name"] == "h"
+        ][0];
+        assert h["default"] and h["value"] == "1 + 1" , h;
+        assert documented.surface[MODULE_DOCS] == {"geo": "Rectangle helpers."};
+        assert documented.manifest["api_digest"] == reworded.manifest["api_digest"];
+    }
+}
+
+test "a registry lists its packages and serves published API files" {
+    tmp = fresh_dir("jac-list-");
+    registry = FixtureRegistry.create(tmp / "registry");
+    with patch.dict(os.environ, isolated_env(tmp, registry.base_dir)) {
+        _kit(tmp / "kit", "1.0.0", KIT_V1);
+        registry.publish(tmp / "kit");
+        write_tree(
+            tmp / "other",
+            {
+                "jac.toml": package_toml("zeta/tool", "0.1.0", ["t"]),
+                "t.jac": "def f -> int {\n    return 1;\n}\n"
+            }
+        );
+        registry.publish(tmp / "other");
+        index = Registry(name="test", url=str(registry.base_dir));
+        assert index.list_names() == ["acme/kit", "zeta/tool"];
+        surface = index.api("acme/kit", "1.0.0");
+        assert surface is not None and "perimeter" in surface["modules"]["geo"];
+        assert index.api("acme/kit", "9.9.9") is None;
     }
 }
