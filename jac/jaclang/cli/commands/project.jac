@@ -315,6 +315,14 @@ comptime SPEC_INSTALL: CommandSpec = CommandSpec(
                  short=""
              ),
              Arg.create(
+                 "capability",
+                 kind=ArgKind.MULTI_OPTION,
+                 `default=[],
+                 help="Install the dependencies of these capabilities (e.g. llm deploy.k8s), taking the versions from the capability registry instead of naming them here. Never written to jac.toml",
+                 short="c",
+                 metavar="NAME"
+             ),
+             Arg.create(
                  "plan",
                  typ=bool,
                  `default=False,
@@ -413,6 +421,7 @@ def install(
     prefer_binary: bool = False,
     install_global: bool = False,
     scale: bool = False,
+    capability: list[str] = [],
     plan: bool = False,
     as_json: bool = False
 ) -> int;

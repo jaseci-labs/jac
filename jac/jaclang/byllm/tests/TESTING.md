@@ -7,8 +7,7 @@ follows. The helpers live in [`support.jac`](support.jac).
 
 ```bash
 # Once per binary: the dependencies CI installs for this suite.
-jac install "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
-  "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" --global
+jac install --global --capability llm
 
 # The suite, as CI's byllm lane runs it.
 JAC_TEST_STRICT=1 jac test jac/jaclang/byllm/tests \

@@ -347,6 +347,32 @@ def package_missing_error(package: str) -> str {
     return f"'{package}' is missing. {missing_capability_error(cap)}";
 }
 
+def _dist_spec(pkg: str, ver: str) -> str {
+    if not ver or ver in ("*", "latest") {
+        return pkg;
+    }
+    if ver.startswith(("=", ">", "<", "~", "!")) {
+        return f"{pkg}{ver}";
+    }
+    return f"{pkg}=={ver}";
+}
+
+
+def capability_dists(capability: str) -> list[str] {
+    registry = get_capability_registry();
+    if capability not in registry {
+        return [];
+    }
+    dists: list[str] = [];
+    for name in sorted(_expand_requires({capability})) {
+        for (pkg, ver) in registry[name].deps.items() {
+            dists.append(_dist_spec(pkg, ver));
+        }
+    }
+    return sorted(set(dists));
+}
+
+
 def missing_capability_dists(capability: str) -> list[str] {
     import from importlib.metadata { distribution, PackageNotFoundError }
     registry = get_capability_registry();
@@ -360,13 +386,7 @@ def missing_capability_dists(capability: str) -> list[str] {
             try {
                 distribution(base.strip());
             } except PackageNotFoundError {
-                if not ver or ver in ("*", "latest") {
-                    missing.append(pkg);
-                } elif ver.startswith(("=", ">", "<", "~", "!")) {
-                    missing.append(f"{pkg}{ver}");
-                } else {
-                    missing.append(f"{pkg}=={ver}");
-                }
+                missing.append(_dist_spec(pkg, ver));
             }
         }
     }

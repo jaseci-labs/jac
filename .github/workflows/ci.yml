@@ -342,20 +342,9 @@ jobs:
       - name: Install plugin deps so jac check resolves scale/byllm imports
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "prometheus-client>=0.21.0,<1.0.0" \
-            "opentelemetry-sdk>=1.27.0,<2.0.0" \
-            "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
-            "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
-            "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
-            "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" \
-            "firebase-admin>=6.0.0,<8.0.0" "requests>=2.32.0,<3.0.0" \
-            --global
-          jac install \
-            "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
-            "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
-            --global
+          jac install --global --capability \
+            serve monitoring tracing scheduler deploy.k8s storage.s3 storage.firebase
+          jac install --global --capability llm
 
       - name: Run jac fmt (check formatting)
         id: fmt
@@ -644,7 +633,7 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
       - name: Install the serve deps the plugin-integration test needs
-        run: jac install "python-dotenv>=1.2.1,<2.0.0" "requests>=2.32.0,<3.0.0" --global
+        run: jac install --global --capability serve monitoring
       # tests/client is test-client's lane (it needs the serial runner). The
       # jsdom suites in tests/runtimelib gate on bun being present, which the
       # Bun setup above provides -- with JAC_TEST_STRICT=1 they must run here,
@@ -686,19 +675,9 @@ jobs:
       - uses: ./.github/actions/jac-kit
       - name: Install the scale and byllm deps these files import
         run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "prometheus-client>=0.21.0,<1.0.0" \
-            "opentelemetry-sdk>=1.27.0,<2.0.0" \
-            "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
-            "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
-            "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
-            requests "moto[s3]>=5.0.0" \
-            --global
-          jac install \
-            "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
-            "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
-            --global
+          jac install "moto[s3]>=5.0.0" --global --capability \
+            serve monitoring tracing scheduler deploy.k8s storage.s3
+          jac install --global --capability llm
       # Run from a copy OUTSIDE the checkout. The resolver's self-tree rule
       # binds a `jaclang.*` import from any file inside a jaclang checkout to
       # that checkout, so run in place, a fixture's `jaclang.byllm.lib`
@@ -744,7 +723,7 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
       - name: Install the scale dep the in-process dispatch tests import
-        run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
+        run: jac install --global --capability serve
       - name: Run all client tests
         # Serial: parallel workers intermittently disagreed on collection of
         # test_mobile_target.jac (then test_react_native_target.jac) under the
@@ -779,10 +758,7 @@ jobs:
       - uses: ./.github/actions/jac-kit
       - name: Install byllm deps + test deps
         run: |
-          jac install \
-            "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
-            "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
-            --global
+          jac install --global --capability llm
       # test_mtir_integration.jac runs in test-in-package-sealed (see there).
       - name: Run package tests
         env:
@@ -821,18 +797,11 @@ jobs:
       - name: Install scale deps + test deps
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "prometheus-client>=0.21.0,<1.0.0" \
-            "opentelemetry-sdk>=1.27.0,<2.0.0" \
-            "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
-            "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
-            "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
-            requests "moto[s3]>=5.0.0" \
-            --global
+          jac install "moto[s3]>=5.0.0" --global --capability \
+            serve monitoring tracing scheduler deploy.k8s storage.s3
       - name: Install scale firebase deps
         if: matrix.group == 'data' || matrix.group == 'server'
-        run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
+        run: jac install --global --capability storage.firebase
       # One process per file comes from the [test] isolate marks in the root
       # jac.toml (the shelf-db sharers are marked serial there); JOBS=1 keeps
       # files sequential the way the old shell loop ran them. The HMR test in
@@ -875,10 +844,7 @@ jobs:
       - uses: ./.github/actions/jac-kit
       - name: Install scale deploy deps
         run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
-            --global
+          jac install --global --capability serve deploy.k8s
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
       - name: Set up Helm
@@ -1077,10 +1043,7 @@ jobs:
       # is exercised by test-jac-pack-eject through the same browser journey.
       - name: Install scale serve deps (for the site server)
         run: |
-          jac install \
-            "python-dotenv>=1.2.1,<2.0.0" \
-            "requests>=2.32.0,<3.0.0" \
-            --global
+          jac install --global --capability serve monitoring
 
       - name: Validate the bundled Tiny JacYac workspace
         timeout-minutes: 5

@@ -26,6 +26,7 @@ import from jaclang.project.capabilities {
     RUNTIME,
     DEPLOY,
     all_capability_names,
+    capability_dists,
     capability_for_package,
     command_capabilities,
     derive_capabilities,
@@ -86,6 +87,39 @@ test "get_capability returns None for unknown" {
     assert get_capability("nope") is None;
     assert "serve" in all_capability_names();
     assert "monitoring" in all_capability_names();
+}
+
+test "capability_dists formats every pin in the registry" {
+    dists = capability_dists("llm");
+    registry = get_capability_registry();
+    assert len(dists) == len(registry["llm"].deps) , str(dists);
+    for (pkg, ver) in registry["llm"].deps.items() {
+        assert any(d.startswith(pkg) and ver in d for d in dists) , pkg
+            + " "
+            + str(dists);
+    }
+    assert dists == sorted(dists) , str(dists);
+}
+
+test "capability_dists follows requires, and is empty for unknown" {
+    # llm.local requires llm, so asking for the leaf gives the whole closure.
+    local = capability_dists("llm.local");
+    for spec in capability_dists("llm") {
+        assert spec in local , spec + " missing from " + str(local);
+    }
+    assert any(d.startswith("llama-cpp-python") for d in local) , str(local);
+    assert capability_dists("nope") == [];
+}
+
+test "every capability resolves to a pinned, deduplicated spec list" {
+    for name in all_capability_names() {
+        dists = capability_dists(name);
+        assert dists , name + " resolved to nothing";
+        assert len(dists) == len(set(dists)) , name + " has duplicates: " + str(dists);
+        for spec in dists {
+            assert " " not in spec , name + " spec has a space: " + spec;
+        }
+    }
 }
 
 # ===== Intent derivation =====

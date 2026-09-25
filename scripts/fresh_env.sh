@@ -50,12 +50,9 @@ echo "Add it to PATH, e.g.:  export PATH=\"$PWD/jac/zig-out/bin:\$PATH\""
 export PATH="$PWD/jac/zig-out/bin:$PATH"
 
 # byLLM's `llm` capability deps (global so they're importable from anywhere).
-# Pins mirror jac/jaclang/project/capabilities.jac. Optional: drop this line if
-# you don't need to run `by llm()` flows in this env.
-jac install \
-  "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
-  "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
-  --global
+# Versions come from jac/jaclang/project/capabilities.jac. Optional: drop this
+# line if you don't need to run `by llm()` flows in this env.
+jac install --global --capability llm
 
 # Local git hooks come from the jac binary itself: a pre-commit hook that
 # formats/lints staged .jac files and a commit-msg hook that blocks AI
