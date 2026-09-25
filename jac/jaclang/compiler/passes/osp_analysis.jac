@@ -5,6 +5,8 @@ import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 
 
+glob OSP_ANY_TAGS: dict[str, int] = {"Node": -2, "Edge": -3, "Walker": -4};
+
 obj OspSlot {
     has owner: str,
         kind: str,
@@ -51,7 +53,11 @@ obj OspModel {
         }
         out: list[int] = [];
         for _n in slot.trigger_names {
-            out.append(self.tags.get(_n, -1));
+            if _n in self.tags {
+                out.append(self.tags[_n]);
+            } else {
+                out.append(OSP_ANY_TAGS.get(_n, -1));
+            }
         }
         return out;
     }
