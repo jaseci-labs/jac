@@ -34,6 +34,15 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
 
      ),
      KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
+     KERNEL_ABI_CONTRACT_REL: tuple[str, ...] = (
+         "runtime/osp_kernel.jac",
+         "runtime/osp_graph.jac",
+         "runtime/region_native.jac",
+         "compiler/backends/common/fmt_kernel.jac",
+         "runtime/osp_tag.jac",
+         "compiler/backends/native/region_abi.jac",
+         "compiler/native_compiler.jac"
+     ),
      _SCOPE_SUFFIX_CACHE: list[str] = [],
      _SCOPE_SUFFIX_GEN: list[int] = [-1];
 
