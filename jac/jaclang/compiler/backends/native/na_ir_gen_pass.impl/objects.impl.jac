@@ -2772,15 +2772,6 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
 
-    if (
-        module_name == "time"
-        and self._native_stdlib_modules
-        and "time" in self._native_stdlib_modules
-        and method_name in NATIVE_TIME_FUNCS
-    ) {
-        return self._emit_time_call(method_name, nd);
-    }
-
     if module_name == "os.path"
         or (
             isinstance(trailer.target, uni.AtomTrailer)

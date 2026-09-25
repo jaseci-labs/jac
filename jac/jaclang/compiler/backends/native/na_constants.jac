@@ -1,13 +1,3 @@
-glob NATIVE_TIME_FUNCS: set[str] = {
-         "time",
-         "monotonic",
-         "perf_counter",
-         "time_ns",
-         "monotonic_ns",
-         "perf_counter_ns",
-         "sleep",
-
-     };
 glob NATIVE_OS_FUNCS: set[str] = {
          "getpid",
          "listdir",

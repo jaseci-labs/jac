@@ -1290,7 +1290,8 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.MEM_STORE: self._emit_intrinsic_mem_store,
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
         IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor,
-        IntrinsicDispatch.REGION_TLS: self._emit_intrinsic_region_tls
+        IntrinsicDispatch.REGION_TLS: self._emit_intrinsic_region_tls,
+        IntrinsicDispatch.ALLOCA: self._emit_intrinsic_alloca
     };
     handler = _emitters.get(intr.dispatch);
     if handler is None {
@@ -1456,6 +1457,27 @@ impl NaIRGenPass._emit_intrinsic_region_tls(
     }
     result = self.builder.call(self.extern_funcs[intr.name], operands);
     return None if intr.result_spec == "none" else result;
+}
+
+impl NaIRGenPass._emit_intrinsic_alloca(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    n = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    if n is None {
+        return None;
+    }
+    i8 = ir.IntType(8);
+    func = self.builder.function;
+    entry_block = func.entry_basic_block;
+    cur_block = self.builder.block;
+    if entry_block.instructions {
+        self.builder.position_before(entry_block.instructions[0]);
+    } else {
+        self.builder.position_at_start(entry_block);
+    }
+    slot = self.builder.alloca(i8, size=n, name="alloca.buf");
+    self.builder.position_at_end(cur_block);
+    return self.builder.ptrtoint(slot, ir.IntType(64), name="alloca.i64");
 }
 
 impl NaIRGenPass._codegen_synthetic_call(

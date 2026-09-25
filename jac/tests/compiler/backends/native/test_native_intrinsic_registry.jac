@@ -91,11 +91,12 @@ def _call_lines(ir_text: str, name: str) -> list[str] {
 }
 
 glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: int) -> None; }\n",
-     RAW_MEM_MARKERS = {
+     LOWERING_MARKERS = {
          IntrinsicDispatch.MEM_LOAD: "mem.ld",
          IntrinsicDispatch.MEM_STORE: "mem.p",
          IntrinsicDispatch.ATOMIC_XCHG: "atomicrmw xchg",
-         IntrinsicDispatch.CALL_DTOR: "dtor.fn"
+         IntrinsicDispatch.CALL_DTOR: "dtor.fn",
+         IntrinsicDispatch.ALLOCA: "alloca.buf"
      };
 
 """Probe source per dispatch kind; a new dispatch kind must add one here."""
@@ -139,6 +140,12 @@ def _probe_source(intr: any) -> str {
             "return x + 7; }\n"
         );
     }
+    if intr.dispatch == IntrinsicDispatch.ALLOCA {
+        return (
+            "def probe(x: int) -> int { p = __alloca(8); "
+            "__mem_store_i64(p, x + 7); return int(__mem_load_i64(p)); }\n"
+        );
+    }
     if intr.dispatch == IntrinsicDispatch.REGION_TLS {
         return (
             "def probe(x: int) -> int { old = __jac_region_tls_get(); "
@@ -170,11 +177,11 @@ test "every registry intrinsic lowers through its registered emitter" {
         } elif intr.dispatch == IntrinsicDispatch.BITS_FLOAT {
             fn = _get_func(eng, "probe", ctypes.c_double, ctypes.c_int64);
             assert fn(BITS_1_5) == 1.5 , f"{intr.name}(bits(1.5)) != 1.5";
-        } elif intr.dispatch in RAW_MEM_MARKERS {
+        } elif intr.dispatch in LOWERING_MARKERS {
             ir_text = str(ir_mod.gen.llvm_ir);
-            marker = RAW_MEM_MARKERS[intr.dispatch];
+            marker = LOWERING_MARKERS[intr.dispatch];
             assert marker in ir_text , (
-                f"{intr.name}: the raw-memory lowering ({marker!r}) is missing "
+                f"{intr.name}: the lowering marker ({marker!r}) is missing "
                 "from the emitted IR - the intrinsic was stranded"
             );
             fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);

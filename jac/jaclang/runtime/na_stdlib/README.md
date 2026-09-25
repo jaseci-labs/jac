@@ -59,33 +59,58 @@ native layout records the emitted name separately from its source-level key.
   non-ASCII is a follow-up). (`dumps` of floats now matches CPython: native
   `str(float)` produces the shortest-round-trip repr -- #6940 Phase 0.3,
   pinned byte-for-byte against CPython in the native suite.)
-- **`datetime.jac`** (#6940 Phase 1 / #6951) -- a UTC `datetime` and
-  `timezone` pair. `timezone.utc` is a class attribute and `datetime.now` /
-  `datetime.fromtimestamp` are class-level constructors, riding the native
-  static-method and class-attribute capability added for #6951. The civil date
-  is computed from the POSIX epoch (Hinnant's days->civil) over the `time`
-  intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
-  `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
-  fixed-offset only (no tz database, DST, leap seconds, or microseconds).
+- **`datetime.jac`** (#6940 Phase 1 / #6951, extended to the full surface) --
+  a faithful port of CPython's `_pydatetime.py`: `timedelta`, `date`,
+  `tzinfo`, `time`, `datetime`, `timezone`, `struct_time`, and
+  `IsoCalendarDate`, with the same class hierarchy (`datetime(date)`,
+  `timezone(tzinfo)`). Civil-date math uses the proleptic-Gregorian ordinal
+  algorithms; timezone-aware math rides the `tzinfo` protocol
+  (`utcoffset`/`dst`/`tzname`/`fromutc`), `datetime.astimezone` performs the
+  local-timeline conversion like CPython (including the fold probe), and
+  `strptime` is a hand-rolled matcher port of `_strptime.py` since no regex
+  engine exists natively. `_datetime_native.jac` is the FFI floor:
+  `clock_gettime`/`localtime_r`/`gmtime_r`/`strftime`
+  over shared `malloc`'d `struct tm`/`timeval` storage (glibc `tm_gmtoff`/
+  `tm_zone` read at fixed offsets). SCOPE divergences: `datetime.date()` /
+  `time()` / `timetz()` and `datetime.combine` return/accept `any` at the type
+  level because method names shadow class names inside `obj datetime`
+  (runtime behavior unchanged); `strftime` locale text comes from libc, like
+  CPython's.
+- **`calendar.jac`** -- a port of CPython's `calendar.py`: `Calendar` /
+  `TextCalendar` (`formatweek`-`formatyear`, `prweek`-`pryear` via
+  `sys.stdout.write` since `print` doesn't lower), the `itermonth*` iterators,
+  `monthcalendar`-`yeardatescalendar` grids, `isleap`/`leapdays`/`weekday`/
+  `monthrange`, `month_name`/`month_abbr`/`day_name`/`day_abbr`, and the
+  `IllegalMonthError`/`IllegalWeekdayError` exceptions (no `super.init` -- it
+  doesn't lower). SCOPE divergences: `weekday`/`monthrange` return plain
+  `int`, not the 3.14 `Day`/`Month` `IntEnum`s, and the name tables are static
+  English `list[str]` rather than locale-aware `_localized_*` objects.
+- **`zoneinfo.jac`** -- a port of CPython's `zoneinfo/_zoneinfo.py`: a full
+  TZif v1/v2+ parser (big-endian headers, transition/type arrays, POSIX TZ
+  footer via `_TZStr` transition rules), `ZoneInfo` with module-level cache +
+  `no_cache`/`from_file`/`clear_cache`, `TZPATH` filesystem discovery through
+  `_file_native`/`_directory_native`, `available_timezones`, and
+  `ZoneInfoNotFoundError`. `utcoffset`/`dst`/`tzname`/`fromutc` follow the
+  `_ttinfo` transition logic including fold/gap handling, so
+  `datetime.astimezone` conversion works end to end. SCOPE: TZif files only --
+  no `datetime.tzfile`/`tzstr` fallbacks, and POSIX-footer parsing covers the
+  common `EST5EDT,M3.2.0/2,M11.1.0` forms.
 - **`gzip.jac`** (#6978 Phase 2) -- a Mechanism-B gzip framing over the
   bundled `zlib` floor (no new FFI): `compress(data, compresslevel=9, mtime=0)`
   and `decompress(data)`. gzip is zlib's DEFLATE engine plus an RFC 1952 header,
-  CRC-32, and ISIZE trailer, so the surface reuses the `zlib` floor's one-shot
-  `compress2` / `uncompress2`. `compress` takes the raw DEFLATE body (the zlib
-  stream with its 2-byte header + 4-byte adler32 stripped -- the DEFLATE bytes
-  are identical under either frame) and wraps it; the result is byte-identical
-  to CPython's `gzip.compress` at the same level/`mtime` (XFL 2 for level 9,
+  CRC-32, and ISIZE trailer, so the surface reuses the `zlib` floor's
+  `compress2` and shared streaming inflater. `compress` takes the raw DEFLATE
+  body (the zlib stream with its 2-byte header + 4-byte adler32 stripped --
+  the DEFLATE bytes are identical under either frame) and wraps it; the result
+  is byte-identical to CPython's `gzip.compress` at the same level/`mtime` (XFL 2 for level 9,
   4 for level < 2, 0 otherwise -- zlib's gzip-header rule, which CPython
   reuses -- and OS byte 255; CPython 3.14 also defaults `mtime` to 0, so the
   defaults agree byte-for-byte). `decompress` walks the members of the stream
   exactly as CPython does: per member it parses the header (honoring the
   FEXTRA / FNAME / FCOMMENT skips; the 2 FHCRC bytes are skipped unverified,
-  which is also CPython's behavior), re-frames the remaining input as a zlib
-  stream so the member's own trailer bytes stand in for the adler32, inflates
-  through `uncompress2` -- whose consumed-source count locates the member
-  boundary; the near-certain final adler mismatch (`Z_DATA_ERROR`) and the
-  2^-32 coincidence where the trailer bytes equal the output's adler32
-  (`Z_OK`) are both accepted -- then enforces gzip's own CRC-32 and ISIZE
+  which is also CPython's behavior), then raw-inflates the DEFLATE body in a
+  single streaming pass (`windowBits = -15`); the stream's `total_in` locates
+  the member boundary, after which gzip's own CRC-32 and ISIZE are enforced
   (compared mod 2^32, per RFC 1952, so members over 4 GiB verify the same way
   CPython does) before concatenating the member outputs. The output buffer
   starts at the final-ISIZE hint and grows geometrically on `Z_BUF_ERROR` up
@@ -437,6 +462,92 @@ native layout records the emitted name separately from its source-level key.
   link against host libm on native and against the vendored musl bitcode on
   wasm.
 
+- **`time.jac`** (Mechanism F surface) + **`_time_common.jac`** (shared
+  `clock_gettime` / `clock_settime` FFI and timespec loads) +
+  **`_time_native.linux.jac`** / **`_time_native.darwin.jac`** (per-OS clock
+  ids and the sleep floor: `clock_nanosleep` on Linux, `nanosleep` on Darwin) -- the clock half of CPython's
+  `time` module, replacing the former Mechanism-A intercept: `time`,
+  `time_ns`, `monotonic`, `monotonic_ns`, `perf_counter`, `perf_counter_ns`,
+  `process_time`, `process_time_ns`, `thread_time`, `thread_time_ns`,
+  `clock_gettime_ns`, `clock_settime_ns`, `sleep`, and the clock-id constants
+  `CLOCK_REALTIME` / `CLOCK_MONOTONIC` / `CLOCK_MONOTONIC_RAW` /
+  `CLOCK_PROCESS_CPUTIME_ID` / `CLOCK_THREAD_CPUTIME_ID` (per-OS values via
+  the floor). `sleep` parks on an absolute `clock_nanosleep(CLOCK_MONOTONIC,
+  TIMER_ABSTIME)` deadline the way CPython's `pysleep` does (a relative
+  `nanosleep` remainder loop on Darwin), retries on `EINTR`, and matches
+  CPython's error behavior: `ValueError("sleep length must be
+  non-negative")` on negative input, `ValueError` on NaN, and
+  `OverflowError("timestamp out of range for platform time_t")` on inputs
+  (including infinities) whose nanoseconds do not fit an i64. Clock
+  failures route through `_errno_native.raise_errno`, so they carry
+  CPython's `[Errno N]` message AND the mapped `OSError` subclass
+  (`PermissionError` for `EPERM`/`EACCES`, ...).
+  SCOPE/divergences: the calendar/`struct_time` family (`localtime`,
+  `gmtime`, `mktime`, `ctime`, `asctime`, `strftime`, `strptime`, `tzset`,
+  `get_clock_info`, `struct_time`, `thread_time` attributes like `tzname`)
+  is out of scope and fails loudly; the float-seconds `clock_gettime`,
+  `clock_getres`, and `clock_settime` are absent because their bare names
+  collide with the floor's C externs in the shared native symbol table --
+  use `clock_gettime_ns` / `clock_settime_ns`; `perf_counter` is
+  `CLOCK_MONOTONIC`, matching CPython on POSIX; `sleep` takes float
+  seconds. Each floor call packs the `timespec` into a 16-byte buffer it
+  allocates for itself, so the module is safe to call from any thread
+  (the native backend spawns real ones). Native-host only.
+- **`sqlite3.jac`** (Mechanism F surface) + **`_sqlite3_native.jac`** (FFI
+  floor over the system `libsqlite3`, 3.53.x) -- the DB-API 2.0 core of
+  CPython 3.14 `sqlite3`: `connect()` (with the full CPython kwarg set --
+  `database`/`timeout`/`detect_types`/`isolation_level`/`check_same_thread`/
+  `factory`/`cached_statements`/`uri`/`autocommit`; `timeout`, `uri`,
+  `isolation_level` and `autocommit` are honored, the rest are accepted for
+  signature parity), `Connection` (`cursor`/`execute`/`executemany`/
+  `executescript`/`commit`/`rollback`/`close`/`in_transaction`/
+  `total_changes`/context manager), `Cursor` (`execute`/`executemany`/
+  `executescript`/`fetchone`/`fetchmany`/`fetchall`/`description`/`rowcount`/
+  `lastrowid`/`arraysize`/`connection`/`close`/iteration), `complete_statement`,
+  `Binary`, `apilevel`/`paramstyle`/`threadsafety`/`sqlite_version`/
+  `sqlite_version_info`, the `PARSE_*`/`LEGACY_TRANSACTION_CONTROL`/
+  `SQLITE_*` constants, and the full CPython exception hierarchy (`Error` ->
+  `InterfaceError`/`DatabaseError` -> `InternalError`/`OperationalError`/
+  `ProgrammingError`/`IntegrityError`/`DataError`/`NotSupportedError`).
+  Parameter binding covers positional `?`, numbered `?N`, named `:name`,
+  `@name`, and `$name` (dict params), plus `NULL`/`bool`/`int`/`float`/`str`/
+  `bytes`-blob values; params accept list, tuple, or dict; transaction
+  semantics follow CPython's legacy mode (DML opens an implicit transaction,
+  DDL does not; `executescript` commits first), plus the 3.12+ `autocommit`
+  kwarg (`True` suppresses implicit BEGIN, `False` opens one before every
+  statement, `LEGACY_TRANSACTION_CONTROL` keeps legacy mode).
+  `isolation_level` is validated case-insensitively against
+  `''`/`DEFERRED`/`IMMEDIATE`/`EXCLUSIVE`. A per-connection prepared
+  statement pool (mirrors CPython's `cached_statements=128` LRU as plain
+  FIFO-cap eviction) survives `execute`/`fetch` cycles; `reset` +
+  `clear_bindings` re-arms pooled statements. The one-statement tail check
+  inspects the raw `pzTail` bytes for non-whitespace via aligned
+  `__mem_load_i64` reads (never prepares the tail, matching CPython's
+  `*tail <= ' '` whitespace test). `Cursor.setinputsizes`/`setoutputsize`
+  exist as no-ops. Error parity is class AND `sqlite3_errmsg` text,
+  probed against CPython 3.14. DIVERGENCES: rows and `description` entries
+  materialize as `list`, not `tuple` (the native boundary has no tuple
+  boxing); `Binary()` returns `bytes`, not `memoryview`; `database` accepts
+  `str`/`bytes` but not `os.PathLike`; `check_same_thread`, `factory`, and
+  `detect_types` are accepted but inert; post-`connect()` assignment of an
+  invalid `isolation_level`/`autocommit` is validated lazily at the next
+  implicit `BEGIN` rather than at assignment (plain `has` fields have no
+  setter hook); exceptions carry no `sqlite_errorcode`/`sqlite_errorname`
+  attributes; CPython 3.12+ mixed-parameter-style `DeprecationWarning`s are
+  not emitted (no warnings module natively); invalid-UTF-8 TEXT columns
+  return the decode result of the bytes rather than falling back to
+  `bytes`; `row_factory`/`text_factory`/`create_function`/
+  `create_aggregate`/`create_collation`/`set_authorizer`/
+  `set_progress_handler`/`set_trace_callback`/`interrupt`/`blobopen`/
+  `backup`/`serialize`/`deserialize`/`iterdump`/`getlimit`/`setlimit`/
+  `getconfig`/`setconfig`/`enable_load_extension`/`register_adapter`/
+  `register_converter`/`Row`/`enable_shared_cache` are out of scope.
+  Native-host only. Pinned sv<->na congruent by `prim_sqlite3.jac`. NOTE:
+  the floor in `_socket_native.jac` binds `__connect` (glibc weak alias)
+  instead of `connect` -- the image-wide clib-extern bare-name set would
+  otherwise skip this module's `def:pub connect` body (SIGSEGV at
+  JIT-execute).
+
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler
 intercepts, reached via the flat `import os`, not bundled here (see
@@ -483,9 +594,10 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
 
 - **B (here)**: pure-Jac on primitives; portable to every native target
   (ELF/Mach-O/PE/WASM). Preferred. Example: `os/path.jac`.
-- **A**: compiler intrinsics over libm/libc/syscalls (`time`, `os`,
-  `random`, `struct`); native-host only. (`math` moved to Mechanism B, above,
-  over the `_math_native` libm FFI floor.)
+- **A**: compiler intrinsics over libm/libc/syscalls (`os`, `random`,
+  `struct`); native-host only. (`math` moved to Mechanism B, above, over the
+  `_math_native` libm FFI floor; `time` is a bundled Mechanism-F surface over
+  `_time_native`, below.)
 - **F**: thin FFI wrappers over a system C library; native-host only. Examples:
   `_ssl_native.jac` -- the floor the verifying TLS client `ssl` is built on,
   over OpenSSL `libssl`/`libcrypto` (issue #6978 Phase 1); `_socket_native.jac`
@@ -522,6 +634,27 @@ Two conventions make foreign byte I/O work:
   symbol name**, so a libz symbol that collides with a public surface name (e.g.
   `crc32`) would shadow it. Bind the non-colliding variant instead; the floor
   uses `crc32_z` / `adler32_z`.
+
+`decompress` does not use the one-shot `uncompress`: a zlib stream carries no
+output-size field, so a buffer-too-small retry would re-inflate the whole
+input. Instead `zlib.jac`, `gzip.jac`, and `zipfile.jac` call one shared
+driver, `z_inflate_all(src, src_off, src_len, window_bits, cap, ceiling)`,
+which owns the `z_stream` lifecycle end to end: it pokes `next_in`/`avail_in`
+and `next_out`/`avail_out` into a `b"\x00" * 112` z_stream image through the
+`__mem_store_i32/i64` intrinsics (the LP64 `z_stream` field offsets live in
+the floor), streams `inflate` over a `malloc`/`realloc` arena, refeeds
+`avail_in` between calls when a source larger than one `uInt` is clamped, and
+copies the produced bytes once into the exact-size `bytes` result, returning
+the final libz status (plus an `init_ok` flag distinguishing `inflateInit2_`
+failure) in a `ZInflateResult`. Surfaces only map `status` to their own error
+type. Payload addresses are recovered as `int` with `memchr(buf, buf[0], 1)`,
+which always matches at offset 0 (empty input yields 0). Growth doubles the
+arena up to a caller-supplied ceiling; every site derives that ceiling from
+the floor's `z_inflate_bound(src_len, slack)` -- DEFLATE's ~1032x expansion
+bound plus slack (64 MiB for zlib, the default 1 KiB for the gzip per-member
+bound and the zipfile declared-size pre-check); empty or truncated input
+surfaces as `Z_BUF_ERROR` and raises `ValueError`, matching CPython's
+`error -5`.
 
 `bz2` (#6978 Phase 2) follows the same two-file split: `_bz2_native.jac`
 wraps the one-shot `BZ2_bzBuffToBuffCompress` / `BZ2_bzBuffToBuffDecompress`
@@ -574,14 +707,15 @@ length, and CRC-32. Malformed archives raise `BadZipFile`; missing names raise
 `KeyError`; reading a closed archive raises `ValueError`. Invalid UTF-8 names
 raise `BadZipFile` (CPython raises `UnicodeDecodeError`).
 
-The DEFLATE decoder reuses the existing `_zlib_native` one-shot FFI. A first
-pass obtains the decoded bytes from a zlib frame with a placeholder Adler-32.
-A second pass supplies the computed Adler-32 and requires `Z_OK`, exact output
-length, and exact input consumption. A checksum failure alone is never accepted
-as proof of a complete stream. This trades a second decompression pass for
-reuse of the existing portable buffer API without a platform-dependent
-`z_stream` layout. Output allocation is bounded by the declared member size
-and DEFLATE's expansion bound; ZIP's CRC-32 is checked separately.
+The DEFLATE decoder drives the shared `z_inflate_all` streaming inflater
+(`windowBits = -15`, since ZIP stores the raw DEFLATE body). Output is bounded
+by the declared member size plus one byte of headroom; a member is valid only
+when inflate reaches `Z_STREAM_END` having produced exactly the declared size
+and consumed exactly the declared `compress_size` -- trailing bytes inside the
+compressed field are rejected. Integrity comes from the central-directory
+CRC-32 check (verified separately against the decoded bytes), so no
+verification re-decode is needed. The declared size is also pre-checked
+against `z_inflate_bound` (DEFLATE's ~1032x expansion bound).
 
 Scope: archives are loaded into memory, and `read` returns a complete member.
 ZIP64, encryption, other compression methods, writing, streaming member

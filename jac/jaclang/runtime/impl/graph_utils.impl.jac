@@ -80,9 +80,14 @@ impl traverse_graph(
 impl collect_node_connections(
     current_node: NodeArchetype, visited_nodes: set, connections: set, edge_ids: set
 ) -> None {
-    import from jaclang.runtime.archetype { EdgeAnchor, NodeAnchor, anchor_key }
+    import from jaclang.runtime.archetype {
+        AccessLevel,
+        EdgeAnchor,
+        NodeAnchor,
+        anchor_key
+    }
     import from jaclang.runtime.osp_graph_sv { sv_live_edges, sv_register_hydrated }
-    import from jaclang.runtime.runtime { resolve_ref }
+    import from jaclang.runtime.runtime { JacRuntimeInterface, resolve_ref }
     if (current_node not in visited_nodes) {
         visited_nodes.add(current_node);
         node_anchor = current_node.__jac__;
@@ -94,7 +99,14 @@ impl collect_node_connections(
             edge_ids.add(anchor_key(edge_));
             source = resolve_ref(edge_.source, edge_);
             target = resolve_ref(edge_.target, edge_);
-            if isinstance(source, NodeAnchor) and isinstance(target, NodeAnchor) {
+            if (
+                isinstance(source, NodeAnchor)
+                and isinstance(target, NodeAnchor)
+                and JacRuntimeInterface.check_access_level(source).value
+                    > AccessLevel.NO_ACCESS.value
+                and JacRuntimeInterface.check_access_level(target).value
+                    > AccessLevel.NO_ACCESS.value
+            ) {
                 connections.add(
                     (
                         anchor_key(edge_),

@@ -544,6 +544,14 @@ glob STR_NA_GAPS: list[any] = [
              "difflib_na",
              ["na"]
          ),
+         (
+             "sqlite3 bundled",
+             "prim_sqlite3.jac",
+             "sqlite3_py",
+             "sqlite3_cl",
+             "sqlite3_na",
+             ["na"]
+         ),
          ("random", "prim_random.jac", "random_py", "random_cl", "random_na", ["na"]),
          (
              "any dispatch",

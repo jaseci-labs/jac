@@ -255,7 +255,8 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = frozenset(
                  "strchr strrchr strcspn strpbrk strspn strstr strtok strtok_r strerror "
                  "strerror_r strlen strnlen strdup strndup bcmp bcopy bzero "
                  "clock difftime mktime time timespec_get asctime ctime gmtime gmtime_r "
-                 "localtime localtime_r strftime clock_gettime nanosleep sleep usleep "
+                 "localtime localtime_r strftime clock_gettime clock_settime "
+                 "clock_nanosleep nanosleep sleep usleep "
                  "open openat creat close read pread write lseek stat fstat lstat access "
                  "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
                  "opendir readdir closedir getpid getpwuid_r getpwnam_r errno __error "
@@ -266,6 +267,7 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = frozenset(
                  "dlopen dlsym dlclose dlerror "
                  "main _start __libc_start_main __getmainargs mainCRTStartup "
                  "compress2 uncompress uncompress2 compressBound crc32_z adler32_z "
+                 "inflateInit2_ inflate inflateEnd zlibVersion "
                  "BZ2_bzBuffToBuffCompress BZ2_bzBuffToBuffDecompress "
                  "ZSTD_isError ZSTD_getErrorName ZSTD_compressBound ZSTD_freeCCtx "
                  "ZSTD_CCtx_setParameter ZSTD_compress2 ZSTD_freeDCtx ZSTD_DCtx_setParameter "
@@ -286,6 +288,19 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = frozenset(
                  "PyUnicode_FromString "
                  "__mt_genrand_u32 __mt_getrandbits __mt_init_by_array __mt_randbelow "
                  "GC_malloc "
+                 "__connect "
+                 "sqlite3_open sqlite3_open_v2 sqlite3_close sqlite3_prepare_v2 "
+                 "sqlite3_step sqlite3_reset sqlite3_finalize sqlite3_clear_bindings "
+                 "sqlite3_column_count sqlite3_column_type sqlite3_column_int64 "
+                 "sqlite3_column_double sqlite3_column_blob sqlite3_column_text "
+                 "sqlite3_column_bytes sqlite3_column_name sqlite3_errmsg "
+                 "sqlite3_errcode sqlite3_extended_errcode sqlite3_exec "
+                 "sqlite3_changes64 sqlite3_total_changes64 sqlite3_last_insert_rowid "
+                 "sqlite3_get_autocommit sqlite3_busy_timeout sqlite3_libversion "
+                 "sqlite3_complete sqlite3_bind_parameter_count "
+                 "sqlite3_bind_parameter_name sqlite3_bind_null sqlite3_bind_int64 "
+                 "sqlite3_bind_double sqlite3_bind_text sqlite3_bind_blob "
+                 "sqlite3_stmt_readonly sqlite3_free "
              ).split()
      );
 
@@ -486,11 +501,17 @@ def is_kernel_unit_path(path: str) -> bool {
     return False;
 }
 
-glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"};
+glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"},
+     NOGC_NATIVE_STDLIB: set[str] = {
+         "time",
+         "_time_native",
+         "_time_common",
+         "_errno_native",
+         "_errno_platform"
+     };
 
 glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "sys",
-         "time",
          "os",
          "random",
          "struct",
@@ -598,16 +619,32 @@ def effective_native_closure_cap -> int {
     }
 }
 
-def native_stdlib_root -> (str | None) {
+def _jaclang_pkg_dir -> (str | None) {
     import os;
     import jaclang;
     if not jaclang?.__file__ {
         return None;
     }
-    stdlib_dir = os.path.join(
-        os.path.dirname(jaclang.__file__), "runtime", "na_stdlib"
-    );
+    return os.path.dirname(os.path.abspath(str(jaclang.__file__)));
+}
+
+def native_stdlib_root -> (str | None) {
+    import os;
+    pkg = _jaclang_pkg_dir();
+    if pkg is None {
+        return None;
+    }
+    stdlib_dir = os.path.join(pkg, "runtime", "na_stdlib");
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
+}
+
+def is_in_jaclang_package(file_path: str) -> bool {
+    import os;
+    pkg = _jaclang_pkg_dir();
+    if not file_path or pkg is None {
+        return False;
+    }
+    return os.path.abspath(file_path).startswith(pkg + os.sep);
 }
 
 def bundled_native_module_names -> list[str] {
@@ -632,23 +669,21 @@ def bundled_native_module_names -> list[str] {
 
 def is_native_by_location(file_path: str) -> bool {
     import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
+    pkg = _jaclang_pkg_dir();
+    if not file_path or pkg is None {
         return False;
     }
     ap = os.path.abspath(file_path);
-    pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
     return ap.startswith(os.path.join(pkg, "runtime", "na_stdlib") + os.sep);
 }
 
 def bundled_stdlib_module_of(file_path: str) -> (str | None) {
     import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
+    pkg = _jaclang_pkg_dir();
+    if not file_path or pkg is None {
         return None;
     }
     ap = os.path.abspath(file_path);
-    pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
     native_root = os.path.join(pkg, "runtime", "na_stdlib") + os.sep;
     stub_root = os.path.join(pkg, "vendor", "typeshed", "stdlib") + os.sep;
     if ap.startswith(native_root) and ap.endswith(".jac") {
@@ -691,12 +726,11 @@ glob SHARED_RUNTIME_MODULES: tuple[str, ...] = (
 
 def is_client_by_location(file_path: str) -> bool {
     import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
+    pkg = _jaclang_pkg_dir();
+    if not file_path or pkg is None {
         return False;
     }
     ap = os.path.abspath(file_path);
-    pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
     for rel in CLIENT_RUNTIME_SOURCE_PATHS {
         if ap == os.path.join(pkg, rel.replace("/", os.sep)) {
             return True;
