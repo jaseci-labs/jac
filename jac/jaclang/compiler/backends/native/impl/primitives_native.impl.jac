@@ -2718,7 +2718,7 @@ impl NativeListEmitter.emit_append(
         return None;
     }
 
-    _boxed_val = p._box_value_tuple(args[0]);
+    _boxed_val = p._box_value_tuple(p._wrap_fn_as_closure_value(args[0]));
     if p._reject_ptr_into_raw_slot(
         None, _boxed_val, helpers["elem_type"], "list append"
     ) {
@@ -2827,12 +2827,13 @@ impl NativeListEmitter.emit_insert(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     insert_idx = args[0];
+    _ins_wrapped = p._wrap_fn_as_closure_value(args[1]);
     if p._reject_ptr_into_raw_slot(
-        None, args[1], helpers["elem_type"], "list insert"
+        None, _ins_wrapped, helpers["elem_type"], "list insert"
     ) {
         return ir.Constant(i64, 0);
     }
-    insert_val = p._coerce_type(args[1], helpers["elem_type"]);
+    insert_val = p._coerce_type(_ins_wrapped, helpers["elem_type"]);
     _aos_struct = p._aos_elem_struct(ctx.type_key);
     if _aos_struct is not None {
         return self._emit_aos_insert(
@@ -2868,6 +2869,10 @@ impl NativeListEmitter.emit_insert(
     b.position_at_start(done_bb);
 
     b.call(helpers["set"], [target, insert_idx, insert_val]);
+
+    if _ins_wrapped is not args[1] {
+        p._release_owned_args([_ins_wrapped], op="list_insert_wrap");
+    }
     return ir.Constant(i64, 0);
 }
 

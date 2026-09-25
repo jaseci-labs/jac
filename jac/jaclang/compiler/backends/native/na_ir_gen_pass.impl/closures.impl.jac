@@ -91,6 +91,24 @@ impl NaIRGenPass._closure_sig_struct(
     return (name, st, fnty_env);
 }
 
+impl NaIRGenPass._wrap_fn_as_closure_value(val: ir.Value) -> ir.Value {
+    """A bare function stored into a container slot becomes an owned
+    {fn, env=null} closure box, because a Callable is read and called back
+    as a closure pair. Any other value is returned unchanged.""";
+    fnty: (ir.FunctionType | None) = None;
+    if isinstance(val.type, ir.FunctionType) {
+        fnty = val.type;
+    } elif isinstance(val.type, ir.PointerType)
+        and isinstance(val.type.pointee, ir.FunctionType) {
+        fnty = val.type.pointee;
+    }
+    if fnty is None {
+        return val;
+    }
+    (_, sig_st, _) = self._closure_sig_struct(fnty);
+    return self._coerce_type(val, sig_st.as_pointer());
+}
+
 impl NaIRGenPass._closure_struct_of(val_type: ir.Type) -> (str | None) {
     if not isinstance(val_type, ir.PointerType) {
         return None;
