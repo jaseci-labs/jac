@@ -1002,6 +1002,43 @@ test "bytes_utf8" {
     assert decoded_nul() == 3098;
 }
 
+# Regression: `buf[i] = v` on `bytes` must emit a bounds-checked u8 store;
+# only the read path lowered before, so stores demoted with E5092.
+test "bytes subscript store" {
+    (eng, _) = compile_native("fix_bytes_subscript_store.jac");
+    pack = get_func(eng, "pack_u32_le", ctypes.c_void_p, ctypes.c_int64);
+    rb = get_func(eng, "read_byte", ctypes.c_int64, ctypes.c_void_p, ctypes.c_int64);
+    buf = pack(0x11223344);
+    assert rb(buf, 0) == 0x44;
+    assert rb(buf, 1) == 0x33;
+    assert rb(buf, 2) == 0x22;
+    assert rb(buf, 3) == 0x11;
+    # bytes literals are .rodata; a store through one is refused (demoted)
+    # rather than emitted as UB, matching Python's immutable-bytes contract.
+    assert eng.get_function_address("lit_store") == 0;
+}
+
+# Regression: scalar raise causes (the `raise SystemExit(128 + n)` signal-floor
+# convention) must box through the repr leaves before the (ptr, i32, ptr) ABI.
+test "scalar raise cause boxing" {
+    (eng, _) = compile_native("fix_scalar_raise_cause.jac");
+    ri = get_func(eng, "raise_int", ctypes.c_int64, ctypes.c_int64);
+    assert ri(13) == 1;
+    rb = get_func(eng, "raise_bool", ctypes.c_int64, ctypes.c_int64);
+    assert rb(1) == 1;
+    rf = get_func(eng, "raise_float", ctypes.c_int64, ctypes.c_double);
+    assert rf(2.5) == 1;
+}
+
+# Regression: a Jac `def` sharing its name with a same-module clib extern
+# must emit under a module-mangled symbol instead of tripping the
+# duplicate-name error; unqualified calls bind the Jac def.
+test "clib extern name collision" {
+    (eng, _) = compile_native("fix_clib_name_collision.jac");
+    f = get_func(eng, "call_local", ctypes.c_int64);
+    assert f() == 4242;
+}
+
 # --- TestNativeForTupleUnpack ---
 """for-loop tuple unpack: homogeneous products (issue 7238)"""
 def _for_tuple_unpack__for_loop_tuple_unpack_homogeneous_products_issue_7238(

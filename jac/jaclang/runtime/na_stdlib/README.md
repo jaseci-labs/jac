@@ -397,6 +397,34 @@ native layout records the emitted name separately from its source-level key.
   collides with the native builtin `open`; GNU sparse members raise; hard/soft
   links are created via libc `link`/`symlink` when trivial. Native-host only.
   Pinned sv<->na congruent by `test_tarfile_equivalence.jac`.
+- **`fcntl.jac` + `_fcntl_native.jac`** (Mechanism F over libc, POSIX host
+  only) -- `ioctl(fd, request, arg)` returning the (updated) arg buffer --
+  which fills a packed winsize struct in place for `TIOCGWINSZ` -- plus
+  `fcntl(fd, cmd, arg=0)` covering F_GETFL/F_SETFL/O_NONBLOCK. The clib decls
+  live in the floor because the Python-shaped surface names would collide with
+  the C symbol names. CPython returns None for an immutable bytes ioctl arg;
+  here any bytes arg is answered back. Errors raise ValueError where CPython
+  raises OSError.
+- **`termios.jac` + `_termios_native.jac`** (Mechanism F over libc,
+  POSIX host only) -- `tcgetattr(fd)` / `tcsetattr(fd, when, attrs)` in
+  CPython's shape (`[iflag, oflag, cflag, lflag, ispeed, ospeed, cc]`, cc as
+  32 one-byte `bytes` objects, matching CPython on Linux; `tcsetattr` also
+  accepts int cc entries, as CPython tolerates at VMIN/VTIME). The raw
+  60-byte glibc `struct termios` travels opaquely through an FFI bytes
+  buffer, so save/restore round-trips are byte-exact. Errors raise
+  ValueError where CPython raises `termios.error`.
+- **`tty.jac`** (Mechanism F, POSIX host only) -- `cfmakeraw` /
+  `cfmakecbreak` / `setraw` / `setcbreak`, a direct port of CPython's
+  `tty.py` over the `termios` floor (POSIX.1-2017 flag masks, VMIN/VTIME,
+  `when=TCSAFLUSH` default, and the original-mode return value included).
+- **`select.jac`** (Mechanism F over libc, POSIX host only) --
+  `select(rlist, wlist, xlist, timeout=-1.0)` implemented over `poll(2)`
+  (poll's -1 "block forever" sidesteps needing a NULL timeval pointer through
+  the bytes-buffer ABI). fd >= FD_SETSIZE, an fd poll reports POLLNVAL for,
+  and negative timeouts other than -1.0 all raise ValueError like CPython;
+  POLLERR/POLLHUP map into readable AND writable results (CPython reports them
+  readable only); POLLPRI is never requested so the exceptional list stays
+  empty; "block forever" is the `-1.0` sentinel rather than `None`.
 - **`math.jac`** (#6404, Mechanism B) + **`_math_native.jac`** (FFI floor over
   the host `m`/libm) -- a pure-Jac surface of ~50 CPython-congruent endpoints
   replacing the old Mechanism-A compiler intercepts: constants
