@@ -4,7 +4,7 @@ import from jaclang.compiler.frontend.unitree {
     Ability,
     EmptyToken,
     ImplDef,
-    ImplImport,
+    GraphImport,
     Import,
     ImportRule,
     ImportWire,
@@ -26,7 +26,6 @@ import from jaclang.compiler.driver.wiring {
 }
 import from jaclang.project.source { pascal_to_snake }
 import from jaclang.compiler.frontend.diagnostics {
-    E1140,
     E1141,
     E1142,
     E1143,
@@ -38,7 +37,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E2092,
     E2093,
     E2094,
-    W2083
+    W2083,
+    W2084
 }
 
 walker ImportWiringPass {
@@ -47,7 +47,7 @@ walker ImportWiringPass {
 
     can run_walk with Module entry;
     def _check_arch_module(mod: Module) -> None;
-    def _check_scope(spec: WiringSpec, block: ImplImport, seen: set[int]) -> None;
+    def _check_scope(spec: WiringSpec, block: GraphImport, seen: set[int]) -> None;
     def _check_wire(spec: WiringSpec, wire: ImportWire) -> None;
     def _check_rule_liveness(spec: WiringSpec, rule: ImportRule) -> None;
     def _check_edge(
@@ -74,6 +74,4 @@ walker ImportWiringPass {
     ) -> None;
 
     static def _rule_names(rules: list[ImportRule]) -> str;
-    static def _package_pattern(module: str) -> str;
-    static def _rule_name_for(module: str) -> str;
 }

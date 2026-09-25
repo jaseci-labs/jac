@@ -1,9 +1,4 @@
-impl import {
-    closed;
-    edge JaclangFlows: * --> any;
-}
-
-impl import {
+graph import {
     bootstrap_manifest --> compiler.driver.jir {
         COMPILER_DIGEST_ROOTS,
         COMPILER_IDENTITY_NAME,
@@ -106,7 +101,7 @@ impl import {
     scale as scale_mod --> server.endpoints.pages.register_graph_endpoints.graph_page;
 }
 
-impl import byllm {
+graph import byllm {
     comptime cli --> cli.manifest { SPEC_MODEL }
     config_loader --> byllm.llm { get_byllm_config }
     config_loader --> byllm.mtir { get_byllm_config }
@@ -360,7 +355,7 @@ impl import byllm {
     visit_routing --> runtime.runtime.JacLLM.by_operator { route_visit }
 }
 
-impl import byllm._optdeps {
+graph import byllm._optdeps {
     litellm --> byllm.llm { _disable_debugging, litellm }
     litellm --> byllm.llm._configure_litellm { HAS_LITELLM }
     litellm --> byllm.tests.test_telemetry_ { LiteLLMMessage }
@@ -371,7 +366,7 @@ impl import byllm._optdeps {
     pydantic --> byllm.schema | byllm.types { TypeAdapter }
 }
 
-impl import byllm.tests {
+graph import byllm.tests {
     fixtures --> byllm.tests.test_byllm { python_lib_mode }
     fixtures --> byllm.tests.test_mtir_integration { python_lib_mode }
     support --> byllm.tests.test_byllm {
@@ -464,7 +459,7 @@ impl import byllm.tests {
     }
 }
 
-impl import byllm.tests.fixtures {
+graph import byllm.tests.fixtures {
     agent_graph as ag --> byllm.tests.test_routing;
     agent_graph --> byllm.tests.test_routing { MathAgent, PoemAgent, Team, supervisor }
     routing_graph as rg --> byllm.tests.test_routing;
@@ -480,16 +475,16 @@ impl import byllm.tests.fixtures {
     }
 }
 
-impl import byllm.tests.fixtures.import_dir {
+graph import byllm.tests.fixtures.import_dir {
     importable_schema --> byllm.tests.fixtures.importer_main { get_imported_data }
 }
 
-impl import byllm.tests.fixtures.scope_dir {
+graph import byllm.tests.fixtures.scope_dir {
     module_alpha --> byllm.tests.fixtures.scope_main { process_data as alpha_process }
     module_beta --> byllm.tests.fixtures.scope_main { process_data as beta_process }
 }
 
-impl import cache {
+graph import cache {
     home --> cache.policy { CACHEDIR_TAG }
     home --> cache.registry { CACHEDIR_TAG, cache_home, ensure_cache_dir, ensure_root }
     home --> cli.commands.cache { cache_home }
@@ -538,7 +533,7 @@ impl import cache {
     registry --> toolchains.store { bucket, maybe_sweep }
 }
 
-impl import cli {
+graph import cli {
     banners --> server.server.JacAPIServer._ensure_client_bundle { JAC_DISCORD_URL }
     browser_engine --> cli.commands.browse {
         cmd_click,
@@ -874,7 +869,7 @@ impl import cli {
     workpool --> testing.test_runner.resolve_jobs { resolve_jobs as _resolve_pool_jobs }
 }
 
-impl import cli.commands {
+graph import cli.commands {
     analysis --> cli.commands.build.build { check }
     comptime analysis --> cli.manifest {
         SPEC_CHECK,
@@ -918,7 +913,7 @@ impl import cli.commands {
     comptime tools --> cli.manifest { SPEC_COMPLETIONS, SPEC_DOT, SPEC_LSP, SPEC_TOOL }
 }
 
-impl import cli.mcp {
+graph import cli.mcp {
     compiler_bridge --> cli.mcp.tools.ToolProvider.call_tool { CompilerBridge }
     compiler_bridge --> cli.mcp.tools.get_ast { CompilerBridge }
     compiler_bridge --> cli.mcp.tools.graph_visualize { CompilerBridge }
@@ -959,7 +954,7 @@ impl import cli.mcp {
     tools --> cli.mcp.protocol.build_engine { ToolProvider }
 }
 
-impl import cli.shadcn {
+graph import cli.shadcn {
     cli --> cli.commands.project._create_body { stash_create_theme }
     cli --> cli.commands.project.install { run_shadcn_add }
     cli --> cli.commands.project.remove { run_shadcn_remove }
@@ -981,7 +976,7 @@ impl import cli.shadcn {
     theme_handler --> cli.shadcn.cli.retheme { retheme_project }
 }
 
-impl import client {
+graph import client {
     artifact --> client.client_bundle {
         ClientBundle,
         ClientBundleError,
@@ -1383,7 +1378,7 @@ impl import client {
     }
 }
 
-impl import client.targets {
+graph import client.targets {
     build_common --> client.targets.client_dev_common { SUBPROCESS_TIMEOUT_SHORT }
     build_common --> client.targets.react_native.build { artifact_mtime }
     build_common --> client.targets.react_native.common {
@@ -1445,7 +1440,7 @@ impl import client.targets {
     web_target --> dist.seal.ensure_client_dist { WebTarget }
 }
 
-impl import client.targets.desktop {
+graph import client.targets.desktop {
     _dev_launch --> client.targets.desktop.cef_shell {
         desktop_app_runtime_env,
         ensure_dev_build_env
@@ -1514,7 +1509,7 @@ impl import client.targets.desktop {
     }
 }
 
-impl import client.targets.desktop.native {
+graph import client.targets.desktop.native {
     broker_extension --> client.targets.desktop.native.host_boot.serve_program {
         DesktopBrokerExtension
     }
@@ -1530,7 +1525,7 @@ impl import client.targets.desktop.native {
     oauth_broker --> client.targets.desktop.native.host_boot.boot { SessionStore }
 }
 
-impl import client.targets.desktop.native.cef {
+graph import client.targets.desktop.native.cef {
     cef --> client.targets.desktop.native.cef.cef_smoke { cef_cleanup, new_cef_browser }
     cef --> client.targets.desktop.native.cef.cef_test_host {
         cef_cleanup,
@@ -1543,11 +1538,11 @@ impl import client.targets.desktop.native.cef {
     include cef_platform --> client.targets.desktop.native.cef.cef_subprocess;
 }
 
-impl import client.targets.desktop.native.webview {
+graph import client.targets.desktop.native.webview {
     webview --> client.targets.desktop.native.plugin_bridge { Webview, respond }
 }
 
-impl import client.targets.react_native {
+graph import client.targets.react_native {
     build --> client.targets.mobile_target {
         entry_module_for,
         lint_native_incompatible_usage,
@@ -1629,7 +1624,7 @@ impl import client.targets.react_native {
     }
 }
 
-impl import compiler {
+graph import compiler {
     boundary_audit --> client.compiler.ViteCompiler.prepare_bundle { boundary_audit }
     c_interop --> compiler.backends.native.na_ir_gen_pass {
         c_builtin_kind,
@@ -2047,7 +2042,7 @@ impl import compiler {
     }
 }
 
-impl import compiler.backends {
+graph import compiler.backends {
     es --> compiler.backends.es.client_kernel_cache._lower { estree as es }
     es --> compiler.backends.es.es_unparse { estree as es }
     es --> compiler.backends.es.jsx_processor.EsJsxProcessor.init { estree as es }
@@ -2064,7 +2059,7 @@ impl import compiler.backends {
     native --> compiler.driver.pipeline.product_pipeline { NaIRGenPass }
 }
 
-impl import compiler.backends.common {
+graph import compiler.backends.common {
     ast_gen_base --> compiler.backends.es.esast_gen_pass { BaseAstGenPass }
     ast_gen_base --> compiler.backends.py.jcir_gen_pass { BaseAstGenPass }
     primitives --> compiler.backends.es.primitives_es {
@@ -2097,7 +2092,7 @@ impl import compiler.backends.common {
     }
 }
 
-impl import compiler.backends.es {
+graph import compiler.backends.es {
     client_kernel_cache --> compiler.backends.es.jac_runtime_js.build_osp_core_js {
         osp_core_js
     }
@@ -2323,7 +2318,7 @@ impl import compiler.backends.es {
     }
 }
 
-impl import compiler.backends.es.backends {
+graph import compiler.backends.es.backends {
     preact --> compiler.backends.es.backends.registry.resolve_framework_backend {
         PreactBackend
     }
@@ -2364,7 +2359,7 @@ impl import compiler.backends.es.backends {
     }
 }
 
-impl import compiler.backends.native {
+graph import compiler.backends.native {
     abi --> compiler.backends.native.na_ir_gen_pass { classify_foreign_fn }
     abi --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._build_jc_layout {
         struct_layouts
@@ -2625,7 +2620,7 @@ impl import compiler.backends.native {
     wasm_linker --> dist.source.build.build_native_product { WasmLinker }
 }
 
-impl import compiler.backends.native.llvm {
+graph import compiler.backends.native.llvm {
     binding as llvm --> cli.commands.execution._jab_native_bin;
     binding as llvm --> cli.commands.native_build._application_ir;
     binding as llvm --> compiler.backends.native.link_glue.bind_shared_callbacks;
@@ -2691,7 +2686,7 @@ impl import compiler.backends.native.llvm {
     type ir --> compiler.frontend.codeinfo { Module as IRModule }
 }
 
-impl import compiler.backends.native.llvm.binding {
+graph import compiler.backends.native.llvm.binding {
     common --> compiler.backends.native.llvm.binding.dylib { _encode_string }
     common --> compiler.backends.native.llvm.binding.ffi { _is_shutting_down }
     common --> compiler.backends.native.llvm.binding.module {
@@ -2732,7 +2727,7 @@ impl import compiler.backends.native.llvm.binding {
     type value --> compiler.backends.native.llvm.binding.targets { ValueRef }
 }
 
-impl import compiler.backends.native.llvm.ir {
+graph import compiler.backends.native.llvm.ir {
     _utils --> compiler.backends.native.llvm.ir.instructions { _HasMetadata }
     _utils --> compiler.backends.native.llvm.ir.types { _StrCaching }
     _utils --> compiler.backends.native.llvm.ir.values {
@@ -2762,7 +2757,7 @@ impl import compiler.backends.native.llvm.ir {
     }
 }
 
-impl import compiler.backends.py {
+graph import compiler.backends.py {
     artifact_imports --> compiler.driver.application._prepare {
         package_sources,
         runtime_sources
@@ -2818,7 +2813,7 @@ impl import compiler.backends.py {
     jcir_gen_pass --> compiler.driver.pipeline { JcirGenPass }
 }
 
-impl import compiler.driver {
+graph import compiler.driver {
     application --> cli.commands.execution.serve { prepare_application }
     application --> client.targets.client_dev_common.dev_proxy_paths {
         prepare_application
@@ -4060,7 +4055,7 @@ impl import compiler.driver {
     }
 }
 
-impl import compiler.frontend {
+graph import compiler.frontend {
     codeinfo --> cli.check_report.print_native_coverage {
         effective_default_codespace,
         native_display_text
@@ -5582,7 +5577,7 @@ impl import compiler.frontend {
     srcloc --> project.source.span_for_file { Span }
     unitree --> cli.commands.analysis._check_file_job { Source as _Src }
     unitree --> cli.commands.architecture {
-        ImplImport,
+        GraphImport,
         Import,
         ImportRule,
         ImportWire,
@@ -5772,7 +5767,7 @@ impl import compiler.frontend {
         EmptyToken,
         Enum,
         ImplDef,
-        ImplImport,
+        GraphImport,
         Import,
         ImportRule,
         ImportWire,
@@ -5918,7 +5913,7 @@ impl import compiler.frontend {
         IfElseExpr,
         IfStmt,
         ImplDef,
-        ImplImport,
+        GraphImport,
         Import,
         ImportRule,
         ImportWire,
@@ -6050,7 +6045,7 @@ impl import compiler.frontend {
         HasVar,
         IfElseExpr,
         ImplDef,
-        ImplImport,
+        GraphImport,
         Import,
         ImportRule,
         ImportWire,
@@ -6221,7 +6216,7 @@ impl import compiler.frontend {
         FuncCall,
         FuncSignature,
         ImplDef,
-        ImplImport,
+        GraphImport,
         Import,
         KWPair,
         LambdaExpr,
@@ -6364,7 +6359,7 @@ impl import compiler.frontend {
         Ability,
         EmptyToken,
         ImplDef,
-        ImplImport,
+        GraphImport,
         Import,
         ImportRule,
         ImportWire,
@@ -6725,7 +6720,7 @@ impl import compiler.frontend {
         FormattedValue,
         IfStmt,
         ImplDef,
-        ImplImport,
+        GraphImport,
         Import,
         InForStmt,
         Int,
@@ -7270,9 +7265,10 @@ impl import compiler.frontend {
         bundled_stdlib_module_of,
         is_in_jaclang_package
     }
+    diagnostics --> compiler.passes.import_wiring_pass { W2084 }
 }
 
-impl import compiler.frontend.parser {
+graph import compiler.frontend.parser {
     frontend --> cli.commands.analysis._check_file_job { _replay_diags, parse_diags }
     frontend --> cli.commands.architecture._parse_imports { parse_woven }
     frontend --> compiler.driver.compilation_context.SourceStore.parse { parse_woven }
@@ -7340,7 +7336,7 @@ impl import compiler.frontend.parser {
     }
 }
 
-impl import compiler.passes {
+graph import compiler.passes {
     access_check_pass --> compiler.driver.pipeline.get_analysis_sched {
         AccessCheckPass
     }
@@ -7728,7 +7724,7 @@ impl import compiler.passes {
     }
 }
 
-impl import compiler.placement {
+graph import compiler.placement {
     placement --> cli.commands.analysis._check_file_job { collect_placement_rows }
     placement --> cli.commands.analysis.explain { collect_placement_rows }
     placement --> cli.commands.fix._verify_claims { element_display_name }
@@ -7917,7 +7913,7 @@ impl import compiler.placement {
     placement_work --> compiler.placement.placement_solver { PlacementWork }
 }
 
-impl import compiler.tests {
+graph import compiler.tests {
     xbackend_equiv --> compiler.tests.test_fixed_width_equivalence {
         call_py_fixture,
         compile_fixture_to_js,
@@ -7987,11 +7983,11 @@ impl import compiler.tests {
     }
 }
 
-impl import compiler.tests.fixtures {
+graph import compiler.tests.fixtures {
     fw_conformance --> compiler.tests.test_fixed_width_equivalence { FwScope }
 }
 
-impl import compiler.tools {
+graph import compiler.tools {
     code_intel --> cli.commands.code { CodeIntelligence }
     code_intel --> compiler.tests.test_code_intel { CodeIntelligence }
     comment_attach_pass --> compiler.driver.pipeline.get_format_sched {
@@ -8056,7 +8052,7 @@ impl import compiler.tools {
     unparse_pass --> lsp.server.engine { unparse_node }
 }
 
-impl import compiler.types {
+graph import compiler.types {
     builtin_extensions --> compiler.types.type_evaluator { install_builtin_extensions }
     ct_eval --> compiler.types.type_evaluator { CtEvaluator }
     ct_value --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._instantiate_generic {
@@ -8633,7 +8629,7 @@ impl import compiler.types {
     types --> lsp.server.utils { ClassType, ModuleType, TypeBase }
 }
 
-impl import compiler.types.stubcat {
+graph import compiler.types.stubcat {
     build as catalog_build --> compiler.tests.test_stubcat_roundtrip;
     build --> compiler.tests.test_stubcat_roundtrip { build_catalog }
     build --> compiler.types.stubcat.locate._build_dev_catalog { build_catalog }
@@ -8802,7 +8798,7 @@ impl import compiler.types.stubcat {
     writer --> compiler.types.stubcat.modiface { CatalogWriter }
 }
 
-impl import data {
+graph import data {
     dbcatalog --> cli.commands.db { DbRecord, MAINTENANCE_DB }
     dbcatalog --> cli.commands.db._db_drop { is_jac_database }
     dbcatalog --> cli.commands.db._db_prune {
@@ -8957,7 +8953,7 @@ impl import data {
     store --> server.shared_store.shared_store { PgStore }
 }
 
-impl import data.storage {
+graph import data.storage {
     local_storage --> data.storage { LocalStorage }
     local_storage --> scale.tests.data.test_s3_storage { LocalStorage }
     storage --> data.storage { Storage }
@@ -8965,7 +8961,7 @@ impl import data.storage {
     storage --> scale.storage.bucket_storage { Storage }
 }
 
-impl import dist {
+graph import dist {
     fused_binary --> cli.commands.cache._live_keys { running_runtime_entries }
     fused_binary --> cli.commands.project._bundle_binary { append_overlay, has_runtime }
     fused_binary --> client.targets.desktop.desktop_build._bundle_runtime {
@@ -9027,7 +9023,7 @@ impl import dist {
     seal --> client.targets.desktop.desktop_build.stage_program { build_jab }
 }
 
-impl import dist.fused {
+graph import dist.fused {
     trailer --> dist.fused_binary {
         MAGIC,
         OVERLAY_MAGIC,
@@ -9048,7 +9044,7 @@ impl import dist.fused {
     }
 }
 
-impl import dist.payload {
+graph import dist.payload {
     assemble --> dist.payload.cli { MkPayloadOpts, mk_payload }
     assemble --> dist.payload.cli.dispatch { resolve_python, run_stubcat }
     cli --> dist.payload { main }
@@ -9128,7 +9124,7 @@ impl import dist.payload {
     vendor --> dist.payload.cli { build_musl, build_wasm_libc }
 }
 
-impl import dist.publish {
+graph import dist.publish {
     builder --> cli.commands.project._bundle_wheel { WheelBuilder }
     builder --> cli.commands.project.install { WheelBuilder }
     builder --> dist.publish { WheelBuilder }
@@ -9185,12 +9181,12 @@ impl import dist.publish {
     }
 }
 
-impl import dist.source {
+graph import dist.source {
     client --> dist.source.project._write_application { write_client }
     project --> cli.commands.build._build_app { export_project }
 }
 
-impl import jac0core {
+graph import jac0core {
     cache_paths --> cache.home { get_cache_home }
     cache_paths --> compiler.backends.es.client_kernel_cache._cache_dir {
         get_jir_cache_dir
@@ -9297,12 +9293,12 @@ impl import jac0core {
     stubcat_hook --> project.modresolver._stub_catalog_active { active }
 }
 
-impl import lib {
+graph import lib {
     jaclib as _jaclib --> lib;
     include jaclib --> lib;
 }
 
-impl import lsp.protocol {
+graph import lsp.protocol {
     server --> lsp.server.engine { LanguageServer }
     types --> lsp.protocol.server {
         Diagnostic,
@@ -9336,7 +9332,7 @@ impl import lsp.protocol {
     types as lspt --> lsp.server.utils;
 }
 
-impl import lsp.server {
+graph import lsp.server {
     engine --> lsp.server.server { JacLangServer }
     module_manager --> lsp.server.engine { ModuleManager }
     rwlock --> lsp.server.engine { ReadWriteLock }
@@ -9346,7 +9342,7 @@ impl import lsp.server {
     utils --> lsp.server.engine { doc_of_sym, get_completion_items }
 }
 
-impl import project {
+graph import project {
     app_kinds --> compiler.driver.pipeline.compile_application { kind_has_client }
     app_kinds --> dist.seal.build_serve_manifest { kind_has_server }
     app_kinds --> dist.source.project.export_project {
@@ -10104,7 +10100,7 @@ impl import project {
     source --> cli.commands.architecture._arch_files { drop_git_ignored }
 }
 
-impl import runtime {
+graph import runtime {
     archetype --> byllm.llm._mock_jsonable { Archetype }
     archetype --> byllm.visit_routing { Anchor, Archetype, ObjectSpatialFunction }
     archetype --> byllm.visit_routing._candidate_for {
@@ -10799,7 +10795,7 @@ impl import runtime {
     runtime --> runtime.graph_utils.collect_node_connections { JacRuntimeInterface }
 }
 
-impl import scale {
+graph import scale {
     admin --> scale.admin.admin_portal.JacAPIServerAdmin.build_admin_client {
         admin_portal
     }
@@ -10816,7 +10812,7 @@ impl import scale {
     }
 }
 
-impl import scale._optdeps {
+graph import scale._optdeps {
     apscheduler --> scale.scheduler.scheduler {
         BackgroundScheduler,
         CronTrigger,
@@ -10914,7 +10910,7 @@ impl import scale._optdeps {
     prometheus --> scale.tests.misc.test_optional_deps { Counter, HAS_PROMETHEUS }
 }
 
-impl import scale.admin {
+graph import scale.admin {
     admin_portal --> scale.runtime.gateway.microservice_gateway { JacAPIServerAdmin }
     admin_portal --> scale.server.extensions { JacAPIServerAdmin }
     admin_portal --> scale.tests.misc.test_metrics {
@@ -11029,7 +11025,7 @@ impl import scale.admin {
     workloads --> scale.server.extensions { JacAPIServerWorkloads }
 }
 
-impl import scale.config {
+graph import scale.config {
     app_config --> scale.deploy.target.deployment_target { AppConfig }
     app_config --> scale.deploy.target.kubernetes.manifest_builder { AppConfig }
     app_config --> scale.deploy.target.kubernetes.target { AppConfig }
@@ -11288,7 +11284,7 @@ impl import scale.config {
     }
 }
 
-impl import scale.deploy.autoscale {
+graph import scale.deploy.autoscale {
     autoscaler --> scale.deploy.autoscale.factory { Autoscaler }
     autoscaler --> scale.deploy.autoscale.hpa_autoscaler {
         Autoscaler,
@@ -11409,7 +11405,7 @@ impl import scale.deploy.autoscale {
     }
 }
 
-impl import scale.deploy.database {
+graph import scale.deploy.database {
     kubernetes_postgres --> scale.deploy.target.kubernetes.kubernetes_target {
         KubernetesPostgresProvider
     }
@@ -11421,7 +11417,7 @@ impl import scale.deploy.database {
     }
 }
 
-impl import scale.deploy.target {
+graph import scale.deploy.target {
     deployment_target --> scale.deploy.database.kubernetes_postgres { DeploymentTarget }
     deployment_target --> scale.deploy.target.factory { DeploymentTarget }
     deployment_target --> scale.deploy.target.kubernetes.kubernetes_target {
@@ -11447,7 +11443,7 @@ impl import scale.deploy.target {
     service_deployer --> scale.runtime.orchestrator.process_manager { ServiceDeployer }
 }
 
-impl import scale.deploy.target.kubernetes {
+graph import scale.deploy.target.kubernetes {
     cluster_provider --> scale.deploy.target.kubernetes.ingress { ClusterProvider }
     cluster_provider --> scale.deploy.target.kubernetes.monitoring { ClusterProvider }
     cluster_provider --> scale.deploy.target.kubernetes.utils.kubernetes_utils {
@@ -11682,7 +11678,7 @@ impl import scale.deploy.target.kubernetes {
     target --> scale.tests.microservices.test_fleet_rollout { KubernetesTarget }
 }
 
-impl import scale.deploy.target.kubernetes.utils {
+graph import scale.deploy.target.kubernetes.utils {
     kubernetes_utils --> scale.deploy.autoscale.hpa_autoscaler { delete_if_exists }
     kubernetes_utils --> scale.deploy.target.kubernetes.database_provisioner {
         ensure_namespace_exists
@@ -11736,7 +11732,7 @@ impl import scale.deploy.target.kubernetes.utils {
     }
 }
 
-impl import scale.emailer {
+graph import scale.emailer {
     emailer --> scale.emailer.emailers { Emailer }
     emailer --> scale.emailer.factory { Emailer }
     emailer --> scale.server.extensions { Emailer }
@@ -11752,7 +11748,7 @@ impl import scale.emailer {
     }
 }
 
-impl import scale.events {
+graph import scale.events {
     broker --> scale.config.config_loader.JacScaleConfig.get_events_config {
         RetryPolicy
     }
@@ -11797,7 +11793,7 @@ impl import scale.events {
     subscriber --> scale.tests.misc.test_events { get_subscriptions, subscribe }
 }
 
-impl import scale.events.streams {
+graph import scale.events.streams {
     _stream_common --> scale.events.streams.local { consumer_loop, wait_or_stop }
     _stream_common --> scale.tests.misc.test_events { consumer_loop }
     local --> scale.server.extensions.EventsExtension.register { LocalEventStream }
@@ -11809,7 +11805,7 @@ impl import scale.events.streams {
     postgres --> scale.tests.misc.test_events { PgEventStream }
 }
 
-impl import scale.injector {
+graph import scale.injector {
     binary --> scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle {
         host_toolchain_path
     }
@@ -12016,7 +12012,7 @@ impl import scale.injector {
     }
 }
 
-impl import scale.memory {
+graph import scale.memory {
     context --> scale.runtime.provider.JacScaleRuntime.create_j_context {
         JScaleExecutionContext
     }
@@ -12025,7 +12021,7 @@ impl import scale.memory {
     }
 }
 
-impl import scale.models {
+graph import scale.models {
     deploy_context --> scale.deploy.target.kubernetes.database_provisioner {
         DeployContext
     }
@@ -12089,7 +12085,7 @@ impl import scale.models {
     }
 }
 
-impl import scale.observability {
+graph import scale.observability {
     factory --> scale.plugin { UtilityFactory }
     factory --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
         UtilityFactory
@@ -12142,7 +12138,7 @@ impl import scale.observability {
     }
 }
 
-impl import scale.runtime {
+graph import scale.runtime {
     fleet --> scale.admin.logs._fleet_names { fleet_member_names }
     fleet --> scale.admin.traces._trace_services { fleet_member_names }
     fleet --> scale.deploy.target.kubernetes.manifest_builder {
@@ -12238,7 +12234,7 @@ impl import scale.runtime {
     }
 }
 
-impl import scale.runtime.cli {
+graph import scale.runtime.cli {
     _narrow --> scale.runtime.cli.diagnostics {
         bget,
         dget,
@@ -12259,7 +12255,7 @@ impl import scale.runtime.cli {
     }
 }
 
-impl import scale.runtime.context {
+graph import scale.runtime.context {
     auth_ctx --> scale.runtime.rpc.rpc._rpc_headers { get_current_auth }
     auth_ctx --> scale.server.extensions.ObservabilityExtension.register {
         reset_current_auth,
@@ -12497,7 +12493,7 @@ impl import scale.runtime.context {
     util --> scale.tests.support.start_server { jac_executable }
 }
 
-impl import scale.runtime.gateway {
+graph import scale.runtime.gateway {
     dispatch --> scale.runtime.gateway.embedded_gateway {
         ROUTE_PROXY,
         ROUTE_STATIC,
@@ -12693,7 +12689,7 @@ impl import scale.runtime.gateway {
     }
 }
 
-impl import scale.runtime.middleware {
+graph import scale.runtime.middleware {
     metrics --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_metrics {
         render_metrics
     }
@@ -12734,7 +12730,7 @@ impl import scale.runtime.middleware {
     }
 }
 
-impl import scale.runtime.orchestrator {
+graph import scale.runtime.orchestrator {
     local_deployer --> scale.plugin.scale_cmd { LocalDeployer }
     local_deployer --> scale.runtime.orchestrator.orchestrator { LocalDeployer }
     local_deployer --> scale.tests.deploy.test_deployer { LocalDeployer }
@@ -12772,7 +12768,7 @@ impl import scale.runtime.orchestrator {
     }
 }
 
-impl import scale.runtime.planner {
+graph import scale.runtime.planner {
     planner --> scale.runtime.realizer.local_realizer {
         TOPOLOGY_MICROSERVICE,
         plan_realization
@@ -12780,7 +12776,7 @@ impl import scale.runtime.planner {
     planner --> scale.tests.microservices.test_planner { plan_realization }
 }
 
-impl import scale.runtime.realizer {
+graph import scale.runtime.realizer {
     kubernetes_realizer --> scale.plugin.scale_deploy { KubernetesRealizer }
     kubernetes_realizer as realizer_mod --> scale.tests.deploy.test_deploy_banner;
     kubernetes_realizer --> scale.tests.deploy.test_deploy_banner { KubernetesRealizer }
@@ -12796,7 +12792,7 @@ impl import scale.runtime.realizer {
     local_realizer --> scale.plugin.scale_local_serve { LocalRealizer }
 }
 
-impl import scale.runtime.rpc {
+graph import scale.runtime.rpc {
     breaker --> scale.runtime.rpc.rpc {
         _BREAKER_COOLDOWN_SECONDS,
         breaker_record_failure,
@@ -12824,7 +12820,7 @@ impl import scale.runtime.rpc {
     }
 }
 
-impl import scale.runtime.transport {
+graph import scale.runtime.transport {
     http_forward --> scale.runtime.gateway.microservice_gateway { raw_forward }
     http_forward --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.aggregate_graph_data {
         raw_forward
@@ -12853,7 +12849,7 @@ impl import scale.runtime.transport {
     transport --> scale.tests.microservices.test_embedded_gateway { InProcessTransport }
 }
 
-impl import scale.scheduler {
+graph import scale.scheduler {
     fire_executor --> scale.scheduler.scheduler.new_engine { FireTimeExecutor }
     scheduler --> scale.server.jobs_ext { JacScaleScheduler, TriggerSpec }
     scheduler --> scale.tests.misc.test_optional_deps { JacScaleScheduler, TriggerSpec }
@@ -12872,13 +12868,13 @@ impl import scale.scheduler {
     scheduler_models --> scale.server.jobs_ext { CreateJobRequest, UpdateJobRequest }
 }
 
-impl import scale.sdk {
+graph import scale.sdk {
     client --> scale.sdk { ScaleClient, deploy }
     events --> scale.sdk | scale.sdk.client { EventLogger }
     spec --> scale.sdk | scale.sdk.client { DeploySpec }
 }
 
-impl import scale.server {
+graph import scale.server {
     extensions --> scale.runtime.provider.JacScaleRuntime.get_server_extensions {
         scale_extensions
     }
@@ -12907,7 +12903,7 @@ impl import scale.server {
     websocket_ext --> scale.server.extensions { WebSocketExtension }
 }
 
-impl import scale.shared {
+graph import scale.shared {
     enums --> scale.sso.sso_auth { Operations, Platforms }
     enums --> scale.tests.server.test_firebase_auth_sso { Operations, Platforms }
     utils --> scale.server.sso_ext { is_safe_loopback_redirect }
@@ -12915,7 +12911,7 @@ impl import scale.shared {
     utils --> scale.tests.server.test_sso { is_safe_loopback_redirect }
 }
 
-impl import scale.sso {
+graph import scale.sso {
     apple --> scale.sso.sso_auth.SSOAuth.get_sso { AppleSSOProvider }
     apple --> scale.tests.server.test_oauth_providers { AppleSSOProvider }
     apple --> scale.tests.server.test_sso { AppleSSOProvider }
@@ -12963,7 +12959,7 @@ impl import scale.sso {
     sso_auth --> scale.tests.server.test_sso { SSOAuth }
 }
 
-impl import scale.state {
+graph import scale.state {
     factory --> scale.runtime.middleware.rate_limit { get_state_backend }
     factory --> scale.server.extensions { get_state_backend }
     factory --> scale.tests.microservices.test_rate_limit._reset_state {
@@ -12985,7 +12981,7 @@ impl import scale.state {
     }
 }
 
-impl import scale.storage {
+graph import scale.storage {
     bucket_storage --> scale.storage.gcs_storage { BucketStorage }
     bucket_storage --> scale.storage.s3_storage { BucketStorage }
     factory --> scale.runtime.provider.JacScaleRuntime.store { StorageFactory }
@@ -12996,7 +12992,7 @@ impl import scale.storage {
     s3_storage --> scale.tests.data.test_s3_storage { S3Storage }
 }
 
-impl import scale.tests {
+graph import scale.tests {
     scale_test_client --> scale.tests.microservices.test_app_routes {
         ScaleTestClient,
         make_client
@@ -13127,7 +13123,7 @@ impl import scale.tests {
     toolchain_http --> scale.tests.microservices.test_binary_cache { mock_downloads }
 }
 
-impl import scale.tests.deploy {
+graph import scale.tests.deploy {
     http_activation_test_support --> scale.tests.deploy.test_http_activation_config {
         default_http_activation_config as _cfg,
         mocked_keda_autoscaler as _mocked_keda
@@ -13139,7 +13135,7 @@ impl import scale.tests.deploy {
     }
 }
 
-impl import scale.tests.server {
+graph import scale.tests.server {
     oauth_fixtures --> scale.tests.server.test_oauth_session {
         FakeTokens,
         fake_users,
@@ -13148,7 +13144,7 @@ impl import scale.tests.server {
     oauth_fixtures --> scale.tests.server.test_sso { FakeTokens, fake_users }
 }
 
-impl import scale.utils {
+graph import scale.utils {
     vendor_wheels --> scale.injector.bundle._vendor_stage { pod_wheel_target }
     vendor_wheels --> scale.tests.microservices.test_fat_bundle {
         POD_GLIBC,
@@ -13157,13 +13153,13 @@ impl import scale.utils {
     }
 }
 
-impl import scale.webhook {
+graph import scale.webhook {
     webhook --> scale.server.sso_ext { ApiKeyManager }
     webhook --> scale.server.webhook_ext { ApiKeyManager, WebhookUtils, rate_window_ok }
     webhook --> scale.tests.server.test_pg_job_store { ApiKeyManager }
 }
 
-impl import scale.websocket {
+graph import scale.websocket {
     backplane --> scale.server.websocket_ext { MemoryBackplane, build_backplane }
     backplane --> scale.tests.server.test_backplane { PgBackplane }
     backplane --> scale.tests.server.test_ws_hardening {
@@ -13205,7 +13201,7 @@ impl import scale.websocket {
     websocket --> scale.websocket.protocol { ConnectionContext, consume_rate_token }
 }
 
-impl import server {
+graph import server {
     assembly --> cli.commands.execution {
         gateway_colocates as _gateway_colocates,
         service_apps as _service_apps
@@ -13592,7 +13588,7 @@ impl import server {
     type watcher --> server.hmr { ChangeType, FileChangeEvent, JacFileWatcher }
 }
 
-impl import server.endpoints {
+graph import server.endpoints {
     auth --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api {
         register_auth_endpoints
     }
@@ -13627,7 +13623,7 @@ impl import server.endpoints {
     }
 }
 
-impl import server.identity {
+graph import server.identity {
     audit --> scale.server.extensions { client_ip, emit as audit }
     audit --> server.endpoints.auth { client_ip, emit as audit }
     auth_models --> scale.server.extensions {
@@ -13748,7 +13744,7 @@ impl import server.identity {
     }
 }
 
-impl import server.serving {
+graph import server.serving {
     accesslog --> scale.tests.server.test_serve {
         ACCESS_LOGGER_NAME,
         AccessJsonFormatter,
@@ -14243,7 +14239,7 @@ impl import server.serving {
     ws --> server.serving.server { WebSocket, compute_accept_key }
 }
 
-impl import testing {
+graph import testing {
     cl_test_runner --> scale.tests.server.test_cl_test_runner { run_cl_test_file }
     cl_test_runner --> testing.runner.run_test {
         is_cl_test_file,
@@ -14308,7 +14304,7 @@ impl import testing {
     testkit --> testing.testing { dispatch_and_collect }
 }
 
-impl import toolchains {
+graph import toolchains {
     android --> client.targets.react_native.build.run_eas_local_build { ensure_android }
     android --> client.targets.react_native.build.run_gradle_assemble { ensure_android }
     android --> toolchains.manager.setup_toolchain { ensure_android }
@@ -14426,4 +14422,5454 @@ impl import toolchains {
     store --> toolchains.system.ensure_patchelf { install }
     system --> client.targets.desktop.desktop_build._patchelf_rpath { ensure_patchelf }
     system --> toolchains.desktop { ensure_desktop_host, webkit_module }
+}
+
+graph import compiler.backends.py.jacpython {
+    assembler --> compiler.backends.py.jacpython.compiler_annotations { assemble }
+    assembler --> compiler.backends.py.jacpython.compiler_codegen { assemble }
+    assembler --> compiler.backends.py.jacpython.compiler_defs { assemble }
+    assembler --> compiler.backends.py.jacpython.compiler_emit { assemble }
+    assembler --> compiler.backends.py.jacpython.product_compile { assemble }
+    codegen_util --> compiler.backends.py.jacpython.compiler_annotations {
+        expr_loc,
+        nloc,
+        no_loc,
+        stmt_loc
+    }
+    codegen_util --> compiler.backends.py.jacpython.compiler_codegen {
+        args_have_kw_defaults,
+        ast_cmp_kind,
+        ast_node_name,
+        async_function_def_loc,
+        binop_id,
+        body_docstring,
+        body_is_try_except_only,
+        body_is_try_finally_only,
+        call_effective_args,
+        call_func_loc,
+        class_effective_bases,
+        class_effective_keywords,
+        cmpop_filter_oparg,
+        cmpop_oparg,
+        comp_bound_names_from_target,
+        comp_dict_map_loc,
+        comp_leftmost_leaf,
+        comp_name_bound,
+        display_all_constant,
+        display_const_items,
+        display_has_starred,
+        exec_tail_emits_code,
+        expr_loc,
+        fold_slice_const,
+        function_argcounts,
+        function_code_flags,
+        function_def_loc,
+        import_bind_name,
+        inplace_binop_id,
+        is_seq_literal,
+        loop_body_has_break,
+        match_pattern_loc,
+        match_pattern_unwrap_or,
+        match_pattern_wildcard,
+        nloc,
+        seq_target_elts,
+        starred_target_index,
+        stmt_loc,
+        top_loc,
+        try_fold_binop,
+        try_handler_span,
+        unary_opcode
+    }
+    codegen_util --> compiler.backends.py.jacpython.compiler_defs {
+        async_function_def_loc,
+        body_docstring,
+        class_effective_bases,
+        class_effective_keywords,
+        exec_tail_emits_code,
+        expr_loc,
+        function_argcounts,
+        function_code_flags,
+        function_def_loc,
+        import_bind_name,
+        nested_code_qualname,
+        nloc,
+        stmt_loc
+    }
+    codegen_util --> compiler.backends.py.jacpython.compiler_emit {
+        args_have_kw_defaults,
+        ast_cmp_kind,
+        ast_node_name,
+        async_function_def_loc,
+        binop_id,
+        body_is_try_except_only,
+        body_is_try_finally_only,
+        call_effective_args,
+        call_effective_keywords,
+        call_func_loc,
+        class_effective_bases,
+        class_effective_keywords,
+        cmpop_filter_oparg,
+        cmpop_oparg,
+        comp_bound_names_from_target,
+        comp_dict_map_loc,
+        comp_leftmost_leaf,
+        comp_name_bound,
+        display_all_constant,
+        display_const_items,
+        display_has_starred,
+        exec_tail_emits_code,
+        expr_loc,
+        fold_default_leaf_values,
+        fold_slice_const,
+        function_argcounts,
+        function_code_flags,
+        function_def_loc,
+        import_bind_name,
+        inplace_binop_id,
+        is_seq_literal,
+        loop_body_has_break,
+        match_pattern_loc,
+        match_pattern_unwrap_or,
+        match_pattern_wildcard,
+        nested_code_qualname,
+        nloc,
+        seq_target_elts,
+        starred_target_index,
+        stmt_loc,
+        top_loc,
+        try_fold_binop,
+        try_handler_span,
+        unary_opcode
+    }
+    codegen_util --> compiler.backends.py.jacpython.compiler_exc {
+        body_is_try_except_only,
+        body_is_try_finally_only,
+        exec_tail_emits_code,
+        expr_loc,
+        nloc,
+        stmt_loc,
+        try_handler_span
+    }
+    codegen_util --> compiler.backends.py.jacpython.compiler_loops {
+        exec_tail_emits_code,
+        expr_loc,
+        loop_body_has_break,
+        loop_body_has_try,
+        nloc
+    }
+    codegen_util --> compiler.backends.py.jacpython.compiler_match {
+        exec_tail_emits_code,
+        expr_loc,
+        match_pattern_loc,
+        match_pattern_unwrap_or,
+        match_pattern_wildcard,
+        nloc,
+        stmt_loc
+    }
+    compiler_annotations --> compiler.backends.py.jacpython.compiler_codegen {
+        ann_scope_plan,
+        collect_ann_plan,
+        emit_module_annotation_setup,
+        finish_module_annotations,
+        visit_ann_assign
+    }
+    compiler_annotations --> compiler.backends.py.jacpython.compiler_defs {
+        collect_ann_plan_class,
+        emit_class_annotation_setup,
+        emit_future_function_annotations,
+        finish_class_annotations
+    }
+    compiler_annotations --> compiler.backends.py.jacpython.compiler_exc {
+        ann_scope_plan
+    }
+    compiler_annotations --> compiler.backends.py.jacpython.compiler_loops {
+        ann_scope_plan
+    }
+    compiler_annotations --> compiler.backends.py.jacpython.compiler_match {
+        ann_scope_plan
+    }
+    compiler_codegen --> compiler.backends.py.jacpython.compiler_annotations.ann_store_target_tos {
+        visit_store_target_tos
+    }
+    compiler_codegen --> compiler.backends.py.jacpython.compiler_defs {
+        emit_name_store,
+        visit_stmt
+    }
+    compiler_codegen --> compiler.backends.py.jacpython.compiler_emit.emit_comprehension_loop {
+        visit_store_target_tos
+    }
+    compiler_codegen --> compiler.backends.py.jacpython.compiler_exc {
+        emit_module_return,
+        emit_name_delete,
+        emit_name_store,
+        emit_unit_loop_exit_epilogue,
+        visit_return_stmt,
+        visit_stmt_tail,
+        visit_stmts,
+        visit_store_target_tos
+    }
+    compiler_codegen --> compiler.backends.py.jacpython.compiler_loops {
+        emit_module_return,
+        emit_tail_and_finish,
+        visit_stmt_tail,
+        visit_stmts,
+        visit_store_target_tos
+    }
+    compiler_codegen --> compiler.backends.py.jacpython.compiler_match {
+        emit_module_return,
+        emit_name_store,
+        visit_stmt_tail,
+        visit_stmts
+    }
+    compiler_codegen --> compiler.backends.py.jacpython.product_compile {
+        compile_eval,
+        compile_exec
+    }
+    compiler_context --> compiler.backends.py.jacpython.compiler_ir { compile_context }
+    compiler_context --> compiler.backends.py.jacpython.product_compile {
+        compile_context
+    }
+    compiler_context --> compiler.frontend.python.compiler_symtable { compile_context }
+    compiler_context --> runtime.python.symtable { compile_context }
+    compiler_defs as dispatch_defs --> compiler.backends.py.jacpython.compiler_codegen.visit_stmt;
+    compiler_emit --> compiler.backends.py.jacpython.compiler_annotations {
+        cellvars_from_sym,
+        codegen_busy,
+        codegen_fail,
+        codegen_mangle,
+        fast_local_index,
+        fast_varnames_from_sym,
+        freevars_from_sym,
+        localsplus_index,
+        localsplus_index_u,
+        visit_expr,
+        visit_subscript_index
+    }
+    compiler_emit --> compiler.backends.py.jacpython.compiler_codegen {
+        cellvars_from_sym,
+        codegen_busy,
+        codegen_fail,
+        codegen_mangle,
+        comp_append_handler,
+        comp_emit_bind_target,
+        comp_emit_cleanup,
+        comp_emit_filters,
+        comp_emit_setup,
+        comp_emit_single_elt,
+        comp_finish_loop,
+        comp_lead_loopvar_slot,
+        comp_name_fast_index,
+        comp_target_slots,
+        compile_lambda_cfg,
+        emit_anext_send_loop_footer,
+        emit_anext_send_loop_header,
+        emit_await_send_except_regions,
+        emit_await_send_loop_footer,
+        emit_await_send_loop_header,
+        emit_branch_if_test_false,
+        emit_branch_if_test_true,
+        emit_cmp_link,
+        emit_control_unwind,
+        emit_folded_int,
+        emit_function_defaults,
+        emit_function_kwdefaults,
+        emit_function_prologue,
+        emit_generator_except_handler,
+        emit_make_function_with_closure,
+        emit_name_load,
+        emit_return_unwind,
+        emit_send_delegation_loop,
+        emit_slice_bound,
+        emit_slice_load,
+        emit_starred_list_build,
+        emit_suspendable_prologue,
+        fast_local_index,
+        fast_varnames_from_sym,
+        finish_control_unwind,
+        flush_pending_await_footers,
+        freevars_from_sym,
+        is_none_identity_test,
+        localsplus_index,
+        localsplus_index_u,
+        name_load_opcode,
+        register_int_literal_const,
+        try_emit_fast_local_pair_load,
+        unit_fail,
+        varname_index,
+        visit_boolop,
+        visit_comp_dict_kv,
+        visit_comp_elt,
+        visit_compare,
+        visit_dict_comp,
+        visit_expr,
+        visit_lambda,
+        visit_list_comp,
+        visit_set_comp,
+        visit_subscript_index,
+        visit_test_expr
+    }
+    compiler_emit --> compiler.backends.py.jacpython.compiler_defs {
+        call_has_unpacking,
+        cellvars_from_sym,
+        codegen_busy,
+        codegen_fail,
+        codegen_mangle,
+        emit_call_ex_positional,
+        emit_call_instruction,
+        emit_call_keyword_values,
+        emit_folded_int,
+        emit_function_defaults,
+        emit_function_kwdefaults,
+        emit_function_prologue,
+        emit_generator_except_handler,
+        emit_local_or_cell_store,
+        emit_make_function_with_closure,
+        emit_name_load,
+        fast_local_index,
+        fast_varnames_from_sym,
+        flush_pending_await_footers,
+        freevars_from_sym,
+        inline_storage_names,
+        localsplus_index,
+        localsplus_index_u,
+        visit_expr
+    }
+    compiler_emit --> compiler.backends.py.jacpython.compiler_exc {
+        anext_send_loop,
+        await_send_loop,
+        codegen_busy,
+        codegen_fail,
+        emit_await_send_except_regions,
+        emit_await_send_loop_footer,
+        emit_await_send_loop_header,
+        emit_return_unwind,
+        emit_send_delegation_loop,
+        visit_expr
+    }
+    compiler_emit --> compiler.backends.py.jacpython.compiler_loops {
+        codegen_busy,
+        codegen_fail,
+        emit_anext_send_loop_footer,
+        emit_anext_send_loop_header,
+        emit_branch_if_test_false,
+        emit_branch_if_test_true,
+        emit_send_delegation_loop,
+        visit_expr,
+        visit_test_expr
+    }
+    compiler_emit --> compiler.backends.py.jacpython.compiler_match {
+        codegen_busy,
+        codegen_fail,
+        codegen_mangle,
+        emit_branch_if_test_false,
+        fast_local_index,
+        visit_expr,
+        visit_test_expr
+    }
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_codegen.finish_source_scope;
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_codegen.visit_stmt;
+    compiler_exc --> compiler.backends.py.jacpython.compiler_defs {
+        emit_deferred_comp_handlers
+    }
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_emit.compile_genexp_cfg;
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_emit.compile_lambda_cfg;
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_emit.emit_control_unwind;
+    compiler_exc --> compiler.backends.py.jacpython.compiler_loops {
+        emit_anext_send_except_regions
+    }
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_loops.visit_async_for;
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_loops.visit_for;
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_loops.visit_if;
+    compiler_exc as dispatch_exc --> compiler.backends.py.jacpython.compiler_loops.visit_while;
+    compiler_ir --> compiler.backends.py.jacpython.assembler {
+        NO_LINE,
+        cinstr,
+        cloc,
+        except_region,
+        instr_size_codeunits,
+        loc,
+        same_loc
+    }
+    compiler_ir --> compiler.backends.py.jacpython.codegen_util {
+        basicblock,
+        cfg_builder,
+        cinstr,
+        cloc,
+        comp_handler,
+        except_region,
+        loc,
+        loop_frame,
+        mk_instr,
+        mk_jump,
+        new_cfg_builder,
+        no_loc,
+        stmt_cont,
+        unverified_cfg
+    }
+    compiler_ir --> compiler.backends.py.jacpython.compiler_annotations {
+        basicblock,
+        cfg_builder,
+        cinstr,
+        cloc,
+        loc,
+        new_cfg_builder,
+        stmt_cont,
+        unverified_cfg
+    }
+    compiler_ir --> compiler.backends.py.jacpython.compiler_codegen {
+        basicblock,
+        break_site,
+        cfg_builder,
+        cinstr,
+        cloc,
+        comp_handler,
+        control_unwind,
+        except_region,
+        loc,
+        loop_frame,
+        mk_instr,
+        mk_jump,
+        new_cfg_builder,
+        no_loc,
+        stmt_cont,
+        unverified_cfg
+    }
+    compiler_ir --> compiler.backends.py.jacpython.compiler_defs {
+        cfg_builder,
+        cloc,
+        loc,
+        new_cfg_builder,
+        no_loc,
+        stmt_cont,
+        unverified_cfg
+    }
+    compiler_ir --> compiler.backends.py.jacpython.compiler_emit {
+        await_footer_job,
+        basicblock,
+        cfg_builder,
+        cinstr,
+        cleanup_frame,
+        cloc,
+        comp_handler,
+        control_unwind,
+        except_region,
+        loc,
+        loop_frame,
+        mk_instr,
+        mk_jump,
+        new_cfg_builder,
+        no_loc,
+        stmt_cont,
+        try_await_frame,
+        unverified_cfg,
+        with_unwind_rec
+    }
+    compiler_ir --> compiler.backends.py.jacpython.compiler_exc {
+        await_footer_job,
+        basicblock,
+        cfg_builder,
+        cleanup_frame,
+        cloc,
+        except_region,
+        loc,
+        no_loc,
+        stmt_cont,
+        try_await_frame,
+        with_unwind_rec
+    }
+    compiler_ir --> compiler.backends.py.jacpython.compiler_loops {
+        basicblock,
+        break_site,
+        cfg_builder,
+        cinstr,
+        cloc,
+        except_region,
+        loc,
+        loop_frame,
+        mk_instr,
+        mk_jump,
+        no_loc,
+        same_loc,
+        stmt_cont
+    }
+    compiler_ir --> compiler.backends.py.jacpython.compiler_match {
+        basicblock,
+        cfg_builder,
+        cloc,
+        loc,
+        stmt_cont
+    }
+    compiler_ir --> compiler.backends.py.jacpython.flowgraph {
+        basicblock,
+        cinstr,
+        except_region,
+        instr_size_codeunits,
+        mk_instr,
+        unverified_cfg
+    }
+    compiler_loops as dispatch_loops --> compiler.backends.py.jacpython.compiler_codegen.visit_stmt;
+    compiler_match as dispatch_match --> compiler.backends.py.jacpython.compiler_codegen.visit_stmt;
+    flowgraph --> compiler.backends.py.jacpython.assembler {
+        flatten_blocks,
+        verified_cfg
+    }
+    flowgraph --> compiler.backends.py.jacpython.compiler_annotations { verify_cfg }
+    flowgraph --> compiler.backends.py.jacpython.compiler_codegen {
+        optimize_swap_range,
+        verify_cfg
+    }
+    flowgraph --> compiler.backends.py.jacpython.compiler_defs { verify_cfg }
+    flowgraph --> compiler.backends.py.jacpython.compiler_emit {
+        build_layout_pos,
+        layout_pos,
+        optimize_swap_range,
+        verify_cfg
+    }
+    flowgraph --> compiler.backends.py.jacpython.compiler_exc {
+        build_layout_pos,
+        layout_pos
+    }
+    flowgraph --> compiler.backends.py.jacpython.compiler_loops {
+        MAX_COPY_SIZE,
+        copy_cinstr
+    }
+    flowgraph --> compiler.backends.py.jacpython.compiler_match { optimize_swap_range }
+    flowgraph --> compiler.backends.py.jacpython.product_compile { verify_cfg }
+    product_compile --> compiler.backends.py.jacpython.native_api {
+        compile_ast,
+        compile_source,
+        prepare_ast_output
+    }
+}
+
+graph import compiler.frontend.python {
+    annotation_unparse --> compiler.backends.py.jacpython.product_compile {
+        stringify_future_annotations
+    }
+    ast_input --> compiler.backends.py.jacpython.native_api { read_node }
+    ast_nodes --> compiler.backends.py.jacpython.codegen_util {
+        Add,
+        And,
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Delete,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        ExceptHandler,
+        Expr,
+        FloorDiv,
+        For,
+        FormattedValue,
+        FunctionDef,
+        GeneratorExp,
+        Global,
+        Gt,
+        GtE,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        Interpolation,
+        Invert,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Lt,
+        LtE,
+        MatMult,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Mod,
+        Mult,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        Not,
+        NotEq,
+        Or,
+        Pass,
+        Pow,
+        RShift,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        UAdd,
+        USub,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arguments,
+        ast_node,
+        comprehension,
+        expr,
+        keyword,
+        match_case,
+        operator,
+        pattern,
+        stmt
+    }
+    ast_nodes --> compiler.backends.py.jacpython.compiler_annotations {
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Delete,
+        Dict,
+        DictComp,
+        ExceptHandler,
+        Expr,
+        For,
+        FormattedValue,
+        FunctionDef,
+        GeneratorExp,
+        Global,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        Interpolation,
+        JoinedStr,
+        Lambda,
+        List,
+        ListComp,
+        Match,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        Pass,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        expr,
+        match_case,
+        stmt
+    }
+    ast_nodes --> compiler.backends.py.jacpython.compiler_codegen {
+        Add,
+        And,
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Break,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Delete,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        ExceptHandler,
+        Expr,
+        FloorDiv,
+        For,
+        FormattedValue,
+        FunctionDef,
+        GeneratorExp,
+        Global,
+        Gt,
+        GtE,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        In,
+        Interpolation,
+        Invert,
+        Is,
+        IsNot,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Lt,
+        LtE,
+        MatMult,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Mod,
+        Mult,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        Not,
+        NotEq,
+        NotIn,
+        Or,
+        Pass,
+        Pow,
+        RShift,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        UAdd,
+        USub,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arguments,
+        ast_node,
+        comprehension,
+        expr,
+        keyword,
+        match_case,
+        pattern,
+        stmt
+    }
+    ast_nodes --> compiler.backends.py.jacpython.compiler_defs {
+        AsyncFunctionDef,
+        Call,
+        ClassDef,
+        Constant,
+        Dict,
+        FunctionDef,
+        Import,
+        ImportFrom,
+        Load,
+        Name,
+        ParamSpec,
+        Starred,
+        Tuple,
+        TypeAlias,
+        TypeVar,
+        TypeVarTuple,
+        arguments,
+        expr,
+        keyword,
+        stmt,
+        type_param
+    }
+    ast_nodes --> compiler.backends.py.jacpython.compiler_emit {
+        Add,
+        And,
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Delete,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        ExceptHandler,
+        Expr,
+        FloorDiv,
+        For,
+        FormattedValue,
+        FunctionDef,
+        GeneratorExp,
+        Global,
+        Gt,
+        GtE,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        In,
+        Interpolation,
+        Invert,
+        Is,
+        IsNot,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Lt,
+        LtE,
+        MatMult,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Mod,
+        Mult,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        Not,
+        NotEq,
+        NotIn,
+        Or,
+        Pass,
+        Pow,
+        RShift,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        UAdd,
+        USub,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arguments,
+        ast_node,
+        comprehension,
+        expr,
+        keyword,
+        match_case,
+        pattern,
+        stmt
+    }
+    ast_nodes --> compiler.backends.py.jacpython.compiler_exc {
+        AsyncWith,
+        ExceptHandler,
+        Pass,
+        Raise,
+        Return,
+        Try,
+        TryStar,
+        With,
+        expr,
+        stmt
+    }
+    ast_nodes --> compiler.backends.py.jacpython.compiler_ir { stmt }
+    ast_nodes --> compiler.backends.py.jacpython.compiler_loops {
+        AsyncFor,
+        Constant,
+        For,
+        If,
+        Name,
+        While,
+        stmt
+    }
+    ast_nodes --> compiler.backends.py.jacpython.compiler_match {
+        Attribute,
+        Constant,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Name,
+        expr,
+        pattern,
+        stmt
+    }
+    ast_nodes --> compiler.backends.py.jacpython.native_api { mod }
+    ast_nodes --> compiler.backends.py.jacpython.product_compile {
+        Expr,
+        Expression,
+        Interactive,
+        Module,
+        expr,
+        mod
+    }
+    ast_nodes --> compiler.frontend.python.annotation_unparse {
+        Add,
+        And,
+        AnnAssign,
+        AsyncFunctionDef,
+        Attribute,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Call,
+        Compare,
+        Constant,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        FloorDiv,
+        FormattedValue,
+        FunctionDef,
+        GeneratorExp,
+        Gt,
+        GtE,
+        IfExp,
+        In,
+        Interpolation,
+        Invert,
+        Is,
+        IsNot,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Lt,
+        LtE,
+        MatMult,
+        Mod,
+        Mult,
+        Name,
+        NamedExpr,
+        Not,
+        NotEq,
+        NotIn,
+        Or,
+        Pow,
+        RShift,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Tuple,
+        UAdd,
+        USub,
+        UnaryOp,
+        Yield,
+        YieldFrom,
+        arg,
+        arguments,
+        ast_node,
+        comprehension,
+        expr
+    }
+    ast_nodes --> compiler.frontend.python.ast_input {
+        Add,
+        And,
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Del,
+        Delete,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        ExceptHandler,
+        Expr,
+        Expression,
+        FloorDiv,
+        For,
+        FormattedValue,
+        FunctionDef,
+        FunctionType,
+        GeneratorExp,
+        Global,
+        Gt,
+        GtE,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        In,
+        Interactive,
+        Interpolation,
+        Invert,
+        Is,
+        IsNot,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Lt,
+        LtE,
+        MatMult,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Mod,
+        Module,
+        Mult,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        Not,
+        NotEq,
+        NotIn,
+        Or,
+        ParamSpec,
+        Pass,
+        Pow,
+        RShift,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        TypeIgnore,
+        TypeVar,
+        TypeVarTuple,
+        UAdd,
+        USub,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arg,
+        arguments,
+        ast_field,
+        ast_kind,
+        ast_node,
+        boolop,
+        cmpop,
+        comprehension,
+        excepthandler,
+        expr,
+        expr_context,
+        keyword,
+        match_case,
+        mod,
+        operator,
+        pattern,
+        stmt,
+        type_ignore,
+        type_param,
+        unaryop,
+        withitem
+    }
+    ast_nodes --> compiler.frontend.python.ast_output {
+        Add,
+        And,
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Del,
+        Delete,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        ExceptHandler,
+        Expr,
+        Expression,
+        FloorDiv,
+        For,
+        FormattedValue,
+        FunctionDef,
+        FunctionType,
+        GeneratorExp,
+        Global,
+        Gt,
+        GtE,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        In,
+        Interactive,
+        Interpolation,
+        Invert,
+        Is,
+        IsNot,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Lt,
+        LtE,
+        MatMult,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Mod,
+        Module,
+        Mult,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        Not,
+        NotEq,
+        NotIn,
+        Or,
+        ParamSpec,
+        Pass,
+        Pow,
+        RShift,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        TypeIgnore,
+        TypeVar,
+        TypeVarTuple,
+        UAdd,
+        USub,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arg,
+        arguments,
+        ast_field,
+        ast_kind,
+        ast_node,
+        comprehension,
+        keyword,
+        match_case,
+        withitem
+    }
+    ast_nodes --> compiler.frontend.python.ast_validation {
+        Add,
+        And,
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Del,
+        Delete,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        ExceptHandler,
+        Expr,
+        Expression,
+        FloorDiv,
+        For,
+        FormattedValue,
+        FunctionDef,
+        FunctionType,
+        GeneratorExp,
+        Global,
+        Gt,
+        GtE,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        In,
+        Interactive,
+        Interpolation,
+        Invert,
+        Is,
+        IsNot,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Lt,
+        LtE,
+        MatMult,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Mod,
+        Module,
+        Mult,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        Not,
+        NotEq,
+        NotIn,
+        Or,
+        ParamSpec,
+        Pass,
+        Pow,
+        RShift,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        TypeIgnore,
+        TypeVar,
+        TypeVarTuple,
+        UAdd,
+        USub,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arg,
+        arguments,
+        ast_node,
+        boolop,
+        cmpop,
+        comprehension,
+        excepthandler,
+        expr,
+        expr_context,
+        keyword,
+        match_case,
+        mod,
+        operator,
+        pattern,
+        stmt,
+        type_ignore,
+        type_param,
+        unaryop,
+        withitem
+    }
+    ast_nodes --> compiler.frontend.python.ast_walk {
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BoolOp,
+        Call,
+        ClassDef,
+        Compare,
+        Delete,
+        Dict,
+        DictComp,
+        ExceptHandler,
+        Expr,
+        Expression,
+        For,
+        FormattedValue,
+        FunctionDef,
+        FunctionType,
+        GeneratorExp,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        Interactive,
+        Interpolation,
+        JoinedStr,
+        Lambda,
+        List,
+        ListComp,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchValue,
+        Module,
+        Name,
+        NamedExpr,
+        ParamSpec,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        TypeVar,
+        TypeVarTuple,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arg,
+        arguments,
+        ast_node,
+        boolop,
+        cmpop,
+        comprehension,
+        excepthandler,
+        expr,
+        expr_context,
+        keyword,
+        match_case,
+        operator,
+        pattern,
+        stmt,
+        type_ignore,
+        type_param,
+        unaryop,
+        withitem
+    }
+    ast_nodes --> compiler.frontend.python.compiler_preprocess {
+        Add,
+        AnnAssign,
+        AsyncFunctionDef,
+        BinOp,
+        ClassDef,
+        Constant,
+        Expr,
+        FormattedValue,
+        FunctionDef,
+        FunctionType,
+        JoinedStr,
+        Load,
+        MatchMapping,
+        MatchValue,
+        Mod,
+        Module,
+        Name,
+        Pass,
+        Starred,
+        Sub,
+        Tuple,
+        USub,
+        UnaryOp,
+        arg,
+        ast_node,
+        expr,
+        stmt
+    }
+    ast_nodes --> compiler.frontend.python.compiler_symtable {
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BoolOp,
+        Call,
+        ClassDef,
+        Compare,
+        Del,
+        Delete,
+        Dict,
+        DictComp,
+        Expr,
+        For,
+        FormattedValue,
+        FunctionDef,
+        GeneratorExp,
+        Global,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        Interpolation,
+        JoinedStr,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Module,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        ParamSpec,
+        Pass,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        TypeVar,
+        TypeVarTuple,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arg,
+        arguments,
+        ast_node,
+        comprehension,
+        expr,
+        match_case,
+        pattern,
+        stmt,
+        type_param
+    }
+    ast_nodes --> compiler.frontend.python.compiler_validate {
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Del,
+        Delete,
+        Dict,
+        DictComp,
+        Expr,
+        For,
+        FunctionDef,
+        GeneratorExp,
+        Global,
+        If,
+        ImportFrom,
+        Is,
+        IsNot,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        MatMult,
+        Match,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        ParamSpec,
+        Pass,
+        Return,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        TypeVar,
+        TypeVarTuple,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        arguments,
+        ast_node,
+        comprehension,
+        expr,
+        stmt,
+        type_param
+    }
+    ast_nodes --> compiler.frontend.python.parser {
+        Add,
+        And,
+        AnnAssign,
+        Assert,
+        Assign,
+        AsyncFor,
+        AsyncFunctionDef,
+        AsyncWith,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Del,
+        Delete,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        ExceptHandler,
+        Expr,
+        Expression,
+        FloorDiv,
+        For,
+        FormattedValue,
+        FunctionDef,
+        FunctionType,
+        GeneratorExp,
+        Global,
+        Gt,
+        GtE,
+        If,
+        IfExp,
+        Import,
+        ImportFrom,
+        In,
+        Interactive,
+        Interpolation,
+        Invert,
+        Is,
+        IsNot,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Lt,
+        LtE,
+        MatMult,
+        Match,
+        MatchAs,
+        MatchClass,
+        MatchMapping,
+        MatchOr,
+        MatchSequence,
+        MatchSingleton,
+        MatchStar,
+        MatchValue,
+        Mod,
+        Module,
+        Mult,
+        Name,
+        NamedExpr,
+        Nonlocal,
+        Not,
+        NotEq,
+        NotIn,
+        Or,
+        ParamSpec,
+        Pass,
+        Pow,
+        RShift,
+        Raise,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Try,
+        TryStar,
+        Tuple,
+        TypeAlias,
+        TypeVar,
+        TypeVarTuple,
+        UAdd,
+        USub,
+        UnaryOp,
+        While,
+        With,
+        Yield,
+        YieldFrom,
+        alias,
+        arg,
+        arguments,
+        ast_node,
+        cmpop,
+        comprehension,
+        excepthandler,
+        expr,
+        expr_context,
+        keyword,
+        match_case,
+        mod,
+        operator,
+        pattern,
+        stmt,
+        type_param,
+        withitem
+    }
+    ast_nodes --> compiler.frontend.python.parser.finish_parse { TypeIgnore }
+    ast_nodes --> compiler.frontend.python.parser_actions {
+        Add,
+        And,
+        AnnAssign,
+        Assign,
+        AsyncFunctionDef,
+        Attribute,
+        AugAssign,
+        Await,
+        BinOp,
+        BitAnd,
+        BitOr,
+        BitXor,
+        BoolOp,
+        Break,
+        Call,
+        ClassDef,
+        Compare,
+        Constant,
+        Continue,
+        Del,
+        Delete,
+        Dict,
+        DictComp,
+        Div,
+        Eq,
+        Expr,
+        Expression,
+        FloorDiv,
+        FormattedValue,
+        FunctionDef,
+        GeneratorExp,
+        Gt,
+        GtE,
+        IfExp,
+        ImportFrom,
+        In,
+        Interpolation,
+        Invert,
+        Is,
+        IsNot,
+        JoinedStr,
+        LShift,
+        Lambda,
+        List,
+        ListComp,
+        Load,
+        Lt,
+        LtE,
+        MatMult,
+        MatchOr,
+        MatchSingleton,
+        Mod,
+        Module,
+        Mult,
+        Name,
+        NamedExpr,
+        Not,
+        NotEq,
+        NotIn,
+        Or,
+        Pass,
+        Pow,
+        RShift,
+        Return,
+        Set,
+        SetComp,
+        Slice,
+        Starred,
+        Store,
+        Sub,
+        Subscript,
+        TemplateStr,
+        Tuple,
+        UAdd,
+        USub,
+        UnaryOp,
+        Yield,
+        YieldFrom,
+        alias,
+        arg,
+        arguments,
+        ast_node,
+        boolop,
+        cmpop,
+        comprehension,
+        excepthandler,
+        expr,
+        expr_context,
+        keyword,
+        match_case,
+        mod,
+        operator,
+        pattern,
+        stmt,
+        type_param,
+        unaryop,
+        withitem
+    }
+    ast_nodes --> runtime.python.symtable { Expr, stmt }
+    ast_output --> compiler.backends.py.jacpython.native_api { ast_write_node }
+    ast_output --> runtime.python.symtable {
+        ast_output_append_owned,
+        ast_output_checked,
+        ast_write_text
+    }
+    ast_validation --> compiler.backends.py.jacpython.native_api { validate_ast_value }
+    ast_walk --> compiler.frontend.python.annotation_unparse {
+        ast_child_visitor,
+        visit_ast_children
+    }
+    ast_walk --> compiler.frontend.python.ast_validation {
+        ast_child_visitor,
+        visit_ast_children
+    }
+    ast_walk --> compiler.frontend.python.compiler_preprocess {
+        ast_rewriter,
+        rewrite_ast_children
+    }
+    ast_walk --> compiler.frontend.python.compiler_validate {
+        ast_child_buffer,
+        ast_child_visitor,
+        visit_ast_children
+    }
+    compiler_diagnostics --> compiler.backends.py.jacpython.compiler_codegen {
+        lowering_diagnostic
+    }
+    compiler_diagnostics --> compiler.backends.py.jacpython.compiler_emit {
+        lowering_diagnostic
+    }
+    compiler_diagnostics --> compiler.backends.py.jacpython.compiler_ir {
+        compiler_diagnostic
+    }
+    compiler_diagnostics --> compiler.backends.py.jacpython.flowgraph {
+        compiler_diagnostic,
+        internal_compiler_diagnostic
+    }
+    compiler_diagnostics --> compiler.backends.py.jacpython.product_compile {
+        compiler_diag_to_pyobj
+    }
+    compiler_diagnostics --> compiler.frontend.python.compiler_symtable {
+        compiler_diag_kind,
+        compiler_diag_message,
+        compiler_diagnostic,
+        symbol_diagnostic
+    }
+    compiler_diagnostics --> compiler.frontend.python.compiler_validate {
+        compiler_diag_kind,
+        compiler_diagnostic,
+        syntax_warning,
+        validation_diagnostic
+    }
+    compiler_diagnostics --> compiler.frontend.python.peg_runtime.peg_fill_token {
+        report_token_warnings
+    }
+    compiler_diagnostics --> runtime.python.symtable { compiler_diag_to_pyobj }
+    compiler_diagnostics --> runtime.python.tokenize { report_token_warnings }
+    compiler_preprocess --> compiler.backends.py.jacpython.product_compile {
+        preprocess_node
+    }
+    compiler_symtable --> compiler.backends.py.jacpython.codegen_util { scope_kind }
+    compiler_symtable --> compiler.backends.py.jacpython.compiler_annotations {
+        SCOPE_CELL,
+        SCOPE_GLOBAL_IMPLICIT,
+        SYM_USE,
+        scope_kind,
+        sym_block,
+        sym_block_tuple_names,
+        sym_dict_get,
+        sym_set_scope
+    }
+    compiler_symtable --> compiler.backends.py.jacpython.compiler_codegen {
+        DEF_COMP_ITER,
+        SCOPE_CELL,
+        SCOPE_FREE,
+        SCOPE_GLOBAL_EXPLICIT,
+        SCOPE_GLOBAL_IMPLICIT,
+        SCOPE_LOCAL,
+        mangle_name,
+        scope_kind,
+        sym_block,
+        sym_block_tuple_names,
+        sym_dict_get,
+        sym_flag_set,
+        sym_scope_of,
+        sym_sorted_names
+    }
+    compiler_symtable --> compiler.backends.py.jacpython.compiler_defs {
+        SCOPE_GLOBAL_EXPLICIT,
+        scope_kind,
+        scope_role,
+        sym_block,
+        sym_dict_get,
+        sym_scope_of
+    }
+    compiler_symtable --> compiler.backends.py.jacpython.compiler_emit {
+        DEF_COMP_ITER,
+        SCOPE_CELL,
+        SCOPE_FREE,
+        SCOPE_GLOBAL_EXPLICIT,
+        SCOPE_GLOBAL_IMPLICIT,
+        SCOPE_LOCAL,
+        mangle_name,
+        scope_kind,
+        sym_block,
+        sym_block_tuple_names,
+        sym_dict_get,
+        sym_flag_set,
+        sym_mangle_name,
+        sym_scope_of,
+        sym_sorted_names
+    }
+    compiler_symtable --> compiler.backends.py.jacpython.compiler_ir { sym_block }
+    compiler_symtable --> compiler.backends.py.jacpython.compiler_match { scope_kind }
+    compiler_symtable --> compiler.backends.py.jacpython.native_api { mangle_name }
+    compiler_symtable --> compiler.backends.py.jacpython.product_compile {
+        build_module_symtable
+    }
+    compiler_symtable --> runtime.python.symtable {
+        DEF_BOUND,
+        DEF_PARAM,
+        SCOPE_CELL,
+        SCOPE_LOCAL,
+        SCOPE_OFFSET,
+        SYM_USE,
+        build_module_symtable,
+        is_type_variable_info,
+        scope_info_kind,
+        scope_kind,
+        sym_block
+    }
+    compiler_validate --> compiler.backends.py.jacpython.product_compile {
+        check_ast_warnings,
+        future_features,
+        validate_eval_expr,
+        validate_module_body
+    }
+    compiler_validate --> compiler.frontend.python.parser.finish_parse {
+        validate_feature_version
+    }
+    compiler_validate --> runtime.python.symtable { future_features }
+    parser --> compiler.backends.py.jacpython.native_api {
+        parse_eval_source,
+        parse_file,
+        parse_func_type,
+        parse_interactive
+    }
+    parser --> compiler.backends.py.jacpython.product_compile {
+        parse_eval_expr,
+        parse_file,
+        parse_interactive
+    }
+    parser --> runtime.python.symtable {
+        parse_eval_expr,
+        parse_file,
+        parse_interactive
+    }
+    parser_actions --> compiler.frontend.python.parser {
+        keyword_or_starred_node,
+        kp_pair,
+        kv_pair,
+        name_default_pair,
+        pa_add_type_comment_to_arg,
+        pa_alias_for_star,
+        pa_arguments_parsing_error,
+        pa_ast_annassign,
+        pa_ast_assign,
+        pa_ast_attribute,
+        pa_ast_augassign,
+        pa_ast_binop,
+        pa_ast_boolop,
+        pa_ast_break,
+        pa_ast_call,
+        pa_ast_compare,
+        pa_ast_continue,
+        pa_ast_delete,
+        pa_ast_expr_stmt,
+        pa_ast_expression,
+        pa_ast_ifexp,
+        pa_ast_pass,
+        pa_ast_return,
+        pa_ast_slice,
+        pa_ast_starred,
+        pa_ast_subscript,
+        pa_ast_tuple,
+        pa_ast_unaryop,
+        pa_aug_op,
+        pa_call_args,
+        pa_call_from_optional_args,
+        pa_call_keywords,
+        pa_check,
+        pa_check_fstring_conversion,
+        pa_check_legacy_stmt,
+        pa_check_legacy_stmt_or_raise,
+        pa_checked_future_import,
+        pa_class_def_decorators,
+        pa_cmpop_expr_pair,
+        pa_collect_call_seqs,
+        pa_comp_field,
+        pa_concatenate_strings,
+        pa_concatenate_tstrings,
+        pa_constant_bool,
+        pa_constant_ellipsis,
+        pa_constant_from_expr,
+        pa_constant_from_fstring_middle,
+        pa_constant_from_string,
+        pa_constant_from_token,
+        pa_constant_none,
+        pa_decoded_constant_from_token,
+        pa_dummy_name,
+        pa_empty_arguments,
+        pa_ensure_imaginary,
+        pa_ensure_real,
+        pa_err_occurred,
+        pa_expr_end_col_offset,
+        pa_expr_end_lineno,
+        pa_expr_lineno,
+        pa_formatted_value,
+        pa_function_def_decorators,
+        pa_get_cmpops,
+        pa_get_expr_name,
+        pa_get_exprs,
+        pa_get_keys,
+        pa_get_last_comprehension_item,
+        pa_get_pattern_keys,
+        pa_get_patterns,
+        pa_get_values,
+        pa_interactive_exit,
+        pa_interpolation,
+        pa_join_names_with_dot,
+        pa_join_sequences,
+        pa_join_sequences_kw_or_starred,
+        pa_joined_str,
+        pa_key_pattern_pair,
+        pa_key_value_pair,
+        pa_keyword_or_starred,
+        pa_make_arguments,
+        pa_make_cmpop_pair,
+        pa_make_module,
+        pa_map_names_to_ids,
+        pa_match_singleton,
+        pa_name_default_pair,
+        pa_name_from_token,
+        pa_name_id,
+        pa_nonparen_genexp_in_call,
+        pa_number_from_token,
+        pa_or_pattern_singleton,
+        pa_pattern_list,
+        pa_raise_invalid_target,
+        pa_raise_kvpair_error,
+        pa_raise_syntax,
+        pa_raise_syntax_known_expr,
+        pa_raise_syntax_known_range,
+        pa_raise_type_param_error,
+        pa_seq_append_to_end,
+        pa_seq_append_to_end_expr,
+        pa_seq_append_to_end_stmt,
+        pa_seq_count_dots,
+        pa_seq_delete_starred_exprs,
+        pa_seq_extract_starred_exprs,
+        pa_seq_first,
+        pa_seq_flatten,
+        pa_seq_get,
+        pa_seq_insert_front,
+        pa_seq_insert_front_alias,
+        pa_seq_insert_front_arg,
+        pa_seq_insert_front_expr,
+        pa_seq_insert_front_kvpair,
+        pa_seq_insert_front_kvpattern,
+        pa_seq_insert_front_kw_or_starred,
+        pa_seq_insert_front_pattern,
+        pa_seq_insert_front_stmt,
+        pa_seq_insert_front_type_param,
+        pa_seq_insert_front_withitem,
+        pa_seq_last,
+        pa_seq_len,
+        pa_set_context,
+        pa_setup_full_format_spec,
+        pa_singleton_seq,
+        pa_singleton_seq_alias,
+        pa_singleton_seq_expr,
+        pa_singleton_seq_stmt,
+        pa_slash_with_default,
+        pa_star_etc,
+        pa_stmt_list_or_empty,
+        pa_template_str
+    }
+    peg_runtime --> compiler.frontend.python.parser {
+        DEL_TARGETS,
+        FOR_TARGETS,
+        STAR_TARGETS,
+        peg_check_memo,
+        peg_expect_forced_result,
+        peg_expect_forced_token,
+        peg_expect_soft_keyword,
+        peg_expect_token,
+        peg_fill_token,
+        peg_get_last_nonnwhitespace_token,
+        peg_has_error,
+        peg_insert_memo,
+        peg_left_rec_finish,
+        peg_mark,
+        peg_negative_lookahead_token,
+        peg_parser,
+        peg_parser_from_source,
+        peg_positive_lookahead_token,
+        peg_reset,
+        peg_reset_for_error_pass,
+        peg_token,
+        peg_update_memo
+    }
+    peg_runtime --> compiler.frontend.python.parser_actions {
+        peg_has_error,
+        peg_parser,
+        peg_raise_syntax_error,
+        peg_raise_syntax_error_on_token,
+        peg_token
+    }
+    source_encoding --> compiler.backends.py.jacpython.native_api { source_fd_encoding }
+    source_encoding --> compiler.frontend.python.source_input { source_encoding }
+    source_input --> compiler.backends.py.jacpython.native_api { decode_source_value }
+    syntax_error --> compiler.backends.py.jacpython.native_api {
+        source_character_column,
+        split_source_lines,
+        syntax_failure
+    }
+    syntax_error --> compiler.frontend.python.compiler_diagnostics { syntax_failure }
+    syntax_error --> compiler.frontend.python.compiler_validate { syntax_failure }
+    syntax_error --> compiler.frontend.python.parser {
+        decode_source_lines,
+        source_character_column,
+        syntax_failure
+    }
+    syntax_error --> compiler.frontend.python.parser_actions {
+        source_line_bytes,
+        syntax_failure
+    }
+    syntax_error --> compiler.frontend.python.source_encoding { syntax_failure }
+    syntax_error --> compiler.frontend.python.source_input { syntax_failure }
+    syntax_error --> runtime.python.native_services { syntax_failure }
+    syntax_error --> runtime.python.tokenize { syntax_failure }
+    token_model --> compiler.frontend.python.parser {
+        DEDENT,
+        ENDMARKER,
+        FSTRING_END,
+        FSTRING_MIDDLE,
+        FSTRING_START,
+        INDENT,
+        NAME,
+        NEWLINE,
+        NT_OFFSET,
+        NUMBER,
+        OP,
+        STRING,
+        TSTRING_END,
+        TSTRING_MIDDLE,
+        TSTRING_START,
+        TYPE_COMMENT
+    }
+    token_model --> compiler.frontend.python.parser_actions { mk_diag, tok_loc }
+    token_model --> compiler.frontend.python.peg_runtime {
+        COMMENT,
+        DEDENT,
+        ENDMARKER,
+        ERRORTOKEN,
+        INDENT,
+        NAME,
+        NEWLINE,
+        NL,
+        NT_OFFSET,
+        NUMBER,
+        TOK_NO_COLUMN,
+        TOK_NO_LINE,
+        TYPE_IGNORE,
+        is_whitespace_token,
+        mk_diag,
+        tok_diag,
+        tok_loc,
+        tok_no_loc,
+        tok_token
+    }
+    token_model --> compiler.frontend.python.tokenizer {
+        COLON,
+        COMMA,
+        COMMENT,
+        DEDENT,
+        ENDMARKER,
+        ERRORTOKEN,
+        EXACT_TOKEN_TYPES,
+        FSTRING_END,
+        FSTRING_MIDDLE,
+        FSTRING_START,
+        INDENT,
+        LBRACE,
+        LPAR,
+        LSQB,
+        NAME,
+        NEWLINE,
+        NL,
+        NUMBER,
+        RBRACE,
+        RPAR,
+        RSQB,
+        STRING,
+        TOK_NO_COLUMN,
+        TSTRING_END,
+        TSTRING_MIDDLE,
+        TSTRING_START,
+        TYPE_COMMENT,
+        TYPE_IGNORE,
+        exact_token_type,
+        mk_diag,
+        tok_diag,
+        tok_loc_span,
+        tok_no_loc,
+        tok_token
+    }
+    token_model --> runtime.python.tokenize {
+        DEDENT,
+        ENDMARKER,
+        FSTRING_MIDDLE,
+        INDENT,
+        NEWLINE,
+        NL,
+        NUMBER,
+        OP,
+        STRING,
+        TSTRING_MIDDLE,
+        tok_diag
+    }
+    tokenizer --> compiler.frontend.python.compiler_diagnostics { tok_state }
+    tokenizer --> compiler.frontend.python.peg_runtime {
+        tok_state,
+        tokenizer_from_string,
+        tokenizer_next
+    }
+    tokenizer --> runtime.python.tokenize { tok_state, token_source, tokenizer_next }
+}
+
+graph import runtime.python {
+    capi --> compiler.backends.py.jacpython.native_api {
+        boundary_failure,
+        checked,
+        jacpy_int,
+        jacpy_none,
+        jacpy_release,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        required,
+        text_object,
+        text_value
+    }
+    capi --> compiler.frontend.python.ast_input { boundary_failure }
+    capi --> compiler.frontend.python.ast_output { boundary_failure }
+    capi --> compiler.frontend.python.source_encoding { boundary_failure }
+    capi --> compiler.frontend.python.source_input { boundary_failure, read_buffer }
+    capi --> runtime.python.bindings.arguments {
+        boundary_failure,
+        jacpy_dict_items,
+        jacpy_error_pending,
+        jacpy_index,
+        jacpy_is_unicode,
+        jacpy_list_item,
+        jacpy_list_size,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_tuple_item,
+        jacpy_tuple_size,
+        jacpy_unicode_char,
+        jacpy_unicode_size,
+        object_error,
+        required,
+        text_value
+    }
+    capi --> runtime.python.bindings.array {
+        SliceBounds,
+        jac_heap_size,
+        jacpy_audit,
+        jacpy_builtins,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_dict_get,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_getattr_string,
+        jacpy_import_attr,
+        jacpy_index_check,
+        jacpy_int,
+        jacpy_is_bytearray,
+        jacpy_is_bytes,
+        jacpy_is_list,
+        jacpy_is_long,
+        jacpy_is_slice,
+        jacpy_is_type,
+        jacpy_is_unicode,
+        jacpy_long_as_int32,
+        jacpy_none,
+        jacpy_not_implemented,
+        jacpy_number_ssize,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_slice_adjust,
+        jacpy_slice_unpack,
+        jacpy_tuple_new,
+        jacpy_type_check,
+        jacpy_type_subtype,
+        jacpy_uint,
+        jacpy_unicode_from_ordinal,
+        jacpy_warn,
+        object_error,
+        text_object,
+        type_name
+    }
+    capi --> runtime.python.bindings.binascii {
+        jacpy_buffer_byte,
+        jacpy_error_pending,
+        jacpy_is_bytes,
+        jacpy_is_unicode,
+        jacpy_long_as_int32,
+        jacpy_object_size,
+        jacpy_release,
+        jacpy_truth,
+        object_error
+    }
+    capi --> runtime.python.bindings.bisect { jacpy_is_none }
+    capi --> runtime.python.bindings.cmath { jacpy_complex, jacpy_float }
+    capi --> runtime.python.bindings.collections {
+        boundary_failure,
+        jac_heap_size,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_callable,
+        jacpy_dict_new,
+        jacpy_dict_update,
+        jacpy_error_pending,
+        jacpy_getattr_string,
+        jacpy_int,
+        jacpy_is_dict,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_iter,
+        jacpy_none,
+        jacpy_not_implemented,
+        jacpy_ordered_dict_new,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        jacpy_tuple_slice,
+        jacpy_type_check,
+        object_error,
+        repr_value,
+        text_object,
+        type_name
+    }
+    capi --> runtime.python.bindings.csv {
+        jacpy_call,
+        jacpy_callable,
+        jacpy_dict_new,
+        jacpy_dict_set,
+        jacpy_error_pending,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_exact_long,
+        jacpy_is_unicode,
+        jacpy_iter,
+        jacpy_none,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_text,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_type_check,
+        jacpy_unicode_from_ordinal,
+        object_error,
+        type_name
+    }
+    capi --> runtime.python.bindings.functools {
+        boundary_failure,
+        jacpy_callable,
+        jacpy_compare,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_getattr_string,
+        jacpy_index_check,
+        jacpy_is_none,
+        jacpy_none,
+        jacpy_not_implemented,
+        jacpy_recursion_enter,
+        jacpy_recursion_leave,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_truth,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        jacpy_tuple_slice,
+        jacpy_type_check,
+        object_error,
+        text_object
+    }
+    capi --> runtime.python.bindings.heapq { jacpy_is_list, type_name }
+    capi --> runtime.python.bindings.itertools {
+        boundary_failure,
+        jacpy_clear_error,
+        jacpy_dict_get,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_int,
+        jacpy_is_list,
+        jacpy_is_none,
+        jacpy_list_size,
+        jacpy_none,
+        jacpy_number_check,
+        jacpy_number_ssize,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_truth,
+        jacpy_tuple_item,
+        jacpy_tuple_size,
+        jacpy_type_check,
+        object_error,
+        required,
+        text_object,
+        type_name
+    }
+    capi --> runtime.python.bindings.json {
+        boundary_failure,
+        jacpy_boolean,
+        jacpy_getattr_string,
+        jacpy_is_dict,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_truth,
+        object_error,
+        object_tuple,
+        type_name
+    }
+    capi --> runtime.python.bindings.math { jacpy_float }
+    capi --> runtime.python.bindings.module { jacpy_release }
+    capi --> runtime.python.bindings.operator {
+        boundary_failure,
+        jacpy_dict_size,
+        jacpy_is_unicode,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_tuple_size,
+        object_error,
+        text_object,
+        type_name
+    }
+    capi --> runtime.python.bindings.pickle {
+        boundary_failure,
+        builtin_kind,
+        jacpy_boolean,
+        jacpy_builtin_type,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_clear_error,
+        jacpy_dict_new,
+        jacpy_dict_set,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_generic_getattr,
+        jacpy_generic_setattr,
+        jacpy_getattr_string,
+        jacpy_import_attr,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_long_as_int32,
+        jacpy_none,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_set_exception,
+        jacpy_truth,
+        object_error,
+        required,
+        text_object,
+        text_value
+    }
+    capi --> runtime.python.bindings.queue {
+        jacpy_boolean,
+        jacpy_int,
+        jacpy_lock_new,
+        jacpy_none,
+        jacpy_release,
+        jacpy_truth,
+        object_error
+    }
+    capi --> runtime.python.bindings.random {
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_float,
+        jacpy_index,
+        jacpy_is_none,
+        jacpy_long_sign,
+        jacpy_long_u64,
+        jacpy_none,
+        jacpy_release,
+        object_error
+    }
+    capi --> runtime.python.bindings.references {
+        jacpy_release,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned
+    }
+    capi --> runtime.python.bindings.struct {
+        boundary_failure,
+        jac_heap_size,
+        jac_list_heap_size,
+        jacpy_bytes_address,
+        jacpy_bytes_decode,
+        jacpy_bytes_from_memory,
+        jacpy_dict_clear,
+        jacpy_dict_new,
+        jacpy_error_pending,
+        jacpy_int,
+        jacpy_is_bytes,
+        jacpy_is_unicode,
+        jacpy_none,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_set_exception,
+        jacpy_tuple_item,
+        jacpy_tuple_size,
+        jacpy_tuple_slice,
+        jacpy_unicode_encode,
+        object_error,
+        repr_value,
+        text_object,
+        type_name
+    }
+    capi --> runtime.python.constant_input { boundary_failure, read_buffer }
+    capi --> runtime.python.constant_output {
+        checked,
+        jacpy_boolean,
+        jacpy_complex,
+        jacpy_ellipsis,
+        jacpy_float,
+        jacpy_int,
+        jacpy_long_from_bytes,
+        jacpy_neg,
+        jacpy_none,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_set_new,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        required,
+        text_object,
+        write_buffer
+    }
+    capi --> runtime.python.modules.array {
+        boundary_failure,
+        checked,
+        jac_heap_size,
+        jacpy_boolean,
+        jacpy_bytearray_memory,
+        jacpy_bytearray_new,
+        jacpy_bytearray_resize,
+        jacpy_bytes_address,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_compare,
+        jacpy_compare_bool,
+        jacpy_error_pending,
+        jacpy_float,
+        jacpy_float32_bits,
+        jacpy_float_bits,
+        jacpy_float_unpack,
+        jacpy_getattr_string,
+        jacpy_index,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_bytes,
+        jacpy_is_unicode,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_list_append,
+        jacpy_list_new,
+        jacpy_long_u64,
+        jacpy_memory_copy,
+        jacpy_memory_move,
+        jacpy_memory_zero,
+        jacpy_native_little_endian,
+        jacpy_native_size,
+        jacpy_number_as_double,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_unicode_char,
+        jacpy_unicode_decode_bytes,
+        jacpy_unicode_from_ordinal,
+        jacpy_unicode_join,
+        jacpy_unicode_size,
+        object_error,
+        object_tuple,
+        repr_value,
+        required,
+        text_object
+    }
+    capi --> runtime.python.modules.binary_scalars {
+        jacpy_int,
+        jacpy_memory_byte,
+        jacpy_memory_set,
+        jacpy_uint,
+        required
+    }
+    capi --> runtime.python.modules.binascii {
+        jacpy_buffer_byte,
+        jacpy_buffer_size,
+        jacpy_int,
+        jacpy_set_exception,
+        module_failure,
+        object_error,
+        read_buffer,
+        write_buffer
+    }
+    capi --> runtime.python.modules.bisect {
+        jacpy_call_one,
+        jacpy_comparison_slot,
+        jacpy_insert,
+        jacpy_int,
+        jacpy_less,
+        jacpy_none,
+        jacpy_object_size,
+        jacpy_recursion_enter,
+        jacpy_recursion_leave,
+        jacpy_release,
+        jacpy_same_type,
+        jacpy_sequence_slot,
+        jacpy_slot_item,
+        jacpy_slot_less,
+        object_error
+    }
+    capi --> runtime.python.modules.cmath {
+        boundary_failure,
+        checked,
+        jacpy_boolean,
+        jacpy_clear_errno,
+        jacpy_complex,
+        jacpy_complex_imag,
+        jacpy_complex_real,
+        jacpy_complex_value,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_float,
+        jacpy_math_errno,
+        jacpy_number_as_double,
+        jacpy_release,
+        jacpy_truediv,
+        object_error,
+        object_tuple,
+        required
+    }
+    capi --> runtime.python.modules.collections {
+        boundary_failure,
+        checked,
+        jac_heap_size,
+        jac_list_heap_size,
+        jacpy_add,
+        jacpy_boolean,
+        jacpy_call,
+        jacpy_compare_bool,
+        jacpy_dict_default,
+        jacpy_dict_repr,
+        jacpy_error_pending,
+        jacpy_getattr,
+        jacpy_int,
+        jacpy_is_none,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_release,
+        jacpy_repr_enter,
+        jacpy_repr_leave,
+        jacpy_retain,
+        jacpy_sequence_list,
+        jacpy_set_key_error,
+        jacpy_setitem,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        object_error,
+        repr_value,
+        required,
+        text_object,
+        text_value,
+        type_name
+    }
+    capi --> runtime.python.modules.combinatorics {
+        boundary_failure,
+        checked,
+        jac_heap_size,
+        jac_list_heap_size,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_sequence_tuple,
+        jacpy_tuple_exchange,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        object_error,
+        required
+    }
+    capi --> runtime.python.modules.csv {
+        boundary_failure,
+        checked,
+        jacpy_boolean,
+        jacpy_call_one,
+        jacpy_clear_error,
+        jacpy_dict_get,
+        jacpy_dict_keys,
+        jacpy_dict_pop_discard,
+        jacpy_dict_set,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_getattr_string,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_exact_long,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_list_append,
+        jacpy_list_new,
+        jacpy_long_as_int32,
+        jacpy_none,
+        jacpy_number_check,
+        jacpy_number_float,
+        jacpy_object_str,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_set_exception,
+        jacpy_truth,
+        jacpy_tuple_item,
+        jacpy_type_check,
+        jacpy_unicode_char,
+        jacpy_unicode_size,
+        jacpy_writer_char,
+        jacpy_writer_discard,
+        jacpy_writer_finish,
+        jacpy_writer_new,
+        object_error,
+        object_tuple,
+        required,
+        text_object,
+        type_name
+    }
+    capi --> runtime.python.modules.functools {
+        boundary_failure,
+        checked,
+        jacpy_boolean,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_call_two,
+        jacpy_callable,
+        jacpy_compare,
+        jacpy_dict_clear,
+        jacpy_dict_copy,
+        jacpy_dict_entry,
+        jacpy_dict_get,
+        jacpy_dict_new,
+        jacpy_dict_set,
+        jacpy_dict_size,
+        jacpy_dict_update,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_getattr_string,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_dict,
+        jacpy_is_exact_dict,
+        jacpy_is_exact_long,
+        jacpy_is_exact_tuple,
+        jacpy_is_exact_unicode,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_none,
+        jacpy_object_hash,
+        jacpy_object_str,
+        jacpy_object_type,
+        jacpy_ordered_dict_new,
+        jacpy_release,
+        jacpy_repr_enter,
+        jacpy_repr_leave,
+        jacpy_retain,
+        jacpy_sequence_tuple,
+        jacpy_setitem,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        object_error,
+        repr_value,
+        required,
+        text_object,
+        text_value,
+        type_name
+    }
+    capi --> runtime.python.modules.grouping {
+        boundary_failure,
+        checked,
+        jacpy_call_one,
+        jacpy_compare_bool,
+        jacpy_is_none,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        required
+    }
+    capi --> runtime.python.modules.heapq {
+        jacpy_less,
+        jacpy_list_append,
+        jacpy_list_delete,
+        jacpy_list_exchange,
+        jacpy_list_item,
+        jacpy_list_size,
+        jacpy_list_swap,
+        jacpy_none,
+        jacpy_release,
+        jacpy_retain,
+        object_error
+    }
+    capi --> runtime.python.modules.iterators {
+        boundary_failure,
+        checked,
+        jacpy_add,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_call_two,
+        jacpy_clear_error,
+        jacpy_error_pending,
+        jacpy_integer_value,
+        jacpy_is_long,
+        jacpy_is_none,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_list_append,
+        jacpy_list_exchange,
+        jacpy_list_item,
+        jacpy_list_new,
+        jacpy_list_size,
+        jacpy_none,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_sequence_tuple,
+        jacpy_truth,
+        jacpy_tuple_exchange,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        jacpy_tuple_unique,
+        object_error,
+        repr_value,
+        required,
+        text_object,
+        type_name
+    }
+    capi --> runtime.python.modules.json {
+        boundary_failure,
+        checked,
+        jacpy_boolean,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_contains,
+        jacpy_dict_default,
+        jacpy_dict_entry,
+        jacpy_dict_new,
+        jacpy_dict_remove,
+        jacpy_dict_set,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_fast_item,
+        jacpy_fast_size,
+        jacpy_float_repr,
+        jacpy_float_value,
+        jacpy_identity,
+        jacpy_import_attr,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_bool,
+        jacpy_is_dict,
+        jacpy_is_exact_dict,
+        jacpy_is_float,
+        jacpy_is_list,
+        jacpy_is_long,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_is_unicode,
+        jacpy_list_append,
+        jacpy_list_item,
+        jacpy_list_new,
+        jacpy_list_size,
+        jacpy_list_sort,
+        jacpy_long_repr,
+        jacpy_mapping_items,
+        jacpy_none,
+        jacpy_raise_value,
+        jacpy_recursion_enter,
+        jacpy_recursion_leave,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_sequence_fast,
+        jacpy_sequence_repeat,
+        jacpy_set_object_exception,
+        jacpy_truth,
+        jacpy_tuple_item,
+        jacpy_tuple_size,
+        jacpy_unicode_char,
+        jacpy_unicode_concat,
+        jacpy_unicode_size,
+        jacpy_unicode_slice,
+        jacpy_writer_ascii,
+        jacpy_writer_char,
+        jacpy_writer_discard,
+        jacpy_writer_finish,
+        jacpy_writer_new,
+        jacpy_writer_slice,
+        jacpy_writer_text,
+        object_error,
+        object_tuple,
+        pair,
+        repr_value,
+        required,
+        serialization_note,
+        text_object,
+        type_name
+    }
+    capi --> runtime.python.modules.math {
+        boundary_failure,
+        jacpy_abs,
+        jacpy_add,
+        jacpy_boolean,
+        jacpy_clear_errno,
+        jacpy_clear_error,
+        jacpy_compare_bool,
+        jacpy_error_pending,
+        jacpy_float,
+        jacpy_float_bits,
+        jacpy_float_from_bits,
+        jacpy_floordiv,
+        jacpy_index,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_bool,
+        jacpy_is_exact_float,
+        jacpy_is_exact_long,
+        jacpy_is_long,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_libm_parts,
+        jacpy_long_bits,
+        jacpy_long_double,
+        jacpy_long_fits_i64,
+        jacpy_long_frexp,
+        jacpy_long_from_double,
+        jacpy_long_gcd,
+        jacpy_long_shift,
+        jacpy_long_sign,
+        jacpy_long_u64,
+        jacpy_math_errno,
+        jacpy_mul,
+        jacpy_number_as_double,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_sequence_tuple,
+        jacpy_special_noargs,
+        jacpy_sub,
+        jacpy_tuple_item,
+        jacpy_tuple_size,
+        jacpy_uint,
+        object_error,
+        repr_value,
+        required,
+        type_name
+    }
+    capi --> runtime.python.modules.operator {
+        boundary_failure,
+        jacpy_abs,
+        jacpy_add,
+        jacpy_and_,
+        jacpy_boolean,
+        jacpy_call,
+        jacpy_compare,
+        jacpy_concat,
+        jacpy_contains,
+        jacpy_crypto_compare,
+        jacpy_delitem,
+        jacpy_dict_entry,
+        jacpy_dict_size,
+        jacpy_error_pending,
+        jacpy_floordiv,
+        jacpy_getattr,
+        jacpy_getitem,
+        jacpy_iadd,
+        jacpy_iand,
+        jacpy_iconcat,
+        jacpy_ifloordiv,
+        jacpy_ilshift,
+        jacpy_imatmul,
+        jacpy_imod,
+        jacpy_import_attr,
+        jacpy_imul,
+        jacpy_index,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_invert,
+        jacpy_ior,
+        jacpy_irshift,
+        jacpy_is_none,
+        jacpy_is_unicode,
+        jacpy_isub,
+        jacpy_itruediv,
+        jacpy_ixor,
+        jacpy_length_hint,
+        jacpy_list_item,
+        jacpy_list_size,
+        jacpy_lshift,
+        jacpy_matmul,
+        jacpy_mod,
+        jacpy_mul,
+        jacpy_neg,
+        jacpy_none,
+        jacpy_or_,
+        jacpy_pos,
+        jacpy_power,
+        jacpy_release,
+        jacpy_repr,
+        jacpy_repr_enter,
+        jacpy_repr_leave,
+        jacpy_retain,
+        jacpy_rshift,
+        jacpy_sequence_count,
+        jacpy_sequence_index,
+        jacpy_setitem,
+        jacpy_sub,
+        jacpy_text,
+        jacpy_truediv,
+        jacpy_truth,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        jacpy_tuple_slice,
+        jacpy_unicode_join,
+        jacpy_unicode_split,
+        jacpy_utf8,
+        jacpy_xor,
+        object_error,
+        pair,
+        repr_value,
+        required,
+        text_object,
+        text_value
+    }
+    capi --> runtime.python.modules.pickle {
+        boundary_failure,
+        checked,
+        jac_heap_size,
+        jac_list_heap_size,
+        jacpy_bytearray_memory,
+        jacpy_dict_clear,
+        jacpy_dict_copy,
+        jacpy_dict_memory,
+        jacpy_dict_new,
+        jacpy_dict_set,
+        jacpy_error_pending,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_dict,
+        jacpy_is_tuple,
+        jacpy_iter,
+        jacpy_list_item,
+        jacpy_list_size,
+        jacpy_mapping_items,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_tuple_item,
+        jacpy_tuple_size,
+        jacpy_uint,
+        required,
+        text_value
+    }
+    capi --> runtime.python.modules.pickle_decode {
+        boundary_failure,
+        checked,
+        jacpy_boolean,
+        jacpy_bytearray_new,
+        jacpy_bytes_address,
+        jacpy_bytes_decode,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_bytes_unescape,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_dict_get,
+        jacpy_dict_items,
+        jacpy_dict_new,
+        jacpy_dict_set,
+        jacpy_dict_size,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_float,
+        jacpy_float_from_text,
+        jacpy_float_unpack,
+        jacpy_getattr_string,
+        jacpy_import_attr,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_dict,
+        jacpy_is_exact_unicode,
+        jacpy_is_list,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_is_type,
+        jacpy_is_unicode,
+        jacpy_iter_next,
+        jacpy_list_append,
+        jacpy_list_item,
+        jacpy_list_new,
+        jacpy_list_size,
+        jacpy_long_from_signed_bytes,
+        jacpy_memory_byte,
+        jacpy_memory_copy,
+        jacpy_memoryview,
+        jacpy_none,
+        jacpy_number_long,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_set_new,
+        jacpy_setattr,
+        jacpy_setitem,
+        jacpy_truth,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        jacpy_type_new,
+        jacpy_unicode_intern,
+        object_tuple,
+        required,
+        text_value
+    }
+    capi --> runtime.python.modules.pickle_encode {
+        boundary_failure,
+        builtin_kind,
+        checked,
+        jacpy_add,
+        jacpy_builtin_kind,
+        jacpy_bytearray_resize,
+        jacpy_bytes_address,
+        jacpy_bytes_decode,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_callable,
+        jacpy_dict_get,
+        jacpy_dict_set,
+        jacpy_dict_size,
+        jacpy_ellipsis,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_float_bits,
+        jacpy_float_repr,
+        jacpy_float_value,
+        jacpy_getattr_string,
+        jacpy_import_attr,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_dict,
+        jacpy_is_iterator,
+        jacpy_is_none,
+        jacpy_is_not_implemented,
+        jacpy_is_tuple,
+        jacpy_is_type,
+        jacpy_is_unicode,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_list_item,
+        jacpy_list_size,
+        jacpy_long_bits,
+        jacpy_long_fits_i64,
+        jacpy_long_repr,
+        jacpy_long_sign,
+        jacpy_long_signed_bytes,
+        jacpy_mapping_items,
+        jacpy_mapping_optional_item,
+        jacpy_memory_byte,
+        jacpy_none,
+        jacpy_not_implemented,
+        jacpy_object_str,
+        jacpy_object_type,
+        jacpy_optional_attr,
+        jacpy_recursion_enter,
+        jacpy_recursion_leave,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_sequence_list,
+        jacpy_truth,
+        jacpy_tuple_item,
+        jacpy_tuple_size,
+        jacpy_tuple_slice,
+        jacpy_uint,
+        jacpy_unicode_char,
+        jacpy_unicode_encode,
+        jacpy_unicode_size,
+        object_tuple,
+        repr_value,
+        required,
+        serialization_note,
+        text_object,
+        text_value,
+        type_name
+    }
+    capi --> runtime.python.modules.pickle_objects {
+        boundary_failure,
+        checked,
+        jacpy_audit_pickle_find,
+        jacpy_dict_copy,
+        jacpy_dict_get,
+        jacpy_dict_keys,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_error_restore,
+        jacpy_error_take,
+        jacpy_getattr,
+        jacpy_import_attr,
+        jacpy_import_object,
+        jacpy_is_none,
+        jacpy_is_tuple,
+        jacpy_is_unicode,
+        jacpy_list_item,
+        jacpy_list_size,
+        jacpy_object_str,
+        jacpy_optional_attr,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_tuple_item,
+        jacpy_tuple_size,
+        object_tuple,
+        repr_value,
+        required,
+        text_object,
+        text_value
+    }
+    capi --> runtime.python.modules.pickle_stream {
+        boundary_failure,
+        checked,
+        jacpy_bytearray_new,
+        jacpy_bytearray_resize,
+        jacpy_bytes_address,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_call,
+        jacpy_call_one,
+        jacpy_error_restore,
+        jacpy_error_take,
+        jacpy_exception_context,
+        jacpy_int,
+        jacpy_is_bytes,
+        jacpy_memory_byte,
+        jacpy_memory_copy,
+        jacpy_memory_set,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_set_exception,
+        object_error,
+        object_tuple,
+        required
+    }
+    capi --> runtime.python.modules.queue {
+        jacpy_deadline,
+        jacpy_deadline_remaining,
+        jacpy_error_pending,
+        jacpy_is_none,
+        jacpy_lock_free,
+        jacpy_lock_notify,
+        jacpy_lock_wait,
+        jacpy_pending_calls,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_set_none_exception,
+        jacpy_timeout_ns,
+        object_error
+    }
+    capi --> runtime.python.modules.random {
+        jacpy_buffer_byte,
+        jacpy_buffer_new,
+        jacpy_buffer_set,
+        jacpy_buffer_size,
+        jacpy_clear_error,
+        jacpy_entropy,
+        jacpy_error_pending,
+        jacpy_hash_unsigned,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_long,
+        jacpy_is_tuple,
+        jacpy_long_absolute,
+        jacpy_long_bits,
+        jacpy_long_bytes,
+        jacpy_long_from_bytes,
+        jacpy_monotonic_time,
+        jacpy_process_id,
+        jacpy_release,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        jacpy_unsigned_long,
+        jacpy_wall_time,
+        object_error
+    }
+    capi --> runtime.python.modules.statistics {
+        jacpy_error_pending,
+        jacpy_float,
+        jacpy_number_as_double,
+        object_error
+    }
+    capi --> runtime.python.modules.struct {
+        boundary_failure,
+        checked,
+        jac_heap_size,
+        jac_list_heap_size,
+        jacpy_boolean,
+        jacpy_bytes_address,
+        jacpy_bytes_from_memory,
+        jacpy_bytes_length,
+        jacpy_call_one,
+        jacpy_clear_error,
+        jacpy_complex,
+        jacpy_complex_imag,
+        jacpy_complex_real,
+        jacpy_complex_value,
+        jacpy_dict_clear,
+        jacpy_dict_get,
+        jacpy_dict_set,
+        jacpy_dict_size,
+        jacpy_error_is,
+        jacpy_error_pending,
+        jacpy_float,
+        jacpy_float_pack,
+        jacpy_float_unpack,
+        jacpy_index,
+        jacpy_index_check,
+        jacpy_int,
+        jacpy_integer_value,
+        jacpy_is_bytearray,
+        jacpy_is_bytes,
+        jacpy_is_long,
+        jacpy_long_pointer,
+        jacpy_long_u64,
+        jacpy_memory_byte,
+        jacpy_memory_copy,
+        jacpy_memory_set,
+        jacpy_memory_zero,
+        jacpy_native_float_store,
+        jacpy_native_little_endian,
+        jacpy_native_size,
+        jacpy_number_as_double,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_set_exception,
+        jacpy_truth,
+        jacpy_tuple_item,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_tuple_size,
+        jacpy_uint,
+        object_error,
+        required
+    }
+    capi --> runtime.python.modules.tee {
+        boundary_failure,
+        checked,
+        jacpy_iter,
+        jacpy_iter_next,
+        jacpy_list_item,
+        jacpy_list_size,
+        jacpy_release,
+        jacpy_retain,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        jacpy_type_check,
+        object_error,
+        required
+    }
+    capi --> runtime.python.native_services { boundary_failure, read_buffer, required }
+    capi --> runtime.python.symtable { boundary_failure }
+    capi --> runtime.python.tokenize {
+        boundary_failure,
+        checked,
+        jacpy_int,
+        jacpy_release,
+        jacpy_tuple_new,
+        jacpy_tuple_set_owned,
+        required,
+        text_object
+    }
+    characters --> compiler.frontend.python.parser_actions.pa_decode_escape_body {
+        point_at,
+        point_width
+    }
+    characters --> compiler.frontend.python.tokenizer {
+        point_at,
+        point_width,
+        unicode_continue,
+        unicode_printable,
+        unicode_start
+    }
+    compiler_integer --> compiler.backends.py.jacpython.codegen_util {
+        PyBigInt,
+        integer_add
+    }
+    compiler_integer --> compiler.backends.py.jacpython.compiler_emit {
+        PyBigInt,
+        integer_negate
+    }
+    compiler_integer --> compiler.frontend.python.annotation_unparse {
+        PyBigInt,
+        integer_decimal
+    }
+    compiler_integer --> compiler.frontend.python.ast_validation { PyBigInt }
+    compiler_integer --> compiler.frontend.python.compiler_preprocess {
+        PyBigInt,
+        integer_add,
+        integer_negate,
+        integer_to_float
+    }
+    compiler_integer --> runtime.python.constant_input { integer_from_marshal }
+    compiler_integer --> runtime.python.constant_keys { PyBigInt, integer_decimal }
+    compiler_integer --> runtime.python.constant_output { PyBigInt }
+    compiler_integer --> runtime.python.native_services { integer_from_marshal }
+    constant_input --> compiler.frontend.python.ast_input { read_constant }
+    constant_keys --> compiler.backends.py.jacpython.compiler_ir { constant_key }
+    constant_keys --> runtime.python.constant_output { constant_key }
+    constant_output --> compiler.backends.py.jacpython.native_api { constant_object }
+    constant_output --> compiler.frontend.python.ast_output { constant_object }
+    native_services --> compiler.frontend.python.ast_input { take_buffer }
+    native_services --> compiler.frontend.python.compiler_diagnostics.syntax_warning {
+        warn
+    }
+    native_services --> compiler.frontend.python.parser_actions.pa_decode_bytes_escape_body {
+        decode_bytes
+    }
+    native_services --> compiler.frontend.python.parser_actions.pa_decode_escape_body {
+        decode_unicode
+    }
+    native_services --> compiler.frontend.python.parser_actions.pa_name_from_token {
+        normalize_identifier
+    }
+    native_services --> compiler.frontend.python.parser_actions.pa_py_number_from_spelling {
+        parse_float,
+        parse_integer
+    }
+    native_services --> compiler.frontend.python.parser_actions.pa_warn_escape { warn }
+    native_services --> compiler.frontend.python.source_encoding {
+        take_buffer,
+        take_error_text
+    }
+    native_services --> compiler.frontend.python.source_input {
+        take_buffer,
+        take_error_text
+    }
+    native_services --> runtime.python.constant_input { take_buffer }
+    native_services --> runtime.python.tokenize {
+        parse_float,
+        parse_integer,
+        take_buffer
+    }
+    objects --> compiler.backends.py.jacpython.assembler { PyCode }
+    objects --> compiler.backends.py.jacpython.codegen_util {
+        PyCode,
+        PyInt,
+        PyObj,
+        PySlice,
+        PyStr,
+        PyTuple,
+        py_none
+    }
+    objects --> compiler.backends.py.jacpython.compiler_annotations {
+        PyInt,
+        PyStr,
+        hashkey_equal,
+        py_none
+    }
+    objects --> compiler.backends.py.jacpython.compiler_codegen {
+        PyCode,
+        PyInt,
+        PyNoneType,
+        PyObj,
+        PySlice,
+        PyStr,
+        PyTuple,
+        py_none
+    }
+    objects --> compiler.backends.py.jacpython.compiler_defs {
+        PyCode,
+        PyInt,
+        PyObj,
+        PyStr,
+        PyTuple,
+        py_none
+    }
+    objects --> compiler.backends.py.jacpython.compiler_emit {
+        PyBool,
+        PyCode,
+        PyComplex,
+        PyFloat,
+        PyInt,
+        PyNoneType,
+        PyObj,
+        PySet,
+        PySlice,
+        PyStr,
+        PyTuple,
+        is_error,
+        py_none
+    }
+    objects --> compiler.backends.py.jacpython.compiler_exc { py_none }
+    objects --> compiler.backends.py.jacpython.compiler_ir {
+        PyBool,
+        PyBytes,
+        PyCode,
+        PyComplex,
+        PyFloat,
+        PyInt,
+        PyObj,
+        PySet,
+        PySlice,
+        PyStr,
+        PyTuple,
+        py_none
+    }
+    objects --> compiler.backends.py.jacpython.compiler_loops { py_none }
+    objects --> compiler.backends.py.jacpython.compiler_match {
+        PyInt,
+        PyObj,
+        PyStr,
+        PyTuple,
+        hashkey_equal
+    }
+    objects --> compiler.backends.py.jacpython.flowgraph {
+        PyInt,
+        PyObj,
+        PySet,
+        PyTuple,
+        is_error
+    }
+    objects --> compiler.backends.py.jacpython.native_api {
+        PyCode,
+        PyError,
+        PyInt,
+        PyObj
+    }
+    objects --> compiler.backends.py.jacpython.product_compile { PyObj, py_error }
+    objects --> compiler.frontend.python.annotation_unparse {
+        PyBool,
+        PyBytes,
+        PyComplex,
+        PyEllipsis,
+        PyFloat,
+        PyInt,
+        PyNoneType,
+        PyObj,
+        PyStr,
+        PyTuple
+    }
+    objects --> compiler.frontend.python.ast_input { PyObj }
+    objects --> compiler.frontend.python.ast_nodes { PyObj }
+    objects --> compiler.frontend.python.ast_output { PyObj }
+    objects --> compiler.frontend.python.ast_validation {
+        PyBool,
+        PyBytes,
+        PyComplex,
+        PyEllipsis,
+        PyFloat,
+        PyInt,
+        PyNoneType,
+        PyObj,
+        PySet,
+        PyStr,
+        PyTuple
+    }
+    objects --> compiler.frontend.python.compiler_diagnostics {
+        PyError,
+        PyInt,
+        PyObj,
+        py_error
+    }
+    objects --> compiler.frontend.python.compiler_preprocess {
+        PyBool,
+        PyComplex,
+        PyFloat,
+        PyInt,
+        PyObj,
+        PyStr
+    }
+    objects --> compiler.frontend.python.parser_actions {
+        PyBool,
+        PyBytes,
+        PyComplex,
+        PyEllipsis,
+        PyFloat,
+        PyInt,
+        PyNoneType,
+        PyObj,
+        PyStr,
+        py_none
+    }
+    objects --> runtime.python.compiler_integer { PyInt, PyObj, PyStr }
+    objects --> runtime.python.constant_input {
+        PyBool,
+        PyBytes,
+        PyComplex,
+        PyEllipsis,
+        PyFloat,
+        PyNoneType,
+        PyObj,
+        PySet,
+        PyStr,
+        PyTuple
+    }
+    objects --> runtime.python.constant_keys {
+        PyBool,
+        PyBytes,
+        PyCode,
+        PyComplex,
+        PyFloat,
+        PyInt,
+        PyObj,
+        PySet,
+        PySlice,
+        PyStr,
+        PyTuple
+    }
+    objects --> runtime.python.constant_output {
+        PyBool,
+        PyBytes,
+        PyCode,
+        PyComplex,
+        PyEllipsis,
+        PyFloat,
+        PyInt,
+        PyNoneType,
+        PyObj,
+        PySet,
+        PySlice,
+        PyStr,
+        PyTuple
+    }
+    objects --> runtime.python.native_services { PyObj }
+    objects --> runtime.python.symtable { PyObj, py_error }
+    opcode_meta --> compiler.backends.py.jacpython.assembler {
+        OP_CACHE,
+        OP_EXTENDED_ARG,
+        opcode_cache_count
+    }
+    opcode_meta --> compiler.backends.py.jacpython.codegen_util {
+        CMP_EQ,
+        CMP_GE,
+        CMP_GT,
+        CMP_LE,
+        CMP_LT,
+        CMP_NE,
+        CO_ASYNC_GENERATOR,
+        CO_COROUTINE,
+        CO_GENERATOR,
+        CO_METHOD,
+        CO_NESTED,
+        CO_NEWLOCALS,
+        CO_OPTIMIZED,
+        CO_VARARGS,
+        CO_VARKEYWORDS,
+        NB_ADD,
+        NB_AND,
+        NB_FLOOR_DIVIDE,
+        NB_INPLACE_ADD,
+        NB_INPLACE_AND,
+        NB_INPLACE_FLOOR_DIVIDE,
+        NB_INPLACE_LSHIFT,
+        NB_INPLACE_MATRIX_MULTIPLY,
+        NB_INPLACE_MULTIPLY,
+        NB_INPLACE_OR,
+        NB_INPLACE_POWER,
+        NB_INPLACE_REMAINDER,
+        NB_INPLACE_RSHIFT,
+        NB_INPLACE_SUBTRACT,
+        NB_INPLACE_TRUE_DIVIDE,
+        NB_INPLACE_XOR,
+        NB_LSHIFT,
+        NB_MATRIX_MULTIPLY,
+        NB_MULTIPLY,
+        NB_OR,
+        NB_POWER,
+        NB_REMAINDER,
+        NB_RSHIFT,
+        NB_SUBSCR,
+        NB_SUBTRACT,
+        NB_TRUE_DIVIDE,
+        NB_XOR,
+        OP_BUILD_LIST,
+        OP_BUILD_MAP,
+        OP_BUILD_SET,
+        OP_BUILD_TUPLE,
+        OP_CALL,
+        OP_CALL_INTRINSIC_1,
+        OP_CALL_KW,
+        OP_CHECK_EXC_MATCH,
+        OP_CLEANUP_THROW,
+        OP_COMPARE_OP,
+        OP_COPY,
+        OP_COPY_FREE_VARS,
+        OP_DELETE_ATTR,
+        OP_DELETE_FAST,
+        OP_DELETE_NAME,
+        OP_DELETE_SUBSCR,
+        OP_DICT_UPDATE,
+        OP_END_ASYNC_FOR,
+        OP_END_FOR,
+        OP_END_SEND,
+        OP_FOR_ITER,
+        OP_GET_AITER,
+        OP_GET_ANEXT,
+        OP_GET_AWAITABLE,
+        OP_GET_ITER,
+        OP_GET_LEN,
+        OP_GET_YIELD_FROM_ITER,
+        OP_IMPORT_FROM,
+        OP_IMPORT_NAME,
+        OP_IS_OP,
+        OP_JUMP_BACKWARD,
+        OP_JUMP_BACKWARD_NO_INTERRUPT,
+        OP_JUMP_FORWARD,
+        OP_LIST_APPEND,
+        OP_LIST_EXTEND,
+        OP_LOAD_ATTR,
+        OP_LOAD_BUILD_CLASS,
+        OP_LOAD_COMMON_CONSTANT,
+        OP_LOAD_CONST,
+        OP_LOAD_DEREF,
+        OP_LOAD_FAST,
+        OP_LOAD_FAST_AND_CLEAR,
+        OP_LOAD_FAST_BORROW,
+        OP_LOAD_FAST_BORROW_LOAD_FAST_BORROW,
+        OP_LOAD_FAST_CHECK,
+        OP_LOAD_GLOBAL,
+        OP_LOAD_LOCALS,
+        OP_LOAD_NAME,
+        OP_LOAD_SMALL_INT,
+        OP_LOAD_SPECIAL,
+        OP_MAKE_CELL,
+        OP_MAKE_FUNCTION,
+        OP_MAP_ADD,
+        OP_MATCH_CLASS,
+        OP_MATCH_KEYS,
+        OP_MATCH_MAPPING,
+        OP_MATCH_SEQUENCE,
+        OP_NOP,
+        OP_NOT_TAKEN,
+        OP_POP_EXCEPT,
+        OP_POP_ITER,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_JUMP_IF_NONE,
+        OP_POP_JUMP_IF_NOT_NONE,
+        OP_POP_JUMP_IF_TRUE,
+        OP_POP_TOP,
+        OP_PUSH_EXC_INFO,
+        OP_PUSH_NULL,
+        OP_RAISE_VARARGS,
+        OP_RERAISE,
+        OP_RESUME,
+        OP_RETURN_GENERATOR,
+        OP_RETURN_VALUE,
+        OP_SEND,
+        OP_SET_ADD,
+        OP_SET_FUNCTION_ATTRIBUTE,
+        OP_SET_UPDATE,
+        OP_STORE_ATTR,
+        OP_STORE_DEREF,
+        OP_STORE_FAST,
+        OP_STORE_FAST_LOAD_FAST,
+        OP_STORE_FAST_STORE_FAST,
+        OP_STORE_NAME,
+        OP_STORE_SUBSCR,
+        OP_SWAP,
+        OP_TO_BOOL,
+        OP_UNARY_INVERT,
+        OP_UNARY_NEGATIVE,
+        OP_UNARY_NOT,
+        OP_UNPACK_EX,
+        OP_UNPACK_SEQUENCE,
+        OP_WITH_EXCEPT_START,
+        OP_YIELD_VALUE,
+        compare_filter_oparg,
+        compare_oparg
+    }
+    opcode_meta --> compiler.backends.py.jacpython.compiler_annotations {
+        CMP_GT,
+        CO_NESTED,
+        CO_NEWLOCALS,
+        CO_OPTIMIZED,
+        OP_BUILD_MAP,
+        OP_BUILD_SET,
+        OP_BUILD_TUPLE,
+        OP_COMPARE_OP,
+        OP_CONTAINS_OP,
+        OP_COPY,
+        OP_COPY_FREE_VARS,
+        OP_LOAD_COMMON_CONSTANT,
+        OP_LOAD_CONST,
+        OP_LOAD_DEREF,
+        OP_LOAD_FAST,
+        OP_LOAD_FAST_BORROW,
+        OP_LOAD_FROM_DICT_OR_GLOBALS,
+        OP_LOAD_GLOBAL,
+        OP_LOAD_NAME,
+        OP_LOAD_SMALL_INT,
+        OP_MAKE_CELL,
+        OP_MAKE_FUNCTION,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_TOP,
+        OP_RAISE_VARARGS,
+        OP_RESUME,
+        OP_RETURN_VALUE,
+        OP_SETUP_ANNOTATIONS,
+        OP_SET_ADD,
+        OP_SET_FUNCTION_ATTRIBUTE,
+        OP_STORE_ATTR,
+        OP_STORE_DEREF,
+        OP_STORE_FAST,
+        OP_STORE_NAME,
+        OP_STORE_SUBSCR,
+        OP_SWAP,
+        compare_oparg
+    }
+    opcode_meta --> compiler.backends.py.jacpython.compiler_codegen {
+        CMP_EQ,
+        CMP_GE,
+        CMP_GT,
+        CMP_LE,
+        CMP_LT,
+        CMP_NE,
+        CO_ASYNC_GENERATOR,
+        CO_COROUTINE,
+        CO_GENERATOR,
+        CO_NESTED,
+        CO_NEWLOCALS,
+        CO_OPTIMIZED,
+        CO_VARARGS,
+        CO_VARKEYWORDS,
+        NB_ADD,
+        NB_AND,
+        NB_FLOOR_DIVIDE,
+        NB_INPLACE_ADD,
+        NB_INPLACE_AND,
+        NB_INPLACE_FLOOR_DIVIDE,
+        NB_INPLACE_LSHIFT,
+        NB_INPLACE_MATRIX_MULTIPLY,
+        NB_INPLACE_MULTIPLY,
+        NB_INPLACE_OR,
+        NB_INPLACE_POWER,
+        NB_INPLACE_REMAINDER,
+        NB_INPLACE_RSHIFT,
+        NB_INPLACE_SUBTRACT,
+        NB_INPLACE_TRUE_DIVIDE,
+        NB_INPLACE_XOR,
+        NB_LSHIFT,
+        NB_MATRIX_MULTIPLY,
+        NB_MULTIPLY,
+        NB_OR,
+        NB_POWER,
+        NB_REMAINDER,
+        NB_RSHIFT,
+        NB_SUBSCR,
+        NB_SUBTRACT,
+        NB_TRUE_DIVIDE,
+        NB_XOR,
+        OP_BINARY_OP,
+        OP_BINARY_SLICE,
+        OP_BUILD_LIST,
+        OP_BUILD_MAP,
+        OP_BUILD_SET,
+        OP_BUILD_SLICE,
+        OP_BUILD_TUPLE,
+        OP_CALL,
+        OP_CALL_INTRINSIC_1,
+        OP_CALL_KW,
+        OP_CHECK_EXC_MATCH,
+        OP_CLEANUP_THROW,
+        OP_COMPARE_OP,
+        OP_CONTAINS_OP,
+        OP_COPY,
+        OP_COPY_FREE_VARS,
+        OP_DELETE_ATTR,
+        OP_DELETE_DEREF,
+        OP_DELETE_FAST,
+        OP_DELETE_GLOBAL,
+        OP_DELETE_NAME,
+        OP_DELETE_SUBSCR,
+        OP_DICT_UPDATE,
+        OP_END_ASYNC_FOR,
+        OP_END_FOR,
+        OP_END_SEND,
+        OP_FOR_ITER,
+        OP_GET_AITER,
+        OP_GET_ANEXT,
+        OP_GET_AWAITABLE,
+        OP_GET_ITER,
+        OP_GET_LEN,
+        OP_GET_YIELD_FROM_ITER,
+        OP_IMPORT_FROM,
+        OP_IMPORT_NAME,
+        OP_IS_OP,
+        OP_JUMP_BACKWARD,
+        OP_JUMP_BACKWARD_NO_INTERRUPT,
+        OP_JUMP_FORWARD,
+        OP_LIST_APPEND,
+        OP_LIST_EXTEND,
+        OP_LOAD_ATTR,
+        OP_LOAD_BUILD_CLASS,
+        OP_LOAD_COMMON_CONSTANT,
+        OP_LOAD_CONST,
+        OP_LOAD_DEREF,
+        OP_LOAD_FAST,
+        OP_LOAD_FAST_AND_CLEAR,
+        OP_LOAD_FAST_BORROW,
+        OP_LOAD_FAST_BORROW_LOAD_FAST_BORROW,
+        OP_LOAD_FAST_CHECK,
+        OP_LOAD_GLOBAL,
+        OP_LOAD_LOCALS,
+        OP_LOAD_NAME,
+        OP_LOAD_SMALL_INT,
+        OP_LOAD_SPECIAL,
+        OP_MAKE_CELL,
+        OP_MAKE_FUNCTION,
+        OP_MAP_ADD,
+        OP_MATCH_CLASS,
+        OP_MATCH_KEYS,
+        OP_MATCH_MAPPING,
+        OP_MATCH_SEQUENCE,
+        OP_NOP,
+        OP_NOT_TAKEN,
+        OP_POP_EXCEPT,
+        OP_POP_ITER,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_JUMP_IF_NONE,
+        OP_POP_JUMP_IF_NOT_NONE,
+        OP_POP_JUMP_IF_TRUE,
+        OP_POP_TOP,
+        OP_PUSH_EXC_INFO,
+        OP_PUSH_NULL,
+        OP_RAISE_VARARGS,
+        OP_RERAISE,
+        OP_RESUME,
+        OP_RETURN_GENERATOR,
+        OP_RETURN_VALUE,
+        OP_SEND,
+        OP_SET_ADD,
+        OP_SET_FUNCTION_ATTRIBUTE,
+        OP_SET_UPDATE,
+        OP_STORE_ATTR,
+        OP_STORE_DEREF,
+        OP_STORE_FAST,
+        OP_STORE_FAST_LOAD_FAST,
+        OP_STORE_FAST_STORE_FAST,
+        OP_STORE_GLOBAL,
+        OP_STORE_NAME,
+        OP_STORE_SLICE,
+        OP_STORE_SUBSCR,
+        OP_SWAP,
+        OP_TO_BOOL,
+        OP_UNARY_INVERT,
+        OP_UNARY_NEGATIVE,
+        OP_UNARY_NOT,
+        OP_UNPACK_EX,
+        OP_UNPACK_SEQUENCE,
+        OP_WITH_EXCEPT_START,
+        OP_YIELD_VALUE,
+        compare_filter_oparg,
+        compare_oparg,
+        is_scope_exit_opcode,
+        is_unconditional_jump_opcode
+    }
+    opcode_meta --> compiler.backends.py.jacpython.compiler_defs {
+        CMP_GT,
+        CO_ASYNC_GENERATOR,
+        CO_COROUTINE,
+        CO_GENERATOR,
+        CO_HAS_DOCSTRING,
+        CO_NESTED,
+        CO_NEWLOCALS,
+        CO_OPTIMIZED,
+        OP_BUILD_TUPLE,
+        OP_CALL,
+        OP_CALL_INTRINSIC_1,
+        OP_CALL_INTRINSIC_2,
+        OP_CALL_KW,
+        OP_COMPARE_OP,
+        OP_COPY,
+        OP_COPY_FREE_VARS,
+        OP_IMPORT_FROM,
+        OP_IMPORT_NAME,
+        OP_LOAD_BUILD_CLASS,
+        OP_LOAD_COMMON_CONSTANT,
+        OP_LOAD_CONST,
+        OP_LOAD_FAST_BORROW,
+        OP_LOAD_LOCALS,
+        OP_LOAD_NAME,
+        OP_LOAD_SMALL_INT,
+        OP_MAKE_CELL,
+        OP_MAKE_FUNCTION,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_TOP,
+        OP_PUSH_NULL,
+        OP_RAISE_VARARGS,
+        OP_RESUME,
+        OP_RETURN_VALUE,
+        OP_SET_FUNCTION_ATTRIBUTE,
+        OP_STORE_DEREF,
+        OP_STORE_FAST,
+        OP_STORE_NAME,
+        OP_SWAP,
+        OP_UNPACK_SEQUENCE,
+        compare_oparg
+    }
+    opcode_meta --> compiler.backends.py.jacpython.compiler_emit {
+        CMP_EQ,
+        CMP_GE,
+        CMP_GT,
+        CMP_LE,
+        CMP_LT,
+        CMP_NE,
+        CO_ASYNC_GENERATOR,
+        CO_COROUTINE,
+        CO_GENERATOR,
+        CO_NESTED,
+        CO_NEWLOCALS,
+        CO_OPTIMIZED,
+        CO_VARARGS,
+        CO_VARKEYWORDS,
+        NB_ADD,
+        NB_AND,
+        NB_FLOOR_DIVIDE,
+        NB_INPLACE_ADD,
+        NB_INPLACE_AND,
+        NB_INPLACE_FLOOR_DIVIDE,
+        NB_INPLACE_LSHIFT,
+        NB_INPLACE_MATRIX_MULTIPLY,
+        NB_INPLACE_MULTIPLY,
+        NB_INPLACE_OR,
+        NB_INPLACE_POWER,
+        NB_INPLACE_REMAINDER,
+        NB_INPLACE_RSHIFT,
+        NB_INPLACE_SUBTRACT,
+        NB_INPLACE_TRUE_DIVIDE,
+        NB_INPLACE_XOR,
+        NB_LSHIFT,
+        NB_MATRIX_MULTIPLY,
+        NB_MULTIPLY,
+        NB_OR,
+        NB_POWER,
+        NB_REMAINDER,
+        NB_RSHIFT,
+        NB_SUBSCR,
+        NB_SUBTRACT,
+        NB_TRUE_DIVIDE,
+        NB_XOR,
+        OP_BINARY_OP,
+        OP_BINARY_SLICE,
+        OP_BUILD_INTERPOLATION,
+        OP_BUILD_LIST,
+        OP_BUILD_MAP,
+        OP_BUILD_SET,
+        OP_BUILD_SLICE,
+        OP_BUILD_STRING,
+        OP_BUILD_TEMPLATE,
+        OP_BUILD_TUPLE,
+        OP_CALL,
+        OP_CALL_FUNCTION_EX,
+        OP_CALL_INTRINSIC_1,
+        OP_CALL_KW,
+        OP_CHECK_EXC_MATCH,
+        OP_CLEANUP_THROW,
+        OP_COMPARE_OP,
+        OP_CONTAINS_OP,
+        OP_CONVERT_VALUE,
+        OP_COPY,
+        OP_COPY_FREE_VARS,
+        OP_DELETE_ATTR,
+        OP_DELETE_FAST,
+        OP_DELETE_GLOBAL,
+        OP_DELETE_NAME,
+        OP_DELETE_SUBSCR,
+        OP_DICT_MERGE,
+        OP_DICT_UPDATE,
+        OP_END_ASYNC_FOR,
+        OP_END_FOR,
+        OP_END_SEND,
+        OP_FORMAT_SIMPLE,
+        OP_FORMAT_WITH_SPEC,
+        OP_FOR_ITER,
+        OP_GET_AITER,
+        OP_GET_ANEXT,
+        OP_GET_AWAITABLE,
+        OP_GET_ITER,
+        OP_GET_LEN,
+        OP_GET_YIELD_FROM_ITER,
+        OP_IMPORT_FROM,
+        OP_IMPORT_NAME,
+        OP_IS_OP,
+        OP_JUMP_BACKWARD,
+        OP_JUMP_BACKWARD_NO_INTERRUPT,
+        OP_JUMP_FORWARD,
+        OP_LIST_APPEND,
+        OP_LIST_EXTEND,
+        OP_LOAD_ATTR,
+        OP_LOAD_BUILD_CLASS,
+        OP_LOAD_COMMON_CONSTANT,
+        OP_LOAD_CONST,
+        OP_LOAD_DEREF,
+        OP_LOAD_FAST,
+        OP_LOAD_FAST_AND_CLEAR,
+        OP_LOAD_FAST_BORROW,
+        OP_LOAD_FAST_BORROW_LOAD_FAST_BORROW,
+        OP_LOAD_FAST_CHECK,
+        OP_LOAD_FROM_DICT_OR_DEREF,
+        OP_LOAD_FROM_DICT_OR_GLOBALS,
+        OP_LOAD_GLOBAL,
+        OP_LOAD_LOCALS,
+        OP_LOAD_NAME,
+        OP_LOAD_SMALL_INT,
+        OP_LOAD_SPECIAL,
+        OP_LOAD_SUPER_ATTR,
+        OP_MAKE_CELL,
+        OP_MAKE_FUNCTION,
+        OP_MAP_ADD,
+        OP_MATCH_CLASS,
+        OP_MATCH_KEYS,
+        OP_MATCH_MAPPING,
+        OP_MATCH_SEQUENCE,
+        OP_NOP,
+        OP_NOT_TAKEN,
+        OP_POP_EXCEPT,
+        OP_POP_ITER,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_JUMP_IF_NONE,
+        OP_POP_JUMP_IF_NOT_NONE,
+        OP_POP_JUMP_IF_TRUE,
+        OP_POP_TOP,
+        OP_PUSH_EXC_INFO,
+        OP_PUSH_NULL,
+        OP_RAISE_VARARGS,
+        OP_RERAISE,
+        OP_RESUME,
+        OP_RETURN_GENERATOR,
+        OP_RETURN_VALUE,
+        OP_SEND,
+        OP_SET_ADD,
+        OP_SET_FUNCTION_ATTRIBUTE,
+        OP_SET_UPDATE,
+        OP_STORE_ATTR,
+        OP_STORE_DEREF,
+        OP_STORE_FAST,
+        OP_STORE_FAST_LOAD_FAST,
+        OP_STORE_FAST_MAYBE_NULL,
+        OP_STORE_FAST_STORE_FAST,
+        OP_STORE_GLOBAL,
+        OP_STORE_NAME,
+        OP_STORE_SLICE,
+        OP_STORE_SUBSCR,
+        OP_SWAP,
+        OP_TO_BOOL,
+        OP_UNARY_INVERT,
+        OP_UNARY_NEGATIVE,
+        OP_UNARY_NOT,
+        OP_UNPACK_EX,
+        OP_UNPACK_SEQUENCE,
+        OP_WITH_EXCEPT_START,
+        OP_YIELD_VALUE,
+        compare_filter_oparg,
+        compare_oparg
+    }
+    opcode_meta --> compiler.backends.py.jacpython.compiler_exc {
+        OP_BUILD_LIST,
+        OP_CALL,
+        OP_CALL_INTRINSIC_1,
+        OP_CALL_INTRINSIC_2,
+        OP_CHECK_EG_MATCH,
+        OP_CHECK_EXC_MATCH,
+        OP_CLEANUP_THROW,
+        OP_COPY,
+        OP_END_FOR,
+        OP_END_SEND,
+        OP_GET_AWAITABLE,
+        OP_JUMP_BACKWARD,
+        OP_JUMP_BACKWARD_NO_INTERRUPT,
+        OP_JUMP_FORWARD,
+        OP_LIST_APPEND,
+        OP_LOAD_CONST,
+        OP_LOAD_SPECIAL,
+        OP_NOP,
+        OP_NOT_TAKEN,
+        OP_POP_EXCEPT,
+        OP_POP_ITER,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_JUMP_IF_NONE,
+        OP_POP_JUMP_IF_NOT_NONE,
+        OP_POP_JUMP_IF_TRUE,
+        OP_POP_TOP,
+        OP_PUSH_EXC_INFO,
+        OP_RAISE_VARARGS,
+        OP_RERAISE,
+        OP_RESUME,
+        OP_RETURN_VALUE,
+        OP_SEND,
+        OP_STORE_FAST,
+        OP_SWAP,
+        OP_TO_BOOL,
+        OP_WITH_EXCEPT_START,
+        OP_YIELD_VALUE
+    }
+    opcode_meta --> compiler.backends.py.jacpython.compiler_ir {
+        OP_LOAD_CONST,
+        opcode_cache_count,
+        opcode_has_const
+    }
+    opcode_meta --> compiler.backends.py.jacpython.compiler_loops {
+        OP_END_ASYNC_FOR,
+        OP_END_FOR,
+        OP_FOR_ITER,
+        OP_GET_AITER,
+        OP_GET_ANEXT,
+        OP_GET_ITER,
+        OP_GET_YIELD_FROM_ITER,
+        OP_JUMP_BACKWARD,
+        OP_JUMP_FORWARD,
+        OP_LOAD_CONST,
+        OP_NOP,
+        OP_NOT_TAKEN,
+        OP_POP_ITER,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_JUMP_IF_TRUE,
+        OP_POP_TOP,
+        OP_RETURN_VALUE,
+        has_target,
+        is_scope_exit_opcode,
+        is_unconditional_jump_opcode
+    }
+    opcode_meta --> compiler.backends.py.jacpython.compiler_match {
+        CMP_EQ,
+        CMP_GE,
+        NB_SUBSCR,
+        NB_SUBTRACT,
+        OP_BINARY_OP,
+        OP_BUILD_MAP,
+        OP_BUILD_TUPLE,
+        OP_COMPARE_OP,
+        OP_COPY,
+        OP_DELETE_SUBSCR,
+        OP_DICT_UPDATE,
+        OP_GET_LEN,
+        OP_IS_OP,
+        OP_JUMP_FORWARD,
+        OP_LOAD_CONST,
+        OP_LOAD_FAST,
+        OP_LOAD_FAST_BORROW,
+        OP_MATCH_CLASS,
+        OP_MATCH_KEYS,
+        OP_MATCH_MAPPING,
+        OP_MATCH_SEQUENCE,
+        OP_NOP,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_JUMP_IF_NONE,
+        OP_POP_JUMP_IF_NOT_NONE,
+        OP_POP_TOP,
+        OP_STORE_FAST_STORE_FAST,
+        OP_SWAP,
+        OP_UNPACK_EX,
+        OP_UNPACK_SEQUENCE,
+        compare_filter_oparg,
+        compare_oparg
+    }
+    opcode_meta --> compiler.backends.py.jacpython.flowgraph {
+        OP_BUILD_LIST,
+        OP_BUILD_SET,
+        OP_CHECK_EXC_MATCH,
+        OP_CONTAINS_OP,
+        OP_COPY,
+        OP_DELETE_FAST,
+        OP_DICT_MERGE,
+        OP_DICT_UPDATE,
+        OP_END_ASYNC_FOR,
+        OP_END_SEND,
+        OP_FORMAT_SIMPLE,
+        OP_FOR_ITER,
+        OP_GET_ANEXT,
+        OP_GET_ITER,
+        OP_GET_LEN,
+        OP_GET_YIELD_FROM_ITER,
+        OP_IMPORT_FROM,
+        OP_JUMP_BACKWARD,
+        OP_JUMP_BACKWARD_NO_INTERRUPT,
+        OP_JUMP_FORWARD,
+        OP_LIST_APPEND,
+        OP_LIST_EXTEND,
+        OP_LOAD_ATTR,
+        OP_LOAD_CONST,
+        OP_LOAD_FAST,
+        OP_LOAD_FAST_AND_CLEAR,
+        OP_LOAD_FAST_BORROW,
+        OP_LOAD_FAST_BORROW_LOAD_FAST_BORROW,
+        OP_LOAD_FAST_CHECK,
+        OP_LOAD_FAST_LOAD_FAST,
+        OP_LOAD_SMALL_INT,
+        OP_LOAD_SPECIAL,
+        OP_LOAD_SUPER_ATTR,
+        OP_MAP_ADD,
+        OP_MATCH_KEYS,
+        OP_MATCH_MAPPING,
+        OP_MATCH_SEQUENCE,
+        OP_NOP,
+        OP_NOT_TAKEN,
+        OP_POP_JUMP_IF_FALSE,
+        OP_POP_JUMP_IF_NONE,
+        OP_POP_JUMP_IF_NOT_NONE,
+        OP_POP_JUMP_IF_TRUE,
+        OP_POP_TOP,
+        OP_PUSH_EXC_INFO,
+        OP_RERAISE,
+        OP_RETURN_VALUE,
+        OP_SEND,
+        OP_SET_ADD,
+        OP_SET_FUNCTION_ATTRIBUTE,
+        OP_SET_UPDATE,
+        OP_STORE_FAST,
+        OP_STORE_FAST_LOAD_FAST,
+        OP_STORE_FAST_MAYBE_NULL,
+        OP_STORE_FAST_STORE_FAST,
+        OP_SWAP,
+        OP_WITH_EXCEPT_START,
+        _opcode_num_popped,
+        _opcode_num_pushed,
+        has_target,
+        is_scope_exit_opcode,
+        is_unconditional_jump_opcode,
+        opcode_has_const,
+        stack_effect
+    }
+    opcode_meta --> compiler.backends.py.jacpython.native_api { stack_effect }
+    opcode_meta --> runtime.python.constant_output {
+        CO_FAST_CELL,
+        CO_FAST_FREE,
+        CO_FAST_HIDDEN,
+        CO_FAST_LOCAL,
+        CO_OPTIMIZED
+    }
+    opcode_meta --> runtime.python.objects {
+        NB_ADD,
+        NB_AND,
+        NB_FLOOR_DIVIDE,
+        NB_LSHIFT,
+        NB_MULTIPLY,
+        NB_OR,
+        NB_POWER,
+        NB_REMAINDER,
+        NB_RSHIFT,
+        NB_SUBTRACT,
+        NB_TRUE_DIVIDE,
+        NB_XOR
+    }
+    symtable --> compiler.backends.py.jacpython.native_api {
+        SymtableEntry,
+        source_symtable,
+        symtable_to_object
+    }
+    tokenize --> compiler.backends.py.jacpython.native_api {
+        jacpy_token_close,
+        token_iterator,
+        token_iterator_state,
+        token_object
+    }
+}
+
+graph import runtime.python.bindings {
+    arguments --> runtime.python.bindings.array {
+        BoundArguments,
+        CallSignature,
+        character_value,
+        index_value,
+        invoke,
+        jacpy_ssize
+    }
+    arguments --> runtime.python.bindings.binascii {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.bisect {
+        BoundArguments,
+        CallSignature,
+        index_value,
+        invoke
+    }
+    arguments --> runtime.python.bindings.cmath {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.collections {
+        BoundArguments,
+        CallSignature,
+        index_value,
+        invoke,
+        jacpy_ssize
+    }
+    arguments --> runtime.python.bindings.csv {
+        BoundArguments,
+        CallSignature,
+        invoke,
+        jacpy_ssize
+    }
+    arguments --> runtime.python.bindings.functools {
+        BoundArguments,
+        CallSignature,
+        index_value,
+        invoke
+    }
+    arguments --> runtime.python.bindings.heapq {
+        BoundArguments,
+        CallSignature,
+        invalid,
+        invoke,
+        invoke_one
+    }
+    arguments --> runtime.python.bindings.itertools {
+        BoundArguments,
+        CallSignature,
+        index_value,
+        invoke,
+        jacpy_ssize
+    }
+    arguments --> runtime.python.bindings.json {
+        BoundArguments,
+        CallSignature,
+        index_value,
+        invoke,
+        invoke_one
+    }
+    arguments --> runtime.python.bindings.math { BoundArguments, CallSignature, invoke }
+    arguments --> runtime.python.bindings.operator {
+        BoundArguments,
+        CallSignature,
+        index_value,
+        invoke,
+        invoke_one
+    }
+    arguments --> runtime.python.bindings.pickle {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.queue {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.random {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.statistics {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    arguments --> runtime.python.bindings.struct {
+        BoundArguments,
+        CallSignature,
+        invoke
+    }
+    array --> compiler.backends.py.jacpython.native_api { PyInit_array }
+    binascii --> compiler.backends.py.jacpython.native_api { PyInit_binascii }
+    bisect --> compiler.backends.py.jacpython.native_api { PyInit__bisect }
+    buffer --> runtime.python.bindings.array {
+        BufferArgument,
+        BufferLayout,
+        jacpy_binding_buffer_dispose,
+        jacpy_binding_buffer_fill
+    }
+    buffer --> runtime.python.bindings.binascii { BufferArgument }
+    buffer --> runtime.python.bindings.operator { BufferArgument }
+    buffer --> runtime.python.bindings.struct { BufferArgument }
+    cmath --> compiler.backends.py.jacpython.native_api { PyInit_cmath }
+    collections --> compiler.backends.py.jacpython.native_api { PyInit__collections }
+    csv --> compiler.backends.py.jacpython.native_api { PyInit__csv }
+    functools --> compiler.backends.py.jacpython.native_api { PyInit__functools }
+    heapq --> compiler.backends.py.jacpython.native_api { PyInit__heapq }
+    itertools --> compiler.backends.py.jacpython.native_api { PyInit_itertools }
+    json --> compiler.backends.py.jacpython.native_api { PyInit__json }
+    math --> compiler.backends.py.jacpython.native_api { PyInit_math }
+    module --> runtime.python.bindings.array {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned,
+        add_state_owned,
+        jacpy_binding_state_get,
+        jacpy_binding_state_set,
+        jacpy_binding_visit
+    }
+    module --> runtime.python.bindings.binascii {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned,
+        jacpy_binding_exception,
+        jacpy_binding_state_get
+    }
+    module --> runtime.python.bindings.bisect {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition
+    }
+    module --> runtime.python.bindings.cmath {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned
+    }
+    module --> runtime.python.bindings.collections {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned,
+        add_state_owned,
+        jacpy_binding_state_get,
+        jacpy_binding_state_set,
+        jacpy_binding_visit
+    }
+    module --> runtime.python.bindings.csv {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned,
+        add_state_owned,
+        jacpy_binding_exception,
+        jacpy_binding_module_native_get,
+        jacpy_binding_module_native_present,
+        jacpy_binding_module_native_set,
+        jacpy_binding_state_get,
+        jacpy_binding_visit
+    }
+    module --> runtime.python.bindings.functools {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned,
+        add_state_owned,
+        jacpy_binding_state_get,
+        jacpy_binding_state_set,
+        jacpy_binding_visit
+    }
+    module --> runtime.python.bindings.heapq {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition
+    }
+    module --> runtime.python.bindings.itertools {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned,
+        jacpy_binding_state_get,
+        jacpy_binding_visit
+    }
+    module --> runtime.python.bindings.json {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned
+    }
+    module --> runtime.python.bindings.math {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned
+    }
+    module --> runtime.python.bindings.operator {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned
+    }
+    module --> runtime.python.bindings.payload { jacpy_binding_visit }
+    module --> runtime.python.bindings.pickle {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_owned,
+        add_state_owned,
+        jacpy_binding_exception,
+        jacpy_binding_exception_with_base,
+        jacpy_binding_state_get,
+        jacpy_binding_state_set,
+        jacpy_binding_visit
+    }
+    module --> runtime.python.bindings.queue {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned,
+        jacpy_binding_exception,
+        jacpy_binding_state_get
+    }
+    module --> runtime.python.bindings.random {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned
+    }
+    module --> runtime.python.bindings.references { jacpy_binding_visit }
+    module --> runtime.python.bindings.statistics {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition
+    }
+    module --> runtime.python.bindings.struct {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned,
+        jacpy_binding_exception,
+        jacpy_binding_state_get,
+        jacpy_binding_state_set,
+        jacpy_binding_visit
+    }
+    module --> runtime.python.bindings.type { MethodDefinition, install_methods }
+    module --> runtime.python.modules.queue { jacpy_binding_visit }
+    operator --> compiler.backends.py.jacpython.native_api { PyInit__operator }
+    payload --> runtime.python.bindings.array {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.collections {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_clear,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        jacpy_binding_untrack,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.csv {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.functools {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.itertools {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_dealloc_guard,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.json {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.operator {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.pickle {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.queue {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    payload --> runtime.python.bindings.random {
+        jacpy_binding_native_clear,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set
+    }
+    payload --> runtime.python.bindings.struct {
+        NativeState,
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    pickle --> compiler.backends.py.jacpython.native_api { PyInit__pickle }
+    queue --> compiler.backends.py.jacpython.native_api { PyInit__queue }
+    random --> compiler.backends.py.jacpython.native_api { PyInit__random }
+    references --> runtime.python.bindings.array { ReferenceState, owned_tuple }
+    references --> runtime.python.bindings.collections { ReferenceState, owned_tuple }
+    references --> runtime.python.bindings.csv { ReferenceState }
+    references --> runtime.python.bindings.functools { ReferenceState }
+    references --> runtime.python.bindings.itertools { ReferenceState }
+    references --> runtime.python.bindings.json { ReferenceState }
+    references --> runtime.python.bindings.operator { ReferenceState }
+    references --> runtime.python.bindings.pickle { ReferenceState, owned_tuple }
+    references --> runtime.python.bindings.struct { ReferenceState }
+    state --> runtime.python.bindings.array { NativeState }
+    state --> runtime.python.bindings.collections { NativeState }
+    state --> runtime.python.bindings.functools { NativeState }
+    state --> runtime.python.bindings.itertools { NativeState }
+    state --> runtime.python.bindings.module { NativeState }
+    state --> runtime.python.bindings.payload { NativeState }
+    state --> runtime.python.bindings.pickle { NativeState }
+    state --> runtime.python.bindings.references { NativeState }
+    state --> runtime.python.modules.csv { NativeState }
+    state --> runtime.python.modules.queue { NativeState }
+    state --> runtime.python.modules.random { NativeState }
+    statistics --> compiler.backends.py.jacpython.native_api { PyInit__statistics }
+    struct --> compiler.backends.py.jacpython.native_api { PyInit__struct }
+    type --> runtime.python.bindings.array {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        TypeSlot,
+        jacpy_binding_allocate,
+        jacpy_binding_basicsize,
+        jacpy_binding_generic_alias,
+        jacpy_binding_matches,
+        jacpy_binding_owner,
+        jacpy_binding_slot,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.collections {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        jacpy_binding_allocate,
+        jacpy_binding_base_clear,
+        jacpy_binding_base_dealloc,
+        jacpy_binding_base_init,
+        jacpy_binding_base_new,
+        jacpy_binding_base_traverse,
+        jacpy_binding_basicsize,
+        jacpy_binding_generic_alias,
+        jacpy_binding_matches,
+        jacpy_binding_object_state,
+        jacpy_binding_owner,
+        jacpy_binding_parent,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.csv {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        jacpy_binding_allocate,
+        jacpy_binding_owner,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.functools {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        jacpy_binding_allocate,
+        jacpy_binding_dict_get,
+        jacpy_binding_dict_peek,
+        jacpy_binding_dict_present,
+        jacpy_binding_dict_replace,
+        jacpy_binding_dict_set,
+        jacpy_binding_marker,
+        jacpy_binding_method_bind,
+        jacpy_binding_owner,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.itertools {
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        TypeSlot,
+        jacpy_binding_allocate,
+        jacpy_binding_basicsize,
+        jacpy_binding_generic_alias,
+        jacpy_binding_owner,
+        jacpy_binding_slot,
+        jacpy_binding_type_matches,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.json {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        jacpy_binding_allocate
+    }
+    type --> runtime.python.bindings.operator {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        jacpy_binding_allocate,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.payload {
+        jacpy_binding_dict_clear,
+        jacpy_binding_dict_visit,
+        jacpy_binding_free,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.pickle {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        jacpy_binding_allocate,
+        jacpy_binding_basicsize,
+        jacpy_binding_matches,
+        jacpy_binding_owner,
+        jacpy_binding_type_matches,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.queue {
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        TypeSlot,
+        jacpy_binding_allocate,
+        jacpy_binding_base,
+        jacpy_binding_owner,
+        jacpy_binding_slot,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.random {
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        TypeSlot,
+        jacpy_binding_allocate,
+        jacpy_binding_base,
+        jacpy_binding_free,
+        jacpy_binding_slot,
+        jacpy_binding_typeof
+    }
+    type --> runtime.python.bindings.struct {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        jacpy_binding_allocate,
+        jacpy_binding_owner,
+        jacpy_binding_typeof
+    }
+}
+
+graph import runtime.python.modules {
+    array --> runtime.python.bindings.array {
+        array_cursor,
+        array_state,
+        jacpy_array_address,
+        jacpy_array_assign,
+        jacpy_array_assign_slice,
+        jacpy_array_clear,
+        jacpy_array_code,
+        jacpy_array_compare,
+        jacpy_array_copy,
+        jacpy_array_cursor_clear,
+        jacpy_array_cursor_index,
+        jacpy_array_cursor_new,
+        jacpy_array_cursor_next,
+        jacpy_array_cursor_owner,
+        jacpy_array_cursor_reduce,
+        jacpy_array_cursor_set,
+        jacpy_array_delete,
+        jacpy_array_empty,
+        jacpy_array_export,
+        jacpy_array_extend,
+        jacpy_array_field,
+        jacpy_array_frombytes,
+        jacpy_array_fromfile,
+        jacpy_array_fromlist,
+        jacpy_array_fromunicode,
+        jacpy_array_init,
+        jacpy_array_insert,
+        jacpy_array_item,
+        jacpy_array_itemsize,
+        jacpy_array_length,
+        jacpy_array_memory,
+        jacpy_array_new,
+        jacpy_array_pop,
+        jacpy_array_reconstruct_object,
+        jacpy_array_reduce,
+        jacpy_array_repeat,
+        jacpy_array_repr,
+        jacpy_array_reverse,
+        jacpy_array_search,
+        jacpy_array_tobytes,
+        jacpy_array_tofile,
+        jacpy_array_tolist,
+        jacpy_array_tounicode
+    }
+    binary_scalars --> runtime.python.modules.array {
+        integer_from_bits,
+        read_bits,
+        write_bits
+    }
+    binary_scalars --> runtime.python.modules.pickle_decode { integer_from_bits }
+    binary_scalars --> runtime.python.modules.pickle_stream { read_bits, write_bits }
+    binary_scalars --> runtime.python.modules.struct {
+        integer_from_bits,
+        read_bits,
+        write_bits
+    }
+    binascii --> runtime.python.bindings.binascii { jacpy_binascii_convert }
+    bisect --> runtime.python.bindings.bisect { jacpy_bisect }
+    cmath --> runtime.python.bindings.cmath {
+        jacpy_cmath_isclose,
+        jacpy_cmath_log,
+        jacpy_cmath_rect,
+        jacpy_cmath_unary
+    }
+    collections --> runtime.python.bindings.collections {
+        deque_cursor,
+        deque_state,
+        jacpy_count_elements,
+        jacpy_default_missing,
+        jacpy_default_repr,
+        jacpy_deque_append,
+        jacpy_deque_assign,
+        jacpy_deque_borrow,
+        jacpy_deque_clear,
+        jacpy_deque_compare,
+        jacpy_deque_consumed,
+        jacpy_deque_cursor,
+        jacpy_deque_extend,
+        jacpy_deque_insert,
+        jacpy_deque_item,
+        jacpy_deque_limit,
+        jacpy_deque_memory,
+        jacpy_deque_next,
+        jacpy_deque_pop,
+        jacpy_deque_remaining,
+        jacpy_deque_repeat,
+        jacpy_deque_repr,
+        jacpy_deque_reverse,
+        jacpy_deque_rotate,
+        jacpy_deque_search,
+        jacpy_deque_set_limit,
+        jacpy_deque_size
+    }
+    combinatorics --> runtime.python.bindings.itertools {
+        combinatorial_state,
+        jacpy_combinatorial_clear,
+        jacpy_combinatorial_field,
+        jacpy_combinatorial_init,
+        jacpy_combinatorial_memory,
+        jacpy_combinatorial_new,
+        jacpy_combinatorial_next
+    }
+    csv --> runtime.python.bindings.csv {
+        CsvConfig,
+        csv_reader,
+        csv_writer,
+        jacpy_csv_dialect,
+        jacpy_csv_read,
+        jacpy_csv_reader_clear,
+        jacpy_csv_reader_fields,
+        jacpy_csv_reader_line,
+        jacpy_csv_registry,
+        jacpy_csv_write
+    }
+    functools --> runtime.python.bindings.functools {
+        jacpy_cmp_key,
+        jacpy_lru_call,
+        jacpy_lru_clear,
+        jacpy_lru_destroy,
+        jacpy_lru_field,
+        jacpy_lru_info,
+        jacpy_lru_init,
+        jacpy_partial_call,
+        jacpy_partial_clear,
+        jacpy_partial_field,
+        jacpy_partial_init,
+        jacpy_partial_repr,
+        jacpy_partial_restore,
+        jacpy_reduce,
+        lru_state,
+        partial_state
+    }
+    grouping --> runtime.python.bindings.itertools {
+        group_state,
+        jacpy_group_activate,
+        jacpy_group_clear,
+        jacpy_group_field,
+        jacpy_group_init,
+        jacpy_group_next,
+        jacpy_grouper_next
+    }
+    heapq --> runtime.python.bindings.heapq {
+        jacpy_heap_pop,
+        jacpy_heap_push,
+        jacpy_heap_pushpop,
+        jacpy_heap_replace,
+        jacpy_heapify
+    }
+    iterators --> runtime.python.bindings.itertools {
+        jacpy_pipeline_clear,
+        jacpy_pipeline_field,
+        jacpy_pipeline_init,
+        jacpy_pipeline_length,
+        jacpy_pipeline_new,
+        jacpy_pipeline_next,
+        jacpy_pipeline_repr,
+        pipeline_state
+    }
+    iterators --> runtime.python.modules.combinatorics { reusable_tuple }
+    json --> runtime.python.bindings.json {
+        jacpy_json_encode,
+        jacpy_json_escape,
+        jacpy_json_scan,
+        jacpy_json_scanstring
+    }
+    math --> runtime.python.bindings.math {
+        jacpy_math_binary,
+        jacpy_math_comb,
+        jacpy_math_dist,
+        jacpy_math_factorial,
+        jacpy_math_fma,
+        jacpy_math_fsum,
+        jacpy_math_gcd,
+        jacpy_math_hypot,
+        jacpy_math_isclose,
+        jacpy_math_isqrt,
+        jacpy_math_ldexp,
+        jacpy_math_log,
+        jacpy_math_nextafter,
+        jacpy_math_parts,
+        jacpy_math_prod,
+        jacpy_math_sumprod,
+        jacpy_math_unary
+    }
+    numeric --> runtime.python.modules.cmath {
+        asinh,
+        atan2,
+        copysign,
+        cos,
+        cosh,
+        exp,
+        fabs,
+        hypot,
+        isfinite,
+        isinf,
+        isnan,
+        log,
+        log1p,
+        scaled,
+        sin,
+        sinh,
+        sqrt,
+        tan,
+        tanh
+    }
+    numeric --> runtime.python.modules.math {
+        acos,
+        acosh,
+        asin,
+        asinh,
+        atan,
+        atan2,
+        atanh,
+        cbrt,
+        ceil,
+        copysign,
+        cos,
+        cosh,
+        erf,
+        erfc,
+        exp,
+        exp2,
+        expm1,
+        fabs,
+        floor,
+        fma,
+        fmod,
+        infinity,
+        isfinite,
+        isinf,
+        isnan,
+        lgamma,
+        log,
+        log10,
+        log1p,
+        log2,
+        nan,
+        nextafter,
+        pow,
+        remainder,
+        scaled,
+        sin,
+        sinh,
+        sqrt,
+        tan,
+        tanh,
+        tgamma
+    }
+    numeric --> runtime.python.modules.statistics { fabs, log, sqrt }
+    object_ring --> runtime.python.modules.collections { object_ring }
+    object_ring --> runtime.python.modules.queue { object_ring }
+    operator --> runtime.python.bindings.operator {
+        jacpy_operator_abs,
+        jacpy_operator_add,
+        jacpy_operator_and_,
+        jacpy_operator_apply,
+        jacpy_operator_call,
+        jacpy_operator_compare,
+        jacpy_operator_concat,
+        jacpy_operator_contains,
+        jacpy_operator_countOf,
+        jacpy_operator_delitem,
+        jacpy_operator_digest,
+        jacpy_operator_floordiv,
+        jacpy_operator_getitem,
+        jacpy_operator_iadd,
+        jacpy_operator_iand,
+        jacpy_operator_iconcat,
+        jacpy_operator_ifloordiv,
+        jacpy_operator_ilshift,
+        jacpy_operator_imatmul,
+        jacpy_operator_imod,
+        jacpy_operator_imul,
+        jacpy_operator_index,
+        jacpy_operator_indexOf,
+        jacpy_operator_invert,
+        jacpy_operator_ior,
+        jacpy_operator_ipow,
+        jacpy_operator_irshift,
+        jacpy_operator_is_,
+        jacpy_operator_is_none,
+        jacpy_operator_is_not,
+        jacpy_operator_is_not_none,
+        jacpy_operator_isub,
+        jacpy_operator_itruediv,
+        jacpy_operator_ixor,
+        jacpy_operator_length_hint,
+        jacpy_operator_lshift,
+        jacpy_operator_matmul,
+        jacpy_operator_mod,
+        jacpy_operator_mul,
+        jacpy_operator_neg,
+        jacpy_operator_not_,
+        jacpy_operator_or_,
+        jacpy_operator_pos,
+        jacpy_operator_pow,
+        jacpy_operator_prepare,
+        jacpy_operator_reduce,
+        jacpy_operator_repr,
+        jacpy_operator_rshift,
+        jacpy_operator_setitem,
+        jacpy_operator_sub,
+        jacpy_operator_truediv,
+        jacpy_operator_truth,
+        jacpy_operator_xor
+    }
+    pickle --> runtime.python.bindings.pickle {
+        jacpy_pickler_clear,
+        jacpy_pickler_dump,
+        jacpy_pickler_field,
+        jacpy_pickler_init,
+        jacpy_pickler_memo,
+        jacpy_pickler_memo_clear,
+        jacpy_pickler_memo_set,
+        jacpy_pickler_new,
+        jacpy_pickler_size,
+        jacpy_unpickler_clear,
+        jacpy_unpickler_field,
+        jacpy_unpickler_field_count,
+        jacpy_unpickler_find,
+        jacpy_unpickler_init,
+        jacpy_unpickler_load,
+        jacpy_unpickler_memo,
+        jacpy_unpickler_memo_clear,
+        jacpy_unpickler_memo_set,
+        jacpy_unpickler_new,
+        jacpy_unpickler_size
+    }
+    pickle_decode --> runtime.python.bindings.pickle { unpickle_state }
+    pickle_decode --> runtime.python.modules.pickle { unpickle_state }
+    pickle_encode --> runtime.python.bindings.pickle { pickle_state }
+    pickle_encode --> runtime.python.modules.pickle { pickle_state }
+    pickle_objects --> runtime.python.modules.pickle { find_global }
+    pickle_objects --> runtime.python.modules.pickle_encode {
+        global_names,
+        mapped_names
+    }
+    pickle_opcodes --> runtime.python.modules.pickle_decode { opcode }
+    pickle_opcodes --> runtime.python.modules.pickle_encode { opcode }
+    pickle_stream --> runtime.python.modules.pickle { builtin_stream_error }
+    pickle_stream --> runtime.python.modules.pickle_decode {
+        builtin_stream_error,
+        pickle_reader,
+        stream_error
+    }
+    pickle_stream --> runtime.python.modules.pickle_encode {
+        builtin_stream_error,
+        pickle_writer,
+        stream_error
+    }
+    pickle_stream --> runtime.python.modules.pickle_objects {
+        builtin_stream_error,
+        stream_error
+    }
+    queue --> runtime.python.bindings.queue {
+        jacpy_queue_get,
+        jacpy_queue_new,
+        jacpy_queue_put,
+        jacpy_queue_size,
+        queue_state
+    }
+    random --> runtime.python.bindings.random {
+        jacpy_random_bits,
+        jacpy_random_float,
+        jacpy_random_getstate,
+        jacpy_random_new,
+        jacpy_random_seed,
+        jacpy_random_setstate,
+        mt19937
+    }
+    statistics --> runtime.python.bindings.statistics { jacpy_statistics_inv_cdf }
+    struct --> runtime.python.bindings.struct {
+        jacpy_struct_cached,
+        jacpy_struct_compile,
+        jacpy_struct_cursor,
+        jacpy_struct_items,
+        jacpy_struct_memory,
+        jacpy_struct_next,
+        jacpy_struct_offset,
+        jacpy_struct_pack,
+        jacpy_struct_remaining,
+        jacpy_struct_size,
+        jacpy_struct_unpack,
+        struct_plan,
+        unpack_cursor
+    }
+    tee --> runtime.python.bindings.itertools {
+        TeeBindings,
+        jacpy_tee_block_clear,
+        jacpy_tee_block_count,
+        jacpy_tee_block_field,
+        jacpy_tee_block_init,
+        jacpy_tee_construct,
+        jacpy_tee_cursor_clear,
+        jacpy_tee_cursor_field,
+        jacpy_tee_next,
+        jacpy_tee_split,
+        tee_block,
+        tee_cursor
+    }
 }

@@ -93,15 +93,10 @@ def _parse_imports(path: str) -> list[tuple[Import, (list[str] | None)]] {
     return out;
 }
 
-def _collect_rows(
-    spec: WiringSpec, modules: list[tuple[str, str]], only_sealed: bool
-) -> list[WireRow] {
+def _collect_rows(spec: WiringSpec, modules: list[tuple[str, str]]) -> list[WireRow] {
     rows: dict[tuple[str, str, str, tuple[tuple[str, str], ...]], list[WireRow]] = {};
     owner_of: dict[str, str] = {};
     for (module, path) in modules {
-        if only_sealed and not spec.is_sealed(module) {
-            continue;
-        }
         payloads: dict[tuple[str, str, str], list[tuple[str, str]]] = {};
         module_rows: list[tuple[str, WireRow]] = [];
         provided_by_scope: dict[str, dict[tuple[str, str, str, str], ImportWire]] = {};
@@ -113,9 +108,7 @@ def _collect_rows(
                 }
                 consumer = ".".join([module, *scope]);
                 if consumer not in provided_by_scope {
-                    provided_by_scope[consumer] = spec.consumer_bindings(module, scope)
-                        if only_sealed
-                        else {};
+                    provided_by_scope[consumer] = spec.consumer_bindings(module, scope);
                 }
                 provided = provided_by_scope[consumer];
                 from_loc = imp.from_loc;
@@ -239,124 +232,7 @@ def _scope_of(provider: str) -> str {
     return provider.rsplit(".", 1)[0] if "." in provider else "";
 }
 
-def _top_package(module: str) -> str {
-    return module.split(".")[0];
-}
-
-def _package_pattern(module: str) -> str {
-    return _top_package(module) + ".*" if "." in module else module;
-}
-
-def _rule_name(package: str, taken: set[str]) -> str {
-    base = "".join([part.capitalize() for part in package.split("_")]) + "Flows";
-    name = base;
-    n = 2;
-    while name in taken {
-        name = f"{base}{n}";
-        n += 1;
-    }
-    taken.add(name);
-    return name;
-}
-
-def _derive_rules(
-    spec: WiringSpec, rows: list[WireRow], sealed: (set[str] | None) = None
-) -> list[str] {
-    targets: dict[str, set[str]] = {};
-    example: dict[str, str] = {};
-    for wire in spec.wires {
-        pkg = _top_package(wire.provider_path);
-        example.setdefault(pkg, wire.provider_path);
-        for consumer in wire.consumer_paths {
-            targets.setdefault(pkg, set()).add(_package_pattern(consumer));
-        }
-    }
-    for row in rows {
-        pkg = _top_package(row.provider);
-        example.setdefault(pkg, row.provider);
-        for consumer in row.consumers {
-            targets.setdefault(pkg, set()).add(_package_pattern(consumer));
-        }
-    }
-    taken = {rule.name.value for rule in spec.rules};
-    out: list[str] = [];
-    for pkg in sorted(targets.keys()) {
-        if spec.rules_for_provider(example[pkg]) {
-            continue;
-        }
-        name = _rule_name(pkg, taken);
-        src = pkg + ".*";
-        opened = sealed is not None
-            and any([_top_package(t) not in sealed for t in targets[pkg]]);
-        tgt = "any" if opened else " | ".join(sorted(targets[pkg]));
-        out.append(f"edge {name}: {src} --> {tgt};");
-    }
-    return out;
-}
-
-def _render_rules(rules: list[str]) -> str {
-    if not rules {
-        return "";
-    }
-    return "\n".join(["impl import {", *["    " + r for r in rules], "}"]) + "\n";
-}
-
-def _dependency_cone(
-    spec: WiringSpec, modules: list[tuple[str, str]], scope: str
-) -> list[tuple[str, str]] {
-    by_name = {name: path for (name, path) in modules};
-    providers_of: dict[str, set[str]] = {};
-    for (name, path) in modules {
-        found: set[str] = set();
-        for src in [path, *discover_annex_files(path, ".impl.jac")] {
-            for (imp, _scope) in _parse_imports(src) {
-                if imp.from_loc is not None {
-                    provider = spec.import_provider(imp.from_loc);
-                    if provider is not None {
-                        found.add(provider);
-                    }
-                    continue;
-                }
-                for item in imp.items {
-                    if isinstance(item, ModulePath) {
-                        provider = spec.import_provider(item);
-                        if provider is not None {
-                            found.add(provider);
-                        }
-                    }
-                }
-            }
-        }
-        providers_of[name] = found;
-    }
-    pending = [
-        name
-        for name in by_name
-        if WiringSpec.pattern_matches(scope + ".*", name) or name == scope
-    ];
-    seen: set[str] = set();
-    while pending {
-        name = pending.pop();
-        if name in seen {
-            continue;
-        }
-        seen.add(name);
-        pending.extend(
-            [
-                p
-                for p in providers_of.get(name, set())
-                if p in by_name
-            ]
-        );
-    }
-    return [
-        (name, path)
-        for (name, path) in modules
-        if name in seen
-    ];
-}
-
-def _merge_into(spec: WiringSpec, rows: list[WireRow], rules: list[str]) -> str {
+def _merge_into(spec: WiringSpec, rows: list[WireRow]) -> str {
     lines = spec.source.split("\n");
     insertions: list[tuple[int, list[str]]] = [];
     appended: list[str] = [];
@@ -364,25 +240,16 @@ def _merge_into(spec: WiringSpec, rows: list[WireRow], rules: list[str]) -> str 
     for row in rows {
         groups.setdefault(_scope_of(row.provider), []).append(row);
     }
-    if rules {
-        groups.setdefault("", []);
-    }
     for scope in sorted(groups.keys()) {
-        block: (ImplImport | None) = None;
+        block: (GraphImport | None) = None;
         for candidate in spec.blocks {
             if candidate.scope_prefix == scope {
                 block = candidate;
             }
         }
         texts = ["    " + row.text(scope) for row in groups[scope]];
-        if scope == "" {
-            texts = ["    " + r for r in rules] + texts;
-        }
-        if not texts {
-            continue;
-        }
         if block is None {
-            head = "impl import" + (" " + scope if scope else " ") + "{";
+            head = "graph import" + (" " + scope if scope else " ") + "{";
             appended.append("\n".join([head, *texts, "}"]));
         } else {
             insertions.append((block.loc.last_line - 1, texts));
@@ -405,7 +272,7 @@ def _render_blocks(rows: list[WireRow]) -> str {
     }
     blocks: list[str] = [];
     for scope in sorted(groups.keys()) {
-        head = "impl import" + (" " + scope if scope else "") + " {";
+        head = "graph import" + (" " + scope if scope else "") + " {";
         lines = [head, *["    " + row.text(scope) for row in groups[scope]], "}"];
         blocks.append("\n".join(lines));
     }
@@ -462,11 +329,11 @@ def _strip_modules(paths: list[str]) -> int {
     return changed;
 }
 
-def _arch_target(scope: str) -> tuple[(str | None), str] {
-    if scope and os.path.isdir(scope) {
-        return (os.path.abspath(scope), "");
+def _arch_target(directory: str) -> (str | None) {
+    if directory {
+        return os.path.abspath(directory);
     }
-    return (_project_root(), scope);
+    return _project_root();
 }
 
 def _arch_files(root_dir: str) -> list[str] {
@@ -488,109 +355,28 @@ def _arch_files(root_dir: str) -> list[str] {
     return drop_git_ignored(found, cwd=root_dir);
 }
 
-def _arch_init(force: bool, strip: bool, scope: str) -> int {
-    (root_dir, scope) = _arch_target(scope);
+def _arch_init(force: bool, strip: bool, directory: str) -> int {
+    root_dir = _arch_target(directory);
     if root_dir is None {
         return 1;
     }
     arch_path = os.path.join(root_dir, ARCH_FILE_NAME);
-    existing = wiring_for_path(arch_path) if os.path.exists(arch_path) else None;
-    if existing is not None and not force and not scope {
+    if os.path.exists(arch_path) and not force {
         console.error(
             f"{arch_path} already exists",
-            hint="use `jac arch sync` to extend it, `jac arch init <package>` to add"
-            " one package, or --force to rewrite it"
+            hint="use `jac arch sync` to extend it, or --force to rewrite it"
         );
         return 1;
     }
-    if existing is not None and existing.parse_failed and not force {
-        console.error(f"{arch_path} has syntax errors; fix them before adding to it");
-        return 1;
-    }
-    spec = existing if existing is not None and not force else _empty_spec(root_dir);
+    spec = _empty_spec(root_dir);
     modules = _module_files(spec);
-    if scope {
-        modules = _dependency_cone(spec, modules, scope);
-        if not modules {
-            console.error(f"no project module matches '{scope}'");
-            return 1;
-        }
-    }
-    rows = _collect_rows(spec, modules, False);
-    if existing is not None and not force {
-        provided = {
-            (c, b.key()) for w in spec.wires for c in w.consumer_paths
-            for b in spec.wire_bindings(w)
-        };
-        kept: list[WireRow] = [];
-        for row in rows {
-            consumers = [
-                c
-                for c in row.consumers
-                if not all([(c, b) in provided for b in _row_bindings(row)])
-            ];
-            if consumers {
-                kept.append(
-                    WireRow(
-                        provider=row.provider,
-                        form=row.form,
-                        alias=row.alias,
-                        items=row.items,
-                        consumers=consumers
-                    )
-                );
-            }
-        }
-        rows = kept;
-    }
-    rule_rows = rows;
-    sealed_pkgs: (set[str] | None) = None;
-    if scope {
-        cone = {name for (name, _path) in modules};
-        sealed_pkgs = {_top_package(name) for name in cone};
-        rule_rows = [
-            row
-            for row in _collect_rows(spec, _module_files(spec), False)
-            if row.provider in cone
-        ];
-    }
-    rules = _derive_rules(spec, rule_rows, sealed_pkgs);
-    if not rows and not rules {
-        console.warning("no project-module imports found; nothing to wire");
-        return 0;
-    }
-    if existing is not None and not force {
-        text = _merge_into(spec, rows, rules);
-    } else {
-        text = _render_rules(rules)
-            + ("\n" if rules and rows else "")
-            + _render_blocks(rows);
-    }
-    _write_arch(arch_path, text);
-    wired: set[str] = set();
-    for row in rows {
-        for c in row.consumers {
-            parts = c.split(".");
-            wired |= {".".join(parts[:i]) for i in range(1, len(parts) + 1)};
-        }
-    }
-    wired = {
-        name
-        for (name, _path) in modules
-        if name in wired
-    };
+    rows = _collect_rows(spec, modules);
+    _write_arch(arch_path, _render_blocks(rows) if rows else "");
     console.success(
-        f"wrote {ARCH_FILE_NAME}: {len(rows)} wires covering {len(wired)} modules,"
-        f" {len(rules)} rules"
+        f"wrote {ARCH_FILE_NAME}: {len(rows)} wires sealing {len(modules)} modules"
     );
     if strip {
-        changed = _strip_modules(
-            [
-                path
-                for (name, path) in modules
-                if name in wired
-            ]
-        );
+        changed = _strip_modules([path for (_name, path) in modules]);
         console.print(f"stripped wired imports from {changed} files");
     }
     return 0;
@@ -603,13 +389,13 @@ def _row_bindings(row: WireRow) -> list[tuple[str, str, str, str]] {
     return [(row.provider, row.form, "", row.alias)];
 }
 
-def _arch_sync(strip: bool, scope: str) -> int {
-    (root_dir, _rest) = _arch_target(scope);
+def _arch_sync(strip: bool, directory: str) -> int {
+    root_dir = _arch_target(directory);
     if root_dir is None {
         return 1;
     }
     targets = [os.path.join(root_dir, ARCH_FILE_NAME)]
-        if scope
+        if directory
         else _arch_files(root_dir);
     if not targets {
         console.error(
@@ -635,26 +421,15 @@ def _sync_one(arch_path: str, strip: bool) -> int {
         return 1;
     }
     modules = _module_files(spec);
-    rows = _collect_rows(spec, modules, True);
-    rules = _derive_rules(spec, rows);
-    sealed = [
-        path
-        for (name, path) in modules
-        if spec.is_sealed(name)
-    ];
-    if rows or rules {
-        _write_arch(arch_path, _merge_into(spec, rows, rules));
-        console.success(
-            f"added {len(rows)} wires and {len(rules)} rules to {ARCH_FILE_NAME}"
-        );
+    rows = _collect_rows(spec, modules);
+    if rows {
+        _write_arch(arch_path, _merge_into(spec, rows));
+        console.success(f"added {len(rows)} wires to {arch_path}");
     } else {
-        console.print(
-            f"{ARCH_FILE_NAME} already declares every import and provider of its"
-            " sealed modules"
-        );
+        console.print(f"{arch_path} already declares every import of its modules");
     }
     if strip {
-        changed = _strip_modules(sealed);
+        changed = _strip_modules([path for (_name, path) in modules]);
         console.print(f"stripped wired imports from {changed} files");
     }
     return 0;
@@ -739,8 +514,8 @@ def _render_json(spec: WiringSpec) -> str {
     return json.dumps({"wires": wires, "rules": rules}, indent=2) + "\n";
 }
 
-def _arch_graph(fmt: str, output: str, scope: str) -> int {
-    (root_dir, _rest) = _arch_target(scope);
+def _arch_graph(fmt: str, output: str, directory: str) -> int {
+    root_dir = _arch_target(directory);
     if root_dir is None {
         return 1;
     }
@@ -775,8 +550,10 @@ impl arch(
         console.error(f"unknown action: {action} (expected init, sync or graph)");
         return 2;
     }
-    if scope and verb != ArchAction.INIT and not os.path.isdir(scope) {
-        console.error("sync and graph take a directory holding an arch.jac");
+    if scope and not os.path.isdir(scope) {
+        console.error(
+            f"'{scope}' is not a directory; `jac arch` takes the directory an arch.jac governs"
+        );
         return 2;
     }
     if verb == ArchAction.INIT {

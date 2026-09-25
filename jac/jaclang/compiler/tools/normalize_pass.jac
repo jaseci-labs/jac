@@ -121,7 +121,7 @@ walker NormalizePass(TreeWalker) {
     can enter_match_arch with uni.MatchArch entry;
     can enter_token with uni.Token entry;
     can enter_string with uni.String entry;
-    can enter_impl_import with uni.ImplImport entry;
+    can enter_graph_import with uni.GraphImport entry;
     can enter_import_wire with uni.ImportWire entry;
     can enter_import_rule with uni.ImportRule entry;
     can enter_module_pattern with uni.ModulePattern entry;

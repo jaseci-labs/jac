@@ -260,7 +260,7 @@ element_stmt ::=
     | ability
     | global_var
     | comptime_element
-    | impl_import
+    | graph_import
     | impl_def
     | sem_def
     | PYNLINE
@@ -536,9 +536,8 @@ visit_stmt ::= "visit" (":" expression ":")? expression (else_stmt | ";")?
 
 report_stmt ::= "report" expression ";"
 
-impl_import ::=
-    "impl" "import" wire_module_path?? "{" (import_rule | import_closed | import_wire)*
-    "}"
+graph_import ::=
+    ("impl" | "graph") "import" wire_module_path?? "{" (import_rule | import_wire)* "}"
 
 wire_module_path ::=
     (STRING | (NAME | KWESC_NAME) ("." (NAME | KWESC_NAME))*)
@@ -549,8 +548,6 @@ module_pattern ::= "any" | "*" | wire_module_path ("." "*")?
 import_rule ::=
     "edge" (NAME | KWESC_NAME) ":" module_pattern ("|" module_pattern)* module_pattern
     ("|" module_pattern)* (wire_payload | ";")
-
-import_closed ::= (NAME | KWESC_NAME) (":" module_pattern ("|" module_pattern)*)? ";"
 
 import_wire ::=
     "comptime"? ("include" | "type")? (

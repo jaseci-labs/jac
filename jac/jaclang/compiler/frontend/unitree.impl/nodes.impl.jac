@@ -1838,11 +1838,11 @@ impl ModuleItem.resolve_relative_path -> str {
     return self.from_mod_path.resolve_relative_path(target_item=item_name);
 }
 
-impl ImplImport.postinit -> None {
+impl GraphImport.postinit -> None {
     UniNode.postinit(self);
 }
 
-impl ImplImport.scope_prefix.getter -> str {
+impl GraphImport.scope_prefix.getter -> str {
     sc = self.scope;
     return sc.dot_path_str if sc is not None else "";
 }
@@ -1851,9 +1851,9 @@ impl ImportWire.postinit -> None {
     UniNode.postinit(self);
 }
 
-impl ImportWire.block.getter -> ImplImport {
-    if (not self.parent or not isinstance(self.parent, ImplImport)) {
-        raise ValueError('ImplImport parent not found. Not Possible.');
+impl ImportWire.block.getter -> GraphImport {
+    if (not self.parent or not isinstance(self.parent, GraphImport)) {
+        raise ValueError('GraphImport parent not found. Not Possible.');
     }
     return self.parent;
 }
@@ -1872,9 +1872,9 @@ impl ImportRule.postinit -> None {
     UniNode.postinit(self);
 }
 
-impl ImportRule.block.getter -> ImplImport {
-    if (not self.parent or not isinstance(self.parent, ImplImport)) {
-        raise ValueError('ImplImport parent not found. Not Possible.');
+impl ImportRule.block.getter -> GraphImport {
+    if (not self.parent or not isinstance(self.parent, GraphImport)) {
+        raise ValueError('GraphImport parent not found. Not Possible.');
     }
     return self.parent;
 }
@@ -1912,9 +1912,6 @@ impl WireItem.binding.getter -> str {
 }
 
 impl ModulePattern.matches(module: str, prefix: str = "") -> bool {
-    if self.is_any {
-        return True;
-    }
     base = ModulePattern.join_scope(prefix, self.dotted);
     if self.is_glob {
         return (not base) or module == base or module.startswith(base + ".");

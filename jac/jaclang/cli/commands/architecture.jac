@@ -6,24 +6,23 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
                  "action",
                  kind=ArgKind.POSITIONAL,
                  `default="graph",
-                 help="Action: init (write arch.jac from the current imports, with the "
-                 "layering rules the imports already follow), sync (add the wires and "
-                 "rules sealed modules are missing), graph (render the wiring; default)"
+                 help="Action: init (write arch.jac from the current imports, sealing "
+                 "the directory), sync (add the wires its modules are missing), graph "
+                 "(render the wiring; default)"
              ),
              Arg.create(
                  "scope",
                  kind=ArgKind.POSITIONAL,
                  `default="",
-                 help="A directory: the arch.jac there (created by init) governs its "
-                 "subtree. With init, a dotted package instead wires only that package "
-                 "and the modules it imports from, merging into an existing arch.jac"
+                 help="The directory an arch.jac governs (default: the project root). "
+                 "Without it, sync visits every arch.jac in the project"
              ),
              Arg.create(
                  "strip",
                  typ=bool,
                  `default=False,
                  help="With init or sync: remove the imports that arch.jac now provides "
-                 "from every covered module (the same fix `jac fmt --lintfix` applies)",
+                 "from its modules (the same fix `jac fmt --lintfix` applies)",
                  short="s"
              ),
              Arg.create(
@@ -51,19 +50,14 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
          examples=[
              (
                  "jac arch init --strip",
-                 "Write arch.jac from every project-module import, with one rule per "
-                 "package stating where it flows today, and remove those imports "
-                 "from the modules"
+                 "Seal the project: write arch.jac from every import between its "
+                 "modules and remove those imports from the modules"
              ),
-             (
-                 "jac arch init core.docs",
-                 "Wire one package and everything it depends on, adding to an "
-                 "existing arch.jac"
-             ),
+             ("jac arch init core --strip", "Seal one directory with its own arch.jac"),
              (
                  "jac arch sync",
-                 "Add a wire for every import a sealed module writes that arch.jac "
-                 "does not declare, and a rule for every provider that has none"
+                 "Add a wire for every import a module writes that its arch.jac does "
+                 "not declare"
              ),
              ("jac arch graph", "Print the wiring as a mermaid diagram"),
              (

@@ -38,7 +38,7 @@ import type from jaclang.compiler.frontend.unitree {
     HasVar,
     IfElseExpr,
     ImplDef,
-    ImplImport,
+    GraphImport,
     Import,
     ImportRule,
     ImportWire,
@@ -259,7 +259,7 @@ edge RightRole(Role): UniNode --> Expr {}
 
 edge RightsRole(Role): CompareExpr --> Expr {}
 
-edge ScopeRole(Role): ImplImport --> ModulePath {}
+edge ScopeRole(Role): GraphImport --> ModulePath {}
 
 edge SignatureRole(Role): UniNode --> EventSignature | FuncSignature {}
 

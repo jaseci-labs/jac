@@ -797,7 +797,7 @@ impl PortabilityWarnPass._check_js_globals(mod: Module) -> None {
         if name_nd.find_parent_of_type(Import) is not None {
             continue;
         }
-        if name_nd.find_parent_of_type(ImplImport) is not None {
+        if name_nd.find_parent_of_type(GraphImport) is not None {
             continue;
         }
         if name_nd.value in JS_GLOBALS {

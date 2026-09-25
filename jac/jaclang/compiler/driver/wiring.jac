@@ -10,7 +10,7 @@ import from jaclang.compiler.frontend.unitree {
     EmptyToken,
     Enum,
     ImplDef,
-    ImplImport,
+    GraphImport,
     Import,
     ImportRule,
     ImportWire,
@@ -48,20 +48,16 @@ obj WiringSpec {
         digest: str = "",
         parse_failed: bool = False,
         module: (Module | None) = None,
-        blocks: list[ImplImport] = [],
+        blocks: list[GraphImport] = [],
         wires: list[ImportWire] = [],
         rules: list[ImportRule] = [],
         _lines: list[str] = [],
         _by_consumer: dict[str, list[ImportWire]] = {},
         _annex_cache: dict[str, str] = {},
-        closed_patterns: list[str] = [],
-        _policy_loaded: bool = False,
-        _rule_rows: list[str] = [],
         _policy_digest: str = "",
         _project_modules: (list[str] | None) = None,
-        _mentioned: (set[str] | None) = None,
         _prefix: (str | None) = None,
-        _file_closed: list[str] = [],
+        _owned_dirs: dict[str, bool] = {},
         _indexed: bool = False,
         _scopes: dict[tuple[str, int], list[str]] = {},
         _wire_lines: dict[int, ImportWire] = {};
@@ -71,6 +67,7 @@ obj WiringSpec {
     def import_prefix -> str;
     def import_name(name: str) -> str;
     def module_file(name: str) -> (str | None);
+    def owns(path: str) -> bool;
     def split_consumer(path: str) -> (tuple[str, list[str]] | None);
     def _index_consumers -> None;
     def consumer_scope(consumer: str, wire: ImportWire) -> list[str];
@@ -80,11 +77,6 @@ obj WiringSpec {
     def consumer_wires(consumer: str) -> list[ImportWire];
     def is_covered(consumer: str) -> bool;
     def is_project_module(module: str) -> bool;
-    def is_mentioned(module: str) -> bool;
-    def is_closed(module: str) -> bool;
-    def is_sealed(module: str) -> bool;
-    def _ensure_policy -> None;
-    static def pattern_matches(pattern: str, module: str) -> bool;
     def annex_source(consumer: str) -> (str | None);
     def digest_for(consumer: str) -> str;
     def wire_bindings(wire: ImportWire) -> list[WireBinding];
@@ -127,14 +119,12 @@ def wiring_scope -> Iterator[None] {
 
 def is_arch_file(path: str) -> bool;
 def arch_file_for(path: str) -> (str | None);
-def wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None);
+def wiring_for_path(path: str) -> (WiringSpec | None);
 def wiring_annex_for(file_path: str) -> (tuple[str, str] | None);
 def wiring_digest_for(file_path: str) -> str;
 def dedupe_generated_imports(mod: Module) -> None;
 def compiled_by_seed(path: str) -> bool;
 def _load_spec(root_dir: str, arch_path: str) -> WiringSpec;
-def _closed_patterns_for(root_dir: str) -> list[str];
-def _arch_patterns(root_dir: str, key: str) -> list[str];
 def scope_path_of(nd: UniNode) -> (list[str] | None);
 def scope_owners(mod: Module) -> dict[str, (Ability | ImplDef)];
 def inject_into_scope(owner: (Ability | ImplDef), stmt: UniNode) -> None;

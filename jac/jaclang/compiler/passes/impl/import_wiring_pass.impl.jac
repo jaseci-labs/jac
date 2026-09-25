@@ -6,7 +6,7 @@ impl ImportWiringPass.run_walk with Module entry {
         return;
     }
     for stmt in mod.body {
-        if isinstance(stmt, ImplImport) {
+        if isinstance(stmt, GraphImport) {
             self.ctx.emit(E2088, node_override=stmt);
         }
     }
@@ -26,9 +26,9 @@ impl ImportWiringPass._check_arch_module(mod: Module) -> None {
     spec = wiring_for_path(path);
     is_root = spec is not None
         and os.path.realpath(spec.path) == os.path.realpath(path);
-    blocks: list[ImplImport] = [];
+    blocks: list[GraphImport] = [];
     for stmt in mod.body {
-        if isinstance(stmt, ImplImport) {
+        if isinstance(stmt, GraphImport) {
             blocks.append(stmt);
         } elif not isinstance(stmt, (String, EmptyToken)) {
             self.ctx.emit(
@@ -46,9 +46,6 @@ impl ImportWiringPass._check_arch_module(mod: Module) -> None {
     for block in blocks {
         self._check_scope(spec, block, seen_scopes);
         for stmt in block.body {
-            if isinstance(stmt, ImportRule) and stmt.is_closed {
-                continue;
-            }
             if isinstance(stmt, ImportRule) {
                 if stmt.name.value in rule_names {
                     self.ctx.emit(E2092, node_override=stmt.name, name=stmt.name.value);
@@ -64,7 +61,7 @@ impl ImportWiringPass._check_arch_module(mod: Module) -> None {
 }
 
 impl ImportWiringPass._check_scope(
-    spec: WiringSpec, block: ImplImport, seen: set[int]
+    spec: WiringSpec, block: GraphImport, seen: set[int]
 ) -> None {
     if id(block) in seen {
         return;
@@ -76,14 +73,25 @@ impl ImportWiringPass._check_scope(
     }
     name = block.scope_prefix;
     if spec.module_file(name) is None and not spec.is_package_dir(name) {
-        self.ctx.emit(E1140, node_override=sc, scope=name);
+        self.ctx.emit(
+            W2084, node_override=sc, name=name, what="this graph import block"
+        );
     }
 }
 
 impl ImportWiringPass._check_wire(spec: WiringSpec, wire: ImportWire) -> None {
     provider = wire.provider_path;
     provider_ok = spec.module_file(provider) is not None;
-    if not provider_ok {
+    live = [
+        c
+        for c in wire.consumers
+        if spec.module_file(
+            (spec.split_consumer(c.dot_path_str) or (c.dot_path_str, []))[0]
+        )
+            is not None
+            or spec.is_package_dir(c.dot_path_str)
+    ];
+    if not provider_ok and live {
         self.ctx.emit(E1141, node_override=wire.provider, module=provider);
     }
     names: (list[tuple[str, UniNode]] | None) = None;
@@ -107,14 +115,21 @@ impl ImportWiringPass._check_wire(spec: WiringSpec, wire: ImportWire) -> None {
         seen_modules.add(consumer);
         cfile = spec.module_file(consumer);
         if cfile is None {
-            detail = (
-                "a package needs an __init__ module to receive imports"
-                    if spec.is_package_dir(consumer)
-                    else "no such module under the project root"
-            );
-            self.ctx.emit(
-                E1142, node_override=consumer_node, module=consumer, detail=detail
-            );
+            if spec.is_package_dir(consumer) {
+                self.ctx.emit(
+                    E1142,
+                    node_override=consumer_node,
+                    module=consumer,
+                    detail="a package needs an __init__ module to receive imports"
+                );
+            } else {
+                self.ctx.emit(
+                    W2084,
+                    node_override=consumer_node,
+                    name=consumer,
+                    what="this wire's import into it"
+                );
+            }
             continue;
         }
         if not cfile.endswith(".jac") {
@@ -141,9 +156,6 @@ impl ImportWiringPass._check_rule_liveness(spec: WiringSpec, rule: ImportRule) -
     top_level = {m.split(".")[0] for m in modules};
     prefix = rule.block.scope_prefix;
     for p in rule.sources {
-        if p.is_any {
-            continue;
-        }
         full = ModulePattern.join_scope(prefix, p.dotted);
         if full and full.split(".")[0] not in top_level {
             continue;
@@ -158,9 +170,6 @@ impl ImportWiringPass._check_rule_liveness(spec: WiringSpec, rule: ImportRule) -
         }
     }
     for t in rule.targets {
-        if t.is_any {
-            continue;
-        }
         if not any([t.matches(m) for m in modules]) {
             self.ctx.emit(
                 W2083,
@@ -181,24 +190,6 @@ impl ImportWiringPass._check_edge(
 ) -> None {
     constrained = spec.rules_for_provider(provider);
     if not constrained {
-        if spec.is_project_module(provider) and spec.is_sealed(provider) {
-            self.ctx.emit(
-                E2090,
-                node_override=at,
-                provider=provider,
-                consumer=consumer,
-                rules="no rule",
-                help_text=(
-                    f"'{provider}' is sealed: its arch.jac names it or declares it"
-                    " closed, so it flows only where an edge rule admits,"
-                    " and no rule names it as a provider yet. Add one, for example"
-                    f" `edge {ImportWiringPass._rule_name_for(provider)}:"
-                    f" {ImportWiringPass._package_pattern(provider)} -->"
-                    f" {ImportWiringPass._package_pattern(consumer)};`, or run"
-                    " `jac arch sync` to derive one from the current imports."
-                )
-            );
-        }
         return;
     }
     admitting = spec.rules_admitting(provider, consumer);
@@ -253,19 +244,14 @@ impl ImportWiringPass._check_module(mod: Module, spec: WiringSpec) -> None {
     if consumer is None {
         return;
     }
-    sealed = spec.is_sealed(consumer);
-    if sealed and spec.parse_failed {
+    if spec.parse_failed {
         self.ctx.emit(E2093, node_override=mod, consumer=consumer);
     }
-    provided = spec.consumer_bindings(consumer) if sealed else {};
+    provided = spec.consumer_bindings(consumer);
     for imp in ModuleFacts.iter_module_imports(mod) {
-        self._check_import(spec, imp, consumer, provided, sealed);
+        self._check_import(spec, imp, consumer, provided, True);
     }
     for imp in ModuleFacts.iter_nested_imports(mod) {
-        if not sealed {
-            self._check_import(spec, imp, consumer, {}, False);
-            continue;
-        }
         scope = scope_path_of(imp);
         scoped = spec.consumer_bindings(consumer, scope) if scope is not None else {};
         self._check_import(
@@ -290,15 +276,6 @@ impl ImportWiringPass._check_module(mod: Module, spec: WiringSpec) -> None {
             );
         }
     }
-}
-
-impl ImportWiringPass._package_pattern(module: str) -> str {
-    return module.rsplit(".", 1)[0] + ".*" if "." in module else module;
-}
-
-impl ImportWiringPass._rule_name_for(module: str) -> str {
-    head = module.split(".")[0];
-    return "".join([part.capitalize() for part in head.split("_")]) + "Flows";
 }
 
 impl ImportWiringPass._check_import(

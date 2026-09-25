@@ -2434,7 +2434,7 @@ impl JacAutoLintPass._strip_wired_imports(nd: uni.Module) -> None {
         head = discover_base_file(own_path);
         consumer = spec.module_name(head) if head else None;
     }
-    if consumer is None or not spec.is_sealed(consumer) {
+    if consumer is None {
         return;
     }
     provided = spec.consumer_bindings(consumer);
@@ -2626,7 +2626,7 @@ impl JacAutoLintPass._strip_duplicate_wires(nd: uni.Module) -> None {
     }
     seen: set[tuple[str, tuple[str, str, str, str]]] = set();
     for block in nd.body {
-        if not isinstance(block, uni.ImplImport) {
+        if not isinstance(block, uni.GraphImport) {
             continue;
         }
         doomed: set[int] = set();

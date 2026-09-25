@@ -29,27 +29,13 @@ impl WiringSpec.postinit -> None {
     self.blocks = [
         s
         for s in mod.body
-        if isinstance(s, ImplImport)
+        if isinstance(s, GraphImport)
     ];
     for block in self.blocks {
         for stmt in block.body {
             if isinstance(stmt, ImportWire) {
                 self.wires.append(stmt);
                 self._wire_lines[stmt.loc.first_line] = stmt;
-            } elif isinstance(stmt, ImportRule) and stmt.is_closed {
-                if stmt.sources {
-                    self._file_closed.extend(
-                        [
-                            ModulePattern.join_scope(
-                                block.scope_prefix, WiringSpec.pattern_text(p)
-                            ) for p in stmt.sources
-                        ]
-                    );
-                } else {
-                    self._file_closed.append(
-                        block.scope_prefix + ".*" if block.scope_prefix else "*"
-                    );
-                }
             } elif isinstance(stmt, ImportRule) {
                 self.rules.append(stmt);
             }
@@ -64,19 +50,6 @@ impl WiringSpec.postinit -> None {
             f"{rule.block.scope_prefix}:{rule.name.value}:{srcs}-->{tgts}:{names}"
         );
     }
-    self._rule_rows = rows;
-}
-
-impl WiringSpec._ensure_policy -> None {
-    if self._policy_loaded {
-        return;
-    }
-    self._policy_loaded = True;
-    if not self.closed_patterns {
-        self.closed_patterns = list(self._file_closed)
-            + _closed_patterns_for(self.root_dir);
-    }
-    rows = list(self._rule_rows) + ["closed:" + p for p in self.closed_patterns];
     self._policy_digest = hashlib.sha256("\n".join(rows).encode()).hexdigest()
         if rows
         else "";
@@ -159,10 +132,38 @@ impl WiringSpec.module_file(name: str) -> (str | None) {
         return None;
     }
     found = resolve_local_module(self.root_dir, parts);
-    if found is None or found[1] not in ("jac", "py") {
+    if found is None or found[1] not in ("jac", "py") or not self.owns(found[0]) {
         return None;
     }
     return found[0];
+}
+
+impl WiringSpec.owns(path: str) -> bool {
+    top = os.path.realpath(self.root_dir);
+    cur = os.path.dirname(os.path.realpath(path));
+    if cur != top and not cur.startswith(top + os.sep) {
+        return False;
+    }
+    walked: list[str] = [];
+    owned = True;
+    while cur != top {
+        cached = self._owned_dirs.get(cur);
+        if cached is not None {
+            owned = cached;
+            break;
+        }
+        walked.append(cur);
+        if os.path.isfile(os.path.join(cur, ARCH_FILE_NAME))
+            or os.path.isfile(os.path.join(cur, "jac.toml")) {
+            owned = False;
+            break;
+        }
+        cur = os.path.dirname(cur);
+    }
+    for d in walked {
+        self._owned_dirs[d] = owned;
+    }
+    return owned;
 }
 
 impl WiringSpec.split_consumer(path: str) -> (tuple[str, list[str]] | None) {
@@ -261,63 +262,6 @@ impl WiringSpec.is_project_module(module: str) -> bool {
     return module in self.project_modules();
 }
 
-impl WiringSpec.pattern_matches(pattern: str, module: str) -> bool {
-    if pattern == "*" or pattern == "any" {
-        return True;
-    }
-    if pattern.endswith(".*") {
-        base = pattern[:-2];
-        return module == base or module.startswith(base + ".");
-    }
-    return module == pattern;
-}
-
-impl WiringSpec.is_mentioned(module: str) -> bool {
-    if self._mentioned is None {
-        self._index_consumers();
-        named: set[str] = set(self._by_consumer.keys());
-        for wire in self.wires {
-            named.add(wire.provider_path);
-        }
-        patterns: list[tuple[ModulePattern, str]] = [];
-        for rule in self.rules {
-            prefix = rule.block.scope_prefix;
-            patterns.extend(
-                [
-                    (p, prefix)
-                    for p in rule.sources
-                    if not p.is_any
-                ]
-            );
-            patterns.extend(
-                [
-                    (t, "")
-                    for t in rule.targets
-                    if not t.is_any
-                ]
-            );
-        }
-        if patterns {
-            for name in self.project_modules() {
-                if any([p.matches(name, prefix) for (p, prefix) in patterns]) {
-                    named.add(name);
-                }
-            }
-        }
-        self._mentioned = named;
-    }
-    return module in self._mentioned;
-}
-
-impl WiringSpec.is_closed(module: str) -> bool {
-    self._ensure_policy();
-    return any([WiringSpec.pattern_matches(p, module) for p in self.closed_patterns]);
-}
-
-impl WiringSpec.is_sealed(module: str) -> bool {
-    return self.is_mentioned(module) or self.is_closed(module);
-}
-
 impl WiringSpec.import_form(
     is_absorb: bool, is_typed: bool, is_comptime: bool, from_form: bool
 ) -> str {
@@ -336,9 +280,6 @@ impl WiringSpec.import_form(
 }
 
 impl WiringSpec.pattern_text(pattern: ModulePattern) -> str {
-    if pattern.is_any {
-        return "any";
-    }
     if pattern.path is None {
         return "*";
     }
@@ -434,7 +375,6 @@ impl WiringSpec.annex_source(consumer: str) -> (str | None) {
 }
 
 impl WiringSpec.digest_for(consumer: str) -> str {
-    self._ensure_policy();
     annex = self.annex_source(consumer) or "";
     if not annex and not self._policy_digest {
         return "";
@@ -505,7 +445,7 @@ impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
     if not resolved or not os.path.isfile(resolved) {
         return None;
     }
-    module = self.module_name(resolved);
+    module = self.module_name(resolved) if self.owns(resolved) else None;
     if module is None
         or path_node.level != 0
         or path_node.string_path_value is not None {
@@ -590,26 +530,6 @@ impl compiled_by_seed(path: str) -> bool {
     );
 }
 
-impl _arch_patterns(root_dir: str, key: str) -> list[str] {
-    import tomllib;
-    try {
-        with open(os.path.join(root_dir, "jac.toml"), "rb") as f {
-            arch = tomllib.load(f).get("arch", {});
-        }
-    } except (OSError, tomllib.TOMLDecodeError) {
-        return [];
-    }
-    values = arch.get(key, []) if isinstance(arch, dict) else [];
-    if not isinstance(values, `list) {
-        return [];
-    }
-    return [
-        v
-        for v in values
-        if isinstance(v, str)
-    ];
-}
-
 impl scope_path_of(nd: UniNode) -> (list[str] | None) {
     names: list[str] = [];
     cur = nd.parent;
@@ -675,10 +595,6 @@ impl inject_into_scope(owner: (Ability | ImplDef), stmt: UniNode) -> None {
     owner._invalidate_sub_node_tab();
 }
 
-impl _closed_patterns_for(root_dir: str) -> list[str] {
-    return _arch_patterns(root_dir, "closed");
-}
-
 impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
     try {
         st = os.stat(arch_path);
@@ -698,18 +614,15 @@ impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
     return spec;
 }
 
-impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
+impl wiring_for_path(path: str) -> (WiringSpec | None) {
     if not path {
         return None;
     }
     arch = arch_file_for(path);
-    root_dir: (str | None) = os.path.dirname(arch) if arch is not None else None;
-    if root_dir is None {
-        root_dir = find_jac_project_root(path);
-    }
-    if not root_dir {
+    if arch is None {
         return None;
     }
+    root_dir = os.path.dirname(arch);
     scope = _resolution.get();
     if scope is not None and root_dir in scope and scope[root_dir] is not None {
         return scope[root_dir];
@@ -720,23 +633,7 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
     spec: (WiringSpec | None) = None;
     _building.add(root_dir);
     try {
-        if arch is not None {
-            spec = _load_spec(root_dir, arch);
-        } elif not policy or (scope is not None and root_dir in scope) {
-            return None;
-        } else {
-            closed = _closed_patterns_for(root_dir);
-            if closed {
-                spec = WiringSpec(
-                    root_dir=root_dir,
-                    path=os.path.join(root_dir, ARCH_FILE_NAME),
-                    source="",
-                    closed_patterns=closed,
-                    _policy_loaded=True
-                );
-                spec._ensure_policy();
-            }
-        }
+        spec = _load_spec(root_dir, arch);
     } finally {
         _building.discard(root_dir);
     }
@@ -747,7 +644,7 @@ impl wiring_for_path(path: str, policy: bool = True) -> (WiringSpec | None) {
 }
 
 impl dedupe_generated_imports(mod: Module) -> None {
-    spec = wiring_for_path(mod.loc.mod_path, policy=False);
+    spec = wiring_for_path(mod.loc.mod_path);
     if spec is None {
         return;
     }
@@ -880,7 +777,7 @@ impl wiring_annex_for(file_path: str) -> (tuple[str, str] | None) {
     if is_arch_file(file_path) {
         return None;
     }
-    spec = wiring_for_path(file_path, policy=False);
+    spec = wiring_for_path(file_path);
     if spec is None {
         return None;
     }

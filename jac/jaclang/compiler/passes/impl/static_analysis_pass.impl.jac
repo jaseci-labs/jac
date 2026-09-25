@@ -136,7 +136,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
             continue;
         }
 
-        if name_nd.find_parent_of_type(ImplImport) is not None {
+        if name_nd.find_parent_of_type(GraphImport) is not None {
             continue;
         }
 

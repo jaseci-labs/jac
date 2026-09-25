@@ -37,7 +37,7 @@ walker UnparsePass(TreeWalker) {
     can exit_module_item with uni.ModuleItem exit;
     can exit_archetype with uni.Archetype exit;
     can exit_impl_def with uni.ImplDef exit;
-    can exit_impl_import with uni.ImplImport exit;
+    can exit_graph_import with uni.GraphImport exit;
     can exit_import_wire with uni.ImportWire exit;
     can exit_import_rule with uni.ImportRule exit;
     can exit_module_pattern with uni.ModulePattern exit;

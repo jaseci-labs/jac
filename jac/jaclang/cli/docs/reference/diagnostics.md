@@ -159,10 +159,12 @@ All three block code generation for the module that reports them.
 | `E0090` | Duplicate '{name}' in a wire payload |
 | `E0091` | 'include' takes no payload |
 | `E0092` | An edge rule is named: 'edge Name: source --> target' |
-| `E0093` | An 'impl import' scope is a dotted package name |
+| `E0093` | A 'graph import' scope is a dotted package name |
 | `E0094` | Expected a wire ('provider --> consumer') or an edge rule here |
 | `E0095` | '*' must be the only item in a payload |
 | `E0096` | A rule payload lists names without aliases |
+| `E0097` | An edge rule's patterns name modules under this arch.jac; 'any' is not a pattern |
+| `E0098` | Wiring blocks are written 'graph import'; 'impl import' was removed |
 
 ### Parser Warnings
 
@@ -467,7 +469,6 @@ See [Project Wiring](wiring.md).
 
 | Code | Message |
 |------|---------|
-| `E1140` | '{scope}' is not a package or module under the project root |
 | `E1141` | '{module}' is not a project module, so it cannot be a wire's provider |
 | `E1142` | '{module}' cannot be a wire's consumer: {detail} |
 | `E1143` | A wire cannot connect '{module}' to itself |
@@ -540,14 +541,15 @@ An app's walkers and `def:pub` functions form its public boundary. Other declara
 
 | Code | Message |
 |------|---------|
-| `E2088` | 'impl import' is only valid in the arch.jac beside jac.toml |
+| `E2088` | 'graph import' is only valid in a file named arch.jac |
 | `E2089` | arch.jac declares wiring only; this {kind} does not belong here |
 | `E2090` | '{provider} --> {consumer}' is not permitted by any edge rule |
 | `E2091` | '{name}' is not admitted across '{provider} --> {consumer}' by {rules} |
 | `E2092` | Edge rule '{name}' is declared more than once |
 | `E2093` | arch.jac has syntax errors, so the wiring for '{consumer}' may be incomplete |
-| `E2094` | Import of '{module}' inside '{scope}' is not declared by arch.jac for the sealed module '{consumer}' |
+| `E2094` | Import of '{module}' inside '{scope}' is not declared by arch.jac for '{consumer}' |
 | `W2083` | Edge rule '{name}': {what} matches no module |
+| `W2084` | '{name}' is not a module under this arch.jac, so {what} is inert |
 
 ### JSX Slot Body Rules
 

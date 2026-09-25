@@ -57,10 +57,6 @@ obj NativeConfig {
         threads: int = 4;
 }
 
-obj ArchConfig {
-    has closed: list[str] = [];
-}
-
 obj MemoryConfig {
     has profile: str = "managed",
         enforce: list[str] = [],
@@ -284,7 +280,6 @@ obj JacConfig {
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
         native: NativeConfig = NativeConfig(),
-        arch: ArchConfig = ArchConfig(),
         memory: MemoryConfig = MemoryConfig(),
         placement: PlacementConfig = PlacementConfig(),
         `test: TestConfig = TestConfig(),

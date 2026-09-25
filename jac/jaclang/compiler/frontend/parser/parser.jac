@@ -66,7 +66,7 @@ import from jaclang.compiler.frontend.unitree {
     IfElseExpr,
     IfStmt,
     ImplDef,
-    ImplImport,
+    GraphImport,
     Import,
     ImportRule,
     ImportWire,
@@ -603,9 +603,8 @@ obj Parser {
     def _is_impl_enum_body -> bool;
     def parse_impl_target_name -> NameAtom;
     def parse_impl_enum_body -> tuple[(list[Assignment], list[Token])];
-    def parse_impl_import -> ImplImport;
+    def parse_graph_import -> GraphImport;
     def parse_import_rule -> ImportRule | None;
-    def parse_import_closed -> ImportRule;
     def parse_import_wire -> ImportWire | None;
     def parse_module_pattern -> ModulePattern;
     def parse_wire_module_path(context: str) -> ModulePath;
