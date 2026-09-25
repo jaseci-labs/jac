@@ -6,7 +6,10 @@ import sys;
 import zlib;
 import from pathlib { Path }
 import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
-import from jaclang.compiler.frontend.codeinfo { is_package_keyed_path }
+import from jaclang.compiler.frontend.codeinfo {
+    is_package_keyed_path,
+    native_unit_identity
+}
 import from jaclang.bootstrap_manifest {
     COMPILER_DIGEST_ROOTS,
     COMPILER_IDENTITY_NAME,
@@ -1230,7 +1233,8 @@ def get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
     projection = '' if is_package_keyed_path(str(source)) else _owner_projection();
-    path_hash = hashlib.sha256((str(source) + projection).encode()).hexdigest()[:8];
+    identity = native_unit_identity(str(source));
+    path_hash = hashlib.sha256((identity + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }
