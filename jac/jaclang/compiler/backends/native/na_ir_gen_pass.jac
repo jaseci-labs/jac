@@ -2698,6 +2698,12 @@ walker NaIRGenPass(CompilerPass) {
     def _erased_arch_base(tk: str) -> (str | None);
     def _split_union_key(tk: str) -> list[str];
     def _ptr_box_kind(rt: any) -> int;
+    def _common_struct_ancestor(
+        parts: list[str], member: (str | None) = None
+    ) -> (str | None);
+
+    def _declares_member(type_name: str, member: str) -> bool;
+    def _struct_owning_member(expr: (uni.UniNode | None), member: str) -> (str | None);
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
     def _restore_list_read(

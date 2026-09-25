@@ -445,22 +445,7 @@ impl NaIRGenPass._struct_name_for_key(tk: (str | None)) -> (str | None) {
         return _arch_parts[0];
     }
     if _arch_parts {
-        for _anc in self._mro_of(_arch_parts[0]) {
-            if _anc not in self.struct_types {
-                continue;
-            }
-            _in_all = True;
-            for _other in _arch_parts[1:] {
-                if _anc not in self._mro_of(_other) {
-                    _in_all = False;
-                    break;
-                }
-            }
-            if _in_all {
-                return _anc;
-            }
-        }
-        return None;
+        return self._common_struct_ancestor(_arch_parts);
     }
     for part in self._split_union_key(tk) {
         _base = self._erased_arch_base(part);
@@ -469,6 +454,42 @@ impl NaIRGenPass._struct_name_for_key(tk: (str | None)) -> (str | None) {
         }
     }
     return None;
+}
+
+impl NaIRGenPass._common_struct_ancestor(
+    parts: list[str], member: (str | None) = None
+) -> (str | None) {
+    for _anc in self._mro_of(parts[0]) {
+        if _anc not in self.struct_types
+            or any(_anc not in self._mro_of(_other) for _other in parts[1:]) {
+            continue;
+        }
+        if member is None or self._declares_member(_anc, member) {
+            return _anc;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._declares_member(type_name: str, member: str) -> bool {
+    return member in self.struct_field_indices.get(type_name, {})
+        or self._accessor_slot_of(type_name, member, "setter") is not None
+        or self._accessor_slot_of(type_name, member, "property") is not None;
+}
+
+impl NaIRGenPass._struct_owning_member(
+    expr: (uni.UniNode | None), member: str
+) -> (str | None) {
+    _tk = self._mangled_of(self._flow_narrowed_type_of(expr));
+    if _tk is None {
+        return None;
+    }
+    _parts = [
+        part
+        for part in self._split_union_key(_tk)
+        if part in self.struct_types
+    ];
+    return self._common_struct_ancestor(_parts, member) if _parts else None;
 }
 
 impl NaIRGenPass._erased_arch_base(tk: str) -> (str | None) {

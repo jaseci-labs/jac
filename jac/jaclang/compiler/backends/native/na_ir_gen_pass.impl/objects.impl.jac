@@ -4240,6 +4240,12 @@ impl NaIRGenPass._codegen_field_assign(
     if type_name is None and obj_val is not None {
         type_name = self._infer_type_name(obj_val);
     }
+    if union_parts is None
+        and field_name is not None
+        and type_name is not None
+        and not self._declares_member(type_name, field_name) {
+        type_name = self._struct_owning_member(target.target, field_name) or type_name;
+    }
     field_indices = self.struct_field_indices.get(type_name)
         if type_name is not None
         else None;
