@@ -1308,28 +1308,39 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
 }
 
 impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
+    """An imported module's registry also holds the layouts it took from its
+    own imports, and those can be older objects than the ones their defining
+    module holds now: a unit's tree is laid out afresh whenever the link plan
+    reloads it, while a sibling lowered earlier keeps the layouts it adopted
+    then. `_codegen_archetype` reads an archetype's slots from its defining
+    module and `adopt_imported_bases` rewrites the object this registry holds,
+    so the two must be one object: the defining module's layout replaces any
+    copy that reached this registry first.""";
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     _imp_reg = get_layout_registry(imported_mod, self.prog);
     _cons_reg = get_layout_registry(self.module, self.prog);
+    _owned = set(_imp_reg.local_names) - set(_cons_reg.local_names);
     for (_name, _parents) in _imp_reg.class_parents.items() {
-        if _name not in _cons_reg.class_parents
+        if _name in _owned
+            or _name not in _cons_reg.class_parents
             or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts) {
             _cons_reg.class_parents[_name] = _parents;
         }
     }
     for (_name, _pmods) in _imp_reg.parent_mods.items() {
-        if _name not in _cons_reg.parent_mods {
+        if _name in _owned or _name not in _cons_reg.parent_mods {
             _cons_reg.parent_mods[_name] = _pmods;
         }
     }
     for (_name, _mro) in _imp_reg.mro_order.items() {
-        if _name not in _cons_reg.mro_order
+        if _name in _owned
+            or _name not in _cons_reg.mro_order
             or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts) {
             _cons_reg.mro_order[_name] = _mro;
         }
     }
     for (_name, _lay) in _imp_reg.layouts.items() {
-        if _name not in _cons_reg.layouts {
+        if _name in _owned or _name not in _cons_reg.layouts {
             _cons_reg.layouts[_name] = _lay;
         }
     }
