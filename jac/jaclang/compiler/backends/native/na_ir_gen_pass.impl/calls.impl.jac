@@ -404,15 +404,9 @@ impl NaIRGenPass._codegen_bound_args(
         _chk += len(callee_sig.kwonlyargs or []);
         if _has_pack and callee_sig.kwargs is not None {
             _dt_ok = False;
-            if _chk < len(func.args)
-                and isinstance(func.args[_chk].type, ir.PointerType) {
-                for (_dk, _dt) in self.dict_types.items() {
-                    if _dk.startswith("ptr:")
-                        and _dt.as_pointer() == func.args[_chk].type {
-                        _dt_ok = True;
-                        break;
-                    }
-                }
+            if _chk < len(func.args) {
+                _dk = self._dict_key_of_ptr(func.args[_chk].type);
+                _dt_ok = _dk is not None and _dk.startswith("ptr:");
             }
             if not _dt_ok {
                 if _sig_is_callees {
@@ -835,15 +829,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
     order: (list[str | uni.Expr] | None) = None,
     bind_records: (list[dict[str, any]] | None) = None
 ) -> (ir.Value | None) {
-    dict_key: (str | None) = None;
-    if expected is not None and isinstance(expected, ir.PointerType) {
-        for (dk, dt) in self.dict_types.items() {
-            if dt.as_pointer() == expected {
-                dict_key = dk;
-                break;
-            }
-        }
-    }
+    dict_key = self._dict_key_of_ptr(expected) if expected is not None else None;
     if dict_key is not None and not dict_key.startswith("ptr:") {
         dict_key = None;
     }

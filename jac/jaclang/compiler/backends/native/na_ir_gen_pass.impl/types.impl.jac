@@ -2050,6 +2050,11 @@ impl NaIRGenPass._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Val
             _want = self.list_types["jacval"].as_pointer();
         }
     }
+    if _is_jv
+        and _nt.shared.class_name == "dict"
+        and not (_nt.private.type_args or []) {
+        return val;
+    }
     if _want is None or isinstance(_want, ir.VoidType) or _want == val.type {
         return val;
     }
@@ -2124,6 +2129,9 @@ impl NaIRGenPass._unbox_narrowed_member(
         or self._opt_payload_of(_want) is not None
         or not isinstance(_want, ir.PointerType)
         or isinstance(_want.pointee, ir.FunctionType) {
+        return val;
+    }
+    if _nt.shared.class_name == "dict" and not (_nt.private.type_args or []) {
         return val;
     }
     return self._unbox_from_jacval(val, _want);
