@@ -1,3 +1,8 @@
 {
- "stage0": "self"
+ "commit": "f751d71c0a708283ad324882c0ea778fa8542b61",
+ "compiler_digest": "652:51901b25bbbe29b7658fb39f04e52e051e4ae595f8109a8713bb69a0414b6f6a",
+ "format": 1,
+ "jaclang_tree": "a6cf6d344961c4bd732a1a96a06bbb98b3c5dbab",
+ "native_tree": "57e904a48d50646f85536082f95d569a69030570",
+ "typeshed_pin": "bbbf7530a987e59c8458127351cacad2e57f04bf"
 }
