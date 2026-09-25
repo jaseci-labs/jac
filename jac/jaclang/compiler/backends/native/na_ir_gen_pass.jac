@@ -2875,6 +2875,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value;
+    def _is_graph_type(ty: (TypeBase | None)) -> bool;
     def _cmp_static_type(
         left_node: uni.UniNode, right_node: uni.UniNode
     ) -> (TypeBase | None);

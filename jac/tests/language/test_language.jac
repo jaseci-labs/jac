@@ -612,6 +612,11 @@ test "entry exit" {
     assert "Exiting at the end of walker:  test_node(value=" in lines[11];
 }
 
+test "a walker ability triggered by Node runs at every node" {
+    output = run_jac(os.path.join(FIXTURES, "node_trigger.jac"));
+    assert "starts 1 seen 3 ['Hall', 'Room', 'Room']" in output , output;
+}
+
 test "visit order" {
     output = run_jac(os.path.join(FIXTURES, "visit_order.jac"));
     assert output == "[MyNode(Name='End'), MyNode(Name='Middle')]\n";
