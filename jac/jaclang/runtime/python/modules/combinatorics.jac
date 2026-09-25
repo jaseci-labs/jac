@@ -2,16 +2,21 @@
 
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyObject,
+    PySequence_Tuple,
+    PyTuple_New,
+    PyTuple_Size,
+    Py_NewRef,
+    jacpy_release,
+    jacpy_tuple_exchange,
+    jacpy_tuple_item,
+    jacpy_tuple_set_owned
+}
 import from jaclang.runtime.python.modules.iterators { reusable_tuple }
 import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_retain,
-    jacpy_tuple_new,
-    jacpy_tuple_size,
-    jacpy_tuple_item,
-    jacpy_tuple_set_owned,
-    jacpy_tuple_exchange,
-    jacpy_sequence_tuple,
     jac_heap_size,
     jac_list_heap_size,
     required,
@@ -29,8 +34,8 @@ enum combination_kind {
 
 obj combinatorial_state {
     has kind: i64 = 0,
-        pools: u64 = 0,
-        result: u64 = 0,
+        pools: ptr[PyObject] = NULL,
+        result: ptr[PyObject] = NULL,
         width: i64 = 0,
         population: i64 = 0,
         indices: list[i64] = [],
@@ -43,15 +48,17 @@ def:pub jacpy_combinatorial_new -> combinatorial_state {
     return combinatorial_state();
 }
 
-def:pub jacpy_combinatorial_field(state: combinatorial_state, field: i64) -> u64 {
+def:pub jacpy_combinatorial_field(
+    state: combinatorial_state, field: i64
+) -> ptr[PyObject] {
     return state.pools if field == 0 else state.result;
 }
 
 def:pub jacpy_combinatorial_clear(state: combinatorial_state) {
     pools = state.pools;
     result = state.result;
-    state.pools = 0;
-    state.result = 0;
+    state.pools = NULL;
+    state.result = NULL;
     state.stopped = True;
     jacpy_release(pools);
     jacpy_release(result);
@@ -64,47 +71,47 @@ def:pub jacpy_combinatorial_memory(state: combinatorial_state) -> i64 {
 }
 
 def:pub jacpy_combinatorial_init(
-    state: combinatorial_state, kind: i64, source: u64, width: i64
+    state: combinatorial_state, kind: i64, source: ptr[PyObject], width: i64
 ) -> i64 {
     state.kind = kind;
-    item: u64 = 0;
-    pool: u64 = 0;
+    item: ptr[PyObject] = NULL;
+    pool: ptr[PyObject] = NULL;
     try {
         if kind == combination_kind.PRODUCT.value {
-            count = jacpy_tuple_size(source);
+            count = PyTuple_Size(source);
             if count > 0 and width > i64(9223372036854775807) // count {
                 object_error("OverflowError", "repeat argument too large");
                 return -1;
             }
             state.width = count * width;
-            state.pools = required(jacpy_tuple_new(state.width));
+            state.pools = required(PyTuple_New(state.width));
             for i in range(int(count if width > 0 else i64(0))) {
                 item = required(jacpy_tuple_item(source, i64(i)));
-                pool = required(jacpy_sequence_tuple(item));
+                pool = required(PySequence_Tuple(item));
                 for j in range(int(width)) {
                     checked(
                         jacpy_tuple_set_owned(
-                            state.pools, i64(i) + i64(j) * count, jacpy_retain(pool)
+                            state.pools, i64(i) + i64(j) * count, Py_NewRef(pool)
                         )
                     );
                 }
                 jacpy_release(item);
-                item = 0;
+                item = NULL;
                 jacpy_release(pool);
-                pool = 0;
+                pool = NULL;
             }
             for i in range(int(state.width)) {
                 pool = required(jacpy_tuple_item(state.pools, i64(i)));
-                if jacpy_tuple_size(pool) == 0 {
+                if PyTuple_Size(pool) == 0 {
                     state.stopped = True;
                 }
                 jacpy_release(pool);
-                pool = 0;
+                pool = NULL;
                 state.indices.append(i64(0));
             }
         } else {
-            state.pools = required(jacpy_sequence_tuple(source));
-            state.population = jacpy_tuple_size(state.pools);
+            state.pools = required(PySequence_Tuple(source));
+            state.population = PyTuple_Size(state.pools);
             state.width = state.population if width < 0 else width;
             if state.width > i64(9223372036854775807) // 8 {
                 object_error("MemoryError", "");
@@ -202,7 +209,7 @@ def:priv advance_product(state: combinatorial_state) -> bool {
     i = int(state.width) - 1;
     while i >= 0 {
         pool = required(jacpy_tuple_item(state.pools, i64(i)));
-        size = jacpy_tuple_size(pool);
+        size = PyTuple_Size(pool);
         jacpy_release(pool);
         state.indices[i] += 1;
         if state.indices[i] < size {
@@ -214,14 +221,14 @@ def:priv advance_product(state: combinatorial_state) -> bool {
     return False;
 }
 
-def:pub jacpy_combinatorial_next(state: combinatorial_state) -> u64 {
+def:pub jacpy_combinatorial_next(state: combinatorial_state) -> ptr[PyObject] {
     if state.stopped {
-        return 0;
+        return NULL;
     }
-    result: u64 = 0;
-    pool: u64 = 0;
-    item: u64 = 0;
-    old_values: list[u64] = [];
+    result: ptr[PyObject] = NULL;
+    pool: ptr[PyObject] = NULL;
+    item: ptr[PyObject] = NULL;
+    old_values: list[ptr[PyObject]] = [];
     try {
         if state.started {
             advanced = advance_product(state)
@@ -233,7 +240,7 @@ def:pub jacpy_combinatorial_next(state: combinatorial_state) -> u64 {
                 );
             if not advanced {
                 state.stopped = True;
-                return 0;
+                return NULL;
             }
         }
         state.started = True;
@@ -242,24 +249,24 @@ def:pub jacpy_combinatorial_next(state: combinatorial_state) -> u64 {
             if state.kind == combination_kind.PRODUCT.value {
                 pool = required(jacpy_tuple_item(state.pools, i64(i)));
             } else {
-                pool = jacpy_retain(state.pools);
+                pool = Py_NewRef(state.pools);
             }
             item = required(jacpy_tuple_item(pool, state.indices[i]));
             old_values.append(jacpy_tuple_exchange(result, i64(i), item));
             jacpy_release(item);
-            item = 0;
+            item = NULL;
             jacpy_release(pool);
-            pool = 0;
+            pool = NULL;
         }
         previous = state.result;
-        state.result = jacpy_retain(result);
+        state.result = Py_NewRef(result);
         jacpy_release(previous);
         answer = result;
-        result = 0;
+        result = NULL;
         return answer;
     } except boundary_failure {
         state.stopped = True;
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(result);
         jacpy_release(pool);

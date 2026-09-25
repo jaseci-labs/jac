@@ -4,6 +4,72 @@ Python values are retained at the object boundary; protocol selection,
 traversal, framing and callback orchestration execute in Jac machine code.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyByteArray_Resize,
+    PyCallable_Check,
+    PyDict_SetItem,
+    PyImport_ImportModuleAttrString,
+    PyIter_Check,
+    PyIter_Next,
+    PyList_GetItemRef,
+    PyLong_AsLongLong,
+    PyLong_FromLongLong,
+    PyLong_FromUnsignedLongLong,
+    PyLong_FromVoidPtr,
+    PyMapping_Items,
+    PyNumber_Add,
+    PyObject,
+    PyObject_Call,
+    PyObject_CallOneArg,
+    PyObject_GetAttrString,
+    PyObject_GetIter,
+    PyObject_IsTrue,
+    PyObject_Str,
+    PySequence_List,
+    PyTuple_GetSlice,
+    PyTuple_Size,
+    PyUnicode_AsEncodedString,
+    PyUnicode_ReadChar,
+    Py_LeaveRecursiveCall,
+    Py_NewRef,
+    _PyLong_NumBits,
+    jacpy_builtin_kind,
+    jacpy_bytes_address,
+    jacpy_bytes_decode,
+    jacpy_bytes_from_memory,
+    jacpy_bytes_length,
+    jacpy_dict_get,
+    jacpy_dict_size,
+    jacpy_ellipsis,
+    jacpy_error_is,
+    jacpy_error_pending,
+    jacpy_float_bits,
+    jacpy_float_repr,
+    jacpy_float_value,
+    jacpy_is_dict,
+    jacpy_is_none,
+    jacpy_is_not_implemented,
+    jacpy_is_tuple,
+    jacpy_is_type,
+    jacpy_is_unicode,
+    jacpy_list_size,
+    jacpy_long_fits_i64,
+    jacpy_long_repr,
+    jacpy_long_sign,
+    jacpy_long_signed_bytes,
+    jacpy_mapping_optional_item,
+    jacpy_memory_byte,
+    jacpy_none,
+    jacpy_not_implemented,
+    jacpy_object_type,
+    jacpy_optional_attr,
+    jacpy_recursion_enter,
+    jacpy_release,
+    jacpy_tuple_item,
+    jacpy_unicode_size
+}
 import from jaclang.runtime.python.modules.pickle_opcodes { opcode }
 import from jaclang.runtime.python.modules.pickle_stream {
     pickle_writer,
@@ -12,90 +78,30 @@ import from jaclang.runtime.python.modules.pickle_stream {
 }
 import from jaclang.runtime.python.modules.pickle_objects { global_names, mapped_names }
 import from jaclang.runtime.python.capi {
-    jacpy_is_iterator,
     type_name,
     serialization_note,
     repr_value,
-    jacpy_is_dict,
-    jacpy_add,
-    jacpy_none,
-    jacpy_not_implemented,
-    jacpy_ellipsis,
-    jacpy_error_is,
     builtin_kind,
     required,
     checked,
     boundary_failure,
     object_tuple,
     text_object,
-    text_value,
-    jacpy_builtin_kind,
-    jacpy_retain,
-    jacpy_release,
-    jacpy_is_none,
-    jacpy_is_tuple,
-    jacpy_is_unicode,
-    jacpy_is_type,
-    jacpy_is_not_implemented,
-    jacpy_mapping_optional_item,
-    jacpy_dict_get,
-    jacpy_dict_set,
-    jacpy_dict_size,
-    jacpy_tuple_item,
-    jacpy_tuple_size,
-    jacpy_tuple_slice,
-    jacpy_list_size,
-    jacpy_list_item,
-    jacpy_bytearray_resize,
-    jacpy_iter,
-    jacpy_iter_next,
-    jacpy_mapping_items,
-    jacpy_sequence_list,
-    jacpy_truth,
-    jacpy_error_pending,
-    jacpy_long_fits_i64,
-    jacpy_integer_value,
-    jacpy_long_bits,
-    jacpy_long_sign,
-    jacpy_long_signed_bytes,
-    jacpy_long_repr,
-    jacpy_uint,
-    jacpy_int,
-    jacpy_float_bits,
-    jacpy_float_value,
-    jacpy_float_repr,
-    jacpy_bytes_length,
-    jacpy_bytes_address,
-    jacpy_memory_byte,
-    jacpy_bytes_from_memory,
-    jacpy_unicode_encode,
-    jacpy_bytes_decode,
-    jacpy_unicode_size,
-    jacpy_unicode_char,
-    jacpy_object_str,
-    jacpy_call,
-    jacpy_call_one,
-    jacpy_callable,
-    jacpy_getattr_string,
-    jacpy_optional_attr,
-    jacpy_object_type,
-    jacpy_import_attr,
-    jacpy_recursion_enter,
-    jacpy_recursion_leave
+    text_value
 }
 
 obj pickle_state {
     has stream: pickle_writer = pickle_writer(),
-        memo: u64 = 0,
-        persistent_id: u64 = 0,
-        reducer_override: u64 = 0,
-        dispatch: u64 = 0,
-        buffer_callback: u64 = 0,
-        error: u64 = 0,
+        memo: ptr[PyObject] = NULL,
+        persistent_id: ptr[PyObject] = NULL,
+        reducer_override: ptr[PyObject] = NULL,
+        dispatch: ptr[PyObject] = NULL,
+        buffer_callback: ptr[PyObject] = NULL,
+        error: ptr[PyObject] = NULL,
         protocol: int = 5,
         fix_imports: bool = True,
         fast: bool = False,
-        active: set[u64] = set();
+        active: set[ptr[PyObject]] = set();
 
     def clear {
         self.stream.clear();
@@ -106,12 +112,12 @@ obj pickle_state {
         dispatch = self.dispatch;
         callback = self.buffer_callback;
         error = self.error;
-        self.memo = 0;
-        self.persistent_id = 0;
-        self.reducer_override = 0;
-        self.dispatch = 0;
-        self.buffer_callback = 0;
-        self.error = 0;
+        self.memo = NULL;
+        self.persistent_id = NULL;
+        self.reducer_override = NULL;
+        self.dispatch = NULL;
+        self.buffer_callback = NULL;
+        self.error = NULL;
         jacpy_release(memo);
         jacpy_release(persistent);
         jacpy_release(reducer);
@@ -134,8 +140,8 @@ obj pickle_state {
         }
     }
 
-    def encoded(value: u64, encoding: str, errors: str) {
-        raw = required(jacpy_unicode_encode(value, encoding, errors));
+    def encoded(value: ptr[PyObject], encoding: str, errors: str) {
+        raw = required(PyUnicode_AsEncodedString(value, encoding, errors));
         try {
             self.stream.data(raw);
         } finally {
@@ -143,11 +149,11 @@ obj pickle_state {
         }
     }
 
-    def recalled(value: u64) -> u64 {
+    def recalled(value: ptr[PyObject]) -> ptr[PyObject] {
         if self.fast {
-            return 0;
+            return NULL;
         }
-        key = required(jacpy_uint(value));
+        key = required(PyLong_FromVoidPtr(value));
         try {
             saved = jacpy_dict_get(self.memo, key);
             if saved == 0 and jacpy_error_pending() != 0 {
@@ -159,10 +165,10 @@ obj pickle_state {
         }
     }
 
-    def get(saved: u64) {
+    def get(saved: ptr[PyObject]) {
         index = required(jacpy_tuple_item(saved, 0));
         try {
-            number = jacpy_integer_value(index);
+            number = PyLong_AsLongLong(index);
             if jacpy_error_pending() != 0 {
                 raise boundary_failure();
             }
@@ -179,19 +185,19 @@ obj pickle_state {
         }
     }
 
-    def remember(value: u64) {
+    def remember(value: ptr[PyObject]) {
         if self.fast {
             return;
         }
         count = jacpy_dict_size(self.memo);
-        key: u64 = 0;
-        index: u64 = 0;
-        pair: u64 = 0;
+        key: ptr[PyObject] = NULL;
+        index: ptr[PyObject] = NULL;
+        pair: ptr[PyObject] = NULL;
         try {
-            key = required(jacpy_uint(value));
-            index = required(jacpy_int(count));
+            key = required(PyLong_FromVoidPtr(value));
+            index = required(PyLong_FromLongLong(count));
             pair = object_tuple([index, value]);
-            checked(jacpy_dict_set(self.memo, key, pair));
+            checked(PyDict_SetItem(self.memo, key, pair));
             if self.protocol >= 4 {
                 self.emit(opcode.MEMOIZE);
             } elif self.protocol > 0 {
@@ -209,11 +215,11 @@ obj pickle_state {
         }
     }
 
-    def integer(value: u64) {
+    def integer(value: ptr[PyObject]) {
         small = jacpy_long_fits_i64(value) != 0;
         number: i64 = 0;
         if small {
-            number = jacpy_integer_value(value);
+            number = PyLong_AsLongLong(value);
             small = -2147483648 <= number <= 2147483647;
         }
         if small {
@@ -240,7 +246,7 @@ obj pickle_state {
             }
             self.ascii("L\n");
         } else {
-            size = jacpy_long_bits(value) // 8 + 1;
+            size = _PyLong_NumBits(value) // 8 + 1;
             if size > 2147483647 {
                 builtin_stream_error("OverflowError", "int too large to pickle");
             }
@@ -262,11 +268,11 @@ obj pickle_state {
         }
     }
 
-    def unicode(value: u64) {
+    def unicode(value: ptr[PyObject]) {
         if self.protocol == 0 {
             self.emit(opcode.UNICODE);
             for i in range(int(jacpy_unicode_size(value))) {
-                point = int(jacpy_unicode_char(value, i64(i)));
+                point = int(PyUnicode_ReadChar(value, i64(i)));
                 if point < 256 and point not in [0, 10, 13, 26, 92] {
                     self.stream.byte(point);
                 } else {
@@ -280,7 +286,7 @@ obj pickle_state {
             }
             self.stream.byte(10);
         } else {
-            raw = required(jacpy_unicode_encode(value, "utf-8", "surrogatepass"));
+            raw = required(PyUnicode_AsEncodedString(value, "utf-8", "surrogatepass"));
             try {
                 self.blob(raw, builtin_kind.STR);
             } finally {
@@ -290,7 +296,7 @@ obj pickle_state {
         self.remember(value);
     }
 
-    def blob(raw: u64, kind: builtin_kind) {
+    def blob(raw: ptr[PyObject], kind: builtin_kind) {
         size = jacpy_bytes_length(raw);
         bypass = size >= 65536;
         framing = self.stream.framed;
@@ -332,7 +338,7 @@ obj pickle_state {
         }
     }
 
-    def bytes(value: u64, mutable: bool) {
+    def bytes(value: ptr[PyObject], mutable: bool) {
         if (mutable and self.protocol >= 5) or (not mutable and self.protocol >= 3) {
             raw = required(
                 jacpy_bytes_from_memory(
@@ -349,10 +355,10 @@ obj pickle_state {
             self.remember(value);
             return;
         }
-        callable: u64 = 0;
-        args: u64 = 0;
-        content: u64 = 0;
-        encoding: u64 = 0;
+        callable: ptr[PyObject] = NULL;
+        args: ptr[PyObject] = NULL;
+        content: ptr[PyObject] = NULL;
+        encoding: ptr[PyObject] = NULL;
         try {
             if mutable {
                 callable = required(jacpy_object_type(value));
@@ -370,7 +376,9 @@ obj pickle_state {
                 callable = required(jacpy_object_type(value));
                 args = object_tuple([]);
             } else {
-                callable = required(jacpy_import_attr("_codecs", "encode"));
+                callable = required(
+                    PyImport_ImportModuleAttrString("_codecs", "encode")
+                );
                 content = required(jacpy_bytes_decode(value, "latin1", "strict"));
                 encoding = text_object("latin1");
                 args = object_tuple([content, encoding]);
@@ -384,8 +392,8 @@ obj pickle_state {
         }
     }
 
-    def tuple(value: u64) {
-        count = int(jacpy_tuple_size(value));
+    def tuple(value: ptr[PyObject]) {
+        count = int(PyTuple_Size(value));
         if count == 0 {
             if self.protocol == 0 {
                 self.emit(opcode.MARK);
@@ -404,7 +412,7 @@ obj pickle_state {
             try {
                 self.save(item, True);
             } except boundary_failure {
-                serialization_note(value, 0, i, 1);
+                serialization_note(value, NULL, i, 1);
                 raise boundary_failure();
             } finally {
                 jacpy_release(item);
@@ -440,8 +448,8 @@ obj pickle_state {
         self.remember(value);
     }
 
-    def batch(iterator: u64, mapping: bool, owner: u64) {
-        if jacpy_is_iterator(iterator) == 0 {
+    def batch(iterator: ptr[PyObject], mapping: bool, owner: ptr[PyObject]) {
+        if PyIter_Check(iterator) == 0 {
             self.fail(
                 ("fifth" if mapping else "fourth")
                     + " item of the tuple returned by __reduce__ must be an iterator, not "
@@ -450,10 +458,10 @@ obj pickle_state {
         }
         offset = 0;
         while True {
-            items: list[u64] = [];
+            items: list[ptr[PyObject]] = [];
             try {
                 for _ in range(1 if self.protocol == 0 else 1000) {
-                    item = jacpy_iter_next(iterator);
+                    item = PyIter_Next(iterator);
                     if item == 0 {
                         if jacpy_error_pending() != 0 {
                             raise boundary_failure();
@@ -470,13 +478,13 @@ obj pickle_state {
                 }
                 for item in items {
                     if mapping {
-                        if jacpy_is_tuple(item) == 0 or jacpy_tuple_size(item) != 2 {
+                        if jacpy_is_tuple(item) == 0 or PyTuple_Size(item) != 2 {
                             builtin_stream_error(
                                 "TypeError", "dict items iterator must return 2-tuples"
                             );
                         }
                         key = required(jacpy_tuple_item(item, 0));
-                        val: u64 = 0;
+                        val: ptr[PyObject] = NULL;
                         try {
                             val = required(jacpy_tuple_item(item, 1));
                             try {
@@ -494,7 +502,7 @@ obj pickle_state {
                         try {
                             self.save(item, True);
                         } except boundary_failure {
-                            serialization_note(owner, 0, offset, 1);
+                            serialization_note(owner, NULL, offset, 1);
                             raise boundary_failure();
                         }
                     }
@@ -513,7 +521,7 @@ obj pickle_state {
         }
     }
 
-    def global_identifier(value: u64, module: bool) {
+    def global_identifier(value: ptr[PyObject], module: bool) {
         try {
             self.encoded(value, "utf-8" if self.protocol >= 3 else "ascii", "strict");
         } except boundary_failure {
@@ -531,25 +539,25 @@ obj pickle_state {
         }
     }
 
-    def global(value: u64, preferred: u64) {
+    def global(value: ptr[PyObject], preferred: ptr[PyObject]) {
         names = global_names(value, preferred, self.error);
-        module: u64 = 0;
-        name: u64 = 0;
+        module: ptr[PyObject] = NULL;
+        name: ptr[PyObject] = NULL;
         try {
             module = required(jacpy_tuple_item(names, 0));
             name = required(jacpy_tuple_item(names, 1));
             if self.protocol >= 2 {
                 registry = required(
-                    jacpy_import_attr("copyreg", "_extension_registry")
+                    PyImport_ImportModuleAttrString("copyreg", "_extension_registry")
                 );
-                code: u64 = 0;
+                code: ptr[PyObject] = NULL;
                 try {
                     code = jacpy_dict_get(registry, names);
-                    if code == 0 and jacpy_error_pending() != 0 {
+                    if not code and jacpy_error_pending() != 0 {
                         raise boundary_failure();
                     }
-                    if code != 0 {
-                        number = jacpy_integer_value(code);
+                    if code {
+                        number = PyLong_AsLongLong(code);
                         if jacpy_error_pending() != 0 {
                             raise boundary_failure();
                         }
@@ -585,7 +593,7 @@ obj pickle_state {
                 try {
                     if len(parts) > 1 {
                         attribute_get = required(
-                            jacpy_import_attr("builtins", "getattr")
+                            PyImport_ImportModuleAttrString("builtins", "getattr")
                         );
                         try {
                             for _ in range(1, len(parts)) {
@@ -601,8 +609,8 @@ obj pickle_state {
                     mapped = mapped_names(module, root_name, True)
                         if self.protocol < 3 and self.fix_imports
                         else object_tuple([module, root_name]);
-                    mapped_module: u64 = 0;
-                    mapped_name: u64 = 0;
+                    mapped_module: ptr[PyObject] = NULL;
+                    mapped_name: ptr[PyObject] = NULL;
                     try {
                         mapped_module = required(jacpy_tuple_item(mapped, 0));
                         mapped_name = required(jacpy_tuple_item(mapped, 1));
@@ -638,7 +646,9 @@ obj pickle_state {
         }
     }
 
-    def reduce_call(callable: u64, args: u64, value: u64) {
+    def reduce_call(
+        callable: ptr[PyObject], args: ptr[PyObject], value: ptr[PyObject]
+    ) {
         self.save_context(callable, value, "reconstructor");
         self.save_context(args, value, "reconstructor arguments");
         self.emit(opcode.REDUCE);
@@ -657,7 +667,7 @@ obj pickle_state {
         }
     }
 
-    def reduction(value: u64, reduced: u64) {
+    def reduction(value: ptr[PyObject], reduced: ptr[PyObject]) {
         if jacpy_is_unicode(reduced) != 0 {
             self.global(value, reduced);
             return;
@@ -665,21 +675,21 @@ obj pickle_state {
         try {
             self.reduce_value(value, reduced);
         } except boundary_failure {
-            serialization_note(value, 0, 0, 0);
+            serialization_note(value, NULL, 0, 0);
             raise boundary_failure();
         }
     }
 
-    def save_context(value: u64, owner: u64, detail: str) {
+    def save_context(value: ptr[PyObject], owner: ptr[PyObject], detail: str) {
         try {
             self.save(value, True);
         } except boundary_failure {
-            serialization_note(owner, 0, 0, 0, detail);
+            serialization_note(owner, NULL, 0, 0, detail);
             raise boundary_failure();
         }
     }
 
-    def remember_constructed(value: u64) {
+    def remember_constructed(value: ptr[PyObject]) {
         previous = self.recalled(value);
         if previous != 0 {
             try {
@@ -693,7 +703,7 @@ obj pickle_state {
         }
     }
 
-    def reduce_value(value: u64, reduced: u64) {
+    def reduce_value(value: ptr[PyObject], reduced: ptr[PyObject]) {
         if jacpy_is_unicode(reduced) != 0 {
             self.global(value, reduced);
             return;
@@ -704,15 +714,15 @@ obj pickle_state {
                     + type_name(reduced, True)
             );
         }
-        count = int(jacpy_tuple_size(reduced));
+        count = int(PyTuple_Size(reduced));
         if count < 2 or count > 6 {
             self.fail("tuple returned by __reduce__ must contain 2 through 6 elements");
         }
         callable = required(jacpy_tuple_item(reduced, 0));
-        args: u64 = 0;
+        args: ptr[PyObject] = NULL;
         try {
             args = required(jacpy_tuple_item(reduced, 1));
-            if jacpy_callable(callable) == 0 {
+            if PyCallable_Check(callable) == 0 {
                 self.fail(
                     "first item of the tuple returned by __reduce__ must be callable, not "
                         + type_name(callable, True)
@@ -739,12 +749,12 @@ obj pickle_state {
                 }
             }
             if self.protocol >= 2 and special == "__newobj__" {
-                if jacpy_tuple_size(args) < 1 {
+                if PyTuple_Size(args) < 1 {
                     self.fail("__newobj__ expected at least 1 argument, got 0");
                 }
                 cls = required(jacpy_tuple_item(args, 0));
-                rest: u64 = 0;
-                actual: u64 = 0;
+                rest: ptr[PyObject] = NULL;
+                actual: ptr[PyObject] = NULL;
                 try {
                     if jacpy_is_type(cls) == 0 {
                         self.fail(
@@ -754,7 +764,7 @@ obj pickle_state {
                                 + type_name(cls, True)
                         );
                     }
-                    actual = required(jacpy_getattr_string(value, "__class__"));
+                    actual = required(PyObject_GetAttrString(value, "__class__"));
                     if cls != actual {
                         self.fail(
                             "first argument to __newobj__() must be "
@@ -763,7 +773,7 @@ obj pickle_state {
                                 + repr_value(cls)
                         );
                     }
-                    rest = required(jacpy_tuple_slice(args, 1, jacpy_tuple_size(args)));
+                    rest = required(PyTuple_GetSlice(args, 1, PyTuple_Size(args)));
                     self.save_context(cls, value, "class");
                     self.save_context(rest, value, "__new__ arguments");
                     self.emit(opcode.NEWOBJ);
@@ -774,16 +784,16 @@ obj pickle_state {
                 }
                 self.remember_constructed(value);
             } elif self.protocol >= 2 and special == "__newobj_ex__" {
-                if jacpy_tuple_size(args) != 3 {
+                if PyTuple_Size(args) != 3 {
                     self.fail(
                         "__newobj_ex__ expected 3 arguments, got "
-                            + str(jacpy_tuple_size(args))
+                            + str(PyTuple_Size(args))
                     );
                 }
                 cls = required(jacpy_tuple_item(args, 0));
-                positional: u64 = 0;
-                keywords: u64 = 0;
-                actual: u64 = 0;
+                positional: ptr[PyObject] = NULL;
+                keywords: ptr[PyObject] = NULL;
+                actual: ptr[PyObject] = NULL;
                 try {
                     if jacpy_is_type(cls) == 0 {
                         self.fail(
@@ -793,7 +803,7 @@ obj pickle_state {
                                 + type_name(cls, True)
                         );
                     }
-                    actual = required(jacpy_getattr_string(value, "__class__"));
+                    actual = required(PyObject_GetAttrString(value, "__class__"));
                     if cls != actual {
                         self.fail(
                             "first argument to __newobj_ex__() must be "
@@ -823,19 +833,21 @@ obj pickle_state {
                         self.emit(opcode.NEWOBJ_EX);
                     } else {
                         partial_type = required(
-                            jacpy_import_attr("functools", "partial")
+                            PyImport_ImportModuleAttrString("functools", "partial")
                         );
-                        new_method: u64 = 0;
-                        prefix: u64 = 0;
-                        combined: u64 = 0;
-                        partial: u64 = 0;
-                        empty: u64 = 0;
+                        new_method: ptr[PyObject] = NULL;
+                        prefix: ptr[PyObject] = NULL;
+                        combined: ptr[PyObject] = NULL;
+                        partial: ptr[PyObject] = NULL;
+                        empty: ptr[PyObject] = NULL;
                         try {
-                            new_method = required(jacpy_getattr_string(cls, "__new__"));
+                            new_method = required(
+                                PyObject_GetAttrString(cls, "__new__")
+                            );
                             prefix = object_tuple([new_method, cls]);
-                            combined = required(jacpy_add(prefix, positional));
+                            combined = required(PyNumber_Add(prefix, positional));
                             partial = required(
-                                jacpy_call(partial_type, combined, keywords)
+                                PyObject_Call(partial_type, combined, keywords)
                             );
                             self.save_context(partial, value, "reconstructor");
                             empty = object_tuple([]);
@@ -875,7 +887,7 @@ obj pickle_state {
             }
             if count >= 3 {
                 state = required(jacpy_tuple_item(reduced, 2));
-                state_set: u64 = 0;
+                state_set: ptr[PyObject] = NULL;
                 try {
                     if jacpy_is_none(state) != 0 {
                         return;
@@ -887,7 +899,7 @@ obj pickle_state {
                         self.save_context(state, value, "state");
                         self.emit(opcode.BUILD);
                     } else {
-                        if jacpy_callable(state_set) == 0 {
+                        if PyCallable_Check(state_set) == 0 {
                             self.fail(
                                 "sixth item of the tuple returned by __reduce__ must be callable, not "
                                     + type_name(state_set, True)
@@ -914,7 +926,7 @@ obj pickle_state {
         }
     }
 
-    def save_type(value: u64) {
+    def save_type(value: ptr[PyObject]) {
         singletons = [jacpy_none(), jacpy_not_implemented(), jacpy_ellipsis()];
         try {
             for singleton in singletons {
@@ -922,7 +934,7 @@ obj pickle_state {
                 try {
                     if cls == value {
                         type_type = required(jacpy_object_type(cls));
-                        args: u64 = 0;
+                        args: ptr[PyObject] = NULL;
                         try {
                             args = object_tuple([singleton]);
                             self.reduce_call(type_type, args, value);
@@ -941,29 +953,29 @@ obj pickle_state {
                 jacpy_release(singleton);
             }
         }
-        self.global(value, 0);
+        self.global(value, NULL);
     }
 
-    def other(value: u64, kind: int) {
-        reduced: u64 = 0;
-        reducer: u64 = 0;
-        cls: u64 = 0;
+    def other(value: ptr[PyObject], kind: int) {
+        reduced: ptr[PyObject] = NULL;
+        reducer: ptr[PyObject] = NULL;
+        cls: ptr[PyObject] = NULL;
         try {
             if self.reducer_override != 0 {
-                reduced = required(jacpy_call_one(self.reducer_override, value));
+                reduced = required(PyObject_CallOneArg(self.reducer_override, value));
                 if jacpy_is_not_implemented(reduced) == 0 {
                     self.reduction(value, reduced);
                     return;
                 }
                 jacpy_release(reduced);
-                reduced = 0;
+                reduced = NULL;
             }
             if kind == builtin_kind.TYPE.value {
                 self.save_type(value);
                 return;
             }
             if kind == builtin_kind.FUNCTION.value {
-                self.global(value, 0);
+                self.global(value, NULL);
                 return;
             }
             cls = required(jacpy_object_type(value));
@@ -972,9 +984,9 @@ obj pickle_state {
                 raise boundary_failure();
             }
             if reducer != 0 {
-                reduced = required(jacpy_call_one(reducer, value));
+                reduced = required(PyObject_CallOneArg(reducer, value));
             } elif jacpy_is_type(value) != 0 {
-                self.global(value, 0);
+                self.global(value, NULL);
                 return;
             } else {
                 reducer = jacpy_optional_attr(value, "__reduce_ex__");
@@ -982,17 +994,17 @@ obj pickle_state {
                     raise boundary_failure();
                 }
                 if reducer != 0 {
-                    protocol = required(jacpy_int(i64(self.protocol)));
+                    protocol = required(PyLong_FromLongLong(i64(self.protocol)));
                     try {
-                        reduced = required(jacpy_call_one(reducer, protocol));
+                        reduced = required(PyObject_CallOneArg(reducer, protocol));
                     } finally {
                         jacpy_release(protocol);
                     }
                 } else {
-                    reducer = required(jacpy_getattr_string(value, "__reduce__"));
+                    reducer = required(PyObject_GetAttrString(value, "__reduce__"));
                     args = object_tuple([]);
                     try {
-                        reduced = required(jacpy_call(reducer, args, 0));
+                        reduced = required(PyObject_Call(reducer, args, NULL));
                     } finally {
                         jacpy_release(args);
                     }
@@ -1006,27 +1018,27 @@ obj pickle_state {
         }
     }
 
-    def pickle_buffer(value: u64) {
+    def pickle_buffer(value: ptr[PyObject]) {
         if self.protocol < 5 {
             self.fail("PickleBuffer can only be pickled with protocol >= 5");
         }
-        method = required(jacpy_getattr_string(value, "raw"));
-        arguments: u64 = 0;
-        view: u64 = 0;
-        readonly: u64 = 0;
-        bytes_method: u64 = 0;
-        raw: u64 = 0;
+        method = required(PyObject_GetAttrString(value, "raw"));
+        arguments: ptr[PyObject] = NULL;
+        view: ptr[PyObject] = NULL;
+        readonly: ptr[PyObject] = NULL;
+        bytes_method: ptr[PyObject] = NULL;
+        raw: ptr[PyObject] = NULL;
         try {
             arguments = object_tuple([]);
-            view = required(jacpy_call(method, arguments, 0));
-            readonly = required(jacpy_getattr_string(view, "readonly"));
-            truth = jacpy_truth(readonly);
+            view = required(PyObject_Call(method, arguments, NULL));
+            readonly = required(PyObject_GetAttrString(view, "readonly"));
+            truth = PyObject_IsTrue(readonly);
             checked(truth);
             in_band: i64 = 1;
             if self.buffer_callback != 0 {
-                result = required(jacpy_call_one(self.buffer_callback, value));
+                result = required(PyObject_CallOneArg(self.buffer_callback, value));
                 try {
-                    in_band = jacpy_truth(result);
+                    in_band = PyObject_IsTrue(result);
                     checked(in_band);
                 } finally {
                     jacpy_release(result);
@@ -1038,8 +1050,8 @@ obj pickle_state {
                     self.emit(opcode.READONLY_BUFFER);
                 }
             } else {
-                bytes_method = required(jacpy_getattr_string(view, "tobytes"));
-                raw = required(jacpy_call(bytes_method, arguments, 0));
+                bytes_method = required(PyObject_GetAttrString(view, "tobytes"));
+                raw = required(PyObject_Call(bytes_method, arguments, NULL));
                 self.blob(
                     raw, builtin_kind.BYTES if truth != 0 else builtin_kind.BYTEARRAY
                 );
@@ -1055,8 +1067,8 @@ obj pickle_state {
         }
     }
 
-    def dump(value: u64) {
-        checked(jacpy_bytearray_resize(self.stream.buffer, 0));
+    def dump(value: ptr[PyObject]) {
+        checked(PyByteArray_Resize(self.stream.buffer, 0));
         self.stream.framed = False;
         if self.protocol >= 2 {
             self.emit(opcode.PROTO);
@@ -1069,17 +1081,17 @@ obj pickle_state {
         self.stream.flush(True);
     }
 
-    def save(value: u64, persistent: bool) {
+    def save(value: ptr[PyObject], persistent: bool) {
         self.stream.flush(False);
         if persistent and self.persistent_id != 0 {
-            pid = required(jacpy_call_one(self.persistent_id, value));
+            pid = required(PyObject_CallOneArg(self.persistent_id, value));
             try {
                 if jacpy_is_none(pid) == 0 {
                     if self.protocol > 0 {
                         self.save(pid, False);
                         self.emit(opcode.BINPERSID);
                     } else {
-                        text = required(jacpy_object_str(pid));
+                        text = required(PyObject_Str(pid));
                         try {
                             self.emit(opcode.PERSID);
                             try {
@@ -1109,7 +1121,7 @@ obj pickle_state {
             return;
         }
         if kind == builtin_kind.BOOL.value {
-            truth = jacpy_truth(value);
+            truth = PyObject_IsTrue(value);
             if self.protocol >= 2 {
                 self.emit(opcode.NEWTRUE if truth != 0 else opcode.NEWFALSE);
             } else {
@@ -1183,13 +1195,13 @@ obj pickle_state {
                     );
                 }
                 self.remember(value);
-                iterable: u64 = 0;
-                iterator: u64 = 0;
+                iterable: ptr[PyObject] = NULL;
+                iterator: ptr[PyObject] = NULL;
                 try {
-                    iterable = jacpy_mapping_items(value)
+                    iterable = PyMapping_Items(value)
                         if kind == builtin_kind.DICT.value
-                        else jacpy_retain(value);
-                    iterator = required(jacpy_iter(required(iterable)));
+                        else Py_NewRef(value);
+                    iterator = required(PyObject_GetIter(required(iterable)));
                     self.batch(iterator, kind == builtin_kind.DICT.value, value);
                 } finally {
                     jacpy_release(iterable);
@@ -1199,11 +1211,11 @@ obj pickle_state {
                 self.bytes(value, True);
             } elif kind == builtin_kind.SET.value
                 or kind == builtin_kind.FROZENSET.value {
-                values = required(jacpy_sequence_list(value));
+                values = required(PySequence_List(value));
                 try {
                     if self.protocol < 4 {
                         cls = required(jacpy_object_type(value));
-                        args: u64 = 0;
+                        args: ptr[PyObject] = NULL;
                         try {
                             args = object_tuple([values]);
                             self.reduce_call(cls, args, value);
@@ -1225,11 +1237,11 @@ obj pickle_state {
                             if not frozen and i % 1000 == 0 {
                                 self.emit(opcode.MARK);
                             }
-                            item = required(jacpy_list_item(values, i64(i)));
+                            item = required(PyList_GetItemRef(values, i64(i)));
                             try {
                                 self.save(item, True);
                             } except boundary_failure {
-                                serialization_note(value, 0, 0, 0, "element");
+                                serialization_note(value, NULL, 0, 0, "element");
                                 raise boundary_failure();
                             } finally {
                                 jacpy_release(item);
@@ -1265,7 +1277,7 @@ obj pickle_state {
             if self.fast {
                 self.active.discard(value);
             }
-            jacpy_recursion_leave();
+            Py_LeaveRecursiveCall();
         }
     }
 }

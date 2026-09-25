@@ -4,33 +4,41 @@ CPython supplies values and their protocol operations. Search and insertion
 orchestration execute here, without converting the sequence to a Jac list.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
-    jacpy_release,
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyLong_FromLongLong,
+    PyObject,
+    PyObject_CallOneArg,
+    PySequence_Size,
+    Py_LeaveRecursiveCall,
+    jacpy_comparison_slot,
+    jacpy_insert,
+    jacpy_less,
     jacpy_none,
-    jacpy_int,
-    jacpy_object_size,
+    jacpy_recursion_enter,
+    jacpy_release,
+    jacpy_same_type,
     jacpy_sequence_slot,
     jacpy_slot_item,
-    jacpy_call_one,
-    jacpy_less,
-    jacpy_insert,
-    jacpy_recursion_enter,
-    jacpy_recursion_leave,
-    object_error,
-    jacpy_comparison_slot,
-    jacpy_same_type,
     jacpy_slot_less
 }
+import from jaclang.runtime.python.capi { object_error }
 
 def bisect_index(
-    sequence: u64, item: u64, low: i64, high: i64, key: u64, right: bool
+    sequence: ptr[PyObject],
+    item: ptr[PyObject],
+    low: i64,
+    high: i64,
+    key: ptr[PyObject],
+    right: bool
 ) -> i64 {
     if low < 0 {
         object_error("ValueError", "lo must be non-negative");
         return -1;
     }
     if high == -1 {
-        high = jacpy_object_size(sequence);
+        high = PySequence_Size(sequence);
         if high < 0 {
             return -1;
         }
@@ -53,7 +61,7 @@ def bisect_index(
                 return -1;
             }
             if key != 0 {
-                mapped = jacpy_call_one(key, value);
+                mapped = PyObject_CallOneArg(key, value);
                 jacpy_release(value);
                 value = mapped;
                 if value == 0 {
@@ -66,7 +74,7 @@ def bisect_index(
             if compare != 0 and jacpy_same_type(item, value) != 0 {
                 comparison = jacpy_slot_less(compare, left, other);
                 if comparison == -2 {
-                    compare = 0;
+                    compare = ptr();
                 }
             }
             if comparison == -2 {
@@ -84,18 +92,24 @@ def bisect_index(
         }
         return low;
     } finally {
-        jacpy_recursion_leave();
+        Py_LeaveRecursiveCall();
     }
 }
 
 def:pub jacpy_bisect(
-    sequence: u64, item: u64, low: i64, high: i64, key: u64, right: i64, insert: i64
-) -> u64 {
+    sequence: ptr[PyObject],
+    item: ptr[PyObject],
+    low: i64,
+    high: i64,
+    key: ptr[PyObject],
+    right: i64,
+    insert: i64
+) -> ptr[PyObject] {
     search = item;
     if insert != 0 and key != 0 {
-        search = jacpy_call_one(key, item);
+        search = PyObject_CallOneArg(key, item);
         if search == 0 {
-            return 0;
+            return NULL;
         }
     }
     index = bisect_index(sequence, search, low, high, key, right != 0);
@@ -103,13 +117,13 @@ def:pub jacpy_bisect(
         jacpy_release(search);
     }
     if index < 0 {
-        return 0;
+        return NULL;
     }
     if insert == 0 {
-        return jacpy_int(index);
+        return PyLong_FromLongLong(index);
     }
     if jacpy_insert(sequence, index, item) < 0 {
-        return 0;
+        return NULL;
     }
     return jacpy_none();
 }

@@ -2,78 +2,83 @@
 
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyBool_FromLong,
+    PyImport_ImportModuleAttrString,
+    PyList_GetItemRef,
+    PyLong_AsLongLong,
+    PyLong_FromLongLong,
+    PyNumber_Absolute,
+    PyNumber_Add,
+    PyNumber_And,
+    PyNumber_FloorDivide,
+    PyNumber_InPlaceAdd,
+    PyNumber_InPlaceAnd,
+    PyNumber_InPlaceFloorDivide,
+    PyNumber_InPlaceLshift,
+    PyNumber_InPlaceMatrixMultiply,
+    PyNumber_InPlaceMultiply,
+    PyNumber_InPlaceOr,
+    PyNumber_InPlaceRemainder,
+    PyNumber_InPlaceRshift,
+    PyNumber_InPlaceSubtract,
+    PyNumber_InPlaceTrueDivide,
+    PyNumber_InPlaceXor,
+    PyNumber_Index,
+    PyNumber_Invert,
+    PyNumber_Lshift,
+    PyNumber_MatrixMultiply,
+    PyNumber_Multiply,
+    PyNumber_Negative,
+    PyNumber_Or,
+    PyNumber_Positive,
+    PyNumber_Remainder,
+    PyNumber_Rshift,
+    PyNumber_Subtract,
+    PyNumber_TrueDivide,
+    PyNumber_Xor,
+    PyObject,
+    PyObject_Call,
+    PyObject_DelItem,
+    PyObject_GetAttr,
+    PyObject_GetItem,
+    PyObject_IsTrue,
+    PyObject_LengthHint,
+    PyObject_Repr,
+    PyObject_RichCompare,
+    PyObject_SetItem,
+    PySequence_Concat,
+    PySequence_Contains,
+    PySequence_Count,
+    PySequence_InPlaceConcat,
+    PySequence_Index,
+    PyTuple_GetSlice,
+    PyTuple_New,
+    PyTuple_Size,
+    PyUnicode_Join,
+    Py_NewRef,
+    Py_ReprEnter,
+    Py_ReprLeave,
     jacpy_crypto_compare,
-    jacpy_retain,
-    jacpy_release,
+    jacpy_dict_entry,
+    jacpy_dict_size,
+    jacpy_error_pending,
+    jacpy_is_none,
+    jacpy_is_unicode,
+    jacpy_list_size,
     jacpy_none,
-    jacpy_int,
-    object_error,
-    jacpy_tuple_new,
-    jacpy_tuple_size,
+    jacpy_power,
+    jacpy_release,
+    jacpy_text,
     jacpy_tuple_item,
     jacpy_tuple_set_owned,
-    jacpy_list_size,
-    jacpy_list_item,
-    jacpy_add,
-    jacpy_sub,
-    jacpy_mul,
-    jacpy_matmul,
-    jacpy_floordiv,
-    jacpy_truediv,
-    jacpy_mod,
-    jacpy_lshift,
-    jacpy_rshift,
-    jacpy_and_,
-    jacpy_xor,
-    jacpy_or_,
-    jacpy_iadd,
-    jacpy_isub,
-    jacpy_imul,
-    jacpy_imatmul,
-    jacpy_ifloordiv,
-    jacpy_itruediv,
-    jacpy_imod,
-    jacpy_ilshift,
-    jacpy_irshift,
-    jacpy_iand,
-    jacpy_ixor,
-    jacpy_ior,
-    jacpy_concat,
-    jacpy_iconcat,
-    jacpy_getitem,
-    jacpy_neg,
-    jacpy_pos,
-    jacpy_abs,
-    jacpy_invert,
-    jacpy_index,
-    jacpy_power,
-    jacpy_truth,
-    jacpy_boolean,
-    jacpy_is_none,
-    jacpy_compare,
-    jacpy_contains,
-    jacpy_sequence_index,
-    jacpy_sequence_count,
-    jacpy_length_hint,
-    jacpy_setitem,
-    jacpy_delitem,
-    jacpy_getattr,
-    jacpy_call,
-    jacpy_tuple_slice,
-    jacpy_is_unicode,
-    jacpy_text,
-    jacpy_repr,
-    jacpy_repr_enter,
-    jacpy_repr_leave,
     jacpy_unicode_split,
-    jacpy_unicode_join,
-    jacpy_dict_size,
-    jacpy_dict_entry,
-    jacpy_import_attr,
-    jacpy_utf8,
-    jacpy_integer_value,
-    jacpy_error_pending,
+    jacpy_utf8
+}
+import from jaclang.runtime.python.capi {
+    object_error,
     boundary_failure,
     required,
     text_object,
@@ -82,28 +87,27 @@ import from jaclang.runtime.python.capi {
     pair
 }
 
-
 # Preparing dotted paths once avoids reparsing attributes on every invocation.
-def:pub jacpy_operator_prepare(kind: i64, args: u64) -> u64 {
-    result: u64 = 0;
+def:pub jacpy_operator_prepare(kind: i64, args: ptr[PyObject]) -> ptr[PyObject] {
+    result: ptr[PyObject] = NULL;
     try {
-        count = jacpy_tuple_size(args);
+        count = PyTuple_Size(args);
         if kind == 0 {
-            return jacpy_retain(args);
+            return Py_NewRef(args);
         }
         if kind == 2 {
             name = required(jacpy_tuple_item(args, 0));
             try {
                 if jacpy_is_unicode(name) == 0 {
                     object_error("TypeError", "method name must be a string");
-                    return 0;
+                    return NULL;
                 }
             } finally {
                 jacpy_release(name);
             }
-            return jacpy_retain(args);
+            return Py_NewRef(args);
         }
-        result = required(jacpy_tuple_new(count));
+        result = required(PyTuple_New(count));
         separator = text_object(".");
         try {
             for i in range(int(count)) {
@@ -127,46 +131,48 @@ def:pub jacpy_operator_prepare(kind: i64, args: u64) -> u64 {
         if result != 0 {
             jacpy_release(result);
         }
-        return 0;
+        return NULL;
     }
 }
 
-def get_attribute_path(target: u64, path: u64) -> u64 {
-    current = jacpy_retain(target);
+def get_attribute_path(target: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject] {
+    current = Py_NewRef(target);
     try {
         for i in range(int(jacpy_list_size(path))) {
-            name = required(jacpy_list_item(path, i64(i)));
-            following: u64 = 0;
+            name = required(PyList_GetItemRef(path, i64(i)));
+            following: ptr[PyObject] = NULL;
             try {
-                following = required(jacpy_getattr(current, name));
+                following = required(PyObject_GetAttr(current, name));
             } finally {
                 jacpy_release(name);
             }
             jacpy_release(current);
             current = following;
         }
-        return jacpy_retain(current);
+        return Py_NewRef(current);
     } finally {
         jacpy_release(current);
     }
 }
 
-def:pub jacpy_operator_apply(kind: i64, target: u64, args: u64, kwargs: u64) -> u64 {
-    result: u64 = 0;
+def:pub jacpy_operator_apply(
+    kind: i64, target: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    result: ptr[PyObject] = NULL;
     try {
-        count = jacpy_tuple_size(args);
+        count = PyTuple_Size(args);
         if kind == 2 {
             name = required(jacpy_tuple_item(args, 0));
-            callable: u64 = 0;
+            callable: ptr[PyObject] = NULL;
             try {
-                callable = required(jacpy_getattr(target, name));
+                callable = required(PyObject_GetAttr(target, name));
             } finally {
                 jacpy_release(name);
             }
             try {
-                positional = required(jacpy_tuple_slice(args, 1, count));
+                positional = required(PyTuple_GetSlice(args, 1, count));
                 try {
-                    return jacpy_call(callable, positional, kwargs);
+                    return PyObject_Call(callable, positional, kwargs);
                 } finally {
                     jacpy_release(positional);
                 }
@@ -175,13 +181,13 @@ def:pub jacpy_operator_apply(kind: i64, target: u64, args: u64, kwargs: u64) -> 
             }
         }
         if count > 1 {
-            result = required(jacpy_tuple_new(count));
+            result = required(PyTuple_New(count));
         }
         for i in range(int(count)) {
             key = required(jacpy_tuple_item(args, i64(i)));
-            value: u64 = 0;
+            value: ptr[PyObject] = NULL;
             try {
-                value = required(jacpy_getitem(target, key))
+                value = required(PyObject_GetItem(target, key))
                     if kind == 0
                     else get_attribute_path(target, key);
             } finally {
@@ -197,23 +203,23 @@ def:pub jacpy_operator_apply(kind: i64, target: u64, args: u64, kwargs: u64) -> 
         if result != 0 {
             jacpy_release(result);
         }
-        return 0;
+        return NULL;
     }
 }
 
-def getter_arguments(kind: i64, args: u64) -> u64 {
+def getter_arguments(kind: i64, args: ptr[PyObject]) -> ptr[PyObject] {
     if kind != 1 {
-        return jacpy_retain(args);
+        return Py_NewRef(args);
     }
-    result = required(jacpy_tuple_new(jacpy_tuple_size(args)));
+    result = required(PyTuple_New(PyTuple_Size(args)));
     try {
         separator = text_object(".");
         try {
-            for i in range(int(jacpy_tuple_size(args))) {
+            for i in range(int(PyTuple_Size(args))) {
                 path = required(jacpy_tuple_item(args, i64(i)));
-                value: u64 = 0;
+                value: ptr[PyObject] = NULL;
                 try {
-                    value = required(jacpy_unicode_join(separator, path));
+                    value = required(PyUnicode_Join(separator, path));
                 } finally {
                     jacpy_release(path);
                 }
@@ -229,10 +235,12 @@ def getter_arguments(kind: i64, args: u64) -> u64 {
     }
 }
 
-def:pub jacpy_operator_repr(kind: i64, self: u64, args: u64, kwargs: u64) -> u64 {
-    entered = jacpy_repr_enter(self);
+def:pub jacpy_operator_repr(
+    kind: i64, self: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    entered = Py_ReprEnter(self);
     if entered < 0 {
-        return 0;
+        return NULL;
     }
     name = "operator.itemgetter"
         if kind == 0
@@ -244,7 +252,7 @@ def:pub jacpy_operator_repr(kind: i64, self: u64, args: u64, kwargs: u64) -> u64
         originals = getter_arguments(kind, args);
         try {
             parts: list[str] = [];
-            for i in range(1 if kind == 2 else 0, int(jacpy_tuple_size(originals))) {
+            for i in range(1 if kind == 2 else 0, int(PyTuple_Size(originals))) {
                 item = required(jacpy_tuple_item(originals, i64(i)));
                 try {
                     parts.append(repr_value(item));
@@ -266,7 +274,7 @@ def:pub jacpy_operator_repr(kind: i64, self: u64, args: u64, kwargs: u64) -> u64
                     }
                     try {
                         pos = required(jacpy_tuple_item(record, 0));
-                        position = jacpy_integer_value(pos);
+                        position = PyLong_AsLongLong(pos);
                         jacpy_release(pos);
                         key = required(jacpy_tuple_item(record, 1));
                         try {
@@ -311,29 +319,33 @@ def:pub jacpy_operator_repr(kind: i64, self: u64, args: u64, kwargs: u64) -> u64
             jacpy_release(originals);
         }
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         if entered == 0 {
-            jacpy_repr_leave(self);
+            Py_ReprLeave(self);
         }
     }
 }
 
-def:pub jacpy_operator_reduce(kind: i64, type: u64, args: u64, kwargs: u64) -> u64 {
+def:pub jacpy_operator_reduce(
+    kind: i64, type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     try {
         originals = getter_arguments(kind, args);
         try {
             if kind != 2 or jacpy_dict_size(kwargs) == 0 {
                 return pair(type, originals);
             }
-            partial = required(jacpy_import_attr("functools", "partial"));
-            constructor: u64 = 0;
+            partial = required(PyImport_ImportModuleAttrString("functools", "partial"));
+            constructor: ptr[PyObject] = NULL;
             try {
                 name = required(jacpy_tuple_item(originals, 0));
                 try {
                     parameters = pair(type, name);
                     try {
-                        constructor = required(jacpy_call(partial, parameters, kwargs));
+                        constructor = required(
+                            PyObject_Call(partial, parameters, kwargs)
+                        );
                     } finally {
                         jacpy_release(parameters);
                     }
@@ -345,7 +357,7 @@ def:pub jacpy_operator_reduce(kind: i64, type: u64, args: u64, kwargs: u64) -> u
             }
             try {
                 tail = required(
-                    jacpy_tuple_slice(originals, 1, jacpy_tuple_size(originals))
+                    PyTuple_GetSlice(originals, 1, PyTuple_Size(originals))
                 );
                 try {
                     return pair(constructor, tail);
@@ -359,229 +371,235 @@ def:pub jacpy_operator_reduce(kind: i64, type: u64, args: u64, kwargs: u64) -> u
             jacpy_release(originals);
         }
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
-def:pub jacpy_operator_add(a: u64, b: u64) -> u64 {
-    return jacpy_add(a, b);
+def:pub jacpy_operator_add(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Add(a, b);
 }
 
-def:pub jacpy_operator_sub(a: u64, b: u64) -> u64 {
-    return jacpy_sub(a, b);
+def:pub jacpy_operator_sub(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Subtract(a, b);
 }
 
-def:pub jacpy_operator_mul(a: u64, b: u64) -> u64 {
-    return jacpy_mul(a, b);
+def:pub jacpy_operator_mul(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Multiply(a, b);
 }
 
-def:pub jacpy_operator_matmul(a: u64, b: u64) -> u64 {
-    return jacpy_matmul(a, b);
+def:pub jacpy_operator_matmul(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_MatrixMultiply(a, b);
 }
 
-def:pub jacpy_operator_floordiv(a: u64, b: u64) -> u64 {
-    return jacpy_floordiv(a, b);
+def:pub jacpy_operator_floordiv(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_FloorDivide(a, b);
 }
 
-def:pub jacpy_operator_truediv(a: u64, b: u64) -> u64 {
-    return jacpy_truediv(a, b);
+def:pub jacpy_operator_truediv(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_TrueDivide(a, b);
 }
 
-def:pub jacpy_operator_mod(a: u64, b: u64) -> u64 {
-    return jacpy_mod(a, b);
+def:pub jacpy_operator_mod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Remainder(a, b);
 }
 
-def:pub jacpy_operator_lshift(a: u64, b: u64) -> u64 {
-    return jacpy_lshift(a, b);
+def:pub jacpy_operator_lshift(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Lshift(a, b);
 }
 
-def:pub jacpy_operator_rshift(a: u64, b: u64) -> u64 {
-    return jacpy_rshift(a, b);
+def:pub jacpy_operator_rshift(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Rshift(a, b);
 }
 
-def:pub jacpy_operator_and_(a: u64, b: u64) -> u64 {
-    return jacpy_and_(a, b);
+def:pub jacpy_operator_and_(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_And(a, b);
 }
 
-def:pub jacpy_operator_xor(a: u64, b: u64) -> u64 {
-    return jacpy_xor(a, b);
+def:pub jacpy_operator_xor(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Xor(a, b);
 }
 
-def:pub jacpy_operator_or_(a: u64, b: u64) -> u64 {
-    return jacpy_or_(a, b);
+def:pub jacpy_operator_or_(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Or(a, b);
 }
 
-def:pub jacpy_operator_iadd(a: u64, b: u64) -> u64 {
-    return jacpy_iadd(a, b);
+def:pub jacpy_operator_iadd(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceAdd(a, b);
 }
 
-def:pub jacpy_operator_isub(a: u64, b: u64) -> u64 {
-    return jacpy_isub(a, b);
+def:pub jacpy_operator_isub(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceSubtract(a, b);
 }
 
-def:pub jacpy_operator_imul(a: u64, b: u64) -> u64 {
-    return jacpy_imul(a, b);
+def:pub jacpy_operator_imul(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceMultiply(a, b);
 }
 
-def:pub jacpy_operator_imatmul(a: u64, b: u64) -> u64 {
-    return jacpy_imatmul(a, b);
+def:pub jacpy_operator_imatmul(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceMatrixMultiply(a, b);
 }
 
-def:pub jacpy_operator_ifloordiv(a: u64, b: u64) -> u64 {
-    return jacpy_ifloordiv(a, b);
+def:pub jacpy_operator_ifloordiv(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceFloorDivide(a, b);
 }
 
-def:pub jacpy_operator_itruediv(a: u64, b: u64) -> u64 {
-    return jacpy_itruediv(a, b);
+def:pub jacpy_operator_itruediv(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceTrueDivide(a, b);
 }
 
-def:pub jacpy_operator_imod(a: u64, b: u64) -> u64 {
-    return jacpy_imod(a, b);
+def:pub jacpy_operator_imod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceRemainder(a, b);
 }
 
-def:pub jacpy_operator_ilshift(a: u64, b: u64) -> u64 {
-    return jacpy_ilshift(a, b);
+def:pub jacpy_operator_ilshift(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceLshift(a, b);
 }
 
-def:pub jacpy_operator_irshift(a: u64, b: u64) -> u64 {
-    return jacpy_irshift(a, b);
+def:pub jacpy_operator_irshift(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceRshift(a, b);
 }
 
-def:pub jacpy_operator_iand(a: u64, b: u64) -> u64 {
-    return jacpy_iand(a, b);
+def:pub jacpy_operator_iand(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceAnd(a, b);
 }
 
-def:pub jacpy_operator_ixor(a: u64, b: u64) -> u64 {
-    return jacpy_ixor(a, b);
+def:pub jacpy_operator_ixor(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceXor(a, b);
 }
 
-def:pub jacpy_operator_ior(a: u64, b: u64) -> u64 {
-    return jacpy_ior(a, b);
+def:pub jacpy_operator_ior(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_InPlaceOr(a, b);
 }
 
-def:pub jacpy_operator_concat(a: u64, b: u64) -> u64 {
-    return jacpy_concat(a, b);
+def:pub jacpy_operator_concat(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PySequence_Concat(a, b);
 }
 
-def:pub jacpy_operator_iconcat(a: u64, b: u64) -> u64 {
-    return jacpy_iconcat(a, b);
+def:pub jacpy_operator_iconcat(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PySequence_InPlaceConcat(a, b);
 }
 
-def:pub jacpy_operator_getitem(a: u64, b: u64) -> u64 {
-    return jacpy_getitem(a, b);
+def:pub jacpy_operator_getitem(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyObject_GetItem(a, b);
 }
 
-def:pub jacpy_operator_neg(a: u64) -> u64 {
-    return jacpy_neg(a);
+def:pub jacpy_operator_neg(a: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Negative(a);
 }
 
-def:pub jacpy_operator_pos(a: u64) -> u64 {
-    return jacpy_pos(a);
+def:pub jacpy_operator_pos(a: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Positive(a);
 }
 
-def:pub jacpy_operator_abs(a: u64) -> u64 {
-    return jacpy_abs(a);
+def:pub jacpy_operator_abs(a: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Absolute(a);
 }
 
-def:pub jacpy_operator_invert(a: u64) -> u64 {
-    return jacpy_invert(a);
+def:pub jacpy_operator_invert(a: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Invert(a);
 }
 
-def:pub jacpy_operator_index(a: u64) -> u64 {
-    return jacpy_index(a);
+def:pub jacpy_operator_index(a: ptr[PyObject]) -> ptr[PyObject] {
+    return PyNumber_Index(a);
 }
 
-def bool_result(value: i64) -> u64 {
+def bool_result(value: i64) -> ptr[PyObject] {
     if value < 0 {
-        return 0;
+        return NULL;
     }
-    return jacpy_boolean(value);
+    return PyBool_FromLong(value);
 }
 
-def integer_result(value: i64) -> u64 {
+def integer_result(value: i64) -> ptr[PyObject] {
     if value == -1 and jacpy_error_pending() != 0 {
-        return 0;
+        return NULL;
     }
-    return jacpy_int(value);
+    return PyLong_FromLongLong(value);
 }
 
-def:pub jacpy_operator_truth(a: u64) -> u64 {
-    return bool_result(jacpy_truth(a));
+def:pub jacpy_operator_truth(a: ptr[PyObject]) -> ptr[PyObject] {
+    return bool_result(PyObject_IsTrue(a));
 }
 
-def:pub jacpy_operator_not_(a: u64) -> u64 {
-    value = jacpy_truth(a);
+def:pub jacpy_operator_not_(a: ptr[PyObject]) -> ptr[PyObject] {
+    value = PyObject_IsTrue(a);
     if value < 0 {
-        return 0;
+        return NULL;
     }
-    return jacpy_boolean(1 - value);
+    return PyBool_FromLong(1 - value);
 }
 
-def:pub jacpy_operator_is_(a: u64, b: u64) -> u64 {
-    return jacpy_boolean(i64(a == b));
+def:pub jacpy_operator_is_(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyBool_FromLong(i64(a == b));
 }
 
-def:pub jacpy_operator_is_not(a: u64, b: u64) -> u64 {
-    return jacpy_boolean(i64(a != b));
+def:pub jacpy_operator_is_not(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return PyBool_FromLong(i64(a != b));
 }
 
-def:pub jacpy_operator_is_none(a: u64) -> u64 {
-    return jacpy_boolean(jacpy_is_none(a));
+def:pub jacpy_operator_is_none(a: ptr[PyObject]) -> ptr[PyObject] {
+    return PyBool_FromLong(jacpy_is_none(a));
 }
 
-def:pub jacpy_operator_is_not_none(a: u64) -> u64 {
-    return jacpy_boolean(1 - jacpy_is_none(a));
+def:pub jacpy_operator_is_not_none(a: ptr[PyObject]) -> ptr[PyObject] {
+    return PyBool_FromLong(1 - jacpy_is_none(a));
 }
 
-def:pub jacpy_operator_pow(a: u64, b: u64) -> u64 {
+def:pub jacpy_operator_pow(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_power(a, b, 0);
 }
 
-def:pub jacpy_operator_ipow(a: u64, b: u64) -> u64 {
+def:pub jacpy_operator_ipow(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_power(a, b, 1);
 }
 
-def:pub jacpy_operator_compare(a: u64, b: u64, operation: i64) -> u64 {
-    return jacpy_compare(a, b, operation);
+def:pub jacpy_operator_compare(
+    a: ptr[PyObject], b: ptr[PyObject], operation: i64
+) -> ptr[PyObject] {
+    return PyObject_RichCompare(a, b, i32(operation));
 }
 
-def:pub jacpy_operator_contains(a: u64, b: u64) -> u64 {
-    return bool_result(jacpy_contains(a, b));
+def:pub jacpy_operator_contains(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return bool_result(PySequence_Contains(a, b));
 }
 
-def:pub jacpy_operator_indexOf(a: u64, b: u64) -> u64 {
-    return integer_result(jacpy_sequence_index(a, b));
+def:pub jacpy_operator_indexOf(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return integer_result(PySequence_Index(a, b));
 }
 
-def:pub jacpy_operator_countOf(a: u64, b: u64) -> u64 {
-    return integer_result(jacpy_sequence_count(a, b));
+def:pub jacpy_operator_countOf(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    return integer_result(PySequence_Count(a, b));
 }
 
-def:pub jacpy_operator_length_hint(a: u64, fallback: i64) -> u64 {
-    return integer_result(jacpy_length_hint(a, fallback));
+def:pub jacpy_operator_length_hint(a: ptr[PyObject], fallback: i64) -> ptr[PyObject] {
+    return integer_result(PyObject_LengthHint(a, fallback));
 }
 
-def:pub jacpy_operator_setitem(a: u64, b: u64, value: u64) -> u64 {
-    if jacpy_setitem(a, b, value) < 0 {
-        return 0;
+def:pub jacpy_operator_setitem(
+    a: ptr[PyObject], b: ptr[PyObject], value: ptr[PyObject]
+) -> ptr[PyObject] {
+    if PyObject_SetItem(a, b, value) < 0 {
+        return NULL;
     }
     return jacpy_none();
 }
 
-def:pub jacpy_operator_delitem(a: u64, b: u64) -> u64 {
-    if jacpy_delitem(a, b) < 0 {
-        return 0;
+def:pub jacpy_operator_delitem(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+    if PyObject_DelItem(a, b) < 0 {
+        return NULL;
     }
     return jacpy_none();
 }
 
-def:pub jacpy_operator_call(args: u64, kwargs: u64) -> u64 {
+def:pub jacpy_operator_call(
+    args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     try {
         callable = required(jacpy_tuple_item(args, 0));
         try {
-            tail = required(jacpy_tuple_slice(args, 1, jacpy_tuple_size(args)));
+            tail = required(PyTuple_GetSlice(args, 1, PyTuple_Size(args)));
             try {
-                return jacpy_call(callable, tail, kwargs);
+                return PyObject_Call(callable, tail, kwargs);
             } finally {
                 jacpy_release(tail);
             }
@@ -589,14 +607,16 @@ def:pub jacpy_operator_call(args: u64, kwargs: u64) -> u64 {
             jacpy_release(callable);
         }
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
 # Reuse the cryptographic constant-time primitive already supplied by OpenSSL.
 # Comparisons of unequal sizes still read the second operand in full.
-def:pub jacpy_operator_digest(a: u64, b: u64, a_size: i64, b_size: i64) -> u64 {
+def:pub jacpy_operator_digest(
+    a: ptr, b: ptr, a_size: i64, b_size: i64
+) -> ptr[PyObject] {
     left = a if a_size == b_size else b;
     difference = jacpy_crypto_compare(left, b, b_size);
-    return jacpy_boolean(i64((difference == 0) and (a_size == b_size)));
+    return PyBool_FromLong(i64((difference == 0) and (a_size == b_size)));
 }

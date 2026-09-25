@@ -4,12 +4,15 @@ CPython supplies the Python values and their float conversion. The rational
 approximation evaluates natively over machine doubles.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
-    jacpy_float,
-    jacpy_number_as_double,
-    jacpy_error_pending,
-    object_error
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyFloat_AsDouble,
+    PyFloat_FromDouble,
+    PyObject,
+    jacpy_error_pending
 }
+import from jaclang.runtime.python.capi { object_error }
 import from jaclang.runtime.python.modules.numeric { fabs, log, sqrt }
 
 # Wichura, M.J. (1988). "Algorithm AS241: The Percentage Points of the Normal
@@ -86,15 +89,15 @@ def:priv polynomial(coefficients: list[float], value: float) -> float {
     return total;
 }
 
-def:priv undefined -> u64 {
+def:priv undefined -> ptr[PyObject] {
     object_error("ValueError", "inv_cdf undefined for these parameters");
-    return 0;
+    return NULL;
 }
 
 # PyFloat_AsDouble, reporting a failed conversion as None rather than the
 # -1.0 the C API overloads for it.
-def:priv input_float(value: u64) -> (float | None) {
-    result = jacpy_number_as_double(value);
+def:priv input_float(value: ptr[PyObject]) -> (float | None) {
+    result = PyFloat_AsDouble(value);
     if jacpy_error_pending() != 0 {
         return None;
     }
@@ -104,18 +107,20 @@ def:priv input_float(value: u64) -> (float | None) {
 # Every comparison keeps the reference implementation's orientation so that a
 # NaN probability falls through to the tail branch and yields NaN instead of
 # raising.
-def:pub jacpy_statistics_inv_cdf(probability: u64, mean: u64, deviation: u64) -> u64 {
+def:pub jacpy_statistics_inv_cdf(
+    probability: ptr[PyObject], mean: ptr[PyObject], deviation: ptr[PyObject]
+) -> ptr[PyObject] {
     p = input_float(probability);
     if p is None {
-        return 0;
+        return NULL;
     }
     mu = input_float(mean);
     if mu is None {
-        return 0;
+        return NULL;
     }
     sigma = input_float(deviation);
     if sigma is None {
-        return 0;
+        return NULL;
     }
     if p <= 0.0 or p >= 1.0 {
         return undefined();
@@ -131,7 +136,7 @@ def:pub jacpy_statistics_inv_cdf(probability: u64, mean: u64, deviation: u64) ->
             return undefined();
         }
         x = polynomial(central_numerator, r) * q / den;
-        return jacpy_float(mu + x * sigma);
+        return PyFloat_FromDouble(mu + x * sigma);
     }
     r = p if q <= 0.0 else 1.0 - p;
     if r <= 0.0 or r >= 1.0 {
@@ -156,5 +161,5 @@ def:pub jacpy_statistics_inv_cdf(probability: u64, mean: u64, deviation: u64) ->
     if q < 0.0 {
         x = -x;
     }
-    return jacpy_float(mu + x * sigma);
+    return PyFloat_FromDouble(mu + x * sigma);
 }

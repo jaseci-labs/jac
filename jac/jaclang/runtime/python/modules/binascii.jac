@@ -4,14 +4,20 @@ The algorithm kernels use typed native buffers. Python buffer validation,
 argument binding, and module exception identities remain at the object ABI.
 See ../LICENSE.cpython.
 """
+
+import from jaclang.runtime.python.cpython_api {
+    NULL,
+    PyLong_FromLongLong,
+    PyObject,
+    _Py_strhex_bytes_with_sep,
+    jacpy_buffer_byte,
+    jacpy_buffer_size,
+    jacpy_set_exception
+}
 import from jaclang.runtime.python.capi {
     read_buffer,
     write_buffer,
-    jacpy_set_exception,
-    jacpy_int,
     module_failure,
-    jacpy_buffer_size,
-    jacpy_buffer_byte,
     object_error
 }
 
@@ -113,7 +119,6 @@ def _strhex_impl(data: list[int], sep: int, bytes_per_sep: int) -> list[int] {
     }
     return out;
 }
-
 
 # ---------------------------------------------------------------------------
 # base64: a2b_base64/b2a_base64
@@ -279,7 +284,6 @@ def b2a_base64(data: list[int], newline: bool = True) -> list[int] {
     return out;
 }
 
-
 def hexlify(data: list[int], sep: int = -1, bytes_per_sep: int = 1) -> list[int] {
     return _strhex_impl(data, sep, bytes_per_sep);
 }
@@ -311,7 +315,6 @@ def a2b_hex(hexstr: list[int]) -> list[int] {
 def unhexlify(hexstr: list[int]) -> list[int] {
     return a2b_hex(hexstr);
 }
-
 
 # ---------------------------------------------------------------------------
 # uuencode: a2b_uu/b2a_uu
@@ -404,7 +407,6 @@ def b2a_uu(data: list[int], backtick: bool = False) -> list[int] {
     out.append(10);  # courtesy newline
     return out;
 }
-
 
 # ---------------------------------------------------------------------------
 # quoted-printable: a2b_qp/b2a_qp
@@ -652,7 +654,6 @@ def _qp_needs_encode(
     return False;
 }
 
-
 # ---------------------------------------------------------------------------
 # CRC: crc_hqx/crc32
 #
@@ -674,7 +675,7 @@ def _crctab_hqx(i: int) -> int {
 
 glob _CRC_HQX_TABLE: list[int] = [_crctab_hqx(i) for i in range(256)];
 
-def crc_hqx(data: u64, crc: int) -> int {
+def crc_hqx(data: ptr[PyObject], crc: int) -> int {
     c = crc & 0xFFFF;
     for k in range(int(jacpy_buffer_size(data))) {
         byte = int(jacpy_buffer_byte(data, i64(k)));
@@ -699,7 +700,7 @@ def _crctab32(i: int) -> int {
 
 glob _CRC32_TABLE: list[int] = [_crctab32(i) for i in range(256)];
 
-def crc32(data: u64, crc: int = 0) -> int {
+def crc32(data: ptr[PyObject], crc: int = 0) -> int {
     # unsigned_int(bitwise=True) converter: mask like the C unsigned int.
     c = (~crc) & 0xFFFFFFFF;
     for k in range(int(jacpy_buffer_size(data))) {
@@ -709,16 +710,20 @@ def crc32(data: u64, crc: int = 0) -> int {
     return (c ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 }
 
-
 def:pub jacpy_binascii_convert(
-    source: u64, error_type: u64, operation: i64, option: i64, second: i64, third: i64
-) -> u64 {
+    source: ptr[PyObject],
+    error_type: ptr[PyObject],
+    operation: i64,
+    option: i64,
+    second: i64,
+    third: i64
+) -> ptr[PyObject] {
     try {
         if operation == 8 {
-            return jacpy_int(i64(crc_hqx(source, int(option))));
+            return PyLong_FromLongLong(i64(crc_hqx(source, int(option))));
         }
         if operation == 9 {
-            return jacpy_int(i64(crc32(source, int(option))));
+            return PyLong_FromLongLong(i64(crc32(source, int(option))));
         }
         data = list(read_buffer(source));
         result: list[int] = [];
@@ -740,12 +745,12 @@ def:pub jacpy_binascii_convert(
             result = b2a_qp(data, option != 0, second != 0, third != 0);
         } else {
             object_error("SystemError", "unknown binary codec operation");
-            return 0;
+            return NULL;
         }
         return write_buffer(bytes(result));
     } except module_failure as error {
         message = error.message;
         jacpy_set_exception(error_type, message, i64(len(message.encode("utf-8"))));
-        return 0;
+        return NULL;
     }
 }

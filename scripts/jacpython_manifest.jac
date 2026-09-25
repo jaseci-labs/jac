@@ -20,14 +20,16 @@ import tarfile;
 import from pathlib { Path }
 
 glob MARKER = re.compile(
-    r"^# (?P<path>\S+)(?P<gap>\s+)# (?P<kind>removed|pruned): [\d,]+ source lines$"
-);
+         r"^# (?P<path>\S+)(?P<gap>\s+)# (?P<kind>removed|pruned): [\d,]+ source lines$"
+     );
 
 def locate_archive(repo: Path, explicit: str | None) -> Path {
-    pin = json.loads((repo / "jac/bootstrap/python/sources.json").read_text())["cpython"];
-    candidate = Path(explicit) if explicit else (
-        repo / "jac/.python-build/jacpython/sources" / f"{pin['sha256']}.tar.gz"
-    );
+    pin = json.loads((repo / "jac/bootstrap/python/sources.json").read_text())[
+        "cpython"
+    ];
+    candidate = Path(explicit)
+        if explicit
+        else (repo / "jac/.python-build/jacpython/sources" / f"{pin['sha256']}.tar.gz");
     if not candidate.is_file() {
         sys.exit(f"Pinned CPython archive not found: {candidate} (pass --archive)");
     }
@@ -51,7 +53,8 @@ def archive_lines(archive: Path) -> dict[str, int] {
                 continue;
             }
             data = stream.read();
-            counts[relative] = data.count(b"\n") + int(bool(data) and not data.endswith(b"\n"));
+            counts[relative] = data.count(b"\n")
+                + int(bool(data) and not data.endswith(b"\n"));
         }
     }
     return counts;
@@ -59,7 +62,11 @@ def archive_lines(archive: Path) -> dict[str, int] {
 
 def marked_files(path: str, counts: dict[str, int]) -> list[str] {
     if path.endswith("/") {
-        return sorted(name for name in counts if name.startswith(path));
+        return sorted(
+            name
+            for name in counts
+            if name.startswith(path)
+        );
     }
     if path not in counts {
         sys.exit(f"Marked path is not in the pinned archive: {path}");
@@ -81,12 +88,20 @@ with entry {
     repo = Path(__file__).resolve().parents[1];
     manifest = repo / "jac/bootstrap/python/cpython-sources.txt";
     counts = archive_lines(locate_archive(repo, args.archive));
-    totals = {
-        "removed": {"c": [0, 0], "h": [0, 0], "all": [0, 0]},
-        "pruned": {"all": [0, 0]}
-    };
+}
+
+glob totals = {
+         "removed": {"c": [0, 0], "h": [0, 0], "all": [0, 0]},
+         "pruned": {"all": [0, 0]}
+     };
+
+with entry {
     lines = manifest.read_text().splitlines();
-    updated: list[str] = [];
+}
+
+glob updated: list[str] = [];
+
+with entry {
     for line in lines {
         found = MARKER.match(line);
         if not found {
@@ -109,14 +124,20 @@ with entry {
             f"# {found['path']}{found['gap']}# {kind}: {grouped(size)} source lines"
         );
     }
-    removed = totals["removed"];
-    pruned = totals["pruned"]["all"];
+}
+
+glob removed = totals["removed"],
+     pruned = totals["pruned"]["all"];
+
+with entry {
     excluded = (
         f"#   Excluded: {removed['c'][0]} C files / {grouped(removed['c'][1])} lines; "
         + f"{removed['h'][0]} headers / {grouped(removed['h'][1])} lines."
     );
     summaries = [
-        f"#   Total: {removed['all'][0]} files / {grouped(removed['all'][1])} source lines.",
+        f"#   Total: {removed['all'][0]} files / {grouped(
+            removed['all'][1]
+        )} source lines.",
         f"#   Total: {pruned[0]} files / {grouped(pruned[1])} source lines."
     ];
     seen = 0;

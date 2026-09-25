@@ -1,4 +1,6 @@
 """Python math signatures, constants, and native initialization."""
+
+import from jaclang.runtime.python.cpython_api { NULL, PyFloat_FromDouble, PyObject }
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodCallbacks,
@@ -11,7 +13,7 @@ import from jaclang.runtime.python.bindings.arguments {
     BoundArguments,
     invoke
 }
-import from jaclang.runtime.python.capi { jacpy_float }
+
 import from jaclang.runtime.python.modules.math {
     jacpy_math_binary,
     jacpy_math_comb,
@@ -32,253 +34,253 @@ import from jaclang.runtime.python.modules.math {
     jacpy_math_unary
 }
 
-def:priv factorial_call(module: u64, value: u64) -> u64 {
+def:priv factorial_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_factorial(value);
 }
 
-def:priv isqrt_call(module: u64, value: u64) -> u64 {
+def:priv isqrt_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_isqrt(value);
 }
 
-def:priv gcd_call(module: u64, args: u64) -> u64 {
+def:priv gcd_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_gcd(args, 0);
 }
 
-def:priv lcm_call(module: u64, args: u64) -> u64 {
+def:priv lcm_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_gcd(args, 1);
 }
 
 glob:priv comb_signature = CallSignature("comb", ["n", "k"], 2, 2, 2);
-def:priv comb_bound(args: BoundArguments) -> u64 {
+def:priv comb_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_comb(args.values[0], args.values[1], 1);
 }
 
-def:priv comb_call(module: u64, args: u64) -> u64 {
-    return invoke(comb_signature, args, 0, comb_bound);
+def:priv comb_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(comb_signature, args, NULL, comb_bound);
 }
 
 glob:priv perm_signature = CallSignature("perm", ["n", "k"], 1, 2, 2);
-def:priv perm_bound(args: BoundArguments) -> u64 {
+def:priv perm_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_comb(args.values[0], args.values[1], 0);
 }
 
-def:priv perm_call(module: u64, args: u64) -> u64 {
-    return invoke(perm_signature, args, 0, perm_bound);
+def:priv perm_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(perm_signature, args, NULL, perm_bound);
 }
 
-def:priv acos_call(module: u64, value: u64) -> u64 {
+def:priv acos_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(0, value);
 }
 
-def:priv acosh_call(module: u64, value: u64) -> u64 {
+def:priv acosh_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(1, value);
 }
 
-def:priv asin_call(module: u64, value: u64) -> u64 {
+def:priv asin_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(2, value);
 }
 
-def:priv asinh_call(module: u64, value: u64) -> u64 {
+def:priv asinh_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(3, value);
 }
 
-def:priv atan_call(module: u64, value: u64) -> u64 {
+def:priv atan_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(4, value);
 }
 
-def:priv atanh_call(module: u64, value: u64) -> u64 {
+def:priv atanh_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(5, value);
 }
 
-def:priv cbrt_call(module: u64, value: u64) -> u64 {
+def:priv cbrt_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(6, value);
 }
 
-def:priv cos_call(module: u64, value: u64) -> u64 {
+def:priv cos_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(7, value);
 }
 
-def:priv cosh_call(module: u64, value: u64) -> u64 {
+def:priv cosh_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(8, value);
 }
 
-def:priv erf_call(module: u64, value: u64) -> u64 {
+def:priv erf_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(9, value);
 }
 
-def:priv erfc_call(module: u64, value: u64) -> u64 {
+def:priv erfc_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(10, value);
 }
 
-def:priv exp_call(module: u64, value: u64) -> u64 {
+def:priv exp_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(11, value);
 }
 
-def:priv exp2_call(module: u64, value: u64) -> u64 {
+def:priv exp2_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(12, value);
 }
 
-def:priv expm1_call(module: u64, value: u64) -> u64 {
+def:priv expm1_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(13, value);
 }
 
-def:priv fabs_call(module: u64, value: u64) -> u64 {
+def:priv fabs_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(14, value);
 }
 
-def:priv gamma_call(module: u64, value: u64) -> u64 {
+def:priv gamma_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(15, value);
 }
 
-def:priv lgamma_call(module: u64, value: u64) -> u64 {
+def:priv lgamma_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(16, value);
 }
 
-def:priv log1p_call(module: u64, value: u64) -> u64 {
+def:priv log1p_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(17, value);
 }
 
-def:priv sin_call(module: u64, value: u64) -> u64 {
+def:priv sin_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(18, value);
 }
 
-def:priv sinh_call(module: u64, value: u64) -> u64 {
+def:priv sinh_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(19, value);
 }
 
-def:priv sqrt_call(module: u64, value: u64) -> u64 {
+def:priv sqrt_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(20, value);
 }
 
-def:priv tan_call(module: u64, value: u64) -> u64 {
+def:priv tan_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(21, value);
 }
 
-def:priv tanh_call(module: u64, value: u64) -> u64 {
+def:priv tanh_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(22, value);
 }
 
-def:priv degrees_call(module: u64, value: u64) -> u64 {
+def:priv degrees_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(23, value);
 }
 
-def:priv radians_call(module: u64, value: u64) -> u64 {
+def:priv radians_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(24, value);
 }
 
-def:priv isfinite_call(module: u64, value: u64) -> u64 {
+def:priv isfinite_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(25, value);
 }
 
-def:priv isinf_call(module: u64, value: u64) -> u64 {
+def:priv isinf_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(26, value);
 }
 
-def:priv isnan_call(module: u64, value: u64) -> u64 {
+def:priv isnan_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(27, value);
 }
 
-def:priv ceil_call(module: u64, value: u64) -> u64 {
+def:priv ceil_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(28, value);
 }
 
-def:priv floor_call(module: u64, value: u64) -> u64 {
+def:priv floor_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(29, value);
 }
 
-def:priv trunc_call(module: u64, value: u64) -> u64 {
+def:priv trunc_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(30, value);
 }
 
-def:priv log10_call(module: u64, value: u64) -> u64 {
+def:priv log10_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(31, value);
 }
 
-def:priv log2_call(module: u64, value: u64) -> u64 {
+def:priv log2_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(32, value);
 }
 
-def:priv ulp_call(module: u64, value: u64) -> u64 {
+def:priv ulp_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(33, value);
 }
 
 glob:priv atan2_signature = CallSignature("atan2", ["x", "y"], 2, 2, 2);
-def:priv atan2_bound(args: BoundArguments) -> u64 {
+def:priv atan2_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(0, args.values[0], args.values[1]);
 }
 
-def:priv atan2_call(module: u64, args: u64) -> u64 {
-    return invoke(atan2_signature, args, 0, atan2_bound);
+def:priv atan2_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(atan2_signature, args, NULL, atan2_bound);
 }
 
 glob:priv copysign_signature = CallSignature("copysign", ["x", "y"], 2, 2, 2);
-def:priv copysign_bound(args: BoundArguments) -> u64 {
+def:priv copysign_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(1, args.values[0], args.values[1]);
 }
 
-def:priv copysign_call(module: u64, args: u64) -> u64 {
-    return invoke(copysign_signature, args, 0, copysign_bound);
+def:priv copysign_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(copysign_signature, args, NULL, copysign_bound);
 }
 
 glob:priv fmod_signature = CallSignature("fmod", ["x", "y"], 2, 2, 2);
-def:priv fmod_bound(args: BoundArguments) -> u64 {
+def:priv fmod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(2, args.values[0], args.values[1]);
 }
 
-def:priv fmod_call(module: u64, args: u64) -> u64 {
-    return invoke(fmod_signature, args, 0, fmod_bound);
+def:priv fmod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(fmod_signature, args, NULL, fmod_bound);
 }
 
 glob:priv remainder_signature = CallSignature("remainder", ["x", "y"], 2, 2, 2);
-def:priv remainder_bound(args: BoundArguments) -> u64 {
+def:priv remainder_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(3, args.values[0], args.values[1]);
 }
 
-def:priv remainder_call(module: u64, args: u64) -> u64 {
-    return invoke(remainder_signature, args, 0, remainder_bound);
+def:priv remainder_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(remainder_signature, args, NULL, remainder_bound);
 }
 
 glob:priv pow_signature = CallSignature("pow", ["x", "y"], 2, 2, 2);
-def:priv pow_bound(args: BoundArguments) -> u64 {
+def:priv pow_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_binary(4, args.values[0], args.values[1]);
 }
 
-def:priv pow_call(module: u64, args: u64) -> u64 {
-    return invoke(pow_signature, args, 0, pow_bound);
+def:priv pow_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(pow_signature, args, NULL, pow_bound);
 }
 
 glob:priv log_signature = CallSignature("log", ["x", "base"], 1, 2, 2);
-def:priv log_bound(args: BoundArguments) -> u64 {
+def:priv log_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_log(args.values[0], args.values[1]);
 }
 
-def:priv log_call(module: u64, args: u64) -> u64 {
-    return invoke(log_signature, args, 0, log_bound);
+def:priv log_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(log_signature, args, NULL, log_bound);
 }
 
 glob:priv ldexp_signature = CallSignature("ldexp", ["x", "i"], 2, 2, 2);
-def:priv ldexp_bound(args: BoundArguments) -> u64 {
+def:priv ldexp_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_ldexp(args.values[0], args.values[1]);
 }
 
-def:priv ldexp_call(module: u64, args: u64) -> u64 {
-    return invoke(ldexp_signature, args, 0, ldexp_bound);
+def:priv ldexp_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(ldexp_signature, args, NULL, ldexp_bound);
 }
 
 glob:priv fma_signature = CallSignature("fma", ["x", "y", "z"], 3, 3, 3);
-def:priv fma_bound(args: BoundArguments) -> u64 {
+def:priv fma_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_fma(args.values[0], args.values[1], args.values[2]);
 }
 
-def:priv fma_call(module: u64, args: u64) -> u64 {
-    return invoke(fma_signature, args, 0, fma_bound);
+def:priv fma_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(fma_signature, args, NULL, fma_bound);
 }
 
-def:priv frexp_call(module: u64, value: u64) -> u64 {
+def:priv frexp_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_parts(0, value);
 }
 
-def:priv modf_call(module: u64, value: u64) -> u64 {
+def:priv modf_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_parts(1, value);
 }
 
@@ -286,13 +288,15 @@ glob:priv isclose_signature = CallSignature(
          "isclose", ["a", "b", "rel_tol", "abs_tol"], 2, 2, 0
      );
 
-def:priv isclose_bound(args: BoundArguments) -> u64 {
+def:priv isclose_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_isclose(
         args.values[0], args.values[1], args.values[2], args.values[3]
     );
 }
 
-def:priv isclose_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv isclose_call(
+    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return invoke(isclose_signature, args, kwargs, isclose_bound);
 }
 
@@ -300,50 +304,54 @@ glob:priv nextafter_signature = CallSignature(
          "nextafter", ["x", "y", "steps"], 2, 2, 2
      );
 
-def:priv nextafter_bound(args: BoundArguments) -> u64 {
+def:priv nextafter_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_nextafter(args.values[0], args.values[1], args.values[2]);
 }
 
-def:priv nextafter_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv nextafter_call(
+    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return invoke(nextafter_signature, args, kwargs, nextafter_bound);
 }
 
-def:priv fsum_call(module: u64, value: u64) -> u64 {
+def:priv fsum_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_fsum(value);
 }
 
-def:priv hypot_call(module: u64, args: u64) -> u64 {
+def:priv hypot_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_hypot(args);
 }
 
 glob:priv dist_signature = CallSignature("dist", ["p", "q"], 2, 2, 2);
-def:priv dist_bound(args: BoundArguments) -> u64 {
+def:priv dist_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_dist(args.values[0], args.values[1]);
 }
 
-def:priv dist_call(module: u64, args: u64) -> u64 {
-    return invoke(dist_signature, args, 0, dist_bound);
+def:priv dist_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(dist_signature, args, NULL, dist_bound);
 }
 
 glob:priv sumprod_signature = CallSignature("sumprod", ["p", "q"], 2, 2, 2);
-def:priv sumprod_bound(args: BoundArguments) -> u64 {
+def:priv sumprod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_sumprod(args.values[0], args.values[1]);
 }
 
-def:priv sumprod_call(module: u64, args: u64) -> u64 {
-    return invoke(sumprod_signature, args, 0, sumprod_bound);
+def:priv sumprod_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(sumprod_signature, args, NULL, sumprod_bound);
 }
 
 glob:priv prod_signature = CallSignature("prod", ["iterable", "start"], 1, 1, 1);
-def:priv prod_bound(args: BoundArguments) -> u64 {
+def:priv prod_bound(args: BoundArguments) -> ptr[PyObject] {
     return jacpy_math_prod(args.values[0], args.values[1]);
 }
 
-def:priv prod_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv prod_call(
+    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
     return invoke(prod_signature, args, kwargs, prod_bound);
 }
 
-def:priv execute(module: u64) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32 {
     names = ["pi", "e", "tau", "inf", "nan"];
     values = [
         3.14159265358979323846,
@@ -353,7 +361,7 @@ def:priv execute(module: u64) -> i32 {
         float("nan")
     ];
     for i in range(len(names)) {
-        if not add_owned(module, names[i], jacpy_float(values[i])) {
+        if not add_owned(module, names[i], PyFloat_FromDouble(values[i])) {
             return i32(-1);
         }
     }
@@ -707,6 +715,6 @@ glob:priv definition = ModuleDefinition(
          ModuleHooks(execute=execute)
      );
 
-def:pub PyInit_math -> u64 {
+def:pub PyInit_math -> ptr[PyObject] {
     return definition.initialize();
 }

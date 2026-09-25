@@ -1,46 +1,35 @@
 """Own an exported Python buffer across conversions that can invoke user code."""
-import from c {
-    def jacpy_buffer_acquire(value: u64, ascii: i64) -> u64;  def jacpy_buffer_release(
-        value: u64
-    );  def jacpy_buffer_bytes(view: u64) -> u64;  def jacpy_buffer_address(
-        view: u64
-    ) -> u64;  def jacpy_buffer_length(view: u64) -> i64;  def jacpy_buffer_dimensions(
-        view: u64
-    ) -> i64;  def jacpy_buffer_acquire_writable(value: u64) -> u64;  def jacpy_buffer_owner(
-        view: u64
-    ) -> u64;
-}
 
 obj BufferArgument {
-    has view: u64 = 0;
+    has view: ptr[Py_buffer] = ptr[Py_buffer]();
 
-    def acquire(value: u64, ascii: bool = False) -> bool {
+    def acquire(value: ptr[PyObject], ascii: bool = False) -> bool {
         self.close();
         self.view = jacpy_buffer_acquire(value, i64(ascii));
-        return self.view != 0;
+        return bool(self.view);
     }
 
-    def bytes -> u64 {
+    def bytes -> ptr[PyObject] {
         return jacpy_buffer_bytes(self.view);
     }
 
-    def acquire_writable(value: u64) -> bool {
+    def acquire_writable(value: ptr[PyObject]) -> bool {
         self.close();
         self.view = jacpy_buffer_acquire_writable(value);
-        return self.view != 0;
+        return bool(self.view);
     }
 
-    def owner -> u64 {
+    def owner -> ptr[PyObject] {
         return jacpy_buffer_owner(self.view);
     }
 
     def close {
         previous = self.view;
-        self.view = 0;
+        self.view = ptr[Py_buffer]();
         jacpy_buffer_release(previous);
     }
 
-    def address -> u64 {
+    def address -> ptr {
         return jacpy_buffer_address(self.view);
     }
 
@@ -57,13 +46,29 @@ obj BufferArgument {
     }
 }
 
+import from jaclang.runtime.python.cpython_api {
+    PyObject,
+    Py_buffer,
+    jacpy_buffer_acquire,
+    jacpy_buffer_acquire_writable,
+    jacpy_buffer_address,
+    jacpy_buffer_bytes,
+    jacpy_buffer_dimensions,
+    jacpy_buffer_length,
+    jacpy_buffer_owner,
+    jacpy_buffer_release
+}
 import from c {
     obj BufferLayout {
-        has address: u64,
+        has address: ptr,
             count: i64,
             itemsize: i64,
             readonly: i64 = 0;
     }  def jacpy_binding_buffer_fill(
-        view: u64, object: u64, layout: BufferLayout, format: str, flags: i32
-    ) -> i32;  def jacpy_binding_buffer_dispose(view: u64);
+        view: ptr[Py_buffer],
+        object: ptr[PyObject],
+        layout: BufferLayout,
+        format: str,
+        flags: i32
+    ) -> i32;  def jacpy_binding_buffer_dispose(view: ptr[Py_buffer]);
 }

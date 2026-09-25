@@ -1,7 +1,7 @@
-import from c {
-    def _PyUnicode_IsXidStart(point: u32) -> i32;  def _PyUnicode_IsXidContinue(
-        point: u32
-    ) -> i32;  def _PyUnicode_IsPrintable(point: u32) -> i32;
+import from jaclang.runtime.python.cpython_api {
+    _PyUnicode_IsPrintable,
+    _PyUnicode_IsXidContinue,
+    _PyUnicode_IsXidStart
 }
 
 def point_width(data: bytes, pos: int) -> int {
