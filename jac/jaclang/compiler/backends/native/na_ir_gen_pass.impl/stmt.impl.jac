@@ -2830,6 +2830,34 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             else 0}"
                     );
                 }
+            } elif self._opt_ptr_payload_of(global_var.value_type) is not None
+                and not raw_int_ptr_global {
+                _opt_glob_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
+                    if nd.loc
+                    else 0}";
+                if not self._opt_result_owned(value, nd.value) {
+                    self._emit_rc_retain(
+                        self.builder.extract_value(
+                            coerced, 1, name=f"glob.{var_name}.opt.newpv"
+                        ),
+                        op="assign",
+                        loc=_opt_glob_loc
+                    );
+                } else {
+                    self.rc_ops_elided += 1;
+                }
+                if not self._nogc_headerless() {
+                    _opt_glob_old = self.builder.load(
+                        global_var, name=f"glob.{var_name}.opt.old"
+                    );
+                    self._emit_rc_release_simple(
+                        self.builder.extract_value(
+                            _opt_glob_old, 1, name=f"glob.{var_name}.opt.oldpv"
+                        ),
+                        op="overwrite",
+                        loc=_opt_glob_loc
+                    );
+                }
             } elif _jacval_global {
                 self._emit_slot_rebind(
                     global_var,
