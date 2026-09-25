@@ -87,6 +87,32 @@ glob RETIRED: tuple[str, ...] = (
              summary="materialized app images (.jab), content-keyed"
          ),
          Bucket(
+             name="pkgs",
+             relpath="pkgs",
+             policy=Policy(
+                 ttl_days=90.0,
+                 depth=3,
+                 markers=[".jac-package.json"],
+                 temp_patterns=[".fetch-*"],
+                 temp_lock=TempLock.SIBLINGS
+             ),
+             summary="Jac packages by name, version and content hash (read-only, shared)",
+             root_env="JAC_PACKAGE_STORE",
+             root_prefix="pkgs"
+         ),
+         Bucket(
+             name="pkg-git",
+             relpath="pkg-git",
+             policy=Policy(ttl_days=30.0, temp_patterns=["*.lock"]),
+             summary="git mirrors and checkouts behind git package dependencies"
+         ),
+         Bucket(
+             name="pkg-index",
+             relpath="pkg-index",
+             policy=Policy(ttl_days=30.0, depth=3, pattern="*.json"),
+             summary="cached package index entries, one file per package and registry"
+         ),
+         Bucket(
              name="scale-binaries",
              relpath="scale-binaries",
              policy=Policy(ttl_days=30.0),

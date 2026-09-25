@@ -177,13 +177,13 @@ obj PythonProvider(EcosystemProvider) {
         config: JacConfig, include_dev: bool = False
     ) -> list[ResolvedDependency] {
         resolved: list[ResolvedDependency] = [];
-        for (name, version) in config.dependencies.items() {
+        for (name, version) in config.pypi_dependencies.items() {
             resolved.append(
                 ResolvedDependency(name=name, version=version, origin="manifest")
             );
         }
         if include_dev {
-            for (name, version) in config.dev_dependencies.items() {
+            for (name, version) in config.pypi_dev_dependencies.items() {
                 resolved.append(
                     ResolvedDependency(
                         name=name, version=version, origin="manifest", dev=True
@@ -191,7 +191,7 @@ obj PythonProvider(EcosystemProvider) {
                 );
             }
         }
-        for (name, git_info) in config.git_dependencies.items() {
+        for (name, git_info) in config.pypi_git_dependencies.items() {
             if isinstance(git_info, dict) and "git" in git_info {
                 resolved.append(
                     ResolvedDependency(
@@ -272,9 +272,33 @@ obj PythonProvider(EcosystemProvider) {
 
     def pip_spec(dep: ResolvedDependency) -> str {
         if dep.source == "git" {
-            return make_git_spec(dep.data.get("git", ""), dep.data.get("branch", ""));
+            return make_git_spec(
+                dep.data.get("git", ""),
+                dep.data.get("branch", "") or dep.data.get("rev", "")
+            );
+        }
+        if dep.version.startswith("@") {
+            return f"{dep.name} {dep.version}";
         }
         return make_pip_spec(dep.name, dep.version);
+    }
+
+    def freeze(config: JacConfig) -> list[str] {
+        (returncode, stdout, _) = self._run_project_pip(
+            config, ["list", "--format=freeze", "--exclude-editable"]
+        );
+        if returncode != 0 {
+            return [];
+        }
+        infrastructure = {"pip", "setuptools", "wheel"};
+        return sorted(
+            [
+                line.strip()
+                for line in stdout.splitlines()
+                if "==" in line
+                    and line.split("==", 1)[0].strip().lower() not in infrastructure
+            ]
+        );
     }
 
     def specs_for(deps: list[ResolvedDependency]) -> list[str] {
@@ -464,7 +488,7 @@ obj PythonProvider(EcosystemProvider) {
                     }
                 }
             }
-            config.add_dependency(name, version_str, dev=dev, dep_type="python");
+            config.add_dependency(name, version_str, dev=dev, dep_type="pypi");
             recorded.append(version_str);
         }
         return recorded;
@@ -473,13 +497,13 @@ obj PythonProvider(EcosystemProvider) {
     override def remove_package(
         config: JacConfig, name: str, dev: bool, ctx: InstallContext
     ) -> bool {
-        dep_type = "python";
+        dep_type = "pypi";
         is_dev = dev;
-        if name in config.git_dependencies {
-            dep_type = "git";
+        if name in config.pypi_git_dependencies {
+            dep_type = "pypi-git";
         } elif not dev
-            and name not in config.dependencies
-            and name in config.dev_dependencies {
+            and name not in config.pypi_dependencies
+            and name in config.pypi_dev_dependencies {
             is_dev = True;
         }
         if not config.remove_dependency(name, dev=is_dev, dep_type=dep_type) {
@@ -638,6 +662,10 @@ def reset_provider_registry {
 
 def initialize_provider_registry -> None {
     registry = get_provider_registry();
+    if not registry.`has("jac") {
+        import from jaclang.packages.provider { JacPackageProvider }
+        registry.register(JacPackageProvider());
+    }
 
     try {
         import from jaclang.client.plugin_config { JacClientPluginConfig }
@@ -738,9 +766,9 @@ def _declared_constraint(
     config: JacConfig, name: str, dev: bool
 ) -> tuple[str, str] | None {
     sections = (
-        [config.dev_dependencies, config.dependencies]
+        [config.pypi_dev_dependencies, config.pypi_dependencies]
             if dev
-            else [config.dependencies, config.dev_dependencies]
+            else [config.pypi_dependencies, config.pypi_dev_dependencies]
     );
     wanted = _normalized_name(name);
     for section in sections {

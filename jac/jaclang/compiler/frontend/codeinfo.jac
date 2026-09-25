@@ -940,6 +940,24 @@ def resolve_native_module(
         }
     }
 
+    if allow_inferred and not clean.startswith('jaclang.') {
+        import from jaclang.project.modresolver {
+            find_jac_project_root,
+            project_mounts
+        }
+        for owner in (find_jac_project_root(base_dir), find_jac_project_root(None)) {
+            mounts = project_mounts(owner) if owner else None;
+            if mounts {
+                mounted = _inferred_native_path(
+                    _native_variant_path(os.path.join(mounts, path_name))
+                );
+                if mounted is not None {
+                    return (path_name, mounted);
+                }
+            }
+        }
+    }
+
     if clean.startswith('jaclang.') {
         import from jaclang.compiler.native_scope { in_native_scope_path }
         _parts = clean.split('.')[1:];

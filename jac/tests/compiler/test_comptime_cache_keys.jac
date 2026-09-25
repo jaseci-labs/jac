@@ -239,6 +239,29 @@ test "an embedded file is re-read when its content changes" {
     }
 }
 
+test "a comptime embed cannot read outside its package root" {
+    tmp = tempfile.mkdtemp();
+    with _isolated(tmp) {
+        proj = os.path.join(tmp, "pkg");
+        os.makedirs(proj);
+        _write(os.path.join(proj, "jac.toml"), "[project]\nname = \"pkg\"\n");
+        _write(os.path.join(tmp, "secret.txt"), "top secret");
+        src = os.path.realpath(os.path.join(proj, "leak.jac"));
+        _write(
+            src,
+            "import from jaclang.comptime { embed_file }\n\n"
+            "comptime BLOB: str = embed_file(\"../secret.txt\");\n\n"
+            "with entry {\n"
+            "    print(BLOB);\n"
+            "}\n"
+        );
+        prog = JacProgram();
+        JacCompiler().get_bytecode(src, prog);
+        msgs = [a.pretty_print() for a in prog.errors_had];
+        assert any("outside the package root" in m for m in msgs) , msgs;
+    }
+}
+
 test "a comptime function body edit is observed by its callers" {
     paths = _pair(
         "comptime def banner -> str {\n    return \"banner one\";\n}\n",

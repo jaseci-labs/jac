@@ -219,6 +219,19 @@ obj CompileOptions {
         return self.base_codegen_identity() + f";required={required}";
     }
 
+    def dependency_projection(path: str) -> str {
+        return ";".join(
+            [
+                self.unit_codegen_identity(path),
+                f"app_kind={self.app_kind}",
+                f"aot={int(bool(self.aot_mode))}",
+                f"force_cs={self.force_codespace}",
+                f"default_cs={self.default_codespace}",
+                f"ui={self.ui}"
+            ]
+        );
+    }
+
     def module_projection -> str {
         return ";".join(
             [

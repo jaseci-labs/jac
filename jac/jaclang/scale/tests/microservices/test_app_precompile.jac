@@ -12,9 +12,9 @@ import from jaclang.scale.injector.bundle {
     _stage_app,
     nested_sanitized_tomls,
     pack_jab,
-    sanitized_jac_toml,
     seal_timeout_setting
 }
+import from jaclang.dist.sanitize { sanitized_jac_toml }
 
 
 def _mini_app -> str {

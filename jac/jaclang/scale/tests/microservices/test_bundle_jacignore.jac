@@ -10,10 +10,10 @@ import from jaclang.scale.injector.bundle {
     partition_bundle_sources,
     content_address,
     nested_sanitized_tomls,
-    open_det_tar,
-    pack_jab,
-    sanitized_jac_toml
+    pack_jab
 }
+import from jaclang.dist.archive { open_det_tar }
+import from jaclang.dist.sanitize { sanitized_jac_toml }
 
 
 glob _JAC_BIN: Path = pod_binary(),

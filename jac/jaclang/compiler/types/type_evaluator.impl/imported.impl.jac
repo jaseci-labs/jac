@@ -639,7 +639,8 @@ impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | Non
         return name.strip().lower().replace("-", "_").replace(".", "_");
     }
     wanted = norm(str(node_.path[0].value));
-    names: list[str] = [*cfg.dependencies, *cfg.dev_dependencies];
+    dotted = node_.dot_path_str;
+    configs = [cfg];
     owner = cfg.app_for_path(str(Path(mod.loc.mod_path).resolve()));
     app_name = owner.name if owner is not None else "";
     if not app_name and self.program is not None and self.program.options is not None {
@@ -647,13 +648,20 @@ impl TypeEvaluator._declared_missing_dependency(node_: ModulePath) -> (str | Non
     }
     if app_name and app_name in cfg.apps {
         try {
-            app_cfg = cfg.effective_for_app(app_name);
-            names.extend([*app_cfg.dependencies, *app_cfg.dev_dependencies]);
+            configs.append(cfg.effective_for_app(app_name));
         } except Exception {}
     }
-    for declared in names {
-        if norm(str(declared)) == wanted {
-            return str(declared);
+    for scope in configs {
+        for package in [*scope.dependencies, *scope.dev_dependencies] {
+            prefix = str(package).replace("/", ".");
+            if dotted == prefix or dotted.startswith(prefix + ".") {
+                return str(package);
+            }
+        }
+        for declared in [*scope.pypi_dependencies, *scope.pypi_dev_dependencies] {
+            if norm(str(declared)) == wanted {
+                return str(declared);
+            }
         }
     }
     return None;

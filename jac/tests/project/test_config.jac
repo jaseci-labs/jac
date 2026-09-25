@@ -20,9 +20,9 @@ import from jaclang.project.config {
 import jaclang.project.config as config_mod;
 
 glob FIXTURE_BASE = str(Path(__file__).parent / "fixtures"),
-     JAC_TOML_CONTENT = "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\ndescription = \"A test project\"\nentry-point = \"main\"\n\n[dependencies]\nrequests = \">=2.28.0\"\n\n[dev-dependencies]\npytest = \">=8.0.0\"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = \"jac test\"\n",
+     JAC_TOML_CONTENT = "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\ndescription = \"A test project\"\nentry-point = \"main\"\n\n[dependencies.pypi]\nrequests = \">=2.28.0\"\n\n[dev-dependencies.pypi]\npytest = \">=8.0.0\"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = \"jac test\"\n",
      MAIN_JAC_CONTENT = "\"\"\"Test main file.\"\"\"\n\nwith entry {\n    print(\"Hello, World!\");\n}\n",
-     BASE_TOML = "[project]\nname = \"jactastic\"\n\n[serve]\nport = 8090\n\n[client]\n\n[dependencies.npm]\njac-client-node = \"1.0.4\"\n\n[dev-dependencies]\nwatchdog = \">=3.0\"\n",
+     BASE_TOML = "[project]\nname = \"jactastic\"\n\n[serve]\nport = 8090\n\n[client]\n\n[dependencies.npm]\njac-client-node = \"1.0.4\"\n\n[dev-dependencies.pypi]\nwatchdog = \">=3.0\"\n",
      PROD_TOML = "[serve]\nport = 80\n\n[client]\nminify = true\n\n[byllm]\ndefault_model = \"gpt-4\"\n",
      LOCAL_TOML = "[serve]\nport = 9000\n\n[run]\ncache = false\n";
 
@@ -364,8 +364,8 @@ test "load dependencies" {
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
-        assert "requests" in cfg.dependencies;
-        assert cfg.dependencies["requests"] == ">=2.28.0";
+        assert "requests" in cfg.pypi_dependencies;
+        assert cfg.pypi_dependencies["requests"] == ">=2.28.0";
     }
 }
 
@@ -374,8 +374,8 @@ test "load dev dependencies" {
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
-        assert "pytest" in cfg.dev_dependencies;
-        assert cfg.dev_dependencies["pytest"] == ">=8.0.0";
+        assert "pytest" in cfg.pypi_dev_dependencies;
+        assert cfg.pypi_dev_dependencies["pytest"] == ">=8.0.0";
     }
 }
 
@@ -589,7 +589,7 @@ test "closure cap override resolves through effective_native_closure_cap" {
 
 test "parse full config" {
     config_mod._config = None;
-    toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ndir = \".jac\"\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
+    toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app\"\n\n[dependencies.pypi]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ndir = \".jac\"\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
     cfg = JacConfig.from_toml_str(toml_str);
 
     # Project
@@ -600,8 +600,8 @@ test "parse full config" {
     assert cfg.project.entry_point == "app";
 
     # Dependencies
-    assert "numpy" in cfg.dependencies;
-    assert "pandas" in cfg.dependencies;
+    assert "numpy" in cfg.pypi_dependencies;
+    assert "pandas" in cfg.pypi_dependencies;
 
     # Run config
     assert cfg.run.session == "my_session";
@@ -673,26 +673,26 @@ test "add python dependency" {
     config_mod._config = None;
     cfg = JacConfig();
     cfg.add_dependency("requests", ">=2.28.0");
-    assert "requests" in cfg.dependencies;
-    assert cfg.dependencies["requests"] == ">=2.28.0";
+    assert "requests" in cfg.pypi_dependencies;
+    assert cfg.pypi_dependencies["requests"] == ">=2.28.0";
 }
 
 test "add dev dependency" {
     config_mod._config = None;
     cfg = JacConfig();
     cfg.add_dependency("pytest", ">=8.0.0", dev=True);
-    assert "pytest" in cfg.dev_dependencies;
-    assert cfg.dev_dependencies["pytest"] == ">=8.0.0";
+    assert "pytest" in cfg.pypi_dev_dependencies;
+    assert cfg.pypi_dev_dependencies["pytest"] == ">=8.0.0";
 }
 
 test "add git dependency" {
     config_mod._config = None;
     cfg = JacConfig();
     cfg.add_dependency(
-        "my-plugin", "https://github.com/user/plugin.git", dep_type="git"
+        "my-plugin", "https://github.com/user/plugin.git", dep_type="pypi-git"
     );
-    assert "my-plugin" in cfg.git_dependencies;
-    assert cfg.git_dependencies["my-plugin"]["git"]
+    assert "my-plugin" in cfg.pypi_git_dependencies;
+    assert cfg.pypi_git_dependencies["my-plugin"]["git"]
         == "https://github.com/user/plugin.git";
 }
 
@@ -707,10 +707,10 @@ test "add npm dependency" {
 test "remove python dependency" {
     config_mod._config = None;
     cfg = JacConfig();
-    cfg.dependencies["requests"] = ">=2.28.0";
+    cfg.pypi_dependencies["requests"] = ">=2.28.0";
     result = cfg.remove_dependency("requests");
     assert result is True;
-    assert "requests" not in cfg.dependencies;
+    assert "requests" not in cfg.pypi_dependencies;
 }
 
 test "remove nonexistent dependency" {
@@ -1062,13 +1062,13 @@ test "merge dependencies" {
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
-        assert "requests" in cfg.dependencies;
+        assert "requests" in cfg.pypi_dependencies;
         overlay = temp_project / "overlay.toml";
-        overlay.write_text("[dependencies]\nnumpy = \">=1.24.0\"\n");
+        overlay.write_text("[dependencies.pypi]\nnumpy = \">=1.24.0\"\n");
         cfg.merge_from_toml_file(overlay);
-        assert "requests" in cfg.dependencies;
-        assert "numpy" in cfg.dependencies;
-        assert cfg.dependencies["numpy"] == ">=1.24.0";
+        assert "requests" in cfg.pypi_dependencies;
+        assert "numpy" in cfg.pypi_dependencies;
+        assert cfg.pypi_dependencies["numpy"] == ">=1.24.0";
     }
 }
 
@@ -1077,11 +1077,11 @@ test "merge dependencies override" {
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
-        assert cfg.dependencies["requests"] == ">=2.28.0";
+        assert cfg.pypi_dependencies["requests"] == ">=2.28.0";
         overlay = temp_project / "overlay.toml";
-        overlay.write_text("[dependencies]\nrequests = \">=3.0.0\"\n");
+        overlay.write_text("[dependencies.pypi]\nrequests = \">=3.0.0\"\n");
         cfg.merge_from_toml_file(overlay);
-        assert cfg.dependencies["requests"] == ">=3.0.0";
+        assert cfg.pypi_dependencies["requests"] == ">=3.0.0";
     }
 }
 
@@ -1091,10 +1091,10 @@ test "merge dev dependencies" {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text("[dev-dependencies]\nruff = \">=0.1.0\"\n");
+        overlay.write_text("[dev-dependencies.pypi]\nruff = \">=0.1.0\"\n");
         cfg.merge_from_toml_file(overlay);
-        assert "ruff" in cfg.dev_dependencies;
-        assert "pytest" in cfg.dev_dependencies;
+        assert "ruff" in cfg.pypi_dev_dependencies;
+        assert "pytest" in cfg.pypi_dev_dependencies;
     }
 }
 
@@ -1484,11 +1484,11 @@ test "apply profile project kebab case" {
 test "apply profile dependencies and scripts" {
     config_mod._config = None;
     cfg = JacConfig.from_toml_str(
-        "[project]\nname = \"test\"\n\n[dependencies]\nrequests = \">=2.0\"\n\n[scripts]\ntest = \"jac test\"\n\n[environments.prod]\n[environments.prod.dependencies]\ngunicorn = \">=21.0\"\n\n[environments.prod.scripts]\nstart = \"jac run --port 80\"\n"
+        "[project]\nname = \"test\"\n\n[dependencies.pypi]\nrequests = \">=2.0\"\n\n[scripts]\ntest = \"jac test\"\n\n[environments.prod]\n[environments.prod.dependencies.pypi]\ngunicorn = \">=21.0\"\n\n[environments.prod.scripts]\nstart = \"jac run --port 80\"\n"
     );
     cfg.apply_profile("prod");
-    assert cfg.dependencies.get("gunicorn") == ">=21.0";
-    assert cfg.dependencies.get("requests") == ">=2.0";
+    assert cfg.pypi_dependencies.get("gunicorn") == ">=21.0";
+    assert cfg.pypi_dependencies.get("requests") == ">=2.0";
     assert cfg.scripts.get("start") == "jac run --port 80";
     assert cfg.scripts.get("test") == "jac test";
 }
@@ -1709,7 +1709,7 @@ test "base dependencies preserved" {
         assert cfg is not None;
         assert "npm" in cfg.plugin_dependencies;
         assert cfg.plugin_dependencies["npm"]["jac-client-node"] == "1.0.4";
-        assert "watchdog" in cfg.dev_dependencies;
+        assert "watchdog" in cfg.pypi_dev_dependencies;
     }
 }
 
@@ -1797,7 +1797,7 @@ version = "1.0.0"
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "A", email = "a@b.c" }, { name = "D", email = "d@e.f" }]
 
-[dependencies]
+[dependencies.pypi]
 jaclang = ">=0.15.2"
 """;
     with TemporaryDirectory() as tmpdir {
@@ -1805,7 +1805,7 @@ jaclang = ">=0.15.2"
         toml_path.write_text(toml_with_persons);
         cfg = JacConfig.load(toml_path);
         # Any dependency change triggers a full re-serialize of the file.
-        cfg.add_dependency("rich", ">=13.0.0", dev=False, dep_type="python");
+        cfg.add_dependency("rich", ">=13.0.0", dev=False, dep_type="pypi");
         cfg.save();
         saved = toml_path.read_text();
         # Must remain a parseable array of inline tables, not a repr string.
@@ -1816,7 +1816,7 @@ jaclang = ">=0.15.2"
             == [{"name": "A", "email": "a@b.c"}, {"name": "D", "email": "d@e.f"}] , "maintainers must survive save() as inline tables";
         # save() must not leave behind a stray empty [plugins] table.
         assert "plugins" not in parsed , "empty [plugins] table must not be emitted";
-        assert parsed["dependencies"]["rich"] == ">=13.0.0";
+        assert parsed["dependencies"]["pypi"]["rich"] == ">=13.0.0";
     }
 }
 
@@ -1829,7 +1829,7 @@ test "save preserves comments when adding a dependency" {
 name = "repro"
 version = "0.1.0"  # keep in sync with git tags
 
-[dependencies]
+[dependencies.pypi]
 # Pinned <5.0.0 deliberately: bcrypt 5.x breaks our password hashes.
 # DO NOT BUMP without migrating the hash format first.
 bcrypt = ">=4.0.0,<5.0.0"
@@ -1854,8 +1854,8 @@ bcrypt = ">=4.0.0,<5.0.0"
             "untouched dependency lines must be preserved verbatim"
         );
         parsed = tomllib.loads(saved);
-        assert parsed["dependencies"]["httpx"] == "~=0.28";
-        assert parsed["dependencies"]["bcrypt"] == ">=4.0.0,<5.0.0";
+        assert parsed["dependencies"]["pypi"]["httpx"] == "~=0.28";
+        assert parsed["dependencies"]["pypi"]["bcrypt"] == ">=4.0.0,<5.0.0";
     }
 }
 
@@ -1867,13 +1867,13 @@ test "save preserves comments when removing a dependency" {
 name = "repro"
 version = "0.1.0"
 
-[dependencies]
+[dependencies.pypi]
 # httpx stays on 0.28 until the retry middleware is ported.
 httpx = "~=0.28"
 # bcrypt 5.x breaks our password hashes.
 bcrypt = ">=4.0.0,<5.0.0"
 
-[dev-dependencies]
+[dev-dependencies.pypi]
 # pytest 9 drops the plugin API we rely on.
 pytest = ">=8.0.0,<9.0.0"
 """;
@@ -1889,7 +1889,7 @@ pytest = ">=8.0.0,<9.0.0"
         assert 'bcrypt = ">=4.0.0,<5.0.0"' in saved;
         assert 'pytest = ">=8.0.0,<9.0.0"' in saved;
         parsed = tomllib.loads(saved);
-        assert "httpx" not in parsed["dependencies"];
+        assert "httpx" not in parsed["dependencies"]["pypi"];
     }
 }
 

@@ -71,8 +71,6 @@ glob __all__ = [
          'scale_intent_from_config',
          'ProjectTemplate',
          'load_template_from_directory',
-         'load_template_from_json',
-         'bundle_template',
          'resolve_post_create_hook',
          'scaffold_app'
      ],
@@ -149,8 +147,6 @@ glob __all__ = [
          'scale_intent_from_config': 'jaclang.project.capabilities',
          'ProjectTemplate': 'jaclang.project.template_registry',
          'load_template_from_directory': 'jaclang.project.template_loader',
-         'load_template_from_json': 'jaclang.project.template_loader',
-         'bundle_template': 'jaclang.project.template_loader',
          'resolve_post_create_hook': 'jaclang.project.template_loader',
          'scaffold_app': 'jaclang.project.template_loader'
      };

@@ -3,7 +3,8 @@ import json;
 import tempfile;
 import unittest.mock;
 import jaclang.scale.injector.binary as binary_mod;
-import from jaclang.scale.injector.binary { _exact_of, _resolve_target_version }
+import from jaclang.scale.injector.binary { _resolve_target_version }
+import from jaclang.project.jac_version { exact_pin, version_key }
 import from jaclang.cli.manifest_route { resolve_cli_version }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
@@ -40,14 +41,14 @@ def _release_meta(names: list[str]) -> bytes {
 
 
 test "exact pins (== or bare) are detected; ranges and junk are not" {
-    assert _exact_of("==0.34.3") == "0.34.3";
-    assert _exact_of("0.34.3") == "0.34.3";
-    assert _exact_of(">=0.34.3") == "";
-    assert _exact_of(">=0.34,<0.35") == "";
-    assert _exact_of("~=0.34.3") == "";
-    assert _exact_of("==0.34.*") == "";
-    assert _exact_of("") == "";
-    assert _exact_of("not-a-version") == "";
+    assert exact_pin("==0.34.3") == "0.34.3";
+    assert exact_pin("0.34.3") == "0.34.3";
+    assert exact_pin(">=0.34.3") == "";
+    assert exact_pin(">=0.34,<0.35") == "";
+    assert exact_pin("~=0.34.3") == "";
+    assert exact_pin("==0.34.*") == "";
+    assert exact_pin("") == "";
+    assert exact_pin("not-a-version") == "";
 }
 
 
@@ -386,7 +387,7 @@ test "the preflight needs the pod binary and the host sealing binary" {
 
 
 def _pin_offset(delta: int) -> str {
-    (major, minor, _) = binary_mod._ver_key(resolve_cli_version().strip());
+    (major, minor, _) = version_key(resolve_cli_version().strip());
     return _project(
         f'[project]\nname = "x"\njac-version = "=={major}.{minor + delta}.0"\n'
     );

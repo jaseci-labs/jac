@@ -1,4 +1,6 @@
-# Publishing Packages
+# Publishing to PyPI and npm
+
+This page covers exporting a Jac library to Python and JavaScript consumers that do not use Jac. To share Jac code with other Jac projects, publish a Jac package with `jac publish`; see [Packages](packages.md).
 
 Jac projects publish to [PyPI](https://pypi.org) as standard Python wheels -- no `pyproject.toml`, no `setuptools`, no `build` backend. The `jac build --as wheel` command reads your `jac.toml` and produces a PEP 427-compliant `.whl` that `pip install` consumes directly. Anyone can then `pip install` your package, whether or not they use Jac.
 
@@ -40,8 +42,7 @@ homepage = "https://example.com"
 repository = "https://github.com/you/mylib"
 issues = "https://github.com/you/mylib/issues"
 
-[dependencies]
-jaclang = ">=0.15.1"
+[dependencies.pypi]
 requests = ">=2.28.0"
 ```
 
@@ -52,7 +53,7 @@ Classifiers appear as `Classifier:` headers in the wheel's `METADATA` and contro
     error and will produce malformed wheel metadata. Always use `[...]` syntax
     as shown above.
 
-Runtime dependencies declared under `[dependencies]` are written into the wheel's `METADATA` as `Requires-Dist` entries, so `pip install mylib` pulls them in automatically. `[dev-dependencies]` are **not** installed by default -- they ship as a `dev` extra (`pip install mylib[dev]`). `[optional-dependencies.<group>]` become wheel extras (`pip install mylib[<group>]`).
+Runtime dependencies declared under `[dependencies.pypi]` are written into the wheel's `METADATA` as `Requires-Dist` entries, so `pip install mylib` pulls them in automatically. `[dev-dependencies.pypi]` are **not** installed by default -- they ship as a `dev` extra (`pip install mylib[dev]`). A wheel cannot carry Jac package dependencies (`[dependencies]`); `jac build --as wheel` refuses a project that has them. `[optional-dependencies.<group>]` become wheel extras (`pip install mylib[<group>]`).
 
 See the [Configuration Reference](config/index.md#project) for the full field list.
 
@@ -69,7 +70,7 @@ packages = ["mylib", "mylib_extras"]
 mylib = ["templates/**/*", "data/*.json"]
 ```
 
-`.jac`, `.py`, `.pyi`, `.lark`, `py.typed`, and `.jir` files are included by default. Build artifacts (`.jac/`, `__pycache__/`, `dist/`, virtualenvs, `.git/`, `*.egg-info/`) are always excluded. See [`[project.include]`](config/index.md#projectinclude) for the full pattern reference.
+`.jac`, `.py`, `.pyi`, `.lark`, and `py.typed` files are collected by default; every `.jac` module is transpiled to Python in the wheel. Build artifacts (`.jac/`, `__pycache__/`, `dist/`, virtualenvs, `.git/`, `*.egg-info/`) are always excluded. See [`[project.include]`](config/index.md#projectinclude) for the full pattern reference.
 
 !!! warning "Single-file modules"
     `[project.include]` `packages` matches **directories**. A package that is a single top-level `.py`/`.jac` file is not currently collected -- put your code in a directory (a `__init__.jac` is enough) before bundling.
@@ -86,7 +87,7 @@ mylib = "mylib.cli:main"
 
 `[entrypoints.scripts]` is written as `[console_scripts]` in the wheel. Other `[entrypoints.<group>]` tables are written through to the wheel metadata verbatim for consumers that use `importlib.metadata.entry_points()`; Jac itself no longer loads any entry-point group at startup.
 
-Consumers who install your package into a Jac project (`jac install mylib`) can run its console-script with [`jac x mylib`](cli/index.md#jac-x) under the `jac` runtime, without it being on their shell `PATH`.
+Consumers who install your package into a Jac project (`jac install --pypi mylib`) can run its console-script with [`jac x mylib`](cli/index.md#jac-x) under the `jac` runtime, without it being on their shell `PATH`.
 
 ## 2. Build the wheel
 
@@ -100,7 +101,7 @@ This writes `dist/<name>-<version>-py3-none-any.whl`. Build to a different direc
 jac build --as wheel -o /tmp/wheels
 ```
 
-`jac build --as wheel` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Shipped bytecode is keyed by Python version and validated against a source hash; on a consumer running a different Python version (or if the bytecode is missing or stale), the runtime transparently recompiles the bundled `.jac` source on first import -- a mismatch never breaks the package.
+A wheel carries Python transpiled from your `.jac` modules, so a Python consumer needs no Jac tooling for server code. Client-codespace modules cannot run from a Python wheel: the build fails and lists them, and `--allow-drop-client` builds without them.
 
 Wheels are reproducible: every ZIP entry uses a fixed timestamp, so the same source produces a byte-identical wheel.
 

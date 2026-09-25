@@ -4,7 +4,8 @@ import tarfile;
 import tempfile;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.scale.injector.bundle { sanitized_jac_toml, pack_jab }
+import from jaclang.scale.injector.bundle { pack_jab }
+import from jaclang.dist.sanitize { sanitized_jac_toml }
 import from jaclang.scale.tests.support { pod_binary, require_pod_binary }
 import from jaclang.scale.injector.pvc_injector {
     PvcInjector,

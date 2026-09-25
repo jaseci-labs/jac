@@ -6,6 +6,13 @@ import logging;
 import shutil;
 import tarfile;
 import from pathlib { Path }
+import from jaclang.project.jac_version {
+    exact_pin,
+    is_plain_version,
+    satisfies,
+    split_clause,
+    version_key
+}
 import from urllib.request { urlopen }
 import from urllib.error { HTTPError }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
@@ -80,94 +87,6 @@ def _http_get_bytes(url: str) -> bytes {
 glob GH_REPO: str = "jaseci-labs/jac";
 
 
-def _ver_key(v: str) -> tuple[int, int, int] {
-    parts = (v.strip().split(".") + ["0", "0", "0"])[:3];
-    out: list[int] = [];
-    for p in parts {
-        digits = "".join(
-            [
-                c
-                for c in p
-                if c.isdigit()
-            ]
-        );
-        out.append(int(digits) if digits else 0);
-    }
-    return (out[0], out[1], out[2]);
-}
-
-
-def _valid_version(s: str) -> bool {
-    return all([p.isdigit() for p in s.strip().split(".")]);
-}
-
-
-def _split_op(clause: str) -> tuple[str, str] {
-    for op in ["==", "!=", ">=", "<=", "~=", ">", "<"] {
-        if clause.startswith(op) {
-            return (op, clause[len(op):].strip());
-        }
-    }
-    return ("==", clause.strip());
-}
-
-
-def _satisfies(version: str, spec: str) -> bool {
-    v = _ver_key(version);
-    for raw in spec.split(",") {
-        clause = raw.strip();
-        if not clause {
-            continue;
-        }
-        (op, target) = _split_op(clause);
-        t = _ver_key(target);
-        if op == "==" and v != t {
-            return False;
-        } elif op == "!=" and v == t {
-            return False;
-        } elif op == ">=" and v < t {
-            return False;
-        } elif op == "<=" and v > t {
-            return False;
-        } elif op == ">" and v <= t {
-            return False;
-        } elif op == "<" and v >= t {
-            return False;
-        } elif op == "~=" {
-            ncomp = len(
-                [
-                    x
-                    for x in target.split(".")
-                    if x != ""
-                ]
-            );
-            cap = (t[0], t[1] + 1, 0) if ncomp >= 3 else (t[0] + 1, 0, 0);
-            if v < t or v >= cap {
-                return False;
-            }
-        }
-    }
-    return True;
-}
-
-
-def _exact_of(spec: str) -> str {
-    clauses = [
-        c.strip()
-        for c in spec.split(",")
-        if c.strip()
-    ];
-    if len(clauses) != 1 {
-        return "";
-    }
-    (op, target) = _split_op(clauses[0]);
-    if op == "==" and _valid_version(target) {
-        return target;
-    }
-    return "";
-}
-
-
 def _list_release_versions(repo: str) -> list[str] {
     api = f"https://api.github.com/repos/{repo}/releases?per_page=100";
     try {
@@ -204,25 +123,25 @@ def _resolve_target_version(repo: str, spec: str) -> str {
     if not spec {
         return "";
     }
-    exact = _exact_of(spec);
+    exact = exact_pin(spec);
     if exact {
         return exact;
     }
     for raw in spec.split(",") {
         clause = raw.strip();
-        if clause and not _valid_version(_split_op(clause)[1]) {
+        if clause and not is_plain_version(split_clause(clause)[1]) {
             return "";
         }
     }
     matches = [
         v
         for v in _list_release_versions(repo)
-        if _satisfies(v, spec)
+        if satisfies(v, spec)
     ];
     if not matches {
         return "";
     }
-    return max(matches, key=_ver_key);
+    return max(matches, key=version_key);
 }
 
 
@@ -267,7 +186,7 @@ def deploy_generation_refusal(
     if offline {
         found = find_project_root(Path(project_dir));
         pinned = (
-            _exact_of(str(JacConfig.load(found[1]).project.jac_version or ""))
+            exact_pin(str(JacConfig.load(found[1]).project.jac_version or ""))
                 if found is not None and channel == Channel.STABLE.value
                 else ""
         );
@@ -282,8 +201,8 @@ def deploy_generation_refusal(
     if not pinned or not running {
         return "";
     }
-    (pin_major, pin_minor, _) = _ver_key(pinned);
-    (run_major, run_minor, _) = _ver_key(running);
+    (pin_major, pin_minor, _) = version_key(pinned);
+    (run_major, run_minor, _) = version_key(running);
     if (pin_major, pin_minor) == (run_major, run_minor) {
         return "";
     }
@@ -566,7 +485,7 @@ def resolve_pod_base_image(
     } else {
         target = resolve_deploy_version(project_dir, channel.value)
             if probe
-            else _exact_of(resolve_pinned_spec(project_dir));
+            else exact_pin(resolve_pinned_spec(project_dir));
         tag = target or "latest";
     }
     image = f"{OFFICIAL_IMAGE}:{tag}";
@@ -624,7 +543,7 @@ def _admin_dist_cache_path(channel: str, version: str = "") -> Path {
 
 
 def pack_binary_bytes(binary_bytes: bytes) -> bytes {
-    import from jaclang.scale.injector.bundle { open_det_tar }
+    import from jaclang.dist.archive { open_det_tar }
     buf = io.BytesIO();
     (tar, gz) = open_det_tar(buf);
     try {

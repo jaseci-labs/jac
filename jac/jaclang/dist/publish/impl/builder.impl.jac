@@ -174,6 +174,13 @@ impl WheelBuilder.source_data -> dict[str, bytes] {
 }
 
 impl WheelBuilder._assemble_src_data -> dict[str, bytes] {
+    if self.config.dependencies {
+        raise ValueError(
+            "a Python wheel cannot carry Jac package dependencies ("
+                + ", ".join(sorted(self.config.dependencies))
+                + "); publish the package with 'jac publish' instead"
+        );
+    }
     source_files = collect_source_files(self.config, project_root=self.project_root);
 
     self.skipped_codespace = [];
@@ -229,6 +236,13 @@ impl WheelBuilder._assemble_src_data -> dict[str, bytes] {
         }
     }
 
+    if self.skipped_codespace and not self.allow_drop_client {
+        raise ValueError(
+            "these client-codespace modules cannot ship in a Python wheel: "
+                + ", ".join(sorted(self.skipped_codespace))
+                + " (pass --allow-drop-client to build without them)"
+        );
+    }
     module_map: dict[str, str] = {};
     for (target, src_path) in origins.items() {
         module_map[os.path.normpath(os.path.abspath(str(src_path)))] = (
@@ -254,7 +268,7 @@ impl WheelBuilder._assemble_src_data -> dict[str, bytes] {
     }
     src_data.update(raw);
 
-    if self.transpile_jac and ("jaclang" not in self.config.dependencies) {
+    if self.transpile_jac and ("jaclang" not in self.config.pypi_dependencies) {
         self._vendor_runtime_into(src_data, list(texts.values()));
     }
 

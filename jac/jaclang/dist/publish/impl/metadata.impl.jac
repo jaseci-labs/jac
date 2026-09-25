@@ -142,7 +142,7 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
         lines.append(f"Project-URL: {label.capitalize()}, {url}");
     }
 
-    for (dep_name, raw_ver) in config.dependencies.items() {
+    for (dep_name, raw_ver) in config.pypi_dependencies.items() {
         h("Requires-Dist", build_requires_dist(dep_name, raw_ver));
     }
 
@@ -153,9 +153,9 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
         }
     }
 
-    if config.dev_dependencies {
+    if config.pypi_dev_dependencies {
         h("Provides-Extra", "dev");
-        for (dep_name, raw_ver) in config.dev_dependencies.items() {
+        for (dep_name, raw_ver) in config.pypi_dev_dependencies.items() {
             h("Requires-Dist", build_requires_dist(dep_name, raw_ver, extra="dev"));
         }
     }
@@ -249,9 +249,9 @@ impl generate_pyproject_toml(config: JacConfig) -> str {
         }
         lines.append("]");
     }
-    if config.dependencies {
+    if config.pypi_dependencies {
         lines.append("dependencies = [");
-        for (dep_name, raw_ver) in config.dependencies.items() {
+        for (dep_name, raw_ver) in config.pypi_dependencies.items() {
             spec = normalize_constraint(raw_ver);
             norm_name = normalize_package_name(dep_name);
             dep_str = f"{norm_name}{spec}" if spec else norm_name;
@@ -261,8 +261,8 @@ impl generate_pyproject_toml(config: JacConfig) -> str {
     }
 
     all_extras: dict[str, dict[str, str]] = dict(config.optional_dependencies);
-    if config.dev_dependencies {
-        all_extras["dev"] = config.dev_dependencies;
+    if config.pypi_dev_dependencies {
+        all_extras["dev"] = config.pypi_dev_dependencies;
     }
     if all_extras {
         lines.append("");

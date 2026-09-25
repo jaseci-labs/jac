@@ -203,7 +203,7 @@ def _core_template(
     config: dict[str, any] = {
         "project": project_section,
         "dependencies": {},
-        "dev-dependencies": {"watchdog": ">=3.0.0"}
+        "dev-dependencies": {"pypi": {"watchdog": ">=3.0.0"}}
     };
     for (k, v) in extra_config.items() {
         config[k] = v;

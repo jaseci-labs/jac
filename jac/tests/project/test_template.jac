@@ -1,6 +1,3 @@
-"""Tests for template bundling infrastructure."""
-
-import json;
 import os;
 import base64;
 import shutil;
@@ -8,8 +5,6 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.project.config { JacConfig }
 import from jaclang.project.template_loader {
-    bundle_template,
-    load_template_from_json,
     load_template_from_directory,
     scaffold_app
 }
@@ -38,155 +33,84 @@ def fixture_path(filename: str) -> str {
     return p;
 }
 
-# --- BundleTemplate tests ---
-test "bundle creates jacpack file" {
-    with TemporaryDirectory() as tmpdir {
-        template_dir = Path(fixture_path("templates/minimal"));
-        output_path = Path(tmpdir) / "minimal.jacpack";
-        bundle_template(template_dir, output_path);
-        assert output_path.exists();
-        assert output_path.stat().st_size > 0;
-    }
+def _publishable(tmpdir: str, hook: bool = False) -> Path {
+    template_dir = Path(tmpdir) / "starter";
+    (template_dir / "assets").mkdir(parents=True);
+    options = "\n[jacpack.options]\npost_create_hook = \"os:getcwd\"\n" if hook else "";
+    (template_dir / "jac.toml").write_text(
+        "[project]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nentry-point = \"main\"\n\n"
+        "[jacpack]\nname = \"acme/starter\"\nversion = \"1.2.0\"\n"
+        "description = \"A starter template\"\n"
+            + options
+    );
+    (template_dir / "main.jac").write_text(
+        "with entry {\n    print(\"{{name}}\");\n}\n"
+    );
+    (template_dir / "assets" / "logo.png").write_bytes(
+        b"\x89PNG\r\n\x1a\n" + bytes(range(256))
+    );
+    return template_dir;
 }
 
-test "bundle contains required fields" {
+# --- Template packages ---
+test "a template project builds into a template package" {
+    import from jaclang.packages.artifact { build_package }
+    import from jaclang.packages.templates { unpack_template }
     with TemporaryDirectory() as tmpdir {
-        template_dir = Path(fixture_path("templates/minimal"));
-        output_path = Path(tmpdir) / "minimal.jacpack";
-        bundle_template(template_dir, output_path);
-        with open(output_path) as f {
-            data = json.load(f);
+        built = build_package(JacConfig.load(_publishable(tmpdir) / "jac.toml"));
+        assert built.manifest["role"] == "template";
+        assert built.manifest["name"] == "acme/starter";
+        assert built.manifest["version"] == "1.2.0";
+        unpacked = unpack_template(built.data, "acme/starter");
+        try {
+            assert not (unpacked / "_precompiled").exists();
+            template = load_template_from_directory(unpacked, allow_hooks=False);
+            assert template.name == "acme/starter";
+            assert "{{name}}" in template.files["main.jac"];
+            logo = template.files["assets/logo.png"];
+            assert logo.startswith("base64:");
+            assert base64.b64decode(logo[7:]).startswith(b"\x89PNG");
+        } finally {
+            shutil.rmtree(unpacked, ignore_errors=True);
         }
-        assert data["name"] == "minimal";
-        assert data["description"] == "A minimal test template";
-        assert "config" in data;
-        assert "files" in data;
-        assert "directories" in data;
     }
 }
 
-test "bundle includes version metadata" {
+test "a template from a package cannot run a post-create hook" {
     with TemporaryDirectory() as tmpdir {
-        template_dir = Path(fixture_path("templates/minimal"));
-        output_path = Path(tmpdir) / "minimal.jacpack";
-        bundle_template(template_dir, output_path);
-        with open(output_path) as f {
-            data = json.load(f);
-        }
-        assert data["jaclang"] == "0.9.0";
-        assert "plugins" in data;
-        assert len(data["plugins"]) == 1;
-        assert data["plugins"][0]["name"] == "test-plugin";
-        assert data["plugins"][0]["version"] == "1.0.0";
-    }
-}
-
-test "bundle embeds file contents" {
-    with TemporaryDirectory() as tmpdir {
-        template_dir = Path(fixture_path("templates/minimal"));
-        output_path = Path(tmpdir) / "minimal.jacpack";
-        bundle_template(template_dir, output_path);
-        with open(output_path) as f {
-            data = json.load(f);
-        }
-        assert "main.jac" in data["files"];
-        assert "README.md" in data["files"];
-        assert "{{name}}" in data["files"]["main.jac"];
-    }
-}
-
-test "bundle missing directory raises" {
-    with TemporaryDirectory() as tmpdir {
+        template_dir = _publishable(tmpdir, hook=True);
+        assert load_template_from_directory(template_dir).post_create is not None;
         raised = False;
         try {
-            bundle_template(Path(tmpdir) / "nonexistent", Path(tmpdir) / "out.jacpack");
+            load_template_from_directory(template_dir, allow_hooks=False);
         } except ValueError as e {
             raised = True;
-            assert "Template directory not found" in str(e);
+            assert "post_create_hook" in str(e);
         }
-        assert raised , "Expected ValueError for missing directory";
+        assert raised;
     }
 }
 
-test "bundle missing manifest raises" {
-    with TemporaryDirectory() as tmpdir {
-        empty_dir = Path(tmpdir) / "empty";
-        empty_dir.mkdir();
-        raised = False;
+test "a published template resolves by name and range" {
+    import os;
+    import from unittest.mock { patch }
+    import from jaclang.packages.templates { fetch_template }
+    import from tests.packages.fixture_registry {
+        FixtureRegistry,
+        fresh_dir,
+        isolated_env
+    }
+    tmp = fresh_dir("jac-template-");
+    registry = FixtureRegistry.create(tmp / "registry");
+    with patch.dict(os.environ, isolated_env(tmp, registry.base_dir)) {
+        registry.publish(_publishable(str(tmp)));
+        unpacked = fetch_template("acme/starter@^1.1");
         try {
-            bundle_template(empty_dir, Path(tmpdir) / "out.jacpack");
-        } except ValueError as e {
-            raised = True;
-            assert "No jac.toml found" in str(e);
+            template = load_template_from_directory(unpacked, allow_hooks=False);
+            assert template.description == "A starter template";
+        } finally {
+            shutil.rmtree(unpacked, ignore_errors=True);
         }
-        assert raised , "Expected ValueError for missing manifest";
-    }
-}
-
-test "bundle handles binary files" {
-    with TemporaryDirectory() as tmpdir {
-        template_dir = Path(tmpdir) / "binary_template";
-        template_dir.mkdir();
-        assets_dir = template_dir / "assets";
-        assets_dir.mkdir();
-        jac_toml = template_dir / "jac.toml";
-        jac_toml.write_text(
-            "[project]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nentry-point = \"main\"\n\n[jacpack]\nname = \"binary-test\"\ndescription = \"Template with binary files\"\njaclang = \"0.9.0\"\n"
-        );
-        main_jac = template_dir / "main.jac";
-        main_jac.write_text('print("Hello");');
-        binary_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(range(256));
-        binary_file = assets_dir / "test.png";
-        binary_file.write_bytes(binary_content);
-        output_path = Path(tmpdir) / "binary-test.jacpack";
-        bundle_template(template_dir, output_path);
-        with open(output_path) as f {
-            data = json.load(f);
-        }
-        assert "main.jac" in data["files"];
-        assert not data["files"]["main.jac"].startswith("base64:");
-        assert "assets/test.png" in data["files"];
-        assert data["files"]["assets/test.png"].startswith("base64:");
-        encoded = data["files"]["assets/test.png"][7:];
-        decoded = base64.b64decode(encoded);
-        assert decoded == binary_content;
-    }
-}
-
-# --- LoadTemplateFromJson tests ---
-test "load returns project template" {
-    with TemporaryDirectory() as tmpdir {
-        template_dir = Path(fixture_path("templates/minimal"));
-        jacpack_path = Path(tmpdir) / "minimal.jacpack";
-        bundle_template(template_dir, jacpack_path);
-        template = load_template_from_json(jacpack_path);
-        assert isinstance(template, ProjectTemplate);
-        assert template.name == "minimal";
-        assert template.description == "A minimal test template";
-    }
-}
-
-test "load preserves files" {
-    with TemporaryDirectory() as tmpdir {
-        template_dir = Path(fixture_path("templates/minimal"));
-        jacpack_path = Path(tmpdir) / "minimal.jacpack";
-        bundle_template(template_dir, jacpack_path);
-        template = load_template_from_json(jacpack_path);
-        assert "main.jac" in template.files;
-        assert "README.md" in template.files;
-    }
-}
-
-test "load missing file raises" {
-    with TemporaryDirectory() as tmpdir {
-        raised = False;
-        try {
-            load_template_from_json(Path(tmpdir) / "nonexistent.jacpack");
-        } except ValueError as e {
-            raised = True;
-            assert "Template JSON not found" in str(e);
-        }
-        assert raised , "Expected ValueError for missing file";
     }
 }
 
@@ -204,43 +128,6 @@ test "load extracts config" {
     assert "project" in template.config;
     assert template.config["project"]["name"] == "{{name}}";
     assert template.config["project"]["entry-point"] == "main";
-}
-
-# --- RoundTrip tests ---
-test "round trip preserves data" {
-    with TemporaryDirectory() as tmpdir {
-        template_dir = Path(fixture_path("templates/minimal"));
-        jacpack_path = Path(tmpdir) / "minimal.jacpack";
-        original = load_template_from_directory(template_dir);
-        bundle_template(template_dir, jacpack_path);
-        loaded = load_template_from_json(jacpack_path);
-        assert original.name == loaded.name;
-        assert original.description == loaded.description;
-        assert original.config == loaded.config;
-        assert original.files == loaded.files;
-        assert original.directories == loaded.directories;
-        assert original.root_gitignore_entries == loaded.root_gitignore_entries;
-    }
-}
-
-# --- ProjectTemplate.to_dict tests ---
-test "to dict includes all fields" {
-    template_dir = Path(fixture_path("templates/minimal"));
-    template = load_template_from_directory(template_dir);
-    data = template.to_dict();
-    assert "name" in data;
-    assert "description" in data;
-    assert "config" in data;
-    assert "files" in data;
-    assert "directories" in data;
-    assert "root_gitignore_entries" in data;
-}
-
-test "to dict excludes post create" {
-    template_dir = Path(fixture_path("templates/minimal"));
-    template = load_template_from_directory(template_dir);
-    data = template.to_dict();
-    assert "post_create" not in data;
 }
 
 # --- TemplateRegistration tests ---
@@ -434,7 +321,7 @@ test "scaffold_app migrates a single-app project into a workspace" {
         root_path.mkdir();
         (root_path / "jac.toml").write_text(
             '[project]\nname = "acme"\nkind = "cli"\nentry-point = "main"\n\n'
-            '[dependencies]\nrequests = ">=2"\n'
+            '[dependencies.pypi]\nrequests = ">=2"\n'
         );
         (root_path / "main.jac").write_text("with entry {}\n");
         scaffold_app(str(root_path), "api", "service", "api", _service_template());
@@ -445,7 +332,7 @@ test "scaffold_app migrates a single-app project into a workspace" {
         assert cfg.apps["acme"].entry_point == "main";
         assert cfg.default_app == "acme" , "bare `jac run` keeps running the old app";
         assert cfg.project.kind == "" and cfg.project.entry_point == "main";
-        assert cfg.dependencies["requests"] == ">=2";
+        assert cfg.pypi_dependencies["requests"] == ">=2";
         assert cfg.resolve_app("").name == "acme";
         assert (root_path / "api" / "main.jac").exists();
     }

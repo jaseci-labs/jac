@@ -752,7 +752,9 @@ def prune_stale_precompiled_dirs(precompiled_dir: Path, pyver: str) -> int {
     return removed;
 }
 
-def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
+def jir_to_module(
+    pkg_name: str, rel_jir: str, mount_prefix: str = ""
+) -> tuple[str, str, bool] {
     source_rel = rel_jir[:-4] + ".jac";
     name = os.path.basename(source_rel);
     parts = [
@@ -760,13 +762,48 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
         for p in os.path.dirname(source_rel).split("/")
         if p
     ];
+    root_parts = [pkg_name];
+    if mount_prefix and source_rel.startswith(mount_prefix + "/") {
+        root_parts = [];
+        parts = parts[len(mount_prefix.split("/")):];
+    }
     is_pkg = name in ext_registry.INIT_FILES;
     if is_pkg {
-        fullname = ".".join([pkg_name] + parts);
+        fullname = ".".join(root_parts + parts);
     } else {
-        fullname = ".".join([pkg_name] + parts + [ext_registry.base_stem(name)]);
+        fullname = ".".join(root_parts + parts + [ext_registry.base_stem(name)]);
     }
     return (source_rel, fullname, is_pkg);
+}
+
+def image_mount_prefix(pkg_path: Path) -> str {
+    import from jaclang.project.modresolver { project_mounts }
+    if not (pkg_path / "jac.toml").is_file() {
+        return "";
+    }
+    mounts = project_mounts(str(pkg_path));
+    if mounts is None {
+        return "";
+    }
+    return Path(mounts).relative_to(pkg_path).as_posix();
+}
+
+def locked_packages(pkg_path: Path) -> dict[str, str] {
+    import tomllib;
+    lock = pkg_path / "jac.lock";
+    if not lock.is_file() {
+        return {};
+    }
+    try {
+        rows = tomllib.loads(lock.read_text(encoding="utf-8")).get("package", []);
+    } except tomllib.TOMLDecodeError {
+        return {};
+    }
+    return {
+        str(r.get("name", "")): str(r.get("version", ""))
+        for r in rows
+        if not r.get("dev")
+    };
 }
 
 def bundle_app(config: any, app: str = "") -> any {
@@ -1049,9 +1086,10 @@ def seal_finalize(
 
     manifest_modules: dict[str, dict[str, any]] = {};
     n_boot = 0;
+    mount_prefix = image_mount_prefix(pkg_path) if pkg_name != "jaclang" else "";
     for jir in sorted(out_dir.rglob("*.jir")) {
         rel_jir = jir.relative_to(out_dir).as_posix();
-        (source_rel, fullname, is_pkg) = jir_to_module(pkg_name, rel_jir);
+        (source_rel, fullname, is_pkg) = jir_to_module(pkg_name, rel_jir, mount_prefix);
         `entry = {
             "module": fullname,
             "jir": rel_jir,
@@ -1083,6 +1121,14 @@ def seal_finalize(
         console.print(f"  Payload files: {len(payloads)}");
     }
     app_meta = app_metadata(pkg_path, pkg_name, app);
+    if pkg_name != "jaclang" {
+        app_meta = dict(app_meta);
+        app_meta["role"] = "app";
+        packages = locked_packages(pkg_path);
+        if packages {
+            app_meta["packages"] = packages;
+        }
+    }
     if app_meta {
         console.print(
             f"  App: kind={app_meta.get('kind')} caps={app_meta.get('capabilities')}"

@@ -4,6 +4,7 @@ import sys;
 import tomllib;
 import from pathlib { Path }
 import from jaclang.project.apps { AppConfig, implicit_app, parse_apps }
+import from jaclang.project.dependencies { PackageDep }
 glob CAPABILITY_SECTIONS: tuple[str, ...] = (
          "byllm",
          "scale",
@@ -37,6 +38,7 @@ obj ProjectConfig {
         entry_point: str = "main",
         kind: str = "",
         default_app: str = "",
+        exports: list[str] = [],
         urls: dict[str, str] = {},
         `include: PackageIncludeConfig = PackageIncludeConfig();
 }
@@ -279,6 +281,10 @@ def serialize_toml(data: dict[str, any], prefix: str = "") -> str;
 
 def toml_value(value: any) -> str;
 
+def toml_minimal_update(
+    text: str, old_doc: dict[str, any], new_doc: dict[str, any], roots: list[str]
+) -> str | None;
+
 obj JacConfig {
     has project: ProjectConfig = ProjectConfig(),
         run: RunConfig = RunConfig(),
@@ -298,10 +304,13 @@ obj JacConfig {
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         client: ClientConfig = ClientConfig(),
         dev: DevConfig = DevConfig(),
-        dependencies: dict[str, str] = {},
-        dev_dependencies: dict[str, str] = {},
-        git_dependencies: dict[str, dict[str, str]] = {},
+        dependencies: dict[str, PackageDep] = {},
+        dev_dependencies: dict[str, PackageDep] = {},
+        pypi_dependencies: dict[str, str] = {},
+        pypi_dev_dependencies: dict[str, str] = {},
+        pypi_git_dependencies: dict[str, dict[str, str]] = {},
         plugin_dependencies: dict[str, dict[str, any]] = {},
+        registries: dict[str, str] = {},
         scripts: dict[str, str] = {},
         plugins: dict[str, dict[str, any]] = {},
         environments: dict[str, dict[str, any]] = {},
@@ -363,12 +372,16 @@ obj JacConfig {
     def persist_doc(doc: dict[str, any]) -> None;
     def _write_toml_text(text: str) -> None;
     def add_dependency(
-        name: str, version: str, dev: bool = False, dep_type: str = "python"
+        name: str, version: str, dev: bool = False, dep_type: str = "pypi"
     ) -> None;
 
     def remove_dependency(
-        name: str, dev: bool = False, dep_type: str = "python"
+        name: str, dev: bool = False, dep_type: str = "pypi"
     ) -> bool;
+
+    def merge_dependency_tables(
+        data: dict[str, any], section_prefix: str = ""
+    ) -> None;
 
     def merge_from_toml_file(toml_path: Path) -> None;
     def merge_apps_table(apps_table: dict[str, any]) -> None;

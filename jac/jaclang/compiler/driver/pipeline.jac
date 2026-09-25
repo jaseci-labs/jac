@@ -24,6 +24,7 @@ import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
 import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.import_wiring_pass { ImportWiringPass }
+import from jaclang.compiler.passes.package_boundary_pass { PackageBoundaryPass }
 
 import from jaclang.compiler.placement.placement_solver { PlacementApplyPass }
 import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
@@ -52,6 +53,7 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
          ),
          'FreezeStructurePass': PassContract((), (AnalysisFact.FROZEN, )),
          'ImportWiringPass': PassContract((AnalysisFact.SYM_OF, ), ()),
+         'PackageBoundaryPass': PassContract((AnalysisFact.SYM_OF, ), ()),
          'NaIRGenPass': PassContract(
              (
                  AnalysisFact.TYPE_OF,
@@ -579,6 +581,7 @@ def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[t
             AbsorbImportsPass,
             SymTabBuildPass,
             ImportWiringPass,
+            PackageBoundaryPass,
             DeclImplMatchPass,
             SemanticAnalysisPass,
             SemDefMatchPass,
