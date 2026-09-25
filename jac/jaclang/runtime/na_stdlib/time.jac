@@ -75,16 +75,20 @@ def:pub clock_settime_ns(clk_id: int, ns: int) {
 }
 
 
+glob _I64_MIN_F: float = -9223372036854775808.0,
+     _I64_MAX_F: float = 9223372036854775808.0;
+
 def:pub sleep(secs: float) {
     if secs != secs {
         raise ValueError("Invalid value NaN (not a number)");
     }
     ns: float = secs * 1000000000.0;
-    if ns <= -9223372036854775808.0 or ns >= 9223372036854775808.0 {
+    if ns <= _I64_MIN_F or ns >= _I64_MAX_F {
         raise OverflowError("timestamp out of range for platform time_t");
     }
-    if secs < 0.0 {
+    ns_i: int = int(ns);
+    if ns_i < 0 {
         raise ValueError("sleep length must be non-negative");
     }
-    time_sleep_ns(int(ns));
+    time_sleep_ns(ns_i);
 }

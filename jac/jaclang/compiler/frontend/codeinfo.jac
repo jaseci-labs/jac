@@ -207,11 +207,9 @@ def native_toolchain_roots -> list[str] {
     if _native_toolchain_roots {
         return _native_toolchain_roots;
     }
-    import jaclang;
-    if jaclang?.__file__ {
-        _native_toolchain_roots.append(
-            os.path.realpath(os.path.dirname(jaclang.__file__))
-        );
+    pkg = _jaclang_pkg_dir();
+    if pkg is not None {
+        _native_toolchain_roots.append(os.path.realpath(pkg));
     }
     return _native_toolchain_roots;
 }
@@ -620,12 +618,8 @@ def effective_native_closure_cap -> int {
 }
 
 def _jaclang_pkg_dir -> (str | None) {
-    import os;
     import jaclang;
-    if not jaclang?.__file__ {
-        return None;
-    }
-    return os.path.dirname(os.path.abspath(str(jaclang.__file__)));
+    return jaclang_pkg_root() if jaclang?.__file__ else None;
 }
 
 def native_stdlib_root -> (str | None) {
@@ -741,11 +735,11 @@ def is_client_by_location(file_path: str) -> bool {
 
 def is_shared_runtime_module(file_path: str) -> bool {
     import os;
-    import jaclang;
-    if not file_path or not jaclang?.__file__ {
+    pkg = _jaclang_pkg_dir();
+    if not file_path or pkg is None {
         return False;
     }
-    package = os.path.dirname(os.path.realpath(str(jaclang.__file__)));
+    package = os.path.realpath(pkg);
     path = os.path.realpath(file_path);
     return any(
         path == os.path.join(package, *module.split('.')[1:]) + '.jac'

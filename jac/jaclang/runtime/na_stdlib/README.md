@@ -490,7 +490,9 @@ native layout records the emitted name separately from its source-level key.
   collide with the floor's C externs in the shared native symbol table --
   use `clock_gettime_ns` / `clock_settime_ns`; `perf_counter` is
   `CLOCK_MONOTONIC`, matching CPython on POSIX; `sleep` takes float
-  seconds. Each floor call packs the `timespec` into a 16-byte buffer it
+  seconds and truncates to whole nanoseconds where CPython rounds to
+  nearest (sub-nanosecond difference). Each floor call packs the `timespec`
+  into a 16-byte buffer it
   allocates for itself, so the module is safe to call from any thread
   (the native backend spawns real ones). Native-host only.
 - **`sqlite3.jac`** (Mechanism F surface) + **`_sqlite3_native.jac`** (FFI

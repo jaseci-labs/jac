@@ -1,7 +1,6 @@
-import from c { def clock_gettime(clk: i32, ts: int) -> i32;  }
 import from c { def clock_nanosleep(clk: i32, flags: i32, req: int, rem: int) -> i32;  }
-import from _errno_native { EINTR, last_errno, raise_errno }
-import from _time_common { NS_PER_SEC }
+import from _errno_native { EINTR, raise_errno }
+import from _time_common { NS_PER_SEC, time_clock_ns }
 
 glob CLK_REALTIME: int = 0,
      CLK_MONOTONIC: int = 1,
@@ -11,17 +10,10 @@ glob CLK_REALTIME: int = 0,
      _TIMER_ABSTIME: int = 1;
 
 def:pub time_sleep_ns(ns: int) {
+    deadline: int = time_clock_ns(CLK_MONOTONIC) + ns;
+    sec: int = deadline // NS_PER_SEC;
+    nsec: int = deadline - sec * NS_PER_SEC;
     ts: int = __alloca(16);
-    if clock_gettime(i32(CLK_MONOTONIC), ts) != 0 {
-        raise_errno(last_errno());
-    }
-    add_sec: int = ns // NS_PER_SEC;
-    nsec: int = __mem_load_i64(ts + 8) + ns - add_sec * NS_PER_SEC;
-    sec: int = __mem_load_i64(ts) + add_sec;
-    if nsec >= NS_PER_SEC {
-        nsec -= NS_PER_SEC;
-        sec += 1;
-    }
     __mem_store_i64(ts, sec);
     __mem_store_i64(ts + 8, nsec);
     rem: int = __alloca(16);

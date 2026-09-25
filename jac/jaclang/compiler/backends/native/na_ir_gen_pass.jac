@@ -2428,7 +2428,10 @@ walker NaIRGenPass {
     def _unbox_narrowed_member(nd: uni.AtomTrailer, val: ir.Value) -> ir.Value;
     def _lower_function_signature(t: SemanticFunctionType) -> ir.FunctionType;
     def _lower_function_type_raw(t: SemanticFunctionType) -> ir.PointerType;
-    def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
+    def _stack_entry_alloca(
+        var_type: ir.Type, name: str, count: (ir.Value | None) = None
+    ) -> ir.Value;
+
     def _abi_sizeof(t: ir.Type) -> int;
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _lower_type_by_name(name: (str | None)) -> (ir.Type | None);
