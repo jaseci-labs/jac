@@ -325,6 +325,160 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
     );
 }
 
+test "typed callable: an Optional callable is called after a None check" {
+    (prog, ir) = compile_na_inline_ir(
+        "optional_callable_call",
+        """
+glob seen: list[int] = [];
+obj Hooks {
+    has f: (Callable[[int], int] | None) = None;
+    has on_event: (Callable[[int], None] | None) = None;
+    def go(x: int) -> int {
+        g = self.f;
+        if g is not None { return g(x); }
+        return -1;
+    }
+    def fire(x: int) {
+        if self.on_event is not None { self.on_event(x); }
+    }
+    def clear { self.f = None; }
+    def go_after_clear(x: int) -> int {
+        if self.f is not None {
+            self.clear();
+            return self.f(x);
+        }
+        return -1;
+    }
+}
+def dbl(x: int) -> int { return x * 2; }
+def note(x: int) { seen.append(x); }
+def set_hooks -> int {
+    h = Hooks(f=dbl, on_event=note);
+    h.fire(5);
+    h.fire(6);
+    e = Hooks();
+    e.fire(9);
+    return h.go(21) * 1000 + len(seen) * 100 + seen[0] + e.go(1);
+}
+def cleared_call -> int {
+    h = Hooks(f=dbl);
+    try {
+        return h.go_after_clear(1);
+    } except TypeError {
+        return -7;
+    }
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    for fn in ["set_hooks", "cleared_call"] {
+        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+    }
+    set_hooks = get_func(ir.gen.native_engine, "set_hooks", ctypes.c_int64);
+    assert set_hooks() == 42204;
+    cleared = get_func(ir.gen.native_engine, "cleared_call", ctypes.c_int64);
+    assert cleared() == -7 , "calling a None callable must raise TypeError";
+}
+
+test "typed callable: an Optional Callable without a parameter list stays rejected" {
+    (prog, ir) = compile_na_inline_ir(
+        "optional_bare_callable",
+        """
+def dbl(x: int) -> int { return x * 2; }
+obj Hooks { has g: (Callable | None) = None; }
+def outer -> int {
+    h = Hooks(g=dbl);
+    if h.g is not None { return h.g(1); }
+    return 0;
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert "outer" not in ir.gen.native_layout.functions , (
+        "a call through an unparameterized Callable must demote, never lower"
+    );
+}
+
+test "typed callable: a bound method converts to a closure over its receiver" {
+    (prog, ir) = compile_na_inline_ir(
+        "bound_method_value",
+        """
+glob dropped: int = 0;
+obj Counter {
+    has n: int = 0;
+    def bump(amt: int) -> int {
+        self.n += amt;
+        return self.n;
+    }
+    def drop { dropped += 1; }
+}
+obj Doubler(Counter) {
+    override def bump(amt: int) -> int {
+        self.n += amt * 2;
+        return self.n;
+    }
+}
+obj Holder { has f: Callable[[int], int]; }
+def apply(f: Callable[[int], int], x: int) -> int { return f(x); }
+def bound_local -> int {
+    c = Counter();
+    f: Callable[[int], int] = c.bump;
+    f(2);
+    return f(3);
+}
+def through_field -> int {
+    c = Counter();
+    h = Holder(f=c.bump);
+    h.f(2);
+    return apply(c.bump, 4) + c.n;
+}
+def overridden -> int {
+    c: Counter = Doubler();
+    f: Callable[[int], int] = c.bump;
+    return f(5);
+}
+def make_bumper(start: int) -> Callable[[int], int] {
+    return Counter(n=start).bump;
+}
+def escaped -> int {
+    b = make_bumper(100);
+    b(1);
+    return b(2);
+}
+def compares -> int {
+    c = Counter();
+    d = Counter();
+    f: Callable[[int], int] = c.bump;
+    r = 0;
+    if f == c.bump { r += 1; }
+    if c.bump != d.bump { r += 10; }
+    return r;
+}
+def drops -> int { return dropped; }
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    for fn in ["bound_local", "through_field", "overridden", "escaped", "compares"] {
+        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+    }
+    eng = ir.gen.native_engine;
+    assert get_func(eng, "bound_local", ctypes.c_int64)() == 5;
+    assert get_func(eng, "through_field", ctypes.c_int64)() == 12;
+    assert get_func(eng, "overridden", ctypes.c_int64)() == 10 , (
+        "a bound method must dispatch on the receiver's runtime class"
+    );
+    assert get_func(eng, "compares", ctypes.c_int64)() == 11 , (
+        "bound methods compare equal by receiver and method, as in Python"
+    );
+    drops = get_func(eng, "drops", ctypes.c_int64);
+    before = drops();
+    assert get_func(eng, "escaped", ctypes.c_int64)() == 103;
+    assert drops() - before == 1 , (
+        "the closure must keep its receiver alive and release it exactly once"
+    );
+}
+
 test "adapter: map with a capturing lambda callback" {
     (eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "scale_all", ctypes.c_int64, ctypes.c_int64);
