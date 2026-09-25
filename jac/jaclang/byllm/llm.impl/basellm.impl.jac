@@ -1524,7 +1524,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
         if not tool_calls_list
         else output_content;
     usage_data = response.get("usage", {});
-    _attach_call_cost(usage_data, self.model_name, response);
+    _attach_call_cost(usage_data, actual_model, response);
     _record_usage(mt_run, usage_data, actual_model, finish_reason=finish_reason);
     return CompletionResult(
         output=output_value, tool_calls=tool_calls, usage=usage_data
@@ -1776,7 +1776,7 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
         if not tool_calls_list
         else output_content;
     usage_data = response.get("usage", {});
-    _attach_call_cost(usage_data, self.model_name, response);
+    _attach_call_cost(usage_data, actual_model, response);
     _record_usage(mt_run, usage_data, actual_model, finish_reason=finish_reason);
     return CompletionResult(
         output=output_value, tool_calls=tool_calls, usage=usage_data

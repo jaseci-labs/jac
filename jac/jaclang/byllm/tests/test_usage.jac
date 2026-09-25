@@ -383,6 +383,27 @@ test "streaming records attribute the actual serving model and carry finish_reas
 }
 
 
+test "non-streaming cost uses the model that actually served the request" {
+    for path in ["dispatch_no_streaming", "adispatch_no_streaming"] {
+        llm = MockLLM(
+            model_name="requested-model",
+            outputs=[say("hi", usage=TOKENS, model="actual-served-model")]
+        );
+        with unittest.mock.patch.object(
+            litellm, "completion_cost", return_value=0.0042
+        ) as cost_spy {
+            _usage_from(path, llm);
+        }
+        assert cost_spy.call_count == 1 , (
+            f"{path}: expected one fallback cost lookup, got {cost_spy.call_count}"
+        );
+        assert cost_spy.call_args.kwargs["model"] == "actual-served-model" , (
+            f"{path}: cost was attributed to " f"{cost_spy.call_args.kwargs['model']!r}"
+        );
+    }
+}
+
+
 # =============================================================================
 # Usage capture and call_kind tagging
 # =============================================================================
