@@ -950,6 +950,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> tuple[str, ir.IdentifiedStructType, ir.FunctionType];
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
+    def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value;
     def _callable_signature_of(val_type: ir.Type) -> (ir.FunctionType | None);
     def _closure_cell_struct(slot_type: ir.Type) -> str;
     def _emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Value;
