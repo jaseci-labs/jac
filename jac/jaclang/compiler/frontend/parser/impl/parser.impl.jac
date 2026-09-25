@@ -3222,8 +3222,9 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
         return self.parse_comptime_element();
     }
 
-    if self.check(TokenKind.KW_IMPL) and self.check_peek(TokenKind.KW_IMPORT) {
-        return self.parse_impl_import();
+    if self.check_any(TokenKind.KW_GRAPH, TokenKind.KW_IMPL)
+        and self.check_peek(TokenKind.KW_IMPORT) {
+        return self.parse_graph_import();
     }
 
     if self.check(TokenKind.KW_IMPL) {
@@ -7144,8 +7145,18 @@ impl Parser._lookahead_advance -> None {
     self.advance();
 }
 
-impl Parser.parse_impl_import -> ImplImport {
-    kid: list[UniNode] = [self.consume_uni(TokenKind.KW_IMPL)];
+impl Parser.parse_graph_import -> GraphImport {
+    if self.check(TokenKind.KW_IMPL) {
+        self.emit_diag(
+            "Wiring blocks are written 'graph import'; 'impl import' was removed",
+            "E0098",
+            loc=self.current().loc
+        );
+        self.advance();
+        kid: list[UniNode] = [self.make_uni_token(self.previous())];
+    } else {
+        kid = [self.consume_uni(TokenKind.KW_GRAPH)];
+    }
     kid.append(self.consume_uni(TokenKind.KW_IMPORT));
     scope: ModulePath | None = None;
     if not self.check(TokenKind.LBRACE) {
@@ -7154,14 +7165,14 @@ impl Parser.parse_impl_import -> ImplImport {
             scope = self.parse_wire_module_path("scope");
             if scope.alias is not None or scope.string_path_value is not None {
                 self.emit_diag(
-                    "An 'impl import' scope is a dotted package name",
+                    "A 'graph import' scope is a dotted package name",
                     "E0093",
                     loc=scope_tok.loc
                 );
             }
             kid.append(scope);
         } else {
-            self.emit_diag("An 'impl import' scope is a dotted package name", "E0093");
+            self.emit_diag("A 'graph import' scope is a dotted package name", "E0093");
         }
     }
     kid.append(self.consume_uni(TokenKind.LBRACE));
@@ -7197,7 +7208,7 @@ impl Parser.parse_impl_import -> ImplImport {
         }
     }
     kid.append(self.consume_uni(TokenKind.RBRACE));
-    return ImplImport(doc=None, scope=scope, body=body, kid=kid);
+    return GraphImport(doc=None, scope=scope, body=body, kid=kid);
 }
 
 impl Parser.parse_wire_module_path(context: str) -> ModulePath {
@@ -7237,8 +7248,15 @@ impl Parser.parse_wire_module_path(context: str) -> ModulePath {
 
 impl Parser.parse_module_pattern -> ModulePattern {
     if self.check(TokenKind.TYP_ANY) {
-        any_uni = self.make_uni_token(self.expect(TokenKind.TYP_ANY));
-        return ModulePattern(path=None, is_any=True, kid=[any_uni]);
+        any_tok = self.expect(TokenKind.TYP_ANY);
+        self.emit_diag(
+            "An edge rule's patterns name modules under this arch.jac; 'any' is not a pattern",
+            "E0097",
+            loc=any_tok.loc
+        );
+        return ModulePattern(
+            path=None, is_glob=True, kid=[self.make_uni_token(any_tok)]
+        );
     }
     if self.check(TokenKind.STAR_MUL) {
         star_uni = self.make_uni_token(self.expect(TokenKind.STAR_MUL));
@@ -7301,14 +7319,14 @@ impl Parser.parse_import_wire -> ImportWire | None {
     is_comptime = False;
     is_absorb = False;
     is_typed = False;
-    if self.match_tok(TokenKind.KW_COMPTIME) {
+    if not self._wire_path_ahead() and self.match_tok(TokenKind.KW_COMPTIME) {
         is_comptime = True;
         kid.append(self.make_uni_token(self.previous()));
     }
-    if self.match_tok(TokenKind.KW_INCLUDE) {
+    if not self._wire_path_ahead() and self.match_tok(TokenKind.KW_INCLUDE) {
         is_absorb = True;
         kid.append(self.make_uni_token(self.previous()));
-    } elif self.match_tok(TokenKind.TYP_TYPE) {
+    } elif not self._wire_path_ahead() and self.match_tok(TokenKind.TYP_TYPE) {
         is_typed = True;
         kid.append(self.make_uni_token(self.previous()));
     }
@@ -7419,14 +7437,13 @@ impl Parser.parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireIt
                 );
             }
         }
-        if item_name.value in seen {
+        bound = alias.value if alias is not None else item_name.value;
+        if bound in seen {
             self.emit_diag(
-                f"Duplicate '{item_name.value}' in a wire payload",
-                "E0090",
-                loc=item_tok.loc
+                f"Duplicate '{bound}' in a wire payload", "E0090", loc=item_tok.loc
             );
         }
-        seen.add(item_name.value);
+        seen.add(bound);
         item = WireItem(name=item_name, alias=alias, kid=item_kid);
         items.append(item);
         kid.append(item);
@@ -7458,6 +7475,12 @@ impl Parser._expect_wire_arrow(kid: list[UniNode]) -> bool {
     }
     kid.append(self.consume_uni(TokenKind.ARROW_R));
     return True;
+}
+
+impl Parser._wire_path_ahead -> bool {
+    return self.check_peek_any(
+        TokenKind.ARROW_R, TokenKind.DOT, TokenKind.KW_AS, TokenKind.BW_OR
+    );
 }
 
 impl Parser._skip_wiring_stmt -> None {

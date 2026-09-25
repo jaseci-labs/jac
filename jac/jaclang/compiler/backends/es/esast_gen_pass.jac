@@ -1,54 +1,5 @@
-import from jaclang.compiler.frontend.roles { Kid }
 import json;
 import from typing { cast }
-import jaclang.compiler.backends.es.estree as es;
-import jaclang.compiler.frontend.unitree as uni;
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
-import from jaclang.compiler.types.types { TypeBase, ClassType }
-import from jaclang.compiler.backends.es.primitives_es { ESBuiltinEmitter }
-import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel, OspSlot }
-import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
-import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, ClientManifest }
-import from jaclang.compiler.backends.es.scoped_styles {
-    ScopedStyleSheet,
-    load_style_annex
-}
-import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
-import from jaclang.compiler.backends.es.free_ident_audit {
-    FreeIdentifier,
-    RUNTIME_PRELUDE_GLOBALS,
-    client_ambient_globals,
-    free_identifiers
-}
-import from jaclang.project.modresolver {
-    convert_to_js_import_path,
-    relative_js_specifier,
-    resolve_relative_path
-}
-import from jaclang.compiler.frontend.diagnostics {
-    E2025,
-    E5010,
-    E5011,
-    E5012,
-    E5016,
-    E5017,
-    E5018,
-    W5013,
-    W5014,
-    W5015,
-    E5080,
-    E5081,
-    E5085,
-    E5086,
-    E5099,
-    E5101,
-    E5103
-}
 
 glob _T = TypeVar('_T', bound=es.Node),
      ES_LOGICAL_OPS: dict[(Tok, str)] = {Tok.KW_AND: '&&', Tok.KW_OR: '||'},

@@ -25,8 +25,7 @@ def _acl_pushdown_root(q: GraphQuery, upto: int) -> (str | None) {
     if not access_gated() {
         return None;
     }
-    import from jaclang.runtime.runtime { JacRuntimeInterface }
-    import from jaclang.runtime.archetype { Archetype, Root }
+
     base = Archetype?.__jac_access__;
     for hop in q.hops[:upto] {
         nd = hop.nd;
@@ -441,7 +440,6 @@ impl LazyRefs._count(self: LazyRefs) -> int {
 
 
 impl LazyRefs._mem(self: LazyRefs) -> any {
-    import from jaclang.runtime.runtime { JacRuntimeInterface }
     return JacRuntimeInterface.get_context().mem;
 }
 

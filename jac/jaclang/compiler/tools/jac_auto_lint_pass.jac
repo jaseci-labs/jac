@@ -1,68 +1,5 @@
-import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.compiler.tools.reactive_use_walk { ReactiveUseWalker }
 import keyword;
 import os;
-import jaclang.compiler.frontend.unitree as uni;
-
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.constant { TOKEN_MAP }
-import from jaclang.compiler.frontend.parser.tokens { KEYWORDS }
-import from jaclang.compiler.frontend.diagnostics {
-    W3001,
-    W3002,
-    W3003,
-    W3004,
-    W3005,
-    W3007,
-    W3008,
-    W3009,
-    W3010,
-    E3012,
-    W3013,
-    W3020,
-    W3021,
-    W3022,
-    W3023,
-    W3024,
-    W3025,
-    W3030,
-    W3035,
-    W3036,
-    W3037,
-    W3038,
-    W3039,
-    W3040,
-    W3041,
-    W3042,
-    W3043,
-    W3050,
-    W3051,
-    W3052,
-    W3053
-}
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.wiring { WiringSpec, is_arch_file, wiring_for_path }
-import from jaclang.compiler.driver.bccache { discover_base_file }
-import from jaclang.compiler.frontend.roles {
-    Kid,
-    AssignmentsRole,
-    BodyRole,
-    ConditionRole,
-    DecoratorsRole,
-    DocRole,
-    ElseValueRole,
-    ExprRole,
-    ItemsRole,
-    NameRefRole,
-    ReturnTypeRole,
-    SignatureRole,
-    SpecRole,
-    TargetRole,
-    ValueRole,
-    ValuesRole,
-    VarsRole
-}
 
 walker JacAutoLintPass(TreeWalker) {
     can enter_walk with uni.UniNode entry {
@@ -201,6 +138,16 @@ walker JacAutoLintPass(TreeWalker) {
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def _strip_wired_imports(nd: uni.Module) -> None;
+    def _resolved_import_keys(
+        stmt: uni.Import, spec: WiringSpec
+    ) -> set[tuple[str, str, str, str]];
+
+    def _wired_items(
+        stmt: uni.Import,
+        spec: WiringSpec,
+        provided: dict[tuple[str, str, str, str], uni.ImportWire]
+    ) -> set[int];
+
     def _strip_duplicate_wires(nd: uni.Module) -> None;
     can exit_expr_stmt with uni.ExprStmt exit;
     can exit_module with uni.Module exit;

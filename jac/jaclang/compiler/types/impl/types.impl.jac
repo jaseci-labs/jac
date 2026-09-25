@@ -870,11 +870,6 @@ impl FunctionType.clone -> FunctionType {
 }
 
 impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
-    import from jaclang.compiler.types.type_utils {
-        apply_solved_type_vars,
-        build_type_var_solution
-    }
-
     solution = build_type_var_solution(class_type);
 
     clone = self.clone();
@@ -899,8 +894,6 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
 impl FunctionType.specialize_func_type_vars(
     solution: dict[(str, TypeBase)]
 ) -> FunctionType {
-    import from jaclang.compiler.types.type_utils { apply_solved_type_vars }
-
     clone = self.clone();
 
     for param in clone.parameters {
@@ -959,11 +952,10 @@ impl OverloadedType.__str__ -> str {
 }
 
 def _class_scope_category(scope: any) -> any {
-    import from jaclang.compiler.frontend.unitree { Archetype }
     if isinstance(scope, Archetype) {
         return scope.sym_category;
     }
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
+
     if isinstance(scope, CatScope) and scope.cat_owner_sym is not None {
         return scope.cat_owner_sym.sym_type;
     }
@@ -971,7 +963,6 @@ def _class_scope_category(scope: any) -> any {
 }
 
 impl ClassType.is_node_type -> bool {
-    import from jaclang.compiler.frontend.constant { SymbolType }
     if self.shared.is_root_class or self.is_builtin("Node") {
         return True;
     }
@@ -979,7 +970,6 @@ impl ClassType.is_node_type -> bool {
 }
 
 impl ClassType.is_edge_type -> bool {
-    import from jaclang.compiler.frontend.constant { SymbolType }
     if self.is_builtin("Edge") {
         return True;
     }
@@ -987,7 +977,6 @@ impl ClassType.is_edge_type -> bool {
 }
 
 impl ClassType.is_walker_type -> bool {
-    import from jaclang.compiler.frontend.constant { SymbolType }
     if self.is_builtin("Walker") {
         return True;
     }
@@ -1026,18 +1015,6 @@ impl ClassType.is_builtin(class_name: (str | list[str] | None) = None) -> bool {
 impl ClassType.lookup_member_symbol(
     member: str, r_overloaded: list[Symbol] | None = None
 ) -> (Symbol | None) {
-    import from jaclang.compiler.frontend.unitree {
-        Ability,
-        Archetype,
-        Assignment,
-        AtomTrailer,
-        FuncSignature,
-        ParamVar
-    }
-    import from jaclang.compiler.types.type_utils {
-        collect_member_syms,
-        ensure_mro_fresh
-    }
     ensure_mro_fresh(self);
     for cls in self.shared.mro {
         all_syms = collect_member_syms(cls.shared.symbol_table, member);
@@ -1105,12 +1082,11 @@ impl ClassType.lookup_member_symbol(
 }
 
 impl ClassType.get_class_symbol -> (Symbol | None) {
-    import from jaclang.compiler.frontend.unitree { Archetype }
     symbol_table = self.shared.symbol_table;
     if isinstance(symbol_table, Archetype) {
         return symbol_table.name.sym;
     }
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
+
     if isinstance(symbol_table, CatScope) {
         return symbol_table.cat_owner_sym;
     }
@@ -1252,7 +1228,7 @@ impl ClassDetailsShared.same_class(other: ClassDetailsShared) -> bool {
     if other_key is None or self.class_name != other.class_name {
         return False;
     }
-    import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
+
     mod_name = bundled_stdlib_module_of(key[0]);
     return mod_name is not None and mod_name == bundled_stdlib_module_of(other_key[0]);
 }

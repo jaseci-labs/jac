@@ -1,6 +1,5 @@
 import fnmatch;
 import os;
-import from jaclang.runtime.runtime { JacRuntimeInterface }
 
 def run_test(
     filepath: str,
@@ -11,14 +10,6 @@ def run_test(
     directory: (str | None) = None,
     verbose: bool = False
 ) -> int {
-    import from jaclang.testing.test { JacTestCheck }
-    import from jaclang.testing.cl_test_runner {
-        is_cl_test_file,
-        is_cl_test_file_for_discovery,
-        run_cl_test_file,
-        register_results_into_jactestcheck
-    }
-    import from jaclang.jac0core.ext_registry { base_stem, is_annex }
     test_file = False;
     ret_count = 0;
     if filepath {

@@ -2,29 +2,8 @@ import os;
 import time;
 import json;
 import zlib;
-import jaclang.compiler.frontend.unitree as uni;
+
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes { Alert }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-import from jaclang.compiler.passes.scope_walk { ScopeWalker }
-import from jaclang.compiler.driver.jir {
-    SEC_SYMINDEX,
-    SECTIONS_MAGIC,
-    HEADER_SIZE,
-    create_header,
-    parse_header,
-    write_sections,
-    read_sections,
-    get_module_cache_path
-}
-import from jaclang.compiler.driver.bccache { discover_annex_files }
-import from jaclang.jac0core.ext_registry {
-    ANNEX_SUFFIXES,
-    ANNEX_FOLDER,
-    IMPL_SUFFIX,
-    is_annex
-}
 
 walker SymbolCollector(ScopeWalker) {
     has symbols: list[uni.Symbol] = [];

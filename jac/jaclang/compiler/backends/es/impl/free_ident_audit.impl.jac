@@ -1,6 +1,4 @@
 import re;
-import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
 
 glob _AMBIENT_CACHE: set[str] = set(),
      _RAW_DECL_RE: re.Pattern = re.compile(

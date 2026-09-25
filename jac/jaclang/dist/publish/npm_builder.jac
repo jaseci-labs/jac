@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
 
 
 obj NpmBuilder {

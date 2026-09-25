@@ -1,6 +1,4 @@
 impl ServiceRouteTable.learn(service_name: str, templates: list[str]) -> list[str] {
-    import from jaclang.scale.runtime.routing { is_learnable_prefix }
-
     self.unlearn(service_name);
     clashes: list[str] = [];
     for template in templates {

@@ -3,17 +3,6 @@ import json as json_module;
 import logging;
 import time;
 import re;
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes { JSONResponse }
-import from jaclang.server.transport { TransportResponse }
-import from jaclang.server.serving.endpoint {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.admin.service_urls { service_base_url }
 
 glob _TRACE_PREFIX_RE: any = re.compile(r"^\[trace=([0-9a-fA-F-]+)\]\s*"),
      logger = logging.getLogger(__name__);
@@ -181,7 +170,6 @@ def _build_logql(
 
 
 async def _loki_request(path: str, params: dict[str, str]) -> dict[str, any] {
-    import from jaclang.server.serving.client { ClientConnectionError, arequest }
     base = _loki_base_url();
     url = f"{base}{path}";
     try {

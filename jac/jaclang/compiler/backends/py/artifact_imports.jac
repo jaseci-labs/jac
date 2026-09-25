@@ -2,7 +2,6 @@ import dis;
 import os;
 import types;
 import from pathlib { Path }
-import from jaclang.project.modresolver { resolve_local_module }
 
 def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
     sources: set[str] = `set();

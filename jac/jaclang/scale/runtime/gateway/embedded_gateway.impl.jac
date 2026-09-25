@@ -141,7 +141,7 @@ impl EmbeddedGateway.serve(on_ready: any = None) -> None {
         self.setup();
     }
     import from functools { partial }
-    import from jaclang.server.serving.server { ServingServer, PORT_RETRY_LIMIT }
+
     pinned = self.port_pinned;
     serving = ServingServer(app=self.app, host=self.host, port=self.port);
     ready: any = on_ready;

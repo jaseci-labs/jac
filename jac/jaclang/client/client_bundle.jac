@@ -1,16 +1,7 @@
-import type from jaclang.compiler.driver.program { JacProgram }
 import hashlib;
 import os;
 import from pathlib { Path }
 import from types { ModuleType }
-import from jaclang.client.artifact {
-    ClientBundle,
-    ClientBundleError,
-    MissingBunError,
-    prebuilt_bundle
-}
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
-import type from jaclang.compiler.frontend.unitree { Module }
 
 def _client_target_module(source_key: str, program: any) -> (Module | None);
 
@@ -53,7 +44,7 @@ def client_program(program: JacProgram | None) -> JacProgram {
     if program is not None {
         return program;
     }
-    import from jaclang.runtime.runtime { JacRuntime }
+
     current = JacRuntime.program;
     if current is None {
         raise ClientBundleError('No active compilation program for client products');

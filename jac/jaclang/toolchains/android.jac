@@ -1,15 +1,9 @@
-import from jaclang.toolchains.host { use_system_tools }
 import os;
 import re;
 import shutil;
 import subprocess;
 
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.toolchains.host { host_platform, executable, run_step }
-import from jaclang.toolchains.pins { JDK_ARTIFACTS, JDK_VERSION, ANDROID_ARTIFACTS }
-import from jaclang.cache.registry { bucket }
-import from jaclang.toolchains.store { install, InstallLock, offline }
 
 obj AndroidEnvironment {
     has java_home: Path,

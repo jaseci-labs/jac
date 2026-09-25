@@ -1,12 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl ReactBackend.name -> str {
     return "react";
 }
@@ -29,14 +20,12 @@ impl ReactBackend.runtime_source_basename -> str {
 impl ReactBackend.build_entry_script(
     entry_module: str, install_global_handlers: bool = True
 ) -> str {
-    import from jaclang.client.react_entry { build_simple_react_entry_script }
     return build_simple_react_entry_script(entry_module, install_global_handlers);
 }
 
 impl ReactBackend.build_pages_entry_script(
     entry_module: str, auth_redirect: str, has_app_wrapper: bool
 ) -> str {
-    import from jaclang.client.react_entry { build_pages_react_entry_script }
     return build_pages_react_entry_script(entry_module, auth_redirect, has_app_wrapper);
 }
 
@@ -154,7 +143,6 @@ impl ReactBackend.lower_state_read(name: str) -> es.Expression {
 }
 
 impl ReactBackend._view_attr_property(attr: any, sync_loc: any) -> es.Property {
-    import from jaclang.compiler.backends.es.view_ir { DynamicAttr, EventAttr }
     if isinstance(attr, DynamicAttr) {
         attr_name = attr.name;
         value = sync_loc(self.lower_view_expr(attr.value), jac_node=attr.jac_node);
@@ -180,17 +168,6 @@ impl ReactBackend._view_attr_property(attr: any, sync_loc: any) -> es.Property {
 }
 
 impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression {
-    import from jaclang.compiler.backends.es.view_ir {
-        HostTag,
-        ComponentTag,
-        DynamicTag,
-        SpreadAttr,
-        TextChild,
-        DynamicChild,
-        ElementChild,
-        IfChild,
-        EachChild
-    }
     tag = view.tag;
     if isinstance(tag, HostTag) {
         tag_expr: es.Expression = sync_loc(

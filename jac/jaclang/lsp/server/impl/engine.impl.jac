@@ -63,8 +63,6 @@ impl _merge_app_alerts(
     return (merge(1), merge(2));
 }
 
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-
 impl Task.postinit -> None {
     self.task_id = Task._task_id;
     self.cancel_token = threading.Event();
@@ -664,11 +662,7 @@ impl JacLangServer._string_import_definition(
 
 impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
     import os;
-    import from jaclang.project.modresolver {
-        resolve_client_npm_declarations,
-        resolve_client_npm_package
-    }
-    import from jaclang.compiler.placement.placement_pins { in_client_npm_world }
+
     try {
         resolved = mp.resolve_relative_path();
         if os.path.isfile(resolved) {
@@ -698,11 +692,6 @@ impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
 impl JacLangServer._npm_item_location(
     from_loc: uni.ModulePath, item_name: str
 ) -> Optional[lspt.Location] {
-    import from jaclang.project.modresolver {
-        resolve_client_npm_declarations,
-        resolve_client_npm_package
-    }
-    import from jaclang.compiler.placement.placement_pins { in_client_npm_world }
     def at_file(path_: str, rng: Optional[lspt.Range]) -> Optional[lspt.Location] {
         path_uri = uris.from_fs_path(path_);
         if path_uri is None {
@@ -802,7 +791,6 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
 impl JacLangServer.get_inlay_hints(
     file_path: str, range: lspt.Range
 ) -> list[lspt.InlayHint] {
-    import from jaclang.compiler.passes.ownership_hints { inferred_hints }
     fs_path = _path_of(file_path);
     mod = self.program.mod.hub.get(fs_path);
     if mod is None {

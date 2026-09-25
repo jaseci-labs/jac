@@ -1,31 +1,3 @@
-import from jaclang.scale._optdeps.kubernetes { client, ApiException, AutoscalingV2Api }
-import from jaclang.scale.models.resource_status { ResourceStatus }
-import from jaclang.scale.deploy.autoscale.autoscaler {
-    Autoscaler,
-    AutoscalerRuntimeStatus,
-    AutoscalerSpec,
-    AutoscalerTransition,
-    transition_from,
-    condition,
-    normalize_conditions,
-    tristate,
-    Trigger,
-    TriggerAuth,
-    DEFAULT_CPU_UTILIZATION_TARGET,
-    DEFAULT_MEMORY_UTILIZATION_TARGET
-}
-import from jaclang.scale.deploy.autoscale.http_activation {
-    HTTPActivationSpec,
-    HTTPRoutingRule
-}
-import from jaclang.scale.deploy.autoscale.keda_capabilities {
-    KEDACapabilities,
-    SUPPORTED_HTTP_INTERCEPTOR_API_VERSIONS
-}
-import from jaclang.scale.observability.logger { Logger }
-import from jaclang.scale.runtime.context.service_routing {
-    KEDA_INTERCEPTOR_SERVICE_ADDRESS
-}
 import hashlib;
 
 obj KEDAAutoscaler(Autoscaler) {

@@ -94,7 +94,6 @@ impl TypeCheckPass.exit_return_stmt with ReturnStmt exit {
         return;
     }
 
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     if isinstance(scope, Ability) and ModuleFacts.ability_is_generator(scope) {
         gen_return = get_declared_generator_return_type(return_type);
         if gen_return is not None {
@@ -200,12 +199,6 @@ impl TypeCheckPass.exit_gen_compr with GenCompr exit {
 }
 
 impl TypeCheckPass.exit_func_call with FuncCall exit {
-    import from jaclang.compiler.symbol_utils {
-        classify_call,
-        ability_of_symbol,
-        resolve_expr_symbol
-    }
-
     if self._lambda_depth > 0 {
         here.call_kind = classify_call(here).value;
         here.chunks_recv_type = _chunks_receiver_type(here);
@@ -266,13 +259,10 @@ impl TypeCheckPass.exit_func_call with FuncCall exit {
 }
 
 impl TypeCheckPass._check_intrinsic_collision(nd: Ability) -> None {
-    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
-
     intrinsics = intrinsic_registry_if_ready();
     if intrinsics is None {
         return;
     }
-    import from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
 
     if not isinstance(intrinsics, IntrinsicRegistry) {
         return;
@@ -915,7 +905,6 @@ impl TypeCheckPass.enter_ability with Ability entry {
 }
 
 impl TypeCheckPass.exit_ability with Ability exit {
-    import from jaclang.compiler.frontend.constant { OwnershipKind }
     self.evaluator.validate_typevar_variance(here);
 
     self._check_intrinsic_collision(here);
@@ -1347,7 +1336,6 @@ impl TypeCheckPass._check_explicit_any(ann_node: UniNode) -> None {
 }
 
 impl TypeCheckPass.exit_type_alias with TypeAlias exit {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if not here.is_distinct {
         return;
     }
@@ -1361,7 +1349,6 @@ impl TypeCheckPass.exit_type_alias with TypeAlias exit {
 }
 
 impl TypeCheckPass.exit_archetype with Archetype exit {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     cls_type = self.evaluator.get_type_of_class(here);
     if isinstance(cls_type, ClassType)
         and here.arch_type.name == Tok.KW_OBJECT
@@ -1441,8 +1428,6 @@ impl TypeCheckPass._client_state_field_owner(nd: HasVar) -> (Ability | None) {
 }
 
 impl TypeCheckPass._install_client_state_setters -> None {
-    import from jaclang.compiler.frontend.constant { client_state_setter_name }
-    import from jaclang.compiler.types.types { create_callable_type }
     mod = self.module;
     if mod is None {
         return;
@@ -1532,7 +1517,6 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
 }
 
 impl TypeCheckPass.exit_has_var with HasVar exit {
-    import from jaclang.compiler.field_semantics { field_initialization }
     kids = [here->:Kid:->];
     postinit_nd = kids[-1] if kids else None;
     if here.defer and isinstance(postinit_nd, Name) {
@@ -2129,8 +2113,6 @@ impl TypeCheckPass.exit_report_stmt with ReportStmt exit {
 }
 
 impl TypeCheckPass.exit_impl_def with ImplDef exit {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
-
     if not (
         here.decl_link
         and isinstance(here.decl_link, Ability)
@@ -2212,8 +2194,6 @@ impl TypeCheckPass._eval_unpacking_names(container: Expr) -> None {
 }
 
 impl TypeCheckPass._stamp_fixed_width -> None {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    import from jaclang.compiler.types.fixed_width { numeric_name_of }
     stack: list[UniNode] = [self.module];
     while stack {
         nd = stack.pop();
@@ -2231,7 +2211,6 @@ impl TypeCheckPass._stamp_fixed_width -> None {
 }
 
 impl TypeCheckPass._provably_in_range(nd: Expr, name: str) -> bool {
-    import from jaclang.compiler.types.fixed_width { interval_of_expr, interval_of_op }
     if isinstance(nd, BinaryExpr) and isinstance(nd.op, Token) {
         op = FW_INTERVAL_OPS.get(nd.op.name);
         if op is None {
@@ -2264,8 +2243,6 @@ impl TypeCheckPass._c_instance_of(ann_node: (UniNode | None)) -> (TypeBase | Non
 impl TypeCheckPass._c_plain_data(
     t: (TypeBase | None), allow_callable: bool = False
 ) -> bool {
-    import from jaclang.compiler.c_interop { foreign_struct_of_type, is_ptr_type }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if isinstance(t, FunctionType) {
         return allow_callable;
     }
@@ -2279,7 +2256,6 @@ impl TypeCheckPass._c_plain_data(
 }
 
 impl TypeCheckPass._opaque_member(t: (TypeBase | None)) -> (Archetype | None) {
-    import from jaclang.compiler.c_interop { opaque_c_of_type }
     if isinstance(t, UnionType) {
         for member in t.types {
             if (arch := opaque_c_of_type(member)) is not None {
@@ -2292,7 +2268,6 @@ impl TypeCheckPass._opaque_member(t: (TypeBase | None)) -> (Archetype | None) {
 }
 
 impl TypeCheckPass._check_c_type_use(ann_node: (UniNode | None)) -> None {
-    import from jaclang.compiler.c_interop { clib_import_of }
     if ann_node is None or clib_import_of(ann_node) is not None {
         return;
     }
@@ -2305,13 +2280,6 @@ impl TypeCheckPass._check_c_type_use(ann_node: (UniNode | None)) -> None {
 }
 
 impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
-    import from jaclang.compiler.c_interop {
-        foreign_struct_of_type,
-        is_foreign_struct_archetype,
-        is_pinned_type,
-        c_type_arg
-    }
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
     for decl in imp.clib_decls or [] {
         if isinstance(decl, Archetype) and is_foreign_struct_archetype(decl) {
             for hv in decl.get_has_vars() {
@@ -2403,7 +2371,6 @@ impl TypeCheckPass._check_c_interop_import(imp: Import) -> None {
 impl TypeCheckPass._foreign_struct_contains(
     t: (TypeBase | None), target: Archetype
 ) -> bool {
-    import from jaclang.compiler.c_interop { foreign_struct_of_type }
     seen: set[int] = set();
     work: list[TypeBase | None] = [t];
     while work {
@@ -2424,12 +2391,6 @@ impl TypeCheckPass._foreign_struct_contains(
 }
 
 impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
-    import from jaclang.compiler.c_interop {
-        c_type_arg,
-        is_builtin_pin_call,
-        is_ptr_type,
-        opaque_c_of_type
-    }
     callee = nd.target.type;
     if isinstance(callee, ClassType)
         and callee.is_instantiable_class()
@@ -2467,7 +2428,6 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
 }
 
 impl TypeCheckPass._c_arg_instance(t: (TypeBase | None)) -> (TypeBase | None) {
-    import from jaclang.compiler.c_interop { c_type_arg }
     arg = c_type_arg(t);
     if not isinstance(arg, TypeBase) {
         return None;

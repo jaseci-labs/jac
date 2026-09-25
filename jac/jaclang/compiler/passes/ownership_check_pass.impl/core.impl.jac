@@ -1,18 +1,3 @@
-import from jaclang.compiler.c_interop { c_call_borrows_args, reads_foreign_storage }
-import from jaclang.compiler.frontend.diagnostics {
-    E1301,
-    E1316,
-    E1317,
-    E1318,
-    E1302,
-    E1303,
-    E1304,
-    E1305,
-    E1306,
-    E1311,
-    W1312
-}
-
 glob _MOVE_EXEMPT_CALLS: tuple[str, ...] = (
          "len",
          "print",
@@ -431,7 +416,6 @@ impl OwnershipCheckPass._emit_freeze_diagnostics -> None {
 }
 
 impl OwnershipCheckPass._spawn_move_gen(nd: UniCFGNode) -> set[SymId] {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     gen: set[SymId] = set();
     operands: list[Expr] = [];
     for bx in nd.get_all_sub_nodes(BinaryExpr) {
@@ -830,7 +814,6 @@ impl OwnershipCheckPass._handled_by_enclosing_try(
 }
 
 impl OwnershipCheckPass._callee_ability(call: FuncCall) -> (Ability | None) {
-    import from jaclang.compiler.symbol_utils { resolved_callee }
     return resolved_callee(call);
 }
 

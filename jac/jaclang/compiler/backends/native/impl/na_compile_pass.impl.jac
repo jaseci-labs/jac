@@ -258,7 +258,7 @@ impl NativeCompilePass._emit_debug_products(
     module: uni.Module, mod: ModuleRef, target_machine: TargetMachine
 ) -> str {
     import os;
-    import from jaclang.compiler.driver.jir { get_native_debug_dir }
+
     mod_path = module.loc.mod_path if module.loc else "jac_native";
     stem = os.path.splitext(os.path.basename(mod_path))[0];
     ir_dir = str(get_native_debug_dir(mod_path));
@@ -322,7 +322,6 @@ impl native_linked_ir_text(module: uni.Module) -> str {
 
 
 impl require_native_ir(llvm_ir_text: str) -> None {
-    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
     issues = native_lowering_issues(llvm_ir_text);
     symbols = set(native_demoted_ir_symbols(llvm_ir_text));
     symbols.update(issue.symbol for issue in issues);
@@ -343,10 +342,7 @@ impl native_demoted_ir_symbols(llvm_ir_text: str) -> list[str] {
         r'|([A-Za-z0-9_.$\-]+\.__jac_demoted))\(',
         _ds_re.MULTILINE
     );
-    import from jaclang.compiler.backends.native.lowering {
-        NativeLoweringKind,
-        native_lowering_issues
-    }
+
     found: set[str] = {
         issue.symbol
         for issue in native_lowering_issues(llvm_ir_text)

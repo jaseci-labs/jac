@@ -1,12 +1,3 @@
-import from jaclang.compiler.frontend.constant { OwnershipKind }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Assignment,
-    FuncSignature,
-    Module,
-    Name
-}
-
 obj InferredHint {
     has line: int,
         col: int,

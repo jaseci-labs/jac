@@ -1,16 +1,6 @@
-import from jaclang.jac0core.cache_paths { atomic_write }
 import struct;
 import os;
 import hashlib;
-import from jaclang.compiler.backends.native.linker_common {
-    encode_uleb128,
-    _align,
-    _build_strtab,
-    _append_to_blob,
-    _resolve_seg_vaddr,
-    _resolve_patch_site,
-    _find_entry_vaddr
-}
 
 glob MH_MAGIC_64 = 0xFEEDFACF,
      MH_OBJECT = 1,

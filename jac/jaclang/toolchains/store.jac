@@ -11,9 +11,6 @@ import from pathlib { Path }
 import from http.client { HTTPResponse }
 import from urllib.request { Request, urlopen }
 import from urllib.parse { urlsplit }
-import from jaclang.cli.console { console }
-import from jaclang.cache.registry { bucket, maybe_sweep }
-import from jaclang.cache.locking { FileLock }
 
 obj Artifact {
     has name: str,

@@ -1,15 +1,3 @@
-import from jaclang.server.middleware { unauthorized }
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.endpoint {
-    APIParameter,
-    HTTPMethod,
-    JEndPoint,
-    ParameterType
-}
-import from jaclang.server.server { JacAPIServer }
-import from jaclang.server.transport { Meta, TransportResponse }
-
-
 def _not_found(kind: str, name: str) -> TransportResponse {
     return TransportResponse.fail(
         code='NOT_FOUND',

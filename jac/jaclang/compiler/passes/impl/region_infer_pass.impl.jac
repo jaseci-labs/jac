@@ -1,21 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    Assignment,
-    AtomTrailer,
-    BinaryExpr,
-    ConnectOp,
-    CtrlStmt,
-    ExprStmt,
-    FuncSignature,
-    KWPair,
-    RaiseStmt,
-    ReturnStmt,
-    Symbol,
-    Token,
-    YieldExpr
-}
-import from jaclang.compiler.frontend.roles { BodyRole }
-import from jaclang.compiler.frontend.constant { SymbolStorage, Tokens as Tok }
-
 impl RegionInferPass.run_walk with Module entry {
     self.module = self._run_impl(here);
 }

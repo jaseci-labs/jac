@@ -7,9 +7,6 @@ import from base64 { b64encode }
 import from concurrent.futures { ThreadPoolExecutor }
 import from json { dumps, loads }
 import from urllib.parse { urlencode, urlsplit }
-import from jaclang.server.serving.datatypes { Headers }
-import from jaclang.server.serving.sse { parse_sse }
-import from jaclang.server.serving.ws { WebSocket, compute_accept_key }
 
 
 glob DEFAULT_TIMEOUT: float = 30.0;

@@ -1,30 +1,5 @@
 import from enum { IntEnum, auto }
 import from pathlib { Path }
-import type from jaclang.compiler.frontend.unitree { Expr, Symbol }
-import type from jaclang.compiler.frontend.unitree { UniScopeNode as SymbolTable }
-import from jaclang.compiler.frontend.relations {
-    BaseOf,
-    BoundOf,
-    ConstraintOf,
-    DeclScopeOf,
-    EnumClassOf,
-    EnumMemberOf,
-    GuardOf,
-    MemberInfoOf,
-    MroOf,
-    OverloadOf,
-    ParamDefaultOf,
-    ParamOf,
-    ParamTypeOf,
-    PrivOf,
-    ReturnsOf,
-    SharedOf,
-    TypeArgOf,
-    TypeMemberOf,
-    TypeParamOf,
-    UnionMemberOf,
-    ValueTypeOf
-}
 
 enum TypeCategory(IntEnum) {
     Unbound,

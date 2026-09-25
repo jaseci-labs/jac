@@ -1,5 +1,4 @@
 impl primitive_type_name_of(ty: (TypeBase | None)) -> (str | None) {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if not isinstance(ty, ClassType) {
         return None;
     }
@@ -16,8 +15,6 @@ impl primitive_type_name_of(ty: (TypeBase | None)) -> (str | None) {
 }
 
 impl expr_primitive_name(expr_node: UniNode) -> str {
-    import from jaclang.compiler.frontend.unitree { CfgExpr }
-
     while isinstance(expr_node, CfgExpr) {
         expr_node = expr_node.expr;
     }
@@ -340,8 +337,6 @@ impl origin_of_local_name(nd: UniNode, local: str) -> tuple[str, (str | None)] {
 impl collect_member_syms(
     scope: UniScopeNode, name: str, deep: bool = False
 ) -> list[Symbol] {
-    import from jaclang.compiler.frontend.helpers { evaluate_version_condition }
-
     def live_branches(guard: IfStmt) -> list[UniScopeNode] {
         eval_result = evaluate_version_condition(guard.condition);
         if eval_result is None or eval_result {

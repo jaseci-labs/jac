@@ -3,17 +3,14 @@ impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
 }
 
 impl JacScaleConfig.get_config_schema(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.config.validation { scale_schema_options }
     return {"section": "scale", "options": scale_schema_options()};
 }
 
 impl JacScaleConfig.get_app_config_schema(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.config.plugin_config { app_scale_schema }
     return {"section": "scale", "options": app_scale_schema()};
 }
 
 impl JacScaleConfig.get_config_strict_env(self: JacScaleConfig) -> str {
-    import from jaclang.scale.config.validation { STRICT_ENV }
     return STRICT_ENV;
 }
 
@@ -188,10 +185,6 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
         if name
     ];
 
-    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-        KubernetesConfig,
-        k8s_safe_slug
-    }
     derived = k8s_safe_slug(self.get_jac_config().project.name, fallback='');
     if derived {
         k8s_config.setdefault('app_name', derived);
@@ -308,7 +301,6 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any
 }
 
 impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.events.broker { RetryPolicy }
     config = self.load();
     events_config = config.get('events', {});
     retry_config = events_config.get('retry', {});
@@ -418,10 +410,6 @@ impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any]
 }
 
 impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.config.validation {
-        scheduler_job_cap,
-        scheduler_min_interval
-    }
     config = self.load();
     scheduler_config = config.get('scheduler', {});
     floor: any = scheduler_min_interval(scheduler_config.get('min_interval', 1.0));

@@ -2,22 +2,8 @@ import json;
 import logging;
 import datetime;
 import from uuid { uuid4 }
-import from jaclang.comptime { fields, get_field }
-import from jaclang.scale._optdeps.apscheduler {
-    BackgroundScheduler,
-    CronTrigger,
-    HAS_APSCHEDULER
-}
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.task_scheduler {
-    Scheduler,
-    ScheduleTrigger,
-    schedule_namespace,
-    tick_of
-}
+
 import threading;
-import from jaclang.data.store { TxnIsolation }
-import from jaclang.server.shared_store { shared_store }
 
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',

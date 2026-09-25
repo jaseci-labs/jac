@@ -1,5 +1,5 @@
 import sys;
-import from jaclang.runtime.object_interop { fields, is_record }
+
 import from typing { cast }
 
 glob _cache: dict[type, dict[str, object]] = {};

@@ -1,6 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig, find_project_root, get_config_for_path }
-import from jaclang.runtime.runtime { JacRuntime }
 
 impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str, any] {
     result = base.copy();
@@ -86,10 +84,6 @@ impl PluginConfigBase.get_config_strict_env -> str {
 impl PluginConfigBase._validate_layer(
     raw: dict[str, any] | None, schema: dict[str, any], section: str
 ) -> None {
-    import from jaclang.project.config_schema {
-        report_schema_findings,
-        validate_against_schema
-    }
     options = schema.get("options");
     if not isinstance(options, dict) or not options {
         return;

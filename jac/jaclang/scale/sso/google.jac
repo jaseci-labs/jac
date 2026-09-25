@@ -1,6 +1,3 @@
-import from jaclang.server.serving.client { arequest }
-import from jaclang.scale.sso.provider { OAuth2CodeProvider, SSOUserInfo }
-
 obj GoogleSSOProvider(OAuth2CodeProvider) {
     def authorize_url -> str {
         return 'https://accounts.google.com/o/oauth2/v2/auth';

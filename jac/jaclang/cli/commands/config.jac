@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_CONFIG: CommandSpec = CommandSpec(
          name="config",
          help="Manage Jac configuration",

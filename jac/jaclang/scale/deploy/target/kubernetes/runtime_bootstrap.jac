@@ -1,18 +1,3 @@
-import from jaclang.scale.injector.bundle {
-    JAC_HOME,
-    APP_VOLUME_NAME,
-    APP_MOUNT_PATH,
-    TOOLCHAIN_SUBDIR
-}
-import from jaclang.scale.injector.pvc_injector {
-    BUNDLE_VOLUME_NAME,
-    BUNDLE_MOUNT_PATH
-}
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-
-
 def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
     packages = k8s_config.service_dependencies;
     if not packages {
@@ -133,7 +118,6 @@ def runtime_container_env -> list[dict[str, str]] {
 def build_bootstrap_init_container(
     k8s_config: KubernetesConfig, base_image: str
 ) -> dict[str, any] {
-    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
     prefer_image_binary = base_image.startswith(f"{OFFICIAL_IMAGE}:experimental-");
     commands = build_runtime_install_commands(k8s_config, prefer_image_binary);
     commands.append(f'cd {APP_MOUNT_PATH}');
@@ -193,7 +177,6 @@ def build_bootstrap_init_container(
 
 
 def image_pull_policy(image: str) -> str {
-    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
     return "Always"
         if image.endswith(":dev") or image.startswith(f"{OFFICIAL_IMAGE}:experimental-")
         else "";

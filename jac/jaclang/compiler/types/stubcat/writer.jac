@@ -1,111 +1,6 @@
-import from jaclang.compiler.frontend.roles { Kid }
 import os;
 import json;
 import struct;
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    Assignment,
-    AtomTrailer,
-    ElseIf,
-    DictCompr,
-    ElseStmt,
-    Enum,
-    FuncSignature,
-    HasVar,
-    IfStmt,
-    InnerCompr,
-    ListCompr,
-    Import,
-    KWPair,
-    Module,
-    ModulePath,
-    Name,
-    ParamVar,
-    Symbol,
-    UniScopeNode
-}
-import from jaclang.compiler.frontend.helpers { evaluate_version_condition }
-import from jaclang.compiler.types.types {
-    AnyType,
-    ClassDetailsShared,
-    ClassType,
-    EnumMemberInfo,
-    EnumMemberType,
-    FunctionType,
-    ModuleType,
-    NeverType,
-    OverloadedType,
-    Parameter,
-    TypeBase,
-    TypeVarType,
-    UnionType,
-    UnknownType
-}
-import from jaclang.compiler.frontend.constant { BindingKind, ImmutabilityKind }
-import from jaclang.compiler.types.stubcat.format {
-    ACCESS_PRIVATE,
-    ACCESS_PROTECTED,
-    ACCESS_PUBLIC,
-    ARCH_CLASS,
-    ARCH_ENUM,
-    ARCH_NONE,
-    ARCH_OBJ,
-    HEADER_SIZE,
-    Header,
-    LIT_BOOL,
-    LIT_INT,
-    LIT_NONE,
-    LIT_STR,
-    MOD_EXTERNAL,
-    MOD_JAC_INTERNAL,
-    MOD_TYPESHED,
-    PM_CLS,
-    PM_COMPTIME,
-    PM_HAS_DEFAULT,
-    PM_SELF,
-    SC_CLASS,
-    SC_FUNCTION,
-    SC_MODULE,
-    SC_OTHER,
-    SH_BUILTIN,
-    SH_DATACLASS,
-    SH_ENUM,
-    SH_NAMEDTUPLE,
-    SH_ROOT,
-    SH_STDLIB,
-    SH_TYPEDDICT,
-    SH_XREF,
-    SYMF_DEFER,
-    SYMF_FINAL,
-    SYMF_HAS_DEFAULT,
-    SYMF_INSTANCE_METHOD,
-    SYMF_NA_ESCAPES,
-    SYMF_NA_REGION_HANDLE,
-    SYMF_NA_STACK_OK,
-    SYMF_PARAM_REBOUND,
-    SYMF_READONLY,
-    TV_CLASS_PARAM,
-    TV_CONTRAVARIANT,
-    TV_COVARIANT,
-    TV_PARAM_SPEC,
-    TV_SELF,
-    TY_ANY,
-    TY_CLASS,
-    TY_ENUM_MEMBER,
-    TY_FUNCTION,
-    TY_MODULE,
-    TY_NEVER,
-    TY_OVERLOAD,
-    TY_TYPEVAR,
-    TY_UNION,
-    TY_UNKNOWN,
-    pack_header,
-    put_ref,
-    put_refs,
-    put_svar,
-    put_uvar
-}
 
 obj ScopeMembers {
     has names: dict[str, Symbol] = {},
@@ -693,7 +588,6 @@ obj CatalogWriter {
     }
 
     def property_facts(sym: Symbol) -> tuple[int, int, (TypeBase | None)] {
-        import from jaclang.compiler.types.type_utils { PropertyWriteKind }
         kind = 0;
         write_kind = 0;
         write_type: (TypeBase | None) = None;

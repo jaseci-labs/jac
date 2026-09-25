@@ -1,31 +1,5 @@
 import os;
 import pathlib;
-import from jaclang.scale.config.app_config { AppConfig, deployed_tree }
-import from jaclang.scale.deploy.target.factory {
-    ensure_deploy_tooling,
-    require_deploy_tooling
-}
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.models.resource_status { ResourceStatusInfo }
-import from jaclang.scale.deploy.autoscale.autoscaler {
-    AutoscalerRuntimeStatus,
-    AutoscalerTransition
-}
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jaclang.scale.runtime.context.util { k8s_safe_name }
-import from jaclang.scale.models.progress {
-    CallbackSink,
-    EventSink,
-    NoopSink,
-    ProgressEvent
-}
-import from jaclang.scale.observability.logger { Logger }
-import from jaclang.scale.sdk.spec { DeploySpec }
-import from jaclang.scale.sdk.events { EventLogger }
 
 def deploy(
     path: str, config: (dict[str, any] | None) = None, on_event: any = None
@@ -48,7 +22,6 @@ obj ScaleClient {
         app_config = self._app_config(spec);
         self._emit(sink, 'deploy', 'start', f"Deploying '{spec.app_name}'");
 
-        import from jaclang.scale.injector.binary { reset_deploy_version_cache }
         reset_deploy_version_cache();
 
         try {
@@ -213,7 +186,7 @@ obj ScaleClient {
         if use_event_logger {
             return EventLogger(sink=sink);
         }
-        import from jaclang.scale.observability.factory { UtilityFactory }
+
         return UtilityFactory.create_logger('standard');
     }
 

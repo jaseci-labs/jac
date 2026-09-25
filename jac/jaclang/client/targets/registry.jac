@@ -1,6 +1,5 @@
 import from typing { Optional }
 import from pathlib { Path }
-import type from jaclang.project.apps { AppConfig }
 
 glob KIND_TARGET: dict[str, str] = {
          "web-app": "web",

@@ -1,6 +1,3 @@
-import type from jaclang.compiler.frontend.unitree { Ability }
-import type from jaclang.compiler.types.types { ClassType, TypeBase }
-
 obj CtDeferred {
     def __repr__ -> str {
         return "<comptime deferred>";

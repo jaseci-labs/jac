@@ -1,6 +1,4 @@
 import logging;
-import from jaclang.server.serving.client { ClientConnectionError, arequest }
-import from jaclang.server.serving.datatypes { Response, StreamingResponse }
 
 glob _logger = logging.getLogger(__name__),
      _HOP_BY_HOP: set[str] = {

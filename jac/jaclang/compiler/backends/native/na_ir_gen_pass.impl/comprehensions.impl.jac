@@ -109,7 +109,6 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._is_boolean_result_expr(nd: (uni.UniNode | None)) -> bool {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
     while isinstance(nd, (uni.CfgExpr, uni.AtomUnit)) {
         nd = nd.expr if isinstance(nd, uni.CfgExpr) else nd.value;
     }

@@ -1,9 +1,6 @@
 import os;
 import sys;
 
-import from jaclang.cli.console { console }
-import from jaclang.compiler.backends.native.link_plan { LinkPlan }
-
 
 def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
     import re;
@@ -22,8 +19,6 @@ def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
 
 
 def _application_ir(plan: LinkPlan) -> str {
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
-    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
     registry = plan.prog.native_units();
     parts: list[str] = [];
     for u in plan.units {
@@ -68,18 +63,6 @@ impl native_build(
             return target if "-" in target else "x86_64-unknown-linux-gnu";
         }
         return "" if target in ("", "host") else target;
-    }
-
-    import from jaclang.jac0core.ext_registry {
-        is_jac,
-        is_retired_native_marker,
-        base_stem
-    }
-    import from jaclang.project { get_config }
-    import from jaclang.compiler.driver.compile_options {
-        NATIVE_LINK_MODES,
-        pop_native_target,
-        push_native_target
     }
 
     _cfg = get_config();
@@ -142,15 +125,6 @@ impl native_build(
     }
 
     console.print(f"Compiling {filename} to native binary");
-
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.backends.native.link_plan {
-        ArtifactKind,
-        LinkPlanError,
-        build_link_plan,
-        link_artifact
-    }
 
     try {
         prog = JacProgram();
@@ -342,7 +316,6 @@ impl native_build(
 
 
 def _restore_target(prev_target: (str | None)) {
-    import from jaclang.compiler.driver.compile_options { pop_native_target }
     pop_native_target(prev_target);
 }
 
@@ -405,6 +378,7 @@ def _floor_ca_bundle -> (str | None) {
         return env;
     }
     import jaclang;
+
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
     return _resolve_ca_bundle(pkg_root);
 }

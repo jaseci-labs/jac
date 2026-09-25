@@ -85,10 +85,20 @@ echo "=== drive a real cycle via the HTTP-activation e2e ==="
 E2E_KEEP_NS=1 bash "${INNER_E2E}" "${FIXTURE_DIR}"
 
 echo "=== stop the observer and inspect what it saw ==="
-# The namespace is still up, so this waits out one more poll of a workload that
-# is genuinely idle at zero. Deleting first made the same wait read teardown:
-# the last transition landed on degraded or unknown, never on inactive.
-sleep 15
+# The namespace is still up, so the target is genuinely idle at zero; wait for
+# the watch to report it rather than for a fixed time. KEDA flips the target to
+# Idle on its own schedule after replicas reach zero, and a fixed 15s wait lost
+# that race. Deleting first made the same wait read teardown: the last
+# transition landed on degraded or unknown, never on inactive.
+woke_then_idled() {
+    awk '/ -> active( |$)/ { a=1 } a && / -> inactive( |$)/ { f=1; exit } END { exit !f }' \
+        "${TRANSITIONS}" 2>/dev/null
+}
+idle_deadline=$((SECONDS + ${E2E_IDLE_WAIT_SECONDS:-180}))
+until woke_then_idled || (( SECONDS >= idle_deadline )) \
+        || ! kill -0 "${RECORDER_PID}" 2>/dev/null; do
+    sleep 5
+done
 if kill -0 "${RECORDER_PID}" 2>/dev/null; then
     kill "${RECORDER_PID}" 2>/dev/null || true
     wait "${RECORDER_PID}" 2>/dev/null || true
@@ -100,20 +110,21 @@ if [[ ! -s "${TRANSITIONS}" ]]; then
     exit 1
 fi
 
-# The cycle under test ends when the target returns to inactive. The wrapped
-# e2e deletes the namespace from its own cleanup trap, which runs before the
-# observer is stopped, so anything recorded after that point is teardown: the
-# ScaledObject going unready as it is removed, then the Deployment vanishing.
-# Asserting over those would make this fail on how fast a namespace deletes,
-# which is not what the cycle is being judged on. Truncate at the first
-# inactive, and fail loudly if the cycle never got there.
+# The cycle under test ends when the woken target returns to inactive. The
+# initial rollout can idle to inactive before the activating request arrives,
+# so the cut is the first inactive after an active, not the first inactive.
+# Anything recorded after that point is teardown: the ScaledObject going
+# unready as it is removed, then the Deployment vanishing. Asserting over those
+# would make this fail on how fast a namespace deletes, which is not what the
+# cycle is being judged on. Fail loudly if the cycle never got there.
 CYCLE="$(mktemp)"
-if ! grep -qE " -> inactive( |$)" "${TRANSITIONS}"; then
-    echo "FAIL: never observed a transition into 'inactive'" >&2
+if ! woke_then_idled; then
+    echo "FAIL: never observed a transition into 'inactive' after 'active'" >&2
     cat "${TRANSITIONS}" >&2
     exit 1
 fi
-awk '{ print } / -> inactive( |$)/ { exit }' "${TRANSITIONS}" > "${CYCLE}"
+awk '{ print } / -> active( |$)/ { a=1 } a && / -> inactive( |$)/ { exit }' \
+    "${TRANSITIONS}" > "${CYCLE}"
 echo "=== cycle under test (teardown excluded) ==="
 cat "${CYCLE}"
 

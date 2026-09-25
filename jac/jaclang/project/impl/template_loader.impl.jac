@@ -1,11 +1,8 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.template_registry { ProjectTemplate, template_kind_for }
-import from jaclang.project.tomlio { read_toml_with_encoding }
+
 import json;
 import importlib;
 import base64;
-import from jaclang.cli.console { console }
 
 def _read_file_content(file_path: Path) -> str {
     try {
@@ -249,10 +246,7 @@ impl scaffold_app(
 ) -> list[str] {
     import os;
     import tomllib;
-    import from jaclang.project.source { read_file_with_encoding }
-    import from jaclang.project.apps { APP_TABLE_KEYS, parse_apps, validate_app_name }
-    import from jaclang.project.config { _toml_append_section }
-    import from jaclang.project.kinds { KIND_SPECS, kind_entry }
+
     validate_app_name(name);
     if kind not in KIND_SPECS {
         raise ValueError(
@@ -358,13 +352,6 @@ impl template_app_table(template: ProjectTemplate) -> dict[str, any] {
 }
 
 impl migrate_implicit_app(lines: list[str], base: JacConfig) -> str {
-    import from jaclang.project.config {
-        _toml_append_section,
-        _toml_delete_key,
-        _toml_insert_key,
-        toml_value
-    }
-    import from jaclang.project.kinds { kind_entry }
     base_app = base.resolve_app("");
     base_kind = base.resolved_kind(base_app);
     for key in ("kind", "entry-point", "entry_point") {
@@ -388,7 +375,6 @@ impl migrate_implicit_app(lines: list[str], base: JacConfig) -> str {
 impl _append_overlay_tables(
     lines: list[str], parts: tuple[str, ...], table: dict[str, any]
 ) -> None {
-    import from jaclang.project.config { _toml_append_section }
     flat: dict[str, any] = {};
     nested: list[tuple[str, dict[str, any]]] = [];
     for (k, v) in table.items() {

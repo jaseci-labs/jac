@@ -1759,7 +1759,6 @@ impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> Assignment {
 }
 
 impl PyastBuildPass.proc_aug_assign(nd: py_ast.AugAssign) -> Assignment {
-    import from jaclang.compiler.frontend.constant { TOKEN_MAP }
     target = self.convert(nd.target);
     op = self.convert(nd.op);
     if isinstance(op, Token) {
@@ -2106,7 +2105,6 @@ impl PyastBuildPass._run_impl(ir_in: PythonModuleAst) -> Module {
 }
 
 impl PyastBuildPass.convert(nd: py_ast.AST) -> UniNode {
-    import from jaclang.project.source { pascal_to_snake }
     if self.is_canceled() {
         raise StopIteration;
     }

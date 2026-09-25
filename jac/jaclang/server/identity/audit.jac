@@ -1,6 +1,5 @@
 import logging;
 import from datetime { UTC, datetime }
-import from jaclang.server.serving.datatypes { Request }
 
 glob _audit_logger = logging.getLogger('jaclang.server.identity.audit');
 

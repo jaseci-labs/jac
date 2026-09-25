@@ -29,7 +29,6 @@ impl NaIRGenPass._register_enum_methods(module: uni.Module, declare: bool) -> No
 }
 
 impl NaIRGenPass._codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | None) {
-    import from jaclang.compiler.passes.layout_pass { class_form_enum_member }
     _member = class_form_enum_member(nd.type);
     if _member is None {
         return None;
@@ -42,12 +41,6 @@ impl NaIRGenPass._codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | No
 }
 
 impl NaIRGenPass._ensure_enum_lowered(t: any) -> (ir.Type | None) {
-    import from jaclang.compiler.passes.layout_pass {
-        is_enum_class_type,
-        enum_decl_of,
-        enum_value_type_of,
-        class_form_enum_scalar
-    }
     if not is_enum_class_type(t) {
         return None;
     }
@@ -84,7 +77,6 @@ impl NaIRGenPass._codegen_enum_layout(
         return;
     }
 
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     candidates: list[uni.Module] = [];
     if owner is not None {
         candidates.append(owner);
@@ -299,7 +291,6 @@ impl NaIRGenPass._codegen_enum_attr_runtime(
 }
 
 impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     candidates: list[uni.Module] = [];
     _arch = self.arch_ast_map.get(enum_name);
     if _arch is not None {

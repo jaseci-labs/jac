@@ -4,14 +4,9 @@ import pickle;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.project.config { JacConfig }
-import from jaclang.runtime.prepared { PreparedApplication, application_namespace }
-import from jaclang.compiler.driver.source_products { python_source }
 
 
 def _copy_resources(source: Path, destination: Path, output: Path) {
-    import from jaclang.dist.publish.sources { EXCLUDED_DIRS, EXCLUDED_SUFFIXES }
     excluded = set(EXCLUDED_DIRS);
     for (directory, dirs, files) in os.walk(str(source)) {
         parent: Path = Path(os.fsdecode(directory));
@@ -101,7 +96,6 @@ def _write_application(
 
 
 def _requirements(config: JacConfig, server: bool) -> list[str] {
-    import from jaclang.project.providers { get_python_provider, resolve_plan }
     plan = resolve_plan(config, action='serve' if server else 'run');
     dependencies = [
         dependency
@@ -119,11 +113,6 @@ def export_project(
     entry_override: str = '',
     force: bool = False
 ) -> Path {
-    import from jaclang.project.app_kinds { kind_has_client, kind_has_server }
-    import from jaclang.compiler.driver.application { prepare_application }
-    import from jaclang.server.assembly { service_apps, gateway_colocates }
-    import from jaclang.dist.publish.runtime_vendor { vendor_runtime }
-    import from jaclang.runtime.source_app { SOURCE_FORMAT }
     if config.project_root is None {
         raise ValueError('Source export requires a project root');
     }

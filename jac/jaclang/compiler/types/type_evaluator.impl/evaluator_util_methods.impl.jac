@@ -71,9 +71,6 @@ impl TypeEvaluator._type_from_union_annotation_arg(val: Expr) -> TypeBase {
 impl TypeEvaluator._merge_catalog_field_params(
     tab: CatScope, param_map: dict[str, Parameter], skip_deferred: bool
 ) -> None {
-    import from jaclang.compiler.frontend.constant { SymbolType }
-    import from jaclang.compiler.types.stubcat.format { SYMF_DEFER, SYMF_HAS_DEFAULT }
-    import from jaclang.compiler.types.stubcat.reader { CatProvider }
     names = tab.names_in_scope.copy();
     for (name, sym) in names.items() {
         if sym.sym_type != SymbolType.HAS_VAR {
@@ -104,8 +101,6 @@ impl TypeEvaluator._merge_catalog_field_params(
 impl TypeEvaluator._build_field_params(
     class_type: ClassType, skip_deferred: bool = True
 ) -> dict[str, Parameter] {
-    import from jaclang.compiler.field_semantics { field_initialization }
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
     param_map: dict[str, Parameter] = {};
     for cls in class_type.shared.mro[::-1] {
         cat_tab = cls.shared.symbol_table;
@@ -369,8 +364,6 @@ impl TypeEvaluator._typeddict_as_dict(base_type: ClassType) -> ClassType | None 
 }
 
 impl TypeEvaluator._scope_has_fields(tab: UniScopeNode | None) -> bool {
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
-    import from jaclang.compiler.frontend.constant { SymbolType }
     if isinstance(tab, Archetype) {
         return bool(tab.get_has_vars());
     }
@@ -436,7 +429,6 @@ impl TypeEvaluator._lookup_object_member(
 impl TypeEvaluator._lookup_class_member(
     base_type: ClassType, member: str
 ) -> ClassMember | None {
-    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
     self._heal_ancestry(base_type);
     ensure_mro_fresh(base_type);
     for cls in base_type.shared.mro {
@@ -665,7 +657,6 @@ impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
 }
 
 impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
     for cls in cls_type.shared.mro {
         arch = cls.shared.symbol_table;
         if isinstance(arch, CatScope) {
@@ -734,7 +725,6 @@ impl TypeEvaluator._report_rejected_method_call(
 }
 
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
-    import from jaclang.compiler.types.type_utils { types_equivalent }
     for existing in type_list {
         if isinstance(ty, ClassType) and isinstance(existing, ClassType) {
             if ty.shared.same_class(existing.shared) {
@@ -1536,7 +1526,6 @@ impl TypeEvaluator._is_ability_staticmethod(node_: Ability) -> bool {
 }
 
 impl TypeEvaluator._classify_property_symbol(symbol: Symbol) -> PropertyWriteKind {
-    import from jaclang.compiler.types.type_utils { PropertyWriteKind }
     if symbol.provider is not None {
         return PropertyWriteKind(symbol.provider.property_kind());
     }
@@ -1570,7 +1559,6 @@ impl TypeEvaluator._classify_property_symbol(symbol: Symbol) -> PropertyWriteKin
 }
 
 impl TypeEvaluator.get_getter_type_from_property(symbol: Symbol) -> (TypeBase | None) {
-    import from jaclang.compiler.types.type_utils { PropertyWriteKind }
     kind = self._classify_property_symbol(symbol);
     if kind == PropertyWriteKind.NOT_PROPERTY {
         return None;
@@ -1594,10 +1582,6 @@ impl TypeEvaluator.get_getter_type_from_property(symbol: Symbol) -> (TypeBase | 
 }
 
 impl TypeEvaluator.get_property_write_type(symbol: Symbol) -> PropertyWriteResult {
-    import from jaclang.compiler.types.type_utils {
-        PropertyWriteKind,
-        PropertyWriteResult
-    }
     kind = self._classify_property_symbol(symbol);
     if kind == PropertyWriteKind.NOT_PROPERTY {
         return PropertyWriteResult(kind=PropertyWriteKind.NOT_PROPERTY);
@@ -1874,7 +1858,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
     if not mod_path {
         return None;
     }
-    import from jaclang.project.modresolver { resolve_client_npm_package }
+
     base = self._client_npm_base(spec, mod_path);
     if base is None {
         return None;
@@ -1883,7 +1867,6 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
 }
 
 impl TypeEvaluator._client_npm_base(spec: str, mod_path: str) -> (str | None) {
-    import from jaclang.project.modresolver { has_client_npm_package }
     if has_client_npm_package(spec, mod_path) {
         return mod_path;
     }

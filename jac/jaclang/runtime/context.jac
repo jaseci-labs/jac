@@ -1,13 +1,9 @@
 import from contextvars { ContextVar }
-import from jaclang.runtime.object_model { MISSING }
+
 import from logging { getLogger }
 import from queue { Queue }
 import from typing { cast }
 import from uuid { UUID }
-
-import from jaclang.runtime.archetype { NodeAnchor, PermissionDenied, Root }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.runtime.memory { Memory }
 
 glob __all__ = ['ExecutionContext'],
      logger = getLogger(__name__);

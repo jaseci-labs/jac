@@ -281,11 +281,11 @@ test "test_go_to_definition_md_path" {
             (11, 51, "jaclang/compiler/frontend/constant.jac:2:5-2:15"),
             (13, 32, "jaclang/lsp/server/utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/types/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/types/types.jac:59:5-59:13"),
+            (18, 5, "compiler/types/types.jac:34:5-34:13"),
             (20, 40, "jaclang/compiler/frontend/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 37, "jaclang/lsp/protocol/uris.jac:0:0-0:0"),
-            (24, 44, "jaclang/lsp/protocol/server.jac:93:4-93:18"),
+            (24, 44, "jaclang/lsp/protocol/server.jac:67:4-67:18"),
             (26, 31, "jaclang/lsp/protocol/types.jac:0:0-0:0"),
 
         ];

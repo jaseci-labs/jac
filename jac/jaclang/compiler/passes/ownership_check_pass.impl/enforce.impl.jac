@@ -1,23 +1,9 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-import from jaclang.compiler.c_interop { is_c_value_type }
-import from jaclang.compiler.frontend.diagnostics {
-    E1315,
-    E1401,
-    E1402,
-    E1403,
-    E1404,
-    E1405,
-    E1406
-}
-
 glob _NOGC_SCALARS: frozenset[str] = frozenset(
          ["int", "float", "bool", "None", "NoneType", "type"]
              + JAC_TYPE_REGISTRY.sized_scalar_names()
      );
 
 def _is_class_object(t: object) -> bool {
-    import from jaclang.compiler.types.types { ClassType }
     return isinstance(t, ClassType) and t.is_instantiable_class();
 }
 
@@ -154,7 +140,6 @@ impl OwnershipCheckPass._nogc_local_shape(nm: Name) -> str {
 }
 
 impl OwnershipCheckPass._nogc_infer_locals -> None {
-    import from jaclang.compiler.types.types { AnyType }
     _by_sym: dict[SymId, list[Assignment]] = {};
     _decl: dict[SymId, Name] = {};
     for nd in self.idx_assignments {
@@ -222,7 +207,6 @@ impl OwnershipCheckPass._nogc_infer_locals -> None {
 impl OwnershipCheckPass._nogc_infer_state(
     expr: Expr | None
 ) -> tuple[OwnershipKind, list[Name]] {
-    import from jaclang.compiler.passes.rc_facts_pass { result_ownership, Ownership }
     _none: list[Name] = [];
     while isinstance(expr, CfgExpr) {
         expr = expr.expr;
@@ -544,7 +528,7 @@ impl OwnershipCheckPass._nogc_local_shape_expr_heap(expr: Expr | None) -> bool {
             return self._nogc_local_shape(_root) == "heap";
         }
     }
-    import from jaclang.compiler.passes.rc_facts_pass { result_ownership, Ownership }
+
     _own = result_ownership(expr);
     if _own == Ownership.STATIC or _own == Ownership.BORROWED {
         return False;
@@ -686,7 +670,7 @@ impl OwnershipCheckPass._emit_raises_diagnostics -> None {
     if self.nogc_prov is None {
         return;
     }
-    import from jaclang.compiler.frontend.diagnostics { E1407 }
+
     for mc in self.module.get_all_sub_nodes(ModuleCode) {
         for exc in sorted(self._local_raises(mc)) {
             reported = False;
@@ -1283,8 +1267,6 @@ impl OwnershipCheckPass._is_view_expr(expr: Expr | None) -> bool {
 }
 
 impl OwnershipCheckPass._view_arch_of_call(call: FuncCall) -> (Archetype | None) {
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.ownership { contains_borrow }
     target_type = call.target.type;
     if not isinstance(target_type, ClassType)
         or target_type._shared is None

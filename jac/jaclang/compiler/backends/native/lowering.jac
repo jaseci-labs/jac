@@ -1,6 +1,5 @@
 import json;
 import re;
-import from jaclang.compiler.backends.native.llvm { ir }
 
 enum NativeLoweringKind { CALLABLE = "callable", FIELD = "field" }
 

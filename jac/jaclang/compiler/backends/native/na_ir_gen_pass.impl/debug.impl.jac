@@ -1,5 +1,3 @@
-import from jaclang.cli.console { console }
-import from jaclang.compiler.backends.native.llvm { binding as llvm }
 import os;
 import sys;
 

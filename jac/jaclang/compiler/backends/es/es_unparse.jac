@@ -1,5 +1,3 @@
-import from jaclang.compiler.backends.es { estree as es }
-
 obj JSCodeGenerator {
     def init(indent: str = '  ') -> None;
 

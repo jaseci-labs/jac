@@ -1,24 +1,5 @@
 import os;
 import from pathlib { Path }
-import from jaclang.cache.home {
-    CACHEDIR_TAG,
-    cache_home,
-    ensure_root,
-    ensure_cache_dir
-}
-import from jaclang.cache.policy {
-    CacheEntry,
-    EntryKind,
-    Retention,
-    SWEEP_SENTINEL,
-    dir_size,
-    scan_entries,
-    TemporaryClaim,
-    maybe_sweep_dir,
-    remove_entry,
-    sweep_dir,
-    touch
-}
 
 def _override_root(root_env: str) -> Path | None {
     custom = os.environ.get(root_env, "").strip() if root_env else "";
@@ -66,7 +47,6 @@ def _registered(name: str) -> Bucket | None {
 }
 
 impl project_bucket -> Bucket | None {
-    import from jaclang.project.config { get_config }
     modules = _registered("jir-modules");
     if modules is None {
         return None;

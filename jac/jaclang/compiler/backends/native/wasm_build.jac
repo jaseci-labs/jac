@@ -1,28 +1,22 @@
 import os;
-import type from jaclang.compiler.backends.native.llvm.binding {
-    ModuleRef,
-    ValueRef,
-    TargetMachine
-}
-import type from jaclang.compiler.frontend.unitree { Module as UniModule }
 
 def _wasm_rt_src_dir -> str {
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wasm_rt");
 }
 
 def _wasm_libc_dir -> (str | None) {
-    import from jaclang.compiler.driver.compile_options { env_wasm_libc_dir }
     env = env_wasm_libc_dir();
     if env {
         return env if os.path.isdir(env) else None;
     }
     import jaclang;
+
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
     dev = os.path.join(pkg_root, ".pbs-build", "wasm32", "libc");
     if os.path.isdir(dev) and os.listdir(dev) {
         return dev;
     }
-    import from jaclang.dist.fused_binary { bundled_floor_roots }
+
     for floor in bundled_floor_roots(pkg_root) {
         shipped = os.path.join(floor, "wasm32", "libc");
         if os.path.isdir(shipped) and os.listdir(shipped) {
@@ -88,7 +82,6 @@ def _mod_globals(mod: ModuleRef) -> list[ValueRef] {
 }
 
 def _load_libc_module(libc_dir: str, triple: str) -> (ModuleRef | None) {
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
     parts = sorted(
         [
             f
@@ -258,7 +251,6 @@ def _link_wasm_libc(mod: ModuleRef) -> bool {
     if libc is None {
         return False;
     }
-    import from jaclang.compiler.backends.native.wasm_host_abi { WASM_HOST_ABI }
 
     for fn in _mod_functions(libc) {
         if not fn.is_declaration and fn.name in WASM_HOST_ABI {
@@ -326,7 +318,6 @@ def _internalize_late_bound(mod: ModuleRef) {
 }
 
 def prepare_wasm_module(llvm_ir_str: str) -> tuple[ModuleRef, TargetMachine, bool] {
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     mod = llvm.parse_assembly(llvm_ir_str);
@@ -336,7 +327,7 @@ def prepare_wasm_module(llvm_ir_str: str) -> tuple[ModuleRef, TargetMachine, boo
     assert isinstance(target, llvm.Target);
     tm = target.create_target_machine(opt=2);
     assert isinstance(tm, llvm.TargetMachine);
-    import from jaclang.compiler.backends.native.na_compile_pass { optimize_unit }
+
     optimize_unit(mod, tm, 2);
     if libc_linked {
         _internalize_late_bound(mod);
@@ -348,11 +339,6 @@ def prepare_wasm_module(llvm_ir_str: str) -> tuple[ModuleRef, TargetMachine, boo
 def emit_wasm_from_ir(
     llvm_ir_str: str, export_funcs: list[str] = [], app_imports: (set | None) = None
 ) -> bytes {
-    import from jaclang.compiler.backends.native.wasm_linker { WasmLinker }
-    import from jaclang.compiler.backends.native.wasm_host_abi {
-        WASM_HOST_ABI,
-        WASM_HOST_MODULE
-    }
     (mod, tm, libc_linked) = prepare_wasm_module(llvm_ir_str);
     obj_bytes = tm.emit_object(mod);
     assert isinstance(obj_bytes, bytes);
@@ -370,10 +356,6 @@ def emit_wasm_from_ir(
 }
 
 def wasm_import_map(wasm_bytes: bytes) -> dict[str, any] {
-    import from jaclang.compiler.backends.native.linker_common {
-        read_leb_name,
-        read_uleb128
-    }
     out = {};
     o = 8;
     while o < len(wasm_bytes) {
@@ -470,7 +452,5 @@ def _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
 }
 
 def compile_to_wasm(file_path: str, export_funcs: list[str] = []) -> bytes {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.pipeline { build_wasm }
     return build_wasm(JacProgram(), file_path, export_funcs);
 }

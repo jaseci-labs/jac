@@ -1,6 +1,5 @@
 import asyncio;
 import logging;
-import from jaclang.server.serving.client { ClientConnectionError, aws_connect }
 
 glob _logger = logging.getLogger(__name__),
      _WS_HOP_BY_HOP: set[str] = {

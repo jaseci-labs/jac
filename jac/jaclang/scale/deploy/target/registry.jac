@@ -1,6 +1,3 @@
-import type from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
-import type from jaclang.scale.observability.logger { Logger }
-
 type TargetFactory = Callable[[dict[str, any], Logger | None], DeploymentTarget];
 
 glob BUILTIN_TARGET_TYPES: tuple[str, ...] = (

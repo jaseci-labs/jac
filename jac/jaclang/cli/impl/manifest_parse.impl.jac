@@ -1,11 +1,4 @@
 import argparse;
-import from jaclang.cli.command {
-    Arg,
-    ArgKind,
-    CommandSpec,
-    arg_consumes_value,
-    resolve_arg_typ
-}
 
 impl add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None {
     kind = arg.kind;

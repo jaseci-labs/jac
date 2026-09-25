@@ -1,6 +1,3 @@
-import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
-import from jaclang.compiler.frontend.diagnostics { E5081 }
-
 glob _BACKENDS: dict[str, FrameworkBackend] = {};
 
 def resolve_framework_backend(framework: str) -> FrameworkBackend {
@@ -30,7 +27,6 @@ def resolve_framework_backend(framework: str) -> FrameworkBackend {
 }
 
 def resolve_active_backend -> FrameworkBackend {
-    import from jaclang.project.config { get_config }
     cfg = get_config();
     fw = cfg.client.framework if (cfg and cfg.client) else "react";
     return resolve_framework_backend(fw);

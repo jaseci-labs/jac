@@ -1,5 +1,3 @@
-import from jaclang.comptime { fields, get_field }
-
 obj BaseConfig {
     has app_name: str = 'jaseci',
         namespace: str = 'default';

@@ -1,13 +1,3 @@
-import from jaclang.runtime.archetype {
-    Anchor,
-    EdgeAnchor,
-    NodeAnchor,
-    anchor_key,
-    light_edge_view,
-    same_anchor
-}
-import from jaclang.runtime.graph_query { GraphQuery, QHop, QPred }
-
 glob __all__ = [
          'access_gated',
          'acl_read_ok',
@@ -25,7 +15,6 @@ glob __all__ = [
 
 
 def access_gated -> bool {
-    import from jaclang.runtime.runtime { JacRuntimeInterface }
     jctx = JacRuntimeInterface.peek_context();
 
     while jctx is not None and jctx._system_root is None {
@@ -40,8 +29,6 @@ def access_gated -> bool {
 
 
 def acl_read_ok(anchor: Anchor) -> bool {
-    import from jaclang.runtime.archetype { AccessLevel }
-    import from jaclang.runtime.runtime { JacRuntimeInterface }
     level = JacRuntimeInterface.check_access_level(anchor);
     return level.value > AccessLevel.NO_ACCESS.value;
 }

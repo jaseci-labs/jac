@@ -1,20 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
 import os;
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    Enum,
-    FuncSignature,
-    GlobalVars,
-    HasVar,
-    Module,
-    Name,
-    UniNode
-}
-
-import from jaclang.compiler.frontend.constant { SymbolAccess }
-import from jaclang.compiler.frontend.diagnostics { E5105 }
-import type from jaclang.compiler.driver.program { JacProgram }
 
 glob VARIANT_SUFFIX: str = ".native.jac",
      ANNEX_MARKERS: tuple[str, ...] = (".impl.jac", ".test.jac");

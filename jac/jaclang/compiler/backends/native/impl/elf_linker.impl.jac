@@ -1,15 +1,5 @@
-import from jaclang.jac0core.cache_paths { atomic_write }
 import struct;
 import os;
-import from jaclang.cli.console { console }
-import from jaclang.compiler.backends.native.linker_common {
-    _align,
-    _build_strtab,
-    _append_to_blob,
-    _resolve_seg_vaddr,
-    _resolve_patch_site,
-    _find_entry_vaddr
-}
 
 glob ELFMAG = b"\x7fELF",
      ELFCLASS64 = 2,
@@ -3365,7 +3355,6 @@ impl ElfLinker.link(
     }
     atomic_write(output_path, exe_bytes, mode=0o755);
 
-    import from jaclang.compiler.driver.compile_options { env_symmap_requested }
     if env_symmap_requested() {
         symmap_path = output_path + ".symmap";
         rows = [

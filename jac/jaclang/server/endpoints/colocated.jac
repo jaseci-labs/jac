@@ -1,20 +1,5 @@
-import from jaclang.server.endpoint_contract { check_endpoint_contract }
 import logging;
 import os;
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.project.config { get_config }
-import from jaclang.server.endpoints.walkers { idempotency_key, request_caller }
-import from jaclang.server.outbox { remember_response, replay_cached }
-import from jaclang.server.serving.datatypes { Request, Response }
-import from jaclang.server.serving.endpoint {
-    APIParameter,
-    HTTPMethod,
-    JEndPoint,
-    ParameterType
-}
-import from jaclang.server.server { JacAPIServer, JsonValue, ModuleIntrospector }
-import from jaclang.server.sv_client { _local_providers }
-import from jaclang.server.transport { Meta, TransportResponse }
 
 glob logger: logging.Logger = logging.getLogger('jaclang.serve');
 
@@ -244,8 +229,6 @@ def _mount_provider(
 
 
 def served_app_route(server: JacAPIServer) -> tuple[str, str, any] {
-    import from jaclang.project.config { get_config_for_dir }
-    import from jaclang.server.sv_client { consumer_app }
     served = consumer_app();
     if not served {
         return ('', '', None);

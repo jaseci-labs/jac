@@ -1,18 +1,3 @@
-import from jaclang.scale.deploy.autoscale.http_activation {
-    HTTPActivationSpec,
-    HTTPServiceTarget,
-    HTTPConcurrencyMetric,
-    HTTPRequestRateMetric,
-    HTTPStaticResponse,
-    HTTPColdStartSpec,
-    HTTPTimeoutSpec,
-    HTTPRoutingRule,
-    HTTPPathMatch,
-    HTTPHeaderMatch
-}
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jaclang.scale._optdeps.kubernetes { ApiException }
-
 def build_http_activation_spec(
     cfg: dict[str, any], scale_target_name: str, namespace: str, service_name: str
 ) -> HTTPActivationSpec | None {
@@ -88,7 +73,6 @@ def build_http_activation_spec(
         );
     }
 
-    import from jaclang.scale.runtime.context.service_routing { k8s_service_dns_host }
     internal_host = k8s_service_dns_host(service_name, namespace);
     rules.append(HTTPRoutingRule(hosts=[internal_host]));
 

@@ -4,8 +4,6 @@ import shutil;
 import subprocess;
 import sys;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.client.targets.desktop._dev_launch { desktop_launch_env }
 
 def _jaclang_src_roots -> list[Path] {
     roots: list[Path] = [];
@@ -86,12 +84,10 @@ def _find_native_asset_dir(subdir: str, marker: str) -> Path {
 }
 
 def _find_webview_dir -> Path {
-    import from jaclang.toolchains.desktop { source_workspace }
     return source_workspace(_find_desktop_native_dir() / "webview", "webview");
 }
 
 def _find_cef_dir -> Path {
-    import from jaclang.toolchains.desktop { source_workspace }
     return source_workspace(_find_native_asset_dir("cef", "cef.jac"), "cef");
 }
 
@@ -100,7 +96,6 @@ def _jac_subprocess_env -> dict[str, str] {
 }
 
 def _patchelf_rpath(binary: Path, rpath: str) -> bool {
-    import from jaclang.toolchains.system { ensure_patchelf }
     patchelf = ensure_patchelf();
     res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
     if res.returncode != 0 {
@@ -141,7 +136,6 @@ def _stage_fused_runtime(out_dir: Path) {
 
 
 def _bundle_runtime(host_binary: Path) {
-    import from jaclang.dist.fused_binary { graft_runtime }
     jac_bin = os.path.realpath(os.sys.executable);
 
     if not graft_runtime(jac_bin, str(host_binary)) {
@@ -222,7 +216,6 @@ def _inject_platform(host_src: str, platform_src: str) -> str {
 def _native_build_cef(
     cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
 ) -> Path {
-    import from jaclang.toolchains.store { InstallLock }
     with InstallLock(cef_dir / ".native-build.lock") {
         build_dir = cef_dir / ".build";
         build_dir.mkdir(parents=True, exist_ok=True);
@@ -248,7 +241,6 @@ def _native_build_cef(
 
 
 def build_cef_dispatch(cef_dir: Path) -> Path {
-    import from jaclang.toolchains.desktop { source_workspace }
     cef_dir = source_workspace(cef_dir, "cef");
     return _native_build_cef(
         cef_dir,
@@ -260,7 +252,6 @@ def build_cef_dispatch(cef_dir: Path) -> Path {
 }
 
 def build_cef_subprocess(cef_dir: Path) -> Path {
-    import from jaclang.toolchains.desktop { source_workspace }
     cef_dir = source_workspace(cef_dir, "cef");
     return _native_build_cef(
         cef_dir,
@@ -320,8 +311,8 @@ def stage_program(
     if dist_dir is None {
         return {"entry": str(entry_file.resolve())};
     }
-    import from jaclang.dist.seal { build_jab }
     import from jaclang.project.config { get_config_for_dir }
+
     config = get_config_for_dir(str(project_dir));
     if config is None {
         raise RuntimeError(f"jac-desktop: no jac.toml under {project_dir}");

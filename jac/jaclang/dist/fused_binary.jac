@@ -126,7 +126,6 @@ def interpreter_runtime_dir -> (str | None) {
 
 
 def _runtime_dir_for_key(key: str) -> (str | None) {
-    import from jaclang.cache.registry { bucket }
     if not key {
         return None;
     }

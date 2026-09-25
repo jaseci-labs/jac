@@ -5,15 +5,6 @@ import logging;
 
 import from typing { Optional }
 
-import from jaclang.compiler.frontend.constant {
-    JacSemTokenModifier as SemTokMod,
-    JacSemTokenType as SemTokType
-}
-
-import from .engine { JacLangServer }
-
-import jaclang.lsp.protocol.types as lspt;
-
 def debug(msg: str) -> None;
 
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {

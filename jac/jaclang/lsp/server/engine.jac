@@ -1,5 +1,5 @@
 import asyncio;
-import type from jaclang.compiler.passes.context { Alert }
+
 import logging;
 import os;
 import sys;
@@ -9,32 +9,10 @@ import from collections { deque }
 import from concurrent.futures { Future }
 import from typing { Optional }
 
-import jaclang.compiler.frontend.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
-import from jaclang.compiler.frontend.constant { SymbolType }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.cli.console { console }
-import from jaclang.compiler.driver.bccache { discover_base_file, discover_annex_files }
-import from jaclang.lsp.server.utils { doc_of_sym, get_completion_items }
-import from jaclang.compiler.types.types {
-    ClassType,
-    FunctionType,
-    OverloadedType,
-    ModuleType,
-    TypeBase
-}
-import from jaclang.compiler.frontend.constant { TOKEN_MAP }
-import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
-import from jaclang.compiler.frontend.parser.tokens { TokenKind }
-import from jaclang.compiler.frontend.unitree { UniScopeNode }
-import from .sem_manager { SemTokManager }
 import from jaclang.lsp.protocol { uris }
-import from jaclang.lsp.protocol.server { LanguageServer }
 
-import jaclang.lsp.protocol.types as lspt;
 import from . { utils }
-import from .module_manager { ModuleManager }
-import from .rwlock { ReadWriteLock }
 
 glob LSP_SHARED_APP_LIMIT: int = 4;
 

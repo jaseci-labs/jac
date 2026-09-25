@@ -95,7 +95,6 @@ impl TriggerSpec.apscheduler_kwargs -> dict[str, any] {
 }
 
 impl new_engine(pool_size: int, misfire_grace: int) -> any {
-    import from jaclang.scale.scheduler.fire_executor { FireTimeExecutor }
     return BackgroundScheduler(
         executors={'default': FireTimeExecutor(pool_size)},
         job_defaults={
@@ -768,9 +767,7 @@ impl JacScaleScheduler._execute_task(
         }
 
         async def _run {
-            import from jaclang.scale.memory.context { JScaleExecutionContext }
             import from jaclang { JacRuntime as Jac }
-
             ctx = JScaleExecutionContext();
             ctx_token = Jac.push_request_context(ctx);
             try {

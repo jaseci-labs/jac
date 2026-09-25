@@ -1,6 +1,3 @@
-import from jaclang.comptime { fields, get_field }
-import from jaclang.scale.config.base_config { BaseConfig }
-
 glob DATABASE_MODES = ('auto', 'provision', 'external', 'none');
 
 def k8s_safe_slug(name: str, fallback: str = 'jaseci') -> str {

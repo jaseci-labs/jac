@@ -3,7 +3,7 @@ import re;
 import sys;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.project.apps { AppConfig, implicit_app, parse_apps }
+
 glob CAPABILITY_SECTIONS: tuple[str, ...] = (
          "byllm",
          "scale",
@@ -55,10 +55,6 @@ obj NativeConfig {
         opt: int = 2,
         debug: bool = False,
         threads: int = 4;
-}
-
-obj ArchConfig {
-    has closed: list[str] = [];
 }
 
 obj MemoryConfig {
@@ -284,7 +280,6 @@ obj JacConfig {
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
         native: NativeConfig = NativeConfig(),
-        arch: ArchConfig = ArchConfig(),
         memory: MemoryConfig = MemoryConfig(),
         placement: PlacementConfig = PlacementConfig(),
         `test: TestConfig = TestConfig(),

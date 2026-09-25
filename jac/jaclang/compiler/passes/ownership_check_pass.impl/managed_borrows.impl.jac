@@ -1,7 +1,3 @@
-import from jaclang.compiler.frontend.diagnostics { E1320, E1321, E1322, E1323 }
-import from jaclang.compiler.frontend.unitree { ImplDef }
-import from jaclang.compiler.types.types { FunctionType }
-
 impl OwnershipCheckPass._stamp_write_effects -> None {
     abilities = [
         ab

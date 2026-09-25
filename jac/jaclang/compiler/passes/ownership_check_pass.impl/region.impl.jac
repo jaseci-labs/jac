@@ -1,8 +1,3 @@
-import from jaclang.compiler.frontend.diagnostics { E1307, E1314, W1310 }
-import from jaclang.compiler.expr_keys { is_builtin_region_type }
-import from jaclang.compiler.symbol_utils { CallKind, classify_call }
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-
 impl OwnershipCheckPass._partition_sugar_reason(call: FuncCall) -> str {
     _params = [p for p in (call.params or [])];
     if len(_params) != 1 or not isinstance(_params[0], Int) {

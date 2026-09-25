@@ -1,11 +1,6 @@
 import re;
 import fnmatch;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.dist.publish.sources { EXCLUDED_DIRS }
-import from jaclang.dist.publish.jsdoc { jsdoc_for_module, inject_jsdoc }
-import from jaclang.dist.publish.dts { dts_for_module }
-import from jaclang.dist.publish.runtime_npm { runtime_api_names }
 
 glob _DEFAULT_RUNTIME_PKG: str = "@jaseci/runtime";
 
@@ -121,7 +116,6 @@ def _crosses_server_boundary(mod: any) -> bool {
 }
 
 def _compile_module(program: any, path: Path) -> any {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
     source_key = str(path);
     prev = len(program.errors_had);
 
@@ -131,8 +125,7 @@ def _compile_module(program: any, path: Path) -> any {
         formatted = "\n".join(str(err) for err in new_errors);
         raise ValueError(f"Failed to compile '{path}' for npm bundle:\n{formatted}");
     }
-    import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+
     if mod and mod.gen and not mod.gen.js {
         require_product(program, mod, CompilationProduct.CLIENT);
     }
@@ -155,7 +148,6 @@ impl collect_npm_sources(
         );
     }
 
-    import from jaclang.compiler.driver.program { JacProgram }
     program = JacProgram();
 
     runtime_pkg = runtime_pkg_name(config);

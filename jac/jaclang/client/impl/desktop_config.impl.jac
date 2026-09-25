@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cli.console { console }
 
 impl JacDesktopConfig.get_plugin_name(self: JacDesktopConfig) -> str {
     return "desktop";
@@ -163,7 +162,6 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
 }
 
 def _validate_plugin_keys(plugins: dict[str, any]) -> None {
-    import from jaclang.client.desktop_plugin_config { _desktop_config_schema }
     plugins_spec = _desktop_config_schema().options.get('plugins', None);
     if plugins_spec is None {
         return;

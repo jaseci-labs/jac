@@ -1,6 +1,5 @@
 import logging;
 import os;
-import from jaclang.project.config { JacConfig, ServeConfig }
 
 glob ENV_PREFIX: str = 'JAC_SERVE_',
      WORKERS_AUTO: str = 'auto',

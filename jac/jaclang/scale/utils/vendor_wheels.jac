@@ -2,17 +2,6 @@ import re;
 import sys;
 
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.jac0core.sealed { python_tag }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.providers { get_python_provider, resolve_plan }
-import from jaclang.runtime.graph_utils { release_arch }
-import from jaclang.dist.jab_vendor {
-    WheelTarget,
-    download_wheels,
-    wheels_dir,
-    write_vendor_manifest
-}
 
 glob POD_GLIBC: tuple[int, int] = (2, 36),
      _LEGACY_PLATFORM_TAG = re.compile(r"^manylinux(?:\d+|_\d+_\d+)_(.+)$");

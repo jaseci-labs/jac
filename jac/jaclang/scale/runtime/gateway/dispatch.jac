@@ -1,10 +1,3 @@
-import from jaclang.scale.runtime.routing {
-    GATEWAY_API_SEGMENTS,
-    GATEWAY_LISTING_SEGMENTS,
-    GATEWAY_PAGE_SEGMENTS,
-    GATEWAY_WELLKNOWN_SEGMENTS
-}
-
 glob _BUILTIN_EXACT: set[str] = (
          {"/healthz/live", "/healthz/ready"}
          | {f"/{seg}" for seg in GATEWAY_WELLKNOWN_SEGMENTS}

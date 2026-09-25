@@ -19,6 +19,15 @@ glob _client_dir = (
      ),
      _targets_dir = _client_dir / "targets";
 
+# Imports a module takes from arch.jac are woven in at compile time, so the
+# source contract reads the file together with its wiring annex.
+def _woven_text(path: Path) -> str {
+    import from jaclang.compiler.driver.wiring { wiring_annex_for }
+
+    annex = wiring_annex_for(str(path));
+    return path.read_text() + ("\n" + annex[0] if annex else "");
+}
+
 def _register_client_targets {
     import from jaclang.client.targets.register { register_targets }
     import from jaclang.client.targets.registry { get_target_registry }
@@ -508,7 +517,8 @@ test "native runtime file ships parallel to the web runtime" {
         f"client_runtime_native.jac not found at {runtime_native}"
     );
     assert runtime_native_impl.exists();
-    assert "import from client_react_core" in runtime_native.read_text();
+    assert "import from jaclang.client.client_react_core"
+        in _woven_text(runtime_native);
 
     core_content = runtime_core.read_text();
     cl_content = runtime_native.read_text();
@@ -978,7 +988,7 @@ test "html tag map is shared between build lint and native runtime" {
     }
 
     runtime_native = _client_dir / "client_runtime_native.jac";
-    runtime_text = runtime_native.read_text();
+    runtime_text = _woven_text(runtime_native);
     assert "html_tag_map" in runtime_text;
     assert "RN_HTML_VIEW_TAGS as _VIEW_TAGS" in runtime_text;
     assert "RN_HTML_TEXT_TAGS as _TEXT_TAGS" in runtime_text;
@@ -1411,7 +1421,7 @@ test "react native common owns detect_lan_ipv4 and imports no Capacitor helpers"
     import from jaclang.client.targets.react_native.common { detect_lan_ipv4 }
 
     common_path = _targets_dir / "react_native" / "common.jac";
-    content = common_path.read_text();
+    content = _woven_text(common_path);
     assert "node_tooling_common" in content;
     # The Capacitor target and its helper modules are gone; nothing may
     # reach for them.

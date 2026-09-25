@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
 
 glob DEFAULT_INCLUDE_PATTERNS: list[str] = [
          "**/*.jac",

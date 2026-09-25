@@ -1,5 +1,3 @@
-import from jaclang.cli.console { console }
-
 def setup_toolchain(name: str) -> int {
     try {
         if name == "android" {

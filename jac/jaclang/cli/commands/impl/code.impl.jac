@@ -1,9 +1,6 @@
 import json;
 import os;
 import sys;
-import from jaclang.cli.console { console }
-import from jaclang.compiler.tools.code_intel { CodeIntelligence }
-import from jaclang.project.config { find_project_root }
 
 glob _SCHEMA_VERSION = 1,
      _ACTIONS: list[str] = ["symbol", "uses", "map", "walkers", "slice", "diag"];

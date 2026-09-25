@@ -1,11 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.passes.context { CompileContext }
-import jaclang.compiler.frontend.unitree as uni;
-
-import from jaclang.compiler.frontend.constant { OwnershipKind, is_mut_kind }
-import from jaclang.compiler.frontend.roles { BodyRole, Role }
-
 walker UnparsePass(TreeWalker) {
     can enter_walk with uni.UniNode entry {
         self.ctx.enter_node(here);
@@ -45,7 +37,7 @@ walker UnparsePass(TreeWalker) {
     can exit_module_item with uni.ModuleItem exit;
     can exit_archetype with uni.Archetype exit;
     can exit_impl_def with uni.ImplDef exit;
-    can exit_impl_import with uni.ImplImport exit;
+    can exit_graph_import with uni.GraphImport exit;
     can exit_import_wire with uni.ImportWire exit;
     can exit_import_rule with uni.ImportRule exit;
     can exit_module_pattern with uni.ModulePattern exit;
@@ -160,10 +152,6 @@ def unparse_node(nd: uni.UniNode) -> str {
 }
 
 def unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
-    import from jaclang.compiler.tools.jac_formatter_pass { format_module }
-    import from jaclang.compiler.tools.normalize_pass { NormalizePass }
-    import from jaclang.compiler.driver.program { JacProgram }
-
     own_path = mod.loc.mod_path;
     saved_body = mod.body;
     saved_kid = [mod->:Kid:->];

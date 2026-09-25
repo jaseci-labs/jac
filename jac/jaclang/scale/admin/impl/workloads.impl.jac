@@ -2,26 +2,8 @@ import os;
 import time;
 import math;
 import logging;
-import from jaclang.server.serving.datatypes { Request }
+
 import asyncio;
-import from jaclang.server.transport { TransportResponse, Meta }
-import from jaclang.server.serving.endpoint {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
-import from jaclang.scale.observability.prometheus_client {
-    query as prom_query,
-    query_range as prom_query_range,
-    scalar as prom_scalar,
-    resolve_prometheus_url
-}
-import from jaclang.scale.admin.workload_helpers {
-    phase_to_status,
-    owner_name_from_pod,
-    match_owner
-}
 
 glob logger = logging.getLogger(__name__);
 

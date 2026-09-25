@@ -1,10 +1,3 @@
-import from jaclang.compiler.frontend.const_fold { fold_const }
-import from jaclang.compiler.frontend.diagnostics { E1001 }
-import type from jaclang.compiler.types.type_evaluator {
-    TypeEvaluator,
-    PrefetchedTypes
-}
-
 impl is_excluded_enum_member_name(name: str) -> bool {
     return name.startswith('__') or name in ENUM_RESERVED_NAMES;
 }

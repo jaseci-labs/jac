@@ -1,19 +1,4 @@
-import from jaclang.scale.runtime.provider { mark_scale_runtime }
 import os;
-import from jaclang.comptime { name as ct_name }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.cli.console { console }
-import from jaclang.project.kinds { RunPlan }
-import from jaclang.runtime.context { ExecutionContext }
-import from jaclang.server.server { JacAPIServer as JacServer }
-import from .config.app_config { deployed_tree }
-import from .config.config_loader { get_scale_config }
-import from .config.project_env { load_project_env }
-
-import from jaclang.server.server { ServerExtension }
-import from jaclang.data.storage { Storage }
-import from .observability.factory { UtilityFactory }
-import from .deploy.target.factory { DeploymentTargetFactory }
 
 obj DeployFactories {
     has utility: type[UtilityFactory],
@@ -25,7 +10,6 @@ def _load_deploy_factories -> DeployFactories {
 }
 
 def _print_local_fleet_banner(fleet: any) {
-    import from .runtime.fleet { format_fleet_lines }
     names = fleet.service_names();
     plural = "s" if len(names) != 1 else "";
     console.print(
@@ -50,9 +34,6 @@ def scale_local_serve(
     if not fleet or os.environ.get("JAC_SV_SIBLING") == "1" {
         return None;
     }
-    import from jaclang.project.config { get_config }
-    import from .runtime.fleet { fleet_from_plans }
-    import from .runtime.realizer.local_realizer { LocalRealizer }
 
     cfg = get_config();
     if cfg is None {
@@ -111,7 +92,7 @@ def scale_deploy(
 
 def _resolve_deploy_target(target: str) -> tuple[str, str, str] {
     import from pathlib { Path }
-    import from jaclang.project.config { get_config }
+
     cfg = get_config(start_path=Path.cwd(), force_discover=True);
     if target and target.endswith(".jac") {
         abs_path = os.path.abspath(target);
@@ -131,7 +112,7 @@ def _resolve_deploy_target(target: str) -> tuple[str, str, str] {
     } except ValueError as e {
         return ("", "", str(e));
     }
-    import from jaclang.project.kinds { resolve_entry }
+
     project_root = str(cfg.project_root);
     eff = cfg.effective_for_app(app.name) if app.name in cfg.apps else cfg;
     entry_path = resolve_entry(eff, project_root, app);
@@ -432,12 +413,6 @@ def scale_cmd(
         }
         return deploy_destroy(service_name, target, component);
     }
-    import from jaclang.scale.runtime.fleet { fleet_from_config, fleet_from_env }
-    import from jaclang.scale.runtime.orchestrator.orchestrator {
-        ServiceRegistry,
-        build_registry
-    }
-    import from jaclang.scale.runtime.orchestrator.local_deployer { LocalDeployer }
 
     scale_config = get_scale_config();
     gateway_cfg = scale_config.get_gateway_config();

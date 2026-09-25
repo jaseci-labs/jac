@@ -118,7 +118,6 @@ def has_vendored(img_root: Path) -> bool {
 
 
 def _pip(args: list[str]) -> tuple[int, str] {
-    import from jaclang.project.pyvenv { pip_command, pip_python, pip_env }
     result = subprocess.run(
         pip_command(pip_python(), args), capture_output=True, text=True, env=pip_env()
     );

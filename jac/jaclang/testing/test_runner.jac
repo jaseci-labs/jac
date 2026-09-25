@@ -95,12 +95,6 @@ obj Reporter {
     def _pct_text -> str;
 }
 
-import from jaclang.cli.workpool {
-    WorkPool,
-    should_retire as _should_retire,
-    worker_rss_mb as _worker_rss_mb
-}
-
 def _test_retire(served: int, rss_mb: int) -> bool;
 
 def _run_plan(

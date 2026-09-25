@@ -1,16 +1,7 @@
-import from jaclang.toolchains.host { use_system_tools }
 import os;
 import shutil;
 import subprocess;
 import from pathlib { Path }
-import from jaclang.toolchains.host { host_platform, run_step }
-import from jaclang.toolchains.store {
-    InstallLock,
-    install_slot,
-    offline,
-    publish_install_slot,
-    slot_installed
-}
 
 def ensure_apple -> dict[str, str] {
     if not host_platform().startswith("mac-") {
@@ -29,8 +20,7 @@ def ensure_apple -> dict[str, str] {
     if shutil.which("pod") and use_system_tools() {
         return env;
     }
-    import from jaclang.toolchains.pins { RUBY_ARTIFACTS, RUBY_VERSION }
-    import from jaclang.toolchains.store { install }
+
     ruby_dir = install(
         RUBY_ARTIFACTS[host_platform()], f"portable-ruby/{RUBY_VERSION}/bin/ruby"
     )

@@ -2,7 +2,6 @@ import asyncio;
 import logging;
 import threading;
 import uuid;
-import from jaclang.byllm.exceptions { McpError }
 
 glob logger = logging.getLogger("byllm.mcp");
 

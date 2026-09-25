@@ -86,7 +86,6 @@ impl TemplateRegistry.list_templates -> list[tuple[str, str]] {
 }
 
 impl TemplateRegistry.list_kinds -> list[tuple[str, str]] {
-    import from jaclang.project.kinds { KIND_SPECS }
     available: set[str] = set();
     for template in self._templates.values() {
         if template.is_default_for_kind {
@@ -188,7 +187,6 @@ def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
 def _core_template(
     kind: str, body: str, extra_config: dict[str, any] = {}
 ) -> dict[str, any] {
-    import from jaclang.project.kinds { kind_spec }
     spec = kind_spec(kind);
     if spec is None {
         raise ValueError(f"No KindSpec for core template kind '{kind}'");

@@ -1,7 +1,6 @@
 import mimetypes;
 import os;
 import from email.utils { formatdate, parsedate_to_datetime }
-import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
 
 glob DEFAULT_CACHE_CONTROL: str = 'public, max-age=3600';
 

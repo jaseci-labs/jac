@@ -1,8 +1,6 @@
 import base64;
 import os;
 import secrets as _pysecrets;
-import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
-import from jaclang.scale.config.config_loader { get_scale_config }
 
 glob PG_PORT = 5432,
      PG_IMAGE = 'postgres:18',
@@ -25,9 +23,6 @@ obj KubernetesPostgresProvider {
     }
 
     def _requested_mode -> str {
-        import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-            resolve_database_mode
-        }
         return resolve_database_mode(self.config);
     }
 

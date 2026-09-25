@@ -2,7 +2,6 @@ import ast as py_ast;
 import json;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
 
 def _pkg_root -> Path {
     import jaclang;
@@ -10,7 +9,6 @@ def _pkg_root -> Path {
 }
 
 def _module_to_file(pkg_root: Path, mod: str) -> Path | None {
-    import from jaclang.project.modresolver { resolve_local_module }
     if not mod.startswith('jaclang.') {
         return None;
     }
@@ -120,7 +118,7 @@ def _compile_runtime_module(
     if path.suffix == ".py" {
         return path.read_text(encoding="utf-8");
     }
-    import from jaclang.bootstrap_manifest { is_seed_source }
+
     rel_posix = path.relative_to(pkg_root).as_posix();
     if is_seed_source(rel_posix) {
         import from jaclang.jac0 { compile_jac, discover_impl_files }
@@ -133,7 +131,7 @@ def _compile_runtime_module(
         }
         return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
     }
-    import from jaclang.compiler.driver.source_products { python_source }
+
     (py_out, ir) = python_source(str(path), prog);
     if native is not None and ir is not None and ir.gen.native_engine is not None {
         import from jaclang.dist.native_product { write_native_product }

@@ -1,31 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext }
 import os;
-import from jaclang.compiler.frontend.unitree {
-    Archetype,
-    AstSymbolNode,
-    AtomTrailer,
-    Import,
-    Module,
-    ModuleItem,
-    ModulePath,
-    Name,
-    Symbol,
-    UniNode
-}
-
-import from jaclang.compiler.frontend.constant { SymbolAccess }
-import from jaclang.compiler.frontend.diagnostics {
-    E2034,
-    W2034,
-    E2035,
-    W2035,
-    E2037,
-    W2037,
-    E2038,
-    W2038,
-    E2039,
-    W2039,
-}
 
 walker AccessCheckPass {
     has ctx: CompileContext,

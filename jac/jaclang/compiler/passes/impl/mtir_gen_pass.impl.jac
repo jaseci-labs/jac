@@ -1,18 +1,5 @@
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.runtime.semantic {
-    ClassInfo,
-    FieldInfo,
-    FunctionInfo,
-    MethodInfo,
-    ParamInfo,
-    mk_dict,
-    mk_list,
-    mk_tuple,
-    type_to_str
-}
 
 impl MTIRGenPass._run_impl(ir_in: Module) -> Module {
     for nd in ir_in.get_all_sub_nodes(Ability) {
@@ -351,8 +338,6 @@ impl MTIRGenPass._extract_method_info(
 }
 
 impl MTIRGenPass._get_scope_str(nd: UniScopeNode) -> str {
-    import from jaclang.jac0core.ext_registry { STEM_REKEY_SUFFIXES }
-
     if isinstance(nd, Module) {
         mod_path = nd.loc.mod_path;
         if mod_path {

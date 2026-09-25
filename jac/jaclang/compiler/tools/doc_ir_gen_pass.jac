@@ -1,10 +1,3 @@
-import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
-import jaclang.compiler.tools.doc_ir as doc;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { Tokens as Tok, is_mut_kind }
-
 walker DocIRGenPass(TreeWalker) {
     can enter_walk with uni.UniNode entry {
         self.ctx.enter_node(here);
@@ -205,7 +198,7 @@ walker DocIRGenPass(TreeWalker) {
     can exit_jsx_expression with uni.JsxExpression exit;
     can exit_jsx_slot with uni.JsxSlot exit;
     can exit_jsx_comment with uni.JsxComment exit;
-    can exit_impl_import with uni.ImplImport exit;
+    can exit_graph_import with uni.GraphImport exit;
     can exit_import_wire with uni.ImportWire exit;
     can exit_import_rule with uni.ImportRule exit;
     can exit_module_pattern with uni.ModulePattern exit;

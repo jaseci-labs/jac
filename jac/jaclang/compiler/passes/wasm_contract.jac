@@ -1,7 +1,3 @@
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { Ability, FuncSignature, UnaryExpr }
-import from jaclang.compiler.frontend.constant { OwnershipKind }
-
 def value_contract(
     expr: any, ownership: OwnershipKind = OwnershipKind.NONE, host: bool = False
 ) -> dict[str, any] {
@@ -9,7 +5,7 @@ def value_contract(
         ownership = expr.ownership;
         expr = expr.operand;
     }
-    import from jaclang.compiler.tools.unparse_pass { unparse_node }
+
     name = unparse_node(expr).strip() if expr is not None else "None";
     mode = {
         OwnershipKind.NONE: "value",
@@ -18,7 +14,7 @@ def value_contract(
         OwnershipKind.MUT_BORROW: "borrow_mut",
         OwnershipKind.IMM: "borrow"
     }[ownership];
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+
     shape = JAC_TYPE_REGISTRY.shape_of(name);
     if host and name == "str" {
         return {"type": name, "mode": mode, "kind": "cstring"};
@@ -74,10 +70,6 @@ def function_contract(decl: Ability, host: bool = False) -> dict[str, any] {
 
 
 def host_contracts(module: any, program: JacProgram) -> dict[str, dict[str, any]] {
-    import from jaclang.compiler.frontend.unitree { Import }
-    import from jaclang.compiler.driver.boundary_classify {
-        symbol_linked_source_module
-    }
     visited: set[str] = set();
     todo = [module];
     contracts: dict[str, dict[str, any]] = {};
@@ -110,7 +102,6 @@ def host_contracts(module: any, program: JacProgram) -> dict[str, dict[str, any]
 }
 
 def _host_type(name: str) -> str {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     shape = JAC_TYPE_REGISTRY.shape_of(name);
     if shape is not None and shape.sized {
         return "float" if shape.is_float else "int";
@@ -119,7 +110,6 @@ def _host_type(name: str) -> str {
 }
 
 def check_host_call(call: any, program: JacProgram) -> None {
-    import from jaclang.compiler.frontend.unitree { Name, Module, ability_of_symbol }
     if not isinstance(call.target, Name) or call.target.value != "bind_na_host" {
         return;
     }
@@ -135,7 +125,7 @@ def check_host_call(call: any, program: JacProgram) -> None {
     }
     export = call.params[0];
     provider = ability_of_symbol(export.sym) if isinstance(export, Name) else None;
-    import from jaclang.compiler.types.types { ClassType, FunctionType }
+
     host = call.params[1];
     host_type = host.narrowed_type or host.type;
     if provider is None or not isinstance(host_type, ClassType) {

@@ -31,7 +31,7 @@ obj DeploySpec {
     ) -> DeploySpec {
         cfg = dict(config or {});
         cfg.setdefault('source', path);
-        import from jaclang.runtime.object_model { fields }
+
         known = {field.name for field in fields(DeploySpec)};
         unknown = sorted(set(cfg.keys()) - known);
         if unknown {
@@ -116,9 +116,7 @@ obj DeploySpec {
             raise ValueError(f"DeploySpec.replicas must be >= 1, got {self.replicas}.");
         }
         config['min_replicas'] = self.replicas;
-        import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-            KubernetesConfig
-        }
+
         default_max = KubernetesConfig(app_name=self.app_name).max_replicas;
         if self.replicas > default_max {
             config['max_replicas'] = self.replicas;

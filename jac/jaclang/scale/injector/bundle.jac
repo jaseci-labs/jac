@@ -10,7 +10,6 @@ import tempfile;
 import time;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.scale.runtime.fleet { FleetSpec }
 
 glob logger = logging.getLogger(__name__);
 
@@ -91,8 +90,6 @@ obj BundleSourceFilter {
     has ignore_patterns: list[str];
 
     def parks(rel: Path) -> bool {
-        import from jaclang.project.source { path_matches_exclude }
-
         return path_matches_exclude(rel.as_posix(), self.ignore_patterns);
     }
 
@@ -125,8 +122,6 @@ obj BundleSourceFilter {
     }
 
     def matching_ignore_pattern(rel: Path) -> str {
-        import from jaclang.project.source { path_matches_exclude }
-
         for pattern in self.ignore_patterns {
             if path_matches_exclude(rel.as_posix(), [pattern]) {
                 return pattern;
@@ -167,15 +162,11 @@ obj BundleSourceFilter {
 
 
 def source_filter_for(base: Path) -> BundleSourceFilter {
-    import from jaclang.project.source { read_jacignore_patterns }
-
     return BundleSourceFilter(ignore_patterns=read_jacignore_patterns(str(base)));
 }
 
 
 def _project_config(project_dir: str) -> any {
-    import from jaclang.project.config { get_config_for_path }
-
     try {
         return get_config_for_path(Path(project_dir));
     } except Exception as exc {
@@ -206,7 +197,7 @@ def _entry_module_spec(project_dir: str) -> (tuple[Path, Path] | None) {
     if not config.project.entry_point {
         return None;
     }
-    import from jaclang.project.apps { resolve_entry_path }
+
     return (
         proj_root.resolve(),
         Path(resolve_entry_path(config.project.entry_point, str(proj_root)))
@@ -450,7 +441,6 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
 
 
 def unresolved_toml_references(text: str, environ: dict[str, str]) -> list[str] {
-    import from jaclang.project.config { resolve_env_refs }
     (_, refs) = resolve_env_refs(tomllib.loads(text), environ);
     return [f"{ref.path}: {ref.describe()}" for ref in refs];
 }
@@ -592,7 +582,6 @@ def _remove_stage_roots {
 
 
 def seal_step_env -> dict[str, str] {
-    import from jaclang.server.session { SCRATCH_ENV }
     env = release_binary_env();
     env[SCRATCH_ENV] = "1";
     return env;
@@ -816,8 +805,6 @@ def _precompile_app(
 
 
 def fat_bundle_setting(project_dir: str) -> tuple[bool, bool] {
-    import from jaclang.project.config { get_config_for_path }
-
     try {
         config = get_config_for_path(Path(project_dir));
     } except Exception as exc {
@@ -842,8 +829,6 @@ def fat_bundle_enabled(project_dir: str) -> bool {
 
 
 def seal_timeout_setting(project_dir: str) -> int {
-    import from jaclang.project.config { get_config_for_path }
-
     try {
         config = get_config_for_path(Path(project_dir));
     } except Exception as exc {
@@ -914,8 +899,6 @@ def _vendor_stage(stage: Path, seal_binary: bytes, pod_arch: str = "") {
 
 
 def _resolved_python_specs(stage: Path) -> list[str] {
-    import from jaclang.project.config { JacConfig }
-    import from jaclang.project.providers { get_python_provider, resolve_plan }
     config = JacConfig.load(stage / "jac.toml");
     deps = resolve_plan(config).for_ecosystem("python");
     return get_python_provider().specs_for(deps);
@@ -938,8 +921,6 @@ def _strip_external_record_lines(site: Path) {
 
 
 def staged_venv_files(stage: Path) -> list[Path] {
-    import from jaclang.project.providers { VENV_DEPS_MARKER }
-    import from jaclang.project.pyvenv { get_venv_site_packages }
     venv = stage / ".jac" / "venv";
     marker = venv / VENV_DEPS_MARKER;
     if not marker.is_file() {
@@ -1006,7 +987,7 @@ def _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int) {
         );
     }
     venv = stage / ".jac" / "venv";
-    import from jaclang.project.pyvenv { get_venv_site_packages }
+
     site = get_venv_site_packages(venv);
     if not site.is_dir() {
         raise RuntimeError(f"seal-time venv build left no site-packages under {venv}");
@@ -1014,7 +995,7 @@ def _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int) {
     specs = _resolved_python_specs(stage);
     _prune_seed_pip(site, specs);
     _strip_external_record_lines(site);
-    import from jaclang.project.providers { write_venv_deps_marker }
+
     write_venv_deps_marker(venv, specs);
 }
 

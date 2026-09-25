@@ -1,6 +1,3 @@
-import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint, WSEndPoint }
-
-
 obj RouteSegment {
     has kind: str = 'lit',
         value: str = '';

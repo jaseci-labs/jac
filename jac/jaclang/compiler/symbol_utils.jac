@@ -1,58 +1,4 @@
 import from pathlib { Path }
-import type from jaclang.compiler.driver.program { JacProgram }
-
-import type from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    Assignment,
-    AstSymbolNode,
-    AtomTrailer,
-    BinaryExpr,
-    ContextAwareNode,
-    ElementStmt,
-    Enum as UniEnum,
-    Expr,
-    FuncCall,
-    GlobalVars,
-    HasVar,
-    Import,
-    KWPair,
-    Module,
-    ModuleItem,
-    ModulePath,
-    Name,
-    NameAtom,
-    ParamVar,
-    Symbol,
-    Token,
-    UniNode,
-    UniScopeNode,
-    ability_of_symbol,
-    in_type_position
-}
-import from jaclang.compiler.frontend.constant {
-    CodeContext,
-    Tokens as Tok,
-    SymbolType
-}
-import from jaclang.compiler.frontend.diagnostics { E5082, E5084, W6006, W6007 }
-import from jaclang.compiler.driver.boundary_classify {
-    ClientImportVerdict,
-    classify_client_import_item,
-    is_client_boundary_import,
-    symbol_linked_source_module
-}
-import from jaclang.compiler.expr_keys {
-    classify_condition_key,
-    collect_assigned_symbols,
-    collect_assignment_target_keys,
-    collect_narrowing_symbols,
-    find_destructure_index_path,
-    get_expr_key,
-    int_subscript_suffix,
-    reference_key_deps
-}
 
 enum CallKind {
     METHOD = "method",
@@ -66,7 +12,6 @@ enum CallKind {
 def erased_import_binds(
     nd: UniNode, name: str, imported_name: str | None = None
 ) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_IMPORTS }
     mod = nd.find_parent_of_type(Module);
     if mod is None {
         return False;
@@ -96,7 +41,6 @@ def erased_import_binds(
 }
 
 def erased_identity_call_arg(nd: FuncCall) -> (Expr | None) {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_IDENTITY_CALLS }
     tgt = nd.target;
     if not isinstance(tgt, Name) or tgt.sym_name not in NATIVE_ERASED_IDENTITY_CALLS {
         return None;
@@ -135,7 +79,6 @@ def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol |
 }
 
 def imported_module_name(expr: Expr) -> str | None {
-    import from jaclang.compiler.types.types { ModuleType }
     if not isinstance(expr.type, ModuleType) {
         return None;
     }
@@ -189,7 +132,7 @@ def intrinsic_registry_if_ready -> object | None {
     if _mod is not None and _mod?.INTRINSIC_REGISTRY is None {
         return None;
     }
-    import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
+
     return INTRINSIC_REGISTRY;
 }
 
@@ -198,8 +141,6 @@ def resolved_callee(nd: FuncCall) -> (Ability | None) {
 }
 
 def classify_call(nd: FuncCall) -> CallKind {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-
     if isinstance(nd.target, AtomTrailer) and nd.target.is_attr {
         return CallKind.METHOD;
     }
@@ -280,7 +221,6 @@ def collect_field_names(
 }
 
 def collect_method_names(arch: Archetype) -> set[str] {
-    import from jaclang.compiler.passes.layout_pass { archetype_accessors }
     names: set[str] = set();
     if arch.body is not None and isinstance(arch.body, Sequence) {
         for stmt in arch.body {
@@ -481,8 +421,6 @@ def _report_client_bare_import_uses(reporter: any, mod: Module, stmt: UniNode) {
 }
 
 def report_placement_warnings(reporter: any, mod: Module) {
-    import from jaclang.compiler.placement.placement { get_module_summary }
-    import from jaclang.compiler.frontend.constant { CodeContext }
     ps = get_module_summary(mod, reporter.prog);
     written_glob_idxs: set[int] = set();
     for es in ps.elements {
@@ -561,7 +499,6 @@ def _module_top_element(mod: Module, nd: UniNode) -> (UniNode | None) {
 }
 
 def client_bridged_endpoint(mod: Module, top: UniNode) -> bool {
-    import from jaclang.compiler.placement.placement { project_has_server }
     return (
         isinstance(top, Ability)
         and isinstance(top, ContextAwareNode)
@@ -677,10 +614,6 @@ def _import_used_as_value(mod: Module, imp: Import) -> bool {
 def serverless_server_evidence(
     mod: Module, prog: any
 ) -> list[tuple[str, str, UniNode]] {
-    import from jaclang.compiler.placement.placement {
-        get_module_summary,
-        project_has_server
-    }
     if project_has_server(mod) {
         return [];
     }
@@ -710,8 +643,6 @@ def serverless_server_evidence(
 }
 
 def report_serverless_kind_errors(reporter: any, mod: Module) {
-    import from jaclang.compiler.frontend.diagnostics { E5087 }
-    import from jaclang.compiler.placement.placement { project_kind_name }
     evidence = serverless_server_evidence(mod, reporter.prog);
     if not evidence {
         return;

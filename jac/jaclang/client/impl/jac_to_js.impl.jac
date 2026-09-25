@@ -1,5 +1,4 @@
 impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
-    import from jaclang.client.client_surface { prepend_active_runtime_globals }
     return prepend_active_runtime_globals(js_code);
 }
 

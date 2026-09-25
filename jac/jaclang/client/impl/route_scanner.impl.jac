@@ -1,7 +1,6 @@
 import re;
 import from pathlib { Path }
 import from operator { attrgetter }
-import from jaclang.client.client_bundle { ClientBundleError }
 
 impl RouteScanner.postinit{
     self.pages_dir = self.project_root / self.PAGES_DIR_NAME;
@@ -185,8 +184,6 @@ impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
 }
 
 impl resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))] {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.compiler.driver.pipeline { route_exports }
     return route_exports(Jac.get_program(), str(module_path));
 }
 

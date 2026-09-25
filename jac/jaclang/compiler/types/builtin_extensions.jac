@@ -1,15 +1,3 @@
-import from jaclang.compiler.frontend.constant { SymbolAccess, SymbolType, Tokens }
-import from jaclang.compiler.frontend.unitree { Name, Source }
-import from jaclang.compiler.types.types {
-    ClassType,
-    FunctionType,
-    FunctionTypeFlags,
-    Parameter,
-    ParameterCategory,
-    ParamKind,
-    TypeBase
-}
-
 def install_builtin_extensions(
     list_class: ClassType | None, int_class: ClassType | None
 ) -> None {

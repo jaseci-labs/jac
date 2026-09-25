@@ -1,4 +1,3 @@
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl EsastGenPass._ensure_backend -> FrameworkBackend {
     if self.backend is None {
         import from jaclang.compiler.backends.es.backends.registry {
@@ -98,7 +97,6 @@ impl EsastGenPass._collect_body_stmts(
 }
 
 impl EsastGenPass._audit_free_identifiers(nd: uni.Module, program: es.Program) -> None {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     allowed = client_ambient_globals() | RUNTIME_PRELUDE_GLOBALS;
     frees = free_identifiers(program, allowed);
     if not frees {
@@ -509,10 +507,7 @@ impl EsastGenPass.prepare with entry {
     for nd in self.module.flatten() {
         nd.gen.es_ast = None;
     }
-    import from jaclang.compiler.frontend.codeinfo { ClientManifest }
 
-    import from jaclang.compiler.frontend.module_facts { client_capability_violations }
-    import from jaclang.compiler.frontend.diagnostics { E5096 }
     if not self.module.client_viols_reported {
         for (_vnode, _vkind) in client_capability_violations(self.module) {
             self.ctx.emit(E5096, node_override=_vnode, kind=_vkind);
@@ -527,7 +522,6 @@ impl EsastGenPass.prepare with entry {
         self.module.gen.interop_manifest.endpoint_effects
     );
 
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     self.shared_arch_names: set[str] = {
         a.name.value
         for a in ModuleFacts.shared_archetypes_for_context(
