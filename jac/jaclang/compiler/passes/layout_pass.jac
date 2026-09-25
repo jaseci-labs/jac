@@ -40,7 +40,7 @@ glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "bytes"
      }
          | set(JAC_TYPE_REGISTRY.sized_scalar_names()),
-     VTABLE_HEADER_SLOTS: int = 1;
+     VTABLE_HEADER_SLOTS: int = 2;
 
 glob LAYOUT_COMPATIBLE_SCALARS: set[str] = LAYOUT_COMPATIBLE_PRIMITIVES | {"type"};
 

@@ -3342,6 +3342,12 @@ impl NaIRGenPass._emit_isinstance_user(
         eq = self.builder.icmp_unsigned("==", vptr, vt_base, name="isinst.eq");
         cmp = eq if cmp is None else self.builder.or_(cmp, eq, name="isinst.or");
     }
+    if cmp is not None
+        and self._vtable_slot_certain(
+            self._flow_narrowed_type_of(nd.params[0] if nd.params else None)
+        ) {
+        cmp = self._isinstance_vtable_fallback(cmp, vptr, names, "isinst");
+    }
 
     if self._is_owned(operand) {
         self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");

@@ -69,3 +69,25 @@ test "objects built by the defining module carry the same vtable" {
     assert f(0) == 1 , "a Circle built inside the library must match Circle here";
     assert f(1) == 0 , "a Square built inside the library must not match Circle";
 }
+
+"""A subclass defined in a module the checking module never imports.
+
+The checking module's candidate vtables and class index only list the classes
+it can see, so an object of an unseen subclass compared equal to none of them
+and every check answered `False`. Each vtable now points at its class's own
+ancestry, emitted by the defining module, and a candidate miss walks it.
+"""
+test "a subclass from an unimported module matches its imported base" {
+    (eng, _) = compile_native("xmod_isinstance_foreign_main.jac");
+    checks = [
+        ("chk_foreign_isinstance", [1, 0, 1]),
+        ("chk_foreign_match", [7, -1, 9]),
+        ("chk_foreign_kind", [1, 0, 1]),
+        ("chk_foreign_walker", [1, 0, 1])
+    ];
+    for (name, expected) in checks {
+        f = get_func(eng, name, ctypes.c_int64, ctypes.c_int64);
+        got = [f(k) for k in range(3)];
+        assert got == expected , f"{name}: expected {expected}, got {got}";
+    }
+}
