@@ -399,6 +399,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             and first_val.type != _decl_elem {
             first_val = self._coerce_type(first_val, _decl_elem);
         }
+        first_val = self._variadic_elem_coerce(first_val, nd);
     }
     _lit_spec = self._elem_spec_of(nd);
     _aos_lit = self._aos_elem_of(nd);
@@ -554,6 +555,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             and val.type != _decl_elem {
             val = self._coerce_type(val, _decl_elem);
         }
+        val = self._variadic_elem_coerce(val, nd);
         val = self._nogc_elem_prep(nd.values[i], val);
         if val is None {
             return None;

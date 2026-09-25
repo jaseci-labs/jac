@@ -2017,7 +2017,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         );
                                     }
                                     self._codegen_index_set(
-                                        target_val, idx_val, store_val, elem_type_name
+                                        target_val,
+                                        idx_val,
+                                        self._variadic_elem_coerce(
+                                            store_val, target_expr.target
+                                        ),
+                                        elem_type_name
                                     );
                                     _idx_stored = True;
                                 }

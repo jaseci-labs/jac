@@ -376,6 +376,31 @@ impl NaIRGenPass._tuple_seq_coerce(
     return seq[0] if seq is not None else None;
 }
 
+impl NaIRGenPass._variadic_elem_coerce(
+    val: ir.Value, container: (uni.UniNode | None)
+) -> ir.Value {
+    """Give a fixed-arity tuple the shape a `list[tuple[T, ...]]` slot holds.
+
+    A variadic tuple lowers to the sequence `list[T]` does (see
+    `_variadic_tuple_seq_type`), and every read out of such a list views its
+    erased slot through that sequence type. A tuple display stored into the
+    list is built with its own fixed arity, though, and the erased `i8*` slot
+    took the tuple box as it was, so the next read walked a tuple struct as a
+    list header. Every element store into a list whose checked element type
+    is variadic comes through here and is materialized as that sequence; any
+    other value, or a list of anything else, passes through untouched.
+    """;
+    if self._tuple_struct_of_value(val) is None {
+        return val;
+    }
+    decl = self._list_elem_llvm_of(container);
+    if decl is None or self._spec_from_list_slot_type(decl) is None {
+        return val;
+    }
+    seq = self._tuple_seq_coerce(val, decl);
+    return seq if seq is not None else val;
+}
+
 impl NaIRGenPass._tuple_struct_of_value(
     val: (ir.Value | None)
 ) -> (ir.LiteralStructType | None) {
