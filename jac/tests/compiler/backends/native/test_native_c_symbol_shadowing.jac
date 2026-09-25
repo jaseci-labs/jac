@@ -179,9 +179,7 @@ test "every C symbol the backend or a bundled module declares is reserved" {
                 source = handle.read();
             }
             for block in re.finditer(r'import\s+from\s+[^{};]+\{([^{}]*)\}', source) {
-                for found in re.finditer(
-                    r'\bdef\s+([A-Za-z_]\w*)\s*\(', block.group(1)
-                ) {
+                for found in re.finditer(r'\bdef\s+([A-Za-z_]\w*)', block.group(1)) {
                     declared[found.group(1)] = path;
                 }
             }

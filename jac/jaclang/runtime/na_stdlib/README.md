@@ -547,6 +547,62 @@ native layout records the emitted name separately from its source-level key.
   instead of `connect` -- the image-wide clib-extern bare-name set would
   otherwise skip this module's `def:pub connect` body (SIGSEGV at
   JIT-execute).
+- **`stat.jac`** (Mechanism B) -- the CPython `stat` constant/predicate
+  surface: `ST_*` indexes, the `S_IF*` file-type constants (with the
+  unsupported `S_IFDOOR`/`S_IFPORT`/`S_IFWHT` pinned to 0 and their `S_IS*`
+  predicates hardwired to `False`, exactly as CPython does off Solaris/BSD),
+  the `S_I*` permission and `S_ISUID`/`S_ISGID`/`S_ENFMT`/`S_ISVTX` bits, the
+  `UF_*`/`SF_*` BSD file flags, `S_IMODE`/`S_IFMT`, and `filemode` (the full
+  `_filemode_table` rendering including `s`/`S` for setuid/setgid and `t`/`T`
+  for the sticky bit, and `?` for an unknown type). No FFI floor -- the mode
+  is an `int`, so the module is portable to every native target. SCOPE: the
+  Windows `FILE_ATTRIBUTE_*` constants are not provided.
+- **`glob.jac`** (Mechanism B) + **`_glob_native.jac`** (tiny libc FFI floor:
+  `lstat` for `lexists` semantics, so broken symlinks still match literal
+  patterns, and `_directory_native`'s `opendir`/`readdir` for listings) --
+  a port of CPython 3.14's `_iglob`/`_glob0`/`_glob1`/`_glob2`/`_rlistdir`
+  walk: `glob`/`iglob`, `escape`, `has_magic`, `**` recursion under
+  `recursive=True`, the dotfile rules (`*`/`?`/`[` never match a leading `.`
+  unless the pattern segment starts with `.` or `include_hidden=True`), and
+  trailing-slash patterns matching directories only. Matching goes through
+  the bundled `fnmatch` (`fnmatchcase` == `fnmatch` here since `normcase` is
+  the POSIX identity). SCOPE/divergences: each directory's names are visited
+  in sorted order where CPython's order is explicitly undefined (scandir
+  order) -- sort or compare sets before pinning; `iglob` returns an eager
+  `list[str]`, not a lazy iterator; `root_dir`, `dir_fd`, `translate`, and
+  the deprecated `glob0`/`glob1` are not provided; POSIX paths only.
+- **`platform.jac`** (Mechanism B) + **`_platform_native.<os>.jac`** (libc
+  FFI floor: `uname(2)` into a heap `struct utsname`, `uname -p` via
+  `popen` for the processor field, `gnu_get_libc_version` on glibc, and
+  `sw_vers -productVersion` on Darwin) -- the query surface `system`,
+  `node`, `release`, `version`, `machine`, `processor` (with CPython 3.14's
+  `_unknown_as_blank` semantics), `uname()`, `architecture`,
+  `libc_ver`, `platform`, `python_version`, and `python_version_tuple`.
+  `platform()` reproduces CPython's join rules: `machine == processor` drops
+  the processor, Darwin reports `macOS-<sw_vers>` and the generic branch,
+  Linux reports `...-with-glibc<ver>` (and ignores `terse`, as CPython does).
+  SCOPE/divergences: glibc-Linux and Darwin only (on musl the
+  `gnu_get_libc_version` extern fails to link, and `libc_ver` hardcodes
+  `("glibc", <host glibc>)`); `uname()` returns an archetype, not a
+  namedtuple -- field access matches, indexing/iteration/`repr` do not;
+  `python_version`/`python_version_tuple` report a fixed "3.14.x" claim
+  matching the bundled sv runtime's major.minor rather than a probed
+  interpreter version; `aliased` is accepted but ignored (no
+  `system_alias`); `architecture` always answers `('64bit', 'ELF')` /
+  `('64bit', '')` rather than shelling out to `file`; `java_ver`,
+  `win32_ver`, `mac_ver`, `ios_ver`, `freedesktop_os_release`,
+  `python_implementation`/`python_build`/`python_compiler`/`python_branch`/
+  `python_revision`, and `system_alias`/`node`'s socket fallback are not
+  provided.
+- **`errno.<os>.jac`** (Mechanism B, per-OS variant module -- the resolver's
+  `<name>.<os>.jac` probe picks `errno.linux.jac` or `errno.darwin.jac`) --
+  the CPython `errno` constant surface: every `E*` the platform's
+  `<errno.h>` defines (value-aliased pairs like `EAGAIN`/`EWOULDBLOCK`,
+  `EDEADLK`/`EDEADLOCK`, `ENOTSUP`/`EOPNOTSUPP` included) plus the
+  `errorcode` reverse map built in CPython's `errnomodule.c` insertion order,
+  so aliased codes resolve to the same name CPython reports. SCOPE: Linux
+  and Darwin tables only; no `strerror`-style message lookup is exported
+  (`os.strerror` stays a compiler intercept).
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler

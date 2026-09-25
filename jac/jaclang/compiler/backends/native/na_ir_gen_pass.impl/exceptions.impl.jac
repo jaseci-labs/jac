@@ -618,7 +618,8 @@ impl NaIRGenPass._codegen_try_unwind(
                     if isinstance(except_node.name, uni.Name)
                     else str(except_node.name);
 
-                if caught_struct is not None {
+                if caught_struct is not None
+                    and self._exc_binds_object(caught_struct) {
                     handler_exc_obj = self.builder.load(
                         exc_obj_ptr, name="exc.bound.obj"
                     );
@@ -677,6 +678,17 @@ impl NaIRGenPass._codegen_try_unwind(
     }
 
     self.builder.position_at_end(merge_bb);
+}
+
+impl NaIRGenPass._exc_binds_object(type_name: str) -> bool {
+    if type_name not in self.struct_types {
+        return False;
+    }
+    return (
+        f"{type_name}.init" in self.method_funcs
+        or f"{type_name}.__init__" in self.method_funcs
+        or bool(self.struct_field_order.get(type_name))
+    );
 }
 
 impl NaIRGenPass._slot_lowering_active -> bool {
@@ -891,7 +903,7 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
             var_name = except_node.name.value
                 if isinstance(except_node.name, uni.Name)
                 else str(except_node.name);
-            if caught is not None {
+            if caught is not None and self._exc_binds_object(caught) {
                 _exc_sp_ty = self.struct_types[caught].as_pointer();
                 bound_val = self.builder.bitcast(
                     caught_values[1], _exc_sp_ty, name="exc.bound.typed"

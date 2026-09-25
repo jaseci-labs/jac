@@ -1284,6 +1284,7 @@ walker NaIRGenPass {
 
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
+    def _exc_binds_object(type_name: str) -> bool;
     def _exception_handler_ids(ex: uni.Expr | None) -> list[int];
     def _exc_bound_struct(ex: (uni.Expr | None)) -> (str | None);
     def _reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) -> None;
