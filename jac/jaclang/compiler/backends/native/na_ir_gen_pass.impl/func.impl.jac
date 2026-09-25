@@ -551,7 +551,31 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             and self._mono_solution is not None
             and self._ability_is_generator(nd)
         ) {
-        self._codegen_generator(nd, func);
+        _gen_mark = len(self.ctx.errors_had);
+        _gen_raised = False;
+        try {
+            self._codegen_generator(nd, func);
+        } except Exception as _gen_exc {
+            _gen_raised = True;
+            if self._na_debug_on() {
+                import sys;
+                import traceback;
+                sys.stderr.write(f"NA_DEBUG raise {name}\n");
+                traceback.print_exc(file=sys.stderr);
+            }
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="function (native emitter error in)",
+                name=name,
+                help_text=f"The native backend raised {type(_gen_exc).__name__} "
+                f"while lowering this function; it falls back to its Python "
+                f"implementation. Original error: {_gen_exc}"
+            );
+        }
+        if _gen_raised and self._demote_method_if_unlowerable(name, func, _gen_mark) {
+            self._rename_demoted_symbol(name, func);
+        }
         return;
     }
 

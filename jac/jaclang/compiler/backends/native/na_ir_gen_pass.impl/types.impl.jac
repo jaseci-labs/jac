@@ -622,6 +622,19 @@ impl NaIRGenPass._typed_elem_llvm_of(
     if _ty is None {
         return None;
     }
+    try {
+        import from jaclang.compiler.types.types { TypeVarType as _TeTypeVar }
+    } except ImportError {
+        _TeTypeVar = None;
+    }
+    if (
+        _TeTypeVar is not None
+        and isinstance(_ty, _TeTypeVar)
+        and self._mono_solution is not None
+        and _ty.name in self._mono_solution
+    ) {
+        _ty = self._mono_solution[_ty.name];
+    }
     _mg = self._mangled_of(_ty);
     if _mg is None or not _mg.startswith(prefix) {
         _sole = self._opt_sole_member(_ty);

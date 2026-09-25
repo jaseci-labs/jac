@@ -461,6 +461,65 @@ native layout records the emitted name separately from its source-level key.
   `c_powi` with `OverflowError("complex exponentiation")`. The libm wrappers
   link against host libm on native and against the vendored musl bitcode on
   wasm.
+- **`itertools.jac`** (#8145) -- the CPython 3.14 `itertools` surface as
+  pure-Jac generators: `count` (int and float start/step), `cycle`,
+  `repeat`, `accumulate` (default `+` over int/float/str plus a custom
+  `func`, `initial=` included), `batched` (`strict=` included), `chain`
+  (+ `chain_from_iterable`), `combinations`,
+  `combinations_with_replacement`, `compress`, `dropwhile`, `takewhile`,
+  `filterfalse` (`None` predicate falls back to truthiness), `groupby`,
+  `islice`, `pairwise`, `permutations`, `product` (`repeat=` included),
+  `starmap`, `tee`, and `zip_longest` (`fillvalue=` included).
+  `islice` splits its arguments on call arity, so `islice(it, 2)` is a
+  stop and `islice(it, 2, None)` a start exactly as CPython's positional
+  forms distinguish them, and non-integer/negative arguments raise the
+  same `ValueError` text (`"Start/Stop argument for islice() must be None
+  or an integer: 0 <= x <= sys.maxsize."`, `"Step for islice() must be a
+  positive integer or None."`) while a wrong arity raises CPython's
+  `TypeError` (`"islice expected at least/most N arguments, got M"`).
+  Negative `r`/`repeat`/`n` raise CPython's `ValueError`s
+  (`"r must be non-negative"`, `"repeat argument cannot be negative"`,
+  `"n must be at least one"`, `"n must be >= 0"`, `"batched():
+  incomplete batch"`). SCOPE/divergences: `chain.from_iterable` cannot be
+  spelled on na (`chain` is a function, not a class) -- the same
+  operation is exported as the module-level `chain_from_iterable`;
+  the zero-argument `zip_longest()` and the zero/five-argument `islice`
+  arity `TypeError`s behave as CPython does at runtime but are probed
+  standalone (the sv lane's checker enforces the typeshed arity, so those
+  shapes cannot appear in an equivalence fixture);
+  `groupby` yields `(key, list)` snapshots instead of lazily-invalidated
+  `_grouper` iterators, so a group is still readable after advancing
+  where CPython's is not (a superset, safe for collect-each-group use);
+  `tee` eagerly materializes the source into `n` independent `list`s --
+  same values, but the full memory cost is paid up front and the returned
+  children are re-iterable lists, not one-shot shared-head iterators; `zip_longest`
+  materializes every input *before* the first yield, so an infinite
+  input hangs where CPython streams (finite inputs are congruent);
+  `count`/`accumulate` arithmetic is i64/f64 bounded, not bignum; and
+  `repeat`'s `times` is typed `int | None`, so a non-integer count fails
+  at the Jac call boundary rather than through CPython's `__index__`
+  coercion. **Callables:** `dropwhile`, `takewhile`, `filterfalse`,
+  `groupby`'s `key=`, `accumulate`'s `func`, and `starmap`'s `func` are
+  typed `Callable` parameters (a boxed `any` has no native call path), so
+  callbacks must have `any`-typed parameters and return `any`;
+  `starmap` takes `Callable[[any, any], any]` -- exactly two arguments
+  per row (a fixed native signature cannot splat arbitrary rows) -- and
+  rows must be `list`s of length 2 or it raises `TypeError`.
+  **Variadic inputs:** `chain`, `zip_longest`, and `product` take
+  `*iterables: any`, and a `for` over a boxed `any` iterates only `list`s
+  (and `str` via an explicit check); dict/set/range/iterator arguments
+  through those parameters raise `TypeError`. Parameters declared
+  `[C: Iterable]` (`permutations`, `tee`, `compress`, ...) are
+  monomorphized, so they accept any iterable a native `for` drives --
+  lists, strs, ranges, dicts, and `Iterator`s. **Row shape:** the
+  tuple-valued iterators yield `list` snapshots on na -- `product`,
+  `permutations`, `combinations`, `combinations_with_replacement`,
+  `batched`, `zip_longest`, `pairwise`, and `groupby` rows, and `tee`'s
+  children, are all `list[any]` (a native tuple is a fixed-arity literal
+  struct, so `tuple(iterable)` is not a lowered builtin and a boxed
+  `any` only subscripts as a list). Values and order are identical to
+  CPython; only the container type differs, so na rows are mutable where
+  CPython's are not. Pinned sv<->na congruent by `prim_itertools.jac`.
 
 - **`time.jac`** (Mechanism F surface) + **`_time_common.jac`** (shared
   `clock_gettime` / `clock_settime` FFI and timespec loads) +
