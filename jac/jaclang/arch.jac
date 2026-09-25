@@ -12127,17 +12127,6 @@ impl import scale.observability {
         resolve_prometheus_url,
         scalar as prom_scalar
     }
-    prometheus_client --> scale.observability.prometheus_metrics.PrometheusMetricsCollector.__post_init__ {
-        GCCollector,
-        PlatformCollector,
-        ProcessCollector
-    }
-    prometheus_client --> scale.observability.prometheus_metrics.PrometheusMetricsCollector._scrape_registry {
-        multiprocess
-    }
-    prometheus_client --> scale.observability.prometheus_metrics._merges_across_workers {
-        values
-    }
     prometheus_metrics --> scale.observability.factory.UtilityFactory.create_metrics {
         PrometheusMetricsCollector
     }

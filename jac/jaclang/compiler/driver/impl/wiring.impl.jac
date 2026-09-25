@@ -505,7 +505,18 @@ impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
     if not resolved or not os.path.isfile(resolved) {
         return None;
     }
-    return self.module_name(resolved);
+    module = self.module_name(resolved);
+    if module is None
+        or path_node.level != 0
+        or path_node.string_path_value is not None {
+        return module;
+    }
+    if path_node.dot_path_str == self.import_name(module)
+        or path_node.in_client_context()
+        or path_node.in_native_context() {
+        return module;
+    }
+    return None;
 }
 
 impl WiringSpec.rules_for_provider(provider: str) -> list[ImportRule] {

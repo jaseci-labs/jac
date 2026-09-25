@@ -23,7 +23,7 @@ def _merges_across_workers -> bool {
     if not os.environ.get(MULTIPROC_DIR_ENV) {
         return False;
     }
-
+    import from prometheus_client { values }
     return values.ValueClass is not values.MutexValue;
 }
 
