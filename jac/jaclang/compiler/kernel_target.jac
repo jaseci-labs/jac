@@ -11,7 +11,8 @@ obj KernelTarget {
         root_module: str = "",
         kernel_unit_rel: list[str] = [],
         native_lowered_rel: list[str] = [],
-        native_only_rel: list[str] = [];
+        native_only_rel: list[str] = [],
+        link_mode: str = "";
 
     def to_dict -> dict[str, object] {
         return {
@@ -21,7 +22,8 @@ obj KernelTarget {
             "root_module": self.root_module,
             "kernel_unit_rel": list(self.kernel_unit_rel),
             "native_lowered_rel": list(self.native_lowered_rel),
-            "native_only_rel": list(self.native_only_rel)
+            "native_only_rel": list(self.native_only_rel),
+            "link_mode": self.link_mode
         };
     }
 
@@ -86,7 +88,8 @@ def kernel_target_from_dict(data: dict[str, object]) -> (KernelTarget | None) {
         root_module=root_module,
         kernel_unit_rel=_str_list(data.get("kernel_unit_rel")),
         native_lowered_rel=_str_list(data.get("native_lowered_rel")),
-        native_only_rel=_str_list(data.get("native_only_rel"))
+        native_only_rel=_str_list(data.get("native_only_rel")),
+        link_mode=str(data.get("link_mode", "") or "")
     );
 }
 
@@ -98,6 +101,19 @@ def read_kernel_target(path: str) -> (KernelTarget | None) {
         return None;
     }
     return kernel_target_from_dict(data);
+}
+
+def with_link_mode(spec: KernelTarget, link_mode: str) -> KernelTarget {
+    return KernelTarget(
+        format=spec.format,
+        `root=spec.root,
+        scope_modules=list(spec.scope_modules),
+        root_module=spec.root_module,
+        kernel_unit_rel=list(spec.kernel_unit_rel),
+        native_lowered_rel=list(spec.native_lowered_rel),
+        native_only_rel=list(spec.native_only_rel),
+        link_mode=link_mode
+    );
 }
 
 def write_kernel_target(spec: KernelTarget, path: str) {

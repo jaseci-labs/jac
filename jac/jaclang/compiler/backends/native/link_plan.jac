@@ -901,6 +901,7 @@ def _write_sidecar(
         "compiler_digest": running_compiler_digest(),
         "codegen_identity": plan.options.base_codegen_identity(),
         "triple": plan.triple,
+        "link_mode": plan.mode,
         "python": f"{sys.version_info.major}.{sys.version_info.minor}",
         "unit_sources": {
             native_unit_identity(p): unit_source_digest(p) for p in unit_paths

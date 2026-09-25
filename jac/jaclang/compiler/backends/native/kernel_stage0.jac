@@ -2,7 +2,6 @@ import os;
 import time;
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.backends.native.link_plan { LinkResult }
-import from jaclang.compiler.driver.compile_options { NATIVE_LINK_MODE_BITCODE }
 import from jaclang.compiler.kernel_target {
     KERNEL_TARGET_FORMAT,
     KernelTarget,
@@ -10,6 +9,7 @@ import from jaclang.compiler.kernel_target {
     set_kernel_target
 }
 import from jaclang.compiler.backends.native.kernel_resolve {
+    KERNEL_DEV_LINK_MODE,
     _StoreParserSpan,
     kernel_plan
 }
@@ -39,18 +39,25 @@ def link_kernel(
     dst: str,
     target: (KernelTarget | None) = None,
     prog: (JacProgram | None) = None,
-    log: (Callable[[str], None] | None) = None
+    log: (Callable[[str], None] | None) = None,
+    link_mode: str = ""
 ) -> LinkResult {
     import from jaclang.compiler.backends.native.link_plan {
         ArtifactKind,
         link_artifact
     }
+    mode = link_mode
+        or (target.link_mode if target is not None else "")
+        or KERNEL_DEV_LINK_MODE;
     with _StoreParserSpan() {
         started = time.perf_counter();
-        plan = kernel_plan(prog, mode=NATIVE_LINK_MODE_BITCODE, target=target);
+        plan = kernel_plan(prog, mode=mode, target=target);
         planned = time.perf_counter();
         if log is not None {
-            log(f"  Kernel plan: {len(plan.units)} units in {planned - started:.1f}s");
+            log(
+                f"  Kernel plan: {len(plan.units)} units in {planned - started:.1f}s "
+                f"({mode} link)"
+            );
         }
         os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
         result = link_artifact(plan, dst, ArtifactKind.SHARED, log=log);

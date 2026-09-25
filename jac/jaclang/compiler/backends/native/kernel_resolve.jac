@@ -3,7 +3,11 @@ import hashlib;
 import json;
 import os;
 import sys;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.compile_options {
+    CompileOptions,
+    NATIVE_LINK_MODE_BITCODE,
+    NATIVE_LINK_MODE_OBJECTS
+}
 import type from jaclang.compiler.kernel_target { KernelTarget }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.backends.native.link_plan { LinkPlan }
@@ -12,7 +16,9 @@ glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
      STUBCAT_BUILDING_ENV: str = "JAC_STUBCAT_BUILDING",
      KERNEL_OFF_VALUES: tuple[str, ...] = ("none", "off", "disabled", "0"),
      LAYOUT_SIDECAR_SUFFIX: str = ".layout.json",
-     STAGE0_BUILDER: str = "stage0";
+     STAGE0_BUILDER: str = "stage0",
+     KERNEL_DEV_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
+     SEALED_LINK_MODE: str = NATIVE_LINK_MODE_BITCODE;
 
 obj ResolvedKernel {
     has lib_path: str,
@@ -99,6 +105,13 @@ def _from_sealed_image -> (ResolvedKernel | None) {
             f"sealed kernel {lib_path} does not match its manifest sha256"
         );
     }
+    if str(record.get("mode", SEALED_LINK_MODE)) != SEALED_LINK_MODE
+        or str(sidecar.get("link_mode", SEALED_LINK_MODE)) != SEALED_LINK_MODE {
+        raise KernelUnavailable(
+            f"sealed kernel {lib_path} is not a {SEALED_LINK_MODE} link; an "
+            "incremental kernel never ships in a sealed image"
+        );
+    }
     if str(sidecar.get("plan_digest", "")) != str(record.get("plan_digest", "")) {
         raise KernelUnavailable(
             f"sealed kernel {lib_path}: sidecar plan digest disagrees with the manifest"
@@ -129,7 +142,7 @@ def kernel_options -> CompileOptions {
     return CompileOptions(
         aot_mode=True,
         native_require=[],
-        native_link_mode="objects",
+        native_link_mode=KERNEL_DEV_LINK_MODE,
         na_debug=False,
         default_codespace="native",
         native_unit=True,
@@ -165,9 +178,11 @@ def kernel_plan(
     return build_link_plan(program, [root_path], options, mode=mode, native_unit=True);
 }
 
-def build_kernel(dst: str, prog: any = None, log: any = None) -> any {
+def build_kernel(
+    dst: str, prog: any = None, log: any = None, link_mode: str = KERNEL_DEV_LINK_MODE
+) -> any {
     import from jaclang.compiler.backends.native.kernel_stage0 { link_kernel }
-    return link_kernel(dst, prog=prog, log=log);
+    return link_kernel(dst, prog=prog, log=log, link_mode=link_mode);
 }
 
 class _StoreParserSpan {

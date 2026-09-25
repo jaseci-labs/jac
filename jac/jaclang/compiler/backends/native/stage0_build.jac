@@ -6,7 +6,10 @@ import subprocess;
 import sys;
 import tarfile;
 import type from jaclang.compiler.kernel_target { KernelTarget }
-import from jaclang.compiler.backends.native.kernel_resolve { STAGE0_BUILDER }
+import from jaclang.compiler.backends.native.kernel_resolve {
+    KERNEL_DEV_LINK_MODE,
+    STAGE0_BUILDER
+}
 import from jaclang.compiler.backends.native.stage0_pin {
     Stage0Pin,
     Stage0PinError,
@@ -326,6 +329,7 @@ def restamp_stage0_sidecar(
     }
     import from jaclang.compiler.driver.jir { sidecar_unit_paths, unit_source_digest }
     import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
+    import from jaclang.compiler.driver.compile_options { NATIVE_LINK_MODE_BITCODE }
     sidecar = read_sidecar(dst);
     if sidecar is None {
         raise Stage0Unavailable("the stage-0 build left no layout sidecar");
@@ -355,6 +359,7 @@ def restamp_stage0_sidecar(
     stamped["stage0"] = {"commit": pin.commit, "digest": pin.compiler_digest};
     stamped["abi"] = NATIVE_ABI_VERSION;
     stamped["abi_contract"] = abi_contract_digest(target_root);
+    stamped["link_mode"] = str(sidecar.get("link_mode") or NATIVE_LINK_MODE_BITCODE);
     stamped["unit_sources"] = sources;
     stamped["unit_policy"] = policy;
     atomic_write(
@@ -392,7 +397,9 @@ def _child_failure(code: int) -> str {
     return f"the stage-0 child exited with status {code}";
 }
 
-def build_kernel_by_pin(dst: str) -> bool {
+def build_kernel_by_pin(
+    dst: str, spec: (KernelTarget | None) = None, link_mode: str = KERNEL_DEV_LINK_MODE
+) -> bool {
     try {
         pin = read_stage0_pin();
     } except (Stage0PinError, OSError) as e {
@@ -403,10 +410,13 @@ def build_kernel_by_pin(dst: str) -> bool {
     }
     import from jaclang.compiler.kernel_target {
         active_kernel_target,
+        with_link_mode,
         write_kernel_target
     }
     import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
-    spec = active_kernel_target() or running_kernel_target();
+    spec = with_link_mode(
+        spec or active_kernel_target() or running_kernel_target(), link_mode
+    );
     spec_path = f"{dst}.target.json";
     try {
         (repo, prefix) = checkout_repo();

@@ -19,9 +19,12 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 import jaclang.compiler.backends.native.stage0_build as stage0_build;
 import from jaclang.compiler.backends.native.kernel_resolve {
+    KERNEL_DEV_LINK_MODE,
     KernelUnavailable,
+    SEALED_LINK_MODE,
     _accept_in_tree,
     _derive_in_tree,
+    _from_sealed_image,
     kernel_options,
     read_sidecar
 }
@@ -273,6 +276,102 @@ test "a guard trip or an unknown target format falls back to the self build, unl
         Path(pin_path).write_text("{");
         (built, notice, raised) = run(False, 0);
         assert not built and "unreadable pin" in notice , notice;
+    }
+}
+
+def _spec_link_mode(link_mode: str) -> str {
+    import from jaclang.compiler.kernel_target { read_kernel_target }
+    seen: list[str] = [];
+    def child(snapshot: str, spec_path: str, dst: str) -> int {
+        spec = read_kernel_target(spec_path);
+        seen.append(spec.link_mode if spec is not None else "unreadable");
+        return 0;
+    }
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        pin_path = os.path.join(tmp, "stage0.json");
+        write_stage0_pin(_commit_pin(), pin_path);
+        dst = os.path.join(tmp, "libjac_compiler.so");
+        with patch.object(
+            stage0_build, "checkout_repo", return_value=("/repo", "jac/")
+        ), patch.object(
+            stage0_build, "provision_stage0", return_value=jaclang_pkg_root()
+        ), patch.object(stage0_build, "native_tree_trips", return_value=[]), patch.object(
+            stage0_build, "file_guard_trips", return_value=[]
+        ), patch.object(stage0_build, "run_stage0_child", side_effect=child), patch.object(
+            stage0_build, "restamp_stage0_sidecar", return_value={}
+        ) {
+            built = _with_env(
+                {STAGE0_PIN_ENV: pin_path},
+                lambda() { build_kernel_by_pin(dst, link_mode=link_mode)
+                    if link_mode
+                    else build_kernel_by_pin(dst); }
+            );
+        }
+        assert built is True;
+    }
+    assert len(seen) == 1;
+    return seen[0];
+}
+
+test "stage 0 links a dev kernel from unit objects and a sealed kernel as one optimized program" {
+    assert KERNEL_DEV_LINK_MODE == "objects" and SEALED_LINK_MODE == "bitcode";
+    assert kernel_options().native_link_mode == KERNEL_DEV_LINK_MODE;
+    assert _spec_link_mode("") == KERNEL_DEV_LINK_MODE;
+    assert _spec_link_mode(SEALED_LINK_MODE) == SEALED_LINK_MODE;
+    import from jaclang.compiler.kernel_target {
+        kernel_target_from_dict,
+        with_link_mode
+    }
+    import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
+    spec = running_kernel_target();
+    assert spec.link_mode == "";
+    sealed = with_link_mode(spec, SEALED_LINK_MODE);
+    back = kernel_target_from_dict(sealed.to_dict());
+    assert back is not None and back.to_dict() == sealed.to_dict();
+    legacy = spec.to_dict();
+    legacy.pop("link_mode");
+    old = kernel_target_from_dict(legacy);
+    assert old is not None and old.link_mode == "" , "an older spec leaves the mode to the builder";
+}
+
+test "a sealed image whose kernel is not a whole-program link is refused" {
+    import jaclang.jac0core.sealed as sealed_mod;
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        lib = Path(tmp, "compiler", "libjac_compiler.so");
+        lib.parent.mkdir(parents=True);
+        lib.write_bytes(b"kernel");
+        sidecar = {"classes": {}, "plan_digest": "p", "link_mode": SEALED_LINK_MODE};
+        _write_json(str(lib) + ".layout.json", sidecar);
+        record = {
+            "path": "compiler/libjac_compiler.so",
+            "sha256": hashlib.sha256(b"kernel").hexdigest(),
+            "plan_digest": "p",
+            "mode": SEALED_LINK_MODE
+        };
+        obj FakeImage {
+            has pkg_dir: Path,
+                record: dict[str, any];
+
+            def native_artifact -> dict[str, any] {
+                return self.record;
+            }
+        }
+        def resolve(rec: dict[str, any]) -> tuple[bool, bool] {
+            image = FakeImage(pkg_dir=Path(tmp), record=rec);
+            with patch.object(sealed_mod, "_jaclang_image", return_value=image) {
+                try {
+                    return (_from_sealed_image() is not None, False);
+                } except KernelUnavailable {
+                    return (False, True);
+                }
+            }
+        }
+        assert resolve(record) == (True, False);
+        assert resolve({** record, "mode": KERNEL_DEV_LINK_MODE}) == (False, True);
+        _write_json(
+            str(lib) + ".layout.json", {** sidecar, "link_mode": KERNEL_DEV_LINK_MODE}
+        );
+        assert resolve(record) == (False, True);
     }
 }
 
