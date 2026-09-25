@@ -277,7 +277,7 @@ test "unmatched path returns 404" {
     assert resp.status_code == 404;
 }
 
-test "browser navigation to a client route gets the SPA index (history fallback)" {
+test "a client route gets the SPA index for any client; a missing asset never does" {
     tmp = tempfile.mkdtemp();
     dist = Path(tmp) / "dist";
     dist.mkdir(parents=True);
@@ -300,6 +300,19 @@ test "browser navigation to a client route gets the SPA index (history fallback)
     api_resp = client.get("/littlex", headers={"Accept": "application/json"});
     assert api_resp.status_code == 404 , (
         "API clients must keep getting the JSON 404 envelope, not HTML"
+    );
+
+    plain = client.get("/littlex");
+    assert plain.status_code == 200 and "spa-shell" in plain.text , (
+        "a client that names no Accept type (curl, crawlers, uptime probes) "
+        f"gets the shell a browser gets; got {plain.status_code}"
+    );
+    assert client.head("/littlex").status_code == 200;
+
+    stale = client.get("/littlex/app.js", headers={"Accept": "text/html"});
+    assert stale.status_code == 404 , (
+        "a path with a file extension is an asset; a missing one is a 404 "
+        f"even for a browser, never the shell; got {stale.status_code}"
     );
 }
 
