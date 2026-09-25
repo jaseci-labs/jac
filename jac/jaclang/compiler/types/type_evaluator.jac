@@ -817,6 +817,13 @@ walker TypeEvaluator {
     ) -> MatchArgsToParamsResult;
 
     def _is_unbound_method_call(expr: FuncCall) -> bool;
+    def _carries_unbound_method(t: (TypeBase | None)) -> bool;
+    def _as_unbound_method(
+        t: TypeBase, member: ClassMember, owner: ClassType
+    ) -> TypeBase;
+
+    def _unbound_clone(fn: FunctionType, owner: ClassType) -> FunctionType;
+    def _is_instance_method_member(member: ClassMember) -> bool;
     def validate_call_args(expr: FuncCall) -> TypeBase;
     def _validate_call_type(expr: FuncCall, caller_type: TypeBase) -> TypeBase;
     def _evaluate_call_args(expr: FuncCall) -> None;

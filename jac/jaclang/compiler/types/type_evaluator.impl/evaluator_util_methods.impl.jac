@@ -1192,71 +1192,119 @@ impl TypeEvaluator._is_expr_super(expr: Expr) -> bool {
 }
 
 impl TypeEvaluator._is_unbound_method_call(expr: FuncCall) -> bool {
+    callee = self.get_type_of_expression(expr.target);
+    if self._carries_unbound_method(callee) {
+        return True;
+    }
     if isinstance(expr.target, AtomTrailer) and expr.target.is_attr {
         base_type = self.get_type_of_expression(expr.target.target);
-        if isinstance(base_type, ClassType) and base_type.is_instantiable_class() {
-            if isinstance(expr.target.right, Name) {
-                member = self._lookup_class_member(base_type, expr.target.right.value);
-                if member {
-                    decl = member.symbol.decl;
-                    node_ = decl.name_of if decl is not None else None;
-                    if isinstance(node_, HasVar) {
-                        return False;
-                    }
-                    member_type = self.get_type_of_symbol(member.symbol);
-                    if not isinstance(member_type, FunctionType) {
-                        return False;
-                    }
-                    if member_type.function_flags
-                        & (
-                            FunctionTypeFlags.StaticMethod
-                            | FunctionTypeFlags.ClassMethod
-                        ) {
-                        return False;
-                    }
-
-                    if isinstance(node_, Ability)
-                        and (
-                            node_.is_static
-                            or node_.is_cls_method
-                            or `any(
-                                isinstance(dec, Name)
-                                    and dec.sym_name == "staticmethod"
-                                for dec in (node_.decorators or [])
-                            )
-                        ) {
-                        return False;
-                    }
-                    params = member_type.parameters;
-                    if params and params[0].is_self {
-                        return True;
-                    }
-                    if params and params[0].is_cls {
-                        return False;
-                    }
-
-                    import from jaclang.compiler.types.stubcat.format {
-                        SYMF_INSTANCE_METHOD
-                    }
-                    import from jaclang.compiler.types.stubcat.reader { CatProvider }
-                    prov = member.symbol.provider;
-                    if isinstance(prov, CatProvider)
-                        and (prov.symbits & SYMF_INSTANCE_METHOD) != 0 {
-                        return True;
-                    }
-                    if not isinstance(node_, Ability) or not node_.is_method {
-                        return False;
-                    }
-                    sig = node_.signature;
-                    if isinstance(sig, FuncSignature) and sig.is_in_py_class {
-                        return False;
-                    }
-                    return True;
-                }
+        if isinstance(base_type, ClassType)
+            and base_type.is_instantiable_class()
+            and isinstance(expr.target.right, Name) {
+            member = self._lookup_class_member(base_type, expr.target.right.value);
+            if member {
+                return self._is_instance_method_member(member);
             }
         }
     }
     return False;
+}
+
+impl TypeEvaluator._carries_unbound_method(t: (TypeBase | None)) -> bool {
+    if isinstance(t, FunctionType) {
+        return bool(t.function_flags & FunctionTypeFlags.UnboundMethod);
+    }
+    if isinstance(t, OverloadedType) and t.overloads {
+        return all(
+            bool(ov.function_flags & FunctionTypeFlags.UnboundMethod)
+            for ov in t.overloads
+        );
+    }
+    return False;
+}
+
+impl TypeEvaluator._as_unbound_method(
+    t: TypeBase, member: ClassMember, owner: ClassType
+) -> TypeBase {
+    if not self._is_instance_method_member(member) {
+        return t;
+    }
+    if isinstance(t, FunctionType) {
+        return self._unbound_clone(t, owner);
+    }
+    if isinstance(t, OverloadedType) {
+        return OverloadedType(
+            overloads=[self._unbound_clone(ov, owner) for ov in t.overloads]
+        );
+    }
+    return t;
+}
+
+impl TypeEvaluator._unbound_clone(fn: FunctionType, owner: ClassType) -> FunctionType {
+    unbound = fn.clone();
+    unbound.function_flags = unbound.function_flags | FunctionTypeFlags.UnboundMethod;
+    params = unbound.parameters;
+    if not params or not (params[0].is_self or params[0].is_cls) {
+        unbound.parameters = [
+            Parameter(
+                name="self",
+                category=ParameterCategory.Positional,
+                param_type=self._convert_to_instance(owner),
+                is_self=True,
+                param_kind=ParamKind.NORMAL
+            )
+        ]
+            + params;
+    }
+    return unbound;
+}
+
+impl TypeEvaluator._is_instance_method_member(member: ClassMember) -> bool {
+    decl = member.symbol.decl;
+    node_ = decl.name_of if decl is not None else None;
+    if isinstance(node_, HasVar) {
+        return False;
+    }
+    member_type = self.get_type_of_symbol(member.symbol);
+    if not isinstance(member_type, FunctionType) {
+        return False;
+    }
+    if member_type.function_flags
+        & (FunctionTypeFlags.StaticMethod | FunctionTypeFlags.ClassMethod) {
+        return False;
+    }
+    if isinstance(node_, Ability)
+        and (
+            node_.is_static
+            or node_.is_cls_method
+            or `any(
+                isinstance(dec, Name) and dec.sym_name == "staticmethod"
+                for dec in (node_.decorators or [])
+            )
+        ) {
+        return False;
+    }
+    params = member_type.parameters;
+    if params and params[0].is_self {
+        return True;
+    }
+    if params and params[0].is_cls {
+        return False;
+    }
+    import from jaclang.compiler.types.stubcat.format { SYMF_INSTANCE_METHOD }
+    import from jaclang.compiler.types.stubcat.reader { CatProvider }
+    prov = member.symbol.provider;
+    if isinstance(prov, CatProvider) and (prov.symbits & SYMF_INSTANCE_METHOD) != 0 {
+        return True;
+    }
+    if not isinstance(node_, Ability) or not node_.is_method {
+        return False;
+    }
+    sig = node_.signature;
+    if isinstance(sig, FuncSignature) and sig.is_in_py_class {
+        return False;
+    }
+    return True;
 }
 
 impl TypeEvaluator._set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase {

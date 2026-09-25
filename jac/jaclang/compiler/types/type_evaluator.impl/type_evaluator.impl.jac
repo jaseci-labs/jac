@@ -859,8 +859,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                             }
                         }
 
-                        member_ty = self._get_method_with_overloads(
-                            member, lookup_type
+                        member_ty = self._as_unbound_method(
+                            self._get_method_with_overloads(member, lookup_type),
+                            member,
+                            lookup_type
                         );
                         member.symbol.add_use(expr.right);
                         expr.right.type = member_ty;
@@ -2996,10 +2998,11 @@ impl TypeEvaluator._callable_mismatch(
         return GradualSourceMismatch();
     }
 
+    src_unbound = bool(src_func.function_flags & FunctionTypeFlags.UnboundMethod);
     src_params = [
         p
         for p in (src_func.parameters or [])
-        if not p.is_self and not p.is_cls
+        if src_unbound or (not p.is_self and not p.is_cls)
     ];
     dest_params = [
         p

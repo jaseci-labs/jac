@@ -294,6 +294,7 @@ enum FunctionTypeFlags(IntEnum) {
     ClassMethod = 1 << 2,
     SynthesizedMethod = 1 << 3,
     Generator = 1 << 4,
+    UnboundMethod = 1 << 5,
 }
 
 node Parameter {
