@@ -660,6 +660,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
 
     func.attributes.add("optnone");
     func.attributes.add("noinline");
+    _local_mark = len(self.ctx.errors_had);
     state = self._enter_function(func);
     try {
         body_bb = func.append_basic_block(name="test.body");
@@ -703,14 +704,48 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         exc_msg = self.builder.load(exc_obj_ptr, name="exc.msg");
         self.builder.ret(exc_msg);
         self._finalize_di_locations(func, line);
+    } except Exception as _codegen_exc {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="test (native emitter error in)",
+            name=test_name,
+            help_text=f"The native backend raised {type(_codegen_exc).__name__} "
+            f"while lowering this test; it runs in the server codespace "
+            f"instead. Original error: {_codegen_exc}"
+        );
     } finally {
         self._leave_function(state);
     }
     desc = str(nd.description.lit_value) if nd.description else "";
     self.native_tests.append((test_name, symbol, desc, line));
+    self._native_test_nodes[symbol] = nd;
     self.has_native_code = True;
 
     nd.code_context = CodeContext.NATIVE;
+    if len(self.ctx.errors_had) > _local_mark {
+        self._demote_native_test(nd, func, _local_mark);
+    }
+}
+
+impl NaIRGenPass._demote_native_test(
+    nd: uni.Test, func: ir.Function, local_mark: int
+) -> None {
+    """A test that cannot run natively is a seam like any function: it leaves
+    the native test table and runs its Python body in the server codespace.""";
+    import from jaclang.compiler.frontend.codeinfo { native_test_symbol }
+    line = nd.loc.first_line if nd.loc else 0;
+    key = native_test_symbol(nd.name.sym_name, line);
+    if not self._demote_method_if_unlowerable(key, func, local_mark, keep_func=True) {
+        return;
+    }
+    self.native_tests = [
+        t
+        for t in self.native_tests
+        if t[1] != func.name
+    ];
+    self._native_test_nodes.pop(func.name, None);
+    nd.code_context = CodeContext.SERVER;
 }
 
 impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {

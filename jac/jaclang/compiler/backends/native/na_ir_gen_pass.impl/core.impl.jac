@@ -155,6 +155,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
             self._codegen_test(stmt);
         }
     }
+    self._propagate_seam_demotions();
     _unclaimed = False;
     for (_ck, _cviols) in self._capability_demotions.items() {
         if _ck in self._claimed_capability_demotions {
@@ -531,6 +532,111 @@ impl NaIRGenPass._rename_demoted_symbol(name: str, func: ir.Function) -> None {
         func.name = f"{func.name}.__jac_demoted";
         self.llvm_module.globals[func.name] = func;
     } except Exception {}
+}
+
+impl NaIRGenPass._propagate_seam_demotions -> None {
+    """Demote every lowered function, method, and test that still reaches a seam
+    stub. A caller lowered before its callee demoted holds a direct call to the
+    callee's abort stub: the call-site check only sees demotions that already
+    happened. Demoting such a caller can strand its own earlier callers, so this
+    runs to a fixpoint after the module's bodies are lowered.""";
+    if not self._seam_stub_ids {
+        return;
+    }
+    method_names = {id(fn): name for (name, fn) in self.method_funcs.items()};
+    owners: list[tuple[str, ir.Function, uni.Ability, bool]] = [];
+    for (_fid, (func, decl)) in self._linked_fn_decls.items() {
+        if func is None or not func.blocks or id(func) in self._seam_stub_ids {
+            continue;
+        }
+        if id(func) in method_names {
+            owners.append((method_names[id(func)], func, decl, True));
+        } elif decl.name_ref is not None
+            and self.func_symtab.get(decl.name_ref.sym_name) is func {
+            owners.append((decl.name_ref.sym_name, func, decl, False));
+        }
+    }
+    changed = True;
+    while changed {
+        changed = False;
+        for (name, func, decl, is_method) in owners {
+            if id(func) in self._seam_stub_ids {
+                continue;
+            }
+            reached = self._reaches_seam_stub(func, set());
+            if reached is None {
+                continue;
+            }
+            mark = len(self.ctx.errors_had);
+            self.emit(
+                E5092,
+                node_override=decl,
+                kind="function",
+                name=reached,
+                help_text=f"'{reached}' demoted to its Python-only implementation "
+                f"(native seam), so '{name}' cannot reach it natively; hoist the "
+                f"blocking construct out of '{reached}' or move '{name}' off the "
+                f"native pathway."
+            );
+            if self._demote_method_if_unlowerable(name, func, mark, keep_func=is_method)
+                and not is_method {
+                self._rename_demoted_symbol(name, func);
+            }
+            changed = True;
+        }
+    }
+    for (symbol, nd) in list(self._native_test_nodes.items()) {
+        func = self.llvm_module.globals.get(symbol);
+        if not isinstance(func, ir.Function) or id(func) in self._seam_stub_ids {
+            continue;
+        }
+        reached = self._reaches_seam_stub(func, set());
+        if reached is None {
+            continue;
+        }
+        mark = len(self.ctx.errors_had);
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="function",
+            name=reached,
+            help_text=f"'{reached}' demoted to its Python-only implementation "
+            f"(native seam); the test runs in the server codespace instead."
+        );
+        self._demote_native_test(nd, func, mark);
+    }
+}
+
+impl NaIRGenPass._reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None) {
+    """The name of a seam stub `func` calls or references, directly or through the
+    private helpers (lambdas, closure bodies) it lowered, or None.""";
+    seen.add(id(func));
+    for blk in func.blocks {
+        for instr in blk.instructions {
+            if not isinstance(instr, ir.Instruction) {
+                continue;
+            }
+            for op in instr.operands {
+                if not isinstance(op, ir.Function) or id(op) in seen {
+                    continue;
+                }
+                if id(op) in self._seam_stub_ids {
+                    linked = self._linked_fn_decls.get(id(op));
+                    if linked is not None and linked[1].name_ref is not None {
+                        return linked[1].name_ref.sym_name;
+                    }
+                    return op.name.removesuffix(".__jac_demoted");
+                }
+                if op.blocks and op.linkage in ("private", "internal") {
+                    found = self._reaches_seam_stub(op, seen);
+                    if found is not None {
+                        return found;
+                    }
+                }
+            }
+        }
+    }
+    return None;
 }
 
 impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {

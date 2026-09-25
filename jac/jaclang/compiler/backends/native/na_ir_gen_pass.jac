@@ -306,6 +306,8 @@ walker NaIRGenPass {
         _pub_symbols: set[str] = set(),
         _unit_exports: dict[str, NativeExport] = {},
         _demoted_names: set[str] = set(),
+        _seam_stub_ids: set[int] = set(),
+        _native_test_nodes: dict[str, uni.Test] = {},
         _lowering_issues: list[NativeLoweringIssue] = [],
         tuple_types: dict[str, ir.LiteralStructType] = {},
         global_vars: dict[str, ir.GlobalVariable] = {},
@@ -1096,6 +1098,8 @@ walker NaIRGenPass {
     ) -> bool;
 
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
+    def _propagate_seam_demotions -> None;
+    def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
     def _process_clib_imports(module: uni.Module) -> None;
     def _declare_pending_clib_abilities -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
@@ -1353,6 +1357,7 @@ walker NaIRGenPass {
     def _codegen_nested_ability(nd: uni.Ability) -> None;
     def _predeclare_nested_siblings(nd: uni.Ability) -> None;
     def _codegen_test(nd: uni.Test) -> None;
+    def _demote_native_test(nd: uni.Test, func: ir.Function, local_mark: int) -> None;
     def _apply_static_decorators -> None;
     def _ability_is_generator(nd: uni.Ability) -> bool;
     def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);
