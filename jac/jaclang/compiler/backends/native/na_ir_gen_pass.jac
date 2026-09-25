@@ -374,6 +374,7 @@ walker NaIRGenPass {
         str_unwrap_fn: (ir.Function | None) = None,
         str_materialize_fn: (ir.Function | None) = None,
         _str_desc_ty: (ir.IdentifiedStructType | None) = None,
+        _last_inplace_handled: bool = False,
         rc_roots_buf_gv: object = None,
         rc_roots_cap_gv: object = None,
         rc_roots_count_gv: object = None,
@@ -688,6 +689,14 @@ walker NaIRGenPass {
     ) -> (ir.Value | None);
 
     def _emit_intrinsic_region_tls(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_buffer_data(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_ref_addr(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
@@ -2489,8 +2498,14 @@ walker NaIRGenPass {
     def _jacval_is_none(jv: ir.Value, negate: bool) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _zero_const(ty: ir.Type) -> ir.Constant;
-    def _coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value;
-    def _coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _coerce_type(
+        val: ir.Value, target_type: ir.Type, allow_narrow: bool = False
+    ) -> ir.Value;
+
+    def _coerce_type_inner(
+        val: ir.Value, target_type: ir.Type, allow_narrow: bool = False
+    ) -> ir.Value;
+
     def _promote_to_float(
         left: ir.Value, right: ir.Value, unsigned: bool = False
     ) -> tuple[(ir.Value, ir.Value)];
@@ -2500,7 +2515,16 @@ walker NaIRGenPass {
         left: ir.Value,
         right: ir.Value,
         unsigned: bool = False,
-        checked: bool = False
+        checked: bool = False,
+        inplace_slot: (ir.Value | None) = None
+    ) -> (ir.Value | None);
+
+    def _str_concat_fresh(
+        left: ir.Value, right: ir.Value, len1: ir.Value, len2: ir.Value, total: ir.Value
+    ) -> ir.Value;
+
+    def _emit_str_concat_inplace(
+        left: ir.Value, right: ir.Value, slot: ir.Value
     ) -> (ir.Value | None);
 
     def _unify_int_widths(

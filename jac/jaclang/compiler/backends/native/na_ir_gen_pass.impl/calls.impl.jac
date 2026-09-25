@@ -1291,6 +1291,8 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
         IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor,
         IntrinsicDispatch.REGION_TLS: self._emit_intrinsic_region_tls,
+        IntrinsicDispatch.BUFFER_DATA: self._emit_intrinsic_buffer_data,
+        IntrinsicDispatch.REF_ADDR: self._emit_intrinsic_ref_addr,
         IntrinsicDispatch.ALLOCA: self._emit_intrinsic_alloca
     };
     handler = _emitters.get(intr.dispatch);
@@ -1329,6 +1331,9 @@ impl NaIRGenPass._intrinsic_operand(
     if arg_val is None {
         self._emit_intrinsic_misuse(nd, intr, "operand did not lower to a value");
         return None;
+    }
+    if spec == "ref" {
+        return arg_val;
     }
     if spec == "i64" and isinstance(arg_val.type, ir.PointerType) {
         arg_val = self.builder.ptrtoint(arg_val, ir.IntType(64), name="intr.addr");
@@ -1394,22 +1399,80 @@ impl NaIRGenPass._emit_intrinsic_mem_load(
     if addr is None {
         return None;
     }
-    value_type = ir.IntType(int(intr.result_spec[1:]));
+
+    if intr.width is None {
+        self._emit_intrinsic_misuse(nd, intr, "entry carries no width metadata");
+        return None;
+    }
+    value_type = ir.IntType(intr.width);
     slot = self.builder.inttoptr(addr, value_type.as_pointer(), name="mem.p");
-    return self.builder.load(slot, name="mem.ld");
+    raw = self.builder.load(slot, name="mem.ld");
+    if intr.width < 64 {
+        return self.builder.zext(raw, ir.IntType(64), name="mem.ld.wide");
+    }
+    return raw;
 }
 
 impl NaIRGenPass._emit_intrinsic_mem_store(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     addr = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
-    val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+
+    if intr.width is None {
+        self._emit_intrinsic_misuse(nd, intr, "entry carries no width metadata");
+        return None;
+    }
+    if intr.width >= 64 {
+        val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+    } else {
+        _raw = self._codegen_expr(args[1]);
+        if _raw is None {
+            self._emit_intrinsic_misuse(nd, intr, "operand did not lower to a value");
+            return None;
+        }
+        val = self._coerce_type(_raw, ir.IntType(intr.width), allow_narrow=True);
+    }
     if addr is None or val is None {
         return None;
     }
     slot = self.builder.inttoptr(addr, val.type.as_pointer(), name="mem.p");
     self.builder.store(val, slot);
     return None;
+}
+
+impl NaIRGenPass._emit_intrinsic_buffer_data(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    arg_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    if arg_val is None {
+        return None;
+    }
+    if self._opt_ptr_payload_of(arg_val.type) is not None {
+        arg_val = self.builder.extract_value(arg_val, 1, name="buf.opt");
+    }
+    src = self._bytearray_src_of(arg_val);
+    if src is None {
+        self._emit_intrinsic_misuse(nd, intr, "operand is not a bytes/bytearray value");
+        return None;
+    }
+    return self.builder.ptrtoint(src[0], ir.IntType(64), name="buf.data.i64");
+}
+
+impl NaIRGenPass._emit_intrinsic_ref_addr(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    arg_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    if arg_val is None {
+        return None;
+    }
+    if self._opt_ptr_payload_of(arg_val.type) is not None {
+        arg_val = self.builder.extract_value(arg_val, 1, name="ref.opt");
+    }
+    if not isinstance(arg_val.type, ir.PointerType) {
+        self._emit_intrinsic_misuse(nd, intr, "operand is not a reference value");
+        return None;
+    }
+    return self.builder.ptrtoint(arg_val, ir.IntType(64), name="ref.addr");
 }
 
 impl NaIRGenPass._emit_intrinsic_atomic_xchg(

@@ -2082,13 +2082,23 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             is_inplace_set_op = False;
+            _ip_handled = False;
 
             if nd.aug_op is not None {
                 aug_op_val = nd.aug_op.value;
-                current = self._str_norm(
-                    self.builder.load(alloca, name=f"{var_name}.cur")
+                _ip_fast = (
+                    aug_op_val == "+="
+                    and self._str_desc_ty is not None
+                    and alloca.pointee_type == self._str_desc_ty
+                    and var_name not in self.borrowed_vars
+                    and var_name not in self.region_handle_vars
+                    and id(nd) not in self.module.managed_borrow_binds
                 );
-                value = self._str_norm(value);
+                current = self.builder.load(alloca, name=f"{var_name}.cur");
+                if not _ip_fast {
+                    current = self._str_norm(current);
+                    value = self._str_norm(value);
+                }
                 _scalar_aug: (ir.Value | None) = None;
                 if isinstance(current.type, (ir.IntType, ir.FloatType, ir.DoubleType))
                     and isinstance(
@@ -2153,11 +2163,25 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             }
                         }
                         value = current;
-                    } elif isinstance(current.type, ir.PointerType) {
+                    } elif isinstance(current.type, ir.PointerType)
+                        or (
+                            self._str_desc_ty is not None
+                            and current.type == self._str_desc_ty
+                        ) {
                         _aug_str_rhs = coerced;
+                        _ip_slot: (ir.Value | None) = None;
+                        if (
+                            var_name not in self.borrowed_vars
+                            and var_name not in self.region_handle_vars
+                            and id(nd) not in self.module.managed_borrow_binds
+                        ) {
+                            _ip_slot = alloca;
+                        }
+                        self._last_inplace_handled = False;
                         augmented = self._emit_binary_op(
-                            Tok.PLUS, current, _aug_str_rhs
+                            Tok.PLUS, current, _aug_str_rhs, inplace_slot=_ip_slot
                         );
+                        _ip_handled = self._last_inplace_handled;
                         value = augmented if augmented is not None else current;
                         if augmented is not None {
                             if self._is_owned(_aug_str_rhs) {
@@ -2492,10 +2516,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     } elif self._is_owned(coerced) {
                         self.rc_ops_elided += 1;
                     }
-                    if not (
-                        self._nogc_headerless()
-                        and getattr(nd, 'na_overwrite_consumed', False)
-                    )
+                    if not _ip_handled
+                        and not (
+                            self._nogc_headerless()
+                            and getattr(nd, 'na_overwrite_consumed', False)
+                        )
                         and not (
                             self._gc_mode() == "none" and var_name in self.borrowed_vars
                         ) {
@@ -2619,12 +2644,20 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             and target_expr.sym is not None
             and target_expr.sym.storage == uni.SymbolStorage.MODULE_GLOBAL {
             global_var = self.global_vars[var_name];
+            _ip_ghandled = False;
             if nd.aug_op is not None {
                 aug_op_val = nd.aug_op.value;
-                current = self._str_norm(
-                    self.builder.load(global_var, name=f"glob.{var_name}.cur")
+                _ip_gfast = (
+                    aug_op_val == "+="
+                    and self._str_desc_ty is not None
+                    and global_var.value_type == self._str_desc_ty
+                    and id(nd) not in self.module.managed_borrow_binds
                 );
-                value = self._str_norm(value);
+                current = self.builder.load(global_var, name=f"glob.{var_name}.cur");
+                if not _ip_gfast {
+                    current = self._str_norm(current);
+                    value = self._str_norm(value);
+                }
                 coerced = self._coerce_type(value, current.type);
                 if aug_op_val == "+=" {
                     if isinstance(current.type, ir.IntType) {
@@ -2635,11 +2668,17 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.fadd(
                             current, coerced, name=f"glob.{var_name}.fadd"
                         );
-                    } elif isinstance(current.type, ir.PointerType) {
+                    } elif isinstance(current.type, ir.PointerType)
+                        or (
+                            self._str_desc_ty is not None
+                            and current.type == self._str_desc_ty
+                        ) {
                         _aug_gstr_rhs = coerced;
+                        self._last_inplace_handled = False;
                         augmented = self._emit_binary_op(
-                            Tok.PLUS, current, _aug_gstr_rhs
+                            Tok.PLUS, current, _aug_gstr_rhs, inplace_slot=global_var
                         );
+                        _ip_ghandled = self._last_inplace_handled;
                         value = augmented if augmented is not None else current;
                         if augmented is not None {
                             if self._is_owned(_aug_gstr_rhs) {
@@ -2818,7 +2857,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if _own_str_glob {
                     self._nogc_str_free_owned(old_glob);
                 }
-                if not self._nogc_headerless() {
+                if not self._nogc_headerless() and not _ip_ghandled {
                     self._emit_rc_release_typed(
                         old_glob,
                         op="overwrite",

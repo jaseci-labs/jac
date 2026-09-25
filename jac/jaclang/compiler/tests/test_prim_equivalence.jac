@@ -545,6 +545,23 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          (
+             "string bundled",
+             "prim_string.jac",
+             "string_py",
+             "string_cl",
+             "string_na",
+             ["na"]
+         ),
+         ("re bundled", "prim_re.jac", "re_py", "re_cl", "re_na", ["na"]),
+         (
+             "reprlib bundled",
+             "prim_reprlib.jac",
+             "reprlib_py",
+             "reprlib_cl",
+             "reprlib_na",
+             ["na"]
+         ),
+         (
              "sqlite3 bundled",
              "prim_sqlite3.jac",
              "sqlite3_py",

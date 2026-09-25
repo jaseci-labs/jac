@@ -260,6 +260,7 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = frozenset(
                  "open openat creat close read pread write lseek stat fstat lstat access "
                  "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
                  "opendir readdir closedir getpid getpwuid_r getpwnam_r errno __error "
+                 "regcomp regexec regerror regfree "
                  "__errno_location environ _NSGetExecutablePath "
                  "pthread_create pthread_join pthread_key_create pthread_getspecific "
                  "pthread_setspecific "

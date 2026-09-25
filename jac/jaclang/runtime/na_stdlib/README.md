@@ -210,6 +210,87 @@ native layout records the emitted name separately from its source-level key.
   error-path/behavior divergence); `ratio` is the same IEEE-double value (only
   its `str` rendering would differ);
   `get_opcodes`/`unified_diff`/`ndiff`/`Differ`/`HtmlDiff` not provided.
+- **`string.jac`** (#6978 Phase 3) -- the nine ASCII constant sets
+  (`whitespace`/`ascii_lowercase`/`ascii_uppercase`/`ascii_letters`/`digits`/
+  `hexdigits`/`octdigits`/`punctuation`/`printable`), `capwords`, and a
+  `$`-`Template` subset (`substitute`/`safe_substitute`/`is_valid`/
+  `get_identifiers`) supporting `$name`, `${name}`, and `$$` with CPython's
+  placeholder scan order. `substitute` raises `KeyError` on a missing name and
+  `ValueError("Invalid placeholder in string: line N, col M")` on a malformed
+  one; `safe_substitute` preserves unresolved and malformed placeholders
+  literally. SCOPE: ASCII-only identifier characters (`idpattern` not
+  overridable -- `delimiter`/`idpattern`/`braceidpattern` subclassing and the
+  `flags`/`strict` knobs not provided); substitution values limited to
+  str/int/float/bool (other `any` values raise `ValueError` rather than
+  running `str()`); the mapping argument must be a real `dict[str, any]`
+  (native dicts are layout-specialized, so a `dict[str, str]` literal is
+  not interchangeable); `Formatter`/brace-style templates not provided.
+- **`re.jac`** (#6978 Phase 3) -- a pure-Jac regex engine: explicit parser
+  (`_P`) producing a `_Node` AST, an instruction compiler, and a
+  backtracking VM (`_run`) driven by an explicit heap-allocated
+  retry/undo stack, so match depth is bounded by heap, not the C stack.
+  Covers literals, character classes and ranges (incl. negation and class
+  escapes `\d`/`\w`/`\s`), anchors (`^`/`$`/`\A`/
+  `\Z`/`\b`/`\B`), greedy and lazy `*`/`+`/`?`/`{m,n}` repeats, alternation,
+  numbered and `(?P<n>)` named groups, backrefs (`\N`, `(?P=n)`), lookahead
+  (`(?=...)`/`(?!...)`), inline/global flags (`i`/`m`/`s`/`x`/`a`/`u`),
+  `(?#...)` comments, `VERBOSE` comment/whitespace skipping, and the module
+  surface
+  `compile`/`search`/`match`/`fullmatch`/`findall`/`finditer`/`split`/`sub`/
+  `subn`/`escape`/`purge` plus `Pattern`/`Match` objects (`group`/`groups`/
+  `groupdict`/`start`/`end`/`span`/`expand`, `groups`/`groupindex`/`pattern`/
+  `flags` on `Pattern`). Parse errors raise `ValueError` with CPython's
+  message text and position suffix ("... at position N"), covering
+  unterminated groups/classes, bad ranges, multiple/nothing-to-repeat,
+  unknown/duplicate/open group references, and non-leading global flags.
+  Patterns and subjects are decoded once into codepoint arrays
+  (`_utf8.jac`), so matching is codepoint-indexed independent of the native
+  `str` indexing model, and `Match` slices decode back through the encoded
+  bytes -- non-ASCII literals like `é` match whole characters, while the
+  character-class semantics stay ASCII (`\w`/`\d`/`\s`, IGNORECASE fold).
+  **POSIX fast path**: patterns `_posix_translate` can express as POSIX ERE
+  (no alternation, anchors, `?(` constructs, lazy quantifiers, or
+  backslashes it cannot desugar) are additionally compiled through libc
+  `regcomp`/`regexec` via `_re_posix_native.jac` (Mechanism F) and used for
+  matching on ASCII subjects only; anything else runs the Jac VM. The
+  `regmatch_t` stride is detected at import by a compile+exec probe
+  (`posix_probe`) so both 32-bit `regoff_t` (glibc) and 64-bit
+  (BSD/macOS/musl) layouts read correctly; an unknown layout disables the
+  fast path rather than misreading. Because `regex_t` owns heap state that
+  the Jac GC cannot see, every successfully compiled program is registered
+  in `_PSX.pregs` and `purge()` calls `regfree` on all of them and bumps a
+  generation counter so previously compiled `Pattern`s fall back to the VM.
+  SCOPE/divergences: ASCII semantics only (`\w`/`\d`/`\s` and IGNORECASE
+  fold ASCII; no unicode categories or full casefold); no lookbehind,
+  conditional `(?(id)y|n)`, atomic `(?>...)`, possessive quantifiers, `\N{}`,
+  or `\p{}`; `sub`/`subn` take string replacements only (callable `repl` not
+  supported -- no native callable boundary); `findall` raises `ValueError`
+  on patterns with more than one group (CPython returns a list of tuples,
+  which the `list[str]` boundary cannot carry); `finditer` returns an eager
+  `list[Match]` rather than an iterator; `split` yields `None` for
+  non-participating groups as CPython does, so its element type is `any`;
+  `Match.groups()` returns `list[any]` (not a tuple); `Match[...]`
+  `__getitem__` and `Match.re`/`lastindex` not provided; LOCALE flag
+  ignored; `error`/`PatternError` surfaces as `ValueError` (catch
+  `Exception`/`ValueError` accordingly -- CPython's `re.error` is not a
+  `ValueError` subclass, so code catching `re.error` specifically diverges).
+- **`reprlib.jac`** (#6978 Phase 3) -- `repr` and a `Repr` object
+  (`repr`/`repr1`, mutable `maxlevel`/`maxtuple`/`maxlist`/`maxdict`/
+  `maxset`/`maxfrozenset`/`maxstring`/`maxlong`/`maxother` limits) rendering
+  bool/int/float/str/list/dict with CPython's conventions: quote selection
+  (prefer `'`, switch to `"` when the string contains `'` but not `"`),
+  `\\`/`\n`/`\t`/`\r`/`\xNN` escaping, `maxstring` middle-ellipsis fill,
+  `maxlong` truncation for ints, `maxlist`/`maxdict` item caps, sorted dict
+  keys, and `level <= 0` -> `"[...]"`/`"{...}"` depth cutoffs.
+  SCOPE/divergences: `set`/`frozenset` raise
+  `ValueError("reprlib: unsupported value type on native")` (same precedent
+  as `pprint.jac`); tuples and other unrecognized values render as `"None"`
+  (the native runtime cannot type-discriminate them -- see `pprint.jac`);
+  containers must reach `repr`/`Repr.repr` as `list[any]`/`dict[str, any]`
+  (the canonical `any` layouts -- concretely-typed literals reinterpret
+  badly through the `any` boundary); `recursive_repr`/`aRepr` attribute
+  and `repr_*` dispatch hooks not
+  provided.
 
 - **`statistics.jac`** (#7593 item 18) -- double-precision
   `fmean`/`mean`/`median`/`median_low`/`median_high`/`variance`/`pvariance`/
@@ -581,6 +662,10 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
    boxed scalar before operating on it (`i: int = some_any; str(i)`), and check
    container/None branches with `isinstance` -- `x is None` does not lower to a
    branch condition on the native pathway.
+   Hot byte loops may drop to the **raw-buffer intrinsic floor**
+   (`__bytes_data`, `__bytearray_data`, `__mem_load_i8`/`i16`/`i32`/`i64`,
+   `__mem_store_i8`/`i16`/`i32`/`i64` -- see "Unsafe raw-buffer intrinsics"
+   below) instead of per-element container calls.
 3. Add a tri-backend equivalence fixture
    (`jac/jaclang/compiler/tests/fixtures/prim_<name>.jac`) and register it in
    `test_prim_equivalence.jac` with `require=["na"]` so sv/na congruence is
@@ -610,6 +695,41 @@ Mechanism B exists to avoid writing twice. Reaching for one through the flat
 
 Functions that need a syscall (`os.path.realpath`, `exists`, ...) stay as
 Mechanism-A intercepts, not here.
+
+## Unsafe raw-buffer intrinsics
+
+Mechanism-B modules whose inner loops are byte shuffles (`string`) can
+bypass per-element container calls through a small unsafe floor registered
+in `jac/jaclang/compiler/intrinsic_registry.jac` (same mechanism as
+`region_native.jac`'s `__mem_load_i64`/`__mem_store_i64`):
+
+- `__bytes_data(b: bytes) -> int` -- address of the inline payload
+  (`jacbytes` is `{ i64 len, [0 x i8] data }`; the address is a GEP to
+  field 1).
+- `__bytearray_data(b: bytearray) -> int` -- the data pointer stored in
+  the `List.u8` `{ i64 len, i64 cap, i8* data }` header.
+- `__mem_load_i8/i16/i32/i64(addr: int) -> int` and
+  `__mem_store_i8/i16/i32/i64(addr: int, val: int)` -- raw loads/stores.
+  Loads zero-extend narrow reads to `i64`; stores truncate `i64` to the
+  named width. (The `i32` pair pre-existed for `_errno_native`.) The
+  access width lives as `width` metadata on the `IntrinsicEntry` (the
+  checker-visible specs stay `i64`, so callers pass plain `int`); the
+  emitters never derive semantics from the intrinsic name.
+
+Layout and lifetime contract for callers:
+
+- Addresses are raw pointers carried as `i64`; the caller owns bounds
+  (track `len` separately) and lifetime.
+- A `bytearray` data pointer is invalidated by any operation that can
+  grow or reallocate the buffer (`append`/`extend`/slice-assign) --
+  re-fetch after mutation. `bytes` payloads are stable (inline storage).
+- Empty buffers may return a meaningless/null data pointer; guard `n == 0`
+  before dereferencing.
+- Writing through `__bytes_data` mutates "immutable" bytes -- only safe
+  on a fresh, unshared buffer (e.g. a `s.encode()` result overwritten in
+  place before it escapes, the `capwords` idiom).
+- On the sv (Python) backend these names are undefined; modules using
+  them are native-only (which is fine -- `na_stdlib` only ships on na).
 
 ## Mechanism F: FFI floor + pure-Jac surface (`zlib`)
 

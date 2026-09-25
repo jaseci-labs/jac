@@ -10,6 +10,7 @@ import from _datetime_native {
     dt_fmt_buf,
     dt_out_str
 }
+import from _ascii { is_digit, is_space }
 
 glob:pub MINYEAR: int = 1,
      MAXYEAR: int = 9999;
@@ -972,8 +973,7 @@ def _wrap_strftime_slow(
 
 
 def _is_ascii_digit(c: str) -> bool {
-    d: int = ord(c) - 48;
-    return d >= 0 and d <= 9;
+    return is_digit(ord(c));
 }
 
 
@@ -3164,12 +3164,7 @@ obj _StrptimeResult {
 
 
 def _is_ws(c: str) -> bool {
-    return c == " "
-        or c == "\t"
-        or c == "\n"
-        or c == "\r"
-        or c == "\x0b"
-        or c == "\x0c";
+    return is_space(ord(c));
 }
 
 
