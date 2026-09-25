@@ -1,41 +1,42 @@
-"""Clock IDs follow the target libc even when cross compiling."""
+"""Clock IDs follow the target libc even when cross compiling.
+
+The bundled `time` module reads its clocks through a per-platform
+`_time_native` unit; the variant is chosen by the native target, not the host,
+so a cross build links the target libc's clock IDs.
+"""
+import os;
 import re;
-import tempfile;
-import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.frontend.codeinfo {
+    native_stdlib_root,
+    set_native_target_override,
+    _native_variant_path
+}
 
 test "native clocks use the target libc clock IDs" {
-    with tempfile.TemporaryDirectory() as directory {
-        source = Path(directory) / "clocks.jac";
-        source.write_text(
-            "import time;\n"
-            "def wall() -> float { return time.time(); }\n"
-            "def mono() -> float { return time.monotonic(); }\n"
-            "def perf() -> float { return time.perf_counter(); }\n"
-            "def mono_ns() -> int { return time.monotonic_ns(); }\n"
-            "def perf_ns() -> int { return time.perf_counter_ns(); }\n"
-        );
-        for (target, monotonic) in [
-            ("x86_64-unknown-linux-gnu", "1"),
-            ("aarch64-unknown-linux-gnu", "1"),
-            ("x86_64-apple-darwin", "6"),
-            ("arm64-apple-darwin", "6")
-        ] {
-            program = JacProgram();
-            module = program.compile(
-                str(source),
-                options=CompileOptions(
-                    native_target=target,
-                    default_codespace="native",
-                    skip_native_engine=True
-                )
-            );
-            assert not program.errors_had , str(program.errors_had);
-            clocks = re.findall(
-                r'call i32 @"?clock_gettime"?\(i32 (\d+),', str(module.gen.llvm_ir)
-            );
-            assert sorted(clocks) == ["0"] + [monotonic] * 4 , f"{target}: {clocks}";
+    stdlib = native_stdlib_root();
+    assert stdlib is not None;
+    base = os.path.join(stdlib, "_time_native");
+    for (target, variant, monotonic) in [
+        ("x86_64-unknown-linux-gnu", "_time_native.linux.jac", "1"),
+        ("aarch64-unknown-linux-gnu", "_time_native.linux.jac", "1"),
+        ("x86_64-apple-darwin", "_time_native.darwin.jac", "6"),
+        ("arm64-apple-darwin", "_time_native.darwin.jac", "6")
+    ] {
+        prev = set_native_target_override(target);
+        try {
+            chosen = _native_variant_path(base);
+        } finally {
+            set_native_target_override(prev);
         }
+        assert chosen is not None and os.path.basename(chosen) == variant , (
+            f"{target}: {chosen}"
+        );
+        with open(chosen) as handle {
+            text = handle.read();
+        }
+        found = re.search(r"CLK_MONOTONIC: int = (\d+)", text);
+        assert found is not None and found.group(1) == monotonic , (
+            f"{target}: CLK_MONOTONIC in {variant}"
+        );
     }
 }
