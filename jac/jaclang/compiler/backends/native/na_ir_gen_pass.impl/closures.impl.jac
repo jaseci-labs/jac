@@ -291,6 +291,108 @@ impl NaIRGenPass._emit_closure_pair(
     return clos;
 }
 
+impl NaIRGenPass._emit_bound_method_closure(
+    nd: uni.AtomTrailer, recv: ir.Value, type_name: str, method_name: str
+) -> (ir.Value | None) {
+    """A bound method read as a value (`c.bump`), as a closure over its receiver.
+
+    The environment is the receiver itself, so the closure owns one reference
+    to it and the closure's release drops it. The thunk calls the method
+    through the dispatch a direct `recv.method(...)` would use, so the binding
+    is to the receiver's runtime class, as in Python. Only an instance method
+    the checker typed as a function qualifies; anything else stays with the
+    field-read path and its refusals.
+    """;
+    _np = nd.parent;
+    if (isinstance(_np, uni.FuncCall) and _np.target is nd)
+        or not isinstance(nd.type, SemanticFunctionType)
+        or method_name in self.struct_field_indices.get(type_name, {})
+        or self._receiver_union_parts(nd) is not None
+        or self._accessor_slot_of(type_name, method_name, "property") is not None
+        or any(
+            f"{_cn}.{method_name}" in self.static_methods
+            for _cn in self._mro_of(type_name)
+        ) {
+        return None;
+    }
+    func = self._resolve_method(type_name, method_name);
+    _st: any = self.struct_types.get(type_name);
+    if func is None or _st is None or len(func.args) == 0 {
+        return None;
+    }
+    _recv_owned = self._is_owned(recv);
+    recv = self._opt_unwrap_attr(recv);
+    if not isinstance(recv.type, ir.PointerType) {
+        return None;
+    }
+    if _recv_owned {
+        self._mark_owned(recv);
+    }
+    self._emit_runtime_raise(
+        self.builder.icmp_unsigned(
+            "==", recv, ir.Constant(recv.type, None), name="bm.recv.null"
+        ),
+        "AttributeError",
+        f"'NoneType' object has no attribute '{method_name}'"
+    );
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    fnty = func.function_type;
+    declared_fnty = ir.FunctionType(fnty.return_type, list(fnty.args)[1:]);
+    (sig_name, _sig_st, fnty_env) = self._closure_sig_struct(declared_fnty);
+    _key = f"bound.{type_name}.{method_name}";
+    thunk: any = self.closure_thunks.get(_key);
+    if thunk is None {
+        thunk = ir.Function(
+            self.llvm_module, fnty_env, name=f"__jac_bound_{type_name}.{method_name}"
+        );
+        thunk.linkage = "private";
+        thunk.args[-1].name = "env";
+        saved_builder = self._builder;
+        self._builder = ir.IRBuilder(thunk.append_basic_block("entry"));
+        _self = self.builder.bitcast(thunk.args[-1], _st.as_pointer(), name="bm.self");
+        call_args: list[ir.Value] = [_self] + list(thunk.args)[:-1];
+        res: any = None;
+        if self._arch_has_vtable(type_name) {
+            res = self._codegen_virtual_call(_self, method_name, call_args, type_name);
+        }
+        if res is None {
+            coerced: list[ir.Value] = [];
+            for (i, a) in enumerate(call_args) {
+                coerced.append(self._coerce_type(a, fnty.args[i]));
+            }
+            res = self.builder.call(func, coerced, name="bm.call");
+        }
+        if isinstance(fnty.return_type, ir.VoidType) {
+            self.builder.ret_void();
+        } else {
+            self.builder.ret(self._coerce_type(res, fnty.return_type));
+        }
+        self._builder = saved_builder;
+        self.closure_thunks[_key] = thunk;
+    }
+    self._emit_take_ref(recv, op="bound_method");
+    clos = self._alloc_iter_struct(sig_name);
+    self.builder.store(
+        self.builder.ptrtoint(thunk, i64, name="bm.fn"),
+        self.builder.gep(
+            clos, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="bm.fn.slot"
+        )
+    );
+    self.builder.store(
+        self.builder.bitcast(recv, i8p, name="bm.env"),
+        self.builder.gep(
+            clos, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bm.env.slot"
+        )
+    );
+    self._mark_owned(clos);
+    return clos;
+}
+
 impl NaIRGenPass._emit_closure_value(
     var_name: str, nd: uni.UniNode
 ) -> (ir.Value | None) {

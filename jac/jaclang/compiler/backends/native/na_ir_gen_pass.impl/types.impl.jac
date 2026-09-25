@@ -4162,6 +4162,53 @@ impl NaIRGenPass._emit_comparison(
             }
         }
 
+        if op in (Tok.EE, Tok.NE)
+            and left.type == right.type
+            and self._closure_struct_of(left.type) is not None {
+            i32 = ir.IntType(32);
+            z0 = ir.Constant(i32, 0);
+            _null = ir.Constant(left.type, None);
+            _same = self.builder.icmp_unsigned("==", left, right, name="clos.same");
+            _both = self.builder.and_(
+                self.builder.icmp_unsigned("!=", left, _null, name="clos.l.nn"),
+                self.builder.icmp_unsigned("!=", right, _null, name="clos.r.nn"),
+                name="clos.both"
+            );
+            _pre_bb = self.builder.block;
+            _fn = self.builder.function;
+            _fields_bb = _fn.append_basic_block(name="clos.eq.fields");
+            _done_bb = _fn.append_basic_block(name="clos.eq.done");
+            self.builder.cbranch(_both, _fields_bb, _done_bb);
+            self.builder.position_at_end(_fields_bb);
+            _parts: list[ir.Value] = [];
+            for _i in (0, 1) {
+                _lv = self.builder.load(
+                    self.builder.gep(left, [z0, ir.Constant(i32, _i)], name="clos.l.p"),
+                    name="clos.l"
+                );
+                _rv = self.builder.load(
+                    self.builder.gep(
+                        right, [z0, ir.Constant(i32, _i)], name="clos.r.p"
+                    ),
+                    name="clos.r"
+                );
+                _parts.append(
+                    self.builder.icmp_unsigned("==", _lv, _rv, name="clos.part.eq")
+                );
+            }
+            _fields_eq = self.builder.and_(_parts[0], _parts[1], name="clos.fields.eq");
+            _fields_end = self.builder.block;
+            self.builder.branch(_done_bb);
+            self.builder.position_at_end(_done_bb);
+            _eq = self.builder.phi(ir.IntType(1), name="clos.eq");
+            _eq.add_incoming(_same, _pre_bb);
+            _eq.add_incoming(_fields_eq, _fields_end);
+            if op == Tok.NE {
+                return self.builder.not_(_eq, name="clos.ne");
+            }
+            return _eq;
+        }
+
         if op == Tok.EE {
             return self.builder.icmp_unsigned("==", left, right, name="ptreq");
         } elif op == Tok.NE {
