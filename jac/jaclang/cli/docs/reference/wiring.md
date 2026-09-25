@@ -27,9 +27,9 @@ The picture reads the way the typed graph does: modules are the nodes, imports a
 
 An `arch.jac` governs the modules in its directory and below it, down to the next `arch.jac`: the nearest one above a module is the one that wires and seals it, the way the nearest `jac.toml` configures it. A project can keep one file at its root, or give a package its own file inside the package, so the wiring ships with the package and travels with any subtree that is copied elsewhere.
 
-Module names in an `arch.jac` are relative to its directory: in `app/arch.jac`, `core.docs` is `app/core/docs.jac`. The generated import is written with the module's real import name, which the file derives from the `__init__` modules above its directory, so a package's `arch.jac` names `cli.errmap` while the import it generates reads `import from mypkg.cli.errmap`.
+Module names in an `arch.jac` are relative to its directory: in `app/arch.jac`, `core.docs` is `app/core/docs.jac`. The generated import is written with the module's real import name, which the file derives from the packages above its directory (up to the outermost one with an `__init__`, passing through namespace directories on the way), so a package's `arch.jac` names `cli.errmap` while the import it generates reads `import from mypkg.cli.errmap`.
 
-An `arch.jac` with no `closed` declaration seals only what it names. An empty one is an open boundary: it stops the enclosing file from governing its subtree, so modules there keep their written imports. That is the right shape for sources that are copied out and compiled on their own, such as component templates.
+An `arch.jac` with no `closed` declaration seals only what it names. An empty one is an open boundary: it stops the enclosing file from governing its subtree, so modules there keep their written imports. That is the right shape for sources that are copied out and compiled on their own, such as component templates, and for subtrees a distribution builds separately and does not ship as source: the enclosing `arch.jac` then names nothing the distribution leaves out.
 
 ## Wires
 

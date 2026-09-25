@@ -84,22 +84,28 @@ impl WiringSpec._ensure_policy -> None {
 
 impl WiringSpec.import_prefix -> str {
     if self._prefix is None {
-        parts: list[str] = [];
+        project = find_jac_project_root(self.root_dir);
+        stop = os.path.realpath(project) if project else None;
+        chain: list[str] = [];
+        top = -1;
         cur = os.path.realpath(self.root_dir);
-        while any(
-            [
-                os.path.isfile(os.path.join(cur, "__init__" + ext))
-                for ext in (".jac", ".py")
-            ]
-        ) {
-            parts.insert(0, os.path.basename(cur));
+        while cur != stop {
+            if any(
+                [
+                    os.path.isfile(os.path.join(cur, "__init__" + ext))
+                    for ext in (".jac", ".py")
+                ]
+            ) {
+                top = len(chain);
+            }
+            chain.append(os.path.basename(cur));
             parent = os.path.dirname(cur);
             if parent == cur {
                 break;
             }
             cur = parent;
         }
-        self._prefix = ".".join(parts);
+        self._prefix = ".".join(reversed(chain[:top + 1]));
     }
     return self._prefix;
 }
