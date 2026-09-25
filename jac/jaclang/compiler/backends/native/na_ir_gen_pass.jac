@@ -76,6 +76,9 @@ import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.na_constants {
     CLASS_DISPLAY_OFF,
+    EXC_LINEAGE_BITS,
+    EXC_LINEAGE_MIX,
+    EXC_LINEAGE_SLOTS,
     LIVE_NODE_NEXT_OFF,
     LIVE_NODE_RC_OFF,
     LIVE_NODE_SIZE,
@@ -1283,10 +1286,19 @@ walker NaIRGenPass {
 
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
+    def _exception_member_name(member: uni.UniNode) -> (str | None);
     def _exception_handler_ids(ex: uni.Expr | None) -> list[int];
     def _exc_bound_struct(ex: (uni.Expr | None)) -> (str | None);
     def _reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) -> None;
     def _reraise_if_bound(cause: uni.Expr) -> None;
+    def _exception_handler_bases(ex: (uni.Expr | None)) -> list[int];
+    def _exc_lineage_fns -> tuple[ir.Function, ir.Function];
+    def _emit_exc_lineage_probe(
+        b: ir.IRBuilder, table: ir.GlobalVariable, key: ir.Value, atomic: bool
+    ) -> tuple[ir.Value, ir.Value, ir.Block, ir.Block, ir.Block];
+
+    def _emit_exc_lineage_match(type_val: ir.Value, bases: list[int]) -> ir.Value;
+    def _register_exc_lineage(cause: (uni.Expr | None), type_id: int) -> None;
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
     def _raise_has_frame_handler(nd: uni.RaiseStmt) -> bool;
     def _codegen_try(nd: uni.TryStmt) -> None;

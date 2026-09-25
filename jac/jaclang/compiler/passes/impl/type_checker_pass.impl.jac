@@ -1972,6 +1972,9 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
 }
 
 impl TypeCheckPass.exit_except with Except exit {
+    if here.ex_type is not None {
+        self.evaluator.get_type_of_expression(here.ex_type);
+    }
     self._check_immutable_write(here.name, rebind_scope=here);
 }
 
