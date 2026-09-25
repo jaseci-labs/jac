@@ -9,6 +9,13 @@ import from jaclang.compiler.frontend.constant {
     TYPE_PARAM_CONSTRUCTORS
 }
 import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
+import from jaclang.compiler.kernel_target {
+    active_kernel_target,
+    is_target_package_path,
+    kernel_target_active,
+    kernel_target_generation,
+    target_pkg_root
+}
 import type from jaclang.compiler.backends.es.estree { IndexInfo, SliceInfo }
 import type from jaclang.compiler.backends.es.estree { Node as EsNode }
 import type from jaclang.compiler.tools.doc_ir { Doc }
@@ -231,6 +238,7 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = _reserved_c_symbols();
 
 glob NATIVE_ARCH_SCOPE_SEP: str = "$",
      _native_arch_scope_memo: dict[str, str] = {},
+     _native_arch_scope_gen: list[int] = [-1],
      _native_unit_identity_memo: dict[str, str] = {};
 
 def native_arch_scope(mod_path: str) -> str {
@@ -238,13 +246,18 @@ def native_arch_scope(mod_path: str) -> str {
     if not mod_path {
         return "";
     }
+    gen = kernel_target_generation();
+    if _native_arch_scope_gen[0] != gen {
+        _native_arch_scope_memo.clear();
+        _native_arch_scope_gen[0] = gen;
+    }
     memo = _native_arch_scope_memo.get(mod_path);
     if memo is not None {
         return memo;
     }
     source = os.path.realpath(mod_path);
     out = "";
-    if not source.startswith(os.path.realpath(jaclang_pkg_root()) + os.sep) {
+    if not is_target_package_path(source) {
         stem = os.path.basename(source);
         dot = stem.find(".");
         if dot > 0 {
@@ -475,13 +488,25 @@ def is_compiler_source_path(source_path: str) -> bool {
     }
 }
 
+def kernel_unit_rels -> list[str] {
+    spec = active_kernel_target();
+    return list(spec.kernel_unit_rel) if spec is not None else list(KERNEL_UNIT_REL);
+}
+
+def is_package_keyed_path(source_path: str) -> bool {
+    if is_compiler_source_path(source_path) {
+        return True;
+    }
+    return kernel_target_active() and is_target_package_path(source_path);
+}
+
 def kernel_unit_path(rel: str) -> str {
     import os;
-    return os.path.join(jaclang_pkg_root(), rel.replace("/", os.sep));
+    return os.path.join(target_pkg_root(), rel.replace("/", os.sep));
 }
 
 def kernel_unit_paths -> list[str] {
-    return [kernel_unit_path(rel) for rel in KERNEL_UNIT_REL];
+    return [kernel_unit_path(rel) for rel in kernel_unit_rels()];
 }
 
 def is_kernel_unit_path(path: str) -> bool {
@@ -490,7 +515,7 @@ def is_kernel_unit_path(path: str) -> bool {
         return False;
     }
     rp = os.path.realpath(path);
-    for rel in KERNEL_UNIT_REL {
+    for rel in kernel_unit_rels() {
         if rp == os.path.realpath(kernel_unit_path(rel)) {
             return True;
         }
@@ -606,7 +631,7 @@ def effective_native_closure_cap -> int {
 
 def native_stdlib_root -> (str | None) {
     import os;
-    pkg = jaclang_pkg_root();
+    pkg = target_pkg_root();
     if not pkg {
         return None;
     }
@@ -836,7 +861,7 @@ def resolve_native_module(
 
     if module_name == clean and clean.startswith('jaclang.') {
         runtime_rel = clean[len('jaclang.'):].replace('.', '/') + '.jac';
-        if runtime_rel in KERNEL_UNIT_REL {
+        if runtime_rel in kernel_unit_rels() {
             runtime_path = kernel_unit_path(runtime_rel);
             if os.path.isfile(runtime_path) {
                 return (path_name, runtime_path);
@@ -924,7 +949,7 @@ def resolve_native_module(
     if clean.startswith('jaclang.') {
         import from jaclang.compiler.native_scope { in_native_scope_path }
         _cand = os.path.join(
-            jaclang_pkg_root(), clean.split('.', 1)[1].replace('.', os.sep) + '.jac'
+            target_pkg_root(), clean.split('.', 1)[1].replace('.', os.sep) + '.jac'
         );
         if native_unit_compile_active() {
             if in_native_scope_path(_cand) and os.path.isfile(_cand) {

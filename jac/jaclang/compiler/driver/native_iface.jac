@@ -10,10 +10,10 @@ import from jaclang.compiler.frontend.codeinfo {
     NativeModuleLayout,
     NativeStructLayout,
     NativeTupleLayout,
-    jaclang_pkg_root,
     native_unit_identity,
     native_unit_root
 }
+import from jaclang.compiler.kernel_target { target_pkg_root }
 
 def native_unit_ref(path: str) -> str {
     """How one unit names another in what it writes to disk: by package
@@ -39,7 +39,7 @@ def resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
         return ref;
     }
     if root_name == "jaclang" {
-        return os.path.join(os.path.dirname(jaclang_pkg_root()), ref);
+        return os.path.join(os.path.dirname(target_pkg_root()), ref);
     }
     if anchor {
         anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));

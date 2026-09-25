@@ -34,7 +34,8 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
 
      ),
      KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
-     _SCOPE_SUFFIX_CACHE: list[str] = [];
+     _SCOPE_SUFFIX_CACHE: list[str] = [],
+     _SCOPE_SUFFIX_GEN: list[int] = [-1];
 
 def package_host_edge(mod_path: str) -> bool {
     import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
@@ -55,12 +56,31 @@ def scope_allows_inferred_path(mod_path: str) -> bool {
     return not native_unit_compile_active() or not package_host_edge(mod_path);
 }
 
+def scope_modules -> list[str] {
+    import from jaclang.compiler.kernel_target { active_kernel_target }
+    spec = active_kernel_target();
+    if spec is not None {
+        return list(spec.scope_modules);
+    }
+    return [e.module for e in NATIVE_SCOPE];
+}
+
+def kernel_root_module -> str {
+    import from jaclang.compiler.kernel_target { active_kernel_target }
+    spec = active_kernel_target();
+    return spec.root_module if spec is not None else KERNEL_ROOT_MODULE;
+}
+
 def native_scope_path_suffixes -> list[str] {
-    if not _SCOPE_SUFFIX_CACHE {
-        for e in NATIVE_SCOPE {
-            rel = e.module.replace("jaclang.", "", 1).replace(".", "/") + ".jac";
+    import from jaclang.compiler.kernel_target { kernel_target_generation }
+    gen = kernel_target_generation();
+    if _SCOPE_SUFFIX_GEN[0] != gen {
+        _SCOPE_SUFFIX_CACHE.clear();
+        for module in scope_modules() {
+            rel = module.replace("jaclang.", "", 1).replace(".", "/") + ".jac";
             _SCOPE_SUFFIX_CACHE.append("jaclang/" + rel);
         }
+        _SCOPE_SUFFIX_GEN[0] = gen;
     }
     return _SCOPE_SUFFIX_CACHE;
 }
@@ -79,15 +99,15 @@ def in_native_scope_path(mod_path: str) -> bool {
 }
 
 def scope_module_path(module: str) -> str {
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    import from jaclang.compiler.kernel_target { target_pkg_root }
     rel = module.replace("jaclang.", "", 1).replace(".", os.sep) + ".jac";
-    return os.path.join(jaclang_pkg_root(), rel);
+    return os.path.join(target_pkg_root(), rel);
 }
 
 def native_scope_paths -> list[str] {
-    return [scope_module_path(e.module) for e in NATIVE_SCOPE];
+    return [scope_module_path(m) for m in scope_modules()];
 }
 
 def kernel_root_path -> str {
-    return scope_module_path(KERNEL_ROOT_MODULE);
+    return scope_module_path(kernel_root_module());
 }

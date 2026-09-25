@@ -6,7 +6,7 @@ import sys;
 import zlib;
 import from pathlib { Path }
 import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
-import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+import from jaclang.compiler.frontend.codeinfo { is_package_keyed_path }
 import from jaclang.bootstrap_manifest {
     COMPILER_DIGEST_ROOTS,
     COMPILER_IDENTITY_NAME,
@@ -379,7 +379,7 @@ def is_compiler_tree_path(source_path: str) -> bool {
 }
 
 def _module_codespace_mode(source_path: str) -> str {
-    if is_compiler_source_path(source_path) {
+    if is_package_keyed_path(source_path) {
         return "internal";
     }
     try {
@@ -726,7 +726,7 @@ def _full_env_fingerprint(source_path: str) -> str {
 }
 
 def _env_fingerprint_for(source_path: str) -> str {
-    if is_stub_like_path(source_path) or is_compiler_source_path(source_path) {
+    if is_stub_like_path(source_path) or is_package_keyed_path(source_path) {
         return _toolchain_env_fingerprint();
     }
     return _full_env_fingerprint(source_path);
@@ -763,14 +763,14 @@ def sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
     a kernel built by the kit records its units by package identity, so the
     checkout that matches the kit's sources can accept it without the
     build's paths existing here.""";
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    import from jaclang.compiler.kernel_target { target_pkg_root }
     units = sidecar.get("units");
     ids = sidecar.get("unit_ids");
     recorded = [str(u) for u in units] if isinstance(units, list) else [];
     if not isinstance(ids, list) or len(ids) != len(recorded) {
         return recorded;
     }
-    pkg_parent = os.path.dirname(jaclang_pkg_root());
+    pkg_parent = os.path.dirname(target_pkg_root());
     out: list[str] = [];
     for (path, ident) in zip(recorded, ids) {
         ident_s = str(ident);
@@ -790,7 +790,7 @@ def compute_module_key(source_path: str) -> str {
     compiler's bootstrap, a consumer's analysis and a native build session
     all read and write the same entry for it.""";
     h = hashlib.sha256();
-    projection = '' if is_compiler_source_path(source_path) else _owner_projection();
+    projection = '' if is_package_keyed_path(source_path) else _owner_projection();
     h.update(projection.encode());
     h.update(_env_fingerprint_for(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
@@ -1196,7 +1196,8 @@ def _module_cache_root(source_path: str) -> Path {
     resolved = Path(source_path).resolve();
     resolved_str = str(resolved);
 
-    if resolved_str.startswith(_jaclang_pkg_dir + os.sep) {
+    if resolved_str.startswith(_jaclang_pkg_dir + os.sep)
+        or is_package_keyed_path(resolved_str) {
         return get_jir_cache_dir() / 'modules';
     }
     try {
@@ -1228,7 +1229,7 @@ def _get_module_cache_dir(source_path: str) -> Path {
 def get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
-    projection = '' if is_compiler_source_path(str(source)) else _owner_projection();
+    projection = '' if is_package_keyed_path(str(source)) else _owner_projection();
     path_hash = hashlib.sha256((str(source) + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";

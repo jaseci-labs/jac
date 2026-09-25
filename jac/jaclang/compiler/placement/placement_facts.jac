@@ -123,19 +123,19 @@ def client_only_paths(paths: list[str]) -> set[str] {
 
 
 def _toolchain_rel(source_path: str) -> (str | None) {
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
-    pkg = os.path.realpath(jaclang_pkg_root());
-    rp = os.path.realpath(source_path);
-    if not rp.startswith(pkg + os.sep) {
-        return None;
-    }
-    return rp[len(pkg) + 1:].replace(os.sep, "/");
+    import from jaclang.compiler.kernel_target { target_package_rel }
+    return target_package_rel(source_path);
 }
 
 def native_only(source_path: str) -> bool {
     rel = _toolchain_rel(source_path);
     if rel is None {
         return False;
+    }
+    import from jaclang.compiler.kernel_target { active_kernel_target }
+    spec = active_kernel_target();
+    if spec is not None {
+        return spec.is_native_only(rel);
     }
     return active_host().is_native_only_source(rel);
 }
@@ -144,6 +144,11 @@ def native_lowered(source_path: str) -> bool {
     rel = _toolchain_rel(source_path);
     if rel is None {
         return False;
+    }
+    import from jaclang.compiler.kernel_target { active_kernel_target }
+    spec = active_kernel_target();
+    if spec is not None {
+        return spec.is_native_lowered(rel);
     }
     return active_host().is_native_lowered_source(rel);
 }

@@ -3,10 +3,10 @@ import hashlib;
 import json;
 import os;
 import sys;
-import from jaclang.compiler.driver.compile_options {
-    CompileOptions,
-    NATIVE_LINK_MODE_BITCODE
-}
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import type from jaclang.compiler.kernel_target { KernelTarget }
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.backends.native.link_plan { LinkPlan }
 
 glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
      STUBCAT_BUILDING_ENV: str = "JAC_STUBCAT_BUILDING",
@@ -150,27 +150,23 @@ def kernel_options -> CompileOptions {
     );
 }
 
-def kernel_plan(prog: any = None, mode: str = "") -> any {
+def kernel_plan(
+    prog: (JacProgram | None) = None,
+    mode: str = "",
+    target: (KernelTarget | None) = None
+) -> LinkPlan {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.native_scope { kernel_root_path }
     import from jaclang.compiler.backends.native.link_plan { build_link_plan }
     program = prog if prog is not None else JacProgram();
     options = kernel_options();
-    return build_link_plan(
-        program, [kernel_root_path()], options, mode=mode, native_unit=True
-    );
+    root_path = target.root_module_path() if target is not None else kernel_root_path();
+    return build_link_plan(program, [root_path], options, mode=mode, native_unit=True);
 }
 
 def build_kernel(dst: str, prog: any = None, log: any = None) -> any {
-    import from jaclang.compiler.backends.native.link_plan {
-        ArtifactKind,
-        link_artifact
-    }
-    with _StoreParserSpan() {
-        plan = kernel_plan(prog, mode=NATIVE_LINK_MODE_BITCODE);
-        os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
-        return link_artifact(plan, dst, ArtifactKind.SHARED, log=log);
-    }
+    import from jaclang.compiler.backends.native.kernel_stage0 { link_kernel }
+    return link_kernel(dst, prog=prog, log=log);
 }
 
 class _StoreParserSpan {

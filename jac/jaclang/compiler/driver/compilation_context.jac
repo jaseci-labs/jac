@@ -6,7 +6,7 @@ import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+import from jaclang.compiler.frontend.codeinfo { is_package_keyed_path }
 import type from jaclang.compiler.driver.program { JacProgram }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
@@ -75,7 +75,7 @@ def owner_scope_options(
 }
 
 def package_owned(path: str, program: JacProgram, options: CompileOptions) -> bool {
-    return is_compiler_source_path(path)
+    return is_package_keyed_path(path)
         and not (
             options.native_unit
             or options.aot_mode
