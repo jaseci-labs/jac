@@ -119,6 +119,10 @@ Bug index:
                the declaration path widens literals, so an annotated
                `list[str]` local was narrowed to `list[LiteralString]` anyway
                (#8982 item 12)
+  #PROTOOVL-1 - a protocol member implemented by an overloaded method solved
+                the protocol's type variable from the first overload only, so
+                `round(x, 3)` on a float matched `_SupportsRound2[_T]` against
+                `float.__round__`'s ndigits-less overload and typed as `int`
 """
 
 import os;
@@ -2135,5 +2139,26 @@ test "bug_selfovl1_receiver_selects_the_self_typed_overload" {
     );
     assert len(program.errors_had) == 0 , "\n".join(
         e.pretty_print() for e in program.errors_had
+    );
+}
+
+test "bug_protoovl1_overloaded_protocol_member_picks_fitting_overload" {
+    program = compile_and_check("checker_protocol_overloaded_member.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+    assert len(program.errors_had) == 2 , (
+        "Bug #PROTOOVL-1: only the two deliberate mismatches may fire. Got: "
+        f"{[str(e) for e in program.errors_had]}"
+    );
+    assert "Cannot assign float to int" in by_line.get(10, "") , (
+        "Bug #PROTOOVL-1: round(float, ndigits) must type as float. Line 10 "
+        f"reported: {by_line.get(10)}"
+    );
+    assert "Cannot assign int to str" in by_line.get(11, "") , (
+        "Bug #PROTOOVL-1: round(float) must still type as int. Line 11 "
+        f"reported: {by_line.get(11)}"
     );
 }

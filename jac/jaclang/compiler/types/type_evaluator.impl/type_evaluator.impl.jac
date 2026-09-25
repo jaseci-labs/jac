@@ -3199,19 +3199,102 @@ impl TypeEvaluator._solve_protocol_type_args(
             continue;
         }
 
-        impl_func = self.get_type_of_symbol(member.symbol);
-        if isinstance(impl_func, FunctionType) {
-            impl_func = impl_func.specialize(src_type);
+        if not isinstance(proto_func, FunctionType) {
+            continue;
         }
-
-        if isinstance(proto_func, FunctionType)
-            and isinstance(impl_func, FunctionType) {
-            if self.assign_type_to_type_var(proto_func, impl_func, bindings) {
-                solved = True;
-            }
+        impl_func = self._protocol_member_impl(proto_func, member, src_type);
+        if impl_func is not None
+            and self.assign_type_to_type_var(proto_func, impl_func, bindings) {
+            solved = True;
         }
     }
     return solved;
+}
+
+impl TypeEvaluator._protocol_member_impl(
+    proto_func: FunctionType, member: ClassMember, src_type: ClassType
+) -> (FunctionType | None) {
+    """Pick the implementation a protocol member binds to.
+
+    An overloaded member (e.g. `float.__round__`, which returns `int` without
+    `ndigits` and `float` with it) binds to its first overload whose signature
+    fits the protocol method, so `_SupportsRound2[_T]` solves `_T` to `float`
+    rather than to the first overload's `int`. Falls back to the first
+    overload when none fits.
+    """;
+    first = self.get_type_of_symbol(member.symbol);
+    if not isinstance(first, FunctionType) {
+        return None;
+    }
+    first = first.specialize(src_type);
+    if not member.overloads {
+        return first;
+    }
+    candidates: list[FunctionType] = [first];
+    for overload in member.overloads {
+        overload_ty = self.get_type_of_symbol(overload);
+        if isinstance(overload_ty, FunctionType) {
+            candidates.append(overload_ty.specialize(src_type));
+        }
+    }
+    for candidate in candidates {
+        if self._protocol_signature_fits(proto_func, candidate) {
+            return candidate;
+        }
+    }
+    return first;
+}
+
+impl TypeEvaluator._protocol_signature_fits(
+    proto_func: FunctionType, impl_func: FunctionType
+) -> bool {
+    """Does `impl_func` accept every positional call `proto_func` describes?
+
+    The same count of explicit positional parameters (extra impl parameters
+    need defaults, `*args` absorbs the rest), each protocol parameter type
+    assignable to the impl's. Parameters typed by a type variable always fit,
+    since they are what is being solved.
+    """;
+    def positional(func: FunctionType) -> list[Parameter] {
+        return [
+            p
+            for p in (func.parameters or [])
+            if not (p.is_self or p.is_cls)
+                and p.param_kind
+                    in (ParamKind.POSONLY, ParamKind.NORMAL, ParamKind.VARARG)
+        ];
+    }
+    proto_params = positional(proto_func);
+    impl_params = positional(impl_func);
+    for (i, proto_param) in enumerate(proto_params) {
+        if proto_param.param_kind == ParamKind.VARARG {
+            break;
+        }
+        if i >= len(impl_params) {
+            return False;
+        }
+        impl_param = impl_params[i];
+        if impl_param.param_kind == ParamKind.VARARG {
+            break;
+        }
+        proto_ty = proto_param.param_type;
+        impl_ty = impl_param.param_type;
+        if proto_ty is None
+            or impl_ty is None
+            or isinstance(proto_ty, TypeVarType)
+            or isinstance(impl_ty, TypeVarType) {
+            continue;
+        }
+        if not self.assign_type(proto_ty, impl_ty) {
+            return False;
+        }
+    }
+    for impl_param in impl_params[len(proto_params):] {
+        if impl_param.param_kind != ParamKind.VARARG and not impl_param.has_default {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool {
