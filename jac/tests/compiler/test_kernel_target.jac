@@ -122,3 +122,28 @@ test "a kernel target retargets the package predicates at a staging copy" {
     assert target_pkg_root() == jaclang_pkg_root();
     assert native_arch_scope(unitree_copy) != "";
 }
+
+test "only a kernel target's units share module cache files across trees" {
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    tmp = tempfile.mkdtemp(prefix="jac_kernel_cache_names_");
+    prev = active_kernel_target();
+    rel = os.path.join("compiler", "frontend", "unitree.jac");
+    try {
+        first = _stage_copy(os.path.join(tmp, "a"));
+        second = _stage_copy(os.path.join(tmp, "b"));
+        # A checkout and a kit (or two checkouts) share an identity and a
+        # compiler generation; without a target their entries stay apart.
+        running = get_module_cache_path(os.path.join(jaclang_pkg_root(), rel));
+        assert get_module_cache_path(os.path.join(first, rel)) != running;
+        assert get_module_cache_path(os.path.join(first, rel))
+            != get_module_cache_path(os.path.join(second, rel));
+
+        set_kernel_target(running_kernel_target(first));
+        shared = get_module_cache_path(os.path.join(first, rel));
+        set_kernel_target(running_kernel_target(second));
+        assert get_module_cache_path(os.path.join(second, rel)) == shared;
+    } finally {
+        set_kernel_target(prev);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
