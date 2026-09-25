@@ -20,7 +20,7 @@ impl NaIRGenPass._declare_exception_runtime -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
 
-    setjmp_fn = self._get_or_declare_extern("setjmp", i32, [i8p]);
+    setjmp_fn = self._get_or_declare_extern("setjmp", i32, [i8p], symbol="_setjmp");
     setjmp_fn.attributes.add("returns_twice");
 
     longjmp_fn = self._get_or_declare_extern("longjmp", ir.VoidType(), [i8p, i32]);

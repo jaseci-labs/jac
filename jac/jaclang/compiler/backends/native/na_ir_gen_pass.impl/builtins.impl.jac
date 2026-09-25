@@ -1,18 +1,23 @@
 impl NaIRGenPass._get_or_declare_extern(
-    name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
+    name: str,
+    ret_type: ir.Type,
+    arg_types: list[ir.Type],
+    var_arg: bool = False,
+    symbol: str = "",
 ) -> ir.Function {
+    emit = symbol or name;
     wanted = ir.FunctionType(ret_type, arg_types, var_arg=var_arg);
     existing: (ir.Function | None) = self.extern_funcs.get(name);
     if existing is None {
         for gv in self.llvm_module.global_values {
-            if isinstance(gv, ir.Function) and gv.name == name {
+            if isinstance(gv, ir.Function) and gv.name == emit {
                 existing = gv;
                 break;
             }
         }
     }
     if existing is None {
-        existing = ir.Function(self.llvm_module, wanted, name=name);
+        existing = ir.Function(self.llvm_module, wanted, name=emit);
     }
     self.extern_funcs[name] = existing;
     actual = existing.function_type;

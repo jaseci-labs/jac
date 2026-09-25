@@ -505,7 +505,11 @@ walker NaIRGenPass {
     def _lower_partition_unpack(nd: uni.Assignment) -> bool;
     def _emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | None);
     def _get_or_declare_extern(
-        name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
+        name: str,
+        ret_type: ir.Type,
+        arg_types: list[ir.Type],
+        var_arg: bool = False,
+        symbol: str = "",
     ) -> ir.Function;
 
     def _extern_address_cast(
