@@ -321,6 +321,10 @@ obj HostServices {
     def default_target_triple -> str {
         return "";
     }
+
+    def host_side -> HostServices {
+        return self;
+    }
 }
 
 glob KERNEL_HOST_ENV: str = "JAC_KERNEL_HOST",

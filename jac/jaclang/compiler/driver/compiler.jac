@@ -49,6 +49,7 @@ import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.selfhost { SelfHostCache }
+import type from jaclang.compiler.frontend.host { HostServices }
 import from jaclang.compiler.driver.session_compile {
     CompileFrame,
     SessionContext,
@@ -164,7 +165,8 @@ def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
 obj HostCompileFrame(CompileFrame) {
     has depth_prev: int = 0,
         gc_prev: (tuple[int, int, int] | None) = None,
-        retain_selfhost: bool = False;
+        retain_selfhost: bool = False,
+        session_host: (HostServices | None) = None;
 }
 
 obj JacCompiler(SessionHooks) {

@@ -113,7 +113,10 @@ obj ProjectHost(HostServices) {
     ) -> (ModuleAnalysis | None);
 
     def kernel_inputs(
-        program: JacProgram, path: str, options: CompileOptions
+        program: JacProgram,
+        path: str,
+        options: CompileOptions,
+        source: (str | None) = None
     ) -> KernelInputs;
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;

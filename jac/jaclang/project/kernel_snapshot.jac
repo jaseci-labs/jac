@@ -5,6 +5,7 @@ import from jaclang.compiler.frontend.kernel_inputs { KernelInputs, ManifestSets
 import from jaclang.compiler.frontend.kernel_host { KernelHost }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
 
 glob SCAN_LIMIT: int = 4000,
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/");
@@ -14,12 +15,17 @@ obj ClosureScan {
         program: JacProgram,
         options: CompileOptions,
         entry_path: str,
+        entry_source: (str | None) = None,
         scratch: (JacProgram | None) = None,
+        scope: list[str] = [],
         seen: set[str] = set(),
         learned: set[str] = set(),
         queue: list[str] = [];
 
     def run {
+        owner = self.learner.project_root(self.entry_path);
+        top = owner or os.path.dirname(os.path.abspath(self.entry_path));
+        self.scope.append(os.path.join(os.path.realpath(top), ""));
         self.queue.append(self.entry_path);
         while self.queue and len(self.seen) < SCAN_LIMIT {
             path = self.queue.pop();
@@ -53,7 +59,8 @@ obj ClosureScan {
         for source_path in sources {
             self.learn_path(source_path);
             try {
-                (tree, _) = parse(learner.read_source(source_path), source_path);
+                text = self.source_of(source_path);
+                (tree, _) = parse(text, source_path);
             } except Exception {
                 continue;
             }
@@ -74,12 +81,19 @@ obj ClosureScan {
         }
         try {
             (tree, _) = self.learner.parse_python(
-                self.learner.read_source(path), path, self.scratch
+                self.source_of(path), path, self.scratch
             );
         } except Exception {
             return;
         }
         self.scan_imports(tree);
+    }
+
+    def source_of(path: str) -> str {
+        if path == self.entry_path and self.entry_source is not None {
+            return self.entry_source;
+        }
+        return self.learner.read_source(path);
     }
 
     def scan_imports(tree: uni.Module) {
@@ -97,6 +111,9 @@ obj ClosureScan {
             }
             self.follow(self.resolved(mod_path, None));
             self.learn_npm(spec, owner);
+            if spec.startswith("jaclang.") {
+                learner.resolve_module(spec, os.path.join(os.path.dirname(owner), ""));
+            }
         }
         for item in tree.get_all_sub_nodes(uni.ModuleItem) {
             if item.parent is None or not isinstance(item.parent, uni.Import) {
@@ -141,11 +158,22 @@ obj ClosureScan {
             return;
         }
         self.learn_path(path);
+        if not self.in_scope(path) {
+            return;
+        }
         if path.endswith(".jac") or path.endswith(".py") {
             if path not in self.seen {
                 self.queue.append(path);
             }
         }
+    }
+
+    def in_scope(path: str) -> bool {
+        if is_compiler_source_path(path) {
+            return False;
+        }
+        real = os.path.realpath(path);
+        return any(real.startswith(top) for top in self.scope);
     }
 
     def learn_path(path: str) {
@@ -192,7 +220,11 @@ def manifest_sets -> ManifestSets {
 }
 
 def snapshot_inputs(
-    host: HostServices, program: JacProgram, path: str, options: CompileOptions
+    host: HostServices,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: (str | None) = None
 ) -> KernelInputs {
     import from jaclang.compiler.driver.bccache { host_layout_tables }
     import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
@@ -221,15 +253,24 @@ def snapshot_inputs(
     for app in {"", options.target_app or ""} {
         inputs.check_settings[app] = host.check_settings(app);
     }
-    learner = KernelHost(inputs=inputs, fallback=host, learn=True);
+    inputs.lint_of[""] = host.lint_settings("");
+    (inputs.native_pipeline, inputs.native_pipeline_reason) = host.native_pipeline_available();
+    inputs.native_pipeline_known = True;
+    learner = KernelHost(inputs=inputs, fallback=host);
     previous = active_host();
     install_host(learner);
+    scan = ClosureScan(
+        learner=learner,
+        program=program,
+        options=options,
+        entry_path=path,
+        entry_source=source
+    );
     try {
-        ClosureScan(
-            learner=learner, program=program, options=options, entry_path=path
-        ).run();
+        scan.run();
     } finally {
         install_host(previous);
     }
+    inputs.scanned_modules = len(scan.seen);
     return inputs;
 }

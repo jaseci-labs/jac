@@ -74,17 +74,21 @@ def owner_scope_options(
     return chosen;
 }
 
-def bind_options(
-    path: str, program: JacProgram, options: CompileOptions
-) -> CompileOptions {
-    import from jaclang.compiler.frontend.host { active_host }
-    if is_compiler_source_path(path)
+def package_owned(path: str, program: JacProgram, options: CompileOptions) -> bool {
+    return is_compiler_source_path(path)
         and not (
             options.native_unit
             or options.aot_mode
             or program.options.native_unit
             or program.options.aot_mode
-        ) {
+        );
+}
+
+def bind_options(
+    path: str, program: JacProgram, options: CompileOptions
+) -> CompileOptions {
+    import from jaclang.compiler.frontend.host { active_host }
+    if package_owned(path, program, options) {
         return owned_module_options(path, options);
     }
     bound = copy.copy(options);

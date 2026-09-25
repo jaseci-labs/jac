@@ -288,11 +288,16 @@ impl ProjectHost.native_analyze(
     }
     import from jaclang.compiler.driver.module_analysis { analyze_module }
     import from jaclang.compiler.frontend.host { active_host, install_host }
+    import time;
+    started = time.perf_counter();
+    inputs = self.kernel_inputs(program, path, options, source);
     kernel = KernelHost(
-        inputs=self.kernel_inputs(program, path, options),
+        inputs=inputs,
         fallback=self,
         closure=self.compiler_for(program).closure_options()
     );
+    kernel.census.snapshot_seconds = time.perf_counter() - started;
+    kernel.census.scanned_modules = inputs.scanned_modules;
     previous = active_host();
     install_host(kernel);
     try {
@@ -305,10 +310,10 @@ impl ProjectHost.native_analyze(
 }
 
 impl ProjectHost.kernel_inputs(
-    program: JacProgram, path: str, options: CompileOptions
+    program: JacProgram, path: str, options: CompileOptions, source: (str | None) = None
 ) -> KernelInputs {
     import from jaclang.project.kernel_snapshot { snapshot_inputs }
-    return snapshot_inputs(self, program, path, options);
+    return snapshot_inputs(self, program, path, options, source);
 }
 
 impl ProjectHost.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {

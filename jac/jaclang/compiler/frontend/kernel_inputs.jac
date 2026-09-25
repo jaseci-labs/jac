@@ -121,6 +121,7 @@ obj KernelInputs {
         typeshed_roots: list[str] = [],
         search_paths: list[str] = [],
         native_session_active: bool = False,
+        scanned_modules: int = 0,
         manifest: ManifestSets = ManifestSets(),
         layout: LayoutTables = LayoutTables(),
         project_facts: dict[str, ProjectFacts] = {},
@@ -426,6 +427,7 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "typeshed_roots": list(inputs.typeshed_roots),
         "search_paths": list(inputs.search_paths),
         "native_session_active": inputs.native_session_active,
+        "scanned_modules": inputs.scanned_modules,
         "manifest": manifest_to_dict(inputs.manifest),
         "layout": layout_to_dict(inputs.layout),
         "project_facts": {
@@ -529,6 +531,7 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
         typeshed_roots=[str(x) for x in raw.get("typeshed_roots", [])],
         search_paths=[str(x) for x in raw.get("search_paths", [])],
         native_session_active=bool(raw.get("native_session_active", False)),
+        scanned_modules=int(raw.get("scanned_modules", 0)),
         manifest=manifest_from_dict(dict(raw.get("manifest", {}))),
         layout=layout_from_dict(dict(raw.get("layout", {}))),
         project_facts={

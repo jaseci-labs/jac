@@ -750,6 +750,13 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
     frame.retain_selfhost = target_program.internal;
     if frame.retain_selfhost {
         self.selfhost.enter_execution();
+        import from jaclang.compiler.frontend.host { active_host, install_host }
+        session_host = active_host();
+        host_side = session_host.host_side();
+        if host_side is not session_host {
+            frame.session_host = session_host;
+            install_host(host_side);
+        }
     }
     return frame;
 }
@@ -775,6 +782,10 @@ impl JacCompiler.finish_compile(frame: CompileFrame) {
     }
     if frame.retain_selfhost {
         self.selfhost.exit_execution();
+    }
+    if frame.session_host is not None {
+        import from jaclang.compiler.frontend.host { install_host }
+        install_host(frame.session_host);
     }
 }
 
