@@ -715,225 +715,86 @@ impl JacCompiler.compile(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
-    caller_program = target_program;
-    resolved_program = target_program;
-    if not resolved_program.internal {
-        options = bind_options(file_path, resolved_program, options);
-        target_program = resolved_program
-            if resolved_program._natives is not None
-                and resolved_program._natives.session is not None
-            else context_program(resolved_program, options);
-    } else {
-        target_program = resolved_program;
-    }
-    context_errors = len(target_program.errors_had);
-    context_warnings = len(target_program.warnings_had);
-    import from jaclang.compiler.driver.compilation_context {
-        compilation_scope,
-        owner_scope_options
-    }
-    owner_options = owner_scope_options(target_program, options);
-    with compilation_scope(owner_options) {
-        with compile_progress.track(str(file_path)) {
-            if self._reentrant_depth == 0 and not self.stub_catalog_disabled {
-                if not target_program.internal {
-                    import from jaclang.compiler.types.stubcat.locate {
-                        StubCatalogUnavailable
-                    }
-                    try {
-                        self.ensure_stub_catalog();
-                    } except StubCatalogUnavailable {}
-                }
-            }
-            import from pathlib { Path as _WrapPath }
-            import from jaclang.compiler.frontend.codeinfo {
-                get_effective_default_codespace_override,
-                set_effective_default_codespace
-            }
-            _prev_cs = get_effective_default_codespace_override();
-            _depth_prev = self._reentrant_depth;
-            self._reentrant_depth = _depth_prev + 1;
-            if _depth_prev == 0 {
-                self._closure_opts = options;
-            }
-            _gc_prev: (tuple[int, int, int] | None) = None;
-            if _depth_prev == 0 and not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
-                import gc;
-                _gc_prev = gc.get_threshold();
-                thresholds = CHECK_GC_THRESHOLDS
-                    if options.no_cgen or _gc_prev == CHECK_GC_THRESHOLDS
-                    else COMPILE_GC_THRESHOLDS;
-                if _gc_prev[0] >= thresholds[0] {
-                    _gc_prev = None;
-                } else {
-                    gc.set_threshold(*thresholds);
-                }
-            }
-            _outer_opts: (CompileOptions | None) = None;
-            _outer_prog: (JacProgram | None) = None;
-            _scratch_prog: (JacProgram | None) = None;
-            import from jaclang.compiler.frontend.codeinfo {
-                set_native_unit_compile,
-                reset_native_unit_compile
-            }
-            native_token = set_native_unit_compile(bool(options.native_unit));
-            retain_selfhost = target_program.internal;
-            if retain_selfhost {
-                self.selfhost.enter_execution();
-            }
-            try {
-                _wrap_prog = target_program;
+    import from jaclang.compiler.driver.session_compile { compile_in_session }
+    return compile_in_session(self, file_path, target_program, use_str, options);
+}
 
-                _scratch_prog = _wrap_prog;
-                _wrap_prog.scratch.compile_depth += 1;
-                if _depth_prev > 0 {
-                    _outer_prog = _wrap_prog;
-                    _outer_opts = _wrap_prog.options;
-                }
-                _pre_errs = len(_wrap_prog.errors_had);
-                _pre_warns = len(_wrap_prog.warnings_had);
-                _mod: (uni.Module | None) = None;
-                _crash: (Exception | None) = None;
-                try {
-                    _mod = self._compile_once(
-                        file_path=file_path,
-                        target_program=target_program,
-                        use_str=use_str,
-                        options=options
-                    );
-                } except Exception as _e {
-                    _crash = _e;
-                }
-                if _crash is not None {
-                    _re_entered = import_error_re_enters(_crash, file_path);
-                    if _re_entered is not None {
-                        raise CompilerSourceError(
-                            f"compiling {file_path} re-entered it: a pass imported "
-                            f"'{_re_entered}' while Python was still executing that "
-                            "module, so the name is not bound yet. A module a pass "
-                            "reaches at run time belongs in the schedule's dependency "
-                            "list (IR_SCHED_DEPS in jaclang.compiler.driver.pipeline), "
-                            "which the loader pre-imports and which puts any compile "
-                            "nested in its import on the bootstrap tier."
-                        ) from _crash;
-                    }
-                }
-                _resolved = os.path.realpath(file_path);
-                _probe = _mod
-                    if _mod is not None
-                    else _wrap_prog.mod.hub.get(_resolved);
-                _inferred_native = (
-                    not options.aot_mode
-                    and not options.force_codespace
-                    and _probe is not None
-                    and _probe.decided_codespace == 'native'
-                );
-                _failed = _crash is not None or len(_wrap_prog.errors_had) > _pre_errs;
-                if not (_inferred_native and _failed) {
-                    if _crash is not None {
-                        raise _crash;
-                    }
-                    assert _mod is not None;
-                    return _mod;
-                }
-
-                _is_ice = _crash is not None
-                    and len(_wrap_prog.errors_had) == _pre_errs;
-                if _is_ice and os.environ.get('JAC_NATIVE_ICE_RAISE') {
-                    raise _crash;
-                }
-                _first_err = (
-                    _wrap_prog.errors_had[_pre_errs].pretty_print().split('\n')[0]
-                        if len(_wrap_prog.errors_had) > _pre_errs
-                        else f"{type(_crash).__name__}: {_crash}"
-                );
-                _demote_alerts = _wrap_prog.errors_had[_pre_errs:];
-                _demote_code = (
-                    _demote_alerts[0].code.code
-                        if (_demote_alerts and _demote_alerts[0].code is not None)
-                        else type(_crash).__name__
-                );
-                na_coverage_record(
-                    _resolved, 'ice' if _is_ice else 'demoted', _demote_code, _first_err
-                );
-                _wrap_prog.native_units().record_verdict(
-                    _resolved, _demote_code, _first_err
-                );
-                del _wrap_prog.errors_had[_pre_errs:];
-                del _wrap_prog.warnings_had[_pre_warns:];
-                try {
-                    _wrap_prog.invalidate_module(_resolved);
-                } except Exception {}
-                try {
-                    import from jaclang.compiler.placement.placement_solver {
-                        invalidate_importers_es
-                    }
-                    for _stale_mod in invalidate_importers_es(_wrap_prog, _resolved) {
-                        _drop_demoted_native_bindings(_stale_mod, _resolved);
-                    }
-                } except Exception as _reset_exc {
-                    import logging as _reset_log;
-                    _reset_log.getLogger(__name__).warning(
-                        f"native demotion of {_resolved} could not reset its importers "
-                        f"({_reset_exc}); stale client bindings may persist until a rebuild."
-                    );
-                }
-                try {
-                    import from jaclang.cli.console { console as _note_console }
-                    (_note_msg, _note_style) = na_demotion_note(
-                        file_path, _first_err, _is_ice
-                    );
-                    _note_console.print(_note_msg, style=_note_style, file=sys.stderr);
-                } except Exception {}
-                return self._compile_once(
-                    file_path=file_path,
-                    target_program=target_program,
-                    use_str=use_str,
-                    options=options
-                );
-            } finally {
-                if target_program is not caller_program
-                    and not target_program.internal {
-                    caller_program.errors_had.extend(
-                        target_program.errors_had[context_errors:]
-                    );
-                    caller_program.warnings_had.extend(
-                        target_program.warnings_had[context_warnings:]
-                    );
-                }
-                reset_native_unit_compile(native_token);
-                set_effective_default_codespace(_prev_cs);
-                self._reentrant_depth = _depth_prev;
-                if _depth_prev == 0 {
-                    self._closure_opts = None;
-                    if caller_program is not target_program {
-                        self._release_compile_scratch(caller_program);
-                    }
-                }
-                if _outer_prog is not None and _outer_opts is not None {
-                    _outer_prog.options = _outer_opts;
-                }
-                if _scratch_prog is not None {
-                    _scratch_prog.scratch.compile_depth -= 1;
-                    if _scratch_prog.scratch.compile_depth <= 0 {
-                        _scratch_prog.scratch.compile_depth = 0;
-                        self._release_compile_scratch(_scratch_prog);
-                    }
-                }
-                if _gc_prev is not None {
-                    import gc;
-                    gc.set_threshold(*_gc_prev);
-                }
-                if retain_selfhost {
-                    self.selfhost.exit_execution();
-                }
-            }
+impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
+    target_program = ctx.target;
+    if self._reentrant_depth == 0
+        and not self.stub_catalog_disabled
+        and not target_program.internal {
+        import from jaclang.compiler.types.stubcat.locate { StubCatalogUnavailable }
+        try {
+            self.ensure_stub_catalog();
+        } except StubCatalogUnavailable {}
+    }
+    frame = HostCompileFrame(
+        nested=self._reentrant_depth > 0, depth_prev=self._reentrant_depth
+    );
+    self._reentrant_depth = frame.depth_prev + 1;
+    if frame.depth_prev == 0 {
+        self._closure_opts = ctx.options;
+    }
+    if frame.depth_prev == 0 and not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
+        import gc;
+        gc_prev = gc.get_threshold();
+        thresholds = CHECK_GC_THRESHOLDS
+            if ctx.options.no_cgen or gc_prev == CHECK_GC_THRESHOLDS
+            else COMPILE_GC_THRESHOLDS;
+        if gc_prev[0] < thresholds[0] {
+            frame.gc_prev = gc_prev;
+            gc.set_threshold(*thresholds);
         }
     }
+    frame.retain_selfhost = target_program.internal;
+    if frame.retain_selfhost {
+        self.selfhost.enter_execution();
+    }
+    return frame;
+}
+
+impl JacCompiler.leave_compile(ctx: SessionContext, frame: CompileFrame) {
+    depth_prev = frame.depth_prev if isinstance(frame, HostCompileFrame) else 0;
+    self._reentrant_depth = depth_prev;
+    if depth_prev == 0 {
+        self._closure_opts = None;
+        if ctx.caller is not ctx.target {
+            self._release_compile_scratch(ctx.caller);
+        }
+    }
+}
+
+impl JacCompiler.finish_compile(frame: CompileFrame) {
+    if not isinstance(frame, HostCompileFrame) {
+        return;
+    }
+    if frame.gc_prev is not None {
+        import gc;
+        gc.set_threshold(*frame.gc_prev);
+    }
+    if frame.retain_selfhost {
+        self.selfhost.exit_execution();
+    }
+}
+
+impl JacCompiler.check_crash(crash: Exception, file_path: str) {
+    re_entered = import_error_re_enters(crash, file_path);
+    if re_entered is not None {
+        raise CompilerSourceError(
+            f"compiling {file_path} re-entered it: a pass imported "
+            f"'{re_entered}' while Python was still executing that "
+            "module, so the name is not bound yet. A module a pass "
+            "reaches at run time belongs in the schedule's dependency "
+            "list (IR_SCHED_DEPS in jaclang.compiler.driver.pipeline), "
+            "which the loader pre-imports and which puts any compile "
+            "nested in its import on the bootstrap tier."
+        ) from crash;
+    }
+}
+
+impl JacCompiler.closure_options -> (CompileOptions | None) {
+    return self._closure_opts;
 }
 
 impl JacCompiler._persist_module_cache(
@@ -1050,88 +911,49 @@ impl JacCompiler._release_compile_scratch(target_program: JacProgram) -> None {
     } except Exception {}
 }
 
-impl JacCompiler._compile_once(
+impl JacCompiler.run_module(
     file_path: str,
     target_program: JacProgram,
-    use_str: (str | None) = None,
-    options: CompileOptions = CompileOptions()
+    use_str: (str | None),
+    options: CompileOptions
 ) -> uni.Module {
-    if use_str is not None and not options.no_ir_cache {
-        import copy;
-        options = copy.copy(options);
-        options.no_ir_cache = True;
-    }
-    import from jaclang.jac0core.ext_registry { is_annex }
-    if (use_str is None and options.resolve_annex_parent and is_annex(file_path)) {
-        import from jaclang.compiler.driver.bccache { discover_base_file }
-        base_path = discover_base_file(file_path);
-        if (base_path and base_path not in target_program.mod.hub) {
-            return self.compile(
-                file_path=base_path, target_program=target_program, options=options
-            );
-        }
-    }
-    actual_program = target_program;
-
-    _prev_opts = actual_program.options;
-    if _prev_opts is not None
-        and not (options.nogc_enforce_all or options.memory_enforce) {
-        options.nogc_enforce_all = _prev_opts.nogc_enforce_all;
-        options.memory_enforce = _prev_opts.memory_enforce;
-        options.memory_exempt = _prev_opts.memory_exempt;
-    }
-    if _prev_opts is not None and not options.default_codespace {
-        options.default_codespace = _prev_opts.default_codespace;
-    }
-    _closure = self._closure_opts;
-    if _closure is not None and _closure is not options and _closure.need_full_ast {
-        options.need_full_ast = True;
-    }
-    actual_program.options = options;
-    if options.default_codespace {
-        import from jaclang.compiler.frontend.codeinfo {
-            set_effective_default_codespace
-        }
-        set_effective_default_codespace(options.default_codespace);
-    }
-
-    _iface_reg: any = None;
-    _iface_target = "";
+    registry: any = None;
+    iface_target = "";
     if use_str is None {
-        _iface_target = os.path.realpath(str(file_path));
-        _reg_probe = actual_program.iface_registry();
-        if _reg_probe.eligible(self, _iface_target, options) {
-            _served = _reg_probe.serve(self, _iface_target, options);
-            if _served is not None {
-                return _served;
+        iface_target = os.path.realpath(str(file_path));
+        probe = target_program.iface_registry();
+        if probe.eligible(self, iface_target, options) {
+            served = probe.serve(self, iface_target, options);
+            if served is not None {
+                return served;
             }
-            _iface_reg = _reg_probe;
+            registry = probe;
         }
     }
-    if _iface_reg is None {
-        _plain = self._compile_pipeline(file_path, actual_program, use_str, options);
+    if registry is None {
+        plain = self._compile_pipeline(file_path, target_program, use_str, options);
         if use_str is None {
-            self._persist_native_unit(_iface_target, _plain, actual_program);
+            self._persist_native_unit(iface_target, plain, target_program);
         }
-        return _plain;
+        return plain;
     }
-    _err_start = len(actual_program.errors_had);
-    _warn_start = len(actual_program.warnings_had);
-    _iface_reg.frame_push(_iface_target);
-    _mod_out: (uni.Module | None) = None;
+    err_start = len(target_program.errors_had);
+    warn_start = len(target_program.warnings_had);
+    registry.frame_push(iface_target);
+    compiled: (uni.Module | None) = None;
     try {
-        _mod_out = self._compile_pipeline(file_path, actual_program, use_str, options);
+        compiled = self._compile_pipeline(file_path, target_program, use_str, options);
         try {
-            _iface_reg.persist_after_compile(
-                _iface_target, _mod_out, options, _err_start, _warn_start
+            registry.persist_after_compile(
+                iface_target, compiled, options, err_start, warn_start
             );
         } except Exception {}
-        self._persist_native_unit(_iface_target, _mod_out, actual_program);
+        self._persist_native_unit(iface_target, compiled, target_program);
     } finally {
-        _iface_reg.frame_pop();
+        registry.frame_pop();
     }
-    assert _mod_out is not None;
-    return _mod_out;
+    assert compiled is not None;
+    return compiled;
 }
 
 impl JacCompiler._compile_pipeline(

@@ -165,11 +165,11 @@ impl ProjectHost.native_pipeline_available -> tuple[bool, str] {
     return native_pipeline_available();
 }
 
-impl ProjectHost.note(message: str) {
+impl ProjectHost.note(message: str, style: str = "dim") {
     import sys;
     try {
         import from jaclang.cli.console { console }
-        console.print(message, style="dim", file=sys.stderr);
+        console.print(message, style=style, file=sys.stderr);
     } except Exception {}
 }
 
@@ -267,6 +267,12 @@ impl ProjectHost.record_native_coverage(
 ) {
     import from jaclang.compiler.driver.na_coverage { na_coverage_record }
     na_coverage_record(path, outcome, code, detail);
+}
+
+impl ProjectHost.record_native_verdict(
+    program: JacProgram, path: str, code: str, detail: str
+) {
+    program.native_units().record_verdict(path, code, detail);
 }
 
 impl ProjectHost.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {

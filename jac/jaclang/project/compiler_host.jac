@@ -65,7 +65,7 @@ obj ProjectHost(HostServices) {
     ) -> (list[str] | None);
 
     def native_pipeline_available -> tuple[bool, str];
-    def note(message: str);
+    def note(message: str, style: str = "dim");
     def stub_catalog_for(program: JacProgram) -> (StubCatalog | None);
     def parse_python(
         source_str: str, file_path: str, program: JacProgram
@@ -104,6 +104,8 @@ obj ProjectHost(HostServices) {
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
     );
+
+    def record_native_verdict(program: JacProgram, path: str, code: str, detail: str);
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(

@@ -147,7 +147,7 @@ obj HostServices {
         return None;
     }
 
-    def note(message: str) {}
+    def note(message: str, style: str = "dim") {}
     def stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
         return None;
     }
@@ -238,6 +238,10 @@ obj HostServices {
 
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
+    ) {}
+
+    def record_native_verdict(
+        program: JacProgram, path: str, code: str, detail: str
     ) {}
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram {

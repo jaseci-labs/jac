@@ -49,6 +49,11 @@ import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.selfhost { SelfHostCache }
+import from jaclang.compiler.driver.session_compile {
+    CompileFrame,
+    SessionContext,
+    SessionHooks
+}
 import from jaclang.compiler.driver.pass_driver {
     build_diagnostic_policy,
     compile_progress,
@@ -95,11 +100,6 @@ import from jaclang.compiler.driver.boundary_classify {
     is_client_native_edge_import,
     native_only_import_target,
     symbol_linked_source_module
-}
-import from jaclang.compiler.driver.na_coverage {
-    _drop_demoted_native_bindings,
-    na_coverage_record,
-    na_demotion_note
 }
 
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (5000000, 50, 100),
@@ -161,7 +161,13 @@ def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
     );
 }
 
-obj JacCompiler {
+obj HostCompileFrame(CompileFrame) {
+    has depth_prev: int = 0,
+        gc_prev: (tuple[int, int, int] | None) = None,
+        retain_selfhost: bool = False;
+}
+
+obj JacCompiler(SessionHooks) {
     has _selfhost: (SelfHostCache | None) = None,
         _reentrant_depth: int = 0,
         _closure_opts: (CompileOptions | None) = None,
@@ -256,11 +262,16 @@ obj JacCompiler {
         options: CompileOptions = CompileOptions()
     ) -> uni.Module;
 
-    def _compile_once(
+    def enter_compile(ctx: SessionContext) -> CompileFrame;
+    def leave_compile(ctx: SessionContext, frame: CompileFrame);
+    def finish_compile(frame: CompileFrame);
+    def check_crash(crash: Exception, file_path: str);
+    def closure_options -> (CompileOptions | None);
+    def run_module(
         file_path: str,
         target_program: JacProgram,
-        use_str: (str | None) = None,
-        options: CompileOptions = CompileOptions()
+        use_str: (str | None),
+        options: CompileOptions
     ) -> uni.Module;
 
     def _compile_pipeline(

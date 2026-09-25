@@ -9,7 +9,7 @@ both halves of the comparison and neither tree needs to carry a copy.
 
 Corpus paths are resolved against the cwd and so name the sources of whichever
 tree is being measured. The schedule phases (parse, ir_gen, analysis, boundary,
-codegen) are the schedules `JacCompiler` `_compile_once` itself runs for a
+codegen) are the schedules `JacCompiler` `run_module` itself runs for a
 plain Python-lane module, driven here one at a time so each is attributable;
 `full` is the whole-closure `JacProgram.compile` that a real `jac run` pays,
 and `check` is a fresh-program full-analysis compile (`no_cgen` +
