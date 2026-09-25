@@ -172,6 +172,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     self._codegen_entry(_entry_nodes);
     self._finalize_trace_lookup();
+    self._finish_osp_reclaim_hook();
 
     if self.has_native_code {
         if self.ctx.errors_had {

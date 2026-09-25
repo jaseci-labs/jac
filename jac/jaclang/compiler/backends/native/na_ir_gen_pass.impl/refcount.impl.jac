@@ -2729,6 +2729,16 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
         b.call(_hook, [b.bitcast(release_fn.args[0], _hook.args[0].type)]);
     }
 
+    _node_lay = self._arch_layout(arch_name);
+    if self._osp_pins_refs()
+        and _node_lay is not None
+        and _node_lay.arch_type == "node" {
+        b.call(
+            self._osp_reclaim_hook(),
+            [b.ptrtoint(release_fn.args[0], i64, name="osp.forget.h")]
+        );
+    }
+
     if self._pyb_base_of(arch_name) is not None {
         b.call(
             self._pyb_helper("drop_owner"),

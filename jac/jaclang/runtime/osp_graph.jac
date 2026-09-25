@@ -237,6 +237,9 @@ obj OspGraph {
         return eobj in self.row_of;
     }
 
+    has pin_refs: bool = False,
+        unpinned: list[int] = [];
+
     def _row_alloc(src: int, tgt: int, tag: int, eobj: int, undirected: bool) -> int {
         if self.free_rows {
             rid: int = self.free_rows.pop();
@@ -260,6 +263,11 @@ obj OspGraph {
 
     def _row_retire(rid: int) {
         row: OspEdgeRow = self.rows[rid];
+        if self.pin_refs and row.live {
+            self.unpinned.append(row.src);
+            self.unpinned.append(row.tgt);
+            self.unpinned.append(row.handle);
+        }
         if row.handle in self.row_of {
             del self.row_of[row.handle];
         }
@@ -982,6 +990,28 @@ def osp_light_disconn_between(src: int, tgt: int, dir: int, edge_tag: int) -> in
 
 def osp_drop_node(h: int) -> int {
     return DEFAULT_GRAPH.drop_node(h);
+}
+
+def osp_forget_node(h: int) {
+    if h in DEFAULT_GRAPH.adj {
+        DEFAULT_GRAPH.drop_node(h);
+    } elif h in DEFAULT_GRAPH.dead {
+        DEFAULT_GRAPH.dead.pop(h);
+    }
+}
+
+def osp_pin_refs {
+    DEFAULT_GRAPH.pin_refs = True;
+}
+
+def osp_unpinned_count -> int {
+    return len(DEFAULT_GRAPH.unpinned);
+}
+
+def osp_take_unpinned -> list[int] {
+    out = DEFAULT_GRAPH.unpinned;
+    DEFAULT_GRAPH.unpinned = [];
+    return out;
 }
 
 def osp_disconn_between(src: int, tgt: int, dir: int, edge_tag: int) -> int {

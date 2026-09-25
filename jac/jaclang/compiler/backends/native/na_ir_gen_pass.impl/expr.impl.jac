@@ -822,7 +822,9 @@ impl NaIRGenPass._codegen_kernel_spawn(
         ]
     );
     self._emit_elem_release(self.builder, _spawn_result.type, _spawn_result);
+    self._osp_sync();
     self._emit_rc_release_simple(_starts, op="spawn_starts", loc="");
+    self._release_owned_args([loc_val], op="spawn_location");
     return walker_val;
 }
 

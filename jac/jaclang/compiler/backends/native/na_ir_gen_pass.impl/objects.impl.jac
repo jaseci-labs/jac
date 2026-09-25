@@ -2069,7 +2069,7 @@ impl NaIRGenPass._codegen_instantiation(
         _tt_val = stable_osp_tag(type_name);
         self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
 
-        if not self._arch_is_walker_name(type_name) {
+        if not self._arch_is_walker_name(type_name) and not self._osp_pins_refs() {
             self._osp_make_immortal(obj_ptr);
         }
     }

@@ -308,6 +308,10 @@ walker NaIRGenPass {
         _osp_rt_global: (ir.GlobalVariable | None) = None,
         _osp_setup_fn: (ir.Function | None) = None,
         _osp_ensure_fn: (ir.Function | None) = None,
+        _osp_sync_fn: (ir.Function | None) = None,
+        _osp_reclaim_fn: (ir.Function | None) = None,
+        _osp_visit_temps: list[ir.Value] = [],
+        _osp_reclaim_done: bool = False,
         _unit_prefix: str = "",
         _unit_prefixes: dict[str, str] = {},
         _native_dep_paths: list[str] = [],
@@ -1917,6 +1921,15 @@ walker NaIRGenPass {
     def _osp_edge_factory(name: str) -> ir.Function;
     def _emit_osp_edge_factories -> None;
     def _osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value;
+    def _osp_pins_refs -> bool;
+    def _osp_handle_ptr(value: ir.Value, i8p: ir.Type) -> ir.Value;
+    def _osp_own_handles(typed: ir.Value) -> None;
+    def _osp_handle_loop(b: ir.IRBuilder, lst: ir.Value, retain: bool) -> None;
+    def _osp_sync -> None;
+    def _osp_reclaim_hook -> ir.Function;
+    def _finish_osp_reclaim_hook -> None;
+    def _fill_osp_reclaim_hook -> None;
+    def _emit_osp_sync_fn -> (ir.Function | None);
     def _osp_active -> bool;
     def _xmod_osp_help(names: list[str | None]) -> (str | None);
     def _register_osp_kernel_module -> None;
