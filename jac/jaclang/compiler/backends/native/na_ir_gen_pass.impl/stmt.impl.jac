@@ -2053,6 +2053,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     name=(idx_target_name or "<expr>")
                 );
             }
+            if _idx_stored and target_val is not None {
+                self._release_owned_args([target_val], op="subscript_receiver");
+            }
             continue;
         }
         var_name = self._get_name(target_expr);

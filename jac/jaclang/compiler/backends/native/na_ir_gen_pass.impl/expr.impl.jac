@@ -691,6 +691,19 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
                     right, op="binop_rhs", loc=getattr(right, 'jac_loc', '')
                 );
             }
+        } elif op == Tok.STAR_MUL
+            and (_l_strish or _r_strish)
+            and (result.type == i8p or (_sdt is not None and result.type == _sdt)) {
+            if _l_strish and self._is_owned(left) {
+                self._emit_rc_release_typed(
+                    left, op="binop_rep_lhs", loc=getattr(left, 'jac_loc', '')
+                );
+            }
+            if _r_strish and self._is_owned(right) {
+                self._emit_rc_release_typed(
+                    right, op="binop_rep_rhs", loc=getattr(right, 'jac_loc', '')
+                );
+            }
         } elif op in (Tok.PLUS, Tok.STAR_MUL) and self._is_owned(result) {
             for _lt in self.list_types.values() {
                 if result.type == _lt.as_pointer() {

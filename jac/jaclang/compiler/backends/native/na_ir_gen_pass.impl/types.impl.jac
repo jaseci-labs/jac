@@ -2858,6 +2858,7 @@ impl NaIRGenPass._emit_binary_op(
             self.builder.branch(loop_bb);
             self.builder.position_at_start(done_bb);
             self._str_finish(self.builder, buf, total);
+            self._mark_owned(buf);
             return buf;
         }
     }
