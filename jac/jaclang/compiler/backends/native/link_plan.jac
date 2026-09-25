@@ -6,6 +6,7 @@ import hashlib;
 import json;
 import os;
 import sys;
+import time;
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ExecutionEngine,
@@ -810,14 +811,35 @@ def optimize_merged_program(plan: LinkPlan, merged: ModuleRef, kind: ArtifactKin
     }
 }
 
+def _log_phase(
+    log: (Callable[[str], None] | None), phase: str, started: float
+) -> float {
+    now = time.perf_counter();
+    if log is not None {
+        log(f"  Link timing: {phase} {now - started:.2f}s");
+    }
+    return now;
+}
+
 def plan_objects(
-    plan: LinkPlan, spec: GlueSpec, kind: ArtifactKind, tm: TargetMachine
+    plan: LinkPlan,
+    spec: GlueSpec,
+    kind: ArtifactKind,
+    tm: TargetMachine,
+    log: (Callable[[str], None] | None) = None
 ) -> tuple[list[bytes], list[str]] {
+    started = time.perf_counter();
     if plan.mode == NATIVE_LINK_MODE_OBJECTS {
-        return unit_objects(plan, spec, tm);
+        result = unit_objects(plan, spec, tm);
+        _log_phase(log, f"unit_objects ({len(plan.units)} units)", started);
+        return result;
     }
     (merged, exports) = whole_program_module(plan, spec);
+    started = _log_phase(
+        log, f"whole_program_module ({len(plan.units)} units)", started
+    );
     optimize_whole_program(plan, merged, kind, tm);
+    started = _log_phase(log, "optimize_whole_program", started);
     dump_path = plan.options.dump_ir_path or "";
     if dump_path {
         with open(dump_path, "w") as df {
@@ -826,6 +848,7 @@ def plan_objects(
     }
     object_bytes = tm.emit_object(merged);
     assert isinstance(object_bytes, bytes);
+    _log_phase(log, "emit_object", started);
     return ([object_bytes], exports);
 }
 
@@ -1097,7 +1120,8 @@ def link_artifact(
         return reused;
     }
     plan.prog.native_units().note_link(False);
-    (objects, _) = plan_objects(plan, spec, kind, tm);
+    (objects, _) = plan_objects(plan, spec, kind, tm, log=log);
+    link_started = time.perf_counter();
     inputs.objects = objects;
     inputs.archive_members = archive_members;
     if atomics is not None {
@@ -1158,6 +1182,7 @@ def link_artifact(
     if not ok {
         raise LinkPlanError(f"{platform} link failed: could not parse an object");
     }
+    _log_phase(log, f"{platform} link", link_started);
     digest = plan.plan_digest();
     artifact_sha256 = _sha256_of(output_path);
     (classes, ldigest) = _write_sidecar(
