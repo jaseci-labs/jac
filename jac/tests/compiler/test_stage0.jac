@@ -1,0 +1,482 @@
+"""A pinned stage-0 compiler builds the kernel, and the checkout accepts it.
+
+`jac/bootstrap/stage0.json` names the compiler that builds the kernel: "self"
+(the running compiler) or a commit whose `jac/jaclang` snapshot is provisioned
+into the cache. A snapshot runs only when its kernel ABI matches this tree;
+every refusal falls back to the self build unless JAC_STAGE0_STRICT forbids
+it. A stage-0 kernel is accepted by the pin, the ABI and the units' sources,
+never by the running compiler's digest.
+"""
+import hashlib;
+import io;
+import json;
+import os;
+import shutil;
+import sys;
+import tempfile;
+import time;
+import from pathlib { Path }
+import from unittest.mock { patch }
+import jaclang.compiler.backends.native.stage0_build as stage0_build;
+import from jaclang.compiler.backends.native.kernel_resolve {
+    KernelUnavailable,
+    _accept_in_tree,
+    _derive_in_tree,
+    kernel_options,
+    read_sidecar
+}
+import from jaclang.compiler.backends.native.stage0_pin {
+    STAGE0_PIN_ENV,
+    STAGE0_STRICT_ENV,
+    Stage0Pin,
+    Stage0PinError,
+    abi_contract_digest,
+    read_stage0_pin,
+    stage0_pin_path,
+    write_stage0_pin
+}
+import from jaclang.compiler.backends.native.stage0_build {
+    build_kernel_by_pin,
+    file_guard_trips,
+    pin_for_commit,
+    restamp_stage0_sidecar,
+    typeshed_pin_of
+}
+import from jaclang.compiler.driver.jir { running_compiler_digest, unit_source_digest }
+import from jaclang.compiler.frontend.codeinfo {
+    KERNEL_UNIT_REL,
+    NATIVE_ABI_VERSION,
+    jaclang_pkg_root,
+    native_unit_identity
+}
+import from jaclang.compiler.native_scope { KERNEL_ABI_CONTRACT_REL }
+import from jaclang.testing.requires { require_flag }
+
+glob COMMIT: str = "a" * 40,
+     TREE: str = "b" * 40,
+     NATIVE: str = "c" * 40;
+
+def _with_env(values: dict[str, (str | None)], fn: any) -> any {
+    prev = {k: os.environ.get(k) for k in values};
+    for (k, v) in values.items() {
+        if v is None {
+            os.environ.pop(k, None);
+        } else {
+            os.environ[k] = v;
+        }
+    }
+    try {
+        return fn();
+    } finally {
+        for (k, v) in prev.items() {
+            if v is None {
+                os.environ.pop(k, None);
+            } else {
+                os.environ[k] = v;
+            }
+        }
+    }
+}
+
+def _commit_pin(digest: str = "7:digest") -> Stage0Pin {
+    return Stage0Pin(
+        commit=COMMIT,
+        jaclang_tree=TREE,
+        compiler_digest=digest,
+        native_tree=NATIVE,
+        typeshed_pin=typeshed_pin_of(jaclang_pkg_root())
+    );
+}
+
+def _write_json(path: str, data: any) {
+    Path(path).write_text(json.dumps(data));
+}
+
+test "the stage-0 pin reads self, a commit and a missing file, and refuses malformed pins" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        path = os.path.join(tmp, "stage0.json");
+        assert read_stage0_pin(path).is_self() , "no pin file means self";
+        _write_json(path, {"stage0": "self"});
+        assert read_stage0_pin(path).is_self();
+        pin = _commit_pin();
+        write_stage0_pin(pin, path);
+        back = read_stage0_pin(path);
+        assert not back.is_self();
+        assert back.to_dict() == pin.to_dict();
+        good = pin.to_dict();
+        malformed: list[any] = [
+            "not json {",
+            [1, 2],
+            {"stage0": "HEAD"},
+            {"stage0": "self", "commit": COMMIT},
+            {** good, "format": 2},
+            {** good, "commit": "abc123"},
+            {** good, "native_tree": "B" * 40},
+            {
+                k: v
+                for (k, v) in good.items()
+                if k != "compiler_digest"
+            },
+            {** good, "typeshed_pin": ""}
+        ];
+        for bad in malformed {
+            if isinstance(bad, str) {
+                Path(path).write_text(bad);
+            } else {
+                _write_json(path, bad);
+            }
+            refused = False;
+            try {
+                read_stage0_pin(path);
+            } except Stage0PinError {
+                refused = True;
+            }
+            assert refused , f"{bad!r} is not a pin";
+        }
+        assert _with_env({STAGE0_PIN_ENV: path}, lambda() { stage0_pin_path(); })
+            == path;
+    }
+}
+
+test "the checkout ships a self pin beside its jaclang package" {
+    path = _with_env({STAGE0_PIN_ENV: None}, lambda() { stage0_pin_path(); });
+    assert path
+        == os.path.join(
+            os.path.dirname(jaclang_pkg_root()), "bootstrap", "stage0.json"
+        );
+    assert os.path.isfile(path);
+    assert read_stage0_pin(path).is_self();
+}
+
+test "the kernel ABI contract covers every kernel unit and names files that exist" {
+    assert set(KERNEL_UNIT_REL) <= set(KERNEL_ABI_CONTRACT_REL);
+    for rel in KERNEL_ABI_CONTRACT_REL {
+        assert os.path.isfile(os.path.join(jaclang_pkg_root(), rel)) , rel;
+    }
+}
+
+def _contract_tree(dst: str) -> str {
+    src = jaclang_pkg_root();
+    rels = list(KERNEL_ABI_CONTRACT_REL)
+        + ["compiler/frontend/codeinfo.jac", "vendor/typeshed/PIN"];
+    for rel in rels {
+        out = os.path.join(dst, rel);
+        os.makedirs(os.path.dirname(out), exist_ok=True);
+        shutil.copyfile(os.path.join(src, rel), out);
+    }
+    return dst;
+}
+
+test "a snapshot whose kernel ABI contract differs trips the guard" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        snap = _contract_tree(os.path.join(tmp, "snap"));
+        target = _contract_tree(os.path.join(tmp, "target"));
+        pin = _commit_pin();
+        assert file_guard_trips(pin, snap, target) == [];
+        tag = os.path.join(target, "runtime", "osp_tag.jac");
+        Path(tag).write_text(Path(tag).read_text() + "\n");
+        trips = file_guard_trips(pin, snap, target);
+        assert len(trips) == 1 and "runtime/osp_tag.jac" in trips[0] , trips;
+        shutil.copyfile(os.path.join(snap, "runtime", "osp_tag.jac"), tag);
+        codeinfo = os.path.join(snap, "compiler", "frontend", "codeinfo.jac");
+        Path(codeinfo).write_text(
+            Path(codeinfo).read_text().replace(
+                f"NATIVE_ABI_VERSION: int = {NATIVE_ABI_VERSION}",
+                f"NATIVE_ABI_VERSION: int = {NATIVE_ABI_VERSION + 1}"
+            )
+        );
+        trips = file_guard_trips(pin, snap, target);
+        assert len(trips) == 1 and "native ABI" in trips[0] , trips;
+        shutil.copyfile(
+            os.path.join(jaclang_pkg_root(), "compiler", "frontend", "codeinfo.jac"),
+            codeinfo
+        );
+        assert file_guard_trips(pin, snap, target) == [];
+        stale = _commit_pin();
+        stale.typeshed_pin = "0" * 40;
+        trips = file_guard_trips(stale, snap, target);
+        assert len(trips) == 1 and "typeshed" in trips[0] , trips;
+        Path(os.path.join(snap, "vendor", "typeshed", "PIN")).write_text("0" * 40);
+        trips = file_guard_trips(pin, snap, target);
+        assert len(trips) == 1 and "typeshed" in trips[0] , trips;
+    }
+}
+
+def _refused_build(
+    dst: str, strict: bool, child_status: int = 0
+) -> tuple[bool, str, bool] {
+    err = io.StringIO();
+    raised = False;
+    result = False;
+    with patch.object(stage0_build, "checkout_repo", return_value=("/repo", "jac/")), patch.object(
+        stage0_build, "provision_stage0", return_value=jaclang_pkg_root()
+    ), patch.object(stage0_build, "native_tree_trips", return_value=[]), patch.object(
+        stage0_build,
+        "file_guard_trips",
+        return_value=(
+            ["kernel ABI contract differs: runtime/osp_tag.jac"]
+                if child_status == 0
+                else []
+        )
+    ), patch.object(stage0_build, "run_stage0_child", return_value=child_status), patch.object(
+        sys, "stderr", err
+    ) {
+        try {
+            result = _with_env(
+                {STAGE0_STRICT_ENV: "1" if strict else None},
+                lambda() { build_kernel_by_pin(dst); }
+            );
+        } except KernelUnavailable {
+            raised = True;
+        }
+    }
+    return (result, err.getvalue(), raised);
+}
+
+test "a guard trip or an unknown target format falls back to the self build, unless strict" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        pin_path = os.path.join(tmp, "stage0.json");
+        write_stage0_pin(_commit_pin(), pin_path);
+        dst = os.path.join(tmp, "libjac_compiler.so");
+        def run(strict: bool, status: int) -> tuple[bool, str, bool] {
+            return _with_env(
+                {STAGE0_PIN_ENV: pin_path},
+                lambda() { _refused_build(dst, strict, status); }
+            );
+        }
+        (built, notice, raised) = run(False, 0);
+        assert not built and not raised;
+        assert notice.count("stage-0 kernel build unavailable") == 1 , notice;
+        assert "osp_tag.jac" in notice;
+        (built, notice, raised) = run(True, 0);
+        assert raised and not built , "strict mode refuses the self build";
+        (built, notice, raised) = run(False, 3);
+        assert not built and not raised;
+        assert "target format" in notice , notice;
+        (built, notice, raised) = run(True, 3);
+        assert raised;
+        assert not os.path.exists(dst + ".target.json") , "the target spec is removed";
+        write_stage0_pin(Stage0Pin(), pin_path);
+        err = io.StringIO();
+        with patch.object(
+            stage0_build,
+            "provision_stage0",
+            side_effect=AssertionError("pin self provisions nothing")
+        ), patch.object(sys, "stderr", err) {
+            assert _with_env(
+                {STAGE0_PIN_ENV: pin_path, STAGE0_STRICT_ENV: "1"},
+                lambda() { build_kernel_by_pin(dst); }
+            )
+                is False;
+        }
+        assert err.getvalue() == "" , "the self build under pin self is silent";
+        Path(pin_path).write_text("{");
+        (built, notice, raised) = run(False, 0);
+        assert not built and "unreadable pin" in notice , notice;
+    }
+}
+
+def _stage0_sidecar(lib: str, unit: str, pin: Stage0Pin) -> dict[str, any] {
+    ident = native_unit_identity(unit);
+    options = kernel_options();
+    return {
+        "classes": {},
+        "artifact_sha256": hashlib.sha256(Path(lib).read_bytes()).hexdigest(),
+        "plan_digest": "p",
+        "layout_digest": "l",
+        "units": [unit],
+        "unit_ids": [ident],
+        "source_key": "folded by stage 0",
+        "compiler_digest": "the stage-0 compiler, not this one",
+        "codegen_identity": "stage 0 spells its codegen identity its own way",
+        "triple": options.effective_triple(),
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "unit_sources": {ident: unit_source_digest(unit)},
+        "unit_policy": {ident: int(options.native_required_for(unit))},
+        "builder": "stage0",
+        "stage0": {"commit": pin.commit, "digest": pin.compiler_digest},
+        "abi": NATIVE_ABI_VERSION,
+        "abi_contract": abi_contract_digest(jaclang_pkg_root())
+    };
+}
+
+test "a stage-0 kernel is accepted by its pin, ABI and unit sources, not by this compiler's digest" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        unit = os.path.join(tmp, "unit.jac");
+        Path(unit).write_text("def one -> int {\n    return 1;\n}\n");
+        lib = os.path.join(tmp, "libjac_compiler.so");
+        Path(lib).write_bytes(b"not a real kernel");
+        pin_path = os.path.join(tmp, "stage0.json");
+        pin = _commit_pin();
+        write_stage0_pin(pin, pin_path);
+        sidecar = _stage0_sidecar(lib, unit, pin);
+        ident = native_unit_identity(unit);
+        def write(record: dict[str, any]) {
+            _write_json(lib + ".layout.json", record);
+        }
+        def accepted -> bool {
+            return _with_env(
+                {STAGE0_PIN_ENV: pin_path}, lambda() { _accept_in_tree(lib); }
+            )
+                is not None;
+        }
+        write(sidecar);
+        assert sidecar["compiler_digest"] != running_compiler_digest();
+        assert accepted() , "the pin vouches for the stage-0 compiler";
+        for (field, value) in [
+            ("stage0", {"commit": pin.commit, "digest": "another stage 0"}),
+            ("stage0", {"commit": "d" * 40, "digest": pin.compiler_digest}),
+            ("abi", NATIVE_ABI_VERSION + 1),
+            ("abi_contract", "another contract"),
+            ("triple", "wasm32-unknown-unknown"),
+            ("python", "2.7"),
+            ("unit_policy", {ident: 1}),
+            ("unit_sources", {ident: "an older unit"})
+        ] {
+            write({** sidecar, field: value});
+            assert not accepted() , f"a different {field} is another kernel";
+        }
+        write(
+            {
+                k: v
+                for (k, v) in sidecar.items()
+                if k != "builder"
+            }
+        );
+        assert not accepted() , "without the builder stamp this compiler's digest decides";
+        write(sidecar);
+        assert accepted();
+        write_stage0_pin(_commit_pin("8:another digest"), pin_path);
+        assert not accepted() , "a pin bump retires the kernel";
+        write_stage0_pin(Stage0Pin(), pin_path);
+        assert not accepted() , "pin self retires every stage-0 kernel";
+        write_stage0_pin(pin, pin_path);
+        Path(unit).write_text("def one -> int {\n    return 2;\n}\n");
+        assert not accepted() , "an edited unit needs a rebuild";
+    }
+}
+
+test "the checkout re-stamps a stage-0 sidecar with its own unit digests" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        unit = os.path.join(tmp, "unit.jac");
+        Path(unit).write_text("def one -> int {\n    return 1;\n}\n");
+        lib = os.path.join(tmp, "libjac_compiler.so");
+        Path(lib).write_bytes(b"not a real kernel");
+        pin_path = os.path.join(tmp, "stage0.json");
+        pin = _commit_pin();
+        write_stage0_pin(pin, pin_path);
+        ident = native_unit_identity(unit);
+        child = _stage0_sidecar(lib, unit, pin);
+        for field in ("builder", "stage0", "abi", "abi_contract") {
+            child.pop(field);
+        }
+        child["unit_sources"] = {ident: "digested by stage 0's own rules"};
+        _write_json(lib + ".layout.json", child);
+        before = {os.path.realpath(unit): unit_source_digest(unit)};
+        stamped = restamp_stage0_sidecar(lib, pin, jaclang_pkg_root(), before);
+        assert stamped["builder"] == "stage0";
+        assert stamped["stage0"]
+            == {"commit": pin.commit, "digest": pin.compiler_digest};
+        assert stamped["abi"] == NATIVE_ABI_VERSION;
+        assert stamped["unit_sources"] == {ident: unit_source_digest(unit)};
+        assert read_sidecar(lib) == stamped;
+        assert _with_env({STAGE0_PIN_ENV: pin_path}, lambda() { _accept_in_tree(lib); })
+            is not None;
+        _write_json(lib + ".layout.json", child);
+        raced = False;
+        try {
+            restamp_stage0_sidecar(
+                lib, pin, jaclang_pkg_root(), {os.path.realpath(unit): "before"}
+            );
+        } except RuntimeError {
+            raced = True;
+        }
+        assert raced , "a unit edited during the build is never stamped";
+    }
+}
+
+def _stage_copy(dst: str) -> str {
+    src = jaclang_pkg_root();
+    target = os.path.join(dst, "jaclang");
+    shutil.copytree(
+        src,
+        target,
+        ignore=shutil.ignore_patterns(
+            "__pycache__", "_precompiled", "*.so", "*.so.*", "vendor", ".jac"
+        )
+    );
+    os.symlink(os.path.join(src, "vendor"), os.path.join(target, "vendor"));
+    return target;
+}
+
+def _e2e_log(msg: str) {
+    stream = sys.__stderr__;
+    if stream is not None {
+        stream.write(msg + "\n");
+        stream.flush();
+    }
+    log_path = os.environ.get("JAC_STAGE0_E2E_LOG", "");
+    if log_path {
+        with open(log_path, "a", encoding="utf-8") as f {
+            f.write(msg + "\n");
+        }
+    }
+}
+
+test "stage 0 pinned to HEAD builds this tree's kernel and the checkout accepts it" {
+    require_flag("JAC_STAGE0_E2E", "it builds a kernel through stage 0");
+    import from jaclang.compiler.kernel_target {
+        active_kernel_target,
+        set_kernel_target
+    }
+    import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
+    tmp = tempfile.mkdtemp(prefix="jac-stage0-e2e-");
+    prev_target = active_kernel_target();
+    try {
+        started = time.perf_counter();
+        pin = pin_for_commit("HEAD");
+        pin_path = os.path.join(tmp, "stage0.json");
+        write_stage0_pin(pin, pin_path);
+        _e2e_log(
+            f"STAGE0 pin {pin.commit} digest {pin.compiler_digest} in "
+            f"{time.perf_counter() - started:.1f}s"
+        );
+        copy = _stage_copy(os.path.join(tmp, "pr"));
+        set_kernel_target(running_kernel_target(copy));
+        lib = os.path.join(tmp, "lib", "libjac_compiler.so");
+        os.makedirs(os.path.dirname(lib));
+        def derive -> any {
+            return _with_env(
+                {STAGE0_PIN_ENV: pin_path, STAGE0_STRICT_ENV: "1"},
+                lambda() { _derive_in_tree(lib); }
+            );
+        }
+        def accepted -> bool {
+            return _with_env(
+                {STAGE0_PIN_ENV: pin_path}, lambda() { _accept_in_tree(lib); }
+            )
+                is not None;
+        }
+        started = time.perf_counter();
+        found = derive();
+        _e2e_log(f"STAGE0 cold build {time.perf_counter() - started:.1f}s");
+        assert found is not None;
+        sidecar = read_sidecar(lib);
+        assert sidecar is not None and sidecar["builder"] == "stage0";
+        assert sidecar["stage0"]["commit"] == pin.commit;
+        assert accepted() , "the checkout accepts the kernel stage 0 built";
+        edited = os.path.join(copy, "runtime", "na_stdlib", "keyword.jac");
+        Path(edited).write_text(Path(edited).read_text() + "\n");
+        assert not accepted() , "an edited kernel unit retires the kernel";
+        started = time.perf_counter();
+        found = derive();
+        _e2e_log(f"STAGE0 one-edit build {time.perf_counter() - started:.1f}s");
+        assert found is not None;
+        sidecar = read_sidecar(lib);
+        assert sidecar is not None and sidecar["builder"] == "stage0";
+        assert accepted();
+    } finally {
+        set_kernel_target(prev_target);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

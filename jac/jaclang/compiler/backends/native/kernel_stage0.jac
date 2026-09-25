@@ -55,9 +55,13 @@ def link_kernel(
         os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
         result = link_artifact(plan, dst, ArtifactKind.SHARED, log=log);
         if log is not None {
+            events = plan.prog.analysis.cache_events;
             log(
                 f"  Kernel link: {time.perf_counter() - planned:.1f}s "
-                f"(total {time.perf_counter() - started:.1f}s)"
+                f"(total {time.perf_counter() - started:.1f}s); "
+                f"analysis/lowering/codegen: {events.get('native_unit_analysis', 0)}/"
+                f"{events.get('native_unit_lower', 0)}/"
+                f"{events.get('native_unit_codegen', 0)}"
             );
         }
         return result;

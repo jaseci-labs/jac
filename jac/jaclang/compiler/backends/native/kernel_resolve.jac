@@ -11,7 +11,8 @@ import type from jaclang.compiler.backends.native.link_plan { LinkPlan }
 glob KERNEL_LIB_ENV: str = "JAC_COMPILER_LIB",
      STUBCAT_BUILDING_ENV: str = "JAC_STUBCAT_BUILDING",
      KERNEL_OFF_VALUES: tuple[str, ...] = ("none", "off", "disabled", "0"),
-     LAYOUT_SIDECAR_SUFFIX: str = ".layout.json";
+     LAYOUT_SIDECAR_SUFFIX: str = ".layout.json",
+     STAGE0_BUILDER: str = "stage0";
 
 obj ResolvedKernel {
     has lib_path: str,
@@ -263,9 +264,19 @@ def _unit_sources_match(
     }
     import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
     options = kernel_options();
-    if str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
-        or str(sidecar.get("codegen_identity", "")) != options.base_codegen_identity()
-        or str(sidecar.get("triple", "")) != options.effective_triple()
+    if sidecar.get("builder") == STAGE0_BUILDER {
+        import from jaclang.compiler.backends.native.stage0_pin {
+            stage0_sidecar_matches
+        }
+        if not stage0_sidecar_matches(sidecar) {
+            return False;
+        }
+    } elif str(sidecar.get("compiler_digest", "")) != running_compiler_digest()
+        or str(sidecar.get("codegen_identity", ""))
+            != options.base_codegen_identity() {
+        return False;
+    }
+    if str(sidecar.get("triple", "")) != options.effective_triple()
         or str(sidecar.get("python", ""))
             != f"{sys.version_info.major}.{sys.version_info.minor}" {
         return False;
@@ -431,8 +442,13 @@ def _derive_in_tree(lib_path: str) -> (ResolvedKernel | None) {
         import from jaclang.compiler.driver.setup_progress { setup_progress }
         setup_progress.on_kernel_build(lib_path);
         tmp = f"{lib_path}.{os.getpid()}.tmp";
+        import from jaclang.compiler.backends.native.stage0_build {
+            build_kernel_by_pin
+        }
         try {
-            _build_kernel_in_child(tmp);
+            if not build_kernel_by_pin(tmp) {
+                _build_kernel_in_child(tmp);
+            }
             _publish_kernel(tmp, lib_path);
         } finally {
             for leftover in (tmp, tmp + LAYOUT_SIDECAR_SUFFIX) {
