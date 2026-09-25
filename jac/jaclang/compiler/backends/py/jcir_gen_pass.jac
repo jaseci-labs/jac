@@ -8,6 +8,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     AssertStmt,
     AssignCompr,
+    AstAccessNode,
     Assignment,
     AstSymbolNode,
     AtomTrailer,

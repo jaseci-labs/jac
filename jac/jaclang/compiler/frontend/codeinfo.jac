@@ -12,7 +12,8 @@ import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
 import type from jaclang.compiler.backends.es.estree { IndexInfo, SliceInfo }
 import type from jaclang.compiler.backends.es.estree { Node as EsNode }
 import type from jaclang.compiler.tools.doc_ir { Doc }
-import type from jaclang.compiler.frontend.unitree { CommentToken, Module }
+import type from jaclang.compiler.frontend.unitree { CommentToken, Module, UniNode }
+import type from jaclang.compiler.passes.layout_pass { LayoutRegistry }
 import type from jaclang.compiler.passes.osp_analysis { OspModel }
 import type from jaclang.compiler.backends.native.llvm.ir { Module as IRModule }
 import type from jaclang.compiler.backends.native.llvm.binding {
@@ -983,7 +984,7 @@ obj InteropBinding {
         ret_type: str = 'int',
         param_types: list[str] = [],
         param_names: list[str] = [],
-        ast_node: any = None,
+        ast_node: (UniNode | None) = None,
         source_module: (str | None) = None,
         type_scope: str = '',
         kind: str = 'function',
@@ -1049,7 +1050,7 @@ obj CodeGenTarget {
         has_root_access: (bool | None) = None,
         nogc_enforced: bool = False,
         nogc_provenance: str = '',
-        layout_registry: any = None,
+        layout_registry: (LayoutRegistry | None) = None,
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[(str, str)] = {},
         _exported_symbols: list[str] = [],
