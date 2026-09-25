@@ -104,8 +104,10 @@ test "the latest release moves the existing branch to its tag's commit" {
         call = write_call(fx);
         assert "-X PATCH" in call , "an existing branch must be updated: " + call;
         assert "heads/release/jaclang-org" in call , call;
-        assert f"sha={SHA}" in call , "the branch must land on the tag's commit: " + call;
-        assert "force=true" in call , "moving between releases is not a fast-forward: " + call;
+        assert f"sha={SHA}" in call , "the branch must land on the tag's commit: "
+            + call;
+        assert "force=true" in call , "moving between releases is not a fast-forward: "
+            + call;
     } finally {
         shutil.rmtree(fx["base"], ignore_errors=True);
     }
