@@ -119,6 +119,7 @@
 "prim_builtins.builtins_na" = "native"
 "prim_builtins_introspection.builtins_introspection_cl" = "client"
 "prim_builtins_introspection.builtins_introspection_na" = "native"
+"prim_builtins_introspection.type_identity_known_gaps_cl" = "client"
 "prim_bytearray.bytearray_core_cl" = "client"
 "prim_bytearray.bytearray_core_na" = "native"
 "prim_bytearray.bytearray_pack_cl" = "client"
