@@ -183,7 +183,8 @@ jobs:
           # cache hit skips producing both, so ask for them explicitly.
           need-build-inputs: "true"
 
-      # Only main seeds the stage-0 caches, and only with what this run made:
+      # Only main (a push or a manual dispatch) seeds the stage-0 caches, and only
+      # with what this run made:
       # a binary cache hit or a fallback to the self build leaves nothing new.
       - name: Check the stage-0 products
         id: stage0-made
@@ -204,7 +205,7 @@ jobs:
       - name: Save the stage-0 snapshot (main only)
         if: >-
           steps.stage0.outputs.stage0 != 'self' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
           steps.stage0-src.outputs.cache-hit != 'true' &&
           steps.stage0-made.outputs.src == 'true'
         uses: actions/cache/save@v4
@@ -215,7 +216,7 @@ jobs:
       - name: Save the stage-0 kernel units (main only)
         if: >-
           steps.stage0.outputs.stage0 != 'self' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
           steps.stage0-made.outputs.units == 'true'
         uses: actions/cache/save@v4
         with:
