@@ -1185,7 +1185,8 @@ walker NaIRGenPass(CompilerPass) {
     def _process_clib_imports(module: uni.Module) -> None;
     def _declare_pending_clib_abilities -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
-    def _llvm_type_str(ty: ir.Type) -> str;
+    def _llvm_type_str(ty: ir.Type, pointee_names: dict[(ir.Type, str)]) -> str;
+    def _layout_pointee_names -> dict[(ir.Type, str)];
     def _export_native_layout -> None;
     def _exported_accessors(arch_name: str) -> dict[(str, dict[(str, str)])];
     def _ret_tuple_hints(fname: str, ret_tuple: any) -> (list[str | None] | None);

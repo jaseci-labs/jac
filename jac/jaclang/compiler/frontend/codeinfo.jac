@@ -230,7 +230,8 @@ def _reserved_c_symbols -> frozenset[str] {
 glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = _reserved_c_symbols();
 
 glob NATIVE_ARCH_SCOPE_SEP: str = "$",
-     _native_arch_scope_memo: dict[str, str] = {};
+     _native_arch_scope_memo: dict[str, str] = {},
+     _native_unit_identity_memo: dict[str, str] = {};
 
 def native_arch_scope(mod_path: str) -> str {
     import os;
@@ -386,14 +387,20 @@ def native_unit_root(directory: str) -> (str | None) {
 }
 
 def native_unit_identity(path: str) -> str {
+    memo = _native_unit_identity_memo.get(path);
+    if memo is not None {
+        return memo;
+    }
     import os;
     rp = os.path.realpath(path);
     unit_root = native_unit_root(os.path.dirname(rp));
-    if unit_root is None {
-        return rp;
+    identity = rp;
+    if unit_root is not None {
+        rel = os.path.relpath(rp, unit_root).replace("\\", "/");
+        identity = f"{os.path.basename(unit_root)}/{rel}";
     }
-    rel = os.path.relpath(rp, unit_root).replace("\\", "/");
-    return f"{os.path.basename(unit_root)}/{rel}";
+    _native_unit_identity_memo[path] = identity;
+    return identity;
 }
 
 def native_module_key(path: str) -> str {

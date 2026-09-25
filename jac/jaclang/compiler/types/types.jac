@@ -165,6 +165,7 @@ node ClassDetailsShared {
         _derived_special_types: (dict[str, ClassType] | None) = None,
         ct_params: (list[str] | None) = None,
         _mro_cache: (list[ClassType] | None) = None,
+        _native_name: (tuple[SymbolTable, str] | None) = None,
         _acc_cache: (dict[str, any] | None) = None,
         _mro_sig: (list[tuple[int, str]] | None) = None,
         _provisional: bool = False,

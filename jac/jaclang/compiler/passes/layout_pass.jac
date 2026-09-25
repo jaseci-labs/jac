@@ -213,11 +213,18 @@ def class_type_native_name(typ: (TypeBase | None)) -> (str | None) {
     if not isinstance(typ, ClassType) or typ._shared is None {
         return None;
     }
-    scope = typ.shared.symbol_table;
-    if isinstance(scope, Archetype) and not typ.shared.is_enum_class {
-        return archetype_native_name(scope);
+    shared = typ.shared;
+    scope = shared.symbol_table;
+    if not isinstance(scope, Archetype) or shared.is_enum_class {
+        return shared.class_name;
     }
-    return typ.shared.class_name;
+    memo = shared._native_name;
+    if memo is not None and memo[0] is scope {
+        return memo[1];
+    }
+    name = archetype_native_name(scope);
+    shared._native_name = (scope, name);
+    return name;
 }
 
 def native_type_key(typ: TypeBase) -> str {

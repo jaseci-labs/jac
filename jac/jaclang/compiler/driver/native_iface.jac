@@ -407,6 +407,11 @@ obj NativeClassLayout {
     }
 }
 
+def _fields_digest(fields: dict[str, any]) -> str {
+    body = json.dumps(fields, sort_keys=True, separators=(",", ":"));
+    return hashlib.sha256(body.encode("utf-8")).hexdigest();
+}
+
 obj NativeIface {
     has format: int = NIFACE_FORMAT,
         module: str = "",
@@ -453,15 +458,17 @@ obj NativeIface {
     }
 
     def digest -> str {
-        body = json.dumps(self.digest_fields(), sort_keys=True, separators=(",", ":"));
-        return hashlib.sha256(body.encode("utf-8")).hexdigest();
+        return _fields_digest(self.digest_fields());
     }
 
     def to_dict -> dict[str, any] {
-        d = self.digest_fields();
-        d["deps"] = [native_unit_ref(x) for x in self.deps];
-        d["coverage"] = dict(self.coverage);
-        return d;
+        return self._with_references(self.digest_fields());
+    }
+
+    def _with_references(fields: dict[str, any]) -> dict[str, any] {
+        fields["deps"] = [native_unit_ref(x) for x in self.deps];
+        fields["coverage"] = dict(self.coverage);
+        return fields;
     }
 
     def resolve_deps(anchor: str) {
@@ -471,8 +478,12 @@ obj NativeIface {
     }
 
     def to_bytes -> bytes {
-        body = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"));
-        return self.digest().encode("ascii") + body.encode("utf-8");
+        fields = self.digest_fields();
+        digest = _fields_digest(fields);
+        body = json.dumps(
+            self._with_references(fields), sort_keys=True, separators=(",", ":")
+        );
+        return digest.encode("ascii") + body.encode("utf-8");
     }
 
     static def from_dict(d: dict[str, any]) -> (NativeIface | None) {
