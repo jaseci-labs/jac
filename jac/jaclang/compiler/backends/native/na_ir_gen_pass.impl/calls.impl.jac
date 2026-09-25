@@ -3848,6 +3848,18 @@ impl NaIRGenPass._codegen_callable_value(
     }
     if not isinstance(value.type, ir.PointerType)
         or not isinstance(value.type.pointee, ir.FunctionType) {
+        """No call signature to lower against. Refuse loudly: in statement
+        position a silent None would drop the call and its effects.""";
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="call through a value",
+            name=self._get_name(nd.target) or "callable",
+            help_text="The callee's native type carries no call signature "
+            "(an `any` or an unparameterized `Callable`). Annotate it as "
+            "`Callable[[...], R]` so the native lane can call it, or make "
+            "the call from a Python/@sv context."
+        );
         return None;
     }
     signature = value.type.pointee;
