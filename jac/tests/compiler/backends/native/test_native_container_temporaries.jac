@@ -31,7 +31,9 @@ def check_containers(profile: str) {
         ("borrowed_default", 9, 2),
         ("nested_receiver", 8, 1),
         ("property_receiver", 9, 1),
-        ("borrowed_field_write", 12, 1)
+        ("borrowed_field_write", 12, 1),
+        ("subscript_receiver", 13, 1),
+        ("borrowed_subscript_receiver", 14, 1)
     ] {
         address = native_address(engine, name);
         assert address != 0;
