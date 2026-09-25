@@ -554,6 +554,14 @@ glob STR_NA_GAPS: list[any] = [
          ),
          ("random", "prim_random.jac", "random_py", "random_cl", "random_na", ["na"]),
          (
+             "bare from-imported stdlib names",
+             "prim_from_imports.jac",
+             "from_imports_py",
+             "from_imports_cl",
+             "from_imports_na",
+             ["na"]
+         ),
+         (
              "any dispatch",
              "prim_any.jac",
              "any_dispatch_py",

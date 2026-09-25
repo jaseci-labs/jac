@@ -1258,6 +1258,47 @@ impl NaIRGenPass._native_module_call_target(
     return None;
 }
 
+impl NaIRGenPass._stdlib_intercept_covers(module_name: str, func_name: str) -> bool {
+    """Whether `module_name.func_name` lowers through a compiler intercept for an
+    imported stdlib module (`os`, `random`, `struct`).""";
+    if module_name not in self._native_stdlib_modules {
+        return False;
+    }
+    return (module_name == "os" and func_name in NATIVE_OS_FUNCS)
+        or (module_name == "random" and func_name in NATIVE_RANDOM_FUNCS)
+        or (module_name == "struct" and func_name in NATIVE_STRUCT_FUNCS);
+}
+
+impl NaIRGenPass._emit_stdlib_intercept(
+    module_name: str, func_name: str, nd: uni.FuncCall
+) -> (ir.Value | None) {
+    if module_name == "os" {
+        return self._emit_os_call(func_name, nd);
+    }
+    if module_name == "random" {
+        return self._emit_random_call(func_name, nd);
+    }
+    return self._emit_struct_call(func_name, nd);
+}
+
+impl NaIRGenPass._from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] | None {
+    """The intercepted (module, function) a bare call names when the name was bound
+    by `import from <module> { function }`: `randint(1, 6)` lowers exactly like
+    `random.randint(1, 6)`. The callee symbol lives in the module's stub, so a
+    local or module definition that shadows the name never matches.""";
+    if not isinstance(nd.target, uni.Name) or nd.target.sym is None {
+        return None;
+    }
+    scope = nd.target.sym.parent_tab;
+    if not isinstance(scope, uni.Module) or not scope.stub_only {
+        return None;
+    }
+    if not self._stdlib_intercept_covers(scope.name, nd.target.sym.name) {
+        return None;
+    }
+    return (scope.name, nd.target.sym.name);
+}
+
 impl NaIRGenPass._codegen_intrinsic(
     nd: uni.FuncCall, intr: IntrinsicEntry
 ) -> (ir.Value | None) {
@@ -1545,6 +1586,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     );
     if _sized_call is not None {
         return _sized_call;
+    }
+
+    _bare_intercept = self._from_imported_intercept(nd);
+    if _bare_intercept is not None {
+        return self._emit_stdlib_intercept(_bare_intercept[0], _bare_intercept[1], nd);
     }
 
     func_name: str | None = None;

@@ -696,6 +696,12 @@ walker NaIRGenPass {
     ) -> (ir.Value | None);
 
     def _native_module_call_target(nd: uni.FuncCall) -> tuple[str, str] | None;
+    def _stdlib_intercept_covers(module_name: str, func_name: str) -> bool;
+    def _emit_stdlib_intercept(
+        module_name: str, func_name: str, nd: uni.FuncCall
+    ) -> (ir.Value | None);
+
+    def _from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] | None;
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
     def _empty_ctor_args_of(nd: uni.FuncCall) -> list[TypeBase];
     def _container_type_args(t: any) -> list[TypeBase];
