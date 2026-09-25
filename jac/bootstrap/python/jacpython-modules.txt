@@ -1,0 +1,33 @@
+# Standard-library extension modules implemented in native Jac.
+#
+# One module per line: <module> <upstream tests> [linker flags...]
+#   <module>          CPython import name; its PyInit_<module> is a :pub
+#                     definition under jaclang/runtime/python/bindings/ and is
+#                     imported by compiler/backends/py/jacpython/native_api.jac.
+#   <upstream tests>  Comma-separated pinned CPython test modules that
+#                     scripts/run_cpython_compiler_tests.jac runs against it.
+#   linker flags      Extra Setup.local flags for a foreign library.
+#
+# This file is the single list. build.sh writes the Setup.local *static* block
+# from it and fails when native_api.jac does not import a listed PyInit;
+# smoke.py asserts each module is built in; CI runs each module's tests.
+# The C sources a module replaces are the `# removed:` entries of
+# cpython-sources.txt; build_python.zig owns that parser.
+
+_bisect         test.test_bisect
+_heapq          test.test_heapq
+_random         test.test_random
+binascii        test.test_binascii
+_operator       test.test_operator,test.test_hmac      -lcrypto
+_queue          test.test_queue
+_json           test.test_json
+_csv            test.test_csv
+_struct         test.test_struct
+cmath           test.test_cmath
+math            test.test_math
+_collections    test.test_deque,test.test_defaultdict,test.test_collections
+_functools      test.test_functools
+itertools       test.test_itertools
+array           test.test_array
+_pickle         test.test_pickle
+_statistics     test.test_statistics

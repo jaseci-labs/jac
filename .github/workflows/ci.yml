@@ -599,26 +599,12 @@ jobs:
         if: matrix.chunk == 'passes-native'
         run: |
           jac install "hypothesis>=6,<7" --global
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_deque --native-modules _collections
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_defaultdict --native-modules _collections
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_collections --native-modules _collections
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_struct --native-modules _struct
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_functools --native-modules _functools
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_itertools --native-modules itertools
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_array --native-modules array
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_pickle --native-modules _pickle
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_math --native-modules math
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_cmath --native-modules cmath
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_csv --native-modules _csv
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_json --native-modules _json
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_queue --native-modules _queue
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_operator --native-modules _operator
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_hmac --native-modules _operator
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_binascii --native-modules binascii
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_bisect --native-modules _bisect
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_heapq --native-modules _heapq
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_random --native-modules _random
-          jac run scripts/run_cpython_compiler_tests.jac --module test.test_statistics --native-modules _statistics
+          while read -r module tests _ <&3; do
+            case "$module" in ''|'#'*) continue ;; esac
+            for test in $(printf '%s' "$tests" | tr ',' ' '); do
+              jac run scripts/run_cpython_compiler_tests.jac --module "$test" --native-modules "$module"
+            done
+          done 3< jac/bootstrap/python/jacpython-modules.txt
 
   # Everything except the compiler tests.
   test-runtime:

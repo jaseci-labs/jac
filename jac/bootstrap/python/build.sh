@@ -215,26 +215,20 @@ _curses_panel
 readline
 SETUP
     if [ -n "$host" ]; then
-        cat >> Modules/Setup.local <<'SETUP'
-*static*
-_bisect
-_heapq
-_random
-binascii
-_operator -lcrypto
-_queue
-_json
-_csv
-_struct
-cmath
-math
-_collections
-_functools
-itertools
-array
-_pickle
-_statistics
-SETUP
+        # Setup.local is read first and its first rule wins, so a registered
+        # module's PyInit resolves from jacpython.o even when Setup.bootstrap
+        # or Setup.stdlib still names the replaced C source.
+        registry=$recipe/jacpython-modules.txt
+        native_api=$root/jaclang/compiler/backends/py/jacpython/native_api.jac
+        echo '*static*' >> Modules/Setup.local
+        while read -r module tests flags; do
+            case "$module" in ''|'#'*) continue ;; esac
+            grep -qw "PyInit_$module" "$native_api" || {
+                echo "native_api.jac does not import PyInit_$module" >&2
+                exit 1
+            }
+            echo "$module $flags" >> Modules/Setup.local
+        done < "$registry"
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above
     # must not override the release interpreter's optimization settings.
