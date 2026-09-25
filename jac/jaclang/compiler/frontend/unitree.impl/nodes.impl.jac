@@ -84,6 +84,9 @@ impl UniNode._link(kid: Sequence[UniNode], roles: dict[type, any]) -> None {
             }
         }
     }
+    if len(attached) >= len(role_of) {
+        return;
+    }
     for (role, value) in roles.items() {
         if isinstance(value, (list, tuple)) {
             vlist2 = self._as_node_list(value);

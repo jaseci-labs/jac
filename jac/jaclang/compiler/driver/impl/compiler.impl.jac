@@ -1907,9 +1907,11 @@ impl JacCompiler._prepare_tool_program(
     source_str: str, file_path: str
 ) -> tuple[JacProgram, (uni.Module | None)] {
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.parser { parse as rd_parse }
+    import from jaclang.compiler.frontend.parser.frontend { parse_woven }
     prog = JacProgram();
-    (current_mod, had_error) = rd_parse(source_str, file_path, prog=prog);
+    (current_mod, had_error) = parse_woven(
+        source_str, file_path, prog=prog, annexes=[]
+    );
     if had_error {
         prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
         return (prog, None);

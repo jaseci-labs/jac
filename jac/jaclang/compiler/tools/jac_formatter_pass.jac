@@ -24,8 +24,12 @@ walker JacFormatPass {
         max_steps: int = 2000
     ) -> bool;
 
-    def _flat_first_line_width(
-        nd: doc.DocType, base: int = 0, is_broken: bool = False
+    def _flat_tail_width(
+        parts: list[doc.DocType],
+        start: int,
+        base: int = 0,
+        is_broken: bool = False,
+        cap: int = 0
     ) -> int;
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;

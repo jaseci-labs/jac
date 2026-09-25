@@ -55,7 +55,6 @@ obj Lexer {
     def peek(offset: int = 1) -> str;
     def advance -> str;
     def at_end -> bool;
-    def match_char(expected: str) -> bool;
     def match_string(expected: str) -> bool;
     def _char_at(byte_idx: int) -> str;
     def _rune_width(byte_idx: int) -> int;
