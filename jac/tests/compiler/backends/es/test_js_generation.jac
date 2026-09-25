@@ -2292,6 +2292,37 @@ test "user-defined exception except is not a catch-all" {
 }
 
 
+test "user-defined exception except with a binding is not a catch-all" {
+    # The type checker stamps the class of an `except` clause, so a clause
+    # binding its exception (`except MyError as err`) resolves to a known
+    # user class. That must still emit `instanceof MyError`, not `if (true)`.
+    jac_code = "\"\"\"bound user-defined except is not a catch-all.\"\"\"\n\nobj MyError {}\ndef classify(which: int) -> str {\n    try {\n        if which == 1 { raise MyError(); }\n        raise ValueError(\"b\");\n    } except MyError as err { return \"mine\"; } except ValueError as ve { return \"ve\"; }\n    return \"none\";\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "instanceof MyError" in js_code , (
+            f"bound user-defined except must emit `instanceof MyError`, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n'
+            + js_code
+            + "\nif (classify(1) !== 'mine')"
+            + " { throw new Error('except MyError must catch MyError'); }"
+            + "\nif (classify(2) !== 've')"
+            + " { throw new Error('except MyError must NOT catch a ValueError'); }"
+            + "\nconsole.log('ok');\n"
+        );
+        result = run_js_module(wrapper);
+        assert result.returncode == 0 , (
+            f"bound user-defined except behaved as a catch-all:\nstderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 test "exception archetype subclassing a builtin extends _jac.exc.X" {
     jac_code = "\"\"\"custom exception base test.\"\"\"\n\nobj MyError(Exception) {}\ndef boom() -> int {\n    try { raise MyError(\"x\"); } except Exception { return 1; }\n    return 0;\n}\n";
 
