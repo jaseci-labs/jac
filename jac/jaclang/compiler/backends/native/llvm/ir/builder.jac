@@ -527,7 +527,12 @@ class IRBuilder(object) {
             name = *ptr
         """
     def load(
-        self: IRBuilder, ptr: any, name: any = '', align: any = None, typ: any = None
+        self: IRBuilder,
+        ptr: any,
+        name: any = '',
+        align: any = None,
+        typ: any = None,
+        volatile: bool = False
     ) -> Value {
         if not isinstance(ptr.type, types.PointerType) {
             msg = "cannot load from value of type %s (%r): not a pointer";
@@ -535,6 +540,7 @@ class IRBuilder(object) {
         }
         ld = instructions.LoadInstr(self.block, ptr, name, typ=typ);
         ld.align = align;
+        ld.volatile = volatile;
         self._insert(ld);
         return ld;
     }

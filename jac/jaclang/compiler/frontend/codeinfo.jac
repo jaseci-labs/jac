@@ -258,6 +258,7 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = frozenset(
                  "localtime localtime_r strftime clock_gettime clock_settime "
                  "clock_nanosleep nanosleep sleep usleep "
                  "open openat creat close read pread write lseek stat fstat lstat access "
+                 "mmap msync munmap "
                  "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
                  "opendir readdir closedir getpid getpwuid_r getpwnam_r errno __error "
                  "__errno_location environ _NSGetExecutablePath "

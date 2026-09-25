@@ -3,6 +3,12 @@
 The algorithm kernels use typed native buffers. Python buffer validation,
 argument binding, and module exception identities remain at the object ABI.
 See ../LICENSE.cpython.
+
+NOTE: this is the jacpython-VM transcription of CPython's binascii. The
+na (native LLVM) port lives at ../na_stdlib/binascii.jac; the two runtimes
+have disjoint primitive floors and cannot import each other, so the
+hexlify/unhexlify/uu/quoted-printable/crc_hqx kernels are transcribed twice
+by design -- keep algorithmic fixes in BOTH files.
 """
 import from jaclang.runtime.python.capi {
     read_buffer,
