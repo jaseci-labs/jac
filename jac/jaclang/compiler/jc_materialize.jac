@@ -269,6 +269,9 @@ def _enqueue(m: Mz, h: int, hint: int) {
 }
 
 def _dict_order_extent(h: int, order: int) -> int {
+    if order == 0 {
+        return 0;
+    }
     return _peek64(order + _peek64(h + 8) * 16);
 }
 
