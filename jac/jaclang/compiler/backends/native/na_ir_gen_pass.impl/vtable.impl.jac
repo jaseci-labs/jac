@@ -18,7 +18,10 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     i8_ptr = ir.IntType(8).as_pointer();
 
     vtable_type = ir.ArrayType(i8_ptr, len(layout) + VTABLE_HEADER_SLOTS);
-    entries: list[ir.Value] = [self._emit_class_name_const(arch_name)];
+    entries: list[ir.Value] = [
+        self._emit_class_name_const(arch_name),
+        self._emit_vtable_ancestry(arch_name).bitcast(i8_ptr)
+    ];
     for method_name in layout {
         func = self._resolve_method(arch_name, method_name);
         if func is not None {
@@ -1011,6 +1014,223 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     return fn;
 }
 
+impl NaIRGenPass._emit_vtable_ancestry(arch_name: str) -> ir.GlobalVariable {
+    """The class's own MRO, which vtable header slot 1 points at.
+
+    Records of `{name hash, class name}`, the class itself first and a
+    `{0, null}` record last. The vtable is emitted once, by the module that
+    defines the class, and that module sees the class's whole chain -- so an
+    `isinstance` in a module that never imported the class can still ask its
+    instances what they derive from, although that module's candidate vtables
+    and class index do not list the class at all.
+    """;
+    gv_name = f".jac.mro.{arch_name}";
+    existing = self.llvm_module.globals.get(gv_name);
+    if isinstance(existing, ir.GlobalVariable) {
+        return existing;
+    }
+    i8_ptr = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    rec_ty = ir.LiteralStructType([i64, i8_ptr]);
+    records: list[ir.Constant] = [];
+    for anc in (self._mro_of(arch_name) or [arch_name]) {
+        records.append(
+            ir.Constant(
+                rec_ty,
+                [
+                    ir.Constant(i64, self._static_str_hash(anc)),
+                    self._emit_class_name_const(anc)
+                ]
+            )
+        );
+    }
+    records.append(
+        ir.Constant(rec_ty, [ir.Constant(i64, 0), ir.Constant(i8_ptr, None)])
+    );
+    arr_ty = ir.ArrayType(rec_ty, len(records));
+    gv = ir.GlobalVariable(self.llvm_module, arr_ty, name=gv_name);
+    gv.linkage = "private";
+    gv.global_constant = True;
+    gv.initializer = ir.Constant(arr_ty, records);
+    return gv;
+}
+
+impl NaIRGenPass._emit_isa_vtable_fn -> ir.Function {
+    """`__jac_isa_vt(vptr, tgt, tgt_hash)`: does the class behind a vtable answer for `tgt`?
+
+    Walks the ancestry records that vtable header slot 1 points at (see
+    `_emit_vtable_ancestry`) up to the null record; an object with no vtable
+    stamped answers `False`. The candidate-vtable
+    compare and the class index only know the classes the checking module can
+    see; this also answers for a subclass defined in a module it never
+    imported. Names match as in `__jac_isa_h`: the hash first, then the
+    address, then one `strcmp` for a name another unit emitted.
+    """;
+    if self._isa_vt_fn is not None {
+        return self._isa_vt_fn;
+    }
+    i1 = ir.IntType(1);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    rec_ty = ir.LiteralStructType([i64, i8p]);
+    strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
+    fn: any = self._define_function(
+        "__jac_isa_vt", ir.FunctionType(i1, [i8p.as_pointer(), i8p, i64])
+    );
+    fn.linkage = "private";
+    zero32 = ir.Constant(i32, 0);
+
+    head = fn.append_basic_block("entry");
+    load = fn.append_basic_block("load");
+    walk = fn.append_basic_block("walk");
+    walk_hash = fn.append_basic_block("walk.hash");
+    walk_name = fn.append_basic_block("walk.name");
+    walk_next = fn.append_basic_block("walk.next");
+    yes = fn.append_basic_block("yes");
+    no = fn.append_basic_block("no");
+
+    b = ir.IRBuilder(head);
+    b.cbranch(
+        b.icmp_unsigned(
+            "==", fn.args[0], ir.Constant(fn.args[0].type, None), name="isavt.novt"
+        ),
+        no,
+        load
+    );
+
+    b = ir.IRBuilder(load);
+    slot = b.gep(fn.args[0], [ir.Constant(i32, 1)], name="isavt.slot");
+    table = b.bitcast(
+        b.load(slot, name="isavt.raw"), rec_ty.as_pointer(), name="isavt.tab"
+    );
+    b.branch(walk);
+
+    b = ir.IRBuilder(walk);
+    i = b.phi(i64, name="isavt.i");
+    rec = b.gep(table, [i], name="isavt.rec");
+    name = b.load(
+        b.gep(rec, [zero32, ir.Constant(i32, 1)], name="isavt.np"), name="isavt.name"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", name, ir.Constant(i8p, None), name="isavt.end"),
+        no,
+        walk_hash
+    );
+
+    b = ir.IRBuilder(walk_hash);
+    rec_hash = b.load(b.gep(rec, [zero32, zero32], name="isavt.hp"), name="isavt.hash");
+    b.cbranch(
+        b.icmp_unsigned("==", rec_hash, fn.args[2], name="isavt.hit"),
+        walk_name,
+        walk_next
+    );
+
+    b = ir.IRBuilder(walk_name);
+    self._emit_isa_name_match(b, None, name, fn.args[1], strcmp, yes, walk_next);
+
+    b = ir.IRBuilder(walk_next);
+    nxt = b.add(i, ir.Constant(i64, 1), name="isavt.in");
+    b.branch(walk);
+    i.add_incoming(ir.Constant(i64, 0), load);
+    i.add_incoming(nxt, walk_next);
+
+    ir.IRBuilder(yes).ret(ir.Constant(i1, 1));
+    ir.IRBuilder(no).ret(ir.Constant(i1, 0));
+    self._isa_vt_fn = fn;
+    return fn;
+}
+
+impl NaIRGenPass._isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.Value {
+    """Whether the class whose vtable is `vptr` derives from any of `names`.""";
+    i1 = ir.IntType(1);
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    vt_fn = self._emit_isa_vtable_fn();
+    vptr = self.builder.bitcast(vptr, i8p.as_pointer(), name="isavt.vptr");
+    hit: ir.Value = ir.Constant(i1, 0);
+    for name in names {
+        one = self.builder.call(
+            vt_fn,
+            [
+                vptr,
+                self._emit_class_name_const(name),
+                ir.Constant(i64, self._static_str_hash(name))
+            ],
+            name="isavt.res"
+        );
+        hit = self.builder.or_(hit, one, name="isavt.or");
+    }
+    return hit;
+}
+
+impl NaIRGenPass._vtable_slot_certain(ty: (TypeBase | None)) -> bool {
+    """Does every object this static type admits hold a vtable pointer in slot 0?
+
+    The ancestry walk dereferences slot 0 as a vtable, so it may only run where
+    no admitted class is flat. A union of class pointers is stored with its
+    first member's layout, and a flat member there keeps a field in slot 0;
+    the candidate compare shrugs that off as a miss, a walk would chase it.
+    `None` members are fine (the operand is null-checked first); an unknown or
+    non-class type is not.
+    """;
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    members: list[TypeBase] = (
+        list(ty.types or []) if isinstance(ty, UnionType) else ([ty] if ty else [])
+    );
+    certain = False;
+    for member in members {
+        if not isinstance(member, ClassType) {
+            return False;
+        }
+        if member._shared is not None
+            and member.shared.class_name in ("NoneType", "None") {
+            continue;
+        }
+        arch = class_type_native_name(member);
+        if arch is None
+            or arch not in self.struct_types
+            or not self._arch_has_vtable(arch) {
+            return False;
+        }
+        certain = True;
+    }
+    return certain;
+}
+
+impl NaIRGenPass._isinstance_vtable_fallback(
+    hit: (ir.Value | None), vptr: ir.Value, names: list[str], prefix: str
+) -> ir.Value {
+    """`hit`, or else what the object's own vtable ancestry answers.
+
+    `hit` is the compare against the candidate vtables this module knows, which
+    settles every class the module can see; the ancestry walk runs only on a
+    miss, where the object may be a subclass from a module this one never
+    imported and no local candidate names it. Only pass a `vptr` read from an
+    operand whose static archetype carries a vtable, so that slot 0 is known to
+    hold one (see `_vtable_slot_certain`). With no local candidate at all (`hit` is `None`) the walk alone
+    answers.
+    """;
+    if hit is None {
+        return self._isinstance_vtable_hit(vptr, names);
+    }
+    i1 = ir.IntType(1);
+    fn = self.builder.block.function;
+    fast_end = self.builder.block;
+    walk_bb = fn.append_basic_block(name=f"{prefix}.vt.walk");
+    done_bb = fn.append_basic_block(name=f"{prefix}.vt.done");
+    self.builder.cbranch(hit, done_bb, walk_bb);
+    self.builder.position_at_end(walk_bb);
+    walked = self._isinstance_vtable_hit(vptr, names);
+    walk_end = self.builder.block;
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+    res = self.builder.phi(i1, name=f"{prefix}.vt.res");
+    res.add_incoming(ir.Constant(i1, 1), fast_end);
+    res.add_incoming(walked, walk_end);
+    return res;
+}
+
 impl NaIRGenPass._emit_isa_name_match(
     b: ir.IRBuilder,
     gate: (ir.Value | None),
@@ -1262,6 +1482,24 @@ impl NaIRGenPass._emit_isinstance_runtime(
         for tgt in tgts {
             one = self.builder.call(isa_fn, [cls_id, tgt], name="isa.res");
             hit = one if hit is None else self.builder.or_(hit, one, name="isa.or");
+        }
+        if self._vtable_slot_certain(
+            self._flow_narrowed_type_of(nd.params[0] if nd.params else None)
+        ) {
+            i8p = ir.IntType(8).as_pointer();
+            vptr = self.builder.load(
+                self.builder.bitcast(
+                    operand, i8p.as_pointer().as_pointer(), name="isa.vt.obj"
+                ),
+                name="isa.vt.ptr"
+            );
+            vt_fn = self._emit_isa_vtable_fn();
+            hash_fn = self._emit_cstr_hash_fn();
+            for tgt in tgts {
+                th = self.builder.call(hash_fn, [tgt], name="isa.vt.th");
+                one = self.builder.call(vt_fn, [vptr, tgt, th], name="isa.vt.res");
+                hit = self.builder.or_(hit, one, name="isa.vt.or");
+            }
         }
     }
     if self._is_owned(operand) {

@@ -292,6 +292,7 @@ walker NaIRGenPass {
         _isa_fn: (ir.Function | None) = None,
         _isa_seq_fn: (ir.Function | None) = None,
         _isa_h_fn: (ir.Function | None) = None,
+        _isa_vt_fn: (ir.Function | None) = None,
         _cstr_hash_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
         _class_display_fn: (ir.Function | None) = None,
@@ -2653,6 +2654,14 @@ walker NaIRGenPass {
     def _emit_isa_seq_fn -> ir.Function;
     def _folded_ord(nd: uni.FuncCall) -> (ir.Constant | None);
     def _emit_isa_hashed_fn -> ir.Function;
+    def _emit_vtable_ancestry(arch_name: str) -> ir.GlobalVariable;
+    def _emit_isa_vtable_fn -> ir.Function;
+    def _isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.Value;
+    def _vtable_slot_certain(ty: (TypeBase | None)) -> bool;
+    def _isinstance_vtable_fallback(
+        hit: (ir.Value | None), vptr: ir.Value, names: list[str], prefix: str
+    ) -> ir.Value;
+
     def _emit_isa_name_match(
         b: ir.IRBuilder,
         gate: (ir.Value | None),
