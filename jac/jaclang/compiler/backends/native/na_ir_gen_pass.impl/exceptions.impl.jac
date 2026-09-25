@@ -285,6 +285,62 @@ impl NaIRGenPass._exception_handler_ids(ex: uni.Expr | None) -> list[int] {
     return ids;
 }
 
+impl NaIRGenPass._exc_bound_struct(ex: (uni.Expr | None)) -> (str | None) {
+    if ex is None or isinstance(ex, uni.TupleVal) {
+        return None;
+    }
+    key = self._arch_ref_key(ex) or self._get_name(ex);
+    if key is None or key not in self.struct_types {
+        return None;
+    }
+    if f"{key}.init" in self.method_funcs or f"{key}.__init__" in self.method_funcs {
+        return key;
+    }
+    return key if self.struct_field_order.get(key) else None;
+}
+
+impl NaIRGenPass._reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) -> None {
+    if self._slot_lowering_active() {
+        for (slot, value) in zip(self._nogc_err_slot(), values) {
+            self.builder.store(value, slot);
+        }
+        self._emit_err_propagate(loc="reraise");
+    } else {
+        self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);
+        self.builder.unreachable();
+    }
+}
+
+impl NaIRGenPass._reraise_if_bound(cause: uni.Expr) -> None {
+    if not isinstance(cause, uni.Name) {
+        return;
+    }
+    func = self.builder.function;
+    for (owner, name, alloca, bound, values) in reversed(self._exc_bindings) {
+        if owner is not func or name != cause.value {
+            continue;
+        }
+        if self.local_vars.get(name) is not alloca {
+            return;
+        }
+        i64 = ir.IntType(64);
+        current = self.builder.load(alloca, name="reraise.cur");
+        same = self.builder.icmp_unsigned(
+            "==",
+            self.builder.ptrtoint(current, i64),
+            self.builder.ptrtoint(bound, i64),
+            name="reraise.same"
+        );
+        caught_bb = func.append_basic_block(name="reraise.caught");
+        fresh_bb = func.append_basic_block(name="raise.fresh");
+        self.builder.cbranch(same, caught_bb, fresh_bb);
+        self.builder.position_at_end(caught_bb);
+        self._reraise_caught(values);
+        self.builder.position_at_end(fresh_bb);
+        return;
+    }
+}
+
 impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -296,20 +352,12 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     if nd.cause is None {
         for (owner, values) in reversed(self._caught_error_stack) {
             if owner is self.builder.function {
-                if self._slot_lowering_active() {
-                    for (slot, value) in zip(self._nogc_err_slot(), values) {
-                        self.builder.store(value, slot);
-                    }
-                    self._emit_err_propagate(loc="reraise");
-                } else {
-                    self.builder.call(
-                        self._exc_raise_fn, [values[1], values[0], values[2]]
-                    );
-                    self.builder.unreachable();
-                }
+                self._reraise_caught(values);
                 return;
             }
         }
+    } elif isinstance(nd.cause, uni.Name) {
+        self._reraise_if_bound(nd.cause);
     }
     exc_payload: (ir.Value | None) = None;
     exc_msg: (ir.Value | None) = None;
@@ -522,9 +570,7 @@ impl NaIRGenPass._codegen_try_unwind(
                 next_dispatch_bb = None;
             }
 
-            caught_type_name = self._arch_ref_key(except_node.ex_type)
-                or self._get_name(except_node.ex_type)
-                or "Exception";
+            caught_struct = self._exc_bound_struct(except_node.ex_type);
             caught_ids = self._exception_handler_ids(except_node.ex_type);
 
             if i > 0 {
@@ -572,32 +618,38 @@ impl NaIRGenPass._codegen_try_unwind(
                     if isinstance(except_node.name, uni.Name)
                     else str(except_node.name);
 
-                if caught_type_name in self.struct_types {
+                if caught_struct is not None {
                     handler_exc_obj = self.builder.load(
                         exc_obj_ptr, name="exc.bound.obj"
                     );
-                    _exc_sp_ty = self.struct_types[caught_type_name].as_pointer();
-                    typed_obj = self.builder.bitcast(
+                    _exc_sp_ty = self.struct_types[caught_struct].as_pointer();
+                    bound_val = self.builder.bitcast(
                         handler_exc_obj, _exc_sp_ty, name="exc.bound.typed"
                     );
                     alloca = self._entry_alloca(_exc_sp_ty, var_name);
-                    self.builder.store(typed_obj, alloca);
                 } else {
-                    handler_exc_msg = self.builder.load(
-                        exc_msg_slot, name="exc.bound.msg"
-                    );
+                    bound_val = self.builder.load(exc_msg_slot, name="exc.bound.msg");
                     alloca = self._entry_alloca(i8p, var_name);
-                    self.builder.store(handler_exc_msg, alloca);
                 }
+                self.builder.store(bound_val, alloca);
                 self.local_vars[var_name] = alloca;
             }
 
-            self._caught_error_stack.append((func, self._exception_values(exc_state)));
+            caught_values = self._exception_values(exc_state);
+            self._caught_error_stack.append((func, caught_values));
+            if except_node.name is not None {
+                self._exc_bindings.append(
+                    (func, var_name, alloca, bound_val, caught_values)
+                );
+            }
             self._finally_stack.append(frame);
             if isinstance(except_node.body, (list, tuple)) {
                 self._codegen_body(except_node.body);
             }
             self._finally_stack.pop();
+            if except_node.name is not None {
+                self._exc_bindings.pop();
+            }
             self._caught_error_stack.pop();
             if not self.builder.block.is_terminated {
                 self.builder.branch(finally_bb);
@@ -811,10 +863,7 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     err_type = self.builder.load(tglob, name="err.type");
     for (i, except_node) in enumerate(nd.excepts or []) {
         ex = except_node.ex_type;
-        caught = ex.value if isinstance(ex, uni.Name) else None;
-        if isinstance(ex, uni.AtomTrailer) and isinstance(ex.right, uni.Name) {
-            caught = ex.right.value;
-        }
+        caught = self._exc_bound_struct(ex);
         ids = self._exception_handler_ids(ex);
         handler_bb = func.append_basic_block(f"except.handler.{i}");
         next_bb = func.append_basic_block(f"except.dispatch.{i + 1}");
@@ -842,27 +891,27 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
             var_name = except_node.name.value
                 if isinstance(except_node.name, uni.Name)
                 else str(except_node.name);
-            if caught is not None and caught in self.struct_types {
+            if caught is not None {
                 _exc_sp_ty = self.struct_types[caught].as_pointer();
-                typed_obj = self.builder.bitcast(
-                    self.builder.load(oglob, name="exc.bound.obj"),
-                    _exc_sp_ty,
-                    name="exc.bound.typed"
+                bound_val = self.builder.bitcast(
+                    caught_values[1], _exc_sp_ty, name="exc.bound.typed"
                 );
                 alloca = self._entry_alloca(_exc_sp_ty, var_name);
-                self.builder.store(typed_obj, alloca);
             } else {
+                bound_val = caught_values[2];
                 alloca = self._entry_alloca(i8p, var_name);
-                self.builder.store(
-                    self.builder.load(mglob, name="exc.bound.msg"), alloca
-                );
             }
-        }
-        if except_node.name is not None {
+            self.builder.store(bound_val, alloca);
             self.local_vars[var_name] = alloca;
+            self._exc_bindings.append(
+                (func, var_name, alloca, bound_val, caught_values)
+            );
         }
         if isinstance(except_node.body, (list, tuple)) {
             self._codegen_body(except_node.body);
+        }
+        if except_node.name is not None {
+            self._exc_bindings.pop();
         }
         self._caught_error_stack.pop();
         if not self.builder.block.is_terminated {
