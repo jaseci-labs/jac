@@ -672,6 +672,10 @@ obj NativeBuildSession {
                 or mod.gen.native_iface is None {
                 return None;
             }
+            import from jaclang.compiler.backends.native.na_compile_pass {
+                settle_unit_ir
+            }
+            settle_unit_ir(mod);
             self.lowered[resolved] = mod;
             ent = self.registry.record_module(mod, opts);
             self.registry._stash_products(resolved, mod.gen);

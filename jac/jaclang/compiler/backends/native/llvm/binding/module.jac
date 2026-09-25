@@ -216,7 +216,7 @@ class ModuleRef(ffi.ObjectRef) {
         return _FunctionsIterator(it, `dict(module=self));
     }
 
-    def clone(self: ModuleRef) -> object {
+    def clone(self: ModuleRef) -> ModuleRef {
         return ModuleRef(ffi.lib.LLVMPY_CloneModule(self), self._context);
     }
 }

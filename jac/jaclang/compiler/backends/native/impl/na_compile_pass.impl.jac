@@ -82,7 +82,10 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             module.gen.native_bitcode = cached.bitcode;
             module.gen.native_object = cached.object_bytes;
         } else {
-            mod = llvm.parse_assembly(str(module.gen.llvm_ir));
+            unit_ir = module.gen.llvm_ir;
+            mod = unit_ir.clone()
+                if isinstance(unit_ir, llvm.ModuleRef)
+                else llvm.parse_assembly(str(unit_ir));
             mod.verify();
             opt_level = 0 if native_debug else int(options.opt_level or 0);
             optimize_unit(mod, target_machine, opt_level);
@@ -235,6 +238,18 @@ impl NativeCompilePass._write_symbol_map(
 
 impl NativeCompilePass.run_walk with uni.Module entry {
     self.module = self._run_impl(here);
+}
+
+impl settle_unit_ir(module: uni.Module) -> None {
+    unit_ir = module.gen.llvm_ir;
+    if unit_ir is None or isinstance(unit_ir, llvm.ModuleRef) {
+        return;
+    }
+    try {
+        module.gen.llvm_ir = llvm.parse_assembly(str(unit_ir));
+    } except RuntimeError {
+        return;
+    }
 }
 
 impl native_linked_ir_text(module: uni.Module) -> str {
