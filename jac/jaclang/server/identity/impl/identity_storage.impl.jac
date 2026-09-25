@@ -330,9 +330,6 @@ impl IdentityStorage.rename_username(
     if primary_username(user).lower().strip() == normalized {
         return {'user_id': user_id, 'username': raw_value, 'root_id': user['root_id']};
     }
-    if self.identity_taken(normalized) {
-        return {'error': 'Username is already registered', 'code': 'IDENTITY_TAKEN'};
-    }
     identity = {
         'type': 'username',
         'value_raw': raw_value,
