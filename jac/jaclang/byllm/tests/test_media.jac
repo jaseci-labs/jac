@@ -108,6 +108,37 @@ test "a video argument is sampled into several inlined frames" {
 }
 
 
+test "video sampling follows the requested frame rate and always advances" {
+    need("cv2", "OpenCV");
+    import cv2;
+    import numpy as np;
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+
+    with TemporaryDirectory() as directory {
+        path = str(Path(directory) / "two_seconds.avi");
+        writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), 30.0, (32, 32));
+        assert writer.isOpened();
+        for index in range(60) {
+            writer.write(np.full((32, 32, 3), index * 4, dtype=np.uint8));
+        }
+        writer.release();
+        for (fps, expected) in [(1, 2), (15, 30), (20, 40), (30, 60), (60, 60)] {
+            frames = Video(path=path, fps=fps).to_dict();
+            assert len(frames) == expected , (
+                f"requested {fps} fps: expected {expected} frames, got {len(frames)}"
+            );
+            assert len(set([frame["image_url"] for frame in frames])) == expected , (
+                f"requested {fps} fps: sampled a frame position more than once"
+            );
+        }
+        with testraises(ValueError, `match="fps must be positive") {
+            Video(path=path, fps=0);
+        }
+    }
+}
+
+
 # `sem` is module-level, so this pair sits beside its test.
 glob _sem_llm = MockLLM(outputs=[say("A hot air balloon.")]);
 

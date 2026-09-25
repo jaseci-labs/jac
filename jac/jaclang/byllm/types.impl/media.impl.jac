@@ -140,6 +140,9 @@ impl Video.postinit -> None {
     if not os.path.exists(self.path) {
         raise ValueError(f"Video file does not exist: {self.path}");
     }
+    if self.fps <= 0 {
+        raise ValueError("Video fps must be positive.");
+    }
 }
 
 impl Video.load_frames -> None {
@@ -151,22 +154,39 @@ impl Video.load_frames -> None {
             "Install `jac install 'byllm[video]'` for video capabilities."
         );
     }
-    self._base64frames = [];
     video = cv2.VideoCapture(self.path);
-    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT));
-    target_fps = self.fps;
-    source_fps = video.get(cv2.CAP_PROP_FPS);
-    frames_to_skip = int(source_fps / target_fps) - 1 if target_fps < source_fps else 1;
-    curr_frame = 0;
-    while curr_frame < total_frames - 1 {
-        video.set(cv2.CAP_PROP_POS_FRAMES, curr_frame);
-        (success, frame) = video.read();
-        if not success {
-            raise ValueError("Failed to read video frame.");
+    try {
+        frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT);
+        source_fps = video.get(cv2.CAP_PROP_FPS);
+        if not math.isfinite(frame_count)
+            or frame_count < 1
+            or (not math.isfinite(source_fps) or source_fps <= 0) {
+            raise ValueError("Video has invalid frame count or frame rate.");
         }
-        (_, buffer) = cv2.imencode(".jpg", frame);
-        self._base64frames.append(base64.b64encode(bytes(buffer)).decode("utf-8"));
-        curr_frame += frames_to_skip;
+        total_frames = int(frame_count);
+        target_fps = min(self.fps, source_fps);
+        frames: list[str] = [];
+        sample_index = 0;
+        while True {
+            curr_frame = int(sample_index * source_fps / target_fps);
+            if curr_frame >= total_frames {
+                break;
+            }
+            video.set(cv2.CAP_PROP_POS_FRAMES, curr_frame);
+            (success, frame) = video.read();
+            if not success {
+                raise ValueError("Failed to read video frame.");
+            }
+            (encoded, buffer) = cv2.imencode(".jpg", frame);
+            if not encoded {
+                raise ValueError("Failed to encode video frame.");
+            }
+            frames.append(base64.b64encode(bytes(buffer)).decode("utf-8"));
+            sample_index += 1;
+        }
+        self._base64frames = frames;
+    } finally {
+        video.release();
     }
 }
 

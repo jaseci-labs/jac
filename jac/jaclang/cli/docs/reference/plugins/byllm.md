@@ -1713,6 +1713,7 @@ with entry {
 | `fps` | int | 1 | Frames per second to extract |
 
 Lower `fps` values extract fewer frames, reducing token usage. Higher values provide more temporal detail.
+Sampling starts at the first frame and selects the frame at or before each requested time step until the end of the video. Rates above the source frame rate select each source frame once.
 
 #### Structured Output from Videos
 
