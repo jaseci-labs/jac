@@ -1,4 +1,12 @@
 import os;
+import from jaclang.dist.fused.trailer {
+    MAGIC,
+    REGION_ALIGN,
+    REGION_DESC_LEN,
+    TRAILER_LEN,
+    build_region_desc,
+    build_trailer
+}
 
 impl pack(stub: str, payload: str, out: str, stubcat: str | None = None) {
     try {

@@ -80,6 +80,9 @@ def find_jac_files(package_dir: str) -> list[str] {
         if pkg.name == "jaclang" and is_native_lowered(rel) {
             continue;
         }
+        if is_arch_file(str(jac_file)) {
+            continue;
+        }
 
         if any(
             part.startswith(".") or part == "__pycache__" for part in rel_path.parts

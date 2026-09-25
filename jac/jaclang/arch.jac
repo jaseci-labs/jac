@@ -4031,6 +4031,7 @@ graph import compiler.driver {
         dedupe_generated_imports
     }
     wiring --> compiler.driver.jir.compute_module_key { wiring_digest_for }
+    wiring --> dist.precompile_bytecode.find_jac_files { is_arch_file }
     wiring --> compiler.driver.jir.unit_source_digest { wiring_digest_for }
     wiring --> compiler.frontend.parser.frontend._native_parse_woven { is_arch_file }
     wiring --> compiler.frontend.parser.frontend.annex_sources { wiring_annex_for }
@@ -7983,10 +7984,6 @@ graph import compiler.tests {
     }
 }
 
-graph import compiler.tests.fixtures {
-    fw_conformance --> compiler.tests.test_fixed_width_equivalence { FwScope }
-}
-
 graph import compiler.tools {
     code_intel --> cli.commands.code { CodeIntelligence }
     code_intel --> compiler.tests.test_code_intel { CodeIntelligence }
@@ -9021,27 +9018,6 @@ graph import dist {
         vendor_jab_deps as _vendor_jab_deps
     }
     seal --> client.targets.desktop.desktop_build.stage_program { build_jab }
-}
-
-graph import dist.fused {
-    trailer --> dist.fused_binary {
-        MAGIC,
-        OVERLAY_MAGIC,
-        TRAILER_LEN,
-        Trailer,
-        build_trailer,
-        parse_trailer,
-        region_start,
-        rt_key
-    }
-    trailer --> dist.payload.pack {
-        MAGIC,
-        REGION_ALIGN,
-        REGION_DESC_LEN,
-        TRAILER_LEN,
-        build_region_desc,
-        build_trailer
-    }
 }
 
 graph import dist.payload {
