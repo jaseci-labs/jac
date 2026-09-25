@@ -108,11 +108,10 @@ test "the running image names one linked artifact with its digests" {
     assert len(artifact["sha256"]) == 64 , artifact["sha256"];
 }
 
-test "every scope entry is a jaclang module with a default-off strict flag" {
+test "every scope entry is a jaclang module with a source" {
     for e in NATIVE_SCOPE {
         assert isinstance(e, NativeScopeEntry);
         assert e.module.startswith("jaclang.") , e.module;
-        assert isinstance(e.strict, bool);
     }
     for p in native_scope_paths() {
         assert os.path.isfile(p) , f"scope entry has no source: {p}";

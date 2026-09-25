@@ -1,57 +1,36 @@
 import os;
 
 obj NativeScopeEntry {
-    has module: str,
-        strict: bool = False;
+    has module: str;
 }
 
 glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
-         NativeScopeEntry(module="jaclang.compiler.frontend.constant", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.srcloc", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.roles", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.relations", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.unitree", strict=True),
-         NativeScopeEntry(
-             module="jaclang.compiler.frontend.parser.tokens", strict=True
-         ),
-         NativeScopeEntry(module="jaclang.compiler.frontend.parser.lexer", strict=True),
-         NativeScopeEntry(
-             module="jaclang.compiler.frontend.parser.parser", strict=True
-         ),
-         NativeScopeEntry(module="jaclang.compiler.jc_materialize", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.jc_unit", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.diagnostics", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.passes.context", strict=True),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.ast_validation_pass", strict=True
-         ),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.sym_tab_build_pass", strict=True
-         ),
-         NativeScopeEntry(module="jaclang.compiler.passes.annex_weave", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.passes.early_passes", strict=True),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.graph_lowering_pass", strict=True
-         ),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.decl_impl_match_pass", strict=True
-         ),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.semantic_analysis_pass", strict=True
-         ),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.sem_def_match_pass", strict=True
-         ),
-         NativeScopeEntry(module="jaclang.compiler.passes.cfg_build_pass", strict=True),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.jsx_intrinsic_guard_pass", strict=True
-         ),
-         NativeScopeEntry(module="jaclang.compiler.expr_keys", strict=True),
-         NativeScopeEntry(module="jaclang.project.mobui_scope", strict=True),
-         NativeScopeEntry(module="jaclang.project.source", strict=True),
-         NativeScopeEntry(
-             module="jaclang.client.targets.react_native.html_tag_map", strict=True
-         ),
+         NativeScopeEntry(module="jaclang.compiler.frontend.constant"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.srcloc"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.roles"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.relations"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.unitree"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.parser.tokens"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.parser.lexer"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.parser.parser"),
+         NativeScopeEntry(module="jaclang.compiler.jc_materialize"),
+         NativeScopeEntry(module="jaclang.compiler.jc_unit"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.diagnostics"),
+         NativeScopeEntry(module="jaclang.compiler.passes.context"),
+         NativeScopeEntry(module="jaclang.compiler.passes.ast_validation_pass"),
+         NativeScopeEntry(module="jaclang.compiler.passes.sym_tab_build_pass"),
+         NativeScopeEntry(module="jaclang.compiler.passes.annex_weave"),
+         NativeScopeEntry(module="jaclang.compiler.passes.early_passes"),
+         NativeScopeEntry(module="jaclang.compiler.passes.graph_lowering_pass"),
+         NativeScopeEntry(module="jaclang.compiler.passes.decl_impl_match_pass"),
+         NativeScopeEntry(module="jaclang.compiler.passes.semantic_analysis_pass"),
+         NativeScopeEntry(module="jaclang.compiler.passes.sem_def_match_pass"),
+         NativeScopeEntry(module="jaclang.compiler.passes.cfg_build_pass"),
+         NativeScopeEntry(module="jaclang.compiler.passes.jsx_intrinsic_guard_pass"),
+         NativeScopeEntry(module="jaclang.compiler.expr_keys"),
+         NativeScopeEntry(module="jaclang.project.mobui_scope"),
+         NativeScopeEntry(module="jaclang.project.source"),
+         NativeScopeEntry(module="jaclang.client.targets.react_native.html_tag_map"),
 
      ),
      KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
