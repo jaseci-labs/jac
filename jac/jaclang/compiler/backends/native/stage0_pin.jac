@@ -3,6 +3,7 @@ import json;
 import os;
 
 glob STAGE0_PIN_ENV: str = "JAC_STAGE0_PIN",
+     STAGE0_ROOT_ENV: str = "JAC_STAGE0_ROOT",
      STAGE0_STRICT_ENV: str = "JAC_STAGE0_STRICT",
      STAGE0_PIN_REL: str = "bootstrap/stage0.json",
      STAGE0_PIN_FORMAT: int = 1,
@@ -90,15 +91,21 @@ def parse_stage0_pin(data: object) -> Stage0Pin {
     );
 }
 
+def stage0_source_dir -> str {
+    explicit = os.environ.get(STAGE0_ROOT_ENV, "").strip();
+    if explicit {
+        return os.path.realpath(explicit);
+    }
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    return os.path.dirname(os.path.realpath(jaclang_pkg_root()));
+}
+
 def stage0_pin_path -> str {
     explicit = os.environ.get(STAGE0_PIN_ENV, "").strip();
     if explicit {
         return os.path.abspath(explicit);
     }
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
-    return os.path.join(
-        os.path.dirname(jaclang_pkg_root()), *STAGE0_PIN_REL.split("/")
-    );
+    return os.path.join(stage0_source_dir(), *STAGE0_PIN_REL.split("/"));
 }
 
 def read_stage0_pin(path: str = "") -> Stage0Pin {

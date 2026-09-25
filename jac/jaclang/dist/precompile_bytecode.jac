@@ -1182,7 +1182,10 @@ def seal_native(
         build_link_plan,
         link_artifact
     }
-    import from jaclang.compiler.backends.native.kernel_resolve { kernel_lib_name }
+    import from jaclang.compiler.backends.native.kernel_resolve {
+        SEALED_LINK_MODE,
+        kernel_lib_name
+    }
     import from jaclang.compiler.driver.jir {
         native_section_payload,
         read_section_bytes as _rsb
@@ -1204,13 +1207,19 @@ def seal_native(
     console.print(f"  Native units: {len(units)} (roots: {len(roots)})");
     import time;
     native_start = time.monotonic();
-
-    import from jaclang.compiler.driver.compile_options { NATIVE_LINK_MODE_BITCODE }
-    plan = build_link_plan(
-        prog, roots, options, mode=NATIVE_LINK_MODE_BITCODE, native_unit=True
-    );
     artifact_path = pkg_path / artifact_rel;
     artifact_path.parent.mkdir(parents=True, exist_ok=True);
+    if pkg_name == "jaclang" {
+        staged = seal_stage0_kernel(pkg_path, artifact_path, artifact_rel);
+        if staged is not None {
+            console.print(f"  Native build: {time.monotonic() - native_start:.1f}s");
+            return staged;
+        }
+    }
+
+    plan = build_link_plan(
+        prog, roots, options, mode=SEALED_LINK_MODE, native_unit=True
+    );
     result = link_artifact(
         plan, str(artifact_path), ArtifactKind.SHARED, log=console.print
     );
@@ -1265,6 +1274,56 @@ def seal_native(
             "mode": plan.mode
         }
     };
+}
+
+def seal_stage0_kernel(
+    pkg_path: Path, artifact_path: Path, artifact_rel: str
+) -> (dict[str, any] | None) {
+    import from jaclang.compiler.backends.native.kernel_resolve {
+        SEALED_LINK_MODE,
+        STAGE0_BUILDER,
+        read_sidecar
+    }
+    import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
+    import from jaclang.compiler.backends.native.stage0_build { build_kernel_by_pin }
+    if not build_kernel_by_pin(
+        str(artifact_path),
+        spec=running_kernel_target(str(pkg_path)),
+        link_mode=SEALED_LINK_MODE
+    ) {
+        return None;
+    }
+    sidecar = read_sidecar(str(artifact_path));
+    if sidecar is None {
+        raise RuntimeError("the stage-0 kernel build left no layout sidecar");
+    }
+    mode = str(sidecar.get("link_mode", ""));
+    if mode != SEALED_LINK_MODE {
+        raise RuntimeError(
+            f"stage 0 linked the kernel in {mode or 'an unrecorded'} mode; a sealed "
+            f"kernel is a {SEALED_LINK_MODE} link"
+        );
+    }
+    stage0 = sidecar.get("stage0");
+    if not isinstance(stage0, dict) {
+        raise RuntimeError("the stage-0 kernel sidecar names no stage-0 compiler");
+    }
+    record = {
+        "path": Path(artifact_rel).as_posix(),
+        "sha256": hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
+        "layout_digest": str(sidecar.get("layout_digest", "")),
+        "plan_digest": str(sidecar.get("plan_digest", "")),
+        "triple": str(sidecar.get("triple", "")),
+        "mode": mode,
+        "builder": STAGE0_BUILDER,
+        "stage0": dict(stage0)
+    };
+    console.print(
+        f"  Native artifact: {artifact_rel} built by stage 0 "
+        f"{str(stage0.get('commit', ''))[:12]} (plan {record['plan_digest'][:12]}, "
+        f"layout {record['layout_digest'][:12]})"
+    );
+    return {"units": {}, "artifact": record};
 }
 
 def _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None {

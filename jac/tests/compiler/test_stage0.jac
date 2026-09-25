@@ -30,6 +30,7 @@ import from jaclang.compiler.backends.native.kernel_resolve {
 }
 import from jaclang.compiler.backends.native.stage0_pin {
     STAGE0_PIN_ENV,
+    STAGE0_ROOT_ENV,
     STAGE0_STRICT_ENV,
     Stage0Pin,
     Stage0PinError,
@@ -142,13 +143,34 @@ test "the stage-0 pin reads self, a commit and a missing file, and refuses malfo
 }
 
 test "the checkout ships a self pin beside its jaclang package" {
-    path = _with_env({STAGE0_PIN_ENV: None}, lambda() { stage0_pin_path(); });
+    path = _with_env(
+        {STAGE0_PIN_ENV: None, STAGE0_ROOT_ENV: None}, lambda() { stage0_pin_path(); }
+    );
     assert path
         == os.path.join(
-            os.path.dirname(jaclang_pkg_root()), "bootstrap", "stage0.json"
+            os.path.dirname(os.path.realpath(jaclang_pkg_root())),
+            "bootstrap",
+            "stage0.json"
         );
     assert os.path.isfile(path);
     assert read_stage0_pin(path).is_self();
+}
+
+test "JAC_STAGE0_ROOT names the source tree whose pin and history drive stage 0" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        src_dir = os.path.realpath(tmp);
+        path = _with_env(
+            {STAGE0_PIN_ENV: None, STAGE0_ROOT_ENV: src_dir},
+            lambda() { stage0_pin_path(); }
+        );
+        assert path == os.path.join(src_dir, "bootstrap", "stage0.json");
+        explicit = os.path.join(src_dir, "elsewhere.json");
+        assert _with_env(
+            {STAGE0_PIN_ENV: explicit, STAGE0_ROOT_ENV: src_dir},
+            lambda() { stage0_pin_path(); }
+        )
+            == explicit;
+    }
 }
 
 test "the kernel ABI contract covers every kernel unit and names files that exist" {
@@ -332,6 +354,73 @@ test "stage 0 links a dev kernel from unit objects and a sealed kernel as one op
     legacy.pop("link_mode");
     old = kernel_target_from_dict(legacy);
     assert old is not None and old.link_mode == "" , "an older spec leaves the mode to the builder";
+}
+
+def _seal_with(pin: Stage0Pin, sidecar: (dict[str, any] | None), tmp: str) -> any {
+    import from jaclang.dist.precompile_bytecode { seal_stage0_kernel }
+    pin_path = os.path.join(tmp, "stage0.json");
+    write_stage0_pin(pin, pin_path);
+    lib = Path(tmp, "compiler", "libjac_compiler.so");
+    lib.parent.mkdir(parents=True, exist_ok=True);
+    def child(snapshot: str, spec_path: str, dst: str) -> int {
+        Path(dst).write_bytes(b"a stage-0 kernel");
+        _write_json(dst + ".layout.json", sidecar);
+        return 0;
+    }
+    provision = patch.object(
+        stage0_build,
+        "provision_stage0",
+        side_effect=AssertionError("pin self provisions nothing")
+    )
+        if pin.is_self()
+        else patch.object(
+            stage0_build, "provision_stage0", return_value=jaclang_pkg_root()
+        );
+    with patch.object(stage0_build, "checkout_repo", return_value=("/repo", "jac/")), provision, patch.object(
+        stage0_build, "native_tree_trips", return_value=[]
+    ), patch.object(stage0_build, "file_guard_trips", return_value=[]), patch.object(
+        stage0_build, "run_stage0_child", side_effect=child
+    ), patch.object(stage0_build, "restamp_stage0_sidecar", return_value={}) {
+        return _with_env(
+            {STAGE0_PIN_ENV: pin_path, STAGE0_STRICT_ENV: "1"},
+            lambda() { seal_stage0_kernel(
+                Path(jaclang_pkg_root()), lib, "compiler/libjac_compiler.so"
+            ); }
+        );
+    }
+}
+
+test "the seal selects the kernel's builder by the pin: self seals as before, stage 0 records itself" {
+    with tempfile.TemporaryDirectory(prefix="jac-stage0-") as tmp {
+        assert _seal_with(Stage0Pin(), None, tmp) is None , "pin self leaves the seal to this compiler";
+        assert not os.path.exists(os.path.join(tmp, "compiler", "libjac_compiler.so"));
+        pin = _commit_pin();
+        sidecar = {
+            "classes": {},
+            "plan_digest": "p" * 64,
+            "layout_digest": "l" * 64,
+            "triple": kernel_options().effective_triple(),
+            "link_mode": SEALED_LINK_MODE,
+            "builder": "stage0",
+            "stage0": {"commit": pin.commit, "digest": pin.compiler_digest}
+        };
+        record = _seal_with(pin, sidecar, tmp);
+        assert record is not None;
+        assert record["units"] == {} , "stage 0's units are not this compiler's sealed twins";
+        artifact = record["artifact"];
+        assert artifact["builder"] == "stage0";
+        assert artifact["stage0"] == sidecar["stage0"];
+        assert artifact["mode"] == SEALED_LINK_MODE;
+        assert artifact["plan_digest"] == sidecar["plan_digest"];
+        assert artifact["sha256"] == hashlib.sha256(b"a stage-0 kernel").hexdigest();
+        refused = False;
+        try {
+            _seal_with(pin, {** sidecar, "link_mode": KERNEL_DEV_LINK_MODE}, tmp);
+        } except RuntimeError {
+            refused = True;
+        }
+        assert refused , "an objects-mode kernel is never sealed";
+    }
 }
 
 test "a sealed image whose kernel is not a whole-program link is refused" {

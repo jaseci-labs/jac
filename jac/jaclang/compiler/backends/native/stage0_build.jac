@@ -16,6 +16,7 @@ import from jaclang.compiler.backends.native.stage0_pin {
     abi_contract_differences,
     abi_contract_digest,
     read_stage0_pin,
+    stage0_source_dir,
     stage0_strict
 }
 
@@ -70,13 +71,8 @@ def _git_ok(repo: str, args: list[str]) -> bool {
     }
 }
 
-def checkout_jac_dir -> str {
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
-    return os.path.dirname(os.path.realpath(jaclang_pkg_root()));
-}
-
 def checkout_repo -> tuple[str, str] {
-    jac_dir = checkout_jac_dir();
+    jac_dir = stage0_source_dir();
     top = os.path.realpath(_git(jac_dir, ["rev-parse", "--show-toplevel"]));
     rel = os.path.relpath(jac_dir, top).replace(os.sep, "/");
     if rel.startswith("..") {
@@ -114,6 +110,12 @@ def _stamp_matches(s0_dir: str, pin: Stage0Pin) -> bool {
         and stamp.get("commit") == pin.commit
         and stamp.get("jaclang_tree") == pin.jaclang_tree
         and os.path.isdir(os.path.join(s0_dir, "jaclang"));
+}
+
+def _note_use(s0_dir: str) {
+    try {
+        os.utime(os.path.join(s0_dir, STAGE0_STAMP_NAME), None);
+    } except OSError {}
 }
 
 def _extract_snapshot(repo: str, prefix: str, pin: Stage0Pin, s0_dir: str) {
@@ -199,6 +201,7 @@ def provision_stage0(pin: Stage0Pin, repo: str, prefix: str) -> str {
             }
             _extract_snapshot(repo, prefix, pin, s0_dir);
         }
+        _note_use(s0_dir);
         snapshot_pkg = os.path.join(s0_dir, "jaclang");
         _materialize_typeshed(snapshot_pkg);
         digest = compiler_source_digest(snapshot_pkg);
@@ -384,6 +387,12 @@ def _fall_back(reason: str) -> bool {
         f"jac: stage-0 kernel build unavailable ({reason}); building the kernel "
         "with this compiler.\n"
     );
+    if os.environ.get("GITHUB_ACTIONS") == "true" {
+        sys.stdout.write(
+            f"::notice title=stage 0::{reason}; the kernel was built by this compiler\n"
+        );
+        sys.stdout.flush();
+    }
     return False;
 }
 

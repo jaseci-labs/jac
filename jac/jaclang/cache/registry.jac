@@ -87,6 +87,14 @@ glob RETIRED: tuple[str, ...] = (
              summary="compiler source digests, one per checkout"
          ),
          Bucket(
+             name="stage0",
+             relpath="stage0",
+             policy=Policy(
+                 ttl_days=30.0, pattern="[0-9a-f]" * 40, markers=[".stage0.json"]
+             ),
+             summary="pinned stage-0 compiler snapshots that build the kernel, one per commit"
+         ),
+         Bucket(
              name="apps",
              relpath="apps",
              policy=Policy(ttl_days=30.0, markers=[".used"]),
