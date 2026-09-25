@@ -2236,18 +2236,23 @@ impl Ability.method_owner.getter -> Archetype | Enum | None {
     }
 
     if found is None {
-        nodew = self.parent;
-        while isinstance(nodew, (IfStmt, ElseStmt, ModuleCode)) {
-            nodew = nodew.parent;
-        }
-        if nodew is not self.parent and isinstance(nodew, (Archetype, Enum)) {
+        owner = self.class_body_owner;
+        if owner is not None and owner is not self.parent {
             mod = self.find_parent_of_type(Module);
             if mod is not None and mod.is_raised_from_py {
-                return nodew;
+                return owner;
             }
         }
     }
     return found;
+}
+
+impl Ability.class_body_owner.getter -> Archetype | Enum | None {
+    nodew = self.parent;
+    while isinstance(nodew, (IfStmt, ElseStmt, ModuleCode)) {
+        nodew = nodew.parent;
+    }
+    return nodew if isinstance(nodew, (Archetype, Enum)) else None;
 }
 
 impl Ability.is_genai_ability.getter -> bool {

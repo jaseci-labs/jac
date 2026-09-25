@@ -2978,6 +2978,17 @@ impl TypeEvaluator._assign_callable(
     return self._callable_mismatch(src_func, dest_func, strict) is None;
 }
 
+impl TypeEvaluator._callable_value_params(fn: FunctionType) -> list[Parameter] {
+    if self._carries_unbound_method(fn) {
+        return list(fn.parameters or []);
+    }
+    return [
+        p
+        for p in (fn.parameters or [])
+        if not p.is_self and not p.is_cls
+    ];
+}
+
 impl TypeEvaluator._callable_mismatch(
     src_func: FunctionType, dest_func: FunctionType, strict: bool = False
 ) -> CallableMismatch | None {
@@ -2998,17 +3009,8 @@ impl TypeEvaluator._callable_mismatch(
         return GradualSourceMismatch();
     }
 
-    src_unbound = bool(src_func.function_flags & FunctionTypeFlags.UnboundMethod);
-    src_params = [
-        p
-        for p in (src_func.parameters or [])
-        if src_unbound or (not p.is_self and not p.is_cls)
-    ];
-    dest_params = [
-        p
-        for p in (dest_func.parameters or [])
-        if not p.is_self and not p.is_cls
-    ];
+    src_params = self._callable_value_params(src_func);
+    dest_params = self._callable_value_params(dest_func);
 
     overlap = min(len(src_params), len(dest_params));
     for i in range(overlap) {

@@ -636,6 +636,7 @@ walker TypeEvaluator {
         src_func: FunctionType, dest_func: FunctionType, strict: bool = False
     ) -> bool;
 
+    def _callable_value_params(fn: FunctionType) -> list[Parameter];
     def _callable_mismatch(
         src_func: FunctionType, dest_func: FunctionType, strict: bool = False
     ) -> CallableMismatch | None;
@@ -822,6 +823,7 @@ walker TypeEvaluator {
         t: TypeBase, member: ClassMember, owner: ClassType
     ) -> TypeBase;
 
+    def class_member_store_type(target: AtomTrailer, declared: TypeBase) -> TypeBase;
     def _unbound_clone(fn: FunctionType, owner: ClassType) -> FunctionType;
     def _is_instance_method_member(member: ClassMember) -> bool;
     def validate_call_args(expr: FuncCall) -> TypeBase;

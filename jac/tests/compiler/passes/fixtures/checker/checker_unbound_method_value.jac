@@ -23,14 +23,28 @@ with entry {
 }
 
 glob m = Counter.bump;
+
 with entry {
     through_name: int = m(c, 3);
     through_callable: int = apply(Counter.bump, c);
 }
 
 glob fs = [Counter.label];
+
 with entry {
     through_list: str = fs[0](c);
     bound: int = c.bump(1);
     print(direct, through_name, through_callable, through_list, bound);
+}
+
+def doubled_bump(self: Counter, step: int) -> int {
+    self.n += step * 2;
+    return self.n;
+}
+
+glob saved = Counter.bump;
+
+with entry {
+    Counter.bump = doubled_bump;
+    Counter.bump = saved;
 }

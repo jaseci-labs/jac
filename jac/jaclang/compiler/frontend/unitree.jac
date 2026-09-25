@@ -1217,6 +1217,7 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
     has is_cls_method: bool { getter; }
     has is_def: bool { getter; }
     has method_owner: Archetype | Enum | None { getter; }
+    has class_body_owner: Archetype | Enum | None { getter; }
     has is_genai_ability: bool { getter; }
     has surface_kind: str { getter; }
     has served: bool { getter; }

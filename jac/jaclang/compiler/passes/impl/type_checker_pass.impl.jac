@@ -633,7 +633,9 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                         } else {
                             declared = self.evaluator.get_type_of_symbol(target_sym);
                             if declared {
-                                left_type = declared;
+                                left_type = self.evaluator.class_member_store_type(
+                                    target, declared
+                                );
                             }
                         }
                     } elif isinstance(target.right, Name) {

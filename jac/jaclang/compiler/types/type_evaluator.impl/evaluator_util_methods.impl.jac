@@ -1223,6 +1223,21 @@ impl TypeEvaluator._carries_unbound_method(t: (TypeBase | None)) -> bool {
     return False;
 }
 
+impl TypeEvaluator.class_member_store_type(
+    target: AtomTrailer, declared: TypeBase
+) -> TypeBase {
+    if not isinstance(target.right, Name) {
+        return declared;
+    }
+    base_type = self.get_type_of_expression(target.target);
+    if not isinstance(base_type, ClassType) or not base_type.is_instantiable_class() {
+        return declared;
+    }
+    owner = self._get_type_for_member_lookup(base_type);
+    member = self._lookup_class_member(owner, target.right.value);
+    return self._as_unbound_method(declared, member, owner) if member else declared;
+}
+
 impl TypeEvaluator._as_unbound_method(
     t: TypeBase, member: ClassMember, owner: ClassType
 ) -> TypeBase {
