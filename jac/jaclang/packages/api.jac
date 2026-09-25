@@ -90,15 +90,15 @@ def _signature(ftype: any, decl: any = None) -> dict[str, any] {
             continue;
         }
         pv = nodes.get(p.name);
-        declared = pv is not None and pv.value is not None;
+        value = pv.value if pv is not None else None;
         param: dict[str, any] = {
             "name": p.name,
             "kind": PARAM_KINDS.get(int(p.param_kind), "normal"),
-            "default": bool(p.has_default) or declared,
+            "default": bool(p.has_default) or value is not None,
             "type": _type_text(p.param_type)
         };
-        if declared {
-            param["value"] = source_text(pv.value);
+        if value is not None {
+            param["value"] = source_text(value);
         }
         params.append(param);
     }
