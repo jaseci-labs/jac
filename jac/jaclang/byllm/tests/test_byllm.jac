@@ -4,6 +4,7 @@ import os;
 import sys;
 import warnings;
 import unittest.mock;
+import httpx;
 
 import yaml;
 import from fixtures { python_lib_mode }
@@ -1054,6 +1055,72 @@ test "model_call_http_async returns json response" {
     }
     result = asyncio.run(_run_http_async());
     assert result == {"choices": [{"message": {"content": "ok"}}]};
+}
+
+
+test "direct http failures retain status and provider detail" {
+    async def _async_error(model: Model, response: any, url: str) -> any {
+        mock_client = unittest.mock.AsyncMock();
+        mock_client.__aenter__.return_value = mock_client;
+        mock_client.post.return_value = response;
+        with unittest.mock.patch("httpx.AsyncClient", return_value=mock_client) {
+            try {
+                await model.model_call_http_async(
+                    url=url, token="test-token", payload={}, ca_bundle=None
+                );
+            } except Exception as e {
+                return e;
+            }
+        }
+        return None;
+    }
+    rows: list[any] = [
+        (401, AuthenticationError, "invalid key", True),
+        (403, AuthenticationError, "access denied", True),
+        (404, ModelNotFoundError, "unknown model", True),
+        (429, RateLimitError, "slow down", True),
+        (500, RuntimeError, "gateway failed", True),
+        (502, RuntimeError, "upstream unavailable", False)
+    ];
+    url = "https://example.com/v1/chat/completions";
+    for (status, expected_type, detail, json_body) in rows {
+        request = httpx.Request("POST", url);
+        response = httpx.Response(
+            status, json={"error": {"message": detail}}, request=request
+        )
+            if json_body
+            else httpx.Response(status, text=detail, request=request);
+        for mode in ("sync", "async") {
+            model = Model(model_name="gpt-4o-mini");
+            raised: any = None;
+            if mode == "sync" {
+                mock_client = unittest.mock.MagicMock();
+                mock_client.__enter__.return_value = mock_client;
+                mock_client.post.return_value = response;
+                with unittest.mock.patch("httpx.Client", return_value=mock_client) {
+                    try {
+                        model.model_call_http(
+                            url=url, token="test-token", payload={}, ca_bundle=None
+                        );
+                    } except Exception as e {
+                        raised = e;
+                    }
+                }
+            } else {
+                raised = asyncio.run(_async_error(model, response, url));
+            }
+            assert isinstance(raised, expected_type) , (
+                f"{mode} http {status}: expected {expected_type.__name__}, "
+                f"got {type(raised).__name__}"
+            );
+            assert str(status) in str(raised) , (
+                f"{mode} http {status}: status missing from {raised}"
+            );
+            assert detail in str(raised) , (
+                f"{mode} http {status}: provider detail missing from {raised}"
+            );
+        }
+    }
 }
 
 import ast as ast3;

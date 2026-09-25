@@ -337,6 +337,45 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     return response;
 }
 
+
+def _raise_http_response_error(response: any) -> None {
+    status = int(response.status_code);
+    if status < 400 {
+        return;
+    }
+    detail = str(response.text).strip();
+    try {
+        payload = response.json();
+        if isinstance(payload, dict) {
+            error = payload.get("error", payload);
+            if isinstance(error, dict) {
+                detail = str(
+                    error.get("message") or error.get("detail") or detail
+                ).strip();
+            } elif error {
+                detail = str(error).strip();
+            }
+        }
+    } except Exception {
+        detail = str(response.text).strip();
+    }
+    message = f"HTTP request failed with status {status}";
+    if detail {
+        message += f": {detail}";
+    }
+    if status in (401, 403) {
+        raise AuthenticationError(message);
+    }
+    if status == 404 {
+        raise ModelNotFoundError(message);
+    }
+    if status == 429 {
+        raise RateLimitError(message);
+    }
+    raise RuntimeError(message);
+}
+
+
 impl Model.model_call_http(
     url: str, token: str, payload: dict[str, any], ca_bundle: (str | bool | None)
 ) -> dict[str, any] {
@@ -346,6 +385,7 @@ impl Model.model_call_http(
     with client {
         response = client.post(url=url, headers=headers, json=payload);
     }
+    _raise_http_response_error(response);
     return response.json();
 }
 
@@ -437,5 +477,6 @@ impl Model.model_call_http_async(
     async with client {
         response = await client.post(url=url, headers=headers, json=payload);
     }
+    _raise_http_response_error(response);
     return response.json();
 }
