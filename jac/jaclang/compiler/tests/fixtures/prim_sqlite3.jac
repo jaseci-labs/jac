@@ -51,13 +51,12 @@ def sqlite3_py -> dict[any, any] {
     out["apilevel"] = sqlite3.apilevel;
     out["paramstyle"] = sqlite3.paramstyle;
     out["threadsafety"] = sqlite3.threadsafety;
-    out["sqlite_version"] = sqlite3.sqlite_version;
     out["complete_t"] = sqlite3.complete_statement("select 1;");
     out["complete_f"] = sqlite3.complete_statement("select 1");
     vi = sqlite3.sqlite_version_info;
     out["ver_major"] = vi[0];
-    out["ver_minor"] = vi[1];
-    out["ver_patch"] = vi[2];
+    out["ver_matches_info"] = sqlite3.sqlite_version
+        == str(vi[0]) + "." + str(vi[1]) + "." + str(vi[2]);
     con = sqlite3.connect(":memory:");
     cur = con.cursor();
     conn_tn = type(con).__name__;
@@ -280,13 +279,12 @@ def _meta_na(out: dict[str, any]) {
     out["apilevel"] = sqlite3.apilevel;
     out["paramstyle"] = sqlite3.paramstyle;
     out["threadsafety"] = sqlite3.threadsafety;
-    out["sqlite_version"] = sqlite3.sqlite_version;
     out["complete_t"] = sqlite3.complete_statement("select 1;");
     out["complete_f"] = sqlite3.complete_statement("select 1");
     vi = sqlite3.sqlite_version_info;
     out["ver_major"] = vi[0];
-    out["ver_minor"] = vi[1];
-    out["ver_patch"] = vi[2];
+    out["ver_matches_info"] = sqlite3.sqlite_version
+        == str(vi[0]) + "." + str(vi[1]) + "." + str(vi[2]);
     con = sqlite3.connect(":memory:");
     cur = con.cursor();
     conn_tn = type(con).__name__;
