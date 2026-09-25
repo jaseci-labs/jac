@@ -36,6 +36,12 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if isinstance(nd, uni.Null) {
         return ir.Constant(ir.IntType(8).as_pointer(), None);
     }
+    if isinstance(nd, uni.Ellipsis) {
+        _ell = self._ellipsis_jacval();
+        if _ell is not None {
+            return _ell;
+        }
+    }
 
     if isinstance(nd, uni.CfgExpr) {
         return self._codegen_expr(nd.expr);

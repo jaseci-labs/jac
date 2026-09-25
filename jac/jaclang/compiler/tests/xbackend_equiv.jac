@@ -412,6 +412,8 @@ def unbox_jacval(jv: JacVal) -> object {
         # bool: kept distinct from int (tag 0) so it round-trips as True/False
         # rather than 1/0, matching the Python reference exactly.
         return jv.payload != 0;
+    } elif jv.tag == 9 {
+        return ...;
     }
     return None;
 }

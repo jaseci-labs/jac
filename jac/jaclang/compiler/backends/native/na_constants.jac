@@ -52,6 +52,8 @@ glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_SHIFT: int = 48,
      RC_CYCLE_THRESHOLD: int = 1000;
 
+glob JACVAL_ELLIPSIS_TAG: int = 9;
+
 glob CLASS_DISPLAY_OFF: int = 24;
 glob LIVE_NODE_ID_OFF: int = 0,
      LIVE_NODE_USER_OFF: int = 8,

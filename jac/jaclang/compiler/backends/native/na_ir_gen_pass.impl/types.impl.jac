@@ -2137,8 +2137,14 @@ impl NaIRGenPass._jacval_truthy(jv: ir.Value) -> ir.Value {
     );
     p_nz = b.icmp_unsigned("!=", payload, ir.Constant(i64, 0), name="jv.truthy.pnz");
     num_res = b.select(is_float, f_nz, p_nz, name="jv.truthy.num");
+    is_ellipsis = b.icmp_unsigned(
+        "==", tag, ir.Constant(i8, JACVAL_ELLIPSIS_TAG), name="jv.truthy.isellipsis"
+    );
     scalar_res = b.select(
-        is_none, ir.Constant(i1, 0), num_res, name="jv.truthy.scalar"
+        is_none,
+        ir.Constant(i1, 0),
+        b.select(is_ellipsis, ir.Constant(i1, 1), num_res, name="jv.truthy.ell"),
+        name="jv.truthy.scalar"
     );
     b.branch(merge_bb);
 
@@ -2292,12 +2298,6 @@ impl NaIRGenPass._loop_rebinds_name(loop: uni.UniNode, name: str) -> bool {
     return _found;
 }
 
-impl NaIRGenPass._body_assigns_before(
-    loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
-    child: (uni.UniNode | None),
-    name: str
-) -> bool {
-    if isinstance(loop, uni.InForStmt) {
 impl NaIRGenPass._target_bound_names(target: uni.UniNode) -> list[uni.Name] {
     if isinstance(target, uni.Name) {
         return [target];
@@ -2315,6 +2315,12 @@ impl NaIRGenPass._target_bound_names(target: uni.UniNode) -> list[uni.Name] {
     return [];
 }
 
+impl NaIRGenPass._body_assigns_before(
+    loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
+    child: (uni.UniNode | None),
+    name: str
+) -> bool {
+    if isinstance(loop, uni.InForStmt) {
         for _tn in self._target_bound_names(loop.target) {
             if _tn.value == name {
                 return True;

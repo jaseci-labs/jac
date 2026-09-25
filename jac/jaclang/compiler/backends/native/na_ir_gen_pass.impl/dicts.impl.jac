@@ -207,6 +207,19 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     return b.insert_value(boxed, payload, 1, name="jacval");
 }
 
+impl NaIRGenPass._ellipsis_jacval -> (ir.Value | None) {
+    if not self?.jacval_type {
+        return None;
+    }
+    return ir.Constant(
+        self.jacval_type,
+        [
+            ir.Constant(ir.IntType(8), JACVAL_ELLIPSIS_TAG),
+            ir.Constant(ir.IntType(64), 0)
+        ]
+    );
+}
+
 impl NaIRGenPass._jacval_pointer_tag(pointer_type: ir.Type) -> int {
     for (families, tag) in (
         (self.list_types, 3),

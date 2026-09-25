@@ -2606,6 +2606,9 @@ impl NaIRGenPass._jacval_tags_for_type(name: str) -> list[int] {
     if name == "NoneType" {
         return [8];
     }
+    if name in ("ellipsis", "EllipsisType") {
+        return [JACVAL_ELLIPSIS_TAG];
+    }
     return [];
 }
 
@@ -2759,11 +2762,11 @@ impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
         and self._get_name(nd.target) == "type"
         and nd.params
         and len(nd.params) == 1
-        and isinstance(nd.params[0], uni.Null)
+        and isinstance(nd.params[0], (uni.Null, uni.Ellipsis))
     ) {
         import from jaclang.compiler.symbol_utils { classify_call, CallKind }
         if classify_call(nd) == CallKind.BUILTIN {
-            return "NoneType";
+            return "NoneType" if isinstance(nd.params[0], uni.Null) else "ellipsis";
         }
         return None;
     }

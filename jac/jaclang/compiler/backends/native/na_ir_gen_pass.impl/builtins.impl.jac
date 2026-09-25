@@ -817,6 +817,23 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 }
                 fmt_parts.append("%s");
                 args.append(val);
+            } elif self?.jacval_type is not None and val.type == self.jacval_type {
+                _jv_fn = self._str_jacval_fn();
+                if _jv_fn is None {
+                    self.emit(
+                        E5092,
+                        node_override=part,
+                        kind="f-string value",
+                        name=type(part.format_part).__name__
+                    );
+                    return None;
+                }
+                _jv_s = self._mark_owned(
+                    self.builder.call(_jv_fn, [val], name="fstr.jv")
+                );
+                obj_strs.append(_jv_s);
+                fmt_parts.append("%s");
+                args.append(_jv_s);
             } elif isinstance(val.type, ir.LiteralStructType) {
                 _tup_s = self._emit_container_repr(
                     val, self._type_key_of(part.format_part)
@@ -1666,6 +1683,12 @@ impl NaIRGenPass._emit_value_repr(
     } elif isinstance(val.type, ir.PointerType) and val.type == i8p {
         res = self.builder.call(self._repr_str_fn(), [val], name="fstr.repr.str");
         return self._mark_owned(res);
+    } elif self?.jacval_type is not None and val.type == self.jacval_type {
+        fn = self._repr_jacval_fn();
+        if fn is not None {
+            res = self.builder.call(fn, [val], name="fstr.repr.jv");
+            return self._mark_owned(res);
+        }
     } elif isinstance(val.type, (ir.PointerType, ir.LiteralStructType)) {
         _r = self._emit_container_repr(val, self._type_key_of(type_node));
         if _r is None and isinstance(val.type, ir.PointerType) {

@@ -88,6 +88,7 @@ import type from jaclang.compiler.passes.osp_analysis { OspSlot }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import from jaclang.compiler.backends.native.na_constants {
     CLASS_DISPLAY_OFF,
+    JACVAL_ELLIPSIS_TAG,
     LIVE_NODE_NEXT_OFF,
     LIVE_NODE_RC_OFF,
     LIVE_NODE_SIZE,
@@ -1291,6 +1292,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> ir.Function;
 
     def _box_to_jacval(value: ir.Value) -> ir.Value;
+    def _ellipsis_jacval -> (ir.Value | None);
     def _jacval_pointer_tag(pointer_type: ir.Type) -> int;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _any_view_target(target_type: ir.Type) -> (tuple[str, str] | None);
@@ -2628,9 +2630,9 @@ walker NaIRGenPass(CompilerPass) {
     def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;
     def _narrowing_stable_in_loops(nd: uni.UniNode, name: str) -> bool;
     def _loop_rebinds_name(loop: uni.UniNode, name: str) -> bool;
+    def _target_bound_names(target: uni.UniNode) -> list[uni.Name];
     def _body_assigns_before(
         loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
-    def _target_bound_names(target: uni.UniNode) -> list[uni.Name];
         child: (uni.UniNode | None),
         name: str
     ) -> bool;
@@ -2696,15 +2698,15 @@ walker NaIRGenPass(CompilerPass) {
     def _typevar_bound_struct(t: (TypeBase | None)) -> (str | None);
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _struct_name_for_key(tk: (str | None)) -> (str | None);
-    def _erased_arch_base(tk: str) -> (str | None);
-    def _split_union_key(tk: str) -> list[str];
-    def _ptr_box_kind(rt: any) -> int;
     def _common_struct_ancestor(
         parts: list[str], member: (str | None) = None
     ) -> (str | None);
 
     def _declares_member(type_name: str, member: str) -> bool;
     def _struct_owning_member(expr: (uni.UniNode | None), member: str) -> (str | None);
+    def _erased_arch_base(tk: str) -> (str | None);
+    def _split_union_key(tk: str) -> list[str];
+    def _ptr_box_kind(rt: any) -> int;
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
     def _restore_list_read(

@@ -1678,6 +1678,12 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             str_repr = b.call(p._repr_str_fn(), [arg_val], name="repr.str");
             return p._mark_owned(str_repr);
         }
+        if p?.jacval_type and arg_val.type == p.jacval_type {
+            _jv_fn = p._repr_jacval_fn();
+            if _jv_fn is not None {
+                return p._mark_owned(b.call(_jv_fn, [arg_val], name="repr.jacval"));
+            }
+        }
         if isinstance(arg_val.type, (ir.PointerType, ir.LiteralStructType)) {
             cont_s = p._emit_container_repr(arg_val, ctx.type_key or None);
             if cont_s is not None {
