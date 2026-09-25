@@ -28,6 +28,8 @@ import from jaclang.compiler.frontend.codeinfo {
     HDR_TOTAL,
     JACSTR_DESC_FIELDS,
     RC_SENTINEL,
+    is_package_keyed_path,
+    native_unit_identity,
     str_len_tag,
     STR_LEN_TAG_BIT,
     STR_LEN_TAG_SHIFT

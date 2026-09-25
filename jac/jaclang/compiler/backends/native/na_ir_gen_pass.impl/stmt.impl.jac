@@ -152,6 +152,9 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             is_false = self.builder.not_(cond_bool, name="assert.fail");
 
             _a_path = self.module.loc.mod_path if self.module.loc else "";
+            if _a_path and is_package_keyed_path(_a_path) {
+                _a_path = native_unit_identity(_a_path);
+            }
             _a_line = nd.loc.first_line if nd.loc else 0;
             _a_text = "assertion failed";
             if isinstance(nd.error_msg, uni.String) {

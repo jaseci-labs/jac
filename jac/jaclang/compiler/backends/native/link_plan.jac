@@ -50,7 +50,7 @@ import from jaclang.compiler.frontend.codeinfo { JAC_ENTRY_SYMBOL, kernel_unit_p
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.jir { sidecar_unit_paths, unit_source_digest }
 
-glob PLAN_DIGEST_FORMAT: int = 2;
+glob PLAN_DIGEST_FORMAT: int = 3;
 
 enum ArtifactKind {
     EXECUTABLE = "executable",
@@ -204,8 +204,9 @@ obj LinkPlan {
         h.update(self.options.codegen_identity().encode());
         import from jaclang.compiler.driver.jir { running_compiler_digest }
         h.update(running_compiler_digest().encode());
+        import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
         for u in self.units {
-            h.update(u.path.encode());
+            h.update(native_unit_identity(u.path).encode());
             h.update(u.modkey.encode());
             h.update(u.digest.encode());
         }
