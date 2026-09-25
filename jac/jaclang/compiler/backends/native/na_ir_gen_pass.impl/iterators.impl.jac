@@ -1163,7 +1163,7 @@ impl NaIRGenPass._user_iter_next_fn(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="usr.env.i8p");
-    sj = b.call(self.extern_funcs["setjmp"], [env_i8p], name="usr.sj");
+    sj = b.call(self._exc_setjmp_fn(), [env_i8p], name="usr.sj");
     is_exc = b.icmp_signed("!=", sj, ir.Constant(i32, 0), name="usr.is.exc");
     b.cbranch(is_exc, caught_bb, call_bb);
 
