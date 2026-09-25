@@ -66,7 +66,7 @@ programmatically:
 | **C interop (in)** | `import from libname` (logical) or `import from "path"` (explicit) |
 | **C structs and pointers** | C-layout structs, `&`/`&mut` borrows to C, `ptr[T]`, `p.view(n)`, `Pinned[T]` |
 | **C interop (out)** | `jac build --native --lib` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
-| **Std library** | `import math` / `time` / `sys` / `os` / `random` (Python-congruent subset) |
+| **Std library** | `import math` / `time` / `sys` / `os` / `random` / `signal` / `subprocess` (Python-congruent subset) |
 | **Memory model** | `[memory] profile`: `managed` (RC + cycle collector, default), `rc`, `nogc` (borrow-checked, no runtime); one-off override with `--memory` |
 | **Testing** | `test "description" { }` blocks compile native and run via `jac test` |
 
@@ -591,6 +591,8 @@ to libc/libm. Where behavior can still diverge, it is noted per module below.
 | `sys` | subset | constants + argv/exit |
 | `os` / `os.path` | subset | libc |
 | `random` | seed-sequence faithful | CPython MT19937 |
+| `signal` | subset, Linux only | libc (`bsd_signal` / `sigprocmask`) |
+| `subprocess` | subset, Linux only | `posix_spawnp` + `poll` |
 
 Anything not yet lowered is **rejected at compile time** (rather than silently
 producing a wrong binary), so an unsupported `import` or member fails loudly.
@@ -732,6 +734,27 @@ arg: --verbose
 arg: world
 Verbose mode enabled
 ```
+
+#### `signal` -- Signal Handling (Linux)
+
+`import signal` provides `signal()` / `getsignal()` / `raise_signal()` /
+`alarm()` / `pause()` / `strsignal()` / `valid_signals()` /
+`pthread_sigmask()` / `default_int_handler` and the Linux `SIG*` constant
+set. User handlers dispatch through a C-ABI trampoline that receives
+`(signum, None)` where CPython delivers `(signum, frame)`. `SIG_DFL` /
+`SIG_IGN` install real kernel dispositions; `valid_signals` and
+`pthread_sigmask` answer `list` where CPython answers `set`.
+
+#### `subprocess` -- Child Processes (Linux)
+
+`import subprocess` provides `Popen`, `run`, `call`, `check_call`,
+`check_output`, `CompletedProcess`, `CalledProcessError`, `TimeoutExpired`,
+and `PIPE` / `STDOUT` / `DEVNULL`, driven by `posix_spawnp` with file
+actions and a `poll`-based `communicate` that drains stdout and stderr
+concurrently (a child filling one pipe while the parent drains the other
+does not deadlock). Scoped to `args`/`stdin`/`stdout`/`stderr`/`text`/`cwd`/
+`env`/`shell`/`pid`/`returncode`; there is no file-object stream API --
+`Popen.stdout` is an int sentinel, not a reader.
 
 ---
 

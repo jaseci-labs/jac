@@ -3,7 +3,7 @@ import os;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { jac_command }
+import from tests.support { jac_command, native_build_fails }
 
 test "native os replace preserves replacement and error semantics" {
     fixture = str(Path(__file__).resolve().parent / "fixtures" / "os_replace.jac");
@@ -62,20 +62,8 @@ test "unsupported native os calls cannot silently disappear" {
         with tempfile.TemporaryDirectory() as directory {
             source = os.path.join(directory, "unsupported.jac");
             Path(source).write_text(code);
-            build = subprocess.run(
-                jac_command(
-                    "build",
-                    "--native",
-                    source,
-                    "-o",
-                    os.path.join(directory, "bad.bin")
-                ),
-                capture_output=True,
-                text=True,
-                timeout=900
-            );
-            assert build.returncode != 0 , "unsupported fsync was silently accepted";
-            assert "fsync" in build.stdout + build.stderr;
+            combined = native_build_fails(source);
+            assert "fsync" in combined;
         }
     }
 }

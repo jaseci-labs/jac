@@ -558,9 +558,14 @@ impl NaIRGenPass._emit_optional_str(
         self._mark_owned(boxed_text);
         return boxed_text;
     }
+
+    _phi_owned = (_pt != i8p) or self._is_owned(val);
     _none_s = self.builder.bitcast(
         self._make_global_string("None"), i8p, name="opt.str.none"
     );
+    if _phi_owned {
+        _none_s = self._call_str_dup(self.builder, _none_s, name="opt.str.none.dup");
+    }
     _tag = self.builder.extract_value(val, 0, name="opt.str.tag");
     _set = self.builder.icmp_signed(
         "!=", _tag, ir.Constant(ir.IntType(8), 0), name="opt.str.set"
@@ -579,6 +584,8 @@ impl NaIRGenPass._emit_optional_str(
             return None;
         }
         _s = _built;
+    } elif _phi_owned {
+        _s = self._call_str_dup(self.builder, _pv, name="opt.str.dup");
     }
     _some_end = self.builder.basic_block;
     self.builder.branch(_merge_bb);
@@ -586,6 +593,9 @@ impl NaIRGenPass._emit_optional_str(
     _phi = self.builder.phi(i8p, name="opt.str");
     _phi.add_incoming(_none_s, _entry);
     _phi.add_incoming(_s, _some_end);
+    if _phi_owned {
+        self._mark_owned(_phi);
+    }
     return _phi;
 }
 

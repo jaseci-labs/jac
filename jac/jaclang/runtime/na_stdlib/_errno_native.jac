@@ -36,10 +36,14 @@ def _raise_for_errno(code: int, message: imm str) {
     raise OSError(message);
 }
 
-def:pub raise_os_error(operation: imm str, path: imm str, code: int) {
-    _raise_for_errno(code, operation + ": " + strerror(i32(code)) + ": " + path);
+def:pub raise_errno(code: int, operation: imm str = "") {
+    message = "[Errno " + str(code) + "] ";
+    if operation != "" {
+        message = message + operation + ": ";
+    }
+    _raise_for_errno(code, message + strerror(i32(code)));
 }
 
-def:pub raise_errno(code: int) {
-    _raise_for_errno(code, "[Errno " + str(code) + "] " + strerror(i32(code)));
+def:pub raise_os_error(operation: imm str, path: imm str, code: int) {
+    _raise_for_errno(code, operation + ": " + strerror(i32(code)) + ": " + path);
 }

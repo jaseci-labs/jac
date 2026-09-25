@@ -547,6 +547,57 @@ native layout records the emitted name separately from its source-level key.
   instead of `connect` -- the image-wide clib-extern bare-name set would
   otherwise skip this module's `def:pub connect` body (SIGSEGV at
   JIT-execute).
+- **`signal.linux.jac`** (Mechanism F) + **`_signal_native.linux.jac`** (libc
+  FFI floor: `bsd_signal`, `kill`, `setitimer` (as `alarm`), `sigprocmask`) --
+  the Linux-numbered constant set plus `signal`/`getsignal`/`raise_signal`/
+  `alarm`/`pause`/`strsignal`/`valid_signals`/`pthread_sigmask`/
+  `default_int_handler`. User handlers dispatch through a C-ABI trampoline
+  that delivers `(signum, None)` where CPython delivers `(signum, frame)`.
+  `SIG_DFL`/`SIG_IGN` are sentinel callables that `signal()` maps onto real
+  kernel dispositions; `getsignal` answers from a shadow dict since libc
+  cannot distinguish a Jac trampoline from a real handler. FFI names carry
+  a `sig_` prefix because `alarm`/`pause` externs would collide with the
+  public `def:pub` names in the flat symbol table -- `alarm` is spelled
+  `setitimer(ITIMER_REAL, ...)` and `pause` is spelled `select(0, NULL,
+  NULL, NULL, NULL)`, which sleeps until a signal interrupts it.
+  `strsignal` answers from a baked-in table of glibc's description strings
+  rather than a libc call, so it is byte-identical under musl where
+  `sigdescr_np` does not exist.
+  SCOPE/divergences:
+  Linux only (signal numbers are glibc/Linux-specific, so
+  the module carries the `.linux.` suffix and other platforms get a clean
+  "not provided" rather than a link error); `valid_signals` and
+  `pthread_sigmask` return a `list` where CPython returns a `set`;
+  `default_int_handler` is exported but not installed on `SIGINT`, so Ctrl-C
+  terminates the process rather than raising `KeyboardInterrupt`;
+  `sigwait`/`sigwaitinfo`/`setitimer`/`getitimer` are not provided.
+  Pinned sv<->na congruent by `test_native_signal_subprocess.jac`.
+
+- **`subprocess.linux.jac`** (Mechanism F) +
+  **`_subprocess_native.linux.jac`** (libc FFI floor: `posix_spawnp` and its
+  file-actions API, `pipe`, `waitpid`, `poll`, `kill`) -- `Popen`, `run`,
+  `call`, `check_call`, `check_output`, `CompletedProcess`,
+  `CalledProcessError`, `TimeoutExpired`, and the `PIPE`/`STDOUT`/`DEVNULL`
+  sentinels. Spawn is `posix_spawnp` with file actions for stdio
+  dup2/open/`chdir_np`; `communicate` interleaves stdin writes with stdout
+  and stderr reads over a `poll` loop (the same selector shape CPython
+  uses), so a child filling one pipe while the parent drains the other does
+  not deadlock, and `timeout` covers the whole exchange. `wait(timeout)`
+  raises `TimeoutExpired` and leaves the child running -- matching CPython;
+  only `run()` kills on timeout. `shell=True` builds
+  `["/bin/sh", "-c"] + args` verbatim, as CPython does. The first `Popen`
+  installs `SIG_IGN` on `SIGPIPE` through `signal()` itself -- matching
+  CPython's interpreter startup, including `getsignal(SIGPIPE)` answering
+  `SIG_IGN` -- so a write to a closed pipe fails with EPIPE instead of
+  killing the caller.
+  SCOPE/divergences:
+  Linux only (`.linux.` suffix); `Popen` exposes `args`/`stdin`/`stdout`/
+  `stderr`/`text`/`cwd`/`env`/`shell`/`pid`/`returncode` only -- no `start_new_session`,
+  `executable`, `bufsize`, `encoding`, or the file-object stream API
+  (`Popen.stdout` is an int sentinel, not a reader); `kill`/`terminate`
+  signal only the child pid, not a process group; `returncode` is `0` when
+  the child was already reaped (CPython's `ChildProcessError` path).
+  Pinned sv<->na congruent by `test_native_signal_subprocess.jac`.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler
