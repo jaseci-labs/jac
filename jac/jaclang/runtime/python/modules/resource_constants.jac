@@ -1,6 +1,6 @@
-"""resource constants for a platform gen_constants.py has not run for."""
+"""resource constants for a platform gen_constants.jac has not run for."""
 
-glob:pub PLATFORM: str = "",
+glob PLATFORM: str = "",
      RLIMIT_CPU: i64 = 0,
      RLIMIT_FSIZE: i64 = 0,
      RLIMIT_DATA: i64 = 0,

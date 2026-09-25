@@ -68,7 +68,7 @@ import from bz2 {
     ) -> i32;
 }
 
-glob:pub BZ2Compressor_token = ClassToken(),
+glob BZ2Compressor_token = ClassToken(),
      BZ2Decompressor_token = ClassToken();
 
 glob:priv BZ_RUN: i32 = 0,

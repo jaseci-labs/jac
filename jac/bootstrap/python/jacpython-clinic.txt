@@ -1,7 +1,7 @@
 # Native Jac modules whose argument parsing is generated from CPython's
-# Argument Clinic input by gen_clinic.py into
+# Argument Clinic input by scripts/jacpython/gen_clinic.jac into
 # jaclang/runtime/python/bindings/clinic/<name>.jac.
-# `python3 jac/bootstrap/python/gen_clinic.py --check` fails when any is stale.
+# `jac run scripts/jacpython/gen_clinic.jac --check` fails when any is stale.
 _opcode
 pwd
 grp

@@ -2,7 +2,7 @@
 
 Derived from CPython 3.14.6 Modules/errnomodule.c; see ../LICENSE.cpython.
 The codes come from errno_constants.<os>.jac, generated from the target's
-<errno.h> by bootstrap/python/gen_constants.py.
+<errno.h> by scripts/jacpython/gen_constants.jac.
 """
 
 import from jaclang.runtime.python.cpython_api {

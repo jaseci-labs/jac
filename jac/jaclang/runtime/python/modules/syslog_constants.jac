@@ -1,6 +1,6 @@
-"""syslog constants for a platform gen_constants.py has not run for."""
+"""syslog constants for a platform gen_constants.jac has not run for."""
 
-glob:pub PLATFORM: str = "",
+glob PLATFORM: str = "",
      LOG_EMERG: i64 = 0,
      LOG_ALERT: i64 = 0,
      LOG_CRIT: i64 = 0,

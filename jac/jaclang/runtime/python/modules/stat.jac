@@ -15,7 +15,7 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.capi { boundary_failure, object_error }
 
-glob:pub S_IMODE: u64 = 0o7777,
+glob S_IMODE: u64 = 0o7777,
      S_IFMT: u64 = 0o170000,
      S_IFDIR: u64 = 0o040000,
      S_IFCHR: u64 = 0o020000,

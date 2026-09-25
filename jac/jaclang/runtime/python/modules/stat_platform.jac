@@ -1,8 +1,8 @@
 """_stat platform flags for a target with no stat_platform.<os>.jac; the binding rejects it."""
 
-glob:pub PLATFORM: str = "";
+glob PLATFORM: str = "";
 
-glob:pub S_IFWHT: u64 = 0,
+glob S_IFWHT: u64 = 0,
      UF_SETTABLE: u64 = 0,
      UF_NODUMP: u64 = 0,
      UF_IMMUTABLE: u64 = 0,

@@ -11,7 +11,7 @@ import from c {
     }
 }
 
-glob:pub PLATFORM: str = "linux";
+glob PLATFORM: str = "linux";
 
-glob:pub SC_GETPW_R_SIZE_MAX: i32 = 70,
+glob SC_GETPW_R_SIZE_MAX: i32 = 70,
      SC_GETGR_R_SIZE_MAX: i32 = 69;

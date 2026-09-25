@@ -27,7 +27,7 @@ import from c {
     }
 }
 
-glob:pub PLATFORM: str = "darwin",
+glob PLATFORM: str = "darwin",
      HAS_PRLIMIT: bool = False;
 
 # macOS has no prlimit(2); the binding leaves resource.prlimit out there.

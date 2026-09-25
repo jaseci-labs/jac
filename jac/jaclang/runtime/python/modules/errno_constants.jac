@@ -1,6 +1,6 @@
-"""errno constants for a platform gen_constants.py has not run for."""
+"""errno constants for a platform gen_constants.jac has not run for."""
 
-glob:pub PLATFORM: str = "",
+glob PLATFORM: str = "",
      ENODEV: i64 = 0,
      ENOCSI: i64 = 0,
      EHOSTUNREACH: i64 = 0,

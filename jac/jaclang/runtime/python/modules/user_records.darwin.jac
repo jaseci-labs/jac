@@ -14,7 +14,7 @@ import from c {
     }
 }
 
-glob:pub PLATFORM: str = "darwin";
+glob PLATFORM: str = "darwin";
 
-glob:pub SC_GETPW_R_SIZE_MAX: i32 = 71,
+glob SC_GETPW_R_SIZE_MAX: i32 = 71,
      SC_GETGR_R_SIZE_MAX: i32 = 70;

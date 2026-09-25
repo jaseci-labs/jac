@@ -1,8 +1,8 @@
 """BSD file flags and whiteouts as Linux lacks them: CPython's _stat.c fallbacks."""
 
-glob:pub PLATFORM: str = "linux";
+glob PLATFORM: str = "linux";
 
-glob:pub S_IFWHT: u64 = 0,
+glob S_IFWHT: u64 = 0,
      UF_SETTABLE: u64 = 0x0000ffff,
      UF_NODUMP: u64 = 0x00000001,
      UF_IMMUTABLE: u64 = 0x00000002,

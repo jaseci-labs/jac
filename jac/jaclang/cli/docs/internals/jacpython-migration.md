@@ -9,20 +9,21 @@ cannot be ported yet: the object model (`Objects/`) and the evaluator
 
 ## Porting a module
 
-Three generated files and two lists do the bookkeeping. A port touches only
+Four generated files and two lists do the bookkeeping. A port touches only
 the module's own Jac files and one line in each list.
 
 | Piece | Produced by | Holds |
 |---|---|---|
 | `jac/bootstrap/python/jacpython-modules.txt` | hand | module name, upstream test modules, extra linker flags |
 | `jac/bootstrap/python/jacpython-clinic.txt` | hand | modules whose argument parsing is generated |
-| `runtime/python/cpython_api.jac` | `gen_capi.py` | typed clib declarations of every CPython function the Jac code calls |
-| `runtime/python/bindings/clinic/<name>.jac` | `gen_clinic.py` | signatures, converters, return conversion, method/getset tables |
+| `runtime/python/cpython_api.jac` | `scripts/jacpython/gen_capi.jac` | typed clib declarations of every CPython function the Jac code calls |
+| `runtime/python/bindings/clinic/<name>.jac` | `scripts/jacpython/gen_clinic.jac` | signatures, converters, return conversion, method/getset tables |
+| `runtime/python/modules/<name>_constants.<os>.jac` | `scripts/jacpython/gen_constants.jac` | system constants as the target's C headers define them |
 | `cpython-sources.txt` line counts | `scripts/jacpython_manifest.jac --write` | per-file and total source lines |
 
 Steps for a module `_foo` built from `Modules/_foomodule.c`:
 
-1. Add `_foo` to `jacpython-clinic.txt` and run `python3 jac/bootstrap/python/gen_clinic.py _foo`.
+1. Add `_foo` to `jacpython-clinic.txt` and run `jac run scripts/jacpython/gen_clinic.jac _foo`.
    The generated file imports `<c_basename>_impl` functions, C macro defaults
    and module converters from `runtime/python/modules/foo.jac`.
 2. Write `modules/foo.jac`: one `_impl` function per clinic function, with the C
@@ -33,7 +34,10 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
    the exec hook (constants, exception types, module state) and
    `def:pub PyInit__foo`. Classes whose methods take `defining_class` bind their
    `ClassToken` here.
-4. Run `python3 jac/bootstrap/python/gen_capi.py` so every new API call has a
+   `PyInit__foo` is the only `:pub` name. `:pub` exports an unqualified C
+   symbol, so two modules with a `:pub` of the same name fail the link;
+   plain `def` and `glob` stay importable from other Jac modules.
+4. Run `jac run scripts/jacpython/gen_capi.jac` so every new API call has a
    declaration.
 5. Import `PyInit__foo` in `compiler/backends/py/jacpython/native_api.jac`,
    add the registry line, comment the C files in `cpython-sources.txt` as
@@ -54,7 +58,7 @@ them by hand.
 ## What stays C
 
 `jacpython.o` links into libpython, so any non-static CPython function is
-callable from Jac. `gen_capi.py` declares `PyAPI_FUNC` functions and the
+callable from Jac. `gen_capi.jac` declares `PyAPI_FUNC` functions and the
 `extern` functions of `Include/internal/`. C remains only where Jac cannot
 express the operation:
 
@@ -70,7 +74,7 @@ express the operation:
 
 `object_api.c`, `compiler_runtime.c` and `binding_api.c` hold only these. They
 take and return typed pointers (`PyObject *`, `Py_buffer *`,
-`PyUnicodeWriter *`), and `gen_capi.py` derives their Jac declarations from
+`PyUnicodeWriter *`), and `gen_capi.jac` derives their Jac declarations from
 the C, so the two sides cannot drift.
 
 ## Object handles

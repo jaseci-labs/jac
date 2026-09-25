@@ -39,7 +39,7 @@ import from jaclang.runtime.python.opcode_meta {
     stack_effect
 }
 
-glob:pub ENABLE_SPECIALIZATION: i64 = 1,
+glob ENABLE_SPECIALIZATION: i64 = 1,
      ENABLE_SPECIALIZATION_FT: i64 = 1;
 
 glob:priv MAX_INTRINSIC_1: int = 11,

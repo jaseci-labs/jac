@@ -1,8 +1,8 @@
 """macOS <sys/stat.h> file flags, whiteouts and the SF_SUPPORTED masks."""
 
-glob:pub PLATFORM: str = "darwin";
+glob PLATFORM: str = "darwin";
 
-glob:pub S_IFWHT: u64 = 0o160000,
+glob S_IFWHT: u64 = 0o160000,
      UF_SETTABLE: u64 = 0x0000ffff,
      UF_NODUMP: u64 = 0x00000001,
      UF_IMMUTABLE: u64 = 0x00000002,

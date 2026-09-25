@@ -31,5 +31,5 @@ import from c {
     ) -> i32;
 }
 
-glob:pub PLATFORM: str = "",
+glob PLATFORM: str = "",
      HAS_PRLIMIT: bool = True;

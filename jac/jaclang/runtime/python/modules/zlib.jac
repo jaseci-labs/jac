@@ -104,7 +104,7 @@ import from z {
     ) -> u64;  def zlibVersion -> ptr[u8];
 }
 
-glob:pub MAX_WBITS: i32 = 15,
+glob MAX_WBITS: i32 = 15,
      DEFLATED: i32 = 8,
      DEF_MEM_LEVEL: i32 = 8,
      DEF_BUF_SIZE: i64 = 16 * 1024,
@@ -130,7 +130,7 @@ glob:pub MAX_WBITS: i32 = 15,
      ZlibDecompressor_token = ClassToken();
 
 # Module state slots, in the order the binding fills them.
-glob:pub COMPRESS_TYPE: int = 0,
+glob COMPRESS_TYPE: int = 0,
      DECOMPRESS_TYPE: int = 1,
      DECOMPRESSOR_TYPE: int = 2,
      ZLIB_ERROR: int = 3;
