@@ -1250,6 +1250,7 @@ impl NaIRGenPass._demote_method_if_unlowerable(
         self._get_or_declare_extern("abort", ir.VoidType(), []);
         b.call(self.extern_funcs["abort"], []);
         b.unreachable();
+        self._seam_stub_ids.add(id(func));
     }
     if not keep_func {
         self.method_funcs.pop(full_name, None);
