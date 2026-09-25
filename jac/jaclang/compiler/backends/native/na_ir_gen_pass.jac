@@ -295,6 +295,16 @@ walker NaIRGenPass(CompilerPass) {
         _finally_stack: list[NativeFinalizer] = [],
         _caught_error_stack:
             list[tuple[ir.Function, tuple[ir.Value, ir.Value, ir.Value]]] = [],
+        _exc_bindings:
+            list[
+                tuple[
+                    ir.Function,
+                    str,
+                    ir.Value,
+                    ir.Value,
+                    tuple[ir.Value, ir.Value, ir.Value]
+                ]
+            ] = [],
         _exc_context_fn: (ir.Function | None) = None,
         method_funcs: dict[str, ir.Function] = {},
         static_methods: dict[str, bool] = {},
@@ -1400,6 +1410,9 @@ walker NaIRGenPass(CompilerPass) {
     def _exc_stored_message(obj_val: ir.Value, type_name: str) -> ir.Value;
     def _emit_exc_message_str(obj_val: ir.Value, type_name: str) -> ir.Value;
     def _exc_state_message(obj_val: ir.Value, type_name: str) -> ir.Value;
+    def _exc_bound_struct(ex: (uni.Expr | None)) -> (str | None);
+    def _reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) -> None;
+    def _reraise_if_bound(cause: uni.Expr) -> None;
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
     def _raise_has_frame_handler(nd: uni.RaiseStmt) -> bool;
     def _codegen_try(nd: uni.TryStmt) -> None;
