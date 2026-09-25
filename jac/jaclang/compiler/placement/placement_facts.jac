@@ -2,6 +2,7 @@ import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.host { active_host }
 import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob SPACE_SERVER: str = 'server',
      SPACE_CLIENT: str = 'client',
@@ -195,4 +196,19 @@ def native_units_of(package_dir: str, sources: list[str]) -> list[str] {
         }
     }
     return sorted(set(out));
+}
+
+def session_declares_native(
+    options: CompileOptions, source: str, element: str, program: JacProgram
+) -> bool {
+    import from jaclang.compiler.placement.placement_pins {
+        effective_pin_for,
+        config_kind_space
+    }
+    return options.force_codespace == "native"
+        or options.default_codespace == "native"
+        or options.native_required_for(source)
+        or effective_pin_for(source, element, program) == "native"
+        or native_unit(source, options.native_unit, program)
+        or config_kind_space(source, options.app_kind) == "native";
 }

@@ -234,19 +234,10 @@ impl ProjectHost.native_session_declares(
     if session is None {
         return None;
     }
-    import from jaclang.compiler.placement.placement_pins {
-        effective_pin_for,
-        config_kind_space
-    }
-    import from jaclang.compiler.placement.placement_facts { native_unit }
-    options = session.options;
-    source_program = session.registry.prog;
-    return options.force_codespace == "native"
-        or options.default_codespace == "native"
-        or options.native_required_for(source)
-        or effective_pin_for(source, element, source_program) == "native"
-        or native_unit(source, options.native_unit, source_program)
-        or config_kind_space(source, options.app_kind) == "native";
+    import from jaclang.compiler.placement.placement_facts { session_declares_native }
+    return session_declares_native(
+        session.options, source, element, session.registry.prog
+    );
 }
 
 impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
