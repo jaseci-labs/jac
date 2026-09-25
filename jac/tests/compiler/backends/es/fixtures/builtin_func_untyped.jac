@@ -3,15 +3,24 @@
 def summarize(xs: list[any]) -> dict[any, any] {
     return {
         "sorted": sorted(xs),
+        "sorted_reverse": sorted(xs, reverse=True),
         "total": sum(xs),
+        "sum_kwarg": sum(xs, start=10),
         "count": len(xs),
         "enumerated": enumerate(xs),
+        "enumerated_kwarg": enumerate(xs, start=5),
         "ranged": range(len(xs))
     };
 }
 
 def numeric(n: int) -> dict[any, any] {
-    return {"abs": abs(0 - n), "round": round(3.14159, 2)};
+    return {
+        "abs": abs(0 - n),
+        "round": round(3.14159, 2),
+        "round_kwarg": round(3.14159, ndigits=2),
+        "pow_base_exp": pow(base=n, exp=3),
+        "pow_exp_base": pow(exp=3, base=n)
+    };
 }
 
 def combined(a: list[any], b: list[any]) -> list[any] {
@@ -27,6 +36,17 @@ def str_len(s: str) -> int {
 
 def min_max_by_key(items: list[any]) -> list[any] {
     return [min(items, key=str_len), max(items, key=str_len)];
+}
+
+def sorted_kwargs_order(items: list[any]) -> dict[any, any] {
+    return {
+        "key_then_reverse": sorted(items, key=str_len, reverse=True),
+        "reverse_then_key": sorted(items, reverse=True, key=str_len)
+    };
+}
+
+def sorted_kwargs_spread(items: list[any], opts: dict[str, any]) -> list[any] {
+    return sorted(items, reverse=True, **opts);
 }
 
 def min_of_empty -> int {

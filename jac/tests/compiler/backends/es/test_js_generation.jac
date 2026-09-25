@@ -1111,30 +1111,48 @@ test "plain client kwargs lower to ordered js arguments" {
     );
 }
 
-test "bridged call duplicate kwarg is a compile error" {
-    # Calling ``greet(input_text, name=other)`` gives the ``name`` parameter
-    # twice — once positionally and once by keyword.  This mirrors Python's
-    # ``TypeError: got multiple values for argument 'name'`` and must be
-    # reported as a compile-time error so the build fails fast rather than
-    # silently emitting a JS object with a duplicated key.
+test "duplicate keyword argument is a compile error (bridged call and builtin)" {
+    # Same argument given both positionally and by keyword must be an
+    # E5080 compile error for both the bridged/RPC and builtin call paths.
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.backends.es { EsastGenPass }
 
-    fixture = os.path.join(FIXTURES, "svc_kwargs/sv_import_kwargs_dup.jac");
-    prog = JacProgram();
-    ir = prog.compile(file_path=fixture, no_cgen=True);
-    run_pass(EsastGenPass, ir, prog);
-
-    dup_errs = [
-        e
-        for e in prog.errors_had
-        if "given both positionally and by keyword" in str(e)
+    cases = [
+        (
+            "bridged call",
+            os.path.join(FIXTURES, "svc_kwargs/sv_import_kwargs_dup.jac"),
+            ["name", "greet"]
+        ),
+        (
+            "builtin call",
+            write_temp_jac(
+                "def r(x: float) -> float {\n"
+                "    return round(x, 2, ndigits=3);\n"
+                "}\n"
+            ),
+            ["ndigits", "round"]
+        )
     ];
-    assert len(dup_errs) == 1 , (
-        "Expected exactly one E5080 collision diagnostic, got "
-        + str([str(e) for e in prog.errors_had])
-    );
-    assert "name" in str(dup_errs[0]) and "greet" in str(dup_errs[0]);
+    for (label, fixture, needles) in cases {
+        prog = JacProgram();
+        ir = prog.compile(file_path=fixture, no_cgen=True);
+        run_pass(EsastGenPass, ir, prog);
+
+        dup_errs = [
+            e
+            for e in prog.errors_had
+            if "given both positionally and by keyword" in str(e)
+        ];
+        assert len(dup_errs) == 1 , (
+            f"{label}: expected exactly one E5080 collision diagnostic, got "
+            + str([str(e) for e in prog.errors_had])
+        );
+        for needle in needles {
+            assert needle in str(dup_errs[0]) , (
+                f"{label}: expected {needle!r} in diagnostic, got {dup_errs[0]}"
+            );
+        }
+    }
 }
 
 test "bridged import nested in a client block emits no dead import" {
@@ -2883,6 +2901,9 @@ test "builtin functions lower to runtime helpers without type-check (#7480, #858
         + "  min_max_key: min_max_by_key([\"ccc\", \"a\", \"bb\"]),"
         + "  min_spread: min_of_spread([5, 1, 3]),"
         + "  min_max_varargs: min_max_varargs(3, 1, 2),"
+        + "  sorted_kwargs_order: sorted_kwargs_order([\"ccc\", \"a\", \"bb\"]),"
+        + "  sorted_kwargs_spread: sorted_kwargs_spread("
+        + "[\"ccc\", \"a\", \"bb\"], {key: (s) => s.length}),"
         + "  empty_error: _emptyErr"
         + "}));\n"
     );
@@ -2896,6 +2917,9 @@ test "builtin functions lower to runtime helpers without type-check (#7480, #858
     assert got["summarize"]["total"] == 6 , got["summarize"];
     assert got["summarize"]["count"] == 3 , got["summarize"];
     assert got["summarize"]["enumerated"] == [[0, 3], [1, 1], [2, 2]] , (
+        got["summarize"]
+    );
+    assert got["summarize"]["enumerated_kwarg"] == [[5, 3], [6, 1], [7, 2]] , (
         got["summarize"]
     );
     assert got["summarize"]["ranged"] == [0, 1, 2] , got["summarize"];
@@ -2914,6 +2938,12 @@ test "builtin functions lower to runtime helpers without type-check (#7480, #858
     # one `...xs` entry, which the fix must wrap in `[...]` rather than pass
     # straight through -- otherwise xs's elements splice into the runtime
     # helper's own argument list instead of forming the array it expects.
+    #
+    # The remaining keys (#9120) cover builtin keyword args resolving by
+    # name instead of source position: `sorted_kwargs_order` checks
+    # `key=`/`reverse=` in both written orders agree, `pow_*` checks the
+    # same for fully-named required args, and `sorted_kwargs_spread`
+    # checks a `**opts` spread mixed with an explicit keyword.
     expected_scalars = {
         "combined min(a)": (got["combined"][0], 1),
         "combined max(a)": (got["combined"][1], 2),
@@ -2921,13 +2951,34 @@ test "builtin functions lower to runtime helpers without type-check (#7480, #858
         "max(items, key=)": (got["min_max_key"][1], "ccc"),
         "min(*xs)": (got["min_spread"], 1),
         "min(a, b, c)": (got["min_max_varargs"][0], 1),
-        "max(a, b, c)": (got["min_max_varargs"][1], 3)
+        "max(a, b, c)": (got["min_max_varargs"][1], 3),
+        "sorted(xs, reverse=True)": (got["summarize"]["sorted_reverse"], [3, 2, 1]),
+        "sum(xs, start=)": (got["summarize"]["sum_kwarg"], 16),
+        "round(x, ndigits=)": (got["numeric"]["round_kwarg"], 3.14),
+        "sorted(key=, reverse=)": (
+            got["sorted_kwargs_order"]["key_then_reverse"],
+            ["ccc", "bb", "a"]
+        ),
+        "sorted(reverse=, key=)": (
+            got["sorted_kwargs_order"]["reverse_then_key"],
+            ["ccc", "bb", "a"]
+        ),
+        "pow(base=, exp=)": (got["numeric"]["pow_base_exp"], 125),
+        "pow(exp=, base=)": (got["numeric"]["pow_exp_base"], 125),
+        "sorted(reverse=, **spread)": (got["sorted_kwargs_spread"], ["ccc", "bb", "a"])
     };
     for (label, (actual, expected)) in expected_scalars.items() {
         assert actual == expected , (
             f"{label}: expected {expected!r}, got {actual!r}\njs:\n{js_code}"
         );
     }
+    assert (
+        got["sorted_kwargs_order"]["key_then_reverse"]
+        == got["sorted_kwargs_order"]["reverse_then_key"]
+    ) , (
+        "swapping keyword-argument order must not change the result:\n"
+        f"{got['sorted_kwargs_order']}\njs:\n{js_code}"
+    );
     assert got["empty_error"] and "empty" in got["empty_error"].lower() , (
         f"min([]) without a default must raise, got: {got['empty_error']}\njs:\n{js_code}"
     );
