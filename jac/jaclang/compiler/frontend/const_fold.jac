@@ -22,8 +22,8 @@ def fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
         return (True, bool(expr.lit_value));
     }
     if isinstance(expr, String) {
-        v = expr.lit_value;
-        return (isinstance(v, str), v if isinstance(v, str) else None);
+        text = expr.lit_value;
+        return (isinstance(text, str), text if isinstance(text, str) else None);
     }
     if isinstance(expr, MultiString) {
         parts: list[str] = [];
