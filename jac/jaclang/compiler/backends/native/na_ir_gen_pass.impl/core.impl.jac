@@ -1162,7 +1162,7 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
                 self.imported_osp_archs[_aname] = (stmt.arch_kind, imported_mod.name);
             }
         } elif isinstance(stmt, uni.Enum) {
-            self._codegen_enum(stmt);
+            self._codegen_enum(stmt, quiet=True);
             for method in self._enum_methods(stmt) {
                 self._forward_declare_method(stmt.name.value, method, imported=True);
             }

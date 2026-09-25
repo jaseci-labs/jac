@@ -626,7 +626,7 @@ def resolve_enum_member_values(
     _blocked = False;
     for member in raw_members {
         _vnode = member[1];
-        if is_enum_auto(_vnode) {
+        if _vnode is None or is_enum_auto(_vnode) {
             if _blocked {
                 out.append(None);
                 continue;

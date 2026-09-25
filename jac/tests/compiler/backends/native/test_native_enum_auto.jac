@@ -25,6 +25,12 @@ so it stays unknown and `all_values_known` reads false. And the name is
 matched through its symbol, not its spelling: a module-local function called
 `auto` is not `enum`'s, so `enum_auto_shadow.jac` keeps its seam and the
 server lane answers what CPython answers.
+
+A declared member with no value at all (`enum E { A, B }`) is `auto()` too:
+the Python backend lowers it so, and the native layout once stored it as `0`,
+making every such member equal (#9367). The same refusal now holds for a
+declared enum as for the class form -- a table the emitter cannot encode is
+reported under E5092 where it is read, never lowered with guessed zeros.
 """
 
 import contextlib;
@@ -39,7 +45,18 @@ import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     EXPECTED: tuple[str, ...] = ("1", "2", "3", "10", "3", "1112", "129");
+     EXPECTED: tuple[str, ...] = (
+         "1",
+         "2",
+         "3",
+         "10",
+         "3",
+         "1112",
+         "129",
+         "123",
+         "11",
+         "True"
+     );
 
 def compile_native(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
@@ -135,10 +152,19 @@ test "generated values count from the largest already assigned" {
 test "the declared-enum spelling generates the same way" {
     (prog, ir) = compile_native("enum_auto.jac");
     reg = get_layout_registry(ir, prog);
-    step = reg.get_enum_layout("Step");
-    assert step is not None , "the declared enum lost its layout";
-    step_values = [(m.name, m.int_value) for m in step.members];
-    assert step_values == [("First", 1), ("Second", 2), ("Third", 9)] , f"Step generated {step_values}";
+    cases: list[tuple[str, list[tuple[str, int]]]] = [
+        ("Step", [("First", 1), ("Second", 2), ("Third", 9)]),
+        ("Bare", [("First", 1), ("Second", 2), ("Third", 3)]),
+        ("Resume", [("High", 10), ("Low", 3), ("Next", 11)])
+    ];
+    for (name, expected) in cases {
+        lay = reg.get_enum_layout(name);
+        assert lay is not None and lay.all_values_known , (
+            f"the declared enum {name} lost its table"
+        );
+        values = [(m.name, m.int_value) for m in lay.members];
+        assert values == expected , f"{name} generated {values}";
+    }
 }
 
 
@@ -163,4 +189,16 @@ test "a module-local auto is not read as the enum's" {
     );
     sv = sv_lines("enum_auto_shadow.jac");
     assert sv == ["40"] , f"server lane printed {sv}";
+}
+
+
+test "an unencodable declared enum refuses where it is read" {
+    (prog, _ir) = compile_native("enum_unencodable.jac");
+    errs = [str(e) for e in prog.errors_had];
+    assert any("Native lowering failed for enum 'Ratio'" in e for e in errs) , (
+        f"a read of an unencodable enum lowered with guessed zeros: {errs}"
+    );
+    assert not any("Unread" in e or "enum_unencodable_lib" in e for e in errs) , (
+        f"an enum nothing reads refused its module: {errs}"
+    );
 }

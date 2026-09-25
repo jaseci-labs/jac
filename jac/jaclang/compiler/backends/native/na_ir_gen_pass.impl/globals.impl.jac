@@ -278,7 +278,7 @@ impl NaIRGenPass._codegen_const_expr(
 impl NaIRGenPass._register_enums(module: uni.Module) -> None {
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if isinstance(stmt, uni.Enum) {
-            self._codegen_enum(stmt);
+            self._codegen_enum(stmt, quiet=True);
         }
     }
 }

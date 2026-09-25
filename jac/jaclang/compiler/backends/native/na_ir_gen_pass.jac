@@ -227,6 +227,7 @@ walker NaIRGenPass {
         enum_member_ordinal: dict[str, int] = {},
         enum_int_values: dict[str, list[tuple[int, int]]] = {},
         enum_ordinal_fns: dict[str, ir.Function] = {},
+        _unencodable_enums: set[str] = set(),
         struct_field_enum_type: dict[str, dict[str, str]] = {},
         struct_field_elem_keys: dict[str, dict[str, list[str | None]]] = {},
         loop_stack: list[tuple[ir.Block, ir.Block]] = [],
@@ -1234,8 +1235,14 @@ walker NaIRGenPass {
     def _enum_methods(nd: uni.Enum) -> list[uni.Ability];
     def _register_enum_methods(module: uni.Module, declare: bool) -> None;
     def _codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | None);
-    def _codegen_enum(nd: (uni.Enum | uni.Archetype)) -> None;
-    def _codegen_enum_layout(enum_name: str, owner: (uni.Module | None)) -> None;
+    def _codegen_enum(nd: (uni.Enum | uni.Archetype), quiet: bool = False) -> None;
+    def _codegen_enum_layout(
+        enum_name: str,
+        owner: (uni.Module | None),
+        decl: (uni.Enum | None) = None,
+        quiet: bool = False
+    ) -> None;
+
     def _enum_ctor_layout(enum_name: str) -> (EnumLayout | None);
     def _enum_ctor_target(nd: uni.FuncCall) -> (str | None);
     def _emit_enum_ctor_refusal(nd: uni.FuncCall, enum_name: str, why: str) -> None;
