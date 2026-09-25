@@ -1624,6 +1624,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._emit_print(nd);
         }
 
+        if func_name == "jid" {
+            return self._emit_jid(nd);
+        }
+
         if func_name == "managed" {
             params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if not params_l {

@@ -634,6 +634,9 @@ impl native_capability_violations(
                         and isinstance(_chain[_ci], FilterCompr)
                         and (_chain[_ci].f_type is not None) {
                         _ci += 1;
+                    } elif (_ci < len(_chain))
+                        and not isinstance(_chain[_ci], (EdgeOpRef, FilterCompr)) {
+                        _ci += 1;
                     }
                 }
                 _shape_ok = (_hops > 0) and (_ci == len(_chain));
@@ -647,7 +650,8 @@ impl native_capability_violations(
                                 "native lowers edge references as one or more hops "
                                 "(`[origin --> ...]` / `[here ->:Edge:-> ...]`), each "
                                 "with an optional node-type filter (`[?:Node]`, "
-                                "optionally with field predicates `[?:Node, x > 1]`). "
+                                "optionally with field predicates `[?:Node, x > 1]`) "
+                                "or a bound endpoint (`[a -->:E:-> b]`). "
                                 "A compare-only filter inside a chain needs a type "
                                 "filter naming the element archetype first; other "
                                 "shapes are not yet supported - restructure the "

@@ -1047,10 +1047,15 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         _idx += 1;
 
         _step_filter: (uni.FilterCompr | None) = None;
+        _step_only: (uni.Expr | None) = None;
         if _idx < len(chain) {
             _f = chain[_idx];
             if isinstance(_f, uni.FilterCompr) and (_f.f_type is not None) {
                 _step_filter = _f;
+                _idx += 1;
+            } elif isinstance(_f, uni.Expr)
+                and not isinstance(_f, (uni.EdgeOpRef, uni.FilterCompr)) {
+                _step_only = _f;
                 _idx += 1;
             }
         }
@@ -1086,6 +1091,18 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
             return None;
         }
         _edges_only = 1 if (nd.edges_only and _is_last_hop) else 0;
+        _only_origins: (ir.Value | None) = None;
+        if (_step_only is not None) and _edges_only {
+            if _cur is not None {
+                self._emit_rc_retain(_cur, op="osp_only_origins", loc="");
+                _only_origins = _cur;
+            } else {
+                _only_origins = self._osp_handle_list(origin_val, nd);
+                if _only_origins is None {
+                    return None;
+                }
+            }
+        }
         if _ec_compares {
             _wrap_fn = self.func_symtab.get("osp_wrap1");
             _eph_fn = self.func_symtab.get("osp_refs_edge_pred");
@@ -1213,6 +1230,47 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
                 self._emit_rc_release_simple(_prefiltered, op="osp_refs_pred", loc="");
             }
         }
+        if _step_only is not None {
+            _keep_fn = self.func_symtab.get("osp_keep_toward");
+            _wanted = self._osp_endpoint_handles(_step_only, nd);
+            if (_keep_fn is None) or (_wanted is None) {
+                if _keep_fn is None {
+                    self.emit(
+                        E5092,
+                        node_override=nd,
+                        kind="expression",
+                        name="EdgeRefTrailer"
+                    );
+                }
+                return None;
+            }
+            _kargs = _keep_fn.function_type.args;
+            _unbound = _result;
+            _result = self.builder.call(
+                _keep_fn,
+                [
+                    self._coerce_type(_unbound, _kargs[0]),
+                    self._coerce_type(
+                        _only_origins if _only_origins is not None else _wanted,
+                        _kargs[1]
+                    ),
+                    self._coerce_type(ir.Constant(i64, _dir), _kargs[2]),
+                    self._coerce_type(ir.Constant(i64, _edges_only), _kargs[3]),
+                    self._coerce_type(_wanted, _kargs[4])
+                ],
+                name="osp.refs.only"
+            );
+            self._mark_owned(_result);
+            self._emit_rc_release_simple(_unbound, op="osp_refs_only", loc="");
+            if self._is_owned(_wanted) {
+                self._emit_rc_release_simple(_wanted, op="osp_only_wanted", loc="");
+            }
+            if _only_origins is not None {
+                self._emit_rc_release_simple(
+                    _only_origins, op="osp_only_origins", loc=""
+                );
+            }
+        }
         _cur = _result;
     }
 
@@ -1221,6 +1279,111 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         return None;
     }
     return self._osp_typed_refs(_cur, nd);
+}
+
+impl NaIRGenPass._emit_jid(nd: uni.FuncCall) -> (ir.Value | None) {
+    """`jid(x)` of a node or edge: the graph runtime assigns a 32-hex id on
+    first request and never reuses it, matching the id shape of the other
+    backends. Like the client runtime, only nodes and edges have a jid; any
+    other argument is refused here rather than failing at run time.""";
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.types.types { ClassType, UnionType }
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+    arg = params[0] if len(params) == 1 else None;
+    arch = self._struct_name_of(arg) if isinstance(arg, uni.Expr) else None;
+    lay = get_layout_registry(self.module, self.prog).get_layout(arch)
+        if arch is not None
+        else None;
+    jid_fn = self.func_symtab.get("osp_jid");
+    _arg_t = self._flow_narrowed_type_of(arg);
+    _may_be_none = isinstance(_arg_t, UnionType)
+        and any(
+            isinstance(m, ClassType) and m.shared.class_name in ("NoneType", "None")
+            for m in (_arg_t.types or [])
+        );
+    if (
+        not isinstance(arg, uni.Expr)
+        or lay is None
+        or not lay.is_osp
+        or lay.arch_type not in ("node", "edge")
+        or _may_be_none
+        or jid_fn is None
+    ) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="builtin call",
+            name="jid",
+            help_text="Native `jid()` takes one argument statically typed as a "
+            "node or edge (narrow an optional one with `is not None` first); "
+            "only nodes and edges have a graph identity."
+        );
+        return None;
+    }
+    if self._osp_ensure_fn is not None {
+        self.builder.call(self._osp_ensure_fn, []);
+    }
+    value = self._codegen_expr(arg);
+    if value is None {
+        return None;
+    }
+    if self._opt_ptr_payload_of(value.type) is not None {
+        value = self.builder.extract_value(value, 1, name="jid.narrowed");
+    }
+    if not isinstance(value.type, ir.PointerType) {
+        self.emit(E5092, node_override=nd, kind="builtin call", name="jid");
+        return None;
+    }
+    _handle = self.builder.ptrtoint(value, ir.IntType(64), name="jid.handle");
+    return self._mark_reference_owned(
+        self.builder.call(
+            jid_fn,
+            [self._coerce_type(_handle, jid_fn.function_type.args[0])],
+            name="jid"
+        )
+    );
+}
+
+impl NaIRGenPass._osp_handle_list(value: ir.Value, nd: uni.Expr) -> (ir.Value | None) {
+    """A one-element handle list (owned) holding the graph object `value`.""";
+    _wrap_fn = self.func_symtab.get("osp_wrap1");
+    if (_wrap_fn is None) or not isinstance(value.type, ir.PointerType) {
+        self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
+        return None;
+    }
+    _one = self.builder.call(
+        _wrap_fn,
+        [self._coerce_type(value, _wrap_fn.function_type.args[0])],
+        name="osp.wrap1"
+    );
+    return self._mark_owned(_one);
+}
+
+impl NaIRGenPass._osp_endpoint_handles(
+    endpoint: uni.Expr, nd: uni.Expr
+) -> (ir.Value | None) {
+    """The handles a bound endpoint (`[a -->:E:-> b]`) names: one node, or a
+    list/tuple/set of nodes. Ownership follows the value: a one-node list
+    built here is owned, a list read from a variable is borrowed.""";
+    value = self._codegen_expr(endpoint);
+    if value is None {
+        return None;
+    }
+    if self._osp_disc_list_operand(endpoint) {
+        return value;
+    }
+    if not isinstance(value.type, ir.PointerType) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="EdgeRefTrailer",
+            help_text="a bound endpoint (`[a -->:E:-> b]`) must be a node or a "
+            "list of nodes"
+        );
+        return None;
+    }
+    return self._osp_handle_list(value, nd);
 }
 
 impl NaIRGenPass._osp_typed_refs(value: ir.Value, nd: uni.Expr) -> ir.Value {
